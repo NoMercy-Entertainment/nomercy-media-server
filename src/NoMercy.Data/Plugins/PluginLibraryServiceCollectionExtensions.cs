@@ -1,4 +1,4 @@
-// -----------------------------------------------------------------------------
+﻿// -----------------------------------------------------------------------------
 //  Copyright (c) 2024-present NoMercy Entertainment. All rights reserved.
 //
 //  This file is part of NoMercy MediaServer, source-available software (NOT open
@@ -34,6 +34,7 @@ public static class PluginLibraryServiceCollectionExtensions
         ArgumentNullException.ThrowIfNull(services);
 
         services.AddSingleton<IPluginLibraryQuery, PluginLibraryQuery>();
+        services.AddSingleton<IPluginMusicQuery, PluginMusicQuery>();
         services.AddSingleton<IPluginLibraryWriterFactory, PluginLibraryWriterFactory>();
 
         // The three facades that retire the reflection. A plugin reached the

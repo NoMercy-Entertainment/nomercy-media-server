@@ -1,4 +1,4 @@
-// -----------------------------------------------------------------------------
+﻿// -----------------------------------------------------------------------------
 //  Copyright (c) 2024-present NoMercy Entertainment. All rights reserved.
 //
 //  This file is part of NoMercy MediaServer, source-available software (NOT open
@@ -31,6 +31,7 @@ public class PluginContext : IPluginContext
     public Ulid PluginId { get; }
     public IPluginSecretStore Secrets { get; }
     public IPluginLibraryQuery Library { get; }
+    public IPluginMusicQuery? Music { get; }
     public IPluginLibraryWriter? LibraryWriter { get; }
     public IPluginGrants Grants { get; }
     public IPluginHubContext Hub { get; }
@@ -71,7 +72,8 @@ public class PluginContext : IPluginContext
         IPluginHubContext? hub = null,
         IPluginEncoder? encoder = null,
         IPluginJobs? jobs = null,
-        IPluginStorage? pluginStorage = null
+        IPluginStorage? pluginStorage = null,
+        IPluginMusicQuery? music = null
     )
     {
         Encoder = encoder;
@@ -86,6 +88,7 @@ public class PluginContext : IPluginContext
         Configuration = new PluginConfiguration(dataFolderPath, storage);
         Secrets = secrets ?? throw new ArgumentNullException(nameof(secrets));
         Library = library ?? throw new ArgumentNullException(nameof(library));
+        Music = music;
         Grants = grants ?? throw new ArgumentNullException(nameof(grants));
 
         // Null when the plugin never declared the capability or the owner

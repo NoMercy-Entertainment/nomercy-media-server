@@ -20,6 +20,7 @@ using Newtonsoft.Json;
 using NoMercy.Api.Controllers.V1.Music;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Api.DTOs.Dashboard;
+using NoMercy.Api.DTOs.Music;
 using NoMercy.Api.Services;
 using NoMercy.Data.Repositories;
 using NoMercy.Database;
@@ -55,6 +56,7 @@ namespace NoMercy.Api.Controllers.V1.Dashboard.Admin;
 [Route("api/v{version:apiVersion}/dashboard/tasks", Order = 10)]
 public class TasksController(
     MediaContext mediaContext,
+    IDbContextFactory<MediaContext> mediaContextFactory,
     IDbContextFactory<QueueContext> queueContextFactory,
     IEncoderProcessRegistry processRegistry,
     ProcessThrottle processThrottle,
@@ -1054,6 +1056,129 @@ public class TasksController(
         return Ok(
             new StatusResponseDto<string> { Message = "Encoder queue resumed", Status = "success" }
         );
+    }
+
+    /// <summary>
+    /// Stop dispatching audio-analysis work. Analysis is opt-in background work
+    /// that costs real CPU per track, so an operator needs to stop it without
+    /// stopping an encode — and without waiting for a library to finish.
+    /// <para>
+    /// It shares the music queue with lyrics and metadata jobs, so this pauses
+    /// those too. That is the honest scope of the control and the dashboard
+    /// should say so.
+    /// </para>
+    /// </summary>
+    [HttpPost]
+    [Route("pause-music-queue")]
+    public async Task<IActionResult> PauseMusicQueue()
+    {
+        if (QueueRunner.Current is null)
+            return Ok(
+                new StatusResponseDto<string>
+                {
+                    Message = "Queue runner not available",
+                    Status = "unavailable",
+                }
+            );
+
+        await QueueRunner.Current.Pause(QueueNames.Music);
+
+        return Ok(
+            new StatusResponseDto<string> { Message = "Music queue paused", Status = "success" }
+        );
+    }
+
+    [HttpPost]
+    [Route("resume-music-queue")]
+    public async Task<IActionResult> ResumeMusicQueue()
+    {
+        if (QueueRunner.Current is null)
+            return Ok(
+                new StatusResponseDto<string>
+                {
+                    Message = "Queue runner not available",
+                    Status = "unavailable",
+                }
+            );
+
+        await QueueRunner.Current.Resume(QueueNames.Music);
+
+        return Ok(
+            new StatusResponseDto<string> { Message = "Music queue resumed", Status = "success" }
+        );
+    }
+
+    /// <summary>
+    /// Paused state and remaining depth for audio analysis, so the dashboard can
+    /// show progress rather than only a spinner. Depth is a count: the queue
+    /// listing returns a bounded sample, so counting the cards it hands back
+    /// under-reports a large library by orders of magnitude.
+    /// </summary>
+    [HttpGet]
+    [Route("audio-analysis/status")]
+    public async Task<IActionResult> AudioAnalysisStatus()
+    {
+        bool paused = IsQueuePausedOrFalse(QueueNames.Music);
+
+        await using QueueContext queueContext = await queueContextFactory.CreateDbContextAsync();
+
+        int queued = await queueContext
+            .QueueJobs.Where(job =>
+                job.Queue == QueueNames.Music && job.Payload.Contains("MusicAnalysisJob")
+            )
+            .CountAsync();
+
+        // Its own context, not the scoped one this controller is handed. The
+        // shared instance is already serving the request, and counting on it
+        // under concurrent load fails intermittently — green alone, 500 in a
+        // full parallel suite.
+        await using MediaContext analysisContext = await mediaContextFactory.CreateDbContextAsync();
+
+        int analyzed = await analysisContext.TrackAudioAnalysis.CountAsync(analysis =>
+            analysis.State == AudioAnalysisState.Ok
+        );
+
+        int failed = await analysisContext.TrackAudioAnalysis.CountAsync(analysis =>
+            analysis.State == AudioAnalysisState.Failed
+        );
+
+        return Ok(
+            new AudioAnalysisStatusDto
+            {
+                Paused = paused,
+                Queued = queued,
+                Analyzed = analyzed,
+                Failed = failed,
+            }
+        );
+    }
+
+    /// <summary>
+    /// Paused state, or false when the runner cannot answer.
+    /// <para>
+    /// <see cref="QueueRunner.Current" /> is a process-global that outlives the
+    /// host which built it, so it can be non-null while holding a disposed
+    /// service provider — reading it then throws
+    /// <see cref="ObjectDisposedException" />. A read-only status endpoint must
+    /// not fail because the queue runner is mid-teardown; "not paused" is the
+    /// same answer it already gives when there is no runner at all.
+    /// </para>
+    /// </summary>
+    private static bool IsQueuePausedOrFalse(string queue)
+    {
+        QueueRunner? runner = QueueRunner.Current;
+
+        if (runner is null)
+            return false;
+
+        try
+        {
+            return runner.IsPaused(queue);
+        }
+        catch (ObjectDisposedException)
+        {
+            return false;
+        }
     }
 
     /// <summary>

@@ -1,0 +1,411 @@
+Input #0, mp3, from 'fixture-track-a.mp3':
+  Metadata:
+    title           : redacted
+    artist          : redacted
+    track           : redacted
+    album           : redacted
+    disc            : redacted
+    date            : redacted
+    genre           : redacted
+    copyright       : redacted
+    album_artist    : redacted
+    TSO2            : redacted
+    artist-sort     : redacted
+    composer        : redacted
+    TDOR            : redacted
+    SCRIPT          : redacted
+    WORK            : redacted
+    TSRC            : redacted
+    LABEL           : redacted
+    TRACKTOTAL      : redacted
+    TMED            : redacted
+    encoder         : Lavf60.11.100
+    ARTISTS         : redacted
+    CREDITS         : redacted
+    comment         : redacted
+    PROVIDER        : redacted
+    UPLOADER        : redacted
+    CONDUCTOR       : redacted
+    INFO            : redacted
+    ENCODED-BY      : redacted
+    originalyear    : redacted
+    RELEASECOUNTRY  : redacted
+    BARCODE         : redacted
+    ID3v1 Comment   : redacted
+    REDACTED_TAG    : redacted
+    SOURCE          : redacted
+    MusicBrainz Album Type: redacted
+    WEBSITE         : redacted
+    MusicBrainz Album Status: redacted
+    WWWAUDIOFILE    : redacted
+    MusicBrainz Album Release Country: redacted
+    WWWAUDIOSOURCE  : redacted
+    publisher       : redacted
+    Acoustid Id     : redacted
+    MusicBrainz Album Id: redacted
+    MusicBrainz Artist Id: redacted
+    MusicBrainz Album Artist Id: redacted
+    MusicBrainz Release Group Id: redacted
+    MusicBrainz Release Track Id: redacted
+  Duration: 00:04:12.19, start: 0.025056, bitrate: 322 kb/s
+  Stream #0:0: Audio: mp3 (mp3float), 44100 Hz, stereo, fltp, 320 kb/s, start 0.025057
+    Metadata:
+      encoder         : Lavc60.26
+  Stream #0:1: Video: mjpeg (Baseline), yuvj420p(pc, bt470bg/unknown/unknown), 500x500 [SAR 1:1 DAR 1:1], 90k tbr, 90k tbn, start 0.025056 (attached pic)
+    Metadata:
+      comment         : redacted
+Stream mapping:
+  Stream #0:0 -> #0:0 (mp3 (mp3float) -> pcm_s16le (native))
+[Parsed_silencedetect_3 @ 000001e55f5c9780] silence_start: 0
+[Parsed_silencedetect_3 @ 000001e55f5c9780] silence_end: 1.0939 | silence_duration: 1.0939
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=1.15 key=C (r=0.75)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=1.31 key=C#m (r=0.58)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=1.36 key=E (r=0.72)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=1.70 key=Em (r=0.76)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=2.39 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=2.46 key=Am (r=0.76)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=2.80 key=C (r=0.79)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=2.89 chord=C
+Output #0, null, to 'pipe:':
+  Metadata:
+    title           : redacted
+    artist          : redacted
+    track           : redacted
+    album           : redacted
+    disc            : redacted
+    date            : redacted
+    genre           : redacted
+    copyright       : redacted
+    album_artist    : redacted
+    TSO2            : redacted
+    artist-sort     : redacted
+    composer        : redacted
+    TDOR            : redacted
+    SCRIPT          : redacted
+    WORK            : redacted
+    TSRC            : redacted
+    LABEL           : redacted
+    TRACKTOTAL      : redacted
+    TMED            : redacted
+    MusicBrainz Release Track Id: redacted
+    ARTISTS         : redacted
+    CREDITS         : redacted
+    comment         : redacted
+    PROVIDER        : redacted
+    UPLOADER        : redacted
+    CONDUCTOR       : redacted
+    INFO            : redacted
+    ENCODED-BY      : redacted
+    originalyear    : redacted
+    RELEASECOUNTRY  : redacted
+    BARCODE         : redacted
+    ID3v1 Comment   : redacted
+    REDACTED_TAG    : redacted
+    SOURCE          : redacted
+    MusicBrainz Album Type: redacted
+    WEBSITE         : redacted
+    MusicBrainz Album Status: redacted
+    WWWAUDIOFILE    : redacted
+    MusicBrainz Album Release Country: redacted
+    WWWAUDIOSOURCE  : redacted
+    publisher       : redacted
+    Acoustid Id     : redacted
+    MusicBrainz Album Id: redacted
+    MusicBrainz Artist Id: redacted
+    MusicBrainz Album Artist Id: redacted
+    MusicBrainz Release Group Id: redacted
+    encoder         : Lavf63.1.100
+  Stream #0:0: Audio: pcm_s16le, 192000 Hz, stereo, s16, 6144 kb/s
+    Metadata:
+      encoder         : Lavc63.1.100 pcm_s16le
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=4.74 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=5.09 key=Am (r=0.69)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=5.99 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=7.34 key=Em (r=0.75)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=8.54 chord=Am
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=9.01 key=Am (r=0.79)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=9.14 chord=F
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=9.14 key=Em (r=0.70)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=9.41 key=Am (r=0.80)
+size=N/A time=00:00:06.60 bitrate=N/A speed=13.2x elapsed=0:00:00.50    [Parsed_keydetect_0 @ 000001e55f5cab80] t=10.24 chord=Am
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=10.69 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=11.36 key=Em (r=0.71)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=11.49 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=14.14 chord=C
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=16.09 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=17.24 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=18.59 chord=A
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=18.99 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=19.89 chord=Am
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=19.91 key=Am (r=0.82)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=21.19 chord=C
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=21.74 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=22.05 key=Em (r=0.70)
+size=N/A time=00:00:19.90 bitrate=N/A speed=13.3x elapsed=0:00:01.50    [Parsed_keydetect_0 @ 000001e55f5cab80] t=23.04 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=25.44 chord=C
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=28.69 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=31.19 chord=Am
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=31.19 key=Am (r=0.80)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=31.74 chord=F
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=31.77 key=Em (r=0.70)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=33.24 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=34.39 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=34.99 chord=E
+size=N/A time=00:00:32.90 bitrate=N/A speed=13.2x elapsed=0:00:02.50    [Parsed_keydetect_0 @ 000001e55f5cab80] t=35.99 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=36.94 chord=C
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=38.99 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=39.89 chord=Em
+size=N/A time=00:00:39.50 bitrate=N/A speed=13.2x elapsed=0:00:03.00    [Parsed_keydetect_0 @ 000001e55f5cab80] t=42.59 chord=Am
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=42.61 key=Am (r=0.79)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=43.74 chord=F
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=43.76 key=Em (r=0.70)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=45.89 chord=A
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=46.59 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=48.49 chord=C
+size=N/A time=00:00:46.30 bitrate=N/A speed=13.2x elapsed=0:00:03.50    [Parsed_keydetect_0 @ 000001e55f5cab80] t=50.39 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=51.29 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=52.14 chord=Am
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=52.14 key=Am (r=0.79)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=52.99 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=53.00 key=Em (r=0.72)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=53.84 chord=Am
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=53.87 key=Am (r=0.79)
+size=N/A time=00:00:52.80 bitrate=N/A speed=13.2x elapsed=0:00:04.00    [Parsed_keydetect_0 @ 000001e55f5cab80] t=56.24 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=56.24 key=Em (r=0.71)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=56.74 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=59.54 chord=C
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=61.04 chord=F
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=61.94 chord=D
+size=N/A time=00:00:59.40 bitrate=N/A speed=13.2x elapsed=0:00:04.50    [Parsed_keydetect_0 @ 000001e55f5cab80] t=62.64 chord=E
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=63.04 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=65.29 chord=Am
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=65.31 key=Am (r=0.80)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=65.89 chord=F
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=65.91 key=Em (r=0.70)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=66.69 chord=C
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=67.64 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=68.24 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=68.64 chord=E
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=69.09 chord=Em
+size=N/A time=00:01:06.40 bitrate=N/A speed=13.3x elapsed=0:00:05.00    [Parsed_keydetect_0 @ 000001e55f5cab80] t=70.94 chord=C
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=72.69 chord=Am
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=72.70 key=Am (r=0.79)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=73.09 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=73.09 key=Em (r=0.71)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=74.04 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=75.14 chord=Am
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=75.16 key=Am (r=0.80)
+size=N/A time=00:01:13.00 bitrate=N/A speed=13.3x elapsed=0:00:05.50    [Parsed_keydetect_0 @ 000001e55f5cab80] t=76.09 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=76.10 key=Em (r=0.71)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=76.54 chord=Am
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=76.57 key=Am (r=0.80)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=78.74 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=78.76 key=Em (r=0.70)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=79.59 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=80.89 chord=E
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=81.79 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=82.24 chord=C
+size=N/A time=00:01:19.80 bitrate=N/A speed=13.3x elapsed=0:00:06.00    [Parsed_keydetect_0 @ 000001e55f5cab80] t=84.44 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=85.44 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=86.44 chord=E
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=86.84 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=87.99 chord=Am
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=88.01 key=Am (r=0.80)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=88.99 chord=C
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=89.00 key=Em (r=0.70)
+size=N/A time=00:01:26.60 bitrate=N/A speed=13.3x elapsed=0:00:06.50    [Parsed_keydetect_0 @ 000001e55f5cab80] t=90.29 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=91.44 chord=E
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=91.84 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=93.59 chord=C
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=95.64 chord=D
+size=N/A time=00:01:33.00 bitrate=N/A speed=13.3x elapsed=0:00:07.00    [Parsed_keydetect_0 @ 000001e55f5cab80] t=97.09 chord=E
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=97.49 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=97.94 chord=E
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=98.34 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=99.49 chord=Am
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=99.50 key=Am (r=0.79)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=101.29 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=101.30 key=Em (r=0.72)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=102.29 chord=Em
+size=N/A time=00:01:39.70 bitrate=N/A speed=13.3x elapsed=0:00:07.50    [Parsed_keydetect_0 @ 000001e55f5cab80] t=104.94 chord=C
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=107.04 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=107.99 chord=Em
+size=N/A time=00:01:46.20 bitrate=N/A speed=13.3x elapsed=0:00:08.00    [Parsed_keydetect_0 @ 000001e55f5cab80] t=110.99 chord=C
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=112.99 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=113.79 chord=Em
+size=N/A time=00:01:53.30 bitrate=N/A speed=13.3x elapsed=0:00:08.50    [Parsed_keydetect_0 @ 000001e55f5cab80] t=116.34 chord=C
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=118.19 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=119.54 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=121.89 chord=Am
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=121.91 key=Am (r=0.78)
+size=N/A time=00:01:59.60 bitrate=N/A speed=13.3x elapsed=0:00:09.00    [Parsed_keydetect_0 @ 000001e55f5cab80] t=124.09 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=124.11 key=Em (r=0.73)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=125.44 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=126.44 chord=E
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=126.89 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=127.59 chord=C
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=128.94 chord=F
+size=N/A time=00:02:06.40 bitrate=N/A speed=13.3x elapsed=0:00:09.50    [Parsed_keydetect_0 @ 000001e55f5cab80] t=129.49 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=130.69 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=131.79 chord=A
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=132.34 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=133.39 chord=Am
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=133.41 key=Am (r=0.79)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=134.54 chord=C
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=134.56 key=Em (r=0.73)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=136.69 chord=E
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=137.14 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=139.14 chord=C
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=140.94 chord=D
+size=N/A time=00:02:18.60 bitrate=N/A speed=13.2x elapsed=0:00:10.50    [Parsed_keydetect_0 @ 000001e55f5cab80] t=142.09 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=143.14 chord=A
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=144.04 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=144.69 chord=Am
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=144.69 key=Am (r=0.79)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=145.29 chord=C
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=145.29 key=Em (r=0.74)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=146.94 chord=D
+size=N/A time=00:02:24.70 bitrate=N/A speed=13.1x elapsed=0:00:11.00    [Parsed_keydetect_0 @ 000001e55f5cab80] t=147.89 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=150.34 chord=C
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=152.69 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=153.74 chord=Em
+size=N/A time=00:02:31.80 bitrate=N/A speed=13.2x elapsed=0:00:11.51    [Parsed_keydetect_0 @ 000001e55f5cab80] t=155.99 chord=Am
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=156.00 key=Am (r=0.80)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=157.99 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=158.02 key=Em (r=0.73)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=159.19 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=161.79 chord=C
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=163.59 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=164.94 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=165.94 chord=A
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=166.69 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=167.39 chord=Am
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=167.39 key=Am (r=0.80)
+size=N/A time=00:02:45.50 bitrate=N/A speed=13.2x elapsed=0:00:12.51    [Parsed_keydetect_0 @ 000001e55f5cab80] t=169.59 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=169.61 key=Em (r=0.74)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=170.54 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=171.44 chord=Am
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=171.44 key=Am (r=0.80)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=172.04 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=172.04 key=Em (r=0.74)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=173.14 chord=C
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=174.49 chord=Cm
+size=N/A time=00:02:52.00 bitrate=N/A speed=13.2x elapsed=0:00:13.01    [Parsed_keydetect_0 @ 000001e55f5cab80] t=175.14 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=176.34 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=178.74 chord=Am
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=178.76 key=Am (r=0.80)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=179.74 chord=C
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=179.75 key=Em (r=0.74)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=180.84 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=182.49 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=184.39 chord=C
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=186.59 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=187.54 chord=Em
+size=N/A time=00:03:05.70 bitrate=N/A speed=13.3x elapsed=0:00:14.01    [Parsed_keydetect_0 @ 000001e55f5cab80] t=190.14 chord=Am
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=190.15 key=Am (r=0.80)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=190.74 chord=F
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=190.75 key=Em (r=0.74)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=191.49 chord=C
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=191.89 chord=Am
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=191.90 key=Am (r=0.80)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=192.34 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=192.34 key=Em (r=0.74)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=193.29 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=194.49 chord=E
+size=N/A time=00:03:12.60 bitrate=N/A speed=13.3x elapsed=0:00:14.51    [Parsed_keydetect_0 @ 000001e55f5cab80] t=195.69 chord=C
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=197.54 chord=Am
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=197.57 key=Am (r=0.80)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=197.99 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=198.01 key=Em (r=0.74)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=198.84 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=201.44 chord=Am
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=201.46 key=Am (r=0.80)
+size=N/A time=00:03:19.40 bitrate=N/A speed=13.3x elapsed=0:00:15.01    [Parsed_keydetect_0 @ 000001e55f5cab80] t=202.64 chord=C
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=202.66 key=Em (r=0.74)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=203.49 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=204.69 chord=Am
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=204.70 key=Am (r=0.80)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=205.79 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=205.79 key=Em (r=0.74)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=207.09 chord=C
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=208.94 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=210.14 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=212.94 chord=Am
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=212.95 key=Am (r=0.80)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=214.84 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=214.86 key=Em (r=0.74)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=215.84 chord=Em
+size=N/A time=00:03:33.10 bitrate=N/A speed=13.3x elapsed=0:00:16.01    [Parsed_keydetect_0 @ 000001e55f5cab80] t=218.39 chord=C
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=220.59 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=221.44 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=224.19 chord=Am
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=224.21 key=Am (r=0.79)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=225.29 chord=C
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=225.31 key=Em (r=0.74)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=226.49 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=227.24 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=229.84 chord=C
+size=N/A time=00:03:47.00 bitrate=N/A speed=13.3x elapsed=0:00:17.01    [Parsed_keydetect_0 @ 000001e55f5cab80] t=232.04 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=232.89 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=235.54 chord=Am
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=235.55 key=Am (r=0.79)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=236.19 chord=C
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=236.20 key=Em (r=0.75)
+size=N/A time=00:03:53.90 bitrate=N/A speed=13.4x elapsed=0:00:17.51    [Parsed_keydetect_0 @ 000001e55f5cab80] t=237.44 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=238.54 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=241.44 chord=C
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=243.14 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=244.19 chord=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=246.79 chord=Am
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=246.81 key=Am (r=0.78)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=247.64 chord=C
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=247.64 key=Em (r=0.75)
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=248.99 chord=D
+[Parsed_keydetect_0 @ 000001e55f5cab80] t=249.94 chord=Em
+size=N/A time=00:04:07.30 bitrate=N/A speed=13.4x elapsed=0:00:18.51    [Parsed_silencedetect_3 @ 000001e55f5c9780] silence_start: 250.905011
+[Parsed_keydetect_0 @ 000001e55f5cab80] lavfi.keydetect.key=Em
+lavfi.keydetect.key=Em
+[Parsed_keydetect_0 @ 000001e55f5cab80] lavfi.keydetect.key_confidence=0.752
+lavfi.keydetect.key_confidence=0.752
+[Parsed_keydetect_0 @ 000001e55f5cab80] lavfi.keydetect.key_r_leader=0.783
+lavfi.keydetect.key_r_leader=0.783
+[Parsed_keydetect_0 @ 000001e55f5cab80] lavfi.keydetect.key_alt=Am
+lavfi.keydetect.key_alt=Am
+[Parsed_keydetect_0 @ 000001e55f5cab80] lavfi.keydetect.key_alt_confidence=0.783
+lavfi.keydetect.key_alt_confidence=0.783
+[Parsed_keydetect_0 @ 000001e55f5cab80] lavfi.keydetect.key_margin=0.031
+lavfi.keydetect.key_margin=0.031
+[Parsed_keydetect_0 @ 000001e55f5cab80] lavfi.keydetect.key_candidates=Em:0.752,Am:0.783,C:0.651
+lavfi.keydetect.key_candidates=Em:0.752,Am:0.783,C:0.651
+[Parsed_keydetect_0 @ 000001e55f5cab80] lavfi.keydetect.key_reranked=1
+lavfi.keydetect.key_reranked=1
+[Parsed_keydetect_0 @ 000001e55f5cab80] lavfi.keydetect.key_profiles=krumhansl:Em:0.866,temperley:Em:0.828,shaath:Am:0.783,edma:Em:0.861
+lavfi.keydetect.key_profiles=krumhansl:Em:0.866,temperley:Em:0.828,shaath:Am:0.783,edma:Em:0.861
+[Parsed_keydetect_0 @ 000001e55f5cab80] lavfi.keydetect.chord_coherence=1.248
+lavfi.keydetect.chord_coherence=1.248
+[Parsed_keydetect_0 @ 000001e55f5cab80] lavfi.keydetect.tonalness=0.281
+lavfi.keydetect.tonalness=0.281
+[Parsed_keydetect_0 @ 000001e55f5cab80] lavfi.keydetect.bass_tonic=E
+lavfi.keydetect.bass_tonic=E
+[Parsed_keydetect_0 @ 000001e55f5cab80] lavfi.keydetect.bass_chroma=0.677,0.211,0.366,0.098,1.000,0.116,0.093,0.102,0.158,0.186,0.069,0.152
+lavfi.keydetect.bass_chroma=0.677,0.211,0.366,0.098,1.000,0.116,0.093,0.102,0.158,0.186,0.069,0.152
+[Parsed_keydetect_0 @ 000001e55f5cab80] lavfi.keydetect.chords=C-D-Em-A-Em-Am-D-Em-Am-Em-C-Cm-D-Em-Am-C-D-Em-C-D-Em-Am-F-C-Am-D-Em-E-C-Am-D-Em-Am-C-D-Am-Em-C-D-Em-Am-D-Em-C-D-Em-Am-C-D-Em-C-D-Em-Am-C-D-Em-C-D-Em-Am-C-D-Em
+lavfi.keydetect.chords=C-D-Em-A-Em-Am-D-Em-Am-Em-C-Cm-D-Em-Am-C-D-Em-C-D-Em-Am-F-C-Am-D-Em-E-C-Am-D-Em-Am-C-D-Am-Em-C-D-Em-Am-D-Em-C-D-Em-Am-C-D-Em-C-D-Em-Am-C-D-Em-C-D-Em-Am-C-D-Em
+[Parsed_beatdetect_1 @ 000001e55f5ca380] lavfi.beatdetect.bpm=112.65 
+lavfi.beatdetect.bpm=112.65 
+[Parsed_loudnorm_4 @ 000001e55f5ca780] 
+{
+	"input_i" : "-8.55",
+	"input_tp" : "-0.26",
+	"input_lra" : "1.80",
+	"input_thresh" : "-18.62",
+	"output_i" : "-23.70",
+	"output_tp" : "-13.69",
+	"output_lra" : "1.50",
+	"output_thresh" : "-33.72",
+	"normalization_type" : "dynamic",
+	"target_offset" : "-0.30"
+}
+[Parsed_silencedetect_3 @ 000001e55f5c9780] silence_end: 252.187188 | silence_duration: 1.282177
+[out#0/null @ 000001e55f581ec0] video:0KiB audio:189140KiB subtitle:0KiB other streams:0KiB global headers:0KiB muxing overhead: unknown
+size=N/A time=00:04:12.20 bitrate=N/A speed=13.5x elapsed=0:00:18.72    

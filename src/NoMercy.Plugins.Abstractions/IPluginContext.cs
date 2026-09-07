@@ -46,6 +46,15 @@ public interface IPluginContext
     IPluginLibraryQuery Library { get; }
 
     /// <summary>
+    /// Reading music and its audio analysis. Read-only, so it needs no
+    /// capability, for the same reason <see cref="Library" /> needs none.
+    ///
+    /// Default null so a host built before this member still compiles, and so a
+    /// plugin checks for absence rather than catching a throw.
+    /// </summary>
+    IPluginMusicQuery? Music => null;
+
+    /// <summary>
     /// Everything the plugin can reach that it does not own, by name.
     ///
     /// The general way in. A host grows a capability without this contract

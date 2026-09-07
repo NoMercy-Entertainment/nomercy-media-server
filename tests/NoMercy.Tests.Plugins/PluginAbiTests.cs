@@ -20,7 +20,8 @@ public class PluginAbiTests
     [InlineData([null, true])]
     [InlineData(["", true])]
     [InlineData(["10.0", true])]
-    [InlineData(["10.1", false])]
+    [InlineData(["10.1", true])]
+    [InlineData(["10.2", false])]
     [InlineData(["9.0", false])]
     [InlineData(["9.5", false])]
     [InlineData(["11.0", false])]
@@ -31,8 +32,27 @@ public class PluginAbiTests
     }
 
     [Fact]
-    public void Current_IsTenZero()
+    public void Current_IsTenOne()
     {
-        Assert.Equal(new Version(10, 0), PluginAbi.Current);
+        Assert.Equal(new Version(10, 1), PluginAbi.Current);
+    }
+
+    /// <summary>
+    /// The promise a minor bump makes. Every plugin built against any earlier
+    /// minor of this major keeps loading, which is what lets the contract grow
+    /// without a self-hosted user finding their plugins dead after an update.
+    /// </summary>
+    [Fact]
+    public void IsCompatible_AcceptsEveryEarlierMinorOfTheCurrentMajor()
+    {
+        for (int minor = 0; minor <= PluginAbi.Current.Minor; minor++)
+        {
+            string targetAbi = $"{PluginAbi.Current.Major}.{minor}";
+
+            Assert.True(
+                PluginAbi.IsCompatible(targetAbi),
+                $"a plugin targeting ABI {targetAbi} must still load"
+            );
+        }
     }
 }

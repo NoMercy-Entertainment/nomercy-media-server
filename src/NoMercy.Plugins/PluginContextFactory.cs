@@ -1,4 +1,4 @@
-// -----------------------------------------------------------------------------
+﻿// -----------------------------------------------------------------------------
 //  Copyright (c) 2024-present NoMercy Entertainment. All rights reserved.
 //
 //  This file is part of NoMercy MediaServer, source-available software (NOT open
@@ -34,7 +34,8 @@ public class PluginContextFactory(
     IPluginHubContextFactory hubContextFactory,
     IPluginEncoder? encoder = null,
     IPluginJobs? jobs = null,
-    IPluginStorage? pluginStorage = null
+    IPluginStorage? pluginStorage = null,
+    IPluginMusicQuery? musicQuery = null
 ) : IPluginContextFactory
 {
     public IPluginContext Create(
@@ -93,7 +94,8 @@ public class PluginContextFactory(
             hubContextFactory.For(pluginId),
             encoderFacade,
             jobsFacade,
-            storageFacade
+            storageFacade,
+            musicQuery
         );
     }
 }

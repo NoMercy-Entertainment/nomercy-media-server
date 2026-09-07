@@ -27,5 +27,6 @@ public static partial class ServiceConfiguration
         services.AddCronJob<ServerUserSyncCronJob>("server-user-sync");
         services.AddCronJob<DatabaseBackupCronJob>("database-backup");
         services.AddCronJob<IpBanExpiryCronJob>("ip-ban-expiry");
+        services.AddCronJob<AudioAnalysisSweepCronJob>("audio-analysis-sweep");
     }
 }

@@ -137,6 +137,9 @@ public class Track : ColorPaletteTimeStamps
     [JsonProperty("music_plays")]
     public ICollection<MusicPlay> MusicPlays { get; set; } = [];
 
+    [JsonProperty("audio_analysis")]
+    public TrackAudioAnalysis? AudioAnalysis { get; set; }
+
     public string CreateFolderName()
     {
         return Name.CleanFileName();

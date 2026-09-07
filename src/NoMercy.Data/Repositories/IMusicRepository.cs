@@ -1,4 +1,4 @@
-// -----------------------------------------------------------------------------
+﻿// -----------------------------------------------------------------------------
 //  Copyright (c) 2024-present NoMercy Entertainment. All rights reserved.
 //
 //  This file is part of NoMercy MediaServer, source-available software (NOT open
@@ -42,6 +42,16 @@ public interface IMusicRepository
     Task RecordPlaybackAsync(Guid trackId, Guid userId, CancellationToken ct = default);
 
     Task<Track?> GetTrackWithIncludesAsync(Guid id, CancellationToken ct = default);
+
+    /// <summary>
+    /// Audio analysis for the named tracks. Tracks without a completed analysis
+    /// are absent from the result rather than returned with null readings, so a
+    /// caller can tell "not measured" from "measured as zero".
+    /// </summary>
+    Task<List<TrackAudioAnalysis>> GetTrackAudioAnalysisAsync(
+        IReadOnlyCollection<Guid> trackIds,
+        CancellationToken ct = default
+    );
 
     Task<Lyric[]?> UpdateTrackLyricsAsync(
         Track track,

@@ -1,0 +1,63 @@
+[aist#0:0/pcm_s16le @ 00000132190d82c0] Guessed Channel Layout: mono
+Input #0, wav, from 'probe.wav':
+  Metadata:
+    encoder         : Lavf63.1.100
+  Duration: 00:00:43.50, bitrate: 705 kb/s
+  Stream #0:0: Audio: pcm_s16le ([1][0][0][0] / 0x0001), 44100 Hz, mono, s16, 705 kb/s
+Stream mapping:
+  Stream #0:0 -> #0:0 (pcm_s16le (native) -> pcm_s16le (native))
+[Parsed_silencedetect_3 @ 000001321913fa40] silence_start: 0
+[Parsed_keydetect_0 @ 0000013219198ec0] t=1.58 key=Cm (r=0.65)
+[Parsed_silencedetect_3 @ 000001321913fa40] silence_end: 1.500023 | silence_duration: 1.500023
+[Parsed_keydetect_0 @ 0000013219198ec0] t=1.67 key=Gm (r=0.63)
+Output #0, null, to 'pipe:':
+  Metadata:
+    encoder         : Lavf63.1.100
+  Stream #0:0: Audio: pcm_s16le, 192000 Hz, mono, s16, 3072 kb/s
+    Metadata:
+      encoder         : Lavc63.1.100 pcm_s16le
+size=N/A time=00:00:11.20 bitrate=N/A speed=22.4x elapsed=0:00:00.50    size=N/A time=00:00:21.90 bitrate=N/A speed=21.9x elapsed=0:00:01.00    size=N/A time=00:00:31.80 bitrate=N/A speed=21.2x elapsed=0:00:01.50    [Parsed_silencedetect_3 @ 000001321913fa40] silence_start: 41.375941
+[Parsed_keydetect_0 @ 0000013219198ec0] lavfi.keydetect.key=Gm
+lavfi.keydetect.key=Gm
+[Parsed_keydetect_0 @ 0000013219198ec0] lavfi.keydetect.key_confidence=0.413
+lavfi.keydetect.key_confidence=0.413
+[Parsed_keydetect_0 @ 0000013219198ec0] lavfi.keydetect.key_r_leader=0.413
+lavfi.keydetect.key_r_leader=0.413
+[Parsed_keydetect_0 @ 0000013219198ec0] lavfi.keydetect.key_alt=D
+lavfi.keydetect.key_alt=D
+[Parsed_keydetect_0 @ 0000013219198ec0] lavfi.keydetect.key_alt_confidence=0.363
+lavfi.keydetect.key_alt_confidence=0.363
+[Parsed_keydetect_0 @ 0000013219198ec0] lavfi.keydetect.key_margin=0.050
+lavfi.keydetect.key_margin=0.050
+[Parsed_keydetect_0 @ 0000013219198ec0] lavfi.keydetect.key_candidates=Gm:0.413,D:0.363,Dm:0.279
+lavfi.keydetect.key_candidates=Gm:0.413,D:0.363,Dm:0.279
+[Parsed_keydetect_0 @ 0000013219198ec0] lavfi.keydetect.key_reranked=0
+lavfi.keydetect.key_reranked=0
+[Parsed_keydetect_0 @ 0000013219198ec0] lavfi.keydetect.key_profiles=krumhansl:G:0.378,temperley:D:0.333,shaath:Gm:0.413,edma:G:0.376
+lavfi.keydetect.key_profiles=krumhansl:G:0.378,temperley:D:0.333,shaath:Gm:0.413,edma:G:0.376
+[Parsed_keydetect_0 @ 0000013219198ec0] lavfi.keydetect.chord_coherence=0.000
+lavfi.keydetect.chord_coherence=0.000
+[Parsed_keydetect_0 @ 0000013219198ec0] lavfi.keydetect.tonalness=0.164
+lavfi.keydetect.tonalness=0.164
+[Parsed_keydetect_0 @ 0000013219198ec0] lavfi.keydetect.bass_tonic=C#
+lavfi.keydetect.bass_tonic=C#
+[Parsed_keydetect_0 @ 0000013219198ec0] lavfi.keydetect.bass_chroma=0.125,1.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000
+lavfi.keydetect.bass_chroma=0.125,1.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000,0.000
+[Parsed_beatdetect_1 @ 000001321910be40] lavfi.beatdetect.bpm=99.75 
+lavfi.beatdetect.bpm=99.75 
+[Parsed_loudnorm_4 @ 000001321913fb40] 
+{
+	"input_i" : "-20.57",
+	"input_tp" : "-0.60",
+	"input_lra" : "2.20",
+	"input_thresh" : "-32.37",
+	"output_i" : "-23.88",
+	"output_tp" : "-2.00",
+	"output_lra" : "0.00",
+	"output_thresh" : "-35.63",
+	"normalization_type" : "dynamic",
+	"target_offset" : "-0.12"
+}
+[Parsed_silencedetect_3 @ 000001321913fa40] silence_end: 43.5 | silence_duration: 2.124059
+[out#0/null @ 000001321910dd80] video:0KiB audio:16312KiB subtitle:0KiB other streams:0KiB global headers:0KiB muxing overhead: unknown
+size=N/A time=00:00:43.50 bitrate=N/A speed=  22x elapsed=0:00:01.97    

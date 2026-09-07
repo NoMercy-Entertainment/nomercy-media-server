@@ -1,0 +1,234 @@
+Input #0, mp3, from 'fixture-track-b.mp3':
+  Metadata:
+    title           : redacted
+    artist          : redacted
+    track           : redacted
+    album           : redacted
+    disc            : redacted
+    date            : redacted
+    genre           : redacted
+    TMED            : redacted
+    TDOR            : redacted
+    publisher       : redacted
+    composer        : redacted
+    TEXT            : redacted
+    SCRIPT          : redacted
+    TSOC            : redacted
+    artist-sort     : redacted
+    TSRC            : redacted
+    album_artist    : redacted
+    TSO2            : redacted
+    ASIN            : redacted
+    originalyear    : redacted
+    ARTISTS         : redacted
+    BARCODE         : redacted
+    grouping        : redacted
+    CATALOGNUMBER   : redacted
+    MusicBrainz Album Status: redacted
+    MusicBrainz Album Release Country: redacted
+    MusicBrainz Album Type: redacted
+    Acoustid Id     : redacted
+    MusicBrainz Work Id: redacted
+    MusicBrainz Album Id: redacted
+    MusicBrainz Artist Id: redacted
+    MusicBrainz Album Artist Id: redacted
+    MusicBrainz Release Group Id: redacted
+    MusicBrainz Release Track Id: redacted
+    TIPL            : redacted
+    TMCL            : redacted
+  Duration: 00:03:33.88, start: 0.025056, bitrate: 336 kb/s
+  Stream #0:0: Audio: mp3 (mp3float), 44100 Hz, stereo, fltp, 320 kb/s, start 0.025057
+    Metadata:
+      encoder         : LAME3.93 
+  Stream #0:1: Video: mjpeg (Baseline), yuvj444p(pc, bt470bg/unknown/unknown), 600x593 [SAR 300:300 DAR 600:593], 90k tbr, 90k tbn, start 0.025056 (attached pic)
+    Metadata:
+      comment         : redacted
+Stream mapping:
+  Stream #0:0 -> #0:0 (mp3 (mp3float) -> pcm_s16le (native))
+[Parsed_keydetect_3 @ 000001d47f124cc0] t=0.31 key=C (r=0.53)
+[Parsed_keydetect_3 @ 000001d47f124cc0] t=0.34 key=C#m (r=0.79)
+[Parsed_keydetect_3 @ 000001d47f124cc0] t=0.39 key=C# (r=0.87)
+[Parsed_keydetect_3 @ 000001d47f124cc0] t=0.99 chord=C#
+Output #0, null, to 'pipe:':
+  Metadata:
+    title           : redacted
+    artist          : redacted
+    track           : redacted
+    album           : redacted
+    disc            : redacted
+    date            : redacted
+    genre           : redacted
+    TMED            : redacted
+    TDOR            : redacted
+    publisher       : redacted
+    composer        : redacted
+    TEXT            : redacted
+    SCRIPT          : redacted
+    TSOC            : redacted
+    artist-sort     : redacted
+    TSRC            : redacted
+    album_artist    : redacted
+    TSO2            : redacted
+    ASIN            : redacted
+    originalyear    : redacted
+    ARTISTS         : redacted
+    BARCODE         : redacted
+    grouping        : redacted
+    CATALOGNUMBER   : redacted
+    MusicBrainz Album Status: redacted
+    MusicBrainz Album Release Country: redacted
+    MusicBrainz Album Type: redacted
+    Acoustid Id     : redacted
+    MusicBrainz Work Id: redacted
+    MusicBrainz Album Id: redacted
+    MusicBrainz Artist Id: redacted
+    MusicBrainz Album Artist Id: redacted
+    MusicBrainz Release Group Id: redacted
+    MusicBrainz Release Track Id: redacted
+    TIPL            : redacted
+    TMCL            : redacted
+    encoder         : Lavf63.1.100
+  Stream #0:0: Audio: pcm_s16le, 192000 Hz, stereo, s16, 6144 kb/s
+    Metadata:
+      encoder         : Lavc63.1.100 pcm_s16le
+size=N/A time=00:00:03.60 bitrate=N/A speed=7.19x elapsed=0:00:00.50    [Parsed_keydetect_3 @ 000001d47f124cc0] t=10.34 chord=A#m
+[Parsed_keydetect_3 @ 000001d47f124cc0] t=11.59 chord=Fm
+size=N/A time=00:00:09.40 bitrate=N/A speed=6.26x elapsed=0:00:01.50    [Parsed_keydetect_3 @ 000001d47f124cc0] t=12.49 chord=G#
+size=N/A time=00:00:11.10 bitrate=N/A speed=5.54x elapsed=0:00:02.00    [Parsed_keydetect_3 @ 000001d47f124cc0] t=14.19 chord=C#m
+[Parsed_keydetect_3 @ 000001d47f124cc0] t=14.99 chord=C#
+size=N/A time=00:00:12.80 bitrate=N/A speed=5.11x elapsed=0:00:02.50    size=N/A time=00:00:14.50 bitrate=N/A speed=4.83x elapsed=0:00:03.00    size=N/A time=00:00:16.20 bitrate=N/A speed=4.62x elapsed=0:00:03.50    [Parsed_keydetect_3 @ 000001d47f124cc0] t=19.24 chord=A#m
+[Parsed_keydetect_3 @ 000001d47f124cc0] t=20.49 chord=A#
+[Parsed_keydetect_3 @ 000001d47f124cc0] t=21.59 chord=G#
+size=N/A time=00:00:19.60 bitrate=N/A speed=4.35x elapsed=0:00:04.50    [Parsed_keydetect_3 @ 000001d47f124cc0] t=23.39 chord=C#
+size=N/A time=00:00:21.40 bitrate=N/A speed=4.28x elapsed=0:00:05.00    [Parsed_keydetect_3 @ 000001d47f124cc0] t=24.34 chord=C
+[Parsed_keydetect_3 @ 000001d47f124cc0] t=25.19 chord=A#
+[Parsed_keydetect_3 @ 000001d47f124cc0] t=25.94 chord=G#
+size=N/A time=00:00:23.10 bitrate=N/A speed= 4.2x elapsed=0:00:05.50    [Parsed_keydetect_3 @ 000001d47f124cc0] t=27.54 chord=C#
+size=N/A time=00:00:24.80 bitrate=N/A speed=4.13x elapsed=0:00:06.00    size=N/A time=00:00:26.50 bitrate=N/A speed=4.07x elapsed=0:00:06.50    [Parsed_keydetect_3 @ 000001d47f124cc0] t=30.79 chord=G#
+size=N/A time=00:00:28.30 bitrate=N/A speed=4.04x elapsed=0:00:07.00    size=N/A time=00:00:30.00 bitrate=N/A speed=   4x elapsed=0:00:07.50    size=N/A time=00:00:31.60 bitrate=N/A speed=3.95x elapsed=0:00:08.00    [Parsed_keydetect_3 @ 000001d47f124cc0] t=34.64 chord=C#
+size=N/A time=00:00:33.20 bitrate=N/A speed= 3.9x elapsed=0:00:08.50    [Parsed_keydetect_3 @ 000001d47f124cc0] t=36.19 chord=A#m
+size=N/A time=00:00:34.90 bitrate=N/A speed=3.87x elapsed=0:00:09.00    size=N/A time=00:00:36.50 bitrate=N/A speed=3.84x elapsed=0:00:09.50    [Parsed_keydetect_3 @ 000001d47f124cc0] t=39.74 chord=G#
+size=N/A time=00:00:38.10 bitrate=N/A speed=3.81x elapsed=0:00:10.00    size=N/A time=00:00:39.60 bitrate=N/A speed=3.77x elapsed=0:00:10.51    [Parsed_keydetect_3 @ 000001d47f124cc0] t=43.49 chord=C#
+[Parsed_keydetect_3 @ 000001d47f124cc0] t=45.19 chord=A#m
+size=N/A time=00:00:43.00 bitrate=N/A speed=3.74x elapsed=0:00:11.51    size=N/A time=00:00:44.80 bitrate=N/A speed=3.73x elapsed=0:00:12.01    [Parsed_keydetect_3 @ 000001d47f124cc0] t=48.59 chord=Fm
+[Parsed_keydetect_3 @ 000001d47f124cc0] t=49.59 chord=G#
+size=N/A time=00:00:48.10 bitrate=N/A speed= 3.7x elapsed=0:00:13.01    size=N/A time=00:00:49.70 bitrate=N/A speed=3.68x elapsed=0:00:13.51    [Parsed_keydetect_3 @ 000001d47f124cc0] t=52.89 chord=C#
+size=N/A time=00:00:51.30 bitrate=N/A speed=3.66x elapsed=0:00:14.01    size=N/A time=00:00:52.90 bitrate=N/A speed=3.65x elapsed=0:00:14.51    [Parsed_keydetect_3 @ 000001d47f124cc0] t=55.99 chord=G#
+[Parsed_keydetect_3 @ 000001d47f124cc0] t=56.69 chord=C#
+size=N/A time=00:00:54.50 bitrate=N/A speed=3.63x elapsed=0:00:15.01    [Parsed_keydetect_3 @ 000001d47f124cc0] t=57.79 chord=F#
+size=N/A time=00:00:58.00 bitrate=N/A speed=3.62x elapsed=0:00:16.01    [Parsed_keydetect_3 @ 000001d47f124cc0] t=61.89 chord=C#
+size=N/A time=00:00:59.70 bitrate=N/A speed=3.62x elapsed=0:00:16.51    size=N/A time=00:01:03.20 bitrate=N/A speed=3.61x elapsed=0:00:17.51    [Parsed_keydetect_3 @ 000001d47f124cc0] t=66.59 chord=F#
+size=N/A time=00:01:04.80 bitrate=N/A speed= 3.6x elapsed=0:00:18.01    [Parsed_keydetect_3 @ 000001d47f124cc0] t=68.44 chord=C#
+[Parsed_keydetect_3 @ 000001d47f124cc0] t=68.84 chord=F#
+[Parsed_keydetect_3 @ 000001d47f124cc0] t=70.69 chord=C#
+size=N/A time=00:01:08.20 bitrate=N/A speed=3.59x elapsed=0:00:19.01    size=N/A time=00:01:09.90 bitrate=N/A speed=3.58x elapsed=0:00:19.51    size=N/A time=00:01:11.60 bitrate=N/A speed=3.58x elapsed=0:00:20.01    size=N/A time=00:01:13.20 bitrate=N/A speed=3.57x elapsed=0:00:20.51    size=N/A time=00:01:14.90 bitrate=N/A speed=3.56x elapsed=0:00:21.01    [Parsed_keydetect_3 @ 000001d47f124cc0] t=79.99 chord=A#m
+size=N/A time=00:01:18.40 bitrate=N/A speed=3.56x elapsed=0:00:22.01    [Parsed_keydetect_3 @ 000001d47f124cc0] t=81.54 chord=C#
+[Parsed_keydetect_3 @ 000001d47f124cc0] t=82.14 chord=G#
+size=N/A time=00:01:20.10 bitrate=N/A speed=3.56x elapsed=0:00:22.51    [Parsed_keydetect_3 @ 000001d47f124cc0] t=84.39 chord=C#
+size=N/A time=00:01:21.90 bitrate=N/A speed=3.56x elapsed=0:00:23.01    size=N/A time=00:01:23.60 bitrate=N/A speed=3.55x elapsed=0:00:23.52    size=N/A time=00:01:25.30 bitrate=N/A speed=3.55x elapsed=0:00:24.02    [Parsed_keydetect_3 @ 000001d47f124cc0] t=88.99 chord=A#m
+size=N/A time=00:01:27.00 bitrate=N/A speed=3.55x elapsed=0:00:24.52    [Parsed_keydetect_3 @ 000001d47f124cc0] t=90.54 chord=C#
+[Parsed_keydetect_3 @ 000001d47f124cc0] t=91.24 chord=G#
+size=N/A time=00:01:28.70 bitrate=N/A speed=3.54x elapsed=0:00:25.02    [Parsed_keydetect_3 @ 000001d47f124cc0] t=92.84 chord=C#
+size=N/A time=00:01:30.50 bitrate=N/A speed=3.55x elapsed=0:00:25.52    size=N/A time=00:01:32.20 bitrate=N/A speed=3.54x elapsed=0:00:26.02    [Parsed_keydetect_3 @ 000001d47f124cc0] t=95.74 chord=G#
+size=N/A time=00:01:33.90 bitrate=N/A speed=3.54x elapsed=0:00:26.52    size=N/A time=00:01:35.60 bitrate=N/A speed=3.54x elapsed=0:00:27.02    [Parsed_keydetect_3 @ 000001d47f124cc0] t=99.44 chord=C#
+size=N/A time=00:01:37.40 bitrate=N/A speed=3.54x elapsed=0:00:27.52    [Parsed_keydetect_3 @ 000001d47f124cc0] t=101.29 chord=A#m
+size=N/A time=00:01:39.00 bitrate=N/A speed=3.53x elapsed=0:00:28.02    size=N/A time=00:01:40.70 bitrate=N/A speed=3.53x elapsed=0:00:28.52    [Parsed_keydetect_3 @ 000001d47f124cc0] t=104.19 chord=C#
+[Parsed_keydetect_3 @ 000001d47f124cc0] t=105.14 chord=G#
+size=N/A time=00:01:42.40 bitrate=N/A speed=3.53x elapsed=0:00:29.02    size=N/A time=00:01:44.10 bitrate=N/A speed=3.53x elapsed=0:00:29.52    [Parsed_keydetect_3 @ 000001d47f124cc0] t=108.54 chord=C#
+size=N/A time=00:01:45.90 bitrate=N/A speed=3.53x elapsed=0:00:30.02    [Parsed_keydetect_3 @ 000001d47f124cc0] t=110.24 chord=A#m
+size=N/A time=00:01:47.70 bitrate=N/A speed=3.53x elapsed=0:00:30.52    size=N/A time=00:01:49.50 bitrate=N/A speed=3.53x elapsed=0:00:31.02    [Parsed_keydetect_3 @ 000001d47f124cc0] t=112.94 chord=C#
+size=N/A time=00:01:51.10 bitrate=N/A speed=3.52x elapsed=0:00:31.52    [Parsed_keydetect_3 @ 000001d47f124cc0] t=114.19 chord=G#
+size=N/A time=00:01:52.80 bitrate=N/A speed=3.52x elapsed=0:00:32.02    [Parsed_keydetect_3 @ 000001d47f124cc0] t=117.44 chord=C#
+size=N/A time=00:01:54.50 bitrate=N/A speed=3.52x elapsed=0:00:32.52    size=N/A time=00:01:56.20 bitrate=N/A speed=3.52x elapsed=0:00:33.02    [Parsed_keydetect_3 @ 000001d47f124cc0] t=120.69 chord=Fm
+size=N/A time=00:01:57.90 bitrate=N/A speed=3.52x elapsed=0:00:33.53    [Parsed_keydetect_3 @ 000001d47f124cc0] t=121.19 chord=G#
+[Parsed_keydetect_3 @ 000001d47f124cc0] t=121.74 chord=C#
+size=N/A time=00:01:59.70 bitrate=N/A speed=3.52x elapsed=0:00:34.03    [Parsed_keydetect_3 @ 000001d47f124cc0] t=122.74 chord=F#
+size=N/A time=00:02:01.50 bitrate=N/A speed=3.52x elapsed=0:00:34.53    size=N/A time=00:02:03.20 bitrate=N/A speed=3.52x elapsed=0:00:35.03    [Parsed_keydetect_3 @ 000001d47f124cc0] t=126.99 chord=C#
+size=N/A time=00:02:04.90 bitrate=N/A speed=3.52x elapsed=0:00:35.53    size=N/A time=00:02:06.60 bitrate=N/A speed=3.51x elapsed=0:00:36.03    size=N/A time=00:02:08.30 bitrate=N/A speed=3.51x elapsed=0:00:36.53    [Parsed_keydetect_3 @ 000001d47f124cc0] t=131.59 chord=F#
+size=N/A time=00:02:10.00 bitrate=N/A speed=3.51x elapsed=0:00:37.03    [Parsed_keydetect_3 @ 000001d47f124cc0] t=133.09 chord=C#
+[Parsed_keydetect_3 @ 000001d47f124cc0] t=134.44 chord=G#
+size=N/A time=00:02:11.70 bitrate=N/A speed=3.51x elapsed=0:00:37.53    [Parsed_keydetect_3 @ 000001d47f124cc0] t=135.34 chord=C#
+size=N/A time=00:02:14.90 bitrate=N/A speed= 3.5x elapsed=0:00:38.53    [Parsed_keydetect_3 @ 000001d47f124cc0] t=138.04 chord=F#
+[Parsed_keydetect_3 @ 000001d47f124cc0] t=140.39 chord=G#
+size=N/A time=00:02:18.30 bitrate=N/A speed= 3.5x elapsed=0:00:39.53    size=N/A time=00:02:20.00 bitrate=N/A speed= 3.5x elapsed=0:00:40.03    [Parsed_keydetect_3 @ 000001d47f124cc0] t=143.34 chord=F#
+[Parsed_keydetect_3 @ 000001d47f124cc0] t=144.69 chord=C#
+size=N/A time=00:02:21.70 bitrate=N/A speed= 3.5x elapsed=0:00:40.53    size=N/A time=00:02:23.50 bitrate=N/A speed= 3.5x elapsed=0:00:41.04    [Parsed_keydetect_3 @ 000001d47f124cc0] t=147.39 chord=F#
+[Parsed_keydetect_3 @ 000001d47f124cc0] t=149.29 chord=G#
+size=N/A time=00:02:26.90 bitrate=N/A speed=3.49x elapsed=0:00:42.04    size=N/A time=00:02:28.50 bitrate=N/A speed=3.49x elapsed=0:00:42.54    size=N/A time=00:02:29.90 bitrate=N/A speed=3.48x elapsed=0:00:43.04    [Parsed_keydetect_3 @ 000001d47f124cc0] t=153.59 chord=C#
+size=N/A time=00:02:30.90 bitrate=N/A speed=3.47x elapsed=0:00:43.54    size=N/A time=00:02:32.80 bitrate=N/A speed=3.43x elapsed=0:00:44.54    [Parsed_keydetect_3 @ 000001d47f124cc0] t=156.34 chord=F#
+size=N/A time=00:02:34.70 bitrate=N/A speed= 3.4x elapsed=0:00:45.54    [Parsed_keydetect_3 @ 000001d47f124cc0] t=158.19 chord=G#
+size=N/A time=00:02:35.70 bitrate=N/A speed=3.38x elapsed=0:00:46.04    size=N/A time=00:02:36.70 bitrate=N/A speed=3.37x elapsed=0:00:46.54    size=N/A time=00:02:37.60 bitrate=N/A speed=3.35x elapsed=0:00:47.04    size=N/A time=00:02:38.50 bitrate=N/A speed=3.33x elapsed=0:00:47.54    [Parsed_keydetect_3 @ 000001d47f124cc0] t=161.49 chord=B
+size=N/A time=00:02:39.40 bitrate=N/A speed=3.32x elapsed=0:00:48.04    [Parsed_keydetect_3 @ 000001d47f124cc0] t=162.64 chord=C#
+size=N/A time=00:02:40.40 bitrate=N/A speed= 3.3x elapsed=0:00:48.54    size=N/A time=00:02:41.40 bitrate=N/A speed=3.29x elapsed=0:00:49.04    size=N/A time=00:02:42.40 bitrate=N/A speed=3.28x elapsed=0:00:49.54    [Parsed_keydetect_3 @ 000001d47f124cc0] t=165.34 chord=F#
+size=N/A time=00:02:43.30 bitrate=N/A speed=3.26x elapsed=0:00:50.04    [Parsed_keydetect_3 @ 000001d47f124cc0] t=167.14 chord=G#
+size=N/A time=00:02:44.20 bitrate=N/A speed=3.25x elapsed=0:00:50.54    size=N/A time=00:02:45.20 bitrate=N/A speed=3.24x elapsed=0:00:51.04    size=N/A time=00:02:47.10 bitrate=N/A speed=3.21x elapsed=0:00:52.04    size=N/A time=00:02:48.00 bitrate=N/A speed= 3.2x elapsed=0:00:52.54    size=N/A time=00:02:49.00 bitrate=N/A speed=3.19x elapsed=0:00:53.04    [Parsed_keydetect_3 @ 000001d47f124cc0] t=172.14 chord=C#
+size=N/A time=00:02:49.90 bitrate=N/A speed=3.17x elapsed=0:00:53.54    [Parsed_keydetect_3 @ 000001d47f124cc0] t=173.69 chord=D#
+[Parsed_keydetect_3 @ 000001d47f124cc0] t=174.24 chord=A#
+size=N/A time=00:02:51.90 bitrate=N/A speed=3.15x elapsed=0:00:54.54    size=N/A time=00:02:52.80 bitrate=N/A speed=3.14x elapsed=0:00:55.05    [Parsed_keydetect_3 @ 000001d47f124cc0] t=176.09 chord=C#
+[Parsed_keydetect_3 @ 000001d47f124cc0] t=176.64 chord=F#
+size=N/A time=00:02:53.80 bitrate=N/A speed=3.13x elapsed=0:00:55.55    size=N/A time=00:02:54.70 bitrate=N/A speed=3.12x elapsed=0:00:56.05    size=N/A time=00:02:56.80 bitrate=N/A speed= 3.1x elapsed=0:00:57.05    size=N/A time=00:02:57.70 bitrate=N/A speed=3.09x elapsed=0:00:57.55    [Parsed_keydetect_3 @ 000001d47f124cc0] t=181.09 chord=C#
+size=N/A time=00:02:59.60 bitrate=N/A speed=3.07x elapsed=0:00:58.55    [Parsed_keydetect_3 @ 000001d47f124cc0] t=183.49 chord=Fm
+size=N/A time=00:03:00.60 bitrate=N/A speed=3.06x elapsed=0:00:59.05    [Parsed_keydetect_3 @ 000001d47f124cc0] t=183.89 chord=G#
+size=N/A time=00:03:01.50 bitrate=N/A speed=3.05x elapsed=0:00:59.55    [Parsed_keydetect_3 @ 000001d47f124cc0] t=184.59 chord=C#
+size=N/A time=00:03:02.40 bitrate=N/A speed=3.04x elapsed=0:01:00.05    [Parsed_keydetect_3 @ 000001d47f124cc0] t=185.49 chord=F#
+size=N/A time=00:03:03.40 bitrate=N/A speed=3.03x elapsed=0:01:00.55    size=N/A time=00:03:04.30 bitrate=N/A speed=3.02x elapsed=0:01:01.05    size=N/A time=00:03:05.30 bitrate=N/A speed=3.01x elapsed=0:01:01.55    size=N/A time=00:03:06.20 bitrate=N/A speed=   3x elapsed=0:01:02.05    [Parsed_keydetect_3 @ 000001d47f124cc0] t=189.99 chord=C#
+size=N/A time=00:03:07.20 bitrate=N/A speed=2.99x elapsed=0:01:02.55    size=N/A time=00:03:08.20 bitrate=N/A speed=2.98x elapsed=0:01:03.05    size=N/A time=00:03:09.10 bitrate=N/A speed=2.98x elapsed=0:01:03.55    [Parsed_keydetect_3 @ 000001d47f124cc0] t=192.69 chord=G#
+[Parsed_keydetect_3 @ 000001d47f124cc0] t=193.64 chord=C#
+size=N/A time=00:03:11.00 bitrate=N/A speed=2.96x elapsed=0:01:04.55    [Parsed_keydetect_3 @ 000001d47f124cc0] t=194.54 chord=F#
+size=N/A time=00:03:12.00 bitrate=N/A speed=2.95x elapsed=0:01:05.05    size=N/A time=00:03:13.90 bitrate=N/A speed=2.94x elapsed=0:01:06.05    size=N/A time=00:03:14.90 bitrate=N/A speed=2.93x elapsed=0:01:06.55    size=N/A time=00:03:15.80 bitrate=N/A speed=2.92x elapsed=0:01:07.05    [Parsed_keydetect_3 @ 000001d47f124cc0] t=198.84 chord=C#
+size=N/A time=00:03:16.80 bitrate=N/A speed=2.91x elapsed=0:01:07.55    size=N/A time=00:03:17.70 bitrate=N/A speed= 2.9x elapsed=0:01:08.05    [Parsed_keydetect_3 @ 000001d47f124cc0] t=200.84 chord=F#
+size=N/A time=00:03:18.70 bitrate=N/A speed= 2.9x elapsed=0:01:08.56    size=N/A time=00:03:19.70 bitrate=N/A speed=2.89x elapsed=0:01:09.06    [Parsed_keydetect_3 @ 000001d47f124cc0] t=202.94 chord=C#
+[Parsed_keydetect_3 @ 000001d47f124cc0] t=203.94 chord=G#
+size=N/A time=00:03:21.50 bitrate=N/A speed=2.88x elapsed=0:01:10.06    [Parsed_keydetect_3 @ 000001d47f124cc0] t=205.24 chord=C#
+size=N/A time=00:03:22.50 bitrate=N/A speed=2.87x elapsed=0:01:10.56    [Parsed_keydetect_3 @ 000001d47f124cc0] t=206.34 chord=D#m
+size=N/A time=00:03:23.50 bitrate=N/A speed=2.86x elapsed=0:01:11.06    [Parsed_keydetect_3 @ 000001d47f124cc0] t=207.14 chord=C#
+size=N/A time=00:03:24.30 bitrate=N/A speed=2.85x elapsed=0:01:11.56    size=N/A time=00:03:25.20 bitrate=N/A speed=2.85x elapsed=0:01:12.06    size=N/A time=00:03:26.10 bitrate=N/A speed=2.84x elapsed=0:01:12.56    size=N/A time=00:03:28.20 bitrate=N/A speed=2.83x elapsed=0:01:13.56    [Parsed_keydetect_3 @ 000001d47f124cc0] t=211.34 chord=C#m
+size=N/A time=00:03:29.20 bitrate=N/A speed=2.82x elapsed=0:01:14.06    [Parsed_silencedetect_5 @ 000001d47f124dc0] silence_start: 212.465312
+size=N/A time=00:03:30.40 bitrate=N/A speed=2.82x elapsed=0:01:14.56    [Parsed_beatdetect_0 @ 000001d47f123dc0] lavfi.beatdetect.bpm=99.40 
+lavfi.beatdetect.bpm=99.40 
+[Parsed_beatdetect_2 @ 000001d47f124ec0] lavfi.beatdetect.bpm=99.20 
+lavfi.beatdetect.bpm=99.20 
+[Parsed_keydetect_3 @ 000001d47f124cc0] lavfi.keydetect.key=C#
+lavfi.keydetect.key=C#
+[Parsed_keydetect_3 @ 000001d47f124cc0] lavfi.keydetect.key_confidence=0.918
+lavfi.keydetect.key_confidence=0.918
+[Parsed_keydetect_3 @ 000001d47f124cc0] lavfi.keydetect.key_r_leader=0.918
+lavfi.keydetect.key_r_leader=0.918
+[Parsed_keydetect_3 @ 000001d47f124cc0] lavfi.keydetect.key_alt=G#
+lavfi.keydetect.key_alt=G#
+[Parsed_keydetect_3 @ 000001d47f124cc0] lavfi.keydetect.key_alt_confidence=0.638
+lavfi.keydetect.key_alt_confidence=0.638
+[Parsed_keydetect_3 @ 000001d47f124cc0] lavfi.keydetect.key_margin=0.280
+lavfi.keydetect.key_margin=0.280
+[Parsed_keydetect_3 @ 000001d47f124cc0] lavfi.keydetect.key_candidates=C#:0.918,G#:0.638,C#m:0.627
+lavfi.keydetect.key_candidates=C#:0.918,G#:0.638,C#m:0.627
+[Parsed_keydetect_3 @ 000001d47f124cc0] lavfi.keydetect.key_reranked=0
+lavfi.keydetect.key_reranked=0
+[Parsed_keydetect_3 @ 000001d47f124cc0] lavfi.keydetect.key_profiles=krumhansl:C#:0.944,temperley:C#:0.913,shaath:C#:0.918,edma:C#:0.939
+lavfi.keydetect.key_profiles=krumhansl:C#:0.944,temperley:C#:0.913,shaath:C#:0.918,edma:C#:0.939
+[Parsed_keydetect_3 @ 000001d47f124cc0] lavfi.keydetect.chord_coherence=1.162
+lavfi.keydetect.chord_coherence=1.162
+[Parsed_keydetect_3 @ 000001d47f124cc0] lavfi.keydetect.tonalness=0.255
+lavfi.keydetect.tonalness=0.255
+[Parsed_keydetect_3 @ 000001d47f124cc0] lavfi.keydetect.bass_tonic=C#
+lavfi.keydetect.bass_tonic=C#
+[Parsed_keydetect_3 @ 000001d47f124cc0] lavfi.keydetect.bass_chroma=0.194,1.000,0.263,0.412,0.161,0.140,0.463,0.137,0.739,0.181,0.278,0.186
+lavfi.keydetect.bass_chroma=0.194,1.000,0.263,0.412,0.161,0.140,0.463,0.137,0.739,0.181,0.278,0.186
+[Parsed_keydetect_3 @ 000001d47f124cc0] lavfi.keydetect.chords=F#-C#-A#m-C#-G#-C#-A#m-C#-G#-C#-G#-C#-A#m-C#-G#-C#-A#m-C#-G#-C#-Fm-G#-C#-F#-C#-F#-C#-G#-C#-F#-G#-F#-C#-F#-G#-C#-F#-G#-B-C#-F#-G#-C#-D#-A#-C#-F#-C#-Fm-G#-C#-F#-C#-G#-C#-F#-C#-F#-C#-G#-C#-D#m-C#-C#m
+lavfi.keydetect.chords=F#-C#-A#m-C#-G#-C#-A#m-C#-G#-C#-G#-C#-A#m-C#-G#-C#-A#m-C#-G#-C#-Fm-G#-C#-F#-C#-F#-C#-G#-C#-F#-G#-F#-C#-F#-G#-C#-F#-G#-B-C#-F#-G#-C#-D#-A#-C#-F#-C#-Fm-G#-C#-F#-C#-G#-C#-F#-C#-F#-C#-G#-C#-D#m-C#-C#m
+[Parsed_loudnorm_6 @ 000001d47f123ac0] 
+{
+	"input_i" : "-9.53",
+	"input_tp" : "-1.39",
+	"input_lra" : "8.20",
+	"input_thresh" : "-19.80",
+	"output_i" : "-22.45",
+	"output_tp" : "-8.54",
+	"output_lra" : "3.90",
+	"output_thresh" : "-32.48",
+	"normalization_type" : "dynamic",
+	"target_offset" : "-1.55"
+}
+[Parsed_silencedetect_5 @ 000001d47f124dc0] silence_end: 213.88 | silence_duration: 1.414687
+[out#0/null @ 000001d386dbe680] video:0KiB audio:160410KiB subtitle:0KiB other streams:0KiB global headers:0KiB muxing overhead: unknown
+size=N/A time=00:03:33.90 bitrate=N/A speed=2.86x elapsed=0:01:14.85    

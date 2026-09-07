@@ -56,6 +56,9 @@ public class Library : Timestamps
     [JsonProperty("order")]
     public int? Order { get; set; }
 
+    [JsonProperty("analyze_audio")]
+    public bool AnalyzeAudio { get; set; }
+
     [JsonProperty("perfect_subtitle_match")]
     public bool PerfectSubtitleMatch { get; set; }
 

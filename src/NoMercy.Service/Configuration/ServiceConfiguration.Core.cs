@@ -626,6 +626,14 @@ public static partial class ServiceConfiguration
             MediaProcessing.Fingerprinting.FfmpegChromaprintFingerprinter
         >();
 
+        // Same bridging reason as the fingerprinter above: the analyzer needs the
+        // Encoder-layer process runner and ffmpeg path, which MediaProcessing may
+        // reach and Providers may not.
+        services.AddTransient<
+            MediaProcessing.AudioAnalysis.IAudioAnalyzer,
+            MediaProcessing.AudioAnalysis.FfmpegAudioAnalyzer
+        >();
+
         // Transcode-scoped IStorage — paths are relative to AppFiles.TranscodePath.
         // HomeController uses this so it can pass scope-relative paths (Rule 1 of
         // the IStorage path contract) instead of Path.Combine(TranscodePath, ...).

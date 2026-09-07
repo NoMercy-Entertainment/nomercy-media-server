@@ -150,6 +150,13 @@ public class MediaContext : DbContext
             .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder
+            .Entity<TrackAudioAnalysis>()
+            .HasOne(a => a.Track)
+            .WithOne(t => t.AudioAnalysis)
+            .HasForeignKey<TrackAudioAnalysis>(a => a.TrackId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder
             .Model.GetEntityTypes()
             .SelectMany(t => t.GetProperties())
             .Where(p => p.ClrType == typeof(string))
@@ -535,6 +542,7 @@ public class MediaContext : DbContext
     public virtual DbSet<PlaylistTrack> PlaylistTrack { get; init; }
     public virtual DbSet<TrackUser> TrackUser { get; init; }
     public virtual DbSet<Track> Tracks { get; init; }
+    public virtual DbSet<TrackAudioAnalysis> TrackAudioAnalysis { get; init; }
     public virtual DbSet<ReleaseGroup> ReleaseGroups { get; init; }
     public virtual DbSet<AlbumReleaseGroup> AlbumReleaseGroup { get; init; }
     public virtual DbSet<ArtistReleaseGroup> ArtistReleaseGroup { get; init; }

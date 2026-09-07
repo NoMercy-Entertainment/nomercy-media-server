@@ -1,4 +1,4 @@
-// -----------------------------------------------------------------------------
+﻿// -----------------------------------------------------------------------------
 //  Copyright (c) 2024-present NoMercy Entertainment. All rights reserved.
 //
 //  This file is part of NoMercy MediaServer, source-available software (NOT open
@@ -101,6 +101,23 @@ public partial class MusicRepository
             .Include(track => track.AlbumTrack)
                 .ThenInclude(albumTrack => albumTrack.Album)
             .FirstOrDefaultAsync(ct);
+    }
+
+    public async Task<List<TrackAudioAnalysis>> GetTrackAudioAnalysisAsync(
+        IReadOnlyCollection<Guid> trackIds,
+        CancellationToken ct = default
+    )
+    {
+        if (trackIds.Count == 0)
+            return [];
+
+        await using MediaContext mediaContext = await contextFactory.CreateDbContextAsync(ct);
+        return await mediaContext
+            .TrackAudioAnalysis.AsNoTracking()
+            .Where(analysis =>
+                trackIds.Contains(analysis.TrackId) && analysis.State == AudioAnalysisState.Ok
+            )
+            .ToListAsync(ct);
     }
 
     public async Task<Lyric[]?> UpdateTrackLyricsAsync(

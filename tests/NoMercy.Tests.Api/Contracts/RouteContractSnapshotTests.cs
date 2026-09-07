@@ -1,4 +1,4 @@
-// -----------------------------------------------------------------------------
+﻿// -----------------------------------------------------------------------------
 //  Copyright (c) 2024-present NoMercy Entertainment. All rights reserved.
 //
 //  This file is part of NoMercy MediaServer, source-available software (NOT open
@@ -388,6 +388,9 @@ public class RouteContractSnapshotTests : IClassFixture<NoMercyApiFactory>
         "POST api/v{version:apiVersion}/dashboard/tasks/failed/retry [Tasks.RetryFailedJobs]",
         "POST api/v{version:apiVersion}/dashboard/tasks/failed/retry/{id:long?} [Tasks.RetryFailedJobs]",
         "POST api/v{version:apiVersion}/dashboard/tasks/pause-queue [Tasks.PauseEncoderQueue]",
+        "GET api/v{version:apiVersion}/dashboard/tasks/audio-analysis/status [Tasks.AudioAnalysisStatus]",
+        "POST api/v{version:apiVersion}/dashboard/tasks/pause-music-queue [Tasks.PauseMusicQueue]",
+        "POST api/v{version:apiVersion}/dashboard/tasks/resume-music-queue [Tasks.ResumeMusicQueue]",
         "POST api/v{version:apiVersion}/dashboard/tasks/pause/{id:int} [Tasks.PauseTask]",
         "POST api/v{version:apiVersion}/dashboard/tasks/queue/incomplete/{id:int}/retry [Tasks.RetryIncompleteEncode]",
         "POST api/v{version:apiVersion}/dashboard/tasks/reorder [Tasks.ReorderQueue]",
@@ -436,6 +439,7 @@ public class RouteContractSnapshotTests : IClassFixture<NoMercyApiFactory>
         "POST api/v{version:apiVersion}/music/start/favorite-artists [Music.FavoriteArtists]",
         "POST api/v{version:apiVersion}/music/start/favorites [Music.Favorites]",
         "POST api/v{version:apiVersion}/music/start/playlists [Music.Playlists]",
+        "POST api/v{version:apiVersion}/music/tracks/analysis [Tracks.Analysis]",
         "POST api/v{version:apiVersion}/music/tracks/{id:guid}/like [Tracks.Value]",
         "POST api/v{version:apiVersion}/music/tracks/{id:guid}/playback [Tracks.Playback]",
         "POST api/v{version:apiVersion}/playlists [UserPlaylists.Create]",

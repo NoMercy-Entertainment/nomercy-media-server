@@ -1,4 +1,4 @@
-// -----------------------------------------------------------------------------
+﻿// -----------------------------------------------------------------------------
 //  Copyright (c) 2024-present NoMercy Entertainment. All rights reserved.
 //
 //  This file is part of NoMercy MediaServer, source-available software (NOT open
@@ -77,6 +77,38 @@ public class TracksController : BaseController
         );
     }
 
+    /// <summary>
+    /// Audio analysis for a set of tracks.
+    /// <para>
+    /// A dedicated route rather than a field on every track response: analysis
+    /// is absent for most rows for most of a library's life, so inlining it
+    /// would grow every list for every user to carry mostly nulls.
+    /// </para>
+    /// </summary>
+    [HttpPost]
+    [Route("analysis")]
+    public async Task<IActionResult> Analysis([FromBody] TrackAudioAnalysisRequestDto request)
+    {
+        if (request.TrackIds.Count == 0)
+            return BadRequestResponse("No track ids supplied");
+
+        if (request.TrackIds.Count > TrackAudioAnalysisRequestDto.MaxTrackIds)
+            return BadRequestResponse(
+                $"At most {TrackAudioAnalysisRequestDto.MaxTrackIds} track ids per request"
+            );
+
+        List<TrackAudioAnalysis> analysis = await _musicRepository.GetTrackAudioAnalysisAsync(
+            request.TrackIds.Distinct().ToArray()
+        );
+
+        return Ok(
+            new TrackAudioAnalysisResponseDto
+            {
+                Data = analysis.Select(row => new TrackAudioAnalysisDto(row)).ToList(),
+            }
+        );
+    }
+
     [HttpPost]
     [Route("{id:guid}/like")]
     public async Task<IActionResult> Value(Guid id, [FromBody] LikeRequestDto request)
@@ -128,7 +160,6 @@ public class TracksController : BaseController
     [Route("{id:guid}/lyrics")]
     public async Task<IActionResult> Lyrics(Guid id)
     {
-
         Track? track = await _musicRepository.GetTrackWithIncludesAsync(id);
 
         if (track is null)
@@ -174,7 +205,6 @@ public class TracksController : BaseController
     [Route("{id:guid}/lyrics-offset")]
     public async Task<IActionResult> LyricsOffset(Guid id, [FromBody] PatchLyricsOffsetDto request)
     {
-
         if (request.Offset is not null && (request.Offset < -30000 || request.Offset > 30000))
             return ValidationProblem("Offset must be between -30000 and 30000 ms");
 

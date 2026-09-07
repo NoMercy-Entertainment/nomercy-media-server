@@ -34,6 +34,7 @@
 
   <ItemGroup>
     <None Include="Subtitles\Fixtures\**\*.xml" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="AudioAnalysis\Fixtures\**\*.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>
