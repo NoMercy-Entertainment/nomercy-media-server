@@ -243,7 +243,8 @@ public partial class MusicHub
                             deviceId: targetUlid,
                             intent: intent,
                             clientLocale: locale
-                        )
+                        ),
+                    isTargetOnlineNow: () => _busRegistry.IsOnline(targetUlid)
                 )
             );
         }
