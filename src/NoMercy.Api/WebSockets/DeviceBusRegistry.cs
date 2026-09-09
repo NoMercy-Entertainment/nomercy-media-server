@@ -64,8 +64,19 @@ public sealed class DeviceBusRegistry(
         Device? device = await ctx.Devices.FindAsync(deviceId);
         if (device is null)
             return;
-        device.WsConnectedAt = null;
-        await ctx.SaveChangesAsync();
+
+        // WsConnectedAt is not "is the device-bus socket open right now" — it's
+        // DeviceDropRuleCronJob's and DeviceListComposer's only record of when
+        // this device was last known alive at all, across every connection
+        // type (ConnectionHub.OnConnectedAsync writes it from every hub, not
+        // just this one). Nulling it here on an ordinary, expected disconnect
+        // wiped that history every time the device-bus socket dropped — which
+        // it does often and normally — even while the device stayed live and
+        // in active use over MusicHub. That falsely read as "never seen" to
+        // the drop rule and as a blank "last seen" to the device list.
+        // Confirmed live, real TV, 2026-09-09: "Tv in woonkamer" was disowned
+        // as abandoned, repeatedly, hours apart, while under continuous real
+        // MusicHub control the whole time.
 
         if (device.OwnerUserId is not null)
             await BroadcastChange(device.OwnerUserId.Value);

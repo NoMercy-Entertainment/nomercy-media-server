@@ -190,9 +190,24 @@ public class ConnectionHub : Hub
 
             if (device is not null)
             {
+                // WsConnectedAt was written only by the separate device-bus
+                // WebSocket (DeviceBusEndpoint), never by a hub connection —
+                // so a device controlled entirely through MusicHub/VideoHub/etc.
+                // (the common case; the device-bus socket is its own,
+                // independently flaky connection) never touched either signal
+                // DeviceDropRuleCronJob reads (WsConnectedAt, MdnsSeenAt), and
+                // got disowned as abandoned on its TTL/e-fuse rules despite
+                // being actively used every day. Confirmed live, real TV,
+                // 2026-09-09: "Tv in woonkamer" was dropped repeatedly, hours
+                // apart, with WsConnectedAt permanently null and MdnsSeenAt
+                // over a week stale, while under active real MusicHub control
+                // the whole time. Every hub connection is real, current
+                // evidence the device is still here — it should count.
                 await mediaContext
                     .Devices.Where(x => x.DeviceId == device.DeviceId)
-                    .ExecuteUpdateAsync(x => x.SetProperty(d => d.IsActive, true));
+                    .ExecuteUpdateAsync(x =>
+                        x.SetProperty(d => d.IsActive, true).SetProperty(d => d.WsConnectedAt, DateTime.UtcNow)
+                    );
                 await mediaContext.SaveChangesAsync();
 
                 // Every hub derives from this one, so a single app opening video, music,
