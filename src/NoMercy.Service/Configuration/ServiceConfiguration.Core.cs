@@ -614,6 +614,7 @@ public static partial class ServiceConfiguration
             opts.FfprobePathOverride = AppFiles.FfProbePath;
             opts.TesseractModelsDirectory = AppFiles.TesseractModelsFolder;
             opts.WhisperModelPath = AppFiles.WhisperModelPath;
+            opts.StemsplitModelPath = AppFiles.StemsplitModelPath;
             // Without this the JsonSpeedIndexStore silently no-ops on Save
             // ("No SpeedIndexCachePath configured — skipping save"), and every
             // reboot triggers a fresh ~20 min hardware benchmark calibration.

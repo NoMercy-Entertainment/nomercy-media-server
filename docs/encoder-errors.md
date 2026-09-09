@@ -25,6 +25,7 @@ shows up below wrapped in backticks. Add a new ID → add a new bullet here in t
 
 ## Capabilities
 - `capability.fpcalc_missing` — chromaprint binary not on PATH; intro detection disabled.
+- `capability.stemsplit_missing` — stemsplit GGUF model file missing or not configured; stem separation disabled.
 - `capability.tesseract_model_missing` — required Tesseract `*.traineddata` not in the configured directory.
 - `capability.whisper_missing` — whisper-cli binary not on PATH; speech transcription disabled.
 

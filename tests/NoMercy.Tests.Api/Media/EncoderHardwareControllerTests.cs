@@ -293,6 +293,7 @@ public class EncoderHardwareControllerTests
             MissingMuxers: [],
             FpcalcPresent: true,
             WhisperModelPresent: false,
+            StemsplitModelPresent: false,
             TesseractEngTraineddataPresent: true,
             TesseractModelsDirectory: "/models",
             Issues: []
