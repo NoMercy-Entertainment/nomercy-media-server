@@ -56,8 +56,12 @@ public class Library : Timestamps
     [JsonProperty("order")]
     public int? Order { get; set; }
 
+    /// <summary>
+    /// The opt-out for audio analysis. On by default, because analysis is part
+    /// of every music import rather than a switch a user has to find.
+    /// </summary>
     [JsonProperty("analyze_audio")]
-    public bool AnalyzeAudio { get; set; }
+    public bool AnalyzeAudio { get; set; } = true;
 
     [JsonProperty("perfect_subtitle_match")]
     public bool PerfectSubtitleMatch { get; set; }
