@@ -22,7 +22,7 @@ namespace NoMercy.MediaProcessing.Movies;
 
 public class MovieRepository(MediaContext context) : IMovieRepository
 {
-    public async Task Add(Movie movie)
+    public async Task Add(Movie movie, bool folderDateIsReal)
     {
         await context
             .Movies.Upsert(movie)
@@ -55,9 +55,15 @@ public class MovieRepository(MediaContext context) : IMovieRepository
             )
             .RunAsync();
 
-        await context
-            .Movies.Where(m => m.Id == movie.Id)
-            .ExecuteUpdateAsync(s => s.SetProperty(t => t.CreatedAt, t => movie.CreatedAt));
+        // A brand new row already got movie.CreatedAt from the insert above -
+        // this only needs to correct an EXISTING row's CreatedAt, and only
+        // when this pass actually resolved a real on-disk folder date. A
+        // failed/transient folder lookup must never reset an already-dated
+        // movie to "now" (see MovieManager.AddFromAppends).
+        if (folderDateIsReal)
+            await context
+                .Movies.Where(m => m.Id == movie.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(t => t.CreatedAt, t => movie.CreatedAt));
 
         await context.SaveChangesAsync();
 

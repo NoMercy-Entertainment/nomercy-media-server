@@ -92,40 +92,7 @@ public class MovieManager(
 
         string baseUrl = BaseUrl(title, movieAppends.ReleaseDate);
 
-        DateTime folderCreatedAt = DateTime.UtcNow;
-
-        foreach (FolderLibrary folderLibrary in library.FolderLibraries ?? [])
-        {
-            if (storageFactory == null)
-                continue;
-
-            IStorage folderStorage = storageFactory.For(
-                folderLibrary.Folder.Id,
-                folderLibrary.Folder.DriverId,
-                string.Empty
-            );
-            string folderRoot = FolderRootPath(folderStorage, folderLibrary.Folder.Path);
-            string folderName = folderStorage.CombinePath(folderRoot, baseUrl.Replace("/", ""));
-
-            if (!folderStorage.Exists(folderName))
-            {
-                string? match = FileNameSanitizer.FindMatchingDirectory(
-                    folderStorage.Driver,
-                    folderRoot,
-                    baseUrl.Replace("/", "")
-                );
-                if (match != null)
-                    folderName = match;
-            }
-
-            if (!folderStorage.Exists(folderName))
-                continue;
-
-            folderCreatedAt = folderStorage.Driver.GetCreationTimeUtc(folderName);
-
-            if (folderCreatedAt != DateTime.UtcNow)
-                break;
-        }
+        (bool folderDateIsReal, DateTime folderCreatedAt) = ResolveFolder(library, baseUrl);
 
         Movie movie = new()
         {
@@ -161,7 +128,7 @@ public class MovieManager(
             CreatedAt = folderCreatedAt,
         };
 
-        await movieRepository.Add(movie);
+        await movieRepository.Add(movie, folderDateIsReal);
         logger.LogDebug("Movie: {Title}: Added to Database", movie.Title);
 
         await movieRepository.LinkToLibrary(library, movie);
@@ -194,6 +161,49 @@ public class MovieManager(
         jobDispatcher.DispatchJob<MovieExtrasJob, TmdbMovieAppends>(movieAppends);
 
         return movieAppends;
+    }
+
+    // Structural ground truth: does this movie's folder physically exist
+    // under ANY of the given library's configured folders? Returns the real
+    // folder creation date when found, or DateTime.UtcNow (a sentinel the
+    // caller must not mistake for a real date) when it does not - mirrors
+    // ShowManager.ResolveFolder.
+    private (bool exists, DateTime createdAt) ResolveFolder(Library library, string baseUrl)
+    {
+        DateTime folderCreatedAt = DateTime.UtcNow;
+
+        foreach (FolderLibrary folderLibrary in library.FolderLibraries ?? [])
+        {
+            if (storageFactory == null)
+                continue;
+
+            IStorage folderStorage = storageFactory.For(
+                folderLibrary.Folder.Id,
+                folderLibrary.Folder.DriverId,
+                string.Empty
+            );
+            string folderRoot = FolderRootPath(folderStorage, folderLibrary.Folder.Path);
+            string folderName = folderStorage.CombinePath(folderRoot, baseUrl.Replace("/", ""));
+
+            if (!folderStorage.Exists(folderName))
+            {
+                string? match = FileNameSanitizer.FindMatchingDirectory(
+                    folderStorage.Driver,
+                    folderRoot,
+                    baseUrl.Replace("/", "")
+                );
+                if (match != null)
+                    folderName = match;
+            }
+
+            if (!folderStorage.Exists(folderName))
+                continue;
+
+            folderCreatedAt = folderStorage.Driver.GetCreationTimeUtc(folderName);
+            return (true, folderCreatedAt);
+        }
+
+        return (false, folderCreatedAt);
     }
 
     public Task Update(int id, Library library)

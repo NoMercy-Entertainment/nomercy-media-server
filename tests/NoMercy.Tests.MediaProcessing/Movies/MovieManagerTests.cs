@@ -79,14 +79,17 @@ public class MovieManagerTests
         Movie capturedMovie = null!;
 
         _movieRepositoryMock
-            .Setup(repo => repo.Add(It.IsAny<Movie>()))
-            .Callback<Movie>(movie => capturedMovie = movie);
+            .Setup(repo => repo.Add(It.IsAny<Movie>(), It.IsAny<bool>()))
+            .Callback<Movie, bool>((movie, _) => capturedMovie = movie);
 
         // Act
         await _movieManager.Add(_movieId, _library);
 
         // Assert
-        _movieRepositoryMock.Verify(repo => repo.Add(It.IsAny<Movie>()), Times.Once);
+        _movieRepositoryMock.Verify(
+            repo => repo.Add(It.IsAny<Movie>(), It.IsAny<bool>()),
+            Times.Once
+        );
         _movieRepositoryMock.Verify(
             repo => repo.LinkToLibrary(_library, It.IsAny<Movie>()),
             Times.Once
@@ -103,12 +106,15 @@ public class MovieManagerTests
 
         Movie capturedMovie = null!;
         _movieRepositoryMock
-            .Setup(repo => repo.Add(It.IsAny<Movie>()))
-            .Callback<Movie>(movie => capturedMovie = movie);
+            .Setup(repo => repo.Add(It.IsAny<Movie>(), It.IsAny<bool>()))
+            .Callback<Movie, bool>((movie, _) => capturedMovie = movie);
 
         await _movieManager.Update(_movieId, _library);
 
-        _movieRepositoryMock.Verify(repo => repo.Add(It.IsAny<Movie>()), Times.Once);
+        _movieRepositoryMock.Verify(
+            repo => repo.Add(It.IsAny<Movie>(), It.IsAny<bool>()),
+            Times.Once
+        );
         Assert.NotNull(capturedMovie);
         Assert.Equal(_movieId, capturedMovie.Id);
     }

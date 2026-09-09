@@ -23,7 +23,7 @@ namespace NoMercy.MediaProcessing.Shows;
 
 public class ShowRepository(MediaContext context) : IShowRepository
 {
-    public async Task AddAsync(Tv tv)
+    public async Task AddAsync(Tv tv, bool folderDateIsReal)
     {
         await context
             .Tvs.Upsert(tv)
@@ -65,9 +65,15 @@ public class ShowRepository(MediaContext context) : IShowRepository
             )
             .RunAsync();
 
-        await context
-            .Tvs.Where(t => t.Id == tv.Id)
-            .ExecuteUpdateAsync(s => s.SetProperty(t => t.CreatedAt, t => tv.CreatedAt));
+        // A brand new row already got tv.CreatedAt from the insert above -
+        // this only needs to correct an EXISTING row's CreatedAt, and only
+        // when this pass actually resolved a real on-disk folder date. A
+        // failed/transient folder lookup must never reset an already-dated
+        // show to "now" (see ShowManager.ResolveLibraryAndCreatedAtAsync).
+        if (folderDateIsReal)
+            await context
+                .Tvs.Where(t => t.Id == tv.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(t => t.CreatedAt, t => tv.CreatedAt));
 
         await context.SaveChangesAsync();
 

@@ -62,12 +62,8 @@ public class ShowManager(
         string baseUrl = BaseUrl(showAppends.Name, showAppends.FirstAirDate);
         string? mediaType = await mediaTypeClassifier.ClassifyAsync(showAppends);
 
-        (Library resolvedLibrary, DateTime folderCreatedAt) = await ResolveLibraryAndCreatedAtAsync(
-            id,
-            library,
-            baseUrl,
-            mediaType
-        );
+        (Library resolvedLibrary, DateTime folderCreatedAt, bool folderDateIsReal) =
+            await ResolveLibraryAndCreatedAtAsync(id, library, baseUrl, mediaType);
         library = resolvedLibrary;
 
         Tv show = new()
@@ -114,7 +110,7 @@ public class ShowManager(
                 showAppends.Videos.Results.Length > 0 ? showAppends.Videos.Results[0].Key : null,
         };
 
-        await showRepository.AddAsync(show);
+        await showRepository.AddAsync(show, folderDateIsReal);
         logger.LogDebug("Show {Title}: Added to Database", show.Title);
 
         await showRepository.LinkToLibrary(library, show, addedBy);
@@ -151,7 +147,11 @@ public class ShowManager(
     // contain the same folder. Split out from AddShowAsync (which needs a
     // live TMDB client) so this decision is unit-testable with mocked
     // storage/repository alone.
-    internal async Task<(Library library, DateTime createdAt)> ResolveLibraryAndCreatedAtAsync(
+    internal async Task<(
+        Library library,
+        DateTime createdAt,
+        bool folderDateIsReal
+    )> ResolveLibraryAndCreatedAtAsync(
         int id,
         Library scannedLibrary,
         string baseUrl,
@@ -160,8 +160,11 @@ public class ShowManager(
     {
         (bool existsInScannedLibrary, DateTime createdAt) = ResolveFolder(scannedLibrary, baseUrl);
 
-        if (existsInScannedLibrary || !ShouldPromoteToAnimeLibrary(scannedLibrary.Type, mediaType))
-            return (scannedLibrary, createdAt);
+        if (existsInScannedLibrary)
+            return (scannedLibrary, createdAt, true);
+
+        if (!ShouldPromoteToAnimeLibrary(scannedLibrary.Type, mediaType))
+            return (scannedLibrary, createdAt, false);
 
         Library? animeLibrary = await showRepository.GetLibraryByTypeAsync(
             MediaTypes.AnimeMediaType
@@ -173,19 +176,19 @@ public class ShowManager(
                 "Show {Id}: Classified as anime but no anime library exists; keeping original Library {Title}",
                 [id, scannedLibrary.Title]
             );
-            return (scannedLibrary, createdAt);
+            return (scannedLibrary, createdAt, false);
         }
 
         (bool existsInAnimeLibrary, DateTime animeCreatedAt) = ResolveFolder(animeLibrary, baseUrl);
 
         if (!existsInAnimeLibrary)
-            return (scannedLibrary, createdAt);
+            return (scannedLibrary, createdAt, false);
 
         logger.LogInformation(
             "Show {Id}: Reclassified as {MediaType}, filing under Library {Title} instead of {OriginalTitle}",
             [id, mediaType, animeLibrary.Title, scannedLibrary.Title]
         );
-        return (animeLibrary, animeCreatedAt);
+        return (animeLibrary, animeCreatedAt, true);
     }
 
     // Pure decision, split out so the "never evict from the scanned library"

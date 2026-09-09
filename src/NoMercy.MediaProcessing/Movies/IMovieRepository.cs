@@ -20,7 +20,17 @@ namespace NoMercy.MediaProcessing.Movies;
 
 public interface IMovieRepository
 {
-    Task Add(Movie movie);
+    /// <summary>
+    /// Upserts the movie. <paramref name="folderDateIsReal"/> gates whether
+    /// <see cref="Movie.CreatedAt"/> is written on an existing row: true
+    /// means this call resolved a genuine on-disk folder date this pass,
+    /// false means the folder lookup found nothing (a transient storage
+    /// hiccup, or a manual add with no file yet) and the row's existing
+    /// CreatedAt - if any - must be left alone rather than reset to "now".
+    /// A brand new row always gets <paramref name="movie"/>'s CreatedAt
+    /// regardless, since there is no prior value to protect.
+    /// </summary>
+    Task Add(Movie movie, bool folderDateIsReal);
     Task LinkToLibrary(Library library, Movie movie);
     Task Remove(int id);
     Task StoreAlternativeTitles(IEnumerable<AlternativeTitle> alternativeTitles);

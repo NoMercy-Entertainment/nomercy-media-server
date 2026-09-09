@@ -47,15 +47,17 @@ public class ShowManagerLibraryPlacementTests
         );
         ShowManager manager = BuildManager(storageFactory, animeLibraryLookup: null);
 
-        (Library resolved, DateTime createdAt) = await manager.ResolveLibraryAndCreatedAtAsync(
-            id: 1,
-            scannedLibrary: animeLibrary,
-            baseUrl: "/n/Naruto.Shippuden.(2007)",
-            mediaType: "tv" // the real live verdict AniList/Jikan give for this title
-        );
+        (Library resolved, DateTime createdAt, bool folderDateIsReal) =
+            await manager.ResolveLibraryAndCreatedAtAsync(
+                id: 1,
+                scannedLibrary: animeLibrary,
+                baseUrl: "/n/Naruto.Shippuden.(2007)",
+                mediaType: "tv" // the real live verdict AniList/Jikan give for this title
+            );
 
         resolved.Should().BeSameAs(animeLibrary);
         createdAt.Should().Be(RealFolderCreatedAt);
+        folderDateIsReal.Should().BeTrue();
     }
 
     // A show whose folder exists in the scanned library is never moved, even
@@ -69,15 +71,17 @@ public class ShowManagerLibraryPlacementTests
         );
         ShowManager manager = BuildManager(storageFactory, animeLibraryLookup: null);
 
-        (Library resolved, DateTime createdAt) = await manager.ResolveLibraryAndCreatedAtAsync(
-            id: 1,
-            scannedLibrary: animeLibrary,
-            baseUrl: "/n/Naruto.Shippuden.(2007)",
-            mediaType: null
-        );
+        (Library resolved, DateTime createdAt, bool folderDateIsReal) =
+            await manager.ResolveLibraryAndCreatedAtAsync(
+                id: 1,
+                scannedLibrary: animeLibrary,
+                baseUrl: "/n/Naruto.Shippuden.(2007)",
+                mediaType: null
+            );
 
         resolved.Should().BeSameAs(animeLibrary);
         createdAt.Should().Be(RealFolderCreatedAt);
+        folderDateIsReal.Should().BeTrue();
     }
 
     // The classifier only gets a say when the scanned library has NO on-disk
@@ -104,15 +108,17 @@ public class ShowManagerLibraryPlacementTests
         );
         ShowManager manager = BuildManager(combinedFactory, animeLibraryLookup: animeLibrary);
 
-        (Library resolved, DateTime createdAt) = await manager.ResolveLibraryAndCreatedAtAsync(
-            id: 2,
-            scannedLibrary: tvLibrary,
-            baseUrl: "/h/Hunter.x.Hunter.(2011)",
-            mediaType: "anime"
-        );
+        (Library resolved, DateTime createdAt, bool folderDateIsReal) =
+            await manager.ResolveLibraryAndCreatedAtAsync(
+                id: 2,
+                scannedLibrary: tvLibrary,
+                baseUrl: "/h/Hunter.x.Hunter.(2011)",
+                mediaType: "anime"
+            );
 
         resolved.Should().BeSameAs(animeLibrary);
         createdAt.Should().Be(RealFolderCreatedAt);
+        folderDateIsReal.Should().BeTrue();
     }
 
     // Classifier says anime, but the anime library's own folders have no
@@ -138,14 +144,19 @@ public class ShowManagerLibraryPlacementTests
         );
         ShowManager manager = BuildManager(combinedFactory, animeLibraryLookup: animeLibrary);
 
-        (Library resolved, DateTime _) = await manager.ResolveLibraryAndCreatedAtAsync(
-            id: 3,
-            scannedLibrary: tvLibrary,
-            baseUrl: "/g/Ghost.In.The.Shell.(1995)",
-            mediaType: "anime"
-        );
+        (Library resolved, DateTime _, bool folderDateIsReal) =
+            await manager.ResolveLibraryAndCreatedAtAsync(
+                id: 3,
+                scannedLibrary: tvLibrary,
+                baseUrl: "/g/Ghost.In.The.Shell.(1995)",
+                mediaType: "anime"
+            );
 
         resolved.Should().BeSameAs(tvLibrary);
+        // No structural evidence anywhere: the repository must NOT be told
+        // to stamp a "now" CreatedAt over whatever a previously-successful
+        // scan already recorded for this row.
+        folderDateIsReal.Should().BeFalse();
     }
 
     private static ShowManager BuildManager(
