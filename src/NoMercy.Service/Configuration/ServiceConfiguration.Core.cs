@@ -646,6 +646,14 @@ public static partial class ServiceConfiguration
             MediaProcessing.AudioAnalysis.FfmpegAudioAnalyzer
         >();
 
+        // One scheduler for every path that wants a library analyzed: the hourly
+        // sweep, the hook that fires when a scan finishes, and the dashboard's
+        // run-now button. It holds nothing but a context factory, so a singleton.
+        services.AddSingleton<
+            MediaProcessing.AudioAnalysis.IAudioAnalysisScheduler,
+            Jobs.AudioAnalysisScheduler
+        >();
+
         // Transcode-scoped IStorage — paths are relative to AppFiles.TranscodePath.
         // HomeController uses this so it can pass scope-relative paths (Rule 1 of
         // the IStorage path contract) instead of Path.Combine(TranscodePath, ...).

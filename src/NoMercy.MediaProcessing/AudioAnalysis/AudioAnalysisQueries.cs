@@ -16,11 +16,26 @@ using NoMercy.Database.Models.Music;
 namespace NoMercy.MediaProcessing.AudioAnalysis;
 
 /// <summary>
-/// The one query the sweep runs, in one place so a test can assert its plan
-/// rather than assert a copy of it.
+/// The queries the analysis sweep runs, in one place so a test can assert their
+/// plan rather than assert a copy of it.
 /// </summary>
 public static class AudioAnalysisQueries
 {
+    private const string MusicLibraryType = "music";
+
+    /// <summary>
+    /// The music libraries that want their audio analyzed. The hourly sweep,
+    /// the hook that fires when a scan finishes and the dashboard's run-now
+    /// button all mean this same set, so none of them spells it out again.
+    /// </summary>
+    public static IQueryable<Ulid> LibrariesToAnalyze(MediaContext context)
+    {
+        return context
+            .Libraries.AsNoTracking()
+            .Where(library => library.AnalyzeAudio && library.Type == MusicLibraryType)
+            .Select(library => library.Id);
+    }
+
     /// <summary>
     /// Tracks in the named libraries that carry no verdict from this analyzer
     /// version — no row at all, a row from an older analyzer, or a row left
