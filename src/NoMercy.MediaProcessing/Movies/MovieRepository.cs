@@ -55,11 +55,15 @@ public class MovieRepository(MediaContext context) : IMovieRepository
             )
             .RunAsync();
 
-        // A brand new row already got movie.CreatedAt from the insert above -
-        // this only needs to correct an EXISTING row's CreatedAt, and only
-        // when this pass actually resolved a real on-disk folder date. A
-        // failed/transient folder lookup must never reset an already-dated
-        // movie to "now" (see MovieManager.AddFromAppends).
+        // CreatedAt is [DatabaseGenerated(Computed)], so the Upsert insert
+        // above never writes it (SQLite's CURRENT_TIMESTAMP default fires
+        // instead) - this ExecuteUpdate is the only path that ever sets a
+        // controlled value, for a brand new row and an existing one alike.
+        // Only run it when this pass actually resolved a real on-disk folder
+        // date: a failed/transient lookup must never stamp an already-dated
+        // movie with a fresh "now" (see MovieManager.AddFromAppends). A
+        // brand new row with no folder evidence at all is left on the
+        // database default, which is the honest answer for "just added".
         if (folderDateIsReal)
             await context
                 .Movies.Where(m => m.Id == movie.Id)
