@@ -97,6 +97,7 @@ public class RuntimeErrorCatalogTests
     [InlineData("license.unreachable")]
     [InlineData("capability.fpcalc_missing")]
     [InlineData("capability.whisper_missing")]
+    [InlineData("capability.stemsplit_missing")]
     [InlineData("capability.tesseract_model_missing")]
     [InlineData("disc.drive_busy")]
     [InlineData("disc.aacs_cert_missing")]
@@ -155,8 +156,8 @@ public class RuntimeErrorCatalogTests
     // ---- 5. Constant count guard — catches accidental deletions ----------------
 
     [Fact]
-    public void EncoderRuntimeErrorId_declares_exactly_21_constants()
+    public void EncoderRuntimeErrorId_declares_exactly_22_constants()
     {
-        RuntimeErrorIds.Should().HaveCount(21);
+        RuntimeErrorIds.Should().HaveCount(22);
     }
 }

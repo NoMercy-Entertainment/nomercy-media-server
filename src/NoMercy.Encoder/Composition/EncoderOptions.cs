@@ -118,6 +118,12 @@ public class EncoderOptions
     public string? WhisperModelPath { get; set; }
 
     /// <summary>
+    /// Path to the stemsplit GGUF model; the analysis job passes its file name
+    /// relative to the ffmpeg folder.
+    /// </summary>
+    public string? StemsplitModelPath { get; set; }
+
+    /// <summary>
     /// Webhook URLs that receive a JSON POST for each encoder lifecycle event
     /// (started / completed / failed). Empty by default. Each URL is retried up
     /// to 3 times with exponential backoff; failures are logged and swallowed

@@ -62,6 +62,8 @@ public class Binaries
         "https://api.github.com/repos/NoMercy-Entertainment/nomercy-tesseract/releases/latest";
     private const string GithubWhisperModelApiUrl =
         "https://api.github.com/repos/NoMercy-Entertainment/nomercy-whisper-models/releases/latest";
+    private const string GithubStemsplitModelApiUrl =
+        "https://api.github.com/repos/NoMercy-Entertainment/nomercy-stemsplit-models/releases/latest";
 
     private const string GithubYtdlpApiUrl =
         "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest";
@@ -512,6 +514,7 @@ public class Binaries
                 await DownloadYtdlp();
                 await DownloadShakaPackager();
                 await DownloadWhisperModels(AppFiles.WhisperModel);
+                await DownloadStemsplitModel(AppFiles.StemsplitModel);
 
                 List<string> tesseractLanguages = ["eng", "jpn"];
                 if (!CultureInfo.CurrentCulture.Equals(CultureInfo.InvariantCulture))
@@ -1942,21 +1945,109 @@ public class Binaries
             // DownloadWithVerificationAsync's destPath argument above) — without this
             // move+stamp, CheckLocalVersion's next-boot check reads FfmpegFolder/{model}.bin,
             // finds nothing, and re-downloads the ~2GB model on every single boot forever.
-            // FfmpegFolder normally already exists (DownloadFfmpeg's extraction step creates
-            // it, and runs earlier in DownloadAll's sequence) — mirrors ConcatenateModelParts'
-            // own guard for a caller that invokes DownloadWhisperModels directly.
-            if (!_driver.DirectoryExists(AppFiles.FfmpegFolder))
-                _storage.CreateDirectory(AppFiles.FfmpegFolder);
-
-            if (_driver.FileExists(destinationPath))
-                _driver.DeleteFile(destinationPath);
-
-            _driver.MoveFile(paths[0], destinationPath);
-
-            await FileAttributes.SetCreatedAttribute(destinationPath, releaseInfo.PublishedAt);
-
-            Logger.Setup($"Downloaded Whisper model to {destinationPath}");
+            await MoveDownloadedModelIntoPlaceAsync(
+                paths[0],
+                destinationPath,
+                releaseInfo.PublishedAt,
+                "Whisper model"
+            );
         }
+    }
+
+    /// <summary>
+    /// Moves a downloaded, hash-verified single-asset model from its staging path
+    /// (<see cref="AppFiles.DependenciesPath"/>) into its final resting place beside
+    /// ffmpeg, then stamps <see cref="FileAttributes.SetCreatedAttribute"/> so the next
+    /// boot's <see cref="CheckLocalVersion"/> sees it as current instead of re-downloading
+    /// it forever. Shared by <see cref="DownloadWhisperModels"/>'s single-asset branch and
+    /// <see cref="DownloadStemsplitModel"/> — both models ship as one GitHub asset that
+    /// lands beside ffmpeg under a different extension.
+    /// </summary>
+    /// <remarks>
+    /// FfmpegFolder normally already exists (DownloadFfmpeg's extraction step creates it,
+    /// and runs earlier in DownloadAll's sequence) — mirrors ConcatenateModelParts' own
+    /// guard for a caller that invokes one of these Download* methods directly.
+    /// </remarks>
+    private async Task MoveDownloadedModelIntoPlaceAsync(
+        string sourcePath,
+        string destinationPath,
+        DateTimeOffset publishedAt,
+        string label
+    )
+    {
+        if (!_driver.DirectoryExists(AppFiles.FfmpegFolder))
+            _storage.CreateDirectory(AppFiles.FfmpegFolder);
+
+        if (_driver.FileExists(destinationPath))
+            _driver.DeleteFile(destinationPath);
+
+        _driver.MoveFile(sourcePath, destinationPath);
+
+        await FileAttributes.SetCreatedAttribute(destinationPath, publishedAt);
+
+        Logger.Setup($"Downloaded {label} to {destinationPath}");
+    }
+
+    /// <summary>
+    /// Downloads and verifies the stemsplit GGUF model (Spleeter 2stems on ggml) that the
+    /// ffmpeg <c>stemsplit</c> filter needs at runtime, from the dedicated
+    /// nomercy-stemsplit-models release. Mirrors <see cref="DownloadWhisperModels"/>'s
+    /// single-asset branch: unlike whisper's largest models, the stemsplit model always
+    /// ships as exactly one ~39 MB asset, so there is no multi-part concatenation path here.
+    /// </summary>
+    internal async Task DownloadStemsplitModel(string modelName = "spleeter-2stems-f16")
+    {
+        string destinationPath = Path.Combine(AppFiles.FfmpegFolder, modelName + ".gguf");
+
+        GithubReleaseResponse releaseInfo = await GetLatestReleaseInfo(GithubStemsplitModelApiUrl);
+        if (releaseInfo.Assets.Length == 0)
+        {
+            Logger.Setup(
+                "No assets found for nomercy-stemsplit-models release.",
+                LogEventLevel.Warning
+            );
+            return;
+        }
+
+        if (CheckLocalVersion(releaseInfo, destinationPath, out string version))
+        {
+            _binaryReport.Add($"Stemsplit = {version}");
+            return;
+        }
+
+        await Downloader.DeleteSourceDownload(_storage, destinationPath);
+
+        string assetName = modelName + ".gguf";
+        Asset? asset = releaseInfo.Assets.FirstOrDefault(a =>
+            a.Name.Equals(assetName, StringComparison.OrdinalIgnoreCase)
+        );
+
+        if (asset is null)
+        {
+            Logger.Setup(
+                $"No asset found for model {modelName} in nomercy-stemsplit-models release.",
+                LogEventLevel.Warning
+            );
+            return;
+        }
+
+        string partDestPath = Path.Combine(AppFiles.DependenciesPath, asset.Name);
+        string downloadedPath = await DownloadWithVerificationAsync(
+            GithubStemsplitModelApiUrl,
+            "nomercy-stemsplit-models",
+            asset.BrowserDownloadUrl,
+            partDestPath,
+            releaseInfo,
+            asset.Name,
+            enforceSignedManifest: true
+        );
+
+        await MoveDownloadedModelIntoPlaceAsync(
+            downloadedPath,
+            destinationPath,
+            releaseInfo.PublishedAt,
+            "Stemsplit model"
+        );
     }
 
     internal async Task<string> ConcatenateModelParts(

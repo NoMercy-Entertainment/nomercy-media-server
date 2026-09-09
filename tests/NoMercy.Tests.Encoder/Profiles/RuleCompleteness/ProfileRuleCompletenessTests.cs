@@ -124,6 +124,8 @@ public class ProfileRuleCompletenessTests
             "runtime-only: fpcalc binary availability checked at runtime",
         [EncoderRuleId.CapabilityWhisperMissing] =
             "runtime-only: whisper binary availability checked at runtime",
+        [EncoderRuleId.CapabilityStemsplitMissing] =
+            "runtime-only: stemsplit model availability checked at runtime",
         [EncoderRuleId.CapabilityTesseractModelMissing] =
             "runtime-only: tesseract model availability checked at runtime",
 
@@ -495,10 +497,7 @@ public class ProfileRuleCompletenessTests
             ),
             [EncoderRuleId.DrmHttpNotHttps] = MakeProfile(VideoTranscode()) with
             {
-                Drm = new(
-                    "aes-128",
-                    new() { ["key_uri"] = "http://server/key.bin" }
-                ),
+                Drm = new("aes-128", new() { ["key_uri"] = "http://server/key.bin" }),
             },
             [EncoderRuleId.DrmKeyMissing] = MakeProfile(VideoTranscode()) with
             {
@@ -754,17 +753,11 @@ public class ProfileRuleCompletenessTests
             ),
             [EncoderRuleId.DrmHttpNotHttps] = MakeProfile(VideoTranscode()) with
             {
-                Drm = new(
-                    "aes-128",
-                    new() { ["key_uri"] = "https://server/key.bin" }
-                ),
+                Drm = new("aes-128", new() { ["key_uri"] = "https://server/key.bin" }),
             },
             [EncoderRuleId.DrmKeyMissing] = MakeProfile(VideoTranscode()) with
             {
-                Drm = new(
-                    "aes-128",
-                    new() { ["key_uri"] = "https://server/key.bin" }
-                ),
+                Drm = new("aes-128", new() { ["key_uri"] = "https://server/key.bin" }),
             },
         };
 
@@ -801,8 +794,8 @@ public class ProfileRuleCompletenessTests
         count
             .Should()
             .Be(
-                71,
-                "EncoderRuleId currently catalogues 71 rules; "
+                72,
+                "EncoderRuleId currently catalogues 72 rules; "
                     + "if this count changed, update the completeness sets above and this guard"
             );
     }

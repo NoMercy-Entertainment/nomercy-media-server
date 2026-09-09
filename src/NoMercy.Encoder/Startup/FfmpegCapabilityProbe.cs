@@ -92,11 +92,14 @@ public sealed class FfmpegCapabilityProbe(
 
         bool whisperModelPresent = ProbeWhisperModel();
 
+        bool stemsplitModelPresent = ProbeStemsplitModel();
+
         (bool tesseractPresent, string? tesseractDir) = ProbeTesseract();
 
         List<EncoderRule> issues = BuildIssues(
             fpcalcPresent,
             whisperModelPresent,
+            stemsplitModelPresent,
             tesseractPresent
         );
 
@@ -108,19 +111,21 @@ public sealed class FfmpegCapabilityProbe(
             MissingMuxers: missingMuxers,
             FpcalcPresent: fpcalcPresent,
             WhisperModelPresent: whisperModelPresent,
+            StemsplitModelPresent: stemsplitModelPresent,
             TesseractEngTraineddataPresent: tesseractPresent,
             TesseractModelsDirectory: tesseractDir,
             Issues: issues
         );
 
         logger.LogInformation(
-            "Capability probe complete — BluRay={BluRay}, DvdRead={DvdRead}, MissingFilters={FilterCount}, MissingMuxers={MuxerCount}, fpcalc={Fpcalc}, WhisperModel={Whisper}, Tesseract={Tesseract}",
+            "Capability probe complete — BluRay={BluRay}, DvdRead={DvdRead}, MissingFilters={FilterCount}, MissingMuxers={MuxerCount}, fpcalc={Fpcalc}, WhisperModel={Whisper}, StemsplitModel={Stemsplit}, Tesseract={Tesseract}",
             bluRay,
             dvdRead,
             missingFilters.Count,
             missingMuxers.Count,
             fpcalcPresent,
             whisperModelPresent,
+            stemsplitModelPresent,
             tesseractPresent
         );
     }
@@ -167,6 +172,22 @@ public sealed class FfmpegCapabilityProbe(
         }
     }
 
+    private bool ProbeStemsplitModel()
+    {
+        string? modelPath = options.StemsplitModelPath;
+        if (string.IsNullOrWhiteSpace(modelPath))
+            return false;
+
+        try
+        {
+            return storage.Exists(modelPath);
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
     private (bool present, string? directory) ProbeTesseract()
     {
         string? dir = options.TesseractModelsDirectory;
@@ -187,6 +208,7 @@ public sealed class FfmpegCapabilityProbe(
     private static List<EncoderRule> BuildIssues(
         bool fpcalcPresent,
         bool whisperModelPresent,
+        bool stemsplitModelPresent,
         bool tesseractPresent
     )
     {
@@ -211,6 +233,17 @@ public sealed class FfmpegCapabilityProbe(
                     "WhisperModelPath",
                     "Whisper model file is missing or not configured.",
                     "Set EncoderOptions.WhisperModelPath to a valid ggml .bin model file."
+                )
+            );
+
+        if (!stemsplitModelPresent)
+            issues.Add(
+                new(
+                    EncoderRuleId.CapabilityStemsplitMissing,
+                    EncoderRuleSeverity.Warning,
+                    "StemsplitModelPath",
+                    "Stemsplit model file is missing or not configured.",
+                    "Set EncoderOptions.StemsplitModelPath to a valid stemsplit .gguf model file."
                 )
             );
 
