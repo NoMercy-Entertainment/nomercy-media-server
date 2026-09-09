@@ -122,8 +122,7 @@ public class CollectionsController(
             userId,
             id,
             language,
-            country
-        );
+            country, ct);
 
         if (
             collection is not null

@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using NoMercy.Encoder.Hdr;
 using NoMercy.Encoder.PostProcess;
 
 namespace NoMercy.Encoder.Commands;
@@ -21,12 +22,6 @@ namespace NoMercy.Encoder.Commands;
 /// </summary>
 public static class ThumbnailFilterResolver
 {
-    // Mirrors FilterGraphBuilder.AddTonemap's CPU chain so an all-HDR-preserve
-    // ladder (no video branch chain to borrow) still produces SDR sprites.
-    private const string DefaultTonemapChain =
-        "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,"
-        + "tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p";
-
     public static string Resolve(
         int intervalSeconds,
         int width,
@@ -56,7 +51,7 @@ public static class ThumbnailFilterResolver
 
         if (sourceIsHdr)
             filter +=
-                $",{(string.IsNullOrEmpty(tonemapChain) ? DefaultTonemapChain : tonemapChain)}";
+                $",{(string.IsNullOrEmpty(tonemapChain) ? TonemapSelector.CpuTonemapChain : tonemapChain)}";
 
         filter += $",scale={width}:-2,format=yuvj420p";
 
