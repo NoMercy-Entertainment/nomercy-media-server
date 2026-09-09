@@ -564,6 +564,110 @@ public class MusicPlaybackServiceLivenessTests
         }
     }
 
+    // ── WithStateLockAsync (ReportPositionCoreAsync / ReportPositionForItemCommand guard) ──
+    // Before this existed, a position report mutated MusicPlayerState and
+    // broadcast it with no lock at all — the one hub call that took neither
+    // GetUserLock (PlaybackCommand/StartPlaybackCommand) nor this state lock
+    // (StartPlaybackTimer's own 100ms tick). A report landing mid-tick, while
+    // HandleTrackCompletion/UpdateStateBasedOnRepeatMode was partway through
+    // its several sequential field writes, could broadcast a torn combination
+    // of fields from before and after that mutation.
+
+    [Fact]
+    public async Task WithStateLockAsync_SerializesConcurrentCallsForTheSameUser()
+    {
+        (MusicPlaybackService service, _, _, _) = MakeService();
+        Guid userId = Guid.NewGuid();
+
+        TaskCompletionSource<bool> firstEntered = new();
+        TaskCompletionSource<bool> releaseFirst = new();
+        int concurrentCount = 0;
+        bool overlapped = false;
+
+        Task first = service.WithStateLockAsync(
+            userId,
+            async () =>
+            {
+                Interlocked.Increment(ref concurrentCount);
+                firstEntered.SetResult(true);
+                await releaseFirst.Task;
+                Interlocked.Decrement(ref concurrentCount);
+            }
+        );
+
+        await firstEntered.Task;
+
+        Task second = service.WithStateLockAsync(
+            userId,
+            () =>
+            {
+                if (Interlocked.Increment(ref concurrentCount) > 1)
+                    overlapped = true;
+                Interlocked.Decrement(ref concurrentCount);
+                return Task.CompletedTask;
+            }
+        );
+
+        // Give the second call every chance to (wrongly) run while the first
+        // still holds the lock, before releasing it.
+        await Task.Delay(100);
+        releaseFirst.SetResult(true);
+
+        await Task.WhenAll(first, second);
+
+        overlapped
+            .Should()
+            .BeFalse(
+                "a position report and the playback timer's own tick must never mutate MusicPlayerState at the same time"
+            );
+    }
+
+    [Fact]
+    public async Task WithStateLockAsync_SerializesAgainstTheRealPlaybackTimersOwnTick()
+    {
+        // End-to-end version of the test above: proves the SAME lock instance
+        // StartPlaybackTimer's real Timer callback acquires (via GetStateLock)
+        // is the one WithStateLockAsync acquires too, not two different locks
+        // that happen to share a name. A report call blocked here for the
+        // whole delay would mean the two paths are sharing state without
+        // sharing a lock — exactly the bug this closes.
+        (
+            MusicPlaybackService service,
+            MusicPlayerStateManager stateManager,
+            MusicActiveDeviceRegistry registry,
+            _
+        ) = MakeService();
+
+        Guid userId = Guid.NewGuid();
+        User user = new() { Id = userId, Name = "Test User" };
+        registry.Set(userId, new() { DeviceId = "device-a", Type = "web" });
+
+        MusicPlayerState state = MakePlayingState("device-a", DateTime.UtcNow);
+        state.CurrentItem = MakeTrack();
+        stateManager.UpdateState(userId, state);
+
+        try
+        {
+            service.StartPlaybackTimer(user);
+
+            bool ranUnderLock = false;
+            await service.WithStateLockAsync(
+                userId,
+                () =>
+                {
+                    ranUnderLock = true;
+                    return Task.CompletedTask;
+                }
+            );
+
+            ranUnderLock.Should().BeTrue();
+        }
+        finally
+        {
+            service.RemoveTimer(userId);
+        }
+    }
+
     [Fact]
     public async Task StartPlaybackTimer_EndsSession_OnceInFlightFlagClears_IfStillStale()
     {

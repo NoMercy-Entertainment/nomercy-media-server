@@ -107,6 +107,36 @@ public class MusicPlaybackService
         return _stateLocks.GetOrAdd(userId, _ => new(1, 1));
     }
 
+    /// <summary>
+    /// Runs <paramref name="action"/> under the same per-user lock
+    /// <see cref="StartPlaybackTimer"/>'s own 100ms tick already takes before it
+    /// touches <see cref="MusicPlayerState"/>. Every hub method that mutates that
+    /// state took SOME lock before this existed — <c>PlaybackCommand</c> and
+    /// <c>StartPlaybackCommand</c> via <c>GetUserLock</c>, the tick via this one
+    /// — except <c>ReportPositionCoreAsync</c>/<c>ReportPositionForItemCommand</c>,
+    /// which took neither. A position report landing while the tick is mid
+    /// <see cref="HandleTrackCompletion"/>/<see cref="UpdateStateBasedOnRepeatMode"/>
+    /// (several sequential field writes — CurrentItem, Playlist, Backlog, Time,
+    /// PlayState — none of them one atomic step together) raced
+    /// <see cref="MusicPlayerState.CloneForBroadcast"/> against a half-written
+    /// state and could broadcast a torn combination: a PlayState from before the
+    /// tick's mutation next to a CurrentItem from after it, or vice versa. Both
+    /// callers now route their read-mutate-broadcast through here.
+    /// </summary>
+    internal async Task WithStateLockAsync(Guid userId, Func<Task> action)
+    {
+        SemaphoreSlim stateLock = GetStateLock(userId);
+        await stateLock.WaitAsync();
+        try
+        {
+            await action();
+        }
+        finally
+        {
+            stateLock.Release();
+        }
+    }
+
     internal void StartPlaybackTimer(User user)
     {
         if (_timers.TryGetValue(user.Id, out Timer? existingTimer))

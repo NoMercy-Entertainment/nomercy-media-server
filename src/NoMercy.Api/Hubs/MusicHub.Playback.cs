@@ -615,32 +615,42 @@ public partial class MusicHub
         if (positionMs is null)
             return;
 
-        if (!_musicPlayerStateManager.TryGetValue(user.Id, out MusicPlayerState? playerState))
-        {
-            await _musicPlaybackService.UpdatePlaybackState(user, playerState);
-            return;
-        }
+        // See MusicPlaybackService.WithStateLockAsync's own doc: this used to
+        // mutate MusicPlayerState and broadcast it with no lock at all, the one
+        // hub call in this file that didn't, racing StartPlaybackTimer's own
+        // tick for the same object.
+        await _musicPlaybackService.WithStateLockAsync(
+            user.Id,
+            async () =>
+            {
+                if (!_musicPlayerStateManager.TryGetValue(user.Id, out MusicPlayerState? playerState))
+                {
+                    await _musicPlaybackService.UpdatePlaybackState(user, playerState);
+                    return;
+                }
 
-        ConnectedClients.Clients.TryGetValue(Context.ConnectionId, out Client? caller);
+                ConnectedClients.Clients.TryGetValue(Context.ConnectionId, out Client? caller);
 
-        // Liveness first, ahead of the ignore-window gate below: a report from the
-        // ACTIVE device that is about to be dropped for landing inside the ignore
-        // window still proves the device is alive right now. Only the device the
-        // server considers active may prove the session is genuinely still playing
-        // somewhere or move the authoritative position — a stray/passive report
-        // must never mask a truly-dead active device from MusicPlaybackService's
-        // staleness sweep, and must never snap everyone else's playback back to a
-        // passive mirror's own (possibly paused, torn down, or drifted) position. A
-        // passive report is a complete no-op for both liveness and position.
-        if (!MusicPlaybackService.TryRefreshHeartbeat(playerState, caller?.DeviceId))
-            return;
+                // Liveness first, ahead of the ignore-window gate below: a report from the
+                // ACTIVE device that is about to be dropped for landing inside the ignore
+                // window still proves the device is alive right now. Only the device the
+                // server considers active may prove the session is genuinely still playing
+                // somewhere or move the authoritative position — a stray/passive report
+                // must never mask a truly-dead active device from MusicPlaybackService's
+                // staleness sweep, and must never snap everyone else's playback back to a
+                // passive mirror's own (possibly paused, torn down, or drifted) position. A
+                // passive report is a complete no-op for both liveness and position.
+                if (!MusicPlaybackService.TryRefreshHeartbeat(playerState, caller?.DeviceId))
+                    return;
 
-        if (DateTime.UtcNow < playerState.IgnoreCurrentTimeUntil)
-            return;
+                if (DateTime.UtcNow < playerState.IgnoreCurrentTimeUntil)
+                    return;
 
-        playerState.SetPosition(positionMs.Value, capturedAtMs ?? 0);
+                playerState.SetPosition(positionMs.Value, capturedAtMs ?? 0);
 
-        await _musicPlaybackService.UpdatePlaybackState(user, playerState);
+                await _musicPlaybackService.UpdatePlaybackState(user, playerState);
+            }
+        );
     }
 
     /// <summary>
@@ -692,34 +702,43 @@ public partial class MusicHub
         if (positionMs is null)
             return;
 
-        if (!_musicPlayerStateManager.TryGetValue(user.Id, out MusicPlayerState? playerState))
-        {
-            await _musicPlaybackService.UpdatePlaybackState(user, playerState);
-            return;
-        }
+        // See MusicPlaybackService.WithStateLockAsync's own doc: this is the
+        // item-tagged twin of ReportPositionCoreAsync and shares the same fix —
+        // the same per-user lock StartPlaybackTimer's own tick takes.
+        await _musicPlaybackService.WithStateLockAsync(
+            user.Id,
+            async () =>
+            {
+                if (!_musicPlayerStateManager.TryGetValue(user.Id, out MusicPlayerState? playerState))
+                {
+                    await _musicPlaybackService.UpdatePlaybackState(user, playerState);
+                    return;
+                }
 
-        ConnectedClients.Clients.TryGetValue(Context.ConnectionId, out Client? caller);
+                ConnectedClients.Clients.TryGetValue(Context.ConnectionId, out Client? caller);
 
-        // Liveness first, ahead of both drop gates below: a report from the ACTIVE
-        // device that is about to be rejected as stale-item or as landing inside
-        // the ignore window still proves the device is alive right now. Only the
-        // device the server considers active may prove the session is genuinely
-        // still playing somewhere or move the authoritative position — a
-        // stray/passive report must never mask a truly-dead active device from
-        // MusicPlaybackService's staleness sweep. A passive report is a complete
-        // no-op for both liveness and position.
-        if (!MusicPlaybackService.TryRefreshHeartbeat(playerState, caller?.DeviceId))
-            return;
+                // Liveness first, ahead of both drop gates below: a report from the ACTIVE
+                // device that is about to be rejected as stale-item or as landing inside
+                // the ignore window still proves the device is alive right now. Only the
+                // device the server considers active may prove the session is genuinely
+                // still playing somewhere or move the authoritative position — a
+                // stray/passive report must never mask a truly-dead active device from
+                // MusicPlaybackService's staleness sweep. A passive report is a complete
+                // no-op for both liveness and position.
+                if (!MusicPlaybackService.TryRefreshHeartbeat(playerState, caller?.DeviceId))
+                    return;
 
-        if (!MusicPlaybackService.IsReportForCurrentItem(playerState, itemId))
-            return;
+                if (!MusicPlaybackService.IsReportForCurrentItem(playerState, itemId))
+                    return;
 
-        if (DateTime.UtcNow < playerState.IgnoreCurrentTimeUntil)
-            return;
+                if (DateTime.UtcNow < playerState.IgnoreCurrentTimeUntil)
+                    return;
 
-        playerState.SetPosition((int)positionMs.Value);
+                playerState.SetPosition((int)positionMs.Value);
 
-        await _musicPlaybackService.UpdatePlaybackState(user, playerState);
+                await _musicPlaybackService.UpdatePlaybackState(user, playerState);
+            }
+        );
     }
 
     public long GetServerTime()
