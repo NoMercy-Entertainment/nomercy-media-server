@@ -99,6 +99,21 @@ public class MovieManagerTests
         Assert.Equal(_movieAppends.Title, capturedMovie.Title);
     }
 
+    // Closes the gap the other tests here leave open: they only assert
+    // Add() was called with It.IsAny<bool>(), which would still pass if
+    // MovieManager wired the flag backwards. _library has no
+    // FolderLibraries, so ResolveFolder finds nothing - Add must be called
+    // with folderDateIsReal literally false, not just "some bool".
+    [Fact]
+    public async Task AddMovieAsync_NoFolderConfigured_CallsAddWithFolderDateIsRealFalse()
+    {
+        _movieClientMock.Setup(client => client.WithAllAppends(false)).ReturnsAsync(_movieAppends);
+
+        await _movieManager.Add(_movieId, _library);
+
+        _movieRepositoryMock.Verify(repo => repo.Add(It.IsAny<Movie>(), false), Times.Once);
+    }
+
     [Fact]
     public async Task UpdateMovieAsync_ShouldRefreshMovieViaUpsert()
     {
