@@ -22,6 +22,7 @@ using NoMercy.MediaProcessing.Common;
 using NoMercy.MediaProcessing.Jobs;
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
 using NoMercy.NmSystem;
+using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Extensions;
 using NoMercy.Providers.TMDB.Client;
 using NoMercy.Providers.TMDB.Models.Networks;
@@ -61,13 +62,21 @@ public class ShowManager(
         string baseUrl = BaseUrl(showAppends.Name, showAppends.FirstAirDate);
         string? mediaType = await mediaTypeClassifier.ClassifyAsync(showAppends);
 
-        // A null verdict is "don't know" (the lookup failed), never "confirmed tv" —
-        // keep the library the folder scan already resolved rather than reclassify
-        // on an inconclusive answer.
-        if (mediaType is not null && library.Type != mediaType)
+        // The classifier may only PROMOTE a show into the anime library, on a
+        // positive "anime" verdict. It must never evict a show from the
+        // library its folder was scanned into: a "tv" (or null) verdict is
+        // just "not proven anime by AniList/Jikan title matching", not a
+        // confirmed genre, and a title-match miss must never outrank the
+        // folder itself - the folder is what the owner put it under. Without
+        // this restriction, a show scanned into a dedicated anime library
+        // whose title happens to miss AniList/Jikan matching gets kicked out
+        // to the tv library on every scan, fighting the anime-enrichment
+        // backfill that keeps trying to move it back.
+        if (ShouldPromoteToAnimeLibrary(library.Type, mediaType))
         {
-            Library? resolvedLibrary = await showRepository.GetLibraryByTypeAsync(mediaType);
-            resolvedLibrary ??= await showRepository.GetLibraryByTypeAsync("tv");
+            Library? resolvedLibrary = await showRepository.GetLibraryByTypeAsync(
+                MediaTypes.AnimeMediaType
+            );
 
             if (resolvedLibrary is not null)
             {
@@ -80,8 +89,8 @@ public class ShowManager(
             else
             {
                 logger.LogWarning(
-                    "Show {Id}: Classified as {MediaType} but no matching library exists (and no fallback \"tv\" library either); keeping original Library {Title}",
-                    [id, mediaType, library.Title]
+                    "Show {Id}: Classified as anime but no anime library exists; keeping original Library {Title}",
+                    [id, library.Title]
                 );
             }
         }
@@ -191,6 +200,14 @@ public class ShowManager(
 
         return showAppends;
     }
+
+    // Pure decision, split out so the "never evict from the scanned library"
+    // invariant is unit-testable without standing up TMDB/storage mocks for
+    // the rest of AddShowAsync.
+    internal static bool ShouldPromoteToAnimeLibrary(
+        string scannedLibraryType,
+        string? mediaType
+    ) => mediaType == MediaTypes.AnimeMediaType && scannedLibraryType != MediaTypes.AnimeMediaType;
 
     public Task UpdateShowAsync(int id, Library library)
     {
