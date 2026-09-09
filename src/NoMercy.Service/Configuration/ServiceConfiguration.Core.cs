@@ -677,6 +677,10 @@ public static partial class ServiceConfiguration
         services.AddHostedService<EncodingNotificationSubscriber>();
         services.AddHostedService<AutoEncodeSubscriber>();
         services.AddHostedService<IntroDetectionSubscriber>();
+        // Analysis is part of every music import and rescan, not a switch a
+        // user has to find. Same shape as AutoEncodeSubscriber above: a hosted
+        // service that subscribes on start and unsubscribes on stop.
+        services.AddHostedService<Subscribers.AudioAnalysisSubscriber>();
         services.AddHostedService<PaletteBackfillStartupService>();
         services.AddHostedService<AnimeEnrichmentBackfillStartupService>();
         services.AddHostedService<MusicQueryWarmupService>();
