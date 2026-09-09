@@ -18,14 +18,23 @@ using NoMercy.MediaProcessing.AudioAnalysis;
 namespace NoMercy.Service.Subscribers;
 
 /// <summary>
-/// Queues audio analysis for a music library the moment its scan finishes, so
-/// analysis is part of every import and rescan rather than something a user has
-/// to go and find.
+/// The middle of the three layers that keep a music library analysed: the one
+/// that covers the tracks a scan did not create.
+/// <para>
+/// The import queues each track it stores
+/// (<see cref="NoMercy.MediaProcessing.AudioAnalysis.AudioAnalysisDispatch" />),
+/// and that is what reaches a brand-new library — this hook cannot, because a
+/// music scan dispatches the import jobs and then announces itself, so no
+/// <c>Track</c> row exists yet when it runs. What it does reach is everything
+/// that was already there: a rescan that stored nothing new, a library whose
+/// owner has only just turned the setting on, an analyzer version bump. The
+/// hourly <see cref="Jobs.AudioAnalysisSweepCronJob" /> is the safety net under
+/// both.
+/// </para>
 /// <para>
 /// Only the trigger lives here. Which tracks still need a verdict is
-/// <see cref="IAudioAnalysisScheduler" />'s question, and the hourly
-/// <see cref="Jobs.AudioAnalysisSweepCronJob" /> asks the same one for the
-/// library a user already had.
+/// <see cref="IAudioAnalysisScheduler" />'s question, and every layer asks it
+/// the same way.
 /// </para>
 /// <para>
 /// The opt-out is <c>Library.AnalyzeAudio</c>, which is on by default for music

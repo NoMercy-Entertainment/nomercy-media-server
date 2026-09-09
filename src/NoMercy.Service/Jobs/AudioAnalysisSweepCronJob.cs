@@ -18,14 +18,18 @@ using NoMercyQueue.Core.Interfaces;
 namespace NoMercy.Service.Jobs;
 
 /// <summary>
-/// The safety net under the import hook: every hour it re-asks which tracks
-/// still lack a current verdict, across every music library that wants one.
+/// The last of the three layers that keep a music library analysed, and the
+/// only one that runs unprompted: every hour it re-asks which tracks still lack
+/// a current verdict, across every music library that wants one.
 /// <para>
-/// Analysis is queued when a library scan finishes, but the sweep still earns
-/// its place — it covers the library a user already had at the moment they
-/// turn the setting on, and it re-covers everything when the analyzer version
-/// changes. That is the same question the scan hook asks, so both ask it
-/// through <see cref="IAudioAnalysisScheduler" />.
+/// The import queues each track it stores
+/// (<see cref="NoMercy.MediaProcessing.AudioAnalysis.AudioAnalysisDispatch" />)
+/// and <see cref="Subscribers.AudioAnalysisSubscriber" /> queues the tracks that
+/// were already there when a scan finished. The sweep is what catches whatever
+/// those two missed — a queue that was drained before a worker got to a job, a
+/// library whose owner turned the setting on without rescanning, an analyzer
+/// version bump. It is the same question all three ask, through
+/// <see cref="IAudioAnalysisScheduler" />.
 /// </para>
 /// </summary>
 public class AudioAnalysisSweepCronJob : ICronJobExecutor

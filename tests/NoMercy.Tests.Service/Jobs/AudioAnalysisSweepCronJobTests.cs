@@ -143,6 +143,10 @@ public class AudioAnalysisSweepCronJobTests : IDisposable
         (AudioAnalysisSweepCronJob job, List<Ulid> scheduled) = CreateSweep();
         await job.ExecuteAsync(string.Empty);
 
-        Assert.Equal<Ulid>([first, second], scheduled.Order().ToList());
+        // Both sides sorted. Two ULIDs minted in the same millisecond differ
+        // only in their random tail, so the order they were created in is not
+        // the order they sort in, and comparing a seed-ordered list against a
+        // sorted one passes or fails by luck.
+        Assert.Equal(new List<Ulid> { first, second }.Order(), scheduled.Order());
     }
 }
