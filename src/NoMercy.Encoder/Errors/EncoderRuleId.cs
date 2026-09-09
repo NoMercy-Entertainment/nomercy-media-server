@@ -110,6 +110,7 @@ public static class EncoderRuleId
     // ---- Capabilities ----------------------------------------------------
     public const string CapabilityFpcalcMissing = "capability.fpcalc_missing";
     public const string CapabilityWhisperMissing = "capability.whisper_missing";
+    public const string CapabilityStemsplitMissing = "capability.stemsplit_missing";
     public const string CapabilityTesseractModelMissing = "capability.tesseract_model_missing";
 
     // ---- Disc ------------------------------------------------------------

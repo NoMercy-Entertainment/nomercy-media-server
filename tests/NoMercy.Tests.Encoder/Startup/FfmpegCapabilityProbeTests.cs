@@ -205,6 +205,56 @@ public class FfmpegCapabilityProbeTests
     }
 
     // -------------------------------------------------------------------------
+    // Stemsplit model
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task ProbeAsync_emits_CapabilityStemsplitMissing_rule_when_model_absent()
+    {
+        Mock<IFfmpegCapabilities> caps = CapsWithProtocol(false, false);
+        Mock<IProcessRunner> runner = new();
+        Mock<IStorage> storage = new();
+        SetupMuxerOutput(runner, AllMuxersOutput());
+        SetupFpcalc(runner, 0);
+
+        EncoderOptions options = new() { StemsplitModelPath = "/models/spleeter-2stems-f16.gguf" };
+        storage.Setup(s => s.Exists("/models/spleeter-2stems-f16.gguf")).Returns(false);
+        storage
+            .Setup(s => s.Exists(It.Is<string>(p => p != "/models/spleeter-2stems-f16.gguf")))
+            .Returns(false);
+
+        FfmpegCapabilityProbe probe = BuildProbe(caps, runner, storage, options);
+        await probe.ProbeAsync();
+
+        CapabilityReport report = probe.GetCachedReport()!;
+        report.StemsplitModelPresent.Should().BeFalse();
+        report.Issues.Should().Contain(r => r.Id == EncoderRuleId.CapabilityStemsplitMissing);
+    }
+
+    [Fact]
+    public async Task ProbeAsync_returns_StemsplitModelPresent_true_when_model_exists()
+    {
+        Mock<IFfmpegCapabilities> caps = CapsWithProtocol(false, false);
+        Mock<IProcessRunner> runner = new();
+        Mock<IStorage> storage = new();
+        SetupMuxerOutput(runner, AllMuxersOutput());
+        SetupFpcalc(runner, 0);
+
+        EncoderOptions options = new() { StemsplitModelPath = "/models/spleeter-2stems-f16.gguf" };
+        storage.Setup(s => s.Exists("/models/spleeter-2stems-f16.gguf")).Returns(true);
+        storage
+            .Setup(s => s.Exists(It.Is<string>(p => p != "/models/spleeter-2stems-f16.gguf")))
+            .Returns(false);
+
+        FfmpegCapabilityProbe probe = BuildProbe(caps, runner, storage, options);
+        await probe.ProbeAsync();
+
+        CapabilityReport report = probe.GetCachedReport()!;
+        report.StemsplitModelPresent.Should().BeTrue();
+        report.Issues.Should().NotContain(r => r.Id == EncoderRuleId.CapabilityStemsplitMissing);
+    }
+
+    // -------------------------------------------------------------------------
     // Tesseract traineddata
     // -------------------------------------------------------------------------
 

@@ -59,6 +59,8 @@ public static class EncoderRuntimeErrorId
 
     public const string CapabilityWhisperMissing = EncoderRuleId.CapabilityWhisperMissing;
 
+    public const string CapabilityStemsplitMissing = EncoderRuleId.CapabilityStemsplitMissing;
+
     public const string CapabilityTesseractModelMissing =
         EncoderRuleId.CapabilityTesseractModelMissing;
 

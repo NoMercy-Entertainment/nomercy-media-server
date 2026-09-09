@@ -133,7 +133,7 @@ public class EncoderHardwareController(
     /// <summary>
     /// Returns the cached FFmpeg capability report: protocol support (BluRay,
     /// DVD), available encoders, missing filters and muxers, and optional-tool
-    /// presence (fpcalc, Whisper model, Tesseract eng.traineddata).
+    /// presence (fpcalc, Whisper model, stemsplit model, Tesseract eng.traineddata).
     /// Returns <c>probe_pending</c> if the background probe has not yet completed.
     /// </summary>
     [HttpGet("/api/v{version:apiVersion}/encoder/capabilities")]

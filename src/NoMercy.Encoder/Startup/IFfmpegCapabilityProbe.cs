@@ -15,7 +15,8 @@ namespace NoMercy.Encoder.Startup;
 
 /// <summary>
 /// Probes for optional runtime dependencies (fpcalc, whisper.cpp model,
-/// Tesseract traineddata) and validates that the installed FFmpeg build
+/// stemsplit GGUF model, Tesseract traineddata) and validates that the
+/// installed FFmpeg build
 /// contains the filters, protocols, and muxers the server relies on.
 /// Results are cached after the first probe and returned via
 /// <see cref="GetCachedReport"/>. The probe itself runs deferred — never
@@ -44,6 +45,7 @@ public sealed record CapabilityReport(
     IReadOnlyList<string> MissingMuxers,
     bool FpcalcPresent,
     bool WhisperModelPresent,
+    bool StemsplitModelPresent,
     bool TesseractEngTraineddataPresent,
     string? TesseractModelsDirectory,
     IReadOnlyList<EncoderRule> Issues
