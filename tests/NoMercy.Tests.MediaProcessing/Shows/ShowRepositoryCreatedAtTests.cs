@@ -41,6 +41,15 @@ public sealed class ShowRepositoryCreatedAtTests : IDisposable
         DateTimeKind.Utc
     );
     private static readonly DateTime NewRealCreatedAt = new(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+    private static readonly DateTime UnrelatedRowCreatedAt = new(
+        2021,
+        6,
+        15,
+        0,
+        0,
+        0,
+        DateTimeKind.Utc
+    );
 
     private readonly SqliteConnection _connection;
     private readonly DbContextOptions<MediaContext> _options;
@@ -71,15 +80,30 @@ public sealed class ShowRepositoryCreatedAtTests : IDisposable
                 LibraryId = _library.Id,
             }
         );
+        // A second, unrelated row - never touched by any AddAsync call in
+        // these tests. Its CreatedAt discriminates a Where(Id==) that quietly
+        // broadened to "every row" from one that correctly targets only the
+        // row being rescanned; a bare count/no-exception check would miss
+        // that class of bug entirely.
+        seed.Tvs.Add(
+            new()
+            {
+                Id = 99,
+                Title = "Unrelated Show",
+                LibraryId = _library.Id,
+            }
+        );
         seed.SaveChanges();
 
         // CreatedAt is [DatabaseGenerated(Computed)] (backed by SQLite's
         // CURRENT_TIMESTAMP default), so a plain Add+SaveChanges above cannot
-        // set it - the row was just born with "now". Stamp the fixture's
-        // intended original date the same way production does: a bulk
+        // set it - the rows were just born with "now". Stamp the fixture's
+        // intended original dates the same way production does: a bulk
         // ExecuteUpdate, which bypasses the Computed-column restriction.
         seed.Tvs.Where(t => t.Id == 1)
             .ExecuteUpdate(s => s.SetProperty(t => t.CreatedAt, OriginalCreatedAt));
+        seed.Tvs.Where(t => t.Id == 99)
+            .ExecuteUpdate(s => s.SetProperty(t => t.CreatedAt, UnrelatedRowCreatedAt));
     }
 
     public void Dispose() => _connection.Dispose();
@@ -108,6 +132,9 @@ public sealed class ShowRepositoryCreatedAtTests : IDisposable
         Tv? stored = await verify.Tvs.FindAsync(1);
         stored.Should().NotBeNull();
         stored!.CreatedAt.Should().Be(OriginalCreatedAt);
+
+        Tv? unrelated = await verify.Tvs.FindAsync(99);
+        unrelated!.CreatedAt.Should().Be(UnrelatedRowCreatedAt);
     }
 
     // The counterpart: when the folder genuinely was found this pass, the
@@ -133,6 +160,11 @@ public sealed class ShowRepositoryCreatedAtTests : IDisposable
         Tv? stored = await verify.Tvs.FindAsync(1);
         stored.Should().NotBeNull();
         stored!.CreatedAt.Should().Be(NewRealCreatedAt);
+
+        // Discriminates a Where(Id==) that quietly matched every row from
+        // one that correctly scoped to the row being rescanned.
+        Tv? unrelated = await verify.Tvs.FindAsync(99);
+        unrelated!.CreatedAt.Should().Be(UnrelatedRowCreatedAt);
     }
 
     // A brand new row has no prior value to protect. CreatedAt is a
