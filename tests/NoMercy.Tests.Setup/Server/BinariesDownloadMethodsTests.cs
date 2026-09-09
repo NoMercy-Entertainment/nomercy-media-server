@@ -739,6 +739,115 @@ public sealed class BinariesDownloadMethodsTests : IDisposable
     }
 
     // -------------------------------------------------------------------------
+    // DownloadStemsplitModel — single-asset, mirrors DownloadWhisperModels'
+    // single-asset branch (no multi-part concatenation for this model).
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task DownloadStemsplitModel_NoAssetsInRelease_DoesNotThrow()
+    {
+        FakeHttpHandler handler = new();
+        handler.RegisterReleaseInfo(
+            "https://api.github.com/repos/NoMercy-Entertainment/nomercy-stemsplit-models/releases/latest",
+            ReleaseWithAssets()
+        );
+
+        Binaries binaries = BuildBinaries(handler);
+        await binaries.DownloadStemsplitModel("spleeter-2stems-f16");
+
+        string destination = Path.Combine(AppFiles.FfmpegFolder, "spleeter-2stems-f16.gguf");
+        Assert.False(File.Exists(destination));
+    }
+
+    [Fact]
+    public async Task DownloadStemsplitModel_AssetPresent_MovesToFfmpegFolderAndStampsCreatedAttribute()
+    {
+        byte[] payload = [.. "stemsplit-model-bytes"u8];
+        string assetUrl = "https://example.com/spleeter-2stems-f16.gguf";
+        DateTimeOffset publishedAt = DateTimeOffset.UtcNow.AddDays(-3);
+
+        FakeHttpHandler handler = new();
+        handler.Register(assetUrl, payload);
+        handler.RegisterReleaseInfo(
+            "https://api.github.com/repos/NoMercy-Entertainment/nomercy-stemsplit-models/releases/latest",
+            ReleaseWithAssets(
+                publishedAt,
+                "v1.0.0",
+                MakeAsset("spleeter-2stems-f16.gguf", assetUrl, payload)
+            )
+        );
+
+        Binaries binaries = BuildBinaries(handler);
+        await binaries.DownloadStemsplitModel("spleeter-2stems-f16");
+
+        string destination = Path.Combine(AppFiles.FfmpegFolder, "spleeter-2stems-f16.gguf");
+        Assert.True(File.Exists(destination));
+        Assert.Equal(payload, await File.ReadAllBytesAsync(destination));
+        Assert.False(
+            File.Exists(Path.Combine(AppFiles.DependenciesPath, "spleeter-2stems-f16.gguf")),
+            "the staging download must be moved, not left behind, at DependenciesPath"
+        );
+
+        // Re-running against the SAME release must now see the model as already
+        // current — CheckLocalVersion reads the CreatedAttribute stamp this branch
+        // must apply.
+        bool alreadyCurrent = binaries.CheckLocalVersion(
+            ReleaseWithAssets(
+                publishedAt,
+                "v1.0.0",
+                MakeAsset("spleeter-2stems-f16.gguf", assetUrl, payload)
+            ),
+            destination,
+            out string _
+        );
+        Assert.True(alreadyCurrent, "DownloadStemsplitModel must stamp CreatedAttribute");
+    }
+
+    [Fact]
+    public async Task DownloadStemsplitModel_NoMatchingAsset_WarnsAndReturnsWithoutThrowing()
+    {
+        FakeHttpHandler handler = new();
+        handler.RegisterReleaseInfo(
+            "https://api.github.com/repos/NoMercy-Entertainment/nomercy-stemsplit-models/releases/latest",
+            ReleaseWithAssets(MakeAsset("unrelated-file.gguf", "https://example.com/unrelated"))
+        );
+
+        Binaries binaries = BuildBinaries(handler);
+        await binaries.DownloadStemsplitModel("spleeter-2stems-f16");
+
+        string destination = Path.Combine(AppFiles.FfmpegFolder, "spleeter-2stems-f16.gguf");
+        Assert.False(File.Exists(destination));
+    }
+
+    [Fact]
+    public async Task DownloadStemsplitModel_AlreadyCurrentVersion_SkipsDownload()
+    {
+        Directory.CreateDirectory(AppFiles.FfmpegFolder);
+        string destination = Path.Combine(AppFiles.FfmpegFolder, "spleeter-2stems-f16.gguf");
+        await File.WriteAllTextAsync(destination, "existing-stemsplit-model");
+        // CheckLocalVersion compares file LastModified against the release's PublishedAt —
+        // touch the file to a time after the release so it reads as already current.
+        File.SetLastWriteTimeUtc(destination, DateTime.UtcNow);
+
+        FakeHttpHandler handler = new();
+        handler.RegisterReleaseInfo(
+            "https://api.github.com/repos/NoMercy-Entertainment/nomercy-stemsplit-models/releases/latest",
+            ReleaseWithAssets(
+                DateTimeOffset.UtcNow.AddDays(-10),
+                "v1.0.0",
+                MakeAsset("spleeter-2stems-f16.gguf", "https://example.com/should-not-be-fetched")
+            )
+        );
+
+        Binaries binaries = BuildBinaries(handler);
+        string originalContent = await File.ReadAllTextAsync(destination);
+
+        await binaries.DownloadStemsplitModel("spleeter-2stems-f16");
+
+        Assert.Equal(originalContent, await File.ReadAllTextAsync(destination));
+    }
+
+    // -------------------------------------------------------------------------
     // DownloadTesseractData — per-language loop
     // -------------------------------------------------------------------------
 
@@ -773,6 +882,18 @@ public sealed class BinariesDownloadMethodsTests : IDisposable
         await binaries.DownloadTesseractData(["eng"]);
 
         Assert.False(File.Exists(Path.Combine(AppFiles.TesseractModelsFolder, "eng.traineddata")));
+    }
+
+    // -------------------------------------------------------------------------
+    // AppFiles.StemsplitModelPath — shape only, mirrors AppFiles.WhisperModelPath
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public void AppFiles_StemsplitModelPath_PointsAtFfmpegFolderWithGgufExtension()
+    {
+        string expected = Path.Combine(AppFiles.FfmpegFolder, AppFiles.StemsplitModel + ".gguf");
+        Assert.Equal(expected, AppFiles.StemsplitModelPath);
+        Assert.Equal("spleeter-2stems-f16", AppFiles.StemsplitModel);
     }
 
     // -------------------------------------------------------------------------
@@ -960,6 +1081,7 @@ public sealed class BinariesDownloadMethodsTests : IDisposable
                 "https://api.github.com/repos/NoMercy-Entertainment/nomercy-ffmpeg/releases/latest",
                 "https://api.github.com/repos/NoMercy-Entertainment/nomercy-tesseract/releases/latest",
                 "https://api.github.com/repos/NoMercy-Entertainment/nomercy-whisper-models/releases/latest",
+                "https://api.github.com/repos/NoMercy-Entertainment/nomercy-stemsplit-models/releases/latest",
             }
         )
             handler.RegisterReleaseInfo(apiUrl, ReleaseWithAssets());
@@ -1035,6 +1157,10 @@ public sealed class BinariesDownloadMethodsTests : IDisposable
             "https://api.github.com/repos/NoMercy-Entertainment/nomercy-whisper-models/releases/latest",
             ReleaseWithAssets()
         );
+        handler.RegisterReleaseInfo(
+            "https://api.github.com/repos/NoMercy-Entertainment/nomercy-stemsplit-models/releases/latest",
+            ReleaseWithAssets()
+        );
         foreach (
             string listUrl in new[]
             {
@@ -1103,6 +1229,7 @@ public sealed class BinariesDownloadMethodsTests : IDisposable
                 "https://api.github.com/repos/NoMercy-Entertainment/nomercy-ffmpeg/releases/latest",
                 "https://api.github.com/repos/NoMercy-Entertainment/nomercy-tesseract/releases/latest",
                 "https://api.github.com/repos/NoMercy-Entertainment/nomercy-whisper-models/releases/latest",
+                "https://api.github.com/repos/NoMercy-Entertainment/nomercy-stemsplit-models/releases/latest",
             }
         )
             handler.RegisterReleaseInfo(apiUrl, ReleaseWithAssets());

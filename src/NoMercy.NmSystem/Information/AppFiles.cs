@@ -136,6 +136,14 @@ public static class AppFiles
     // libbluray jars — the build output puts everything ffmpeg-runtime there.
     public static string WhisperModelPath => Path.Combine(FfmpegFolder, WhisperModel + ".bin");
 
+    public static string StemsplitModel { get; set; } = "spleeter-2stems-f16";
+
+    // The model ships beside ffmpeg (like the whisper model above) so a relative
+    // file name resolves when ffmpeg runs from FfmpegFolder — the analysis job
+    // passes the stemsplit filter a relative name because a Windows drive-letter
+    // colon in an absolute path splits the filter argument.
+    public static string StemsplitModelPath => Path.Combine(FfmpegFolder, StemsplitModel + ".gguf");
+
     public static string CloudflareDPath =>
         Path.Combine(DependenciesPath, "cloudflared" + Info.ExecSuffix);
 
