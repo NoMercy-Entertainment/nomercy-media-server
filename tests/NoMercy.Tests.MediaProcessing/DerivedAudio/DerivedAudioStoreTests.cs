@@ -203,4 +203,54 @@ public sealed class DerivedAudioStoreTests : IDisposable
         await using MediaContext read = new(_options);
         (await read.DerivedAudio.AsNoTracking().CountAsync()).Should().Be(2);
     }
+
+    [Fact]
+    public async Task PutConcurrently_TheSameContentTwice_IsOneFileAndOneRow()
+    {
+        // The store is a process-wide singleton, so two jobs racing to produce
+        // the same stem/segment share one store instance in practice — both
+        // calls below go through the same store for that reason.
+        byte[] content = Encoding.UTF8.GetBytes("racing content, same bytes twice");
+        string expectedKey = Convert.ToHexStringLower(SHA256.HashData(content));
+        IDerivedAudioStore store = Store();
+
+        Task<DerivedAudioEntry> first = store.PutAsync(new MemoryStream(content), "audio/opus");
+        Task<DerivedAudioEntry> second = store.PutAsync(new MemoryStream(content), "audio/opus");
+        DerivedAudioEntry[] entries = await Task.WhenAll(first, second);
+
+        entries[0].Key.Should().Be(expectedKey);
+        entries[1].Key.Should().Be(expectedKey);
+        await using MediaContext read = new(_options);
+        (await read.DerivedAudio.AsNoTracking().CountAsync()).Should().Be(1);
+        (await store.ExistsAsync(expectedKey)).Should().BeTrue();
+
+        // Neither racer left an orphaned temp file behind.
+        string tempDir = Path.Combine(_root, "tmp");
+        if (Directory.Exists(tempDir))
+        {
+            Directory.GetFiles(tempDir).Should().BeEmpty();
+        }
+    }
+
+    [Fact]
+    public async Task Evict_SweepsStaleTempFiles()
+    {
+        IDerivedAudioStore store = Store();
+        // A crash between the temp write and the move-into-place is the only
+        // thing that should ever leave a file under tmp/ — simulate it by
+        // planting one directly, since PutAsync always cleans up after itself.
+        string tempDir = Path.Combine(_root, "tmp");
+        Directory.CreateDirectory(tempDir);
+        string stalePath = Path.Combine(tempDir, "stale-orphan");
+        string freshPath = Path.Combine(tempDir, "fresh-orphan");
+        await File.WriteAllBytesAsync(stalePath, Encoding.UTF8.GetBytes("orphaned by a crash"));
+        await File.WriteAllBytesAsync(freshPath, Encoding.UTF8.GetBytes("still being written"));
+        File.SetLastWriteTimeUtc(stalePath, DateTime.UtcNow.AddDays(-2));
+        File.SetLastWriteTimeUtc(freshPath, DateTime.UtcNow);
+
+        await store.EvictAsync(capBytes: long.MaxValue, grace: TimeSpan.FromHours(1));
+
+        File.Exists(stalePath).Should().BeFalse();
+        File.Exists(freshPath).Should().BeTrue();
+    }
 }
