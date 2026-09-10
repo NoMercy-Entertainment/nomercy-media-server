@@ -26,13 +26,15 @@ namespace NoMercy.Tests.MediaProcessing.AudioAnalysis;
 public class FfmpegAudioAnalyzerTests
 {
     /// <summary>
-    /// Locked deliberately. Both the order and the single ametadata are
-    /// load-bearing: two instances printing to the same stdout splice each
-    /// other's lines, and the print has to sit ahead of loudnorm, which alters
-    /// the signal and re-frames its output.
+    /// Locked deliberately. The order and the single ametadata are
+    /// load-bearing: aspectralstats re-frames and, downstream of beatdetect,
+    /// dropped the frame carrying <c>final=1</c> on real MP3s; two ametadata
+    /// instances printing to the same stdout splice each other's lines; and
+    /// the print has to sit ahead of loudnorm, which alters the signal and
+    /// re-frames its output.
     /// </summary>
     private const string ExpectedFilterGraph =
-        "beatdetect,keydetect,aspectralstats=measure=centroid,"
+        "aspectralstats=measure=centroid,beatdetect,keydetect,"
         + "ametadata=mode=print:file=-,silencedetect=n=-50dB:d=0.5,"
         + "loudnorm=print_format=json";
 
@@ -121,7 +123,7 @@ public class FfmpegAudioAnalyzerTests
     {
         CreateAnalyzer("v1040-click-128-stdout.txt", "v1040-click-128-stderr.txt")
             .Version.Should()
-            .Be(3);
+            .Be(4);
     }
 
     [Fact]
