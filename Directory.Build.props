@@ -11,7 +11,7 @@
     <PackageProjectUrl>https://nomercy.tv</PackageProjectUrl>
     <RepositoryUrl>https://github.com/NoMercy-Entertainment/nomercy-media-server</RepositoryUrl>
 
-    <Version>0.1.491</Version>
+    <Version>0.1.492</Version>
     <AssemblyVersion>$(Version).0</AssemblyVersion>
     <FileVersion>$(Version).0</FileVersion>
   </PropertyGroup>

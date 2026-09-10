@@ -42,6 +42,13 @@ public class PluginManager : IPluginManager, IDisposable
     // the next start.
     private readonly IPluginAssemblyTracker? _assemblyTracker;
 
+    // A fresh install and a hot-swapped update both reload a plugin directly
+    // here rather than through PluginLifecycleManager.EnablePluginAsync, so
+    // each needs its own call to bring a scheduled-task plugin's cron work
+    // back — otherwise it stays Active with nothing running behind it until
+    // the next full server start.
+    private readonly Action<Ulid>? _registerScheduledWork;
+
     public PluginManager(
         IEventBus eventBus,
         IServiceProvider serviceProvider,
@@ -54,7 +61,8 @@ public class PluginManager : IPluginManager, IDisposable
         IPluginContextFactory? contextFactory = null,
         PluginHostOptions? hostOptions = null,
         IPluginAssemblyTracker? assemblyTracker = null,
-        Action<Ulid>? releaseScheduledWork = null
+        Action<Ulid>? releaseScheduledWork = null,
+        Action<Ulid>? registerScheduledWork = null
     )
     {
         _eventBus = eventBus ?? throw new ArgumentNullException(nameof(eventBus));
@@ -77,6 +85,7 @@ public class PluginManager : IPluginManager, IDisposable
             );
         _registry = new PluginRegistry();
         _assemblyTracker = assemblyTracker;
+        _registerScheduledWork = registerScheduledWork;
 
         // Built here only when DI did not supply one, which is the test and
         // direct-construction path. Its protector is ephemeral, so a secret
@@ -119,7 +128,8 @@ public class PluginManager : IPluginManager, IDisposable
             _loader,
             factory,
             assemblyTracker,
-            releaseScheduledWork
+            releaseScheduledWork,
+            registerScheduledWork
         );
     }
 
@@ -223,6 +233,7 @@ public class PluginManager : IPluginManager, IDisposable
             )
             {
                 await LoadPluginAssemblyAsync(destPath, ct);
+                _registerScheduledWork?.Invoke(pluginId);
                 return;
             }
 
@@ -281,6 +292,7 @@ public class PluginManager : IPluginManager, IDisposable
             if (wasLoaded)
             {
                 await LoadPluginAssemblyAsync(destPath, ct);
+                _registerScheduledWork?.Invoke(pluginId);
             }
 
             return false;
@@ -297,6 +309,7 @@ public class PluginManager : IPluginManager, IDisposable
             if (wasLoaded)
             {
                 await LoadPluginAssemblyAsync(destPath, ct);
+                _registerScheduledWork?.Invoke(pluginId);
             }
 
             throw;
@@ -399,6 +412,8 @@ public class PluginManager : IPluginManager, IDisposable
         ApplyStaged(staging, pluginDir);
 
         await LoadPluginFromManifestAsync(_storage.CombinePath(pluginDir, "plugin.json"), ct);
+
+        _registerScheduledWork?.Invoke(manifest.Id);
     }
 
     /// <summary>
@@ -479,6 +494,7 @@ public class PluginManager : IPluginManager, IDisposable
             if (wasLoaded)
             {
                 await LoadPluginFromManifestAsync(manifestPath, ct);
+                _registerScheduledWork?.Invoke(pluginId);
             }
 
             return false;
@@ -493,6 +509,7 @@ public class PluginManager : IPluginManager, IDisposable
             // reload that ignored it would report the update as applied while
             // showing the owner the old metadata.
             await LoadPluginFromManifestAsync(manifestPath, ct);
+            _registerScheduledWork?.Invoke(pluginId);
 
             return true;
         }
@@ -514,6 +531,7 @@ public class PluginManager : IPluginManager, IDisposable
                 if (wasLoaded)
                 {
                     await LoadPluginFromManifestAsync(manifestPath, ct);
+                    _registerScheduledWork?.Invoke(pluginId);
                 }
             }
 

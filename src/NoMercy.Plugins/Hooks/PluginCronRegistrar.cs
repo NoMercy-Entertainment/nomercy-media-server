@@ -28,32 +28,44 @@ public class PluginCronRegistrar(IPluginManager pluginManager, CronWorker cronWo
         foreach (
             IScheduledTaskPlugin plugin in pluginManager.GetPluginsOfType<IScheduledTaskPlugin>()
         )
+            RegisterOne(plugin);
+    }
+
+    public void RegisterPlugin(Ulid pluginId)
+    {
+        foreach (
+            IScheduledTaskPlugin plugin in pluginManager.GetPluginsOfType<IScheduledTaskPlugin>()
+        )
         {
-            PluginCapabilities? capabilities = pluginManager.GetPluginInfo(plugin.Id)?.Capabilities;
-
-            if (
-                !PluginCapabilityGuard.DeclaresHook(
-                    capabilities,
-                    PluginHookCapability.ScheduledTask
-                )
-            )
+            if (plugin.Id != pluginId)
                 continue;
 
-            // Each declared job on its own schedule, so the server's job list
-            // shows the real work instead of one opaque entry, and an expensive
-            // cycle can be timed and disabled apart from a cheap one. A plugin
-            // that declares none keeps its single expression exactly as before.
-            IReadOnlyList<PluginScheduledJob> jobs = plugin.Jobs;
-
-            if (jobs.Count == 0)
-            {
-                cronWorker.RegisterExecutor(new PluginCronExecutor(plugin));
-                continue;
-            }
-
-            foreach (PluginScheduledJob job in jobs)
-                cronWorker.RegisterExecutor(new PluginCronExecutor(plugin, job));
+            RegisterOne(plugin);
+            return;
         }
+    }
+
+    private void RegisterOne(IScheduledTaskPlugin plugin)
+    {
+        PluginCapabilities? capabilities = pluginManager.GetPluginInfo(plugin.Id)?.Capabilities;
+
+        if (!PluginCapabilityGuard.DeclaresHook(capabilities, PluginHookCapability.ScheduledTask))
+            return;
+
+        // Each declared job on its own schedule, so the server's job list
+        // shows the real work instead of one opaque entry, and an expensive
+        // cycle can be timed and disabled apart from a cheap one. A plugin
+        // that declares none keeps its single expression exactly as before.
+        IReadOnlyList<PluginScheduledJob> jobs = plugin.Jobs;
+
+        if (jobs.Count == 0)
+        {
+            cronWorker.RegisterExecutor(new PluginCronExecutor(plugin));
+            return;
+        }
+
+        foreach (PluginScheduledJob job in jobs)
+            cronWorker.RegisterExecutor(new PluginCronExecutor(plugin, job));
     }
 
     public void UnregisterPlugin(Ulid pluginId)

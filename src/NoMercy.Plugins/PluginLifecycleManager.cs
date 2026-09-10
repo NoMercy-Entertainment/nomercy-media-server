@@ -32,7 +32,8 @@ internal sealed class PluginLifecycleManager(
     PluginLoader loader,
     IPluginContextFactory contextFactory,
     IPluginAssemblyTracker? assemblyTracker = null,
-    Action<Ulid>? releaseScheduledWork = null
+    Action<Ulid>? releaseScheduledWork = null,
+    Action<Ulid>? registerScheduledWork = null
 )
 {
     private readonly IEventBus _eventBus = eventBus;
@@ -45,6 +46,13 @@ internal sealed class PluginLifecycleManager(
     private readonly IPluginContextFactory _contextFactory = contextFactory;
     private readonly IPluginAssemblyTracker? _assemblyTracker = assemblyTracker;
     private readonly Action<Ulid>? _releaseScheduledWork = releaseScheduledWork;
+
+    // Boot registers every scheduled-task plugin's cron executors once, but a
+    // plugin installed, restarted or updated after boot never goes through
+    // that path — without this, it comes back Active and answering its own
+    // REST routes with no cron work happening behind it at all, silently,
+    // until the next full server start.
+    private readonly Action<Ulid>? _registerScheduledWork = registerScheduledWork;
 
     /// <summary>Looks up an installed plugin, or reports it as not installed.</summary>
     private LoadedPlugin RequireLoaded(Ulid pluginId)
@@ -69,6 +77,12 @@ internal sealed class PluginLifecycleManager(
         if (loaded.Instance is null && loaded.Info.AssemblyPath is not null)
         {
             await _loader.LoadPluginAssemblyAsync(loaded.Info.AssemblyPath, ct);
+
+            // No-ops harmlessly if the load malfunctioned: a plugin that isn't
+            // registered as a resident IScheduledTaskPlugin has no jobs this
+            // can find.
+            _registerScheduledWork?.Invoke(pluginId);
+
             return;
         }
 
@@ -102,6 +116,8 @@ internal sealed class PluginLifecycleManager(
                     },
                     ct
                 );
+
+                _registerScheduledWork?.Invoke(pluginId);
             }
             catch (InvalidOperationException)
             {

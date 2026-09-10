@@ -896,4 +896,8 @@
     <Key>Plugin uninstalled successfully</Key>
     <Value lang="nl">Plugin succesvol verwijderd</Value>
   </Entry>
+  <Entry>
+    <Key>Grant given</Key>
+    <Value lang="nl">Toestemming verleend</Value>
+  </Entry>
 </I18N>

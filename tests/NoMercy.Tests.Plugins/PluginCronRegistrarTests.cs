@@ -135,6 +135,69 @@ public class PluginCronRegistrarTests
         await cronWorker.StopAsync(cts.Token);
     }
 
+    [Fact]
+    public async Task RegisterPlugin_DeclaringScheduledTaskHook_RegistersItOnCronWorker()
+    {
+        // The counterpart to RegisterAll for the install/restart/update paths,
+        // which bring a plugin's instance back post-boot without going through
+        // the one call site that registers every plugin at once.
+        FakeScheduledTaskPlugin plugin = new("*/5 * * * *");
+        FakePluginManager manager = FakePluginManager.WithScheduledTask(plugin, declaresHook: true);
+        CronWorker cronWorker = BuildCronWorker();
+        PluginCronRegistrar registrar = new(manager, cronWorker);
+
+        registrar.RegisterPlugin(plugin.Id);
+
+        GetCodeDefinedJobs(cronWorker)
+            .Should()
+            .ContainSingle(job => job.JobType == $"plugin:{plugin.Id}");
+
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
+        await cronWorker.StopAsync(cts.Token);
+    }
+
+    [Fact]
+    public async Task RegisterPlugin_UnknownId_RegistersNothing()
+    {
+        FakeScheduledTaskPlugin plugin = new("*/5 * * * *");
+        FakePluginManager manager = FakePluginManager.WithScheduledTask(plugin, declaresHook: true);
+        CronWorker cronWorker = BuildCronWorker();
+        PluginCronRegistrar registrar = new(manager, cronWorker);
+
+        registrar.RegisterPlugin(Ulid.NewUlid());
+
+        GetCodeDefinedJobs(cronWorker).Should().BeEmpty();
+
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
+        await cronWorker.StopAsync(cts.Token);
+    }
+
+    [Fact]
+    public async Task RegisterPlugin_OnlyRegistersTheNamedPlugin_NotOtherInstalledOnes()
+    {
+        // Two scheduled-task plugins installed; only one was just restarted.
+        // The other must be left exactly as RegisterPlugin found it — untouched,
+        // not newly registered by a call that named a different id.
+        FakeScheduledTaskPlugin restarted = new("*/5 * * * *");
+        FakeScheduledTaskPlugin untouched = new("0 * * * *");
+        FakePluginManager manager = FakePluginManager.WithScheduledTask(
+            restarted,
+            declaresHook: true
+        );
+        manager.Add(untouched, declaresHook: true);
+        CronWorker cronWorker = BuildCronWorker();
+        PluginCronRegistrar registrar = new(manager, cronWorker);
+
+        registrar.RegisterPlugin(restarted.Id);
+
+        List<CronJobModel> jobs = GetCodeDefinedJobs(cronWorker);
+        jobs.Should().ContainSingle(job => job.JobType == $"plugin:{restarted.Id}");
+        jobs.Should().NotContain(job => job.JobType == $"plugin:{untouched.Id}");
+
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
+        await cronWorker.StopAsync(cts.Token);
+    }
+
     private sealed class FakeScheduledTaskPlugin(string cronExpression) : IScheduledTaskPlugin
     {
         public string Name => "fake-scheduled";
@@ -156,6 +219,14 @@ public class PluginCronRegistrarTests
         private readonly Dictionary<Ulid, PluginCapabilities?> _capabilities = [];
 
         public static FakePluginManager Empty() => new();
+
+        public void Add(IScheduledTaskPlugin plugin, bool declaresHook)
+        {
+            _plugins.Add(plugin);
+            _capabilities[plugin.Id] = declaresHook
+                ? new() { Hooks = [PluginHookCapability.ScheduledTask] }
+                : new() { Hooks = [] };
+        }
 
         public static FakePluginManager WithScheduledTask(
             IScheduledTaskPlugin plugin,
