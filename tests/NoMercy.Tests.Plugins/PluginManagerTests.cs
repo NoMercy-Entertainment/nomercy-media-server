@@ -784,6 +784,89 @@ public class PluginManagerTests : IDisposable
         File.ReadAllText(assemblyPath).Should().Be("the only copy left");
     }
 
+    [Fact]
+    public async Task LoadPluginsFromDirectoryAsync_TwoRollbackFolders_EachResolvedByItsOwnName()
+    {
+        // The distinction that would silently collapse if the resolver ever
+        // confused one folder for another (a shared flag, a positional index
+        // instead of a name lookup): two plugins in .rollback at once, one that
+        // must come back and one that must be thrown away, resolved in the
+        // SAME pass. A bug that applied one decision to both would flip one of
+        // these and this would still show only one failure, not neither.
+        string radioRollback = Path.Combine(_tempPluginsDir, PluginManager.RollbackFolder, "Radio");
+        Directory.CreateDirectory(radioRollback);
+        await File.WriteAllTextAsync(
+            Path.Combine(radioRollback, "Radio.dll"),
+            "the only Radio copy left"
+        );
+
+        string weatherInstalled = Path.Combine(_tempPluginsDir, "Weather");
+        Directory.CreateDirectory(weatherInstalled);
+        await File.WriteAllTextAsync(
+            Path.Combine(weatherInstalled, "Weather.dll"),
+            "the Weather version that landed"
+        );
+        string weatherRollback = Path.Combine(
+            _tempPluginsDir,
+            PluginManager.RollbackFolder,
+            "Weather"
+        );
+        Directory.CreateDirectory(weatherRollback);
+        await File.WriteAllTextAsync(
+            Path.Combine(weatherRollback, "Weather.dll"),
+            "the old Weather version"
+        );
+
+        await _manager.LoadPluginsFromDirectoryAsync();
+
+        Directory
+            .Exists(Path.Combine(_tempPluginsDir, "Radio"))
+            .Should()
+            .BeTrue("Radio had no installed copy, so its rollback must come back");
+        Directory
+            .Exists(weatherRollback)
+            .Should()
+            .BeFalse("Weather's update completed, so its rollback is stale");
+        File.ReadAllText(Path.Combine(weatherInstalled, "Weather.dll"))
+            .Should()
+            .Be(
+                "the Weather version that landed",
+                "discarding Weather's rollback must never touch Weather's installed copy"
+            );
+    }
+
+    [Fact]
+    public async Task LoadPluginsFromDirectoryAsync_TwoStaleAssemblyBackups_EachResolvedByItsOwnName()
+    {
+        string radioDir = Path.Combine(_tempPluginsDir, "Radio");
+        Directory.CreateDirectory(radioDir);
+        string radioAssembly = Path.Combine(radioDir, "Radio.dll");
+        string radioBackup = radioAssembly + PluginManager.RollbackSuffix;
+        await File.WriteAllTextAsync(radioBackup, "the only Radio copy left");
+
+        string weatherDir = Path.Combine(_tempPluginsDir, "Weather");
+        Directory.CreateDirectory(weatherDir);
+        string weatherAssembly = Path.Combine(weatherDir, "Weather.dll");
+        await File.WriteAllTextAsync(weatherAssembly, "the Weather version that landed");
+        string weatherBackup = weatherAssembly + PluginManager.RollbackSuffix;
+        await File.WriteAllTextAsync(weatherBackup, "the old Weather version");
+
+        await _manager.LoadPluginsFromDirectoryAsync();
+
+        File.Exists(radioAssembly)
+            .Should()
+            .BeTrue("the Radio backup is the only copy left, so it must come back");
+        File.Exists(weatherBackup)
+            .Should()
+            .BeFalse("Weather's update completed, so its backup is stale");
+        File.ReadAllText(weatherAssembly)
+            .Should()
+            .Be(
+                "the Weather version that landed",
+                "discarding Weather's backup must never touch Weather's assembly"
+            );
+    }
+
     private sealed class MinimalServiceProvider : IServiceProvider
     {
         public object? GetService(Type serviceType) => null;
