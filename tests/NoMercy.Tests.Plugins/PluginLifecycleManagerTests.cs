@@ -356,6 +356,61 @@ public class PluginLifecycleManagerTests : IDisposable
         afterward!.Info.Status.Should().Be(PluginStatus.Active);
     }
 
+    // ── UnloadForUpdateAsync ─────────────────────────────────────────────────
+
+    [Fact]
+    public async Task UnloadForUpdateAsync_ReleasesScheduledWork_WhilePluginStillInRegistry()
+    {
+        // Same failure mode as the uninstall case below, on the hot-update
+        // path: PluginCronRegistrar reads the plugin's Jobs list back out of
+        // the registry to remove its named cron executors by name, and finds
+        // nothing to remove once the registry entry is already gone.
+        Ulid id = Ulid.NewUlid();
+        FakePlugin plugin = new();
+        _registry[id] = new(Info(id, PluginStatus.Active), plugin, null);
+        bool wasStillRegisteredWhenReleased = false;
+
+        PluginLifecycleManager lifecycle = new(
+            _eventBus,
+            new MinimalServiceProvider(),
+            NullLogger.Instance,
+            _tempDir,
+            TestStorageHelper.CreateStorage(_tempDir),
+            _registry,
+            new PluginLoader(
+                _eventBus,
+                new MinimalServiceProvider(),
+                NullLogger.Instance,
+                _tempDir,
+                TestStorageHelper.CreateStorage(_tempDir),
+                _registry,
+                new PluginVerifier(),
+                new PluginConsentService(new InMemoryConsentStore()),
+                TestPluginPlatform.ContextFactory(
+                    _eventBus,
+                    TestStorageHelper.CreateStorage(_tempDir)
+                )
+            ),
+            TestPluginPlatform.ContextFactory(_eventBus, TestStorageHelper.CreateStorage(_tempDir)),
+            releaseScheduledWork: releasedId =>
+                wasStillRegisteredWhenReleased = _registry.TryGetValue(releasedId, out _)
+        );
+
+        bool result = await lifecycle.UnloadForUpdateAsync(id);
+
+        result.Should().BeTrue();
+        wasStillRegisteredWhenReleased.Should().BeTrue();
+        _registry.TryGetValue(id, out _).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task UnloadForUpdateAsync_UnknownId_ReturnsFalse()
+    {
+        bool result = await _lifecycle.UnloadForUpdateAsync(Ulid.NewUlid());
+
+        result.Should().BeFalse();
+    }
+
     // ── UninstallPluginAsync ─────────────────────────────────────────────────
 
     [Fact]
@@ -377,6 +432,50 @@ public class PluginLifecycleManagerTests : IDisposable
 
         _registry.TryGetValue(id, out _).Should().BeFalse();
         plugin.DisposeCallCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task UninstallPluginAsync_ReleasesScheduledWork_WhilePluginStillInRegistry()
+    {
+        // A scheduled-task plugin's named per-job cron executors are removed
+        // by PluginCronRegistrar reading this plugin's own Jobs list back out
+        // of the registry — if the registry entry is already gone by the
+        // time that runs, it finds nothing to remove and every named job
+        // executor keeps firing against the disposed instance forever.
+        Ulid id = Ulid.NewUlid();
+        FakePlugin plugin = new();
+        _registry[id] = new(Info(id, PluginStatus.Active), plugin, null);
+        bool wasStillRegisteredWhenReleased = false;
+
+        PluginLifecycleManager lifecycle = new(
+            _eventBus,
+            new MinimalServiceProvider(),
+            NullLogger.Instance,
+            _tempDir,
+            TestStorageHelper.CreateStorage(_tempDir),
+            _registry,
+            new PluginLoader(
+                _eventBus,
+                new MinimalServiceProvider(),
+                NullLogger.Instance,
+                _tempDir,
+                TestStorageHelper.CreateStorage(_tempDir),
+                _registry,
+                new PluginVerifier(),
+                new PluginConsentService(new InMemoryConsentStore()),
+                TestPluginPlatform.ContextFactory(
+                    _eventBus,
+                    TestStorageHelper.CreateStorage(_tempDir)
+                )
+            ),
+            TestPluginPlatform.ContextFactory(_eventBus, TestStorageHelper.CreateStorage(_tempDir)),
+            releaseScheduledWork: releasedId =>
+                wasStillRegisteredWhenReleased = _registry.TryGetValue(releasedId, out _)
+        );
+
+        await lifecycle.UninstallPluginAsync(id);
+
+        wasStillRegisteredWhenReleased.Should().BeTrue();
     }
 
     [Fact]
