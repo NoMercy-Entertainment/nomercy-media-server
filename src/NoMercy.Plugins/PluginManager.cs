@@ -797,6 +797,18 @@ public class PluginManager : IPluginManager, IDisposable
                 );
             }
         }
+
+        // An empty root left sitting in the plugins directory reads like
+        // something is still queued when nothing is — the same reasoning
+        // ApplyStaged already applies to .pending-updates, generalized here so
+        // every caller of this method gets it without repeating it.
+        if (
+            _driver.DirectoryExists(root)
+            && !_driver.EnumerateEntries(root, "*", SearchOption.TopDirectoryOnly).Any()
+        )
+        {
+            _driver.DeleteDirectory(root, recursive: false);
+        }
     }
 
     /// <summary>

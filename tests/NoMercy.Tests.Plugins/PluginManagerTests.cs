@@ -649,6 +649,141 @@ public class PluginManagerTests : IDisposable
         errors[0].PluginName.Should().Be("ManifestPlugin");
     }
 
+    // ── Boot-time cleanup: nothing a hot update or uninstall leaves behind
+    //    should ever survive past the next start. ──────────────────────────
+
+    [Fact]
+    public async Task LoadPluginsFromDirectoryAsync_QuarantinedDeleteWithNoLock_IsActuallyDeleted()
+    {
+        // What an uninstall leaves behind when its own delete attempt could
+        // not complete: DeleteOrQueueForDeletionAsync's real output, not a
+        // hand-built fixture, so this proves the two halves actually agree on
+        // the folder name shape (<name>-<ulid>).
+        Ulid id = Ulid.NewUlid();
+        _manager.GetInstalledPlugins().Should().BeEmpty();
+
+        string quarantined = Path.Combine(
+            _tempPluginsDir,
+            PluginManager.PendingDeletesFolder,
+            $"OldPlugin-{Ulid.NewUlid()}"
+        );
+        Directory.CreateDirectory(quarantined);
+        await File.WriteAllTextAsync(Path.Combine(quarantined, "OldPlugin.dll"), "gone");
+
+        await _manager.LoadPluginsFromDirectoryAsync();
+
+        Directory
+            .Exists(quarantined)
+            .Should()
+            .BeFalse("the next start must finish the delete an uninstall could not");
+        Directory
+            .Exists(Path.Combine(_tempPluginsDir, PluginManager.PendingDeletesFolder))
+            .Should()
+            .BeFalse(
+                "an empty pending-deletes folder reads as something still queued when nothing is"
+            );
+    }
+
+    [Fact]
+    public async Task LoadPluginsFromDirectoryAsync_RollbackFolderWithNoInstalledCopy_IsRestored()
+    {
+        // The crash-before-cleanup case: the old folder was moved into
+        // .rollback and the process died before the staged copy could be
+        // swapped in, so the installed folder is simply missing.
+        string rollbackDir = Path.Combine(_tempPluginsDir, PluginManager.RollbackFolder, "Radio");
+        Directory.CreateDirectory(rollbackDir);
+        await File.WriteAllTextAsync(Path.Combine(rollbackDir, "Radio.dll"), "the only copy left");
+
+        await _manager.LoadPluginsFromDirectoryAsync();
+
+        string restored = Path.Combine(_tempPluginsDir, "Radio");
+        Directory
+            .Exists(restored)
+            .Should()
+            .BeTrue("the rollback copy is the only one left, so it must come back");
+        File.Exists(Path.Combine(restored, "Radio.dll")).Should().BeTrue();
+        Directory.Exists(rollbackDir).Should().BeFalse("moved into place, not merely copied");
+        Directory
+            .Exists(Path.Combine(_tempPluginsDir, PluginManager.RollbackFolder))
+            .Should()
+            .BeFalse("an empty rollback folder must not linger once the last entry is resolved");
+    }
+
+    [Fact]
+    public async Task LoadPluginsFromDirectoryAsync_RollbackFolderWithInstalledCopyPresent_IsDiscarded()
+    {
+        // The crash-after-cleanup-would-have-run case: the swap completed and
+        // the installed folder is there, so the rollback copy is stale.
+        string installed = Path.Combine(_tempPluginsDir, "Radio");
+        Directory.CreateDirectory(installed);
+        await File.WriteAllTextAsync(
+            Path.Combine(installed, "Radio.dll"),
+            "the version that landed"
+        );
+
+        string rollbackDir = Path.Combine(_tempPluginsDir, PluginManager.RollbackFolder, "Radio");
+        Directory.CreateDirectory(rollbackDir);
+        await File.WriteAllTextAsync(Path.Combine(rollbackDir, "Radio.dll"), "the old version");
+
+        await _manager.LoadPluginsFromDirectoryAsync();
+
+        Directory
+            .Exists(rollbackDir)
+            .Should()
+            .BeFalse("an update that completed leaves nothing to roll back to");
+        File.ReadAllText(Path.Combine(installed, "Radio.dll"))
+            .Should()
+            .Be(
+                "the version that landed",
+                "discarding the rollback must never touch the installed copy"
+            );
+        Directory
+            .Exists(Path.Combine(_tempPluginsDir, PluginManager.RollbackFolder))
+            .Should()
+            .BeFalse("an empty rollback folder must not linger once the last entry is resolved");
+    }
+
+    [Fact]
+    public async Task LoadPluginsFromDirectoryAsync_StaleAssemblyBackupWithOriginalPresent_IsDeleted()
+    {
+        // A single-dll update that completed but could not remove its own
+        // ".rollback" backup file in the same instant.
+        string pluginDir = Path.Combine(_tempPluginsDir, "Radio");
+        Directory.CreateDirectory(pluginDir);
+        string assemblyPath = Path.Combine(pluginDir, "Radio.dll");
+        await File.WriteAllTextAsync(assemblyPath, "the version that landed");
+        string backupPath = assemblyPath + PluginManager.RollbackSuffix;
+        await File.WriteAllTextAsync(backupPath, "the old version");
+
+        await _manager.LoadPluginsFromDirectoryAsync();
+
+        File.Exists(backupPath)
+            .Should()
+            .BeFalse("a completed update leaves nothing to restore from");
+        File.ReadAllText(assemblyPath).Should().Be("the version that landed");
+    }
+
+    [Fact]
+    public async Task LoadPluginsFromDirectoryAsync_StaleAssemblyBackupWithOriginalMissing_IsRestored()
+    {
+        // The crash-mid-swap case for a single-dll plugin: the original was
+        // moved to its backup name and the process died before the new file
+        // could be copied into place, so the assembly itself is gone.
+        string pluginDir = Path.Combine(_tempPluginsDir, "Radio");
+        Directory.CreateDirectory(pluginDir);
+        string assemblyPath = Path.Combine(pluginDir, "Radio.dll");
+        string backupPath = assemblyPath + PluginManager.RollbackSuffix;
+        await File.WriteAllTextAsync(backupPath, "the only copy left");
+
+        await _manager.LoadPluginsFromDirectoryAsync();
+
+        File.Exists(backupPath).Should().BeFalse("moved into place, not merely copied");
+        File.Exists(assemblyPath)
+            .Should()
+            .BeTrue("the backup is the only copy left, so it must come back");
+        File.ReadAllText(assemblyPath).Should().Be("the only copy left");
+    }
+
     private sealed class MinimalServiceProvider : IServiceProvider
     {
         public object? GetService(Type serviceType) => null;
