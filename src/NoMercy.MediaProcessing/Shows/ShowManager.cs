@@ -22,6 +22,7 @@ using NoMercy.MediaProcessing.Common;
 using NoMercy.MediaProcessing.Jobs;
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
 using NoMercy.NmSystem;
+using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Extensions;
 using NoMercy.Providers.TMDB.Client;
 using NoMercy.Providers.TMDB.Models.Networks;
@@ -61,65 +62,9 @@ public class ShowManager(
         string baseUrl = BaseUrl(showAppends.Name, showAppends.FirstAirDate);
         string? mediaType = await mediaTypeClassifier.ClassifyAsync(showAppends);
 
-        // A null verdict is "don't know" (the lookup failed), never "confirmed tv" —
-        // keep the library the folder scan already resolved rather than reclassify
-        // on an inconclusive answer.
-        if (mediaType is not null && library.Type != mediaType)
-        {
-            Library? resolvedLibrary = await showRepository.GetLibraryByTypeAsync(mediaType);
-            resolvedLibrary ??= await showRepository.GetLibraryByTypeAsync("tv");
-
-            if (resolvedLibrary is not null)
-            {
-                logger.LogInformation(
-                    "Show {Id}: Reclassified as {MediaType}, filing under Library {Title} instead of {OriginalTitle}",
-                    [id, mediaType, resolvedLibrary.Title, library.Title]
-                );
-                library = resolvedLibrary;
-            }
-            else
-            {
-                logger.LogWarning(
-                    "Show {Id}: Classified as {MediaType} but no matching library exists (and no fallback \"tv\" library either); keeping original Library {Title}",
-                    [id, mediaType, library.Title]
-                );
-            }
-        }
-
-        DateTime folderCreatedAt = DateTime.UtcNow;
-
-        foreach (FolderLibrary folderLibrary in library.FolderLibraries ?? [])
-        {
-            if (storageFactory == null)
-                continue;
-
-            IStorage folderStorage = storageFactory.For(
-                folderLibrary.Folder.Id,
-                folderLibrary.Folder.DriverId,
-                string.Empty
-            );
-            string folderRoot = FolderRootPath(folderStorage, folderLibrary.Folder.Path);
-            string folderName = folderStorage.CombinePath(folderRoot, baseUrl.Replace("/", ""));
-
-            if (!folderStorage.Exists(folderName))
-            {
-                string? match = FileNameSanitizer.FindMatchingDirectory(
-                    folderStorage.Driver,
-                    folderRoot,
-                    baseUrl.Replace("/", "")
-                );
-                if (match != null)
-                    folderName = match;
-            }
-
-            if (!folderStorage.Exists(folderName))
-                continue;
-
-            folderCreatedAt = folderStorage.Driver.GetCreationTimeUtc(folderName);
-
-            if (folderCreatedAt != DateTime.UtcNow)
-                break;
-        }
+        (Library resolvedLibrary, DateTime folderCreatedAt, bool folderDateIsReal) =
+            await ResolveLibraryAndCreatedAtAsync(id, library, baseUrl, mediaType);
+        library = resolvedLibrary;
 
         Tv show = new()
         {
@@ -165,7 +110,7 @@ public class ShowManager(
                 showAppends.Videos.Results.Length > 0 ? showAppends.Videos.Results[0].Key : null,
         };
 
-        await showRepository.AddAsync(show);
+        await showRepository.AddAsync(show, folderDateIsReal);
         logger.LogDebug("Show {Title}: Added to Database", show.Title);
 
         await showRepository.LinkToLibrary(library, show, addedBy);
@@ -190,6 +135,110 @@ public class ShowManager(
         jobDispatcher.DispatchJob<ShowExtrasJob, TmdbTvShowAppends>(showAppends);
 
         return showAppends;
+    }
+
+    // The folder is ground truth, not the classifier: if this show's folder
+    // physically exists under the library it was scanned from, that is
+    // structural proof of where it belongs, and no text-match verdict gets a
+    // vote. The classifier is only consulted when the scanned library has no
+    // on-disk trace of the folder at all (e.g. a manually-added show with no
+    // file yet) - and even then it may only PROMOTE toward anime, never
+    // evict, and only into a library whose own folders can be shown to
+    // contain the same folder. Split out from AddShowAsync (which needs a
+    // live TMDB client) so this decision is unit-testable with mocked
+    // storage/repository alone.
+    internal async Task<(
+        Library library,
+        DateTime createdAt,
+        bool folderDateIsReal
+    )> ResolveLibraryAndCreatedAtAsync(
+        int id,
+        Library scannedLibrary,
+        string baseUrl,
+        string? mediaType
+    )
+    {
+        (bool existsInScannedLibrary, DateTime createdAt) = ResolveFolder(scannedLibrary, baseUrl);
+
+        if (existsInScannedLibrary)
+            return (scannedLibrary, createdAt, true);
+
+        if (!ShouldPromoteToAnimeLibrary(scannedLibrary.Type, mediaType))
+            return (scannedLibrary, createdAt, false);
+
+        Library? animeLibrary = await showRepository.GetLibraryByTypeAsync(
+            MediaTypes.AnimeMediaType
+        );
+
+        if (animeLibrary is null)
+        {
+            logger.LogWarning(
+                "Show {Id}: Classified as anime but no anime library exists; keeping original Library {Title}",
+                [id, scannedLibrary.Title]
+            );
+            return (scannedLibrary, createdAt, false);
+        }
+
+        (bool existsInAnimeLibrary, DateTime animeCreatedAt) = ResolveFolder(animeLibrary, baseUrl);
+
+        if (!existsInAnimeLibrary)
+            return (scannedLibrary, createdAt, false);
+
+        logger.LogInformation(
+            "Show {Id}: Reclassified as {MediaType}, filing under Library {Title} instead of {OriginalTitle}",
+            [id, mediaType, animeLibrary.Title, scannedLibrary.Title]
+        );
+        return (animeLibrary, animeCreatedAt, true);
+    }
+
+    // Pure decision, split out so the "never evict from the scanned library"
+    // invariant is unit-testable without standing up TMDB/storage mocks for
+    // the rest of AddShowAsync.
+    internal static bool ShouldPromoteToAnimeLibrary(
+        string scannedLibraryType,
+        string? mediaType
+    ) => mediaType == MediaTypes.AnimeMediaType && scannedLibraryType != MediaTypes.AnimeMediaType;
+
+    // Structural ground truth: does this show's folder physically exist under
+    // ANY of the given library's configured folders? Returns the real folder
+    // creation date when found, or DateTime.UtcNow (the "not found" sentinel
+    // the caller must not mistake for a real date) when it does not.
+    private (bool exists, DateTime createdAt) ResolveFolder(Library library, string baseUrl)
+    {
+        DateTime folderCreatedAt = DateTime.UtcNow;
+
+        foreach (FolderLibrary folderLibrary in library.FolderLibraries ?? [])
+        {
+            if (storageFactory == null)
+                continue;
+
+            IStorage folderStorage = storageFactory.For(
+                folderLibrary.Folder.Id,
+                folderLibrary.Folder.DriverId,
+                string.Empty
+            );
+            string folderRoot = FolderRootPath(folderStorage, folderLibrary.Folder.Path);
+            string folderName = folderStorage.CombinePath(folderRoot, baseUrl.Replace("/", ""));
+
+            if (!folderStorage.Exists(folderName))
+            {
+                string? match = FileNameSanitizer.FindMatchingDirectory(
+                    folderStorage.Driver,
+                    folderRoot,
+                    baseUrl.Replace("/", "")
+                );
+                if (match != null)
+                    folderName = match;
+            }
+
+            if (!folderStorage.Exists(folderName))
+                continue;
+
+            folderCreatedAt = folderStorage.Driver.GetCreationTimeUtc(folderName);
+            return (true, folderCreatedAt);
+        }
+
+        return (false, folderCreatedAt);
     }
 
     public Task UpdateShowAsync(int id, Library library)

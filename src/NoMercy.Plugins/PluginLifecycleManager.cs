@@ -46,12 +46,20 @@ internal sealed class PluginLifecycleManager(
     private readonly IPluginAssemblyTracker? _assemblyTracker = assemblyTracker;
     private readonly Action<Ulid>? _releaseScheduledWork = releaseScheduledWork;
 
-    public async Task EnablePluginAsync(Ulid pluginId, CancellationToken ct = default)
+    /// <summary>Looks up an installed plugin, or reports it as not installed.</summary>
+    private LoadedPlugin RequireLoaded(Ulid pluginId)
     {
         if (!_registry.TryGetValue(pluginId, out LoadedPlugin? loaded))
         {
             throw new InvalidOperationException($"Plugin {pluginId} is not installed.");
         }
+
+        return loaded;
+    }
+
+    public async Task EnablePluginAsync(Ulid pluginId, CancellationToken ct = default)
+    {
+        LoadedPlugin loaded = RequireLoaded(pluginId);
 
         if (loaded.Info.Status == PluginStatus.Active)
         {
@@ -128,10 +136,7 @@ internal sealed class PluginLifecycleManager(
 
     public async Task DisablePluginAsync(Ulid pluginId, CancellationToken ct = default)
     {
-        if (!_registry.TryGetValue(pluginId, out LoadedPlugin? loaded))
-        {
-            throw new InvalidOperationException($"Plugin {pluginId} is not installed.");
-        }
+        LoadedPlugin loaded = RequireLoaded(pluginId);
 
         if (loaded.Info.Status == PluginStatus.Disabled)
         {
@@ -170,6 +175,69 @@ internal sealed class PluginLifecycleManager(
         );
     }
 
+    /// <summary>
+    /// Takes a plugin out of the process so its files can be replaced, and
+    /// leaves everything on disk exactly where it is.
+    /// <para>
+    /// Uninstall does this too, but it also deletes the directory and announces
+    /// that the plugin is gone. An update is neither: the files are about to be
+    /// replaced by a newer copy of the same plugin, and it comes back a moment
+    /// later. Returns whether anything was actually resident, so a caller can
+    /// tell "unloaded it" from "there was nothing to unload".
+    /// </para>
+    /// <para>
+    /// No event is published. The plugin is momentarily absent, but every
+    /// subscriber that would hear a disable would hear a load again within the
+    /// same call, and a pair of those describes a disruption that did not
+    /// happen. The load at the end of the update is what gets announced.
+    /// </para>
+    /// <para>
+    /// Note that <c>Unload()</c> only asks. The context goes when the GC
+    /// collects it, so the files stay held for a moment after this returns and
+    /// the caller has to wait for them rather than assume.
+    /// </para>
+    /// </summary>
+    public Task<bool> UnloadForUpdateAsync(Ulid pluginId, CancellationToken ct = default)
+    {
+        if (!_registry.TryRemove(pluginId, out LoadedPlugin? loaded))
+        {
+            return Task.FromResult(false);
+        }
+
+        _releaseScheduledWork?.Invoke(pluginId);
+
+        loaded.Instance?.Dispose();
+
+        if (loaded.LoadContext is not null)
+        {
+            _assemblyTracker?.TrackUnload(pluginId, loaded.Info.AssemblyPath);
+            loaded.LoadContext.Unload();
+        }
+
+        return Task.FromResult(true);
+    }
+
+    /// <summary>
+    /// Disable then enable in one call, so the dashboard has a single Restart
+    /// action instead of asking the owner to press two buttons for one idea.
+    /// Neither half needs the server restarted, so this never does either.
+    /// </summary>
+    public async Task RestartPluginAsync(Ulid pluginId, CancellationToken ct = default)
+    {
+        // Not RequireLoaded: a plugin that is not installed at all should be
+        // reported by EnablePluginAsync below, once, rather than by a duplicate
+        // check here that says the same thing first.
+        if (
+            _registry.TryGetValue(pluginId, out LoadedPlugin? loaded)
+            && loaded.Info.Status == PluginStatus.Active
+        )
+        {
+            await DisablePluginAsync(pluginId, ct);
+        }
+
+        await EnablePluginAsync(pluginId, ct);
+    }
+
     public async Task UninstallPluginAsync(Ulid pluginId, CancellationToken ct = default)
     {
         if (!_registry.TryRemove(pluginId, out LoadedPlugin? loaded))
@@ -196,26 +264,7 @@ internal sealed class PluginLifecycleManager(
             string? pluginDir = Path.GetDirectoryName(loaded.Info.AssemblyPath);
             if (pluginDir is not null && _storage.Exists(pluginDir))
             {
-                try
-                {
-                    _storage.DeleteDirectory(pluginDir, recursive: true);
-                }
-                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
-                {
-                    // The plugin's own assembly was just Unload()ed a few lines
-                    // above, but AssemblyLoadContext.Unload() is asynchronous —
-                    // the file can still be resident until the GC actually
-                    // collects it. Windows reports that exact "still resident"
-                    // condition as UnauthorizedAccessException, not IOException,
-                    // for a directory delete — catching only IOException let a
-                    // routine, expected race during uninstall crash the caller
-                    // instead of logging the same "files may be locked" warning
-                    // this catch already exists to produce.
-                    _logger.LogWarning(
-                        "Could not delete plugin directory {PluginDir}. Files may be locked.",
-                        pluginDir
-                    );
-                }
+                await DeleteOrQueueForDeletionAsync(pluginDir, ct);
             }
         }
 
@@ -228,5 +277,71 @@ internal sealed class PluginLifecycleManager(
             },
             ct
         );
+    }
+
+    /// <summary>
+    /// Deletes an uninstalled plugin's directory, waiting out the same
+    /// just-unloaded-assembly race an update swap does. An uninstall must
+    /// never leave the folder behind: the plugin is already gone from the
+    /// registry and the owner's list the moment this method is called, so a
+    /// delete that quietly gives up would leave disk space, and the plugin's
+    /// own files, orphaned forever with nothing left in the running process
+    /// that will ever look at them again.
+    /// <para>
+    /// When the wait budget runs out anyway, the directory is moved out from
+    /// under its own name into <see cref="PluginManager.PendingDeletesFolder"/>
+    /// instead — getting it off the installed list's disk footprint
+    /// immediately — and the next boot's <c>ResolvePendingDeletes</c> finishes
+    /// the delete for real, at the one moment nothing in the process can still
+    /// be holding it.
+    /// </para>
+    /// </summary>
+    private async Task DeleteOrQueueForDeletionAsync(string pluginDir, CancellationToken ct)
+    {
+        if (
+            await PluginFileRetry.TryAsync(
+                () => _storage.DeleteDirectory(pluginDir, recursive: true),
+                ct
+            )
+        )
+        {
+            return;
+        }
+
+        string quarantine = _storage.CombinePath(
+            _pluginsPath,
+            PluginManager.PendingDeletesFolder,
+            $"{Path.GetFileName(pluginDir)}-{Ulid.NewUlid()}"
+        );
+
+        try
+        {
+            string? parent = Path.GetDirectoryName(quarantine);
+            if (parent is not null && !_storage.Exists(parent))
+            {
+                _storage.CreateDirectory(parent);
+            }
+
+            _storage.MoveDirectory(pluginDir, quarantine);
+
+            _logger.LogWarning(
+                "Plugin directory {PluginDir} was still locked; moved it aside for deletion on the next start.",
+                pluginDir
+            );
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            // Locked against a move too — genuinely nothing left to try from
+            // inside this process. The next boot's directory scan does not
+            // recognise this folder as a plugin (its manifest id is already
+            // Deleted in nobody's registry), so it stays inert rather than
+            // reappearing as an installed plugin; a future disk-space audit is
+            // the backstop for this exceedingly rare case.
+            _logger.LogWarning(
+                ex,
+                "Could not delete or relocate plugin directory {PluginDir}. Files are still locked.",
+                pluginDir
+            );
+        }
     }
 }

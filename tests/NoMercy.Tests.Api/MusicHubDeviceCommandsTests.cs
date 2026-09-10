@@ -103,7 +103,12 @@ public class MusicHubDeviceCommandsTests : IClassFixture<NoMercyApiFactory>
         return (client, proxy);
     }
 
-    private MusicHub CreateHub(string connectionId, Guid userId)
+    private MusicHub CreateHub(
+        string connectionId,
+        Guid userId,
+        DeviceBusRegistry? busRegistry = null,
+        IChromeCastService? chromeCast = null
+    )
     {
         IDbContextFactory<MediaContext> contextFactory = _factory.Services.GetRequiredService<
             IDbContextFactory<MediaContext>
@@ -118,13 +123,21 @@ public class MusicHubDeviceCommandsTests : IClassFixture<NoMercyApiFactory>
             _factory.Services.GetRequiredService<MusicPlaybackCommandHandler>();
         MusicActiveDeviceRegistry activeDeviceRegistry =
             _factory.Services.GetRequiredService<MusicActiveDeviceRegistry>();
-        CastPanelWakeLauncher castPanelWakeLauncher =
-            _factory.Services.GetRequiredService<CastPanelWakeLauncher>();
         AuthManager authManager = _factory.Services.GetRequiredService<AuthManager>();
+
+        // CastPanelWakeLauncher is DI-registered against its OWN
+        // IChromeCastService — independent of the chromeCast passed here, which
+        // only ever reaches MusicHub's direct field. A custom chromeCast is
+        // meaningless unless the launcher wraps that same instance, so build
+        // a fresh launcher around it rather than pulling the DI singleton.
+        CastPanelWakeLauncher castPanelWakeLauncher =
+            chromeCast is null
+                ? _factory.Services.GetRequiredService<CastPanelWakeLauncher>()
+                : new(chromeCast, NullLogger<CastPanelWakeLauncher>.Instance);
 
         MusicDeviceManager musicDeviceManager = new(new());
         MusicPlaylistManager musicPlaylistManager = new(new MusicRepository(contextFactory), new());
-        DeviceBusRegistry busRegistry = new(
+        busRegistry ??= new(
             contextFactory,
             Mock.Of<IHubContext<DeviceHub>>(),
             Mock.Of<ICastMdnsRegistry>()
@@ -148,7 +161,7 @@ public class MusicHubDeviceCommandsTests : IClassFixture<NoMercyApiFactory>
             Mock.Of<IActivityLogger>(),
             busRegistry,
             castTokenService,
-            Mock.Of<IChromeCastService>(),
+            chromeCast ?? Mock.Of<IChromeCastService>(),
             castPanelWakeLauncher,
             activeDeviceRegistry
         );
@@ -300,6 +313,263 @@ public class MusicHubDeviceCommandsTests : IClassFixture<NoMercyApiFactory>
         Func<Task> act = async () => await hub.ChangeDeviceCommand("some-device-id");
 
         await act.Should().NotThrowAsync();
+    }
+
+    // =========================================================================
+    // ChangeDeviceCommand — TV target, Cast panel-wake LAUNCH
+    //
+    // Measured live 2026-09-08: a TV can hold an open MusicHub connection
+    // (its process alive, socket connected) while its Activity is fully
+    // backgrounded — screen off, not foregrounded. Before this fix,
+    // "MusicHub-live" alone counted as "already on screen", so neither the
+    // software wake_for_music message nor the Cast panel-wake LAUNCH ever
+    // fired, and the TV never woke. The fix requires DeviceBusRegistry's own
+    // Foreground bit (reported by the client's own /v1/ping) in addition to
+    // the SignalR connection before treating a target as truly live.
+    // =========================================================================
+
+    private static async Task<bool> WaitForInvocationAsync(
+        Mock<IChromeCastService> chromeCast,
+        string methodName
+    )
+    {
+        for (int attempt = 0; attempt < 20; attempt++)
+        {
+            if (chromeCast.Invocations.Any(i => i.Method.Name == methodName))
+                return true;
+            await Task.Delay(50);
+        }
+        return false;
+    }
+
+    private async Task<Device> SeedOwnedTvAsync(
+        IDbContextFactory<MediaContext> contextFactory,
+        Guid userId,
+        string deviceId
+    )
+    {
+        await using MediaContext ctx = await contextFactory.CreateDbContextAsync();
+
+        // Device.OwnerUserId is a real FK — SeedTestUser only populates
+        // UserCache, so the row needs a matching Users entry to satisfy it.
+        if (await ctx.Users.FindAsync(userId) is null)
+        {
+            ctx.Users.Add(
+                new()
+                {
+                    Id = userId,
+                    Email = $"{userId}@nomercy.tv",
+                    Name = "Device Commands Test User",
+                }
+            );
+            await ctx.SaveChangesAsync();
+        }
+
+        Device tv = new()
+        {
+            Id = Ulid.NewUlid(),
+            DeviceId = deviceId,
+            Name = "Bedroom TV",
+            Type = "tv",
+            LanIp = "192.168.50.21",
+            Fingerprint = $"fp-{Guid.NewGuid()}",
+            OwnerUserId = userId,
+        };
+        ctx.Devices.Add(tv);
+        await ctx.SaveChangesAsync();
+        return tv;
+    }
+
+    [Fact]
+    public async Task ChangeDeviceCommand_TvMusicHubLiveButNotForeground_StillFiresCastPanelWake()
+    {
+        Guid userId = Guid.NewGuid();
+        User user = SeedTestUser(userId);
+        string tvConnectionId = Guid.NewGuid().ToString();
+        string phoneConnectionId = Guid.NewGuid().ToString();
+        string tvDeviceId = $"tv-{Guid.NewGuid()}";
+        string phoneDeviceId = $"phone-{Guid.NewGuid()}";
+
+        IDbContextFactory<MediaContext> contextFactory = _factory.Services.GetRequiredService<
+            IDbContextFactory<MediaContext>
+        >();
+        Device tv = await SeedOwnedTvAsync(contextFactory, userId, tvDeviceId);
+
+        ConnectedClients connectedClients = _factory.GetConnectedClients();
+        (Client tvClient, _) = MakeClientWithProxy(userId, tvDeviceId, "tv");
+        // Devices() builds its live-Device view from Client fields, and its
+        // entry wins over the DB row's LanIp (MusicDevicesAsync's
+        // seenDeviceIds dedupe keeps the first one seen). A real connected
+        // TV reports its LAN IP on connect; mirror that here so
+        // CastAddress.Resolve has something to resolve, same as production.
+        tvClient.Ip = tv.LanIp!;
+        // A real connection aligns the in-memory Client's id with the
+        // persisted Devices row (ConnectionHub.AlignClientWithPersistedDevice)
+        // — GetStatus is keyed by that id, so the fixture has to match it too.
+        tvClient.Id = tv.Id;
+        (Client phoneClient, _) = MakeClientWithProxy(userId, phoneDeviceId, "web");
+        connectedClients.Clients[tvConnectionId] = tvClient;
+        connectedClients.Clients[phoneConnectionId] = phoneClient;
+
+        DeviceBusRegistry busRegistry = new(
+            contextFactory,
+            Mock.Of<IHubContext<DeviceHub>>(),
+            Mock.Of<ICastMdnsRegistry>()
+        );
+        // Deliberately NOT calling UpdateStatus — the TV has never reported
+        // foreground=true, matching a backgrounded-but-connected app.
+
+        Mock<IChromeCastService> chromeCast = new();
+        chromeCast
+            .Setup(c => c.FindReceiverNameByIpAsync(It.IsAny<string>()))
+            .ReturnsAsync("Bedroom TV");
+        chromeCast.Setup(c => c.SelectChromecast(It.IsAny<string>())).Returns(Task.CompletedTask);
+        chromeCast
+            .Setup(c =>
+                c.LaunchAndroidReceiver(It.IsAny<string?>(), It.IsAny<object?>(), It.IsAny<bool>())
+            )
+            .Returns(Task.CompletedTask);
+
+        MusicPlayerStateManager stateManager =
+            _factory.Services.GetRequiredService<MusicPlayerStateManager>();
+        MusicActiveDeviceRegistry registry =
+            _factory.Services.GetRequiredService<MusicActiveDeviceRegistry>();
+
+        PlaylistTrackDto currentTrack = MakeTrack();
+        MusicPlayerState state = new()
+        {
+            DeviceId = phoneDeviceId,
+            PlayState = true,
+            CurrentItem = currentTrack,
+            Playlist = [currentTrack],
+            CurrentList = new("/music/albums/test", UriKind.Relative),
+            Time = 15_000,
+        };
+        stateManager.UpdateState(userId, state);
+        registry.Set(userId, phoneClient);
+
+        try
+        {
+            MusicHub hub = CreateHub(
+                tvConnectionId,
+                userId,
+                busRegistry: busRegistry,
+                chromeCast: chromeCast.Object
+            );
+
+            await hub.ChangeDeviceCommand(tvDeviceId);
+
+            bool launched = await WaitForInvocationAsync(
+                chromeCast,
+                nameof(IChromeCastService.LaunchAndroidReceiver)
+            );
+            launched
+                .Should()
+                .BeTrue(
+                    "a MusicHub-connected TV that never reported foreground=true is not "
+                        + "actually on screen, and the panel-wake LAUNCH must still fire"
+                );
+        }
+        finally
+        {
+            Cleanup(userId, user, tvConnectionId, phoneConnectionId);
+        }
+    }
+
+    [Fact]
+    public async Task ChangeDeviceCommand_TvMusicHubLiveAndForeground_NeverFiresCastPanelWake()
+    {
+        Guid userId = Guid.NewGuid();
+        User user = SeedTestUser(userId);
+        string tvConnectionId = Guid.NewGuid().ToString();
+        string phoneConnectionId = Guid.NewGuid().ToString();
+        string tvDeviceId = $"tv-{Guid.NewGuid()}";
+        string phoneDeviceId = $"phone-{Guid.NewGuid()}";
+
+        IDbContextFactory<MediaContext> contextFactory = _factory.Services.GetRequiredService<
+            IDbContextFactory<MediaContext>
+        >();
+        Device tv = await SeedOwnedTvAsync(contextFactory, userId, tvDeviceId);
+
+        ConnectedClients connectedClients = _factory.GetConnectedClients();
+        (Client tvClient, _) = MakeClientWithProxy(userId, tvDeviceId, "tv");
+        // Devices() builds its live-Device view from Client fields, and its
+        // entry wins over the DB row's LanIp (MusicDevicesAsync's
+        // seenDeviceIds dedupe keeps the first one seen). A real connected
+        // TV reports its LAN IP on connect; mirror that here so
+        // CastAddress.Resolve has something to resolve, same as production.
+        tvClient.Ip = tv.LanIp!;
+        // A real connection aligns the in-memory Client's id with the
+        // persisted Devices row (ConnectionHub.AlignClientWithPersistedDevice)
+        // — GetStatus is keyed by that id, so the fixture has to match it too.
+        tvClient.Id = tv.Id;
+        (Client phoneClient, _) = MakeClientWithProxy(userId, phoneDeviceId, "web");
+        connectedClients.Clients[tvConnectionId] = tvClient;
+        connectedClients.Clients[phoneConnectionId] = phoneClient;
+
+        DeviceBusRegistry busRegistry = new(
+            contextFactory,
+            Mock.Of<IHubContext<DeviceHub>>(),
+            Mock.Of<ICastMdnsRegistry>()
+        );
+        // The TV reports itself genuinely on screen — this is the case
+        // CastPanelWakeLauncher exists to protect: firing LAUNCH here risks
+        // cast_shell missing the running APK and falling back to the Web
+        // Receiver over a session that's actually playing (see
+        // CastPanelWakeLauncherTests' header comment for the prior incident).
+        busRegistry.UpdateStatus(tv.Id, foreground: true, screenOn: true);
+
+        Mock<IChromeCastService> chromeCast = new();
+        chromeCast
+            .Setup(c => c.FindReceiverNameByIpAsync(It.IsAny<string>()))
+            .ReturnsAsync("Bedroom TV");
+
+        MusicPlayerStateManager stateManager =
+            _factory.Services.GetRequiredService<MusicPlayerStateManager>();
+        MusicActiveDeviceRegistry registry =
+            _factory.Services.GetRequiredService<MusicActiveDeviceRegistry>();
+
+        PlaylistTrackDto currentTrack = MakeTrack();
+        MusicPlayerState state = new()
+        {
+            DeviceId = phoneDeviceId,
+            PlayState = true,
+            CurrentItem = currentTrack,
+            Playlist = [currentTrack],
+            CurrentList = new("/music/albums/test", UriKind.Relative),
+            Time = 15_000,
+        };
+        stateManager.UpdateState(userId, state);
+        registry.Set(userId, phoneClient);
+
+        try
+        {
+            MusicHub hub = CreateHub(
+                tvConnectionId,
+                userId,
+                busRegistry: busRegistry,
+                chromeCast: chromeCast.Object
+            );
+
+            await hub.ChangeDeviceCommand(tvDeviceId);
+
+            // Give the fire-and-forget path the same window the positive test
+            // waits up to, then confirm it never called through.
+            await Task.Delay(300);
+            chromeCast.Verify(
+                c =>
+                    c.LaunchAndroidReceiver(
+                        It.IsAny<string?>(),
+                        It.IsAny<object?>(),
+                        It.IsAny<bool>()
+                    ),
+                Times.Never
+            );
+        }
+        finally
+        {
+            Cleanup(userId, user, tvConnectionId, phoneConnectionId);
+        }
     }
 
     // =========================================================================

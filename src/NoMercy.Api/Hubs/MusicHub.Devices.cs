@@ -174,23 +174,34 @@ public partial class MusicHub
 
         List<Device> connectedDevices = await MusicDevicesAsync();
 
+        Device? targetTv = connectedDevices.FirstOrDefault(d =>
+            d.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase) && d.Type == "tv"
+        );
+
         // If the target is a TV that owns the user but isn't currently on
         // MusicHub, fire wake_for_music over the device-bus so its panel +
         // app come up. Without this, the web picker can transfer the active
         // flag to a sleeping TV but the TV never actually plays. Mobile
         // already drives this through DeviceHub.WakeForMusic; web can't, so
         // the server has to do it on their behalf.
-        bool targetIsLive = connectedDevices.Any(d =>
-            d.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase)
-            && ConnectedClients.Clients.Values.Any(c =>
-                c.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase)
-                && c.Endpoint.Contains("musicHub", StringComparison.OrdinalIgnoreCase)
+        //
+        // A live MusicHub connection only proves the process is alive, not
+        // that its screen is on and foregrounded — a backgrounded app keeps
+        // its socket open indefinitely. Measured 2026-09-08: the bedroom TV
+        // was MusicHub-live, screen off, activity backgrounded; targetIsLive
+        // read true, both the software wake and the Cast panel-wake LAUNCH
+        // below were skipped, and nothing brought the screen up. GetStatus's
+        // Foreground bit (the client's own /v1/ping) is the real signal —
+        // require it too.
+        bool targetIsLive =
+            connectedDevices.Any(d =>
+                d.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase)
+                && ConnectedClients.Clients.Values.Any(c =>
+                    c.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase)
+                    && c.Endpoint.Contains("musicHub", StringComparison.OrdinalIgnoreCase)
+                )
             )
-        );
-
-        Device? targetTv = connectedDevices.FirstOrDefault(d =>
-            d.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase) && d.Type == "tv"
-        );
+            && (targetTv is null || _busRegistry.GetStatus(targetTv.Id).Foreground);
 
         if (targetTv is not null)
         {
@@ -232,7 +243,8 @@ public partial class MusicHub
                             deviceId: targetUlid,
                             intent: intent,
                             clientLocale: locale
-                        )
+                        ),
+                    isTargetOnlineNow: () => _busRegistry.IsOnline(targetUlid)
                 )
             );
         }

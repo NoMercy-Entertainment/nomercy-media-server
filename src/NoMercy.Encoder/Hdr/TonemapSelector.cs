@@ -29,6 +29,17 @@ public class TonemapSelector : ITonemapSelector
         "bt2390",
     };
 
+    /// <summary>
+    /// The CPU tonemap chain, owned here because this is where it is chosen.
+    /// <para>Anything that needs SDR pixels from an HDR source without a GPU
+    /// filter reads this rather than repeating it. A second copy elsewhere is a
+    /// copy that drifts: the sprite sheets tonemapped with one chain while the
+    /// video used another, and nothing said so.</para>
+    /// </summary>
+    public const string CpuTonemapChain =
+        "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,"
+        + "tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p";
+
     public TonemapStrategy SelectBest(
         IHardwareCapabilities hardware,
         IFfmpegCapabilities? ffmpeg = null
@@ -49,11 +60,7 @@ public class TonemapSelector : ITonemapSelector
                 true
             );
 
-        return new(
-            TonemapMethod.ZscaleTonemap,
-            "zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p",
-            false
-        );
+        return new(TonemapMethod.ZscaleTonemap, CpuTonemapChain, false);
     }
 
     /// <inheritdoc/>

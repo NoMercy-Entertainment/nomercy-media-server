@@ -203,6 +203,44 @@ public sealed class ConnectionHubTests : IDisposable
         Assert.True(device!.IsActive);
     }
 
+    /// <summary>
+    /// WsConnectedAt was, before this fix, written only by the separate
+    /// device-bus WebSocket — never by an ordinary hub connection. A device
+    /// controlled entirely through MusicHub/VideoHub/etc. (the common case)
+    /// never touched it, and DeviceDropRuleCronJob's TTL/e-fuse rules read a
+    /// permanently-null-or-stale value as abandoned and disowned it — while
+    /// under continuous real use. Confirmed live, real TV, 2026-09-09.
+    /// </summary>
+    [Fact]
+    public async Task OnConnectedAsync_WithClientId_AdvancesWsConnectedAt()
+    {
+        User user = new()
+        {
+            Id = Guid.NewGuid(),
+            Email = "test@nomercy.tv",
+            Name = "Test",
+        };
+        QueryCollection query = new(
+            new Dictionary<string, StringValues>
+            {
+                ["client_id"] = "device-lastseen",
+                ["client_type"] = "tv",
+            }
+        );
+        TestableConnectionHub hub = BuildHub(user, out _, out _, query: query);
+        DateTime beforeConnect = DateTime.UtcNow;
+
+        await hub.OnConnectedAsync();
+
+        await using MediaContext ctx = await _contextFactory.CreateDbContextAsync();
+        Device device = await ctx.Devices.SingleAsync(d => d.DeviceId == "device-lastseen");
+        Assert.NotNull(device.WsConnectedAt);
+        Assert.True(
+            device.WsConnectedAt >= beforeConnect,
+            "a hub connection must advance WsConnectedAt, or the drop-rule job reads this device as never seen"
+        );
+    }
+
     [Fact]
     public async Task OnConnectedAsync_WithoutClientId_DoesNotTouchDatabase_ButStillTracksClient()
     {

@@ -48,6 +48,23 @@ public class CastPanelWakeLauncherTests
         return (launcher, chromeCast);
     }
 
+    // 1ms/2 attempts rather than the real 1s/12 — these tests prove the
+    // follow-up's DECISION logic, not its real-world timing budget.
+    private static (
+        CastPanelWakeLauncher Launcher,
+        Mock<IChromeCastService> ChromeCast
+    ) MakeFastFollowUpLauncher()
+    {
+        Mock<IChromeCastService> chromeCast = new();
+        CastPanelWakeLauncher launcher = new(
+            chromeCast.Object,
+            NullLogger<CastPanelWakeLauncher>.Instance,
+            followUpPollIntervalMs: 1,
+            followUpPollAttempts: 2
+        );
+        return (launcher, chromeCast);
+    }
+
     [Theory]
     [InlineData(true, false)]
     [InlineData(false, true)]
@@ -147,6 +164,113 @@ public class CastPanelWakeLauncherTests
             c =>
                 c.LaunchAndroidReceiver(It.IsAny<string?>(), It.IsAny<object?>(), It.IsAny<bool>()),
             Times.Never
+        );
+    }
+
+    /// <summary>
+    /// Regression pin for the Web-Receiver-vs-native-app follow-up handoff.
+    /// The initial LAUNCH after a cold CEC wake deliberately claims
+    /// useAndroidReceiver=false, since the device-bus can never already be
+    /// online at that exact instant — that is what "cold" means. Without a
+    /// follow-up once the bus confirms the APK came back, the TV is stuck on
+    /// the generic Web Receiver placeholder for the rest of the session.
+    /// </summary>
+    [Fact]
+    public async Task LaunchIfColdAsync_HandsOffToTheRealApp_WhenTheDeviceBusComesOnlineAfterAColdLaunch()
+    {
+        (CastPanelWakeLauncher launcher, Mock<IChromeCastService> chromeCast) = MakeFastFollowUpLauncher();
+        LaunchCustomData launchData = new() { AccessToken = "token" };
+        chromeCast.Setup(c => c.FindReceiverNameByIpAsync(TargetIp)).ReturnsAsync(ReceiverName);
+
+        await launcher.LaunchIfColdAsync(
+            targetIsLive: false,
+            targetIp: TargetIp,
+            useAndroidReceiver: false,
+            resolveLaunchData: () => Task.FromResult<LaunchCustomData?>(launchData),
+            isTargetOnlineNow: () => true
+        );
+
+        chromeCast.Verify(
+            c => c.LaunchAndroidReceiver(ReceiverName, launchData, false),
+            Times.Once,
+            "the initial, safe Web-Receiver-targeted LAUNCH must still happen"
+        );
+        chromeCast.Verify(
+            c => c.LaunchAndroidReceiver(ReceiverName, launchData, true),
+            Times.Once,
+            "the device-bus confirmed the APK was reachable — the follow-up handoff must fire"
+        );
+    }
+
+    [Fact]
+    public async Task LaunchIfColdAsync_StaysOnTheWebReceiver_WhenTheDeviceBusNeverComesOnline()
+    {
+        (CastPanelWakeLauncher launcher, Mock<IChromeCastService> chromeCast) = MakeFastFollowUpLauncher();
+        LaunchCustomData launchData = new() { AccessToken = "token" };
+        chromeCast.Setup(c => c.FindReceiverNameByIpAsync(TargetIp)).ReturnsAsync(ReceiverName);
+
+        await launcher.LaunchIfColdAsync(
+            targetIsLive: false,
+            targetIp: TargetIp,
+            useAndroidReceiver: false,
+            resolveLaunchData: () => Task.FromResult<LaunchCustomData?>(launchData),
+            isTargetOnlineNow: () => false
+        );
+
+        chromeCast.Verify(
+            c => c.LaunchAndroidReceiver(It.IsAny<string?>(), It.IsAny<object?>(), It.IsAny<bool>()),
+            Times.Once,
+            "a device that never comes back online gets exactly the one safe LAUNCH, no follow-up"
+        );
+    }
+
+    [Fact]
+    public async Task LaunchIfColdAsync_NeverPolls_WhenTheFirstLaunchAlreadyClaimedTheApk()
+    {
+        (CastPanelWakeLauncher launcher, Mock<IChromeCastService> chromeCast) = MakeFastFollowUpLauncher();
+        LaunchCustomData launchData = new() { AccessToken = "token" };
+        chromeCast.Setup(c => c.FindReceiverNameByIpAsync(TargetIp)).ReturnsAsync(ReceiverName);
+        bool onlineCheckCalled = false;
+
+        await launcher.LaunchIfColdAsync(
+            targetIsLive: false,
+            targetIp: TargetIp,
+            useAndroidReceiver: true,
+            resolveLaunchData: () => Task.FromResult<LaunchCustomData?>(launchData),
+            isTargetOnlineNow: () =>
+            {
+                onlineCheckCalled = true;
+                return true;
+            }
+        );
+
+        onlineCheckCalled
+            .Should()
+            .BeFalse("there is nothing to hand off from when the first LAUNCH already claimed the APK");
+        chromeCast.Verify(
+            c => c.LaunchAndroidReceiver(It.IsAny<string?>(), It.IsAny<object?>(), It.IsAny<bool>()),
+            Times.Once
+        );
+    }
+
+    [Fact]
+    public async Task LaunchIfColdAsync_NeverPolls_WhenNoOnlineCheckWasGiven()
+    {
+        (CastPanelWakeLauncher launcher, Mock<IChromeCastService> chromeCast) = MakeLauncher();
+        LaunchCustomData launchData = new() { AccessToken = "token" };
+        chromeCast.Setup(c => c.FindReceiverNameByIpAsync(TargetIp)).ReturnsAsync(ReceiverName);
+
+        // isTargetOnlineNow omitted — matches every caller before this feature existed.
+        await launcher.LaunchIfColdAsync(
+            targetIsLive: false,
+            targetIp: TargetIp,
+            useAndroidReceiver: false,
+            resolveLaunchData: () => Task.FromResult<LaunchCustomData?>(launchData)
+        );
+
+        chromeCast.Verify(
+            c => c.LaunchAndroidReceiver(It.IsAny<string?>(), It.IsAny<object?>(), It.IsAny<bool>()),
+            Times.Once
         );
     }
 }

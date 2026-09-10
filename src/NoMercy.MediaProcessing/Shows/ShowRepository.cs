@@ -23,7 +23,7 @@ namespace NoMercy.MediaProcessing.Shows;
 
 public class ShowRepository(MediaContext context) : IShowRepository
 {
-    public async Task AddAsync(Tv tv)
+    public async Task AddAsync(Tv tv, bool folderDateIsReal)
     {
         await context
             .Tvs.Upsert(tv)
@@ -65,9 +65,19 @@ public class ShowRepository(MediaContext context) : IShowRepository
             )
             .RunAsync();
 
-        await context
-            .Tvs.Where(t => t.Id == tv.Id)
-            .ExecuteUpdateAsync(s => s.SetProperty(t => t.CreatedAt, t => tv.CreatedAt));
+        // CreatedAt is [DatabaseGenerated(Computed)], so the Upsert insert
+        // above never writes it (SQLite's CURRENT_TIMESTAMP default fires
+        // instead) - this ExecuteUpdate is the only path that ever sets a
+        // controlled value, for a brand new row and an existing one alike.
+        // Only run it when this pass actually resolved a real on-disk folder
+        // date: a failed/transient lookup must never stamp an already-dated
+        // show with a fresh "now" (see ShowManager.ResolveLibraryAndCreatedAtAsync).
+        // A brand new row with no folder evidence at all is left on the
+        // database default, which is the honest answer for "just added".
+        if (folderDateIsReal)
+            await context
+                .Tvs.Where(t => t.Id == tv.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(t => t.CreatedAt, t => tv.CreatedAt));
 
         await context.SaveChangesAsync();
 

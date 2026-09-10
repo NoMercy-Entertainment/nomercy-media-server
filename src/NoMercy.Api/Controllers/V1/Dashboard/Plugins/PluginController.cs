@@ -241,6 +241,32 @@ public class PluginController(
     }
 
     /// <summary>
+    /// Disables then enables a plugin in one request. Neither half needs the
+    /// server restarted, so a single Restart action never asks the owner to do
+    /// what the platform can just do for them.
+    /// </summary>
+    [HttpPost("{id:ulid}/restart")]
+    public async Task<IActionResult> Restart(Ulid id)
+    {
+        try
+        {
+            await pluginManager.RestartPluginAsync(id);
+
+            return Ok(
+                new StatusResponseDto<string>
+                {
+                    Status = "ok",
+                    Message = "Plugin restarted successfully",
+                }
+            );
+        }
+        catch (InvalidOperationException ex)
+        {
+            return NotFoundResponse(ex.Message);
+        }
+    }
+
+    /// <summary>
     /// Installs a plugin from a file the owner uploaded.
     /// <para>
     /// <see cref="IPluginManager.InstallPluginAsync(string, CancellationToken)"/>

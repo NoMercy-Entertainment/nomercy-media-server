@@ -22,7 +22,7 @@ namespace NoMercy.MediaProcessing.Movies;
 
 public class MovieRepository(MediaContext context) : IMovieRepository
 {
-    public async Task Add(Movie movie)
+    public async Task Add(Movie movie, bool folderDateIsReal)
     {
         await context
             .Movies.Upsert(movie)
@@ -55,9 +55,19 @@ public class MovieRepository(MediaContext context) : IMovieRepository
             )
             .RunAsync();
 
-        await context
-            .Movies.Where(m => m.Id == movie.Id)
-            .ExecuteUpdateAsync(s => s.SetProperty(t => t.CreatedAt, t => movie.CreatedAt));
+        // CreatedAt is [DatabaseGenerated(Computed)], so the Upsert insert
+        // above never writes it (SQLite's CURRENT_TIMESTAMP default fires
+        // instead) - this ExecuteUpdate is the only path that ever sets a
+        // controlled value, for a brand new row and an existing one alike.
+        // Only run it when this pass actually resolved a real on-disk folder
+        // date: a failed/transient lookup must never stamp an already-dated
+        // movie with a fresh "now" (see MovieManager.AddFromAppends). A
+        // brand new row with no folder evidence at all is left on the
+        // database default, which is the honest answer for "just added".
+        if (folderDateIsReal)
+            await context
+                .Movies.Where(m => m.Id == movie.Id)
+                .ExecuteUpdateAsync(s => s.SetProperty(t => t.CreatedAt, t => movie.CreatedAt));
 
         await context.SaveChangesAsync();
 

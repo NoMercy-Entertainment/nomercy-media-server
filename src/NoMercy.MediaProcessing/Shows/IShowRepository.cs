@@ -21,7 +21,17 @@ namespace NoMercy.MediaProcessing.Shows;
 
 public interface IShowRepository
 {
-    Task AddAsync(Tv show);
+    /// <summary>
+    /// Upserts the show. <paramref name="folderDateIsReal"/> gates whether
+    /// <see cref="Tv.CreatedAt"/> is written on an existing row: true means
+    /// this call resolved a genuine on-disk folder date this pass, false
+    /// means the folder lookup found nothing (a transient storage hiccup, or
+    /// a manual add with no file yet) and the row's existing CreatedAt - if
+    /// any - must be left alone rather than reset to "now". A brand new row
+    /// always gets <paramref name="show"/>'s CreatedAt regardless, since
+    /// there is no prior value to protect.
+    /// </summary>
+    Task AddAsync(Tv show, bool folderDateIsReal);
     Task Remove(int id);
     Task LinkToLibrary(Library library, Tv show, string? addedBy = null);
     Task<Library?> GetLibraryByTypeAsync(string type);
