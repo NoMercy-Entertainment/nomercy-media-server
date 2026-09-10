@@ -11,22 +11,21 @@
 
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
 using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
-using NoMercy.Database.Models.Music;
 using NoMercy.MediaProcessing.AudioAnalysis;
-using NoMercy.MediaProcessing.Jobs.MediaJobs;
 using NoMercy.Service.Jobs;
-using NoMercyQueue.Core.Interfaces;
 
 namespace NoMercy.Tests.Service.Jobs;
 
+/// <summary>
+/// The sweep's own job is now the library question — which libraries want
+/// their audio analyzed — and handing that set to the scheduler. Which tracks
+/// inside those libraries still need a verdict is proven in
+/// <see cref="AudioAnalysisSchedulerTests" />.
+/// </summary>
 public class AudioAnalysisSweepCronJobTests : IDisposable
 {
-    private const int AnalyzerVersion = 1;
-
     private readonly SqliteConnection _connection;
     private readonly DbContextOptions<MediaContext> _options;
 
@@ -72,158 +71,82 @@ public class AudioAnalysisSweepCronJobTests : IDisposable
         return libraryId;
     }
 
-    private Guid SeedTrack(Ulid libraryId, AudioAnalysisState? state, int version = AnalyzerVersion)
+    private (AudioAnalysisSweepCronJob Job, List<Ulid> Scheduled) CreateSweep()
     {
-        Guid trackId = Guid.NewGuid();
+        List<Ulid> scheduled = [];
 
-        using MediaContext context = new(_options);
-        context.Tracks.Add(new Track { Id = trackId, Name = "A Track" });
-        context.LibraryTrack.Add(new LibraryTrack { LibraryId = libraryId, TrackId = trackId });
-
-        if (state is not null)
-        {
-            context.TrackAudioAnalysis.Add(
-                new TrackAudioAnalysis
-                {
-                    TrackId = trackId,
-                    AnalyzerVersion = version,
-                    State = state.Value,
-                    AnalyzedAt = DateTime.UtcNow,
-                }
-            );
-        }
-
-        context.SaveChanges();
-
-        return trackId;
-    }
-
-    private (AudioAnalysisSweepCronJob Job, List<Guid> Queued) CreateSweep()
-    {
-        List<Guid> queued = [];
-
-        Mock<IJobDispatcher> dispatcher = new();
-        dispatcher
-            .Setup(d => d.Dispatch(It.IsAny<IShouldQueue>()))
-            .Callback<IShouldQueue>(job =>
-            {
-                if (job is MusicAnalysisJob analysis)
-                {
-                    queued.Add(analysis.TrackId);
-                }
-            });
-
-        Mock<IAudioAnalyzer> analyzer = new();
-        analyzer.SetupGet(a => a.Version).Returns(AnalyzerVersion);
+        Mock<IAudioAnalysisScheduler> scheduler = new();
+        scheduler
+            .Setup(s =>
+                s.QueueAsync(It.IsAny<IReadOnlyCollection<Ulid>>(), It.IsAny<CancellationToken>())
+            )
+            .Callback<IReadOnlyCollection<Ulid>, CancellationToken>(
+                (libraryIds, _) => scheduled.AddRange(libraryIds)
+            )
+            .ReturnsAsync(0);
 
         Mock<IDbContextFactory<MediaContext>> factory = new();
         factory
             .Setup(f => f.CreateDbContextAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => new(_options));
 
-        AudioAnalysisSweepCronJob job = new(
-            dispatcher.Object,
-            analyzer.Object,
-            factory.Object,
-            NullLogger<AudioAnalysisSweepCronJob>.Instance
-        );
+        AudioAnalysisSweepCronJob job = new(scheduler.Object, factory.Object);
 
-        return (job, queued);
+        return (job, scheduled);
     }
 
     [Fact]
-    public async Task Execute_QueuesTracksThatHaveNoAnalysis()
+    public async Task Execute_SchedulesTheMusicLibrariesThatOptedIn()
     {
         Ulid libraryId = SeedLibrary(analyzeAudio: true);
-        Guid trackId = SeedTrack(libraryId, state: null);
 
-        (AudioAnalysisSweepCronJob job, List<Guid> queued) = CreateSweep();
+        (AudioAnalysisSweepCronJob job, List<Ulid> scheduled) = CreateSweep();
         await job.ExecuteAsync(string.Empty);
 
-        Assert.Equal([trackId], queued);
+        Assert.Equal([libraryId], scheduled);
     }
 
     /// <summary>
-    /// The opt-in is the whole consent model for this feature. A library that
-    /// never asked must never have its tracks analyzed.
+    /// The opt-out is the whole consent model for this feature. A library that
+    /// turned it off must never have its tracks analyzed.
     /// </summary>
     [Fact]
-    public async Task Execute_SkipsLibrariesThatDidNotOptIn()
+    public async Task Execute_SkipsLibrariesThatOptedOut()
     {
-        Ulid libraryId = SeedLibrary(analyzeAudio: false);
-        SeedTrack(libraryId, state: null);
+        SeedLibrary(analyzeAudio: false);
 
-        (AudioAnalysisSweepCronJob job, List<Guid> queued) = CreateSweep();
+        (AudioAnalysisSweepCronJob job, List<Ulid> scheduled) = CreateSweep();
         await job.ExecuteAsync(string.Empty);
 
-        Assert.Empty(queued);
+        Assert.Empty(scheduled);
     }
 
     [Fact]
     public async Task Execute_SkipsNonMusicLibraries()
     {
-        Ulid libraryId = SeedLibrary(analyzeAudio: true, type: "movie");
-        SeedTrack(libraryId, state: null);
+        SeedLibrary(analyzeAudio: true, type: "movie");
 
-        (AudioAnalysisSweepCronJob job, List<Guid> queued) = CreateSweep();
+        (AudioAnalysisSweepCronJob job, List<Ulid> scheduled) = CreateSweep();
         await job.ExecuteAsync(string.Empty);
 
-        Assert.Empty(queued);
+        Assert.Empty(scheduled);
     }
 
     [Fact]
-    public async Task Execute_SkipsTracksThisVersionAlreadyAnalyzed()
+    public async Task Execute_SchedulesEveryOptedInMusicLibraryTogether()
     {
-        Ulid libraryId = SeedLibrary(analyzeAudio: true);
-        SeedTrack(libraryId, AudioAnalysisState.Ok);
+        Ulid first = SeedLibrary(analyzeAudio: true);
+        Ulid second = SeedLibrary(analyzeAudio: true);
+        SeedLibrary(analyzeAudio: false);
+        SeedLibrary(analyzeAudio: true, type: "tv");
 
-        (AudioAnalysisSweepCronJob job, List<Guid> queued) = CreateSweep();
+        (AudioAnalysisSweepCronJob job, List<Ulid> scheduled) = CreateSweep();
         await job.ExecuteAsync(string.Empty);
 
-        Assert.Empty(queued);
-    }
-
-    /// <summary>
-    /// A terminal failure at the current version is an answer. Re-queuing it
-    /// every hour would spend the queue on files that cannot succeed.
-    /// </summary>
-    [Fact]
-    public async Task Execute_SkipsTracksThatFailedAtThisVersion()
-    {
-        Ulid libraryId = SeedLibrary(analyzeAudio: true);
-        SeedTrack(libraryId, AudioAnalysisState.Failed);
-
-        (AudioAnalysisSweepCronJob job, List<Guid> queued) = CreateSweep();
-        await job.ExecuteAsync(string.Empty);
-
-        Assert.Empty(queued);
-    }
-
-    [Fact]
-    public async Task Execute_RequeuesTracksLeftPendingByAnUnfinishedRun()
-    {
-        Ulid libraryId = SeedLibrary(analyzeAudio: true);
-        Guid trackId = SeedTrack(libraryId, AudioAnalysisState.Pending);
-
-        (AudioAnalysisSweepCronJob job, List<Guid> queued) = CreateSweep();
-        await job.ExecuteAsync(string.Empty);
-
-        Assert.Equal([trackId], queued);
-    }
-
-    /// <summary>
-    /// The reason the version column exists: improving the analyzer re-queues
-    /// exactly the stale rows, without a full library rescan.
-    /// </summary>
-    [Fact]
-    public async Task Execute_RequeuesTracksAnalyzedByAnOlderVersion()
-    {
-        Ulid libraryId = SeedLibrary(analyzeAudio: true);
-        Guid trackId = SeedTrack(libraryId, AudioAnalysisState.Ok, version: AnalyzerVersion - 1);
-
-        (AudioAnalysisSweepCronJob job, List<Guid> queued) = CreateSweep();
-        await job.ExecuteAsync(string.Empty);
-
-        Assert.Equal([trackId], queued);
+        // Both sides sorted. Two ULIDs minted in the same millisecond differ
+        // only in their random tail, so the order they were created in is not
+        // the order they sort in, and comparing a seed-ordered list against a
+        // sorted one passes or fails by luck.
+        Assert.Equal(new List<Ulid> { first, second }.Order(), scheduled.Order());
     }
 }

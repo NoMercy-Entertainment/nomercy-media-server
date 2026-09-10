@@ -35,6 +35,7 @@ using NoMercy.Encoder.Execution;
 using NoMercy.Encoder.Profiles;
 using NoMercy.Events;
 using NoMercy.Events.Encoding;
+using NoMercy.MediaProcessing.AudioAnalysis;
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
 using NoMercy.MediaProcessing.Jobs.MediaJobs.Support;
 using NoMercy.MediaProcessing.Jobs.SubtitleJobs;
@@ -60,7 +61,8 @@ public class TasksController(
     IDbContextFactory<QueueContext> queueContextFactory,
     IEncoderProcessRegistry processRegistry,
     ProcessThrottle processThrottle,
-    IEncodingHistoryRepository historyRepository
+    IEncodingHistoryRepository historyRepository,
+    IAudioAnalysisScheduler audioAnalysisScheduler
 ) : BaseController
 {
     [HttpGet]
@@ -1151,6 +1153,33 @@ public class TasksController(
                 Failed = failed,
             }
         );
+    }
+
+    /// <summary>
+    /// Queues the outstanding audio analysis for every music library that wants
+    /// it, right now.
+    /// <para>
+    /// The extra, not the way in: analysis already runs as part of every import
+    /// and rescan, and the hourly sweep catches what those missed. This is for
+    /// the operator who does not want to wait for either.
+    /// </para>
+    /// </summary>
+    [HttpPost]
+    [Route("audio-analysis/sweep")]
+    public async Task<IActionResult> AudioAnalysisSweep()
+    {
+        // Its own context, not the scoped one this controller is handed, for
+        // the same reason AudioAnalysisStatus takes one: the shared instance is
+        // already serving this request.
+        await using MediaContext libraryContext = await mediaContextFactory.CreateDbContextAsync();
+
+        List<Ulid> libraryIds = await AudioAnalysisQueries
+            .LibrariesToAnalyze(libraryContext)
+            .ToListAsync();
+
+        int queued = await audioAnalysisScheduler.QueueAsync(libraryIds);
+
+        return Ok(new { queued });
     }
 
     /// <summary>

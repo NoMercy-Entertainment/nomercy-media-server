@@ -186,6 +186,19 @@ public class MediaContext : DbContext
                 .ToTable(tb => tb.HasTrigger($"update_{tableName}_updated_at"));
         }
 
+        // Audio analysis is part of every music import, so a library that says
+        // nothing about it gets it. The sentinel — the value EF reads as "not
+        // set" and leaves out of the INSERT — is that same "on", which is what
+        // keeps the opt-out real: an explicit "off" differs from it and is
+        // written, instead of being dropped and replaced by the store default.
+        // EF infers the sentinel from the property initializer on Library, but
+        // the opt-out is too important to rest on an inference.
+        modelBuilder
+            .Entity<Library>()
+            .Property(library => library.AnalyzeAudio)
+            .HasDefaultValue(true)
+            .HasSentinel(true);
+
         // Explicit cascade for direct entity → Library FKs. These use ConfigurationSource.Explicit
         // so they cannot be reset by convention re-processing (the mutation loop above only sets
         // ConventionSource and gets overridden when HasTrigger calls re-process those entities).

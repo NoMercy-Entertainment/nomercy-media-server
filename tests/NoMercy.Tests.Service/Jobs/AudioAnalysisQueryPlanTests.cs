@@ -48,11 +48,35 @@ public class AudioAnalysisQueryPlanTests : IDisposable
     {
         using MediaContext context = new(_options);
 
-        string sql = AudioAnalysisQueries
-            .TracksNeedingAnalysis(context, [Ulid.NewUlid()], 1)
-            .Take(500)
-            .ToQueryString();
+        return Explain(
+            AudioAnalysisQueries
+                .TracksNeedingAnalysis(context, [Ulid.NewUlid()], 1)
+                .Take(500)
+                .ToQueryString()
+        );
+    }
 
+    /// <summary>
+    /// The query <see cref="NoMercy.Service.Jobs.AudioAnalysisScheduler" />
+    /// actually issues: the same filter, ordered so a page has a stable
+    /// meaning, one page at a time.
+    /// </summary>
+    private string ExplainPagedSweepQuery()
+    {
+        using MediaContext context = new(_options);
+
+        return Explain(
+            AudioAnalysisQueries
+                .TracksNeedingAnalysis(context, [Ulid.NewUlid()], 1)
+                .OrderBy(trackId => trackId)
+                .Skip(500)
+                .Take(500)
+                .ToQueryString()
+        );
+    }
+
+    private string Explain(string sql)
+    {
         // ToQueryString prefixes the statement with ".param set" lines; EXPLAIN
         // wants the statement alone.
         string statement = string.Join(
@@ -108,5 +132,23 @@ public class AudioAnalysisQueryPlanTests : IDisposable
         string plan = ExplainSweepQuery();
 
         Assert.DoesNotContain("SCAN l", plan);
+    }
+
+    /// <summary>
+    /// Paging wraps the filter in a derived table, so the plan gains a scan of
+    /// that table's own output plus a temp b-tree for the ORDER BY — the price
+    /// of a page that means the same thing twice in a row. What it must NOT
+    /// cost is either real table: both are still reached by index, which is
+    /// what makes a sweep over a large library affordable.
+    /// </summary>
+    [Fact]
+    public void PagedSweepQuery_StillReachesBothTablesByIndex()
+    {
+        string plan = ExplainPagedSweepQuery();
+
+        Assert.Contains("SEARCH l USING COVERING INDEX sqlite_autoindex_LibraryTrack_1", plan);
+        Assert.Contains("SEARCH t USING INDEX sqlite_autoindex_TrackAudioAnalysis_1", plan);
+        Assert.DoesNotContain("SCAN t", plan);
+        Assert.DoesNotContain("SCAN LibraryTrack", plan);
     }
 }
