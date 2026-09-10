@@ -31,6 +31,7 @@ using NoMercy.Encoder.Subtitles;
 using NoMercy.Events;
 using NoMercy.Events.Audit;
 using NoMercy.MediaProcessing.Collections;
+using NoMercy.MediaProcessing.DerivedAudio;
 using NoMercy.MediaProcessing.Episodes;
 using NoMercy.MediaProcessing.EventHandlers;
 using NoMercy.MediaProcessing.Files;
@@ -666,6 +667,27 @@ public static partial class ServiceConfiguration
                 return new Storage.Drivers.Local.LocalStorage(driver, guard);
             }
         );
+
+        // Derived-audio-scoped IStorage: stems and rendered transitions live under
+        // AppFiles.DerivedAudioPath, addressed by content hash. Same shape as the
+        // transcode scope above.
+        services.AddKeyedSingleton<IStorage>(
+            "derived-audio",
+            (sp, _) =>
+            {
+                IStorageDriver driver = sp.GetRequiredService<IStorageDriver>();
+                Storage.Validation.StoragePathGuard guard = new(
+                    [AppFiles.DerivedAudioPath],
+                    driver
+                );
+                return new Storage.Drivers.Local.LocalStorage(driver, guard);
+            }
+        );
+        services.AddSingleton<IDerivedAudioStore>(sp => new DerivedAudioStore(
+            sp.GetRequiredKeyedService<IStorage>("derived-audio"),
+            sp.GetRequiredService<IDbContextFactory<MediaContext>>(),
+            sp.GetRequiredService<ILogger<DerivedAudioStore>>()
+        ));
 
         // Concrete activity probe for the deferred hardware benchmark —
         // Encoder's default is a no-op (always idle) so it stays decoupled
