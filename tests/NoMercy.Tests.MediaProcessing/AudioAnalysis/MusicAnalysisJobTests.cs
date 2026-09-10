@@ -15,6 +15,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NoMercy.Database;
 using NoMercy.Database.Models.Music;
+using NoMercy.Events;
+using NoMercy.Events.Music;
 using NoMercy.MediaProcessing.AudioAnalysis;
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
 using NoMercy.Storage;
@@ -66,7 +68,8 @@ public class MusicAnalysisJobTests : IDisposable
 
     private MusicAnalysisJob CreateJob(
         AudioAnalysisResult? result,
-        Mock<IAudioAnalyzer>? analyzerMock = null
+        Mock<IAudioAnalyzer>? analyzerMock = null,
+        Mock<IEventBus>? eventBus = null
     )
     {
         Mock<IAudioAnalyzer> analyzer = analyzerMock ?? new Mock<IAudioAnalyzer>();
@@ -75,10 +78,13 @@ public class MusicAnalysisJobTests : IDisposable
             .Setup(a => a.AnalyzeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(result);
 
-        return CreateJobFrom(analyzer);
+        return CreateJobFrom(analyzer, eventBus);
     }
 
-    private MusicAnalysisJob CreateJobFrom(Mock<IAudioAnalyzer> analyzer)
+    private MusicAnalysisJob CreateJobFrom(
+        Mock<IAudioAnalyzer> analyzer,
+        Mock<IEventBus>? eventBus = null
+    )
     {
         Mock<IStorageDriver> storageDriver = new();
         storageDriver
@@ -90,11 +96,14 @@ public class MusicAnalysisJobTests : IDisposable
             .Setup(f => f.CreateDbContextAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => new(_options));
 
+        Mock<IEventBus> bus = eventBus ?? new Mock<IEventBus>();
+
         return new MusicAnalysisJob(
             analyzer.Object,
             storageDriver.Object,
             factory.Object,
-            NullLoggerFactory.Instance
+            NullLoggerFactory.Instance,
+            bus.Object
         )
         {
             TrackId = _trackId,
@@ -236,7 +245,8 @@ public class MusicAnalysisJobTests : IDisposable
             newer.Object,
             storageDriver.Object,
             factory.Object,
-            NullLoggerFactory.Instance
+            NullLoggerFactory.Instance,
+            new Mock<IEventBus>().Object
         )
         {
             TrackId = _trackId,
@@ -272,5 +282,45 @@ public class MusicAnalysisJobTests : IDisposable
         using MediaContext context = new(_options);
 
         Assert.Empty(context.TrackAudioAnalysis);
+    }
+
+    [Fact]
+    public async Task AnOkVerdict_PublishesACompletedEvent()
+    {
+        Mock<IEventBus> bus = new();
+
+        await CreateJob(SampleResult(), eventBus: bus).Handle();
+
+        bus.Verify(
+            b =>
+                b.PublishAsync(
+                    It.Is<TrackAudioAnalysisCompletedEvent>(e =>
+                        e.TrackId == _trackId
+                        && e.State == "Ok"
+                        && e.AnalyzerVersion == AnalyzerVersion
+                    ),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Once
+        );
+    }
+
+    [Fact]
+    public async Task AFailedVerdict_PublishesACompletedEvent()
+    {
+        Mock<IEventBus> bus = new();
+
+        await CreateJob(null, eventBus: bus).Handle();
+
+        bus.Verify(
+            b =>
+                b.PublishAsync(
+                    It.Is<TrackAudioAnalysisCompletedEvent>(e =>
+                        e.TrackId == _trackId && e.State == "Failed"
+                    ),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Once
+        );
     }
 }

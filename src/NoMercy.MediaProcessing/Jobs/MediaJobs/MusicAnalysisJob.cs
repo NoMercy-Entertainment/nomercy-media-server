@@ -15,6 +15,8 @@ using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using NoMercy.Database;
 using NoMercy.Database.Models.Music;
+using NoMercy.Events;
+using NoMercy.Events.Music;
 using NoMercy.MediaProcessing.AudioAnalysis;
 using NoMercy.Storage;
 using NoMercyQueue.Core.Interfaces;
@@ -44,6 +46,9 @@ public class MusicAnalysisJob : IShouldQueue
     [JsonIgnore]
     private readonly IDbContextFactory<MediaContext> _contextFactory = null!;
 
+    [JsonIgnore]
+    private readonly IEventBus _eventBus = null!;
+
     public string QueueName => "music";
     public int Priority => 0;
 
@@ -59,13 +64,15 @@ public class MusicAnalysisJob : IShouldQueue
         IAudioAnalyzer analyzer,
         IStorageDriver storageDriver,
         IDbContextFactory<MediaContext> contextFactory,
-        ILoggerFactory loggerFactory
+        ILoggerFactory loggerFactory,
+        IEventBus eventBus
     )
     {
         _analyzer = analyzer;
         _storageDriver = storageDriver;
         _contextFactory = contextFactory;
         _logger = loggerFactory.CreateLogger<MusicAnalysisJob>();
+        _eventBus = eventBus;
     }
 
     public MusicAnalysisJob()
@@ -195,5 +202,14 @@ public class MusicAnalysisJob : IShouldQueue
         }
 
         await mediaContext.SaveChangesAsync();
+
+        await _eventBus.PublishAsync(
+            new TrackAudioAnalysisCompletedEvent
+            {
+                TrackId = TrackId,
+                AnalyzerVersion = row.AnalyzerVersion,
+                State = row.State.ToString(),
+            }
+        );
     }
 }
