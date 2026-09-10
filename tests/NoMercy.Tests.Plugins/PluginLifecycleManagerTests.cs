@@ -78,9 +78,25 @@ public class PluginLifecycleManagerTests : IDisposable
         try
         {
             if (Directory.Exists(_tempDir))
+            {
+                // A read-only file that blocked a delete under test is quarantined
+                // rather than left at its original path, but it is still read-only
+                // wherever it landed — clear every attribute before the recursive
+                // delete below, or that delete fails the same way the one under
+                // test did.
+                foreach (
+                    string file in Directory.EnumerateFiles(
+                        _tempDir,
+                        "*",
+                        SearchOption.AllDirectories
+                    )
+                )
+                    File.SetAttributes(file, FileAttributes.Normal);
+
                 Directory.Delete(_tempDir, recursive: true);
+            }
         }
-        catch (IOException) { }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
     }
 
     private static PluginInfo Info(Ulid id, PluginStatus status, string? assemblyPath = null) =>
@@ -294,6 +310,52 @@ public class PluginLifecycleManagerTests : IDisposable
         await act.Should().NotThrowAsync();
     }
 
+    // ── RestartPluginAsync ───────────────────────────────────────────────────
+
+    [Fact]
+    public async Task RestartPluginAsync_UnknownId_ThrowsInvalidOperation()
+    {
+        Func<Task> act = () => _lifecycle.RestartPluginAsync(Ulid.NewUlid());
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    [Fact]
+    public async Task RestartPluginAsync_Active_DisablesBeforeAttemptingToEnableAgain()
+    {
+        // The orchestration this method exists for: Active goes through Disable
+        // first rather than straight to Enable, which would take the
+        // already-Active short-circuit and do nothing at all. Whether the
+        // plugin actually comes back Active depends on there being a real,
+        // loadable assembly behind AssemblyPath — proved separately by the
+        // real-plugin round trip in PluginHotUpdateTests, not reproducible with
+        // this fixture's fake instance and no assembly on disk.
+        Ulid id = Ulid.NewUlid();
+        FakePlugin plugin = new();
+        _registry[id] = new(Info(id, PluginStatus.Active), plugin, null);
+
+        await _lifecycle.RestartPluginAsync(id);
+
+        plugin.DisposeCallCount.Should().Be(1, "the plugin that was running must be disposed");
+    }
+
+    [Fact]
+    public async Task RestartPluginAsync_Disabled_EnablesWithoutDisablingFirst()
+    {
+        Ulid id = Ulid.NewUlid();
+        FakePlugin plugin = new();
+        _registry[id] = new(Info(id, PluginStatus.Disabled), plugin, null);
+
+        await _lifecycle.RestartPluginAsync(id);
+
+        plugin
+            .DisposeCallCount.Should()
+            .Be(0, "a plugin that was already disabled has nothing to dispose again");
+        plugin.InitializeCallCount.Should().Be(1);
+        _registry.TryGetValue(id, out LoadedPlugin? afterward).Should().BeTrue();
+        afterward!.Info.Status.Should().Be(PluginStatus.Active);
+    }
+
     // ── UninstallPluginAsync ─────────────────────────────────────────────────
 
     [Fact]
@@ -426,25 +488,21 @@ public class PluginLifecycleManagerTests : IDisposable
         FakePlugin plugin = new();
         _registry[id] = new(Info(id, PluginStatus.Active, assemblyPath), plugin, null);
 
-        try
-        {
-            Func<Task> act = () => _lifecycle.UninstallPluginAsync(id);
+        Func<Task> act = () => _lifecycle.UninstallPluginAsync(id);
 
-            await act.Should().NotThrowAsync();
-            AssertDeleteBlockedWhereThePlatformBlocksIt(
-                pluginDir,
-                "the read-only file blocked the recursive delete"
-            );
-        }
-        finally
-        {
-            // Only Windows keeps the file around: there the read-only flag blocks the
-            // delete and the attribute has to be cleared so the fixture can clean up.
-            // On POSIX the delete succeeded and the file is already gone, so resetting
-            // its attributes throws DirectoryNotFoundException out of the finally.
-            if (File.Exists(readOnlyFilePath))
-                File.SetAttributes(readOnlyFilePath, FileAttributes.Normal);
-        }
+        await act.Should().NotThrowAsync();
+
+        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
+            // The read-only attribute blocks Directory.Delete but not a rename —
+            // renaming a directory never touches the permission bits of the
+            // files inside it — so the directory is quarantined rather than
+            // left sitting under its own name.
+            AssertQuarantined(pluginDir, "ReadOnlyPlugin");
+        else
+            Directory
+                .Exists(pluginDir)
+                .Should()
+                .BeFalse("POSIX ignores the read-only attribute, so the delete just succeeds");
     }
 
     [Fact]
@@ -474,32 +532,48 @@ public class PluginLifecycleManagerTests : IDisposable
         Func<Task> act = () => _lifecycle.UninstallPluginAsync(id);
 
         await act.Should().NotThrowAsync();
-        AssertDeleteBlockedWhereThePlatformBlocksIt(
-            pluginDir,
-            "the locked file blocked the recursive delete"
-        );
-    }
 
-    /// <summary>
-    /// The contract under test is "uninstall never throws", and that is asserted on
-    /// every platform. Whether the directory survives is not portable: a held handle
-    /// or a read-only flag only blocks deletion on Windows, while POSIX unlinks open
-    /// files and ignores the read-only attribute, so the delete simply succeeds. Both
-    /// outcomes are correct — assert the one the running platform actually produces
-    /// rather than pinning the Windows result everywhere.
-    /// </summary>
-    private static void AssertDeleteBlockedWhereThePlatformBlocksIt(
-        string pluginDir,
-        string because
-    )
-    {
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-            Directory.Exists(pluginDir).Should().BeTrue(because);
+            // Unlike the read-only case above, an actively open exclusive
+            // handle blocks a directory rename too — the handle is still open
+            // when the rename is attempted, so there is genuinely nothing left
+            // to try from inside this process. This is the rare case
+            // DeleteOrQueueForDeletionAsync's own doc comment names: the
+            // directory is left exactly where it was, same as before this
+            // feature existed, and a future disk-space audit is the backstop.
+            Directory
+                .Exists(pluginDir)
+                .Should()
+                .BeTrue("the handle was still open when the quarantine rename was attempted too");
         else
             Directory
                 .Exists(pluginDir)
                 .Should()
-                .BeFalse("POSIX lets the recursive delete complete regardless");
+                .BeFalse("POSIX unlinks open files regardless, so the delete just succeeds");
+    }
+
+    /// <summary>
+    /// Asserts a blocked uninstall moved the plugin's directory into
+    /// <see cref="PluginManager.PendingDeletesFolder"/> instead of leaving it
+    /// under its own name — the quarantine that makes "never leaves it behind"
+    /// true even when an immediate delete cannot be.
+    /// </summary>
+    private void AssertQuarantined(string pluginDir, string pluginFolderName)
+    {
+        Directory
+            .Exists(pluginDir)
+            .Should()
+            .BeFalse("uninstall must never leave the plugin's directory at its own path");
+
+        string pendingDeletesDir = Path.Combine(_tempDir, PluginManager.PendingDeletesFolder);
+
+        Directory.Exists(pendingDeletesDir).Should().BeTrue();
+        Directory
+            .GetDirectories(pendingDeletesDir, $"{pluginFolderName}-*")
+            .Should()
+            .ContainSingle(
+                "the blocked directory should be waiting here for the next start to remove it"
+            );
     }
 
     private sealed class FakePlugin : IPlugin

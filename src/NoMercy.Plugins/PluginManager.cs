@@ -196,18 +196,36 @@ public class PluginManager : IPluginManager, IDisposable
         // The destination may be a running plugin's own assembly: on Windows a
         // loaded ALC keeps its file open, so the copy below fails with an
         // IOException/UnauthorizedAccessException rather than a missing-file
-        // error. That used to reach the caller as a raw 422 stack trace. The
-        // archive install path already treats "still loaded" as the expected
-        // outcome of updating a running plugin rather than a failure; this
-        // mirrors it for a bare-assembly install by staging the copy and
-        // letting the next boot's ApplyPendingUpdates() apply it, instead of
-        // erroring the request.
+        // error. That used to reach the caller as a raw 422 stack trace, or -
+        // once the archive path learned to stage instead - always fell back to
+        // waiting for the next boot. Now the resident copy is unloaded and
+        // swapped live, the same as an archive update; staging for next start
+        // is only what happens when the assembly genuinely will not let go
+        // inside the wait budget.
         try
         {
             _driver.CopyFile(fullPath, destPath, overwrite: true);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
+            Ulid? residentId = _registry
+                .Values.FirstOrDefault(loaded =>
+                    loaded.Info.AssemblyPath is not null
+                    && _driver
+                        .GetFullPath(loaded.Info.AssemblyPath)
+                        .Equals(_driver.GetFullPath(destPath), StringComparison.OrdinalIgnoreCase)
+                )
+                ?.Info.Id;
+
+            if (
+                residentId is { } pluginId
+                && await TrySwapResidentAssemblyAsync(pluginId, fullPath, destPath, ct)
+            )
+            {
+                await LoadPluginAssemblyAsync(destPath, ct);
+                return;
+            }
+
             string staging = _storage.CombinePath(_pluginsPath, PendingUpdatesFolder, pluginName);
 
             if (_driver.DirectoryExists(staging))
@@ -232,6 +250,75 @@ public class PluginManager : IPluginManager, IDisposable
 
         await LoadPluginAssemblyAsync(destPath, ct);
     }
+
+    /// <summary>
+    /// The single-assembly twin of <see cref="TrySwapResidentPluginAsync"/>:
+    /// unloads the resident plugin, backs its one file up beside itself, copies
+    /// the new one over it, and restores the backup if the copy - or a caller
+    /// - reports the result as bad. Returns false, having changed nothing,
+    /// when the file does not free up inside <see cref="UnloadWaitBudget"/>.
+    /// </summary>
+    private async Task<bool> TrySwapResidentAssemblyAsync(
+        Ulid pluginId,
+        string sourcePath,
+        string destPath,
+        CancellationToken ct
+    )
+    {
+        bool wasLoaded = await _lifecycle.UnloadForUpdateAsync(pluginId, ct);
+
+        string rollbackPath = destPath + RollbackSuffix;
+
+        if (_driver.FileExists(rollbackPath))
+        {
+            _driver.DeleteFile(rollbackPath);
+        }
+
+        if (!await MoveWhenFreedAsync(() => _driver.MoveFile(destPath, rollbackPath), ct))
+        {
+            // Still locked. Nothing moved, so reload what is already there and
+            // let the caller fall back to staging for the next start.
+            if (wasLoaded)
+            {
+                await LoadPluginAssemblyAsync(destPath, ct);
+            }
+
+            return false;
+        }
+
+        try
+        {
+            _driver.CopyFile(sourcePath, destPath, overwrite: true);
+        }
+        catch (Exception)
+        {
+            _driver.MoveFile(rollbackPath, destPath);
+
+            if (wasLoaded)
+            {
+                await LoadPluginAssemblyAsync(destPath, ct);
+            }
+
+            throw;
+        }
+
+        try
+        {
+            _driver.DeleteFile(rollbackPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            _logger.LogWarning(
+                "Could not remove the rollback copy for {DestPath} yet; it will be cleared on the next start.",
+                destPath
+            );
+        }
+
+        return true;
+    }
+
+    /// <summary>Suffix a backed-up assembly carries while an update is in flight.</summary>
+    internal const string RollbackSuffix = ".rollback";
 
     public async Task InstallPluginArchiveAsync(
         string archivePath,
@@ -288,13 +375,19 @@ public class PluginManager : IPluginManager, IDisposable
 
         await ExtractAsync(archive, manifest, staging, ct);
 
-        // Replacing a loaded plugin's own assembly cannot work: unloading a
-        // collectible context is best-effort, one live reference anywhere keeps
-        // it, and on Windows the file stays locked for as long as it does. So
-        // the staged copy is left where the next start finds it, before a single
-        // assembly is loaded and while nothing holds the file.
+        // A resident plugin is unloaded and swapped live: the owner asked for an
+        // update, not a server restart, and the assembly lock that used to force
+        // one only lasts for the moment between Unload() and the GC actually
+        // freeing the file. If that moment runs longer than we are willing to
+        // wait for, the staged copy is left for the next start instead of
+        // failing the request.
         if (IsResident(manifest.Id))
         {
+            if (await TrySwapResidentPluginAsync(manifest.Id, staging, pluginDir, ct))
+            {
+                return;
+            }
+
             _logger.LogInformation(
                 "Plugin update for {Folder} is staged: its assembly is still loaded, so it is applied on the next start.",
                 manifest.FolderName
@@ -305,10 +398,145 @@ public class PluginManager : IPluginManager, IDisposable
 
         ApplyStaged(staging, pluginDir);
 
-        await LoadPluginAssemblyAsync(
-            _storage.CombinePath(pluginDir, manifest.AssemblyFileName),
-            ct
+        await LoadPluginFromManifestAsync(_storage.CombinePath(pluginDir, "plugin.json"), ct);
+    }
+
+    /// <summary>
+    /// Where a plugin folder waits while it is being replaced, so an update
+    /// that fails partway through can put it back exactly as it was.
+    /// </summary>
+    internal const string RollbackFolder = ".rollback";
+
+    /// <summary>
+    /// Where an uninstalled plugin's directory waits when it could not be
+    /// deleted immediately because its assembly was still locked. Not the same
+    /// folder an update rolls back from: nothing here is coming back — the
+    /// next boot's <see cref="ResolvePendingDeletes"/> deletes every entry
+    /// unconditionally, at the one moment nothing in the process can still be
+    /// holding it. Skipped by the boot scan for the same reason
+    /// <see cref="RollbackFolder"/> and <see cref="PendingUpdatesFolder"/> are.
+    /// </summary>
+    internal const string PendingDeletesFolder = ".pending-deletes";
+
+    /// <summary>
+    /// How long to wait for a just-unloaded assembly to actually let go of its
+    /// files before giving up and staging the update for the next start
+    /// instead.
+    /// </summary>
+    private static readonly TimeSpan UnloadWaitBudget = PluginFileRetry.DefaultBudget;
+
+    /// <summary>
+    /// Unloads a resident plugin, moves its installed folder aside, moves the
+    /// staged update into its place, and reloads it — rolling the folder back
+    /// and reloading the old copy if any of that does not finish cleanly.
+    /// Returns false, having changed nothing, when the assembly does not free
+    /// its files inside <see cref="UnloadWaitBudget"/>.
+    /// </summary>
+    private async Task<bool> TrySwapResidentPluginAsync(
+        Ulid pluginId,
+        string staging,
+        string pluginDir,
+        CancellationToken ct
+    )
+    {
+        bool wasLoaded = await _lifecycle.UnloadForUpdateAsync(pluginId, ct);
+        string manifestPath = _storage.CombinePath(pluginDir, "plugin.json");
+
+        string rollbackDir = _storage.CombinePath(
+            _pluginsPath,
+            RollbackFolder,
+            Path.GetFileName(pluginDir)
         );
+
+        if (_driver.DirectoryExists(rollbackDir))
+        {
+            _driver.DeleteDirectory(rollbackDir, recursive: true);
+        }
+
+        bool hadExisting = _driver.DirectoryExists(pluginDir);
+
+        if (
+            hadExisting
+            && !await MoveWhenFreedAsync(() => _driver.MoveDirectory(pluginDir, rollbackDir), ct)
+        )
+        {
+            // Still locked after the wait budget. Nothing has moved, so the
+            // installed copy is exactly as it was; reload it if we unloaded it,
+            // and let the caller fall back to staging the update for next start.
+            if (wasLoaded)
+            {
+                await LoadPluginFromManifestAsync(manifestPath, ct);
+            }
+
+            return false;
+        }
+
+        try
+        {
+            ApplyStaged(staging, pluginDir);
+
+            // Via the manifest, not the bare assembly: the manifest may have
+            // changed (version, capabilities, name) along with the code, and a
+            // reload that ignored it would report the update as applied while
+            // showing the owner the old metadata.
+            await LoadPluginFromManifestAsync(manifestPath, ct);
+
+            return true;
+        }
+        catch (Exception)
+        {
+            // The new copy did not come out right - put the old one back and
+            // load that instead, so a bad update leaves the plugin exactly as
+            // it was rather than gone.
+            if (_driver.DirectoryExists(pluginDir))
+            {
+                _driver.DeleteDirectory(pluginDir, recursive: true);
+            }
+
+            if (hadExisting)
+            {
+                _driver.MoveDirectory(rollbackDir, pluginDir);
+
+                if (wasLoaded)
+                {
+                    await LoadPluginFromManifestAsync(manifestPath, ct);
+                }
+            }
+
+            throw;
+        }
+        finally
+        {
+            // Best-effort: Windows can rename a just-unloaded assembly's folder
+            // but not always delete it in the same instant. Letting that throw
+            // here would report a working update as failed and send the caller
+            // into a rollback it does not need; the next boot's
+            // ResolvePendingRollbacksAsync clears anything left behind.
+            if (hadExisting && _driver.DirectoryExists(rollbackDir))
+            {
+                try
+                {
+                    _driver.DeleteDirectory(rollbackDir, recursive: true);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    _logger.LogWarning(
+                        "Could not remove the rollback copy for {PluginDir} yet; it will be cleared on the next start.",
+                        pluginDir
+                    );
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Retries a move while it fails on a file still locked by a just-unloaded
+    /// assembly context — see <see cref="PluginFileRetry"/>. False, unchanged,
+    /// once <see cref="UnloadWaitBudget"/> runs out.
+    /// </summary>
+    private Task<bool> MoveWhenFreedAsync(Action move, CancellationToken ct)
+    {
+        return PluginFileRetry.TryAsync(move, ct, UnloadWaitBudget);
     }
 
     /// <summary>
@@ -407,16 +635,145 @@ public class PluginManager : IPluginManager, IDisposable
     /// </summary>
     private void ApplyPendingUpdates()
     {
-        string pending = _storage.CombinePath(_pluginsPath, PendingUpdatesFolder);
+        ProcessTopLevelFolders(
+            _storage.CombinePath(_pluginsPath, PendingUpdatesFolder),
+            "staged update",
+            (path, folderName) =>
+            {
+                ApplyStaged(path, _storage.CombinePath(_pluginsPath, folderName));
 
-        if (!_driver.DirectoryExists(pending))
+                _logger.LogInformation("Applied the staged update for {Folder}.", folderName);
+            }
+        );
+    }
+
+    /// <summary>
+    /// Resolves every folder left in <see cref="RollbackFolder"/> by a hot
+    /// update that never reached its own cleanup — a crash between the old
+    /// folder being moved aside and the swap finishing.
+    ///
+    /// A rollback folder whose plugin directory is now missing is the only
+    /// copy that plugin has left, so it goes back. One whose plugin directory
+    /// is there belongs to an update that completed before the crash, so it is
+    /// discarded. Getting that the other way round would silently downgrade a
+    /// plugin on every boot that happens to land badly.
+    /// </summary>
+    private void ResolvePendingRollbacks()
+    {
+        ProcessTopLevelFolders(
+            _storage.CombinePath(_pluginsPath, RollbackFolder),
+            "rollback",
+            (path, folderName) =>
+            {
+                string pluginDir = _storage.CombinePath(_pluginsPath, folderName);
+
+                if (_driver.DirectoryExists(pluginDir))
+                {
+                    _driver.DeleteDirectory(path, recursive: true);
+                    return;
+                }
+
+                _driver.MoveDirectory(path, pluginDir);
+
+                _logger.LogWarning(
+                    "Restored {Folder} from an interrupted update; it was left in {Rollback} by a crash mid-swap.",
+                    [folderName, RollbackFolder]
+                );
+            }
+        );
+    }
+
+    /// <summary>
+    /// Deletes every directory an uninstall could not remove immediately
+    /// because its assembly was still locked. By boot time the process that
+    /// held it is gone, so nothing here can still be resisting deletion — an
+    /// uninstall must never leave a plugin's files behind forever, and this is
+    /// where the wait budget's rare loss gets made good on.
+    /// </summary>
+    private void ResolvePendingDeletes()
+    {
+        ProcessTopLevelFolders(
+            _storage.CombinePath(_pluginsPath, PendingDeletesFolder),
+            "pending delete",
+            (path, folderName) =>
+            {
+                _driver.DeleteDirectory(path, recursive: true);
+
+                _logger.LogInformation(
+                    "Deleted {Folder}, left behind by an uninstall while its files were locked.",
+                    folderName
+                );
+            }
+        );
+    }
+
+    /// <summary>
+    /// The bare-assembly install's twin of <see cref="ResolvePendingRollbacks"/>:
+    /// resolves every <c>*.rollback</c> file a single-dll hot update could not
+    /// clean up after itself. A backup whose original file is back in place
+    /// belonged to an update that completed, so it is discarded; one whose
+    /// original is missing is the only copy of that assembly left, so it is
+    /// restored.
+    /// </summary>
+    private void ResolveStaleAssemblyBackups()
+    {
+        if (!_driver.DirectoryExists(_pluginsPath))
         {
             return;
         }
 
         foreach (
             StorageEntryInfo entry in _driver
-                .EnumerateEntries(pending, "*", SearchOption.TopDirectoryOnly)
+                .EnumerateEntries(_pluginsPath, "*" + RollbackSuffix, SearchOption.AllDirectories)
+                .ToList()
+        )
+        {
+            if (entry.IsDirectory)
+            {
+                continue;
+            }
+
+            string original = entry.Path[..^RollbackSuffix.Length];
+
+            try
+            {
+                if (_driver.FileExists(original))
+                {
+                    _driver.DeleteFile(entry.Path);
+                    continue;
+                }
+
+                _driver.MoveFile(entry.Path, original);
+
+                _logger.LogWarning(
+                    "Restored {Original} from an interrupted update; its backup was left behind by a crash mid-swap.",
+                    original
+                );
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Could not resolve the stale backup {Backup}.", entry.Path);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Runs <paramref name="process"/> against each top-level folder directly
+    /// under <paramref name="root"/>, logging and skipping one that throws
+    /// rather than letting it stop the rest — the shape both a boot-time apply
+    /// and a boot-time rollback need, since neither may let one bad plugin
+    /// folder block every other one from starting.
+    /// </summary>
+    private void ProcessTopLevelFolders(string root, string label, Action<string, string> process)
+    {
+        if (!_driver.DirectoryExists(root))
+        {
+            return;
+        }
+
+        foreach (
+            StorageEntryInfo entry in _driver
+                .EnumerateEntries(root, "*", SearchOption.TopDirectoryOnly)
                 .ToList()
         )
         {
@@ -429,16 +786,14 @@ public class PluginManager : IPluginManager, IDisposable
 
             try
             {
-                ApplyStaged(entry.Path, _storage.CombinePath(_pluginsPath, folderName));
-
-                _logger.LogInformation("Applied the staged update for {Folder}.", folderName);
+                process(entry.Path, folderName);
             }
             catch (Exception ex)
             {
                 _logger.LogError(
                     ex,
-                    "Could not apply the staged update for {Folder}. The installed version is untouched and the update stays staged.",
-                    folderName
+                    "Could not resolve the {Label} entry for {Folder}.",
+                    [label, folderName]
                 );
             }
         }
@@ -591,6 +946,11 @@ public class PluginManager : IPluginManager, IDisposable
         return _lifecycle.DisablePluginAsync(pluginId, ct);
     }
 
+    public Task RestartPluginAsync(Ulid pluginId, CancellationToken ct = default)
+    {
+        return _lifecycle.RestartPluginAsync(pluginId, ct);
+    }
+
     public Task UninstallPluginAsync(Ulid pluginId, CancellationToken ct = default)
     {
         return _lifecycle.UninstallPluginAsync(pluginId, ct);
@@ -607,6 +967,17 @@ public class PluginManager : IPluginManager, IDisposable
         // assembly is held and a staged update can replace the files it needs to.
         ApplyPendingUpdates();
 
+        // Same moment, for a hot swap that crashed before its own cleanup ran.
+        ResolvePendingRollbacks();
+
+        // And for an uninstall that could not delete its own directory while
+        // the server was still running.
+        ResolvePendingDeletes();
+
+        // And for a single-dll hot update that could not clean up its own
+        // backup file.
+        ResolveStaleAssemblyBackups();
+
         IReadOnlyList<StorageEntry> entries = _storage.List(_pluginsPath, null, recursive: false);
         foreach (StorageEntry entry in entries)
         {
@@ -617,7 +988,14 @@ public class PluginManager : IPluginManager, IDisposable
 
             string pluginDir = entry.Path;
             string dirName = Path.GetFileName(pluginDir);
-            if (dirName is "configurations" or "data" or PendingUpdatesFolder)
+            if (
+                dirName
+                is "configurations"
+                    or "data"
+                    or PendingUpdatesFolder
+                    or RollbackFolder
+                    or PendingDeletesFolder
+            )
             {
                 continue;
             }

@@ -262,6 +262,12 @@ public class PluginManagerTests : IDisposable
         storage
             .Setup(s => s.CombinePath(_tempPluginsDir, PluginManager.PendingUpdatesFolder))
             .Returns(Path.Combine(_tempPluginsDir, PluginManager.PendingUpdatesFolder));
+        storage
+            .Setup(s => s.CombinePath(_tempPluginsDir, PluginManager.RollbackFolder))
+            .Returns(Path.Combine(_tempPluginsDir, PluginManager.RollbackFolder));
+        storage
+            .Setup(s => s.CombinePath(_tempPluginsDir, PluginManager.PendingDeletesFolder))
+            .Returns(Path.Combine(_tempPluginsDir, PluginManager.PendingDeletesFolder));
         storage.Setup(s => s.Exists(_tempPluginsDir)).Returns(true);
         storage
             .Setup(s => s.List(_tempPluginsDir, null, false))

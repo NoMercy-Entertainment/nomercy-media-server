@@ -48,6 +48,13 @@ public interface IPluginManager
 
     Task EnablePluginAsync(Ulid pluginId, CancellationToken ct = default);
     Task DisablePluginAsync(Ulid pluginId, CancellationToken ct = default);
+
+    // Disable then enable in one call, so a caller does not have to fake a
+    // restart out of two separate requests. Defaulted so existing implementers
+    // (test doubles) keep compiling.
+    Task RestartPluginAsync(Ulid pluginId, CancellationToken ct = default) =>
+        throw new NotSupportedException("This plugin manager cannot restart a plugin.");
+
     Task UninstallPluginAsync(Ulid pluginId, CancellationToken ct = default);
 
     // Boot-time scan: load all plugins in the plugins directory, isolating failures
