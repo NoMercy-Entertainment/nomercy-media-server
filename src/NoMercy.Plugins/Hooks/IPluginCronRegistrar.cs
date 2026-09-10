@@ -16,6 +16,21 @@ public interface IPluginCronRegistrar
     void RegisterAll();
 
     /// <summary>
+    /// Registers one plugin's cron executors, the same way <see cref="RegisterAll"/>
+    /// does for every plugin found at boot.
+    /// <para>
+    /// Boot is not the only time a scheduled-task plugin starts existing in the
+    /// process: install, restart and update all bring one back with a fresh
+    /// instance, and none of them go through the boot path that calls
+    /// <see cref="RegisterAll"/>. Without a call scoped to just this plugin,
+    /// its jobs stay unregistered until the next full server start — quietly,
+    /// since a plugin can be Active and answering its own REST routes with no
+    /// cron work happening behind it at all.
+    /// </para>
+    /// </summary>
+    void RegisterPlugin(Ulid pluginId);
+
+    /// <summary>
     /// Stops and releases every executor registered for one plugin.
     /// <para>
     /// The counterpart to registration, and load-bearing: an executor holds the

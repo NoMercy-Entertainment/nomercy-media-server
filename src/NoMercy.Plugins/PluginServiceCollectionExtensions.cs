@@ -160,7 +160,11 @@ public static class PluginServiceCollectionExtensions
                 sp.GetRequiredService<IPluginAssemblyTracker>(),
                 // Resolved lazily: the cron registrar depends on the manager,
                 // so taking it as a constructor argument here would be a cycle.
-                pluginId => sp.GetService<IPluginCronRegistrar>()?.UnregisterPlugin(pluginId)
+                pluginId => sp.GetService<IPluginCronRegistrar>()?.UnregisterPlugin(pluginId),
+                // The counterpart, for the same reason: install, restart and
+                // update all bring a scheduled-task plugin's instance back
+                // without going through the boot path that registers it.
+                pluginId => sp.GetService<IPluginCronRegistrar>()?.RegisterPlugin(pluginId)
             );
         });
 
