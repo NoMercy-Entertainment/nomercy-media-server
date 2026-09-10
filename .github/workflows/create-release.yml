@@ -279,12 +279,19 @@ jobs:
           # [skip ci]: the release commit is this pipeline's own output; letting the
           # master push start another run would cancel this run's promote_docker_images
           # job (cancel-in-progress concurrency) and leave :latest unpromoted.
-          git commit -m "release: v$NEW_VERSION [skip ci]" -m "$CHANGELOG"
-
-          # Push to master
-          git push origin master
-
-          echo "Synced dev tree onto master as v$NEW_VERSION"
+          #
+          # A rerun of an already-completed release resets to the exact tree
+          # master already carries, so there is nothing staged: git commit
+          # would exit 1 on "nothing to commit" and fail a rerun that has
+          # nothing left to do. Skip the commit and push in that case instead
+          # of treating "already released" as an error.
+          if git diff --cached --quiet; then
+            echo "master is already at v$NEW_VERSION; nothing to sync"
+          else
+            git commit -m "release: v$NEW_VERSION [skip ci]" -m "$CHANGELOG"
+            git push origin master
+            echo "Synced dev tree onto master as v$NEW_VERSION"
+          fi
 
       - name: Create Release and Upload Assets
         env:
@@ -349,9 +356,28 @@ jobs:
         env:
           PAT: ${{ secrets.PAT }}
         run: |
-          curl -fsSL -X POST \
-            -H "Authorization: Bearer ${PAT}" \
-            -H "Accept: application/vnd.github.v3+json" \
-            "https://api.github.com/repos/NoMercy-Entertainment/nomercy-packages/dispatches" \
-            -d '{"event_type":"release_published","client_payload":{"version":"${{ inputs.version }}"}}'
-          echo "Triggered nomercy-packages update"
+          # A one-off transient failure here (seen once: a bare 403 with a
+          # healthy token that pushed to master seconds earlier and dispatched
+          # the same call cleanly the day before) used to fail the whole
+          # release for a step with nothing actually wrong with its
+          # credentials. Retry logic, matching the asset-upload loop above.
+          SUCCESS=false
+          for i in 1 2 3; do
+            if curl -fsSL -X POST \
+              -H "Authorization: Bearer ${PAT}" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/NoMercy-Entertainment/nomercy-packages/dispatches" \
+              -d '{"event_type":"release_published","client_payload":{"version":"${{ inputs.version }}"}}'; then
+              echo "Triggered nomercy-packages update"
+              SUCCESS=true
+              break
+            else
+              echo "Dispatch attempt $i/3 failed"
+              sleep $((i * 5))
+            fi
+          done
+
+          if [ "$SUCCESS" != "true" ]; then
+            echo "::error::Failed to trigger nomercy-packages update after 3 attempts"
+            exit 1
+          fi
