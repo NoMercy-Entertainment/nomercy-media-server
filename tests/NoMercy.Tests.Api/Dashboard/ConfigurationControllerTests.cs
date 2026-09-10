@@ -251,6 +251,14 @@ public class ConfigurationControllerTests : IClassFixture<NoMercyApiFactory>
         capEl.GetInt32().Should().Be(20);
 
         RuntimeServerSettings.Current.DerivedAudioCapBytes.Should().Be(20L * 1024 * 1024 * 1024);
+
+        using IServiceScope scope = _factory.Services.CreateScope();
+        AppDbContext appContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        Configuration? persisted = await appContext.Configuration.FirstOrDefaultAsync(c =>
+            c.Key == "derivedAudioCapGb"
+        );
+        persisted.Should().NotBeNull();
+        persisted!.Value.Should().Be("20");
     }
 
     [Fact]
