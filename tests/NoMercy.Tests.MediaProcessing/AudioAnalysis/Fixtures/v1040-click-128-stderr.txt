@@ -3,46 +3,46 @@ Input #0, lavfi, from 'aevalsrc=exprs='0.9*sin(2*PI*1000*t)*lt(mod(t\,60/128)\,0
   Stream #0:0: Audio: pcm_f64le, 44100 Hz, mono, dbl, 2822 kb/s
 Stream mapping:
   Stream #0:0 -> #0:0 (pcm_f64le (native) -> pcm_s16le (native))
-[Parsed_keydetect_1 @ 000001dc98157080] t=0.21 key=C (r=0.91)
-[Parsed_keydetect_1 @ 000001dc98157080] t=0.54 chord=C
+[Parsed_keydetect_2 @ 00000206416c6e00] t=0.21 key=C (r=0.91)
+[Parsed_keydetect_2 @ 00000206416c6e00] t=0.54 chord=C
 Output #0, null, to 'pipe:':
   Metadata:
     encoder         : Lavf63.1.100
   Stream #0:0: Audio: pcm_s16le, 192000 Hz, mono, s16, 3072 kb/s
     Metadata:
       encoder         : Lavc63.1.100 pcm_s16le
-[Parsed_beatdetect_0 @ 000001dc98156f80] lavfi.beatdetect.bpm=128.06 
+[Parsed_beatdetect_1 @ 0000020641677e00] lavfi.beatdetect.bpm=128.06 
 lavfi.beatdetect.bpm=128.06 
-[Parsed_beatdetect_0 @ 000001dc98156f80] lavfi.beatdetect.confidence=0.891 beat_offset_ms=467.8 beat_interval_ms=468.53
-[Parsed_keydetect_1 @ 000001dc98157080] lavfi.keydetect.key=C
+[Parsed_beatdetect_1 @ 0000020641677e00] lavfi.beatdetect.confidence=0.891 beat_offset_ms=467.8 beat_interval_ms=468.53
+[Parsed_keydetect_2 @ 00000206416c6e00] lavfi.keydetect.key=C
 lavfi.keydetect.key=C
-[Parsed_keydetect_1 @ 000001dc98157080] lavfi.keydetect.key_confidence=0.908
+[Parsed_keydetect_2 @ 00000206416c6e00] lavfi.keydetect.key_confidence=0.908
 lavfi.keydetect.key_confidence=0.908
-[Parsed_keydetect_1 @ 000001dc98157080] lavfi.keydetect.key_r_leader=0.908
+[Parsed_keydetect_2 @ 00000206416c6e00] lavfi.keydetect.key_r_leader=0.908
 lavfi.keydetect.key_r_leader=0.908
-[Parsed_keydetect_1 @ 000001dc98157080] lavfi.keydetect.key_alt=Am
+[Parsed_keydetect_2 @ 00000206416c6e00] lavfi.keydetect.key_alt=Am
 lavfi.keydetect.key_alt=Am
-[Parsed_keydetect_1 @ 000001dc98157080] lavfi.keydetect.key_alt_confidence=0.733
+[Parsed_keydetect_2 @ 00000206416c6e00] lavfi.keydetect.key_alt_confidence=0.733
 lavfi.keydetect.key_alt_confidence=0.733
-[Parsed_keydetect_1 @ 000001dc98157080] lavfi.keydetect.key_margin=0.176
+[Parsed_keydetect_2 @ 00000206416c6e00] lavfi.keydetect.key_margin=0.176
 lavfi.keydetect.key_margin=0.176
-[Parsed_keydetect_1 @ 000001dc98157080] lavfi.keydetect.key_candidates=C:0.908,Am:0.733,F:0.533
+[Parsed_keydetect_2 @ 00000206416c6e00] lavfi.keydetect.key_candidates=C:0.908,Am:0.733,F:0.533
 lavfi.keydetect.key_candidates=C:0.908,Am:0.733,F:0.533
-[Parsed_keydetect_1 @ 000001dc98157080] lavfi.keydetect.key_reranked=0
+[Parsed_keydetect_2 @ 00000206416c6e00] lavfi.keydetect.key_reranked=0
 lavfi.keydetect.key_reranked=0
-[Parsed_keydetect_1 @ 000001dc98157080] lavfi.keydetect.key_profiles=krumhansl:C:0.901,temperley:C:0.847,shaath:C:0.908,edma:C:0.835
+[Parsed_keydetect_2 @ 00000206416c6e00] lavfi.keydetect.key_profiles=krumhansl:C:0.901,temperley:C:0.847,shaath:C:0.908,edma:C:0.835
 lavfi.keydetect.key_profiles=krumhansl:C:0.901,temperley:C:0.847,shaath:C:0.908,edma:C:0.835
-[Parsed_keydetect_1 @ 000001dc98157080] lavfi.keydetect.chord_coherence=0.000
+[Parsed_keydetect_2 @ 00000206416c6e00] lavfi.keydetect.chord_coherence=0.000
 lavfi.keydetect.chord_coherence=0.000
-[Parsed_keydetect_1 @ 000001dc98157080] lavfi.keydetect.tonalness=0.668
+[Parsed_keydetect_2 @ 00000206416c6e00] lavfi.keydetect.tonalness=0.668
 lavfi.keydetect.tonalness=0.668
-[Parsed_keydetect_1 @ 000001dc98157080] lavfi.keydetect.bass_tonic=D#
+[Parsed_keydetect_2 @ 00000206416c6e00] lavfi.keydetect.bass_tonic=D#
 lavfi.keydetect.bass_tonic=D#
-[Parsed_keydetect_1 @ 000001dc98157080] lavfi.keydetect.bass_chroma=0.422,0.663,0.706,1.000,0.693,0.194,0.150,0.218,0.171,0.277,0.278,0.659
+[Parsed_keydetect_2 @ 00000206416c6e00] lavfi.keydetect.bass_chroma=0.422,0.663,0.706,1.000,0.693,0.194,0.150,0.218,0.171,0.277,0.278,0.659
 lavfi.keydetect.bass_chroma=0.422,0.663,0.706,1.000,0.693,0.194,0.150,0.218,0.171,0.277,0.278,0.659
-[Parsed_keydetect_1 @ 000001dc98157080] lavfi.keydetect.chords=C
+[Parsed_keydetect_2 @ 00000206416c6e00] lavfi.keydetect.chords=C
 lavfi.keydetect.chords=C
-[Parsed_loudnorm_5 @ 000001dc98145900] 
+[Parsed_loudnorm_5 @ 00000206416c7100] 
 {
 	"input_i" : "-11.74",
 	"input_tp" : "3.90",
@@ -55,4 +55,4 @@ lavfi.keydetect.chords=C
 	"normalization_type" : "dynamic",
 	"target_offset" : "-0.02"
 }
-[out#0/null @ 000001dc9812a140] video:0KiB audio:7500KiB subtitle:0KiB other streams:0KiB global headers:0KiB muxing overhead: unknown
+[out#0/null @ 0000020641675e80] video:0KiB audio:7500KiB subtitle:0KiB other streams:0KiB global headers:0KiB muxing overhead: unknown
