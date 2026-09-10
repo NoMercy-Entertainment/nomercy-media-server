@@ -200,8 +200,7 @@ public partial class MusicHub
                     c.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase)
                     && c.Endpoint.Contains("musicHub", StringComparison.OrdinalIgnoreCase)
                 )
-            )
-            && (targetTv is null || _busRegistry.GetStatus(targetTv.Id).Foreground);
+            ) && (targetTv is null || _busRegistry.GetStatus(targetTv.Id).Foreground);
 
         if (targetTv is not null)
         {
@@ -288,8 +287,24 @@ public partial class MusicHub
         }
         else
         {
-            // No live player state — nothing to transfer. The else-branch's previous
-            // `UpdatePlaybackState(user, null)` call would have NRE'd; just return.
+            // No live player state yet — nothing to transfer, but the claim itself
+            // still has to land. This is exactly the sequence a local playback
+            // start uses (MusicConnectPlugin.claimActiveForLocalPlaybackStart):
+            // ChangeDeviceCommand(ownId) first, StartPlaybackCommand right after,
+            // with no player state existing in between. Returning here without
+            // touching the registry left it pointing at whatever device was
+            // active last — a TV that was only ever showing video, not playing
+            // music, but had never disconnected from MusicHub — so the
+            // StartPlaybackCommand that followed immediately resolved its
+            // GetOrPromoteActiveDevice lookup to that stale, still-connected TV
+            // instead of the caller who just explicitly asked for this device.
+            // Reported live, 2026-09-10: tapping play on the phone started the
+            // track on the living-room TV over the video it was casting.
+            Device? earlyTargetClient = ConnectedClients.Clients.Values.FirstOrDefault(c =>
+                c.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase)
+            );
+            if (earlyTargetClient is not null)
+                _activeDeviceRegistry.Set(user.Id, earlyTargetClient);
             return;
         }
 

@@ -130,10 +130,9 @@ public class MusicHubDeviceCommandsTests : IClassFixture<NoMercyApiFactory>
         // only ever reaches MusicHub's direct field. A custom chromeCast is
         // meaningless unless the launcher wraps that same instance, so build
         // a fresh launcher around it rather than pulling the DI singleton.
-        CastPanelWakeLauncher castPanelWakeLauncher =
-            chromeCast is null
-                ? _factory.Services.GetRequiredService<CastPanelWakeLauncher>()
-                : new(chromeCast, NullLogger<CastPanelWakeLauncher>.Instance);
+        CastPanelWakeLauncher castPanelWakeLauncher = chromeCast is null
+            ? _factory.Services.GetRequiredService<CastPanelWakeLauncher>()
+            : new(chromeCast, NullLogger<CastPanelWakeLauncher>.Instance);
 
         MusicDeviceManager musicDeviceManager = new(new());
         MusicPlaylistManager musicPlaylistManager = new(new MusicRepository(contextFactory), new());
@@ -298,6 +297,50 @@ public class MusicHubDeviceCommandsTests : IClassFixture<NoMercyApiFactory>
         finally
         {
             Cleanup(userId, user, connectionId);
+        }
+    }
+
+    /// <summary>
+    /// Reported live, 2026-09-10: tapping play on a phone's local music
+    /// mini-player started the track on the living-room TV instead, over the
+    /// video it was casting. MusicConnectPlugin.claimActiveForLocalPlaybackStart
+    /// sends ChangeDeviceCommand(ownId) before StartPlaybackCommand — with no
+    /// player state existing yet (nothing was playing), so the claim used to
+    /// hit the no-op branch above and leave the active-device registry
+    /// pointing at whatever was active last (a TV that never disconnected
+    /// from MusicHub, even while only showing video). The StartPlaybackCommand
+    /// that followed then resolved GetOrPromoteActiveDevice to that stale,
+    /// still-connected TV instead of the caller who had just explicitly
+    /// claimed the device. The claim must land in the registry even when
+    /// there is nothing yet to transfer.
+    /// </summary>
+    [Fact]
+    public async Task ChangeDeviceCommand_NoExistingPlayerState_StillClaimsCallerInRegistry()
+    {
+        Guid userId = Guid.NewGuid();
+        User user = SeedTestUser(userId);
+        string phoneConnectionId = Guid.NewGuid().ToString();
+        string phoneDeviceId = $"phone-{Guid.NewGuid()}";
+
+        ConnectedClients connectedClients = _factory.GetConnectedClients();
+        (Client phoneClient, _) = MakeClientWithProxy(userId, phoneDeviceId, "web");
+        connectedClients.Clients[phoneConnectionId] = phoneClient;
+
+        MusicActiveDeviceRegistry registry =
+            _factory.Services.GetRequiredService<MusicActiveDeviceRegistry>();
+
+        try
+        {
+            MusicHub hub = CreateHub(phoneConnectionId, userId);
+
+            await hub.ChangeDeviceCommand(phoneDeviceId);
+
+            registry.TryGet(userId, out Device? active).Should().BeTrue();
+            active!.DeviceId.Should().Be(phoneDeviceId);
+        }
+        finally
+        {
+            Cleanup(userId, user, phoneConnectionId);
         }
     }
 
