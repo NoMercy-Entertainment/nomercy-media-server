@@ -453,6 +453,19 @@ public class PluginManager : IPluginManager, IDisposable
             _driver.DeleteDirectory(rollbackDir, recursive: true);
         }
 
+        // Directory.Move (and its remote-driver equivalents) refuses when the
+        // destination's own parent does not exist yet - true on every very
+        // first update this server ever applies, since nothing else has a
+        // reason to create .rollback before this does. Without this, that
+        // move always failed, indistinguishable from "still locked" because
+        // DirectoryNotFoundException is itself an IOException - so the
+        // fallback fired on every attempt and the swap could never go hot.
+        string rollbackRoot = _storage.CombinePath(_pluginsPath, RollbackFolder);
+        if (!_driver.DirectoryExists(rollbackRoot))
+        {
+            _driver.CreateDirectory(rollbackRoot);
+        }
+
         bool hadExisting = _driver.DirectoryExists(pluginDir);
 
         if (
@@ -496,6 +509,7 @@ public class PluginManager : IPluginManager, IDisposable
             if (hadExisting)
             {
                 _driver.MoveDirectory(rollbackDir, pluginDir);
+                PruneIfEmpty(rollbackRoot);
 
                 if (wasLoaded)
                 {
@@ -588,6 +602,17 @@ public class PluginManager : IPluginManager, IDisposable
     /// is the point where the update becomes visible and there is nothing to
     /// roll back.
     /// </summary>
+    /// <summary>
+    /// Test seam: overrides the per-file copy <see cref="ApplyStaged"/>
+    /// performs while applying a staged update. Null in production, where the
+    /// real copy always runs — this exists so a test can force a hot swap to
+    /// fail partway through applying its staged copy (a real disk fault, an
+    /// unreadable file) without needing to reproduce that fault on a real
+    /// filesystem, which is otherwise indistinguishable from the earlier
+    /// lock-detection retry that a real locked file trips first.
+    /// </summary>
+    internal Action<Stream, Stream>? CopyStreamOverride { get; set; }
+
     private void ApplyStaged(string staging, string pluginDir)
     {
         if (!_driver.DirectoryExists(pluginDir))
@@ -623,7 +648,15 @@ public class PluginManager : IPluginManager, IDisposable
 
             using Stream source = _driver.OpenRead(info.Path);
             using Stream target = _driver.OpenWrite(destination, overwrite: true);
-            source.CopyTo(target);
+
+            if (CopyStreamOverride is not null)
+            {
+                CopyStreamOverride(source, target);
+            }
+            else
+            {
+                source.CopyTo(target);
+            }
         }
 
         DeleteAndPruneEmptyParent(staging, PendingUpdatesFolder);
@@ -640,14 +673,24 @@ public class PluginManager : IPluginManager, IDisposable
     {
         _driver.DeleteDirectory(entry, recursive: true);
 
-        string markerRoot = _storage.CombinePath(_pluginsPath, markerRootName);
+        PruneIfEmpty(_storage.CombinePath(_pluginsPath, markerRootName));
+    }
 
+    /// <summary>
+    /// Removes <paramref name="root"/> if it exists and has nothing left in
+    /// it. An empty marker folder sitting in the plugins directory reads like
+    /// something is still queued when nothing is - shared by every path that
+    /// can be the one to take a marker root's last entry (applying a staged
+    /// update, resolving a rollback, restoring one after a failed swap).
+    /// </summary>
+    private void PruneIfEmpty(string root)
+    {
         if (
-            _driver.DirectoryExists(markerRoot)
-            && !_driver.EnumerateEntries(markerRoot, "*", SearchOption.TopDirectoryOnly).Any()
+            _driver.DirectoryExists(root)
+            && !_driver.EnumerateEntries(root, "*", SearchOption.TopDirectoryOnly).Any()
         )
         {
-            _driver.DeleteDirectory(markerRoot, recursive: false);
+            _driver.DeleteDirectory(root, recursive: false);
         }
     }
 
@@ -825,17 +868,7 @@ public class PluginManager : IPluginManager, IDisposable
             }
         }
 
-        // An empty root left sitting in the plugins directory reads like
-        // something is still queued when nothing is — the same reasoning
-        // ApplyStaged already applies to .pending-updates, generalized here so
-        // every caller of this method gets it without repeating it.
-        if (
-            _driver.DirectoryExists(root)
-            && !_driver.EnumerateEntries(root, "*", SearchOption.TopDirectoryOnly).Any()
-        )
-        {
-            _driver.DeleteDirectory(root, recursive: false);
-        }
+        PruneIfEmpty(root);
     }
 
     /// <summary>
