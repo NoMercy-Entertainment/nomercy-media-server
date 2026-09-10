@@ -32,7 +32,10 @@ public sealed class FfmpegAudioAnalyzer(
     private static readonly TimeSpan AnalysisTimeout = TimeSpan.FromMinutes(10);
 
     // 3: beat grid and confidence read from beatdetect's own metadata (nomercy-ffmpeg v1.0.40).
-    public int Version => 3;
+    // 4: aspectralstats moved ahead of beatdetect. Downstream of it the frame
+    //    carrying final=1 was lost on real MP3s, so every version 3 verdict
+    //    fell back to the legacy tempo without a grid and has to be redone.
+    public int Version => 4;
 
     public async Task<AudioAnalysisResult?> AnalyzeAsync(string filePath, CancellationToken ct)
     {
@@ -44,26 +47,34 @@ public sealed class FfmpegAudioAnalyzer(
         // answer through ametadata on stdout; silencedetect and loudnorm answer
         // on stderr.
         //
-        // beatdetect runs FIRST, ahead of every filter that alters the signal.
-        // loudnorm normalizes as well as reporting, and reading tempo downstream
-        // of it measured the normalized copy — the same track moved 99.40 to
-        // 106.97.
+        // The order is load-bearing, and every rule below was measured.
         //
-        // Exactly ONE ametadata, and it sits where it does for two reasons.
-        // Two instances printing to file=- hold independent buffers and splice
-        // each other's lines mid-write (measured: "frame:48   pts:921600
-        // pts_tect.final=0"), which can cut a verdict in half. And it has to
-        // come before loudnorm, which re-frames its output: the frame carrying
-        // final=1 does not survive that, so a print at the end of the chain
-        // shows only the running estimate — half time for most of a pass.
-        // keydetect and aspectralstats do not re-frame, so putting the writer
-        // after them keeps their keys on the same stdout without costing the
-        // verdict.
+        // aspectralstats goes FIRST. It re-frames: it consumes its input in
+        // fixed 2048-sample windows, and each window keeps the metadata of the
+        // first frame it swallowed. Downstream of beatdetect it dropped the
+        // frame carrying final=1 on real MP3s — a 200 s 128 BPM click encoded
+        // with libmp3lame yielded 0 final frames with aspectralstats between
+        // beatdetect and ametadata and 1 with it ahead — while the 20 s lavfi
+        // fixture happened to align and hid it. It does not alter the signal:
+        // beatdetect reading its output measures the same grid (128.06 BPM,
+        // offset 467.8 ms, interval 468.53 ms in both orders).
+        //
+        // beatdetect and keydetect pass frames through untouched, so ONE
+        // ametadata directly after them prints every key, the centroid that
+        // rode along from aspectralstats included. Exactly one: two instances
+        // printing to file=- hold independent buffers and splice each other's
+        // lines mid-write (measured: "frame:48   pts:921600  pts_tect.final=0"),
+        // which can cut a verdict in half.
+        //
+        // Everything that alters the signal comes LAST. loudnorm normalizes as
+        // well as reporting, and reading tempo downstream of it measured the
+        // normalized copy — the same track moved 99.40 to 106.97. It re-frames
+        // too, so the final frame would not survive it either.
         string filterGraph = string.Join(
             ",",
+            "aspectralstats=measure=centroid",
             "beatdetect",
             "keydetect",
-            "aspectralstats=measure=centroid",
             "ametadata=mode=print:file=-",
             "silencedetect=n=-50dB:d=0.5",
             "loudnorm=print_format=json"

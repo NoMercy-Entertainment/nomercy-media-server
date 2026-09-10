@@ -24,8 +24,8 @@ namespace NoMercy.Tests.MediaProcessing.AudioAnalysis;
 /// </para>
 /// <para>
 /// Fixture: a generated 20 s 128 BPM click over a C major triad through the
-/// production filter graph — one ametadata writer — captured from ffmpeg
-/// 9.0-NoMercy-MediaServer (v1.0.40). Its stderr still carries the legacy bare
+/// production filter graph — aspectralstats ahead of beatdetect, one ametadata
+/// writer — captured from ffmpeg 9.0-NoMercy-MediaServer (v1.0.40). Its stderr still carries the legacy bare
 /// tempo line and its pre-final frames still carry 64.06, so reading 128.06 from
 /// it proves the metadata verdict wins over both.
 /// </para>
