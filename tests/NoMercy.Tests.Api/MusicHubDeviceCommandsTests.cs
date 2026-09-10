@@ -130,10 +130,9 @@ public class MusicHubDeviceCommandsTests : IClassFixture<NoMercyApiFactory>
         // only ever reaches MusicHub's direct field. A custom chromeCast is
         // meaningless unless the launcher wraps that same instance, so build
         // a fresh launcher around it rather than pulling the DI singleton.
-        CastPanelWakeLauncher castPanelWakeLauncher =
-            chromeCast is null
-                ? _factory.Services.GetRequiredService<CastPanelWakeLauncher>()
-                : new(chromeCast, NullLogger<CastPanelWakeLauncher>.Instance);
+        CastPanelWakeLauncher castPanelWakeLauncher = chromeCast is null
+            ? _factory.Services.GetRequiredService<CastPanelWakeLauncher>()
+            : new(chromeCast, NullLogger<CastPanelWakeLauncher>.Instance);
 
         MusicDeviceManager musicDeviceManager = new(new());
         MusicPlaylistManager musicPlaylistManager = new(new MusicRepository(contextFactory), new());
@@ -298,6 +297,121 @@ public class MusicHubDeviceCommandsTests : IClassFixture<NoMercyApiFactory>
         finally
         {
             Cleanup(userId, user, connectionId);
+        }
+    }
+
+    /// <summary>
+    /// Reported live, 2026-09-10: tapping play on a phone's local music
+    /// mini-player started the track on the living-room TV instead, over the
+    /// video it was casting. MusicConnectPlugin.claimActiveForLocalPlaybackStart
+    /// sends ChangeDeviceCommand(ownId) before StartPlaybackCommand — with no
+    /// player state existing yet (nothing was playing), so the claim used to
+    /// hit the no-op branch above and leave the active-device registry
+    /// pointing at whatever was active last (a TV that never disconnected
+    /// from MusicHub, even while only showing video). The StartPlaybackCommand
+    /// that followed then resolved GetOrPromoteActiveDevice to that stale,
+    /// still-connected TV instead of the caller who had just explicitly
+    /// claimed the device. The claim must land in the registry even when
+    /// there is nothing yet to transfer.
+    /// </summary>
+    [Fact]
+    public async Task ChangeDeviceCommand_NoExistingPlayerState_StillClaimsCallerInRegistry()
+    {
+        Guid userId = Guid.NewGuid();
+        User user = SeedTestUser(userId);
+        string phoneConnectionId = Guid.NewGuid().ToString();
+        string phoneDeviceId = $"phone-{Guid.NewGuid()}";
+
+        ConnectedClients connectedClients = _factory.GetConnectedClients();
+        (Client phoneClient, _) = MakeClientWithProxy(userId, phoneDeviceId, "web");
+        connectedClients.Clients[phoneConnectionId] = phoneClient;
+
+        MusicActiveDeviceRegistry registry =
+            _factory.Services.GetRequiredService<MusicActiveDeviceRegistry>();
+
+        try
+        {
+            MusicHub hub = CreateHub(phoneConnectionId, userId);
+
+            await hub.ChangeDeviceCommand(phoneDeviceId);
+
+            registry.TryGet(userId, out Device? active).Should().BeTrue();
+            active!.DeviceId.Should().Be(phoneDeviceId);
+        }
+        finally
+        {
+            Cleanup(userId, user, phoneConnectionId);
+        }
+    }
+
+    /// <summary>
+    /// Same reported bug as <see cref="ChangeDeviceCommand_NoExistingPlayerState_StillClaimsCallerInRegistry"/>,
+    /// but proven at the altitude the phone client actually reaches: both real
+    /// hub entry points MusicConnectPlugin.claimActiveForLocalPlaybackStart calls,
+    /// in the order it calls them — ChangeDeviceCommand(ownId) then
+    /// StartPlaybackCommand(...) — against a TV that is registered as the
+    /// active device from a PRIOR session but never disconnected from MusicHub
+    /// (exactly "only showing video, never quit"). The registry-only test above
+    /// cannot see whether GetOrPromoteActiveDevice — the actual consumer of the
+    /// claim, invoked from StartPlaybackCommand's HandleNewPlayerState — reads
+    /// back the phone or falls through to the stale TV; this test reaches that
+    /// call site for real, using the real MusicPlaylistManager/MusicRepository
+    /// against NoMercyApiFactory's seeded album fixture (no player state exists
+    /// yet anywhere for this user, matching "nothing was playing").
+    /// </summary>
+    [Fact]
+    public async Task StartPlaybackCommand_AfterClaimWithStaleTvInRegistry_PlaysOnCallerNotStaleTv()
+    {
+        Guid userId = Guid.NewGuid();
+        User user = SeedTestUser(userId);
+        string tvConnectionId = Guid.NewGuid().ToString();
+        string phoneConnectionId = Guid.NewGuid().ToString();
+        string tvDeviceId = $"tv-{Guid.NewGuid()}";
+        string phoneDeviceId = $"phone-{Guid.NewGuid()}";
+
+        ConnectedClients connectedClients = _factory.GetConnectedClients();
+        (Client tvClient, _) = MakeClientWithProxy(userId, tvDeviceId, "tv");
+        (Client phoneClient, _) = MakeClientWithProxy(userId, phoneDeviceId, "web");
+        connectedClients.Clients[tvConnectionId] = tvClient;
+        connectedClients.Clients[phoneConnectionId] = phoneClient;
+
+        MusicPlayerStateManager stateManager =
+            _factory.Services.GetRequiredService<MusicPlayerStateManager>();
+        MusicActiveDeviceRegistry registry =
+            _factory.Services.GetRequiredService<MusicActiveDeviceRegistry>();
+
+        // The TV was active from a prior session (e.g. it played music earlier,
+        // then switched to video) and is STILL CONNECTED to MusicHub — it never
+        // disconnected. Nothing is currently playing anywhere, so there is no
+        // MusicPlayerState for this user yet.
+        registry.Set(userId, tvClient);
+
+        try
+        {
+            MusicHub hub = CreateHub(phoneConnectionId, userId);
+
+            await hub.ChangeDeviceCommand(phoneDeviceId);
+            await hub.StartPlaybackCommand(
+                "album",
+                NoMercyApiFactory.AlbumId1,
+                NoMercyApiFactory.TrackId1
+            );
+
+            stateManager.TryGetValue(userId, out MusicPlayerState? state).Should().BeTrue();
+            state!
+                .DeviceId.Should()
+                .Be(
+                    phoneDeviceId,
+                    "the phone explicitly claimed the device right before starting playback — "
+                        + "GetOrPromoteActiveDevice must not fall back to the stale TV"
+                );
+
+            registry.TryGet(userId, out Device? active).Should().BeTrue();
+            active!.DeviceId.Should().Be(phoneDeviceId);
+        }
+        finally
+        {
+            Cleanup(userId, user, tvConnectionId, phoneConnectionId);
         }
     }
 

@@ -199,12 +199,23 @@ internal sealed class PluginLifecycleManager(
     /// </summary>
     public Task<bool> UnloadForUpdateAsync(Ulid pluginId, CancellationToken ct = default)
     {
-        if (!_registry.TryRemove(pluginId, out LoadedPlugin? loaded))
+        if (!_registry.TryGetValue(pluginId, out LoadedPlugin? loaded))
         {
             return Task.FromResult(false);
         }
 
+        // Before the registry removal, not after: PluginCronRegistrar reads
+        // this plugin's own Jobs list back out of the registry to know which
+        // named cron executors to remove, and finds nothing to remove from a
+        // plugin that is already gone. A scheduled-task plugin's per-job
+        // executors — the ones with a name, not the single bare-id one —
+        // would stay registered against the disposed instance forever,
+        // failing on every tick and, since CronWorker's own entry keeps that
+        // instance rooted, forever blocking its load context from actually
+        // unloading too.
         _releaseScheduledWork?.Invoke(pluginId);
+
+        _registry.TryRemove(pluginId, out _);
 
         loaded.Instance?.Dispose();
 
@@ -240,12 +251,17 @@ internal sealed class PluginLifecycleManager(
 
     public async Task UninstallPluginAsync(Ulid pluginId, CancellationToken ct = default)
     {
-        if (!_registry.TryRemove(pluginId, out LoadedPlugin? loaded))
+        if (!_registry.TryGetValue(pluginId, out LoadedPlugin? loaded))
         {
             throw new InvalidOperationException($"Plugin {pluginId} is not installed.");
         }
 
+        // Same ordering as UnloadForUpdateAsync, for the same reason: the
+        // registrar needs to find this plugin still in the registry to read
+        // back which named jobs to remove.
         _releaseScheduledWork?.Invoke(pluginId);
+
+        _registry.TryRemove(pluginId, out _);
 
         loaded.Instance?.Dispose();
 
