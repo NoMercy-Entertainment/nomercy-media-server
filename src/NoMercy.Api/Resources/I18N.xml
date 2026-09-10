@@ -888,4 +888,12 @@
     <Key>No video found for the given media</Key>
     <Value lang="nl">Geen video gevonden voor deze media</Value>
   </Entry>
+  <Entry>
+    <Key>Plugin restarted successfully</Key>
+    <Value lang="nl">Plugin succesvol herstart</Value>
+  </Entry>
+  <Entry>
+    <Key>Plugin uninstalled successfully</Key>
+    <Value lang="nl">Plugin succesvol verwijderd</Value>
+  </Entry>
 </I18N>
