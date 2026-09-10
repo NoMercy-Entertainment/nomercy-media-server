@@ -503,6 +503,24 @@ public class PluginManager : IPluginManager, IDisposable
                 }
             }
 
+            // This attempt is being reported as a real failure, not staged for
+            // a later retry that would only fail the same way again - so the
+            // half-applied staging copy is junk now, not a queued update.
+            if (_driver.DirectoryExists(staging))
+            {
+                try
+                {
+                    DeleteAndPruneEmptyParent(staging, PendingUpdatesFolder);
+                }
+                catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+                {
+                    _logger.LogWarning(
+                        "Could not remove the failed update's staged copy at {Staging}; it will be cleared on the next start.",
+                        staging
+                    );
+                }
+            }
+
             throw;
         }
         finally
@@ -608,19 +626,28 @@ public class PluginManager : IPluginManager, IDisposable
             source.CopyTo(target);
         }
 
-        _driver.DeleteDirectory(staging, recursive: true);
+        DeleteAndPruneEmptyParent(staging, PendingUpdatesFolder);
+    }
 
-        // And the folder they wait in, once the last one has gone. An empty
-        // .pending-updates sitting in the plugins directory reads like something
-        // is still queued when nothing is.
-        string pending = _storage.CombinePath(_pluginsPath, PendingUpdatesFolder);
+    /// <summary>
+    /// Deletes a folder waiting under one of the marker roots
+    /// (<see cref="PendingUpdatesFolder"/>, <see cref="RollbackFolder"/>), then
+    /// removes that root too once the last entry under it is gone. An empty
+    /// marker folder sitting in the plugins directory reads like something is
+    /// still queued when nothing is.
+    /// </summary>
+    private void DeleteAndPruneEmptyParent(string entry, string markerRootName)
+    {
+        _driver.DeleteDirectory(entry, recursive: true);
+
+        string markerRoot = _storage.CombinePath(_pluginsPath, markerRootName);
 
         if (
-            _driver.DirectoryExists(pending)
-            && !_driver.EnumerateEntries(pending, "*", SearchOption.TopDirectoryOnly).Any()
+            _driver.DirectoryExists(markerRoot)
+            && !_driver.EnumerateEntries(markerRoot, "*", SearchOption.TopDirectoryOnly).Any()
         )
         {
-            _driver.DeleteDirectory(pending, recursive: false);
+            _driver.DeleteDirectory(markerRoot, recursive: false);
         }
     }
 
