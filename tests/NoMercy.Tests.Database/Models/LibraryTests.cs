@@ -33,4 +33,24 @@ public class LibraryTests
 
         library.AutoConfirmDiscMatches.Should().BeTrue();
     }
+
+    /// <summary>
+    /// Audio analysis is part of every music import, not a setting a user has
+    /// to go and find, so a library that says nothing about it wants it.
+    /// </summary>
+    [Fact]
+    public void AnalyzeAudio_DefaultsToOn()
+    {
+        Library library = new();
+
+        library.AnalyzeAudio.Should().BeTrue();
+    }
+
+    [Fact]
+    public void AnalyzeAudio_CanBeSetOff()
+    {
+        Library library = new() { AnalyzeAudio = false };
+
+        library.AnalyzeAudio.Should().BeFalse();
+    }
 }

@@ -386,6 +386,7 @@ public class RouteContractSnapshotTests : IClassFixture<NoMercyApiFactory>
         "POST api/v{version:apiVersion}/dashboard/storage/mkdir [StorageBrowser.Mkdir]",
         "POST api/v{version:apiVersion}/dashboard/storage/probe [StorageBrowser.Probe]",
         "POST api/v{version:apiVersion}/dashboard/tasks [Tasks.Store]",
+        "POST api/v{version:apiVersion}/dashboard/tasks/audio-analysis/sweep [Tasks.AudioAnalysisSweep]",
         "POST api/v{version:apiVersion}/dashboard/tasks/failed/retry [Tasks.RetryFailedJobs]",
         "POST api/v{version:apiVersion}/dashboard/tasks/failed/retry/{id:long?} [Tasks.RetryFailedJobs]",
         "POST api/v{version:apiVersion}/dashboard/tasks/pause-queue [Tasks.PauseEncoderQueue]",

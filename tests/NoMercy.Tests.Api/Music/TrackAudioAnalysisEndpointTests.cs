@@ -12,6 +12,8 @@
 using System.Net;
 using System.Text;
 using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using NoMercy.Database;
 using NoMercy.Tests.Api.Infrastructure;
 using Xunit;
 
@@ -26,6 +28,7 @@ namespace NoMercy.Tests.Api.Music;
 public class TrackAudioAnalysisEndpointTests : IClassFixture<NoMercyApiFactory>
 {
     private const string AnalysisRoute = "/api/v1/music/tracks/analysis";
+    private const string SweepRoute = "/api/v1/dashboard/tasks/audio-analysis/sweep";
 
     private readonly HttpClient _owner;
     private readonly HttpClient _anonymous;
@@ -85,6 +88,40 @@ public class TrackAudioAnalysisEndpointTests : IClassFixture<NoMercyApiFactory>
         doc.RootElement.GetProperty("analyzed").GetInt32().Should().BeGreaterThanOrEqualTo(0);
         doc.RootElement.GetProperty("failed").GetInt32().Should().BeGreaterThanOrEqualTo(0);
         doc.RootElement.TryGetProperty("paused", out _).Should().BeTrue();
+    }
+
+    /// <summary>
+    /// The button that says "do it now". Analysis already happens on every
+    /// import and once an hour after that, so this is the extra, not the way
+    /// in — but it has to actually reach the queue, which is why the assertion
+    /// is on the tracks the seeded music library owns rather than on a 200.
+    /// </summary>
+    [Fact]
+    public async Task AudioAnalysisSweep_QueuesTheSeededMusicLibrary()
+    {
+        HttpResponseMessage response = await _owner.PostAsync(SweepRoute, JsonBody(new { }));
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        doc.RootElement.GetProperty("queued").GetInt32().Should().BeGreaterThanOrEqualTo(2);
+
+        await using QueueContext queueContext = new();
+        bool queuedAnAnalysisJob = await queueContext
+            .QueueJobs.AsNoTracking()
+            .AnyAsync(job => job.Payload.Contains("MusicAnalysisJob"));
+
+        queuedAnAnalysisJob.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task AudioAnalysisSweep_RejectsAnonymousCallers()
+    {
+        HttpResponseMessage response = await _anonymous.PostAsync(SweepRoute, JsonBody(new { }));
+
+        response
+            .StatusCode.Should()
+            .BeOneOf([HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden]);
     }
 
     [Fact]
