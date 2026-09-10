@@ -363,6 +363,7 @@ public class RouteContractSnapshotTests : IClassFixture<NoMercyApiFactory>
         "POST api/v{version:apiVersion}/dashboard/plugins/{id:ulid}/disable [Plugin.Disable]",
         "POST api/v{version:apiVersion}/dashboard/plugins/{id:ulid}/enable [Plugin.Enable]",
         "POST api/v{version:apiVersion}/dashboard/plugins/{id:ulid}/grants [Plugin.ResolveGrant]",
+        "POST api/v{version:apiVersion}/dashboard/plugins/{id:ulid}/restart [Plugin.Restart]",
         "POST api/v{version:apiVersion}/dashboard/reclaim/scan [Reclaim.Scan]",
         "POST api/v{version:apiVersion}/dashboard/reclaim/sweep-partials [Reclaim.SweepPartials]",
         "POST api/v{version:apiVersion}/dashboard/security/bans [Security.Ban]",
