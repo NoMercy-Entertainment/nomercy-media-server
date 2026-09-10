@@ -344,6 +344,77 @@ public class MusicHubDeviceCommandsTests : IClassFixture<NoMercyApiFactory>
         }
     }
 
+    /// <summary>
+    /// Same reported bug as <see cref="ChangeDeviceCommand_NoExistingPlayerState_StillClaimsCallerInRegistry"/>,
+    /// but proven at the altitude the phone client actually reaches: both real
+    /// hub entry points MusicConnectPlugin.claimActiveForLocalPlaybackStart calls,
+    /// in the order it calls them — ChangeDeviceCommand(ownId) then
+    /// StartPlaybackCommand(...) — against a TV that is registered as the
+    /// active device from a PRIOR session but never disconnected from MusicHub
+    /// (exactly "only showing video, never quit"). The registry-only test above
+    /// cannot see whether GetOrPromoteActiveDevice — the actual consumer of the
+    /// claim, invoked from StartPlaybackCommand's HandleNewPlayerState — reads
+    /// back the phone or falls through to the stale TV; this test reaches that
+    /// call site for real, using the real MusicPlaylistManager/MusicRepository
+    /// against NoMercyApiFactory's seeded album fixture (no player state exists
+    /// yet anywhere for this user, matching "nothing was playing").
+    /// </summary>
+    [Fact]
+    public async Task StartPlaybackCommand_AfterClaimWithStaleTvInRegistry_PlaysOnCallerNotStaleTv()
+    {
+        Guid userId = Guid.NewGuid();
+        User user = SeedTestUser(userId);
+        string tvConnectionId = Guid.NewGuid().ToString();
+        string phoneConnectionId = Guid.NewGuid().ToString();
+        string tvDeviceId = $"tv-{Guid.NewGuid()}";
+        string phoneDeviceId = $"phone-{Guid.NewGuid()}";
+
+        ConnectedClients connectedClients = _factory.GetConnectedClients();
+        (Client tvClient, _) = MakeClientWithProxy(userId, tvDeviceId, "tv");
+        (Client phoneClient, _) = MakeClientWithProxy(userId, phoneDeviceId, "web");
+        connectedClients.Clients[tvConnectionId] = tvClient;
+        connectedClients.Clients[phoneConnectionId] = phoneClient;
+
+        MusicPlayerStateManager stateManager =
+            _factory.Services.GetRequiredService<MusicPlayerStateManager>();
+        MusicActiveDeviceRegistry registry =
+            _factory.Services.GetRequiredService<MusicActiveDeviceRegistry>();
+
+        // The TV was active from a prior session (e.g. it played music earlier,
+        // then switched to video) and is STILL CONNECTED to MusicHub — it never
+        // disconnected. Nothing is currently playing anywhere, so there is no
+        // MusicPlayerState for this user yet.
+        registry.Set(userId, tvClient);
+
+        try
+        {
+            MusicHub hub = CreateHub(phoneConnectionId, userId);
+
+            await hub.ChangeDeviceCommand(phoneDeviceId);
+            await hub.StartPlaybackCommand(
+                "album",
+                NoMercyApiFactory.AlbumId1,
+                NoMercyApiFactory.TrackId1
+            );
+
+            stateManager.TryGetValue(userId, out MusicPlayerState? state).Should().BeTrue();
+            state!
+                .DeviceId.Should()
+                .Be(
+                    phoneDeviceId,
+                    "the phone explicitly claimed the device right before starting playback — "
+                        + "GetOrPromoteActiveDevice must not fall back to the stale TV"
+                );
+
+            registry.TryGet(userId, out Device? active).Should().BeTrue();
+            active!.DeviceId.Should().Be(phoneDeviceId);
+        }
+        finally
+        {
+            Cleanup(userId, user, tvConnectionId, phoneConnectionId);
+        }
+    }
+
     [Fact]
     public async Task ChangeDeviceCommand_UnknownCachedUser_IsNoOp()
     {
