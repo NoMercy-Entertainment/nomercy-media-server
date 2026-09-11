@@ -9,10 +9,9 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using FluentAssertions;
-using NoMercy.MediaProcessing.DerivedAudio;
+using NoMercy.NmSystem.Domain;
 
-namespace NoMercy.Tests.MediaProcessing.DerivedAudio;
+namespace NoMercy.Tests.NmSystem.Domain;
 
 /// <summary>
 /// The one table saying which stem format may be stored under which content

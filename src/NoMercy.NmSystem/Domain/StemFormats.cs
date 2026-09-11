@@ -9,17 +9,24 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-namespace NoMercy.MediaProcessing.DerivedAudio;
+namespace NoMercy.NmSystem.Domain;
 
 /// <summary>
 /// What a stem may be, and what it may be stored as.
 /// <para>
-/// The producer that writes a stem and the writer that registers one both
-/// need this vocabulary, and they used to hold a copy each: the encoder's own
-/// "opus"/"audio/ogg" constants on one side, a pairing switch on the other.
-/// Two copies of one table drift, and the drift only shows up as a client
-/// being handed a file that is not what its register row claims - hours after
-/// the sweep that stored it.
+/// The producer that writes a stem, the writer that registers one and the
+/// encoder that labels an output file all need this vocabulary, and they used
+/// to hold a copy each: the encoder's own "opus"/"audio/ogg" literals in its
+/// MIME table, the audio tools' own constants, a pairing switch in the
+/// register. Two copies of one table drift, and the drift only shows up as a
+/// client being handed a file that is not what its register row claims -
+/// hours after the sweep that stored it.
+/// </para>
+/// <para>
+/// It lives here rather than next to the derived store because the encoder
+/// needs it too, and <c>NoMercy.NmSystem</c> is the assembly all three
+/// reach. It sits beside <see cref="MediaTypes" />: both are a vocabulary
+/// several assemblies have to agree on, and neither is behaviour.
 /// </para>
 /// </summary>
 public static class StemFormats

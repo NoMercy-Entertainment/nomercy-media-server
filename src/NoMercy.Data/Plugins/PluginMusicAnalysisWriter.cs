@@ -17,6 +17,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Database;
 using NoMercy.Database.Models.Music;
 using NoMercy.MediaProcessing.DerivedAudio;
+using NoMercy.NmSystem.Domain;
 using NoMercy.Plugins.Abstractions;
 
 namespace NoMercy.Data.Plugins;

@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.Encoder.Output;
+using NoMercy.NmSystem.Domain;
 
 namespace NoMercy.Tests.Encoder.Output;
 
@@ -58,6 +59,28 @@ public class OutputArtifactTests
     {
         string mime = OutputArtifact.MimeFromPath(fileName);
         Assert.Equal("application/octet-stream", mime);
+    }
+
+    /// <summary>
+    /// The three audio extensions a stem can be written as come from the one
+    /// stem-format vocabulary, not from literals of this table's own. An
+    /// encoder that labels a file one way and a register row that labels it
+    /// another is a client being handed something other than what it asked
+    /// for - hours after the sweep that wrote it, and only on the devices that
+    /// care.
+    /// </summary>
+    [Fact]
+    public void MimeFromPath_uses_the_stem_format_vocabulary()
+    {
+        Assert.Equal(StemFormats.OggContentType, OutputArtifact.MimeFromPath("audio.ogg"));
+        Assert.Equal(
+            StemFormats.OpusContentType,
+            OutputArtifact.MimeFromPath($"audio.{StemFormats.Opus}")
+        );
+        Assert.Equal(
+            StemFormats.FlacContentType,
+            OutputArtifact.MimeFromPath($"audio.{StemFormats.Flac}")
+        );
     }
 
     [Fact]

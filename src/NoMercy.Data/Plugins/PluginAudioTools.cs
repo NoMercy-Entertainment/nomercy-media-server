@@ -19,6 +19,7 @@ using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.Infrastructure;
 using NoMercy.Encoder.Startup;
 using NoMercy.MediaProcessing.DerivedAudio;
+using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Information;
 using NoMercy.Plugins;
 using NoMercy.Plugins.Abstractions;
