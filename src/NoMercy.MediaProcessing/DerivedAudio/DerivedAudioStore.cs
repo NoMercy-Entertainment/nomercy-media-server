@@ -28,13 +28,9 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
     private readonly IDbContextFactory<MediaContext> _contextFactory;
     private readonly ILogger<DerivedAudioStore> _logger;
 
-    // Serializes concurrent PutAsync calls for the same key within this store
-    // instance. The store is registered as a process-wide singleton, so two
-    // jobs producing the same stem or rendered segment racing through PutAsync
-    // is the expected case, not an edge case. One SemaphoreSlim accumulates
-    // per distinct key for the store's lifetime — acceptable because the key
-    // space is bounded by distinct content ever produced, which is small next
-    // to a media library.
+    // Serializes puts, touches and deletes of one key inside this store, which
+    // is a process-wide singleton. One SemaphoreSlim per distinct key is kept
+    // for its lifetime: that key space is small next to a media library.
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new();
 
     /// <param name="storage">An <see cref="IStorage" /> scoped to <c>AppFiles.DerivedAudioPath</c>; every path below is relative to it.</param>
@@ -108,13 +104,9 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
         }
     }
 
-    // Split out of PutAsync so the per-key lock covers only the exists/move/
-    // register sequence, not the hashing above it. Even with the lock, a
-    // second store instance (a second process, or a second DI resolution
-    // that is not actually a singleton) can still race here, so both the
-    // move and the insert additionally treat "someone else already did this"
-    // as success rather than letting the caller fail: the content is stored
-    // and registered either way, which is the contract PutAsync promises.
+    // Split out so the per-key lock covers only the exists/move/register
+    // sequence, not the hashing. A second store instance can still race here,
+    // so both the move and the insert treat "already done" as success.
     private async Task<DerivedAudioEntry> StoreAndRegisterAsync(
         string tempPath,
         string key,

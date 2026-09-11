@@ -19,6 +19,7 @@ using NoMercy.Database;
 using NoMercy.Database.Models.Music;
 using NoMercy.MediaProcessing.DerivedAudio;
 using NoMercy.Plugins.Abstractions;
+using DerivedAudioRow = NoMercy.Database.Models.Music.DerivedAudio;
 
 namespace NoMercy.Tests.Repositories.Plugins;
 
@@ -56,6 +57,11 @@ public class PluginMusicAnalysisWriterTests : IDisposable
 
     private const string MissingKey =
         "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+
+    // Registered as audio/flac, so an Opus stem pointing at it is a register
+    // row that lies about what a client will be handed.
+    private const string KeyFlac =
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
 
     private readonly SqliteConnection _connection;
     private readonly DbContextOptions<MediaContext> _options;
@@ -132,8 +138,29 @@ public class PluginMusicAnalysisWriterTests : IDisposable
             }
         );
 
+        // The register rows behind the keys these tests hand the writer: it
+        // reads each one's content type to check the stem's format against it.
+        // Opus in Ogg everywhere except KeyFlac, which is what the mismatch
+        // test points an Opus stem at.
+        foreach (string key in new[] { KeyOne, KeyTwo, KeyThree, KeyFour, KeyA, KeyB, KeyDelete })
+        {
+            context.DerivedAudio.Add(DerivedAudioRowFor(key, "audio/ogg"));
+        }
+
+        context.DerivedAudio.Add(DerivedAudioRowFor(KeyFlac, "audio/flac"));
+
         context.SaveChanges();
     }
+
+    private static DerivedAudioRow DerivedAudioRowFor(string key, string contentType) =>
+        new()
+        {
+            Key = key,
+            ContentType = contentType,
+            Bytes = 4096,
+            CreatedAt = DateTime.UtcNow,
+            LastUsedAt = DateTime.UtcNow,
+        };
 
     public void Dispose()
     {
@@ -811,6 +838,31 @@ public class PluginMusicAnalysisWriterTests : IDisposable
             .Select(stem => stem.StorageKey)
             .Should()
             .Equal(KeyB, KeyA);
+    }
+
+    /// <summary>
+    /// The register row is what a client is later handed the stem as, so a row
+    /// claiming Opus over a FLAC file is a player error hours after the sweep
+    /// that wrote it. The stored content type is the authority.
+    /// </summary>
+    [Fact]
+    public async Task RegisterStem_RefusesAFormatThatDoesNotMatchTheFile()
+    {
+        Mock<IDerivedAudioStore> store = NewStoreMock();
+        store
+            .Setup(s => s.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        PluginWriteResult result = await CreateWriter(store.Object)
+            .RegisterStemAsync(ValidFullStem(_trackId, KeyFlac));
+
+        result.Ok.Should().BeFalse();
+        result
+            .Refusal.Should()
+            .Be("stem format opus does not match the stored content type audio/flac");
+
+        using MediaContext context = new(_options);
+        context.TrackStems.Any(stem => stem.TrackId == _trackId).Should().BeFalse();
     }
 
     // --- MarkFailedAsync -----------------------------------------------------

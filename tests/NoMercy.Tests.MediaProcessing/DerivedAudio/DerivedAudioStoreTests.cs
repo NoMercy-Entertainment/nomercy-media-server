@@ -440,6 +440,8 @@ public sealed class DerivedAudioStoreTests : IDisposable
     [InlineData("a")]
     [InlineData("../../etc")]
     [InlineData("ab/../../etc/passwd")]
+    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
+    [InlineData("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")]
     public async Task AnInvalidKey_IsNotFound_AndNeverTouchesTheDisk(string key)
     {
         IDerivedAudioStore store = Store();
