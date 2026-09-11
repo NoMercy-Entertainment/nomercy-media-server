@@ -16,7 +16,9 @@ public static class PluginAbi
     // 10.1 added IPluginMusicQuery and IPluginContext.Music. Both are additive
     // and the member defaults to null, so every plugin targeting 10.0 still
     // loads — which is what IsCompatible's "minor may be lower" rule means.
-    public static Version Current { get; } = new(10, 1);
+    // 10.2 added IPluginAudioTools, IPluginDerivedAudio, IPluginMusicAnalysisWriter and the
+    // DJ members of IPluginMusicQuery. Additive; the context members default to null.
+    public static Version Current { get; } = new(10, 2);
 
     public static bool IsCompatible(string? targetAbi)
     {

@@ -109,6 +109,37 @@ public interface IPluginContext
     /// </summary>
     IPluginStorage? Storage => null;
 
+    /// <summary>
+    /// Running ffmpeg over a track or a derived file, and splitting stems.
+    /// <para>
+    /// Present only when the plugin declared
+    /// <see cref="PluginHookCapability.AudioTools" />; null otherwise, so the
+    /// absence is checkable rather than a call that throws.
+    /// </para>
+    /// </summary>
+    IPluginAudioTools? AudioTools => null;
+
+    /// <summary>
+    /// The server's own store of files derived from analysis - stems, rendered
+    /// transitions - keyed by content rather than by library path.
+    /// <para>
+    /// Present only when the plugin declared
+    /// <see cref="PluginHookCapability.DerivedAudio" />; null otherwise, so the
+    /// absence is checkable rather than a call that throws.
+    /// </para>
+    /// </summary>
+    IPluginDerivedAudio? DerivedAudio => null;
+
+    /// <summary>
+    /// Writing the DJ analysis record and the stem register.
+    /// <para>
+    /// Present only when the plugin declared
+    /// <see cref="PluginHookCapability.MusicAnalysisWrite" />; null otherwise,
+    /// so the absence is checkable rather than a call that throws.
+    /// </para>
+    /// </summary>
+    IPluginMusicAnalysisWriter? MusicAnalysisWriter => null;
+
     /// <summary>What the owner has granted this plugin, and how to ask for more.</summary>
     IPluginGrants Grants { get; }
 
