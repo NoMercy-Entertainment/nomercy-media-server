@@ -375,6 +375,8 @@ Checked in this order — the first failing check is the one you get back:
 | `"vocal_regions_ms entry {index} must be [start, end] with start < end"` | one entry of `vocal_regions_ms` was not a pair, or its start was not before its end | a region is exactly two values; drop the malformed one or fix the bounds the detector produced |
 | `"phrase_starts_ms must be ascending"` | the phrase boundaries were not strictly increasing | sort them before writing; two phrases cannot share a millisecond |
 | `"{field} exceeds 64 kB"` | one JSON column (`phrase_starts_ms`, `vocal_regions_ms`, `bar_energy`, `cue_points` or `chords`, checked in that order) serialized past the 64 kB column limit | this record is meant to hold bars and phrases, not a sample-accurate trace — keep arrays proportionate to track length |
+| `"the DJ record for track {id} was written concurrently; retry"` | another sweep upserted the same track at the same moment and its row is the one stored | run the track again |
+| `"the DJ record for track {id} could not be stored: {exception}"` | the write failed for a reason of its own and no row is there to explain it as a race | not a retry: the server logged the exception, so read its log first |
 
 Skipped entirely, rather than refused, when the track's duration is unknown:
 the millisecond-range check. A partial base row is normal, not a defect.
@@ -385,11 +387,14 @@ the millisecond-range check. A partial base row is normal, not a defect.
 |---|---|---|
 | `"track {id} does not exist"` | unknown `TrackId` | drop the row |
 | `"storage key {key} is not in the derived store"` | the stem was never actually written, or the key is wrong | write it through `IPluginDerivedAudio.PutAsync` (or `SplitStemsAsync`) first |
-| `"stem format {format} does not match the stored content type {contentType}"` | the row would claim a format the stored file is not (`opus` goes with `audio/ogg`, `flac` with `audio/flac`) | register the stem under the format the file was actually put with — a client is handed the file by that content type |
+| `"stem format {format} does not match the stored content type {contentType}"` | the row would claim a format the stored file is not (`opus` goes with `audio/ogg` or `audio/opus`, `flac` with `audio/flac`) | register the stem under the format the file was actually put with — a client is handed the file by that content type |
 | `"full coverage stems must not specify a window"` | `Coverage.Full` was combined with a non-null `WindowStartMs` or `WindowEndMs` | leave both null for `Full` |
 | `"windowed stems must specify both window_start_ms and window_end_ms"` | `MixIn` / `MixOut` was combined with a null window bound | set both, in milliseconds from the start of the track |
 | `"window_start_ms must be less than window_end_ms"` | the window was empty or backwards | fix the bounds — a windowed stem always covers a positive span |
 | `"stem {kind}/{coverage} for track {id} was written concurrently; retry"` | another sweep registered the same stem at the same moment, pointing at a different file | run the track again; a concurrent write of the *same* key is accepted silently, so this only appears when the two disagree |
+| `"stem {kind}/{coverage} for track {id} could not be stored: {exception}"` | the write failed for a reason of its own — a foreign key, a column constraint, the disk — and no row is there to explain it as a race | not a retry: the server logged the exception, so read its log before writing the stem again |
+| `"stems must not be null"` | `RegisterStemsAsync` was handed a null list | pass an empty list, or the stems you meant to write |
+| `"stems contains the same stem twice: {kind}/{coverage}"` | two entries of one batch address the same register row (same track, kind, coverage and producer version) | one row per (track, kind, coverage, producer version); drop the duplicate before calling |
 
 ### `IPluginMusicAnalysisWriter.MarkFailedAsync`
 

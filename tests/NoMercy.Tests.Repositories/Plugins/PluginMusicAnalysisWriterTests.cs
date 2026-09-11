@@ -58,6 +58,11 @@ public class PluginMusicAnalysisWriterTests : IDisposable
     private const string MissingKey =
         "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
 
+    // Registered as audio/opus rather than audio/ogg: the other MIME a
+    // third-party plugin may have put an Opus file under.
+    private const string KeyOpusMime =
+        "0000000000000000000000000000000000000000000000000000000000000000";
+
     // Registered as audio/flac, so an Opus stem pointing at it is a register
     // row that lies about what a client will be handed.
     private const string KeyFlac =
@@ -148,6 +153,7 @@ public class PluginMusicAnalysisWriterTests : IDisposable
         }
 
         context.DerivedAudio.Add(DerivedAudioRowFor(KeyFlac, "audio/flac"));
+        context.DerivedAudio.Add(DerivedAudioRowFor(KeyOpusMime, "audio/opus"));
 
         context.SaveChanges();
     }
@@ -178,7 +184,8 @@ public class PluginMusicAnalysisWriterTests : IDisposable
 
     private PluginMusicAnalysisWriter CreateWriter(
         IDerivedAudioStore store,
-        Func<Task>? beforeSave = null
+        Func<Task>? beforeSave = null,
+        ILogger<PluginMusicAnalysisWriter>? logger = null
     )
     {
         Mock<IDbContextFactory<MediaContext>> factory = new();
@@ -186,11 +193,40 @@ public class PluginMusicAnalysisWriterTests : IDisposable
             .Setup(x => x.CreateDbContextAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => new(_options));
 
-        return new PluginMusicAnalysisWriter(_pluginId, factory.Object, store)
+        return new PluginMusicAnalysisWriter(_pluginId, factory.Object, store, logger)
         {
             BeforeSave = beforeSave,
         };
     }
+
+    /// <summary>
+    /// Foreign keys are off for this class - most tests point stem rows at a
+    /// mocked store's keys - so a test that wants a real constraint failure
+    /// turns them back on for its own run. The pragma is per connection and
+    /// takes effect outside a transaction, which is where it is set here.
+    /// </summary>
+    private void EnableForeignKeys()
+    {
+        using SqliteCommand pragma = _connection.CreateCommand();
+        pragma.CommandText = "PRAGMA foreign_keys = ON;";
+        pragma.ExecuteNonQuery();
+    }
+
+    private static void VerifyWarningLogged(
+        Mock<ILogger<PluginMusicAnalysisWriter>> logger,
+        string contains
+    ) =>
+        logger.Verify(
+            log =>
+                log.Log(
+                    LogLevel.Warning,
+                    It.IsAny<EventId>(),
+                    It.Is<It.IsAnyType>((state, _) => state.ToString()!.Contains(contains)),
+                    It.IsAny<Exception>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()
+                ),
+            Times.Once
+        );
 
     /// <summary>
     /// The row a second sweep gets in first with, written through its own
@@ -863,6 +899,132 @@ public class PluginMusicAnalysisWriterTests : IDisposable
 
         using MediaContext context = new(_options);
         context.TrackStems.Any(stem => stem.TrackId == _trackId).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// Not every <see cref="DbUpdateException" /> is a race. When the re-read
+    /// finds no competing row, the save failed for a reason of its own - a
+    /// foreign key, a column constraint, a disk - and telling the caller to
+    /// retry would hide it for ever. It is named and logged instead.
+    /// </summary>
+    [Fact]
+    public async Task RegisterStem_LogsAndRefusesANonRaceDatabaseError()
+    {
+        EnableForeignKeys();
+
+        Mock<IDerivedAudioStore> store = NewStoreMock();
+        store
+            .Setup(s => s.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        Mock<ILogger<PluginMusicAnalysisWriter>> logger = new();
+
+        PluginMusicAnalysisWriter writer = CreateWriter(
+            store.Object,
+            async () =>
+            {
+                // The file the stem row points at goes away between the check
+                // and the save: the row's foreign key has nothing to land on.
+                await using MediaContext other = new(_options);
+                await other.DerivedAudio.Where(row => row.Key == KeyA).ExecuteDeleteAsync();
+            },
+            logger.Object
+        );
+
+        PluginWriteResult result = await writer.RegisterStemAsync(ValidFullStem(_trackId, KeyA));
+
+        result.Ok.Should().BeFalse();
+        result
+            .Refusal.Should()
+            .Be($"stem vocals/Full for track {_trackId} could not be stored: DbUpdateException");
+        VerifyWarningLogged(logger, "could not be stored");
+
+        using MediaContext context = new(_options);
+        context.TrackStems.Any(stem => stem.TrackId == _trackId).Should().BeFalse();
+    }
+
+    /// <summary>The same split on the DJ record's own save.</summary>
+    [Fact]
+    public async Task UpsertDjAnalysis_LogsAndRefusesANonRaceDatabaseError()
+    {
+        EnableForeignKeys();
+
+        Mock<ILogger<PluginMusicAnalysisWriter>> logger = new();
+
+        PluginMusicAnalysisWriter writer = CreateWriter(
+            NewStoreMock().Object,
+            async () =>
+            {
+                // The track goes away between the read and the save, so the
+                // DJ row's foreign key has nothing to land on either.
+                await using MediaContext other = new(_options);
+                await other.Tracks.Where(track => track.Id == _trackId).ExecuteDeleteAsync();
+            },
+            logger.Object
+        );
+
+        PluginWriteResult result = await writer.UpsertDjAnalysisAsync(ValidRecord(_trackId));
+
+        result.Ok.Should().BeFalse();
+        result
+            .Refusal.Should()
+            .Be($"the DJ record for track {_trackId} could not be stored: DbUpdateException");
+        VerifyWarningLogged(logger, "could not be stored");
+    }
+
+    [Fact]
+    public async Task RegisterStems_RefusesANullList()
+    {
+        PluginWriteResult result = await CreateWriter(NewStoreMock().Object)
+            .RegisterStemsAsync(null!);
+
+        result.Ok.Should().BeFalse();
+        result.Refusal.Should().Be("stems must not be null");
+    }
+
+    /// <summary>
+    /// Two entries addressing one register row: whichever came second would
+    /// silently win, so the batch is refused before anything is staged rather
+    /// than storing a stem the caller did not mean to keep.
+    /// </summary>
+    [Fact]
+    public async Task RegisterStems_RefusesTheSameStemTwice()
+    {
+        Mock<IDerivedAudioStore> store = NewStoreMock();
+        store
+            .Setup(s => s.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        PluginTrackStem first = ValidFullStem(_trackId, KeyA);
+        PluginTrackStem second = ValidFullStem(_trackId, KeyB);
+
+        PluginWriteResult result = await CreateWriter(store.Object)
+            .RegisterStemsAsync([first, second]);
+
+        result.Ok.Should().BeFalse();
+        result.Refusal.Should().Be("stems contains the same stem twice: vocals/Full");
+
+        using MediaContext context = new(_options);
+        context.TrackStems.Any(stem => stem.TrackId == _trackId).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// <c>audio/opus</c> is as real a MIME for an Opus file as the
+    /// <c>audio/ogg</c> the host's own splits write, so a plugin that put its
+    /// file under it is not claiming the wrong format.
+    /// </summary>
+    [Fact]
+    public async Task RegisterStem_AcceptsTheOtherOpusContentType()
+    {
+        Mock<IDerivedAudioStore> store = NewStoreMock();
+        store
+            .Setup(s => s.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        PluginWriteResult result = await CreateWriter(store.Object)
+            .RegisterStemAsync(ValidFullStem(_trackId, KeyOpusMime));
+
+        result.Ok.Should().BeTrue();
     }
 
     // --- MarkFailedAsync -----------------------------------------------------

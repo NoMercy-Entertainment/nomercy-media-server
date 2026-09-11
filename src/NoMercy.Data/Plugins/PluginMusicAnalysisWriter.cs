@@ -239,21 +239,57 @@ public class PluginMusicAnalysisWriter(
         existing.Chords = chordsJson;
         existing.AnalyzedAt = DateTime.UtcNow;
 
+        if (BeforeSave is not null)
+        {
+            await BeforeSave();
+        }
+
         try
         {
             await context.SaveChangesAsync(ct);
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException exception)
         {
-            // Two sweeps upserting one track at once both read "no row" and
-            // both insert. Nothing is lost, so the loser is told to run again
-            // rather than handed a driver exception.
-            return PluginWriteResult.Refused(
-                $"the DJ record for track {record.TrackId} was written concurrently; retry"
-            );
+            return await ResolveFailedDjWriteAsync(record.TrackId, exception, ct);
         }
 
         return PluginWriteResult.Accepted();
+    }
+
+    /// <summary>
+    /// A save that did not land is only a race when a row is there now: two
+    /// sweeps upserting one track both read "no row" and both insert, and the
+    /// loser can simply run again. With no row, the save failed for a reason
+    /// of its own - a foreign key, a column constraint, a disk - and "retry"
+    /// would hide that for ever, so it is logged and named instead.
+    /// </summary>
+    private async Task<PluginWriteResult> ResolveFailedDjWriteAsync(
+        Guid trackId,
+        DbUpdateException exception,
+        CancellationToken ct
+    )
+    {
+        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+
+        bool stored = await context
+            .TrackDjAnalysis.AsNoTracking()
+            .AnyAsync(analysis => analysis.TrackId == trackId, ct);
+
+        if (stored)
+            return PluginWriteResult.Refused(
+                $"the DJ record for track {trackId} was written concurrently; retry"
+            );
+
+        _logger.LogWarning(
+            exception,
+            "plugin {PluginId}: the DJ record for track {TrackId} could not be stored",
+            pluginId,
+            trackId
+        );
+
+        return PluginWriteResult.Refused(
+            $"the DJ record for track {trackId} could not be stored: {exception.GetType().Name}"
+        );
     }
 
     /// <summary>
@@ -273,8 +309,15 @@ public class PluginMusicAnalysisWriter(
         CancellationToken ct
     )
     {
+        if (stems is null)
+            return PluginWriteResult.Refused("stems must not be null");
+
         if (stems.Count == 0)
             return PluginWriteResult.Accepted();
+
+        PluginWriteResult? duplicate = CheckForDuplicates(stems);
+        if (duplicate is not null)
+            return duplicate;
 
         await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
 
@@ -303,10 +346,10 @@ public class PluginMusicAnalysisWriter(
             await context.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException exception)
         {
             await transaction.RollbackAsync(ct);
-            return await ResolveConcurrentStemWriteAsync(stems, ct);
+            return await ResolveFailedStemWriteAsync(stems, exception, ct);
         }
 
         return PluginWriteResult.Accepted();
@@ -375,6 +418,26 @@ public class PluginMusicAnalysisWriter(
     }
 
     /// <summary>
+    /// One register row is addressed by (track, kind, coverage, producer), so
+    /// two entries sharing all four are one row written twice: whichever came
+    /// second would silently win, which is never what a caller meant.
+    /// </summary>
+    private static PluginWriteResult? CheckForDuplicates(IReadOnlyList<PluginTrackStem> stems)
+    {
+        HashSet<(Guid, string, PluginStemCoverage, string)> seen = [];
+
+        foreach (PluginTrackStem stem in stems)
+        {
+            if (!seen.Add((stem.TrackId, stem.Kind, stem.Coverage, stem.ProducerVersion)))
+                return PluginWriteResult.Refused(
+                    $"stems contains the same stem twice: {stem.Kind}/{stem.Coverage}"
+                );
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// The pairings the derived store can hold today. Anything else is a
     /// mismatch rather than an unknown: a format that cannot come out of that
     /// container is not a row worth keeping.
@@ -383,6 +446,7 @@ public class PluginMusicAnalysisWriter(
         (format.ToLowerInvariant(), contentType.ToLowerInvariant()) switch
         {
             ("opus", "audio/ogg") => true,
+            ("opus", "audio/opus") => true,
             ("flac", "audio/flac") => true,
             _ => false,
         };
@@ -423,13 +487,17 @@ public class PluginMusicAnalysisWriter(
     }
 
     /// <summary>
-    /// Two sweeps registering the same stem at once both read "no row" and
-    /// both insert; the loser's save hits the unique index. When the winner
-    /// stored the same key, nothing is lost and the loser is told it landed;
-    /// when it stored another one, the caller has to run again.
+    /// A save that did not land is only a race when the row is there now: two
+    /// sweeps registering one stem both read "no row" and both insert, and the
+    /// winner stored either the same key (nothing is lost, so the loser is
+    /// told it landed) or another one (the caller has to run again). With no
+    /// row at all the save failed for a reason of its own - a foreign key, a
+    /// column constraint, a disk - which is logged and named rather than
+    /// dressed up as something a retry would fix.
     /// </summary>
-    private async Task<PluginWriteResult> ResolveConcurrentStemWriteAsync(
+    private async Task<PluginWriteResult> ResolveFailedStemWriteAsync(
         IReadOnlyList<PluginTrackStem> stems,
+        DbUpdateException exception,
         CancellationToken ct
     )
     {
@@ -450,7 +518,23 @@ public class PluginMusicAnalysisWriter(
                     ct
                 );
 
-            if (stored is null || stored.StorageKey != stem.StorageKey)
+            if (stored is null)
+            {
+                _logger.LogWarning(
+                    exception,
+                    "plugin {PluginId}: stem {Kind}/{Coverage} for track {TrackId} could not be stored",
+                    pluginId,
+                    stem.Kind,
+                    stem.Coverage,
+                    stem.TrackId
+                );
+
+                return PluginWriteResult.Refused(
+                    $"stem {stem.Kind}/{stem.Coverage} for track {stem.TrackId} could not be stored: {exception.GetType().Name}"
+                );
+            }
+
+            if (stored.StorageKey != stem.StorageKey)
                 return PluginWriteResult.Refused(
                     $"stem {stem.Kind}/{stem.Coverage} for track {stem.TrackId} was written concurrently; retry"
                 );
