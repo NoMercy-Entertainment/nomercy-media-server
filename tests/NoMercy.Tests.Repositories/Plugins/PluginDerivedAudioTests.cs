@@ -90,9 +90,7 @@ public class PluginDerivedAudioTests
     public async Task Touch_Forwards()
     {
         Mock<IDerivedAudioStore> store = new();
-        store
-            .Setup(s => s.TouchAsync(SomeKey, It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+        store.Setup(s => s.TouchAsync(SomeKey, It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
         PluginDerivedAudio facade = new(store.Object);
 

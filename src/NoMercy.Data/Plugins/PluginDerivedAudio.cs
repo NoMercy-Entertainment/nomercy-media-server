@@ -101,6 +101,13 @@ public sealed class PluginDerivedAudio(
             _logger
         );
 
+    /// <summary>
+    /// The store answers whether the key survived to be bumped; the plugin
+    /// contract has no channel for that, so the bool is discarded here. A
+    /// plugin that needs to know asks <see cref="ExistsAsync" />: the host's
+    /// own ffmpeg path is the caller that acts on the answer, and it holds the
+    /// store directly.
+    /// </summary>
     public Task TouchAsync(string key, CancellationToken ct = default) =>
         PluginCallGuard.RunAsync(
             SharedPluginId,

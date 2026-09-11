@@ -242,12 +242,11 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
     /// leaves it alone while the caller is still reading.
     /// </para>
     /// <para>
-    /// Asking for the register row twice - once in the pre-check, once under
-    /// the lock - costs a read two database round-trips. That is acceptable
-    /// here: both are a single indexed lookup against a local SQLite file,
-    /// they are dwarfed by the file open and the ffmpeg run that follows, and
-    /// the alternative is either handing back a key eviction already took or
-    /// minting a lock entry for every key a caller invents.
+    /// Two database round-trips, not three: the touch under the lock is also
+    /// the re-check, because an update that matches no row says the entry went
+    /// while this call was queued behind the key. The pre-check outside the
+    /// lock stays - it is what keeps a key nothing ever stored from minting a
+    /// lock entry at all.
     /// </para>
     /// </summary>
     public async Task<Stream?> OpenReadAsync(string key, CancellationToken ct = default)
@@ -273,7 +272,7 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
             key,
             async () =>
             {
-                if (!await HasRegisterRowAsync(key, ct))
+                if (await TouchRowAsync(key, ct) == 0)
                 {
                     return null;
                 }
@@ -283,39 +282,38 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
                     return null;
                 }
 
-                await TouchRowAsync(key, ct);
                 return await _storage.OpenReadAsync(RelativePath(key), ct);
             },
             ct
         );
     }
 
-    /// <summary>
+    /// <inheritdoc />
+    /// <remarks>
     /// Both halves of the same guard as <see cref="OpenReadAsync" />: the
     /// cheap pre-check keeps unknown keys out of the lock dictionary, and the
-    /// re-check under the lock makes sure the row a touch is about to bump is
-    /// still there after the wait.
-    /// </summary>
-    public async Task TouchAsync(string key, CancellationToken ct = default)
+    /// update under the lock is its own re-check - an affected-row count of
+    /// zero means the row this touch was about to bump went while the call was
+    /// waiting for the key.
+    /// <para>
+    /// The file is asked about after the row, not before it: the row is the
+    /// half eviction removes first, and the cheaper of the two to find gone.
+    /// </para>
+    /// </remarks>
+    public async Task<bool> TouchAsync(string key, CancellationToken ct = default)
     {
         if (!DerivedAudioKey.IsValid(key) || !await HasRegisterRowAsync(key, ct))
         {
-            return;
+            return false;
         }
 
         await RunAfterPreCheckAsync();
 
-        await UnderKeyLockAsync(
+        return await UnderKeyLockAsync(
             key,
             async () =>
-            {
-                if (!await HasRegisterRowAsync(key, ct))
-                {
-                    return;
-                }
-
-                await TouchRowAsync(key, ct);
-            },
+                await TouchRowAsync(key, ct) != 0
+                && await _storage.ExistsAsync(RelativePath(key), ct),
             ct
         );
     }
@@ -342,7 +340,9 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
             return;
         }
 
-        await UnderKeyLockAsync(key, () => DeleteEntryAsync(key, ct), ct);
+        await RunAfterPreCheckAsync();
+
+        await UnderKeyLockAsync<bool>(key, () => DeleteEntryAsync(key, ct), ct);
     }
 
     /// <summary>
@@ -434,8 +434,7 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
             return null;
         }
 
-        await DeleteEntryAsync(key, ct);
-        return row.Bytes;
+        return await DeleteEntryAsync(key, ct) ? row.Bytes : null;
     }
 
     /// <summary>
@@ -461,25 +460,46 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
         return await body();
     }
 
-    /// <summary>The touch itself, with the key's lock already held.</summary>
-    private async Task TouchRowAsync(string key, CancellationToken ct)
+    /// <summary>
+    /// The touch itself, with the key's lock already held. Answers how many
+    /// register rows it moved, which is the re-check every caller under the
+    /// lock needs: zero means the entry went while the caller was waiting.
+    /// </summary>
+    private async Task<int> TouchRowAsync(string key, CancellationToken ct)
     {
         await using MediaContext context = await _contextFactory.CreateDbContextAsync(ct);
-        await context
+        return await context
             .DerivedAudio.Where(row => row.Key == key)
             .ExecuteUpdateAsync(set => set.SetProperty(row => row.LastUsedAt, DateTime.UtcNow), ct);
     }
 
-    /// <summary>The delete itself, with the key's lock already held.</summary>
-    private async Task DeleteEntryAsync(string key, CancellationToken ct)
+    /// <summary>
+    /// The delete itself, with the key's lock already held. The register row
+    /// goes first and its affected-row count decides the file: zero means
+    /// eviction or another delete already claimed this key, so the file under
+    /// it is no longer this call's to remove. True when the entry went.
+    /// </summary>
+    private async Task<bool> DeleteEntryAsync(string key, CancellationToken ct)
     {
+        int deleted;
+        await using (MediaContext context = await _contextFactory.CreateDbContextAsync(ct))
+        {
+            deleted = await context
+                .DerivedAudio.Where(row => row.Key == key)
+                .ExecuteDeleteAsync(ct);
+        }
+
+        if (deleted == 0)
+        {
+            return false;
+        }
+
         if (await _storage.ExistsAsync(RelativePath(key), ct))
         {
             await _storage.DeleteAsync(RelativePath(key), ct);
         }
 
-        await using MediaContext context = await _contextFactory.CreateDbContextAsync(ct);
-        await context.DerivedAudio.Where(row => row.Key == key).ExecuteDeleteAsync(ct);
+        return true;
     }
 
     // The mirror of the tmp/ sweep, one step further along: a crash between

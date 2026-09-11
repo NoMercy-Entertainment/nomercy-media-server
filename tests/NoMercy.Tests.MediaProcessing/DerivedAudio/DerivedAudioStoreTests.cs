@@ -258,12 +258,12 @@ public sealed class DerivedAudioStoreTests : IDisposable
     /// <summary>
     /// The pre-check that keeps an unknown key out of the lock table saw a
     /// register row, and eviction took the entry while this call was still
-    /// waiting for the key lock. The touch must not run at all then - the row
-    /// it would bump is gone, and the window between the pre-check and the
-    /// lock is exactly what the re-check under the lock closes.
+    /// waiting for the key lock. The update under the lock IS the re-check: it
+    /// matches no row, so nothing was bumped and the caller is told the key
+    /// did not survive - which is what its next ffmpeg run depends on.
     /// </summary>
     [Fact]
-    public async Task Touch_UnderTheLock_DoesNothingWhenEvictionWonTheRace()
+    public async Task Touch_ReturnsFalseWhenTheRowIsGone()
     {
         IDerivedAudioStore evictor = Store();
         DerivedAudioEntry entry = await evictor.PutAsync(
@@ -282,11 +282,63 @@ public sealed class DerivedAudioStoreTests : IDisposable
             recorder
         );
 
-        await store.TouchAsync(entry.Key);
+        (await store.TouchAsync(entry.Key)).Should().BeFalse();
 
+        // One statement under the lock, not two: the affected-row count of the
+        // update answers what a separate SELECT used to be asked for.
         recorder
             .Commands.Should()
-            .NotContain(command => command.Contains("UPDATE", StringComparison.OrdinalIgnoreCase));
+            .ContainSingle(command =>
+                command.Contains("UPDATE", StringComparison.OrdinalIgnoreCase)
+            );
+    }
+
+    /// <summary>
+    /// The other side of the same answer: a key both halves of the store still
+    /// hold is reported as surviving, and its <c>LastUsedAt</c> moved - which
+    /// is what makes the next eviction sweep skip it.
+    /// </summary>
+    [Fact]
+    public async Task Touch_ReturnsTrueAndBumpsLastUsedAt()
+    {
+        IDerivedAudioStore store = Store();
+        DerivedAudioEntry entry = await store.PutAsync(
+            new MemoryStream(Encoding.UTF8.GetBytes("content that is still there")),
+            "audio/opus"
+        );
+
+        DateTime before;
+        await using (MediaContext read = new(_options))
+        {
+            before = (await read.DerivedAudio.AsNoTracking().SingleAsync()).LastUsedAt;
+        }
+
+        await Task.Delay(20);
+
+        (await store.TouchAsync(entry.Key)).Should().BeTrue();
+
+        await using MediaContext read2 = new(_options);
+        (await read2.DerivedAudio.AsNoTracking().SingleAsync()).LastUsedAt.Should().BeAfter(before);
+    }
+
+    /// <summary>
+    /// The row is there and was bumped, but the content file is not: the half
+    /// state a crash between the move and the register insert leaves, or a
+    /// file removed from under the store by hand. A caller about to hand the
+    /// path to ffmpeg has to hear that as "no", not as a bumped row.
+    /// </summary>
+    [Fact]
+    public async Task Touch_ReturnsFalseWhenTheFileIsGone()
+    {
+        IDerivedAudioStore store = Store();
+        DerivedAudioEntry entry = await store.PutAsync(
+            new MemoryStream(Encoding.UTF8.GetBytes("content whose file goes away")),
+            "audio/opus"
+        );
+
+        File.Delete(Path.Combine(_root, entry.Key[..2], entry.Key));
+
+        (await store.TouchAsync(entry.Key)).Should().BeFalse();
     }
 
     /// <summary>
@@ -323,6 +375,39 @@ public sealed class DerivedAudioStoreTests : IDisposable
         (await store.ExistsAsync(entry.Key)).Should().BeFalse();
         await using MediaContext read = new(_options);
         (await read.DerivedAudio.AsNoTracking().AnyAsync()).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// The same race as the touch and the read, one member along: eviction
+    /// took the register row while this delete was queued behind the key lock.
+    /// The register delete then matches no row, and that count is what decides
+    /// whether the file goes - deleting it anyway would pull a file out from
+    /// under whoever put it back under the same key in the meantime.
+    /// </summary>
+    [Fact]
+    public async Task Delete_UnderTheLock_DoesNothingWhenEvictionWonTheRace()
+    {
+        IDerivedAudioStore seeder = Store();
+        DerivedAudioEntry entry = await seeder.PutAsync(
+            new MemoryStream(Encoding.UTF8.GetBytes("content another delete is about to claim")),
+            "audio/opus"
+        );
+
+        DerivedAudioStore store = StoreWith(
+            null,
+            async () =>
+            {
+                await using MediaContext context = new(_options);
+                await context.DerivedAudio.Where(row => row.Key == entry.Key).ExecuteDeleteAsync();
+            },
+            null
+        );
+
+        await store.DeleteAsync(entry.Key);
+
+        File.Exists(Path.Combine(_root, entry.Key[..2], entry.Key))
+            .Should()
+            .BeTrue("a zero affected-row count means this call did not own the file");
     }
 
     [Fact]

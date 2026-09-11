@@ -566,18 +566,26 @@ public sealed class PluginAudioTools(
         {
             // Checked before the store is asked anything: answering about a key
             // means slicing it into a path, and this key came from a plugin.
-            if (
-                !DerivedAudioKey.IsValid(input.StorageKey)
-                || !await store.ExistsAsync(input.StorageKey, ct)
-            )
+            if (!DerivedAudioKey.IsValid(input.StorageKey))
             {
                 return new(null, $"storage key {input.StorageKey} is not in the derived store");
             }
 
-            // A run has ten minutes to finish and eviction only spares what was
-            // used inside its grace window, so the key is kept alive before
-            // ffmpeg opens the file rather than after it closes it.
-            await store.TouchAsync(input.StorageKey, ct);
+            // One call does both jobs. A run has ten minutes to finish and
+            // eviction only spares what was used inside its grace window, so
+            // the key is kept alive before ffmpeg opens the file rather than
+            // after it closes it - and the touch answers whether there was
+            // still an entry to keep alive, which is the same question a
+            // separate existence check used to ask a moment earlier.
+            //
+            // A true is enough for the whole run: the touch moved LastUsedAt
+            // inside the grace window under the store's own key lock, so
+            // DeleteIfStillColdAsync's re-check under that same lock finds the
+            // key warm and skips it for the rest of the sweep.
+            if (!await store.TouchAsync(input.StorageKey, ct))
+            {
+                return new(null, $"storage key {input.StorageKey} is not in the derived store");
+            }
 
             return new(
                 await derivedStorage.AcquireLocalPathAsync(

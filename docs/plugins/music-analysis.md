@@ -175,6 +175,13 @@ await context.DerivedAudio.DeleteAsync(key, ct);
 intermediate you want to keep across runs). Two plugins that derive the same
 bytes from the same track share one copy rather than each staging its own.
 
+An entry is both halves — the content file and its register row — so
+`OpenReadAsync` answers `null` (and `ExistsAsync` `false`) for a content file
+that has no register row, which is what a crash between the store's
+move-into-place and its register insert leaves behind. Nothing can address
+such a file, and the server's own orphan sweep reclaims it on a later
+eviction run; there is nothing for a plugin to clean up.
+
 ## `IPluginMusicAnalysisWriter` — writing the DJ record
 
 ### `UpsertDjAnalysisAsync`
