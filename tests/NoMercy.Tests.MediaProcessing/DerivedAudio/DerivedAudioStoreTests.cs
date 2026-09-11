@@ -17,6 +17,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NoMercy.Database;
+using NoMercy.Database.Models.Libraries;
+using NoMercy.Database.Models.Music;
+using NoMercy.Database.Models.Storage;
 using NoMercy.MediaProcessing.DerivedAudio;
 using NoMercy.Storage;
 using NoMercy.Storage.Drivers.Local;
@@ -68,6 +71,34 @@ public sealed class DerivedAudioStoreTests : IDisposable
             // Best-effort cleanup; a locked handle on Windows must not fail the test run.
         }
         GC.SuppressFinalize(this);
+    }
+
+    // Track.FolderId is a required FK to Folder, itself a required FK to
+    // Driver, and this test class runs with foreign keys ON, so the whole
+    // chain has to be inserted with the track. Mirrors
+    // AnalysisRecordModelTests.TrackRow.
+    private static Track TrackRow(Guid id)
+    {
+        Ulid folderId = Ulid.NewUlid();
+        return new Track
+        {
+            Id = id,
+            Name = "A Track",
+            Duration = "03:45",
+            FolderId = folderId,
+            LibraryFolder = new Folder
+            {
+                Id = folderId,
+                Path = "/music",
+                DriverId = Driver.SystemLocalDriverId,
+                Driver = new Driver
+                {
+                    Id = Driver.SystemLocalDriverId,
+                    Name = "local",
+                    Type = "local",
+                },
+            },
+        };
     }
 
     private IDerivedAudioStore Store()
@@ -179,6 +210,32 @@ public sealed class DerivedAudioStoreTests : IDisposable
             "audio/opus"
         );
 
+        // A stem row pointing at the oldest key: eviction deletes the register
+        // row, and the database's own cascade has to take the stem with it -
+        // a stem row surviving its content is a plan that renders silence.
+        // Foreign keys stay ON for this test (Microsoft.Data.Sqlite enables
+        // them per connection); turning them off would prove nothing.
+        Guid trackId = Guid.NewGuid();
+        await using (MediaContext context = new(_options))
+        {
+            context.Tracks.Add(TrackRow(trackId));
+            context.TrackStems.Add(
+                new TrackStem
+                {
+                    Id = Ulid.NewUlid(),
+                    TrackId = trackId,
+                    Kind = "vocals",
+                    Coverage = StemCoverage.Full,
+                    Format = "opus",
+                    SampleRate = 48000,
+                    StorageKey = oldest.Key,
+                    ProducerVersion = "spleeter-2stems-f16@v1",
+                    CreatedAt = DateTime.UtcNow,
+                }
+            );
+            await context.SaveChangesAsync();
+        }
+
         DateTime now = DateTime.UtcNow;
         await using (MediaContext context = new(_options))
         {
@@ -193,6 +250,11 @@ public sealed class DerivedAudioStoreTests : IDisposable
                 .ExecuteUpdateAsync(set => set.SetProperty(row => row.LastUsedAt, now.AddDays(-1)));
         }
 
+        await using (MediaContext seeded = new(_options))
+        {
+            (await seeded.TrackStems.AsNoTracking().CountAsync()).Should().Be(1);
+        }
+
         long capBytes = 2 * oldest.Bytes;
         long freed = await store.EvictAsync(capBytes, TimeSpan.FromHours(1));
 
@@ -202,6 +264,43 @@ public sealed class DerivedAudioStoreTests : IDisposable
         (await store.ExistsAsync(newest.Key)).Should().BeTrue();
         await using MediaContext read = new(_options);
         (await read.DerivedAudio.AsNoTracking().CountAsync()).Should().Be(2);
+        (await read.TrackStems.AsNoTracking().AnyAsync(stem => stem.StorageKey == oldest.Key))
+            .Should()
+            .BeFalse();
+    }
+
+    /// <summary>
+    /// The mirror of the tmp/ sweep, one step further along the put: a crash
+    /// between the move into place and the register insert leaves a content
+    /// file no key addresses and no policy counts. Only this sweep frees it,
+    /// and only after the grace window, so it cannot race a put that is
+    /// between its own move and insert right now.
+    /// </summary>
+    [Fact]
+    public async Task Evict_RemovesAContentFileThatHasNoRegisterRow()
+    {
+        IDerivedAudioStore store = Store();
+        DerivedAudioEntry kept = await store.PutAsync(
+            new MemoryStream(Encoding.UTF8.GetBytes("registered content")),
+            "audio/opus"
+        );
+
+        string staleKey = new('c', 64);
+        string freshKey = new('d', 64);
+        Directory.CreateDirectory(Path.Combine(_root, staleKey[..2]));
+        Directory.CreateDirectory(Path.Combine(_root, freshKey[..2]));
+        string stalePath = Path.Combine(_root, staleKey[..2], staleKey);
+        string freshPath = Path.Combine(_root, freshKey[..2], freshKey);
+        await File.WriteAllBytesAsync(stalePath, Encoding.UTF8.GetBytes("orphaned by a crash"));
+        await File.WriteAllBytesAsync(freshPath, Encoding.UTF8.GetBytes("still being registered"));
+        File.SetLastWriteTimeUtc(stalePath, DateTime.UtcNow.AddDays(-2));
+        File.SetLastWriteTimeUtc(freshPath, DateTime.UtcNow);
+
+        await store.EvictAsync(capBytes: long.MaxValue, grace: TimeSpan.FromHours(1));
+
+        File.Exists(stalePath).Should().BeFalse();
+        File.Exists(freshPath).Should().BeTrue();
+        (await store.ExistsAsync(kept.Key)).Should().BeTrue();
     }
 
     [Fact]
@@ -230,6 +329,86 @@ public sealed class DerivedAudioStoreTests : IDisposable
         {
             Directory.GetFiles(tempDir).Should().BeEmpty();
         }
+    }
+
+    /// <summary>
+    /// A key a plugin invented rather than one <see cref="IDerivedAudioStore.PutAsync" />
+    /// minted: the store answers "not found" for it and never builds a path
+    /// out of it, so nothing under the derived root is read, touched or
+    /// removed. <see cref="IDerivedAudioStore.RelativePath" /> is the one
+    /// member that throws instead, because it has no "not found" to return.
+    /// </summary>
+    [Theory]
+    [InlineData("")]
+    [InlineData("a")]
+    [InlineData("../../etc")]
+    [InlineData("ab/../../etc/passwd")]
+    public async Task AnInvalidKey_IsNotFound_AndNeverTouchesTheDisk(string key)
+    {
+        IDerivedAudioStore store = Store();
+        DerivedAudioEntry planted = await store.PutAsync(
+            new MemoryStream(Encoding.UTF8.GetBytes("real content")),
+            "audio/opus"
+        );
+
+        (await store.ExistsAsync(key)).Should().BeFalse();
+        (await store.OpenReadAsync(key)).Should().BeNull();
+
+        Func<Task> touch = () => store.TouchAsync(key);
+        await touch.Should().NotThrowAsync();
+        Func<Task> delete = () => store.DeleteAsync(key);
+        await delete.Should().NotThrowAsync();
+
+        // The one real file and its row are still exactly where they were.
+        (await store.ExistsAsync(planted.Key))
+            .Should()
+            .BeTrue();
+        await using MediaContext read = new(_options);
+        (await read.DerivedAudio.AsNoTracking().CountAsync()).Should().Be(1);
+
+        Action relativePath = () => store.RelativePath(key);
+        relativePath.Should().Throw<ArgumentException>();
+    }
+
+    /// <summary>
+    /// Uppercase hex of the right length is still not a key this store minted:
+    /// it writes lowercase, so an uppercase key resolves to a different file on
+    /// a case-sensitive filesystem and the same one on Windows.
+    /// </summary>
+    [Fact]
+    public async Task AnUppercaseKey_IsNotFound()
+    {
+        IDerivedAudioStore store = Store();
+        DerivedAudioEntry entry = await store.PutAsync(
+            new MemoryStream(Encoding.UTF8.GetBytes("cased content")),
+            "audio/opus"
+        );
+
+        (await store.ExistsAsync(entry.Key.ToUpperInvariant())).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// The register row and the file are two halves of one entry. A file
+    /// without its row is the half-written state a crash leaves behind, and
+    /// answering "yes, that key is here" for it hands a caller a key that
+    /// nothing will ever evict and that a foreign key will reject.
+    /// </summary>
+    [Fact]
+    public async Task Exists_IsFalseForAFileWithoutARegisterRow()
+    {
+        IDerivedAudioStore store = Store();
+        DerivedAudioEntry entry = await store.PutAsync(
+            new MemoryStream(Encoding.UTF8.GetBytes("orphan content")),
+            "audio/opus"
+        );
+
+        await using (MediaContext context = new(_options))
+        {
+            await context.DerivedAudio.Where(row => row.Key == entry.Key).ExecuteDeleteAsync();
+        }
+
+        File.Exists(Path.Combine(_root, entry.Key[..2], entry.Key)).Should().BeTrue();
+        (await store.ExistsAsync(entry.Key)).Should().BeFalse();
     }
 
     [Fact]

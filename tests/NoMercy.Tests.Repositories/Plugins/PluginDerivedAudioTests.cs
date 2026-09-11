@@ -25,6 +25,15 @@ namespace NoMercy.Tests.Repositories.Plugins;
 /// </summary>
 public class PluginDerivedAudioTests
 {
+    // Only a 64-character lowercase hex string is a key PutAsync could have
+    // minted, so the forwarding tests below have to use one: anything else is
+    // refused by the facade before the store is ever reached.
+    private const string SomeKey =
+        "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    private const string UnknownKey =
+        "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
     [Fact]
     public async Task Put_ForwardsAndReturnsTheKey()
     {
@@ -52,18 +61,15 @@ public class PluginDerivedAudioTests
     {
         Mock<IDerivedAudioStore> store = new();
         store
-            .Setup(s => s.OpenReadAsync("unknown-key", It.IsAny<CancellationToken>()))
+            .Setup(s => s.OpenReadAsync(UnknownKey, It.IsAny<CancellationToken>()))
             .ReturnsAsync((Stream?)null);
 
         PluginDerivedAudio facade = new(store.Object);
 
-        Stream? result = await facade.OpenReadAsync("unknown-key");
+        Stream? result = await facade.OpenReadAsync(UnknownKey);
 
         result.Should().BeNull();
-        store.Verify(
-            s => s.OpenReadAsync("unknown-key", It.IsAny<CancellationToken>()),
-            Times.Once
-        );
+        store.Verify(s => s.OpenReadAsync(UnknownKey, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -71,14 +77,14 @@ public class PluginDerivedAudioTests
     {
         Mock<IDerivedAudioStore> store = new();
         store
-            .Setup(s => s.DeleteAsync("some-key", It.IsAny<CancellationToken>()))
+            .Setup(s => s.DeleteAsync(SomeKey, It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
         PluginDerivedAudio facade = new(store.Object);
 
-        await facade.DeleteAsync("some-key");
+        await facade.DeleteAsync(SomeKey);
 
-        store.Verify(s => s.DeleteAsync("some-key", It.IsAny<CancellationToken>()), Times.Once);
+        store.Verify(s => s.DeleteAsync(SomeKey, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
@@ -86,30 +92,28 @@ public class PluginDerivedAudioTests
     {
         Mock<IDerivedAudioStore> store = new();
         store
-            .Setup(s => s.TouchAsync("some-key", It.IsAny<CancellationToken>()))
+            .Setup(s => s.TouchAsync(SomeKey, It.IsAny<CancellationToken>()))
             .Returns(Task.CompletedTask);
 
         PluginDerivedAudio facade = new(store.Object);
 
-        await facade.TouchAsync("some-key");
+        await facade.TouchAsync(SomeKey);
 
-        store.Verify(s => s.TouchAsync("some-key", It.IsAny<CancellationToken>()), Times.Once);
+        store.Verify(s => s.TouchAsync(SomeKey, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     [Fact]
     public async Task Exists_Forwards()
     {
         Mock<IDerivedAudioStore> store = new();
-        store
-            .Setup(s => s.ExistsAsync("some-key", It.IsAny<CancellationToken>()))
-            .ReturnsAsync(true);
+        store.Setup(s => s.ExistsAsync(SomeKey, It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
         PluginDerivedAudio facade = new(store.Object);
 
-        bool exists = await facade.ExistsAsync("some-key");
+        bool exists = await facade.ExistsAsync(SomeKey);
 
         exists.Should().BeTrue();
-        store.Verify(s => s.ExistsAsync("some-key", It.IsAny<CancellationToken>()), Times.Once);
+        store.Verify(s => s.ExistsAsync(SomeKey, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     /// <summary>
@@ -130,6 +134,48 @@ public class PluginDerivedAudioTests
         Stream? opened = await facade.OpenReadAsync(key!);
         await facade.TouchAsync(key!);
         await facade.DeleteAsync(key!);
+
+        exists.Should().BeFalse();
+        opened.Should().BeNull();
+
+        store.Verify(
+            s => s.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never
+        );
+        store.Verify(
+            s => s.OpenReadAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never
+        );
+        store.Verify(
+            s => s.TouchAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never
+        );
+        store.Verify(
+            s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never
+        );
+    }
+
+    /// <summary>
+    /// A key is the lowercase hex of a SHA-256 digest and nothing else, so a
+    /// short one, a traversal attempt, a near-miss length and the right
+    /// characters in the wrong case are all refused here - before the store
+    /// gets the chance to slice any of them into a path.
+    /// </summary>
+    [Theory]
+    [InlineData("a")]
+    [InlineData("../../etc")]
+    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
+    [InlineData("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")]
+    public async Task AMalformedKey_NeverReachesTheStore(string key)
+    {
+        Mock<IDerivedAudioStore> store = new();
+        PluginDerivedAudio facade = new(store.Object);
+
+        bool exists = await facade.ExistsAsync(key);
+        Stream? opened = await facade.OpenReadAsync(key);
+        await facade.TouchAsync(key);
+        await facade.DeleteAsync(key);
 
         exists.Should().BeFalse();
         opened.Should().BeNull();

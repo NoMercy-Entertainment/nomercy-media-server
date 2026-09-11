@@ -51,7 +51,25 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
         _logger = logger;
     }
 
-    public string RelativePath(string key) => $"{key[..2]}/{key}";
+    /// <summary>
+    /// The only member that throws on a bad key rather than answering "not
+    /// found": it returns a path, so it has no way to say "there is none".
+    /// Every other member below treats an invalid key as an absent one, which
+    /// is what a plugin holding a stale or invented key should see.
+    /// </summary>
+    /// <exception cref="ArgumentException">The key is not a lowercase hex SHA-256 digest.</exception>
+    public string RelativePath(string key)
+    {
+        if (!DerivedAudioKey.IsValid(key))
+        {
+            throw new ArgumentException(
+                "A derived-audio key is 64 lowercase hex characters.",
+                nameof(key)
+            );
+        }
+
+        return $"{key[..2]}/{key}";
+    }
 
     public async Task<DerivedAudioEntry> PutAsync(
         Stream content,
@@ -184,11 +202,35 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
         return new DerivedAudioEntry(key, contentType, bytes);
     }
 
-    public Task<bool> ExistsAsync(string key, CancellationToken ct = default) =>
-        _storage.ExistsAsync(RelativePath(key), ct);
+    /// <summary>
+    /// True only when both halves of the entry are there: the file AND its
+    /// register row. A file without a row is what a crash between the move and
+    /// the insert leaves behind - handing that key back as present would give
+    /// a caller a file eviction never counts and a foreign key rejects.
+    /// </summary>
+    public async Task<bool> ExistsAsync(string key, CancellationToken ct = default)
+    {
+        if (!DerivedAudioKey.IsValid(key))
+        {
+            return false;
+        }
+
+        if (!await _storage.ExistsAsync(RelativePath(key), ct))
+        {
+            return false;
+        }
+
+        await using MediaContext context = await _contextFactory.CreateDbContextAsync(ct);
+        return await context.DerivedAudio.AsNoTracking().AnyAsync(row => row.Key == key, ct);
+    }
 
     public async Task<Stream?> OpenReadAsync(string key, CancellationToken ct = default)
     {
+        if (!DerivedAudioKey.IsValid(key))
+        {
+            return null;
+        }
+
         if (!await _storage.ExistsAsync(RelativePath(key), ct))
         {
             return null;
@@ -199,6 +241,11 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
 
     public async Task TouchAsync(string key, CancellationToken ct = default)
     {
+        if (!DerivedAudioKey.IsValid(key))
+        {
+            return;
+        }
+
         await using MediaContext context = await _contextFactory.CreateDbContextAsync(ct);
         await context
             .DerivedAudio.Where(row => row.Key == key)
@@ -207,6 +254,11 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
 
     public async Task DeleteAsync(string key, CancellationToken ct = default)
     {
+        if (!DerivedAudioKey.IsValid(key))
+        {
+            return;
+        }
+
         if (await _storage.ExistsAsync(RelativePath(key), ct))
         {
             await _storage.DeleteAsync(RelativePath(key), ct);
@@ -243,12 +295,62 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
         }
 
         await SweepStaleTempFilesAsync(grace, ct);
+        await SweepOrphanedContentFilesAsync(grace, ct);
 
         if (freed > 0)
         {
             _logger.LogInformation("Derived audio eviction freed {Freed} bytes", freed);
         }
         return freed;
+    }
+
+    // The mirror of the tmp/ sweep, one step further along: a crash between
+    // the move into place and the register insert leaves a content file whose
+    // row never landed. Nothing addresses it - ExistsAsync answers false for a
+    // file without a row - so only this sweep will ever free it. The grace
+    // window is what keeps it from racing a PutAsync that is between its own
+    // move and insert right now.
+    private async Task SweepOrphanedContentFilesAsync(TimeSpan grace, CancellationToken ct)
+    {
+        HashSet<string> knownKeys;
+        await using (MediaContext context = await _contextFactory.CreateDbContextAsync(ct))
+        {
+            knownKeys = (
+                await context.DerivedAudio.AsNoTracking().Select(row => row.Key).ToListAsync(ct)
+            ).ToHashSet(StringComparer.Ordinal);
+        }
+
+        DateTimeOffset cutoff = DateTimeOffset.UtcNow - grace;
+
+        List<string> contentFolders = [];
+        await foreach (StorageEntry entry in _storage.ListAsync(string.Empty, null, false, ct))
+        {
+            ct.ThrowIfCancellationRequested();
+            string name = entry.Path.Split('/')[^1];
+            if (entry.IsDirectory && name.Length == 2 && name != TempFolder)
+            {
+                contentFolders.Add(entry.Path);
+            }
+        }
+
+        foreach (string folder in contentFolders)
+        {
+            await foreach (StorageEntry entry in _storage.ListAsync(folder, null, false, ct))
+            {
+                ct.ThrowIfCancellationRequested();
+                string name = entry.Path.Split('/')[^1];
+                if (entry.IsDirectory || entry.LastModified > cutoff || knownKeys.Contains(name))
+                {
+                    continue;
+                }
+
+                _logger.LogInformation(
+                    "Derived audio: removing content file {Key} that has no register row",
+                    name
+                );
+                await _storage.DeleteAsync(entry.Path, ct);
+            }
+        }
     }
 
     // A crash between the temp write in PutAsync and the move into place is

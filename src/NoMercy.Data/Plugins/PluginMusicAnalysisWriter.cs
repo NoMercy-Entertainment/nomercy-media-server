@@ -178,7 +178,14 @@ public class PluginMusicAnalysisWriter(
         if (!trackExists)
             return PluginWriteResult.Refused($"track {stem.TrackId} does not exist");
 
-        if (!await store.ExistsAsync(stem.StorageKey, ct))
+        // A key the store could never have minted gets the same answer as one
+        // it simply does not hold - a plugin has one thing to fix either way -
+        // but it is checked here first, because asking the store means slicing
+        // the key into a path.
+        if (
+            !DerivedAudioKey.IsValid(stem.StorageKey)
+            || !await store.ExistsAsync(stem.StorageKey, ct)
+        )
             return PluginWriteResult.Refused(
                 $"storage key {stem.StorageKey} is not in the derived store"
             );

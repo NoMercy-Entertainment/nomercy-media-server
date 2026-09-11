@@ -504,8 +504,10 @@ public sealed class PluginAudioTools(
     {
         if (input.StorageKey is not null)
         {
+            // Checked before the store is asked anything: answering about a key
+            // means slicing it into a path, and this key came from a plugin.
             if (
-                string.IsNullOrWhiteSpace(input.StorageKey)
+                !DerivedAudioKey.IsValid(input.StorageKey)
                 || !await store.ExistsAsync(input.StorageKey, ct)
             )
             {

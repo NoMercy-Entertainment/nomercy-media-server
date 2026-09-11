@@ -38,6 +38,11 @@ namespace NoMercy.Tests.Repositories.Plugins;
 public class PluginAudioToolsTests : IDisposable
 {
     private const string FfmpegBinary = "ffmpeg";
+
+    // A key the derived store could have minted: 64 lowercase hex characters.
+    // Anything shorter is refused before the store is consulted.
+    private const string DerivedKey =
+        "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
     private const string VersionLine =
         "ffmpeg version 9.0-NoMercy-MediaServer Copyright (c) 2000-2026 the FFmpeg developers";
 
@@ -457,7 +462,7 @@ public class PluginAudioToolsTests : IDisposable
     [Fact]
     public async Task RunFilterGraph_Derived_ResolvesTheKeyThroughTheStore()
     {
-        const string key = "abcdef0123456789";
+        const string key = DerivedKey;
 
         await CreateTools()
             .RunFilterGraphAsync(
@@ -560,7 +565,7 @@ public class PluginAudioToolsTests : IDisposable
     [Fact]
     public async Task RunFilterGraph_RefusesAKeyThatIsNotInTheDerivedStore()
     {
-        const string key = "abcdef0123456789";
+        const string key = DerivedKey;
         _store
             .Setup(store => store.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
@@ -574,6 +579,36 @@ public class PluginAudioToolsTests : IDisposable
             );
 
         result.Refusal.Should().Be($"storage key {key} is not in the derived store");
+    }
+
+    /// <summary>
+    /// A derived key a plugin made up is refused in the same words as one the
+    /// store does not hold, and the store is never asked - answering means
+    /// slicing the key into a path, which is exactly what a traversal attempt
+    /// is counting on.
+    /// </summary>
+    [Theory]
+    [InlineData("")]
+    [InlineData("a")]
+    [InlineData("../../etc")]
+    [InlineData("ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789ABCDEF0123456789")]
+    public async Task RunFilterGraph_RefusesAMalformedDerivedKey(string key)
+    {
+        PluginAudioRunResult result = await CreateTools()
+            .RunFilterGraphAsync(
+                PluginAudioInput.Derived(key),
+                new PluginFilterGraph("volume=1", Complex: false),
+                null,
+                null
+            );
+
+        result.Refusal.Should().Be($"storage key {key} is not in the derived store");
+        _runCount.Should().Be(0);
+        _store.Verify(
+            store => store.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never
+        );
+        _store.Verify(store => store.RelativePath(It.IsAny<string>()), Times.Never);
     }
 
     [Fact]

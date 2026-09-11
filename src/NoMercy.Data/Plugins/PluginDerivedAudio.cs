@@ -23,9 +23,19 @@ namespace NoMercy.Data.Plugins;
 /// (the cache-cap sweep is the server's policy, not a plugin's to trigger) and
 /// <see cref="IDerivedAudioStore.RelativePath" /> (a plugin never learns where
 /// a file actually lives - it holds the key, and reads or writes through this
-/// facade). A null, empty or whitespace-only key is refused here, before it
-/// reaches the store, since <c>RelativePath</c> slices the key apart to
-/// build a path.
+/// facade). A key that <see cref="IPluginDerivedAudio.PutAsync" /> could not
+/// have minted - null, blank, the wrong length, the wrong characters, or the
+/// right hex in the wrong case - is refused here, before it reaches the
+/// store, since <c>RelativePath</c> slices the key apart to build a path. The
+/// store applies the same rule again on its own: this facade is not the only
+/// caller it has.
+/// </para>
+/// <para>
+/// None of these members has a refusal channel, so a refusal reads as an
+/// absence: <see cref="ExistsAsync" /> is false, <see cref="OpenReadAsync" />
+/// is null, and <see cref="TouchAsync" /> and <see cref="DeleteAsync" /> do
+/// nothing. <see cref="PutAsync" /> is the exception - it has to return a key,
+/// so a failure there is rethrown.
 /// </para>
 /// </summary>
 public sealed class PluginDerivedAudio(IDerivedAudioStore store) : IPluginDerivedAudio
@@ -42,23 +52,23 @@ public sealed class PluginDerivedAudio(IDerivedAudioStore store) : IPluginDerive
 
     public Task<bool> ExistsAsync(string key, CancellationToken ct = default)
     {
-        return string.IsNullOrWhiteSpace(key) ? Task.FromResult(false) : store.ExistsAsync(key, ct);
+        return DerivedAudioKey.IsValid(key) ? store.ExistsAsync(key, ct) : Task.FromResult(false);
     }
 
     public Task<Stream?> OpenReadAsync(string key, CancellationToken ct = default)
     {
-        return string.IsNullOrWhiteSpace(key)
-            ? Task.FromResult<Stream?>(null)
-            : store.OpenReadAsync(key, ct);
+        return DerivedAudioKey.IsValid(key)
+            ? store.OpenReadAsync(key, ct)
+            : Task.FromResult<Stream?>(null);
     }
 
     public Task TouchAsync(string key, CancellationToken ct = default)
     {
-        return string.IsNullOrWhiteSpace(key) ? Task.CompletedTask : store.TouchAsync(key, ct);
+        return DerivedAudioKey.IsValid(key) ? store.TouchAsync(key, ct) : Task.CompletedTask;
     }
 
     public Task DeleteAsync(string key, CancellationToken ct = default)
     {
-        return string.IsNullOrWhiteSpace(key) ? Task.CompletedTask : store.DeleteAsync(key, ct);
+        return DerivedAudioKey.IsValid(key) ? store.DeleteAsync(key, ct) : Task.CompletedTask;
     }
 }

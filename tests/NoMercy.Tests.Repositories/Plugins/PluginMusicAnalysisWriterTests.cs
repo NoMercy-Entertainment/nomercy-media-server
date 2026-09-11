@@ -31,6 +31,32 @@ public class PluginMusicAnalysisWriterTests : IDisposable
 {
     private const int BaseAnalyzerVersion = 1;
 
+    // Every storage key below is a 64-character lowercase hex string: the
+    // writer refuses anything the derived store could not have minted before
+    // it asks the store about it, so a readable "key-1" no longer gets that
+    // far.
+    private const string KeyOne =
+        "1111111111111111111111111111111111111111111111111111111111111111";
+
+    private const string KeyTwo =
+        "2222222222222222222222222222222222222222222222222222222222222222";
+
+    private const string KeyThree =
+        "3333333333333333333333333333333333333333333333333333333333333333";
+
+    private const string KeyFour =
+        "4444444444444444444444444444444444444444444444444444444444444444";
+
+    private const string KeyA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+
+    private const string KeyB = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+
+    private const string KeyDelete =
+        "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+
+    private const string MissingKey =
+        "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+
     private readonly SqliteConnection _connection;
     private readonly DbContextOptions<MediaContext> _options;
     private readonly Ulid _pluginId = Ulid.NewUlid();
@@ -348,10 +374,10 @@ public class PluginMusicAnalysisWriterTests : IDisposable
     public async Task RegisterStemAsync_RefusesAnUnknownTrack()
     {
         Mock<IDerivedAudioStore> store = NewStoreMock();
-        store.Setup(s => s.ExistsAsync("key-1", It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        store.Setup(s => s.ExistsAsync(KeyOne, It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
         PluginWriteResult result = await CreateWriter(store.Object)
-            .RegisterStemAsync(ValidFullStem(Guid.NewGuid(), "key-1"));
+            .RegisterStemAsync(ValidFullStem(Guid.NewGuid(), KeyOne));
 
         result.Ok.Should().BeFalse();
         result.Refusal.Should().Contain("does not exist");
@@ -362,19 +388,73 @@ public class PluginMusicAnalysisWriterTests : IDisposable
     {
         // NewStoreMock's ExistsAsync answers false for every key by default.
         PluginWriteResult result = await CreateWriter(NewStoreMock().Object)
-            .RegisterStemAsync(ValidFullStem(_trackId, "missing-key"));
+            .RegisterStemAsync(ValidFullStem(_trackId, MissingKey));
 
         result.Ok.Should().BeFalse();
         result.Refusal.Should().Contain("is not in the derived store");
+    }
+
+    /// <summary>
+    /// A key the derived store could never have minted is refused in the same
+    /// words as one it simply does not hold - a plugin gets one answer for
+    /// "that key is not mine" - and the store is not asked about it at all,
+    /// since asking means slicing it into a path.
+    /// </summary>
+    [Theory]
+    [InlineData("")]
+    [InlineData("a")]
+    [InlineData("../../etc")]
+    [InlineData("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")]
+    public async Task RegisterStem_RefusesAMalformedKey(string key)
+    {
+        Mock<IDerivedAudioStore> store = NewStoreMock();
+        store
+            .Setup(s => s.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        PluginWriteResult result = await CreateWriter(store.Object)
+            .RegisterStemAsync(ValidFullStem(_trackId, key));
+
+        result.Ok.Should().BeFalse();
+        result.Refusal.Should().Be($"storage key {key} is not in the derived store");
+        store.Verify(
+            s => s.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never
+        );
+    }
+
+    /// <summary>
+    /// A crash between the store's move-into-place and its register insert
+    /// leaves a content file with no <c>DerivedAudio</c> row. The store answers
+    /// <c>false</c> for that key - it is only half an entry - so the writer
+    /// refuses in words. Registering it anyway would take the stem row's
+    /// foreign key down with a <see cref="DbUpdateException" /> nobody reads.
+    /// </summary>
+    [Fact]
+    public async Task RegisterStem_RefusesAKeyWhoseFileExistsButWhoseRowDoesNot()
+    {
+        Mock<IDerivedAudioStore> store = NewStoreMock();
+        store.Setup(s => s.ExistsAsync(KeyOne, It.IsAny<CancellationToken>())).ReturnsAsync(false);
+
+        Func<Task<PluginWriteResult>> act = () =>
+            CreateWriter(store.Object).RegisterStemAsync(ValidFullStem(_trackId, KeyOne));
+
+        PluginWriteResult result = (await act.Should().NotThrowAsync()).Which;
+
+        result.Ok.Should().BeFalse();
+        result.Refusal.Should().Be($"storage key {KeyOne} is not in the derived store");
+
+        using MediaContext context = new(_options);
+        context.TrackStems.Any(stem => stem.TrackId == _trackId).Should().BeFalse();
     }
 
     [Fact]
     public async Task RegisterStemAsync_RefusesFullCoverageWithAWindow()
     {
         Mock<IDerivedAudioStore> store = NewStoreMock();
-        store.Setup(s => s.ExistsAsync("key-2", It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        store.Setup(s => s.ExistsAsync(KeyTwo, It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
-        PluginTrackStem stem = ValidFullStem(_trackId, "key-2") with
+        PluginTrackStem stem = ValidFullStem(_trackId, KeyTwo) with
         {
             WindowStartMs = 0,
             WindowEndMs = 1000,
@@ -390,7 +470,7 @@ public class PluginMusicAnalysisWriterTests : IDisposable
     public async Task RegisterStemAsync_RefusesWindowedCoverageWithoutAWindow()
     {
         Mock<IDerivedAudioStore> store = NewStoreMock();
-        store.Setup(s => s.ExistsAsync("key-3", It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        store.Setup(s => s.ExistsAsync(KeyThree, It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
         PluginTrackStem stem = new(
             _trackId,
@@ -400,7 +480,7 @@ public class PluginMusicAnalysisWriterTests : IDisposable
             null,
             "opus",
             48000,
-            "key-3",
+            KeyThree,
             "spleeter-2stems-f16@v1"
         );
 
@@ -414,7 +494,7 @@ public class PluginMusicAnalysisWriterTests : IDisposable
     public async Task RegisterStemAsync_RefusesAWindowThatDoesNotStartBeforeItEnds()
     {
         Mock<IDerivedAudioStore> store = NewStoreMock();
-        store.Setup(s => s.ExistsAsync("key-4", It.IsAny<CancellationToken>())).ReturnsAsync(true);
+        store.Setup(s => s.ExistsAsync(KeyFour, It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
         PluginTrackStem stem = new(
             _trackId,
@@ -424,7 +504,7 @@ public class PluginMusicAnalysisWriterTests : IDisposable
             1000,
             "opus",
             48000,
-            "key-4",
+            KeyFour,
             "spleeter-2stems-f16@v1"
         );
 
@@ -446,8 +526,8 @@ public class PluginMusicAnalysisWriterTests : IDisposable
 
         PluginMusicAnalysisWriter writer = CreateWriter(store.Object);
 
-        await writer.RegisterStemAsync(ValidFullStem(_trackId, "key-a"));
-        PluginWriteResult result = await writer.RegisterStemAsync(ValidFullStem(_trackId, "key-b"));
+        await writer.RegisterStemAsync(ValidFullStem(_trackId, KeyA));
+        PluginWriteResult result = await writer.RegisterStemAsync(ValidFullStem(_trackId, KeyB));
 
         result.Ok.Should().BeTrue();
 
@@ -455,7 +535,7 @@ public class PluginMusicAnalysisWriterTests : IDisposable
         context.TrackStems.Count(s => s.TrackId == _trackId).Should().Be(1);
 
         TrackStem row = context.TrackStems.Single(s => s.TrackId == _trackId);
-        row.StorageKey.Should().Be("key-b");
+        row.StorageKey.Should().Be(KeyB);
     }
 
     // --- MarkFailedAsync -----------------------------------------------------
@@ -554,7 +634,7 @@ public class PluginMusicAnalysisWriterTests : IDisposable
 
         PluginMusicAnalysisWriter writer = CreateWriter(store.Object);
         await writer.UpsertDjAnalysisAsync(ValidRecord(_trackId));
-        await writer.RegisterStemAsync(ValidFullStem(_trackId, "key-delete"));
+        await writer.RegisterStemAsync(ValidFullStem(_trackId, KeyDelete));
 
         await writer.DeleteDjAnalysisAsync(_trackId);
 
