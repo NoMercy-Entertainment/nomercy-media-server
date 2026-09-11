@@ -103,7 +103,8 @@ public sealed class PluginAudioTools(
         CancellationToken ct = default
     ) =>
         PluginCallGuard.RunAsync(
-            $"plugin {pluginId}: {nameof(RunFilterGraphAsync)}",
+            pluginId.ToString(),
+            nameof(RunFilterGraphAsync),
             () => RunFilterGraphCoreAsync(input, graph, onStdOut, onStdErr, ct),
             PluginAudioRunResult.Refused,
             _logger
@@ -178,7 +179,8 @@ public sealed class PluginAudioTools(
         CancellationToken ct = default
     ) =>
         PluginCallGuard.RunAsync(
-            $"plugin {pluginId}: {nameof(SplitStemsAsync)}",
+            pluginId.ToString(),
+            nameof(SplitStemsAsync),
             () => SplitStemsCoreAsync(trackId, coverage, stemSet, ct),
             PluginStemSplitResult.Refused,
             _logger

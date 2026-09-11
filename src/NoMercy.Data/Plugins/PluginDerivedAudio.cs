@@ -77,7 +77,8 @@ public sealed class PluginDerivedAudio(
 
     public Task<bool> ExistsAsync(string key, CancellationToken ct = default) =>
         PluginCallGuard.RunOrAsync(
-            Operation(nameof(ExistsAsync)),
+            SharedPluginId,
+            nameof(ExistsAsync),
             () => store.ExistsAsync(key, ct),
             false,
             _logger
@@ -85,7 +86,8 @@ public sealed class PluginDerivedAudio(
 
     public Task<Stream?> OpenReadAsync(string key, CancellationToken ct = default) =>
         PluginCallGuard.RunOrAsync<Stream?>(
-            Operation(nameof(OpenReadAsync)),
+            SharedPluginId,
+            nameof(OpenReadAsync),
             () => store.OpenReadAsync(key, ct),
             null,
             _logger
@@ -93,19 +95,24 @@ public sealed class PluginDerivedAudio(
 
     public Task TouchAsync(string key, CancellationToken ct = default) =>
         PluginCallGuard.RunAsync(
-            Operation(nameof(TouchAsync)),
+            SharedPluginId,
+            nameof(TouchAsync),
             () => store.TouchAsync(key, ct),
             _logger
         );
 
     public Task DeleteAsync(string key, CancellationToken ct = default) =>
         PluginCallGuard.RunAsync(
-            Operation(nameof(DeleteAsync)),
+            SharedPluginId,
+            nameof(DeleteAsync),
             () => store.DeleteAsync(key, ct),
             _logger
         );
 
-    /// <summary>Which call this is, for the guard's warning line.</summary>
-    private static string Operation(string member) =>
-        $"a plugin's {member} call on the derived store";
+    /// <summary>
+    /// One facade serves every plugin, so there is no plugin to name in the
+    /// guard's warning line. It says so rather than leaving the property out:
+    /// a missing field reads as a gap in the pipeline.
+    /// </summary>
+    private const string SharedPluginId = "shared";
 }

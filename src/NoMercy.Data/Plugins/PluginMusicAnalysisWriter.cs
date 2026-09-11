@@ -60,7 +60,8 @@ public class PluginMusicAnalysisWriter(
         CancellationToken ct = default
     ) =>
         PluginCallGuard.RunAsync(
-            Operation(nameof(UpsertDjAnalysisAsync)),
+            pluginId.ToString(),
+            nameof(UpsertDjAnalysisAsync),
             () => UpsertDjAnalysisCoreAsync(record, ct),
             PluginWriteResult.Refused,
             _logger
@@ -71,7 +72,8 @@ public class PluginMusicAnalysisWriter(
         CancellationToken ct = default
     ) =>
         PluginCallGuard.RunAsync(
-            Operation(nameof(RegisterStemAsync)),
+            pluginId.ToString(),
+            nameof(RegisterStemAsync),
             () => RegisterStemsCoreAsync([stem], ct),
             PluginWriteResult.Refused,
             _logger
@@ -82,7 +84,8 @@ public class PluginMusicAnalysisWriter(
         CancellationToken ct = default
     ) =>
         PluginCallGuard.RunAsync(
-            Operation(nameof(RegisterStemsAsync)),
+            pluginId.ToString(),
+            nameof(RegisterStemsAsync),
             () => RegisterStemsCoreAsync(stems, ct),
             PluginWriteResult.Refused,
             _logger
@@ -96,7 +99,8 @@ public class PluginMusicAnalysisWriter(
         CancellationToken ct = default
     ) =>
         PluginCallGuard.RunAsync(
-            Operation(nameof(MarkFailedAsync)),
+            pluginId.ToString(),
+            nameof(MarkFailedAsync),
             () => MarkFailedCoreAsync(trackId, djAnalyzerVersion, baseAnalyzerVersion, reason, ct),
             PluginWriteResult.Refused,
             _logger
@@ -110,13 +114,11 @@ public class PluginMusicAnalysisWriter(
     /// </summary>
     public Task DeleteDjAnalysisAsync(Guid trackId, CancellationToken ct = default) =>
         PluginCallGuard.RunAsync(
-            Operation(nameof(DeleteDjAnalysisAsync)),
+            pluginId.ToString(),
+            nameof(DeleteDjAnalysisAsync),
             () => DeleteDjAnalysisCoreAsync(trackId, ct),
             _logger
         );
-
-    /// <summary>Which plugin's call this is, for the guard's warning line.</summary>
-    private string Operation(string member) => $"plugin {pluginId}: {member}";
 
     private async Task<PluginWriteResult> UpsertDjAnalysisCoreAsync(
         PluginTrackDjAnalysis record,
