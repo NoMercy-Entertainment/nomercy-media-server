@@ -135,7 +135,20 @@ public static class PluginServiceCollectionExtensions
             sp.GetRequiredService<IPluginLibraryQuery>(),
             sp.GetRequiredService<IPluginLibraryWriterFactory>(),
             PlatformConfiguration(sp, pluginsPath),
-            sp.GetRequiredService<IPluginHubContextFactory>()
+            sp.GetRequiredService<IPluginHubContextFactory>(),
+            // Optional: GetService, not GetRequiredService. A host that never
+            // called AddPluginLibraryAccess (or the encoder/storage wiring)
+            // still gets a working platform, the same TryAdd philosophy as the
+            // library query and writer factory above — a plugin just finds the
+            // corresponding hook gated to null instead of the resolve itself
+            // failing for every plugin on every host.
+            encoder: sp.GetService<IPluginEncoder>(),
+            jobs: sp.GetService<IPluginJobs>(),
+            pluginStorage: sp.GetService<IPluginStorage>(),
+            musicQuery: sp.GetService<IPluginMusicQuery>(),
+            audioToolsFactory: sp.GetService<IPluginAudioToolsFactory>(),
+            derivedAudio: sp.GetService<IPluginDerivedAudio>(),
+            analysisWriterFactory: sp.GetService<IPluginMusicAnalysisWriterFactory>()
         ));
 
         services.AddSingleton<IPluginManager>(sp =>
