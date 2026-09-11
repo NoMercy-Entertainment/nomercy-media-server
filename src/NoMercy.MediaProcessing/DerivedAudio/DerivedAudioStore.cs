@@ -218,9 +218,25 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
         return await context.DerivedAudio.AsNoTracking().AnyAsync(row => row.Key == key, ct);
     }
 
+    /// <summary>
+    /// The pre-check outside the lock is what keeps a key nothing ever stored
+    /// from minting a semaphore; the re-check inside it is what survives an
+    /// eviction that took the entry while this call was queued behind it.
+    /// <para>
+    /// Only the stream outlives the lock. That is safe: the touch above it has
+    /// already moved <c>LastUsedAt</c> inside the grace window, so the next
+    /// eviction's own re-check under this same lock finds the key warm and
+    /// leaves it alone while the caller is still reading.
+    /// </para>
+    /// </summary>
     public async Task<Stream?> OpenReadAsync(string key, CancellationToken ct = default)
     {
         if (!DerivedAudioKey.IsValid(key))
+        {
+            return null;
+        }
+
+        if (!await HasRegisterRowAsync(key, ct))
         {
             return null;
         }
@@ -230,10 +246,35 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
             return null;
         }
 
-        await UnderKeyLockAsync(key, () => TouchRowAsync(key, ct), ct);
-        return await _storage.OpenReadAsync(RelativePath(key), ct);
+        await RunAfterPreCheckAsync();
+
+        return await UnderKeyLockAsync<Stream?>(
+            key,
+            async () =>
+            {
+                if (!await HasRegisterRowAsync(key, ct))
+                {
+                    return null;
+                }
+
+                if (!await _storage.ExistsAsync(RelativePath(key), ct))
+                {
+                    return null;
+                }
+
+                await TouchRowAsync(key, ct);
+                return await _storage.OpenReadAsync(RelativePath(key), ct);
+            },
+            ct
+        );
     }
 
+    /// <summary>
+    /// Both halves of the same guard as <see cref="OpenReadAsync" />: the
+    /// cheap pre-check keeps unknown keys out of the lock dictionary, and the
+    /// re-check under the lock makes sure the row a touch is about to bump is
+    /// still there after the wait.
+    /// </summary>
     public async Task TouchAsync(string key, CancellationToken ct = default)
     {
         if (!DerivedAudioKey.IsValid(key) || !await HasRegisterRowAsync(key, ct))
@@ -241,8 +282,32 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
             return;
         }
 
-        await UnderKeyLockAsync(key, () => TouchRowAsync(key, ct), ct);
+        await RunAfterPreCheckAsync();
+
+        await UnderKeyLockAsync(
+            key,
+            async () =>
+            {
+                if (!await HasRegisterRowAsync(key, ct))
+                {
+                    return;
+                }
+
+                await TouchRowAsync(key, ct);
+            },
+            ct
+        );
     }
+
+    /// <summary>
+    /// Runs after the pre-check outside the lock and before the lock itself,
+    /// so a test can land an eviction in exactly the window the re-check under
+    /// the lock guards against. Never set in production.
+    /// </summary>
+    internal Func<Task>? AfterPreCheck { get; init; }
+
+    private Task RunAfterPreCheckAsync() =>
+        AfterPreCheck is null ? Task.CompletedTask : AfterPreCheck();
 
     /// <summary>
     /// A key with no register row is nothing to delete: a content file without
@@ -364,13 +429,25 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
     /// delete: a touch that lands while eviction is deleting the same key
     /// leaves a register row pointing at a file that is already gone.
     /// </summary>
-    private async Task UnderKeyLockAsync(string key, Func<Task> body, CancellationToken ct)
+    private Task UnderKeyLockAsync(string key, Func<Task> body, CancellationToken ct) =>
+        UnderKeyLockAsync<bool>(
+            key,
+            async () =>
+            {
+                await body();
+                return true;
+            },
+            ct
+        );
+
+    /// <summary>The same lock around a body that answers with something.</summary>
+    private async Task<T> UnderKeyLockAsync<T>(string key, Func<Task<T>> body, CancellationToken ct)
     {
         SemaphoreSlim keyLock = _locks.GetOrAdd(key, static _ => new SemaphoreSlim(1, 1));
         await keyLock.WaitAsync(ct);
         try
         {
-            await body();
+            return await body();
         }
         finally
         {

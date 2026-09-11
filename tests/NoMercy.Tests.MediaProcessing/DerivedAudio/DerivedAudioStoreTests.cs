@@ -9,11 +9,13 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Data.Common;
 using System.Security.Cryptography;
 using System.Text;
 using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NoMercy.Database;
@@ -103,19 +105,84 @@ public sealed class DerivedAudioStoreTests : IDisposable
 
     private IDerivedAudioStore Store() => StoreWith(null);
 
-    private DerivedAudioStore StoreWith(Func<Task>? beforeDelete)
+    private DerivedAudioStore StoreWith(Func<Task>? beforeDelete) =>
+        StoreWith(beforeDelete, null, null);
+
+    private DerivedAudioStore StoreWith(
+        Func<Task>? beforeDelete,
+        Func<Task>? afterPreCheck,
+        RecordingInterceptor? recorder
+    )
     {
         LocalStorageDriver driver = new();
         StoragePathGuard guard = new([_root], driver);
         IStorage storage = new LocalStorage(driver, guard);
         return new DerivedAudioStore(
             storage,
-            _contextFactory,
+            FactoryRecording(recorder),
             NullLogger<DerivedAudioStore>.Instance
         )
         {
             BeforeDelete = beforeDelete,
+            AfterPreCheck = afterPreCheck,
         };
+    }
+
+    /// <summary>
+    /// The shared factory, or one whose contexts report every statement they
+    /// run to <paramref name="recorder" /> - the same in-memory database
+    /// either way.
+    /// </summary>
+    private IDbContextFactory<MediaContext> FactoryRecording(RecordingInterceptor? recorder)
+    {
+        if (recorder is null)
+        {
+            return _contextFactory;
+        }
+
+        DbContextOptions<MediaContext> options = new DbContextOptionsBuilder<MediaContext>()
+            .UseSqlite(_connection)
+            .AddInterceptors(recorder)
+            .Options;
+
+        Mock<IDbContextFactory<MediaContext>> factory = new();
+        factory
+            .Setup(f => f.CreateDbContextAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => new MediaContext(options));
+        factory.Setup(f => f.CreateDbContext()).Returns(() => new MediaContext(options));
+        return factory.Object;
+    }
+
+    /// <summary>
+    /// Records the statements a store runs, because the difference the
+    /// re-check under the key lock makes is otherwise invisible: an UPDATE
+    /// against a row eviction has already deleted changes nothing a later
+    /// read could see.
+    /// </summary>
+    private sealed class RecordingInterceptor : DbCommandInterceptor
+    {
+        public List<string> Commands { get; } = [];
+
+        public override InterceptionResult<int> NonQueryExecuting(
+            DbCommand command,
+            CommandEventData eventData,
+            InterceptionResult<int> result
+        )
+        {
+            Commands.Add(command.CommandText);
+            return base.NonQueryExecuting(command, eventData, result);
+        }
+
+        public override ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(
+            DbCommand command,
+            CommandEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default
+        )
+        {
+            Commands.Add(command.CommandText);
+            return base.NonQueryExecutingAsync(command, eventData, result, cancellationToken);
+        }
     }
 
     [Fact]
@@ -178,6 +245,62 @@ public sealed class DerivedAudioStoreTests : IDisposable
     public async Task OpenRead_OfAnUnknownKey_IsNull()
     {
         Stream? stream = await Store().OpenReadAsync(new string('a', 64));
+
+        stream.Should().BeNull();
+    }
+
+    /// <summary>
+    /// The pre-check that keeps an unknown key from minting a semaphore saw a
+    /// register row, and eviction took the entry while this call was still
+    /// waiting for the key lock. The touch must not run at all then - the row
+    /// it would bump is gone, and the window between the pre-check and the
+    /// lock is exactly what the re-check under the lock closes.
+    /// </summary>
+    [Fact]
+    public async Task Touch_UnderTheLock_DoesNothingWhenEvictionWonTheRace()
+    {
+        IDerivedAudioStore evictor = Store();
+        DerivedAudioEntry entry = await evictor.PutAsync(
+            new MemoryStream(Encoding.UTF8.GetBytes("content eviction is about to take")),
+            "audio/opus"
+        );
+
+        RecordingInterceptor recorder = new();
+        DerivedAudioStore store = StoreWith(
+            null,
+            async () =>
+            {
+                await evictor.DeleteAsync(entry.Key);
+                recorder.Commands.Clear();
+            },
+            recorder
+        );
+
+        await store.TouchAsync(entry.Key);
+
+        recorder
+            .Commands.Should()
+            .NotContain(command => command.Contains("UPDATE", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// The same race one member along: the file the reader was about to open
+    /// went with the row, so the caller is told there is nothing rather than
+    /// handed the <see cref="FileNotFoundException" /> an open of a deleted
+    /// path throws.
+    /// </summary>
+    [Fact]
+    public async Task OpenRead_UnderTheLock_ReturnsNullWhenEvictionWonTheRace()
+    {
+        IDerivedAudioStore evictor = Store();
+        DerivedAudioEntry entry = await evictor.PutAsync(
+            new MemoryStream(Encoding.UTF8.GetBytes("content the reader just missed")),
+            "audio/opus"
+        );
+
+        DerivedAudioStore store = StoreWith(null, () => evictor.DeleteAsync(entry.Key), null);
+
+        Stream? stream = await store.OpenReadAsync(entry.Key);
 
         stream.Should().BeNull();
     }
