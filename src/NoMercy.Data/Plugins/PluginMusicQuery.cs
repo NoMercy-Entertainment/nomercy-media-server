@@ -355,8 +355,13 @@ public class PluginMusicQuery(
     /// "00:" stripped, so a track under an hour reads "mm:ss". Parsed by hand:
     /// <see cref="TimeSpan.TryParse(string?, out TimeSpan)" /> takes two parts
     /// as hours and minutes and would make a 3:45 track last all afternoon.
+    /// <para>
+    /// <c>internal</c> rather than private: the one duration parser in the
+    /// repo, so <see cref="PluginMusicAnalysisWriter" /> reuses it for its
+    /// track-duration bound checks instead of copying it.
+    /// </para>
     /// </summary>
-    private static double? ParseDurationSeconds(string? duration)
+    internal static double? ParseDurationSeconds(string? duration)
     {
         if (string.IsNullOrWhiteSpace(duration))
         {
