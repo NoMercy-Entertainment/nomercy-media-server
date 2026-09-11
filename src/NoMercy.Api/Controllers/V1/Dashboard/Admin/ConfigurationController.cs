@@ -67,6 +67,9 @@ public class ConfigurationController(
                     Swagger = runtimeSettings.Swagger,
                     AllowAdultContent = runtimeSettings.ShowAdultContent,
                     UseSynthesizedDns = runtimeSettings.UseSynthesizedDns,
+                    DerivedAudioCapGb = (int)(
+                        runtimeSettings.DerivedAudioCapBytes / (1024L * 1024 * 1024)
+                    ),
                 },
             }
         );
@@ -129,6 +132,11 @@ public class ConfigurationController(
         Guid userId = User.UserId();
         List<(string key, object? oldVal, object? newVal)> changes = [];
         bool restartRequired = false;
+
+        if (request.DerivedAudioCapGb is < 1)
+        {
+            return BadRequestResponse("derived_audio_cap_gb must be at least 1");
+        }
 
         if (request.InternalServerPort != 0)
         {
@@ -322,6 +330,30 @@ public class ConfigurationController(
                 )
                 .RunAsync();
             changes.Add(("allowAdultContent", oldAllowAdult, (bool)request.AllowAdultContent));
+        }
+
+        if (request.DerivedAudioCapGb is not null)
+        {
+            int newCapGb = (int)request.DerivedAudioCapGb;
+            long oldCapBytes = runtimeSettings.DerivedAudioCapBytes;
+            long newCapBytes = newCapGb * 1024L * 1024 * 1024;
+            runtimeSettings.DerivedAudioCapBytes = newCapBytes;
+            await appContext
+                .Configuration.Upsert(
+                    new()
+                    {
+                        Key = "derivedAudioCapGb",
+                        Value = newCapGb.ToString(),
+                        ModifiedBy = userId,
+                    }
+                )
+                .On(configuration => configuration.Key)
+                .WhenMatched(
+                    (o, configuration) =>
+                        new() { Value = configuration.Value, ModifiedBy = configuration.ModifiedBy }
+                )
+                .RunAsync();
+            changes.Add(("derivedAudioCapGb", oldCapBytes, newCapBytes));
         }
 
         if (request.ServerName is not null)

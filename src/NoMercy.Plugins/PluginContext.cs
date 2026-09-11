@@ -47,6 +47,24 @@ public class PluginContext : IPluginContext
     public IPluginStorage? Storage { get; }
 
     /// <summary>
+    /// Running ffmpeg over a track or a derived file, and splitting stems.
+    /// Null when the plugin never declared the <c>audioTools</c> hook.
+    /// </summary>
+    public IPluginAudioTools? AudioTools { get; }
+
+    /// <summary>
+    /// The server's own store of files derived from analysis. Null when the
+    /// plugin never declared the <c>derivedAudio</c> hook.
+    /// </summary>
+    public IPluginDerivedAudio? DerivedAudio { get; }
+
+    /// <summary>
+    /// Writing the DJ analysis record and the stem register. Null when the
+    /// plugin never declared the <c>musicAnalysisWrite</c> hook.
+    /// </summary>
+    public IPluginMusicAnalysisWriter? MusicAnalysisWriter { get; }
+
+    /// <summary>
     /// Playback, typed. Always present: the grants decide whether an intent
     /// reaches anyone, and a plugin branching on null for a surface that is part
     /// of its contract would be branching on how the host was wired rather than
@@ -73,12 +91,18 @@ public class PluginContext : IPluginContext
         IPluginEncoder? encoder = null,
         IPluginJobs? jobs = null,
         IPluginStorage? pluginStorage = null,
-        IPluginMusicQuery? music = null
+        IPluginMusicQuery? music = null,
+        IPluginAudioTools? audioTools = null,
+        IPluginDerivedAudio? derivedAudio = null,
+        IPluginMusicAnalysisWriter? musicAnalysisWriter = null
     )
     {
         Encoder = encoder;
         Jobs = jobs;
         Storage = pluginStorage;
+        AudioTools = audioTools;
+        DerivedAudio = derivedAudio;
+        MusicAnalysisWriter = musicAnalysisWriter;
 
         PluginId = pluginId;
         EventBus = eventBus ?? throw new ArgumentNullException(nameof(eventBus));

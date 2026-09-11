@@ -35,7 +35,10 @@ public class PluginContextFactory(
     IPluginEncoder? encoder = null,
     IPluginJobs? jobs = null,
     IPluginStorage? pluginStorage = null,
-    IPluginMusicQuery? musicQuery = null
+    IPluginMusicQuery? musicQuery = null,
+    IPluginAudioToolsFactory? audioToolsFactory = null,
+    IPluginDerivedAudio? derivedAudio = null,
+    IPluginMusicAnalysisWriterFactory? analysisWriterFactory = null
 ) : IPluginContextFactory
 {
     public IPluginContext Create(
@@ -76,6 +79,26 @@ public class PluginContextFactory(
         if (PluginCapabilityGuard.DeclaresHook(capabilities, PluginHookCapability.Storage))
             storageFacade = pluginStorage;
 
+        // The three analysis facades: each gated on its own hook, the same
+        // "declaring is not holding" rule as the writer and the storage/encoder
+        // pair above.
+        IPluginAudioTools? audioToolsFacade = null;
+        if (PluginCapabilityGuard.DeclaresHook(capabilities, PluginHookCapability.AudioTools))
+            audioToolsFacade = audioToolsFactory?.CreateFor(pluginId);
+
+        IPluginDerivedAudio? derivedAudioFacade = null;
+        if (PluginCapabilityGuard.DeclaresHook(capabilities, PluginHookCapability.DerivedAudio))
+            derivedAudioFacade = derivedAudio;
+
+        IPluginMusicAnalysisWriter? analysisWriter = null;
+        if (
+            PluginCapabilityGuard.DeclaresHook(
+                capabilities,
+                PluginHookCapability.MusicAnalysisWrite
+            )
+        )
+            analysisWriter = analysisWriterFactory?.CreateFor(pluginId);
+
         return new PluginContext(
             pluginId,
             eventBus,
@@ -95,7 +118,10 @@ public class PluginContextFactory(
             encoderFacade,
             jobsFacade,
             storageFacade,
-            musicQuery
+            musicQuery,
+            audioToolsFacade,
+            derivedAudioFacade,
+            analysisWriter
         );
     }
 }

@@ -62,4 +62,7 @@ public class ConfigDtoData
 
     [JsonProperty("use_synthesized_dns")]
     public bool? UseSynthesizedDns { get; set; }
+
+    [JsonProperty("derived_audio_cap_gb")]
+    public int? DerivedAudioCapGb { get; set; }
 }

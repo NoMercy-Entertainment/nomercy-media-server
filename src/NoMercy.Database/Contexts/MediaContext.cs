@@ -157,6 +157,29 @@ public class MediaContext : DbContext
             .OnDelete(DeleteBehavior.Cascade);
 
         modelBuilder
+            .Entity<TrackDjAnalysis>()
+            .HasOne(analysis => analysis.Track)
+            .WithOne()
+            .HasForeignKey<TrackDjAnalysis>(analysis => analysis.TrackId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder
+            .Entity<TrackStem>()
+            .HasOne(stem => stem.Track)
+            .WithMany()
+            .HasForeignKey(stem => stem.TrackId)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        // Eviction deletes the register row; the stems that pointed at the file
+        // have nothing left to point at and go with it.
+        modelBuilder
+            .Entity<TrackStem>()
+            .HasOne(stem => stem.DerivedAudio)
+            .WithMany()
+            .HasForeignKey(stem => stem.StorageKey)
+            .OnDelete(DeleteBehavior.Cascade);
+
+        modelBuilder
             .Model.GetEntityTypes()
             .SelectMany(t => t.GetProperties())
             .Where(p => p.ClrType == typeof(string))
@@ -556,6 +579,9 @@ public class MediaContext : DbContext
     public virtual DbSet<TrackUser> TrackUser { get; init; }
     public virtual DbSet<Track> Tracks { get; init; }
     public virtual DbSet<TrackAudioAnalysis> TrackAudioAnalysis { get; init; }
+    public virtual DbSet<TrackDjAnalysis> TrackDjAnalysis { get; init; }
+    public virtual DbSet<TrackStem> TrackStems { get; init; }
+    public virtual DbSet<DerivedAudio> DerivedAudio { get; init; }
     public virtual DbSet<ReleaseGroup> ReleaseGroups { get; init; }
     public virtual DbSet<AlbumReleaseGroup> AlbumReleaseGroup { get; init; }
     public virtual DbSet<ArtistReleaseGroup> ArtistReleaseGroup { get; init; }

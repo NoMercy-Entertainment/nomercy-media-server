@@ -12,6 +12,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using NoMercy.Events;
 using NoMercy.Plugins;
 using NoMercy.Plugins.Abstractions;
@@ -209,6 +210,100 @@ public class PluginDiIntegrationTests : IDisposable
         ITestService service = provider.GetRequiredService<ITestService>();
         service.Should().NotBeNull();
         service.Should().BeOfType<TestService>();
+    }
+
+    /// <summary>
+    /// <see cref="PluginServiceCollectionExtensions.AddPluginSystem" />'s
+    /// registration of <see cref="IPluginContextFactory" /> must fetch every
+    /// optional facade from the container with <c>GetService</c>, not leave it
+    /// at its constructor default - otherwise a plugin never sees a facade the
+    /// host registered, encoder and jobs included, not just the three analysis
+    /// ones.
+    /// </summary>
+    [Fact]
+    public void DiBuiltFactory_HandsDeclaredFacadesToThePlugin()
+    {
+        Mock<IPluginAudioToolsFactory> audioToolsFactory = new();
+        Mock<IPluginMusicAnalysisWriterFactory> analysisWriterFactory = new();
+        IPluginAudioTools audioTools = Mock.Of<IPluginAudioTools>();
+        IPluginMusicAnalysisWriter analysisWriter = Mock.Of<IPluginMusicAnalysisWriter>();
+        audioToolsFactory.Setup(f => f.CreateFor(It.IsAny<Ulid>())).Returns(audioTools);
+        analysisWriterFactory.Setup(f => f.CreateFor(It.IsAny<Ulid>())).Returns(analysisWriter);
+
+        ServiceCollection services = new();
+        services.AddSingleton<IEventBus, InMemoryEventBus>();
+        services.AddLogging();
+        services.AddSingleton(TestStorageHelper.CreateBackend());
+        services.AddSingleton(Mock.Of<IPluginEncoder>());
+        services.AddSingleton(Mock.Of<IPluginJobs>());
+        services.AddSingleton(Mock.Of<IPluginStorage>());
+        services.AddSingleton(Mock.Of<IPluginMusicQuery>());
+        services.AddSingleton(audioToolsFactory.Object);
+        services.AddSingleton(Mock.Of<IPluginDerivedAudio>());
+        services.AddSingleton(analysisWriterFactory.Object);
+
+        services.AddPluginSystem(_tempPluginsDir);
+
+        ServiceProvider provider = services.BuildServiceProvider();
+        IPluginContextFactory factory = provider.GetRequiredService<IPluginContextFactory>();
+
+        PluginCapabilities capabilities = new()
+        {
+            Hooks = ["encoder", "storage", "audioTools", "derivedAudio", "musicAnalysisWrite"],
+        };
+
+        IPluginContext context = factory.Create(
+            Ulid.NewUlid(),
+            _tempPluginsDir,
+            NullLogger.Instance,
+            capabilities
+        );
+
+        context.Music.Should().NotBeNull();
+        context.Encoder.Should().NotBeNull();
+        context.Storage.Should().NotBeNull();
+        context.AudioTools.Should().NotBeNull();
+        context.DerivedAudio.Should().NotBeNull();
+        context.MusicAnalysisWriter.Should().NotBeNull();
+    }
+
+    /// <summary>
+    /// A host that never calls <c>AddPluginLibraryAccess</c> or wires the
+    /// encoder/storage facades still gets a working platform - the resolve
+    /// must not throw, and every optional facade gates to null exactly as it
+    /// would when the plugin never declared the hook.
+    /// </summary>
+    [Fact]
+    public void DiBuiltFactory_WithoutFacadesStillCreatesAContext()
+    {
+        ServiceCollection services = new();
+        services.AddSingleton<IEventBus, InMemoryEventBus>();
+        services.AddLogging();
+        services.AddSingleton(TestStorageHelper.CreateBackend());
+
+        services.AddPluginSystem(_tempPluginsDir);
+
+        ServiceProvider provider = services.BuildServiceProvider();
+        IPluginContextFactory factory = provider.GetRequiredService<IPluginContextFactory>();
+
+        PluginCapabilities capabilities = new()
+        {
+            Hooks = ["encoder", "storage", "audioTools", "derivedAudio", "musicAnalysisWrite"],
+        };
+
+        IPluginContext context = factory.Create(
+            Ulid.NewUlid(),
+            _tempPluginsDir,
+            NullLogger.Instance,
+            capabilities
+        );
+
+        context.Music.Should().BeNull();
+        context.Encoder.Should().BeNull();
+        context.Storage.Should().BeNull();
+        context.AudioTools.Should().BeNull();
+        context.DerivedAudio.Should().BeNull();
+        context.MusicAnalysisWriter.Should().BeNull();
     }
 
     public interface ITestService

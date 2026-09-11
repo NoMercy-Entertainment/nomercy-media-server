@@ -67,4 +67,9 @@ public class RuntimeServerSettings
     // Safe-by-default: adult content is shown only when explicitly enabled.
     // A null (never configured) or false setting both resolve to hidden.
     public bool ShowAdultContent => AllowAdultContent == true;
+
+    // Size cap for the content-addressed derived-audio store (rendered stems
+    // and transitions); the hourly eviction cron job evicts oldest-first down
+    // to this cap. 50 GiB is a reasonable default for a self-hosted server.
+    public long DerivedAudioCapBytes { get; set; } = 50L * 1024 * 1024 * 1024;
 }

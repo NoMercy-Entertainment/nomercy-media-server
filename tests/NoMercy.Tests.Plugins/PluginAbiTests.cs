@@ -21,7 +21,8 @@ public class PluginAbiTests
     [InlineData(["", true])]
     [InlineData(["10.0", true])]
     [InlineData(["10.1", true])]
-    [InlineData(["10.2", false])]
+    [InlineData(["10.2", true])]
+    [InlineData(["10.3", false])]
     [InlineData(["9.0", false])]
     [InlineData(["9.5", false])]
     [InlineData(["11.0", false])]
@@ -32,9 +33,22 @@ public class PluginAbiTests
     }
 
     [Fact]
-    public void Current_IsTenOne()
+    public void Current_IsTenTwo()
     {
-        Assert.Equal(new Version(10, 1), PluginAbi.Current);
+        Assert.Equal(new Version(10, 2), PluginAbi.Current);
+    }
+
+    /// <summary>
+    /// The three new elevated contracts arrive on this ABI bump; a plugin that
+    /// declares any of their hooks must be able to say so, and the host must be
+    /// able to recognise the declaration as one that always needs owner consent.
+    /// </summary>
+    [Fact]
+    public void Elevated_ContainsTheNewAnalysisHooks()
+    {
+        Assert.Contains(PluginHookCapability.AudioTools, PluginHookCapability.Elevated);
+        Assert.Contains(PluginHookCapability.DerivedAudio, PluginHookCapability.Elevated);
+        Assert.Contains(PluginHookCapability.MusicAnalysisWrite, PluginHookCapability.Elevated);
     }
 
     /// <summary>

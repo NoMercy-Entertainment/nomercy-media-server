@@ -1144,6 +1144,16 @@ public class TasksController(
             analysis.State == AudioAnalysisState.Failed
         );
 
+        int djAnalyzed = await analysisContext.TrackDjAnalysis.CountAsync(dj =>
+            dj.State == AudioAnalysisState.Ok
+        );
+
+        int djFailed = await analysisContext.TrackDjAnalysis.CountAsync(dj =>
+            dj.State == AudioAnalysisState.Failed
+        );
+
+        long stemsBytes = await analysisContext.DerivedAudio.SumAsync(derived => derived.Bytes);
+
         return Ok(
             new AudioAnalysisStatusDto
             {
@@ -1151,6 +1161,9 @@ public class TasksController(
                 Queued = queued,
                 Analyzed = analyzed,
                 Failed = failed,
+                DjAnalyzed = djAnalyzed,
+                DjFailed = djFailed,
+                StemsBytes = stemsBytes,
             }
         );
     }
