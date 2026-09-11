@@ -525,10 +525,13 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
         {
             ct.ThrowIfCancellationRequested();
             string name = entry.Path.Split('/')[^1];
-            // The length check alone excludes tmp/: a shard is the first two
-            // characters of a key, and "tmp" is three. Whatever is in there
-            // belongs to SweepStaleTempFilesAsync, which has its own rules.
-            if (entry.IsDirectory && name.Length == 2)
+            // A shard is the first two characters of a key, so the length
+            // check already excludes tmp/ - "tmp" is three. The name check is
+            // there anyway: what is under tmp/ belongs to
+            // SweepStaleTempFilesAsync, which has its own rules, and that
+            // invariant should be readable here rather than inferred from the
+            // length of a folder name someone may later change.
+            if (entry.IsDirectory && name.Length == 2 && name != TempFolder)
             {
                 contentFolders.Add(entry.Path);
             }
