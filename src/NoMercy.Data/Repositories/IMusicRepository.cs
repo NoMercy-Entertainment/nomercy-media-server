@@ -53,6 +53,18 @@ public interface IMusicRepository
         CancellationToken ct = default
     );
 
+    /// <summary>
+    /// The base analysis alongside the automix plugin's DJ record and stem
+    /// files for the named tracks — three queries, each scoped the same way
+    /// <see cref="GetTrackAudioAnalysisAsync" /> is: an Ok base row, an Ok DJ
+    /// row, and every stem row regardless of state (a stem file either
+    /// exists or it doesn't; there is no in-between to filter on).
+    /// </summary>
+    Task<TrackAnalysisBundle> GetTrackAnalysisBundleAsync(
+        IReadOnlyCollection<Guid> trackIds,
+        CancellationToken ct = default
+    );
+
     Task<Lyric[]?> UpdateTrackLyricsAsync(
         Track track,
         string lyricsJson,

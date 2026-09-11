@@ -10,9 +10,9 @@
 // -----------------------------------------------------------------------------
 
 using System.Globalization;
-using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using NoMercy.Data.Music;
 using NoMercy.Database;
 using NoMercy.Database.Models.Music;
 using NoMercy.MediaProcessing.AudioAnalysis;
@@ -40,11 +40,6 @@ public class PluginMusicQuery(
     /// memory in one hop.
     /// </summary>
     private const int MaxPageSize = 1000;
-
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-    };
 
     public async Task<IReadOnlyList<PluginTrack>> GetTracksAsync(
         string? libraryId = null,
@@ -181,7 +176,11 @@ public class PluginMusicQuery(
                 DeserializeJsonList<int>(row.PhraseStartsMs, row.TrackId, "phrase_starts_ms"),
                 DeserializeJsonList<int[]>(row.VocalRegionsMs, row.TrackId, "vocal_regions_ms"),
                 DeserializeJsonList<double>(row.BarEnergy, row.TrackId, "bar_energy"),
-                DeserializeJsonList<CuePointRow>(row.CuePoints, row.TrackId, "cue_points")
+                DeserializeJsonList<DjAnalysisJson.CuePointRow>(
+                        row.CuePoints,
+                        row.TrackId,
+                        "cue_points"
+                    )
                     .Select(cue => new PluginCuePoint(
                         cue.Ms,
                         cue.Type ?? string.Empty,
@@ -189,7 +188,7 @@ public class PluginMusicQuery(
                         cue.Score
                     ))
                     .ToList(),
-                DeserializeJsonList<ChordRow>(row.Chords, row.TrackId, "chords")
+                DeserializeJsonList<DjAnalysisJson.ChordRow>(row.Chords, row.TrackId, "chords")
                     .Select(chord => new PluginChord(chord.Ms, chord.Chord ?? string.Empty))
                     .ToList()
             ))
@@ -317,13 +316,20 @@ public class PluginMusicQuery(
         };
 
     /// <summary>
-    /// Deserializes one of <see cref="TrackDjAnalysis" />'s JSON text columns.
-    /// A missing or malformed column is never this method's caller's problem
-    /// to throw over — it logs what it found and hands back an empty list, so
-    /// one bad row never takes a whole page of plugin results down with it.
+    /// Deserializes one of <see cref="TrackDjAnalysis" />'s JSON text columns
+    /// via <see cref="DjAnalysisJson.TryDeserialize{T}" />. A missing or
+    /// malformed column is never this method's caller's problem to throw over
+    /// — it logs what it found and hands back an empty list, so one bad row
+    /// never takes a whole page of plugin results down with it.
     /// </summary>
     private List<T> DeserializeJsonList<T>(string? json, Guid trackId, string column)
     {
+        List<T>? result = DjAnalysisJson.TryDeserialize<T>(json);
+        if (result is not null)
+        {
+            return result;
+        }
+
         if (string.IsNullOrWhiteSpace(json))
         {
             logger.LogWarning(
@@ -331,23 +337,17 @@ public class PluginMusicQuery(
                 trackId,
                 column
             );
-            return [];
         }
-
-        try
-        {
-            return JsonSerializer.Deserialize<List<T>>(json, JsonOptions) ?? [];
-        }
-        catch (JsonException ex)
+        else
         {
             logger.LogWarning(
-                ex,
                 "Track {TrackId}: malformed {Column} JSON on a DJ analysis row; treating it as an empty list",
                 trackId,
                 column
             );
-            return [];
         }
+
+        return [];
     }
 
     /// <summary>
@@ -444,18 +444,4 @@ public class PluginMusicQuery(
         string StorageKey,
         string ProducerVersion
     );
-
-    /// <summary>
-    /// The shape one entry of <see cref="TrackDjAnalysis.CuePoints" /> takes on
-    /// disk: <c>{ ms, type, direction, score }</c>. Matched case-insensitively
-    /// rather than with <c>[JsonPropertyName]</c> so this stays a plain DTO the
-    /// house naming rules apply to normally.
-    /// </summary>
-    private sealed record CuePointRow(int Ms, string? Type, string? Direction, double Score);
-
-    /// <summary>
-    /// The shape one entry of <see cref="TrackDjAnalysis.Chords" /> takes on
-    /// disk: <c>{ ms, chord }</c>.
-    /// </summary>
-    private sealed record ChordRow(int Ms, string? Chord);
 }

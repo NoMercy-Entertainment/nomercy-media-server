@@ -10,6 +10,10 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="NoMercy.Tests.Repositories" />
+    <!-- TrackDjAnalysisDto (NoMercy.Api) parses the same JSON columns
+         DjAnalysisJson.TryDeserialize already parses for PluginMusicQuery, so
+         the API and the automix plugin never disagree on the shape. -->
+    <InternalsVisibleTo Include="NoMercy.Api" />
   </ItemGroup>
 
   <ItemGroup>

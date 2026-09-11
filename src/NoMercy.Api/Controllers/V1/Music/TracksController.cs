@@ -97,16 +97,25 @@ public class TracksController : BaseController
                 $"At most {TrackAudioAnalysisRequestDto.MaxTrackIds} track ids per request"
             );
 
-        List<TrackAudioAnalysis> analysis = await _musicRepository.GetTrackAudioAnalysisAsync(
-            request.TrackIds.Distinct().ToArray()
-        );
+        Guid[] trackIds = request.TrackIds.Distinct().ToArray();
 
-        return Ok(
-            new TrackAudioAnalysisResponseDto
+        TrackAnalysisBundle bundle = await _musicRepository.GetTrackAnalysisBundleAsync(trackIds);
+
+        Dictionary<Guid, TrackDjAnalysis> djByTrackId = bundle.Dj.ToDictionary(row => row.TrackId);
+        ILookup<Guid, TrackStem> stemsByTrackId = bundle.Stems.ToLookup(row => row.TrackId);
+
+        List<TrackAudioAnalysisDto> data =
+        [
+            .. bundle.Analysis.Select(row => new TrackAudioAnalysisDto(row)
             {
-                Data = analysis.Select(row => new TrackAudioAnalysisDto(row)).ToList(),
-            }
-        );
+                Dj = djByTrackId.TryGetValue(row.TrackId, out TrackDjAnalysis? dj)
+                    ? new TrackDjAnalysisDto(dj, row.KeyName)
+                    : null,
+                Stems = [.. stemsByTrackId[row.TrackId].Select(stem => new TrackStemDto(stem))],
+            }),
+        ];
+
+        return Ok(new TrackAudioAnalysisResponseDto { Data = data });
     }
 
     [HttpPost]

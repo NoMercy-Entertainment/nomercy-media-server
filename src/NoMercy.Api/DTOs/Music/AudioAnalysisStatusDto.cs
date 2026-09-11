@@ -35,4 +35,16 @@ public record AudioAnalysisStatusDto
     /// </summary>
     [JsonProperty("failed")]
     public int Failed { get; set; }
+
+    /// <summary>Tracks with an Ok DJ record from the automix plugin.</summary>
+    [JsonProperty("dj_analyzed")]
+    public int DjAnalyzed { get; set; }
+
+    /// <summary>DJ rows that will not be retried until the DJ analyzer version changes.</summary>
+    [JsonProperty("dj_failed")]
+    public int DjFailed { get; set; }
+
+    /// <summary>Total bytes the derived-audio store holds, across every stem file.</summary>
+    [JsonProperty("stems_bytes")]
+    public long StemsBytes { get; set; }
 }
