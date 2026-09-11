@@ -70,7 +70,15 @@ public sealed class PluginDerivedAudio(
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            _logger.LogWarning(exception, "the derived store could not accept a plugin's content");
+            // The one log line here the guard does not write, so it carries
+            // the same two properties by hand rather than being the one entry
+            // a pipeline filtering on them cannot see.
+            _logger.LogWarning(
+                exception,
+                "plugin {PluginId}: {Member} failed inside the server",
+                SharedPluginId,
+                nameof(PutAsync)
+            );
             throw;
         }
     }
