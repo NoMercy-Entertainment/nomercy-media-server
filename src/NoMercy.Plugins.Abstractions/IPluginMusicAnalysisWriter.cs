@@ -40,6 +40,36 @@ public interface IPluginMusicAnalysisWriter
     Task<PluginWriteResult> RegisterStemAsync(PluginTrackStem stem, CancellationToken ct = default);
 
     /// <summary>
+    /// Adds or replaces several stems as one write: either every row lands or
+    /// none does. The stems of one split only mean something together - a
+    /// vocals row whose accompaniment was refused describes a track no
+    /// renderer can mix - so the host validates all of them before it writes
+    /// any of them, in one transaction.
+    /// <para>
+    /// Default-implemented so an implementer written against an older ABI
+    /// keeps compiling. That fallback registers the stems one at a time and
+    /// stops at the first refusal, which is weaker than the host's own
+    /// all-or-nothing write.
+    /// </para>
+    /// </summary>
+    async Task<PluginWriteResult> RegisterStemsAsync(
+        IReadOnlyList<PluginTrackStem> stems,
+        CancellationToken ct = default
+    )
+    {
+        foreach (PluginTrackStem stem in stems)
+        {
+            PluginWriteResult result = await RegisterStemAsync(stem, ct);
+            if (!result.Ok)
+            {
+                return result;
+            }
+        }
+
+        return PluginWriteResult.Accepted();
+    }
+
+    /// <summary>
     /// Records that analysis was attempted and did not produce a row, so a
     /// sweep can tell "not analysed yet" from "analysed and failed" instead
     /// of retrying the same broken file for ever.

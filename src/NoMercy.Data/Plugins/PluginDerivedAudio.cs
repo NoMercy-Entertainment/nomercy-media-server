@@ -27,17 +27,17 @@ namespace NoMercy.Data.Plugins;
 /// a file actually lives - it holds the key, and reads or writes through this
 /// facade). A key that <see cref="IPluginDerivedAudio.PutAsync" /> could not
 /// have minted - null, blank, the wrong length, the wrong characters, or the
-/// right hex in the wrong case - is refused here, before it reaches the
-/// store, since <c>RelativePath</c> slices the key apart to build a path. The
-/// store applies the same rule again on its own: this facade is not the only
-/// caller it has.
+/// right hex in the wrong case - is refused by the store, which is the only
+/// validator: it is not this facade's only caller, so a copy of the rule here
+/// would be a second rule to keep in step rather than a second line of
+/// defence.
 /// </para>
 /// <para>
 /// None of these members has a refusal channel, so both a refused key and a
 /// failure inside the server read as an absence: <see cref="ExistsAsync" />
 /// answers false, <see cref="OpenReadAsync" /> answers null, and
-/// <see cref="TouchAsync" /> and <see cref="DeleteAsync" /> do nothing. Every
-/// one of those is logged at Warning first, so the owner still has the reason.
+/// <see cref="TouchAsync" /> and <see cref="DeleteAsync" /> do nothing. A
+/// failure is logged at Warning first, so the owner still has the reason.
 /// <see cref="PutAsync" /> is the exception - it has to return the key of the
 /// content it was handed, and there is no key when the store would not take
 /// it, so that failure is logged and rethrown. Cancellation is never
@@ -75,80 +75,37 @@ public sealed class PluginDerivedAudio(
         }
     }
 
-    public async Task<bool> ExistsAsync(string key, CancellationToken ct = default)
-    {
-        if (!DerivedAudioKey.IsValid(key))
-        {
-            return false;
-        }
-
-        try
-        {
-            return await store.ExistsAsync(key, ct);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            Warn(exception, nameof(ExistsAsync));
-            return false;
-        }
-    }
-
-    public async Task<Stream?> OpenReadAsync(string key, CancellationToken ct = default)
-    {
-        if (!DerivedAudioKey.IsValid(key))
-        {
-            return null;
-        }
-
-        try
-        {
-            return await store.OpenReadAsync(key, ct);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            Warn(exception, nameof(OpenReadAsync));
-            return null;
-        }
-    }
-
-    public async Task TouchAsync(string key, CancellationToken ct = default)
-    {
-        if (!DerivedAudioKey.IsValid(key))
-        {
-            return;
-        }
-
-        try
-        {
-            await store.TouchAsync(key, ct);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            Warn(exception, nameof(TouchAsync));
-        }
-    }
-
-    public async Task DeleteAsync(string key, CancellationToken ct = default)
-    {
-        if (!DerivedAudioKey.IsValid(key))
-        {
-            return;
-        }
-
-        try
-        {
-            await store.DeleteAsync(key, ct);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            Warn(exception, nameof(DeleteAsync));
-        }
-    }
-
-    private void Warn(Exception exception, string member) =>
-        _logger.LogWarning(
-            exception,
-            "the server could not complete a plugin's {Member} call on the derived store",
-            member
+    public Task<bool> ExistsAsync(string key, CancellationToken ct = default) =>
+        PluginCallGuard.RunOrAsync(
+            Operation(nameof(ExistsAsync)),
+            () => store.ExistsAsync(key, ct),
+            false,
+            _logger
         );
+
+    public Task<Stream?> OpenReadAsync(string key, CancellationToken ct = default) =>
+        PluginCallGuard.RunOrAsync<Stream?>(
+            Operation(nameof(OpenReadAsync)),
+            () => store.OpenReadAsync(key, ct),
+            null,
+            _logger
+        );
+
+    public Task TouchAsync(string key, CancellationToken ct = default) =>
+        PluginCallGuard.RunAsync(
+            Operation(nameof(TouchAsync)),
+            () => store.TouchAsync(key, ct),
+            _logger
+        );
+
+    public Task DeleteAsync(string key, CancellationToken ct = default) =>
+        PluginCallGuard.RunAsync(
+            Operation(nameof(DeleteAsync)),
+            () => store.DeleteAsync(key, ct),
+            _logger
+        );
+
+    /// <summary>Which call this is, for the guard's warning line.</summary>
+    private static string Operation(string member) =>
+        $"a plugin's {member} call on the derived store";
 }
