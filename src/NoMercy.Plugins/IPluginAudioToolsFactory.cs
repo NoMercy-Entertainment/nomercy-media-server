@@ -23,6 +23,12 @@ namespace NoMercy.Plugins;
 /// <c>PluginHookCapability.AudioTools</c> question the plugin host answers
 /// before asking for them, not something this factory re-checks.
 /// </para>
+/// <para>
+/// The host's one rule for facade lifetimes: a facade with per-plugin state
+/// is cached per plugin id by its factory, one that only stamps the plugin id
+/// is built per call, and one with no per-plugin state at all is a single
+/// shared instance.
+/// </para>
 /// </summary>
 public interface IPluginAudioToolsFactory
 {

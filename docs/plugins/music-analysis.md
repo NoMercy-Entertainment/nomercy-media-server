@@ -385,6 +385,7 @@ the millisecond-range check. A partial base row is normal, not a defect.
 |---|---|---|
 | `"track {id} does not exist"` | unknown `TrackId` | drop the row |
 | `"storage key {key} is not in the derived store"` | the stem was never actually written, or the key is wrong | write it through `IPluginDerivedAudio.PutAsync` (or `SplitStemsAsync`) first |
+| `"stem format {format} does not match the stored content type {contentType}"` | the row would claim a format the stored file is not (`opus` goes with `audio/ogg`, `flac` with `audio/flac`) | register the stem under the format the file was actually put with — a client is handed the file by that content type |
 | `"full coverage stems must not specify a window"` | `Coverage.Full` was combined with a non-null `WindowStartMs` or `WindowEndMs` | leave both null for `Full` |
 | `"windowed stems must specify both window_start_ms and window_end_ms"` | `MixIn` / `MixOut` was combined with a null window bound | set both, in milliseconds from the start of the track |
 | `"window_start_ms must be less than window_end_ms"` | the window was empty or backwards | fix the bounds — a windowed stem always covers a positive span |
@@ -398,6 +399,23 @@ the millisecond-range check. A partial base row is normal, not a defect.
 
 `DeleteDjAnalysisAsync` never refuses; deleting a row that is not there is a
 no-op.
+
+## How the host scopes a facade
+
+Three shapes, one rule each — how much state a facade holds decides how long
+it lives:
+
+- **No per-plugin state at all** — one shared singleton for every plugin.
+  `PluginDerivedAudio` is this: it forwards to the server's own store and
+  holds nothing of its own.
+- **Stamps the plugin id but holds no state** — built per call by a factory,
+  so nothing has to be cached or invalidated.
+  `PluginMusicAnalysisWriterFactory` is this: every write is stamped with the
+  calling plugin's id, and the writer itself is cheap to build.
+- **Holds per-plugin state** — cached per plugin id by its factory, because a
+  guard a caller can get a fresh copy of guards nothing.
+  `PluginAudioToolsFactory` is this: the one-ffmpeg-at-a-time semaphore is a
+  field on the instance.
 
 ## The event to subscribe to
 
