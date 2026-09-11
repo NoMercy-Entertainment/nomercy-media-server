@@ -20,4 +20,12 @@ public sealed class TrackAudioAnalysisCompletedEvent : EventBase
 
     /// <summary>"Ok" or "Failed", the enum's name, so the events package needs no reference to the database.</summary>
     public required string State { get; init; }
+
+    /// <summary>
+    /// Every library the track belongs to at the moment the analysis landed.
+    /// A track can be in several, and retention is decided per library, so a
+    /// subscriber needs all of them rather than one representative id. Empty
+    /// when the track is in no library at all.
+    /// </summary>
+    public required IReadOnlyList<Ulid> LibraryIds { get; init; }
 }

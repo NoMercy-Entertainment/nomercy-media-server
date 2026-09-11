@@ -203,12 +203,23 @@ public class MusicAnalysisJob : IShouldQueue
 
         await mediaContext.SaveChangesAsync();
 
+        // Read here rather than carried on the job: the membership can change
+        // between queueing and running, and a subscriber deciding retention
+        // per library needs the state the verdict was actually written under.
+        List<Ulid> libraryIds = await mediaContext
+            .LibraryTrack.AsNoTracking()
+            .Where(libraryTrack => libraryTrack.TrackId == TrackId)
+            .Select(libraryTrack => libraryTrack.LibraryId)
+            .Distinct()
+            .ToListAsync();
+
         await _eventBus.PublishAsync(
             new TrackAudioAnalysisCompletedEvent
             {
                 TrackId = TrackId,
                 AnalyzerVersion = row.AnalyzerVersion,
                 State = row.State.ToString(),
+                LibraryIds = libraryIds,
             }
         );
     }

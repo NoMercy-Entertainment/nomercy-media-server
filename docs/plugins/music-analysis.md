@@ -410,11 +410,23 @@ _subscription = context.EventBus.Subscribe<TrackAudioAnalysisCompletedEvent>(
 ```
 
 The event carries `TrackId`, `AnalyzerVersion` (the base analyzer's version
-the row was computed at) and `State` (the string `"Ok"` or `"Failed"` — the
-events package carries no reference to the database enum it came from). It
-does not yet carry a library id — a follow-up on this branch adds
-`LibraryIds`; until then, keep your own per-track state or run the
-per-library needs query instead.
+the row was computed at), `State` (the string `"Ok"` or `"Failed"` — the
+events package carries no reference to the database enum it came from) and
+`LibraryIds`.
+
+`LibraryIds` is every library the track belonged to when the verdict landed,
+read at publish time rather than carried from the moment the job was queued.
+It is a list because a track can belong to several libraries at once, and it
+is empty when the track is in none. Retention — how long a derived file for
+this track is worth keeping — is a per-library decision, so pick the policy
+per id rather than assuming one:
+
+```csharp
+foreach (Ulid libraryId in evt.LibraryIds)
+{
+    ApplyRetentionPolicyFor(libraryId, evt.TrackId);
+}
+```
 
 ## The dashboard cap setting
 

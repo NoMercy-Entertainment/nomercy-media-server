@@ -31,6 +31,11 @@ public class MusicAnalysisJobTests : IDisposable
     private readonly DbContextOptions<MediaContext> _options;
     private readonly Guid _trackId = Guid.NewGuid();
 
+    // The track is in two libraries: the completion event has to name both,
+    // because the derived-audio retention policy is decided per library.
+    private readonly Ulid _libraryOneId = Ulid.NewUlid();
+    private readonly Ulid _libraryTwoId = Ulid.NewUlid();
+
     public MusicAnalysisJobTests()
     {
         _connection = new("Data Source=:memory:");
@@ -55,6 +60,11 @@ public class MusicAnalysisJobTests : IDisposable
                 HostFolder = "/music/album",
                 Filename = "/track.flac",
             }
+        );
+
+        context.LibraryTrack.AddRange(
+            new LibraryTrack(_libraryOneId, _trackId),
+            new LibraryTrack(_libraryTwoId, _trackId)
         );
 
         context.SaveChanges();
@@ -298,6 +308,9 @@ public class MusicAnalysisJobTests : IDisposable
                         e.TrackId == _trackId
                         && e.State == "Ok"
                         && e.AnalyzerVersion == AnalyzerVersion
+                        && e.LibraryIds.Count == 2
+                        && e.LibraryIds.Contains(_libraryOneId)
+                        && e.LibraryIds.Contains(_libraryTwoId)
                     ),
                     It.IsAny<CancellationToken>()
                 ),
@@ -316,7 +329,11 @@ public class MusicAnalysisJobTests : IDisposable
             b =>
                 b.PublishAsync(
                     It.Is<TrackAudioAnalysisCompletedEvent>(e =>
-                        e.TrackId == _trackId && e.State == "Failed"
+                        e.TrackId == _trackId
+                        && e.State == "Failed"
+                        && e.LibraryIds.Count == 2
+                        && e.LibraryIds.Contains(_libraryOneId)
+                        && e.LibraryIds.Contains(_libraryTwoId)
                     ),
                     It.IsAny<CancellationToken>()
                 ),
