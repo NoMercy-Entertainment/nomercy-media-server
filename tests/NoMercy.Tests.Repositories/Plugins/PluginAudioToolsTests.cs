@@ -91,6 +91,10 @@ public class PluginAudioToolsTests : IDisposable
     private readonly List<string> _putKeys = [];
     private readonly List<string> _putContentTypes = [];
 
+    // What the host did, in the order it did it: "touch" for a derived input's
+    // keep-alive, "run" for the ffmpeg process itself.
+    private readonly List<string> _callOrder = [];
+
     // Swapped out by the concurrency test for a task that only completes once
     // the second call has already been refused.
     private Task<ProcessResult> _runResult = Task.FromResult(
@@ -221,6 +225,15 @@ public class PluginAudioToolsTests : IDisposable
             .Setup(store => store.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
         _store
+            .Setup(store => store.TouchAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Returns(
+                (string _, CancellationToken _) =>
+                {
+                    _callOrder.Add("touch");
+                    return Task.CompletedTask;
+                }
+            );
+        _store
             .Setup(store =>
                 store.PutAsync(
                     It.IsAny<Stream>(),
@@ -251,6 +264,20 @@ public class PluginAudioToolsTests : IDisposable
                     return PluginWriteResult.Accepted();
                 }
             );
+        _writer
+            .Setup(writer =>
+                writer.RegisterStemsAsync(
+                    It.IsAny<IReadOnlyList<PluginTrackStem>>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .ReturnsAsync(
+                (IReadOnlyList<PluginTrackStem> stems, CancellationToken _) =>
+                {
+                    _registeredStems.AddRange(stems);
+                    return PluginWriteResult.Accepted();
+                }
+            );
         _writerFactory
             .Setup(factory => factory.CreateFor(It.IsAny<Ulid>()))
             .Returns(_writer.Object);
@@ -277,6 +304,7 @@ public class PluginAudioToolsTests : IDisposable
                 ) =>
                 {
                     _runCount++;
+                    _callOrder.Add("run");
                     _capturedExecutable = executable;
                     _capturedArguments = arguments;
                     _capturedWorkingDirectory = workingDirectory;
@@ -513,6 +541,30 @@ public class PluginAudioToolsTests : IDisposable
             );
 
         ArgumentAfter("-i").Should().Be($"ab/{key}");
+    }
+
+    /// <summary>
+    /// A graph reading a derived file can run for ten minutes; the eviction
+    /// sweep runs hourly and only spares what was used inside its grace
+    /// window. The key is touched before ffmpeg is started, so the file cannot
+    /// be evicted out from under the run that is reading it.
+    /// </summary>
+    [Fact]
+    public async Task RunFilterGraph_OnADerivedInput_TouchesTheKeyFirst()
+    {
+        await CreateTools()
+            .RunFilterGraphAsync(
+                PluginAudioInput.Derived(DerivedKey),
+                new PluginFilterGraph("volume=1", Complex: false),
+                null,
+                null
+            );
+
+        _callOrder.Should().Equal("touch", "run");
+        _store.Verify(
+            store => store.TouchAsync(DerivedKey, It.IsAny<CancellationToken>()),
+            Times.Once
+        );
     }
 
     // --- RunFilterGraphAsync: the refusals -------------------------------
@@ -803,6 +855,29 @@ public class PluginAudioToolsTests : IDisposable
         result.Stems.Select(stem => stem.Kind).Should().Equal("vocals", "accompaniment");
         result.Stems.Should().OnlyContain(stem => stem.Coverage == PluginStemCoverage.MixIn);
         result.Stems.Select(stem => stem.StorageKey).Should().OnlyHaveUniqueItems();
+
+        // One write, both stems: a split whose second register row is refused
+        // must not leave the first one behind, so the pair goes in together.
+        _writer.Verify(
+            writer =>
+                writer.RegisterStemsAsync(
+                    It.Is<IReadOnlyList<PluginTrackStem>>(stems =>
+                        stems.Count == 2
+                        && stems[0].Kind == "vocals"
+                        && stems[1].Kind == "accompaniment"
+                    ),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Once
+        );
+        _writer.Verify(
+            writer =>
+                writer.RegisterStemAsync(
+                    It.IsAny<PluginTrackStem>(),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Never
+        );
 
         _registeredStems.Select(stem => stem.Kind).Should().Equal("vocals", "accompaniment");
         _registeredStems

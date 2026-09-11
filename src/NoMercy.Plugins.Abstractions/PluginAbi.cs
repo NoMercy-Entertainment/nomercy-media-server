@@ -18,6 +18,8 @@ public static class PluginAbi
     // loads — which is what IsCompatible's "minor may be lower" rule means.
     // 10.2 added IPluginAudioTools, IPluginDerivedAudio, IPluginMusicAnalysisWriter and the
     // DJ members of IPluginMusicQuery. Additive; the context members default to null.
+    // IPluginMusicAnalysisWriter.RegisterStemsAsync joined 10.2 with a default implementation,
+    // so it needs no bump: an implementer written before it keeps compiling.
     public static Version Current { get; } = new(10, 2);
 
     public static bool IsCompatible(string? targetAbi)

@@ -374,37 +374,44 @@ public sealed class PluginAudioTools(
 
             IPluginMusicAnalysisWriter writer = writerFactory.CreateFor(pluginId);
 
-            List<PluginStemFile> stems = [];
-            foreach (
-                (string kind, DerivedAudioEntry entry) in new[]
-                {
-                    ("vocals", vocals),
-                    ("accompaniment", accompaniment),
-                }
-            )
-            {
-                PluginWriteResult write = await writer.RegisterStemAsync(
-                    new PluginTrackStem(
+            (string Kind, DerivedAudioEntry Entry)[] produced =
+            [
+                ("vocals", vocals),
+                ("accompaniment", accompaniment),
+            ];
+
+            // Registered as one write: a vocals row whose accompaniment was
+            // refused describes a split no renderer can use.
+            PluginWriteResult write = await writer.RegisterStemsAsync(
+                produced
+                    .Select(stem => new PluginTrackStem(
                         trackId,
-                        kind,
+                        stem.Kind,
                         coverage,
                         window.StartMs,
                         window.EndMs,
                         OpusFormat,
                         OpusSampleRate,
-                        entry.Key,
+                        stem.Entry.Key,
                         producerVersion
-                    ),
-                    ct
-                );
+                    ))
+                    .ToList(),
+                ct
+            );
 
-                if (!write.Ok)
-                {
-                    return PluginStemSplitResult.Refused(write.Refusal!);
-                }
-
-                stems.Add(new PluginStemFile(kind, coverage, entry.Key, entry.Bytes));
+            if (!write.Ok)
+            {
+                return PluginStemSplitResult.Refused(write.Refusal!);
             }
+
+            List<PluginStemFile> stems = produced
+                .Select(stem => new PluginStemFile(
+                    stem.Kind,
+                    coverage,
+                    stem.Entry.Key,
+                    stem.Entry.Bytes
+                ))
+                .ToList();
 
             return new PluginStemSplitResult(stems, null);
         }
@@ -581,6 +588,11 @@ public sealed class PluginAudioTools(
             {
                 return new(null, $"storage key {input.StorageKey} is not in the derived store");
             }
+
+            // A run has ten minutes to finish and eviction only spares what was
+            // used inside its grace window, so the key is kept alive before
+            // ffmpeg opens the file rather than after it closes it.
+            await store.TouchAsync(input.StorageKey, ct);
 
             return new(
                 await derivedStorage.AcquireLocalPathAsync(

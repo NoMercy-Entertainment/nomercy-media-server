@@ -11,6 +11,7 @@
 
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Database;
@@ -62,7 +63,12 @@ public class PluginMusicAnalysisWriter(
     public Task<PluginWriteResult> RegisterStemAsync(
         PluginTrackStem stem,
         CancellationToken ct = default
-    ) => GuardAsync(nameof(RegisterStemAsync), () => RegisterStemCoreAsync(stem, ct));
+    ) => GuardAsync(nameof(RegisterStemAsync), () => RegisterStemsCoreAsync([stem], ct));
+
+    public Task<PluginWriteResult> RegisterStemsAsync(
+        IReadOnlyList<PluginTrackStem> stems,
+        CancellationToken ct = default
+    ) => GuardAsync(nameof(RegisterStemsAsync), () => RegisterStemsCoreAsync(stems, ct));
 
     public Task<PluginWriteResult> MarkFailedAsync(
         Guid trackId,
@@ -156,6 +162,10 @@ public class PluginMusicAnalysisWriter(
                 return outOfRange;
         }
 
+        PluginWriteResult? malformedRegion = CheckVocalRegionShape(record.VocalRegionsMs);
+        if (malformedRegion is not null)
+            return malformedRegion;
+
         if (!IsAscending(record.PhraseStartsMs))
             return PluginWriteResult.Refused("phrase_starts_ms must be ascending");
 
@@ -229,13 +239,69 @@ public class PluginMusicAnalysisWriter(
         return PluginWriteResult.Accepted();
     }
 
-    private async Task<PluginWriteResult> RegisterStemCoreAsync(
+    /// <summary>
+    /// Runs between staging the rows and saving them, so a test can land a
+    /// competing write in exactly the window this method has to survive. Never
+    /// set in production.
+    /// </summary>
+    internal Func<Task>? BeforeSave { get; init; }
+
+    /// <summary>
+    /// Every stem is validated before any of them is staged, and all of them
+    /// are saved in one transaction, so a refusal on the second stem of a pair
+    /// leaves the first one unwritten rather than half a split in the register.
+    /// </summary>
+    private async Task<PluginWriteResult> RegisterStemsCoreAsync(
+        IReadOnlyList<PluginTrackStem> stems,
+        CancellationToken ct
+    )
+    {
+        if (stems.Count == 0)
+            return PluginWriteResult.Accepted();
+
+        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+
+        foreach (PluginTrackStem stem in stems)
+        {
+            PluginWriteResult? refusal = await CheckStemAsync(context, stem, ct);
+            if (refusal is not null)
+                return refusal;
+        }
+
+        foreach (PluginTrackStem stem in stems)
+        {
+            await StageStemAsync(context, stem, ct);
+        }
+
+        if (BeforeSave is not null)
+        {
+            await BeforeSave();
+        }
+
+        await using IDbContextTransaction transaction =
+            await context.Database.BeginTransactionAsync(ct);
+
+        try
+        {
+            await context.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            await transaction.RollbackAsync(ct);
+            return await ResolveConcurrentStemWriteAsync(stems, ct);
+        }
+
+        return PluginWriteResult.Accepted();
+    }
+
+    /// <summary>Why one stem cannot be written, or null when it can.</summary>
+    private async Task<PluginWriteResult?> CheckStemAsync(
+        MediaContext context,
         PluginTrackStem stem,
         CancellationToken ct
     )
     {
-        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
-
         bool trackExists = await context
             .Tracks.AsNoTracking()
             .AnyAsync(t => t.Id == stem.TrackId, ct);
@@ -244,9 +310,8 @@ public class PluginMusicAnalysisWriter(
             return PluginWriteResult.Refused($"track {stem.TrackId} does not exist");
 
         // A key the store could never have minted gets the same answer as one
-        // it simply does not hold - a plugin has one thing to fix either way -
-        // but it is checked here first, because asking the store means slicing
-        // the key into a path.
+        // it simply does not hold, but it is checked here first: asking the
+        // store means slicing the key into a path.
         if (
             !DerivedAudioKey.IsValid(stem.StorageKey)
             || !await store.ExistsAsync(stem.StorageKey, ct)
@@ -271,6 +336,16 @@ public class PluginMusicAnalysisWriter(
                 return PluginWriteResult.Refused("window_start_ms must be less than window_end_ms");
         }
 
+        return null;
+    }
+
+    /// <summary>Adds or updates one stem's row on the context, without saving it.</summary>
+    private static async Task StageStemAsync(
+        MediaContext context,
+        PluginTrackStem stem,
+        CancellationToken ct
+    )
+    {
         StemCoverage coverage = ToDbCoverage(stem.Coverage);
 
         TrackStem? existing = await context.TrackStems.FirstOrDefaultAsync(
@@ -297,8 +372,42 @@ public class PluginMusicAnalysisWriter(
         existing.StorageKey = stem.StorageKey;
         existing.ProducerVersion = stem.ProducerVersion;
         existing.CreatedAt = DateTime.UtcNow;
+    }
 
-        await context.SaveChangesAsync(ct);
+    /// <summary>
+    /// Two sweeps registering the same stem at once both read "no row" and
+    /// both insert; the loser's save hits the unique index. When the winner
+    /// stored the same key, nothing is lost and the loser is told it landed;
+    /// when it stored another one, the caller has to run again.
+    /// </summary>
+    private async Task<PluginWriteResult> ResolveConcurrentStemWriteAsync(
+        IReadOnlyList<PluginTrackStem> stems,
+        CancellationToken ct
+    )
+    {
+        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+
+        foreach (PluginTrackStem stem in stems)
+        {
+            StemCoverage coverage = ToDbCoverage(stem.Coverage);
+
+            TrackStem? stored = await context
+                .TrackStems.AsNoTracking()
+                .FirstOrDefaultAsync(
+                    row =>
+                        row.TrackId == stem.TrackId
+                        && row.Kind == stem.Kind
+                        && row.Coverage == coverage
+                        && row.ProducerVersion == stem.ProducerVersion,
+                    ct
+                );
+
+            if (stored is null || stored.StorageKey != stem.StorageKey)
+                return PluginWriteResult.Refused(
+                    $"stem {stem.Kind}/{stem.Coverage} for track {stem.TrackId} was written concurrently; retry"
+                );
+        }
+
         return PluginWriteResult.Accepted();
     }
 
@@ -421,6 +530,26 @@ public class PluginMusicAnalysisWriter(
         PluginWriteResult.Refused(
             $"{field} value {value} lies outside the track (0..{(long)Math.Round(durationMs)} ms)"
         );
+
+    /// <summary>
+    /// A vocal region is exactly [start, end] with start before end. One value
+    /// reads as a region ending wherever the next one starts, and a backwards
+    /// pair as a region of negative length - both are a planner reading the
+    /// wrong seconds of a track long after the sweep that stored them.
+    /// </summary>
+    private static PluginWriteResult? CheckVocalRegionShape(IReadOnlyList<int[]> regions)
+    {
+        for (int index = 0; index < regions.Count; index++)
+        {
+            int[] region = regions[index];
+            if (region.Length != 2 || region[0] >= region[1])
+                return PluginWriteResult.Refused(
+                    $"vocal_regions_ms entry {index} must be [start, end] with start < end"
+                );
+        }
+
+        return null;
+    }
 
     /// <summary>
     /// Phrase boundaries strictly increase: two phrases cannot start at the
