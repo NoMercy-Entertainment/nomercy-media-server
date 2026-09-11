@@ -27,17 +27,12 @@ stops being `null`:
 }
 ```
 
-- `scheduledTask` — baseline. Lets the plugin implement `IScheduledTaskPlugin`
-  and run its analysis sweep on a cron.
-- `audioTools` — elevated. Unlocks `IPluginContext.AudioTools`
-  (`IPluginAudioTools`): running the server's own ffmpeg build over a track or
-  a derived file.
-- `derivedAudio` — elevated. Unlocks `IPluginContext.DerivedAudio`
-  (`IPluginDerivedAudio`): the content-addressed store for stems and other
-  files nothing in a library owns.
-- `musicAnalysisWrite` — elevated. Unlocks `IPluginContext.MusicAnalysisWriter`
-  (`IPluginMusicAnalysisWriter`): writing the `TrackDjAnalysis` row and the
-  stem register.
+| hook | elevated | unlocks | for |
+|---|---|---|---|
+| `scheduledTask` | no | `IScheduledTaskPlugin` | running the analysis sweep on a cron |
+| `audioTools` | yes | `IPluginContext.AudioTools` (`IPluginAudioTools`) | running the server's own ffmpeg build over a track or a derived file |
+| `derivedAudio` | yes | `IPluginContext.DerivedAudio` (`IPluginDerivedAudio`) | the content-addressed store for stems and other files nothing in a library owns |
+| `musicAnalysisWrite` | yes | `IPluginContext.MusicAnalysisWriter` (`IPluginMusicAnalysisWriter`) | writing the `TrackDjAnalysis` row and the stem register |
 
 Read-only access to what analysis has already measured —
 `IPluginContext.Music` (`IPluginMusicQuery`) — needs no hook and no grant; it
@@ -417,8 +412,9 @@ _subscription = context.EventBus.Subscribe<TrackAudioAnalysisCompletedEvent>(
 The event carries `TrackId`, `AnalyzerVersion` (the base analyzer's version
 the row was computed at) and `State` (the string `"Ok"` or `"Failed"` — the
 events package carries no reference to the database enum it came from). It
-does not carry a library id; if the sweep needs one, look the track up
-through `IPluginMusicQuery.GetTracksAsync` or keep your own per-track state.
+does not yet carry a library id — a follow-up on this branch adds
+`LibraryIds`; until then, keep your own per-track state or run the
+per-library needs query instead.
 
 ## The dashboard cap setting
 
