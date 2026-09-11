@@ -98,9 +98,27 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
         return await StoreAndRegisterAsync(tempPath, key, contentType, bytes, ct);
     }
 
-    // Split out so the per-key lock covers only the exists/move/register
-    // sequence, not the hashing. A second store instance can still race here,
-    // so both the move and the insert treat "already done" as success.
+    /// <summary>
+    /// Split out so the per-key lock covers only the exists/move/register
+    /// sequence, not the hashing. A second store instance can still race here,
+    /// so both the move and the insert treat "already done" as success.
+    /// <para>
+    /// That is the content-addressed half of the server's two rules for a lost
+    /// write. A key here IS the bytes: whoever won the race wrote exactly what
+    /// this call was going to write, so there is nothing to reconcile and
+    /// nothing for the caller to redo. The loser bumps the winner's row and
+    /// reports success.
+    /// </para>
+    /// <para>
+    /// The other half is the keyed one, in
+    /// <c>PluginMusicAnalysisWriter.ResolveFailedDjWriteAsync</c> and
+    /// <c>ResolveFailedStemWriteAsync</c>: a row addressed by an identifier
+    /// rather than by its content may hold something else entirely, so the
+    /// loser re-reads it and either accepts an identical row or refuses. Both
+    /// halves agree on the third case - a failure with no competing row is a
+    /// real error, logged and named, never dressed up as a retry.
+    /// </para>
+    /// </summary>
     private async Task<DerivedAudioEntry> StoreAndRegisterAsync(
         string tempPath,
         string key,
@@ -175,8 +193,11 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
             }
             catch (DbUpdateException)
             {
-                // Lost a cross-instance race to register the row; the winner's
-                // row is already there — bump it instead of failing the caller.
+                // Lost a cross-instance race to register the row. The key is
+                // the hash of the content, so the winner's row describes the
+                // same bytes this call just wrote — bump it instead of failing
+                // the caller. See the summary above for why the keyed writes
+                // in PluginMusicAnalysisWriter cannot assume that.
                 await TouchRowAsync(key, ct);
             }
         }

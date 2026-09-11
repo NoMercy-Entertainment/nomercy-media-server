@@ -75,8 +75,8 @@ public sealed class PluginAudioTools(
     /// <summary>The derived store's own scratch folder; its eviction sweep also cleans it.</summary>
     private const string TempFolder = "tmp";
 
-    private const string OpusContentType = "audio/ogg";
-    private const string OpusFormat = "opus";
+    // The format and content type themselves come from StemFormats, the one
+    // place the pairing a register row is checked against is written down.
     private const int OpusSampleRate = 48000;
 
     /// <summary>The share of a track a mix into it draws from.</summary>
@@ -376,7 +376,7 @@ public sealed class PluginAudioTools(
                         coverage,
                         window.StartMs,
                         window.EndMs,
-                        OpusFormat,
+                        StemFormats.Opus,
                         OpusSampleRate,
                         stem.Entry.Key,
                         producerVersion
@@ -421,7 +421,7 @@ public sealed class PluginAudioTools(
         DerivedAudioEntry entry;
         await using (Stream content = await derivedStorage.OpenReadAsync(tempPath, ct))
         {
-            entry = await store.PutAsync(content, OpusContentType, ct);
+            entry = await store.PutAsync(content, StemFormats.OggContentType, ct);
         }
 
         return entry;

@@ -269,6 +269,22 @@ public class PluginMusicAnalysisWriter(
     /// loser can simply run again. With no row, the save failed for a reason
     /// of its own - a foreign key, a column constraint, a disk - and "retry"
     /// would hide that for ever, so it is logged and named instead.
+    /// <para>
+    /// This is the keyed half of the server's two rules for a lost write. The
+    /// row is addressed by an identifier, not by its content, so the writer
+    /// that won the race may have stored something quite different from what
+    /// this call meant to store: the loser re-reads the row and either accepts
+    /// an identical one or refuses and asks the caller to run again. It never
+    /// assumes the two writes agreed.
+    /// </para>
+    /// <para>
+    /// The other half is the content-addressed one, in
+    /// <c>DerivedAudioStore.StoreAndRegisterAsync</c>: a key there IS the hash
+    /// of the bytes, so a lost race means the winner wrote the same content
+    /// and the loser can report success without reading anything back. Both
+    /// halves agree on the third case, which is the one below - a failure with
+    /// no competing row is a real error, logged and named.
+    /// </para>
     /// </summary>
     private async Task<PluginWriteResult> ResolveFailedDjWriteAsync(
         Guid trackId,
@@ -409,7 +425,7 @@ public class PluginMusicAnalysisWriter(
 
         // The register row is what a client is handed the stem as, so a row
         // claiming Opus over a FLAC file is a player error hours later.
-        if (!FormatMatchesContentType(stem.Format, contentType))
+        if (!StemFormats.Matches(stem.Format, contentType))
             return PluginWriteResult.Refused(
                 $"stem format {stem.Format} does not match the stored content type {contentType}"
             );
@@ -478,20 +494,6 @@ public class PluginMusicAnalysisWriter(
         return null;
     }
 
-    /// <summary>
-    /// The pairings the derived store can hold today. Anything else is a
-    /// mismatch rather than an unknown: a format that cannot come out of that
-    /// container is not a row worth keeping.
-    /// </summary>
-    private static bool FormatMatchesContentType(string format, string contentType) =>
-        (format.ToLowerInvariant(), contentType.ToLowerInvariant()) switch
-        {
-            ("opus", "audio/ogg") => true,
-            ("opus", "audio/opus") => true,
-            ("flac", "audio/flac") => true,
-            _ => false,
-        };
-
     /// <summary>Adds or updates one stem's row on the context, without saving it.</summary>
     private static async Task StageStemAsync(
         MediaContext context,
@@ -535,6 +537,17 @@ public class PluginMusicAnalysisWriter(
     /// row at all the save failed for a reason of its own - a foreign key, a
     /// column constraint, a disk - which is logged and named rather than
     /// dressed up as something a retry would fix.
+    /// <para>
+    /// The keyed half of the two rules again, and the comparison it needs is
+    /// visible here: one stem row is addressed by (track, kind, coverage,
+    /// producer), which says nothing about which content landed under it, so
+    /// the storage keys are what decide whether the race cost anything.
+    /// </para>
+    /// <para>
+    /// The content-addressed half, <c>DerivedAudioStore.StoreAndRegisterAsync</c>,
+    /// needs no such comparison: its key is the hash of the bytes, so a lost
+    /// race there cannot have stored anything else.
+    /// </para>
     /// </summary>
     private async Task<PluginWriteResult> ResolveFailedStemWriteAsync(
         IReadOnlyList<PluginTrackStem> stems,
