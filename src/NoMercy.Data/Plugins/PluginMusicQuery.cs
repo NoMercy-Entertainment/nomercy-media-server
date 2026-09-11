@@ -10,9 +10,12 @@
 // -----------------------------------------------------------------------------
 
 using System.Globalization;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using NoMercy.Database;
 using NoMercy.Database.Models.Music;
+using NoMercy.MediaProcessing.AudioAnalysis;
 using NoMercy.Plugins.Abstractions;
 
 namespace NoMercy.Data.Plugins;
@@ -26,7 +29,10 @@ namespace NoMercy.Data.Plugins;
 /// <c>AsNoTracking</c>.
 /// </para>
 /// </summary>
-public class PluginMusicQuery(IDbContextFactory<MediaContext> contextFactory) : IPluginMusicQuery
+public class PluginMusicQuery(
+    IDbContextFactory<MediaContext> contextFactory,
+    ILogger<PluginMusicQuery> logger
+) : IPluginMusicQuery
 {
     /// <summary>
     /// The most tracks one call will return, whatever the caller asked for. A
@@ -34,6 +40,11 @@ public class PluginMusicQuery(IDbContextFactory<MediaContext> contextFactory) : 
     /// memory in one hop.
     /// </summary>
     private const int MaxPageSize = 1000;
+
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+    };
 
     public async Task<IReadOnlyList<PluginTrack>> GetTracksAsync(
         string? libraryId = null,
@@ -128,6 +139,217 @@ public class PluginMusicQuery(IDbContextFactory<MediaContext> contextFactory) : 
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<PluginTrackDjAnalysis>> GetDjAnalysisAsync(
+        IReadOnlyList<Guid> trackIds,
+        CancellationToken ct = default
+    )
+    {
+        if (trackIds.Count == 0)
+        {
+            return [];
+        }
+
+        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+
+        Guid[] ids = trackIds.Distinct().Take(MaxPageSize).ToArray();
+
+        List<DjAnalysisRow> rows = await context
+            .TrackDjAnalysis.AsNoTracking()
+            .Where(dj => ids.Contains(dj.TrackId) && dj.State == AudioAnalysisState.Ok)
+            .Select(dj => new DjAnalysisRow(
+                dj.TrackId,
+                dj.DjAnalyzerVersion,
+                dj.BaseAnalyzerVersion,
+                dj.DownbeatIndex,
+                dj.BeatsPerBar,
+                dj.PhraseLengthBars,
+                dj.PhraseStartsMs,
+                dj.VocalRegionsMs,
+                dj.BarEnergy,
+                dj.CuePoints,
+                dj.Chords
+            ))
+            .ToListAsync(ct);
+
+        return rows.Select(row => new PluginTrackDjAnalysis(
+                row.TrackId,
+                row.DjAnalyzerVersion,
+                row.BaseAnalyzerVersion,
+                row.DownbeatIndex,
+                row.BeatsPerBar,
+                row.PhraseLengthBars,
+                DeserializeJsonList<int>(row.PhraseStartsMs, row.TrackId, "phrase_starts_ms"),
+                DeserializeJsonList<int[]>(row.VocalRegionsMs, row.TrackId, "vocal_regions_ms"),
+                DeserializeJsonList<double>(row.BarEnergy, row.TrackId, "bar_energy"),
+                DeserializeJsonList<CuePointRow>(row.CuePoints, row.TrackId, "cue_points")
+                    .Select(cue => new PluginCuePoint(
+                        cue.Ms,
+                        cue.Type ?? string.Empty,
+                        cue.Direction ?? string.Empty,
+                        cue.Score
+                    ))
+                    .ToList(),
+                DeserializeJsonList<ChordRow>(row.Chords, row.TrackId, "chords")
+                    .Select(chord => new PluginChord(chord.Ms, chord.Chord ?? string.Empty))
+                    .ToList()
+            ))
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<PluginTrackStem>> GetStemsAsync(
+        IReadOnlyList<Guid> trackIds,
+        CancellationToken ct = default
+    )
+    {
+        if (trackIds.Count == 0)
+        {
+            return [];
+        }
+
+        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+
+        Guid[] ids = trackIds.Distinct().Take(MaxPageSize).ToArray();
+
+        List<StemRow> rows = await context
+            .TrackStems.AsNoTracking()
+            .Where(stem => ids.Contains(stem.TrackId))
+            .Select(stem => new StemRow(
+                stem.TrackId,
+                stem.Kind,
+                stem.Coverage,
+                stem.WindowStartMs,
+                stem.WindowEndMs,
+                stem.Format,
+                stem.SampleRate,
+                stem.StorageKey,
+                stem.ProducerVersion
+            ))
+            .ToListAsync(ct);
+
+        return rows.Select(row => new PluginTrackStem(
+                row.TrackId,
+                row.Kind,
+                ToPluginCoverage(row.Coverage),
+                row.WindowStartMs,
+                row.WindowEndMs,
+                row.Format,
+                row.SampleRate,
+                row.StorageKey,
+                row.ProducerVersion
+            ))
+            .ToList();
+    }
+
+    public async Task<IReadOnlyList<Guid>> GetTracksNeedingDjAnalysisAsync(
+        string libraryId,
+        int djAnalyzerVersion,
+        int skip = 0,
+        int take = 500,
+        CancellationToken ct = default
+    )
+    {
+        if (!Ulid.TryParse(libraryId, out Ulid parsedLibraryId))
+        {
+            return [];
+        }
+
+        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+
+        return await DjAnalysisQueries
+            .TracksNeedingDjAnalysis(context, parsedLibraryId, djAnalyzerVersion)
+            .Skip(Math.Max(0, skip))
+            .Take(Math.Clamp(take, 1, MaxPageSize))
+            .ToListAsync(ct);
+    }
+
+    public async Task<IReadOnlyList<Guid>> GetTracksMissingStemsAsync(
+        string libraryId,
+        string producerVersion,
+        PluginStemPolicy policy,
+        int skip = 0,
+        int take = 500,
+        CancellationToken ct = default
+    )
+    {
+        // Nothing to sweep for: a plugin under this policy splits the first
+        // time a track is asked for, so there is no worklist to compute.
+        if (policy == PluginStemPolicy.OnDemand)
+        {
+            return [];
+        }
+
+        if (!Ulid.TryParse(libraryId, out Ulid parsedLibraryId))
+        {
+            return [];
+        }
+
+        StemCoverage[] required =
+            policy == PluginStemPolicy.Full
+                ? [StemCoverage.Full]
+                : [StemCoverage.MixIn, StemCoverage.MixOut];
+
+        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+
+        return await DjAnalysisQueries
+            .TracksMissingStems(context, parsedLibraryId, producerVersion, required)
+            .Skip(Math.Max(0, skip))
+            .Take(Math.Clamp(take, 1, MaxPageSize))
+            .ToListAsync(ct);
+    }
+
+    /// <summary>
+    /// Maps the database's stem-coverage enum to the plugin's own. Kept as an
+    /// explicit switch rather than a numeric cast: the two enums happen to
+    /// share values today, but a cast would silently keep "happening to" work
+    /// if that ever stopped being true.
+    /// </summary>
+    private static PluginStemCoverage ToPluginCoverage(StemCoverage coverage) =>
+        coverage switch
+        {
+            StemCoverage.Full => PluginStemCoverage.Full,
+            StemCoverage.MixIn => PluginStemCoverage.MixIn,
+            StemCoverage.MixOut => PluginStemCoverage.MixOut,
+            _ => throw new ArgumentOutOfRangeException(
+                nameof(coverage),
+                coverage,
+                "Unknown stem coverage"
+            ),
+        };
+
+    /// <summary>
+    /// Deserializes one of <see cref="TrackDjAnalysis" />'s JSON text columns.
+    /// A missing or malformed column is never this method's caller's problem
+    /// to throw over — it logs what it found and hands back an empty list, so
+    /// one bad row never takes a whole page of plugin results down with it.
+    /// </summary>
+    private List<T> DeserializeJsonList<T>(string? json, Guid trackId, string column)
+    {
+        if (string.IsNullOrWhiteSpace(json))
+        {
+            logger.LogWarning(
+                "Track {TrackId}: {Column} column is empty on an Ok DJ analysis row; treating it as an empty list",
+                trackId,
+                column
+            );
+            return [];
+        }
+
+        try
+        {
+            return JsonSerializer.Deserialize<List<T>>(json, JsonOptions) ?? [];
+        }
+        catch (JsonException ex)
+        {
+            logger.LogWarning(
+                ex,
+                "Track {TrackId}: malformed {Column} JSON on a DJ analysis row; treating it as an empty list",
+                trackId,
+                column
+            );
+            return [];
+        }
+    }
+
     /// <summary>
     /// The library stores a duration as ffprobe's "hh:mm:ss" with a leading
     /// "00:" stripped, so a track under an hour reads "mm:ss". Parsed by hand:
@@ -183,4 +405,52 @@ public class PluginMusicQuery(IDbContextFactory<MediaContext> contextFactory) : 
         string? Duration,
         string LibraryId
     );
+
+    /// <summary>
+    /// One DJ analysis row before its JSON columns are parsed into the typed
+    /// lists <see cref="PluginTrackDjAnalysis" /> carries.
+    /// </summary>
+    private sealed record DjAnalysisRow(
+        Guid TrackId,
+        int DjAnalyzerVersion,
+        int BaseAnalyzerVersion,
+        int? DownbeatIndex,
+        int BeatsPerBar,
+        int PhraseLengthBars,
+        string? PhraseStartsMs,
+        string? VocalRegionsMs,
+        string? BarEnergy,
+        string? CuePoints,
+        string? Chords
+    );
+
+    /// <summary>
+    /// One stem row before <see cref="StemCoverage" /> is mapped to
+    /// <see cref="PluginStemCoverage" />.
+    /// </summary>
+    private sealed record StemRow(
+        Guid TrackId,
+        string Kind,
+        StemCoverage Coverage,
+        int? WindowStartMs,
+        int? WindowEndMs,
+        string Format,
+        int SampleRate,
+        string StorageKey,
+        string ProducerVersion
+    );
+
+    /// <summary>
+    /// The shape one entry of <see cref="TrackDjAnalysis.CuePoints" /> takes on
+    /// disk: <c>{ ms, type, direction, score }</c>. Matched case-insensitively
+    /// rather than with <c>[JsonPropertyName]</c> so this stays a plain DTO the
+    /// house naming rules apply to normally.
+    /// </summary>
+    private sealed record CuePointRow(int Ms, string? Type, string? Direction, double Score);
+
+    /// <summary>
+    /// The shape one entry of <see cref="TrackDjAnalysis.Chords" /> takes on
+    /// disk: <c>{ ms, chord }</c>.
+    /// </summary>
+    private sealed record ChordRow(int Ms, string? Chord);
 }
