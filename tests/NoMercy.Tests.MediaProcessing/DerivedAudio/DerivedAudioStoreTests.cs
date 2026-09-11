@@ -502,9 +502,7 @@ public sealed class DerivedAudioStoreTests : IDisposable
     /// <summary>
     /// The mirror of the tmp/ sweep, one step further along the put: a crash
     /// between the move into place and the register insert leaves a content
-    /// file no key addresses and no policy counts. Only this sweep frees it,
-    /// and only after the grace window, so it cannot race a put that is
-    /// between its own move and insert right now.
+    /// file no key addresses and no policy counts. Only this sweep frees it.
     /// </summary>
     [Fact]
     public async Task Evict_RemovesAContentFileThatHasNoRegisterRow()
@@ -515,22 +513,70 @@ public sealed class DerivedAudioStoreTests : IDisposable
             "audio/opus"
         );
 
-        string staleKey = new('c', 64);
-        string freshKey = new('d', 64);
-        Directory.CreateDirectory(Path.Combine(_root, staleKey[..2]));
-        Directory.CreateDirectory(Path.Combine(_root, freshKey[..2]));
-        string stalePath = Path.Combine(_root, staleKey[..2], staleKey);
-        string freshPath = Path.Combine(_root, freshKey[..2], freshKey);
-        await File.WriteAllBytesAsync(stalePath, Encoding.UTF8.GetBytes("orphaned by a crash"));
-        await File.WriteAllBytesAsync(freshPath, Encoding.UTF8.GetBytes("still being registered"));
-        File.SetLastWriteTimeUtc(stalePath, DateTime.UtcNow.AddDays(-2));
-        File.SetLastWriteTimeUtc(freshPath, DateTime.UtcNow);
+        string stalePath = PlantOrphan(new string('c', 64), DateTime.UtcNow.AddDays(-2));
 
         await store.EvictAsync(capBytes: long.MaxValue, grace: TimeSpan.FromHours(1));
 
         File.Exists(stalePath).Should().BeFalse();
-        File.Exists(freshPath).Should().BeTrue();
         (await store.ExistsAsync(kept.Key)).Should().BeTrue();
+    }
+
+    /// <summary>
+    /// The grace window is the whole reason this sweep is safe: a put that is
+    /// between its own move-into-place and its register insert right now looks
+    /// exactly like an orphan. A file younger than the window is left alone,
+    /// so the sweep can never pull content out from under a put in flight.
+    /// </summary>
+    [Fact]
+    public async Task Evict_LeavesAnOrphanInsideTheGraceWindow()
+    {
+        IDerivedAudioStore store = Store();
+
+        string freshPath = PlantOrphan(new string('d', 64), DateTime.UtcNow);
+
+        await store.EvictAsync(capBytes: long.MaxValue, grace: TimeSpan.FromHours(1));
+
+        File.Exists(freshPath).Should().BeTrue();
+    }
+
+    /// <summary>
+    /// Only the two-character shards a key's path is built from are content
+    /// folders. Anything else under the derived root belongs to something
+    /// else - tmp/ has its own sweep with its own rules - and this one must
+    /// not walk into it, whatever it holds and however old.
+    /// </summary>
+    [Fact]
+    public async Task Evict_IgnoresFoldersThatAreNotTwoCharacters()
+    {
+        IDerivedAudioStore store = Store();
+
+        string outsidePath = PlantStaleFile("abc", new string('e', 64));
+        string tempLikePath = PlantStaleFile("tmpx", new string('f', 64));
+
+        await store.EvictAsync(capBytes: long.MaxValue, grace: TimeSpan.FromHours(1));
+
+        File.Exists(outsidePath).Should().BeTrue();
+        File.Exists(tempLikePath).Should().BeTrue();
+    }
+
+    /// <summary>A content file under its own shard, with no register row.</summary>
+    private string PlantOrphan(string key, DateTime lastWriteUtc)
+    {
+        Directory.CreateDirectory(Path.Combine(_root, key[..2]));
+        string path = Path.Combine(_root, key[..2], key);
+        File.WriteAllBytes(path, Encoding.UTF8.GetBytes("orphaned by a crash"));
+        File.SetLastWriteTimeUtc(path, lastWriteUtc);
+        return path;
+    }
+
+    /// <summary>A file under a folder that is not a shard, old enough to be swept if it were.</summary>
+    private string PlantStaleFile(string folder, string name)
+    {
+        Directory.CreateDirectory(Path.Combine(_root, folder));
+        string path = Path.Combine(_root, folder, name);
+        File.WriteAllBytes(path, Encoding.UTF8.GetBytes("not this sweep's business"));
+        File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddDays(-2));
+        return path;
     }
 
     [Fact]
