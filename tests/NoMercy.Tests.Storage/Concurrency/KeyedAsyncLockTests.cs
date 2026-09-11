@@ -76,6 +76,34 @@ public class KeyedAsyncLockTests
     }
 
     /// <summary>
+    /// Disposing one release twice hands the key back once. A second release
+    /// would be a permit this lock never issued, and the key would then admit
+    /// two callers at a time - the one thing it exists to prevent, and
+    /// invisible until two writers land on the same content.
+    /// </summary>
+    [Fact]
+    public async Task DisposingTwice_ReleasesOnce()
+    {
+        KeyedAsyncLock locks = new();
+        using CancellationTokenSource deadline = new(Deadline);
+
+        IDisposable first = await locks.AcquireAsync("a", deadline.Token);
+        first.Dispose();
+        first.Dispose();
+
+        // The key is free again, so this one takes it - and must be its only
+        // holder, however many times the one before it was disposed.
+        using IDisposable second = await locks.AcquireAsync("a", deadline.Token);
+
+        Task<IDisposable> third = locks.AcquireAsync("a", deadline.Token);
+        await Task.Delay(50, deadline.Token);
+
+        third
+            .IsCompleted.Should()
+            .BeFalse("the double dispose must not have left a spare permit behind");
+    }
+
+    /// <summary>
     /// A waiter that gives up must not take the key with it: the holder's
     /// release still has to hand it to whoever comes next, or one cancelled
     /// call would wedge that key for the life of the process.

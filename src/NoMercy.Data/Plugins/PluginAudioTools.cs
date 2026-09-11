@@ -75,8 +75,8 @@ public sealed class PluginAudioTools(
     /// <summary>The derived store's own scratch folder; its eviction sweep also cleans it.</summary>
     private const string TempFolder = "tmp";
 
-    // The format and content type themselves come from StemFormats, the one
-    // place the pairing a register row is checked against is written down.
+    // Format and content type live in StemFormats; only the sample rate is
+    // this encoder's own.
     private const int OpusSampleRate = 48000;
 
     /// <summary>The share of a track a mix into it draws from.</summary>

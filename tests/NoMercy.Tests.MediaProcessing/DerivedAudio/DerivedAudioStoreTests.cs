@@ -158,6 +158,12 @@ public sealed class DerivedAudioStoreTests : IDisposable
     /// re-check under the key lock makes is otherwise invisible: an UPDATE
     /// against a row eviction has already deleted changes nothing a later
     /// read could see.
+    /// <para>
+    /// The assertion built on this reads EF Core's emitted statement text, not
+    /// the store's own code, so a touch reimplemented in anything but an
+    /// ExecuteUpdateAsync - a tracked save, a raw command, a different verb -
+    /// needs the assertion re-derived rather than trusted.
+    /// </para>
     /// </summary>
     private sealed class RecordingInterceptor : DbCommandInterceptor
     {
@@ -542,8 +548,14 @@ public sealed class DerivedAudioStoreTests : IDisposable
     /// <summary>
     /// Only the two-character shards a key's path is built from are content
     /// folders. Anything else under the derived root belongs to something
-    /// else - tmp/ has its own sweep with its own rules - and this one must
-    /// not walk into it, whatever it holds and however old.
+    /// else and this one must not walk into it, whatever it holds and however
+    /// old.
+    /// <para>
+    /// tmp/ is the case that matters: the length check alone excludes it - a
+    /// shard is two characters and "tmp" is three - and a fresh file in there
+    /// proves the orphan sweep leaves it to the temp sweep, which keeps it for
+    /// its own grace window rather than reading it as an unregistered key.
+    /// </para>
     /// </summary>
     [Fact]
     public async Task Evict_IgnoresFoldersThatAreNotTwoCharacters()
@@ -553,10 +565,18 @@ public sealed class DerivedAudioStoreTests : IDisposable
         string outsidePath = PlantStaleFile("abc", new string('e', 64));
         string tempLikePath = PlantStaleFile("tmpx", new string('f', 64));
 
+        // Fresh, so the temp sweep keeps it too: what is under test is that
+        // the orphan sweep never considered it in the first place.
+        Directory.CreateDirectory(Path.Combine(_root, "tmp"));
+        string tempPath = Path.Combine(_root, "tmp", new string('a', 64));
+        await File.WriteAllBytesAsync(tempPath, Encoding.UTF8.GetBytes("a put still in flight"));
+        File.SetLastWriteTimeUtc(tempPath, DateTime.UtcNow);
+
         await store.EvictAsync(capBytes: long.MaxValue, grace: TimeSpan.FromHours(1));
 
         File.Exists(outsidePath).Should().BeTrue();
         File.Exists(tempLikePath).Should().BeTrue();
+        File.Exists(tempPath).Should().BeTrue();
     }
 
     /// <summary>A content file under its own shard, with no register row.</summary>
@@ -687,6 +707,31 @@ public sealed class DerivedAudioStoreTests : IDisposable
 
         File.Exists(Path.Combine(_root, entry.Key[..2], entry.Key)).Should().BeTrue();
         (await store.ExistsAsync(entry.Key)).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// And a read of that same half-entry answers the same way, rather than
+    /// handing back bytes the store will not admit to holding: the orphan
+    /// sweep is free to delete that file underneath the reader, and a caller
+    /// told "here it is" by one member and "there is none" by the next has no
+    /// way to tell which one to believe.
+    /// </summary>
+    [Fact]
+    public async Task OpenRead_IsNullForAFileWithoutARegisterRow()
+    {
+        IDerivedAudioStore store = Store();
+        DerivedAudioEntry entry = await store.PutAsync(
+            new MemoryStream(Encoding.UTF8.GetBytes("orphan content")),
+            "audio/opus"
+        );
+
+        await using (MediaContext context = new(_options))
+        {
+            await context.DerivedAudio.Where(row => row.Key == entry.Key).ExecuteDeleteAsync();
+        }
+
+        File.Exists(Path.Combine(_root, entry.Key[..2], entry.Key)).Should().BeTrue();
+        (await store.OpenReadAsync(entry.Key)).Should().BeNull();
     }
 
     [Fact]

@@ -241,6 +241,14 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
     /// eviction's own re-check under this same lock finds the key warm and
     /// leaves it alone while the caller is still reading.
     /// </para>
+    /// <para>
+    /// Asking for the register row twice - once in the pre-check, once under
+    /// the lock - costs a read two database round-trips. That is acceptable
+    /// here: both are a single indexed lookup against a local SQLite file,
+    /// they are dwarfed by the file open and the ffmpeg run that follows, and
+    /// the alternative is either handing back a key eviction already took or
+    /// minting a lock entry for every key a caller invents.
+    /// </para>
     /// </summary>
     public async Task<Stream?> OpenReadAsync(string key, CancellationToken ct = default)
     {
@@ -497,7 +505,10 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
         {
             ct.ThrowIfCancellationRequested();
             string name = entry.Path.Split('/')[^1];
-            if (entry.IsDirectory && name.Length == 2 && name != TempFolder)
+            // The length check alone excludes tmp/: a shard is the first two
+            // characters of a key, and "tmp" is three. Whatever is in there
+            // belongs to SweepStaleTempFilesAsync, which has its own rules.
+            if (entry.IsDirectory && name.Length == 2)
             {
                 contentFolders.Add(entry.Path);
             }
