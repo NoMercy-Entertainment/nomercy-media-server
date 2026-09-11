@@ -225,115 +225,140 @@ public sealed class PluginAudioTools(
         string vocalsTemp = $"{TempFolder}/{batch}-vocals.opus";
         string accompanimentTemp = $"{TempFolder}/{batch}-accompaniment.opus";
 
-        await using LocalPathLease inputLease = await storage.AcquireLocalPathAsync(file.Path, ct);
-        await using LocalPathLease vocalsLease = await derivedStorage.AcquireLocalPathAsync(
-            vocalsTemp,
-            ct
-        );
-        await using LocalPathLease accompanimentLease = await derivedStorage.AcquireLocalPathAsync(
-            accompanimentTemp,
-            ct
-        );
-
-        string[] arguments = PluginAudioArguments.StemSplit(
-            inputLease.Path,
-            window.Arguments,
-            vocalsLease.Path,
-            accompanimentLease.Path
-        );
-
-        string? bannerLine = null;
-        Queue<string> stdErrTail = new();
-
-        void CaptureStdErr(string line)
+        try
         {
-            bannerLine ??= line;
-            stdErrTail.Enqueue(line);
-            if (stdErrTail.Count > 5)
-            {
-                stdErrTail.Dequeue();
-            }
-        }
-
-        ProcessResult? result = await RunFfmpegAsync(
-            ffmpegPath,
-            arguments,
-            null,
-            CaptureStdErr,
-            ct
-        );
-
-        if (result is null)
-        {
-            await DeleteTempAsync(vocalsTemp, ct);
-            await DeleteTempAsync(accompanimentTemp, ct);
-            return PluginStemSplitResult.Refused(
-                $"stemsplit timed out after {RunTimeout.TotalSeconds:0} seconds"
-            );
-        }
-
-        if (result.ExitCode != 0)
-        {
-            _logger.LogWarning(
-                "plugin {PluginId}: stemsplit exited with {Exit} for track {TrackId}: {StdErr}",
-                pluginId,
-                result.ExitCode,
-                trackId,
-                string.Join(" | ", stdErrTail)
-            );
-
-            await DeleteTempAsync(vocalsTemp, ct);
-            await DeleteTempAsync(accompanimentTemp, ct);
-            return PluginStemSplitResult.Refused($"stemsplit exited with {result.ExitCode}");
-        }
-
-        // Both files land in the store, and both temps go, before anything is
-        // registered: a registration that refuses halfway must not leave a
-        // scratch file behind for the eviction sweep to find hours later.
-        DerivedAudioEntry vocals = await StoreTempAsync(vocalsTemp, ct);
-        DerivedAudioEntry accompaniment = await StoreTempAsync(accompanimentTemp, ct);
-
-        string producerVersion =
-            $"{AppFiles.StemsplitModel}@{PluginAudioArguments.FfmpegVersion(bannerLine)}";
-
-        IPluginMusicAnalysisWriter writer = writerFactory.CreateFor(pluginId);
-
-        List<PluginStemFile> stems = [];
-        foreach (
-            (string kind, DerivedAudioEntry entry) in new[]
-            {
-                ("vocals", vocals),
-                ("accompaniment", accompaniment),
-            }
-        )
-        {
-            PluginWriteResult write = await writer.RegisterStemAsync(
-                new PluginTrackStem(
-                    trackId,
-                    kind,
-                    coverage,
-                    window.StartMs,
-                    window.EndMs,
-                    OpusFormat,
-                    OpusSampleRate,
-                    entry.Key,
-                    producerVersion
-                ),
+            await using LocalPathLease inputLease = await storage.AcquireLocalPathAsync(
+                file.Path,
                 ct
             );
 
-            if (!write.Ok)
+            // A lease on a path ffmpeg WRITES to. LocalPathLease documents a
+            // read-only staging contract - a future remote driver would stage
+            // the object into a temp file and drop it on dispose, which is the
+            // wrong direction for an output. It holds here because the derived
+            // store is always local storage (a LocalStorage scoped to
+            // AppFiles.DerivedAudioPath, see ServiceConfiguration.Core), so the
+            // lease hands back the real path unchanged. The day the derived
+            // store can live on a remote driver, this needs a
+            // put-from-lease helper on IStorage rather than a plain lease.
+            await using LocalPathLease vocalsLease = await derivedStorage.AcquireLocalPathAsync(
+                vocalsTemp,
+                ct
+            );
+            await using LocalPathLease accompanimentLease =
+                await derivedStorage.AcquireLocalPathAsync(accompanimentTemp, ct);
+
+            string[] arguments = PluginAudioArguments.StemSplit(
+                inputLease.Path,
+                window.Arguments,
+                vocalsLease.Path,
+                accompanimentLease.Path
+            );
+
+            string? bannerLine = null;
+            Queue<string> stdErrTail = new();
+
+            void CaptureStdErr(string line)
             {
-                return PluginStemSplitResult.Refused(write.Refusal!);
+                bannerLine ??= line;
+                stdErrTail.Enqueue(line);
+                if (stdErrTail.Count > 5)
+                {
+                    stdErrTail.Dequeue();
+                }
             }
 
-            stems.Add(new PluginStemFile(kind, coverage, entry.Key, entry.Bytes));
-        }
+            ProcessResult? result = await RunFfmpegAsync(
+                ffmpegPath,
+                arguments,
+                null,
+                CaptureStdErr,
+                ct
+            );
 
-        return new PluginStemSplitResult(stems, null);
+            if (result is null)
+            {
+                return PluginStemSplitResult.Refused(
+                    $"stemsplit timed out after {RunTimeout.TotalSeconds:0} seconds"
+                );
+            }
+
+            if (result.ExitCode != 0)
+            {
+                _logger.LogWarning(
+                    "plugin {PluginId}: stemsplit exited with {Exit} for track {TrackId}: {StdErr}",
+                    pluginId,
+                    result.ExitCode,
+                    trackId,
+                    string.Join(" | ", stdErrTail)
+                );
+
+                return PluginStemSplitResult.Refused($"stemsplit exited with {result.ExitCode}");
+            }
+
+            // Both files land in the store before anything is registered, so a
+            // registration that refuses halfway leaves no stem stored without
+            // its twin.
+            DerivedAudioEntry vocals = await StoreTempAsync(vocalsTemp, ct);
+            DerivedAudioEntry accompaniment = await StoreTempAsync(accompanimentTemp, ct);
+
+            string producerVersion =
+                $"{AppFiles.StemsplitModel}@{PluginAudioArguments.FfmpegVersion(bannerLine)}";
+
+            IPluginMusicAnalysisWriter writer = writerFactory.CreateFor(pluginId);
+
+            List<PluginStemFile> stems = [];
+            foreach (
+                (string kind, DerivedAudioEntry entry) in new[]
+                {
+                    ("vocals", vocals),
+                    ("accompaniment", accompaniment),
+                }
+            )
+            {
+                PluginWriteResult write = await writer.RegisterStemAsync(
+                    new PluginTrackStem(
+                        trackId,
+                        kind,
+                        coverage,
+                        window.StartMs,
+                        window.EndMs,
+                        OpusFormat,
+                        OpusSampleRate,
+                        entry.Key,
+                        producerVersion
+                    ),
+                    ct
+                );
+
+                if (!write.Ok)
+                {
+                    return PluginStemSplitResult.Refused(write.Refusal!);
+                }
+
+                stems.Add(new PluginStemFile(kind, coverage, entry.Key, entry.Bytes));
+            }
+
+            return new PluginStemSplitResult(stems, null);
+        }
+        finally
+        {
+            // Every way out of the block above - a refusal, a cancelled token,
+            // a throw from the store - would otherwise leave two scratch files
+            // for the derived store's eviction sweep to find hours later.
+            // CancellationToken.None deliberately: cleanup after a cancellation
+            // is exactly when it matters, and deleting a file the caller no
+            // longer wants is not work that should itself be cancellable.
+            await DeleteTempAsync(vocalsTemp, CancellationToken.None);
+            await DeleteTempAsync(accompanimentTemp, CancellationToken.None);
+        }
     }
 
-    /// <summary>Moves one finished temp file into the content-addressed store and drops the temp.</summary>
+    /// <summary>
+    /// Copies one finished temp file into the content-addressed store. The
+    /// temp itself is dropped by the caller's <c>finally</c>, so a throw in
+    /// here cannot strand it.
+    /// </summary>
     private async Task<DerivedAudioEntry> StoreTempAsync(string tempPath, CancellationToken ct)
     {
         DerivedAudioEntry entry;
@@ -342,7 +367,6 @@ public sealed class PluginAudioTools(
             entry = await store.PutAsync(content, OpusContentType, ct);
         }
 
-        await DeleteTempAsync(tempPath, ct);
         return entry;
     }
 
@@ -439,6 +463,13 @@ public sealed class PluginAudioTools(
     /// the authority, but it runs deferred, so before its first report the
     /// same file check it makes stands in - better than refusing every split
     /// during the minutes after a restart.
+    /// <para>
+    /// "The same check" means the same path, too: the probe reads
+    /// <see cref="EncoderOptions.StemsplitModelPath" />, which the host sets
+    /// from <see cref="AppFiles.StemsplitModelPath" /> but can point anywhere.
+    /// Reading <c>AppFiles</c> directly here would answer about a different
+    /// file than the probe does on a server that configured an override.
+    /// </para>
     /// </summary>
     private bool StemsplitModelPresent()
     {
@@ -448,9 +479,15 @@ public sealed class PluginAudioTools(
             return report.StemsplitModelPresent;
         }
 
+        string? modelPath = options.StemsplitModelPath;
+        if (string.IsNullOrWhiteSpace(modelPath))
+        {
+            modelPath = AppFiles.StemsplitModelPath;
+        }
+
         try
         {
-            return storage.Exists(AppFiles.StemsplitModelPath);
+            return storage.Exists(modelPath);
         }
         catch (Exception)
         {

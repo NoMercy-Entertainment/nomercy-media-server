@@ -72,7 +72,19 @@ internal static class PluginAudioArguments
     /// because a stem is an intermediate a transition is rendered from, not
     /// something a listener ever hears on its own.
     /// </summary>
-    /// <param name="windowArguments">Empty for full coverage; otherwise the <c>-t</c> or <c>-ss</c> pair.</param>
+    /// <param name="windowArguments">
+    /// Empty for full coverage; otherwise the <c>-t</c> or <c>-ss</c> pair.
+    /// They go BEFORE <c>-i</c>, as input options. In ffmpeg's grammar an
+    /// option binds to the next file named after it, so a window placed after
+    /// the input would apply to the first output alone: the vocals stem would
+    /// be the window and the accompaniment stem the whole track, while both
+    /// were registered with the same window milliseconds. As an input option
+    /// it trims the decoded stream instead, so both output pads see the same
+    /// audio and stemsplit never separates seconds that are thrown away
+    /// afterwards. Input <c>-ss</c> still decodes up to the exact point
+    /// (accurate seek is the default), so the registered window milliseconds
+    /// stay true to the samples.
+    /// </param>
     internal static string[] StemSplit(
         string inputPath,
         IReadOnlyList<string> windowArguments,
@@ -81,9 +93,9 @@ internal static class PluginAudioArguments
     ) =>
         [
             "-nostdin",
+            .. windowArguments,
             "-i",
             inputPath,
-            .. windowArguments,
             "-vn",
             "-sn",
             "-dn",

@@ -67,6 +67,11 @@ public class PluginAudioToolsTests : IDisposable
 
     private readonly List<PluginTrackStem> _registeredStems = [];
     private readonly List<string> _deletedDerivedPaths = [];
+
+    // In lease order: the scratch file ffmpeg writes the vocals to, then the
+    // one it writes the accompaniment to. The names carry a random Ulid, so
+    // the argument-array assertions read them from here.
+    private readonly List<string> _leasedDerivedPaths = [];
     private readonly List<string> _stdErrLines = [VersionLine];
 
     private string[] _capturedArguments = [];
@@ -158,7 +163,13 @@ public class PluginAudioToolsTests : IDisposable
             .Setup(storage =>
                 storage.AcquireLocalPathAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())
             )
-            .ReturnsAsync((string path, CancellationToken _) => new LocalPathLease(path));
+            .ReturnsAsync(
+                (string path, CancellationToken _) =>
+                {
+                    _leasedDerivedPaths.Add(path);
+                    return new LocalPathLease(path);
+                }
+            );
         _derivedStorage
             .Setup(storage =>
                 storage.CreateDirectoryAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())
@@ -298,13 +309,70 @@ public class PluginAudioToolsTests : IDisposable
 
     private static string ModelFile => AppFiles.StemsplitModel + ".gguf";
 
-    /// <summary>The value that follows <paramref name="flag" /> in the captured argument array.</summary>
+    /// <summary>
+    /// The value that follows the FIRST <paramref name="flag" /> in the
+    /// captured argument array. Only safe for flags that appear once - the
+    /// split command repeats <c>-map</c>, <c>-c:a</c> and the rest per output,
+    /// which is why the split tests assert the whole array instead.
+    /// </summary>
     private string? ArgumentAfter(string flag)
     {
         int index = Array.IndexOf(_capturedArguments, flag);
         return index >= 0 && index + 1 < _capturedArguments.Length
             ? _capturedArguments[index + 1]
             : null;
+    }
+
+    /// <summary>
+    /// The whole stemsplit command, with the two scratch paths the run
+    /// actually leased filled in - their names carry a random Ulid, so they
+    /// cannot be written out literally.
+    /// <para>
+    /// Asserted in full, and deliberately: a window argument in the wrong
+    /// place still satisfies "the array contains -t", which is how a window
+    /// that reached only the first output went unnoticed.
+    /// </para>
+    /// </summary>
+    private string[] ExpectedSplitArguments(params string[] windowArguments)
+    {
+        _leasedDerivedPaths.Should().HaveCount(2);
+
+        string vocalsPath = _leasedDerivedPaths[0];
+        string accompanimentPath = _leasedDerivedPaths[1];
+
+        vocalsPath.Should().MatchRegex(@"^tmp/[0-9A-Z]{26}-vocals\.opus$");
+        accompanimentPath.Should().Be(vocalsPath.Replace("-vocals.opus", "-accompaniment.opus"));
+
+        return
+        [
+            "-nostdin",
+            .. windowArguments,
+            "-i",
+            "/library/folder/track.flac",
+            "-vn",
+            "-sn",
+            "-dn",
+            "-filter_complex",
+            $"[0:a]stemsplit=model={ModelFile}[voc][acc]",
+            "-map",
+            "[voc]",
+            "-c:a",
+            "libopus",
+            "-b:a",
+            "160k",
+            "-ar",
+            "48000",
+            vocalsPath,
+            "-map",
+            "[acc]",
+            "-c:a",
+            "libopus",
+            "-b:a",
+            "160k",
+            "-ar",
+            "48000",
+            accompanimentPath,
+        ];
     }
 
     // --- RunFilterGraphAsync: the command --------------------------------
@@ -541,9 +609,7 @@ public class PluginAudioToolsTests : IDisposable
         await CreateTools()
             .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.MixIn, PluginStemSet.Two);
 
-        _capturedArguments.Should().Contain("-t");
-        ArgumentAfter("-t").Should().Be("60");
-        _capturedArguments.Should().NotContain("-ss");
+        _capturedArguments.Should().Equal(ExpectedSplitArguments("-t", "60"));
     }
 
     [Fact]
@@ -552,9 +618,7 @@ public class PluginAudioToolsTests : IDisposable
         await CreateTools()
             .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.MixOut, PluginStemSet.Two);
 
-        _capturedArguments.Should().Contain("-ss");
-        ArgumentAfter("-ss").Should().Be("225");
-        _capturedArguments.Should().NotContain("-t");
+        _capturedArguments.Should().Equal(ExpectedSplitArguments("-ss", "225"));
     }
 
     [Fact]
@@ -563,27 +627,26 @@ public class PluginAudioToolsTests : IDisposable
         await CreateTools()
             .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
 
-        _capturedArguments.Should().NotContain("-ss");
-        _capturedArguments.Should().NotContain("-t");
-        _capturedArguments
-            .Take(6)
-            .Should()
-            .Equal("-nostdin", "-i", "/library/folder/track.flac", "-vn", "-sn", "-dn");
-        ArgumentAfter("-filter_complex").Should().Be($"[0:a]stemsplit=model={ModelFile}[voc][acc]");
+        _capturedArguments.Should().Equal(ExpectedSplitArguments());
+        _capturedExecutable.Should().Be(FfmpegBinary);
         _capturedWorkingDirectory.Should().Be(AppFiles.FfmpegFolder);
     }
 
     [Fact]
-    public async Task SplitStems_WritesTwoOpusOutputs()
+    public async Task SplitStems_WindowIsAnInputOption_SoBothStemsGetIt()
     {
         await CreateTools()
-            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
+            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.MixOut, PluginStemSet.Two);
 
-        _capturedArguments.Should().ContainInOrder("-map", "[voc]", "-c:a", "libopus");
-        _capturedArguments.Should().ContainInOrder("-map", "[acc]", "-c:a", "libopus");
-        _capturedArguments.Count(argument => argument == "160k").Should().Be(2);
-        _capturedArguments.Count(argument => argument == "48000").Should().Be(2);
-        _capturedArguments[^1].Should().EndWith("-accompaniment.opus");
+        // The regression this guards: placed after -i, a window binds to the
+        // next file named - the first output. The vocals stem would be the
+        // window and the accompaniment stem the whole track, while both were
+        // registered with the same window milliseconds. Ahead of -i it trims
+        // the decoded stream, so both output pads see the same audio.
+        int inputIndex = Array.IndexOf(_capturedArguments, "-i");
+        inputIndex.Should().BePositive();
+        Array.IndexOf(_capturedArguments, "-ss").Should().BeLessThan(inputIndex);
+        _capturedArguments.Skip(inputIndex).Should().NotContain("-ss").And.NotContain("-t");
     }
 
     [Fact]
