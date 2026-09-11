@@ -404,11 +404,17 @@ the millisecond-range check. A partial base row is normal, not a defect.
 | `"stems must not be null"` | `RegisterStemsAsync` was handed a null list | pass an empty list, or the stems you meant to write |
 | `"stems contains the same stem twice: {kind}/{coverage}"` | two entries of one batch address the same register row (same track, kind, coverage and producer version) | one row per (track, kind, coverage, producer version); drop the duplicate before calling |
 
+Three more, for a member left out entirely: `"format must not be empty"`,
+`"kind must not be empty"` and `"producer_version must not be empty"` — every
+string member of a stem is required, and whitespace is as absent as null.
+
 `format` and `kind` are stored lower-cased whatever casing you write them in
 (`"OPUS"` and `"Vocals"` land as `opus` and `vocals`), so one stem is one row
-however two passes of your own code happen to spell it. Refusals quote the
-casing you sent. The checks run in the order of the table above, with the
-track first — the same order `UpsertDjAnalysisAsync` uses.
+however two passes of your own code happen to spell it; refusals quote the
+casing you sent. The whole-batch checks (`stems must not be null`, the
+duplicate check) run first; then, per stem, the track before anything else —
+the same order `UpsertDjAnalysisAsync` uses — then the members, then the key,
+the format pairing and the window.
 
 ### `IPluginMusicAnalysisWriter.MarkFailedAsync`
 
@@ -426,7 +432,11 @@ it lives:
 
 - **No per-plugin state at all** — one shared singleton for every plugin.
   `PluginDerivedAudio` is this: it forwards to the server's own store and
-  holds nothing of its own.
+  holds nothing of its own. It has no plugin of its own to name either, so
+  the warning it logs when a call fails inside the server carries the empty
+  ULID as its `PluginId` — every entry the host writes about a plugin call
+  uses one template, `plugin {PluginId}: {Member} failed inside the server`,
+  with the plugin and the member as structured properties.
 - **Stamps the plugin id but holds no state** — built per call by a factory,
   so nothing has to be cached or invalidated.
   `PluginMusicAnalysisWriterFactory` is this: every write is stamped with the
