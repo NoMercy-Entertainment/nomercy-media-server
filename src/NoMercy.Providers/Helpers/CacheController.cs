@@ -9,7 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using NoMercy.NmSystem.Extensions;
@@ -17,13 +16,13 @@ using NoMercy.NmSystem.Information;
 using NoMercy.NmSystem.NewtonSoftConverters;
 using NoMercy.NmSystem.SystemCalls;
 using NoMercy.Storage;
+using NoMercy.Storage.Common;
 
 namespace NoMercy.Providers.Helpers;
 
 public static class CacheController
 {
     private const long MaxCacheSizeBytes = 500_000_000; // 500MB
-    private const int MaxLockEntries = 10_000;
 
     // Prune is O(N) over the entire cache directory (List + sort + sum). Heavy
     // parallel TMDB fetches (cast/crew with 50-200 people per show) used to
@@ -47,31 +46,10 @@ public static class CacheController
             "CacheController has not been initialized. Call CacheController.Initialize() at startup."
         );
 
-    private static readonly ConcurrentDictionary<string, SemaphoreSlim> FileLocks = new();
-
-    private static SemaphoreSlim GetLock(string path)
-    {
-        if (FileLocks.Count > MaxLockEntries)
-        {
-            PruneLocks();
-        }
-
-        return FileLocks.GetOrAdd(path, _ => new(1, 1));
-    }
-
-    private static void PruneLocks()
-    {
-        foreach (KeyValuePair<string, SemaphoreSlim> entry in FileLocks)
-        {
-            if (entry.Value.CurrentCount == 1)
-            {
-                if (FileLocks.TryRemove(entry.Key, out SemaphoreSlim? removed))
-                {
-                    removed.Dispose();
-                }
-            }
-        }
-    }
+    // One key per cache file, which is one per cached URL: the shared keyed
+    // lock removes a key once nothing is reading or writing that file any
+    // more, so this no longer needs a cap and a sweep of its own.
+    private static readonly KeyedAsyncLock FileLocks = new();
 
     public static string GenerateFileName(string url)
     {
@@ -102,51 +80,43 @@ public static class CacheController
             return (false, default);
 
         string fullname = Path.Combine(AppFiles.ApiCachePath, GenerateFileName(url));
-        SemaphoreSlim fileLock = GetLock(fullname);
-        await fileLock.WaitAsync();
+        using IDisposable fileLock = await FileLocks.AcquireAsync(fullname);
 
-        try
+        IStorage storage = Storage;
+
+        if (!storage.Exists(fullname))
         {
-            IStorage storage = Storage;
-
-            if (!storage.Exists(fullname))
-            {
-                return (false, default);
-            }
-
-            if (storage.LastModified(fullname) < DateTimeOffset.UtcNow.Subtract(maxAge))
-            {
-                storage.Delete(fullname);
-                return (false, default);
-            }
-
-            T? data;
-            try
-            {
-                string d = Encoding.UTF8.GetString(storage.Read(fullname));
-                data = xml ? d.FromXml<T>() : d.FromJson<T>();
-            }
-            catch (Exception)
-            {
-                return (false, default);
-            }
-
-            if (data == null)
-            {
-                return (true, default);
-            }
-
-            if (data is { } item)
-            {
-                return (true, item);
-            }
-
             return (false, default);
         }
-        finally
+
+        if (storage.LastModified(fullname) < DateTimeOffset.UtcNow.Subtract(maxAge))
         {
-            fileLock.Release();
+            storage.Delete(fullname);
+            return (false, default);
         }
+
+        T? data;
+        try
+        {
+            string d = Encoding.UTF8.GetString(storage.Read(fullname));
+            data = xml ? d.FromXml<T>() : d.FromJson<T>();
+        }
+        catch (Exception)
+        {
+            return (false, default);
+        }
+
+        if (data == null)
+        {
+            return (true, default);
+        }
+
+        if (data is { } item)
+        {
+            return (true, item);
+        }
+
+        return (false, default);
     }
 
     public static async Task Write(string url, string data)
@@ -156,22 +126,20 @@ public static class CacheController
             return;
 
         string fullname = Path.Combine(AppFiles.ApiCachePath, GenerateFileName(url));
-        SemaphoreSlim fileLock = GetLock(fullname);
 
         for (int retry = 0; retry <= 10; retry++)
         {
-            await fileLock.WaitAsync();
-
-            try
+            // Taken per attempt, so a reader of the same file does not queue
+            // behind a writer that is sleeping between tries.
+            using (IDisposable fileLock = await FileLocks.AcquireAsync(fullname))
             {
-                await Storage.WriteAllTextAsync(fullname, data, CancellationToken.None);
-                MaybeSchedulePrune();
-                return;
-            }
-            catch (Exception) when (retry < 10) { }
-            finally
-            {
-                fileLock.Release();
+                try
+                {
+                    await Storage.WriteAllTextAsync(fullname, data, CancellationToken.None);
+                    MaybeSchedulePrune();
+                    return;
+                }
+                catch (Exception) when (retry < 10) { }
             }
 
             await Task.Delay(50 * (retry + 1));

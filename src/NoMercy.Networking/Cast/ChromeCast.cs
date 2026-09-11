@@ -19,6 +19,7 @@ using NoMercy.Events;
 using NoMercy.Events.Cast;
 using NoMercy.Networking.Discovery;
 using NoMercy.NmSystem.Extensions;
+using NoMercy.Storage.Common;
 using Sharpcaster;
 using Sharpcaster.Models;
 using Sharpcaster.Models.ChromecastStatus;
@@ -60,9 +61,13 @@ public class ChromeCastService : IChromeCastService
     // Per-name connect gate so concurrent callers (VideoHub, MusicHub × 2
     // observed in practice) don't each open a wasted TCP connection to the
     // same TV. First caller wins, others wait and read from ClientPool.
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> _connectGates = new(
-        StringComparer.OrdinalIgnoreCase
-    );
+    //
+    // The shared keyed lock, which also removes a receiver's key once nobody
+    // is connecting to it any more. Its keys are ordinal, so the name is
+    // lower-cased on the way in: the gate has to be at least as coarse as the
+    // pool's comparer, or two spellings of one TV would each open their own
+    // connection to it.
+    private readonly KeyedAsyncLock _connectGates = new();
 
     // Tracks which receiver was most recently selected (for compat callers that
     // call SelectChromecast then Launch/CastPlaylist without passing a name).
@@ -502,31 +507,26 @@ public class ChromeCastService : IChromeCastService
 
         // Serialize per-name so 3 concurrent callers don't each open a TCP
         // connection. First caller does the work; the rest wait, then read
-        // from ClientPool (which the winner populated below).
-        SemaphoreSlim gate = _connectGates.GetOrAdd(name, _ => new(1, 1));
-        await gate.WaitAsync();
-        try
-        {
-            if (ClientPool.TryGetValue(name, out ChromecastClient? raced))
-                return raced;
+        // from ClientPool (which the winner populated below). Lower-cased
+        // because the gate has to be at least as coarse as the pool's own
+        // case-insensitive comparer.
+        using IDisposable gate = await _connectGates.AcquireAsync(name.ToLowerInvariant());
 
-            ChromecastClient newClient = BuildClient(name);
-            _logger.LogInformation("Connecting to chromecast: {Name}", name);
-            await newClient.ConnectChromecast(receiver);
+        if (ClientPool.TryGetValue(name, out ChromecastClient? raced))
+            return raced;
 
-            // Disable Sharpcaster's internal heartbeat after Connect — the
-            // timer is only constructed once Connect spins up the channels.
-            DisableSharpcasterHeartbeat(newClient);
-            WireDisconnectCleanup(name, newClient);
-            EnsureHeartbeatWardenStarted();
+        ChromecastClient newClient = BuildClient(name);
+        _logger.LogInformation("Connecting to chromecast: {Name}", name);
+        await newClient.ConnectChromecast(receiver);
 
-            ClientPool[name] = newClient;
-            return newClient;
-        }
-        finally
-        {
-            gate.Release();
-        }
+        // Disable Sharpcaster's internal heartbeat after Connect — the
+        // timer is only constructed once Connect spins up the channels.
+        DisableSharpcasterHeartbeat(newClient);
+        WireDisconnectCleanup(name, newClient);
+        EnsureHeartbeatWardenStarted();
+
+        ClientPool[name] = newClient;
+        return newClient;
     }
 
     // The Sharpcaster heartbeat is disabled process-wide (re-enabling it crashes
