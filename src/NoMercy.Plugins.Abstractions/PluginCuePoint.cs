@@ -15,6 +15,7 @@ namespace NoMercy.Plugins.Abstractions;
 /// One place in a track a transition could sensibly start or land, found by
 /// analysis rather than guessed from the beat grid alone.
 /// </summary>
+/// <param name="Ms">Milliseconds from the start of the track.</param>
 /// <param name="Type">One of "intro", "drop", "breakdown" or "outro" - what kind of section boundary this is.</param>
 /// <param name="Direction">One of "mixIn" or "mixOut" - whether this point suits entering or leaving the track.</param>
 /// <param name="Score">0..1, how strong a candidate this is relative to the track's other cue points.</param>

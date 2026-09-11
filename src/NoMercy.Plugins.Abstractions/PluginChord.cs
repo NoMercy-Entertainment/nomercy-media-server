@@ -12,5 +12,6 @@
 namespace NoMercy.Plugins.Abstractions;
 
 /// <summary>One chord change, as ffmpeg's keydetect filter timed it.</summary>
+/// <param name="Ms">Milliseconds from the start of the track.</param>
 /// <param name="Chord">As the detector named it, for example "Am" or "F#maj".</param>
 public sealed record PluginChord(int Ms, string Chord);

@@ -17,7 +17,9 @@ namespace NoMercy.Plugins.Abstractions;
 /// <see cref="PluginStemSet.Two" />; "vocals", "drums", "bass" and "other"
 /// for <see cref="PluginStemSet.Four" />.
 /// </param>
+/// <param name="Coverage">How much of the track this stem was split from; see <see cref="PluginStemCoverage" />.</param>
 /// <param name="StorageKey">The key to read it back with <see cref="IPluginDerivedAudio.OpenReadAsync" />.</param>
+/// <param name="Bytes">The stem file's size, for a caller budgeting cache space before it reads anything.</param>
 public sealed record PluginStemFile(
     string Kind,
     PluginStemCoverage Coverage,

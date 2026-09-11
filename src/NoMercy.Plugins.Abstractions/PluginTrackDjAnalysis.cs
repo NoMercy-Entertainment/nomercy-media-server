@@ -41,8 +41,10 @@ namespace NoMercy.Plugins.Abstractions;
 /// region does not claim silence, only that no vocal was detected there.
 /// </param>
 /// <param name="BarEnergy">
-/// One 0..1 value per bar, in bar order, cheap enough to hold for a whole
-/// track so a caller can plot or search an energy arc without asking per bar.
+/// Short-term loudness in LUFS per bar, index = bar; not normalised, so
+/// values are typically negative, roughly -60 to 0. Cheap enough to hold for
+/// a whole track so a caller can plot or search an energy arc without asking
+/// per bar.
 /// </param>
 /// <param name="CuePoints">Candidate transition points; see <see cref="PluginCuePoint" />.</param>
 /// <param name="Chords">The chord timeline; see <see cref="PluginChord" />.</param>
