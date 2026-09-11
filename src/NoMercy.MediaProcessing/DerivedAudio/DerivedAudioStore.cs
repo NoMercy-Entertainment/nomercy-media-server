@@ -9,12 +9,12 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NoMercy.Database;
 using NoMercy.Storage;
+using NoMercy.Storage.Common;
 using DerivedAudioRow = NoMercy.Database.Models.Music.DerivedAudio;
 
 namespace NoMercy.MediaProcessing.DerivedAudio;
@@ -29,11 +29,11 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
     private readonly ILogger<DerivedAudioStore> _logger;
 
     // Serializes puts, touches and deletes of one key inside this store, which
-    // is a process-wide singleton. A semaphore is only ever created for a key
-    // the register actually holds - an unknown key is answered before this is
-    // touched - so the dictionary is bounded by stored content, not by what
-    // callers ask about.
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new();
+    // is a process-wide singleton. A key is only ever locked once the register
+    // is known to hold it - an unknown key is answered before this is touched -
+    // so the lock table is bounded by stored content, not by what callers ask
+    // about.
+    private readonly KeyedAsyncLock _locks = new();
 
     /// <param name="storage">An <see cref="IStorage" /> scoped to <c>AppFiles.DerivedAudioPath</c>; every path below is relative to it.</param>
     /// <param name="contextFactory">Creates a fresh <see cref="MediaContext" /> per operation.</param>
@@ -94,16 +94,8 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
             key = Convert.ToHexStringLower(hash.GetHashAndReset());
         }
 
-        SemaphoreSlim keyLock = _locks.GetOrAdd(key, static _ => new SemaphoreSlim(1, 1));
-        await keyLock.WaitAsync(ct);
-        try
-        {
-            return await StoreAndRegisterAsync(tempPath, key, contentType, bytes, ct);
-        }
-        finally
-        {
-            keyLock.Release();
-        }
+        using IDisposable keyLock = await _locks.AcquireAsync(key, ct);
+        return await StoreAndRegisterAsync(tempPath, key, contentType, bytes, ct);
     }
 
     // Split out so the per-key lock covers only the exists/move/register
@@ -220,7 +212,7 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
 
     /// <summary>
     /// The pre-check outside the lock is what keeps a key nothing ever stored
-    /// from minting a semaphore; the re-check inside it is what survives an
+    /// from taking a lock at all; the re-check inside it is what survives an
     /// eviction that took the entry while this call was queued behind it.
     /// <para>
     /// Only the stream outlives the lock. That is safe: the touch above it has
@@ -325,8 +317,8 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
     }
 
     /// <summary>
-    /// Asked before the key's semaphore is created, so a well-formed key
-    /// nothing ever stored leaves no lock behind in the dictionary.
+    /// Asked before the key is ever locked, so a well-formed key nothing ever
+    /// stored leaves no entry behind in the lock table.
     /// </summary>
     private async Task<bool> HasRegisterRowAsync(string key, CancellationToken ct)
     {
@@ -398,30 +390,23 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
         CancellationToken ct
     )
     {
-        SemaphoreSlim keyLock = _locks.GetOrAdd(key, static _ => new SemaphoreSlim(1, 1));
-        await keyLock.WaitAsync(ct);
-        try
-        {
-            DerivedAudioRow? row;
-            await using (MediaContext context = await _contextFactory.CreateDbContextAsync(ct))
-            {
-                row = await context
-                    .DerivedAudio.AsNoTracking()
-                    .FirstOrDefaultAsync(candidate => candidate.Key == key, ct);
-            }
+        using IDisposable keyLock = await _locks.AcquireAsync(key, ct);
 
-            if (row is null || row.LastUsedAt > DateTime.UtcNow - grace)
-            {
-                return null;
-            }
-
-            await DeleteEntryAsync(key, ct);
-            return row.Bytes;
-        }
-        finally
+        DerivedAudioRow? row;
+        await using (MediaContext context = await _contextFactory.CreateDbContextAsync(ct))
         {
-            keyLock.Release();
+            row = await context
+                .DerivedAudio.AsNoTracking()
+                .FirstOrDefaultAsync(candidate => candidate.Key == key, ct);
         }
+
+        if (row is null || row.LastUsedAt > DateTime.UtcNow - grace)
+        {
+            return null;
+        }
+
+        await DeleteEntryAsync(key, ct);
+        return row.Bytes;
     }
 
     /// <summary>
@@ -443,16 +428,8 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
     /// <summary>The same lock around a body that answers with something.</summary>
     private async Task<T> UnderKeyLockAsync<T>(string key, Func<Task<T>> body, CancellationToken ct)
     {
-        SemaphoreSlim keyLock = _locks.GetOrAdd(key, static _ => new SemaphoreSlim(1, 1));
-        await keyLock.WaitAsync(ct);
-        try
-        {
-            return await body();
-        }
-        finally
-        {
-            keyLock.Release();
-        }
+        using IDisposable keyLock = await _locks.AcquireAsync(key, ct);
+        return await body();
     }
 
     /// <summary>The touch itself, with the key's lock already held.</summary>

@@ -250,7 +250,7 @@ public sealed class DerivedAudioStoreTests : IDisposable
     }
 
     /// <summary>
-    /// The pre-check that keeps an unknown key from minting a semaphore saw a
+    /// The pre-check that keeps an unknown key out of the lock table saw a
     /// register row, and eviction took the entry while this call was still
     /// waiting for the key lock. The touch must not run at all then - the row
     /// it would bump is gone, and the window between the pre-check and the
@@ -460,8 +460,8 @@ public sealed class DerivedAudioStoreTests : IDisposable
 
     /// <summary>
     /// The victim's delete runs with the key's lock already held, so it must
-    /// not take that lock again: a <see cref="SemaphoreSlim" /> is not
-    /// re-entrant and the second wait would never return. Asserted against a
+    /// not take that lock again: the keyed lock is not re-entrant and the
+    /// second wait would never return. Asserted against a
     /// deadline, so a regression here reports as a failed test rather than as
     /// a test run that stops.
     /// </summary>
