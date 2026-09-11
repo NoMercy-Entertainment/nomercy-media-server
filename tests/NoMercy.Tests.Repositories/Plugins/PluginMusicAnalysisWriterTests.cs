@@ -414,6 +414,81 @@ public class PluginMusicAnalysisWriterTests : IDisposable
             .Be("vocal_regions_ms entry 0 must be [start, end] with start < end");
     }
 
+    /// <summary>
+    /// A null entry in the list is the same malformed region as a one-element
+    /// one, and gets the same words - never the
+    /// <see cref="NullReferenceException" /> reading through it would throw,
+    /// which the guard would hand back as "the server could not complete this
+    /// call" and tell the plugin author nothing.
+    /// </summary>
+    [Fact]
+    public async Task UpsertDjAnalysisAsync_RefusesANullVocalRegionEntry()
+    {
+        PluginTrackDjAnalysis record = ValidRecord(_trackId) with
+        {
+            VocalRegionsMs =
+            [
+                [1000, 5000],
+                null!,
+            ],
+        };
+
+        PluginWriteResult result = await CreateWriter(NewStoreMock().Object)
+            .UpsertDjAnalysisAsync(record);
+
+        result.Ok.Should().BeFalse();
+        result
+            .Refusal.Should()
+            .Be("vocal_regions_ms entry 1 must be [start, end] with start < end");
+    }
+
+    [Fact]
+    public async Task UpsertDjAnalysisAsync_RefusesANullCuePoint()
+    {
+        PluginTrackDjAnalysis record = ValidRecord(_trackId) with
+        {
+            CuePoints = [new PluginCuePoint(1000, "intro", "mixIn", 0.9), null!],
+        };
+
+        PluginWriteResult result = await CreateWriter(NewStoreMock().Object)
+            .UpsertDjAnalysisAsync(record);
+
+        result.Ok.Should().BeFalse();
+        result.Refusal.Should().Be("cue_points entry 1 must not be null");
+    }
+
+    [Fact]
+    public async Task UpsertDjAnalysisAsync_RefusesANullChord()
+    {
+        PluginTrackDjAnalysis record = ValidRecord(_trackId) with { Chords = [null!] };
+
+        PluginWriteResult result = await CreateWriter(NewStoreMock().Object)
+            .UpsertDjAnalysisAsync(record);
+
+        result.Ok.Should().BeFalse();
+        result.Refusal.Should().Be("chords entry 0 must not be null");
+    }
+
+    /// <summary>
+    /// The same refusal when the library never recorded a duration: the
+    /// millisecond-range check that reads through these entries is skipped
+    /// then, so the shape check has to stand on its own.
+    /// </summary>
+    [Fact]
+    public async Task UpsertDjAnalysisAsync_RefusesANullEntryWhenTheDurationIsUnknown()
+    {
+        PluginTrackDjAnalysis record = ValidRecord(_trackUnknownDurationId) with
+        {
+            CuePoints = [null!],
+        };
+
+        PluginWriteResult result = await CreateWriter(NewStoreMock().Object)
+            .UpsertDjAnalysisAsync(record);
+
+        result.Ok.Should().BeFalse();
+        result.Refusal.Should().Be("cue_points entry 0 must not be null");
+    }
+
     [Fact]
     public async Task UpsertDjAnalysisAsync_RefusesNonAscendingPhraseStarts()
     {
@@ -573,6 +648,76 @@ public class PluginMusicAnalysisWriterTests : IDisposable
     }
 
     // --- RegisterStemAsync: refusals ---------------------------------------
+
+    /// <summary>
+    /// A plugin written against a looser language than C# can hand any of the
+    /// record's string members across as null. The format is the one that
+    /// reaches a <see cref="string.ToLowerInvariant" /> before anything else
+    /// looks at it, so it is the one that used to throw; all four are named in
+    /// words now, before any of them is read.
+    /// </summary>
+    [Fact]
+    public async Task RegisterStem_RefusesANullFormat()
+    {
+        Mock<IDerivedAudioStore> store = NewStoreMock();
+        store.Setup(s => s.ExistsAsync(KeyOne, It.IsAny<CancellationToken>())).ReturnsAsync(true);
+
+        PluginTrackStem stem = ValidFullStem(_trackId, KeyOne) with { Format = null! };
+
+        Func<Task<PluginWriteResult>> act = () =>
+            CreateWriter(store.Object).RegisterStemAsync(stem);
+
+        PluginWriteResult result = (await act.Should().NotThrowAsync()).Which;
+
+        result.Ok.Should().BeFalse();
+        result.Refusal.Should().Be("format must not be empty");
+
+        using MediaContext context = new(_options);
+        context.TrackStems.Any(row => row.TrackId == _trackId).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// The other three, null and whitespace alike. The storage key keeps the
+    /// refusal it already had - a plugin gets one answer for "that key is not
+    /// mine", whether it was invented, stale, or never filled in at all.
+    /// </summary>
+    [Theory]
+    [InlineData("kind", null, "kind must not be empty")]
+    [InlineData("kind", "   ", "kind must not be empty")]
+    [InlineData("producer_version", null, "producer_version must not be empty")]
+    [InlineData("producer_version", "   ", "producer_version must not be empty")]
+    [InlineData("storage_key", null, "storage key  is not in the derived store")]
+    [InlineData("storage_key", "   ", "storage key     is not in the derived store")]
+    public async Task RegisterStem_RefusesANullOrBlankMember(
+        string field,
+        string? value,
+        string expected
+    )
+    {
+        Mock<IDerivedAudioStore> store = NewStoreMock();
+        store
+            .Setup(s => s.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        PluginTrackStem valid = ValidFullStem(_trackId, KeyOne);
+        PluginTrackStem stem = field switch
+        {
+            "kind" => valid with { Kind = value! },
+            "producer_version" => valid with { ProducerVersion = value! },
+            _ => valid with { StorageKey = value! },
+        };
+
+        Func<Task<PluginWriteResult>> act = () =>
+            CreateWriter(store.Object).RegisterStemAsync(stem);
+
+        PluginWriteResult result = (await act.Should().NotThrowAsync()).Which;
+
+        result.Ok.Should().BeFalse();
+        result.Refusal.Should().Be(expected);
+
+        using MediaContext context = new(_options);
+        context.TrackStems.Any(row => row.TrackId == _trackId).Should().BeFalse();
+    }
 
     [Fact]
     public async Task RegisterStemAsync_RefusesAnUnknownTrack()

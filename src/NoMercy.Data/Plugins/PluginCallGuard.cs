@@ -22,12 +22,21 @@ namespace NoMercy.Data.Plugins;
 /// <para>
 /// Cancellation the caller asked for is never swallowed anywhere here.
 /// </para>
+/// <para>
+/// Which plugin and which member are logged as two structured properties
+/// rather than one sentence, so a log pipeline can answer "everything this
+/// plugin did" without parsing the message. The derived-audio facade is one
+/// object every plugin shares and has no plugin of its own to name; it passes
+/// <c>"shared"</c> rather than leaving the property out, because a missing
+/// field reads as a gap in the pipeline.
+/// </para>
 /// </summary>
 public static class PluginCallGuard
 {
     /// <summary>For a member that can say why it could not answer.</summary>
     public static async Task<T> RunAsync<T>(
-        string operation,
+        string pluginId,
+        string member,
         Func<Task<T>> body,
         Func<string, T> refuse,
         ILogger logger
@@ -39,7 +48,7 @@ public static class PluginCallGuard
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            LogUnexpected(logger, exception, operation);
+            LogUnexpected(logger, exception, pluginId, member);
             return refuse($"the server could not complete this call: {exception.GetType().Name}");
         }
     }
@@ -49,7 +58,8 @@ public static class PluginCallGuard
     /// the member already has a word for - false, or null.
     /// </summary>
     public static async Task<T> RunOrAsync<T>(
-        string operation,
+        string pluginId,
+        string member,
         Func<Task<T>> body,
         T fallback,
         ILogger logger
@@ -61,13 +71,18 @@ public static class PluginCallGuard
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            LogUnexpected(logger, exception, operation);
+            LogUnexpected(logger, exception, pluginId, member);
             return fallback;
         }
     }
 
     /// <summary>For a member that returns nothing, where a failure is a no-op.</summary>
-    public static async Task RunAsync(string operation, Func<Task> body, ILogger logger)
+    public static async Task RunAsync(
+        string pluginId,
+        string member,
+        Func<Task> body,
+        ILogger logger
+    )
     {
         try
         {
@@ -75,10 +90,20 @@ public static class PluginCallGuard
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
-            LogUnexpected(logger, exception, operation);
+            LogUnexpected(logger, exception, pluginId, member);
         }
     }
 
-    private static void LogUnexpected(ILogger logger, Exception exception, string operation) =>
-        logger.LogWarning(exception, "{Operation} failed inside the server", operation);
+    private static void LogUnexpected(
+        ILogger logger,
+        Exception exception,
+        string pluginId,
+        string member
+    ) =>
+        logger.LogWarning(
+            exception,
+            "plugin {PluginId}: {Member} failed inside the server",
+            pluginId,
+            member
+        );
 }
