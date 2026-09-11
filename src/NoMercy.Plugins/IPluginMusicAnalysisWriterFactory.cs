@@ -11,20 +11,19 @@
 
 using NoMercy.Plugins.Abstractions;
 
-namespace NoMercy.Data.Plugins;
+namespace NoMercy.Plugins;
 
 /// <summary>
-/// Hands out the host's <see cref="IPluginAudioTools" /> for one plugin.
+/// Builds the host's <see cref="IPluginMusicAnalysisWriter" /> for one plugin.
 /// <para>
-/// The same instance every time for the same plugin, deliberately: the
-/// one-ffmpeg-at-a-time guard lives inside the instance, so a fresh one per
-/// call would let a plugin start as many ffmpeg processes as it has call
-/// sites. Whether a plugin may have these tools at all is the
-/// <c>PluginHookCapability.AudioTools</c> question the plugin host answers
-/// before asking for them, not something this factory re-checks.
+/// Unlike <c>IPluginLibraryWriterFactory</c>, this never returns null: the
+/// grant question here is whether a plugin declared
+/// <c>PluginHookCapability.MusicAnalysisWrite</c>, which the plugin host
+/// checks before handing the writer out at all, not something this factory
+/// re-checks per call.
 /// </para>
 /// </summary>
-public interface IPluginAudioToolsFactory
+public interface IPluginMusicAnalysisWriterFactory
 {
-    IPluginAudioTools CreateFor(Ulid pluginId);
+    IPluginMusicAnalysisWriter CreateFor(Ulid pluginId);
 }
