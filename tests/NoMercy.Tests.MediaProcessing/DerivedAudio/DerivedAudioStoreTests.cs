@@ -333,6 +333,40 @@ public sealed class DerivedAudioStoreTests : IDisposable
     }
 
     /// <summary>
+    /// The victim's delete runs with the key's lock already held, so it must
+    /// not take that lock again: a <see cref="SemaphoreSlim" /> is not
+    /// re-entrant and the second wait would never return. Asserted against a
+    /// deadline, so a regression here reports as a failed test rather than as
+    /// a test run that stops.
+    /// </summary>
+    [Fact]
+    public async Task Evict_OfASingleKey_Completes()
+    {
+        IDerivedAudioStore store = Store();
+        DerivedAudioEntry entry = await store.PutAsync(
+            new MemoryStream(Encoding.UTF8.GetBytes("the only content")),
+            "audio/opus"
+        );
+
+        DateTime cold = DateTime.UtcNow.AddDays(-2);
+        await using (MediaContext context = new(_options))
+        {
+            await context
+                .DerivedAudio.Where(row => row.Key == entry.Key)
+                .ExecuteUpdateAsync(set => set.SetProperty(row => row.LastUsedAt, cold));
+        }
+
+        Task<long> evicting = store.EvictAsync(capBytes: 0, grace: TimeSpan.FromHours(1));
+        Task first = await Task.WhenAny(evicting, Task.Delay(TimeSpan.FromSeconds(10)));
+
+        first
+            .Should()
+            .BeSameAs(evicting, "eviction must not wait on the per-key lock it already holds");
+        (await evicting).Should().Be(entry.Bytes);
+        (await store.ExistsAsync(entry.Key)).Should().BeFalse();
+    }
+
+    /// <summary>
     /// The mirror of the tmp/ sweep, one step further along the put: a crash
     /// between the move into place and the register insert leaves a content
     /// file no key addresses and no policy counts. Only this sweep frees it,
