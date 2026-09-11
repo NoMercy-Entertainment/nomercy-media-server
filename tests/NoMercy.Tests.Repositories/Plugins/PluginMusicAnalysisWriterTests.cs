@@ -77,6 +77,12 @@ public class PluginMusicAnalysisWriterTests : IDisposable
         _connection = new("Data Source=:memory:");
         _connection.Open();
 
+        // The stem rows these tests register point at derived-store keys with no
+        // DerivedAudio parent row here - the store is a mock, so nothing ever
+        // inserted one. The cascade itself is proven against a real store in
+        // DerivedAudioStoreTests and against the schema in
+        // AnalysisRecordModelTests; what is under test here is every refusal
+        // the writer can hand back and what a valid write lands.
         using (SqliteCommand fkOff = _connection.CreateCommand())
         {
             fkOff.CommandText = "PRAGMA foreign_keys = OFF;";
@@ -366,6 +372,63 @@ public class PluginMusicAnalysisWriterTests : IDisposable
         row.BarEnergy.Should().Be("[]");
         row.CuePoints.Should().Be("[]");
         row.Chords.Should().Be("[]");
+    }
+
+    /// <summary>
+    /// Every list on the record is required. A null one would serialise to the
+    /// JSON literal <c>null</c> and land in a column the reader treats as "the
+    /// plugin stored nothing here" - a different claim from the <c>[]</c> an
+    /// empty measurement writes, and one no caller meant to make.
+    /// </summary>
+    [Theory]
+    [InlineData("phrase_starts_ms")]
+    [InlineData("vocal_regions_ms")]
+    [InlineData("bar_energy")]
+    [InlineData("cue_points")]
+    [InlineData("chords")]
+    public async Task UpsertDjAnalysisAsync_RefusesANullList(string field)
+    {
+        PluginTrackDjAnalysis valid = ValidRecord(_trackId);
+        PluginTrackDjAnalysis record = field switch
+        {
+            "phrase_starts_ms" => valid with { PhraseStartsMs = null! },
+            "vocal_regions_ms" => valid with { VocalRegionsMs = null! },
+            "bar_energy" => valid with { BarEnergy = null! },
+            "cue_points" => valid with { CuePoints = null! },
+            _ => valid with { Chords = null! },
+        };
+
+        PluginWriteResult result = await CreateWriter(NewStoreMock().Object)
+            .UpsertDjAnalysisAsync(record);
+
+        result.Ok.Should().BeFalse();
+        result.Refusal.Should().Be($"{field} must not be null");
+
+        using MediaContext context = new(_options);
+        context.TrackDjAnalysis.Any(analysis => analysis.TrackId == _trackId).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// A plugin sweeping a library unattended must not lose the whole sweep to
+    /// one unlucky track: a dependency that throws where nothing planned for it
+    /// becomes a refusal naming the exception's type, with the exception itself
+    /// on the server's own log.
+    /// </summary>
+    [Fact]
+    public async Task AThrowingDependency_BecomesARefusal()
+    {
+        Mock<IDerivedAudioStore> store = NewStoreMock();
+        store
+            .Setup(s => s.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new IOException("the derived volume went away"));
+
+        Func<Task<PluginWriteResult>> act = () =>
+            CreateWriter(store.Object).RegisterStemAsync(ValidFullStem(_trackId, KeyOne));
+
+        PluginWriteResult result = (await act.Should().NotThrowAsync()).Which;
+
+        result.Ok.Should().BeFalse();
+        result.Refusal.Should().Be("the server could not complete this call: IOException");
     }
 
     // --- RegisterStemAsync: refusals ---------------------------------------

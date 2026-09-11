@@ -33,7 +33,10 @@ namespace NoMercy.Data.Plugins;
 /// Every rejection comes back as a refusal in words rather than as an
 /// exception, for the same reason the analysis writer does it: a plugin's
 /// sweep runs unattended, and a stack trace nobody reads is worth nothing
-/// next to a reason the owner can act on.
+/// next to a reason the owner can act on. That holds for failures nobody
+/// planned for too - both public members catch what they did not expect, log
+/// it at Warning and refuse with the exception's type name. Cancellation the
+/// caller asked for is the one thing that still propagates.
 /// </para>
 /// <para>
 /// One instance per plugin, and one ffmpeg at a time inside it. A plugin that
@@ -57,8 +60,17 @@ public sealed class PluginAudioTools(
     ILogger<PluginAudioTools>? logger = null
 ) : IPluginAudioTools
 {
-    /// <summary>Matches the analysis pass: ffmpeg on a stalled mount never returns on its own.</summary>
-    private static readonly TimeSpan RunTimeout = TimeSpan.FromMinutes(10);
+    /// <summary>
+    /// Matches the analysis pass: ffmpeg on a stalled mount never returns on
+    /// its own.
+    /// <para>
+    /// Init-only and internal rather than a constant so the tests can prove
+    /// the timeout path without waiting ten minutes for it. Every production
+    /// call site takes the default; nothing can change it after construction,
+    /// so no two instances ever disagree about their own timeout mid-run.
+    /// </para>
+    /// </summary>
+    internal TimeSpan RunTimeout { get; init; } = TimeSpan.FromMinutes(10);
 
     /// <summary>The derived store's own scratch folder; its eviction sweep also cleans it.</summary>
     private const string TempFolder = "tmp";
@@ -76,6 +88,7 @@ public sealed class PluginAudioTools(
     private const string FfmpegMissing = "ffmpeg is not installed";
     private const string StemsplitModelMissing = "the stemsplit model is not installed";
     private const string RunInProgress = "another ffmpeg run of this plugin is still in progress";
+    private const string NoStemOutput = "stemsplit produced no output";
 
     private readonly SemaphoreSlim _oneRunAtATime = new(1, 1);
 
@@ -88,6 +101,24 @@ public sealed class PluginAudioTools(
         Action<string>? onStdOut,
         Action<string>? onStdErr,
         CancellationToken ct = default
+    )
+    {
+        try
+        {
+            return await RunFilterGraphCoreAsync(input, graph, onStdOut, onStdErr, ct);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return PluginAudioRunResult.Refused(Unexpected(exception, nameof(RunFilterGraphAsync)));
+        }
+    }
+
+    private async Task<PluginAudioRunResult> RunFilterGraphCoreAsync(
+        PluginAudioInput input,
+        PluginFilterGraph graph,
+        Action<string>? onStdOut,
+        Action<string>? onStdErr,
+        CancellationToken ct
     )
     {
         string? ffmpegPath = ResolveFfmpegPath();
@@ -149,6 +180,23 @@ public sealed class PluginAudioTools(
         PluginStemCoverage coverage,
         PluginStemSet stemSet,
         CancellationToken ct = default
+    )
+    {
+        try
+        {
+            return await SplitStemsCoreAsync(trackId, coverage, stemSet, ct);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            return PluginStemSplitResult.Refused(Unexpected(exception, nameof(SplitStemsAsync)));
+        }
+    }
+
+    private async Task<PluginStemSplitResult> SplitStemsCoreAsync(
+        string trackId,
+        PluginStemCoverage coverage,
+        PluginStemSet stemSet,
+        CancellationToken ct
     )
     {
         // The 4stems model is not in the ffmpeg build yet. Saying so beats
@@ -295,6 +343,24 @@ public sealed class PluginAudioTools(
                 );
 
                 return PluginStemSplitResult.Refused($"stemsplit exited with {result.ExitCode}");
+            }
+
+            // Exit code 0 is ffmpeg's word, not proof: a filter that produced
+            // no frames still exits clean, and reading a file that is not
+            // there would surface as an IOException from inside the store
+            // rather than as something a plugin can act on.
+            if (
+                !await derivedStorage.ExistsAsync(vocalsTemp, ct)
+                || !await derivedStorage.ExistsAsync(accompanimentTemp, ct)
+            )
+            {
+                _logger.LogWarning(
+                    "plugin {PluginId}: stemsplit exited 0 but wrote no output for track {TrackId}",
+                    pluginId,
+                    trackId
+                );
+
+                return PluginStemSplitResult.Refused(NoStemOutput);
             }
 
             // Both files land in the store before anything is registered, so a
@@ -465,11 +531,13 @@ public sealed class PluginAudioTools(
     /// same file check it makes stands in - better than refusing every split
     /// during the minutes after a restart.
     /// <para>
-    /// "The same check" means the same path, too: the probe reads
-    /// <see cref="EncoderOptions.StemsplitModelPath" />, which the host sets
-    /// from <see cref="AppFiles.StemsplitModelPath" /> but can point anywhere.
-    /// Reading <c>AppFiles</c> directly here would answer about a different
-    /// file than the probe does on a server that configured an override.
+    /// The fallback reads <see cref="EncoderOptions.StemsplitModelPath" />
+    /// first, which is the path the probe itself reads, so on a server that
+    /// configured an override both answer about the same file. Only when that
+    /// option is blank does this fall back to
+    /// <see cref="AppFiles.StemsplitModelPath" /> - the probe never does, but
+    /// it also never runs with a blank option, since the host sets the option
+    /// from exactly that constant.
     /// </para>
     /// </summary>
     private bool StemsplitModelPresent()
@@ -597,6 +665,25 @@ public sealed class PluginAudioTools(
 
         double start = duration * MixOutStart;
         return new(["-ss", Seconds(start)], Milliseconds(start), Milliseconds(duration));
+    }
+
+    /// <summary>
+    /// Turns a failure nobody planned for - a mount that went away, a locked
+    /// database file - into a refusal the caller can read, and puts the real
+    /// exception on the server's own record. A plugin sweeping a library
+    /// unattended loses one track this way instead of the whole sweep.
+    /// Cancellation the caller asked for never comes through here.
+    /// </summary>
+    private string Unexpected(Exception exception, string member)
+    {
+        _logger.LogWarning(
+            exception,
+            "plugin {PluginId}: {Member} failed inside the server",
+            pluginId,
+            member
+        );
+
+        return $"the server could not complete this call: {exception.GetType().Name}";
     }
 
     /// <summary>Seconds as ffmpeg reads them: invariant, and no decimal tail when there is none.</summary>

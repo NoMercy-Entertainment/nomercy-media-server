@@ -157,6 +157,51 @@ public class PluginDerivedAudioTests
     }
 
     /// <summary>
+    /// None of these members has a way to say why it could not answer, so a
+    /// store that throws reads as an absence rather than taking the plugin's
+    /// sweep down with it. <see cref="PluginDerivedAudio.PutAsync" /> is the
+    /// exception: it owes the caller the key of content it just produced, and
+    /// there is none.
+    /// </summary>
+    [Fact]
+    public async Task AThrowingStore_ReadsAsAnAbsence_ExceptOnPut()
+    {
+        Mock<IDerivedAudioStore> store = new();
+        IOException failure = new("the derived volume went away");
+        store
+            .Setup(s => s.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(failure);
+        store
+            .Setup(s => s.OpenReadAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(failure);
+        store
+            .Setup(s => s.TouchAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(failure);
+        store
+            .Setup(s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(failure);
+        store
+            .Setup(s =>
+                s.PutAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>())
+            )
+            .ThrowsAsync(failure);
+
+        PluginDerivedAudio facade = new(store.Object);
+
+        (await facade.ExistsAsync(SomeKey)).Should().BeFalse();
+        (await facade.OpenReadAsync(SomeKey)).Should().BeNull();
+
+        Func<Task> touch = () => facade.TouchAsync(SomeKey);
+        await touch.Should().NotThrowAsync();
+        Func<Task> delete = () => facade.DeleteAsync(SomeKey);
+        await delete.Should().NotThrowAsync();
+
+        using MemoryStream content = new([1, 2, 3]);
+        Func<Task> put = () => facade.PutAsync(content, "audio/opus");
+        await put.Should().ThrowAsync<IOException>();
+    }
+
+    /// <summary>
     /// A key is the lowercase hex of a SHA-256 digest and nothing else, so a
     /// short one, a traversal attempt, a near-miss length and the right
     /// characters in the wrong case are all refused here - before the store

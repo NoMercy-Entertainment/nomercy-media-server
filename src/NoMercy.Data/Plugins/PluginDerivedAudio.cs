@@ -9,6 +9,8 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.MediaProcessing.DerivedAudio;
 using NoMercy.Plugins.Abstractions;
 
@@ -31,44 +33,122 @@ namespace NoMercy.Data.Plugins;
 /// caller it has.
 /// </para>
 /// <para>
-/// None of these members has a refusal channel, so a refusal reads as an
-/// absence: <see cref="ExistsAsync" /> is false, <see cref="OpenReadAsync" />
-/// is null, and <see cref="TouchAsync" /> and <see cref="DeleteAsync" /> do
-/// nothing. <see cref="PutAsync" /> is the exception - it has to return a key,
-/// so a failure there is rethrown.
+/// None of these members has a refusal channel, so both a refused key and a
+/// failure inside the server read as an absence: <see cref="ExistsAsync" />
+/// answers false, <see cref="OpenReadAsync" /> answers null, and
+/// <see cref="TouchAsync" /> and <see cref="DeleteAsync" /> do nothing. Every
+/// one of those is logged at Warning first, so the owner still has the reason.
+/// <see cref="PutAsync" /> is the exception - it has to return the key of the
+/// content it was handed, and there is no key when the store would not take
+/// it, so that failure is logged and rethrown. Cancellation is never
+/// swallowed anywhere here: a caller that cancelled is owed its
+/// <see cref="OperationCanceledException" />.
 /// </para>
 /// </summary>
-public sealed class PluginDerivedAudio(IDerivedAudioStore store) : IPluginDerivedAudio
+public sealed class PluginDerivedAudio(
+    IDerivedAudioStore store,
+    ILogger<PluginDerivedAudio>? logger = null
+) : IPluginDerivedAudio
 {
+    private readonly ILogger<PluginDerivedAudio> _logger =
+        logger ?? NullLogger<PluginDerivedAudio>.Instance;
+
     public async Task<string> PutAsync(
         Stream content,
         string contentType,
         CancellationToken ct = default
     )
     {
-        DerivedAudioEntry entry = await store.PutAsync(content, contentType, ct);
-        return entry.Key;
+        // The one member with nothing sensible to hand back on failure: a
+        // caller asked for the key of content it just produced, and there is
+        // no key. Logged here so the reason is on the server's own record
+        // whichever way the plugin handles the throw.
+        try
+        {
+            DerivedAudioEntry entry = await store.PutAsync(content, contentType, ct);
+            return entry.Key;
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            _logger.LogWarning(exception, "the derived store could not accept a plugin's content");
+            throw;
+        }
     }
 
-    public Task<bool> ExistsAsync(string key, CancellationToken ct = default)
+    public async Task<bool> ExistsAsync(string key, CancellationToken ct = default)
     {
-        return DerivedAudioKey.IsValid(key) ? store.ExistsAsync(key, ct) : Task.FromResult(false);
+        if (!DerivedAudioKey.IsValid(key))
+        {
+            return false;
+        }
+
+        try
+        {
+            return await store.ExistsAsync(key, ct);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            Warn(exception, nameof(ExistsAsync));
+            return false;
+        }
     }
 
-    public Task<Stream?> OpenReadAsync(string key, CancellationToken ct = default)
+    public async Task<Stream?> OpenReadAsync(string key, CancellationToken ct = default)
     {
-        return DerivedAudioKey.IsValid(key)
-            ? store.OpenReadAsync(key, ct)
-            : Task.FromResult<Stream?>(null);
+        if (!DerivedAudioKey.IsValid(key))
+        {
+            return null;
+        }
+
+        try
+        {
+            return await store.OpenReadAsync(key, ct);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            Warn(exception, nameof(OpenReadAsync));
+            return null;
+        }
     }
 
-    public Task TouchAsync(string key, CancellationToken ct = default)
+    public async Task TouchAsync(string key, CancellationToken ct = default)
     {
-        return DerivedAudioKey.IsValid(key) ? store.TouchAsync(key, ct) : Task.CompletedTask;
+        if (!DerivedAudioKey.IsValid(key))
+        {
+            return;
+        }
+
+        try
+        {
+            await store.TouchAsync(key, ct);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            Warn(exception, nameof(TouchAsync));
+        }
     }
 
-    public Task DeleteAsync(string key, CancellationToken ct = default)
+    public async Task DeleteAsync(string key, CancellationToken ct = default)
     {
-        return DerivedAudioKey.IsValid(key) ? store.DeleteAsync(key, ct) : Task.CompletedTask;
+        if (!DerivedAudioKey.IsValid(key))
+        {
+            return;
+        }
+
+        try
+        {
+            await store.DeleteAsync(key, ct);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            Warn(exception, nameof(DeleteAsync));
+        }
     }
+
+    private void Warn(Exception exception, string member) =>
+        _logger.LogWarning(
+            exception,
+            "the server could not complete a plugin's {Member} call on the derived store",
+            member
+        );
 }

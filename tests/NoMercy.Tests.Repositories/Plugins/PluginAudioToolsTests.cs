@@ -86,6 +86,11 @@ public class PluginAudioToolsTests : IDisposable
     private int _runCount;
     private int _putCount;
 
+    // In PutAsync order: the keys the mocked store minted and the content types
+    // it was asked to store them under.
+    private readonly List<string> _putKeys = [];
+    private readonly List<string> _putContentTypes = [];
+
     // Swapped out by the concurrency test for a task that only completes once
     // the second call has already been refused.
     private Task<ProcessResult> _runResult = Task.FromResult(
@@ -97,6 +102,12 @@ public class PluginAudioToolsTests : IDisposable
         _connection = new("Data Source=:memory:");
         _connection.Open();
 
+        // The stem rows these tests register point at derived-store keys that
+        // have no DerivedAudio parent row here - the store is a mock, so
+        // nothing ever inserted one. The cascade itself is proven against a
+        // real store in DerivedAudioStoreTests and against the schema in
+        // AnalysisRecordModelTests; what is under test here is the command
+        // ffmpeg is handed and the refusals around it.
         using (SqliteCommand foreignKeysOff = _connection.CreateCommand())
         {
             foreignKeysOff.CommandText = "PRAGMA foreign_keys = OFF;";
@@ -219,7 +230,12 @@ public class PluginAudioToolsTests : IDisposable
             )
             .ReturnsAsync(
                 (Stream _, string contentType, CancellationToken _) =>
-                    new DerivedAudioEntry($"ab{++_putCount:D62}", contentType, 4096 + _putCount)
+                {
+                    string key = $"ab{++_putCount:D62}";
+                    _putKeys.Add(key);
+                    _putContentTypes.Add(contentType);
+                    return new DerivedAudioEntry(key, contentType, 4096 + _putCount);
+                }
             );
 
         _probe.Setup(probe => probe.GetCachedReport()).Returns(Report(stemsplitModelPresent: true));
@@ -292,14 +308,14 @@ public class PluginAudioToolsTests : IDisposable
             Issues: []
         );
 
-    private PluginAudioTools CreateTools()
+    private PluginAudioTools CreateTools(TimeSpan? runTimeout = null)
     {
         Mock<IDbContextFactory<MediaContext>> contextFactory = new();
         contextFactory
             .Setup(factory => factory.CreateDbContextAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => new(_options));
 
-        return new PluginAudioTools(
+        PluginAudioTools tools = new(
             _pluginId,
             _encoderOptions,
             _runner.Object,
@@ -310,7 +326,31 @@ public class PluginAudioToolsTests : IDisposable
             _writerFactory.Object,
             contextFactory.Object,
             _probe.Object
-        );
+        )
+        {
+            RunTimeout = runTimeout ?? TimeSpan.FromMinutes(10),
+        };
+
+        return tools;
+    }
+
+    /// <summary>
+    /// Fails rather than hanging the run when the thing it waits for never
+    /// happens: a spin on a flag a broken change never sets is a test suite
+    /// that stops instead of a test that reports.
+    /// </summary>
+    private static async Task WaitForAsync(Func<bool> condition, string what)
+    {
+        DateTime deadline = DateTime.UtcNow.AddSeconds(5);
+        while (!condition())
+        {
+            if (DateTime.UtcNow > deadline)
+            {
+                Assert.Fail($"timed out after 5 seconds waiting for {what}");
+            }
+
+            await Task.Yield();
+        }
     }
 
     private static string ModelFile => AppFiles.StemsplitModel + ".gguf";
@@ -513,10 +553,7 @@ public class PluginAudioToolsTests : IDisposable
 
         // The first run has to have reached the runner before the second call
         // means anything; the mock records every entry, so wait for that.
-        while (_runCount == 0)
-        {
-            await Task.Yield();
-        }
+        await WaitForAsync(() => _runCount > 0, "the first ffmpeg run to reach the runner");
 
         PluginAudioRunResult second = await tools.RunFilterGraphAsync(
             PluginAudioInput.Track(_trackId.ToString()),
@@ -629,6 +666,76 @@ public class PluginAudioToolsTests : IDisposable
 
     // --- SplitStemsAsync --------------------------------------------------
 
+    /// <summary>
+    /// ffmpeg on a stalled mount never returns on its own, so the host puts its
+    /// own clock on every run. The result is -2 rather than a refusal: the run
+    /// did start, the plugin's graph was accepted, and its callbacks saw
+    /// whatever ffmpeg printed before the clock ran out.
+    /// </summary>
+    [Fact]
+    public async Task RunFilterGraph_ReturnsMinusTwo_WhenTheRunTimesOut()
+    {
+        _runner
+            .Setup(runner =>
+                runner.RunAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string[]>(),
+                    It.IsAny<Action<string>?>(),
+                    It.IsAny<Action<string>?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .Returns(
+                async (
+                    string _,
+                    string[] _,
+                    Action<string>? _,
+                    Action<string>? _,
+                    string? _,
+                    CancellationToken ct
+                ) =>
+                {
+                    // The real runner kills the process when its token trips;
+                    // waiting forever on the token is the same observable thing.
+                    await Task.Delay(-1, ct);
+                    return new ProcessResult(0, string.Empty, string.Empty, TimeSpan.Zero);
+                }
+            );
+
+        PluginAudioRunResult result = await CreateTools(TimeSpan.FromMilliseconds(50))
+            .RunFilterGraphAsync(
+                PluginAudioInput.Track(_trackId.ToString()),
+                new PluginFilterGraph("volume=1", Complex: false),
+                null,
+                null
+            );
+
+        result.ExitCode.Should().Be(-2);
+        result.Refusal.Should().BeNull();
+    }
+
+    /// <summary>
+    /// The build token goes into every stem's producer version, so a model or
+    /// binary upgrade can be spotted the way an analyzer upgrade is. A banner
+    /// that is not the one ffmpeg usually prints still has to produce a marker.
+    /// </summary>
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("Stream mapping:")]
+    [InlineData("ffmpeg version ")]
+    public void FfmpegVersion_IsUnknown_WhenTheBannerCarriesNoToken(string? bannerLine)
+    {
+        PluginAudioArguments.FfmpegVersion(bannerLine).Should().Be("unknown");
+    }
+
+    [Fact]
+    public void FfmpegVersion_ReadsTheTokenOutOfARealBanner()
+    {
+        PluginAudioArguments.FfmpegVersion(VersionLine).Should().Be("9.0-NoMercy-MediaServer");
+    }
+
     [Fact]
     public async Task SplitStems_Four_IsRefused()
     {
@@ -713,6 +820,17 @@ public class PluginAudioToolsTests : IDisposable
                 stem.ProducerVersion == AppFiles.StemsplitModel + "@9.0-NoMercy-MediaServer"
             );
 
+        // The keys the mocked store minted, in the order it minted them: the
+        // vocals stem must carry the first and the accompaniment the second.
+        // Swapping them would still pass every assertion above while pointing
+        // each register row at the other stem's audio.
+        _registeredStems.Select(stem => stem.StorageKey).Should().Equal(_putKeys);
+        result.Stems.Select(stem => stem.StorageKey).Should().Equal(_putKeys);
+
+        // Opus in an Ogg container - the content type the derived store stores
+        // the stem under, and the one a client is later handed it with.
+        _putContentTypes.Should().Equal("audio/ogg", "audio/ogg");
+
         // Both temp files handed to the store are gone again afterwards.
         _deletedDerivedPaths.Should().HaveCount(2);
         _deletedDerivedPaths.Should().OnlyContain(path => path.StartsWith("tmp/"));
@@ -732,6 +850,79 @@ public class PluginAudioToolsTests : IDisposable
         result.Stems.Should().BeEmpty();
         _registeredStems.Should().BeEmpty();
         _deletedDerivedPaths.Should().HaveCount(2);
+    }
+
+    /// <summary>
+    /// Exit code 0 is ffmpeg's word, not proof. A graph that separated nothing
+    /// still exits clean, and the scratch files it never wrote would surface
+    /// from inside the store as an I/O error rather than as something a plugin
+    /// can act on.
+    /// </summary>
+    [Fact]
+    public async Task SplitStems_RefusesWhenFfmpegWroteNoOutput()
+    {
+        _derivedStorage
+            .Setup(storage =>
+                storage.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>())
+            )
+            .ReturnsAsync(false);
+
+        PluginStemSplitResult result = await CreateTools()
+            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
+
+        result.Refusal.Should().Be("stemsplit produced no output");
+        result.Stems.Should().BeEmpty();
+        _registeredStems.Should().BeEmpty();
+        _store.Verify(
+            store =>
+                store.PutAsync(
+                    It.IsAny<Stream>(),
+                    It.IsAny<string>(),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Never
+        );
+    }
+
+    /// <summary>
+    /// A plugin sweeping a library unattended must not lose the whole sweep to
+    /// one unlucky track: a dependency that throws where nothing planned for it
+    /// becomes a refusal naming the exception's type.
+    /// </summary>
+    [Fact]
+    public async Task AThrowingDependency_BecomesARefusal()
+    {
+        _runner
+            .Setup(runner =>
+                runner.RunAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string[]>(),
+                    It.IsAny<Action<string>?>(),
+                    It.IsAny<Action<string>?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .ThrowsAsync(new IOException("the library volume went away"));
+
+        PluginAudioTools tools = CreateTools();
+
+        Func<Task<PluginAudioRunResult>> runGraph = () =>
+            tools.RunFilterGraphAsync(
+                PluginAudioInput.Track(_trackId.ToString()),
+                new PluginFilterGraph("volume=1", Complex: false),
+                null,
+                null
+            );
+
+        PluginAudioRunResult graphResult = (await runGraph.Should().NotThrowAsync()).Which;
+        graphResult.Refusal.Should().Be("the server could not complete this call: IOException");
+
+        Func<Task<PluginStemSplitResult>> split = () =>
+            tools.SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
+
+        PluginStemSplitResult splitResult = (await split.Should().NotThrowAsync()).Which;
+        splitResult.Refusal.Should().Be("the server could not complete this call: IOException");
     }
 
     [Fact]

@@ -30,6 +30,13 @@ namespace NoMercy.Data.Plugins;
 /// stack trace nobody reads is worth nothing next to a reason the owner can
 /// act on.
 /// </para>
+/// <para>
+/// That holds for failures nobody planned for too - a locked database file, a
+/// disk that went away mid-write. Every member here catches what it did not
+/// expect, logs it at Warning and refuses with the exception's type name, so
+/// one bad track costs a plugin one refusal rather than its whole sweep.
+/// Cancellation the caller asked for is the one thing that still propagates.
+/// </para>
 /// </summary>
 public class PluginMusicAnalysisWriter(
     Ulid pluginId,
@@ -47,11 +54,55 @@ public class PluginMusicAnalysisWriter(
     private readonly ILogger<PluginMusicAnalysisWriter> _logger =
         logger ?? NullLogger<PluginMusicAnalysisWriter>.Instance;
 
-    public async Task<PluginWriteResult> UpsertDjAnalysisAsync(
+    public Task<PluginWriteResult> UpsertDjAnalysisAsync(
         PluginTrackDjAnalysis record,
         CancellationToken ct = default
+    ) => GuardAsync(nameof(UpsertDjAnalysisAsync), () => UpsertDjAnalysisCoreAsync(record, ct));
+
+    public Task<PluginWriteResult> RegisterStemAsync(
+        PluginTrackStem stem,
+        CancellationToken ct = default
+    ) => GuardAsync(nameof(RegisterStemAsync), () => RegisterStemCoreAsync(stem, ct));
+
+    public Task<PluginWriteResult> MarkFailedAsync(
+        Guid trackId,
+        int djAnalyzerVersion,
+        int baseAnalyzerVersion,
+        string reason,
+        CancellationToken ct = default
+    ) =>
+        GuardAsync(
+            nameof(MarkFailedAsync),
+            () => MarkFailedCoreAsync(trackId, djAnalyzerVersion, baseAnalyzerVersion, reason, ct)
+        );
+
+    /// <summary>
+    /// The one member with no refusal channel, so a failure has nowhere to go
+    /// but the log: deleting a row that is not there is already a no-op, and a
+    /// caller that asked for a row to be gone is no worse off being told
+    /// nothing than being handed a driver exception.
+    /// </summary>
+    public async Task DeleteDjAnalysisAsync(Guid trackId, CancellationToken ct = default)
+    {
+        try
+        {
+            await DeleteDjAnalysisCoreAsync(trackId, ct);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            LogUnexpected(exception, nameof(DeleteDjAnalysisAsync));
+        }
+    }
+
+    private async Task<PluginWriteResult> UpsertDjAnalysisCoreAsync(
+        PluginTrackDjAnalysis record,
+        CancellationToken ct
     )
     {
+        PluginWriteResult? missingList = CheckListsPresent(record);
+        if (missingList is not null)
+            return missingList;
+
         await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
 
         Track? track = await context
@@ -160,13 +211,27 @@ public class PluginMusicAnalysisWriter(
         existing.Chords = chordsJson;
         existing.AnalyzedAt = DateTime.UtcNow;
 
-        await context.SaveChangesAsync(ct);
+        try
+        {
+            await context.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException)
+        {
+            // Two sweeps upserting the same track at once: both read "no row"
+            // and both tried to insert. Nothing is lost - the winner wrote the
+            // same kind of record - so the loser is told to run again rather
+            // than handed a driver exception.
+            return PluginWriteResult.Refused(
+                $"the DJ record for track {record.TrackId} was written concurrently; retry"
+            );
+        }
+
         return PluginWriteResult.Accepted();
     }
 
-    public async Task<PluginWriteResult> RegisterStemAsync(
+    private async Task<PluginWriteResult> RegisterStemCoreAsync(
         PluginTrackStem stem,
-        CancellationToken ct = default
+        CancellationToken ct
     )
     {
         await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
@@ -237,12 +302,12 @@ public class PluginMusicAnalysisWriter(
         return PluginWriteResult.Accepted();
     }
 
-    public async Task<PluginWriteResult> MarkFailedAsync(
+    private async Task<PluginWriteResult> MarkFailedCoreAsync(
         Guid trackId,
         int djAnalyzerVersion,
         int baseAnalyzerVersion,
         string reason,
-        CancellationToken ct = default
+        CancellationToken ct
     )
     {
         await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
@@ -291,7 +356,7 @@ public class PluginMusicAnalysisWriter(
         return PluginWriteResult.Accepted();
     }
 
-    public async Task DeleteDjAnalysisAsync(Guid trackId, CancellationToken ct = default)
+    private async Task DeleteDjAnalysisCoreAsync(Guid trackId, CancellationToken ct)
     {
         await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
 
@@ -370,6 +435,66 @@ public class PluginMusicAnalysisWriter(
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Runs one contract call and turns anything it throws into a refusal:
+    /// every caller here is a plugin sweeping unattended, and an exception
+    /// crossing the host boundary takes that whole sweep down instead of one
+    /// track. The exception type is named in the refusal so the owner can match
+    /// it against the Warning line this also writes; cancellation the caller
+    /// asked for is passed through untouched.
+    /// </summary>
+    private async Task<PluginWriteResult> GuardAsync(
+        string member,
+        Func<Task<PluginWriteResult>> call
+    )
+    {
+        try
+        {
+            return await call();
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            LogUnexpected(exception, member);
+            return PluginWriteResult.Refused(
+                $"the server could not complete this call: {exception.GetType().Name}"
+            );
+        }
+    }
+
+    private void LogUnexpected(Exception exception, string member) =>
+        _logger.LogWarning(
+            exception,
+            "plugin {PluginId}: {Member} failed inside the server",
+            pluginId,
+            member
+        );
+
+    /// <summary>
+    /// Every list on the record is required. A null one is a caller bug that
+    /// would otherwise serialise to the JSON literal <c>null</c> and land in a
+    /// column the reader reads as "the plugin stored nothing here" - which is
+    /// a different claim from the <c>[]</c> an empty measurement writes.
+    /// </summary>
+    private static PluginWriteResult? CheckListsPresent(PluginTrackDjAnalysis record)
+    {
+        if (record.PhraseStartsMs is null)
+            return PluginWriteResult.Refused("phrase_starts_ms must not be null");
+
+        if (record.VocalRegionsMs is null)
+            return PluginWriteResult.Refused("vocal_regions_ms must not be null");
+
+        if (record.BarEnergy is null)
+            return PluginWriteResult.Refused("bar_energy must not be null");
+
+        if (record.CuePoints is null)
+            return PluginWriteResult.Refused("cue_points must not be null");
+
+        if (record.Chords is null)
+            return PluginWriteResult.Refused("chords must not be null");
+
+        return null;
     }
 
     private static PluginWriteResult? CheckJsonSize(params (string Field, string Json)[] columns)
