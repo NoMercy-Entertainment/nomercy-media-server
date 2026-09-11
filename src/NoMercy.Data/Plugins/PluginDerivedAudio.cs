@@ -23,8 +23,9 @@ namespace NoMercy.Data.Plugins;
 /// (the cache-cap sweep is the server's policy, not a plugin's to trigger) and
 /// <see cref="IDerivedAudioStore.RelativePath" /> (a plugin never learns where
 /// a file actually lives - it holds the key, and reads or writes through this
-/// facade). A null or empty key is refused here, before it reaches the store,
-/// since <c>RelativePath</c> slices the key apart to build a path.
+/// facade). A null, empty or whitespace-only key is refused here, before it
+/// reaches the store, since <c>RelativePath</c> slices the key apart to
+/// build a path.
 /// </para>
 /// </summary>
 public sealed class PluginDerivedAudio(IDerivedAudioStore store) : IPluginDerivedAudio
@@ -41,23 +42,23 @@ public sealed class PluginDerivedAudio(IDerivedAudioStore store) : IPluginDerive
 
     public Task<bool> ExistsAsync(string key, CancellationToken ct = default)
     {
-        return string.IsNullOrEmpty(key) ? Task.FromResult(false) : store.ExistsAsync(key, ct);
+        return string.IsNullOrWhiteSpace(key) ? Task.FromResult(false) : store.ExistsAsync(key, ct);
     }
 
     public Task<Stream?> OpenReadAsync(string key, CancellationToken ct = default)
     {
-        return string.IsNullOrEmpty(key)
+        return string.IsNullOrWhiteSpace(key)
             ? Task.FromResult<Stream?>(null)
             : store.OpenReadAsync(key, ct);
     }
 
     public Task TouchAsync(string key, CancellationToken ct = default)
     {
-        return string.IsNullOrEmpty(key) ? Task.CompletedTask : store.TouchAsync(key, ct);
+        return string.IsNullOrWhiteSpace(key) ? Task.CompletedTask : store.TouchAsync(key, ct);
     }
 
     public Task DeleteAsync(string key, CancellationToken ct = default)
     {
-        return string.IsNullOrEmpty(key) ? Task.CompletedTask : store.DeleteAsync(key, ct);
+        return string.IsNullOrWhiteSpace(key) ? Task.CompletedTask : store.DeleteAsync(key, ct);
     }
 }

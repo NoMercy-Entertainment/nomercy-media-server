@@ -114,12 +114,13 @@ public class PluginDerivedAudioTests
 
     /// <summary>
     /// <see cref="IDerivedAudioStore.RelativePath" /> slices the key to build a
-    /// path, so a null or empty key must never reach the store at all - the
-    /// facade answers "not found" / no-op on its own.
+    /// path, so a null, empty or whitespace-only key must never reach the
+    /// store at all - the facade answers "not found" / no-op on its own.
     /// </summary>
     [Theory]
     [InlineData(null)]
     [InlineData("")]
+    [InlineData(" ")]
     public async Task AnEmptyKey_NeverReachesTheStore(string? key)
     {
         Mock<IDerivedAudioStore> store = new();
