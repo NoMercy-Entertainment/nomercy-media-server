@@ -93,7 +93,7 @@ public class PluginMusicAnalysisWriter(
 
         if (durationSeconds is null)
         {
-            _logger.LogDebug(
+            _logger.LogInformation(
                 "Track {TrackId}: duration is unknown; skipping the millisecond-range check on its DJ analysis",
                 record.TrackId
             );
@@ -265,6 +265,20 @@ public class PluginMusicAnalysisWriter(
         existing.State = AudioAnalysisState.Failed;
         existing.FailureReason = truncatedReason;
         existing.AnalyzedAt = DateTime.UtcNow;
+
+        // A Failed row must not go on carrying a previous Ok row's
+        // measurements: a caller reading DjAnalyzerVersion = 4 has to be able
+        // to trust that either the row is Ok and current, or it has nothing.
+        // Null is the right value here - the one place it is, since the
+        // reader only ever surfaces Ok rows.
+        existing.DownbeatIndex = null;
+        existing.BeatsPerBar = 4;
+        existing.PhraseLengthBars = 8;
+        existing.PhraseStartsMs = null;
+        existing.VocalRegionsMs = null;
+        existing.BarEnergy = null;
+        existing.CuePoints = null;
+        existing.Chords = null;
 
         await context.SaveChangesAsync(ct);
         return PluginWriteResult.Accepted();

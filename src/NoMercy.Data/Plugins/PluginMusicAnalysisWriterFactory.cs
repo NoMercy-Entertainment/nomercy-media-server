@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using NoMercy.Database;
 using NoMercy.MediaProcessing.DerivedAudio;
 using NoMercy.Plugins.Abstractions;
@@ -18,14 +19,15 @@ namespace NoMercy.Data.Plugins;
 
 /// <summary>
 /// Builds a <see cref="PluginMusicAnalysisWriter" /> bound to one plugin's
-/// id. A singleton holding only the two collaborators every writer needs -
-/// the plugin id itself is per-call, not held here.
+/// id. A singleton holding the collaborators every writer needs - the
+/// plugin id itself is per-call, not held here.
 /// </summary>
 public class PluginMusicAnalysisWriterFactory(
     IDbContextFactory<MediaContext> contextFactory,
-    IDerivedAudioStore store
+    IDerivedAudioStore store,
+    ILogger<PluginMusicAnalysisWriter> logger
 ) : IPluginMusicAnalysisWriterFactory
 {
     public IPluginMusicAnalysisWriter CreateFor(Ulid pluginId) =>
-        new PluginMusicAnalysisWriter(pluginId, contextFactory, store);
+        new PluginMusicAnalysisWriter(pluginId, contextFactory, store, logger);
 }

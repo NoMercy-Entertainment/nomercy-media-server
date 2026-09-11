@@ -12,6 +12,7 @@
 using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Moq;
 using NoMercy.Data.Plugins;
 using NoMercy.Database;
@@ -504,6 +505,43 @@ public class PluginMusicAnalysisWriterTests : IDisposable
         row.FailureReason!.Length.Should().Be(1024);
     }
 
+    /// <summary>
+    /// A Failed row must never go on carrying a previous Ok row's
+    /// measurements - a caller reading a stale <c>DjAnalyzerVersion</c>
+    /// alongside <c>State = Failed</c> has to see nothing behind it, not the
+    /// last successful run's numbers.
+    /// </summary>
+    [Fact]
+    public async Task MarkFailed_AfterAnOkRow_ClearsTheMeasurements()
+    {
+        PluginMusicAnalysisWriter writer = CreateWriter(NewStoreMock().Object);
+
+        await writer.UpsertDjAnalysisAsync(ValidRecord(_trackId));
+
+        PluginWriteResult result = await writer.MarkFailedAsync(
+            _trackId,
+            4,
+            BaseAnalyzerVersion,
+            "vocal detector produced no regions"
+        );
+
+        result.Ok.Should().BeTrue();
+
+        using MediaContext context = new(_options);
+        TrackDjAnalysis row = context.TrackDjAnalysis.Single(a => a.TrackId == _trackId);
+
+        row.State.Should().Be(AudioAnalysisState.Failed);
+        row.DjAnalyzerVersion.Should().Be(4);
+        row.DownbeatIndex.Should().BeNull();
+        row.BeatsPerBar.Should().Be(4);
+        row.PhraseLengthBars.Should().Be(8);
+        row.PhraseStartsMs.Should().BeNull();
+        row.VocalRegionsMs.Should().BeNull();
+        row.BarEnergy.Should().BeNull();
+        row.CuePoints.Should().BeNull();
+        row.Chords.Should().BeNull();
+    }
+
     // --- DeleteDjAnalysisAsync -----------------------------------------------
 
     [Fact]
@@ -532,5 +570,46 @@ public class PluginMusicAnalysisWriterTests : IDisposable
             await CreateWriter(NewStoreMock().Object).DeleteDjAnalysisAsync(Guid.NewGuid());
 
         await act.Should().NotThrowAsync();
+    }
+
+    // --- PluginMusicAnalysisWriterFactory -------------------------------------
+
+    /// <summary>
+    /// The unknown-duration log line is worthless if it never reaches a real
+    /// sink: the factory has to hand every writer it builds the logger it was
+    /// given, not leave it on the writer's <c>NullLogger</c> fallback.
+    /// </summary>
+    [Fact]
+    public async Task CreateFor_GivesTheWriterTheFactorysLogger()
+    {
+        Mock<ILogger<PluginMusicAnalysisWriter>> loggerMock = new();
+
+        Mock<IDbContextFactory<MediaContext>> contextFactoryMock = new();
+        contextFactoryMock
+            .Setup(x => x.CreateDbContextAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => new(_options));
+
+        PluginMusicAnalysisWriterFactory factory = new(
+            contextFactoryMock.Object,
+            NewStoreMock().Object,
+            loggerMock.Object
+        );
+
+        IPluginMusicAnalysisWriter writer = factory.CreateFor(_pluginId);
+        await writer.UpsertDjAnalysisAsync(ValidRecord(_trackUnknownDurationId));
+
+        loggerMock.Verify(
+            logger =>
+                logger.Log(
+                    LogLevel.Information,
+                    It.IsAny<EventId>(),
+                    It.Is<It.IsAnyType>(
+                        (state, _) => state.ToString()!.Contains("duration is unknown")
+                    ),
+                    null,
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()
+                ),
+            Times.Once
+        );
     }
 }
