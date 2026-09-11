@@ -33,4 +33,34 @@ public class PluginCapabilityGuardTests
         Assert.True(PluginCapabilityGuard.DeclaresHook(caps, PluginHookCapability.Auth));
         Assert.False(PluginCapabilityGuard.DeclaresHook(caps, PluginHookCapability.MediaSource));
     }
+
+    /// <summary>
+    /// The three analysis hooks are elevated, not baseline - a plugin that
+    /// never says a word about them must not receive
+    /// <see cref="IPluginContext.AudioTools" />, <see cref="IPluginContext.DerivedAudio" />
+    /// or <see cref="IPluginContext.MusicAnalysisWriter" /> for free.
+    /// </summary>
+    [Fact]
+    public void NullCaps_DoNotDeclareTheAnalysisHooks()
+    {
+        Assert.False(PluginCapabilityGuard.DeclaresHook(null, PluginHookCapability.AudioTools));
+        Assert.False(PluginCapabilityGuard.DeclaresHook(null, PluginHookCapability.DerivedAudio));
+        Assert.False(
+            PluginCapabilityGuard.DeclaresHook(null, PluginHookCapability.MusicAnalysisWrite)
+        );
+    }
+
+    [Fact]
+    public void ExplicitCaps_DeclareTheAnalysisHooks()
+    {
+        PluginCapabilities caps = new()
+        {
+            Hooks = ["audioTools", "derivedAudio", "musicAnalysisWrite"],
+        };
+        Assert.True(PluginCapabilityGuard.DeclaresHook(caps, PluginHookCapability.AudioTools));
+        Assert.True(PluginCapabilityGuard.DeclaresHook(caps, PluginHookCapability.DerivedAudio));
+        Assert.True(
+            PluginCapabilityGuard.DeclaresHook(caps, PluginHookCapability.MusicAnalysisWrite)
+        );
+    }
 }

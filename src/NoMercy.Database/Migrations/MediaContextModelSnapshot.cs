@@ -2674,6 +2674,33 @@ namespace NoMercy.Database.Migrations
                     b.ToTable("ArtistUser");
                 });
 
+            modelBuilder.Entity("NoMercy.Database.Models.Music.DerivedAudio", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("Bytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ContentType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<DateTime>("LastUsedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Key");
+
+                    b.ToTable("DerivedAudio");
+                });
+
             modelBuilder.Entity("NoMercy.Database.Models.Music.LibraryTrack", b =>
                 {
                     b.Property<string>("LibraryId")
@@ -3082,6 +3109,120 @@ namespace NoMercy.Database.Migrations
                     b.HasKey("TrackId");
 
                     b.ToTable("TrackAudioAnalysis");
+                });
+
+            modelBuilder.Entity("NoMercy.Database.Models.Music.TrackDjAnalysis", b =>
+                {
+                    b.Property<Guid>("TrackId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("AnalyzedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BarEnergy")
+                        .HasMaxLength(65536)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("BaseAnalyzerVersion")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("BeatsPerBar")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Chords")
+                        .HasMaxLength(65536)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CuePoints")
+                        .HasMaxLength(65536)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("DjAnalyzerVersion")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("DownbeatIndex")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("FailureReason")
+                        .HasMaxLength(1024)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("PhraseLengthBars")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PhraseStartsMs")
+                        .HasMaxLength(65536)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProducerPluginId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("State")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("VocalRegionsMs")
+                        .HasMaxLength(65536)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("TrackId");
+
+                    b.ToTable("TrackDjAnalysis");
+                });
+
+            modelBuilder.Entity("NoMercy.Database.Models.Music.TrackStem", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Coverage")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<string>("Format")
+                        .IsRequired()
+                        .HasMaxLength(8)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ProducerVersion")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SampleRate")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("StorageKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("TrackId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("WindowEndMs")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int?>("WindowStartMs")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("StorageKey");
+
+                    b.HasIndex("TrackId", "Kind", "Coverage", "ProducerVersion")
+                        .IsUnique();
+
+                    b.ToTable("TrackStems");
                 });
 
             modelBuilder.Entity("NoMercy.Database.Models.Music.TrackUser", b =>
@@ -5963,6 +6104,36 @@ namespace NoMercy.Database.Migrations
                         .HasForeignKey("NoMercy.Database.Models.Music.TrackAudioAnalysis", "TrackId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
+
+                    b.Navigation("Track");
+                });
+
+            modelBuilder.Entity("NoMercy.Database.Models.Music.TrackDjAnalysis", b =>
+                {
+                    b.HasOne("NoMercy.Database.Models.Music.Track", "Track")
+                        .WithOne()
+                        .HasForeignKey("NoMercy.Database.Models.Music.TrackDjAnalysis", "TrackId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Track");
+                });
+
+            modelBuilder.Entity("NoMercy.Database.Models.Music.TrackStem", b =>
+                {
+                    b.HasOne("NoMercy.Database.Models.Music.DerivedAudio", "DerivedAudio")
+                        .WithMany()
+                        .HasForeignKey("StorageKey")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("NoMercy.Database.Models.Music.Track", "Track")
+                        .WithMany()
+                        .HasForeignKey("TrackId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("DerivedAudio");
 
                     b.Navigation("Track");
                 });

@@ -46,6 +46,17 @@ public static class PluginLibraryServiceCollectionExtensions
         services.AddSingleton<IPluginJobs, PluginJobs>();
         services.AddSingleton<IPluginStorage, PluginStorage>();
 
+        // The three analysis facades: audio tools, the derived-audio store and
+        // the DJ analysis writer. Same story as the three above them - without
+        // this, a plugin doing DJ-grade analysis has no host-mediated route to
+        // ffmpeg, the derived store or the analysis record at all.
+        services.AddSingleton<IPluginAudioToolsFactory, PluginAudioToolsFactory>();
+        services.AddSingleton<IPluginDerivedAudio, PluginDerivedAudio>();
+        services.AddSingleton<
+            IPluginMusicAnalysisWriterFactory,
+            PluginMusicAnalysisWriterFactory
+        >();
+
         return services;
     }
 }

@@ -59,6 +59,65 @@ public interface IPluginMusicQuery
         IReadOnlyList<Guid> trackIds,
         CancellationToken ct = default
     );
+
+    /// <summary>
+    /// The DJ measurements for the given tracks, for the ones that have an Ok
+    /// row.
+    /// <para>
+    /// A separate call from <see cref="GetAnalysisAsync" /> for the reason
+    /// <see cref="PluginTrackDjAnalysis" /> is a separate record: most tracks
+    /// have no DJ row for most of a library's life, and a plugin reading the
+    /// base analysis should not pay for the heavier DJ measurements it did not
+    /// ask for. A track with no DJ row, or one that is not Ok, is absent from
+    /// the result rather than returned with empty lists.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<PluginTrackDjAnalysis>> GetDjAnalysisAsync(
+        IReadOnlyList<Guid> trackIds,
+        CancellationToken ct = default
+    );
+
+    /// <summary>
+    /// The stem files registered for the given tracks, of every kind and
+    /// coverage. A track with no stems yet contributes nothing to the result.
+    /// </summary>
+    Task<IReadOnlyList<PluginTrackStem>> GetStemsAsync(
+        IReadOnlyList<Guid> trackIds,
+        CancellationToken ct = default
+    );
+
+    /// <summary>
+    /// Tracks in the named library that have a base analysis verdict but no DJ
+    /// row current with <paramref name="djAnalyzerVersion" /> — the automix
+    /// sweep's worklist. <paramref name="take" /> is clamped by the host, the
+    /// same way <see cref="GetTracksAsync" /> clamps it. A library id that
+    /// does not parse yields an empty result rather than a throw.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> GetTracksNeedingDjAnalysisAsync(
+        string libraryId,
+        int djAnalyzerVersion,
+        int skip = 0,
+        int take = 500,
+        CancellationToken ct = default
+    );
+
+    /// <summary>
+    /// Tracks in the named library whose DJ analysis is Ok but are still
+    /// missing a stem file the given <paramref name="policy" /> calls for at
+    /// <paramref name="producerVersion" />. <see cref="PluginStemPolicy.OnDemand" />
+    /// always answers empty without touching the database — under that policy
+    /// there is no sweep to drive. <paramref name="take" /> is clamped the same
+    /// way <see cref="GetTracksAsync" /> clamps it, and a library id that does
+    /// not parse yields an empty result rather than a throw.
+    /// </summary>
+    Task<IReadOnlyList<Guid>> GetTracksMissingStemsAsync(
+        string libraryId,
+        string producerVersion,
+        PluginStemPolicy policy,
+        int skip = 0,
+        int take = 500,
+        CancellationToken ct = default
+    );
 }
 
 /// <param name="DurationSeconds">Null when the library never recorded one.</param>

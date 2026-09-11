@@ -76,6 +76,11 @@ public static class AppFiles
     public static string TempPath => Path.Combine(CachePath, "temp");
     public static string TranscodePath => Path.Combine(CachePath, "transcode");
     public static string EncoderCachePath => Path.Combine(CachePath, "encoder");
+
+    // Content-addressed derived audio (stems, rendered transitions) for the
+    // automix feature — keyed by sha256, registered in MediaContext.DerivedAudio,
+    // evicted by DerivedAudioEviction. Same shape as TranscodePath above.
+    public static string DerivedAudioPath => Path.Combine(CachePath, "derived");
     public static string ImagesPath => Path.Combine(CachePath, "images");
     public static string MusicImagesPath => Path.Combine(ImagesPath, "music");
     public static string TempImagesPath => Path.Combine(ImagesPath, "temp");
@@ -204,6 +209,7 @@ public static class AppFiles
             BrowserPath,
             CachePath,
             ApiCachePath,
+            DerivedAudioPath,
             EncoderCachePath,
             CertPath,
             ConfigPath,

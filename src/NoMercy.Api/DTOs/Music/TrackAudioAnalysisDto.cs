@@ -77,6 +77,18 @@ public record TrackAudioAnalysisDto
     [JsonProperty("analyzer_version")]
     public int AnalyzerVersion { get; set; }
 
+    /// <summary>
+    /// The automix plugin's DJ record for this track. Null whenever there is
+    /// no Ok DJ row — most tracks, for most of a library's life, same as every
+    /// other analysis measurement here.
+    /// </summary>
+    [JsonProperty("dj")]
+    public TrackDjAnalysisDto? Dj { get; set; }
+
+    /// <summary>The stem files available for this track. Empty, never null.</summary>
+    [JsonProperty("stems")]
+    public List<TrackStemDto> Stems { get; set; } = [];
+
     public TrackAudioAnalysisDto() { }
 
     public TrackAudioAnalysisDto(TrackAudioAnalysis analysis)

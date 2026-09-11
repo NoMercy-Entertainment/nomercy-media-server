@@ -317,6 +317,19 @@ public static class UserSettings
                     if (Enum.TryParse(setting.Value, true, out ConnectivityMode connectivityMode))
                         RuntimeServerSettings.Current.ConnectivityMode = connectivityMode;
                     break;
+                case "derivedAudioCapGb":
+                    if (!int.TryParse(setting.Value, out int derivedAudioCapGb))
+                    {
+                        Logger.App(
+                            $"UserSettings: skipping malformed 'derivedAudioCapGb' value '{setting.Value}' — keeping current runtime setting",
+                            LogEventLevel.Warning
+                        );
+                        break;
+                    }
+
+                    RuntimeServerSettings.Current.DerivedAudioCapBytes =
+                        derivedAudioCapGb * 1024L * 1024 * 1024;
+                    break;
             }
         }
     }
