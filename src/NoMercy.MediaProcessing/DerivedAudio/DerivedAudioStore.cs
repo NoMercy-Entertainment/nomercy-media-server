@@ -191,12 +191,12 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
             {
                 // Lost a cross-instance race to register the row; the winner's
                 // row is already there — bump it instead of failing the caller.
-                await TouchAsync(key, ct);
+                await TouchRowAsync(key, ct);
             }
         }
         else
         {
-            await TouchAsync(key, ct);
+            await TouchRowAsync(key, ct);
         }
 
         return new DerivedAudioEntry(key, contentType, bytes);
@@ -235,7 +235,8 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
         {
             return null;
         }
-        await TouchAsync(key, ct);
+
+        await UnderKeyLockAsync(key, () => TouchRowAsync(key, ct), ct);
         return await _storage.OpenReadAsync(RelativePath(key), ct);
     }
 
@@ -246,10 +247,7 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
             return;
         }
 
-        await using MediaContext context = await _contextFactory.CreateDbContextAsync(ct);
-        await context
-            .DerivedAudio.Where(row => row.Key == key)
-            .ExecuteUpdateAsync(set => set.SetProperty(row => row.LastUsedAt, DateTime.UtcNow), ct);
+        await UnderKeyLockAsync(key, () => TouchRowAsync(key, ct), ct);
     }
 
     public async Task DeleteAsync(string key, CancellationToken ct = default)
@@ -259,13 +257,15 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
             return;
         }
 
-        if (await _storage.ExistsAsync(RelativePath(key), ct))
-        {
-            await _storage.DeleteAsync(RelativePath(key), ct);
-        }
-        await using MediaContext context = await _contextFactory.CreateDbContextAsync(ct);
-        await context.DerivedAudio.Where(row => row.Key == key).ExecuteDeleteAsync(ct);
+        await UnderKeyLockAsync(key, () => DeleteEntryAsync(key, ct), ct);
     }
+
+    /// <summary>
+    /// Runs between choosing a victim and deleting it, so a test can make a
+    /// key busy in exactly the window this method guards against. Never set
+    /// in production.
+    /// </summary>
+    internal Func<Task>? BeforeDelete { get; init; }
 
     public async Task<long> EvictAsync(
         long capBytes,
@@ -279,9 +279,10 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
             rows = await context.DerivedAudio.AsNoTracking().ToListAsync(ct);
         }
 
+        long total = rows.Sum(row => row.Bytes);
         long freed = 0;
         foreach (
-            DerivedAudioRow row in DerivedAudioEviction.Choose(
+            DerivedAudioRow row in DerivedAudioEviction.Candidates(
                 rows,
                 capBytes,
                 grace,
@@ -289,9 +290,26 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
             )
         )
         {
+            if (total <= capBytes)
+            {
+                break;
+            }
+
             ct.ThrowIfCancellationRequested();
-            await DeleteAsync(row.Key, ct);
-            freed += row.Bytes;
+
+            if (BeforeDelete is not null)
+            {
+                await BeforeDelete();
+            }
+
+            long? evicted = await DeleteIfStillColdAsync(row.Key, grace, ct);
+            if (evicted is null)
+            {
+                continue;
+            }
+
+            freed += evicted.Value;
+            total -= evicted.Value;
         }
 
         await SweepStaleTempFilesAsync(grace, ct);
@@ -302,6 +320,85 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
             _logger.LogInformation("Derived audio eviction freed {Freed} bytes", freed);
         }
         return freed;
+    }
+
+    /// <summary>
+    /// Deletes one victim under the same per-key lock a put takes, and only
+    /// after re-reading its row: eviction chose from a snapshot, and a key
+    /// read or touched since then is in use again - deleting it would pull the
+    /// file out from under an ffmpeg run that is already reading it. Null when
+    /// the key was left alone, the bytes freed when it went.
+    /// </summary>
+    private async Task<long?> DeleteIfStillColdAsync(
+        string key,
+        TimeSpan grace,
+        CancellationToken ct
+    )
+    {
+        SemaphoreSlim keyLock = _locks.GetOrAdd(key, static _ => new SemaphoreSlim(1, 1));
+        await keyLock.WaitAsync(ct);
+        try
+        {
+            DerivedAudioRow? row;
+            await using (MediaContext context = await _contextFactory.CreateDbContextAsync(ct))
+            {
+                row = await context
+                    .DerivedAudio.AsNoTracking()
+                    .FirstOrDefaultAsync(candidate => candidate.Key == key, ct);
+            }
+
+            if (row is null || row.LastUsedAt > DateTime.UtcNow - grace)
+            {
+                return null;
+            }
+
+            await DeleteEntryAsync(key, ct);
+            return row.Bytes;
+        }
+        finally
+        {
+            keyLock.Release();
+        }
+    }
+
+    /// <summary>
+    /// The per-key lock <see cref="PutAsync" /> takes, around a touch or a
+    /// delete: a touch that lands while eviction is deleting the same key
+    /// leaves a register row pointing at a file that is already gone.
+    /// </summary>
+    private async Task UnderKeyLockAsync(string key, Func<Task> body, CancellationToken ct)
+    {
+        SemaphoreSlim keyLock = _locks.GetOrAdd(key, static _ => new SemaphoreSlim(1, 1));
+        await keyLock.WaitAsync(ct);
+        try
+        {
+            await body();
+        }
+        finally
+        {
+            keyLock.Release();
+        }
+    }
+
+    /// <summary>The touch itself, with the key's lock already held.</summary>
+    private async Task TouchRowAsync(string key, CancellationToken ct)
+    {
+        await using MediaContext context = await _contextFactory.CreateDbContextAsync(ct);
+        await context
+            .DerivedAudio.Where(row => row.Key == key)
+            .ExecuteUpdateAsync(set => set.SetProperty(row => row.LastUsedAt, DateTime.UtcNow), ct);
+    }
+
+    /// <summary>The delete itself, with the key's lock already held.</summary>
+    private async Task DeleteEntryAsync(string key, CancellationToken ct)
+    {
+        if (await _storage.ExistsAsync(RelativePath(key), ct))
+        {
+            await _storage.DeleteAsync(RelativePath(key), ct);
+        }
+
+        await using MediaContext context = await _contextFactory.CreateDbContextAsync(ct);
+        await context.DerivedAudio.Where(row => row.Key == key).ExecuteDeleteAsync(ct);
     }
 
     // The mirror of the tmp/ sweep, one step further along: a crash between

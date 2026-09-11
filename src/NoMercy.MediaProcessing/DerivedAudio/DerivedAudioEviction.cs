@@ -33,17 +33,8 @@ public static class DerivedAudioEviction
     )
     {
         long total = rows.Sum(row => row.Bytes);
-        if (total <= capBytes)
-        {
-            return [];
-        }
-
-        DateTime cutoff = now - grace;
         List<DerivedAudioRow> chosen = [];
-        foreach (
-            DerivedAudioRow row in rows.Where(row => row.LastUsedAt <= cutoff)
-                .OrderBy(row => row.LastUsedAt)
-        )
+        foreach (DerivedAudioRow row in Candidates(rows, capBytes, grace, now))
         {
             if (total <= capBytes)
             {
@@ -53,5 +44,27 @@ public static class DerivedAudioEviction
             total -= row.Bytes;
         }
         return chosen;
+    }
+
+    /// <summary>
+    /// Every row eviction is allowed to take, least recently used first.
+    /// <see cref="Choose" /> is this list cut off at the cap; the store walks
+    /// the whole list, because a row can be in use again by the time its turn
+    /// comes and the cap still has to be met.
+    /// </summary>
+    public static IReadOnlyList<DerivedAudioRow> Candidates(
+        IReadOnlyCollection<DerivedAudioRow> rows,
+        long capBytes,
+        TimeSpan grace,
+        DateTime now
+    )
+    {
+        if (rows.Sum(row => row.Bytes) <= capBytes)
+        {
+            return [];
+        }
+
+        DateTime cutoff = now - grace;
+        return rows.Where(row => row.LastUsedAt <= cutoff).OrderBy(row => row.LastUsedAt).ToList();
     }
 }

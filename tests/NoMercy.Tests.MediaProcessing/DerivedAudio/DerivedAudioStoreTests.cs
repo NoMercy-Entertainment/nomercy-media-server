@@ -101,7 +101,9 @@ public sealed class DerivedAudioStoreTests : IDisposable
         };
     }
 
-    private IDerivedAudioStore Store()
+    private IDerivedAudioStore Store() => StoreWith(null);
+
+    private DerivedAudioStore StoreWith(Func<Task>? beforeDelete)
     {
         LocalStorageDriver driver = new();
         StoragePathGuard guard = new([_root], driver);
@@ -110,7 +112,10 @@ public sealed class DerivedAudioStoreTests : IDisposable
             storage,
             _contextFactory,
             NullLogger<DerivedAudioStore>.Instance
-        );
+        )
+        {
+            BeforeDelete = beforeDelete,
+        };
     }
 
     [Fact]
@@ -267,6 +272,64 @@ public sealed class DerivedAudioStoreTests : IDisposable
         (await read.TrackStems.AsNoTracking().AnyAsync(stem => stem.StorageKey == oldest.Key))
             .Should()
             .BeFalse();
+    }
+
+    /// <summary>
+    /// Eviction picks its victims from a snapshot, and a plan can go stale
+    /// between reading it and acting on it: a key read or touched in that
+    /// window is in use again, and deleting it pulls the file out from under
+    /// the run that just took it. The victim is re-checked under the same
+    /// per-key lock a put takes, and the next-coldest key goes instead.
+    /// </summary>
+    [Fact]
+    public async Task Evict_SkipsAKeyTouchedAfterTheSnapshot()
+    {
+        IDerivedAudioStore seeder = Store();
+        DerivedAudioEntry oldest = await seeder.PutAsync(
+            new MemoryStream(Encoding.UTF8.GetBytes("oldest content")),
+            "audio/opus"
+        );
+        DerivedAudioEntry middle = await seeder.PutAsync(
+            new MemoryStream(Encoding.UTF8.GetBytes("middle content")),
+            "audio/opus"
+        );
+        DerivedAudioEntry newest = await seeder.PutAsync(
+            new MemoryStream(Encoding.UTF8.GetBytes("newest content")),
+            "audio/opus"
+        );
+
+        DateTime now = DateTime.UtcNow;
+        await using (MediaContext context = new(_options))
+        {
+            await context
+                .DerivedAudio.Where(row => row.Key == oldest.Key)
+                .ExecuteUpdateAsync(set => set.SetProperty(row => row.LastUsedAt, now.AddDays(-3)));
+            await context
+                .DerivedAudio.Where(row => row.Key == middle.Key)
+                .ExecuteUpdateAsync(set => set.SetProperty(row => row.LastUsedAt, now.AddDays(-2)));
+            await context
+                .DerivedAudio.Where(row => row.Key == newest.Key)
+                .ExecuteUpdateAsync(set => set.SetProperty(row => row.LastUsedAt, now.AddDays(-1)));
+        }
+
+        bool touched = false;
+        DerivedAudioStore store = StoreWith(async () =>
+        {
+            if (touched)
+            {
+                return;
+            }
+            touched = true;
+            await seeder.TouchAsync(oldest.Key);
+        });
+
+        long freed = await store.EvictAsync(2 * oldest.Bytes, TimeSpan.FromHours(1));
+
+        touched.Should().BeTrue();
+        freed.Should().Be(middle.Bytes);
+        (await store.ExistsAsync(oldest.Key)).Should().BeTrue();
+        (await store.ExistsAsync(middle.Key)).Should().BeFalse();
+        (await store.ExistsAsync(newest.Key)).Should().BeTrue();
     }
 
     /// <summary>
