@@ -20,8 +20,8 @@ namespace NoMercy.Tests.Database.Models;
 
 /// <summary>
 /// The DJ record and the stem register hang off a track and off the derived
-/// store: deleting either parent must take the rows with it, and the JSON
-/// columns must come back byte-for-byte.
+/// store: deleting either parent must take the rows with it, and a JSON column
+/// must come back out of SQLite as the string that went in.
 /// </summary>
 public class AnalysisRecordModelTests : IDisposable
 {
@@ -71,6 +71,56 @@ public class AnalysisRecordModelTests : IDisposable
                 },
             },
         };
+    }
+
+    /// <summary>
+    /// The five JSON columns are text to SQLite and text to EF: the writer
+    /// serialises, the reader deserialises, and nothing in between is allowed
+    /// to reformat, re-order or re-encode what was stored. A column that came
+    /// back with its members in another order would still parse, and the
+    /// reader would still answer - while no longer describing the same track.
+    /// </summary>
+    [Fact]
+    public async Task AJsonColumn_ComesBackAsTheStringThatWentIn()
+    {
+        const string phraseStarts = "[0,15000,30000]";
+        const string vocalRegions = "[[1000,5000],[9000,15000]]";
+        const string barEnergy = "[-20.5,-18.2,-14]";
+        const string cuePoints =
+            "[{\"ms\":1000,\"type\":\"intro\",\"direction\":\"mixIn\",\"score\":0.9}]";
+        const string chords = "[{\"ms\":0,\"chord\":\"Am\"}]";
+
+        Guid trackId = Guid.NewGuid();
+        await using (MediaContext context = new(_options))
+        {
+            context.Tracks.Add(TrackRow(trackId));
+            context.TrackDjAnalysis.Add(
+                new TrackDjAnalysis
+                {
+                    TrackId = trackId,
+                    ProducerPluginId = Ulid.NewUlid(),
+                    DjAnalyzerVersion = 1,
+                    BaseAnalyzerVersion = 4,
+                    State = AudioAnalysisState.Ok,
+                    PhraseStartsMs = phraseStarts,
+                    VocalRegionsMs = vocalRegions,
+                    BarEnergy = barEnergy,
+                    CuePoints = cuePoints,
+                    Chords = chords,
+                    AnalyzedAt = DateTime.UtcNow,
+                }
+            );
+            await context.SaveChangesAsync();
+        }
+
+        await using MediaContext read = new(_options);
+        TrackDjAnalysis row = await read.TrackDjAnalysis.AsNoTracking().SingleAsync();
+
+        Assert.Equal(phraseStarts, row.PhraseStartsMs);
+        Assert.Equal(vocalRegions, row.VocalRegionsMs);
+        Assert.Equal(barEnergy, row.BarEnergy);
+        Assert.Equal(cuePoints, row.CuePoints);
+        Assert.Equal(chords, row.Chords);
     }
 
     [Fact]
