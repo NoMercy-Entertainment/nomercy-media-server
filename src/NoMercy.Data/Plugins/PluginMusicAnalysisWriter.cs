@@ -60,7 +60,8 @@ public class PluginMusicAnalysisWriter(
         CancellationToken ct = default
     ) =>
         PluginCallGuard.RunAsync(
-            Operation(nameof(UpsertDjAnalysisAsync)),
+            pluginId.ToString(),
+            nameof(UpsertDjAnalysisAsync),
             () => UpsertDjAnalysisCoreAsync(record, ct),
             PluginWriteResult.Refused,
             _logger
@@ -71,7 +72,8 @@ public class PluginMusicAnalysisWriter(
         CancellationToken ct = default
     ) =>
         PluginCallGuard.RunAsync(
-            Operation(nameof(RegisterStemAsync)),
+            pluginId.ToString(),
+            nameof(RegisterStemAsync),
             () => RegisterStemsCoreAsync([stem], ct),
             PluginWriteResult.Refused,
             _logger
@@ -82,7 +84,8 @@ public class PluginMusicAnalysisWriter(
         CancellationToken ct = default
     ) =>
         PluginCallGuard.RunAsync(
-            Operation(nameof(RegisterStemsAsync)),
+            pluginId.ToString(),
+            nameof(RegisterStemsAsync),
             () => RegisterStemsCoreAsync(stems, ct),
             PluginWriteResult.Refused,
             _logger
@@ -96,7 +99,8 @@ public class PluginMusicAnalysisWriter(
         CancellationToken ct = default
     ) =>
         PluginCallGuard.RunAsync(
-            Operation(nameof(MarkFailedAsync)),
+            pluginId.ToString(),
+            nameof(MarkFailedAsync),
             () => MarkFailedCoreAsync(trackId, djAnalyzerVersion, baseAnalyzerVersion, reason, ct),
             PluginWriteResult.Refused,
             _logger
@@ -110,13 +114,11 @@ public class PluginMusicAnalysisWriter(
     /// </summary>
     public Task DeleteDjAnalysisAsync(Guid trackId, CancellationToken ct = default) =>
         PluginCallGuard.RunAsync(
-            Operation(nameof(DeleteDjAnalysisAsync)),
+            pluginId.ToString(),
+            nameof(DeleteDjAnalysisAsync),
             () => DeleteDjAnalysisCoreAsync(trackId, ct),
             _logger
         );
-
-    /// <summary>Which plugin's call this is, for the guard's warning line.</summary>
-    private string Operation(string member) => $"plugin {pluginId}: {member}";
 
     private async Task<PluginWriteResult> UpsertDjAnalysisCoreAsync(
         PluginTrackDjAnalysis record,
@@ -163,6 +165,13 @@ public class PluginMusicAnalysisWriter(
             return PluginWriteResult.Refused(
                 $"downbeat_index value {downbeatIndex} lies outside the beat grid (0..{record.BeatsPerBar - 1})"
             );
+
+        // Before anything reads through the lists: a null entry inside one of
+        // them is what a plugin written against a looser language hands over,
+        // and every loop below dereferences its entries.
+        PluginWriteResult? missingEntry = CheckEntriesPresent(record);
+        if (missingEntry is not null)
+            return missingEntry;
 
         double? durationSeconds = PluginMusicQuery.ParseDurationSeconds(track.Duration);
 
@@ -262,6 +271,22 @@ public class PluginMusicAnalysisWriter(
     /// loser can simply run again. With no row, the save failed for a reason
     /// of its own - a foreign key, a column constraint, a disk - and "retry"
     /// would hide that for ever, so it is logged and named instead.
+    /// <para>
+    /// This is the keyed half of the server's two rules for a lost write. The
+    /// row is addressed by an identifier, not by its content, so the writer
+    /// that won the race may have stored something quite different from what
+    /// this call meant to store: the loser re-reads the row and either accepts
+    /// an identical one or refuses and asks the caller to run again. It never
+    /// assumes the two writes agreed.
+    /// </para>
+    /// <para>
+    /// The other half is the content-addressed one, in
+    /// <c>DerivedAudioStore.StoreAndRegisterAsync</c>: a key there IS the hash
+    /// of the bytes, so a lost race means the winner wrote the same content
+    /// and the loser can report success without reading anything back. Both
+    /// halves agree on the third case, which is the one below - a failure with
+    /// no competing row is a real error, logged and named.
+    /// </para>
     /// </summary>
     private async Task<PluginWriteResult> ResolveFailedDjWriteAsync(
         Guid trackId,
@@ -362,6 +387,15 @@ public class PluginMusicAnalysisWriter(
         CancellationToken ct
     )
     {
+        // Before anything else per stem: nothing below can read a member that
+        // is not there. The format is the one that used to throw outright -
+        // the content-type pairing lowercases it - and a null kind or producer
+        // version would only surface hours later as a DbUpdateException
+        // against a column that does not take one.
+        PluginWriteResult? missingMember = CheckStemMembersPresent(stem);
+        if (missingMember is not null)
+            return missingMember;
+
         bool trackExists = await context
             .Tracks.AsNoTracking()
             .AnyAsync(t => t.Id == stem.TrackId, ct);
@@ -393,7 +427,7 @@ public class PluginMusicAnalysisWriter(
 
         // The register row is what a client is handed the stem as, so a row
         // claiming Opus over a FLAC file is a player error hours later.
-        if (!FormatMatchesContentType(stem.Format, contentType))
+        if (!StemFormats.Matches(stem.Format, contentType))
             return PluginWriteResult.Refused(
                 $"stem format {stem.Format} does not match the stored content type {contentType}"
             );
@@ -418,6 +452,31 @@ public class PluginMusicAnalysisWriter(
     }
 
     /// <summary>
+    /// Every string member of a stem is required, and whitespace is as absent
+    /// as null: a kind of <c>"   "</c> addresses a row nothing will ever find
+    /// again.
+    /// <para>
+    /// The storage key is deliberately not named here. It keeps the refusal it
+    /// already had - <c>storage key {key} is not in the derived store</c> - so
+    /// that a key which is missing, invented or stale gets a plugin one answer
+    /// rather than three.
+    /// </para>
+    /// </summary>
+    private static PluginWriteResult? CheckStemMembersPresent(PluginTrackStem stem)
+    {
+        if (string.IsNullOrWhiteSpace(stem.Format))
+            return PluginWriteResult.Refused("format must not be empty");
+
+        if (string.IsNullOrWhiteSpace(stem.Kind))
+            return PluginWriteResult.Refused("kind must not be empty");
+
+        if (string.IsNullOrWhiteSpace(stem.ProducerVersion))
+            return PluginWriteResult.Refused("producer_version must not be empty");
+
+        return null;
+    }
+
+    /// <summary>
     /// One register row is addressed by (track, kind, coverage, producer), so
     /// two entries sharing all four are one row written twice: whichever came
     /// second would silently win, which is never what a caller meant.
@@ -436,20 +495,6 @@ public class PluginMusicAnalysisWriter(
 
         return null;
     }
-
-    /// <summary>
-    /// The pairings the derived store can hold today. Anything else is a
-    /// mismatch rather than an unknown: a format that cannot come out of that
-    /// container is not a row worth keeping.
-    /// </summary>
-    private static bool FormatMatchesContentType(string format, string contentType) =>
-        (format.ToLowerInvariant(), contentType.ToLowerInvariant()) switch
-        {
-            ("opus", "audio/ogg") => true,
-            ("opus", "audio/opus") => true,
-            ("flac", "audio/flac") => true,
-            _ => false,
-        };
 
     /// <summary>Adds or updates one stem's row on the context, without saving it.</summary>
     private static async Task StageStemAsync(
@@ -494,6 +539,17 @@ public class PluginMusicAnalysisWriter(
     /// row at all the save failed for a reason of its own - a foreign key, a
     /// column constraint, a disk - which is logged and named rather than
     /// dressed up as something a retry would fix.
+    /// <para>
+    /// The keyed half of the two rules again, and the comparison it needs is
+    /// visible here: one stem row is addressed by (track, kind, coverage,
+    /// producer), which says nothing about which content landed under it, so
+    /// the storage keys are what decide whether the race cost anything.
+    /// </para>
+    /// <para>
+    /// The content-addressed half, <c>DerivedAudioStore.StoreAndRegisterAsync</c>,
+    /// needs no such comparison: its key is the hash of the bytes, so a lost
+    /// race there cannot have stored anything else.
+    /// </para>
     /// </summary>
     private async Task<PluginWriteResult> ResolveFailedStemWriteAsync(
         IReadOnlyList<PluginTrackStem> stems,
@@ -674,7 +730,7 @@ public class PluginMusicAnalysisWriter(
         for (int index = 0; index < regions.Count; index++)
         {
             int[] region = regions[index];
-            if (region.Length != 2 || region[0] >= region[1])
+            if (region is null || region.Length != 2 || region[0] >= region[1])
                 return PluginWriteResult.Refused(
                     $"vocal_regions_ms entry {index} must be [start, end] with start < end"
                 );
@@ -720,6 +776,44 @@ public class PluginMusicAnalysisWriter(
 
         if (record.Chords is null)
             return PluginWriteResult.Refused("chords must not be null");
+
+        return null;
+    }
+
+    /// <summary>
+    /// The same rule one level down: every entry inside those lists is
+    /// required too. A null one is read through by the range check, the shape
+    /// check and the serializer alike, so it is named here before any of them
+    /// runs - a refusal a plugin author can act on, rather than the
+    /// <see cref="NullReferenceException" /> the guard would hand back as
+    /// "the server could not complete this call".
+    /// <para>
+    /// A null vocal region is reported as the malformed region it is, in the
+    /// same words a one-element or backwards pair gets: from the caller's side
+    /// there is one rule, and the entry does not keep it.
+    /// </para>
+    /// </summary>
+    private static PluginWriteResult? CheckEntriesPresent(PluginTrackDjAnalysis record)
+    {
+        for (int index = 0; index < record.VocalRegionsMs.Count; index++)
+        {
+            if (record.VocalRegionsMs[index] is null)
+                return PluginWriteResult.Refused(
+                    $"vocal_regions_ms entry {index} must be [start, end] with start < end"
+                );
+        }
+
+        for (int index = 0; index < record.CuePoints.Count; index++)
+        {
+            if (record.CuePoints[index] is null)
+                return PluginWriteResult.Refused($"cue_points entry {index} must not be null");
+        }
+
+        for (int index = 0; index < record.Chords.Count; index++)
+        {
+            if (record.Chords[index] is null)
+                return PluginWriteResult.Refused($"chords entry {index} must not be null");
+        }
 
         return null;
     }

@@ -9,11 +9,13 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Data.Common;
 using System.Security.Cryptography;
 using System.Text;
 using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NoMercy.Database;
@@ -103,19 +105,90 @@ public sealed class DerivedAudioStoreTests : IDisposable
 
     private IDerivedAudioStore Store() => StoreWith(null);
 
-    private DerivedAudioStore StoreWith(Func<Task>? beforeDelete)
+    private DerivedAudioStore StoreWith(Func<Task>? beforeDelete) =>
+        StoreWith(beforeDelete, null, null);
+
+    private DerivedAudioStore StoreWith(
+        Func<Task>? beforeDelete,
+        Func<Task>? afterPreCheck,
+        RecordingInterceptor? recorder
+    )
     {
         LocalStorageDriver driver = new();
         StoragePathGuard guard = new([_root], driver);
         IStorage storage = new LocalStorage(driver, guard);
         return new DerivedAudioStore(
             storage,
-            _contextFactory,
+            FactoryRecording(recorder),
             NullLogger<DerivedAudioStore>.Instance
         )
         {
             BeforeDelete = beforeDelete,
+            AfterPreCheck = afterPreCheck,
         };
+    }
+
+    /// <summary>
+    /// The shared factory, or one whose contexts report every statement they
+    /// run to <paramref name="recorder" /> - the same in-memory database
+    /// either way.
+    /// </summary>
+    private IDbContextFactory<MediaContext> FactoryRecording(RecordingInterceptor? recorder)
+    {
+        if (recorder is null)
+        {
+            return _contextFactory;
+        }
+
+        DbContextOptions<MediaContext> options = new DbContextOptionsBuilder<MediaContext>()
+            .UseSqlite(_connection)
+            .AddInterceptors(recorder)
+            .Options;
+
+        Mock<IDbContextFactory<MediaContext>> factory = new();
+        factory
+            .Setup(f => f.CreateDbContextAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => new MediaContext(options));
+        factory.Setup(f => f.CreateDbContext()).Returns(() => new MediaContext(options));
+        return factory.Object;
+    }
+
+    /// <summary>
+    /// Records the statements a store runs, because the difference the
+    /// re-check under the key lock makes is otherwise invisible: an UPDATE
+    /// against a row eviction has already deleted changes nothing a later
+    /// read could see.
+    /// <para>
+    /// The assertion built on this reads EF Core's emitted statement text, not
+    /// the store's own code, so a touch reimplemented in anything but an
+    /// ExecuteUpdateAsync - a tracked save, a raw command, a different verb -
+    /// needs the assertion re-derived rather than trusted.
+    /// </para>
+    /// </summary>
+    private sealed class RecordingInterceptor : DbCommandInterceptor
+    {
+        public List<string> Commands { get; } = [];
+
+        public override InterceptionResult<int> NonQueryExecuting(
+            DbCommand command,
+            CommandEventData eventData,
+            InterceptionResult<int> result
+        )
+        {
+            Commands.Add(command.CommandText);
+            return base.NonQueryExecuting(command, eventData, result);
+        }
+
+        public override ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(
+            DbCommand command,
+            CommandEventData eventData,
+            InterceptionResult<int> result,
+            CancellationToken cancellationToken = default
+        )
+        {
+            Commands.Add(command.CommandText);
+            return base.NonQueryExecutingAsync(command, eventData, result, cancellationToken);
+        }
     }
 
     [Fact]
@@ -178,6 +251,62 @@ public sealed class DerivedAudioStoreTests : IDisposable
     public async Task OpenRead_OfAnUnknownKey_IsNull()
     {
         Stream? stream = await Store().OpenReadAsync(new string('a', 64));
+
+        stream.Should().BeNull();
+    }
+
+    /// <summary>
+    /// The pre-check that keeps an unknown key out of the lock table saw a
+    /// register row, and eviction took the entry while this call was still
+    /// waiting for the key lock. The touch must not run at all then - the row
+    /// it would bump is gone, and the window between the pre-check and the
+    /// lock is exactly what the re-check under the lock closes.
+    /// </summary>
+    [Fact]
+    public async Task Touch_UnderTheLock_DoesNothingWhenEvictionWonTheRace()
+    {
+        IDerivedAudioStore evictor = Store();
+        DerivedAudioEntry entry = await evictor.PutAsync(
+            new MemoryStream(Encoding.UTF8.GetBytes("content eviction is about to take")),
+            "audio/opus"
+        );
+
+        RecordingInterceptor recorder = new();
+        DerivedAudioStore store = StoreWith(
+            null,
+            async () =>
+            {
+                await evictor.DeleteAsync(entry.Key);
+                recorder.Commands.Clear();
+            },
+            recorder
+        );
+
+        await store.TouchAsync(entry.Key);
+
+        recorder
+            .Commands.Should()
+            .NotContain(command => command.Contains("UPDATE", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// The same race one member along: the file the reader was about to open
+    /// went with the row, so the caller is told there is nothing rather than
+    /// handed the <see cref="FileNotFoundException" /> an open of a deleted
+    /// path throws.
+    /// </summary>
+    [Fact]
+    public async Task OpenRead_UnderTheLock_ReturnsNullWhenEvictionWonTheRace()
+    {
+        IDerivedAudioStore evictor = Store();
+        DerivedAudioEntry entry = await evictor.PutAsync(
+            new MemoryStream(Encoding.UTF8.GetBytes("content the reader just missed")),
+            "audio/opus"
+        );
+
+        DerivedAudioStore store = StoreWith(null, () => evictor.DeleteAsync(entry.Key), null);
+
+        Stream? stream = await store.OpenReadAsync(entry.Key);
 
         stream.Should().BeNull();
     }
@@ -337,8 +466,8 @@ public sealed class DerivedAudioStoreTests : IDisposable
 
     /// <summary>
     /// The victim's delete runs with the key's lock already held, so it must
-    /// not take that lock again: a <see cref="SemaphoreSlim" /> is not
-    /// re-entrant and the second wait would never return. Asserted against a
+    /// not take that lock again: the keyed lock is not re-entrant and the
+    /// second wait would never return. Asserted against a
     /// deadline, so a regression here reports as a failed test rather than as
     /// a test run that stops.
     /// </summary>
@@ -379,9 +508,7 @@ public sealed class DerivedAudioStoreTests : IDisposable
     /// <summary>
     /// The mirror of the tmp/ sweep, one step further along the put: a crash
     /// between the move into place and the register insert leaves a content
-    /// file no key addresses and no policy counts. Only this sweep frees it,
-    /// and only after the grace window, so it cannot race a put that is
-    /// between its own move and insert right now.
+    /// file no key addresses and no policy counts. Only this sweep frees it.
     /// </summary>
     [Fact]
     public async Task Evict_RemovesAContentFileThatHasNoRegisterRow()
@@ -392,22 +519,84 @@ public sealed class DerivedAudioStoreTests : IDisposable
             "audio/opus"
         );
 
-        string staleKey = new('c', 64);
-        string freshKey = new('d', 64);
-        Directory.CreateDirectory(Path.Combine(_root, staleKey[..2]));
-        Directory.CreateDirectory(Path.Combine(_root, freshKey[..2]));
-        string stalePath = Path.Combine(_root, staleKey[..2], staleKey);
-        string freshPath = Path.Combine(_root, freshKey[..2], freshKey);
-        await File.WriteAllBytesAsync(stalePath, Encoding.UTF8.GetBytes("orphaned by a crash"));
-        await File.WriteAllBytesAsync(freshPath, Encoding.UTF8.GetBytes("still being registered"));
-        File.SetLastWriteTimeUtc(stalePath, DateTime.UtcNow.AddDays(-2));
-        File.SetLastWriteTimeUtc(freshPath, DateTime.UtcNow);
+        string stalePath = PlantOrphan(new string('c', 64), DateTime.UtcNow.AddDays(-2));
 
         await store.EvictAsync(capBytes: long.MaxValue, grace: TimeSpan.FromHours(1));
 
         File.Exists(stalePath).Should().BeFalse();
-        File.Exists(freshPath).Should().BeTrue();
         (await store.ExistsAsync(kept.Key)).Should().BeTrue();
+    }
+
+    /// <summary>
+    /// The grace window is the whole reason this sweep is safe: a put that is
+    /// between its own move-into-place and its register insert right now looks
+    /// exactly like an orphan. A file younger than the window is left alone,
+    /// so the sweep can never pull content out from under a put in flight.
+    /// </summary>
+    [Fact]
+    public async Task Evict_LeavesAnOrphanInsideTheGraceWindow()
+    {
+        IDerivedAudioStore store = Store();
+
+        string freshPath = PlantOrphan(new string('d', 64), DateTime.UtcNow);
+
+        await store.EvictAsync(capBytes: long.MaxValue, grace: TimeSpan.FromHours(1));
+
+        File.Exists(freshPath).Should().BeTrue();
+    }
+
+    /// <summary>
+    /// Only the two-character shards a key's path is built from are content
+    /// folders. Anything else under the derived root belongs to something
+    /// else and this one must not walk into it, whatever it holds and however
+    /// old.
+    /// <para>
+    /// tmp/ is the case that matters: the length check alone excludes it - a
+    /// shard is two characters and "tmp" is three - and a fresh file in there
+    /// proves the orphan sweep leaves it to the temp sweep, which keeps it for
+    /// its own grace window rather than reading it as an unregistered key.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task Evict_IgnoresFoldersThatAreNotTwoCharacters()
+    {
+        IDerivedAudioStore store = Store();
+
+        string outsidePath = PlantStaleFile("abc", new string('e', 64));
+        string tempLikePath = PlantStaleFile("tmpx", new string('f', 64));
+
+        // Fresh, so the temp sweep keeps it too: what is under test is that
+        // the orphan sweep never considered it in the first place.
+        Directory.CreateDirectory(Path.Combine(_root, "tmp"));
+        string tempPath = Path.Combine(_root, "tmp", new string('a', 64));
+        await File.WriteAllBytesAsync(tempPath, Encoding.UTF8.GetBytes("a put still in flight"));
+        File.SetLastWriteTimeUtc(tempPath, DateTime.UtcNow);
+
+        await store.EvictAsync(capBytes: long.MaxValue, grace: TimeSpan.FromHours(1));
+
+        File.Exists(outsidePath).Should().BeTrue();
+        File.Exists(tempLikePath).Should().BeTrue();
+        File.Exists(tempPath).Should().BeTrue();
+    }
+
+    /// <summary>A content file under its own shard, with no register row.</summary>
+    private string PlantOrphan(string key, DateTime lastWriteUtc)
+    {
+        Directory.CreateDirectory(Path.Combine(_root, key[..2]));
+        string path = Path.Combine(_root, key[..2], key);
+        File.WriteAllBytes(path, Encoding.UTF8.GetBytes("orphaned by a crash"));
+        File.SetLastWriteTimeUtc(path, lastWriteUtc);
+        return path;
+    }
+
+    /// <summary>A file under a folder that is not a shard, old enough to be swept if it were.</summary>
+    private string PlantStaleFile(string folder, string name)
+    {
+        Directory.CreateDirectory(Path.Combine(_root, folder));
+        string path = Path.Combine(_root, folder, name);
+        File.WriteAllBytes(path, Encoding.UTF8.GetBytes("not this sweep's business"));
+        File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddDays(-2));
+        return path;
     }
 
     [Fact]
@@ -518,6 +707,31 @@ public sealed class DerivedAudioStoreTests : IDisposable
 
         File.Exists(Path.Combine(_root, entry.Key[..2], entry.Key)).Should().BeTrue();
         (await store.ExistsAsync(entry.Key)).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// And a read of that same half-entry answers the same way, rather than
+    /// handing back bytes the store will not admit to holding: the orphan
+    /// sweep is free to delete that file underneath the reader, and a caller
+    /// told "here it is" by one member and "there is none" by the next has no
+    /// way to tell which one to believe.
+    /// </summary>
+    [Fact]
+    public async Task OpenRead_IsNullForAFileWithoutARegisterRow()
+    {
+        IDerivedAudioStore store = Store();
+        DerivedAudioEntry entry = await store.PutAsync(
+            new MemoryStream(Encoding.UTF8.GetBytes("orphan content")),
+            "audio/opus"
+        );
+
+        await using (MediaContext context = new(_options))
+        {
+            await context.DerivedAudio.Where(row => row.Key == entry.Key).ExecuteDeleteAsync();
+        }
+
+        File.Exists(Path.Combine(_root, entry.Key[..2], entry.Key)).Should().BeTrue();
+        (await store.OpenReadAsync(entry.Key)).Should().BeNull();
     }
 
     [Fact]

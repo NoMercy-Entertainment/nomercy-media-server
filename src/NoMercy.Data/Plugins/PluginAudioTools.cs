@@ -75,8 +75,8 @@ public sealed class PluginAudioTools(
     /// <summary>The derived store's own scratch folder; its eviction sweep also cleans it.</summary>
     private const string TempFolder = "tmp";
 
-    private const string OpusContentType = "audio/ogg";
-    private const string OpusFormat = "opus";
+    // Format and content type live in StemFormats; only the sample rate is
+    // this encoder's own.
     private const int OpusSampleRate = 48000;
 
     /// <summary>The share of a track a mix into it draws from.</summary>
@@ -103,7 +103,8 @@ public sealed class PluginAudioTools(
         CancellationToken ct = default
     ) =>
         PluginCallGuard.RunAsync(
-            $"plugin {pluginId}: {nameof(RunFilterGraphAsync)}",
+            pluginId.ToString(),
+            nameof(RunFilterGraphAsync),
             () => RunFilterGraphCoreAsync(input, graph, onStdOut, onStdErr, ct),
             PluginAudioRunResult.Refused,
             _logger
@@ -178,7 +179,8 @@ public sealed class PluginAudioTools(
         CancellationToken ct = default
     ) =>
         PluginCallGuard.RunAsync(
-            $"plugin {pluginId}: {nameof(SplitStemsAsync)}",
+            pluginId.ToString(),
+            nameof(SplitStemsAsync),
             () => SplitStemsCoreAsync(trackId, coverage, stemSet, ct),
             PluginStemSplitResult.Refused,
             _logger
@@ -376,7 +378,7 @@ public sealed class PluginAudioTools(
                         coverage,
                         window.StartMs,
                         window.EndMs,
-                        OpusFormat,
+                        StemFormats.Opus,
                         OpusSampleRate,
                         stem.Entry.Key,
                         producerVersion
@@ -421,7 +423,7 @@ public sealed class PluginAudioTools(
         DerivedAudioEntry entry;
         await using (Stream content = await derivedStorage.OpenReadAsync(tempPath, ct))
         {
-            entry = await store.PutAsync(content, OpusContentType, ct);
+            entry = await store.PutAsync(content, StemFormats.OggContentType, ct);
         }
 
         return entry;

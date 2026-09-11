@@ -25,13 +25,16 @@ namespace NoMercy.Tests.Repositories.Plugins;
 /// </summary>
 public class PluginCallGuardTests
 {
+    private const string PluginId = "01HZY0000000000000000000AA";
+
     [Fact]
     public async Task AThrowingCall_BecomesARefusalNamingTheExceptionType()
     {
         Mock<ILogger> logger = new();
 
         PluginWriteResult result = await PluginCallGuard.RunAsync(
-            "plugin 1: WriteSomething",
+            PluginId,
+            "WriteSomething",
             () => throw new IOException("the volume went away"),
             PluginWriteResult.Refused,
             logger.Object
@@ -57,7 +60,8 @@ public class PluginCallGuardTests
     {
         Func<Task<PluginWriteResult>> guarded = () =>
             PluginCallGuard.RunAsync<PluginWriteResult>(
-                "plugin 1: WriteSomething",
+                PluginId,
+                "WriteSomething",
                 () => throw new OperationCanceledException(),
                 PluginWriteResult.Refused,
                 NullLogger.Instance
@@ -70,7 +74,8 @@ public class PluginCallGuardTests
     public async Task AMemberWithoutARefusalChannel_FallsBackToTheSuppliedValue()
     {
         bool exists = await PluginCallGuard.RunOrAsync(
-            "a plugin's ExistsAsync call",
+            "shared",
+            "ExistsAsync",
             () => throw new IOException("the volume went away"),
             false,
             NullLogger.Instance
@@ -79,7 +84,8 @@ public class PluginCallGuardTests
         exists.Should().BeFalse();
 
         Stream? opened = await PluginCallGuard.RunOrAsync<Stream?>(
-            "a plugin's OpenReadAsync call",
+            "shared",
+            "OpenReadAsync",
             () => throw new IOException("the volume went away"),
             null,
             NullLogger.Instance
@@ -93,7 +99,8 @@ public class PluginCallGuardTests
     {
         Func<Task> guarded = () =>
             PluginCallGuard.RunAsync(
-                "a plugin's TouchAsync call",
+                "shared",
+                "TouchAsync",
                 () => throw new IOException("the volume went away"),
                 NullLogger.Instance
             );
@@ -105,12 +112,103 @@ public class PluginCallGuardTests
     public async Task ACallThatSucceeds_IsHandedBackUntouched()
     {
         PluginWriteResult result = await PluginCallGuard.RunAsync(
-            "plugin 1: WriteSomething",
+            PluginId,
+            "WriteSomething",
             () => Task.FromResult(PluginWriteResult.Accepted()),
             PluginWriteResult.Refused,
             NullLogger.Instance
         );
 
         result.Ok.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// Which plugin and which member are two facts, not one sentence: a log
+    /// pipeline can filter on "everything this plugin did" only when they
+    /// arrive as separate properties. The exception stays the first argument,
+    /// so the stack trace is attached to the entry rather than formatted into
+    /// its message.
+    /// </summary>
+    [Fact]
+    public async Task AThrowingCall_LogsThePluginAndTheMemberAsSeparateProperties()
+    {
+        List<KeyValuePair<string, object?>> logged = [];
+        Mock<ILogger> logger = new();
+        logger
+            .Setup(log =>
+                log.Log(
+                    LogLevel.Warning,
+                    It.IsAny<EventId>(),
+                    It.IsAny<It.IsAnyType>(),
+                    It.IsAny<Exception?>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()
+                )
+            )
+            .Callback(
+                new InvocationAction(invocation =>
+                    logged.AddRange(
+                        (IReadOnlyList<KeyValuePair<string, object?>>)invocation.Arguments[2]
+                    )
+                )
+            );
+
+        await PluginCallGuard.RunAsync(
+            PluginId,
+            "WriteSomething",
+            () => throw new IOException("the volume went away"),
+            PluginWriteResult.Refused,
+            logger.Object
+        );
+
+        logged
+            .Should()
+            .Contain(entry => entry.Key == "PluginId" && (string)entry.Value! == PluginId);
+        logged
+            .Should()
+            .Contain(entry => entry.Key == "Member" && (string)entry.Value! == "WriteSomething");
+    }
+
+    /// <summary>
+    /// The derived-audio facade is one object every plugin shares, so it has
+    /// no plugin of its own to name and says so rather than leaving the
+    /// property out: a missing field reads as a gap in the pipeline.
+    /// </summary>
+    [Fact]
+    public async Task TheSharedFacade_LogsItselfAsThePlugin()
+    {
+        List<KeyValuePair<string, object?>> logged = [];
+        Mock<ILogger> logger = new();
+        logger
+            .Setup(log =>
+                log.Log(
+                    LogLevel.Warning,
+                    It.IsAny<EventId>(),
+                    It.IsAny<It.IsAnyType>(),
+                    It.IsAny<Exception?>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()
+                )
+            )
+            .Callback(
+                new InvocationAction(invocation =>
+                    logged.AddRange(
+                        (IReadOnlyList<KeyValuePair<string, object?>>)invocation.Arguments[2]
+                    )
+                )
+            );
+
+        await PluginCallGuard.RunOrAsync(
+            "shared",
+            "ExistsAsync",
+            () => throw new IOException("the volume went away"),
+            false,
+            logger.Object
+        );
+
+        logged
+            .Should()
+            .Contain(entry => entry.Key == "PluginId" && (string)entry.Value! == "shared");
+        logged
+            .Should()
+            .Contain(entry => entry.Key == "Member" && (string)entry.Value! == "ExistsAsync");
     }
 }

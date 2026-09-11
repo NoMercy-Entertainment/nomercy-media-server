@@ -9,12 +9,12 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NoMercy.Database;
 using NoMercy.Storage;
+using NoMercy.Storage.Common;
 using DerivedAudioRow = NoMercy.Database.Models.Music.DerivedAudio;
 
 namespace NoMercy.MediaProcessing.DerivedAudio;
@@ -29,11 +29,11 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
     private readonly ILogger<DerivedAudioStore> _logger;
 
     // Serializes puts, touches and deletes of one key inside this store, which
-    // is a process-wide singleton. A semaphore is only ever created for a key
-    // the register actually holds - an unknown key is answered before this is
-    // touched - so the dictionary is bounded by stored content, not by what
-    // callers ask about.
-    private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new();
+    // is a process-wide singleton. A key is only ever locked once the register
+    // is known to hold it - an unknown key is answered before this is touched -
+    // so the lock table is bounded by stored content, not by what callers ask
+    // about.
+    private readonly KeyedAsyncLock _locks = new();
 
     /// <param name="storage">An <see cref="IStorage" /> scoped to <c>AppFiles.DerivedAudioPath</c>; every path below is relative to it.</param>
     /// <param name="contextFactory">Creates a fresh <see cref="MediaContext" /> per operation.</param>
@@ -94,21 +94,31 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
             key = Convert.ToHexStringLower(hash.GetHashAndReset());
         }
 
-        SemaphoreSlim keyLock = _locks.GetOrAdd(key, static _ => new SemaphoreSlim(1, 1));
-        await keyLock.WaitAsync(ct);
-        try
-        {
-            return await StoreAndRegisterAsync(tempPath, key, contentType, bytes, ct);
-        }
-        finally
-        {
-            keyLock.Release();
-        }
+        using IDisposable keyLock = await _locks.AcquireAsync(key, ct);
+        return await StoreAndRegisterAsync(tempPath, key, contentType, bytes, ct);
     }
 
-    // Split out so the per-key lock covers only the exists/move/register
-    // sequence, not the hashing. A second store instance can still race here,
-    // so both the move and the insert treat "already done" as success.
+    /// <summary>
+    /// Split out so the per-key lock covers only the exists/move/register
+    /// sequence, not the hashing. A second store instance can still race here,
+    /// so both the move and the insert treat "already done" as success.
+    /// <para>
+    /// That is the content-addressed half of the server's two rules for a lost
+    /// write. A key here IS the bytes: whoever won the race wrote exactly what
+    /// this call was going to write, so there is nothing to reconcile and
+    /// nothing for the caller to redo. The loser bumps the winner's row and
+    /// reports success.
+    /// </para>
+    /// <para>
+    /// The other half is the keyed one, in
+    /// <c>PluginMusicAnalysisWriter.ResolveFailedDjWriteAsync</c> and
+    /// <c>ResolveFailedStemWriteAsync</c>: a row addressed by an identifier
+    /// rather than by its content may hold something else entirely, so the
+    /// loser re-reads it and either accepts an identical row or refuses. Both
+    /// halves agree on the third case - a failure with no competing row is a
+    /// real error, logged and named, never dressed up as a retry.
+    /// </para>
+    /// </summary>
     private async Task<DerivedAudioEntry> StoreAndRegisterAsync(
         string tempPath,
         string key,
@@ -183,8 +193,11 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
             }
             catch (DbUpdateException)
             {
-                // Lost a cross-instance race to register the row; the winner's
-                // row is already there — bump it instead of failing the caller.
+                // Lost a cross-instance race to register the row. The key is
+                // the hash of the content, so the winner's row describes the
+                // same bytes this call just wrote — bump it instead of failing
+                // the caller. See the summary above for why the keyed writes
+                // in PluginMusicAnalysisWriter cannot assume that.
                 await TouchRowAsync(key, ct);
             }
         }
@@ -218,9 +231,33 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
         return await context.DerivedAudio.AsNoTracking().AnyAsync(row => row.Key == key, ct);
     }
 
+    /// <summary>
+    /// The pre-check outside the lock is what keeps a key nothing ever stored
+    /// from taking a lock at all; the re-check inside it is what survives an
+    /// eviction that took the entry while this call was queued behind it.
+    /// <para>
+    /// Only the stream outlives the lock. That is safe: the touch above it has
+    /// already moved <c>LastUsedAt</c> inside the grace window, so the next
+    /// eviction's own re-check under this same lock finds the key warm and
+    /// leaves it alone while the caller is still reading.
+    /// </para>
+    /// <para>
+    /// Asking for the register row twice - once in the pre-check, once under
+    /// the lock - costs a read two database round-trips. That is acceptable
+    /// here: both are a single indexed lookup against a local SQLite file,
+    /// they are dwarfed by the file open and the ffmpeg run that follows, and
+    /// the alternative is either handing back a key eviction already took or
+    /// minting a lock entry for every key a caller invents.
+    /// </para>
+    /// </summary>
     public async Task<Stream?> OpenReadAsync(string key, CancellationToken ct = default)
     {
         if (!DerivedAudioKey.IsValid(key))
+        {
+            return null;
+        }
+
+        if (!await HasRegisterRowAsync(key, ct))
         {
             return null;
         }
@@ -230,10 +267,35 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
             return null;
         }
 
-        await UnderKeyLockAsync(key, () => TouchRowAsync(key, ct), ct);
-        return await _storage.OpenReadAsync(RelativePath(key), ct);
+        await RunAfterPreCheckAsync();
+
+        return await UnderKeyLockAsync<Stream?>(
+            key,
+            async () =>
+            {
+                if (!await HasRegisterRowAsync(key, ct))
+                {
+                    return null;
+                }
+
+                if (!await _storage.ExistsAsync(RelativePath(key), ct))
+                {
+                    return null;
+                }
+
+                await TouchRowAsync(key, ct);
+                return await _storage.OpenReadAsync(RelativePath(key), ct);
+            },
+            ct
+        );
     }
 
+    /// <summary>
+    /// Both halves of the same guard as <see cref="OpenReadAsync" />: the
+    /// cheap pre-check keeps unknown keys out of the lock dictionary, and the
+    /// re-check under the lock makes sure the row a touch is about to bump is
+    /// still there after the wait.
+    /// </summary>
     public async Task TouchAsync(string key, CancellationToken ct = default)
     {
         if (!DerivedAudioKey.IsValid(key) || !await HasRegisterRowAsync(key, ct))
@@ -241,8 +303,32 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
             return;
         }
 
-        await UnderKeyLockAsync(key, () => TouchRowAsync(key, ct), ct);
+        await RunAfterPreCheckAsync();
+
+        await UnderKeyLockAsync(
+            key,
+            async () =>
+            {
+                if (!await HasRegisterRowAsync(key, ct))
+                {
+                    return;
+                }
+
+                await TouchRowAsync(key, ct);
+            },
+            ct
+        );
     }
+
+    /// <summary>
+    /// Runs after the pre-check outside the lock and before the lock itself,
+    /// so a test can land an eviction in exactly the window the re-check under
+    /// the lock guards against. Never set in production.
+    /// </summary>
+    internal Func<Task>? AfterPreCheck { get; init; }
+
+    private Task RunAfterPreCheckAsync() =>
+        AfterPreCheck is null ? Task.CompletedTask : AfterPreCheck();
 
     /// <summary>
     /// A key with no register row is nothing to delete: a content file without
@@ -260,8 +346,8 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
     }
 
     /// <summary>
-    /// Asked before the key's semaphore is created, so a well-formed key
-    /// nothing ever stored leaves no lock behind in the dictionary.
+    /// Asked before the key is ever locked, so a well-formed key nothing ever
+    /// stored leaves no entry behind in the lock table.
     /// </summary>
     private async Task<bool> HasRegisterRowAsync(string key, CancellationToken ct)
     {
@@ -333,30 +419,23 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
         CancellationToken ct
     )
     {
-        SemaphoreSlim keyLock = _locks.GetOrAdd(key, static _ => new SemaphoreSlim(1, 1));
-        await keyLock.WaitAsync(ct);
-        try
-        {
-            DerivedAudioRow? row;
-            await using (MediaContext context = await _contextFactory.CreateDbContextAsync(ct))
-            {
-                row = await context
-                    .DerivedAudio.AsNoTracking()
-                    .FirstOrDefaultAsync(candidate => candidate.Key == key, ct);
-            }
+        using IDisposable keyLock = await _locks.AcquireAsync(key, ct);
 
-            if (row is null || row.LastUsedAt > DateTime.UtcNow - grace)
-            {
-                return null;
-            }
-
-            await DeleteEntryAsync(key, ct);
-            return row.Bytes;
-        }
-        finally
+        DerivedAudioRow? row;
+        await using (MediaContext context = await _contextFactory.CreateDbContextAsync(ct))
         {
-            keyLock.Release();
+            row = await context
+                .DerivedAudio.AsNoTracking()
+                .FirstOrDefaultAsync(candidate => candidate.Key == key, ct);
         }
+
+        if (row is null || row.LastUsedAt > DateTime.UtcNow - grace)
+        {
+            return null;
+        }
+
+        await DeleteEntryAsync(key, ct);
+        return row.Bytes;
     }
 
     /// <summary>
@@ -364,18 +443,22 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
     /// delete: a touch that lands while eviction is deleting the same key
     /// leaves a register row pointing at a file that is already gone.
     /// </summary>
-    private async Task UnderKeyLockAsync(string key, Func<Task> body, CancellationToken ct)
+    private Task UnderKeyLockAsync(string key, Func<Task> body, CancellationToken ct) =>
+        UnderKeyLockAsync<bool>(
+            key,
+            async () =>
+            {
+                await body();
+                return true;
+            },
+            ct
+        );
+
+    /// <summary>The same lock around a body that answers with something.</summary>
+    private async Task<T> UnderKeyLockAsync<T>(string key, Func<Task<T>> body, CancellationToken ct)
     {
-        SemaphoreSlim keyLock = _locks.GetOrAdd(key, static _ => new SemaphoreSlim(1, 1));
-        await keyLock.WaitAsync(ct);
-        try
-        {
-            await body();
-        }
-        finally
-        {
-            keyLock.Release();
-        }
+        using IDisposable keyLock = await _locks.AcquireAsync(key, ct);
+        return await body();
     }
 
     /// <summary>The touch itself, with the key's lock already held.</summary>
@@ -422,7 +505,10 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
         {
             ct.ThrowIfCancellationRequested();
             string name = entry.Path.Split('/')[^1];
-            if (entry.IsDirectory && name.Length == 2 && name != TempFolder)
+            // The length check alone excludes tmp/: a shard is the first two
+            // characters of a key, and "tmp" is three. Whatever is in there
+            // belongs to SweepStaleTempFilesAsync, which has its own rules.
+            if (entry.IsDirectory && name.Length == 2)
             {
                 contentFolders.Add(entry.Path);
             }
