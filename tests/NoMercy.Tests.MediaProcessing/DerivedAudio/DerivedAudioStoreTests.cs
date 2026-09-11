@@ -279,7 +279,8 @@ public sealed class DerivedAudioStoreTests : IDisposable
     /// between reading it and acting on it: a key read or touched in that
     /// window is in use again, and deleting it pulls the file out from under
     /// the run that just took it. The victim is re-checked under the same
-    /// per-key lock a put takes, and the next-coldest key goes instead.
+    /// per-key lock a put takes and left alone, while the other victims the
+    /// rule chose still go.
     /// </summary>
     [Fact]
     public async Task Evict_SkipsAKeyTouchedAfterTheSnapshot()
@@ -323,7 +324,9 @@ public sealed class DerivedAudioStoreTests : IDisposable
             await seeder.TouchAsync(oldest.Key);
         });
 
-        long freed = await store.EvictAsync(2 * oldest.Bytes, TimeSpan.FromHours(1));
+        // One file's worth of cap, so the rule chooses the two coldest keys:
+        // the touched one is skipped and the other still goes.
+        long freed = await store.EvictAsync(oldest.Bytes, TimeSpan.FromHours(1));
 
         touched.Should().BeTrue();
         freed.Should().Be(middle.Bytes);
@@ -356,13 +359,20 @@ public sealed class DerivedAudioStoreTests : IDisposable
                 .ExecuteUpdateAsync(set => set.SetProperty(row => row.LastUsedAt, cold));
         }
 
-        Task<long> evicting = store.EvictAsync(capBytes: 0, grace: TimeSpan.FromHours(1));
-        Task first = await Task.WhenAny(evicting, Task.Delay(TimeSpan.FromSeconds(10)));
+        // The deadline is the sweep's own token: a wait on a lock it already
+        // holds ends as a cancellation the assertion below reports, and
+        // nothing is left running behind a test that failed.
+        using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(10));
+        Func<Task<long>> evicting = () =>
+            store.EvictAsync(capBytes: 0, grace: TimeSpan.FromHours(1), ct: deadline.Token);
 
-        first
-            .Should()
-            .BeSameAs(evicting, "eviction must not wait on the per-key lock it already holds");
-        (await evicting).Should().Be(entry.Bytes);
+        long freed = (
+            await evicting
+                .Should()
+                .NotThrowAsync("eviction must not wait on the per-key lock it already holds")
+        ).Which;
+
+        freed.Should().Be(entry.Bytes);
         (await store.ExistsAsync(entry.Key)).Should().BeFalse();
     }
 

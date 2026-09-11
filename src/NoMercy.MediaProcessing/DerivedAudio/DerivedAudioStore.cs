@@ -29,8 +29,10 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
     private readonly ILogger<DerivedAudioStore> _logger;
 
     // Serializes puts, touches and deletes of one key inside this store, which
-    // is a process-wide singleton. One SemaphoreSlim per distinct key is kept
-    // for its lifetime: that key space is small next to a media library.
+    // is a process-wide singleton. A semaphore is only ever created for a key
+    // the register actually holds - an unknown key is answered before this is
+    // touched - so the dictionary is bounded by stored content, not by what
+    // callers ask about.
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _locks = new();
 
     /// <param name="storage">An <see cref="IStorage" /> scoped to <c>AppFiles.DerivedAudioPath</c>; every path below is relative to it.</param>
@@ -234,7 +236,7 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
 
     public async Task TouchAsync(string key, CancellationToken ct = default)
     {
-        if (!DerivedAudioKey.IsValid(key))
+        if (!DerivedAudioKey.IsValid(key) || !await HasRegisterRowAsync(key, ct))
         {
             return;
         }
@@ -242,14 +244,29 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
         await UnderKeyLockAsync(key, () => TouchRowAsync(key, ct), ct);
     }
 
+    /// <summary>
+    /// A key with no register row is nothing to delete: a content file without
+    /// one is the half-written state a crash leaves behind, and the orphan
+    /// sweep in <see cref="EvictAsync" /> is what frees that.
+    /// </summary>
     public async Task DeleteAsync(string key, CancellationToken ct = default)
     {
-        if (!DerivedAudioKey.IsValid(key))
+        if (!DerivedAudioKey.IsValid(key) || !await HasRegisterRowAsync(key, ct))
         {
             return;
         }
 
         await UnderKeyLockAsync(key, () => DeleteEntryAsync(key, ct), ct);
+    }
+
+    /// <summary>
+    /// Asked before the key's semaphore is created, so a well-formed key
+    /// nothing ever stored leaves no lock behind in the dictionary.
+    /// </summary>
+    private async Task<bool> HasRegisterRowAsync(string key, CancellationToken ct)
+    {
+        await using MediaContext context = await _contextFactory.CreateDbContextAsync(ct);
+        return await context.DerivedAudio.AsNoTracking().AnyAsync(row => row.Key == key, ct);
     }
 
     /// <summary>
@@ -271,10 +288,9 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
             rows = await context.DerivedAudio.AsNoTracking().ToListAsync(ct);
         }
 
-        long total = rows.Sum(row => row.Bytes);
         long freed = 0;
         foreach (
-            DerivedAudioRow row in DerivedAudioEviction.Candidates(
+            DerivedAudioRow row in DerivedAudioEviction.Choose(
                 rows,
                 capBytes,
                 grace,
@@ -282,11 +298,6 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
             )
         )
         {
-            if (total <= capBytes)
-            {
-                break;
-            }
-
             ct.ThrowIfCancellationRequested();
 
             if (BeforeDelete is not null)
@@ -294,14 +305,9 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
                 await BeforeDelete();
             }
 
-            long? evicted = await DeleteIfStillColdAsync(row.Key, grace, ct);
-            if (evicted is null)
-            {
-                continue;
-            }
-
-            freed += evicted.Value;
-            total -= evicted.Value;
+            // A victim that turned out to be in use again is left alone, which
+            // can leave the store over its cap until the next run.
+            freed += await DeleteIfStillColdAsync(row.Key, grace, ct) ?? 0;
         }
 
         await SweepStaleTempFilesAsync(grace, ct);
