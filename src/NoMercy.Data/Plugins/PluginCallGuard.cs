@@ -25,10 +25,18 @@ namespace NoMercy.Data.Plugins;
 /// <para>
 /// Which plugin and which member are logged as two structured properties
 /// rather than one sentence, so a log pipeline can answer "everything this
-/// plugin did" without parsing the message. The derived-audio facade is one
-/// object every plugin shares and has no plugin of its own to name; it passes
-/// <c>"shared"</c> rather than leaving the property out, because a missing
-/// field reads as a gap in the pipeline.
+/// plugin did" without parsing the message. <c>PluginId</c> is always a ULID
+/// string: the derived-audio facade is one object every plugin shares and has
+/// no plugin of its own to name, so it passes the empty ULID
+/// (<c>PluginDerivedAudio.SharedPluginId</c>) rather than leaving the property
+/// out or inventing a word - a missing field reads as a gap in the pipeline,
+/// and a word reads as a parse failure.
+/// </para>
+/// <para>
+/// One template, <c>"plugin {PluginId}: {Member} failed inside the server"</c>,
+/// for every entry: the shared facade's put used to carry a distinctive
+/// sentence of its own, and a pipeline could then match on one wording or the
+/// other but never on both.
 /// </para>
 /// </summary>
 public static class PluginCallGuard

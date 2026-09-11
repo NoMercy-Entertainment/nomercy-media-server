@@ -68,6 +68,11 @@ public class PluginMusicAnalysisWriterTests : IDisposable
     private const string KeyFlac =
         "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
 
+    // A register row with no content type at all: not something PutAsync can
+    // write, so it is a corrupted register rather than a caller's mistake.
+    private const string KeyNoContentType =
+        "9999999999999999999999999999999999999999999999999999999999999999";
+
     private readonly SqliteConnection _connection;
     private readonly DbContextOptions<MediaContext> _options;
     private readonly Ulid _pluginId = Ulid.NewUlid();
@@ -154,6 +159,7 @@ public class PluginMusicAnalysisWriterTests : IDisposable
 
         context.DerivedAudio.Add(DerivedAudioRowFor(KeyFlac, "audio/flac"));
         context.DerivedAudio.Add(DerivedAudioRowFor(KeyOpusMime, "audio/opus"));
+        context.DerivedAudio.Add(DerivedAudioRowFor(KeyNoContentType, string.Empty));
 
         context.SaveChanges();
     }
@@ -1044,6 +1050,122 @@ public class PluginMusicAnalysisWriterTests : IDisposable
 
         using MediaContext context = new(_options);
         context.TrackStems.Any(stem => stem.TrackId == _trackId).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// A register row with no content type is not a stem a plugin can be
+    /// told to fix - it is the server's own register missing a value only the
+    /// server ever writes. It is refused loudly, by the exception's name, and
+    /// logged, rather than reading back to the plugin as a format mismatch it
+    /// would keep trying to correct.
+    /// </summary>
+    [Fact]
+    public async Task RegisterStem_RefusesAndLogsWhenTheRegisterRowHasNoContentType()
+    {
+        Mock<IDerivedAudioStore> store = NewStoreMock();
+        store
+            .Setup(s => s.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        Mock<ILogger<PluginMusicAnalysisWriter>> logger = new();
+
+        PluginWriteResult result = await CreateWriter(store.Object, logger: logger.Object)
+            .RegisterStemAsync(ValidFullStem(_trackId, KeyNoContentType));
+
+        result.Ok.Should().BeFalse();
+        result
+            .Refusal.Should()
+            .Be("the server could not complete this call: InvalidOperationException");
+        VerifyWarningLogged(logger, "failed inside the server");
+
+        using MediaContext context = new(_options);
+        context.TrackStems.Any(stem => stem.TrackId == _trackId).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// Both wrong at once, so the order is visible: the stem register checks
+    /// the track first, exactly as the DJ-record path does. A caller handed
+    /// "format must not be empty" for a track the library does not know would
+    /// go and fix the wrong half.
+    /// </summary>
+    [Fact]
+    public async Task RegisterStem_ReportsTheUnknownTrackBeforeTheEmptyFormat()
+    {
+        Guid unknownTrackId = Guid.NewGuid();
+
+        Mock<IDerivedAudioStore> store = NewStoreMock();
+        store
+            .Setup(s => s.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        PluginTrackStem stem = ValidFullStem(unknownTrackId, KeyOne) with { Format = string.Empty };
+
+        PluginWriteResult result = await CreateWriter(store.Object).RegisterStemAsync(stem);
+
+        result.Ok.Should().BeFalse();
+        result.Refusal.Should().Be($"track {unknownTrackId} does not exist");
+    }
+
+    /// <summary>
+    /// A producer that writes "OPUS" means the same format, and the pairing
+    /// check says so - but the row it lands in addresses a stem by its kind,
+    /// so one casing goes into the register whatever the caller wrote. Two
+    /// rows differing only in case are two rows to every reader.
+    /// </summary>
+    [Fact]
+    public async Task RegisterStem_StoresFormatAndKindLowerCased()
+    {
+        Mock<IDerivedAudioStore> store = NewStoreMock();
+        store
+            .Setup(s => s.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        PluginTrackStem stem = ValidFullStem(_trackId, KeyOne) with
+        {
+            Format = "OPUS",
+            Kind = "Vocals",
+        };
+
+        PluginWriteResult result = await CreateWriter(store.Object).RegisterStemAsync(stem);
+
+        result.Ok.Should().BeTrue();
+
+        using MediaContext context = new(_options);
+        TrackStem stored = context.TrackStems.Single(row => row.TrackId == _trackId);
+        stored.Format.Should().Be("opus");
+        stored.Kind.Should().Be("vocals");
+    }
+
+    /// <summary>
+    /// The same casing rule one row along: a stem written twice under two
+    /// casings of one kind is one register row, updated - not a second row the
+    /// unique index would then reject as a concurrent write.
+    /// </summary>
+    [Fact]
+    public async Task RegisterStem_TreatsTwoCasingsOfOneKindAsOneRow()
+    {
+        Mock<IDerivedAudioStore> store = NewStoreMock();
+        store
+            .Setup(s => s.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        PluginMusicAnalysisWriter writer = CreateWriter(store.Object);
+
+        (await writer.RegisterStemAsync(ValidFullStem(_trackId, KeyOne))).Ok.Should().BeTrue();
+
+        PluginWriteResult second = await writer.RegisterStemAsync(
+            ValidFullStem(_trackId, KeyTwo) with
+            {
+                Kind = "VOCALS",
+            }
+        );
+
+        second.Ok.Should().BeTrue();
+
+        using MediaContext context = new(_options);
+        TrackStem stored = context.TrackStems.Single(row => row.TrackId == _trackId);
+        stored.Kind.Should().Be("vocals");
+        stored.StorageKey.Should().Be(KeyTwo);
     }
 
     /// <summary>

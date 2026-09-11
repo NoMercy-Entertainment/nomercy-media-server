@@ -387,21 +387,23 @@ public class PluginMusicAnalysisWriter(
         CancellationToken ct
     )
     {
-        // Before anything else per stem: nothing below can read a member that
-        // is not there. The format is the one that used to throw outright -
-        // the content-type pairing lowercases it - and a null kind or producer
-        // version would only surface hours later as a DbUpdateException
-        // against a column that does not take one.
-        PluginWriteResult? missingMember = CheckStemMembersPresent(stem);
-        if (missingMember is not null)
-            return missingMember;
-
+        // The track first, exactly as UpsertDjAnalysisCoreAsync checks it: a
+        // caller handed "format must not be empty" for a track the library
+        // does not know would go and fix the wrong half of its row.
         bool trackExists = await context
             .Tracks.AsNoTracking()
             .AnyAsync(t => t.Id == stem.TrackId, ct);
 
         if (!trackExists)
             return PluginWriteResult.Refused($"track {stem.TrackId} does not exist");
+
+        // Then the members: nothing below can read one that is not there. A
+        // null kind or producer version would otherwise only surface hours
+        // later as a DbUpdateException against a column that does not take
+        // one.
+        PluginWriteResult? missingMember = CheckStemMembersPresent(stem);
+        if (missingMember is not null)
+            return missingMember;
 
         // A key the store could never have minted gets the same answer as one
         // it does not hold, but is checked first: asking the store means
@@ -420,13 +422,12 @@ public class PluginMusicAnalysisWriter(
             .Select(row => row.ContentType)
             .FirstOrDefaultAsync(ct);
 
-        if (contentType is null)
-            return PluginWriteResult.Refused(
-                $"storage key {stem.StorageKey} is not in the derived store"
-            );
-
         // The register row is what a client is handed the stem as, so a row
-        // claiming Opus over a FLAC file is a player error hours later.
+        // claiming Opus over a FLAC file is a player error hours later. A row
+        // with no content type at all is not a refusal this caller can act on
+        // - the store answered for the key a moment ago, so the register is
+        // the thing that is wrong - and StemFormats throws for it. The guard
+        // logs that and names the exception type; see StemFormats.Matches.
         if (!StemFormats.Matches(stem.Format, contentType))
             return PluginWriteResult.Refused(
                 $"stem format {stem.Format} does not match the stored content type {contentType}"
@@ -487,7 +488,20 @@ public class PluginMusicAnalysisWriter(
 
         foreach (PluginTrackStem stem in stems)
         {
-            if (!seen.Add((stem.TrackId, stem.Kind, stem.Coverage, stem.ProducerVersion)))
+            // The canonical kind, because that is what the rows land under:
+            // "Vocals" and "vocals" in one batch are one row written twice,
+            // and saying so beats the unique-index violation it would
+            // otherwise reach the caller as.
+            if (
+                !seen.Add(
+                    (
+                        stem.TrackId,
+                        StemFormats.Canonical(stem.Kind),
+                        stem.Coverage,
+                        stem.ProducerVersion
+                    )
+                )
+            )
                 return PluginWriteResult.Refused(
                     $"stems contains the same stem twice: {stem.Kind}/{stem.Coverage}"
                 );
@@ -505,10 +519,16 @@ public class PluginMusicAnalysisWriter(
     {
         StemCoverage coverage = StemCoverageMap.ToDb(stem.Coverage);
 
+        // One casing in the register, whatever the producer wrote: the unique
+        // index addresses a row by its kind, and SQLite compares those bytes
+        // for bytes, so a second casing would be a second row nothing looking
+        // for the first can find.
+        string kind = StemFormats.Canonical(stem.Kind);
+
         TrackStem? existing = await context.TrackStems.FirstOrDefaultAsync(
             row =>
                 row.TrackId == stem.TrackId
-                && row.Kind == stem.Kind
+                && row.Kind == kind
                 && row.Coverage == coverage
                 && row.ProducerVersion == stem.ProducerVersion,
             ct
@@ -520,11 +540,11 @@ public class PluginMusicAnalysisWriter(
             context.TrackStems.Add(existing);
         }
 
-        existing.Kind = stem.Kind;
+        existing.Kind = kind;
         existing.Coverage = coverage;
         existing.WindowStartMs = stem.WindowStartMs;
         existing.WindowEndMs = stem.WindowEndMs;
-        existing.Format = stem.Format;
+        existing.Format = StemFormats.Canonical(stem.Format);
         existing.SampleRate = stem.SampleRate;
         existing.StorageKey = stem.StorageKey;
         existing.ProducerVersion = stem.ProducerVersion;
@@ -563,12 +583,16 @@ public class PluginMusicAnalysisWriter(
         {
             StemCoverage coverage = StemCoverageMap.ToDb(stem.Coverage);
 
+            // The canonical kind again: the row the staging step was about to
+            // write is the row this re-read has to find.
+            string kind = StemFormats.Canonical(stem.Kind);
+
             TrackStem? stored = await context
                 .TrackStems.AsNoTracking()
                 .FirstOrDefaultAsync(
                     row =>
                         row.TrackId == stem.TrackId
-                        && row.Kind == stem.Kind
+                        && row.Kind == kind
                         && row.Coverage == coverage
                         && row.ProducerVersion == stem.ProducerVersion,
                     ct

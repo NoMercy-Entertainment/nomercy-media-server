@@ -395,6 +395,7 @@ the millisecond-range check. A partial base row is normal, not a defect.
 | `"track {id} does not exist"` | unknown `TrackId` | drop the row |
 | `"storage key {key} is not in the derived store"` | the stem was never actually written, or the key is wrong | write it through `IPluginDerivedAudio.PutAsync` (or `SplitStemsAsync`) first |
 | `"stem format {format} does not match the stored content type {contentType}"` | the row would claim a format the stored file is not (`opus` goes with `audio/ogg` or `audio/opus`, `flac` with `audio/flac`) | register the stem under the format the file was actually put with — a client is handed the file by that content type |
+| `"the server could not complete this call: InvalidOperationException"` | the register row behind the key has no content type at all — a value only the server writes, so this is the server's own register being wrong rather than anything about your stem | not a retry: the server logged it. Put the file again to mint a fresh entry, and tell the owner the log line is worth reading |
 | `"full coverage stems must not specify a window"` | `Coverage.Full` was combined with a non-null `WindowStartMs` or `WindowEndMs` | leave both null for `Full` |
 | `"windowed stems must specify both window_start_ms and window_end_ms"` | `MixIn` / `MixOut` was combined with a null window bound | set both, in milliseconds from the start of the track |
 | `"window_start_ms must be less than window_end_ms"` | the window was empty or backwards | fix the bounds — a windowed stem always covers a positive span |
@@ -402,6 +403,12 @@ the millisecond-range check. A partial base row is normal, not a defect.
 | `"stem {kind}/{coverage} for track {id} could not be stored: {exception}"` | the write failed for a reason of its own — a foreign key, a column constraint, the disk — and no row is there to explain it as a race | not a retry: the server logged the exception, so read its log before writing the stem again |
 | `"stems must not be null"` | `RegisterStemsAsync` was handed a null list | pass an empty list, or the stems you meant to write |
 | `"stems contains the same stem twice: {kind}/{coverage}"` | two entries of one batch address the same register row (same track, kind, coverage and producer version) | one row per (track, kind, coverage, producer version); drop the duplicate before calling |
+
+`format` and `kind` are stored lower-cased whatever casing you write them in
+(`"OPUS"` and `"Vocals"` land as `opus` and `vocals`), so one stem is one row
+however two passes of your own code happen to spell it. Refusals quote the
+casing you sent. The checks run in the order of the table above, with the
+track first — the same order `UpsertDjAnalysisAsync` uses.
 
 ### `IPluginMusicAnalysisWriter.MarkFailedAsync`
 

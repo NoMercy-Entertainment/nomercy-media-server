@@ -47,9 +47,28 @@ public static class StemFormats
     /// Case is not what a caller is refused over - a producer writing "OPUS"
     /// means the same format - but the pair itself is.
     /// </para>
+    /// <para>
+    /// The two sides fail differently on purpose. A missing
+    /// <paramref name="format" /> is a caller's omission, named in words by
+    /// the members-present check in front of this one, so it is answered
+    /// false. A missing <paramref name="contentType" /> cannot be: it is read
+    /// back out of a <c>DerivedAudio</c> row the server wrote itself, so a row
+    /// without one is a corrupted register, and reading that back to a plugin
+    /// as an ordinary format mismatch would send the owner after the stem
+    /// instead of the register. It throws.
+    /// </para>
     /// </summary>
-    public static bool Matches(string format, string contentType)
+    /// <exception cref="InvalidOperationException">
+    /// <paramref name="contentType" /> is null or blank - a register row the
+    /// server cannot have written.
+    /// </exception>
+    public static bool Matches(string? format, string? contentType)
     {
+        if (string.IsNullOrWhiteSpace(contentType))
+        {
+            throw new InvalidOperationException("a DerivedAudio row has no content type");
+        }
+
         if (Is(format, Opus))
         {
             return Is(contentType, OggContentType) || Is(contentType, OpusContentType);
@@ -63,6 +82,21 @@ public static class StemFormats
         return false;
     }
 
-    private static bool Is(string value, string expected) =>
+    /// <summary>
+    /// The casing a stem's format or kind is stored in. Case is not what a
+    /// producer is refused over, so one casing has to be chosen when the row
+    /// lands: a register holding both "Vocals" and "vocals" holds two stems as
+    /// far as every reader of it is concerned, and one of them can never be
+    /// found again by a caller that spells it the other way.
+    /// <para>
+    /// A token that is not there canonicalizes to empty rather than throwing.
+    /// The batch-shape checks that address a row by its kind run before the
+    /// per-row members check that names a missing one in words, and this is
+    /// not the member that should get to report it.
+    /// </para>
+    /// </summary>
+    public static string Canonical(string? value) => value?.ToLowerInvariant() ?? string.Empty;
+
+    private static bool Is(string? value, string expected) =>
         string.Equals(value, expected, StringComparison.OrdinalIgnoreCase);
 }
