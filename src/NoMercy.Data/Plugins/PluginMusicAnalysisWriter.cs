@@ -11,6 +11,7 @@
 
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Database;
@@ -57,12 +58,35 @@ public class PluginMusicAnalysisWriter(
     public Task<PluginWriteResult> UpsertDjAnalysisAsync(
         PluginTrackDjAnalysis record,
         CancellationToken ct = default
-    ) => GuardAsync(nameof(UpsertDjAnalysisAsync), () => UpsertDjAnalysisCoreAsync(record, ct));
+    ) =>
+        PluginCallGuard.RunAsync(
+            Operation(nameof(UpsertDjAnalysisAsync)),
+            () => UpsertDjAnalysisCoreAsync(record, ct),
+            PluginWriteResult.Refused,
+            _logger
+        );
 
     public Task<PluginWriteResult> RegisterStemAsync(
         PluginTrackStem stem,
         CancellationToken ct = default
-    ) => GuardAsync(nameof(RegisterStemAsync), () => RegisterStemCoreAsync(stem, ct));
+    ) =>
+        PluginCallGuard.RunAsync(
+            Operation(nameof(RegisterStemAsync)),
+            () => RegisterStemsCoreAsync([stem], ct),
+            PluginWriteResult.Refused,
+            _logger
+        );
+
+    public Task<PluginWriteResult> RegisterStemsAsync(
+        IReadOnlyList<PluginTrackStem> stems,
+        CancellationToken ct = default
+    ) =>
+        PluginCallGuard.RunAsync(
+            Operation(nameof(RegisterStemsAsync)),
+            () => RegisterStemsCoreAsync(stems, ct),
+            PluginWriteResult.Refused,
+            _logger
+        );
 
     public Task<PluginWriteResult> MarkFailedAsync(
         Guid trackId,
@@ -71,9 +95,11 @@ public class PluginMusicAnalysisWriter(
         string reason,
         CancellationToken ct = default
     ) =>
-        GuardAsync(
-            nameof(MarkFailedAsync),
-            () => MarkFailedCoreAsync(trackId, djAnalyzerVersion, baseAnalyzerVersion, reason, ct)
+        PluginCallGuard.RunAsync(
+            Operation(nameof(MarkFailedAsync)),
+            () => MarkFailedCoreAsync(trackId, djAnalyzerVersion, baseAnalyzerVersion, reason, ct),
+            PluginWriteResult.Refused,
+            _logger
         );
 
     /// <summary>
@@ -82,17 +108,15 @@ public class PluginMusicAnalysisWriter(
     /// caller that asked for a row to be gone is no worse off being told
     /// nothing than being handed a driver exception.
     /// </summary>
-    public async Task DeleteDjAnalysisAsync(Guid trackId, CancellationToken ct = default)
-    {
-        try
-        {
-            await DeleteDjAnalysisCoreAsync(trackId, ct);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            LogUnexpected(exception, nameof(DeleteDjAnalysisAsync));
-        }
-    }
+    public Task DeleteDjAnalysisAsync(Guid trackId, CancellationToken ct = default) =>
+        PluginCallGuard.RunAsync(
+            Operation(nameof(DeleteDjAnalysisAsync)),
+            () => DeleteDjAnalysisCoreAsync(trackId, ct),
+            _logger
+        );
+
+    /// <summary>Which plugin's call this is, for the guard's warning line.</summary>
+    private string Operation(string member) => $"plugin {pluginId}: {member}";
 
     private async Task<PluginWriteResult> UpsertDjAnalysisCoreAsync(
         PluginTrackDjAnalysis record,
@@ -156,6 +180,10 @@ public class PluginMusicAnalysisWriter(
                 return outOfRange;
         }
 
+        PluginWriteResult? malformedRegion = CheckVocalRegionShape(record.VocalRegionsMs);
+        if (malformedRegion is not null)
+            return malformedRegion;
+
         if (!IsAscending(record.PhraseStartsMs))
             return PluginWriteResult.Refused("phrase_starts_ms must be ascending");
 
@@ -211,31 +239,129 @@ public class PluginMusicAnalysisWriter(
         existing.Chords = chordsJson;
         existing.AnalyzedAt = DateTime.UtcNow;
 
+        if (BeforeSave is not null)
+        {
+            await BeforeSave();
+        }
+
         try
         {
             await context.SaveChangesAsync(ct);
         }
-        catch (DbUpdateException)
+        catch (DbUpdateException exception)
         {
-            // Two sweeps upserting the same track at once: both read "no row"
-            // and both tried to insert. Nothing is lost - the winner wrote the
-            // same kind of record - so the loser is told to run again rather
-            // than handed a driver exception.
-            return PluginWriteResult.Refused(
-                $"the DJ record for track {record.TrackId} was written concurrently; retry"
-            );
+            return await ResolveFailedDjWriteAsync(record.TrackId, exception, ct);
         }
 
         return PluginWriteResult.Accepted();
     }
 
-    private async Task<PluginWriteResult> RegisterStemCoreAsync(
-        PluginTrackStem stem,
+    /// <summary>
+    /// A save that did not land is only a race when a row is there now: two
+    /// sweeps upserting one track both read "no row" and both insert, and the
+    /// loser can simply run again. With no row, the save failed for a reason
+    /// of its own - a foreign key, a column constraint, a disk - and "retry"
+    /// would hide that for ever, so it is logged and named instead.
+    /// </summary>
+    private async Task<PluginWriteResult> ResolveFailedDjWriteAsync(
+        Guid trackId,
+        DbUpdateException exception,
         CancellationToken ct
     )
     {
         await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
 
+        bool stored = await context
+            .TrackDjAnalysis.AsNoTracking()
+            .AnyAsync(analysis => analysis.TrackId == trackId, ct);
+
+        if (stored)
+            return PluginWriteResult.Refused(
+                $"the DJ record for track {trackId} was written concurrently; retry"
+            );
+
+        _logger.LogWarning(
+            exception,
+            "plugin {PluginId}: the DJ record for track {TrackId} could not be stored",
+            pluginId,
+            trackId
+        );
+
+        return PluginWriteResult.Refused(
+            $"the DJ record for track {trackId} could not be stored: {exception.GetType().Name}"
+        );
+    }
+
+    /// <summary>
+    /// Runs between staging the rows and saving them, so a test can land a
+    /// competing write in exactly the window this method has to survive. Never
+    /// set in production.
+    /// </summary>
+    internal Func<Task>? BeforeSave { get; init; }
+
+    /// <summary>
+    /// Every stem is validated before any of them is staged, and all of them
+    /// are saved in one transaction, so a refusal on the second stem of a pair
+    /// leaves the first one unwritten rather than half a split in the register.
+    /// </summary>
+    private async Task<PluginWriteResult> RegisterStemsCoreAsync(
+        IReadOnlyList<PluginTrackStem> stems,
+        CancellationToken ct
+    )
+    {
+        if (stems is null)
+            return PluginWriteResult.Refused("stems must not be null");
+
+        if (stems.Count == 0)
+            return PluginWriteResult.Accepted();
+
+        PluginWriteResult? duplicate = CheckForDuplicates(stems);
+        if (duplicate is not null)
+            return duplicate;
+
+        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+
+        foreach (PluginTrackStem stem in stems)
+        {
+            PluginWriteResult? refusal = await CheckStemAsync(context, stem, ct);
+            if (refusal is not null)
+                return refusal;
+        }
+
+        foreach (PluginTrackStem stem in stems)
+        {
+            await StageStemAsync(context, stem, ct);
+        }
+
+        if (BeforeSave is not null)
+        {
+            await BeforeSave();
+        }
+
+        await using IDbContextTransaction transaction =
+            await context.Database.BeginTransactionAsync(ct);
+
+        try
+        {
+            await context.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+        }
+        catch (DbUpdateException exception)
+        {
+            await transaction.RollbackAsync(ct);
+            return await ResolveFailedStemWriteAsync(stems, exception, ct);
+        }
+
+        return PluginWriteResult.Accepted();
+    }
+
+    /// <summary>Why one stem cannot be written, or null when it can.</summary>
+    private async Task<PluginWriteResult?> CheckStemAsync(
+        MediaContext context,
+        PluginTrackStem stem,
+        CancellationToken ct
+    )
+    {
         bool trackExists = await context
             .Tracks.AsNoTracking()
             .AnyAsync(t => t.Id == stem.TrackId, ct);
@@ -244,15 +370,32 @@ public class PluginMusicAnalysisWriter(
             return PluginWriteResult.Refused($"track {stem.TrackId} does not exist");
 
         // A key the store could never have minted gets the same answer as one
-        // it simply does not hold - a plugin has one thing to fix either way -
-        // but it is checked here first, because asking the store means slicing
-        // the key into a path.
+        // it does not hold, but is checked first: asking the store means
+        // slicing the key into a path.
         if (
             !DerivedAudioKey.IsValid(stem.StorageKey)
             || !await store.ExistsAsync(stem.StorageKey, ct)
         )
             return PluginWriteResult.Refused(
                 $"storage key {stem.StorageKey} is not in the derived store"
+            );
+
+        string? contentType = await context
+            .DerivedAudio.AsNoTracking()
+            .Where(row => row.Key == stem.StorageKey)
+            .Select(row => row.ContentType)
+            .FirstOrDefaultAsync(ct);
+
+        if (contentType is null)
+            return PluginWriteResult.Refused(
+                $"storage key {stem.StorageKey} is not in the derived store"
+            );
+
+        // The register row is what a client is handed the stem as, so a row
+        // claiming Opus over a FLAC file is a player error hours later.
+        if (!FormatMatchesContentType(stem.Format, contentType))
+            return PluginWriteResult.Refused(
+                $"stem format {stem.Format} does not match the stored content type {contentType}"
             );
 
         if (stem.Coverage == PluginStemCoverage.Full)
@@ -271,7 +414,51 @@ public class PluginMusicAnalysisWriter(
                 return PluginWriteResult.Refused("window_start_ms must be less than window_end_ms");
         }
 
-        StemCoverage coverage = ToDbCoverage(stem.Coverage);
+        return null;
+    }
+
+    /// <summary>
+    /// One register row is addressed by (track, kind, coverage, producer), so
+    /// two entries sharing all four are one row written twice: whichever came
+    /// second would silently win, which is never what a caller meant.
+    /// </summary>
+    private static PluginWriteResult? CheckForDuplicates(IReadOnlyList<PluginTrackStem> stems)
+    {
+        HashSet<(Guid, string, PluginStemCoverage, string)> seen = [];
+
+        foreach (PluginTrackStem stem in stems)
+        {
+            if (!seen.Add((stem.TrackId, stem.Kind, stem.Coverage, stem.ProducerVersion)))
+                return PluginWriteResult.Refused(
+                    $"stems contains the same stem twice: {stem.Kind}/{stem.Coverage}"
+                );
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// The pairings the derived store can hold today. Anything else is a
+    /// mismatch rather than an unknown: a format that cannot come out of that
+    /// container is not a row worth keeping.
+    /// </summary>
+    private static bool FormatMatchesContentType(string format, string contentType) =>
+        (format.ToLowerInvariant(), contentType.ToLowerInvariant()) switch
+        {
+            ("opus", "audio/ogg") => true,
+            ("opus", "audio/opus") => true,
+            ("flac", "audio/flac") => true,
+            _ => false,
+        };
+
+    /// <summary>Adds or updates one stem's row on the context, without saving it.</summary>
+    private static async Task StageStemAsync(
+        MediaContext context,
+        PluginTrackStem stem,
+        CancellationToken ct
+    )
+    {
+        StemCoverage coverage = StemCoverageMap.ToDb(stem.Coverage);
 
         TrackStem? existing = await context.TrackStems.FirstOrDefaultAsync(
             row =>
@@ -297,8 +484,62 @@ public class PluginMusicAnalysisWriter(
         existing.StorageKey = stem.StorageKey;
         existing.ProducerVersion = stem.ProducerVersion;
         existing.CreatedAt = DateTime.UtcNow;
+    }
 
-        await context.SaveChangesAsync(ct);
+    /// <summary>
+    /// A save that did not land is only a race when the row is there now: two
+    /// sweeps registering one stem both read "no row" and both insert, and the
+    /// winner stored either the same key (nothing is lost, so the loser is
+    /// told it landed) or another one (the caller has to run again). With no
+    /// row at all the save failed for a reason of its own - a foreign key, a
+    /// column constraint, a disk - which is logged and named rather than
+    /// dressed up as something a retry would fix.
+    /// </summary>
+    private async Task<PluginWriteResult> ResolveFailedStemWriteAsync(
+        IReadOnlyList<PluginTrackStem> stems,
+        DbUpdateException exception,
+        CancellationToken ct
+    )
+    {
+        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+
+        foreach (PluginTrackStem stem in stems)
+        {
+            StemCoverage coverage = StemCoverageMap.ToDb(stem.Coverage);
+
+            TrackStem? stored = await context
+                .TrackStems.AsNoTracking()
+                .FirstOrDefaultAsync(
+                    row =>
+                        row.TrackId == stem.TrackId
+                        && row.Kind == stem.Kind
+                        && row.Coverage == coverage
+                        && row.ProducerVersion == stem.ProducerVersion,
+                    ct
+                );
+
+            if (stored is null)
+            {
+                _logger.LogWarning(
+                    exception,
+                    "plugin {PluginId}: stem {Kind}/{Coverage} for track {TrackId} could not be stored",
+                    pluginId,
+                    stem.Kind,
+                    stem.Coverage,
+                    stem.TrackId
+                );
+
+                return PluginWriteResult.Refused(
+                    $"stem {stem.Kind}/{stem.Coverage} for track {stem.TrackId} could not be stored: {exception.GetType().Name}"
+                );
+            }
+
+            if (stored.StorageKey != stem.StorageKey)
+                return PluginWriteResult.Refused(
+                    $"stem {stem.Kind}/{stem.Coverage} for track {stem.TrackId} was written concurrently; retry"
+                );
+        }
+
         return PluginWriteResult.Accepted();
     }
 
@@ -423,6 +664,26 @@ public class PluginMusicAnalysisWriter(
         );
 
     /// <summary>
+    /// A vocal region is exactly [start, end] with start before end. One value
+    /// reads as a region ending wherever the next one starts, and a backwards
+    /// pair as a region of negative length - both are a planner reading the
+    /// wrong seconds of a track long after the sweep that stored them.
+    /// </summary>
+    private static PluginWriteResult? CheckVocalRegionShape(IReadOnlyList<int[]> regions)
+    {
+        for (int index = 0; index < regions.Count; index++)
+        {
+            int[] region = regions[index];
+            if (region.Length != 2 || region[0] >= region[1])
+                return PluginWriteResult.Refused(
+                    $"vocal_regions_ms entry {index} must be [start, end] with start < end"
+                );
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// Phrase boundaries strictly increase: two phrases cannot start at the
     /// same millisecond, so equal neighbours fail this the same as a drop.
     /// </summary>
@@ -436,40 +697,6 @@ public class PluginMusicAnalysisWriter(
 
         return true;
     }
-
-    /// <summary>
-    /// Runs one contract call and turns anything it throws into a refusal:
-    /// every caller here is a plugin sweeping unattended, and an exception
-    /// crossing the host boundary takes that whole sweep down instead of one
-    /// track. The exception type is named in the refusal so the owner can match
-    /// it against the Warning line this also writes; cancellation the caller
-    /// asked for is passed through untouched.
-    /// </summary>
-    private async Task<PluginWriteResult> GuardAsync(
-        string member,
-        Func<Task<PluginWriteResult>> call
-    )
-    {
-        try
-        {
-            return await call();
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            LogUnexpected(exception, member);
-            return PluginWriteResult.Refused(
-                $"the server could not complete this call: {exception.GetType().Name}"
-            );
-        }
-    }
-
-    private void LogUnexpected(Exception exception, string member) =>
-        _logger.LogWarning(
-            exception,
-            "plugin {PluginId}: {Member} failed inside the server",
-            pluginId,
-            member
-        );
 
     /// <summary>
     /// Every list on the record is required. A null one is a caller bug that
@@ -507,23 +734,4 @@ public class PluginMusicAnalysisWriter(
 
         return null;
     }
-
-    /// <summary>
-    /// Maps the plugin's stem-coverage enum to the database's own. An
-    /// explicit switch, the mirror of <see cref="PluginMusicQuery" />'s own
-    /// mapping the other way, rather than a cast the two enums only happen to
-    /// agree on today.
-    /// </summary>
-    private static StemCoverage ToDbCoverage(PluginStemCoverage coverage) =>
-        coverage switch
-        {
-            PluginStemCoverage.Full => StemCoverage.Full,
-            PluginStemCoverage.MixIn => StemCoverage.MixIn,
-            PluginStemCoverage.MixOut => StemCoverage.MixOut,
-            _ => throw new ArgumentOutOfRangeException(
-                nameof(coverage),
-                coverage,
-                "Unknown stem coverage"
-            ),
-        };
 }

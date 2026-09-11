@@ -19,15 +19,14 @@ namespace NoMercy.Tests.Repositories.Plugins;
 
 /// <summary>
 /// The host side of <see cref="IPluginDerivedAudio" />: every member forwards
-/// to <see cref="IDerivedAudioStore" />, and an empty key is refused before it
-/// ever reaches the store, since <see cref="IDerivedAudioStore.RelativePath" />
-/// slices the key to build a path.
+/// to <see cref="IDerivedAudioStore" />, which is the only key validator -
+/// a key it could not have minted comes back as an absence from there, not
+/// from a second copy of the rule in the facade.
 /// </summary>
 public class PluginDerivedAudioTests
 {
-    // Only a 64-character lowercase hex string is a key PutAsync could have
-    // minted, so the forwarding tests below have to use one: anything else is
-    // refused by the facade before the store is ever reached.
+    // A 64-character lowercase hex string: the shape PutAsync mints, which is
+    // what the forwarding tests below hand the store.
     private const string SomeKey =
         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
@@ -117,17 +116,26 @@ public class PluginDerivedAudioTests
     }
 
     /// <summary>
-    /// <see cref="IDerivedAudioStore.RelativePath" /> slices the key to build a
-    /// path, so a null, empty or whitespace-only key must never reach the
-    /// store at all - the facade answers "not found" / no-op on its own.
+    /// The store is the only key validator - it answers "not found" for a key
+    /// <see cref="IDerivedAudioStore.PutAsync" /> could not have minted and
+    /// never builds a path out of one. The facade forwards and hands back
+    /// whatever the store said, rather than keeping a second copy of the rule
+    /// that would have to be kept in step with it.
     /// </summary>
     [Theory]
     [InlineData(null)]
     [InlineData("")]
     [InlineData(" ")]
-    public async Task AnEmptyKey_NeverReachesTheStore(string? key)
+    public async Task AnEmptyKey_IsForwardedToTheStore(string? key)
     {
         Mock<IDerivedAudioStore> store = new();
+        store
+            .Setup(s => s.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        store
+            .Setup(s => s.OpenReadAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Stream?)null);
+
         PluginDerivedAudio facade = new(store.Object);
 
         bool exists = await facade.ExistsAsync(key!);
@@ -138,22 +146,10 @@ public class PluginDerivedAudioTests
         exists.Should().BeFalse();
         opened.Should().BeNull();
 
-        store.Verify(
-            s => s.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
-            Times.Never
-        );
-        store.Verify(
-            s => s.OpenReadAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
-            Times.Never
-        );
-        store.Verify(
-            s => s.TouchAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
-            Times.Never
-        );
-        store.Verify(
-            s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
-            Times.Never
-        );
+        store.Verify(s => s.ExistsAsync(key!, It.IsAny<CancellationToken>()), Times.Once);
+        store.Verify(s => s.OpenReadAsync(key!, It.IsAny<CancellationToken>()), Times.Once);
+        store.Verify(s => s.TouchAsync(key!, It.IsAny<CancellationToken>()), Times.Once);
+        store.Verify(s => s.DeleteAsync(key!, It.IsAny<CancellationToken>()), Times.Once);
     }
 
     /// <summary>
@@ -204,17 +200,26 @@ public class PluginDerivedAudioTests
     /// <summary>
     /// A key is the lowercase hex of a SHA-256 digest and nothing else, so a
     /// short one, a traversal attempt, a near-miss length and the right
-    /// characters in the wrong case are all refused here - before the store
-    /// gets the chance to slice any of them into a path.
+    /// characters in the wrong case all come back as an absence - decided by
+    /// the store, which is where that rule lives, and forwarded unchanged.
+    /// <c>DerivedAudioStoreTests.AnInvalidKey_IsNotFound_AndNeverTouchesTheDisk</c>
+    /// is what proves none of them ever becomes a path.
     /// </summary>
     [Theory]
     [InlineData("a")]
     [InlineData("../../etc")]
     [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
     [InlineData("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")]
-    public async Task AMalformedKey_NeverReachesTheStore(string key)
+    public async Task AMalformedKey_IsForwardedAndReadsAsAnAbsence(string key)
     {
         Mock<IDerivedAudioStore> store = new();
+        store
+            .Setup(s => s.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+        store
+            .Setup(s => s.OpenReadAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync((Stream?)null);
+
         PluginDerivedAudio facade = new(store.Object);
 
         bool exists = await facade.ExistsAsync(key);
@@ -225,21 +230,9 @@ public class PluginDerivedAudioTests
         exists.Should().BeFalse();
         opened.Should().BeNull();
 
-        store.Verify(
-            s => s.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
-            Times.Never
-        );
-        store.Verify(
-            s => s.OpenReadAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
-            Times.Never
-        );
-        store.Verify(
-            s => s.TouchAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
-            Times.Never
-        );
-        store.Verify(
-            s => s.DeleteAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
-            Times.Never
-        );
+        store.Verify(s => s.ExistsAsync(key, It.IsAny<CancellationToken>()), Times.Once);
+        store.Verify(s => s.OpenReadAsync(key, It.IsAny<CancellationToken>()), Times.Once);
+        store.Verify(s => s.TouchAsync(key, It.IsAny<CancellationToken>()), Times.Once);
+        store.Verify(s => s.DeleteAsync(key, It.IsAny<CancellationToken>()), Times.Once);
     }
 }

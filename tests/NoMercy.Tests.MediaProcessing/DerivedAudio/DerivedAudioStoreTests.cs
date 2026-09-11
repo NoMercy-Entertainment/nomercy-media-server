@@ -101,7 +101,9 @@ public sealed class DerivedAudioStoreTests : IDisposable
         };
     }
 
-    private IDerivedAudioStore Store()
+    private IDerivedAudioStore Store() => StoreWith(null);
+
+    private DerivedAudioStore StoreWith(Func<Task>? beforeDelete)
     {
         LocalStorageDriver driver = new();
         StoragePathGuard guard = new([_root], driver);
@@ -110,7 +112,10 @@ public sealed class DerivedAudioStoreTests : IDisposable
             storage,
             _contextFactory,
             NullLogger<DerivedAudioStore>.Instance
-        );
+        )
+        {
+            BeforeDelete = beforeDelete,
+        };
     }
 
     [Fact]
@@ -270,6 +275,108 @@ public sealed class DerivedAudioStoreTests : IDisposable
     }
 
     /// <summary>
+    /// Eviction picks its victims from a snapshot, and a plan can go stale
+    /// between reading it and acting on it: a key read or touched in that
+    /// window is in use again, and deleting it pulls the file out from under
+    /// the run that just took it. The victim is re-checked under the same
+    /// per-key lock a put takes and left alone, while the other victims the
+    /// rule chose still go.
+    /// </summary>
+    [Fact]
+    public async Task Evict_SkipsAKeyTouchedAfterTheSnapshot()
+    {
+        IDerivedAudioStore seeder = Store();
+        DerivedAudioEntry oldest = await seeder.PutAsync(
+            new MemoryStream(Encoding.UTF8.GetBytes("oldest content")),
+            "audio/opus"
+        );
+        DerivedAudioEntry middle = await seeder.PutAsync(
+            new MemoryStream(Encoding.UTF8.GetBytes("middle content")),
+            "audio/opus"
+        );
+        DerivedAudioEntry newest = await seeder.PutAsync(
+            new MemoryStream(Encoding.UTF8.GetBytes("newest content")),
+            "audio/opus"
+        );
+
+        DateTime now = DateTime.UtcNow;
+        await using (MediaContext context = new(_options))
+        {
+            await context
+                .DerivedAudio.Where(row => row.Key == oldest.Key)
+                .ExecuteUpdateAsync(set => set.SetProperty(row => row.LastUsedAt, now.AddDays(-3)));
+            await context
+                .DerivedAudio.Where(row => row.Key == middle.Key)
+                .ExecuteUpdateAsync(set => set.SetProperty(row => row.LastUsedAt, now.AddDays(-2)));
+            await context
+                .DerivedAudio.Where(row => row.Key == newest.Key)
+                .ExecuteUpdateAsync(set => set.SetProperty(row => row.LastUsedAt, now.AddDays(-1)));
+        }
+
+        bool touched = false;
+        DerivedAudioStore store = StoreWith(async () =>
+        {
+            if (touched)
+            {
+                return;
+            }
+            touched = true;
+            await seeder.TouchAsync(oldest.Key);
+        });
+
+        // One file's worth of cap, so the rule chooses the two coldest keys:
+        // the touched one is skipped and the other still goes.
+        long freed = await store.EvictAsync(oldest.Bytes, TimeSpan.FromHours(1));
+
+        touched.Should().BeTrue();
+        freed.Should().Be(middle.Bytes);
+        (await store.ExistsAsync(oldest.Key)).Should().BeTrue();
+        (await store.ExistsAsync(middle.Key)).Should().BeFalse();
+        (await store.ExistsAsync(newest.Key)).Should().BeTrue();
+    }
+
+    /// <summary>
+    /// The victim's delete runs with the key's lock already held, so it must
+    /// not take that lock again: a <see cref="SemaphoreSlim" /> is not
+    /// re-entrant and the second wait would never return. Asserted against a
+    /// deadline, so a regression here reports as a failed test rather than as
+    /// a test run that stops.
+    /// </summary>
+    [Fact]
+    public async Task Evict_OfASingleKey_Completes()
+    {
+        IDerivedAudioStore store = Store();
+        DerivedAudioEntry entry = await store.PutAsync(
+            new MemoryStream(Encoding.UTF8.GetBytes("the only content")),
+            "audio/opus"
+        );
+
+        DateTime cold = DateTime.UtcNow.AddDays(-2);
+        await using (MediaContext context = new(_options))
+        {
+            await context
+                .DerivedAudio.Where(row => row.Key == entry.Key)
+                .ExecuteUpdateAsync(set => set.SetProperty(row => row.LastUsedAt, cold));
+        }
+
+        // The deadline is the sweep's own token: a wait on a lock it already
+        // holds ends as a cancellation the assertion below reports, and
+        // nothing is left running behind a test that failed.
+        using CancellationTokenSource deadline = new(TimeSpan.FromSeconds(10));
+        Func<Task<long>> evicting = () =>
+            store.EvictAsync(capBytes: 0, grace: TimeSpan.FromHours(1), ct: deadline.Token);
+
+        long freed = (
+            await evicting
+                .Should()
+                .NotThrowAsync("eviction must not wait on the per-key lock it already holds")
+        ).Which;
+
+        freed.Should().Be(entry.Bytes);
+        (await store.ExistsAsync(entry.Key)).Should().BeFalse();
+    }
+
+    /// <summary>
     /// The mirror of the tmp/ sweep, one step further along the put: a crash
     /// between the move into place and the register insert leaves a content
     /// file no key addresses and no policy counts. Only this sweep frees it,
@@ -343,6 +450,8 @@ public sealed class DerivedAudioStoreTests : IDisposable
     [InlineData("a")]
     [InlineData("../../etc")]
     [InlineData("ab/../../etc/passwd")]
+    [InlineData("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")]
+    [InlineData("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")]
     public async Task AnInvalidKey_IsNotFound_AndNeverTouchesTheDisk(string key)
     {
         IDerivedAudioStore store = Store();

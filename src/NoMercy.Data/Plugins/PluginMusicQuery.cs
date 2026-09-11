@@ -224,7 +224,7 @@ public class PluginMusicQuery(
         return rows.Select(row => new PluginTrackStem(
                 row.TrackId,
                 row.Kind,
-                ToPluginCoverage(row.Coverage),
+                StemCoverageMap.ToPlugin(row.Coverage),
                 row.WindowStartMs,
                 row.WindowEndMs,
                 row.Format,
@@ -291,25 +291,6 @@ public class PluginMusicQuery(
             .Take(Math.Clamp(take, 1, MaxPageSize))
             .ToListAsync(ct);
     }
-
-    /// <summary>
-    /// Maps the database's stem-coverage enum to the plugin's own. Kept as an
-    /// explicit switch rather than a numeric cast: the two enums happen to
-    /// share values today, but a cast would silently keep "happening to" work
-    /// if that ever stopped being true.
-    /// </summary>
-    private static PluginStemCoverage ToPluginCoverage(StemCoverage coverage) =>
-        coverage switch
-        {
-            StemCoverage.Full => PluginStemCoverage.Full,
-            StemCoverage.MixIn => PluginStemCoverage.MixIn,
-            StemCoverage.MixOut => PluginStemCoverage.MixOut,
-            _ => throw new ArgumentOutOfRangeException(
-                nameof(coverage),
-                coverage,
-                "Unknown stem coverage"
-            ),
-        };
 
     /// <summary>
     /// Deserializes one of <see cref="TrackDjAnalysis" />'s JSON text columns

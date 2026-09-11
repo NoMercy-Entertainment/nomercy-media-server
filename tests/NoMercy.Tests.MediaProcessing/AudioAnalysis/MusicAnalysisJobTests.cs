@@ -318,6 +318,34 @@ public class MusicAnalysisJobTests : IDisposable
         );
     }
 
+    /// <summary>
+    /// The verdict is already stored by the time the event goes out, so a bus
+    /// that throws there must not take the job down with it: the queue would
+    /// dead-letter a job whose row landed, and every later sweep would see a
+    /// track that has its answer already.
+    /// </summary>
+    [Fact]
+    public async Task AVerdictIsKept_WhenTheEventCannotBePublished()
+    {
+        Mock<IEventBus> bus = new();
+        bus.Setup(b =>
+                b.PublishAsync(
+                    It.IsAny<TrackAudioAnalysisCompletedEvent>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .ThrowsAsync(new InvalidOperationException("the bus is gone"));
+
+        MusicAnalysisJob job = CreateJob(SampleResult(), eventBus: bus);
+
+        await job.Handle();
+
+        TrackAudioAnalysis? row = ReadRow();
+
+        Assert.NotNull(row);
+        Assert.Equal(AudioAnalysisState.Ok, row.State);
+    }
+
     [Fact]
     public async Task AFailedVerdict_PublishesACompletedEvent()
     {

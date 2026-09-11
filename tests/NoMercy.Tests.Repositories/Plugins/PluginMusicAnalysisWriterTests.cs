@@ -19,6 +19,7 @@ using NoMercy.Database;
 using NoMercy.Database.Models.Music;
 using NoMercy.MediaProcessing.DerivedAudio;
 using NoMercy.Plugins.Abstractions;
+using DerivedAudioRow = NoMercy.Database.Models.Music.DerivedAudio;
 
 namespace NoMercy.Tests.Repositories.Plugins;
 
@@ -56,6 +57,16 @@ public class PluginMusicAnalysisWriterTests : IDisposable
 
     private const string MissingKey =
         "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee";
+
+    // Registered as audio/opus rather than audio/ogg: the other MIME a
+    // third-party plugin may have put an Opus file under.
+    private const string KeyOpusMime =
+        "0000000000000000000000000000000000000000000000000000000000000000";
+
+    // Registered as audio/flac, so an Opus stem pointing at it is a register
+    // row that lies about what a client will be handed.
+    private const string KeyFlac =
+        "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff";
 
     private readonly SqliteConnection _connection;
     private readonly DbContextOptions<MediaContext> _options;
@@ -132,8 +143,30 @@ public class PluginMusicAnalysisWriterTests : IDisposable
             }
         );
 
+        // The register rows behind the keys these tests hand the writer: it
+        // reads each one's content type to check the stem's format against it.
+        // Opus in Ogg everywhere except KeyFlac, which is what the mismatch
+        // test points an Opus stem at.
+        foreach (string key in new[] { KeyOne, KeyTwo, KeyThree, KeyFour, KeyA, KeyB, KeyDelete })
+        {
+            context.DerivedAudio.Add(DerivedAudioRowFor(key, "audio/ogg"));
+        }
+
+        context.DerivedAudio.Add(DerivedAudioRowFor(KeyFlac, "audio/flac"));
+        context.DerivedAudio.Add(DerivedAudioRowFor(KeyOpusMime, "audio/opus"));
+
         context.SaveChanges();
     }
+
+    private static DerivedAudioRow DerivedAudioRowFor(string key, string contentType) =>
+        new()
+        {
+            Key = key,
+            ContentType = contentType,
+            Bytes = 4096,
+            CreatedAt = DateTime.UtcNow,
+            LastUsedAt = DateTime.UtcNow,
+        };
 
     public void Dispose()
     {
@@ -149,14 +182,75 @@ public class PluginMusicAnalysisWriterTests : IDisposable
         return mock;
     }
 
-    private PluginMusicAnalysisWriter CreateWriter(IDerivedAudioStore store)
+    private PluginMusicAnalysisWriter CreateWriter(
+        IDerivedAudioStore store,
+        Func<Task>? beforeSave = null,
+        ILogger<PluginMusicAnalysisWriter>? logger = null
+    )
     {
         Mock<IDbContextFactory<MediaContext>> factory = new();
         factory
             .Setup(x => x.CreateDbContextAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => new(_options));
 
-        return new PluginMusicAnalysisWriter(_pluginId, factory.Object, store);
+        return new PluginMusicAnalysisWriter(_pluginId, factory.Object, store, logger)
+        {
+            BeforeSave = beforeSave,
+        };
+    }
+
+    /// <summary>
+    /// Foreign keys are off for this class - most tests point stem rows at a
+    /// mocked store's keys - so a test that wants a real constraint failure
+    /// turns them back on for its own run. The pragma is per connection and
+    /// takes effect outside a transaction, which is where it is set here.
+    /// </summary>
+    private void EnableForeignKeys()
+    {
+        using SqliteCommand pragma = _connection.CreateCommand();
+        pragma.CommandText = "PRAGMA foreign_keys = ON;";
+        pragma.ExecuteNonQuery();
+    }
+
+    private static void VerifyWarningLogged(
+        Mock<ILogger<PluginMusicAnalysisWriter>> logger,
+        string contains
+    ) =>
+        logger.Verify(
+            log =>
+                log.Log(
+                    LogLevel.Warning,
+                    It.IsAny<EventId>(),
+                    It.Is<It.IsAnyType>((state, _) => state.ToString()!.Contains(contains)),
+                    It.IsAny<Exception>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()
+                ),
+            Times.Once
+        );
+
+    /// <summary>
+    /// The row a second sweep gets in first with, written through its own
+    /// context so the writer under test meets it as a unique-index violation
+    /// rather than as something it staged itself.
+    /// </summary>
+    private async Task InsertStemRowAsync(string storageKey)
+    {
+        await using MediaContext other = new(_options);
+        other.TrackStems.Add(
+            new TrackStem
+            {
+                Id = Ulid.NewUlid(),
+                TrackId = _trackId,
+                Kind = "vocals",
+                Coverage = StemCoverage.Full,
+                Format = "opus",
+                SampleRate = 48000,
+                StorageKey = storageKey,
+                ProducerVersion = "spleeter-2stems-f16@v1",
+                CreatedAt = DateTime.UtcNow,
+            }
+        );
+        await other.SaveChangesAsync();
     }
 
     private static PluginTrackDjAnalysis ValidRecord(Guid trackId) =>
@@ -271,6 +365,53 @@ public class PluginMusicAnalysisWriterTests : IDisposable
             .UpsertDjAnalysisAsync(record);
 
         result.Ok.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// A vocal region is a pair, and the planner reads it as one: a single
+    /// value would be read as a region ending where the next one starts, and
+    /// a backwards pair as a region of negative length. Both are refused
+    /// rather than stored for a renderer to trip over hours later.
+    /// </summary>
+    [Fact]
+    public async Task UpsertDjAnalysisAsync_RefusesAOneElementVocalRegion()
+    {
+        PluginTrackDjAnalysis record = ValidRecord(_trackId) with
+        {
+            VocalRegionsMs =
+            [
+                [1000, 5000],
+                [9000],
+            ],
+        };
+
+        PluginWriteResult result = await CreateWriter(NewStoreMock().Object)
+            .UpsertDjAnalysisAsync(record);
+
+        result.Ok.Should().BeFalse();
+        result
+            .Refusal.Should()
+            .Be("vocal_regions_ms entry 1 must be [start, end] with start < end");
+    }
+
+    [Fact]
+    public async Task UpsertDjAnalysisAsync_RefusesAnInvertedVocalRegion()
+    {
+        PluginTrackDjAnalysis record = ValidRecord(_trackId) with
+        {
+            VocalRegionsMs =
+            [
+                [5000, 1000],
+            ],
+        };
+
+        PluginWriteResult result = await CreateWriter(NewStoreMock().Object)
+            .UpsertDjAnalysisAsync(record);
+
+        result.Ok.Should().BeFalse();
+        result
+            .Refusal.Should()
+            .Be("vocal_regions_ms entry 0 must be [start, end] with start < end");
     }
 
     [Fact]
@@ -599,6 +740,291 @@ public class PluginMusicAnalysisWriterTests : IDisposable
 
         TrackStem row = context.TrackStems.Single(s => s.TrackId == _trackId);
         row.StorageKey.Should().Be(KeyB);
+    }
+
+    /// <summary>
+    /// Two sweeps registering the same stem at once both read "no row" and
+    /// both insert; the loser's save hits the unique index. Nothing is lost -
+    /// the winner wrote the same row, pointing at the same file - so the loser
+    /// is told it landed rather than handed a driver exception.
+    /// </summary>
+    [Fact]
+    public async Task RegisterStem_TreatsAConcurrentIdenticalWriteAsAccepted()
+    {
+        Mock<IDerivedAudioStore> store = NewStoreMock();
+        store
+            .Setup(s => s.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        bool raced = false;
+        PluginMusicAnalysisWriter writer = CreateWriter(
+            store.Object,
+            async () =>
+            {
+                if (raced)
+                {
+                    return;
+                }
+                raced = true;
+                await InsertStemRowAsync(KeyA);
+            }
+        );
+
+        PluginWriteResult result = await writer.RegisterStemAsync(ValidFullStem(_trackId, KeyA));
+
+        raced.Should().BeTrue();
+        result.Ok.Should().BeTrue();
+
+        using MediaContext context = new(_options);
+        context.TrackStems.Count(stem => stem.TrackId == _trackId).Should().Be(1);
+        context.TrackStems.Single(stem => stem.TrackId == _trackId).StorageKey.Should().Be(KeyA);
+    }
+
+    /// <summary>
+    /// The same race, but the winner stored a different file under the same
+    /// stem. Reporting that as accepted would leave the caller believing its
+    /// own key is registered, so this one is refused in words instead.
+    /// </summary>
+    [Fact]
+    public async Task RegisterStem_RefusesWhenTheConcurrentWriteStoredAnotherKey()
+    {
+        Mock<IDerivedAudioStore> store = NewStoreMock();
+        store
+            .Setup(s => s.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        bool raced = false;
+        PluginMusicAnalysisWriter writer = CreateWriter(
+            store.Object,
+            async () =>
+            {
+                if (raced)
+                {
+                    return;
+                }
+                raced = true;
+                await InsertStemRowAsync(KeyB);
+            }
+        );
+
+        PluginWriteResult result = await writer.RegisterStemAsync(ValidFullStem(_trackId, KeyA));
+
+        result.Ok.Should().BeFalse();
+        result
+            .Refusal.Should()
+            .Be($"stem vocals/Full for track {_trackId} was written concurrently; retry");
+    }
+
+    /// <summary>
+    /// A split produces two stems that only mean something together: a vocals
+    /// row whose accompaniment was refused describes a track the renderer
+    /// cannot mix. Every stem is validated before any row is staged, and the
+    /// save is one transaction, so a refusal leaves the register untouched.
+    /// </summary>
+    [Fact]
+    public async Task RegisterStems_WritesNothingWhenOneStemIsRefused()
+    {
+        Mock<IDerivedAudioStore> store = NewStoreMock();
+        store
+            .Setup(s => s.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        PluginTrackStem vocals = ValidFullStem(_trackId, KeyA);
+        PluginTrackStem accompaniment = ValidFullStem(_trackId, KeyB) with
+        {
+            Kind = "accompaniment",
+            WindowStartMs = 0,
+            WindowEndMs = 60000,
+        };
+
+        PluginWriteResult result = await CreateWriter(store.Object)
+            .RegisterStemsAsync([vocals, accompaniment]);
+
+        result.Ok.Should().BeFalse();
+        result.Refusal.Should().Be("full coverage stems must not specify a window");
+
+        using MediaContext context = new(_options);
+        context.TrackStems.Any(stem => stem.TrackId == _trackId).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task RegisterStems_WritesBothWhenValid()
+    {
+        Mock<IDerivedAudioStore> store = NewStoreMock();
+        store
+            .Setup(s => s.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        PluginTrackStem vocals = ValidFullStem(_trackId, KeyA);
+        PluginTrackStem accompaniment = ValidFullStem(_trackId, KeyB) with
+        {
+            Kind = "accompaniment",
+        };
+
+        PluginWriteResult result = await CreateWriter(store.Object)
+            .RegisterStemsAsync([vocals, accompaniment]);
+
+        result.Ok.Should().BeTrue();
+
+        using MediaContext context = new(_options);
+        context.TrackStems.Count(stem => stem.TrackId == _trackId).Should().Be(2);
+        context
+            .TrackStems.Where(stem => stem.TrackId == _trackId)
+            .OrderBy(stem => stem.Kind)
+            .Select(stem => stem.StorageKey)
+            .Should()
+            .Equal(KeyB, KeyA);
+    }
+
+    /// <summary>
+    /// The register row is what a client is later handed the stem as, so a row
+    /// claiming Opus over a FLAC file is a player error hours after the sweep
+    /// that wrote it. The stored content type is the authority.
+    /// </summary>
+    [Fact]
+    public async Task RegisterStem_RefusesAFormatThatDoesNotMatchTheFile()
+    {
+        Mock<IDerivedAudioStore> store = NewStoreMock();
+        store
+            .Setup(s => s.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        PluginWriteResult result = await CreateWriter(store.Object)
+            .RegisterStemAsync(ValidFullStem(_trackId, KeyFlac));
+
+        result.Ok.Should().BeFalse();
+        result
+            .Refusal.Should()
+            .Be("stem format opus does not match the stored content type audio/flac");
+
+        using MediaContext context = new(_options);
+        context.TrackStems.Any(stem => stem.TrackId == _trackId).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// Not every <see cref="DbUpdateException" /> is a race. When the re-read
+    /// finds no competing row, the save failed for a reason of its own - a
+    /// foreign key, a column constraint, a disk - and telling the caller to
+    /// retry would hide it for ever. It is named and logged instead.
+    /// </summary>
+    [Fact]
+    public async Task RegisterStem_LogsAndRefusesANonRaceDatabaseError()
+    {
+        EnableForeignKeys();
+
+        Mock<IDerivedAudioStore> store = NewStoreMock();
+        store
+            .Setup(s => s.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        Mock<ILogger<PluginMusicAnalysisWriter>> logger = new();
+
+        PluginMusicAnalysisWriter writer = CreateWriter(
+            store.Object,
+            async () =>
+            {
+                // The file the stem row points at goes away between the check
+                // and the save: the row's foreign key has nothing to land on.
+                await using MediaContext other = new(_options);
+                await other.DerivedAudio.Where(row => row.Key == KeyA).ExecuteDeleteAsync();
+            },
+            logger.Object
+        );
+
+        PluginWriteResult result = await writer.RegisterStemAsync(ValidFullStem(_trackId, KeyA));
+
+        result.Ok.Should().BeFalse();
+        result
+            .Refusal.Should()
+            .Be($"stem vocals/Full for track {_trackId} could not be stored: DbUpdateException");
+        VerifyWarningLogged(logger, "could not be stored");
+
+        using MediaContext context = new(_options);
+        context.TrackStems.Any(stem => stem.TrackId == _trackId).Should().BeFalse();
+    }
+
+    /// <summary>The same split on the DJ record's own save.</summary>
+    [Fact]
+    public async Task UpsertDjAnalysis_LogsAndRefusesANonRaceDatabaseError()
+    {
+        EnableForeignKeys();
+
+        Mock<ILogger<PluginMusicAnalysisWriter>> logger = new();
+
+        PluginMusicAnalysisWriter writer = CreateWriter(
+            NewStoreMock().Object,
+            async () =>
+            {
+                // The track goes away between the read and the save, so the
+                // DJ row's foreign key has nothing to land on either.
+                await using MediaContext other = new(_options);
+                await other.Tracks.Where(track => track.Id == _trackId).ExecuteDeleteAsync();
+            },
+            logger.Object
+        );
+
+        PluginWriteResult result = await writer.UpsertDjAnalysisAsync(ValidRecord(_trackId));
+
+        result.Ok.Should().BeFalse();
+        result
+            .Refusal.Should()
+            .Be($"the DJ record for track {_trackId} could not be stored: DbUpdateException");
+        VerifyWarningLogged(logger, "could not be stored");
+    }
+
+    [Fact]
+    public async Task RegisterStems_RefusesANullList()
+    {
+        PluginWriteResult result = await CreateWriter(NewStoreMock().Object)
+            .RegisterStemsAsync(null!);
+
+        result.Ok.Should().BeFalse();
+        result.Refusal.Should().Be("stems must not be null");
+    }
+
+    /// <summary>
+    /// Two entries addressing one register row: whichever came second would
+    /// silently win, so the batch is refused before anything is staged rather
+    /// than storing a stem the caller did not mean to keep.
+    /// </summary>
+    [Fact]
+    public async Task RegisterStems_RefusesTheSameStemTwice()
+    {
+        Mock<IDerivedAudioStore> store = NewStoreMock();
+        store
+            .Setup(s => s.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        PluginTrackStem first = ValidFullStem(_trackId, KeyA);
+        PluginTrackStem second = ValidFullStem(_trackId, KeyB);
+
+        PluginWriteResult result = await CreateWriter(store.Object)
+            .RegisterStemsAsync([first, second]);
+
+        result.Ok.Should().BeFalse();
+        result.Refusal.Should().Be("stems contains the same stem twice: vocals/Full");
+
+        using MediaContext context = new(_options);
+        context.TrackStems.Any(stem => stem.TrackId == _trackId).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// <c>audio/opus</c> is as real a MIME for an Opus file as the
+    /// <c>audio/ogg</c> the host's own splits write, so a plugin that put its
+    /// file under it is not claiming the wrong format.
+    /// </summary>
+    [Fact]
+    public async Task RegisterStem_AcceptsTheOtherOpusContentType()
+    {
+        Mock<IDerivedAudioStore> store = NewStoreMock();
+        store
+            .Setup(s => s.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        PluginWriteResult result = await CreateWriter(store.Object)
+            .RegisterStemAsync(ValidFullStem(_trackId, KeyOpusMime));
+
+        result.Ok.Should().BeTrue();
     }
 
     // --- MarkFailedAsync -----------------------------------------------------

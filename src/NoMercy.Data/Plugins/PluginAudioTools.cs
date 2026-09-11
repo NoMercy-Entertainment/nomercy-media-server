@@ -95,23 +95,19 @@ public sealed class PluginAudioTools(
     private readonly ILogger<PluginAudioTools> _logger =
         logger ?? NullLogger<PluginAudioTools>.Instance;
 
-    public async Task<PluginAudioRunResult> RunFilterGraphAsync(
+    public Task<PluginAudioRunResult> RunFilterGraphAsync(
         PluginAudioInput input,
         PluginFilterGraph graph,
         Action<string>? onStdOut,
         Action<string>? onStdErr,
         CancellationToken ct = default
-    )
-    {
-        try
-        {
-            return await RunFilterGraphCoreAsync(input, graph, onStdOut, onStdErr, ct);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            return PluginAudioRunResult.Refused(Unexpected(exception, nameof(RunFilterGraphAsync)));
-        }
-    }
+    ) =>
+        PluginCallGuard.RunAsync(
+            $"plugin {pluginId}: {nameof(RunFilterGraphAsync)}",
+            () => RunFilterGraphCoreAsync(input, graph, onStdOut, onStdErr, ct),
+            PluginAudioRunResult.Refused,
+            _logger
+        );
 
     private async Task<PluginAudioRunResult> RunFilterGraphCoreAsync(
         PluginAudioInput input,
@@ -175,22 +171,18 @@ public sealed class PluginAudioTools(
         }
     }
 
-    public async Task<PluginStemSplitResult> SplitStemsAsync(
+    public Task<PluginStemSplitResult> SplitStemsAsync(
         string trackId,
         PluginStemCoverage coverage,
         PluginStemSet stemSet,
         CancellationToken ct = default
-    )
-    {
-        try
-        {
-            return await SplitStemsCoreAsync(trackId, coverage, stemSet, ct);
-        }
-        catch (Exception exception) when (exception is not OperationCanceledException)
-        {
-            return PluginStemSplitResult.Refused(Unexpected(exception, nameof(SplitStemsAsync)));
-        }
-    }
+    ) =>
+        PluginCallGuard.RunAsync(
+            $"plugin {pluginId}: {nameof(SplitStemsAsync)}",
+            () => SplitStemsCoreAsync(trackId, coverage, stemSet, ct),
+            PluginStemSplitResult.Refused,
+            _logger
+        );
 
     private async Task<PluginStemSplitResult> SplitStemsCoreAsync(
         string trackId,
@@ -281,15 +273,9 @@ public sealed class PluginAudioTools(
                 ct
             );
 
-            // A lease on a path ffmpeg WRITES to. LocalPathLease documents a
-            // read-only staging contract - a future remote driver would stage
-            // the object into a temp file and drop it on dispose, which is the
-            // wrong direction for an output. It holds here because the derived
-            // store is always local storage (a LocalStorage scoped to
-            // AppFiles.DerivedAudioPath, see ServiceConfiguration.Core), so the
-            // lease hands back the real path unchanged. The day the derived
-            // store can live on a remote driver, this needs a
-            // put-from-lease helper on IStorage rather than a plain lease.
+            // A lease on a path ffmpeg WRITES to, which LocalPathLease's
+            // read-only staging contract only allows because the derived store
+            // is always local. A remote one would need a put-from-lease helper.
             await using LocalPathLease vocalsLease = await derivedStorage.AcquireLocalPathAsync(
                 vocalsTemp,
                 ct
@@ -374,48 +360,52 @@ public sealed class PluginAudioTools(
 
             IPluginMusicAnalysisWriter writer = writerFactory.CreateFor(pluginId);
 
-            List<PluginStemFile> stems = [];
-            foreach (
-                (string kind, DerivedAudioEntry entry) in new[]
-                {
-                    ("vocals", vocals),
-                    ("accompaniment", accompaniment),
-                }
-            )
-            {
-                PluginWriteResult write = await writer.RegisterStemAsync(
-                    new PluginTrackStem(
+            (string Kind, DerivedAudioEntry Entry)[] produced =
+            [
+                ("vocals", vocals),
+                ("accompaniment", accompaniment),
+            ];
+
+            // Registered as one write: a vocals row whose accompaniment was
+            // refused describes a split no renderer can use.
+            PluginWriteResult write = await writer.RegisterStemsAsync(
+                produced
+                    .Select(stem => new PluginTrackStem(
                         trackId,
-                        kind,
+                        stem.Kind,
                         coverage,
                         window.StartMs,
                         window.EndMs,
                         OpusFormat,
                         OpusSampleRate,
-                        entry.Key,
+                        stem.Entry.Key,
                         producerVersion
-                    ),
-                    ct
-                );
+                    ))
+                    .ToList(),
+                ct
+            );
 
-                if (!write.Ok)
-                {
-                    return PluginStemSplitResult.Refused(write.Refusal!);
-                }
-
-                stems.Add(new PluginStemFile(kind, coverage, entry.Key, entry.Bytes));
+            if (!write.Ok)
+            {
+                return PluginStemSplitResult.Refused(write.Refusal!);
             }
+
+            List<PluginStemFile> stems = produced
+                .Select(stem => new PluginStemFile(
+                    stem.Kind,
+                    coverage,
+                    stem.Entry.Key,
+                    stem.Entry.Bytes
+                ))
+                .ToList();
 
             return new PluginStemSplitResult(stems, null);
         }
         finally
         {
-            // Every way out of the block above - a refusal, a cancelled token,
-            // a throw from the store - would otherwise leave two scratch files
-            // for the derived store's eviction sweep to find hours later.
-            // CancellationToken.None deliberately: cleanup after a cancellation
-            // is exactly when it matters, and deleting a file the caller no
-            // longer wants is not work that should itself be cancellable.
+            // Every way out of the block above would otherwise strand two
+            // scratch files. CancellationToken.None deliberately: cleanup after
+            // a cancellation is exactly when it matters most.
             await DeleteTempAsync(vocalsTemp, CancellationToken.None);
             await DeleteTempAsync(accompanimentTemp, CancellationToken.None);
         }
@@ -582,6 +572,11 @@ public sealed class PluginAudioTools(
                 return new(null, $"storage key {input.StorageKey} is not in the derived store");
             }
 
+            // A run has ten minutes to finish and eviction only spares what was
+            // used inside its grace window, so the key is kept alive before
+            // ffmpeg opens the file rather than after it closes it.
+            await store.TouchAsync(input.StorageKey, ct);
+
             return new(
                 await derivedStorage.AcquireLocalPathAsync(
                     store.RelativePath(input.StorageKey),
@@ -665,25 +660,6 @@ public sealed class PluginAudioTools(
 
         double start = duration * MixOutStart;
         return new(["-ss", Seconds(start)], Milliseconds(start), Milliseconds(duration));
-    }
-
-    /// <summary>
-    /// Turns a failure nobody planned for - a mount that went away, a locked
-    /// database file - into a refusal the caller can read, and puts the real
-    /// exception on the server's own record. A plugin sweeping a library
-    /// unattended loses one track this way instead of the whole sweep.
-    /// Cancellation the caller asked for never comes through here.
-    /// </summary>
-    private string Unexpected(Exception exception, string member)
-    {
-        _logger.LogWarning(
-            exception,
-            "plugin {PluginId}: {Member} failed inside the server",
-            pluginId,
-            member
-        );
-
-        return $"the server could not complete this call: {exception.GetType().Name}";
     }
 
     /// <summary>Seconds as ffmpeg reads them: invariant, and no decimal tail when there is none.</summary>
