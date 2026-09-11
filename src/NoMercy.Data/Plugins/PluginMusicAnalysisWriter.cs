@@ -164,6 +164,13 @@ public class PluginMusicAnalysisWriter(
                 $"downbeat_index value {downbeatIndex} lies outside the beat grid (0..{record.BeatsPerBar - 1})"
             );
 
+        // Before anything reads through the lists: a null entry inside one of
+        // them is what a plugin written against a looser language hands over,
+        // and every loop below dereferences its entries.
+        PluginWriteResult? missingEntry = CheckEntriesPresent(record);
+        if (missingEntry is not null)
+            return missingEntry;
+
         double? durationSeconds = PluginMusicQuery.ParseDurationSeconds(track.Duration);
 
         if (durationSeconds is null)
@@ -362,6 +369,15 @@ public class PluginMusicAnalysisWriter(
         CancellationToken ct
     )
     {
+        // Before anything else per stem: nothing below can read a member that
+        // is not there. The format is the one that used to throw outright -
+        // the content-type pairing lowercases it - and a null kind or producer
+        // version would only surface hours later as a DbUpdateException
+        // against a column that does not take one.
+        PluginWriteResult? missingMember = CheckStemMembersPresent(stem);
+        if (missingMember is not null)
+            return missingMember;
+
         bool trackExists = await context
             .Tracks.AsNoTracking()
             .AnyAsync(t => t.Id == stem.TrackId, ct);
@@ -413,6 +429,31 @@ public class PluginMusicAnalysisWriter(
             if (stem.WindowStartMs.Value >= stem.WindowEndMs.Value)
                 return PluginWriteResult.Refused("window_start_ms must be less than window_end_ms");
         }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Every string member of a stem is required, and whitespace is as absent
+    /// as null: a kind of <c>"   "</c> addresses a row nothing will ever find
+    /// again.
+    /// <para>
+    /// The storage key is deliberately not named here. It keeps the refusal it
+    /// already had - <c>storage key {key} is not in the derived store</c> - so
+    /// that a key which is missing, invented or stale gets a plugin one answer
+    /// rather than three.
+    /// </para>
+    /// </summary>
+    private static PluginWriteResult? CheckStemMembersPresent(PluginTrackStem stem)
+    {
+        if (string.IsNullOrWhiteSpace(stem.Format))
+            return PluginWriteResult.Refused("format must not be empty");
+
+        if (string.IsNullOrWhiteSpace(stem.Kind))
+            return PluginWriteResult.Refused("kind must not be empty");
+
+        if (string.IsNullOrWhiteSpace(stem.ProducerVersion))
+            return PluginWriteResult.Refused("producer_version must not be empty");
 
         return null;
     }
@@ -674,7 +715,7 @@ public class PluginMusicAnalysisWriter(
         for (int index = 0; index < regions.Count; index++)
         {
             int[] region = regions[index];
-            if (region.Length != 2 || region[0] >= region[1])
+            if (region is null || region.Length != 2 || region[0] >= region[1])
                 return PluginWriteResult.Refused(
                     $"vocal_regions_ms entry {index} must be [start, end] with start < end"
                 );
@@ -720,6 +761,44 @@ public class PluginMusicAnalysisWriter(
 
         if (record.Chords is null)
             return PluginWriteResult.Refused("chords must not be null");
+
+        return null;
+    }
+
+    /// <summary>
+    /// The same rule one level down: every entry inside those lists is
+    /// required too. A null one is read through by the range check, the shape
+    /// check and the serializer alike, so it is named here before any of them
+    /// runs - a refusal a plugin author can act on, rather than the
+    /// <see cref="NullReferenceException" /> the guard would hand back as
+    /// "the server could not complete this call".
+    /// <para>
+    /// A null vocal region is reported as the malformed region it is, in the
+    /// same words a one-element or backwards pair gets: from the caller's side
+    /// there is one rule, and the entry does not keep it.
+    /// </para>
+    /// </summary>
+    private static PluginWriteResult? CheckEntriesPresent(PluginTrackDjAnalysis record)
+    {
+        for (int index = 0; index < record.VocalRegionsMs.Count; index++)
+        {
+            if (record.VocalRegionsMs[index] is null)
+                return PluginWriteResult.Refused(
+                    $"vocal_regions_ms entry {index} must be [start, end] with start < end"
+                );
+        }
+
+        for (int index = 0; index < record.CuePoints.Count; index++)
+        {
+            if (record.CuePoints[index] is null)
+                return PluginWriteResult.Refused($"cue_points entry {index} must not be null");
+        }
+
+        for (int index = 0; index < record.Chords.Count; index++)
+        {
+            if (record.Chords[index] is null)
+                return PluginWriteResult.Refused($"chords entry {index} must not be null");
+        }
 
         return null;
     }
