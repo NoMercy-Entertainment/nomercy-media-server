@@ -51,6 +51,7 @@ public class PluginMusicQueryTests : IDisposable
     private readonly Guid _needsStaleBaseTrackId = Guid.NewGuid();
     private readonly Guid _needsBaseFailedTrackId = Guid.NewGuid();
     private readonly Guid _needsPendingTrackId = Guid.NewGuid();
+    private readonly Guid _needsFailedCurrentTrackId = Guid.NewGuid();
 
     private readonly Guid _stemsWindowsMissingTrackId = Guid.NewGuid();
     private readonly Guid _stemsFullMissingFromWindowsTrackId = Guid.NewGuid();
@@ -197,7 +198,8 @@ public class PluginMusicQueryTests : IDisposable
             new Track { Id = _needsOlderVersionTrackId, Name = "Needs: older version" },
             new Track { Id = _needsStaleBaseTrackId, Name = "Needs: stale base" },
             new Track { Id = _needsBaseFailedTrackId, Name = "Needs: base failed" },
-            new Track { Id = _needsPendingTrackId, Name = "Needs: pending" }
+            new Track { Id = _needsPendingTrackId, Name = "Needs: pending" },
+            new Track { Id = _needsFailedCurrentTrackId, Name = "Needs: failed current" }
         );
 
         context.LibraryTrack.AddRange(
@@ -206,7 +208,8 @@ public class PluginMusicQueryTests : IDisposable
             new LibraryTrack { LibraryId = _djLibraryId, TrackId = _needsOlderVersionTrackId },
             new LibraryTrack { LibraryId = _djLibraryId, TrackId = _needsStaleBaseTrackId },
             new LibraryTrack { LibraryId = _djLibraryId, TrackId = _needsBaseFailedTrackId },
-            new LibraryTrack { LibraryId = _djLibraryId, TrackId = _needsPendingTrackId }
+            new LibraryTrack { LibraryId = _djLibraryId, TrackId = _needsPendingTrackId },
+            new LibraryTrack { LibraryId = _djLibraryId, TrackId = _needsFailedCurrentTrackId }
         );
 
         context.TrackAudioAnalysis.AddRange(
@@ -249,6 +252,13 @@ public class PluginMusicQueryTests : IDisposable
             new TrackAudioAnalysis
             {
                 TrackId = _needsPendingTrackId,
+                AnalyzerVersion = 1,
+                State = AudioAnalysisState.Ok,
+                AnalyzedAt = DateTime.UtcNow,
+            },
+            new TrackAudioAnalysis
+            {
+                TrackId = _needsFailedCurrentTrackId,
                 AnalyzerVersion = 1,
                 State = AudioAnalysisState.Ok,
                 AnalyzedAt = DateTime.UtcNow,
@@ -296,6 +306,21 @@ public class PluginMusicQueryTests : IDisposable
                 DjAnalyzerVersion = CurrentDjVersion,
                 BaseAnalyzerVersion = 1,
                 State = AudioAnalysisState.Pending,
+                AnalyzedAt = DateTime.UtcNow,
+            },
+            // Version and base both match, but the run itself failed. This is
+            // the terminal case: retried only when the DJ analyzer version
+            // changes, never just because the sweep runs again — a bare
+            // "!= Pending" -> "== Ok" simplification here would silently
+            // reopen endless re-analysis of tracks that will never succeed.
+            new TrackDjAnalysis
+            {
+                TrackId = _needsFailedCurrentTrackId,
+                ProducerPluginId = Ulid.NewUlid(),
+                DjAnalyzerVersion = CurrentDjVersion,
+                BaseAnalyzerVersion = 1,
+                State = AudioAnalysisState.Failed,
+                FailureReason = "vocal detector produced no regions",
                 AnalyzedAt = DateTime.UtcNow,
             }
         );
@@ -607,9 +632,10 @@ public class PluginMusicQueryTests : IDisposable
     public async Task GetDjAnalysisAsync_ReturnsOkRowsWithTypedLists()
     {
         IReadOnlyList<PluginTrackDjAnalysis> analysis = await CreateQuery()
-            .GetDjAnalysisAsync([_djOkTrackId, _djFailedTrackId]);
+            .GetDjAnalysisAsync([_djOkTrackId, _djFailedTrackId, _unanalyzedTrackId]);
 
-        // The Failed row never comes back, even though it was asked for.
+        // Neither the Failed row nor the track with no DJ row at all comes
+        // back, even though both were asked for.
         analysis.Should().ContainSingle();
         PluginTrackDjAnalysis row = analysis[0];
 
@@ -662,6 +688,10 @@ public class PluginMusicQueryTests : IDisposable
             ]);
         needing.Should().NotContain(_needsCurrentTrackId);
         needing.Should().NotContain(_needsBaseFailedTrackId);
+        // A Failed DJ row at the current DjAnalyzerVersion and a matching
+        // BaseAnalyzerVersion is a terminal verdict, not stale work: it must
+        // not be picked up again just because it isn't Ok.
+        needing.Should().NotContain(_needsFailedCurrentTrackId);
     }
 
     [Fact]
@@ -685,6 +715,9 @@ public class PluginMusicQueryTests : IDisposable
             take: 1000
         );
         windowsMissing.Should().Contain(_stemsWindowsMissingTrackId);
+        // A Full stem satisfies every required window by itself: a track
+        // with only a Full stem is not missing anything under Windows either.
+        windowsMissing.Should().NotContain(_stemsFullPresentTrackId);
 
         IReadOnlyList<Guid> fullMissing = await query.GetTracksMissingStemsAsync(
             _djLibraryId.ToString(),
@@ -729,6 +762,22 @@ public class PluginMusicQueryTests : IDisposable
             .GetTracksNeedingDjAnalysisAsync(
                 _djLibraryId.ToString(),
                 CurrentDjVersion,
+                skip: 0,
+                take: 0
+            );
+
+        clamped.Should().HaveCount(1);
+    }
+
+    /// <summary>Same clamp, the other library-scoped "needs" method.</summary>
+    [Fact]
+    public async Task Take_IsClamped_ForGetTracksMissingStemsAsyncToo()
+    {
+        IReadOnlyList<Guid> clamped = await CreateQuery()
+            .GetTracksMissingStemsAsync(
+                _djLibraryId.ToString(),
+                StemProducerVersion,
+                PluginStemPolicy.Full,
                 skip: 0,
                 take: 0
             );
