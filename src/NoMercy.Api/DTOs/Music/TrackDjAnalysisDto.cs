@@ -92,19 +92,19 @@ public record TrackDjAnalysisDto
         BarEnergy = DjAnalysisJson.TryDeserialize<double>(dj.BarEnergy) ?? [];
         CuePoints =
         [
-            .. (
-                DjAnalysisJson.TryDeserialize<DjAnalysisJson.CuePointRow>(dj.CuePoints) ?? []
-            ).Select(cue => new CuePointDto
-            {
-                Ms = cue.Ms,
-                Type = cue.Type ?? string.Empty,
-                Direction = cue.Direction ?? string.Empty,
-                Score = cue.Score,
-            }),
+            .. (DjAnalysisJson.TryDeserialize<CuePointRow>(dj.CuePoints) ?? []).Select(
+                cue => new CuePointDto
+                {
+                    Ms = cue.Ms,
+                    Type = cue.Type ?? string.Empty,
+                    Direction = cue.Direction ?? string.Empty,
+                    Score = cue.Score,
+                }
+            ),
         ];
         Chords =
         [
-            .. (DjAnalysisJson.TryDeserialize<DjAnalysisJson.ChordRow>(dj.Chords) ?? []).Select(
+            .. (DjAnalysisJson.TryDeserialize<ChordRow>(dj.Chords) ?? []).Select(
                 chord => new ChordDto { Ms = chord.Ms, Chord = chord.Chord ?? string.Empty }
             ),
         ];

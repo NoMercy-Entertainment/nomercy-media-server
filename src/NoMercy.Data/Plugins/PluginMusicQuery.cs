@@ -176,11 +176,7 @@ public class PluginMusicQuery(
                 DeserializeJsonList<int>(row.PhraseStartsMs, row.TrackId, "phrase_starts_ms"),
                 DeserializeJsonList<int[]>(row.VocalRegionsMs, row.TrackId, "vocal_regions_ms"),
                 DeserializeJsonList<double>(row.BarEnergy, row.TrackId, "bar_energy"),
-                DeserializeJsonList<DjAnalysisJson.CuePointRow>(
-                        row.CuePoints,
-                        row.TrackId,
-                        "cue_points"
-                    )
+                DeserializeJsonList<CuePointRow>(row.CuePoints, row.TrackId, "cue_points")
                     .Select(cue => new PluginCuePoint(
                         cue.Ms,
                         cue.Type ?? string.Empty,
@@ -188,7 +184,7 @@ public class PluginMusicQuery(
                         cue.Score
                     ))
                     .ToList(),
-                DeserializeJsonList<DjAnalysisJson.ChordRow>(row.Chords, row.TrackId, "chords")
+                DeserializeJsonList<ChordRow>(row.Chords, row.TrackId, "chords")
                     .Select(chord => new PluginChord(chord.Ms, chord.Chord ?? string.Empty))
                     .ToList()
             ))
@@ -317,20 +313,21 @@ public class PluginMusicQuery(
 
     /// <summary>
     /// Deserializes one of <see cref="TrackDjAnalysis" />'s JSON text columns
-    /// via <see cref="DjAnalysisJson.TryDeserialize{T}" />. A missing or
-    /// malformed column is never this method's caller's problem to throw over
-    /// — it logs what it found and hands back an empty list, so one bad row
-    /// never takes a whole page of plugin results down with it.
+    /// via <see cref="DjAnalysisJson.TryDeserialize{T}(string?, out Exception?)" />.
+    /// A missing or malformed column is never this method's caller's problem
+    /// to throw over — it logs what it found (the parse exception too, when
+    /// there was one) and hands back an empty list, so one bad row never
+    /// takes a whole page of plugin results down with it.
     /// </summary>
     private List<T> DeserializeJsonList<T>(string? json, Guid trackId, string column)
     {
-        List<T>? result = DjAnalysisJson.TryDeserialize<T>(json);
+        List<T>? result = DjAnalysisJson.TryDeserialize<T>(json, out Exception? error);
         if (result is not null)
         {
             return result;
         }
 
-        if (string.IsNullOrWhiteSpace(json))
+        if (error is null)
         {
             logger.LogWarning(
                 "Track {TrackId}: {Column} column is empty on an Ok DJ analysis row; treating it as an empty list",
@@ -341,6 +338,7 @@ public class PluginMusicQuery(
         else
         {
             logger.LogWarning(
+                error,
                 "Track {TrackId}: malformed {Column} JSON on a DJ analysis row; treating it as an empty list",
                 trackId,
                 column
