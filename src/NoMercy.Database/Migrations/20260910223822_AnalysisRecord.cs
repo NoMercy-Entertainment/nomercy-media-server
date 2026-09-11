@@ -16,15 +16,24 @@ namespace NoMercy.Database.Migrations
                 columns: table => new
                 {
                     Key = table.Column<string>(type: "TEXT", maxLength: 64, nullable: false),
-                    ContentType = table.Column<string>(type: "TEXT", maxLength: 32, nullable: false),
+                    ContentType = table.Column<string>(
+                        type: "TEXT",
+                        maxLength: 32,
+                        nullable: false
+                    ),
                     Bytes = table.Column<long>(type: "INTEGER", nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false, defaultValueSql: "CURRENT_TIMESTAMP"),
-                    LastUsedAt = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    CreatedAt = table.Column<DateTime>(
+                        type: "TEXT",
+                        nullable: false,
+                        defaultValueSql: "CURRENT_TIMESTAMP"
+                    ),
+                    LastUsedAt = table.Column<DateTime>(type: "TEXT", nullable: false),
                 },
                 constraints: table =>
                 {
                     table.PrimaryKey("PK_DerivedAudio", x => x.Key);
-                });
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "TrackDjAnalysis",
@@ -35,16 +44,36 @@ namespace NoMercy.Database.Migrations
                     DjAnalyzerVersion = table.Column<int>(type: "INTEGER", nullable: false),
                     BaseAnalyzerVersion = table.Column<int>(type: "INTEGER", nullable: false),
                     State = table.Column<int>(type: "INTEGER", nullable: false),
-                    FailureReason = table.Column<string>(type: "TEXT", maxLength: 1024, nullable: true),
+                    FailureReason = table.Column<string>(
+                        type: "TEXT",
+                        maxLength: 1024,
+                        nullable: true
+                    ),
                     DownbeatIndex = table.Column<int>(type: "INTEGER", nullable: true),
                     BeatsPerBar = table.Column<int>(type: "INTEGER", nullable: false),
                     PhraseLengthBars = table.Column<int>(type: "INTEGER", nullable: false),
-                    PhraseStartsMs = table.Column<string>(type: "TEXT", maxLength: 65536, nullable: true),
-                    VocalRegionsMs = table.Column<string>(type: "TEXT", maxLength: 65536, nullable: true),
-                    BarEnergy = table.Column<string>(type: "TEXT", maxLength: 65536, nullable: true),
-                    CuePoints = table.Column<string>(type: "TEXT", maxLength: 65536, nullable: true),
+                    PhraseStartsMs = table.Column<string>(
+                        type: "TEXT",
+                        maxLength: 65536,
+                        nullable: true
+                    ),
+                    VocalRegionsMs = table.Column<string>(
+                        type: "TEXT",
+                        maxLength: 65536,
+                        nullable: true
+                    ),
+                    BarEnergy = table.Column<string>(
+                        type: "TEXT",
+                        maxLength: 65536,
+                        nullable: true
+                    ),
+                    CuePoints = table.Column<string>(
+                        type: "TEXT",
+                        maxLength: 65536,
+                        nullable: true
+                    ),
                     Chords = table.Column<string>(type: "TEXT", maxLength: 65536, nullable: true),
-                    AnalyzedAt = table.Column<DateTime>(type: "TEXT", nullable: false)
+                    AnalyzedAt = table.Column<DateTime>(type: "TEXT", nullable: false),
                 },
                 constraints: table =>
                 {
@@ -54,8 +83,10 @@ namespace NoMercy.Database.Migrations
                         column: x => x.TrackId,
                         principalTable: "Tracks",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateTable(
                 name: "TrackStems",
@@ -70,8 +101,16 @@ namespace NoMercy.Database.Migrations
                     Format = table.Column<string>(type: "TEXT", maxLength: 8, nullable: false),
                     SampleRate = table.Column<int>(type: "INTEGER", nullable: false),
                     StorageKey = table.Column<string>(type: "TEXT", maxLength: 64, nullable: false),
-                    ProducerVersion = table.Column<string>(type: "TEXT", maxLength: 64, nullable: false),
-                    CreatedAt = table.Column<DateTime>(type: "TEXT", nullable: false, defaultValueSql: "CURRENT_TIMESTAMP")
+                    ProducerVersion = table.Column<string>(
+                        type: "TEXT",
+                        maxLength: 64,
+                        nullable: false
+                    ),
+                    CreatedAt = table.Column<DateTime>(
+                        type: "TEXT",
+                        nullable: false,
+                        defaultValueSql: "CURRENT_TIMESTAMP"
+                    ),
                 },
                 constraints: table =>
                 {
@@ -81,38 +120,40 @@ namespace NoMercy.Database.Migrations
                         column: x => x.StorageKey,
                         principalTable: "DerivedAudio",
                         principalColumn: "Key",
-                        onDelete: ReferentialAction.Cascade);
+                        onDelete: ReferentialAction.Cascade
+                    );
                     table.ForeignKey(
                         name: "FK_TrackStems_Tracks_TrackId",
                         column: x => x.TrackId,
                         principalTable: "Tracks",
                         principalColumn: "Id",
-                        onDelete: ReferentialAction.Cascade);
-                });
+                        onDelete: ReferentialAction.Cascade
+                    );
+                }
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_TrackStems_StorageKey",
                 table: "TrackStems",
-                column: "StorageKey");
+                column: "StorageKey"
+            );
 
             migrationBuilder.CreateIndex(
                 name: "IX_TrackStems_TrackId_Kind_Coverage_ProducerVersion",
                 table: "TrackStems",
                 columns: new[] { "TrackId", "Kind", "Coverage", "ProducerVersion" },
-                unique: true);
+                unique: true
+            );
         }
 
         /// <inheritdoc />
         protected override void Down(MigrationBuilder migrationBuilder)
         {
-            migrationBuilder.DropTable(
-                name: "TrackDjAnalysis");
+            migrationBuilder.DropTable(name: "TrackDjAnalysis");
 
-            migrationBuilder.DropTable(
-                name: "TrackStems");
+            migrationBuilder.DropTable(name: "TrackStems");
 
-            migrationBuilder.DropTable(
-                name: "DerivedAudio");
+            migrationBuilder.DropTable(name: "DerivedAudio");
         }
     }
 }
