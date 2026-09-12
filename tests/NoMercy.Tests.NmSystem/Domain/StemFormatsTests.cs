@@ -59,15 +59,15 @@ public class StemFormatsTests
     /// <summary>
     /// The other side of the pair is not a caller's to get wrong: the content
     /// type is read back out of a <c>DerivedAudio</c> row the server wrote
-    /// itself, so a row without one is a data error in the register. It is
-    /// thrown rather than answered false, because "false" would reach a plugin
-    /// as an ordinary format mismatch and send the owner after the stem.
+    /// itself, and that column does not take null - so a row holding blank is
+    /// a corrupted register. It is thrown rather than answered false, because
+    /// "false" would reach a plugin as an ordinary format mismatch and send
+    /// the owner after the stem instead of the register.
     /// </summary>
     [Theory]
-    [InlineData(null)]
     [InlineData("")]
     [InlineData("   ")]
-    public void Matches_ARegisterRowWithoutAContentType_Throws(string? contentType)
+    public void Matches_ARegisterRowWithBlankContentType_Throws(string contentType)
     {
         Func<bool> matching = () => StemFormats.Matches(StemFormats.Opus, contentType);
 
@@ -76,6 +76,16 @@ public class StemFormatsTests
             .Throw<InvalidOperationException>()
             .WithMessage("a DerivedAudio row has no content type");
     }
+
+    /// <summary>
+    /// Null is a different fact and must not be the loud one: a caller reading
+    /// a register row gets null back when there is no row at all - eviction
+    /// took it - and that is an ordinary absence for the reader to refuse in
+    /// its own words, not a corrupted register.
+    /// </summary>
+    [Fact]
+    public void Matches_ANullContentType_IsFalse() =>
+        StemFormats.Matches(StemFormats.Opus, null).Should().BeFalse();
 
     /// <summary>
     /// One casing in the register, whatever a producer wrote: two rows that

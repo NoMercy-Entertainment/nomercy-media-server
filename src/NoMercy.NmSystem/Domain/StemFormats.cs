@@ -55,23 +55,28 @@ public static class StemFormats
     /// means the same format - but the pair itself is.
     /// </para>
     /// <para>
-    /// The two sides fail differently on purpose. A missing
-    /// <paramref name="format" /> is a caller's omission, named in words by
-    /// the members-present check in front of this one, so it is answered
-    /// false. A missing <paramref name="contentType" /> cannot be: it is read
-    /// back out of a <c>DerivedAudio</c> row the server wrote itself, so a row
-    /// without one is a corrupted register, and reading that back to a plugin
-    /// as an ordinary format mismatch would send the owner after the stem
-    /// instead of the register. It throws.
+    /// The three ways a side can be missing fail differently, on purpose. A
+    /// missing <paramref name="format" /> is a caller's omission, named in
+    /// words by the members-present check in front of this one, so it is
+    /// answered false. A <em>blank</em> <paramref name="contentType" /> is
+    /// neither: it is read back out of a <c>DerivedAudio</c> row the server
+    /// wrote itself, and that column does not take null, so blank is a
+    /// corrupted register - reading it back to a plugin as an ordinary format
+    /// mismatch would send the owner after the stem instead of the register.
+    /// It throws. A <em>null</em> <paramref name="contentType" /> is the third
+    /// thing and stays quiet: a caller projecting that column gets null when
+    /// there is no row at all, which is an ordinary absence for the reader to
+    /// refuse in its own words - the register is not corrupt, the entry is
+    /// simply gone.
     /// </para>
     /// </summary>
     /// <exception cref="InvalidOperationException">
-    /// <paramref name="contentType" /> is null or blank - a register row the
-    /// server cannot have written.
+    /// <paramref name="contentType" /> is blank - a register row the server
+    /// cannot have written.
     /// </exception>
     public static bool Matches(string? format, string? contentType)
     {
-        if (string.IsNullOrWhiteSpace(contentType))
+        if (contentType is not null && string.IsNullOrWhiteSpace(contentType))
         {
             throw new InvalidOperationException("a DerivedAudio row has no content type");
         }

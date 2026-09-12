@@ -191,7 +191,8 @@ public class PluginMusicAnalysisWriterTests : IDisposable
     private PluginMusicAnalysisWriter CreateWriter(
         IDerivedAudioStore store,
         Func<Task>? beforeSave = null,
-        ILogger<PluginMusicAnalysisWriter>? logger = null
+        ILogger<PluginMusicAnalysisWriter>? logger = null,
+        Func<Task>? beforeContentTypeRead = null
     )
     {
         Mock<IDbContextFactory<MediaContext>> factory = new();
@@ -202,8 +203,23 @@ public class PluginMusicAnalysisWriterTests : IDisposable
         return new PluginMusicAnalysisWriter(_pluginId, factory.Object, store, logger)
         {
             BeforeSave = beforeSave,
+            BeforeContentTypeRead = beforeContentTypeRead,
         };
     }
+
+    /// <summary>The counterpart of <see cref="VerifyWarningLogged" />: nothing was logged at all.</summary>
+    private static void VerifyNoWarningLogged(Mock<ILogger<PluginMusicAnalysisWriter>> logger) =>
+        logger.Verify(
+            log =>
+                log.Log(
+                    LogLevel.Warning,
+                    It.IsAny<EventId>(),
+                    It.IsAny<It.IsAnyType>(),
+                    It.IsAny<Exception?>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()
+                ),
+            Times.Never
+        );
 
     /// <summary>
     /// Foreign keys are off for this class - most tests point stem rows at a
@@ -1077,6 +1093,43 @@ public class PluginMusicAnalysisWriterTests : IDisposable
             .Refusal.Should()
             .Be("the server could not complete this call: InvalidOperationException");
         VerifyWarningLogged(logger, "failed inside the server");
+
+        using MediaContext context = new(_options);
+        context.TrackStems.Any(stem => stem.TrackId == _trackId).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// Eviction can take the register row between the store's answer about
+    /// the key and the read of that row's content type. That is an ordinary
+    /// race, and the caller gets the same words for it as for a key nothing
+    /// ever stored - not the loud "the server could not complete this call",
+    /// which is reserved for a row that is really there and really corrupt.
+    /// </summary>
+    [Fact]
+    public async Task RegisterStem_RefusesWhenTheRegisterRowVanishedBeforeTheFormatCheck()
+    {
+        Mock<IDerivedAudioStore> store = NewStoreMock();
+        store
+            .Setup(s => s.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        Mock<ILogger<PluginMusicAnalysisWriter>> logger = new();
+
+        PluginMusicAnalysisWriter writer = CreateWriter(
+            store.Object,
+            logger: logger.Object,
+            beforeContentTypeRead: async () =>
+            {
+                await using MediaContext other = new(_options);
+                await other.DerivedAudio.Where(row => row.Key == KeyOne).ExecuteDeleteAsync();
+            }
+        );
+
+        PluginWriteResult result = await writer.RegisterStemAsync(ValidFullStem(_trackId, KeyOne));
+
+        result.Ok.Should().BeFalse();
+        result.Refusal.Should().Be($"storage key {KeyOne} is not in the derived store");
+        VerifyNoWarningLogged(logger);
 
         using MediaContext context = new(_options);
         context.TrackStems.Any(stem => stem.TrackId == _trackId).Should().BeFalse();

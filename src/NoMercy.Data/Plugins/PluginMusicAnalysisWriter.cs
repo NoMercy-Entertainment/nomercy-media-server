@@ -326,6 +326,14 @@ public class PluginMusicAnalysisWriter(
     internal Func<Task>? BeforeSave { get; init; }
 
     /// <summary>
+    /// Runs between the store's answer about a stem's storage key and the read
+    /// of that key's content type, so a test can land an eviction in exactly
+    /// the window between the two - the one that tells an ordinary race apart
+    /// from a corrupted register row. Never set in production.
+    /// </summary>
+    internal Func<Task>? BeforeContentTypeRead { get; init; }
+
+    /// <summary>
     /// Every stem is validated before any of them is staged, and all of them
     /// are saved in one transaction, so a refusal on the second stem of a pair
     /// leaves the first one unwritten rather than half a split in the register.
@@ -417,18 +425,32 @@ public class PluginMusicAnalysisWriter(
                 $"storage key {stem.StorageKey} is not in the derived store"
             );
 
+        if (BeforeContentTypeRead is not null)
+        {
+            await BeforeContentTypeRead();
+        }
+
         string? contentType = await context
             .DerivedAudio.AsNoTracking()
             .Where(row => row.Key == stem.StorageKey)
             .Select(row => row.ContentType)
             .FirstOrDefaultAsync(ct);
 
+        // Null is "there is no row", not "a row with nothing in it": eviction
+        // can take the entry between the store's answer above and this read,
+        // and that race is an ordinary absence - the same words an unknown key
+        // gets - rather than anything the owner has to go and look at.
+        if (contentType is null)
+            return PluginWriteResult.Refused(
+                $"storage key {stem.StorageKey} is not in the derived store"
+            );
+
         // The register row is what a client is handed the stem as, so a row
         // claiming Opus over a FLAC file is a player error hours later. A row
-        // with no content type at all is not a refusal this caller can act on
-        // - the store answered for the key a moment ago, so the register is
-        // the thing that is wrong - and StemFormats throws for it. The guard
-        // logs that and names the exception type; see StemFormats.Matches.
+        // that is there but holds a blank content type is the other case: the
+        // column does not take null, so blank is the register itself being
+        // wrong, and StemFormats throws for it. The guard logs that and names
+        // the exception type; see StemFormats.Matches.
         if (!StemFormats.Matches(stem.Format, contentType))
             return PluginWriteResult.Refused(
                 $"stem format {stem.Format} does not match the stored content type {contentType}"
