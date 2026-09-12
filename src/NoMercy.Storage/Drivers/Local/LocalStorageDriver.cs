@@ -9,7 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Collections.Concurrent;
+using NoMercy.Storage.Common;
 
 namespace NoMercy.Storage.Drivers.Local;
 
@@ -23,13 +23,14 @@ public sealed class LocalStorageDriver : IStorageDriver
     // plain race. Retrying alone still lost that race under load; only one
     // thread may create a given path at a time now.
     //
-    // SemaphoreSlim, not a bare `lock`: Directory.CreateDirectory against a
-    // genuinely unresponsive network mount can block indefinitely, and a plain
-    // lock has no way to time out of that — one wedged call would then hold
-    // every future create for the same album folder forever. Wait(timeout)
-    // bounds the wait and surfaces a timeout as an ordinary failure the job
-    // queue's own retry/dead-letter path already handles.
-    private static readonly ConcurrentDictionary<string, SemaphoreSlim> DirectoryLocks = new();
+    // The shared keyed lock, not a bare `lock`: Directory.CreateDirectory
+    // against a genuinely unresponsive network mount can block indefinitely,
+    // and a plain lock has no way to time out of that — one wedged call would
+    // then hold every future create for the same album folder forever. The
+    // bounded acquire surfaces a timeout as an ordinary failure the job queue's
+    // own retry/dead-letter path already handles, and it prunes a path's entry
+    // once nothing is creating under it any more.
+    private static readonly KeyedAsyncLock DirectoryLocks = new();
 
     private static readonly TimeSpan DirectoryLockTimeout = TimeSpan.FromSeconds(30);
 
@@ -64,38 +65,24 @@ public sealed class LocalStorageDriver : IStorageDriver
     // the plain System.IO path, the one driver with none.
     public void CreateDirectory(string path)
     {
-        // Never removed: a bounded number of distinct output directories exist
-        // over the process lifetime, and removing an entry here races a
-        // concurrent GetOrAdd into minting a second gate for the same path —
-        // which is exactly the serialization this exists to guarantee.
-        SemaphoreSlim gate = DirectoryLocks.GetOrAdd(
+        // The key is the path, so the TimeoutException the acquire throws when
+        // the wait runs out still says which directory this call gave up on.
+        using IDisposable gate = DirectoryLocks.Acquire(
             path.TrimEnd('/', '\\'),
-            static _ => new SemaphoreSlim(1, 1)
+            DirectoryLockTimeout
         );
 
-        if (!gate.Wait(DirectoryLockTimeout))
-            throw new TimeoutException(
-                $"Timed out after {DirectoryLockTimeout} waiting to create directory: {path}"
-            );
-
-        try
+        for (int attempt = 1; ; attempt++)
         {
-            for (int attempt = 1; ; attempt++)
+            try
             {
-                try
-                {
-                    Directory.CreateDirectory(path);
-                    return;
-                }
-                catch (IOException) when (attempt < 3)
-                {
-                    Thread.Sleep(attempt * 250);
-                }
+                Directory.CreateDirectory(path);
+                return;
             }
-        }
-        finally
-        {
-            gate.Release();
+            catch (IOException) when (attempt < 3)
+            {
+                Thread.Sleep(attempt * 250);
+            }
         }
     }
 

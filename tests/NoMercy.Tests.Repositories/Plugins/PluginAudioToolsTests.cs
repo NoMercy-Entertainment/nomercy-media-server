@@ -230,7 +230,7 @@ public class PluginAudioToolsTests : IDisposable
                 (string _, CancellationToken _) =>
                 {
                     _callOrder.Add("touch");
-                    return Task.CompletedTask;
+                    return Task.FromResult(true);
                 }
             );
         _store
@@ -656,7 +656,7 @@ public class PluginAudioToolsTests : IDisposable
     {
         const string key = DerivedKey;
         _store
-            .Setup(store => store.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Setup(store => store.TouchAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(false);
 
         PluginAudioRunResult result = await CreateTools()
@@ -668,6 +668,39 @@ public class PluginAudioToolsTests : IDisposable
             );
 
         result.Refusal.Should().Be($"storage key {key} is not in the derived store");
+    }
+
+    /// <summary>
+    /// The touch is the whole check: it bumps the key under the store's own
+    /// per-key lock and answers whether both halves of the entry were still
+    /// there to bump. An eviction that took the key just before this call gets
+    /// the same refusal as a key nothing ever stored - and ffmpeg is never
+    /// started against a path that is no longer a file.
+    /// </summary>
+    [Fact]
+    public async Task RunFilterGraph_RefusesADerivedInputThatEvictionRemoved()
+    {
+        _store
+            .Setup(store => store.TouchAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        PluginAudioRunResult result = await CreateTools()
+            .RunFilterGraphAsync(
+                PluginAudioInput.Derived(DerivedKey),
+                new PluginFilterGraph("volume=1", Complex: false),
+                null,
+                null
+            );
+
+        result.Refusal.Should().Be($"storage key {DerivedKey} is not in the derived store");
+        _runCount.Should().Be(0);
+
+        // One round trip, not two: the touch replaced the separate existence
+        // question it used to be preceded by.
+        _store.Verify(
+            store => store.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never
+        );
     }
 
     /// <summary>
@@ -694,7 +727,7 @@ public class PluginAudioToolsTests : IDisposable
         result.Refusal.Should().Be($"storage key {key} is not in the derived store");
         _runCount.Should().Be(0);
         _store.Verify(
-            store => store.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            store => store.TouchAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
             Times.Never
         );
         _store.Verify(store => store.RelativePath(It.IsAny<string>()), Times.Never);

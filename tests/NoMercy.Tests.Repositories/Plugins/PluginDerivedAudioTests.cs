@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using FluentAssertions;
+using Microsoft.Extensions.Logging;
 using Moq;
 using NoMercy.Data.Plugins;
 using NoMercy.MediaProcessing.DerivedAudio;
@@ -90,9 +91,7 @@ public class PluginDerivedAudioTests
     public async Task Touch_Forwards()
     {
         Mock<IDerivedAudioStore> store = new();
-        store
-            .Setup(s => s.TouchAsync(SomeKey, It.IsAny<CancellationToken>()))
-            .Returns(Task.CompletedTask);
+        store.Setup(s => s.TouchAsync(SomeKey, It.IsAny<CancellationToken>())).ReturnsAsync(true);
 
         PluginDerivedAudio facade = new(store.Object);
 
@@ -234,5 +233,65 @@ public class PluginDerivedAudioTests
         store.Verify(s => s.OpenReadAsync(key, It.IsAny<CancellationToken>()), Times.Once);
         store.Verify(s => s.TouchAsync(key, It.IsAny<CancellationToken>()), Times.Once);
         store.Verify(s => s.DeleteAsync(key, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    /// <summary>
+    /// One facade serves every plugin, so there is no plugin of its own to
+    /// name - and it names the empty ULID rather than a word, because
+    /// <c>PluginId</c> is a ULID string in every entry the guard writes and a
+    /// consumer should be able to parse it without a special case.
+    /// <para>
+    /// Asserted on the put, which is the one member that logs by hand: its
+    /// former distinctive sentence is the guard's template now, so this pins
+    /// both halves of that.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task AFailedPut_LogsTheSharedFacadeAsTheEmptyUlid()
+    {
+        Mock<IDerivedAudioStore> store = new();
+        store
+            .Setup(s =>
+                s.PutAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>())
+            )
+            .ThrowsAsync(new IOException("the derived volume went away"));
+
+        List<KeyValuePair<string, object?>> logged = [];
+        Mock<ILogger<PluginDerivedAudio>> logger = new();
+        logger
+            .Setup(log =>
+                log.Log(
+                    LogLevel.Warning,
+                    It.IsAny<EventId>(),
+                    It.IsAny<It.IsAnyType>(),
+                    It.IsAny<Exception?>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()
+                )
+            )
+            .Callback(
+                new InvocationAction(invocation =>
+                    logged.AddRange(
+                        (IReadOnlyList<KeyValuePair<string, object?>>)invocation.Arguments[2]
+                    )
+                )
+            );
+
+        PluginDerivedAudio facade = new(store.Object, logger.Object);
+
+        using MemoryStream content = new([1, 2, 3]);
+        Func<Task> put = () => facade.PutAsync(content, "audio/opus");
+        await put.Should().ThrowAsync<IOException>();
+
+        logged
+            .Should()
+            .Contain(entry =>
+                entry.Key == "{OriginalFormat}"
+                && (string)entry.Value! == "plugin {PluginId}: {Member} failed inside the server"
+            );
+        logged
+            .Should()
+            .Contain(entry =>
+                entry.Key == "PluginId" && (string)entry.Value! == Ulid.Empty.ToString()
+            );
     }
 }

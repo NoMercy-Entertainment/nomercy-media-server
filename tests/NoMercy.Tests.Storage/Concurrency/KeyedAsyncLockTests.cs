@@ -106,7 +106,9 @@ public class KeyedAsyncLockTests
     /// <summary>
     /// A waiter that gives up must not take the key with it: the holder's
     /// release still has to hand it to whoever comes next, or one cancelled
-    /// call would wedge that key for the life of the process.
+    /// call would wedge that key for the life of the process. Its claim on the
+    /// entry goes with it, though - a cancelled wait that kept one would leave
+    /// the key in the table for ever.
     /// </summary>
     [Fact]
     public async Task ACancelledWait_ThrowsAndLeavesTheLockUsable()
@@ -131,5 +133,103 @@ public class KeyedAsyncLockTests
         };
 
         await acquiringAfterwards.Should().NotThrowAsync();
+
+        locks.TrackedKeys.Should().Be(0);
+    }
+
+    /// <summary>
+    /// The table is bounded by work in flight, not by every key a caller has
+    /// ever mentioned: the provider cache alone addresses one key per cached
+    /// URL, and a process that never forgets one leaks a semaphore apiece.
+    /// </summary>
+    [Fact]
+    public async Task AnIdleKey_IsRemoved()
+    {
+        KeyedAsyncLock locks = new();
+        using CancellationTokenSource deadline = new(Deadline);
+
+        using (await locks.AcquireAsync("a", deadline.Token))
+        {
+            locks.TrackedKeys.Should().Be(1);
+        }
+
+        locks.TrackedKeys.Should().Be(0);
+    }
+
+    /// <summary>
+    /// The other half of the same rule, and the one that makes it safe: a key
+    /// somebody is still queued on is never removed, so the holder's release
+    /// hands that same gate to the waiter. Handing out a fresh one instead
+    /// would let two callers into a key at once - the only thing this class
+    /// exists to prevent, and invisible until two writers land on one file.
+    /// </summary>
+    [Fact]
+    public async Task AKeyWithAWaiter_IsKept()
+    {
+        KeyedAsyncLock locks = new();
+        using CancellationTokenSource deadline = new(Deadline);
+
+        IDisposable first = await locks.AcquireAsync("a", deadline.Token);
+        Task<IDisposable> second = locks.AcquireAsync("a", deadline.Token);
+
+        locks.TrackedKeys.Should().Be(1);
+
+        first.Dispose();
+
+        IDisposable granted = await second;
+        locks.TrackedKeys.Should().Be(1, "the waiter it went to still holds the key");
+
+        Task<IDisposable> third = locks.AcquireAsync("a", deadline.Token);
+        await Task.Delay(50, deadline.Token);
+        third.IsCompleted.Should().BeFalse("the waiter was handed the same gate, not a second one");
+
+        granted.Dispose();
+        (await third).Dispose();
+        locks.TrackedKeys.Should().Be(0);
+    }
+
+    // --- The bounded synchronous acquire ---------------------------------
+
+    /// <summary>
+    /// What the callers that cannot await need: a bounded wait rather than a
+    /// plain lock, because the work behind these keys is filesystem work on
+    /// paths that can be an unresponsive network mount. A wait that cannot
+    /// expire would hold the key for the life of the process.
+    /// </summary>
+    [Fact]
+    public async Task Acquire_TimesOut_WhenTheKeyIsHeld()
+    {
+        KeyedAsyncLock locks = new();
+        using CancellationTokenSource deadline = new(Deadline);
+
+        using IDisposable held = await locks.AcquireAsync("a", deadline.Token);
+
+        Action acquiring = () => locks.Acquire("a", TimeSpan.FromMilliseconds(50));
+
+        acquiring.Should().Throw<TimeoutException>().WithMessage("*a*");
+
+        locks.TrackedKeys.Should().Be(1, "the caller that gave up took its claim with it");
+    }
+
+    /// <summary>
+    /// And it is the same key as the async side: a synchronous holder makes an
+    /// awaiting caller wait, and its release lets that caller in.
+    /// </summary>
+    [Fact]
+    public async Task Acquire_SerializesWithTheAsyncWaiters_AndPrunes()
+    {
+        KeyedAsyncLock locks = new();
+        using CancellationTokenSource deadline = new(Deadline);
+
+        IDisposable held = locks.Acquire("a", Deadline);
+
+        Task<IDisposable> waiting = locks.AcquireAsync("a", deadline.Token);
+        await Task.Delay(50, deadline.Token);
+        waiting.IsCompleted.Should().BeFalse("the key is held synchronously");
+
+        held.Dispose();
+
+        (await waiting).Dispose();
+        locks.TrackedKeys.Should().Be(0);
     }
 }

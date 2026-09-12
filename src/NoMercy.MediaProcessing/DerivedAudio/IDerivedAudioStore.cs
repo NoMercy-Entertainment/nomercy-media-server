@@ -31,7 +31,19 @@ public interface IDerivedAudioStore
     /// <summary>Null when the key is unknown. Bumps LastUsedAt.</summary>
     Task<Stream?> OpenReadAsync(string key, CancellationToken ct = default);
 
-    Task TouchAsync(string key, CancellationToken ct = default);
+    /// <summary>
+    /// Bumps <c>LastUsedAt</c> and answers whether the key survived to be
+    /// bumped: true only when the register row was updated under the key's own
+    /// lock AND the content file is there. False is the whole answer a caller
+    /// about to hand the path to ffmpeg needs - the key is not one this store
+    /// holds, or eviction took it.
+    /// <para>
+    /// A true also buys the caller the rest of the eviction grace window: the
+    /// touch moved <c>LastUsedAt</c> under the same lock eviction re-checks
+    /// under, so the sweep leaves the key alone while the caller reads it.
+    /// </para>
+    /// </summary>
+    Task<bool> TouchAsync(string key, CancellationToken ct = default);
 
     Task DeleteAsync(string key, CancellationToken ct = default);
 

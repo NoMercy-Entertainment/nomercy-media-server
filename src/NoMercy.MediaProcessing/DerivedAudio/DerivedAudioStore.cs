@@ -242,12 +242,12 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
     /// leaves it alone while the caller is still reading.
     /// </para>
     /// <para>
-    /// Asking for the register row twice - once in the pre-check, once under
-    /// the lock - costs a read two database round-trips. That is acceptable
-    /// here: both are a single indexed lookup against a local SQLite file,
-    /// they are dwarfed by the file open and the ffmpeg run that follows, and
-    /// the alternative is either handing back a key eviction already took or
-    /// minting a lock entry for every key a caller invents.
+    /// Two database round-trips, not three: the touch under the lock is also
+    /// the re-check, because an update that matches no row says the entry went
+    /// while this call was queued behind the key. Only the register row is
+    /// asked about out here - the pre-check exists to keep a key nothing ever
+    /// stored from minting a lock entry at all, and the file has to be asked
+    /// about inside the lock, where a row without one can be reclaimed.
     /// </para>
     /// </summary>
     public async Task<Stream?> OpenReadAsync(string key, CancellationToken ct = default)
@@ -262,62 +262,101 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
             return null;
         }
 
-        if (!await _storage.ExistsAsync(RelativePath(key), ct))
-        {
-            return null;
-        }
-
+        // The file is deliberately NOT asked about out here, only the row. A
+        // key with no row at all is what must never take a lock; a row whose
+        // file is missing has to reach the body below, which is the only place
+        // that can reclaim it - and answering "not found" from out here would
+        // leave that row bumped and unreclaimable for the life of the server.
         await RunAfterPreCheckAsync();
 
         return await UnderKeyLockAsync<Stream?>(
             key,
             async () =>
             {
-                if (!await HasRegisterRowAsync(key, ct))
+                if (await TouchRowAsync(key, ct) == 0)
                 {
                     return null;
                 }
 
                 if (!await _storage.ExistsAsync(RelativePath(key), ct))
                 {
+                    await ReclaimRowWithoutFileAsync(key, ct);
                     return null;
                 }
 
-                await TouchRowAsync(key, ct);
                 return await _storage.OpenReadAsync(RelativePath(key), ct);
             },
             ct
         );
     }
 
-    /// <summary>
+    /// <inheritdoc />
+    /// <remarks>
     /// Both halves of the same guard as <see cref="OpenReadAsync" />: the
     /// cheap pre-check keeps unknown keys out of the lock dictionary, and the
-    /// re-check under the lock makes sure the row a touch is about to bump is
-    /// still there after the wait.
-    /// </summary>
-    public async Task TouchAsync(string key, CancellationToken ct = default)
+    /// update under the lock is its own re-check - an affected-row count of
+    /// zero means the row this touch was about to bump went while the call was
+    /// waiting for the key.
+    /// <para>
+    /// The file is asked about after the row, not before it: the row is the
+    /// half eviction removes first, and the cheaper of the two to find gone.
+    /// A row whose file turns out to be missing is reclaimed rather than left
+    /// bumped - see <see cref="ReclaimRowWithoutFileAsync" />.
+    /// </para>
+    /// </remarks>
+    public async Task<bool> TouchAsync(string key, CancellationToken ct = default)
     {
         if (!DerivedAudioKey.IsValid(key) || !await HasRegisterRowAsync(key, ct))
         {
-            return;
+            return false;
         }
 
         await RunAfterPreCheckAsync();
 
-        await UnderKeyLockAsync(
+        return await UnderKeyLockAsync(
             key,
             async () =>
             {
-                if (!await HasRegisterRowAsync(key, ct))
+                if (await TouchRowAsync(key, ct) == 0)
                 {
-                    return;
+                    return false;
                 }
 
-                await TouchRowAsync(key, ct);
+                if (await _storage.ExistsAsync(RelativePath(key), ct))
+                {
+                    return true;
+                }
+
+                await ReclaimRowWithoutFileAsync(key, ct);
+                return false;
             },
             ct
         );
+    }
+
+    /// <summary>
+    /// A register row whose content file is not there, with the key's lock
+    /// already held: the half state a crash between the move and the register
+    /// insert's mirror image leaves, or a file taken out from under the store
+    /// by hand.
+    /// <para>
+    /// It has to go, and it has to go here. Both readers above bump
+    /// <c>LastUsedAt</c> before they learn the file is missing, and a row left
+    /// behind with a fresh timestamp is one eviction will never choose: its
+    /// bytes would count against the cap for as long as the server runs, and
+    /// every read of the key would refresh it again. Removing it is also the
+    /// only thing that can: the orphan sweep frees files without rows, never
+    /// rows without files.
+    /// </para>
+    /// </summary>
+    private async Task ReclaimRowWithoutFileAsync(string key, CancellationToken ct)
+    {
+        _logger.LogInformation(
+            "Derived audio: removing register row {Key} whose content file is gone",
+            key
+        );
+
+        await DeleteEntryAsync(key, ct);
     }
 
     /// <summary>
@@ -341,6 +380,8 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
         {
             return;
         }
+
+        await RunAfterPreCheckAsync();
 
         await UnderKeyLockAsync(key, () => DeleteEntryAsync(key, ct), ct);
     }
@@ -434,52 +475,60 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
             return null;
         }
 
-        await DeleteEntryAsync(key, ct);
-        return row.Bytes;
+        return await DeleteEntryAsync(key, ct) ? row.Bytes : null;
     }
 
     /// <summary>
-    /// The per-key lock <see cref="PutAsync" /> takes, around a touch or a
-    /// delete: a touch that lands while eviction is deleting the same key
+    /// The per-key lock <see cref="PutAsync" /> takes, around a touch, a read
+    /// or a delete: a touch that lands while eviction is deleting the same key
     /// leaves a register row pointing at a file that is already gone.
     /// </summary>
-    private Task UnderKeyLockAsync(string key, Func<Task> body, CancellationToken ct) =>
-        UnderKeyLockAsync<bool>(
-            key,
-            async () =>
-            {
-                await body();
-                return true;
-            },
-            ct
-        );
-
-    /// <summary>The same lock around a body that answers with something.</summary>
     private async Task<T> UnderKeyLockAsync<T>(string key, Func<Task<T>> body, CancellationToken ct)
     {
         using IDisposable keyLock = await _locks.AcquireAsync(key, ct);
         return await body();
     }
 
-    /// <summary>The touch itself, with the key's lock already held.</summary>
-    private async Task TouchRowAsync(string key, CancellationToken ct)
+    /// <summary>
+    /// The touch itself, with the key's lock already held. Answers how many
+    /// register rows it moved, which is the re-check every caller under the
+    /// lock needs: zero means the entry went while the caller was waiting.
+    /// </summary>
+    private async Task<int> TouchRowAsync(string key, CancellationToken ct)
     {
         await using MediaContext context = await _contextFactory.CreateDbContextAsync(ct);
-        await context
+        return await context
             .DerivedAudio.Where(row => row.Key == key)
             .ExecuteUpdateAsync(set => set.SetProperty(row => row.LastUsedAt, DateTime.UtcNow), ct);
     }
 
-    /// <summary>The delete itself, with the key's lock already held.</summary>
-    private async Task DeleteEntryAsync(string key, CancellationToken ct)
+    /// <summary>
+    /// The delete itself, with the key's lock already held. The register row
+    /// goes first and its affected-row count decides the file: zero means
+    /// eviction or another delete already claimed this key, so the file under
+    /// it is no longer this call's to remove. True when the entry went.
+    /// </summary>
+    private async Task<bool> DeleteEntryAsync(string key, CancellationToken ct)
     {
+        int deleted;
+        await using (MediaContext context = await _contextFactory.CreateDbContextAsync(ct))
+        {
+            deleted = await context
+                .DerivedAudio.Where(row => row.Key == key)
+                .ExecuteDeleteAsync(ct);
+        }
+
+        if (deleted == 0)
+        {
+            return false;
+        }
+
         if (await _storage.ExistsAsync(RelativePath(key), ct))
         {
             await _storage.DeleteAsync(RelativePath(key), ct);
         }
 
-        await using MediaContext context = await _contextFactory.CreateDbContextAsync(ct);
-        await context.DerivedAudio.Where(row => row.Key == key).ExecuteDeleteAsync(ct);
+        return true;
     }
 
     // The mirror of the tmp/ sweep, one step further along: a crash between
@@ -505,10 +554,13 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
         {
             ct.ThrowIfCancellationRequested();
             string name = entry.Path.Split('/')[^1];
-            // The length check alone excludes tmp/: a shard is the first two
-            // characters of a key, and "tmp" is three. Whatever is in there
-            // belongs to SweepStaleTempFilesAsync, which has its own rules.
-            if (entry.IsDirectory && name.Length == 2)
+            // A shard is the first two characters of a key, so the length
+            // check already excludes tmp/ - "tmp" is three. The name check is
+            // there anyway: what is under tmp/ belongs to
+            // SweepStaleTempFilesAsync, which has its own rules, and that
+            // invariant should be readable here rather than inferred from the
+            // length of a folder name someone may later change.
+            if (entry.IsDirectory && name.Length == 2 && name != TempFolder)
             {
                 contentFolders.Add(entry.Path);
             }

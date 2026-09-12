@@ -175,6 +175,13 @@ await context.DerivedAudio.DeleteAsync(key, ct);
 intermediate you want to keep across runs). Two plugins that derive the same
 bytes from the same track share one copy rather than each staging its own.
 
+An entry is both halves — the content file and its register row — so
+`OpenReadAsync` answers `null` (and `ExistsAsync` `false`) for a content file
+that has no register row, which is what a crash between the store's
+move-into-place and its register insert leaves behind. Nothing can address
+such a file, and the server's own orphan sweep reclaims it on a later
+eviction run; there is nothing for a plugin to clean up.
+
 ## `IPluginMusicAnalysisWriter` — writing the DJ record
 
 ### `UpsertDjAnalysisAsync`
@@ -388,6 +395,7 @@ the millisecond-range check. A partial base row is normal, not a defect.
 | `"track {id} does not exist"` | unknown `TrackId` | drop the row |
 | `"storage key {key} is not in the derived store"` | the stem was never actually written, or the key is wrong | write it through `IPluginDerivedAudio.PutAsync` (or `SplitStemsAsync`) first |
 | `"stem format {format} does not match the stored content type {contentType}"` | the row would claim a format the stored file is not (`opus` goes with `audio/ogg` or `audio/opus`, `flac` with `audio/flac`) | register the stem under the format the file was actually put with — a client is handed the file by that content type |
+| `"the server could not complete this call: InvalidOperationException"` | the register row behind the key is there but its content type is blank — a value only the server writes into a column that does not take null, so this is the server's own register being wrong rather than anything about your stem. A row that has *gone* instead (eviction took it between two checks) is the ordinary `"storage key … is not in the derived store"` above, not this | not a retry: the server logged it. Put the file again to mint a fresh entry, and tell the owner the log line is worth reading |
 | `"full coverage stems must not specify a window"` | `Coverage.Full` was combined with a non-null `WindowStartMs` or `WindowEndMs` | leave both null for `Full` |
 | `"windowed stems must specify both window_start_ms and window_end_ms"` | `MixIn` / `MixOut` was combined with a null window bound | set both, in milliseconds from the start of the track |
 | `"window_start_ms must be less than window_end_ms"` | the window was empty or backwards | fix the bounds — a windowed stem always covers a positive span |
@@ -395,6 +403,18 @@ the millisecond-range check. A partial base row is normal, not a defect.
 | `"stem {kind}/{coverage} for track {id} could not be stored: {exception}"` | the write failed for a reason of its own — a foreign key, a column constraint, the disk — and no row is there to explain it as a race | not a retry: the server logged the exception, so read its log before writing the stem again |
 | `"stems must not be null"` | `RegisterStemsAsync` was handed a null list | pass an empty list, or the stems you meant to write |
 | `"stems contains the same stem twice: {kind}/{coverage}"` | two entries of one batch address the same register row (same track, kind, coverage and producer version) | one row per (track, kind, coverage, producer version); drop the duplicate before calling |
+
+Three more, for a member left out entirely: `"format must not be empty"`,
+`"kind must not be empty"` and `"producer_version must not be empty"` — every
+string member of a stem is required, and whitespace is as absent as null.
+
+`format` and `kind` are stored lower-cased whatever casing you write them in
+(`"OPUS"` and `"Vocals"` land as `opus` and `vocals`), so one stem is one row
+however two passes of your own code happen to spell it; refusals quote the
+casing you sent. The whole-batch checks (`stems must not be null`, the
+duplicate check) run first; then, per stem, the track before anything else —
+the same order `UpsertDjAnalysisAsync` uses — then the members, then the key,
+the format pairing and the window.
 
 ### `IPluginMusicAnalysisWriter.MarkFailedAsync`
 
@@ -412,7 +432,11 @@ it lives:
 
 - **No per-plugin state at all** — one shared singleton for every plugin.
   `PluginDerivedAudio` is this: it forwards to the server's own store and
-  holds nothing of its own.
+  holds nothing of its own. It has no plugin of its own to name either, so
+  the warning it logs when a call fails inside the server carries the empty
+  ULID as its `PluginId` — every entry the host writes about a plugin call
+  uses one template, `plugin {PluginId}: {Member} failed inside the server`,
+  with the plugin and the member as structured properties.
 - **Stamps the plugin id but holds no state** — built per call by a factory,
   so nothing has to be cached or invalidated.
   `PluginMusicAnalysisWriterFactory` is this: every write is stamped with the
