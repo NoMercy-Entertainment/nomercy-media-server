@@ -76,7 +76,7 @@ public sealed class PluginDerivedAudio(
             _logger.LogWarning(
                 exception,
                 "plugin {PluginId}: {Member} failed inside the server",
-                SharedPluginId,
+                SharedPluginId.ToString(),
                 nameof(PutAsync)
             );
             throw;
@@ -85,7 +85,7 @@ public sealed class PluginDerivedAudio(
 
     public Task<bool> ExistsAsync(string key, CancellationToken ct = default) =>
         PluginCallGuard.RunOrAsync(
-            SharedPluginId,
+            SharedPluginId.ToString(),
             nameof(ExistsAsync),
             () => store.ExistsAsync(key, ct),
             false,
@@ -94,16 +94,23 @@ public sealed class PluginDerivedAudio(
 
     public Task<Stream?> OpenReadAsync(string key, CancellationToken ct = default) =>
         PluginCallGuard.RunOrAsync<Stream?>(
-            SharedPluginId,
+            SharedPluginId.ToString(),
             nameof(OpenReadAsync),
             () => store.OpenReadAsync(key, ct),
             null,
             _logger
         );
 
+    /// <summary>
+    /// The store answers whether the key survived to be bumped; the plugin
+    /// contract has no channel for that, so the bool is discarded here. A
+    /// plugin that needs to know asks <see cref="ExistsAsync" />: the host's
+    /// own ffmpeg path is the caller that acts on the answer, and it holds the
+    /// store directly.
+    /// </summary>
     public Task TouchAsync(string key, CancellationToken ct = default) =>
         PluginCallGuard.RunAsync(
-            SharedPluginId,
+            SharedPluginId.ToString(),
             nameof(TouchAsync),
             () => store.TouchAsync(key, ct),
             _logger
@@ -111,7 +118,7 @@ public sealed class PluginDerivedAudio(
 
     public Task DeleteAsync(string key, CancellationToken ct = default) =>
         PluginCallGuard.RunAsync(
-            SharedPluginId,
+            SharedPluginId.ToString(),
             nameof(DeleteAsync),
             () => store.DeleteAsync(key, ct),
             _logger
@@ -119,8 +126,17 @@ public sealed class PluginDerivedAudio(
 
     /// <summary>
     /// One facade serves every plugin, so there is no plugin to name in the
-    /// guard's warning line. It says so rather than leaving the property out:
-    /// a missing field reads as a gap in the pipeline.
+    /// guard's warning line. It names the empty ULID rather than leaving the
+    /// property out - a missing field reads as a gap in the pipeline - and a
+    /// ULID rather than a word, because <c>PluginId</c> is a ULID string in
+    /// every other entry the guard writes and a consumer should be able to
+    /// parse it without a special case.
+    /// <para>
+    /// The put's own warning is the guard's template too. It used to carry a
+    /// sentence of its own; one template across every facade is what lets a
+    /// log pipeline match on the text at all, and the two structured
+    /// properties are what tell the entries apart.
+    /// </para>
     /// </summary>
-    private const string SharedPluginId = "shared";
+    private static readonly Ulid SharedPluginId = Ulid.Empty;
 }

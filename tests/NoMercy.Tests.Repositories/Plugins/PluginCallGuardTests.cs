@@ -27,6 +27,13 @@ public class PluginCallGuardTests
 {
     private const string PluginId = "01HZY0000000000000000000AA";
 
+    /// <summary>
+    /// What the shared derived-audio facade passes: every plugin uses one
+    /// instance of it, so it names the empty ULID rather than a word, and the
+    /// property stays a ULID for every entry a pipeline reads.
+    /// </summary>
+    private static readonly string SharedPluginId = Ulid.Empty.ToString();
+
     [Fact]
     public async Task AThrowingCall_BecomesARefusalNamingTheExceptionType()
     {
@@ -74,7 +81,7 @@ public class PluginCallGuardTests
     public async Task AMemberWithoutARefusalChannel_FallsBackToTheSuppliedValue()
     {
         bool exists = await PluginCallGuard.RunOrAsync(
-            "shared",
+            SharedPluginId,
             "ExistsAsync",
             () => throw new IOException("the volume went away"),
             false,
@@ -84,7 +91,7 @@ public class PluginCallGuardTests
         exists.Should().BeFalse();
 
         Stream? opened = await PluginCallGuard.RunOrAsync<Stream?>(
-            "shared",
+            SharedPluginId,
             "OpenReadAsync",
             () => throw new IOException("the volume went away"),
             null,
@@ -99,7 +106,7 @@ public class PluginCallGuardTests
     {
         Func<Task> guarded = () =>
             PluginCallGuard.RunAsync(
-                "shared",
+                SharedPluginId,
                 "TouchAsync",
                 () => throw new IOException("the volume went away"),
                 NullLogger.Instance
@@ -197,7 +204,7 @@ public class PluginCallGuardTests
             );
 
         await PluginCallGuard.RunOrAsync(
-            "shared",
+            SharedPluginId,
             "ExistsAsync",
             () => throw new IOException("the volume went away"),
             false,
@@ -206,9 +213,65 @@ public class PluginCallGuardTests
 
         logged
             .Should()
-            .Contain(entry => entry.Key == "PluginId" && (string)entry.Value! == "shared");
+            .Contain(entry => entry.Key == "PluginId" && (string)entry.Value! == SharedPluginId);
         logged
             .Should()
             .Contain(entry => entry.Key == "Member" && (string)entry.Value! == "ExistsAsync");
+    }
+
+    /// <summary>
+    /// One template for every facade, pinned here: the text is what a log
+    /// pipeline's rules are written against, and the shared facade's own
+    /// distinctive sentence was folded into it precisely so there is one.
+    /// <para>
+    /// <c>PluginId</c> is always a ULID string - a real plugin's id, or the
+    /// empty ULID for the one facade every plugin shares - so a consumer can
+    /// parse the property rather than special-casing a word.
+    /// </para>
+    /// </summary>
+    [Theory]
+    [InlineData(PluginId)]
+    [InlineData("")]
+    public async Task EveryGuardedFailure_LogsTheOneTemplate_WithAUlidPluginId(string pluginId)
+    {
+        string id = pluginId.Length == 0 ? SharedPluginId : pluginId;
+
+        List<KeyValuePair<string, object?>> logged = [];
+        Mock<ILogger> logger = new();
+        logger
+            .Setup(log =>
+                log.Log(
+                    LogLevel.Warning,
+                    It.IsAny<EventId>(),
+                    It.IsAny<It.IsAnyType>(),
+                    It.IsAny<Exception?>(),
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()
+                )
+            )
+            .Callback(
+                new InvocationAction(invocation =>
+                    logged.AddRange(
+                        (IReadOnlyList<KeyValuePair<string, object?>>)invocation.Arguments[2]
+                    )
+                )
+            );
+
+        await PluginCallGuard.RunAsync(
+            id,
+            "TouchAsync",
+            () => throw new IOException("the volume went away"),
+            logger.Object
+        );
+
+        logged
+            .Should()
+            .Contain(entry =>
+                entry.Key == "{OriginalFormat}"
+                && (string)entry.Value! == "plugin {PluginId}: {Member} failed inside the server"
+            );
+
+        string loggedPluginId = (string)logged.Single(entry => entry.Key == "PluginId").Value!;
+        Ulid.TryParse(loggedPluginId, out Ulid parsed).Should().BeTrue();
+        parsed.ToString().Should().Be(id);
     }
 }

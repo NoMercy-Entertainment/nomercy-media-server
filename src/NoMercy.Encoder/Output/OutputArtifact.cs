@@ -9,6 +9,8 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using NoMercy.NmSystem.Domain;
+
 namespace NoMercy.Encoder.Output;
 
 /// <summary>
@@ -50,9 +52,12 @@ public sealed record OutputArtifact(string Path, long SizeBytes, string Sha256, 
             ".m4a" => "audio/mp4",
             ".aac" => "audio/aac",
             ".mp3" => "audio/mpeg",
-            ".ogg" => "audio/ogg",
-            ".opus" => "audio/opus",
-            ".flac" => "audio/flac",
+            // The three a stem can be written as come from the one stem-format
+            // vocabulary: a file this labels one way and a register row labels
+            // another is a client handed something else than it asked for.
+            ".ogg" => StemFormats.OggContentType,
+            "." + StemFormats.Opus => StemFormats.OpusContentType,
+            "." + StemFormats.Flac => StemFormats.FlacContentType,
             ".vtt" => "text/vtt",
             ".srt" => "text/plain",
             ".ass" => "text/plain",
