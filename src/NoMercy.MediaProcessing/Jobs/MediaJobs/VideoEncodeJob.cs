@@ -1013,6 +1013,19 @@ public class VideoEncodeJob
 
         int failedCount = outcomes.Count(o => !o.Success);
 
+        // Computed once, ahead of the failure branch too: a failed run is
+        // terminal (this method returns rather than throws, so the queue
+        // never retries it), which makes it safe to delete the shared
+        // tempDir here instead of leaving it for the boot-only orphan
+        // sweeper to eventually reclaim.
+        string relativeOutputPath = (fileMetadata.Path ?? string.Empty)
+            .Replace('\\', '/')
+            .Trim('/');
+        string tempDir = Path.Combine(
+            StoragePaths.TranscodeRoot,
+            relativeOutputPath.Replace('/', Path.DirectorySeparatorChar)
+        );
+
         if (failedCount > 0)
         {
             Log.LogWarning(
@@ -1045,6 +1058,22 @@ public class VideoEncodeJob
                 ct: CancellationToken.None
             );
 
+            if (Directory.Exists(tempDir))
+            {
+                try
+                {
+                    Directory.Delete(tempDir, recursive: true);
+                }
+                catch (Exception ex)
+                {
+                    Log.LogWarning(
+                        ex,
+                        "[VideoEncodeJob] Finalize: failed to delete tempDir '{TempDir}' after a failed encode — leaving it for the orphan sweeper",
+                        tempDir
+                    );
+                }
+            }
+
             return;
         }
 
@@ -1060,13 +1089,6 @@ public class VideoEncodeJob
 
         // Pre-flight check: ensure the shared tempDir exists and contains at least
         // some expected output before proceeding to FinalizeOnly.
-        string relativeOutputPath = (fileMetadata.Path ?? string.Empty)
-            .Replace('\\', '/')
-            .Trim('/');
-        string tempDir = Path.Combine(
-            StoragePaths.TranscodeRoot,
-            relativeOutputPath.Replace('/', Path.DirectorySeparatorChar)
-        );
 
         // A dispatch-time bundle is a Whole task, and a Whole task is "the only
         // execution": it runs FinalizeStage itself and publishes the tempDir to the
