@@ -134,21 +134,21 @@ public partial class FileManager
         string fileName = "/" + storage.GetName(itemPath);
         string hostFolder = itemPath.Replace(fileName, "");
 
-        // Folder is served as /{Share}{Folder}{Filename}, so it comes from the
-        // library root. Finding the title's own folder name in the path fails
-        // whenever disk spells it differently ("Oceans" for "Ocean's"), and the
-        // storage path it fell back to is a row no client can play and the boot
-        // sweep deletes.
+        // Folder is served as /{Share}{Folder}{Filename}, so it is measured from the
+        // library root. The scan folder is already narrowed to the title's own
+        // directory and keeps the root's id, so the root is looked up by that id.
+        string libraryRoot =
+            LibraryRootFolders.FirstOrDefault(root => root.Id == folder.Id)?.Path ?? folder.Path;
         if (
             !StoragePathHelpers.TryGetLibraryRelativeFolder(
                 hostFolder,
-                folder.Path,
+                libraryRoot,
                 out string baseFolder
             )
         )
         {
             Logger.App(
-                $"[StoreVideoItem] {itemPath} does not resolve under library folder {folder.Path} — skipping",
+                $"[StoreVideoItem] {itemPath} does not resolve under library folder {libraryRoot} — skipping",
                 LogEventLevel.Warning
             );
             return;

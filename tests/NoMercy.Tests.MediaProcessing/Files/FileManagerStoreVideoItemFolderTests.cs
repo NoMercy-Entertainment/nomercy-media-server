@@ -75,7 +75,10 @@ public sealed class FileManagerStoreVideoItemFolderTests : IDisposable
         await (Task)method.Invoke(manager, [item])!;
     }
 
-    private (FileManager Manager, Func<VideoFile?> Stored) BuildManager()
+    // A scan narrows each library root to the title's own directory and keeps the
+    // root's id, so Folders holds that title directory while LibraryRootFolders
+    // holds the root the stored Folder is measured from.
+    private (FileManager Manager, Func<VideoFile?> Stored) BuildManager(string titleDirectory)
     {
         VideoFile? stored = null;
 
@@ -102,6 +105,21 @@ public sealed class FileManagerStoreVideoItemFolderTests : IDisposable
             TestFilenameParser.Default
         );
 
+        Ulid rootId = Ulid.NewUlid();
+        Ulid driverId = Ulid.NewUlid();
+        SetPrivateProperty(
+            manager,
+            "LibraryRootFolders",
+            new List<Folder>
+            {
+                new()
+                {
+                    Id = rootId,
+                    Path = _libraryRoot,
+                    DriverId = driverId,
+                },
+            }
+        );
         SetPrivateProperty(
             manager,
             "Folders",
@@ -109,9 +127,9 @@ public sealed class FileManagerStoreVideoItemFolderTests : IDisposable
             {
                 new()
                 {
-                    Id = Ulid.NewUlid(),
-                    Path = _libraryRoot,
-                    DriverId = Ulid.NewUlid(),
+                    Id = rootId,
+                    Path = titleDirectory,
+                    DriverId = driverId,
                 },
             }
         );
@@ -129,7 +147,7 @@ public sealed class FileManagerStoreVideoItemFolderTests : IDisposable
             Path = Path.Combine(onDisk, "Oceans.Thirteen.(2007).NoMercy.mp4"),
         };
 
-        (FileManager manager, Func<VideoFile?> stored) = BuildManager();
+        (FileManager manager, Func<VideoFile?> stored) = BuildManager(onDisk);
         SetPrivateProperty(
             manager,
             "Movie",
@@ -151,11 +169,12 @@ public sealed class FileManagerStoreVideoItemFolderTests : IDisposable
     [Fact]
     public async Task StoreVideoItem_EpisodeInASeasonFolder_KeepsTheFullPathBelowTheLibraryRoot()
     {
-        string onDisk = Path.Combine(_libraryRoot, "Haikyu!!.(2014)", "Haikyu.S01E01");
+        string titleDirectory = Path.Combine(_libraryRoot, "Haikyu!!.(2014)");
+        string onDisk = Path.Combine(titleDirectory, "Haikyu.S01E01");
         Directory.CreateDirectory(onDisk);
         MediaFile item = new() { Path = Path.Combine(onDisk, "Haikyu.S01E01.NoMercy.m3u8") };
 
-        (FileManager manager, Func<VideoFile?> stored) = BuildManager();
+        (FileManager manager, Func<VideoFile?> stored) = BuildManager(titleDirectory);
         SetPrivateProperty(
             manager,
             "Show",
