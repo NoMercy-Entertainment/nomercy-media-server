@@ -133,12 +133,26 @@ public partial class FileManager
         IStorage storage = StorageFor(folder);
         string fileName = "/" + storage.GetName(itemPath);
         string hostFolder = itemPath.Replace(fileName, "");
-        string showName = (Movie?.Folder ?? Show?.Folder).OrEmpty().Trim('/', '\\');
-        int showIdx = string.IsNullOrEmpty(showName)
-            ? -1
-            : itemPath.IndexOf(showName, StringComparison.OrdinalIgnoreCase);
-        string baseFolder =
-            showIdx >= 0 ? ("/" + itemPath[showIdx..]).Replace(fileName, "") : hostFolder;
+
+        // Folder is served as /{Share}{Folder}{Filename}, so it comes from the
+        // library root. Finding the title's own folder name in the path fails
+        // whenever disk spells it differently ("Oceans" for "Ocean's"), and the
+        // storage path it fell back to is a row no client can play and the boot
+        // sweep deletes.
+        if (
+            !StoragePathHelpers.TryGetLibraryRelativeFolder(
+                hostFolder,
+                folder.Path,
+                out string baseFolder
+            )
+        )
+        {
+            Logger.App(
+                $"[StoreVideoItem] {itemPath} does not resolve under library folder {folder.Path} — skipping",
+                LogEventLevel.Warning
+            );
+            return;
+        }
 
         List<Subtitle> subtitles = GetSubtitles(storage, hostFolder);
 
