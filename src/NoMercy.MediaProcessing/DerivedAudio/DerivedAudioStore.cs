@@ -244,9 +244,10 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
     /// <para>
     /// Two database round-trips, not three: the touch under the lock is also
     /// the re-check, because an update that matches no row says the entry went
-    /// while this call was queued behind the key. The pre-check outside the
-    /// lock stays - it is what keeps a key nothing ever stored from minting a
-    /// lock entry at all.
+    /// while this call was queued behind the key. Only the register row is
+    /// asked about out here - the pre-check exists to keep a key nothing ever
+    /// stored from minting a lock entry at all, and the file has to be asked
+    /// about inside the lock, where a row without one can be reclaimed.
     /// </para>
     /// </summary>
     public async Task<Stream?> OpenReadAsync(string key, CancellationToken ct = default)
@@ -261,11 +262,11 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
             return null;
         }
 
-        if (!await _storage.ExistsAsync(RelativePath(key), ct))
-        {
-            return null;
-        }
-
+        // The file is deliberately NOT asked about out here, only the row. A
+        // key with no row at all is what must never take a lock; a row whose
+        // file is missing has to reach the body below, which is the only place
+        // that can reclaim it - and answering "not found" from out here would
+        // leave that row bumped and unreclaimable for the life of the server.
         await RunAfterPreCheckAsync();
 
         return await UnderKeyLockAsync<Stream?>(
@@ -279,6 +280,7 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
 
                 if (!await _storage.ExistsAsync(RelativePath(key), ct))
                 {
+                    await ReclaimRowWithoutFileAsync(key, ct);
                     return null;
                 }
 
@@ -298,6 +300,8 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
     /// <para>
     /// The file is asked about after the row, not before it: the row is the
     /// half eviction removes first, and the cheaper of the two to find gone.
+    /// A row whose file turns out to be missing is reclaimed rather than left
+    /// bumped - see <see cref="ReclaimRowWithoutFileAsync" />.
     /// </para>
     /// </remarks>
     public async Task<bool> TouchAsync(string key, CancellationToken ct = default)
@@ -312,10 +316,47 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
         return await UnderKeyLockAsync(
             key,
             async () =>
-                await TouchRowAsync(key, ct) != 0
-                && await _storage.ExistsAsync(RelativePath(key), ct),
+            {
+                if (await TouchRowAsync(key, ct) == 0)
+                {
+                    return false;
+                }
+
+                if (await _storage.ExistsAsync(RelativePath(key), ct))
+                {
+                    return true;
+                }
+
+                await ReclaimRowWithoutFileAsync(key, ct);
+                return false;
+            },
             ct
         );
+    }
+
+    /// <summary>
+    /// A register row whose content file is not there, with the key's lock
+    /// already held: the half state a crash between the move and the register
+    /// insert's mirror image leaves, or a file taken out from under the store
+    /// by hand.
+    /// <para>
+    /// It has to go, and it has to go here. Both readers above bump
+    /// <c>LastUsedAt</c> before they learn the file is missing, and a row left
+    /// behind with a fresh timestamp is one eviction will never choose: its
+    /// bytes would count against the cap for as long as the server runs, and
+    /// every read of the key would refresh it again. Removing it is also the
+    /// only thing that can: the orphan sweep frees files without rows, never
+    /// rows without files.
+    /// </para>
+    /// </summary>
+    private async Task ReclaimRowWithoutFileAsync(string key, CancellationToken ct)
+    {
+        _logger.LogInformation(
+            "Derived audio: removing register row {Key} whose content file is gone",
+            key
+        );
+
+        await DeleteEntryAsync(key, ct);
     }
 
     /// <summary>
@@ -342,7 +383,7 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
 
         await RunAfterPreCheckAsync();
 
-        await UnderKeyLockAsync<bool>(key, () => DeleteEntryAsync(key, ct), ct);
+        await UnderKeyLockAsync(key, () => DeleteEntryAsync(key, ct), ct);
     }
 
     /// <summary>
@@ -438,22 +479,10 @@ public sealed class DerivedAudioStore : IDerivedAudioStore
     }
 
     /// <summary>
-    /// The per-key lock <see cref="PutAsync" /> takes, around a touch or a
-    /// delete: a touch that lands while eviction is deleting the same key
+    /// The per-key lock <see cref="PutAsync" /> takes, around a touch, a read
+    /// or a delete: a touch that lands while eviction is deleting the same key
     /// leaves a register row pointing at a file that is already gone.
     /// </summary>
-    private Task UnderKeyLockAsync(string key, Func<Task> body, CancellationToken ct) =>
-        UnderKeyLockAsync<bool>(
-            key,
-            async () =>
-            {
-                await body();
-                return true;
-            },
-            ct
-        );
-
-    /// <summary>The same lock around a body that answers with something.</summary>
     private async Task<T> UnderKeyLockAsync<T>(string key, Func<Task<T>> body, CancellationToken ct)
     {
         using IDisposable keyLock = await _locks.AcquireAsync(key, ct);

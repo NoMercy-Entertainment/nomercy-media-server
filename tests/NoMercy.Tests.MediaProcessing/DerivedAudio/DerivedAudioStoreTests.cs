@@ -322,13 +322,16 @@ public sealed class DerivedAudioStoreTests : IDisposable
     }
 
     /// <summary>
-    /// The row is there and was bumped, but the content file is not: the half
-    /// state a crash between the move and the register insert leaves, or a
-    /// file removed from under the store by hand. A caller about to hand the
-    /// path to ffmpeg has to hear that as "no", not as a bumped row.
+    /// The row is there but the content file is not: the half state a crash
+    /// between the move and the register insert leaves, or a file removed from
+    /// under the store by hand. A caller about to hand the path to ffmpeg has
+    /// to hear that as "no" - and the row itself goes, because a touch that
+    /// left it behind would have just refreshed <c>LastUsedAt</c> on an entry
+    /// nothing can ever read, keeping its bytes counting against the cap for
+    /// as long as the server runs.
     /// </summary>
     [Fact]
-    public async Task Touch_ReturnsFalseWhenTheFileIsGone()
+    public async Task Touch_RemovesTheRowWhenTheFileIsGone()
     {
         IDerivedAudioStore store = Store();
         DerivedAudioEntry entry = await store.PutAsync(
@@ -339,6 +342,31 @@ public sealed class DerivedAudioStoreTests : IDisposable
         File.Delete(Path.Combine(_root, entry.Key[..2], entry.Key));
 
         (await store.TouchAsync(entry.Key)).Should().BeFalse();
+
+        await using MediaContext read = new(_options);
+        (await read.DerivedAudio.AsNoTracking().AnyAsync(row => row.Key == entry.Key))
+            .Should()
+            .BeFalse("a register row whose file is gone is not an entry to keep warm");
+    }
+
+    /// <summary>The same reclaim on the read path, which touches the row the same way.</summary>
+    [Fact]
+    public async Task OpenRead_RemovesTheRowWhenTheFileIsGone()
+    {
+        IDerivedAudioStore store = Store();
+        DerivedAudioEntry entry = await store.PutAsync(
+            new MemoryStream(Encoding.UTF8.GetBytes("content a reader will not find")),
+            "audio/opus"
+        );
+
+        File.Delete(Path.Combine(_root, entry.Key[..2], entry.Key));
+
+        (await store.OpenReadAsync(entry.Key)).Should().BeNull();
+
+        await using MediaContext read = new(_options);
+        (await read.DerivedAudio.AsNoTracking().AnyAsync(row => row.Key == entry.Key))
+            .Should()
+            .BeFalse("a register row whose file is gone is not an entry to keep warm");
     }
 
     /// <summary>
