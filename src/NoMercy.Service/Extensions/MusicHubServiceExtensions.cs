@@ -29,7 +29,6 @@ public static class MusicHubServiceExtensions
 
         // Scoped - one instance per request
         services.AddScoped<MusicPlaylistManager>();
-        services.AddScoped<MusicDeviceManager>();
         services.AddScoped<MusicHub>();
 
         return services;

@@ -134,7 +134,6 @@ public class MusicHubDeviceCommandsTests : IClassFixture<NoMercyApiFactory>
             ? _factory.Services.GetRequiredService<CastPanelWakeLauncher>()
             : new(chromeCast, NullLogger<CastPanelWakeLauncher>.Instance);
 
-        MusicDeviceManager musicDeviceManager = new(new());
         MusicPlaylistManager musicPlaylistManager = new(new MusicRepository(contextFactory), new());
         busRegistry ??= new(
             contextFactory,
@@ -154,7 +153,6 @@ public class MusicHubDeviceCommandsTests : IClassFixture<NoMercyApiFactory>
             clientMessenger,
             musicPlaybackService,
             stateManager,
-            musicDeviceManager,
             musicPlaylistManager,
             commandHandler,
             Mock.Of<IActivityLogger>(),

@@ -110,10 +110,6 @@ public sealed class DeviceBusEndpoint(
                     if (device is null)
                         break;
                 }
-                else if (type == "pong" && device is not null)
-                {
-                    registry.Touch(device.Id);
-                }
                 else if (type == "status" && device is not null)
                 {
                     bool foreground =

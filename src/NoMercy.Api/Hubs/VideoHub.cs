@@ -36,7 +36,6 @@ public partial class VideoHub : ConnectionHub
     private readonly IClientMessenger _clientMessenger;
     private readonly VideoPlaybackService _videoPlaybackService;
     private readonly VideoPlayerStateManager _videoPlayerStateManager;
-    private readonly VideoDeviceManager _videoDeviceManager;
     private readonly VideoPlaylistManager _videoPlaylistManager;
     private readonly VideoPlaybackCommandHandler _commandHandler;
     private readonly CastSessionTokenService _castTokenService;
@@ -58,7 +57,6 @@ public partial class VideoHub : ConnectionHub
         IClientMessenger clientMessenger,
         VideoPlaybackService videoPlaybackService,
         VideoPlayerStateManager videoPlayerStateManager,
-        VideoDeviceManager videoDeviceManager,
         VideoPlaylistManager videoPlaylistManager,
         VideoPlaybackCommandHandler commandHandler,
         IActivityLogger activityLogger,
@@ -76,7 +74,6 @@ public partial class VideoHub : ConnectionHub
         _contextFactory = contextFactory;
         _videoPlaybackService = videoPlaybackService;
         _videoPlayerStateManager = videoPlayerStateManager;
-        _videoDeviceManager = videoDeviceManager;
         _videoPlaylistManager = videoPlaylistManager;
         _commandHandler = commandHandler;
         _castTokenService = castTokenService;
@@ -150,8 +147,6 @@ public partial class VideoHub : ConnectionHub
             if (_videoPlayerStateManager.TryGetValue(user.Id, out VideoPlayerState? state))
                 if (state.DeviceId == client.DeviceId)
                 {
-                    _videoDeviceManager.RemoveUserDevice(user.Id);
-
                     stopPlayback = true;
                     stoppedDeviceId = client.Id;
                     stoppedMediaId = state.CurrentItem?.VideoId ?? Ulid.Empty;

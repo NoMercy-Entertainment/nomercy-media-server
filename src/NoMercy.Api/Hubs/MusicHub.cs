@@ -35,7 +35,6 @@ public partial class MusicHub : ConnectionHub
     private readonly IClientMessenger _clientMessenger;
     private readonly MusicPlaybackService _musicPlaybackService;
     private readonly MusicPlayerStateManager _musicPlayerStateManager;
-    private readonly MusicDeviceManager _musicDeviceManager;
     private readonly MusicPlaylistManager _musicPlaylistManager;
     private readonly MusicPlaybackCommandHandler _commandHandler;
     private readonly DeviceBusRegistry _busRegistry;
@@ -56,7 +55,6 @@ public partial class MusicHub : ConnectionHub
         IClientMessenger clientMessenger,
         MusicPlaybackService musicPlaybackService,
         MusicPlayerStateManager musicPlayerStateManager,
-        MusicDeviceManager musicDeviceManager,
         MusicPlaylistManager musicPlaylistManager,
         MusicPlaybackCommandHandler commandHandler,
         IActivityLogger activityLogger,
@@ -74,7 +72,6 @@ public partial class MusicHub : ConnectionHub
         _clientMessenger = clientMessenger;
         _musicPlaybackService = musicPlaybackService;
         _musicPlayerStateManager = musicPlayerStateManager;
-        _musicDeviceManager = musicDeviceManager;
         _musicPlaylistManager = musicPlaylistManager;
         _commandHandler = commandHandler;
         _busRegistry = busRegistry;
@@ -212,8 +209,6 @@ public partial class MusicHub : ConnectionHub
                     if (!otherConnectionForDeviceSurvives)
                     {
                         _musicPlaybackService.RemoveTimer(user.Id);
-
-                        _musicDeviceManager.RemoveUserDevice(user.Id);
 
                         stopPlayback = true;
                         wasCurrentDevice = true;

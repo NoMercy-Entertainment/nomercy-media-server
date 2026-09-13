@@ -79,7 +79,6 @@ public class VideoHubPlaybackTests : IClassFixture<NoMercyApiFactory>
             _factory.Services.GetRequiredService<IClientMessenger>(),
             _factory.Services.GetRequiredService<VideoPlaybackService>(),
             _factory.Services.GetRequiredService<VideoPlayerStateManager>(),
-            new VideoDeviceManager(new MediaContext()),
             scope.ServiceProvider.GetRequiredService<VideoPlaylistManager>(),
             _factory.Services.GetRequiredService<VideoPlaybackCommandHandler>(),
             Mock.Of<IActivityLogger>(),

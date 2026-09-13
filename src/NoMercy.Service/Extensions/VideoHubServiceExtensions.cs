@@ -25,7 +25,6 @@ public static class VideoHubServiceExtensions
 
         // Scoped - one instance per request
         services.AddScoped<VideoPlaylistManager>();
-        services.AddScoped<VideoDeviceManager>();
         services.AddScoped<VideoHub>();
 
         return services;

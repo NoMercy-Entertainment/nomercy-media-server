@@ -65,15 +65,6 @@ public class SetupModeMiddleware
             return;
         }
 
-        foreach (string route in SetupHandledRoutes)
-        {
-            if (pathLower == route || pathLower.StartsWith(route + "/"))
-            {
-                await _setupEndpoints.HandleRequestAsync(context);
-                return;
-            }
-        }
-
         foreach (string route in PassthroughRoutes)
         {
             if (pathLower == route || pathLower.StartsWith(route + "/"))
