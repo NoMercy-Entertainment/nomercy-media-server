@@ -122,7 +122,9 @@ public class CollectionsController(
             userId,
             id,
             language,
-            country, ct);
+            country,
+            ct
+        );
 
         if (
             collection is not null
@@ -150,11 +152,8 @@ public class CollectionsController(
 
         Collection? collection = await collectionRepository.GetAvailableCollectionAsync(userId, id);
 
-        bool available =
-            collection is not null
-            && collection.CollectionMovies.Select(movie => movie.Movie.VideoFiles).Any();
-
-        if (!available)
+        // The query only returns a collection that has a movie with a stored file.
+        if (collection is null)
             return NotFoundResponse("Collection not found");
 
         return Ok(

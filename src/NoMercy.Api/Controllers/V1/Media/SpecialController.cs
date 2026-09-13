@@ -146,9 +146,10 @@ public class SpecialController(
 
         bool hasFiles =
             special is not null
-            && (
-                special.Items.Select(movie => movie.Movie?.VideoFiles).Any()
-                || special.Items.Select(movie => movie.Episode?.VideoFiles).Any()
+            && special.Items.Any(item =>
+                (item.Movie?.VideoFiles ?? item.Episode?.VideoFiles ?? []).Any(file =>
+                    file.Folder != null
+                )
             );
 
         if (!hasFiles)
