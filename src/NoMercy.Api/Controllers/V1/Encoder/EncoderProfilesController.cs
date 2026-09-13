@@ -207,7 +207,7 @@ public class EncoderProfilesController(
         {
             EncodingProfile resolved = presetResolver.Resolve(
                 resolveRequest,
-                new EncoderProfilesPresetLookup(presetRepository)
+                new RepositoryNamePresetLookup(presetRepository)
             );
             return Ok(resolved);
         }
@@ -528,44 +528,3 @@ public record ImportProfileRequest(
     [property: JsonProperty("profile_json")] string? ProfileJson,
     [property: JsonProperty("url")] string? Url
 );
-
-/// <summary>
-/// Adapter that lets <see cref="INamePresetResolver"/> walk the parent chain by
-/// hitting the database once per ancestor. Synchronous lookup — the resolver
-/// is pure and doesn't await, so the adapter blocks on async repository
-/// calls.
-/// </summary>
-internal sealed class EncoderProfilesPresetLookup(IEncodingPresetRepository repository)
-    : INamePresetLookup
-{
-    public PresetResolveRequest? FindByName(string name)
-    {
-        EncodingPreset? preset = repository.GetByNameAsync(name).GetAwaiter().GetResult();
-        if (preset is null)
-            return null;
-
-        string? parentName = preset.ParentPresetId is Ulid parentId
-            ? repository.GetByIdAsync(parentId).GetAwaiter().GetResult()?.Name
-            : null;
-
-        return new(preset.Name, preset.ProfileJson, parentName);
-    }
-}
-
-/// <summary>
-/// V2 <see cref="V2IPresetLookup"/> adapter — walks the parent chain by id
-/// directly against <see cref="MediaContext"/> so the V2 resolver can merge
-/// the inheritance layers without going through the V2.5 repository.
-/// Synchronous lookup is intentional: <see cref="PresetResolver"/> is a pure
-/// static method and the chain is short (max 8 hops by contract).
-/// </summary>
-internal sealed class DbPresetLookup(MediaContext context) : IPresetLookup
-{
-    public (string ProfileJson, Ulid? ParentPresetId)? Get(Ulid presetId)
-    {
-        EncodingPreset? row = context
-            .EncodingPresets.AsNoTracking()
-            .FirstOrDefault(p => p.Id == presetId);
-        return row is null ? null : (row.ProfileJson, row.ParentPresetId);
-    }
-}
