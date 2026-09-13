@@ -65,4 +65,17 @@ public static class AlphaBucket
 
         return titleSort.StartsWith(bucket, StringComparison.OrdinalIgnoreCase);
     }
+
+    /// <summary>
+    /// The bucket a display name is listed under: its first letter when that is A-Z,
+    /// otherwise "#".
+    /// </summary>
+    public static string LetterFor(string? name)
+    {
+        if (string.IsNullOrEmpty(name))
+            return "#";
+
+        char first = char.ToLowerInvariant(name[0]);
+        return first is >= 'a' and <= 'z' ? first.ToString().ToUpperInvariant() : "#";
+    }
 }

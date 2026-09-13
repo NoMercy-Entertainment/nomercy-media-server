@@ -58,7 +58,7 @@ public class GenresController : BaseController
             List<IGrouping<string, NmGenreCardDto>> groups =
             [
                 .. allGenres
-                    .GroupBy(g => BucketLetter(g.Title))
+                    .GroupBy(g => AlphaBucket.LetterFor(g.Title))
                     .OrderBy(g => g.Key == "#" ? "zz" : g.Key),
             ];
 
@@ -143,14 +143,6 @@ public class GenresController : BaseController
             .WithItems(genres.Select(Component.GenreCard));
 
         return Ok(ComponentResponse.From(grid));
-    }
-
-    private static string BucketLetter(string? name)
-    {
-        if (string.IsNullOrEmpty(name))
-            return "#";
-        char first = char.ToLowerInvariant(name[0]);
-        return first is >= 'a' and <= 'z' ? first.ToString().ToUpperInvariant() : "#";
     }
 
     [HttpGet]

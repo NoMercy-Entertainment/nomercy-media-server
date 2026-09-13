@@ -80,7 +80,7 @@ public class AlbumsController : BaseController
             List<ComponentEnvelope> items = [Component.Container()];
 
             IOrderedEnumerable<IGrouping<string, AlbumCardDto>> groups = allCards
-                .GroupBy(a => BucketLetter(a.Name))
+                .GroupBy(a => AlphaBucket.LetterFor(a.Name))
                 .OrderBy(g => g.Key == "#" ? "zz" : g.Key);
 
             foreach (IGrouping<string, AlbumCardDto> group in groups)
@@ -127,14 +127,6 @@ public class AlbumsController : BaseController
             .WithItems(albumCards.Select(a => Component.MusicCard(new MusicCardData(a))));
 
         return Ok(ComponentResponse.From(grid));
-    }
-
-    private static string BucketLetter(string name)
-    {
-        if (string.IsNullOrEmpty(name))
-            return "#";
-        char first = char.ToLowerInvariant(name[0]);
-        return first is >= 'a' and <= 'z' ? first.ToString().ToUpperInvariant() : "#";
     }
 
     [HttpGet]
