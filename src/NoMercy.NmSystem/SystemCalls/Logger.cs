@@ -173,7 +173,13 @@ public static class Logger
                 // 2 s is short enough that a SIGSEGV / power loss only loses
                 // a couple seconds of trailing logs, long enough to keep IO
                 // overhead invisible.
-                flushToDiskInterval: TimeSpan.FromSeconds(2)
+                flushToDiskInterval: TimeSpan.FromSeconds(2),
+                // Without these two, daily rolling never deletes anything —
+                // the log directory grows forever. 14 days / 100 MB per file
+                // caps worst case at ~1.4 GB.
+                retainedFileCountLimit: 14,
+                fileSizeLimitBytes: 100 * 1024 * 1024,
+                rollOnFileSizeLimit: true
             );
     }
 

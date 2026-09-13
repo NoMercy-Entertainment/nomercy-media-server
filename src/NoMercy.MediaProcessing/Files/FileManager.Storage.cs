@@ -133,12 +133,26 @@ public partial class FileManager
         IStorage storage = StorageFor(folder);
         string fileName = "/" + storage.GetName(itemPath);
         string hostFolder = itemPath.Replace(fileName, "");
-        string showName = (Movie?.Folder ?? Show?.Folder).OrEmpty().Trim('/', '\\');
-        int showIdx = string.IsNullOrEmpty(showName)
-            ? -1
-            : itemPath.IndexOf(showName, StringComparison.OrdinalIgnoreCase);
-        string baseFolder =
-            showIdx >= 0 ? ("/" + itemPath[showIdx..]).Replace(fileName, "") : hostFolder;
+
+        // Folder is served as /{Share}{Folder}{Filename}, so it is measured from the
+        // library root. The scan folder is already narrowed to the title's own
+        // directory and keeps the root's id, so the root is looked up by that id.
+        string libraryRoot =
+            LibraryRootFolders.FirstOrDefault(root => root.Id == folder.Id)?.Path ?? folder.Path;
+        if (
+            !StoragePathHelpers.TryGetLibraryRelativeFolder(
+                hostFolder,
+                libraryRoot,
+                out string baseFolder
+            )
+        )
+        {
+            Logger.App(
+                $"[StoreVideoItem] {itemPath} does not resolve under library folder {libraryRoot} — skipping",
+                LogEventLevel.Warning
+            );
+            return;
+        }
 
         List<Subtitle> subtitles = GetSubtitles(storage, hostFolder);
 
