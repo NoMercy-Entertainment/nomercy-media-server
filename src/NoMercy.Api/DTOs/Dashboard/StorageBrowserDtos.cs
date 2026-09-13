@@ -71,24 +71,6 @@ public record StorageListRequest
     public string? Path { get; set; }
 }
 
-public record StorageListConfigDto
-{
-    [JsonProperty("server")]
-    public string? Server { get; set; }
-
-    [JsonProperty("export")]
-    public string? Export { get; set; }
-
-    [JsonProperty("version")]
-    public int? Version { get; set; }
-
-    [JsonProperty("uid")]
-    public int? Uid { get; set; }
-
-    [JsonProperty("gid")]
-    public int? Gid { get; set; }
-}
-
 public record StorageListResponse
 {
     [JsonProperty("ok")]

@@ -52,24 +52,3 @@ public record ComponentResponse
     public static ComponentResponse From(IEnumerable<ComponentEnvelope> components) =>
         new(components);
 }
-
-/// <summary>
-/// Response wrapper that includes both render data and source metadata for internal use.
-/// </summary>
-public record ComponentRenderResponse : ComponentResponse
-{
-    /// <summary>
-    /// Internal source metadata (not serialized to client).
-    /// </summary>
-    [JsonIgnore]
-    public IEnumerable<ComponentSourceMetadata> Sources { get; set; } = [];
-}
-
-/// <summary>
-/// Internal metadata for tracking component data sources (not sent to client).
-/// </summary>
-public record ComponentSourceMetadata
-{
-    public int Id { get; set; }
-    public string MediaType { get; set; } = string.Empty;
-}

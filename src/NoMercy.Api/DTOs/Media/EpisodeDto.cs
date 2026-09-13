@@ -15,8 +15,6 @@ using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.TvShows;
 using NoMercy.Database.Models.Users;
 using NoMercy.NmSystem.Extensions;
-using NoMercy.Providers.TMDB.Client;
-using NoMercy.Providers.TMDB.Models.Episode;
 
 namespace NoMercy.Api.DTOs.Media;
 
@@ -90,35 +88,6 @@ public class EpisodeDto
                             / (videoFile.Duration?.ToSeconds() ?? 0)
                     )
                 : null;
-    }
-
-    public EpisodeDto(int tvId, int seasonNumber, int episodeNumber, string language)
-    {
-        TmdbEpisodeClient tmdbEpisodeClient = new(tvId, seasonNumber, episodeNumber);
-        TmdbEpisodeAppends? episodeData = tmdbEpisodeClient.WithAllAppends().Result;
-
-        if (episodeData is null)
-            return;
-
-        string? overview = episodeData
-            .Translations.Translations.FirstOrDefault(translation =>
-                translation.Iso6391 == language
-            )
-            ?.Data.Overview;
-
-        Id = episodeData.Id;
-        Title = episodeData.Name;
-        Overview = !string.IsNullOrEmpty(overview) ? overview : episodeData.Overview;
-        EpisodeNumber = episodeData.EpisodeNumber;
-        SeasonNumber = episodeData.SeasonNumber;
-        AirDate = episodeData.AirDate;
-        Still = episodeData.StillPath;
-        ColorPalette = new();
-        Available = false;
-
-        Translations = episodeData.Translations.Translations.Select(
-            translation => new TranslationDto(translation)
-        );
     }
 }
 
