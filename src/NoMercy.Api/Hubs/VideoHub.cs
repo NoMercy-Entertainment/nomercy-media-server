@@ -9,7 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -82,8 +81,6 @@ public partial class VideoHub : ConnectionHub
         _networkDiscovery = networkDiscovery;
         _userDataRepository = userDataRepository;
     }
-
-    private static readonly ConcurrentDictionary<Guid, Device> CurrentDevice = new();
 
     // ── Cast-receiver helpers (Phase 0) ──────────────────────────────────────
 

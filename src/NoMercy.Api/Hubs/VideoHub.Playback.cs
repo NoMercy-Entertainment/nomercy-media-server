@@ -213,7 +213,7 @@ public partial class VideoHub
         List<VideoPlaylistResponseDto> playlist
     )
     {
-        Device device = GetCurrentDevice(user);
+        Device device = GetCallingDevice();
         VideoPlayerState videoPlayerState = await VideoPlayerStateFactory.Create(
             _contextFactory,
             user,
@@ -244,16 +244,7 @@ public partial class VideoHub
         }
     }
 
-    private Device GetCurrentDevice(User user)
-    {
-        if (CurrentDevice.TryGetValue(user.Id, out Device? device))
-            return device;
-
-        device = ConnectedClients.Clients.FirstOrDefault(d => d.Key == Context.ConnectionId).Value;
-        CurrentDevice[user.Id] = device;
-
-        return device;
-    }
+    private Device GetCallingDevice() => ConnectedClients.Clients[Context.ConnectionId];
 
     private static bool IsCurrentPlaylist(
         VideoPlayerState state,
@@ -302,7 +293,7 @@ public partial class VideoHub
         await _videoPlaybackService.UpdatePlaybackState(user, state);
         await _videoPlaybackService.PublishStartedEventAsync(user.Id, state);
 
-        Device device = GetCurrentDevice(user);
+        Device device = GetCallingDevice();
         try
         {
             await ActivityLogger.LogPlaybackAsync(

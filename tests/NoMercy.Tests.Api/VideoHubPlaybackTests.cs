@@ -565,4 +565,63 @@ public class VideoHubPlaybackTests : IClassFixture<NoMercyApiFactory>
     {
         public HttpContext? HttpContext { get; set; } = httpContext;
     }
+
+    // =========================================================================
+    // StartPlaybackCommand
+    // =========================================================================
+
+    // The hub used to remember the first device a user started on, in a static map
+    // nothing ever cleared, so every later session was created on that device.
+    [Fact]
+    public async Task StartPlaybackCommand_NewSessionFromAnotherDevice_UsesTheCallingDevice()
+    {
+        Guid userId = TestAuthHandler.DefaultUserId;
+        ConnectedClients connectedClients = _factory.GetConnectedClients();
+        VideoPlayerStateManager stateManager =
+            _factory.Services.GetRequiredService<VideoPlayerStateManager>();
+
+        string firstConnection = Guid.NewGuid().ToString();
+        string secondConnection = Guid.NewGuid().ToString();
+        Client firstDevice = new()
+        {
+            Id = Ulid.NewUlid(),
+            Sub = userId,
+            DeviceId = $"first-{Guid.NewGuid()}",
+            Endpoint = "/videoHub",
+            Type = "web",
+            Socket = Mock.Of<ISingleClientProxy>(),
+        };
+        Client secondDevice = new()
+        {
+            Id = Ulid.NewUlid(),
+            Sub = userId,
+            DeviceId = $"second-{Guid.NewGuid()}",
+            Endpoint = "/videoHub",
+            Type = "web",
+            Socket = Mock.Of<ISingleClientProxy>(),
+        };
+        connectedClients.Clients[firstConnection] = firstDevice;
+        connectedClients.Clients[secondConnection] = secondDevice;
+
+        try
+        {
+            (VideoHub firstHub, _) = CreateHub(firstConnection, userId, out _);
+            await firstHub.StartPlaybackCommand(MediaTypes.MovieMediaType, "129", 129);
+            stateManager.TryGetValue(userId, out VideoPlayerState? firstState).Should().BeTrue();
+            firstState!.DeviceId.Should().Be(firstDevice.DeviceId);
+            stateManager.RemoveState(userId);
+
+            (VideoHub secondHub, _) = CreateHub(secondConnection, userId, out _);
+            await secondHub.StartPlaybackCommand(MediaTypes.MovieMediaType, "129", 129);
+
+            stateManager.TryGetValue(userId, out VideoPlayerState? secondState).Should().BeTrue();
+            secondState!.DeviceId.Should().Be(secondDevice.DeviceId);
+        }
+        finally
+        {
+            stateManager.RemoveState(userId);
+            connectedClients.Clients.TryRemove(firstConnection, out _);
+            connectedClients.Clients.TryRemove(secondConnection, out _);
+        }
+    }
 }
