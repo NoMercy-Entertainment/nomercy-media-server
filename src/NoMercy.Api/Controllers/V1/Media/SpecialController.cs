@@ -275,41 +275,18 @@ public class SpecialController(
         if (special is null)
             return UnprocessableEntityResponse("Special not found");
 
-        var movies = special
+        IEnumerable<(int Id, Ulid LibraryId)> movies = special
             .Items.Where(item => item.MovieId is not null)
-            .Select(item => new { id = item.MovieId ?? 0, libraryId = item.Movie!.LibraryId! })
-            .ToList();
-
-        foreach (var movie in movies)
-        {
-            try
-            {
-                jobDispatcher.DispatchJob<FileRescanJob>(movie.id, movie.libraryId);
-            }
-            catch (Exception e)
-            {
-                logger.LogError(e.Message);
-                return InternalServerErrorResponse(e.Message);
-            }
-        }
-
-        var tvs = special
+            .Select(item => (item.MovieId ?? 0, item.Movie!.LibraryId));
+        IEnumerable<(int Id, Ulid LibraryId)> shows = special
             .Items.Where(item => item.Episode is not null)
-            .Select(item => new
-            {
-                id = item.Episode?.TvId ?? 0,
-                libraryId = item.Episode?.Tv.LibraryId ?? Ulid.Empty,
-            })
-            .GroupBy(item => new { item.id, item.libraryId })
-            .DistinctBy(group => new { group.Key.id, group.Key.libraryId })
-            .Select(group => group.Key)
-            .ToList();
+            .Select(item => (item.Episode!.TvId, item.Episode.Tv.LibraryId));
 
-        foreach (var tv in tvs)
+        foreach ((int mediaId, Ulid libraryId) in movies.Concat(shows.Distinct()))
         {
             try
             {
-                jobDispatcher.DispatchJob<FileRescanJob>(tv.id, tv.libraryId);
+                jobDispatcher.DispatchJob<FileRescanJob>(mediaId, libraryId);
             }
             catch (Exception e)
             {
