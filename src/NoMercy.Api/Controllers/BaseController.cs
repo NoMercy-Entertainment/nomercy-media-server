@@ -319,7 +319,7 @@ public class BaseController : Controller
                 .Request.Headers.AcceptLanguage.FirstOrDefault()
                 ?.Split("_")
                 .FirstOrDefault()
-            ?? LocalizationHelper.GlobalLocalizer.TargetLanguage;
+            ?? LocalizationHelper.CurrentLocalizer.TargetLanguage;
     }
 
     protected string Country()

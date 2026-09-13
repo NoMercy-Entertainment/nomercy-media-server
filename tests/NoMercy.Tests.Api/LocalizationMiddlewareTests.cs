@@ -51,79 +51,96 @@ public class LocalizationMiddlewareTests
         Assert.Equal(1, count);
     }
 
-    [Fact]
-    public async Task InvokeAsync_SetsGlobalLocalizer_ForRequestLanguage()
+    // The localizer is per request: code further down the pipeline reads it while the
+    // request runs, and a concurrent request in another language must not replace it.
+    private static async Task<T> InsideRequest<T>(string? acceptLanguage, Func<T> read)
     {
-        LocalizationMiddleware middleware = new(_ => Task.CompletedTask);
+        T result = default!;
+        LocalizationMiddleware middleware = new(_ =>
+        {
+            result = read();
+            return Task.CompletedTask;
+        });
         DefaultHttpContext context = new();
-        context.Request.Headers["Accept-Language"] = "nl-NL";
+        if (acceptLanguage is not null)
+            context.Request.Headers["Accept-Language"] = acceptLanguage;
 
         await middleware.InvokeAsync(context);
 
-        Assert.NotNull(LocalizationHelper.GlobalLocalizer);
-        Assert.Equal("nl", LocalizationHelper.GlobalLocalizer.TargetLanguage);
+        return result;
+    }
+
+    [Fact]
+    public async Task InvokeAsync_UsesTheRequestLanguage()
+    {
+        string language = await InsideRequest(
+            "nl-NL",
+            () => LocalizationHelper.CurrentLocalizer.TargetLanguage
+        );
+
+        Assert.Equal("nl", language);
     }
 
     [Fact]
     public async Task InvokeAsync_SetsLocalizer_WhenNoAcceptLanguageHeader()
     {
-        LocalizationMiddleware middleware = new(_ => Task.CompletedTask);
-        DefaultHttpContext context = new();
+        ILocalizer localizer = await InsideRequest(null, () => LocalizationHelper.CurrentLocalizer);
 
-        await middleware.InvokeAsync(context);
+        Assert.NotNull(localizer);
+    }
 
-        Assert.NotNull(LocalizationHelper.GlobalLocalizer);
+    [Fact]
+    public async Task InvokeAsync_ConcurrentRequestsInDifferentLanguages_EachKeepTheirOwn()
+    {
+        TaskCompletionSource bothEntered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int entered = 0;
+
+        async Task<string> Request(string header)
+        {
+            string seen = string.Empty;
+            LocalizationMiddleware middleware = new(async _ =>
+            {
+                if (Interlocked.Increment(ref entered) == 2)
+                    bothEntered.SetResult();
+                await bothEntered.Task;
+                seen = LocalizationHelper.CurrentLocalizer.TargetLanguage;
+            });
+            DefaultHttpContext context = new();
+            context.Request.Headers["Accept-Language"] = header;
+            await middleware.InvokeAsync(context);
+            return seen;
+        }
+
+        string[] seen = await Task.WhenAll(Request("nl-NL"), Request("de-DE"));
+
+        Assert.Equal(["nl", "de"], seen);
     }
 
     [Fact]
     public async Task InvokeAsync_ReusesCachedLocalizer_ForSameLanguage()
     {
-        LocalizationMiddleware middleware = new(_ => Task.CompletedTask);
+        ILocalizer first = await InsideRequest("de-DE", () => LocalizationHelper.CurrentLocalizer);
+        ILocalizer second = await InsideRequest("de-DE", () => LocalizationHelper.CurrentLocalizer);
 
-        DefaultHttpContext context1 = new();
-        context1.Request.Headers["Accept-Language"] = "de-DE";
-        await middleware.InvokeAsync(context1);
-        ILocalizer firstLocalizer = LocalizationHelper.GlobalLocalizer;
-
-        DefaultHttpContext context2 = new();
-        context2.Request.Headers["Accept-Language"] = "de-DE";
-        await middleware.InvokeAsync(context2);
-        ILocalizer secondLocalizer = LocalizationHelper.GlobalLocalizer;
-
-        Assert.Same(firstLocalizer, secondLocalizer);
+        Assert.Same(first, second);
     }
 
     [Fact]
     public async Task InvokeAsync_CreatesDifferentLocalizer_ForDifferentLanguage()
     {
-        LocalizationMiddleware middleware = new(_ => Task.CompletedTask);
+        ILocalizer french = await InsideRequest("fr-FR", () => LocalizationHelper.CurrentLocalizer);
+        ILocalizer spanish = await InsideRequest(
+            "es-ES",
+            () => LocalizationHelper.CurrentLocalizer
+        );
 
-        DefaultHttpContext context1 = new();
-        context1.Request.Headers["Accept-Language"] = "fr-FR";
-        await middleware.InvokeAsync(context1);
-        ILocalizer frLocalizer = LocalizationHelper.GlobalLocalizer;
-
-        DefaultHttpContext context2 = new();
-        context2.Request.Headers["Accept-Language"] = "es-ES";
-        await middleware.InvokeAsync(context2);
-        ILocalizer esLocalizer = LocalizationHelper.GlobalLocalizer;
-
-        Assert.NotSame(frLocalizer, esLocalizer);
+        Assert.NotSame(french, spanish);
     }
 
     [Fact]
     public async Task InvokeAsync_CallsNextMiddleware()
     {
-        bool nextCalled = false;
-        LocalizationMiddleware middleware = new(_ =>
-        {
-            nextCalled = true;
-            return Task.CompletedTask;
-        });
-        DefaultHttpContext context = new();
-        context.Request.Headers["Accept-Language"] = "en-US";
-
-        await middleware.InvokeAsync(context);
+        bool nextCalled = await InsideRequest("en-US", () => true);
 
         Assert.True(nextCalled);
     }
@@ -145,13 +162,12 @@ public class LocalizationMiddlewareTests
     [Fact]
     public async Task InvokeAsync_HandlesLanguageWithoutRegion()
     {
-        LocalizationMiddleware middleware = new(_ => Task.CompletedTask);
-        DefaultHttpContext context = new();
-        context.Request.Headers["Accept-Language"] = "nl";
+        string language = await InsideRequest(
+            "nl",
+            () => LocalizationHelper.CurrentLocalizer.TargetLanguage
+        );
 
-        await middleware.InvokeAsync(context);
-
-        Assert.Equal("nl", LocalizationHelper.GlobalLocalizer.TargetLanguage);
+        Assert.Equal("nl", language);
     }
 
     // Entered where a Dutch viewer enters: the middleware, on a request carrying
@@ -173,13 +189,8 @@ public class LocalizationMiddlewareTests
     [InlineData("Unprocessable Entity.")]
     public async Task ADutchRequestGetsDutchBack(string englishKey)
     {
-        LocalizationMiddleware middleware = new(_ => Task.CompletedTask);
-        DefaultHttpContext context = new();
-        context.Request.Headers["Accept-Language"] = "nl";
+        string dutch = await InsideRequest("nl", () => englishKey.Localize());
 
-        await middleware.InvokeAsync(context);
-
-        string dutch = englishKey.Localize();
         Assert.NotEqual(englishKey, dutch);
         Assert.False(string.IsNullOrWhiteSpace(dutch));
     }
@@ -194,12 +205,8 @@ public class LocalizationMiddlewareTests
     [InlineData("Conflict.")]
     public async Task SomeKeysAreTheSameInDutchAndStayThatWay(string englishKey)
     {
-        LocalizationMiddleware middleware = new(_ => Task.CompletedTask);
-        DefaultHttpContext context = new();
-        context.Request.Headers["Accept-Language"] = "nl";
+        string dutch = await InsideRequest("nl", () => englishKey.Localize());
 
-        await middleware.InvokeAsync(context);
-
-        Assert.Equal(englishKey, englishKey.Localize());
+        Assert.Equal(englishKey, dutch);
     }
 }

@@ -72,7 +72,7 @@ public class ConnectionHub : Hub
                 .HttpContext?.Request.Headers.AcceptLanguage.FirstOrDefault()
                 ?.Split("_")
                 .FirstOrDefault()
-            ?? LocalizationHelper.GlobalLocalizer.TargetLanguage;
+            ?? LocalizationHelper.CurrentLocalizer.TargetLanguage;
     }
 
     public override async Task OnConnectedAsync()
@@ -206,7 +206,8 @@ public class ConnectionHub : Hub
                 await mediaContext
                     .Devices.Where(x => x.DeviceId == device.DeviceId)
                     .ExecuteUpdateAsync(x =>
-                        x.SetProperty(d => d.IsActive, true).SetProperty(d => d.WsConnectedAt, DateTime.UtcNow)
+                        x.SetProperty(d => d.IsActive, true)
+                            .SetProperty(d => d.WsConnectedAt, DateTime.UtcNow)
                     );
                 await mediaContext.SaveChangesAsync();
 

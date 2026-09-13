@@ -38,7 +38,7 @@ public class LocalizationMiddleware
         if (string.IsNullOrWhiteSpace(userLanguages) || userLanguages == "*")
         {
             context.Request.Headers.AcceptLanguage = "en-US".Split('-');
-            LocalizationHelper.GlobalLocalizer = LocalizerCache.GetOrAdd("en", LoadLocalizer);
+            LocalizationHelper.UseForCurrentRequest(LocalizerCache.GetOrAdd("en", LoadLocalizer));
             await _next(context);
             return;
         }
@@ -65,7 +65,7 @@ public class LocalizationMiddleware
 
         Localizer localizer = LocalizerCache.GetOrAdd(language, LoadLocalizer);
 
-        LocalizationHelper.GlobalLocalizer = localizer;
+        LocalizationHelper.UseForCurrentRequest(localizer);
 
         await _next(context);
     }
