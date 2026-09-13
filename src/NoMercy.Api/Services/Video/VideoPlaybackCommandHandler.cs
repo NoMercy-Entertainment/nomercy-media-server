@@ -601,10 +601,11 @@ public class VideoPlaybackCommandHandler(
                 state.CurrentItem.PlaylistType == MediaTypes.MovieMediaType
                     ? state.CurrentItem.TmdbId
                     : null,
-            TvId =
-                state.CurrentItem.PlaylistType == MediaTypes.TvMediaType
-                    ? state.CurrentItem.TmdbId
-                    : null,
+            TvId = state.CurrentItem.PlaylistType
+                is MediaTypes.TvMediaType
+                    or MediaTypes.AnimeMediaType
+                ? state.CurrentItem.TmdbId
+                : null,
             CollectionId =
                 state.CurrentItem.PlaylistType == MediaTypes.CollectionMediaType
                     ? int.Parse(state.CurrentItem.PlaylistId)

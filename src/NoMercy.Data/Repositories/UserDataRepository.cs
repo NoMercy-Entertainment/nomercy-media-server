@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using FlexLabs.EntityFrameworkCore.Upsert;
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Database;
 using NoMercy.Database.Models.Users;
@@ -130,5 +131,119 @@ public class UserDataRepository(IDbContextFactory<MediaContext> contextFactory)
             MediaTypes.CollectionMediaType => query.Where(data => data.CollectionId == intId),
             _ => null,
         };
+    }
+
+    public async Task<bool> UpsertWatchProgressAsync(
+        WatchProgress progress,
+        CancellationToken ct = default
+    )
+    {
+        int? movieId = progress.PlaylistType == MediaTypes.MovieMediaType ? progress.TmdbId : null;
+        int? tvId = progress.PlaylistType is MediaTypes.TvMediaType or MediaTypes.AnimeMediaType
+            ? progress.TmdbId
+            : null;
+        int? collectionId = null;
+        Ulid? specialId = null;
+
+        switch (progress.PlaylistType)
+        {
+            case MediaTypes.MovieMediaType:
+            case MediaTypes.TvMediaType:
+            case MediaTypes.AnimeMediaType:
+                break;
+            case MediaTypes.CollectionMediaType
+                when int.TryParse(progress.PlaylistId, out int parsedCollection):
+                collectionId = parsedCollection;
+                break;
+            case MediaTypes.SpecialMediaType
+                when Ulid.TryParse(progress.PlaylistId, out Ulid parsedSpecial):
+                specialId = parsedSpecial;
+                break;
+            default:
+                return false;
+        }
+
+        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+
+        if (!await context.VideoFiles.AnyAsync(file => file.Id == progress.VideoFileId, ct))
+            return false;
+        if (movieId is not null && !await context.Movies.AnyAsync(m => m.Id == movieId, ct))
+            return false;
+        if (tvId is not null && !await context.Tvs.AnyAsync(t => t.Id == tvId, ct))
+            return false;
+        if (
+            collectionId is not null
+            && !await context.Collections.AnyAsync(c => c.Id == collectionId, ct)
+        )
+            return false;
+        if (specialId is not null && !await context.Specials.AnyAsync(s => s.Id == specialId, ct))
+            return false;
+
+        UserData row = new()
+        {
+            UserId = progress.UserId,
+            Type = progress.PlaylistType,
+            Time = progress.Time,
+            VideoFileId = progress.VideoFileId,
+            Audio = progress.Audio,
+            Subtitle = progress.Subtitle,
+            SubtitleType = progress.SubtitleType,
+            MovieId = movieId,
+            TvId = tvId,
+            CollectionId = collectionId,
+            SpecialId = specialId,
+        };
+
+        UpsertCommandBuilder<UserData> query = context.UserData.Upsert(row);
+        query = progress.PlaylistType switch
+        {
+            MediaTypes.MovieMediaType => query.On(x => new
+            {
+                x.VideoFileId,
+                x.UserId,
+                x.MovieId,
+            }),
+            MediaTypes.CollectionMediaType => query.On(x => new
+            {
+                x.VideoFileId,
+                x.UserId,
+                x.CollectionId,
+            }),
+            MediaTypes.SpecialMediaType => query.On(x => new
+            {
+                x.VideoFileId,
+                x.UserId,
+                x.SpecialId,
+            }),
+            _ => query.On(x => new
+            {
+                x.VideoFileId,
+                x.UserId,
+                x.TvId,
+            }),
+        };
+
+        await query
+            .WhenMatched(
+                (stored, incoming) =>
+                    new()
+                    {
+                        Id = stored.Id,
+                        Type = incoming.Type,
+                        MovieId = incoming.MovieId,
+                        TvId = incoming.TvId,
+                        CollectionId = incoming.CollectionId,
+                        SpecialId = incoming.SpecialId,
+                        Time = incoming.Time,
+                        Audio = incoming.Audio,
+                        Subtitle = incoming.Subtitle,
+                        SubtitleType = incoming.SubtitleType,
+                        LastPlayedDate = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"),
+                        RemovedFromContinueWatching = false,
+                    }
+            )
+            .RunAsync(ct);
+
+        return true;
     }
 }

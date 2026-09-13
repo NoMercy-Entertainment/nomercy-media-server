@@ -210,13 +210,17 @@ public class VideoHubPlaybackTests : IClassFixture<NoMercyApiFactory>
     }
 
     [Fact]
-    public async Task SetTime_ValidMovie_UpsertsUserDataWithMovieId()
+    public async Task SetTime_ValidMovie_HandsTheReportToTheWatchProgressUpsert()
     {
         (User user, int movieId, Ulid videoFileId) = await SeedIsolatedMovieAndUserAsync();
 
         try
         {
-            (VideoHub hub, _) = CreateHub(Guid.NewGuid().ToString(), user.Id, out _);
+            (VideoHub hub, Mock<IUserDataRepository> repo) = CreateHub(
+                Guid.NewGuid().ToString(),
+                user.Id,
+                out _
+            );
 
             await hub.SetTime(
                 new()
@@ -231,10 +235,21 @@ public class VideoHubPlaybackTests : IClassFixture<NoMercyApiFactory>
                 }
             );
 
-            UserData? row = await FindUserDataAsync(videoFileId, user.Id);
-            row.Should().NotBeNull();
-            row!.MovieId.Should().Be(movieId);
-            row.Time.Should().Be(42_000);
+            repo.Verify(
+                r =>
+                    r.UpsertWatchProgressAsync(
+                        It.Is<WatchProgress>(progress =>
+                            progress.UserId == user.Id
+                            && progress.PlaylistType == MediaTypes.MovieMediaType
+                            && progress.TmdbId == movieId
+                            && progress.VideoFileId == videoFileId
+                            && progress.Time == 42_000
+                            && progress.Audio == "en"
+                        ),
+                        It.IsAny<CancellationToken>()
+                    ),
+                Times.Once
+            );
         }
         finally
         {

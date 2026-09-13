@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using System.Security.Claims;
-using FlexLabs.EntityFrameworkCore.Upsert;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NoMercy.Api.DTOs.Media;
@@ -43,109 +42,19 @@ public partial class VideoHub
         if (_videoPlayerStateManager.TryGetValue(user.Id, out VideoPlayerState? playerState))
             await _videoPlaybackService.ApplyClientProgress(user, playerState, request.Time * 1000);
 
-        await using MediaContext mediaContext = await _contextFactory.CreateDbContextAsync();
-
-        bool videoFileExists = await mediaContext.VideoFiles.AnyAsync(v => v.Id == request.VideoId);
-        if (!videoFileExists)
-            return;
-
-        int? movieId = request.PlaylistType == MediaTypes.MovieMediaType ? request.TmdbId : null;
-        int? tvId = request.PlaylistType == MediaTypes.TvMediaType ? request.TmdbId : null;
-
-        int? collectionId = null;
-        if (request.PlaylistType == MediaTypes.CollectionMediaType)
-        {
-            if (!int.TryParse(request.PlaylistId, out int parsed))
-                return;
-            collectionId = parsed;
-        }
-
-        Ulid? specialId = null;
-        if (request.PlaylistType == MediaTypes.SpecialMediaType)
-        {
-            if (!Ulid.TryParse(request.PlaylistId, out Ulid parsed))
-                return;
-            specialId = parsed;
-        }
-
-        if (movieId is not null && !await mediaContext.Movies.AnyAsync(m => m.Id == movieId))
-            return;
-        if (tvId is not null && !await mediaContext.Tvs.AnyAsync(t => t.Id == tvId))
-            return;
-        if (
-            collectionId is not null
-            && !await mediaContext.Collections.AnyAsync(c => c.Id == collectionId)
-        )
-            return;
-        if (specialId is not null && !await mediaContext.Specials.AnyAsync(s => s.Id == specialId))
-            return;
-
-        UserData userdata = new()
-        {
-            Audio = request.Audio,
-            Subtitle = request.Subtitle,
-            SubtitleType = request.SubtitleType,
-            UserId = user.Id,
-            Type = request.PlaylistType,
-            Time = request.Time,
-            VideoFileId = request.VideoId,
-            MovieId = movieId,
-            TvId = tvId,
-            CollectionId = collectionId,
-            SpecialId = specialId,
-        };
-
-        UpsertCommandBuilder<UserData> query = mediaContext.UserData.Upsert(userdata);
-
-        query = request.PlaylistType switch
-        {
-            MediaTypes.MovieMediaType => query.On(x => new
-            {
-                x.VideoFileId,
-                x.UserId,
-                x.MovieId,
-            }),
-            MediaTypes.TvMediaType => query.On(x => new
-            {
-                x.VideoFileId,
-                x.UserId,
-                x.TvId,
-            }),
-            MediaTypes.CollectionMediaType => query.On(x => new
-            {
-                x.VideoFileId,
-                x.UserId,
-                x.CollectionId,
-            }),
-            MediaTypes.SpecialMediaType => query.On(x => new
-            {
-                x.VideoFileId,
-                x.UserId,
-                x.SpecialId,
-            }),
-            _ => throw new ArgumentException("Invalid playlist type", request.PlaylistType),
-        };
-
-        await query
-            .WhenMatched(
-                (uds, udi) =>
-                    new()
-                    {
-                        Id = uds.Id,
-                        Type = udi.Type,
-                        MovieId = udi.MovieId,
-                        TvId = udi.TvId,
-                        CollectionId = udi.CollectionId,
-                        SpecialId = udi.SpecialId,
-                        Time = udi.Time,
-                        Audio = udi.Audio,
-                        Subtitle = udi.Subtitle,
-                        SubtitleType = udi.SubtitleType,
-                        LastPlayedDate = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"),
-                        RemovedFromContinueWatching = false,
-                    }
+        await _userDataRepository.UpsertWatchProgressAsync(
+            new(
+                user.Id,
+                request.PlaylistType,
+                Convert.ToString((object?)request.PlaylistId) ?? string.Empty,
+                request.TmdbId,
+                request.VideoId,
+                request.Time,
+                request.Audio,
+                request.Subtitle,
+                request.SubtitleType
             )
-            .RunAsync();
+        );
     }
 
     public async Task RemoveWatched(VideoProgressRequest request)
