@@ -83,48 +83,12 @@ public class SubtitlesController(
         if (type != MediaTypes.MovieMediaType && type != MediaTypes.TvMediaType)
             return BadRequestResponse($"Invalid type '{type}'. Expected 'movie' or 'tv'.");
 
-        Ulid? requestedVideoFileId = null;
-        if (!string.IsNullOrWhiteSpace(videoFileId))
-        {
-            if (!Ulid.TryParse(videoFileId, out Ulid parsedVideoFileId))
-                return BadRequestResponse("Invalid videoFileId");
-            requestedVideoFileId = parsedVideoFileId;
-        }
+        (IActionResult? rejection, VideoPlaylistResponseDto? target, VideoFile? file) =
+            await ResolveVideoFileAsync(userId, type, id, videoFileId, ct);
+        if (target is null || file is null)
+            return rejection!;
 
         string language = Language();
-        string country = Country();
-
-        (VideoPlaylistResponseDto? Item, List<VideoPlaylistResponseDto> Playlist) resolved;
-        try
-        {
-            // VideoPlaylistManager resolves listId via int.Parse(dynamic) internally — it
-            // must arrive as a string (the shape SignalR hands it JSON-deserialized), not
-            // a raw int, or the dynamic dispatch throws RuntimeBinderException.
-            resolved = await videoPlaylistManager.GetPlaylist(
-                userId,
-                type,
-                id.ToString(),
-                null,
-                language,
-                country
-            );
-        }
-        catch (ArgumentException)
-        {
-            return BadRequestResponse($"Invalid type '{type}'. Expected 'movie' or 'tv'.");
-        }
-
-        VideoPlaylistResponseDto? target = requestedVideoFileId is not null
-            ? resolved.Playlist.FirstOrDefault(p => p.VideoId == requestedVideoFileId.Value)
-                ?? resolved.Item
-            : resolved.Item;
-
-        if (target is null)
-            return NotFoundResponse("No video found for the given media");
-
-        VideoFile? file = await videoFileRepository.GetByIdAsync(target.VideoId, ct);
-        if (file is null)
-            return NotFoundResponse("Video file not found");
 
         string[] languages = ResolveLanguages(Request.Query, language);
 
@@ -243,45 +207,15 @@ public class SubtitlesController(
         if (string.IsNullOrWhiteSpace(request.Language))
             return BadRequestResponse("language is required");
 
-        Ulid? requestedVideoFileId = null;
-        if (!string.IsNullOrWhiteSpace(request.VideoFileId))
-        {
-            if (!Ulid.TryParse(request.VideoFileId, out Ulid parsedVideoFileId))
-                return BadRequestResponse("Invalid videoFileId");
-            requestedVideoFileId = parsedVideoFileId;
-        }
-
-        string language = Language();
-        string country = Country();
-
-        (VideoPlaylistResponseDto? Item, List<VideoPlaylistResponseDto> Playlist) resolved;
-        try
-        {
-            resolved = await videoPlaylistManager.GetPlaylist(
-                userId,
-                request.Type,
-                request.Id.ToString(),
-                null,
-                language,
-                country
-            );
-        }
-        catch (ArgumentException)
-        {
-            return BadRequestResponse($"Invalid type '{request.Type}'. Expected 'movie' or 'tv'.");
-        }
-
-        VideoPlaylistResponseDto? target = requestedVideoFileId is not null
-            ? resolved.Playlist.FirstOrDefault(p => p.VideoId == requestedVideoFileId.Value)
-                ?? resolved.Item
-            : resolved.Item;
-
-        if (target is null)
-            return NotFoundResponse("No video found for the given media");
-
-        VideoFile? file = await videoFileRepository.GetByIdAsync(target.VideoId, ct);
+        (IActionResult? rejection, _, VideoFile? file) = await ResolveVideoFileAsync(
+            userId,
+            request.Type,
+            request.Id,
+            request.VideoFileId,
+            ct
+        );
         if (file is null)
-            return NotFoundResponse("Video file not found");
+            return rejection!;
 
         SubtitleCandidate candidate = new(
             Provider: "OpenSubtitles",
@@ -409,6 +343,68 @@ public class SubtitlesController(
             "vtt" or "webvtt" => rawText,
             _ => throw new NotSupportedException(format),
         };
+
+    /// <summary>
+    /// The video file a subtitle request targets: the requested file when it belongs to the
+    /// media, otherwise the media's current item. Returns the HTTP rejection when there is none.
+    /// </summary>
+    private async Task<(
+        IActionResult? Rejection,
+        VideoPlaylistResponseDto? Target,
+        VideoFile? File
+    )> ResolveVideoFileAsync(
+        Guid userId,
+        string type,
+        int id,
+        string? videoFileId,
+        CancellationToken ct
+    )
+    {
+        Ulid? requestedVideoFileId = null;
+        if (!string.IsNullOrWhiteSpace(videoFileId))
+        {
+            if (!Ulid.TryParse(videoFileId, out Ulid parsedVideoFileId))
+                return (BadRequestResponse("Invalid videoFileId"), null, null);
+            requestedVideoFileId = parsedVideoFileId;
+        }
+
+        (VideoPlaylistResponseDto? Item, List<VideoPlaylistResponseDto> Playlist) resolved;
+        try
+        {
+            // VideoPlaylistManager resolves listId via int.Parse(dynamic), so it must arrive
+            // as a string, the shape SignalR hands it, or the dynamic dispatch throws.
+            resolved = await videoPlaylistManager.GetPlaylist(
+                userId,
+                type,
+                id.ToString(),
+                null,
+                Language(),
+                Country()
+            );
+        }
+        catch (ArgumentException)
+        {
+            return (
+                BadRequestResponse($"Invalid type '{type}'. Expected 'movie' or 'tv'."),
+                null,
+                null
+            );
+        }
+
+        VideoPlaylistResponseDto? target = requestedVideoFileId is not null
+            ? resolved.Playlist.FirstOrDefault(p => p.VideoId == requestedVideoFileId.Value)
+                ?? resolved.Item
+            : resolved.Item;
+
+        if (target is null)
+            return (NotFoundResponse("No video found for the given media"), null, null);
+
+        VideoFile? file = await videoFileRepository.GetByIdAsync(target.VideoId, ct);
+        if (file is null)
+            return (NotFoundResponse("Video file not found"), null, null);
+
+        return (null, target, file);
+    }
 
     /// <summary>
     /// Merges the downloaded subtitle into <see cref="VideoFile.Subtitles"/> — the JSON column
