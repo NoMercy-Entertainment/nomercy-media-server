@@ -75,6 +75,30 @@ public interface IFileRepository
     Task DeleteVideoFilesAndMetadataByTvIdAsync(int tvId);
 
     /// <summary>
+    /// Deletes only the VideoFiles (and their Metadata) rows that are safe to
+    /// reconcile after a rescan: rows whose Share is in
+    /// <paramref name="eligibleShares"/> (the folders this pass actually
+    /// re-scanned) AND whose (Share, HostFolder, Filename) is NOT in
+    /// <paramref name="storedKeys"/> (what this pass re-stored). A Share
+    /// absent from <paramref name="eligibleShares"/> — its folder failed to
+    /// enumerate or one of its items was skipped — keeps every one of its
+    /// existing rows untouched, rather than wiping a show that is still
+    /// fully on disk because one unrelated folder had a problem.
+    /// </summary>
+    Task DeleteStaleVideoFilesAndMetadataByMovieIdAsync(
+        int movieId,
+        List<string> eligibleShares,
+        HashSet<RecordedVideoFileLocation> storedKeys
+    );
+
+    /// <inheritdoc cref="DeleteStaleVideoFilesAndMetadataByMovieIdAsync"/>
+    Task DeleteStaleVideoFilesAndMetadataByTvIdAsync(
+        int tvId,
+        List<string> eligibleShares,
+        HashSet<RecordedVideoFileLocation> storedKeys
+    );
+
+    /// <summary>
     /// The paths already registered for a title. A rescan that resolves nothing has
     /// to prove the media is gone before it deletes anything, and these rows are the
     /// only record of where it was.

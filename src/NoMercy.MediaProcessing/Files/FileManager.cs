@@ -116,6 +116,34 @@ public partial class FileManager(
     private List<MediaFolderExtend> Files { get; set; } = [];
     public string Type { get; set; } = "";
 
+    /// <summary>
+    /// The Folder each scanned item was actually enumerated from, keyed by
+    /// reference. StoreVideoItem used to re-derive this by testing whether
+    /// the item's path contained a Folder's stored path — an unanchored
+    /// substring check that a short, root-scoped folder path (e.g. an
+    /// empty-root folder's bare title name) could win against a longer,
+    /// correct folder from a completely different driver. The scan already
+    /// knows the answer at discovery time; carrying it here is what lets
+    /// StoreVideoItem trust it instead of re-guessing.
+    /// </summary>
+    private readonly Dictionary<MediaFile, Folder> _itemOriginFolder = [];
+
+    /// <summary>
+    /// The (Share, HostFolder, Filename) of every VideoFile this pass
+    /// actually re-stored — see <see cref="ReconcileStaleVideoFilesAsync"/>.
+    /// </summary>
+    private readonly HashSet<RecordedVideoFileLocation> _storedVideoFileKeys = [];
+
+    /// <summary>
+    /// The Share (Folders.Id) of every folder that had at least one item
+    /// <see cref="StoreVideoItem"/> could not resolve this pass. A Share in
+    /// here never enters the eligible-shares set — see
+    /// <see cref="ReconcileStaleVideoFilesAsync"/>.
+    /// </summary>
+    private readonly HashSet<string> _sharesWithSkippedItems = new(
+        StringComparer.OrdinalIgnoreCase
+    );
+
     private string? Filter { get; set; }
 
     /// <summary>
@@ -133,9 +161,77 @@ public partial class FileManager(
     /// </summary>
     private int? DispatchedMediaId { get; set; }
 
+    /// <summary>
+    /// Tags every item <paramref name="scannedFolders"/> carries with the
+    /// Folder it was actually enumerated from — see
+    /// <see cref="_itemOriginFolder"/>.
+    /// </summary>
+    private void RecordItemOrigins(IEnumerable<MediaFolderExtend> scannedFolders, Folder origin)
+    {
+        foreach (MediaFolderExtend scannedFolder in scannedFolders)
+        foreach (MediaFile file in scannedFolder.Files ?? [])
+            _itemOriginFolder[file] = origin;
+    }
+
+    /// <summary>
+    /// Deletes only the stale VideoFiles rows a completed pass is safe to
+    /// reconcile — never a folder this pass could not fully verify. A Share
+    /// (Folders.Id) is "eligible" when it was actually scanned this pass
+    /// (present in <see cref="Folders"/>) AND none of its items were skipped
+    /// (<see cref="_sharesWithSkippedItems"/>); within an eligible Share, only
+    /// rows whose key is not in <see cref="_storedVideoFileKeys"/> — genuinely
+    /// no longer on disk — are removed. Runs AFTER <c>StoreTvShow</c> /
+    /// <c>StoreMovie</c> so both sets reflect what this pass actually did,
+    /// which is what makes the guard possible: the previous unconditional
+    /// delete ran BEFORE storage and could not tell "nothing here" from
+    /// "everything here failed to resolve" (issue #55).
+    /// </summary>
+    private async Task ReconcileStaleVideoFilesAsync(Library library)
+    {
+        List<string> eligibleShares =
+        [
+            .. Folders
+                .Select(folder => folder.Id.ToString())
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Where(share => !_sharesWithSkippedItems.Contains(share)),
+        ];
+
+        if (eligibleShares.Count == 0)
+        {
+            Logger.App(
+                $"[FindFiles] {Type} id={Id}: every scanned folder had a skipped item — "
+                    + "preserving all existing records rather than reconciling a partial result",
+                LogEventLevel.Warning
+            );
+            return;
+        }
+
+        switch (library.Type)
+        {
+            case MediaTypes.MovieMediaType:
+                await fileRepository.DeleteStaleVideoFilesAndMetadataByMovieIdAsync(
+                    Id,
+                    eligibleShares,
+                    _storedVideoFileKeys
+                );
+                break;
+            case MediaTypes.TvMediaType:
+            case MediaTypes.AnimeMediaType:
+                await fileRepository.DeleteStaleVideoFilesAndMetadataByTvIdAsync(
+                    Show?.Id ?? Id,
+                    eligibleShares,
+                    _storedVideoFileKeys
+                );
+                break;
+        }
+    }
+
     public async Task<bool> FindFiles(int id, Library library)
     {
         Id = id;
+        _itemOriginFolder.Clear();
+        _storedVideoFileKeys.Clear();
+        _sharesWithSkippedItems.Clear();
 
         await MediaType(id, library);
 
@@ -150,7 +246,10 @@ public partial class FileManager(
             ConcurrentBag<MediaFolderExtend> files = await GetFiles(library, folder);
 
             if (!files.IsEmpty)
+            {
                 Files.AddRange(files);
+                RecordItemOrigins(files, folder);
+            }
 
             // What plugins found under the same folder, added before the names
             // are resolved so their files go through the same parser as the
@@ -161,7 +260,10 @@ public partial class FileManager(
             ).ScanAsync(folder.Path);
 
             if (fromPlugins.Count > 0)
+            {
                 Files.AddRange(fromPlugins);
+                RecordItemOrigins(fromPlugins, folder);
+            }
         }
 
         ReResolveNames(library.Type);
@@ -180,32 +282,17 @@ public partial class FileManager(
             LogEventLevel.Information
         );
 
-        // Delete old records first as a single committed step, then insert each
-        // new record in its own SaveChangesAsync. A single wrapping transaction
-        // around 80 NFS/S3 reads holds the SQLite writer lock for the entire
-        // scan and hides every insert until commit, so partial progress is
-        // invisible and the writer blocks every other workload.
-        //
-        // Only clear when the scan actually found replacements. A rescan that
-        // comes back empty — a transient remote-storage hiccup, or a scan-side
-        // regression — must NOT wipe a show/movie that is still fully on disk;
-        // deleting here and then storing 0 leaves the library emptier than
-        // before the rescan. Genuine on-disk deletions are reconciled by the
-        // file-watcher's FileDeletedEvent path, not by nuking on every empty scan.
-        if (Filter is null && hasCandidates)
-        {
-            switch (library.Type)
-            {
-                case MediaTypes.MovieMediaType:
-                    await fileRepository.DeleteVideoFilesAndMetadataByMovieIdAsync(id);
-                    break;
-                case MediaTypes.TvMediaType:
-                case MediaTypes.AnimeMediaType:
-                    await fileRepository.DeleteVideoFilesAndMetadataByTvIdAsync(Show?.Id ?? id);
-                    break;
-            }
-        }
-        else if (Filter is null && !hasCandidates && AnyLibraryRootReadable)
+        // A completed pass reconciles its OWN stale rows after storage runs
+        // (ReconcileStaleVideoFilesAsync, below) — that is what lets it tell
+        // "nothing here" from "everything here failed to resolve". This
+        // branch only ever handles the OTHER failure shape: the scan found no
+        // parseable candidates AT ALL. A rescan that comes back completely
+        // empty — a transient remote-storage hiccup, or a scan-side
+        // regression — must NOT wipe a show/movie that is still fully on
+        // disk, so that case is confirmed against the recorded rows below
+        // before anything is removed. Genuine on-disk deletions are also
+        // reconciled by the file-watcher's FileDeletedEvent path.
+        if (Filter is null && !hasCandidates && AnyLibraryRootReadable)
         {
             // A readable library root says nothing about THIS title: a root registered one
             // level above where the media actually lives reads back fine and resolves every
@@ -265,6 +352,9 @@ public partial class FileManager(
                 Logger.App("Unknown library type");
                 break;
         }
+
+        if (Filter is null && hasCandidates)
+            await ReconcileStaleVideoFilesAsync(library);
 
         // Publish refresh events only after successful commit
         switch (library.Type)

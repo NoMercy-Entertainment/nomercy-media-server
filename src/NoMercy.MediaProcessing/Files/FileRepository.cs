@@ -1022,6 +1022,117 @@ public class FileRepository(MediaContext context, IStorageDriver storageDriver) 
         }
     }
 
+    // Carries just enough of a VideoFiles row to decide, client-side, whether
+    // it is stale — SQLite has no APPLY, so a server-side .Contains() against
+    // a client-built (Share, HostFolder, Filename) record cannot be
+    // translated; the flat projection + in-memory filter below is the
+    // documented two-step workaround.
+    private readonly record struct StaleVideoFileCandidate(
+        Ulid Id,
+        string Share,
+        string HostFolder,
+        string Filename,
+        Ulid? MetadataId
+    );
+
+    private static List<Ulid> StaleIds(
+        List<StaleVideoFileCandidate> candidates,
+        HashSet<RecordedVideoFileLocation> storedKeys
+    ) =>
+        [
+            .. candidates
+                .Where(c => !storedKeys.Contains(new(c.Share, c.HostFolder, c.Filename)))
+                .Select(c => c.Id),
+        ];
+
+    private async Task DeleteVideoFilesAndTheirMetadataAsync(
+        List<StaleVideoFileCandidate> candidates,
+        List<Ulid> idsToDelete
+    )
+    {
+        if (idsToDelete.Count == 0)
+            return;
+
+        List<Ulid> metadataIds =
+        [
+            .. candidates
+                .Where(c => idsToDelete.Contains(c.Id) && c.MetadataId != null)
+                .Select(c => c.MetadataId!.Value),
+        ];
+
+        await context.VideoFiles.Where(vf => idsToDelete.Contains(vf.Id)).ExecuteDeleteAsync();
+
+        if (metadataIds.Count > 0)
+            await context.Metadata.Where(m => metadataIds.Contains(m.Id)).ExecuteDeleteAsync();
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// No wrapping transaction — same rationale as
+    /// <see cref="DeleteVideoFilesAndMetadataByMovieIdAsync"/>: this runs
+    /// after a full re-store, and holding the SQLite writer lock across it
+    /// would block every other workload for no benefit.
+    /// </remarks>
+    public async Task DeleteStaleVideoFilesAndMetadataByMovieIdAsync(
+        int movieId,
+        List<string> eligibleShares,
+        HashSet<RecordedVideoFileLocation> storedKeys
+    )
+    {
+        if (eligibleShares.Count == 0)
+            return;
+
+        List<StaleVideoFileCandidate> candidates = await context
+            .VideoFiles.Where(vf => vf.MovieId == movieId && eligibleShares.Contains(vf.Share))
+            .Select(vf => new StaleVideoFileCandidate(
+                vf.Id,
+                vf.Share,
+                vf.HostFolder,
+                vf.Filename,
+                vf.MetadataId
+            ))
+            .ToListAsync();
+
+        await DeleteVideoFilesAndTheirMetadataAsync(candidates, StaleIds(candidates, storedKeys));
+    }
+
+    /// <inheritdoc />
+    /// <remarks>
+    /// No wrapping transaction — same rationale as
+    /// <see cref="DeleteVideoFilesAndMetadataByTvIdAsync"/>.
+    /// </remarks>
+    public async Task DeleteStaleVideoFilesAndMetadataByTvIdAsync(
+        int tvId,
+        List<string> eligibleShares,
+        HashSet<RecordedVideoFileLocation> storedKeys
+    )
+    {
+        if (eligibleShares.Count == 0)
+            return;
+
+        List<int> episodeIds = await context
+            .Episodes.Where(e => e.TvId == tvId)
+            .Select(e => e.Id)
+            .ToListAsync();
+
+        List<StaleVideoFileCandidate> candidates = await context
+            .VideoFiles.Where(vf =>
+                vf.EpisodeId != null
+                && episodeIds.Contains(vf.EpisodeId.Value)
+                && eligibleShares.Contains(vf.Share)
+            )
+            .Select(vf => new StaleVideoFileCandidate(
+                vf.Id,
+                vf.Share,
+                vf.HostFolder,
+                vf.Filename,
+                vf.MetadataId
+            ))
+            .ToListAsync();
+
+        await DeleteVideoFilesAndTheirMetadataAsync(candidates, StaleIds(candidates, storedKeys));
+    }
+
     public List<DirectoryTree> GetDirectoryTree(string folder = "")
     {
         List<DirectoryTree> array = [];

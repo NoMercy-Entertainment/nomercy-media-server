@@ -107,19 +107,28 @@ public partial class FileManager
         await Task.CompletedTask;
     }
 
-    private async Task StoreVideoItem(MediaFile item)
+    /// <returns>
+    /// Whether the item was actually stored. <see langword="false"/> on every
+    /// skip path — no Folder resolves, or the path does not resolve under its
+    /// library root — which <see cref="ReconcileStaleVideoFilesAsync"/> uses
+    /// to keep a rescan from deleting a folder's existing rows on the
+    /// strength of a skip that was never really a "this file is gone".
+    /// </returns>
+    private async Task<bool> StoreVideoItem(MediaFile item)
     {
         string itemPath = item.Path.Replace('\\', '/');
-        Folder? folder = Folders.FirstOrDefault(f =>
-            itemPath.Contains(f.Path.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase)
-        );
+        Folder? folder = _itemOriginFolder.TryGetValue(item, out Folder? originFolder)
+            ? originFolder
+            : Folders.FirstOrDefault(f =>
+                itemPath.Contains(f.Path.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase)
+            );
         if (folder == null)
         {
             Logger.App(
                 $"[StoreVideoItem] no Folders match for {itemPath} — skipping (Folders={string.Join(", ", Folders.Select(f => f.Path))})",
                 LogEventLevel.Warning
             );
-            return;
+            return false;
         }
 
         // MediaScan resolves every path through the driver, so item.Path is
@@ -151,7 +160,8 @@ public partial class FileManager
                 $"[StoreVideoItem] {itemPath} does not resolve under library folder {libraryRoot} — skipping",
                 LogEventLevel.Warning
             );
-            return;
+            _sharesWithSkippedItems.Add(folder.Id.ToString());
+            return false;
         }
 
         List<Subtitle> subtitles = GetSubtitles(storage, hostFolder);
@@ -256,6 +266,9 @@ public partial class FileManager
         };
 
         await fileRepository.StoreVideoFile(videoFile);
+
+        _storedVideoFileKeys.Add(new(videoFile.Share, videoFile.HostFolder, videoFile.Filename));
+        return true;
     }
 
     /// <summary>
