@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
+using NoMercy.Api.DTOs.Common;
 using NoMercy.Api.DTOs.Media;
 using NoMercy.Api.DTOs.Media.Components;
 using NoMercy.Authorization;

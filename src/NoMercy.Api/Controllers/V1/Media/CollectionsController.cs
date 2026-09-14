@@ -321,21 +321,8 @@ public class CollectionsController(
         if (collection is null)
             return UnprocessableEntityResponse("Collection not found");
 
-        try
-        {
-            foreach (CollectionMovie collectionMovie in collection.CollectionMovies)
-            {
-                jobDispatcher.DispatchJob<MovieImportJob>(
-                    collectionMovie.MovieId,
-                    collectionMovie.Movie.LibraryId
-                );
-            }
-        }
-        catch (Exception e)
-        {
-            logger.LogError(e, "{Message}", e.Message);
-            return InternalServerErrorResponse(e.Message);
-        }
+        if (!TryQueueMovieImports(collection, out string error))
+            return InternalServerErrorResponse(error);
 
         return Ok(
             new StatusResponseDto<string>
@@ -368,21 +355,8 @@ public class CollectionsController(
         if (collection is null)
             return UnprocessableEntityResponse("Collection not found");
 
-        try
-        {
-            foreach (CollectionMovie collectionMovie in collection.CollectionMovies)
-            {
-                jobDispatcher.DispatchJob<MovieImportJob>(
-                    collectionMovie.MovieId,
-                    collectionMovie.Movie.LibraryId
-                );
-            }
-        }
-        catch (Exception e)
-        {
-            logger.LogError(e, "{Message}", e.Message);
-            return InternalServerErrorResponse(e.Message);
-        }
+        if (!TryQueueMovieImports(collection, out string error))
+            return InternalServerErrorResponse(error);
 
         return Ok(
             new StatusResponseDto<string>
@@ -392,5 +366,25 @@ public class CollectionsController(
                 Args = [library.Title],
             }
         );
+    }
+
+    private bool TryQueueMovieImports(Collection collection, out string error)
+    {
+        try
+        {
+            foreach (CollectionMovie collectionMovie in collection.CollectionMovies)
+                jobDispatcher.DispatchJob<MovieImportJob>(
+                    collectionMovie.MovieId,
+                    collectionMovie.Movie.LibraryId
+                );
+            error = string.Empty;
+            return true;
+        }
+        catch (Exception e)
+        {
+            logger.LogError(e, "{Message}", e.Message);
+            error = e.Message;
+            return false;
+        }
     }
 }

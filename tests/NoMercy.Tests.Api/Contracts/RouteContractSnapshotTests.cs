@@ -82,7 +82,7 @@ public class RouteContractSnapshotTests : IClassFixture<NoMercyApiFactory>
         "DELETE api/v{version:apiVersion}/movie/{id:int} [Movies.DeleteMovie]",
         "DELETE api/v{version:apiVersion}/music/artists/{id:guid} [Artists.Destroy]",
         "DELETE api/v{version:apiVersion}/music/playlists/{id:guid} [Playlists.Destroy]",
-        "DELETE api/v{version:apiVersion}/music/playlists/{id:guid}/tracks/{trackId:guid} [Playlists.AddTrack]",
+        "DELETE api/v{version:apiVersion}/music/playlists/{id:guid}/tracks/{trackId:guid} [Playlists.RemoveTrack]",
         "DELETE api/v{version:apiVersion}/playlists/{id:guid} [UserPlaylists.Destroy]",
         "DELETE api/v{version:apiVersion}/playlists/{id:guid}/items/{itemId:ulid} [UserPlaylists.RemoveItem]",
         "DELETE api/v{version:apiVersion}/streaming/live/sessions/{sessionId} [LiveTranscode.EndSession]",

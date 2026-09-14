@@ -280,7 +280,7 @@ public class PlaylistsController : BaseController
     [HttpDelete]
     [Route("{id:guid}/tracks/{trackId:guid}")]
     [Authorize(Policy = "MediaAccess")]
-    public async Task<IActionResult> AddTrack(Guid id, Guid trackId)
+    public async Task<IActionResult> RemoveTrack(Guid id, Guid trackId)
     {
         int result = await _musicRepository.RemovePlaylistTrackAsync(id, trackId, User.UserId());
 

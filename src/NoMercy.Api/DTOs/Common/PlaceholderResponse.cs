@@ -11,7 +11,7 @@
 
 using Newtonsoft.Json;
 
-namespace NoMercy.Api.Controllers.V1.Music;
+namespace NoMercy.Api.DTOs.Common;
 
 public class PlaceholderResponse
 {

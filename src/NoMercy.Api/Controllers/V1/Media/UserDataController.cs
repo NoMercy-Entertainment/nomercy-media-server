@@ -13,7 +13,6 @@ using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
-using NoMercy.Api.Controllers.V1.Music;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Api.DTOs.Media;
 using NoMercy.Authorization;
