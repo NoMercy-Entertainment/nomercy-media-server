@@ -25,6 +25,7 @@ using NoMercy.Database.Models.Music;
 using NoMercy.Events;
 using NoMercy.Events.Library;
 using NoMercy.MediaProcessing.Images;
+using NoMercy.MediaProcessing.Jobs;
 using NoMercy.MediaProcessing.Jobs.PaletteJobs;
 using NoMercy.NmSystem.Extensions;
 using NoMercy.NmSystem.Information;
@@ -41,6 +42,7 @@ public class PlaylistsController : BaseController
 {
     private readonly IMusicRepository _musicRepository;
     private readonly IEventBus _eventBus;
+    private readonly IJobDispatcher _jobDispatcher;
     private readonly IMusicCoverStore _coverStore;
 
     private readonly ILogger<PlaylistsController> _logger;
@@ -49,12 +51,14 @@ public class PlaylistsController : BaseController
         ILogger<PlaylistsController> logger,
         IMusicRepository musicService,
         IEventBus eventBus,
+        IJobDispatcher jobDispatcher,
         IMusicCoverStore coverStore
     )
     {
         _logger = logger;
         _musicRepository = musicService;
         _eventBus = eventBus;
+        _jobDispatcher = jobDispatcher;
         _coverStore = coverStore;
     }
 
@@ -89,16 +93,8 @@ public class PlaylistsController : BaseController
 
         string language = Language();
 
-        // Fire-and-forget: enqueue takes the queue's global write lock (held by the
-        // encoder workers), so dispatching inline blocked this read for seconds.
         if (string.IsNullOrEmpty(playlist._colorPalette) || playlist._colorPalette == "{}")
-            _ = Task.Run(() =>
-                QueueRunner.Current?.Dispatcher.Dispatch(
-                    new ColorPaletteJob("playlist", playlist.Id.ToString()),
-                    "palette",
-                    1
-                )
-            );
+            _jobDispatcher.QueueColorPaletteInBackground("playlist", playlist.Id.ToString());
 
         return Ok(new PlaylistResponseDto { Data = new(playlist, language) });
     }

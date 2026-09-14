@@ -26,6 +26,7 @@ using NoMercy.Events;
 using NoMercy.Events.Library;
 using NoMercy.Events.Music;
 using NoMercy.MediaProcessing.Images;
+using NoMercy.MediaProcessing.Jobs;
 using NoMercy.MediaProcessing.Jobs.PaletteJobs;
 using NoMercy.NmSystem.Extensions;
 using NoMercy.NmSystem.Information;
@@ -43,6 +44,7 @@ public class ArtistsController : BaseController
 {
     private readonly IMusicRepository _musicRepository;
     private readonly IEventBus _eventBus;
+    private readonly IJobDispatcher _jobDispatcher;
     private readonly IMusicCoverStore _coverStore;
 
     private readonly ILogger<ArtistsController> _logger;
@@ -51,12 +53,14 @@ public class ArtistsController : BaseController
         ILogger<ArtistsController> logger,
         IMusicRepository musicService,
         IEventBus eventBus,
+        IJobDispatcher jobDispatcher,
         IMusicCoverStore coverStore
     )
     {
         _logger = logger;
         _musicRepository = musicService;
         _eventBus = eventBus;
+        _jobDispatcher = jobDispatcher;
         _coverStore = coverStore;
     }
 
@@ -144,13 +148,7 @@ public class ArtistsController : BaseController
         // the busy encoder workers hold while touching the large queue DB. Awaiting it
         // inline made this read block for seconds. The palette is a background enrichment.
         if (string.IsNullOrEmpty(artist._colorPalette) || artist._colorPalette == "{}")
-            _ = Task.Run(() =>
-                QueueRunner.Current?.Dispatcher.Dispatch(
-                    new ColorPaletteJob("artist", artist.Id.ToString()),
-                    "palette",
-                    1
-                )
-            );
+            _jobDispatcher.QueueColorPaletteInBackground("artist", artist.Id.ToString());
 
         return Ok(new ArtistResponseDto { Data = new(artist, userId, country) });
     }
