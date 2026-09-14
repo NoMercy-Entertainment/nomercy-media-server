@@ -271,35 +271,9 @@ public class ManagementController(
                     check.DiscardedStaleVersion
                 );
 
-            switch (check.State)
-            {
-                case StagingState.ContainerImage:
-                    return Ok(ContainerImageResponse());
-
-                case StagingState.AlreadyStaged:
-                    logger.LogInformation("Update already staged, skipping download.");
-                    return Ok(
-                        new
-                        {
-                            status = "ok",
-                            message = $"Update to {check.Version} already staged.",
-                            path = tempPath,
-                        }
-                    );
-
-                case StagingState.BinaryOnDiskIsNewer:
-                    logger.LogInformation(
-                        "Binary on disk is already {OnDiskVersion}, restart will apply the update.",
-                        check.Version
-                    );
-                    return Ok(
-                        new
-                        {
-                            status = "ok",
-                            message = $"Binary on disk is already {check.Version}, restart needed.",
-                        }
-                    );
-            }
+            IActionResult? staged = StagedResponse(check, tempPath);
+            if (staged is not null)
+                return staged;
 
             logger.LogInformation("Downloading server update on demand...");
             ServerUpdateResult result = await new Binaries(
@@ -307,74 +281,115 @@ public class ManagementController(
                 storage
             ).DownloadServerUpdate();
 
-            switch (result)
-            {
-                case ServerUpdateResult.AlreadyUpToDate:
-                    return Ok(new { status = "ok", message = "Server is already up to date." });
-
-                case ServerUpdateResult.UseContainerImage:
-                    return Ok(ContainerImageResponse());
-
-                case ServerUpdateResult.UseInstaller:
-                    return Ok(
-                        new
-                        {
-                            status = "ok",
-                            message = "This is an installer deployment. Use the installer to update.",
-                            use_installer = true,
-                            latest_version = updateStatus.LatestVersion,
-                        }
-                    );
-
-                case ServerUpdateResult.RestartNeeded:
-                    return Ok(
-                        new
-                        {
-                            status = "ok",
-                            message = "Binary on disk is already the latest version, restart needed to apply.",
-                        }
-                    );
-
-                case ServerUpdateResult.NoAssetFound:
-                    return InternalServerErrorResponse(
-                        "No suitable update asset found for the current platform."
-                    );
-
-                case ServerUpdateResult.Downloaded:
-                    if (!storageDriver.FileExists(tempPath))
-                    {
-                        logger.LogError(
-                            "Server update staged file missing at {TempPath} after successful download",
-                            tempPath
-                        );
-                        return InternalServerErrorResponse(
-                            "Download completed but staged file not found. This may be caused by antivirus software quarantining the file."
-                        );
-                    }
-
-                    long fileSize = storageDriver.GetFileSize(tempPath);
-                    logger.LogInformation(
-                        "Server update staged at {TempPath} ({FileSize} bytes)",
-                        [tempPath, fileSize]
-                    );
-                    return Ok(
-                        new
-                        {
-                            status = "ok",
-                            message = "Update downloaded and staged.",
-                            path = tempPath,
-                            size = fileSize,
-                        }
-                    );
-
-                default:
-                    return InternalServerErrorResponse("Unexpected update result.");
-            }
+            return DownloadedResponse(result, tempPath);
         }
         catch (Exception e)
         {
             logger.LogError("Failed to download update: {Message}", e.Message);
             return InternalServerErrorResponse("Failed to download update");
+        }
+    }
+
+    /// <summary>The answer when nothing needs downloading; null when a download should run.</summary>
+    private IActionResult? StagedResponse(StagingCheck check, string tempPath)
+    {
+        switch (check.State)
+        {
+            case StagingState.ContainerImage:
+                return Ok(ContainerImageResponse());
+
+            case StagingState.AlreadyStaged:
+                logger.LogInformation("Update already staged, skipping download.");
+                return Ok(
+                    new
+                    {
+                        status = "ok",
+                        message = $"Update to {check.Version} already staged.",
+                        path = tempPath,
+                    }
+                );
+
+            case StagingState.BinaryOnDiskIsNewer:
+                logger.LogInformation(
+                    "Binary on disk is already {OnDiskVersion}, restart will apply the update.",
+                    check.Version
+                );
+                return Ok(
+                    new
+                    {
+                        status = "ok",
+                        message = $"Binary on disk is already {check.Version}, restart needed.",
+                    }
+                );
+        }
+
+        return null;
+    }
+
+    private IActionResult DownloadedResponse(ServerUpdateResult result, string tempPath)
+    {
+        switch (result)
+        {
+            case ServerUpdateResult.AlreadyUpToDate:
+                return Ok(new { status = "ok", message = "Server is already up to date." });
+
+            case ServerUpdateResult.UseContainerImage:
+                return Ok(ContainerImageResponse());
+
+            case ServerUpdateResult.UseInstaller:
+                return Ok(
+                    new
+                    {
+                        status = "ok",
+                        message = "This is an installer deployment. Use the installer to update.",
+                        use_installer = true,
+                        latest_version = updateStatus.LatestVersion,
+                    }
+                );
+
+            case ServerUpdateResult.RestartNeeded:
+                return Ok(
+                    new
+                    {
+                        status = "ok",
+                        message = "Binary on disk is already the latest version, restart needed to apply.",
+                    }
+                );
+
+            case ServerUpdateResult.NoAssetFound:
+                return InternalServerErrorResponse(
+                    "No suitable update asset found for the current platform."
+                );
+
+            case ServerUpdateResult.Downloaded:
+                if (!storageDriver.FileExists(tempPath))
+                {
+                    logger.LogError(
+                        "Server update staged file missing at {TempPath} after successful download",
+                        tempPath
+                    );
+                    return InternalServerErrorResponse(
+                        "Download completed but staged file not found. This may be caused by antivirus software quarantining the file."
+                    );
+                }
+
+                long fileSize = storageDriver.GetFileSize(tempPath);
+                logger.LogInformation(
+                    "Server update staged at {TempPath} ({FileSize} bytes)",
+                    [tempPath, fileSize]
+                );
+                return Ok(
+                    new
+                    {
+                        status = "ok",
+                        message = "Update downloaded and staged.",
+                        path = tempPath,
+                        size = fileSize,
+                    }
+                );
+
+            default:
+                return InternalServerErrorResponse("Unexpected update result.");
         }
     }
 

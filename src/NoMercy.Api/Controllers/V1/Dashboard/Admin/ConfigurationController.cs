@@ -127,24 +127,64 @@ public class ConfigurationController(
     {
         Guid userId = User.UserId();
         List<(string key, object? oldVal, object? newVal)> changes = [];
-        bool restartRequired = false;
 
         if (request.DerivedAudioCapGb is < 1)
         {
             return BadRequestResponse("derived_audio_cap_gb must be at least 1");
         }
 
+        bool restartRequired = await UpdatePortsAsync(request, userId, changes);
+        await UpdateWorkerCountsAsync(request, userId, changes);
+        await UpdateServerOptionsAsync(request, userId, changes);
+        await LogChangesAsync(userId, changes);
+
+        return Ok(
+            new StatusResponseDto<string>
+            {
+                Message = restartRequired
+                    ? "Configuration updated successfully. Restart required for the port change to take effect."
+                    : "Configuration updated successfully",
+                Status = "success",
+                Args = [],
+            }
+        );
+    }
+
+    private async Task PersistAsync(
+        string key,
+        string storedValue,
+        object? oldValue,
+        object? newValue,
+        Guid userId,
+        List<(string key, object? oldVal, object? newVal)> changes
+    )
+    {
+        await serverConfiguration.SetValueAsync(key, storedValue, userId);
+        changes.Add((key, oldValue, newValue));
+    }
+
+    /// <returns>True when a port changed, which only takes effect after a restart.</returns>
+    private async Task<bool> UpdatePortsAsync(
+        ConfigDtoData request,
+        Guid userId,
+        List<(string key, object? oldVal, object? newVal)> changes
+    )
+    {
+        bool restartRequired = false;
+
         if (request.InternalServerPort != 0)
         {
             int oldPort = runtimeSettings.InternalServerPort;
-            restartRequired = restartRequired || oldPort != request.InternalServerPort;
+            restartRequired = oldPort != request.InternalServerPort;
             runtimeSettings.InternalServerPort = request.InternalServerPort;
-            await serverConfiguration.SetValueAsync(
+            await PersistAsync(
                 "internalPort",
                 request.InternalServerPort.ToString(),
-                userId
+                oldPort,
+                request.InternalServerPort,
+                userId,
+                changes
             );
-            changes.Add(("internalPort", oldPort, request.InternalServerPort));
         }
 
         if (request.ExternalServerPort != 0)
@@ -152,14 +192,25 @@ public class ConfigurationController(
             int oldPort = runtimeSettings.ExternalServerPort;
             restartRequired = restartRequired || oldPort != request.ExternalServerPort;
             runtimeSettings.ExternalServerPort = request.ExternalServerPort;
-            await serverConfiguration.SetValueAsync(
+            await PersistAsync(
                 "externalPort",
                 request.ExternalServerPort.ToString(),
-                userId
+                oldPort,
+                request.ExternalServerPort,
+                userId,
+                changes
             );
-            changes.Add(("externalPort", oldPort, request.ExternalServerPort));
         }
 
+        return restartRequired;
+    }
+
+    private async Task UpdateWorkerCountsAsync(
+        ConfigDtoData request,
+        Guid userId,
+        List<(string key, object? oldVal, object? newVal)> changes
+    )
+    {
         runtimeSettings.LibraryWorkers = await UpdateWorkerCountAsync(
             runtimeSettings.LibraryWorkers,
             request.LibraryWorkers,
@@ -208,70 +259,83 @@ public class ConfigurationController(
             userId,
             changes
         );
+    }
 
-        if (request.Swagger is not null)
+    private async Task UpdateServerOptionsAsync(
+        ConfigDtoData request,
+        Guid userId,
+        List<(string key, object? oldVal, object? newVal)> changes
+    )
+    {
+        if (request.Swagger is bool swagger)
         {
             bool oldSwagger = runtimeSettings.Swagger;
-            runtimeSettings.Swagger = (bool)request.Swagger;
-            await serverConfiguration.SetValueAsync(
-                "swagger",
-                runtimeSettings.Swagger.ToString(),
-                User.UserId()
-            );
-            changes.Add(("swagger", oldSwagger, (bool)request.Swagger));
+            runtimeSettings.Swagger = swagger;
+            await PersistAsync("swagger", swagger.ToString(), oldSwagger, swagger, userId, changes);
         }
 
-        if (request.UseSynthesizedDns is not null)
+        if (request.UseSynthesizedDns is bool useSynthesizedDns)
         {
             bool oldUseSynthesizedDns = runtimeSettings.UseSynthesizedDns;
-            runtimeSettings.UseSynthesizedDns = (bool)request.UseSynthesizedDns;
-            await serverConfiguration.SetValueAsync(
+            runtimeSettings.UseSynthesizedDns = useSynthesizedDns;
+            await PersistAsync(
                 "UseSynthesizedDns",
-                runtimeSettings.UseSynthesizedDns.ToString(),
-                userId
-            );
-            changes.Add(
-                ("UseSynthesizedDns", oldUseSynthesizedDns, (bool)request.UseSynthesizedDns)
+                useSynthesizedDns.ToString(),
+                oldUseSynthesizedDns,
+                useSynthesizedDns,
+                userId,
+                changes
             );
         }
 
-        if (request.AllowAdultContent is not null)
+        if (request.AllowAdultContent is bool allowAdultContent)
         {
             bool oldAllowAdult = runtimeSettings.ShowAdultContent;
-            runtimeSettings.AllowAdultContent = request.AllowAdultContent;
-            await serverConfiguration.SetValueAsync(
+            runtimeSettings.AllowAdultContent = allowAdultContent;
+            await PersistAsync(
                 "allowAdultContent",
                 runtimeSettings.ShowAdultContent.ToString(),
-                userId
+                oldAllowAdult,
+                allowAdultContent,
+                userId,
+                changes
             );
-            changes.Add(("allowAdultContent", oldAllowAdult, (bool)request.AllowAdultContent));
         }
 
-        if (request.DerivedAudioCapGb is not null)
+        if (request.DerivedAudioCapGb is int newCapGb)
         {
-            int newCapGb = (int)request.DerivedAudioCapGb;
             long oldCapBytes = runtimeSettings.DerivedAudioCapBytes;
             long newCapBytes = newCapGb * 1024L * 1024 * 1024;
             runtimeSettings.DerivedAudioCapBytes = newCapBytes;
-            await serverConfiguration.SetValueAsync(
+            await PersistAsync(
                 "derivedAudioCapGb",
                 newCapGb.ToString(),
-                userId
+                oldCapBytes,
+                newCapBytes,
+                userId,
+                changes
             );
-            changes.Add(("derivedAudioCapGb", oldCapBytes, newCapBytes));
         }
 
         if (request.ServerName is not null)
         {
             string oldName = await serverConfiguration.GetServerNameAsync();
-            await serverConfiguration.SetValueAsync(
+            await PersistAsync(
                 "serverName",
                 request.ServerName,
-                User.UserId()
+                oldName,
+                request.ServerName,
+                userId,
+                changes
             );
-            changes.Add(("serverName", oldName, request.ServerName));
         }
+    }
 
+    private async Task LogChangesAsync(
+        Guid userId,
+        List<(string key, object? oldVal, object? newVal)> changes
+    )
+    {
         foreach ((string key, object? oldVal, object? newVal) in changes)
         {
             try
@@ -290,17 +354,6 @@ public class ConfigurationController(
                 logger.LogWarning("Failed to log config change: {Message}", ex.Message);
             }
         }
-
-        return Ok(
-            new StatusResponseDto<string>
-            {
-                Message = restartRequired
-                    ? "Configuration updated successfully. Restart required for the port change to take effect."
-                    : "Configuration updated successfully",
-                Status = "success",
-                Args = [],
-            }
-        );
     }
 
     [HttpGet]
