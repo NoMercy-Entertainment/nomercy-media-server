@@ -440,6 +440,7 @@ public static partial class ServiceConfiguration
         services.AddScoped<DriverRepository>();
         services.AddScoped<MediaProcessingFileRepository>();
         services.AddScoped<IFileRepository, MediaProcessingFileRepository>();
+        services.AddScoped<IFileManager, FileManager>();
         services.AddScoped<IMediaIdentificationService, MediaIdentificationService>();
         services.AddScoped<IFileListService, FileListService>();
 

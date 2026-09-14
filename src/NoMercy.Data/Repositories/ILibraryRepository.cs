@@ -218,6 +218,22 @@ public interface ILibraryRepository
         bool? resolved,
         CancellationToken ct = default
     );
+
+    /// <summary>Removes one encoding-preset-to-folder link. Returns the number of rows deleted.</summary>
+    Task<int> DeleteEncodingPresetFolderLinkAsync(
+        Ulid folderId,
+        Ulid encoderProfileId,
+        CancellationToken ct = default
+    );
+
+    /// <summary>
+    /// Every distinct host folder tracked for a music library, paired with one of the
+    /// albums it belongs to. Used to find which folders need their track matches re-run.
+    /// </summary>
+    Task<List<TrackHostFolderDto>> GetTrackHostFoldersForLibraryAsync(
+        Ulid libraryId,
+        CancellationToken ct = default
+    );
 }
 
 public record VideoSearchResults(List<Tv> Tvs, List<Movie> Movies);

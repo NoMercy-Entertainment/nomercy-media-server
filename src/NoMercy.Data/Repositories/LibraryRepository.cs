@@ -1461,4 +1461,37 @@ public class LibraryRepository(IDbContextFactory<MediaContext> contextFactory) :
             .OrderByDescending(failure => failure.LastAttemptAt)
             .ToList();
     }
+
+    public async Task<int> DeleteEncodingPresetFolderLinkAsync(
+        Ulid folderId,
+        Ulid encoderProfileId,
+        CancellationToken ct = default
+    )
+    {
+        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+        return await context
+            .EncodingPresetFolders.Where(link =>
+                link.FolderId == folderId && link.PresetId == encoderProfileId
+            )
+            .ExecuteDeleteAsync(ct);
+    }
+
+    public async Task<List<TrackHostFolderDto>> GetTrackHostFoldersForLibraryAsync(
+        Ulid libraryId,
+        CancellationToken ct = default
+    )
+    {
+        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+
+        return await (
+            from track in context.Tracks
+            join libraryTrack in context.LibraryTrack on track.Id equals libraryTrack.TrackId
+            join albumTrack in context.AlbumTrack on track.Id equals albumTrack.TrackId
+            where
+                libraryTrack.LibraryId == libraryId
+                && track.HostFolder != null
+                && track.Filename != null
+            select new TrackHostFolderDto(track.HostFolder!, albumTrack.AlbumId)
+        ).ToListAsync(ct);
+    }
 }
