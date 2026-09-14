@@ -23,13 +23,16 @@ public class FolderPathEventHandler : EventSubscriber
 {
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly IUserCache _userCache;
+    private readonly IServedFolderRegistry _servedFolders;
 
     public FolderPathEventHandler(
         IEventBus eventBus,
         IServiceScopeFactory scopeFactory,
-        IUserCache userCache
+        IUserCache userCache,
+        IServedFolderRegistry servedFolders
     )
     {
+        _servedFolders = servedFolders;
         _scopeFactory = scopeFactory;
         _userCache = userCache;
         Track(eventBus.Subscribe<FolderPathAddedEvent>(OnFolderPathAdded));
@@ -38,7 +41,7 @@ public class FolderPathEventHandler : EventSubscriber
 
     internal async Task OnFolderPathAdded(FolderPathAddedEvent @event, CancellationToken ct)
     {
-        DynamicStaticFilesMiddleware.AddFolder(@event.RequestPath, @event.DriverId, @event.SubPath);
+        _servedFolders.Add(@event.RequestPath, @event.DriverId, @event.SubPath);
 
         await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
         IDbContextFactory<MediaContext> contextFactory = scope.ServiceProvider.GetRequiredService<
@@ -50,7 +53,7 @@ public class FolderPathEventHandler : EventSubscriber
 
     internal async Task OnFolderPathRemoved(FolderPathRemovedEvent @event, CancellationToken ct)
     {
-        DynamicStaticFilesMiddleware.RemoveFolder(@event.RequestPath);
+        _servedFolders.Remove(@event.RequestPath);
 
         await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
         IDbContextFactory<MediaContext> contextFactory = scope.ServiceProvider.GetRequiredService<

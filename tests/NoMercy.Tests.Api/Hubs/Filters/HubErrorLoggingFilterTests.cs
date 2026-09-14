@@ -14,13 +14,13 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using NoMercy.Api.Middleware;
+using NoMercy.Api.Hubs.Filters;
 using NoMercy.Authorization;
 using NoMercy.Database.Models.Users;
 using NoMercy.NmSystem.Information;
 using Xunit;
 
-namespace NoMercy.Tests.Api.Middleware;
+namespace NoMercy.Tests.Api.Hubs.Filters;
 
 // HubErrorLoggingFilter is the single choke point every SignalR hub method call
 // passes through. Its job is: (1) let calls from connections it can't identify

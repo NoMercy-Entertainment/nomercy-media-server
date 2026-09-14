@@ -17,7 +17,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using NoMercy.Api.DTOs.Management;
-using NoMercy.Api.Middleware;
+using NoMercy.Api.Filters;
 using NoMercy.Data.Repositories;
 using NoMercy.Encoder.LiveTranscode;
 using NoMercy.Monitoring;
@@ -446,87 +446,54 @@ public class ManagementController(
         await queueRunner.SetWorkerCount(queueName, count, null);
     }
 
+    private async Task<KeyValuePair<string, int>> UpdateWorkerCountAsync(
+        KeyValuePair<string, int> current,
+        int? requested
+    )
+    {
+        if (requested is not { } newCount)
+            return current;
+
+        await PersistWorkerCount(current.Key, newCount);
+        return new(current.Key, newCount);
+    }
+
     [HttpPut("config")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> UpdateConfig([FromBody] ManagementConfigUpdateDto request)
     {
-        if (request.LibraryWorkers is not null)
-        {
-            runtimeSettings.LibraryWorkers = new(
-                runtimeSettings.LibraryWorkers.Key,
-                (int)request.LibraryWorkers
-            );
-            await PersistWorkerCount(
-                runtimeSettings.LibraryWorkers.Key,
-                (int)request.LibraryWorkers
-            );
-        }
-
-        if (request.ImportWorkers is not null)
-        {
-            runtimeSettings.ImportWorkers = new(
-                runtimeSettings.ImportWorkers.Key,
-                (int)request.ImportWorkers
-            );
-            await PersistWorkerCount(runtimeSettings.ImportWorkers.Key, (int)request.ImportWorkers);
-        }
-
-        if (request.ExtrasWorkers is not null)
-        {
-            runtimeSettings.ExtrasWorkers = new(
-                runtimeSettings.ExtrasWorkers.Key,
-                (int)request.ExtrasWorkers
-            );
-            await PersistWorkerCount(runtimeSettings.ExtrasWorkers.Key, (int)request.ExtrasWorkers);
-        }
-
-        if (request.EncoderWorkers is not null)
-        {
-            runtimeSettings.EncoderWorkers = new(
-                runtimeSettings.EncoderWorkers.Key,
-                (int)request.EncoderWorkers
-            );
-            await PersistWorkerCount(
-                runtimeSettings.EncoderWorkers.Key,
-                (int)request.EncoderWorkers
-            );
-        }
-
-        if (request.CronWorkers is not null)
-        {
-            runtimeSettings.CronWorkers = new(
-                runtimeSettings.CronWorkers.Key,
-                (int)request.CronWorkers
-            );
-            await PersistWorkerCount(runtimeSettings.CronWorkers.Key, (int)request.CronWorkers);
-        }
-
-        if (request.ImageWorkers is not null)
-        {
-            runtimeSettings.ImageWorkers = new(
-                runtimeSettings.ImageWorkers.Key,
-                (int)request.ImageWorkers
-            );
-            await PersistWorkerCount(runtimeSettings.ImageWorkers.Key, (int)request.ImageWorkers);
-        }
-
-        if (request.FileWorkers is not null)
-        {
-            runtimeSettings.FileWorkers = new(
-                runtimeSettings.FileWorkers.Key,
-                (int)request.FileWorkers
-            );
-            await PersistWorkerCount(runtimeSettings.FileWorkers.Key, (int)request.FileWorkers);
-        }
-
-        if (request.MusicWorkers is not null)
-        {
-            runtimeSettings.MusicWorkers = new(
-                runtimeSettings.MusicWorkers.Key,
-                (int)request.MusicWorkers
-            );
-            await PersistWorkerCount(runtimeSettings.MusicWorkers.Key, (int)request.MusicWorkers);
-        }
+        runtimeSettings.LibraryWorkers = await UpdateWorkerCountAsync(
+            runtimeSettings.LibraryWorkers,
+            request.LibraryWorkers
+        );
+        runtimeSettings.ImportWorkers = await UpdateWorkerCountAsync(
+            runtimeSettings.ImportWorkers,
+            request.ImportWorkers
+        );
+        runtimeSettings.ExtrasWorkers = await UpdateWorkerCountAsync(
+            runtimeSettings.ExtrasWorkers,
+            request.ExtrasWorkers
+        );
+        runtimeSettings.EncoderWorkers = await UpdateWorkerCountAsync(
+            runtimeSettings.EncoderWorkers,
+            request.EncoderWorkers
+        );
+        runtimeSettings.CronWorkers = await UpdateWorkerCountAsync(
+            runtimeSettings.CronWorkers,
+            request.CronWorkers
+        );
+        runtimeSettings.ImageWorkers = await UpdateWorkerCountAsync(
+            runtimeSettings.ImageWorkers,
+            request.ImageWorkers
+        );
+        runtimeSettings.FileWorkers = await UpdateWorkerCountAsync(
+            runtimeSettings.FileWorkers,
+            request.FileWorkers
+        );
+        runtimeSettings.MusicWorkers = await UpdateWorkerCountAsync(
+            runtimeSettings.MusicWorkers,
+            request.MusicWorkers
+        );
 
         if (request.ServerName is not null)
         {

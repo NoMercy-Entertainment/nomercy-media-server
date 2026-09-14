@@ -98,13 +98,7 @@ public class LiveTranscodeHub(
     /// </summary>
     public void Heartbeat(string sessionId)
     {
-        if (!streamingService.TryGetRuntime(sessionId, out LiveRuntimeSession runtime))
-            return;
-
-        string? ownerId = sessionManager.GetOwnerUserId(sessionId);
-        string callerId = Context.UserIdentifier ?? string.Empty;
-
-        if (!string.Equals(ownerId, callerId, StringComparison.OrdinalIgnoreCase))
+        if (!TryGetOwnedRuntime(sessionId, out LiveRuntimeSession runtime))
             return;
 
         runtime.TouchLastAccess();
@@ -120,10 +114,7 @@ public class LiveTranscodeHub(
     /// </summary>
     public void ReportPlayhead(string sessionId, double currentTimeSeconds)
     {
-        if (!streamingService.TryGetRuntime(sessionId, out LiveRuntimeSession runtime))
-            return;
-
-        if (!CallerOwnsSession(sessionId))
+        if (!TryGetOwnedRuntime(sessionId, out LiveRuntimeSession runtime))
             return;
 
         runtime.Session.ReportPlaybackPosition(
@@ -150,10 +141,7 @@ public class LiveTranscodeHub(
         double observedBandwidthKbps
     )
     {
-        if (!streamingService.TryGetRuntime(sessionId, out LiveRuntimeSession runtime))
-            return;
-
-        if (!CallerOwnsSession(sessionId))
+        if (!TryGetOwnedRuntime(sessionId, out LiveRuntimeSession runtime))
             return;
 
         runtime.Session.ReportClientBufferHealth(
@@ -169,10 +157,7 @@ public class LiveTranscodeHub(
     /// </summary>
     public void RequestPause(string sessionId)
     {
-        if (!streamingService.TryGetRuntime(sessionId, out LiveRuntimeSession runtime))
-            return;
-
-        if (!CallerOwnsSession(sessionId))
+        if (!TryGetOwnedRuntime(sessionId, out LiveRuntimeSession runtime))
             return;
 
         runtime.Session.Suspend();
@@ -184,14 +169,15 @@ public class LiveTranscodeHub(
     /// </summary>
     public void RequestResume(string sessionId)
     {
-        if (!streamingService.TryGetRuntime(sessionId, out LiveRuntimeSession runtime))
-            return;
-
-        if (!CallerOwnsSession(sessionId))
+        if (!TryGetOwnedRuntime(sessionId, out LiveRuntimeSession runtime))
             return;
 
         runtime.Session.Resume();
     }
+
+    /// <summary>The session's runtime, when it exists and belongs to the caller.</summary>
+    private bool TryGetOwnedRuntime(string sessionId, out LiveRuntimeSession runtime) =>
+        streamingService.TryGetRuntime(sessionId, out runtime) && CallerOwnsSession(sessionId);
 
     private bool CallerOwnsSession(string sessionId)
     {

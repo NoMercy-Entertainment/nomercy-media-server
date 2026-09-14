@@ -14,7 +14,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
 using NoMercy.Networking.Http;
 
-namespace NoMercy.Api.Middleware;
+namespace NoMercy.Api.Filters;
 
 [AttributeUsage(AttributeTargets.Class | AttributeTargets.Method)]
 public class LocalhostOnlyAttribute : Attribute, IAuthorizationFilter

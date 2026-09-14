@@ -189,6 +189,65 @@ public class SubtitlesController(
         if (!AuthPolicy.IsAllowed(User))
             return UnauthorizedResponse("You do not have permission to download subtitles");
 
+        IActionResult? invalid = await ValidateDownloadRequestAsync(request, ct);
+        if (invalid is not null)
+            return invalid;
+
+        (IActionResult? rejection, _, VideoFile? file) = await ResolveVideoFileAsync(
+            userId,
+            request.Type,
+            request.Id,
+            request.VideoFileId,
+            ct
+        );
+        if (file is null)
+            return rejection!;
+
+        (IActionResult? failed, string? vttContent) = await DownloadAsVttAsync(request, ct);
+        if (vttContent is null)
+            return failed!;
+
+        // Mirrors VideoPlaylistResponseDto.Subtitles(VideoFile)'s (pre-existing, unowned by this
+        // slice) URL construction exactly — that private helper is what the NEXT watch response
+        // reads to build the track URL, so the sidecar must land at the exact path it expects:
+        // "{baseFolder}/subtitles{filenameWithoutExt}.{language}.{type}.{ext}" with no separator
+        // between "subtitles" and the filename. Any change to that helper must update this too.
+        string filenameNoExt = file.Filename.OrEmpty().Replace(".mp4", "").Replace(".m3u8", "");
+        string sidecarFileName =
+            $"subtitles{filenameNoExt}.{request.Language}.{DownloadedSubtitleType}.{SidecarExtension}";
+        IActionResult? writeFailed = await WriteSidecarAsync(file, sidecarFileName, vttContent, ct);
+        if (writeFailed is not null)
+            return writeFailed;
+
+        await RegisterSubtitleAsync(file, request.Language, ct);
+
+        string baseFolder = $"/{file.Share}{file.Folder}".EncodePath();
+        string trackUrl =
+            $"{baseFolder}/subtitles{filenameNoExt.EncodePath()}.{request.Language}.{DownloadedSubtitleType}.{SidecarExtension}";
+
+        SubtitleDownloadResultDto result = new(
+            File: trackUrl,
+            Kind: "subtitles",
+            Label: DownloadedSubtitleType,
+            Language: request.Language
+        );
+
+        return Ok(
+            new StatusResponseDto<SubtitleDownloadResultDto>
+            {
+                Status = "ok",
+                Data = result,
+                Message = "Subtitle downloaded for {0}",
+                Args = [file.Filename],
+            }
+        );
+    }
+
+    private async Task<IActionResult?> ValidateDownloadRequestAsync(
+        SubtitleDownloadRequestDto request,
+        CancellationToken ct
+    )
+    {
         if (request.Type != MediaTypes.MovieMediaType && request.Type != MediaTypes.TvMediaType)
             return BadRequestResponse($"Invalid type '{request.Type}'. Expected 'movie' or 'tv'.");
 
@@ -207,16 +266,14 @@ public class SubtitlesController(
         if (string.IsNullOrWhiteSpace(request.Language))
             return BadRequestResponse("language is required");
 
-        (IActionResult? rejection, _, VideoFile? file) = await ResolveVideoFileAsync(
-            userId,
-            request.Type,
-            request.Id,
-            request.VideoFileId,
-            ct
-        );
-        if (file is null)
-            return rejection!;
+        return null;
+    }
 
+    private async Task<(IActionResult? Failed, string? VttContent)> DownloadAsVttAsync(
+        SubtitleDownloadRequestDto request,
+        CancellationToken ct
+    )
+    {
         SubtitleCandidate candidate = new(
             Provider: "OpenSubtitles",
             Language: request.Language,
@@ -237,8 +294,11 @@ public class SubtitlesController(
         }
         catch (OpenSubtitlesRateLimitException)
         {
-            return TooManyRequestsResponse(
-                "OpenSubtitles is rate-limited by the upstream provider. Try again in a few minutes."
+            return (
+                TooManyRequestsResponse(
+                    "OpenSubtitles is rate-limited by the upstream provider. Try again in a few minutes."
+                ),
+                null
             );
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
@@ -248,7 +308,10 @@ public class SubtitlesController(
                 "Failed to download subtitle from {DownloadUrl}",
                 request.DownloadUrl
             );
-            return InternalServerErrorResponse($"Failed to download subtitle: {ex.Message}");
+            return (
+                InternalServerErrorResponse($"Failed to download subtitle: {ex.Message}"),
+                null
+            );
         }
 
         string vttContent;
@@ -262,20 +325,25 @@ public class SubtitlesController(
                 "Subtitle format {Format} is not convertible to WebVTT",
                 candidate.Format
             );
-            return UnprocessableEntityResponse(
-                $"Subtitle format '{candidate.Format}' is not supported — only SRT and VTT can be "
-                    + "converted to the WebVTT sidecar the player expects."
+            return (
+                UnprocessableEntityResponse(
+                    $"Subtitle format '{candidate.Format}' is not supported — only SRT and VTT can be "
+                        + "converted to the WebVTT sidecar the player expects."
+                ),
+                null
             );
         }
 
-        // Mirrors VideoPlaylistResponseDto.Subtitles(VideoFile)'s (pre-existing, unowned by this
-        // slice) URL construction exactly — that private helper is what the NEXT watch response
-        // reads to build the track URL, so the sidecar must land at the exact path it expects:
-        // "{baseFolder}/subtitles{filenameWithoutExt}.{language}.{type}.{ext}" with no separator
-        // between "subtitles" and the filename. Any change to that helper must update this too.
-        string filenameNoExt = file.Filename.OrEmpty().Replace(".mp4", "").Replace(".m3u8", "");
-        string sidecarFileName =
-            $"subtitles{filenameNoExt}.{request.Language}.{DownloadedSubtitleType}.{SidecarExtension}";
+        return (null, vttContent);
+    }
+
+    private async Task<IActionResult?> WriteSidecarAsync(
+        VideoFile file,
+        string sidecarFileName,
+        string vttContent,
+        CancellationToken ct
+    )
+    {
         IStorage? storage = await ResolveStorageAsync(file);
         if (storage is null)
         {
@@ -306,28 +374,7 @@ public class SubtitlesController(
             );
         }
 
-        await RegisterSubtitleAsync(file, request.Language, ct);
-
-        string baseFolder = $"/{file.Share}{file.Folder}".EncodePath();
-        string trackUrl =
-            $"{baseFolder}/subtitles{filenameNoExt.EncodePath()}.{request.Language}.{DownloadedSubtitleType}.{SidecarExtension}";
-
-        SubtitleDownloadResultDto result = new(
-            File: trackUrl,
-            Kind: "subtitles",
-            Label: DownloadedSubtitleType,
-            Language: request.Language
-        );
-
-        return Ok(
-            new StatusResponseDto<SubtitleDownloadResultDto>
-            {
-                Status = "ok",
-                Data = result,
-                Message = "Subtitle downloaded for {0}",
-                Args = [file.Filename],
-            }
-        );
+        return null;
     }
 
     /// <summary>

@@ -58,7 +58,8 @@ public class LibrariesController(
     IFileManager fileManager,
     IAnimeClassificationAuditService animeClassificationAuditService,
     ILogger<LibrariesController> logger,
-    IEventBus eventBus
+    IEventBus eventBus,
+    IServedFolderRegistry servedFolders
 ) : BaseController
 {
     [HttpGet]
@@ -383,7 +384,7 @@ public class LibrariesController(
     {
         // Remove all associated folders from the middleware immediately
         foreach (FolderLibrary fl in library.FolderLibraries)
-            DynamicStaticFilesMiddleware.RemoveFolder(fl.FolderId);
+            servedFolders.Remove(fl.FolderId);
 
         await using MediaContext refreshContext = await mediaContextFactory.CreateDbContextAsync();
         await UserCacheService.RefreshFolderIdsAsync(refreshContext);
@@ -800,7 +801,7 @@ public class LibrariesController(
     private async Task RegisterFolderRuntimeAsync(Folder folder)
     {
         // Register the folder with the middleware directly so it can serve files immediately
-        DynamicStaticFilesMiddleware.AddFolder(folder.Id, folder.DriverId, folder.Path);
+        servedFolders.Add(folder.Id, folder.DriverId, folder.Path);
         await using MediaContext refreshContext = await mediaContextFactory.CreateDbContextAsync();
         await UserCacheService.RefreshFolderIdsAsync(refreshContext);
 
@@ -834,8 +835,8 @@ public class LibrariesController(
             await folderRepository.UpdateFolderAsync(folder);
 
             // Update the middleware directly so it can serve files from the new path immediately
-            DynamicStaticFilesMiddleware.RemoveFolder(folder.Id);
-            DynamicStaticFilesMiddleware.AddFolder(folder.Id, folder.DriverId, folder.Path);
+            servedFolders.Remove(folder.Id);
+            servedFolders.Add(folder.Id, folder.DriverId, folder.Path);
             await using (
                 MediaContext refreshContext = await mediaContextFactory.CreateDbContextAsync()
             )
@@ -883,7 +884,7 @@ public class LibrariesController(
             await folderRepository.DeleteFolderAsync(folder);
 
             // Remove the folder from the middleware immediately
-            DynamicStaticFilesMiddleware.RemoveFolder(folder.Id);
+            servedFolders.Remove(folder.Id);
             await using (
                 MediaContext refreshContext = await mediaContextFactory.CreateDbContextAsync()
             )

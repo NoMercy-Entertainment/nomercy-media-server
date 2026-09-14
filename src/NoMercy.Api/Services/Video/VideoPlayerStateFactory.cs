@@ -65,62 +65,24 @@ public class VideoPlayerStateFactory
                     .ThenInclude(library => library!.LibraryMovies)
             .FirstOrDefaultAsync(u => u.Id == user.Id);
 
-        if (userPreference is null)
-        {
-            // Fallback to default playback preference when the user could not be loaded
-            return new()
-            {
-                DeviceId = device.DeviceId,
-                VolumePercentage = device.VolumePercent ?? Device.DefaultVolumePercent,
-                CurrentItem = item,
-                CurrentAudio = null,
-                CurrentCaption = null,
-                CurrentQuality = null,
-                Chapters = chapters,
-                Audio = audioTracks,
-                Captions = captions,
-                Qualities = qualities,
-                Playlist = playlist,
-                PlayState = true,
-                Time = (item.Progress?.Time ?? 0) * 1000,
-                Duration = item.Duration.ToMilliSeconds(),
-                CurrentList = new($"/{type}/{listId}/watch", UriKind.Relative),
-                Actions = new()
-                {
-                    Disallows = new()
-                    {
-                        Stopping = false,
-                        Seeking = false,
-                        Muting = false,
-                        Pausing = false,
-                        Resuming = true,
-                        Previous = playlist.IndexOf(item) == 0,
-                        Next = playlist.IndexOf(item) == playlist.Count - 1,
-                    },
-                },
-            };
-        }
+        // A user that could not be loaded plays with no track choice at all; a loaded
+        // user without a matching preference gets the first quality, audio and caption.
+        PlaybackPreference? playbackPreference = null;
+        if (userPreference is not null)
+            playbackPreference =
+                FindPlaybackPreference(userPreference, id, parsedId, type)
+                ?? CreateDefaultPlaybackPreference(qualities, audioTracks, captions);
 
-        PlaybackPreference? playbackPreference = FindPlaybackPreference(
-            userPreference,
-            id,
-            parsedId,
-            type
-        );
-
-        if (playbackPreference is null)
-        {
-            playbackPreference = CreateDefaultPlaybackPreference(qualities, audioTracks, captions);
-        }
+        int index = playlist.IndexOf(item);
 
         return new()
         {
             DeviceId = device.DeviceId,
             VolumePercentage = device.VolumePercent ?? Device.DefaultVolumePercent,
             CurrentItem = item,
-            CurrentAudio = playbackPreference.Audio,
-            CurrentCaption = playbackPreference.Subtitle,
-            CurrentQuality = playbackPreference.Video,
+            CurrentAudio = playbackPreference?.Audio,
+            CurrentCaption = playbackPreference?.Subtitle,
+            CurrentQuality = playbackPreference?.Video,
             Chapters = chapters,
             Audio = audioTracks,
             Captions = captions,
@@ -139,8 +101,8 @@ public class VideoPlayerStateFactory
                     Muting = false,
                     Pausing = false,
                     Resuming = true,
-                    Previous = playlist.IndexOf(item) == 0,
-                    Next = playlist.IndexOf(item) == playlist.Count - 1,
+                    Previous = index == 0,
+                    Next = index == playlist.Count - 1,
                 },
             },
         };

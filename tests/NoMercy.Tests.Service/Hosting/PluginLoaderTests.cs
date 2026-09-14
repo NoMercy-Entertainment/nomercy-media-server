@@ -32,7 +32,7 @@ public class PluginLoaderTests
         new(Ulid.NewUlid(), name, version, Mock.Of<IPlugin>());
 
     private static PluginApplicationPartRegistrar PartRegistrar() =>
-        new(new(), NullLogger<PluginApplicationPartRegistrar>.Instance);
+        new(new(), new(), NullLogger<PluginApplicationPartRegistrar>.Instance);
 
     [Fact]
     public async Task LoadPlugins_ReturnsWhatPluginManagerLoads()

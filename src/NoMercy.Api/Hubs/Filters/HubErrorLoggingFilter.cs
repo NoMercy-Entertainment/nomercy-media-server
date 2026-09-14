@@ -17,7 +17,7 @@ using NoMercy.Database;
 using NoMercy.Database.Models.Users;
 using NoMercy.NmSystem.Information;
 
-namespace NoMercy.Api.Middleware;
+namespace NoMercy.Api.Hubs.Filters;
 
 /// <summary>
 /// SignalR hub filter that logs errors for invalid method calls, wrong arguments, and exceptions.

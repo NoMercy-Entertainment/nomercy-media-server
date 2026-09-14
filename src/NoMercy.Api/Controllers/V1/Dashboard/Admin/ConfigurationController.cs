@@ -85,6 +85,25 @@ public class ConfigurationController(
     /// silently rots.
     /// </summary>
     [NonAction]
+    /// <summary>
+    /// Applies a requested worker count to a queue: persisted, handed to the running
+    /// queue and recorded as a change. The setting is returned unchanged when none was requested.
+    /// </summary>
+    private async Task<KeyValuePair<string, int>> UpdateWorkerCountAsync(
+        KeyValuePair<string, int> current,
+        int? requested,
+        Guid userId,
+        List<(string key, object? oldVal, object? newVal)> changes
+    )
+    {
+        if (requested is not { } newCount)
+            return current;
+
+        await PersistWorkerCount(current.Key, newCount, userId);
+        changes.Add((current.Key, current.Value, newCount));
+        return new(current.Key, newCount);
+    }
+
     private async Task PersistWorkerCount(string queueName, int count, Guid userId)
     {
         string key = $"{queueName}Runners";
@@ -141,77 +160,54 @@ public class ConfigurationController(
             changes.Add(("externalPort", oldPort, request.ExternalServerPort));
         }
 
-        if (request.LibraryWorkers is not null)
-        {
-            int oldCount = runtimeSettings.LibraryWorkers.Value;
-            int newCount = (int)request.LibraryWorkers;
-            runtimeSettings.LibraryWorkers = new(runtimeSettings.LibraryWorkers.Key, newCount);
-            await PersistWorkerCount(runtimeSettings.LibraryWorkers.Key, newCount, userId);
-            changes.Add((runtimeSettings.LibraryWorkers.Key, oldCount, newCount));
-        }
-
-        if (request.ImportWorkers is not null)
-        {
-            int oldCount = runtimeSettings.ImportWorkers.Value;
-            int newCount = (int)request.ImportWorkers;
-            runtimeSettings.ImportWorkers = new(runtimeSettings.ImportWorkers.Key, newCount);
-            await PersistWorkerCount(runtimeSettings.ImportWorkers.Key, newCount, userId);
-            changes.Add((runtimeSettings.ImportWorkers.Key, oldCount, newCount));
-        }
-
-        if (request.ExtrasWorkers is not null)
-        {
-            int oldCount = runtimeSettings.ExtrasWorkers.Value;
-            int newCount = (int)request.ExtrasWorkers;
-            runtimeSettings.ExtrasWorkers = new(runtimeSettings.ExtrasWorkers.Key, newCount);
-            await PersistWorkerCount(runtimeSettings.ExtrasWorkers.Key, newCount, userId);
-            changes.Add((runtimeSettings.ExtrasWorkers.Key, oldCount, newCount));
-        }
-
-        if (request.EncoderWorkers is not null)
-        {
-            int oldCount = runtimeSettings.EncoderWorkers.Value;
-            int newCount = (int)request.EncoderWorkers;
-            runtimeSettings.EncoderWorkers = new(runtimeSettings.EncoderWorkers.Key, newCount);
-            await PersistWorkerCount(runtimeSettings.EncoderWorkers.Key, newCount, userId);
-            changes.Add((runtimeSettings.EncoderWorkers.Key, oldCount, newCount));
-        }
-
-        if (request.CronWorkers is not null)
-        {
-            int oldCount = runtimeSettings.CronWorkers.Value;
-            int newCount = (int)request.CronWorkers;
-            runtimeSettings.CronWorkers = new(runtimeSettings.CronWorkers.Key, newCount);
-            await PersistWorkerCount(runtimeSettings.CronWorkers.Key, newCount, userId);
-            changes.Add((runtimeSettings.CronWorkers.Key, oldCount, newCount));
-        }
-
-        if (request.ImageWorkers is not null)
-        {
-            int oldCount = runtimeSettings.ImageWorkers.Value;
-            int newCount = (int)request.ImageWorkers;
-            runtimeSettings.ImageWorkers = new(runtimeSettings.ImageWorkers.Key, newCount);
-            await PersistWorkerCount(runtimeSettings.ImageWorkers.Key, newCount, userId);
-            changes.Add((runtimeSettings.ImageWorkers.Key, oldCount, newCount));
-        }
-
-        if (request.FileWorkers is not null)
-        {
-            int oldCount = runtimeSettings.FileWorkers.Value;
-            int newCount = (int)request.FileWorkers;
-            runtimeSettings.FileWorkers = new(runtimeSettings.FileWorkers.Key, newCount);
-            await PersistWorkerCount(runtimeSettings.FileWorkers.Key, newCount, userId);
-            changes.Add((runtimeSettings.FileWorkers.Key, oldCount, newCount));
-        }
-
-        if (request.MusicWorkers is not null)
-        {
-            int oldCount = runtimeSettings.MusicWorkers.Value;
-            int newCount = (int)request.MusicWorkers;
-            runtimeSettings.MusicWorkers = new(runtimeSettings.MusicWorkers.Key, newCount);
-            await PersistWorkerCount(runtimeSettings.MusicWorkers.Key, newCount, userId);
-            changes.Add((runtimeSettings.MusicWorkers.Key, oldCount, newCount));
-        }
+        runtimeSettings.LibraryWorkers = await UpdateWorkerCountAsync(
+            runtimeSettings.LibraryWorkers,
+            request.LibraryWorkers,
+            userId,
+            changes
+        );
+        runtimeSettings.ImportWorkers = await UpdateWorkerCountAsync(
+            runtimeSettings.ImportWorkers,
+            request.ImportWorkers,
+            userId,
+            changes
+        );
+        runtimeSettings.ExtrasWorkers = await UpdateWorkerCountAsync(
+            runtimeSettings.ExtrasWorkers,
+            request.ExtrasWorkers,
+            userId,
+            changes
+        );
+        runtimeSettings.EncoderWorkers = await UpdateWorkerCountAsync(
+            runtimeSettings.EncoderWorkers,
+            request.EncoderWorkers,
+            userId,
+            changes
+        );
+        runtimeSettings.CronWorkers = await UpdateWorkerCountAsync(
+            runtimeSettings.CronWorkers,
+            request.CronWorkers,
+            userId,
+            changes
+        );
+        runtimeSettings.ImageWorkers = await UpdateWorkerCountAsync(
+            runtimeSettings.ImageWorkers,
+            request.ImageWorkers,
+            userId,
+            changes
+        );
+        runtimeSettings.FileWorkers = await UpdateWorkerCountAsync(
+            runtimeSettings.FileWorkers,
+            request.FileWorkers,
+            userId,
+            changes
+        );
+        runtimeSettings.MusicWorkers = await UpdateWorkerCountAsync(
+            runtimeSettings.MusicWorkers,
+            request.MusicWorkers,
+            userId,
+            changes
+        );
 
         if (request.Swagger is not null)
         {

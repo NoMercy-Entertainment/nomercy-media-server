@@ -278,53 +278,7 @@ public class TasksController(
     [Route("queue")]
     public async Task<IActionResult> EncoderQueue()
     {
-        // This panel polls, and the encoder queue is thousands of rows deep on a
-        // library mid-encode. Tracking every one of them per poll is pure cost:
-        // nothing here is written back.
-        //
-        // Bounded, for two failures rather than one.
-        //
-        // Unbounded, the sort had to buffer every matching row to order it,
-        // payload included, so a full encoder queue asked SQLite to spill
-        // gigabytes of temp and the poll died on "database or disk is full".
-        //
-        // Bounded by a single top-N, the whole panel came out of the busiest
-        // priority band: an album import queues music at 5 while video encodes
-        // sit at 4 and 0, so 13,779 music rows took every slot and the operator's
-        // video encodes were missing from a panel that claimed to list the queue.
-        // A share per band costs one small indexed query each and cannot starve.
-        // MusicEncodeJob runs on encoder-cpu, not the plain 'encoder' queue video
-        // uses, so every query below that used to read one queue now reads both —
-        // scoped to MusicEncodeJob payloads only, so nothing else on encoder-cpu
-        // leaks into this panel.
-        List<int> priorities = await queueTaskRepository.GetEncoderPrioritiesAsync();
-
-        int perBand = Math.Max(1, UiLimits.MaximumTasksInList / Math.Max(1, priorities.Count));
-
-        List<QueueJobModel> banded = [];
-        foreach (int priority in priorities)
-        {
-            banded.AddRange(
-                await queueTaskRepository.GetEncoderJobsByPriorityAsync(priority, perBand)
-            );
-        }
-
-        // Work in flight is never a candidate for omission. It is a handful of
-        // rows, and a running encode missing from the panel is the one thing the
-        // operator is most certainly looking for.
-        List<QueueJobModel> running = await queueTaskRepository.GetRunningEncoderJobsAsync(
-            UiLimits.MaximumTasksInList
-        );
-
-        // A video encode is one job/one row end to end now — the SAME row that
-        // decomposed also runs every bundle's ffmpeg inline, so a runner
-        // actually working an encode holds this row's own reservation for as
-        // long as it runs. The "running" query above already catches every
-        // in-flight encode; there is no separate child row to cross-reference.
-        ImmutableList<QueueJobModel> jobs =
-        [
-            .. banded.Concat(running).GroupBy(row => row.Id).Select(group => group.First()),
-        ];
+        ImmutableList<QueueJobModel> jobs = await LoadEncoderQueueRowsAsync();
 
         // Each parsed payload stays paired with the row it came from: a payload
         // that fails to deserialize is dropped here, so indexing the unfiltered
@@ -374,61 +328,13 @@ public class TasksController(
 
         await EnrichMaintenanceJobsAsync(maintenanceJobs);
 
-        // Parse each job id once — Id is either an int (movie/episode) or a Guid (track).
-        List<int> movieOrEpisodeIds = [];
-        List<Guid> trackIds = [];
-
-        foreach (VideoEncodeJob encoderJob in encoderJobs.Select(entry => entry.Job!))
-        {
-            int intId = encoderJob.Id.ToInt();
-            if (intId != 0)
-            {
-                movieOrEpisodeIds.Add(intId);
-            }
-            else
-            {
-                Guid guidId = encoderJob.Id.ToGuid();
-                if (guidId != Guid.Empty)
-                    trackIds.Add(guidId);
-            }
-        }
-
-        List<Ulid> folderIds = [.. encoderJobs.Select(entry => entry.Job!.FolderId).Distinct()];
-
-        // Folders — only the profile include needed for the Profile field; no library graph.
-        List<Folder> folders = await queueCardMediaRepository.GetFoldersWithPresetsAsync(folderIds);
-
-        Dictionary<Ulid, Folder> folderById = folders.ToDictionary(f => f.Id);
-
-        // Load only the entities actually referenced by queued jobs.
-        Dictionary<int, Movie> movieById = [];
-        Dictionary<int, Episode> episodeById = [];
-        Dictionary<Guid, Track> trackById = [];
-
-        if (movieOrEpisodeIds.Count > 0)
-        {
-            List<Movie> movies = await queueCardMediaRepository.GetMoviesAsync(movieOrEpisodeIds);
-
-            foreach (Movie movie in movies)
-                movieById[movie.Id] = movie;
-
-            // Episodes need Tv for CreateTitle (Tv.Title, SeasonNumber, EpisodeNumber).
-            List<Episode> episodes = await queueCardMediaRepository.GetEpisodesWithShowAsync(
-                movieOrEpisodeIds
-            );
-
-            foreach (Episode episode in episodes)
-                episodeById[episode.Id] = episode;
-        }
-
-        if (trackIds.Count > 0)
-        {
-            // Tracks need AlbumTrack → Album for CreateName.
-            List<Track> tracks = await queueCardMediaRepository.GetTracksWithAlbumAsync(trackIds);
-
-            foreach (Track track in tracks)
-                trackById[track.Id] = track;
-        }
+        (
+            List<Folder> folders,
+            Dictionary<Ulid, Folder> folderById,
+            Dictionary<int, Movie> movieById,
+            Dictionary<int, Episode> episodeById,
+            Dictionary<Guid, Track> trackById
+        ) = await LoadCardMediaAsync(encoderJobs);
 
         Dictionary<Ulid, string> presetNameById = folders
             .SelectMany(folder => folder.EncodingPresetFolders)
@@ -486,6 +392,129 @@ public class TasksController(
                 .ThenBy(dto => dto.Id),
         ];
 
+        BroadcastInFlightCards(queueJobs, encoderJobs);
+
+        return Ok(new DataResponseDto<QueueJobDto[]> { Data = queueJobs });
+    }
+
+    private async Task<ImmutableList<QueueJobModel>> LoadEncoderQueueRowsAsync()
+    {
+        // This panel polls, and the encoder queue is thousands of rows deep on a
+        // library mid-encode. Tracking every one of them per poll is pure cost:
+        // nothing here is written back.
+        //
+        // Bounded, for two failures rather than one.
+        //
+        // Unbounded, the sort had to buffer every matching row to order it,
+        // payload included, so a full encoder queue asked SQLite to spill
+        // gigabytes of temp and the poll died on "database or disk is full".
+        //
+        // Bounded by a single top-N, the whole panel came out of the busiest
+        // priority band: an album import queues music at 5 while video encodes
+        // sit at 4 and 0, so 13,779 music rows took every slot and the operator's
+        // video encodes were missing from a panel that claimed to list the queue.
+        // A share per band costs one small indexed query each and cannot starve.
+        // MusicEncodeJob runs on encoder-cpu, not the plain 'encoder' queue video
+        // uses, so every query below that used to read one queue now reads both —
+        // scoped to MusicEncodeJob payloads only, so nothing else on encoder-cpu
+        // leaks into this panel.
+        List<int> priorities = await queueTaskRepository.GetEncoderPrioritiesAsync();
+
+        int perBand = Math.Max(1, UiLimits.MaximumTasksInList / Math.Max(1, priorities.Count));
+
+        List<QueueJobModel> banded = [];
+        foreach (int priority in priorities)
+        {
+            banded.AddRange(
+                await queueTaskRepository.GetEncoderJobsByPriorityAsync(priority, perBand)
+            );
+        }
+
+        // Work in flight is never a candidate for omission. It is a handful of
+        // rows, and a running encode missing from the panel is the one thing the
+        // operator is most certainly looking for.
+        List<QueueJobModel> running = await queueTaskRepository.GetRunningEncoderJobsAsync(
+            UiLimits.MaximumTasksInList
+        );
+
+        // A video encode is one job/one row end to end now — the SAME row that
+        // decomposed also runs every bundle's ffmpeg inline, so a runner
+        // actually working an encode holds this row's own reservation for as
+        // long as it runs. The "running" query above already catches every
+        // in-flight encode; there is no separate child row to cross-reference.
+        return [.. banded.Concat(running).GroupBy(row => row.Id).Select(group => group.First())];
+    }
+
+    /// <summary>The folders, movies, episodes and tracks the queued encodes refer to.</summary>
+    private async Task<(
+        List<Folder> Folders,
+        Dictionary<Ulid, Folder> FolderById,
+        Dictionary<int, Movie> MovieById,
+        Dictionary<int, Episode> EpisodeById,
+        Dictionary<Guid, Track> TrackById
+    )> LoadCardMediaAsync(List<QueueJobEntry> encoderJobs)
+    {
+        // Parse each job id once — Id is either an int (movie/episode) or a Guid (track).
+        List<int> movieOrEpisodeIds = [];
+        List<Guid> trackIds = [];
+
+        foreach (VideoEncodeJob encoderJob in encoderJobs.Select(entry => entry.Job!))
+        {
+            int intId = encoderJob.Id.ToInt();
+            if (intId != 0)
+            {
+                movieOrEpisodeIds.Add(intId);
+            }
+            else
+            {
+                Guid guidId = encoderJob.Id.ToGuid();
+                if (guidId != Guid.Empty)
+                    trackIds.Add(guidId);
+            }
+        }
+
+        List<Ulid> folderIds = [.. encoderJobs.Select(entry => entry.Job!.FolderId).Distinct()];
+
+        // Folders — only the profile include needed for the Profile field; no library graph.
+        List<Folder> folders = await queueCardMediaRepository.GetFoldersWithPresetsAsync(folderIds);
+
+        Dictionary<Ulid, Folder> folderById = folders.ToDictionary(f => f.Id);
+
+        // Load only the entities actually referenced by queued jobs.
+        Dictionary<int, Movie> movieById = [];
+        Dictionary<int, Episode> episodeById = [];
+        Dictionary<Guid, Track> trackById = [];
+
+        if (movieOrEpisodeIds.Count > 0)
+        {
+            List<Movie> movies = await queueCardMediaRepository.GetMoviesAsync(movieOrEpisodeIds);
+
+            foreach (Movie movie in movies)
+                movieById[movie.Id] = movie;
+
+            // Episodes need Tv for CreateTitle (Tv.Title, SeasonNumber, EpisodeNumber).
+            List<Episode> episodes = await queueCardMediaRepository.GetEpisodesWithShowAsync(
+                movieOrEpisodeIds
+            );
+
+            foreach (Episode episode in episodes)
+                episodeById[episode.Id] = episode;
+        }
+
+        if (trackIds.Count > 0)
+        {
+            // Tracks need AlbumTrack → Album for CreateName.
+            List<Track> tracks = await queueCardMediaRepository.GetTracksWithAlbumAsync(trackIds);
+
+            foreach (Track track in tracks)
+                trackById[track.Id] = track;
+        }
+
+        return (folders, folderById, movieById, episodeById, trackById);
+    }
+
+    private void BroadcastInFlightCards(QueueJobDto[] queueJobs, List<QueueJobEntry> encoderJobs)
+    {
         // Catch-up broadcast so a reloaded dashboard gets a card back for work
         // already in flight. Keyed off the reservation rather than the reported
         // status: a coordinator sleeping between poll wake-ups reports running
@@ -521,8 +550,6 @@ public class TasksController(
                 }
             );
         }
-
-        return Ok(new DataResponseDto<QueueJobDto[]> { Data = queueJobs });
     }
 
     /// <summary>

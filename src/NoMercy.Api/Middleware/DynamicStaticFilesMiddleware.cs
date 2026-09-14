@@ -9,7 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using Microsoft.AspNetCore.Http;
@@ -24,11 +23,10 @@ namespace NoMercy.Api.Middleware;
 
 public class DynamicStaticFilesMiddleware(
     RequestDelegate next,
+    IServedFolderRegistry folders,
     ILogger<DynamicStaticFilesMiddleware> logger
 )
 {
-    private static readonly ConcurrentDictionary<Ulid, FolderRef> Folders = new();
-
     // Define streamable media file extensions
     private static readonly HashSet<string> StreamableExtensions = new(
         StringComparer.OrdinalIgnoreCase
@@ -68,7 +66,7 @@ public class DynamicStaticFilesMiddleware(
 
         try
         {
-            if (!Folders.TryGetValue(folderId, out FolderRef folderRef))
+            if (!folders.TryGet(folderId, out FolderRef folderRef))
             {
                 logger.LogInformation(
                     "[DynamicStaticFiles] folder {FolderId} not registered (request: {Path})",
@@ -316,7 +314,6 @@ public class DynamicStaticFilesMiddleware(
         // responses are too large to ever cache (cap is 64 MB by default).
         context.Response.Headers.CacheControl = "no-store";
 
-        bool isStreamableMedia = IsStreamableMedia(relativePath);
         bool hasRangeRequest = context.Request.Headers.TryGetValue(
             "Range",
             out StringValues rangeValue
@@ -338,67 +335,15 @@ public class DynamicStaticFilesMiddleware(
             return;
         }
 
-        // Parse range or default to start of file for streamable media
-        long start;
-        long end;
-
-        // Initial probe chunk size (1 MB) — serves the first slice fast for browsers
-        // that issue a "bytes=0-" or no-range request, so they can start parsing the
-        // moov atom without waiting on the whole file. Any other open-ended range
-        // (start > 0) is served to EOF: ExoPlayer's DefaultExtractorInput reads
-        // sequentially via Mp4Extractor.readFully, and capping at 1 MiB makes its
-        // read return -1 mid-atom and throws EOFException (web's <video> reopens
-        // the connection automatically; ExoPlayer does not).
-        const long initialProbeChunkSize = 1024 * 1024;
-
-        {
-            string?[] ranges = rangeValue.ToString().Replace("bytes=", "").Split('-');
-
-            if (!long.TryParse(ranges[0], out start))
-            {
-                context.Response.StatusCode = (int)HttpStatusCode.RequestedRangeNotSatisfiable;
-                context.Response.Headers.ContentRange = new ContentRangeHeaderValue(
-                    fileLength
-                ).ToString();
-                return;
-            }
-
-            if (ranges.Length > 1 && !string.IsNullOrEmpty(ranges[1]))
-            {
-                // Explicit end byte specified (e.g., "bytes=0-65535")
-                if (!long.TryParse(ranges[1], out end))
-                {
-                    context.Response.StatusCode = (int)HttpStatusCode.RequestedRangeNotSatisfiable;
-                    context.Response.Headers.ContentRange = new ContentRangeHeaderValue(
-                        fileLength
-                    ).ToString();
-                    return;
-                }
-            }
-            else if (isStreamableMedia && start == 0)
-            {
-                // Initial probe (browser asking "bytes=0-") — serve first chunk fast.
-                end = Math.Min(start + initialProbeChunkSize - 1, fileLength - 1);
-            }
-            else
-            {
-                // Open-ended range with non-zero start, or non-streamable file —
-                // serve everything from start to EOF. Required for ExoPlayer's
-                // sequential readFully across MP4 atoms.
-                end = fileLength - 1;
-            }
-        }
-
-        // Clamp an explicit end that runs past EOF, then reject any range that is
-        // still unsatisfiable. ContentRangeHeaderValue's ctor throws
-        // ArgumentOutOfRangeException on start<0 or start>end — a zero-length segment
-        // (end becomes fileLength-1 = -1) or a start seeked at/after the segment's EOF.
-        // Without this it surfaced as an unhandled 500 the player retried in a tight
-        // loop (spamming [DynamicStaticFiles] exceptions for one bad .m4s segment).
-        if (end > fileLength - 1)
-            end = fileLength - 1;
-
-        if (start < 0 || start > end)
+        if (
+            !TryResolveRange(
+                rangeValue.ToString(),
+                fileLength,
+                IsStreamableMedia(relativePath),
+                out long start,
+                out long end
+            )
+        )
         {
             context.Response.StatusCode = (int)HttpStatusCode.RequestedRangeNotSatisfiable;
             context.Response.Headers.ContentRange = new ContentRangeHeaderValue(
@@ -419,7 +364,62 @@ public class DynamicStaticFilesMiddleware(
         context.Response.ContentLength = length;
 
         await using Stream fs = storage.OpenRead(relativePath);
+        await CopyRangeAsync(fs, context, start, length);
+    }
 
+    /// <summary>
+    /// The byte range to answer a <c>Range</c> header with, clamped to the file;
+    /// false when the range cannot be satisfied.
+    /// </summary>
+    /// <remarks>
+    /// An open-ended <c>bytes=0-</c> on streamable media gets only the first 1 MB, so a
+    /// browser can parse the moov atom without waiting on the whole file. Any other
+    /// open-ended range (start &gt; 0) is served to EOF: ExoPlayer's DefaultExtractorInput
+    /// reads sequentially via Mp4Extractor.readFully, and capping at 1 MiB makes its read
+    /// return -1 mid-atom and throws EOFException (web's &lt;video&gt; reopens the
+    /// connection automatically; ExoPlayer does not). A range that starts past EOF or on a
+    /// zero-length file is rejected here, because ContentRangeHeaderValue throws on
+    /// start&lt;0 or start&gt;end and the player retried the resulting 500 in a tight loop.
+    /// </remarks>
+    internal static bool TryResolveRange(
+        string rangeHeader,
+        long fileLength,
+        bool isStreamableMedia,
+        out long start,
+        out long end
+    )
+    {
+        const long initialProbeChunkSize = 1024 * 1024;
+
+        string[] ranges = rangeHeader.Replace("bytes=", "").Split('-');
+        end = fileLength - 1;
+
+        if (!long.TryParse(ranges[0], out start))
+            return false;
+
+        if (ranges.Length > 1 && !string.IsNullOrEmpty(ranges[1]))
+        {
+            if (!long.TryParse(ranges[1], out end))
+                return false;
+        }
+        else if (isStreamableMedia && start == 0)
+        {
+            end = Math.Min(initialProbeChunkSize - 1, fileLength - 1);
+        }
+
+        if (end > fileLength - 1)
+            end = fileLength - 1;
+
+        return start >= 0 && start <= end;
+    }
+
+    private static async Task CopyRangeAsync(
+        Stream fs,
+        HttpContext context,
+        long start,
+        long length
+    )
+    {
         fs.Seek(start, SeekOrigin.Begin);
         byte[] buffer = new byte[64 * 1024];
         int bytesRead;
@@ -481,20 +481,5 @@ public class DynamicStaticFilesMiddleware(
         if (ContentTypeOverrides.TryGetValue(ext, out string? mapped))
             return mapped;
         return MimeUtility.GetMimeMapping(filePath);
-    }
-
-    /// <summary>
-    /// Register a folder for dynamic file serving. Pass the folder's ULID
-    /// (becomes the URL root segment), the driver instance it belongs to,
-    /// and its sub-path within that driver's root.
-    /// </summary>
-    public static void AddFolder(Ulid folderId, Ulid driverId, string subPath)
-    {
-        Folders[folderId] = new(driverId, subPath ?? string.Empty);
-    }
-
-    public static void RemoveFolder(Ulid folderId)
-    {
-        Folders.TryRemove(folderId, out _);
     }
 }

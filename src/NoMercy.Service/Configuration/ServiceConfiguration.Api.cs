@@ -13,6 +13,7 @@ using Microsoft.AspNetCore.SignalR;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
 using NoMercy.Api.Constraints;
+using NoMercy.Api.Hubs.Filters;
 using NoMercy.Api.Middleware;
 using NoMercy.NmSystem.Information;
 using NoMercy.NmSystem.NewtonSoftConverters;
@@ -58,6 +59,7 @@ public static partial class ServiceConfiguration
         // Align SignalR per-user routing with Device.OwnerUserId so per-user
         // pushes never leak across accounts.
         services.AddSingleton<IUserIdProvider, Api.Hubs.NoMercyUserIdProvider>();
+        services.AddSingleton<IServedFolderRegistry, ServedFolderRegistry>();
 
         services
             .AddSignalR(o =>

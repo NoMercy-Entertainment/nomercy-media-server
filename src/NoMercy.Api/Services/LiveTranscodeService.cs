@@ -102,22 +102,8 @@ public class LiveTranscodeService(
         if (resolved is null)
             return LiveResult.NotFound("Video file not found or you lack access");
 
-        // Reconcile accounting against the live runtimes first: a crashed FFmpeg or
-        // an abandoned tab can leave a session counted against the cap after its
-        // runtime is gone — the "0 active but max reached" symptom.
-        sessionManager.PruneDeadSessions(streamingService.ActiveSessionIds);
-
-        if (!sessionManager.CanStartSession(userId.ToString()))
-        {
-            // Still at the cap with live sessions. Starting playback abandons the
-            // previous stream without a clean stop (a reload or item switch), so
-            // evict this user's stalest session to make room — the same way Plex and
-            // Jellyfin supersede a replaced playback session rather than refusing.
-            await EvictStalestUserSessionAsync(userId.ToString());
-
-            if (!sessionManager.CanStartSession(userId.ToString()))
-                return LiveResult.ServiceUnavailable("Maximum concurrent live sessions reached");
-        }
+        if (!await ReserveSessionSlotAsync(userId))
+            return LiveResult.ServiceUnavailable("Maximum concurrent live sessions reached");
 
         // The source codec is what drives the direct-play-vs-transcode decision, and
         // NoMercy's own HLS output is frequently HEVC 10-bit — the exact thing a
@@ -150,47 +136,9 @@ public class LiveTranscodeService(
             );
         }
 
-        DeviceCapabilities? deviceCaps = null;
-        if (deviceId is not null)
-        {
-            deviceCaps =
-                capabilityRegistry.Get(deviceId)
-                ?? await capabilityRegistry.LoadFromDbAsync(deviceId, ct);
-        }
+        ClientCapabilities clientCaps = await ResolveClientCapsAsync(request, deviceId, ct);
 
-        ClientCapabilities clientCaps = variantSelector.ApplyDeviceCaps(
-            ToClientCapabilities(request.ClientCaps),
-            deviceCaps
-        );
-
-        if (deviceCaps is not null)
-            logger.LogInformation(
-                "Live session for device {DeviceId}: caps channels={Ch} ramTier={Tier}",
-                deviceId,
-                deviceCaps.MaxAudioChannels,
-                deviceCaps.RamTier
-            );
-
-        PlaybackDecision playbackDecision;
-        try
-        {
-            playbackDecision = decisionEngine.Decide(mediaInfo, clientCaps);
-        }
-        catch (Exception ex)
-        {
-            logger.LogWarning(ex, "PlaybackDecisionEngine.Decide threw; falling back to transcode");
-            playbackDecision = new(PlaybackAction.TranscodeVideo, "Decision engine error", null);
-        }
-
-        // Transcoding a file that could have played untouched costs a CPU, a
-        // startup delay and picture quality, and the reason was computed and then
-        // dropped — so the choice was invisible from outside.
-        logger.LogInformation(
-            "Playback decision for video file {VideoFileId}: {Action} ({Reason})",
-            videoFileId,
-            playbackDecision.Action,
-            playbackDecision.Reason ?? "compatible with client capabilities"
-        );
+        PlaybackDecision playbackDecision = Decide(mediaInfo, clientCaps, videoFileId);
 
         if (playbackDecision.Action == PlaybackAction.DirectPlay)
             return DirectPlayResult(
@@ -280,6 +228,93 @@ public class LiveTranscodeService(
         if (useMaster)
             streamingService.StampAudioRenditions(session.SessionId, masterRenditions);
 
+        return StartedResult(session, useMaster);
+    }
+
+    /// <returns>False when the user is still at the live-session cap after evicting their stalest one.</returns>
+    private async Task<bool> ReserveSessionSlotAsync(Guid userId)
+    {
+        // Reconcile accounting against the live runtimes first: a crashed FFmpeg or
+        // an abandoned tab can leave a session counted against the cap after its
+        // runtime is gone — the "0 active but max reached" symptom.
+        sessionManager.PruneDeadSessions(streamingService.ActiveSessionIds);
+
+        if (!sessionManager.CanStartSession(userId.ToString()))
+        {
+            // Still at the cap with live sessions. Starting playback abandons the
+            // previous stream without a clean stop (a reload or item switch), so
+            // evict this user's stalest session to make room — the same way Plex and
+            // Jellyfin supersede a replaced playback session rather than refusing.
+            await EvictStalestUserSessionAsync(userId.ToString());
+
+            return sessionManager.CanStartSession(userId.ToString());
+        }
+
+        return true;
+    }
+
+    private async Task<ClientCapabilities> ResolveClientCapsAsync(
+        StartLiveSessionRequest request,
+        string? deviceId,
+        CancellationToken ct
+    )
+    {
+        DeviceCapabilities? deviceCaps = null;
+        if (deviceId is not null)
+        {
+            deviceCaps =
+                capabilityRegistry.Get(deviceId)
+                ?? await capabilityRegistry.LoadFromDbAsync(deviceId, ct);
+        }
+
+        ClientCapabilities clientCaps = variantSelector.ApplyDeviceCaps(
+            ToClientCapabilities(request.ClientCaps!),
+            deviceCaps
+        );
+
+        if (deviceCaps is not null)
+            logger.LogInformation(
+                "Live session for device {DeviceId}: caps channels={Ch} ramTier={Tier}",
+                deviceId,
+                deviceCaps.MaxAudioChannels,
+                deviceCaps.RamTier
+            );
+
+        return clientCaps;
+    }
+
+    private PlaybackDecision Decide(
+        EncoderMediaInfo mediaInfo,
+        ClientCapabilities clientCaps,
+        Ulid videoFileId
+    )
+    {
+        PlaybackDecision playbackDecision;
+        try
+        {
+            playbackDecision = decisionEngine.Decide(mediaInfo, clientCaps);
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "PlaybackDecisionEngine.Decide threw; falling back to transcode");
+            playbackDecision = new(PlaybackAction.TranscodeVideo, "Decision engine error", null);
+        }
+
+        // Transcoding a file that could have played untouched costs a CPU, a
+        // startup delay and picture quality, and the reason was computed and then
+        // dropped — so the choice was invisible from outside.
+        logger.LogInformation(
+            "Playback decision for video file {VideoFileId}: {Action} ({Reason})",
+            videoFileId,
+            playbackDecision.Action,
+            playbackDecision.Reason ?? "compatible with client capabilities"
+        );
+
+        return playbackDecision;
+    }
+
+    private LiveResult StartedResult(ILiveSession session, bool useMaster)
+    {
         string playlistUrl = useMaster
             ? $"/api/v1/streaming/live/sessions/{session.SessionId}/master.m3u8"
             : $"/api/v1/streaming/live/sessions/{session.SessionId}/playlist.m3u8";
