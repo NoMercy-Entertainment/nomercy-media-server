@@ -576,6 +576,7 @@ public static partial class ServiceConfiguration
         services.AddScoped<EpisodeManager>();
         services.AddScoped<PersonManager>();
         services.AddScoped<EncoderProfileService>();
+        services.AddScoped<ContentAnalysisService>();
         services.AddScoped<HomeService>();
         services.AddScoped<RecommendationService>();
         // Singleton: the ingest-key registry is shared across the scoped
