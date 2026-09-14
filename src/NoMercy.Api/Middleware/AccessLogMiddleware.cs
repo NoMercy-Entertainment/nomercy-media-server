@@ -93,8 +93,6 @@ public class AccessLogMiddleware
         "/api/v1/setup/screensaver",
     ];
 
-    private readonly string[] _ignoreIfAuthenticated = [];
-
     private readonly string[] _ignoreIfGuest = ["/status"];
 
     public async Task InvokeAsync(HttpContext context)
@@ -136,30 +134,6 @@ public class AccessLogMiddleware
         );
 
         string? guid = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (guid is null)
-        {
-            if (isAllowAnonymous || ignoreIfGuest)
-            {
-                await _next(context);
-                return;
-            }
-
-            _logger.LogInformation(
-                "Unknown: {RemoteIpAddress}: {Path} (No GUID)",
-                context.ClientIp(),
-                path
-            );
-            await ProblemResponse.WriteAsync(
-                context,
-                statusCode: 401,
-                type: "https://nomercy.tv/problems/no-token",
-                title: "Authentication required",
-                detail: "No bearer token was provided. Include a valid JWT in the Authorization header.",
-                authError: "NO_TOKEN"
-            );
-            return;
-        }
-
         if (!Guid.TryParse(guid, out Guid userId) || userId == Guid.Empty)
         {
             if (isAllowAnonymous || ignoreIfGuest)
@@ -168,27 +142,30 @@ public class AccessLogMiddleware
                 return;
             }
 
-            _logger.LogInformation(
-                "Unknown: {RemoteIpAddress}: {Path} (Malformed or empty GUID)",
-                context.ClientIp(),
-                path
-            );
-            await ProblemResponse.WriteAsync(
-                context,
-                statusCode: 401,
-                type: "https://nomercy.tv/problems/invalid-token",
-                title: "Invalid token",
-                detail: "The token subject (sub) is not a valid GUID. The token may be malformed.",
-                authError: "INVALID_TOKEN"
-            );
+            if (guid is null)
+                await RejectAsync(
+                    context,
+                    path,
+                    "No GUID",
+                    type: "https://nomercy.tv/problems/no-token",
+                    title: "Authentication required",
+                    detail: "No bearer token was provided. Include a valid JWT in the Authorization header.",
+                    authError: "NO_TOKEN"
+                );
+            else
+                await RejectAsync(
+                    context,
+                    path,
+                    "Malformed or empty GUID",
+                    type: "https://nomercy.tv/problems/invalid-token",
+                    title: "Invalid token",
+                    detail: "The token subject (sub) is not a valid GUID. The token may be malformed.",
+                    authError: "INVALID_TOKEN"
+                );
             return;
         }
 
-        bool ignoreIfAuthenticated = _ignoreIfAuthenticated.Any(route =>
-            context.Request.Path.ToString().Equals(route)
-        );
-
-        if (ignoreIfAuthenticated || isAllowAnonymous)
+        if (isAllowAnonymous)
         {
             await _next(context);
             return;
@@ -205,14 +182,10 @@ public class AccessLogMiddleware
 
         if (user is null)
         {
-            _logger.LogInformation(
-                "Unknown: {RemoteIpAddress}: {Path} (User not found)",
-                context.ClientIp(),
-                path
-            );
-            await ProblemResponse.WriteAsync(
+            await RejectAsync(
                 context,
-                statusCode: 401,
+                path,
+                "User not found",
                 type: "https://nomercy.tv/problems/user-not-found",
                 title: "User not found",
                 detail: "The authenticated user is not registered on this server. Ask the server owner to add your account.",
@@ -230,5 +203,31 @@ public class AccessLogMiddleware
         _logger.LogDebug("{Name}: {Path}", user.Name, path);
 
         await _next(context);
+    }
+
+    private async Task RejectAsync(
+        HttpContext context,
+        string path,
+        string reason,
+        string type,
+        string title,
+        string detail,
+        string authError
+    )
+    {
+        _logger.LogInformation(
+            "Unknown: {RemoteIpAddress}: {Path} ({Reason})",
+            context.ClientIp(),
+            path,
+            reason
+        );
+        await ProblemResponse.WriteAsync(
+            context,
+            statusCode: 401,
+            type: type,
+            title: title,
+            detail: detail,
+            authError: authError
+        );
     }
 }

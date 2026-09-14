@@ -87,23 +87,11 @@ public class HubErrorLoggingFilter(ILogger<HubErrorLoggingFilter> logger, IUserC
         {
             // This catches when a client calls a method that doesn't exist
             logger.LogInformation(
-                "{Name}: [{HubName}] ERROR: Method '{MethodName}' does not exist!",
-                [user.Name, hubName, methodName]
-            );
-            logger.LogInformation(
-                "{Name}: [{HubName}] Connection: {ConnectionId}",
-                [user.Name, hubName, connectionId]
-            );
-            logger.LogInformation(
-                "{Name}: [{HubName}] Available methods should match public Task methods in the hub class",
-                [user.Name, hubName]
+                "{Name}: [{HubName}] Method '{MethodName}' does not exist (connection {ConnectionId}); hub methods are the public Task methods of the hub class",
+                [user.Name, hubName, methodName, connectionId]
             );
 
-            throw new HubException(
-                Config.IsDev
-                    ? $"Method '{methodName}' does not exist on hub '{hubName}'"
-                    : "An internal error occurred"
-            );
+            throw ClientError($"Method '{methodName}' does not exist on hub '{hubName}'");
         }
         catch (ArgumentException argEx)
         {
@@ -117,11 +105,7 @@ public class HubErrorLoggingFilter(ILogger<HubErrorLoggingFilter> logger, IUserC
                 DescribeArguments(invocationContext)
             );
 
-            throw new HubException(
-                Config.IsDev
-                    ? $"Invalid arguments for method '{methodName}': {argEx.Message}"
-                    : "An internal error occurred"
-            );
+            throw ClientError($"Invalid arguments for method '{methodName}': {argEx.Message}");
         }
         catch (Exception ex)
         {
@@ -134,11 +118,7 @@ public class HubErrorLoggingFilter(ILogger<HubErrorLoggingFilter> logger, IUserC
                 DescribeArguments(invocationContext)
             );
 
-            throw new HubException(
-                Config.IsDev
-                    ? $"An error occurred calling '{methodName}': {ex.Message}"
-                    : "An internal error occurred"
-            );
+            throw ClientError($"An error occurred calling '{methodName}': {ex.Message}");
         }
     }
 
@@ -151,4 +131,8 @@ public class HubErrorLoggingFilter(ILogger<HubErrorLoggingFilter> logger, IUserC
                     (arg, index) => $"arg{index}: {arg?.GetType().Name ?? "null"}"
                 )
             );
+
+    /// <summary>The detail reaches the client only in development; production says nothing more.</summary>
+    private static HubException ClientError(string developmentDetail) =>
+        new(Config.IsDev ? developmentDetail : "An internal error occurred");
 }

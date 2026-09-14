@@ -60,33 +60,7 @@ public class DynamicStaticFilesMiddleware(
         MediaActivityMonitor activityMonitor
     )
     {
-        if (!context.Request.Path.HasValue)
-        {
-            await next(context);
-            return;
-        }
-
-        string? pathValue = context.Request.Path.Value;
-        string[] pathSegments = context
-            .Request.Path.ToString()
-            .Split('/', StringSplitOptions.RemoveEmptyEntries);
-
-        if (pathSegments.Length == 0)
-        {
-            await next(context);
-            return;
-        }
-
-        string rootPath = pathSegments[0];
-
-        // Allow API endpoints, Swagger, and other system paths to pass through
-        if (
-            rootPath.Equals("api", StringComparison.OrdinalIgnoreCase)
-            || rootPath.Equals("index.html", StringComparison.OrdinalIgnoreCase)
-            || rootPath.StartsWith("swagger", StringComparison.OrdinalIgnoreCase)
-            || rootPath.Equals("images", StringComparison.OrdinalIgnoreCase)
-            || rootPath.Equals("manage", StringComparison.OrdinalIgnoreCase)
-        )
+        if (!TryParseFolderId(context.Request.Path, out Ulid folderId))
         {
             await next(context);
             return;
@@ -94,12 +68,6 @@ public class DynamicStaticFilesMiddleware(
 
         try
         {
-            if (!Ulid.TryParse(rootPath, out Ulid folderId))
-            {
-                await next(context);
-                return;
-            }
-
             if (!Folders.TryGetValue(folderId, out FolderRef folderRef))
             {
                 logger.LogInformation(
@@ -111,12 +79,7 @@ public class DynamicStaticFilesMiddleware(
                 return;
             }
 
-            // Strip the leading "/<folderId>" segment to get the file's
-            // sub-path within the folder. URL-decode + normalise to forward
-            // slashes so storage drivers see a consistent shape.
-            string relativeWithinFolder = pathValue is null
-                ? string.Empty
-                : Uri.UnescapeDataString(pathValue[pathValue.IndexOf('/', 1)..]).TrimStart('/');
+            string relativeWithinFolder = RelativeWithinFolder(context.Request.Path.Value);
 
             // Per-request server-side timing for media serves. Audio/video file
             // requests bypass AccessLogMiddleware, so without this they have zero
@@ -126,55 +89,14 @@ public class DynamicStaticFilesMiddleware(
             Stopwatch stopwatch = Stopwatch.StartNew();
             long resolvedAtMs = 0;
 
-            IStorage storage;
-            try
+            IStorage? storage = OpenExistingFile(
+                storageFactory,
+                folderId,
+                folderRef,
+                relativeWithinFolder
+            );
+            if (storage is null)
             {
-                storage = storageFactory.For(
-                    folderId: folderId,
-                    driverId: folderRef.DriverId,
-                    subPath: folderRef.SubPath
-                );
-            }
-            catch (Exception fEx)
-            {
-                logger.LogInformation(
-                    "[DynamicStaticFiles] factory.For failed for folder {FolderId} driver {DriverId} subPath '{SubPath}': {Message}",
-                    folderId,
-                    folderRef.DriverId,
-                    folderRef.SubPath,
-                    fEx.Message
-                );
-                await next(context);
-                return;
-            }
-
-            bool exists;
-            try
-            {
-                exists = storage.Exists(relativeWithinFolder);
-            }
-            catch (Exception eEx)
-            {
-                logger.LogInformation(
-                    "[DynamicStaticFiles] storage.Exists threw on '{RelativeWithinFolder}' (folder {FolderId}, driver {DriverId}): {Message}",
-                    relativeWithinFolder,
-                    folderId,
-                    folderRef.DriverId,
-                    eEx.Message
-                );
-                await next(context);
-                return;
-            }
-
-            if (!exists)
-            {
-                logger.LogInformation(
-                    "[DynamicStaticFiles] not found: folder={FolderId} driver={DriverId} subPath='{SubPath}' relative='{RelativeWithinFolder}'",
-                    folderId,
-                    folderRef.DriverId,
-                    folderRef.SubPath,
-                    relativeWithinFolder
-                );
                 await next(context);
                 return;
             }
@@ -202,21 +124,12 @@ public class DynamicStaticFilesMiddleware(
             await ServeFile(context, storage, relativeWithinFolder);
             stopwatch.Stop();
 
-            if (resolvedAtMs > 1000 || stopwatch.ElapsedMilliseconds > 2000)
-                logger.LogWarning(
-                    "[DynamicStaticFiles] SLOW serve '{RelativeWithinFolder}' prep={ResolvedAtMs}ms total={ElapsedMilliseconds}ms (driver={Name})",
-                    relativeWithinFolder,
-                    resolvedAtMs,
-                    stopwatch.ElapsedMilliseconds,
-                    storage.GetType().Name
-                );
-            else
-                logger.LogDebug(
-                    "[DynamicStaticFiles] serve '{RelativeWithinFolder}' prep={ResolvedAtMs}ms total={ElapsedMilliseconds}ms",
-                    relativeWithinFolder,
-                    resolvedAtMs,
-                    stopwatch.ElapsedMilliseconds
-                );
+            LogServeTiming(
+                relativeWithinFolder,
+                resolvedAtMs,
+                stopwatch.ElapsedMilliseconds,
+                storage
+            );
         }
         catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
         {
@@ -262,6 +175,120 @@ public class DynamicStaticFilesMiddleware(
             if (!context.Response.HasStarted)
                 context.Response.StatusCode = (int)HttpStatusCode.BadGateway;
         }
+    }
+
+    // API endpoints, Swagger and other system paths are never folder routes.
+    private static readonly string[] SystemRoots = ["api", "index.html", "images", "manage"];
+
+    /// <summary>A request for a file inside a registered folder has the folder id as its first segment.</summary>
+    internal static bool TryParseFolderId(PathString path, out Ulid folderId)
+    {
+        folderId = default;
+
+        string[] pathSegments = path.ToString().Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (!path.HasValue || pathSegments.Length == 0)
+            return false;
+
+        string rootPath = pathSegments[0];
+        if (
+            SystemRoots.Any(root => rootPath.Equals(root, StringComparison.OrdinalIgnoreCase))
+            || rootPath.StartsWith("swagger", StringComparison.OrdinalIgnoreCase)
+        )
+            return false;
+
+        return Ulid.TryParse(rootPath, out folderId);
+    }
+
+    /// <summary>
+    /// The file's path within its folder: the leading "/&lt;folderId&gt;" segment stripped,
+    /// URL-decoded, so storage drivers see a consistent shape.
+    /// </summary>
+    private static string RelativeWithinFolder(string? pathValue) =>
+        pathValue is null
+            ? string.Empty
+            : Uri.UnescapeDataString(pathValue[pathValue.IndexOf('/', 1)..]).TrimStart('/');
+
+    /// <summary>
+    /// The folder's storage when <paramref name="relativeWithinFolder"/> exists on it;
+    /// null, logged, when the storage cannot be opened or the file is not there.
+    /// </summary>
+    private IStorage? OpenExistingFile(
+        IStorageFactory storageFactory,
+        Ulid folderId,
+        FolderRef folderRef,
+        string relativeWithinFolder
+    )
+    {
+        IStorage storage;
+        try
+        {
+            storage = storageFactory.For(
+                folderId: folderId,
+                driverId: folderRef.DriverId,
+                subPath: folderRef.SubPath
+            );
+        }
+        catch (Exception fEx)
+        {
+            logger.LogInformation(
+                "[DynamicStaticFiles] factory.For failed for folder {FolderId} driver {DriverId} subPath '{SubPath}': {Message}",
+                folderId,
+                folderRef.DriverId,
+                folderRef.SubPath,
+                fEx.Message
+            );
+            return null;
+        }
+
+        try
+        {
+            if (storage.Exists(relativeWithinFolder))
+                return storage;
+        }
+        catch (Exception eEx)
+        {
+            logger.LogInformation(
+                "[DynamicStaticFiles] storage.Exists threw on '{RelativeWithinFolder}' (folder {FolderId}, driver {DriverId}): {Message}",
+                relativeWithinFolder,
+                folderId,
+                folderRef.DriverId,
+                eEx.Message
+            );
+            return null;
+        }
+
+        logger.LogInformation(
+            "[DynamicStaticFiles] not found: folder={FolderId} driver={DriverId} subPath='{SubPath}' relative='{RelativeWithinFolder}'",
+            folderId,
+            folderRef.DriverId,
+            folderRef.SubPath,
+            relativeWithinFolder
+        );
+        return null;
+    }
+
+    private void LogServeTiming(
+        string relativeWithinFolder,
+        long resolvedAtMs,
+        long elapsedMs,
+        IStorage storage
+    )
+    {
+        if (resolvedAtMs > 1000 || elapsedMs > 2000)
+            logger.LogWarning(
+                "[DynamicStaticFiles] SLOW serve '{RelativeWithinFolder}' prep={ResolvedAtMs}ms total={ElapsedMilliseconds}ms (driver={Name})",
+                relativeWithinFolder,
+                resolvedAtMs,
+                elapsedMs,
+                storage.GetType().Name
+            );
+        else
+            logger.LogDebug(
+                "[DynamicStaticFiles] serve '{RelativeWithinFolder}' prep={ResolvedAtMs}ms total={ElapsedMilliseconds}ms",
+                relativeWithinFolder,
+                resolvedAtMs,
+                elapsedMs
+            );
     }
 
     private async Task ServeFile(HttpContext context, IStorage storage, string relativePath)

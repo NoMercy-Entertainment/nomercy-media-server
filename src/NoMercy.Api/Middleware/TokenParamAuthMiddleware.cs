@@ -30,51 +30,13 @@ public class TokenParamAuthMiddleware(
 {
     public async Task InvokeAsync(HttpContext context)
     {
-        // Loopback self-ingest: ffmpeg/ffprobe pull a library source over the
-        // internal serving port with a single-use ingest key scoped to one file,
-        // in place of the viewer's bearer. Honoured only for the exact file the
-        // key was minted for, and only when the request actually arrived on the
-        // loopback-only ingest listener (InternalServerPort + 1). Gating on the
-        // OS-bound local port — not just a loopback source IP — closes the case
-        // where a local relay (Cloudflare Tunnel's cloudflared) forwards external
-        // traffic to the PUBLIC port from 127.0.0.1: that traffic never lands on
-        // the ingest port, so it can never reach this bypass.
-        if (
-            context.Connection.LocalPort == RuntimeServerSettings.Current.InternalServerPort + 1
-            && context.Connection.RemoteIpAddress is { } remoteIp
-            && IPAddress.IsLoopback(remoteIp)
-        )
+        if (IsAuthorizedLoopbackIngest(context))
         {
-            string ingestKey = context.Request.Headers["X-NoMercy-Ingest-Key"].ToString();
-            if (
-                !string.IsNullOrEmpty(ingestKey)
-                && ingestKeyStore.TryValidate(ingestKey, context.Request.Path.Value ?? string.Empty)
-            )
-            {
-                await next(context);
-                return;
-            }
+            await next(context);
+            return;
         }
 
-        context.Request.Headers.Authorization = context
-            .Request.Headers.Authorization.ToString()
-            .Split(",")
-            .ElementAt(0)
-            .Split("&")
-            .ElementAt(0);
-
-        // Extract JWT from query params for all requests (enables ?token= and ?access_token= everywhere)
-        if (!context.Request.Headers.Authorization.ToString().Contains("Bearer"))
-        {
-            string jwt = context
-                .Request.Query.FirstOrDefault(q => q.Key is "token" or "access_token")
-                .Value.ToString();
-
-            if (!string.IsNullOrEmpty(jwt))
-            {
-                context.Request.Headers.Authorization = new("Bearer " + jwt);
-            }
-        }
+        UseQueryTokenAsBearer(context.Request);
 
         string url = context.Request.Path;
 
@@ -134,5 +96,52 @@ public class TokenParamAuthMiddleware(
         }
 
         await next(context);
+    }
+
+    // Loopback self-ingest: ffmpeg/ffprobe pull a library source over the
+    // internal serving port with a single-use ingest key scoped to one file,
+    // in place of the viewer's bearer. Honoured only for the exact file the
+    // key was minted for, and only when the request actually arrived on the
+    // loopback-only ingest listener (InternalServerPort + 1). Gating on the
+    // OS-bound local port — not just a loopback source IP — closes the case
+    // where a local relay (Cloudflare Tunnel's cloudflared) forwards external
+    // traffic to the PUBLIC port from 127.0.0.1: that traffic never lands on
+    // the ingest port, so it can never reach this bypass.
+    private bool IsAuthorizedLoopbackIngest(HttpContext context)
+    {
+        if (
+            context.Connection.LocalPort != RuntimeServerSettings.Current.InternalServerPort + 1
+            || context.Connection.RemoteIpAddress is not { } remoteIp
+            || !IPAddress.IsLoopback(remoteIp)
+        )
+            return false;
+
+        string ingestKey = context.Request.Headers["X-NoMercy-Ingest-Key"].ToString();
+        return !string.IsNullOrEmpty(ingestKey)
+            && ingestKeyStore.TryValidate(ingestKey, context.Request.Path.Value ?? string.Empty);
+    }
+
+    /// <summary>
+    /// Keeps only the first Authorization value, and takes the JWT from a ?token= or
+    /// ?access_token= query parameter when no bearer header was sent.
+    /// </summary>
+    private static void UseQueryTokenAsBearer(HttpRequest request)
+    {
+        request.Headers.Authorization = request
+            .Headers.Authorization.ToString()
+            .Split(",")
+            .ElementAt(0)
+            .Split("&")
+            .ElementAt(0);
+
+        if (request.Headers.Authorization.ToString().Contains("Bearer"))
+            return;
+
+        string jwt = request
+            .Query.FirstOrDefault(q => q.Key is "token" or "access_token")
+            .Value.ToString();
+
+        if (!string.IsNullOrEmpty(jwt))
+            request.Headers.Authorization = new("Bearer " + jwt);
     }
 }
