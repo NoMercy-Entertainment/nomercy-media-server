@@ -1,4 +1,4 @@
-﻿// -----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 //  Copyright (c) 2024-present NoMercy Entertainment. All rights reserved.
 //
 //  This file is part of NoMercy MediaServer, source-available software (NOT open
@@ -10,13 +10,11 @@
 // -----------------------------------------------------------------------------
 
 using System.Collections.Immutable;
-using System.Diagnostics;
 using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
-using Newtonsoft.Json;
 using NoMercy.Api.Controllers.V1.Music;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Api.DTOs.Dashboard;
@@ -29,13 +27,13 @@ using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.Movies;
 using NoMercy.Database.Models.Music;
-using NoMercy.Database.Models.Queue;
 using NoMercy.Database.Models.TvShows;
 using NoMercy.Encoder.Execution;
 using NoMercy.Encoder.Profiles;
 using NoMercy.Events;
 using NoMercy.Events.Encoding;
 using NoMercy.MediaProcessing.AudioAnalysis;
+using NoMercy.MediaProcessing.Jobs;
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
 using NoMercy.MediaProcessing.Jobs.MediaJobs.Support;
 using NoMercy.MediaProcessing.Jobs.SubtitleJobs;
@@ -43,10 +41,10 @@ using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Extensions;
 using NoMercy.NmSystem.NewtonSoftConverters;
 using NoMercy.NmSystem.SystemCalls;
-using NoMercy.Queue.MediaServer;
+using NoMercy.Queue.MediaServer.Repositories;
 using NoMercyQueue;
 using NoMercyQueue.Core;
-using MediaJobDispatcher = NoMercy.MediaProcessing.Jobs.JobDispatcher;
+using NoMercyQueue.Core.Models;
 
 namespace NoMercy.Api.Controllers.V1.Dashboard.Admin;
 
@@ -58,27 +56,28 @@ namespace NoMercy.Api.Controllers.V1.Dashboard.Admin;
 public class TasksController(
     MediaContext mediaContext,
     IDbContextFactory<MediaContext> mediaContextFactory,
-    IDbContextFactory<QueueContext> queueContextFactory,
+    IQueueTaskRepository queueTaskRepository,
+    IQueueCardMediaRepository queueCardMediaRepository,
+    IIncompleteEncodeRepository incompleteEncodeRepository,
+    IAudioAnalysisStatisticsRepository audioAnalysisStatisticsRepository,
     IEncoderProcessRegistry processRegistry,
     ProcessThrottle processThrottle,
     IEncodingHistoryRepository historyRepository,
     IAudioAnalysisScheduler audioAnalysisScheduler,
-    IEventBus eventBus
+    IEventBus eventBus,
+    QueueRunner queueRunner,
+    IJobDispatcher jobDispatcher
 ) : BaseController
 {
     [HttpGet]
     public async Task<IActionResult> Index()
     {
-        await using QueueContext queueContext = await queueContextFactory.CreateDbContextAsync();
-
         // Cap the load: the queue table retains history and grows unbounded, so
         // materializing every row here was seconds of work for a monitor view that
         // only shows the highest-priority pending tasks.
-        List<QueueJob> jobs = await queueContext
-            .QueueJobs.OrderByDescending(j => j.Priority)
-            .ThenBy(j => j.Id)
-            .Take(UiLimits.MaximumTasksInList)
-            .ToListAsync();
+        List<QueueJobModel> jobs = await queueTaskRepository.GetRecentJobsAsync(
+            UiLimits.MaximumTasksInList
+        );
 
         List<TaskDto> list =
         [
@@ -176,7 +175,7 @@ public class TasksController(
     /// back to the raw queue name if the payload can't be deserialized to its
     /// concrete job type (e.g. a stale payload from a removed job class).
     /// </summary>
-    private static string ResolveJobTitle(QueueJob job)
+    private static string ResolveJobTitle(QueueJobModel job)
     {
         try
         {
@@ -270,7 +269,7 @@ public class TasksController(
     [Route("runners")]
     public IActionResult RunningTaskWorkers()
     {
-        int workers = QueueRunner.Current?.GetActiveWorkerThreads().Count ?? 0;
+        int workers = queueRunner.GetActiveWorkerThreads().Count;
 
         return Ok(new RunnersResponseDto { Status = "ok", Workers = workers });
     }
@@ -279,8 +278,6 @@ public class TasksController(
     [Route("queue")]
     public async Task<IActionResult> EncoderQueue()
     {
-        await using QueueContext queueContext = await queueContextFactory.CreateDbContextAsync();
-
         // This panel polls, and the encoder queue is thousands of rows deep on a
         // library mid-encode. Tracking every one of them per poll is pure cost:
         // nothing here is written back.
@@ -300,60 +297,31 @@ public class TasksController(
         // uses, so every query below that used to read one queue now reads both —
         // scoped to MusicEncodeJob payloads only, so nothing else on encoder-cpu
         // leaks into this panel.
-        List<int> priorities = await queueContext
-            .QueueJobs.AsNoTracking()
-            .Where(j =>
-                j.Queue == "encoder"
-                || (j.Queue == "encoder-cpu" && j.Payload.Contains("MusicEncodeJob"))
-            )
-            .Select(j => j.Priority)
-            .Distinct()
-            .OrderByDescending(priority => priority)
-            .ToListAsync();
+        List<int> priorities = await queueTaskRepository.GetEncoderPrioritiesAsync();
 
         int perBand = Math.Max(1, UiLimits.MaximumTasksInList / Math.Max(1, priorities.Count));
 
-        List<QueueJob> banded = [];
+        List<QueueJobModel> banded = [];
         foreach (int priority in priorities)
         {
             banded.AddRange(
-                await queueContext
-                    .QueueJobs.AsNoTracking()
-                    .Where(j =>
-                        (
-                            j.Queue == "encoder"
-                            || (j.Queue == "encoder-cpu" && j.Payload.Contains("MusicEncodeJob"))
-                        )
-                        && j.Priority == priority
-                    )
-                    .OrderBy(j => j.Id)
-                    .Take(perBand)
-                    .ToListAsync()
+                await queueTaskRepository.GetEncoderJobsByPriorityAsync(priority, perBand)
             );
         }
 
         // Work in flight is never a candidate for omission. It is a handful of
         // rows, and a running encode missing from the panel is the one thing the
         // operator is most certainly looking for.
-        List<QueueJob> running = await queueContext
-            .QueueJobs.AsNoTracking()
-            .Where(j =>
-                (
-                    j.Queue == "encoder"
-                    || (j.Queue == "encoder-cpu" && j.Payload.Contains("MusicEncodeJob"))
-                )
-                && j.ReservedAt != null
-            )
-            .OrderBy(j => j.Id)
-            .Take(UiLimits.MaximumTasksInList)
-            .ToListAsync();
+        List<QueueJobModel> running = await queueTaskRepository.GetRunningEncoderJobsAsync(
+            UiLimits.MaximumTasksInList
+        );
 
         // A video encode is one job/one row end to end now — the SAME row that
         // decomposed also runs every bundle's ffmpeg inline, so a runner
         // actually working an encode holds this row's own reservation for as
         // long as it runs. The "running" query above already catches every
         // in-flight encode; there is no separate child row to cross-reference.
-        ImmutableList<QueueJob> jobs =
+        ImmutableList<QueueJobModel> jobs =
         [
             .. banded.Concat(running).GroupBy(row => row.Id).Select(group => group.First()),
         ];
@@ -387,7 +355,7 @@ public class TasksController(
                 .Select(entry => entry!),
         ];
 
-        List<QueueJobDto> musicJobs = await BuildAlbumCards(musicRows, queueContext);
+        List<QueueJobDto> musicJobs = await BuildAlbumCards(musicRows);
 
         HashSet<int> musicRowIds = [.. musicRows.Select(row => row.Row.Id)];
 
@@ -428,12 +396,7 @@ public class TasksController(
         List<Ulid> folderIds = [.. encoderJobs.Select(entry => entry.Job!.FolderId).Distinct()];
 
         // Folders — only the profile include needed for the Profile field; no library graph.
-        List<Folder> folders = await mediaContext
-            .Folders.AsNoTracking()
-            .Where(f => folderIds.Contains(f.Id))
-            .Include(f => f.EncodingPresetFolders)
-                .ThenInclude(link => link.Preset)
-            .ToListAsync();
+        List<Folder> folders = await queueCardMediaRepository.GetFoldersWithPresetsAsync(folderIds);
 
         Dictionary<Ulid, Folder> folderById = folders.ToDictionary(f => f.Id);
 
@@ -444,20 +407,15 @@ public class TasksController(
 
         if (movieOrEpisodeIds.Count > 0)
         {
-            List<Movie> movies = await mediaContext
-                .Movies.AsNoTracking()
-                .Where(m => movieOrEpisodeIds.Contains(m.Id))
-                .ToListAsync();
+            List<Movie> movies = await queueCardMediaRepository.GetMoviesAsync(movieOrEpisodeIds);
 
             foreach (Movie movie in movies)
                 movieById[movie.Id] = movie;
 
             // Episodes need Tv for CreateTitle (Tv.Title, SeasonNumber, EpisodeNumber).
-            List<Episode> episodes = await mediaContext
-                .Episodes.AsNoTracking()
-                .Where(e => movieOrEpisodeIds.Contains(e.Id))
-                .Include(e => e.Tv)
-                .ToListAsync();
+            List<Episode> episodes = await queueCardMediaRepository.GetEpisodesWithShowAsync(
+                movieOrEpisodeIds
+            );
 
             foreach (Episode episode in episodes)
                 episodeById[episode.Id] = episode;
@@ -466,12 +424,7 @@ public class TasksController(
         if (trackIds.Count > 0)
         {
             // Tracks need AlbumTrack → Album for CreateName.
-            List<Track> tracks = await mediaContext
-                .Tracks.AsNoTracking()
-                .Where(t => trackIds.Contains(t.Id))
-                .Include(t => t.AlbumTrack)
-                    .ThenInclude(at => at.Album)
-                .ToListAsync();
+            List<Track> tracks = await queueCardMediaRepository.GetTracksWithAlbumAsync(trackIds);
 
             foreach (Track track in tracks)
                 trackById[track.Id] = track;
@@ -600,7 +553,7 @@ public class TasksController(
     /// <summary>
     /// A queue row read as a music encode, or null when the row is something else.
     /// </summary>
-    internal static MusicQueueRow? ReadMusicEncodeJob(QueueJob row)
+    internal static MusicQueueRow? ReadMusicEncodeJob(QueueJobModel row)
     {
         MusicEncodeJob? job;
         try
@@ -630,10 +583,7 @@ public class TasksController(
     /// recognise as generic maintenance — no artwork, no progress. This is an
     /// encode and reports as one.</para>
     /// </summary>
-    private async Task<List<QueueJobDto>> BuildAlbumCards(
-        List<MusicQueueRow> musicRows,
-        QueueContext queueContext
-    )
+    private async Task<List<QueueJobDto>> BuildAlbumCards(List<MusicQueueRow> musicRows)
     {
         if (musicRows.Count == 0)
             return [];
@@ -642,7 +592,8 @@ public class TasksController(
         // holds: the listing reads a share of each priority band, so the tracks it
         // happens to carry say nothing about how much of the album is left. A card
         // reporting "3 of 20" from a sample would count down as the panel scrolled.
-        Dictionary<Guid, int> remainingByRelease = await CountQueuedTracksByRelease(queueContext);
+        Dictionary<Guid, int> remainingByRelease =
+            await queueTaskRepository.CountQueuedTracksByReleaseAsync();
 
         List<Guid> releaseIds = [.. musicRows.Select(row => row.Job.ReleaseId).Distinct()];
 
@@ -655,17 +606,12 @@ public class TasksController(
         // so its count is the real numerator, and total is that plus whatever is
         // still queued for the release — the pair still reaches 100% exactly
         // when the queue for it runs dry.
-        Dictionary<Guid, int> encodedTracksByRelease = await mediaContext
-            .AlbumTrack.AsNoTracking()
-            .Where(link => releaseIds.Contains(link.AlbumId))
-            .GroupBy(link => link.AlbumId)
-            .ToDictionaryAsync(group => group.Key, group => group.Count());
+        Dictionary<Guid, int> encodedTracksByRelease =
+            await queueCardMediaRepository.GetEncodedTrackCountsByReleaseAsync(releaseIds);
 
-        Dictionary<Guid, string?> covers = await mediaContext
-            .Albums.AsNoTracking()
-            .Where(album => releaseIds.Contains(album.Id))
-            .Select(album => new AlbumCover(album.Id, album.Cover))
-            .ToDictionaryAsync(album => album.Id, album => album.Cover);
+        Dictionary<Guid, string?> covers = await queueCardMediaRepository.GetAlbumCoversAsync(
+            releaseIds
+        );
 
         // The same release cover, read off the album's tracks when the album row
         // itself has none. It is one image per release and every track stores it,
@@ -677,14 +623,11 @@ public class TasksController(
 
         if (uncovered.Count > 0)
         {
-            List<AlbumCover> trackCovers = await mediaContext
-                .AlbumTrack.AsNoTracking()
-                .Where(link => uncovered.Contains(link.AlbumId) && link.Track.Cover != null)
-                .Select(link => new AlbumCover(link.AlbumId, link.Track.Cover))
-                .ToListAsync();
+            Dictionary<Guid, string?> fallbackCovers =
+                await queueCardMediaRepository.GetFallbackTrackCoversAsync(uncovered);
 
-            foreach (IGrouping<Guid, AlbumCover> group in trackCovers.GroupBy(row => row.Id))
-                covers[group.Key] = group.First().Cover;
+            foreach (KeyValuePair<Guid, string?> fallback in fallbackCovers)
+                covers[fallback.Key] = fallback.Value;
         }
 
         return
@@ -743,35 +686,6 @@ public class TasksController(
     }
 
     /// <summary>
-    /// Tracks still queued per release, counted in the database rather than by
-    /// materializing thousands of payloads into the poll that asks.
-    /// </summary>
-    private static async Task<Dictionary<Guid, int>> CountQueuedTracksByRelease(
-        QueueContext queueContext
-    )
-    {
-        List<ReleaseTrackCount> counts = await queueContext
-            .Database.SqlQueryRaw<ReleaseTrackCount>(
-                """
-                SELECT json_extract(Payload, '$.releaseId') AS ReleaseId,
-                       COUNT(*) AS Remaining
-                FROM QueueJobs
-                WHERE Queue = 'encoder-cpu'
-                  AND Payload LIKE '%MusicEncodeJob%'
-                GROUP BY json_extract(Payload, '$.releaseId')
-                """
-            )
-            .ToListAsync();
-
-        Dictionary<Guid, int> byRelease = [];
-        foreach (ReleaseTrackCount count in counts)
-            if (Guid.TryParse(count.ReleaseId, out Guid releaseId))
-                byRelease[releaseId] = count.Remaining;
-
-        return byRelease;
-    }
-
-    /// <summary>
     /// A queue row that is maintenance rather than an encode, described as
     /// itself. Returns null for anything this endpoint has no name for, so an
     /// unrecognised job stays out of the panel instead of appearing as a blank.
@@ -780,7 +694,7 @@ public class TasksController(
     /// fallback: <see cref="EncoderQueue"/> replaces it with the library's own
     /// title, and adds the still, for every folder it can resolve.</para>
     /// </summary>
-    internal static MaintenanceJob? ReadMaintenanceJob(QueueJob row)
+    internal static MaintenanceJob? ReadMaintenanceJob(QueueJobModel row)
     {
         object? job;
         try
@@ -851,13 +765,9 @@ public class TasksController(
         if (hostFolders.Count == 0)
             return;
 
-        List<VideoFile> files = await mediaContext
-            .VideoFiles.AsNoTracking()
-            .Where(file => hostFolders.Contains(file.HostFolder))
-            .Include(file => file.Episode)
-                .ThenInclude(episode => episode!.Tv)
-            .Include(file => file.Movie)
-            .ToListAsync();
+        List<VideoFile> files = await queueCardMediaRepository.GetVideoFilesByHostFoldersAsync(
+            hostFolders
+        );
 
         Dictionary<string, VideoFile> fileByFolder = [];
         foreach (VideoFile file in files)
@@ -953,38 +863,17 @@ public class TasksController(
     [Route("queue/{id:int}")]
     public async Task<IActionResult> DeleteTask(int id)
     {
-        await using QueueContext queueContext = await queueContextFactory.CreateDbContextAsync();
-        QueueJob? job = queueContext.QueueJobs.FirstOrDefault(job => job.Id == id);
+        QueueJobModel? job = await queueTaskRepository.DeleteJobAsync(id);
 
         if (job is null)
             return NotFoundResponse("Job not found");
 
-        // If the job is currently running, terminate the FFmpeg process(es) tracked
-        // for it. Without this the ffmpeg process keeps going after the queue entry
+        // If the job was running, terminate the FFmpeg process(es) tracked for
+        // it. Without this the ffmpeg process keeps going after the queue entry
         // is removed — V1 dashboard behavior expects the kill.
         VideoEncodeJob? payload = job.Payload.FromJson<VideoEncodeJob>();
         if (payload is not null && int.TryParse(payload.Id, out int mediaId))
-        {
-            IReadOnlyCollection<int> pids = processRegistry.GetProcessIds(mediaId);
-            foreach (int pid in pids)
-            {
-                try
-                {
-                    using Process ffmpegProcess = Process.GetProcessById(pid);
-                    ffmpegProcess.Kill(entireProcessTree: true);
-                }
-                catch (Exception)
-                {
-                    // Process may have already exited or the PID may be stale —
-                    // clean up the registry entry regardless.
-                }
-                processRegistry.Unregister(mediaId, pid);
-            }
-        }
-
-        queueContext.QueueJobs.Remove(job);
-
-        await queueContext.SaveChangesAsync();
+            processRegistry.KillProcesses(mediaId);
 
         return Ok(new StatusResponseDto<string> { Message = "Job removed", Status = "success" });
     }
@@ -993,16 +882,10 @@ public class TasksController(
     [Route("queue/{id:int}")]
     public async Task<IActionResult> UpdateTask(int id, [FromBody] PatchQueueItemDto request)
     {
-        await using QueueContext queueContext = await queueContextFactory.CreateDbContextAsync();
+        bool updated = await queueTaskRepository.UpdateJobPriorityAsync(id, request.Priority);
 
-        QueueJob? job = queueContext.QueueJobs.FirstOrDefault(job => job.Id == id);
-
-        if (job is null)
+        if (!updated)
             return NotFoundResponse("Job not found");
-
-        job.Priority = request.Priority;
-
-        await queueContext.SaveChangesAsync();
 
         return Ok(
             new StatusResponseDto<string> { Message = "Priority updated", Status = "success" }
@@ -1017,17 +900,8 @@ public class TasksController(
     [Route("pause-queue")]
     public async Task<IActionResult> PauseEncoderQueue()
     {
-        if (QueueRunner.Current is null)
-            return Ok(
-                new StatusResponseDto<string>
-                {
-                    Message = "Queue runner not available",
-                    Status = "unavailable",
-                }
-            );
-
         foreach (string queue in EncoderQueueFamily)
-            await QueueRunner.Current.Pause(queue);
+            await queueRunner.Pause(queue);
 
         SuspendRunningEncodes();
         return Ok(
@@ -1040,19 +914,10 @@ public class TasksController(
     [Route("resume-queue")]
     public async Task<IActionResult> ResumeEncoderQueue()
     {
-        if (QueueRunner.Current is null)
-            return Ok(
-                new StatusResponseDto<string>
-                {
-                    Message = "Queue runner not available",
-                    Status = "unavailable",
-                }
-            );
-
         ResumeRunningEncodes();
 
         foreach (string queue in EncoderQueueFamily)
-            await QueueRunner.Current.Resume(queue);
+            await queueRunner.Resume(queue);
         return Ok(
             new StatusResponseDto<string> { Message = "Encoder queue resumed", Status = "success" }
         );
@@ -1072,16 +937,7 @@ public class TasksController(
     [Route("pause-music-queue")]
     public async Task<IActionResult> PauseMusicQueue()
     {
-        if (QueueRunner.Current is null)
-            return Ok(
-                new StatusResponseDto<string>
-                {
-                    Message = "Queue runner not available",
-                    Status = "unavailable",
-                }
-            );
-
-        await QueueRunner.Current.Pause(QueueNames.Music);
+        await queueRunner.Pause(QueueNames.Music);
 
         return Ok(
             new StatusResponseDto<string> { Message = "Music queue paused", Status = "success" }
@@ -1092,16 +948,7 @@ public class TasksController(
     [Route("resume-music-queue")]
     public async Task<IActionResult> ResumeMusicQueue()
     {
-        if (QueueRunner.Current is null)
-            return Ok(
-                new StatusResponseDto<string>
-                {
-                    Message = "Queue runner not available",
-                    Status = "unavailable",
-                }
-            );
-
-        await QueueRunner.Current.Resume(QueueNames.Music);
+        await queueRunner.Resume(QueueNames.Music);
 
         return Ok(
             new StatusResponseDto<string> { Message = "Music queue resumed", Status = "success" }
@@ -1120,48 +967,24 @@ public class TasksController(
     {
         bool paused = IsQueuePausedOrFalse(QueueNames.Music);
 
-        await using QueueContext queueContext = await queueContextFactory.CreateDbContextAsync();
-
-        int queued = await queueContext
-            .QueueJobs.Where(job =>
-                job.Queue == QueueNames.Music && job.Payload.Contains("MusicAnalysisJob")
-            )
-            .CountAsync();
+        int queued = await queueTaskRepository.CountQueuedMusicAnalysisAsync();
 
         // Its own context, not the scoped one this controller is handed. The
         // shared instance is already serving the request, and counting on it
         // under concurrent load fails intermittently — green alone, 500 in a
         // full parallel suite.
-        await using MediaContext analysisContext = await mediaContextFactory.CreateDbContextAsync();
-
-        int analyzed = await analysisContext.TrackAudioAnalysis.CountAsync(analysis =>
-            analysis.State == AudioAnalysisState.Ok
-        );
-
-        int failed = await analysisContext.TrackAudioAnalysis.CountAsync(analysis =>
-            analysis.State == AudioAnalysisState.Failed
-        );
-
-        int djAnalyzed = await analysisContext.TrackDjAnalysis.CountAsync(dj =>
-            dj.State == AudioAnalysisState.Ok
-        );
-
-        int djFailed = await analysisContext.TrackDjAnalysis.CountAsync(dj =>
-            dj.State == AudioAnalysisState.Failed
-        );
-
-        long stemsBytes = await analysisContext.DerivedAudio.SumAsync(derived => derived.Bytes);
+        AudioAnalysisCounts counts = await audioAnalysisStatisticsRepository.GetCountsAsync();
 
         return Ok(
             new AudioAnalysisStatusDto
             {
                 Paused = paused,
                 Queued = queued,
-                Analyzed = analyzed,
-                Failed = failed,
-                DjAnalyzed = djAnalyzed,
-                DjFailed = djFailed,
-                StemsBytes = stemsBytes,
+                Analyzed = counts.Analyzed,
+                Failed = counts.Failed,
+                DjAnalyzed = counts.DjAnalyzed,
+                DjFailed = counts.DjFailed,
+                StemsBytes = counts.StemsBytes,
             }
         );
     }
@@ -1194,26 +1017,20 @@ public class TasksController(
     }
 
     /// <summary>
-    /// Paused state, or false when the runner cannot answer.
+    /// Paused state, or false when the check itself cannot answer.
     /// <para>
-    /// <see cref="QueueRunner.Current" /> is a process-global that outlives the
-    /// host which built it, so it can be non-null while holding a disposed
-    /// service provider — reading it then throws
+    /// <see cref="QueueRunner"/> can outlive the host that built it during
+    /// shutdown, in which case a call into it throws
     /// <see cref="ObjectDisposedException" />. A read-only status endpoint must
     /// not fail because the queue runner is mid-teardown; "not paused" is the
-    /// same answer it already gives when there is no runner at all.
+    /// same answer it already gives for a queue it does not recognise.
     /// </para>
     /// </summary>
-    private static bool IsQueuePausedOrFalse(string queue)
+    private bool IsQueuePausedOrFalse(string queue)
     {
-        QueueRunner? runner = QueueRunner.Current;
-
-        if (runner is null)
-            return false;
-
         try
         {
-            return runner.IsPaused(queue);
+            return queueRunner.IsPaused(queue);
         }
         catch (ObjectDisposedException)
         {
@@ -1281,42 +1098,19 @@ public class TasksController(
     [Route("queue/status")]
     public async Task<IActionResult> EncoderQueueStatus()
     {
-        QueueRunner? runner = QueueRunner.Current;
-        bool paused = runner is not null && EncoderQueueFamily.All(queue => runner.IsPaused(queue));
-
-        await using QueueContext queueContext = await queueContextFactory.CreateDbContextAsync();
+        bool paused = EncoderQueueFamily.All(IsQueuePausedOrFalse);
 
         // What is actually in the queue, which the listing cannot say. That
         // endpoint returns a bounded sample — a share of each priority band —
         // so a panel counting the cards it was handed announced 38 queued
         // encodes with 1,200 waiting. The depth is a count, it costs one query,
         // and it is the number the operator is reading the panel for.
-        List<QueueTypeCount> counts = await queueContext
-            .Database.SqlQueryRaw<QueueTypeCount>(
-                """
-                SELECT CASE
-                         WHEN Payload LIKE '%VideoEncodeJob%' THEN 'video'
-                         WHEN Payload LIKE '%MusicEncodeJob%' THEN 'music'
-                         ELSE 'maintenance'
-                       END AS Kind,
-                       SUM(CASE WHEN ReservedAt IS NULL THEN 1 ELSE 0 END) AS Pending,
-                       SUM(CASE WHEN ReservedAt IS NULL THEN 0 ELSE 1 END) AS Running
-                FROM QueueJobs
-                WHERE Queue = 'encoder'
-                   OR (Queue = 'encoder-cpu' AND Payload LIKE '%MusicEncodeJob%')
-                GROUP BY Kind
-                """
-            )
-            .ToListAsync();
+        EncoderQueueCounts counts = await queueTaskRepository.GetEncoderQueueCountsAsync();
 
         // An album is one card, so it is one unit of queued work here too —
         // counting its tracks would put the panel's heading and its cards in
         // open disagreement.
-        int albums = (await CountQueuedTracksByRelease(queueContext)).Count;
-
-        int videoPending = counts.FirstOrDefault(row => row.Kind == "video")?.Pending ?? 0;
-        int maintenancePending =
-            counts.FirstOrDefault(row => row.Kind == "maintenance")?.Pending ?? 0;
+        int albums = (await queueTaskRepository.CountQueuedTracksByReleaseAsync()).Count;
 
         return Ok(
             new DataResponseDto<object>
@@ -1324,11 +1118,11 @@ public class TasksController(
                 Data = new
                 {
                     paused,
-                    pending = videoPending + maintenancePending + albums,
-                    running = counts.Sum(row => row.Running),
-                    video = videoPending,
+                    pending = counts.VideoPending + counts.MaintenancePending + albums,
+                    running = counts.RunningTotal,
+                    video = counts.VideoPending,
                     music = albums,
-                    maintenance = maintenancePending,
+                    maintenance = counts.MaintenancePending,
                 },
             }
         );
@@ -1349,11 +1143,7 @@ public class TasksController(
             pageIndex: 0
         );
 
-        await using QueueContext queueContext = await queueContextFactory.CreateDbContextAsync();
-        int queueDepth = await queueContext.QueueJobs.CountAsync(j =>
-            j.Queue == "encoder"
-            || (j.Queue == "encoder-cpu" && j.Payload.Contains("MusicEncodeJob"))
-        );
+        int queueDepth = await queueTaskRepository.GetEncoderQueueDepthAsync();
 
         if (recent.Count == 0 || queueDepth == 0)
         {
@@ -1392,47 +1182,46 @@ public class TasksController(
     [Route("reorder")]
     public async Task<IActionResult> ReorderQueue([FromBody] ReorderQueueDto request)
     {
-        await using QueueContext queueContext = await queueContextFactory.CreateDbContextAsync();
-
-        bool queueExists = await queueContext.QueueJobs.AnyAsync(j => j.Queue == request.QueueName);
+        bool queueExists = await queueTaskRepository.QueueExistsAsync(request.QueueName);
 
         if (!queueExists)
             return BadRequestResponse($"Queue '{request.QueueName}' does not exist");
 
         // Load ALL jobs for this queue so we can compute priorities without a second trip.
-        List<QueueJob> allJobs = await queueContext
-            .QueueJobs.Where(j => j.Queue == request.QueueName)
-            .OrderByDescending(j => j.Priority)
-            .ThenBy(j => j.CreatedAt)
-            .ThenBy(j => j.Id)
-            .ToListAsync();
+        List<QueueJobModel> allJobs = await queueTaskRepository.GetJobsForQueueAsync(
+            request.QueueName
+        );
 
         // Split into running (reserved) and pending.
-        List<QueueJob> runningJobs = [.. allJobs.Where(j => j.ReservedAt != null)];
-        List<QueueJob> pendingJobs = [.. allJobs.Where(j => j.ReservedAt == null)];
+        List<QueueJobModel> runningJobs = [.. allJobs.Where(j => j.ReservedAt != null)];
+        List<QueueJobModel> pendingJobs = [.. allJobs.Where(j => j.ReservedAt == null)];
 
         // Build ordered list: requested IDs first (in request order), then the rest.
         HashSet<int> requestedSet = [.. request.OrderedJobIds];
 
-        List<QueueJob> reordered =
+        List<QueueJobModel> reordered =
         [
             .. request
                 .OrderedJobIds.Select(id => pendingJobs.FirstOrDefault(j => j.Id == id))
                 .Where(j => j is not null)
-                .Cast<QueueJob>(),
+                .Cast<QueueJobModel>(),
             .. pendingJobs.Where(j => !requestedSet.Contains(j.Id)),
         ];
 
         // Assign descending priority values so the first item is dispatched first.
         // Start high enough to not collide with running jobs.
         int basePriority = reordered.Count;
+        Dictionary<int, int> priorityByJobId = [];
         for (int i = 0; i < reordered.Count; i++)
+        {
             reordered[i].Priority = basePriority - i;
+            priorityByJobId[reordered[i].Id] = reordered[i].Priority;
+        }
 
-        await queueContext.SaveChangesAsync();
+        await queueTaskRepository.SetPrioritiesAsync(priorityByJobId);
 
         // Return the new ordering of ALL jobs for the queue.
-        List<QueueJob> resultJobs = [.. runningJobs, .. reordered];
+        List<QueueJobModel> resultJobs = [.. runningJobs, .. reordered];
 
         QueueJobDto[] result =
         [
@@ -1453,18 +1242,14 @@ public class TasksController(
     [Route("failed/retry/{id:long?}")]
     public async Task<IActionResult> RetryFailedJobs(long? id = null)
     {
-        await using QueueContext queueContext = await queueContextFactory.CreateDbContextAsync();
-        using EfQueueContextAdapter adapter = new(queueContext);
-        JobQueue jobQueue = new(adapter);
-
         if (id.HasValue)
         {
-            FailedJob? failedJob = await queueContext.FailedJobs.FindAsync(id.Value);
-            if (failedJob == null)
+            FailedJobModel? failedJob = await queueTaskRepository.FindFailedJobAsync(id.Value);
+            if (failedJob is null)
                 return NotFoundResponse("Failed job not found");
         }
 
-        jobQueue.RetryFailedJobs(id);
+        queueRunner.Queue.RetryFailedJobs(id);
 
         string message = id.HasValue
             ? "Failed job has been queued for retry"
@@ -1477,23 +1262,20 @@ public class TasksController(
     [Route("failed")]
     public async Task<IActionResult> GetFailedJobs()
     {
-        await using QueueContext queueContext = await queueContextFactory.CreateDbContextAsync();
+        List<FailedJobModel> failedJobs = await queueTaskRepository.GetFailedJobsAsync();
 
-        List<FailedJob> failedJobs = await queueContext
-            .FailedJobs.OrderByDescending(j => j.FailedAt)
-            .ToListAsync();
-
-        return Ok(new DataResponseDto<List<FailedJob>> { Data = failedJobs });
+        return Ok(new DataResponseDto<List<FailedJobModel>> { Data = failedJobs });
     }
 
     [HttpGet]
     [Route("queue/incomplete")]
     public async Task<IActionResult> IncompleteEncodes()
     {
-        List<IncompleteEncodeDto> rows = await mediaContext
-            .IncompleteEncodes.AsNoTracking()
-            .OrderByDescending(r => r.LastSeenAt)
-            .Select(r => new IncompleteEncodeDto
+        List<IncompleteEncode> rows = await incompleteEncodeRepository.GetAllAsync();
+
+        List<IncompleteEncodeDto> dtos =
+        [
+            .. rows.Select(r => new IncompleteEncodeDto
             {
                 Id = r.Id,
                 MediaId = r.MediaId,
@@ -1505,26 +1287,26 @@ public class TasksController(
                 LastError = r.LastError,
                 AttemptsMade = r.AttemptsMade,
                 LastSeenAt = r.LastSeenAt,
-            })
-            .ToListAsync();
+            }),
+        ];
 
-        return Ok(new DataResponseDto<List<IncompleteEncodeDto>> { Data = rows });
+        return Ok(new DataResponseDto<List<IncompleteEncodeDto>> { Data = dtos });
     }
 
     [HttpPost]
     [Route("queue/incomplete/{id:int}/retry")]
     public async Task<IActionResult> RetryIncompleteEncode(int id)
     {
-        IncompleteEncode? row = await mediaContext.IncompleteEncodes.FindAsync(id);
+        IncompleteEncode? row = await incompleteEncodeRepository.FindAsync(id);
         if (row is null)
             return NotFoundResponse("Incomplete encode record not found");
 
         if (Ulid.TryParse(row.FolderId, out Ulid folderUlid))
         {
             // Resolve the library that owns this folder.
-            FolderLibrary? folderLibrary = await mediaContext
-                .FolderLibrary.AsNoTracking()
-                .FirstOrDefaultAsync(fl => fl.FolderId == folderUlid);
+            FolderLibrary? folderLibrary = await incompleteEncodeRepository.FindFolderLibraryAsync(
+                folderUlid
+            );
 
             if (folderLibrary is not null)
             {
@@ -1533,11 +1315,8 @@ public class TasksController(
                     int mediaId = checked((int)row.MediaId);
 
                     // Pick the best available video file for this media item (movie or episode).
-                    VideoFile? videoFile = await mediaContext
-                        .VideoFiles.AsNoTracking()
-                        .FirstOrDefaultAsync(vf =>
-                            vf.MovieId == mediaId || vf.EpisodeId == mediaId
-                        );
+                    VideoFile? videoFile =
+                        await incompleteEncodeRepository.FindVideoFileForMediaAsync(mediaId);
 
                     if (videoFile is not null)
                     {
@@ -1548,8 +1327,7 @@ public class TasksController(
 
                         try
                         {
-                            MediaJobDispatcher dispatcher = new();
-                            dispatcher.DispatchJob<VideoEncodeJob>(
+                            jobDispatcher.DispatchJob<VideoEncodeJob>(
                                 folderLibrary.LibraryId,
                                 folderLibrary.FolderId,
                                 row.MediaId.ToString(),
@@ -1572,8 +1350,7 @@ public class TasksController(
             }
         }
 
-        mediaContext.IncompleteEncodes.Remove(row);
-        await mediaContext.SaveChangesAsync();
+        await incompleteEncodeRepository.RemoveAsync(row);
 
         return Ok(new StatusResponseDto<string> { Message = "Re-queued", Status = "success" });
     }
@@ -1582,12 +1359,11 @@ public class TasksController(
     [Route("queue/incomplete/{id:int}")]
     public async Task<IActionResult> DeleteIncompleteEncode(int id)
     {
-        IncompleteEncode? row = await mediaContext.IncompleteEncodes.FindAsync(id);
+        IncompleteEncode? row = await incompleteEncodeRepository.FindAsync(id);
         if (row is null)
             return NotFoundResponse("Incomplete encode record not found");
 
-        mediaContext.IncompleteEncodes.Remove(row);
-        await mediaContext.SaveChangesAsync();
+        await incompleteEncodeRepository.RemoveAsync(row);
 
         return Ok(
             new StatusResponseDto<string>
@@ -1602,7 +1378,7 @@ public class TasksController(
     [Route("queue/incomplete")]
     public async Task<IActionResult> DeleteAllIncompleteEncodes()
     {
-        int removedCount = await mediaContext.IncompleteEncodes.ExecuteDeleteAsync();
+        int removedCount = await incompleteEncodeRepository.RemoveAllAsync();
 
         return Ok(
             new StatusResponseDto<int>

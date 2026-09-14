@@ -13,14 +13,12 @@ using System.Threading.Channels;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using NoMercy.Api.DTOs.Management;
 using NoMercy.Api.Middleware;
 using NoMercy.Data.Repositories;
-using NoMercy.Database;
 using NoMercy.Encoder.LiveTranscode;
 using NoMercy.Monitoring;
 using NoMercy.Networking.Connectivity;
@@ -31,6 +29,7 @@ using NoMercy.NmSystem.Information;
 using NoMercy.NmSystem.Status;
 using NoMercy.NmSystem.SystemCalls;
 using NoMercy.Plugins.Abstractions;
+using NoMercy.Queue.MediaServer.Repositories;
 using NoMercy.Setup.Server;
 using NoMercy.Storage;
 using NoMercyQueue;
@@ -56,7 +55,7 @@ public class ManagementController(
     ISessionManager sessionManager,
     IStorageDriver storageDriver,
     IStorage storage,
-    IDbContextFactory<QueueContext> queueContextFactory,
+    IQueueTaskRepository queueTaskRepository,
     IBootStatus bootStatus,
     IUpdateStatus updateStatus,
     IConnectivityManager connectivityManager,
@@ -601,10 +600,8 @@ public class ManagementController(
     [ProducesResponseType(typeof(ManagementQueueStatusDto), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetQueueStatus()
     {
-        await using QueueContext queueContext = await queueContextFactory.CreateDbContextAsync();
-
-        int pendingJobs = await queueContext.QueueJobs.CountAsync();
-        int failedJobs = await queueContext.FailedJobs.CountAsync();
+        int pendingJobs = await queueTaskRepository.GetQueueJobCountAsync();
+        int failedJobs = await queueTaskRepository.GetFailedJobCountAsync();
 
         IReadOnlyDictionary<string, Thread> activeThreads = queueRunner.GetActiveWorkerThreads();
 
