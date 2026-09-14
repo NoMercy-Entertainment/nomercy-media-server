@@ -25,12 +25,6 @@ namespace NoMercy.Api.Plugins;
 /// </summary>
 public class PluginActionDescriptorChangeProvider : IActionDescriptorChangeProvider
 {
-    /// <summary>
-    /// A shared instance, because the part registrar has to signal a change
-    /// from paths that run before the service provider exists.
-    /// </summary>
-    public static PluginActionDescriptorChangeProvider Instance { get; } = new();
-
     private CancellationTokenSource _tokenSource = new();
 
     public IChangeToken GetChangeToken() => new CancellationChangeToken(_tokenSource.Token);

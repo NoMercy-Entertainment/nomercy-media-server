@@ -36,16 +36,16 @@ public static partial class ServiceConfiguration
         // and the same — two would mean a plugin's controllers were attached to
         // MVC while the convention still considered them the server's own, and
         // its routes would land unprefixed.
+        PluginActionDescriptorChangeProvider changeProvider = new();
         PluginApplicationPartRegistrar registrar = new(
             mvc.PartManager,
+            changeProvider,
             NullLogger<PluginApplicationPartRegistrar>.Instance
         );
 
         services.AddSingleton(registrar);
         services.AddSingleton<IPluginAssemblyCatalog>(registrar);
-        services.AddSingleton<IActionDescriptorChangeProvider>(
-            PluginActionDescriptorChangeProvider.Instance
-        );
+        services.AddSingleton<IActionDescriptorChangeProvider>(changeProvider);
 
         services.Configure<MvcOptions>(options =>
         {

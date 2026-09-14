@@ -30,6 +30,7 @@ namespace NoMercy.Api.Plugins;
 /// </summary>
 public class PluginApplicationPartRegistrar(
     ApplicationPartManager partManager,
+    PluginActionDescriptorChangeProvider changeProvider,
     ILogger<PluginApplicationPartRegistrar> logger
 ) : IPluginAssemblyCatalog
 {
@@ -62,14 +63,24 @@ public class PluginApplicationPartRegistrar(
             if (info.Status != PluginStatus.Active)
                 continue;
 
-            changed |= Attach(info, pluginManager);
+            changed |= AttachPart(info, pluginManager);
         }
 
         if (changed)
-            PluginActionDescriptorChangeProvider.Instance.TriggerChange();
+            changeProvider.TriggerChange();
     }
 
+    /// <summary>Attaches one plugin's controllers and refreshes the route table when it did.</summary>
     public bool Attach(PluginInfo info, IPluginManager pluginManager)
+    {
+        if (!AttachPart(info, pluginManager))
+            return false;
+
+        changeProvider.TriggerChange();
+        return true;
+    }
+
+    private bool AttachPart(PluginInfo info, IPluginManager pluginManager)
     {
         if (_attached.ContainsKey(info.Id))
             return false;
@@ -107,7 +118,7 @@ public class PluginApplicationPartRegistrar(
         if (part is not null)
             partManager.ApplicationParts.Remove(part);
 
-        PluginActionDescriptorChangeProvider.Instance.TriggerChange();
+        changeProvider.TriggerChange();
     }
 
     /// <summary>
