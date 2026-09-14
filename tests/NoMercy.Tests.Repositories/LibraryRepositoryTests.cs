@@ -38,6 +38,52 @@ public class LibraryRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task GetImportFailures_FiltersByLibraryAndResolvedState_NewestFirst()
+    {
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        _context.ImportFailures.AddRange(
+            new ImportFailure
+            {
+                LibraryId = SeedConstants.MovieLibraryId,
+                FilePath = "/old.mkv",
+                LastAttemptAt = now.AddHours(-2),
+            },
+            new ImportFailure
+            {
+                LibraryId = SeedConstants.MovieLibraryId,
+                FilePath = "/new.mkv",
+                LastAttemptAt = now,
+            },
+            new ImportFailure
+            {
+                LibraryId = SeedConstants.MovieLibraryId,
+                FilePath = "/fixed.mkv",
+                LastAttemptAt = now.AddHours(-1),
+                Resolved = true,
+            },
+            new ImportFailure
+            {
+                LibraryId = SeedConstants.TvLibraryId,
+                FilePath = "/other-library.mkv",
+                LastAttemptAt = now,
+            }
+        );
+        await _context.SaveChangesAsync();
+
+        List<ImportFailure> all = await _repository.GetImportFailuresAsync(
+            SeedConstants.MovieLibraryId,
+            null
+        );
+        List<ImportFailure> open = await _repository.GetImportFailuresAsync(
+            SeedConstants.MovieLibraryId,
+            false
+        );
+
+        Assert.Equal(["/new.mkv", "/fixed.mkv", "/old.mkv"], all.Select(f => f.FilePath));
+        Assert.Equal(["/new.mkv", "/old.mkv"], open.Select(f => f.FilePath));
+    }
+
+    [Fact]
     public async Task GetLibraries_ReturnsLibrariesForUser()
     {
         List<Library> libraries = await _repository.GetLibraries(SeedConstants.UserId);

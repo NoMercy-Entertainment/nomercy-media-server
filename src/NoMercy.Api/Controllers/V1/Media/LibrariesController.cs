@@ -33,7 +33,10 @@ namespace NoMercy.Api.Controllers.V1.Media;
 [Route("api/v{version:apiVersion}/libraries")]
 public class LibrariesController(
     ILibraryRepository libraryRepository,
-    IDbContextFactory<MediaContext> contextFactory
+    ICollectionRepository collectionRepository,
+    ISpecialRepository specialRepository,
+    IHomeRepository homeRepository,
+    IUserPlaylistRepository userPlaylistRepository
 ) : BaseController
 {
     [HttpGet]
@@ -58,104 +61,42 @@ public class LibrariesController(
         string language = Language();
         string country = Country();
 
-        // Start all independent queries in parallel - each task gets its own DbContext for thread safety
-        Task<List<Library>> librariesTask = Task.Run(
-            async () =>
-            {
-                await using MediaContext ctx = await contextFactory.CreateDbContextAsync(ct);
-                return await new LibraryRepository(contextFactory).GetLibrariesLite(userId, ct);
-            },
+        // Start all independent queries in parallel; each repository call opens its own context.
+        Task<List<Library>> librariesTask = libraryRepository.GetLibrariesLite(userId, ct);
+        Task<Dictionary<Ulid, int>> countsTask = libraryRepository.GetLibraryItemCountsAsync(
+            userId,
             ct
         );
-        Task<Dictionary<Ulid, int>> countsTask = Task.Run(
-            async () =>
-            {
-                await using MediaContext ctx = await contextFactory.CreateDbContextAsync(ct);
-                return await new LibraryRepository(contextFactory).GetLibraryItemCountsAsync(
-                    userId,
-                    ct
-                );
-            },
+        Task<List<CollectionListDto>> collectionsTask =
+            collectionRepository.GetCollectionItemCardsAsync(userId, language, country, 10, 0, ct);
+        Task<List<SpecialCardDto>> specialsTask = specialRepository.GetSpecialItemCardsAsync(
+            userId,
+            language,
+            country,
+            10,
+            0,
             ct
         );
-        Task<List<CollectionListDto>> collectionsTask = Task.Run(
-            async () =>
-            {
-                await using MediaContext ctx = await contextFactory.CreateDbContextAsync(ct);
-                return await new CollectionRepository(contextFactory).GetCollectionItemCardsAsync(
-                    userId,
-                    language,
-                    country,
-                    10,
-                    0,
-                    ct
-                );
-            },
+        Task<HomeTvCardDto?> randomTvTask = libraryRepository.GetRandomTvCardAsync(
+            userId,
+            language,
+            country,
             ct
         );
-        Task<List<SpecialCardDto>> specialsTask = Task.Run(
-            async () =>
-            {
-                await using MediaContext ctx = await contextFactory.CreateDbContextAsync(ct);
-                return await new SpecialRepository(ctx, contextFactory).GetSpecialItemCardsAsync(
-                    userId,
-                    language,
-                    country,
-                    10,
-                    0,
-                    ct
-                );
-            },
+        Task<HomeMovieCardDto?> randomMovieTask = libraryRepository.GetRandomMovieCardAsync(
+            userId,
+            language,
+            country,
             ct
         );
-        Task<HomeTvCardDto?> randomTvTask = Task.Run(
-            async () =>
-            {
-                await using MediaContext ctx = await contextFactory.CreateDbContextAsync(ct);
-                return await new LibraryRepository(contextFactory).GetRandomTvCardAsync(
-                    userId,
-                    language,
-                    country,
-                    ct
-                );
-            },
+        Task<FavoritesData> favoritesTask = homeRepository.GetFavoritesAsync(
+            userId,
+            language,
+            country,
             ct
         );
-        Task<HomeMovieCardDto?> randomMovieTask = Task.Run(
-            async () =>
-            {
-                await using MediaContext ctx = await contextFactory.CreateDbContextAsync(ct);
-                return await new LibraryRepository(contextFactory).GetRandomMovieCardAsync(
-                    userId,
-                    language,
-                    country,
-                    ct
-                );
-            },
-            ct
-        );
-        Task<FavoritesData> favoritesTask = Task.Run(
-            async () =>
-            {
-                await using MediaContext ctx = await contextFactory.CreateDbContextAsync(ct);
-                return await new HomeRepository(ctx, contextFactory).GetFavoritesAsync(
-                    userId,
-                    language,
-                    country,
-                    ct
-                );
-            },
-            ct
-        );
-        Task<List<UserPlaylistSummary>> myListsTask = Task.Run(
-            async () =>
-            {
-                await using MediaContext ctx = await contextFactory.CreateDbContextAsync(ct);
-                return await new UserPlaylistRepository(contextFactory).GetUserPlaylistsAsync(
-                    userId,
-                    ct
-                );
-            },
+        Task<List<UserPlaylistSummary>> myListsTask = userPlaylistRepository.GetUserPlaylistsAsync(
+            userId,
             ct
         );
 
@@ -210,7 +151,7 @@ public class LibrariesController(
             })
             .ToList();
 
-        // Fetch library data in parallel - each task gets its own DbContext for thread safety
+        // Fetch library data in parallel; each repository call opens its own context.
         Library[] nonMusicLibraries = libraries.Where(lib => lib.Type != "music").ToArray();
 
         Task<(
@@ -220,9 +161,7 @@ public class LibrariesController(
         )>[] libraryDataTasks = nonMusicLibraries
             .Select(async library =>
             {
-                await using MediaContext ctx = await contextFactory.CreateDbContextAsync(ct);
-                LibraryRepository repo = new(contextFactory);
-                List<MovieCardDto> movies = await repo.GetLibraryMovieCardsAsync(
+                List<MovieCardDto> movies = await libraryRepository.GetLibraryMovieCardsAsync(
                     userId,
                     library.Id,
                     country,
@@ -230,7 +169,7 @@ public class LibrariesController(
                     0,
                     ct
                 );
-                List<TvCardDto> shows = await repo.GetLibraryTvCardsAsync(
+                List<TvCardDto> shows = await libraryRepository.GetLibraryTvCardsAsync(
                     userId,
                     library.Id,
                     country,
@@ -372,74 +311,40 @@ public class LibrariesController(
         string language = Language();
         string country = Country();
 
-        // Start all independent queries in parallel - each task gets its own DbContext for thread safety
-        Task<List<Library>> librariesTask = Task.Run(async () =>
-        {
-            await using MediaContext ctx = await contextFactory.CreateDbContextAsync(ct);
-            return await new LibraryRepository(contextFactory).GetLibrariesLite(userId, ct);
-        });
-        Task<List<CollectionListDto>> collectionsTask = Task.Run(async () =>
-        {
-            await using MediaContext ctx = await contextFactory.CreateDbContextAsync(ct);
-            return await new CollectionRepository(contextFactory).GetCollectionItemCardsAsync(
-                userId,
-                language,
-                country,
-                6,
-                0,
-                ct
-            );
-        });
-        Task<List<SpecialCardDto>> specialsTask = Task.Run(async () =>
-        {
-            await using MediaContext ctx = await contextFactory.CreateDbContextAsync(ct);
-            return await new SpecialRepository(ctx, contextFactory).GetSpecialItemCardsAsync(
-                userId,
-                language,
-                country,
-                6,
-                0,
-                ct
-            );
-        });
-        Task<HomeTvCardDto?> randomTvTask = Task.Run(async () =>
-        {
-            await using MediaContext ctx = await contextFactory.CreateDbContextAsync(ct);
-            return await new LibraryRepository(contextFactory).GetRandomTvCardAsync(
-                userId,
-                language,
-                country,
-                ct
-            );
-        });
-        Task<HomeMovieCardDto?> randomMovieTask = Task.Run(async () =>
-        {
-            await using MediaContext ctx = await contextFactory.CreateDbContextAsync(ct);
-            return await new LibraryRepository(contextFactory).GetRandomMovieCardAsync(
-                userId,
-                language,
-                country,
-                ct
-            );
-        });
-        Task<FavoritesData> favoritesTask = Task.Run(async () =>
-        {
-            await using MediaContext ctx = await contextFactory.CreateDbContextAsync(ct);
-            return await new HomeRepository(ctx, contextFactory).GetFavoritesAsync(
-                userId,
-                language,
-                country,
-                ct
-            );
-        });
-        Task<List<UserPlaylistSummary>> myListsTask = Task.Run(async () =>
-        {
-            await using MediaContext ctx = await contextFactory.CreateDbContextAsync(ct);
-            return await new UserPlaylistRepository(contextFactory).GetUserPlaylistsAsync(
-                userId,
-                ct
-            );
-        });
+        // Start all independent queries in parallel; each repository call opens its own context.
+        Task<List<Library>> librariesTask = libraryRepository.GetLibrariesLite(userId, ct);
+        Task<List<CollectionListDto>> collectionsTask =
+            collectionRepository.GetCollectionItemCardsAsync(userId, language, country, 6, 0, ct);
+        Task<List<SpecialCardDto>> specialsTask = specialRepository.GetSpecialItemCardsAsync(
+            userId,
+            language,
+            country,
+            6,
+            0,
+            ct
+        );
+        Task<HomeTvCardDto?> randomTvTask = libraryRepository.GetRandomTvCardAsync(
+            userId,
+            language,
+            country,
+            ct
+        );
+        Task<HomeMovieCardDto?> randomMovieTask = libraryRepository.GetRandomMovieCardAsync(
+            userId,
+            language,
+            country,
+            ct
+        );
+        Task<FavoritesData> favoritesTask = homeRepository.GetFavoritesAsync(
+            userId,
+            language,
+            country,
+            ct
+        );
+        Task<List<UserPlaylistSummary>> myListsTask = userPlaylistRepository.GetUserPlaylistsAsync(
+            userId,
+            ct
+        );
 
         await Task.WhenAll([
             librariesTask,
@@ -490,7 +395,7 @@ public class LibrariesController(
             })
             .ToList();
 
-        // Fetch library data in parallel - each task gets its own DbContext for thread safety
+        // Fetch library data in parallel; each repository call opens its own context.
         Task<(
             Library library,
             List<MovieCardDto> movies,
@@ -498,9 +403,7 @@ public class LibrariesController(
         )>[] libraryDataTasks = libraries
             .Select(async library =>
             {
-                await using MediaContext ctx = await contextFactory.CreateDbContextAsync(ct);
-                LibraryRepository repo = new(contextFactory);
-                List<MovieCardDto> movies = await repo.GetLibraryMovieCardsAsync(
+                List<MovieCardDto> movies = await libraryRepository.GetLibraryMovieCardsAsync(
                     userId,
                     library.Id,
                     country,
@@ -508,7 +411,7 @@ public class LibrariesController(
                     0,
                     ct
                 );
-                List<TvCardDto> shows = await repo.GetLibraryTvCardsAsync(
+                List<TvCardDto> shows = await libraryRepository.GetLibraryTvCardsAsync(
                     userId,
                     library.Id,
                     country,
@@ -633,31 +536,23 @@ public class LibrariesController(
         string language = Language();
         string country = Country();
 
-        // Fetch movies and shows in parallel - each task gets its own DbContext for thread safety
-        Task<List<MovieCardDto>> moviesTask = Task.Run(async () =>
-        {
-            await using MediaContext ctx = await contextFactory.CreateDbContextAsync(ct);
-            return await new LibraryRepository(contextFactory).GetLibraryMovieCardsAsync(
-                userId,
-                libraryId,
-                country,
-                request.Take,
-                request.Page * request.Take,
-                ct
-            );
-        });
-        Task<List<TvCardDto>> showsTask = Task.Run(async () =>
-        {
-            await using MediaContext ctx = await contextFactory.CreateDbContextAsync(ct);
-            return await new LibraryRepository(contextFactory).GetLibraryTvCardsAsync(
-                userId,
-                libraryId,
-                country,
-                request.Take,
-                request.Page * request.Take,
-                ct
-            );
-        });
+        // Fetch movies and shows in parallel; each repository call opens its own context.
+        Task<List<MovieCardDto>> moviesTask = libraryRepository.GetLibraryMovieCardsAsync(
+            userId,
+            libraryId,
+            country,
+            request.Take,
+            request.Page * request.Take,
+            ct
+        );
+        Task<List<TvCardDto>> showsTask = libraryRepository.GetLibraryTvCardsAsync(
+            userId,
+            libraryId,
+            country,
+            request.Take,
+            request.Page * request.Take,
+            ct
+        );
 
         await Task.WhenAll([moviesTask, showsTask]);
 
@@ -731,11 +626,9 @@ public class LibrariesController(
         string language = Language();
         string country = Country();
 
-        // Fetch movies and shows in parallel - each task gets its own DbContext for thread safety
-        Task<List<HomeMovieCardDto>> moviesTask = Task.Run(async () =>
-        {
-            await using MediaContext ctx = await contextFactory.CreateDbContextAsync(ct);
-            return await new LibraryRepository(contextFactory).GetPaginatedLibraryMovieCardsAsync(
+        // Fetch movies and shows in parallel; each repository call opens its own context.
+        Task<List<HomeMovieCardDto>> moviesTask =
+            libraryRepository.GetPaginatedLibraryMovieCardsAsync(
                 userId,
                 libraryId,
                 letter,
@@ -745,21 +638,16 @@ public class LibrariesController(
                 request.Page,
                 ct
             );
-        });
-        Task<List<HomeTvCardDto>> showsTask = Task.Run(async () =>
-        {
-            await using MediaContext ctx = await contextFactory.CreateDbContextAsync(ct);
-            return await new LibraryRepository(contextFactory).GetPaginatedLibraryTvCardsAsync(
-                userId,
-                libraryId,
-                letter,
-                language,
-                country,
-                request.Take,
-                request.Page,
-                ct
-            );
-        });
+        Task<List<HomeTvCardDto>> showsTask = libraryRepository.GetPaginatedLibraryTvCardsAsync(
+            userId,
+            libraryId,
+            letter,
+            language,
+            country,
+            request.Take,
+            request.Page,
+            ct
+        );
 
         await Task.WhenAll([moviesTask, showsTask]);
 
@@ -787,18 +675,11 @@ public class LibrariesController(
         CancellationToken ct = default
     )
     {
-        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
-
-        IQueryable<ImportFailure> query = context.ImportFailures.Where(f =>
-            f.LibraryId == libraryId
+        List<ImportFailure> failures = await libraryRepository.GetImportFailuresAsync(
+            libraryId,
+            resolved,
+            ct
         );
-
-        if (resolved is not null)
-            query = query.Where(f => f.Resolved == resolved);
-
-        List<ImportFailure> failures = (await query.ToListAsync(ct))
-            .OrderByDescending(f => f.LastAttemptAt)
-            .ToList();
 
         return Ok(new { data = failures });
     }

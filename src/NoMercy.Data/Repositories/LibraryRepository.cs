@@ -1418,4 +1418,25 @@ public class LibraryRepository(IDbContextFactory<MediaContext> contextFactory) :
             throw;
         }
     }
+
+    public async Task<List<ImportFailure>> GetImportFailuresAsync(
+        Ulid libraryId,
+        bool? resolved,
+        CancellationToken ct = default
+    )
+    {
+        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+
+        IQueryable<ImportFailure> query = context
+            .ImportFailures.AsNoTracking()
+            .Where(failure => failure.LibraryId == libraryId);
+
+        if (resolved is not null)
+            query = query.Where(failure => failure.Resolved == resolved);
+
+        // Ordered in memory: SQLite cannot order by the stored timestamp type.
+        return (await query.ToListAsync(ct))
+            .OrderByDescending(failure => failure.LastAttemptAt)
+            .ToList();
+    }
 }

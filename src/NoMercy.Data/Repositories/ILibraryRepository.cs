@@ -205,6 +205,13 @@ public interface ILibraryRepository
         List<EncodingPresetFolder> encodingPresetFolders,
         List<Folder> folders
     );
+
+    /// <summary>A library's import failures, newest attempt first, optionally by resolved state.</summary>
+    Task<List<ImportFailure>> GetImportFailuresAsync(
+        Ulid libraryId,
+        bool? resolved,
+        CancellationToken ct = default
+    );
 }
 
 public record VideoSearchResults(List<Tv> Tvs, List<Movie> Movies);
