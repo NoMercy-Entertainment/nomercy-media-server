@@ -40,7 +40,6 @@ public sealed class VideoPlaylistManagerTests
     private VideoPlaylistManager CreateManager()
     {
         return new(
-            new MediaContext(),
             _movieRepository.Object,
             _collectionRepository.Object,
             _specialRepository.Object,

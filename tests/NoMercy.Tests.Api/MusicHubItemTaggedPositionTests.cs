@@ -102,7 +102,7 @@ public class MusicHubItemTaggedPositionTests : IClassFixture<NoMercyApiFactory>
             _factory.Services.GetRequiredService<CastPanelWakeLauncher>();
         AuthManager authManager = _factory.Services.GetRequiredService<AuthManager>();
 
-        MusicPlaylistManager musicPlaylistManager = new(new MusicRepository(contextFactory), new());
+        MusicPlaylistManager musicPlaylistManager = new(new MusicRepository(contextFactory));
         DeviceBusRegistry busRegistry = new(
             new DeviceStateRepository(contextFactory),
             Mock.Of<IHubContext<DeviceHub>>(),

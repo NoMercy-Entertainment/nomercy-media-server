@@ -171,10 +171,16 @@ public class MusicRepositoryPlaylistPlaybackTests : IDisposable
         _context.Tracks.AddRange([trackA, trackB, trackC]);
         _context.SaveChanges();
 
-        _context.AlbumTrack.AddRange([new AlbumTrack(album.Id, trackA.Id), new AlbumTrack(album.Id, trackB.Id), new AlbumTrack(album.Id, trackC.Id)]
-        );
-        _context.ArtistTrack.AddRange([new ArtistTrack(artist.Id, trackA.Id), new ArtistTrack(artist.Id, trackB.Id), new ArtistTrack(artist.Id, trackC.Id)]
-        );
+        _context.AlbumTrack.AddRange([
+            new AlbumTrack(album.Id, trackA.Id),
+            new AlbumTrack(album.Id, trackB.Id),
+            new AlbumTrack(album.Id, trackC.Id),
+        ]);
+        _context.ArtistTrack.AddRange([
+            new ArtistTrack(artist.Id, trackA.Id),
+            new ArtistTrack(artist.Id, trackB.Id),
+            new ArtistTrack(artist.Id, trackC.Id),
+        ]);
         _context.AlbumArtist.Add(new(album.Id, artist.Id));
 
         Playlist playlist = new()
@@ -186,8 +192,11 @@ public class MusicRepositoryPlaylistPlaybackTests : IDisposable
         _context.Playlists.Add(playlist);
         _context.SaveChanges();
 
-        _context.PlaylistTrack.AddRange([new PlaylistTrack(playlist.Id, trackA.Id), new PlaylistTrack(playlist.Id, trackB.Id), new PlaylistTrack(playlist.Id, trackC.Id)]
-        );
+        _context.PlaylistTrack.AddRange([
+            new PlaylistTrack(playlist.Id, trackA.Id),
+            new PlaylistTrack(playlist.Id, trackB.Id),
+            new PlaylistTrack(playlist.Id, trackC.Id),
+        ]);
         _context.SaveChanges();
 
         List<PlaylistTrack> result = await _repository.GetPlaylistTracksAsync(
@@ -251,6 +260,28 @@ public class MusicRepositoryPlaylistPlaybackTests : IDisposable
         );
 
         Assert.Empty(result);
+    }
+
+    [Fact]
+    public async Task IsTrackFavoriteAsync_IsTrueOnlyForTheUserWhoLikedIt()
+    {
+        (Library library, Folder folder) = SeedLibraryAndFolder(_context, SeedConstants.UserId);
+        Track track = new()
+        {
+            Id = Guid.NewGuid(),
+            Name = "Liked Track",
+            TrackNumber = 1,
+            DiscNumber = 1,
+            FolderId = folder.Id,
+            LibraryFolder = folder,
+        };
+        _context.Tracks.Add(track);
+        _context.SaveChanges();
+        _context.TrackUser.Add(new() { TrackId = track.Id, UserId = SeedConstants.UserId });
+        _context.SaveChanges();
+
+        Assert.True(await _repository.IsTrackFavoriteAsync(track.Id, SeedConstants.UserId));
+        Assert.False(await _repository.IsTrackFavoriteAsync(track.Id, Guid.NewGuid()));
     }
 
     /// <summary>
@@ -415,7 +446,7 @@ public class MusicRepositoryPlaylistPlaybackTests : IDisposable
         stopwatch.Stop();
         _output.WriteLine(
             $"GetArtistTracksAsync elapsed {stopwatch.ElapsedMilliseconds}ms for {result.Count} tracks "
-                     + "(live-log regression was 81168/62660/103197ms for 153 tracks)"
+                + "(live-log regression was 81168/62660/103197ms for 153 tracks)"
         );
 
         Assert.Equal(albumCount * tracksPerAlbum, result.Count);
@@ -632,10 +663,14 @@ public class MusicRepositoryPlaylistPlaybackTests : IDisposable
         _context.Tracks.AddRange([trackOnAlbumOne, trackOnAlbumTwo]);
         _context.SaveChanges();
 
-        _context.AlbumTrack.AddRange([new AlbumTrack(albumOne.Id, trackOnAlbumOne.Id), new AlbumTrack(albumTwo.Id, trackOnAlbumTwo.Id)]
-        );
-        _context.ArtistTrack.AddRange([new ArtistTrack(artist.Id, trackOnAlbumOne.Id), new ArtistTrack(artist.Id, trackOnAlbumTwo.Id)]
-        );
+        _context.AlbumTrack.AddRange([
+            new AlbumTrack(albumOne.Id, trackOnAlbumOne.Id),
+            new AlbumTrack(albumTwo.Id, trackOnAlbumTwo.Id),
+        ]);
+        _context.ArtistTrack.AddRange([
+            new ArtistTrack(artist.Id, trackOnAlbumOne.Id),
+            new ArtistTrack(artist.Id, trackOnAlbumTwo.Id),
+        ]);
         _context.SaveChanges();
 
         List<ArtistTrack> result = await _repository.GetArtistTracksAsync(
@@ -716,10 +751,14 @@ public class MusicRepositoryPlaylistPlaybackTests : IDisposable
         _context.Tracks.AddRange([trackA, trackB]);
         _context.SaveChanges();
 
-        _context.AlbumTrack.AddRange([new AlbumTrack(album.Id, trackA.Id), new AlbumTrack(album.Id, trackB.Id)]
-        );
-        _context.ArtistTrack.AddRange([new ArtistTrack(artist.Id, trackA.Id), new ArtistTrack(artist.Id, trackB.Id)]
-        );
+        _context.AlbumTrack.AddRange([
+            new AlbumTrack(album.Id, trackA.Id),
+            new AlbumTrack(album.Id, trackB.Id),
+        ]);
+        _context.ArtistTrack.AddRange([
+            new ArtistTrack(artist.Id, trackA.Id),
+            new ArtistTrack(artist.Id, trackB.Id),
+        ]);
         _context.TrackUser.Add(new() { TrackId = trackB.Id, UserId = SeedConstants.UserId });
         _context.SaveChanges();
 
@@ -1053,8 +1092,11 @@ public class MusicRepositoryPlaylistPlaybackTests : IDisposable
         _context.Tracks.AddRange([trackA, trackB, trackC]);
         _context.SaveChanges();
 
-        _context.AlbumTrack.AddRange([new AlbumTrack(album.Id, trackA.Id), new AlbumTrack(album.Id, trackB.Id), new AlbumTrack(album.Id, trackC.Id)]
-        );
+        _context.AlbumTrack.AddRange([
+            new AlbumTrack(album.Id, trackA.Id),
+            new AlbumTrack(album.Id, trackB.Id),
+            new AlbumTrack(album.Id, trackC.Id),
+        ]);
         _context.SaveChanges();
 
         List<AlbumTrack> result = await _repository.GetAlbumTracksAsync(
@@ -1137,10 +1179,14 @@ public class MusicRepositoryPlaylistPlaybackTests : IDisposable
         _context.Tracks.AddRange([trackA, trackB]);
         _context.SaveChanges();
 
-        _context.AlbumTrack.AddRange([new AlbumTrack(album.Id, trackA.Id), new AlbumTrack(album.Id, trackB.Id)]
-        );
-        _context.ArtistTrack.AddRange([new ArtistTrack(artist.Id, trackA.Id), new ArtistTrack(artist.Id, trackB.Id)]
-        );
+        _context.AlbumTrack.AddRange([
+            new AlbumTrack(album.Id, trackA.Id),
+            new AlbumTrack(album.Id, trackB.Id),
+        ]);
+        _context.ArtistTrack.AddRange([
+            new ArtistTrack(artist.Id, trackA.Id),
+            new ArtistTrack(artist.Id, trackB.Id),
+        ]);
         _context.MusicGenreTrack.AddRange([new(genre.Id, trackA.Id), new(genre.Id, trackB.Id)]);
         _context.TrackUser.Add(new() { TrackId = trackB.Id, UserId = SeedConstants.UserId });
         _context.SaveChanges();
@@ -1600,10 +1646,14 @@ public class MusicRepositoryPlaylistPlaybackTests : IDisposable
         _context.Tracks.AddRange([trackOnAlbumOne, trackOnAlbumTwo]);
         _context.SaveChanges();
 
-        _context.AlbumTrack.AddRange([new AlbumTrack(albumOne.Id, trackOnAlbumOne.Id), new AlbumTrack(albumTwo.Id, trackOnAlbumTwo.Id)]
-        );
-        _context.MusicGenreTrack.AddRange([new(genre.Id, trackOnAlbumOne.Id), new(genre.Id, trackOnAlbumTwo.Id)]
-        );
+        _context.AlbumTrack.AddRange([
+            new AlbumTrack(albumOne.Id, trackOnAlbumOne.Id),
+            new AlbumTrack(albumTwo.Id, trackOnAlbumTwo.Id),
+        ]);
+        _context.MusicGenreTrack.AddRange([
+            new(genre.Id, trackOnAlbumOne.Id),
+            new(genre.Id, trackOnAlbumTwo.Id),
+        ]);
         _context.SaveChanges();
 
         List<MusicGenreTrack> result = await _repository.GetGenreTracksAsync(

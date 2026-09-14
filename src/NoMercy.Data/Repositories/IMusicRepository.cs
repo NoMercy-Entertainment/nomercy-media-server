@@ -35,6 +35,8 @@ public interface IMusicRepository
 
     Task<Track?> GetTrackAsync(Guid id, CancellationToken ct = default);
 
+    Task<bool> IsTrackFavoriteAsync(Guid trackId, Guid userId, CancellationToken ct = default);
+
     Task<List<TrackUser>> GetTracks(Guid userId, CancellationToken ct = default);
 
     Task LikeTrackAsync(Guid userId, Track track, bool liked, CancellationToken ct = default);

@@ -24,10 +24,8 @@ public class VideoPlaylistManager
     private readonly ITvShowRepository _tvShowRepository;
     private readonly ICollectionRepository _collectionRepository;
     private readonly ISpecialRepository _specialRepository;
-    private readonly MediaContext _mediaContext;
 
     public VideoPlaylistManager(
-        MediaContext mediaContext,
         IMovieRepository movieRepository,
         ICollectionRepository collectionRepository,
         ISpecialRepository specialRepository,
@@ -38,7 +36,6 @@ public class VideoPlaylistManager
         _tvShowRepository = tvShowRepository;
         _collectionRepository = collectionRepository;
         _specialRepository = specialRepository;
-        _mediaContext = mediaContext;
     }
 
     public async Task<(

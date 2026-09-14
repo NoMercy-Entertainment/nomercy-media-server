@@ -9,7 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using Microsoft.EntityFrameworkCore;
 using NoMercy.Api.DTOs.Music;
 using NoMercy.Data.Repositories;
 using NoMercy.Database;
@@ -21,12 +20,10 @@ namespace NoMercy.Api.Services.Music;
 public class MusicPlaylistManager
 {
     private readonly IMusicRepository _musicRepository;
-    private readonly MediaContext _mediaContext;
 
-    public MusicPlaylistManager(IMusicRepository musicService, MediaContext mediaContext)
+    public MusicPlaylistManager(IMusicRepository musicService)
     {
         _musicRepository = musicService;
-        _mediaContext = mediaContext;
     }
 
     public async Task<(PlaylistTrackDto item, List<PlaylistTrackDto> playlist)> GetPlaylist(
@@ -62,9 +59,7 @@ public class MusicPlaylistManager
             throw new("Track not found");
 
         // Load TrackUser data for favorite status
-        bool isFavorite = await _mediaContext.TrackUser.AnyAsync(tu =>
-            tu.TrackId == trackId && tu.UserId == userId
-        );
+        bool isFavorite = await _musicRepository.IsTrackFavoriteAsync(trackId, userId);
 
         if (isFavorite && !track.TrackUser.Any(tu => tu.UserId == userId))
         {
