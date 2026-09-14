@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Api.DTOs.Intake;
+using NoMercy.Data.Repositories;
 using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.Events;
@@ -46,7 +47,7 @@ namespace NoMercy.Api.Controllers.V1.Intake;
 [Route("api/v{version:apiVersion}/intake/webhook")]
 public class IntakeWebhookController(
     IIntakeSettings intakeSettings,
-    IDbContextFactory<MediaContext> contextFactory,
+    ILibraryRepository libraryRepository,
     IEventBus eventBus
 ) : BaseController
 {
@@ -88,20 +89,7 @@ public class IntakeWebhookController(
                 "path is required and must resolve to a location inside the configured drop folder."
             );
 
-        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
-
-        List<Library> inboxLibraries = await context
-            .Libraries.AsNoTracking()
-            .Include(library => library.FolderLibraries)
-                .ThenInclude(folderLibrary => folderLibrary.Folder)
-            .Where(library => library.Type == MediaTypes.InboxMediaType)
-            .ToListAsync(ct);
-
-        FolderLibrary? ownedFolder = inboxLibraries
-            .SelectMany(library => library.FolderLibraries)
-            .FirstOrDefault(folderLibrary =>
-                FolderOwnsDropFolder(folderLibrary.Folder.Path, dropFolder)
-            );
+        FolderLibrary? ownedFolder = await libraryRepository.FindInboxFolderAsync(dropFolder, ct);
 
         if (ownedFolder is null)
             return ConflictResponse(
@@ -131,15 +119,4 @@ public class IntakeWebhookController(
         return fullCandidate.Equals(fullRoot, StringComparison.OrdinalIgnoreCase)
             || fullCandidate.StartsWith(rootWithSeparator, StringComparison.OrdinalIgnoreCase);
     }
-
-    private static bool FolderOwnsDropFolder(string folderPath, string dropFolder)
-    {
-        string normalizedFolder = NormalizeForComparison(folderPath);
-        string normalizedDrop = NormalizeForComparison(dropFolder);
-
-        return normalizedDrop.Equals(normalizedFolder, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static string NormalizeForComparison(string path) =>
-        path.Replace('\\', '/').TrimEnd('/');
 }

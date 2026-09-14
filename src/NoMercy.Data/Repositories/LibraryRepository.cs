@@ -1419,6 +1419,28 @@ public class LibraryRepository(IDbContextFactory<MediaContext> contextFactory) :
         }
     }
 
+    public async Task<FolderLibrary?> FindInboxFolderAsync(
+        string path,
+        CancellationToken ct = default
+    )
+    {
+        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+
+        List<FolderLibrary> inboxFolders = await context
+            .FolderLibrary.AsNoTracking()
+            .Include(folderLibrary => folderLibrary.Folder)
+            .Where(folderLibrary => folderLibrary.Library.Type == MediaTypes.InboxMediaType)
+            .ToListAsync(ct);
+
+        string wanted = NormalizeFolderPath(path);
+        return inboxFolders.FirstOrDefault(folderLibrary =>
+            NormalizeFolderPath(folderLibrary.Folder.Path)
+                .Equals(wanted, StringComparison.OrdinalIgnoreCase)
+        );
+    }
+
+    private static string NormalizeFolderPath(string path) => path.Replace('\\', '/').TrimEnd('/');
+
     public async Task<List<ImportFailure>> GetImportFailuresAsync(
         Ulid libraryId,
         bool? resolved,

@@ -206,6 +206,12 @@ public interface ILibraryRepository
         List<Folder> folders
     );
 
+    /// <summary>
+    /// The inbox library folder at <paramref name="path"/>, compared without trailing
+    /// slashes, separator style or case; null when no inbox library owns that folder.
+    /// </summary>
+    Task<FolderLibrary?> FindInboxFolderAsync(string path, CancellationToken ct = default);
+
     /// <summary>A library's import failures, newest attempt first, optionally by resolved state.</summary>
     Task<List<ImportFailure>> GetImportFailuresAsync(
         Ulid libraryId,

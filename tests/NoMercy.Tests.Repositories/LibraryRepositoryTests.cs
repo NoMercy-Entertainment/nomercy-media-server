@@ -18,6 +18,7 @@ using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.Storage;
+using NoMercy.NmSystem.Domain;
 using NoMercy.Tests.Repositories.Infrastructure;
 
 namespace NoMercy.Tests.Repositories;
@@ -35,6 +36,39 @@ public class LibraryRepositoryTests : IDisposable
             TestMediaContextFactory.CreateSeededFactory();
         _context = factory.CreateDbContext();
         _repository = new(factory);
+    }
+
+    [Fact]
+    public async Task FindInboxFolderAsync_MatchesOnlyAnInboxFolder_IgnoringSlashesAndCase()
+    {
+        Ulid inboxLibraryId = Ulid.NewUlid();
+        Ulid inboxFolderId = Ulid.NewUlid();
+        _context.Libraries.Add(
+            new Library
+            {
+                Id = inboxLibraryId,
+                Title = "Inbox",
+                Type = MediaTypes.InboxMediaType,
+            }
+        );
+        _context.Folders.Add(
+            new Folder
+            {
+                Id = inboxFolderId,
+                Path = "D:\\Drop\\",
+                DriverId = Driver.SystemLocalDriverId,
+            }
+        );
+        _context.FolderLibrary.Add(new(inboxFolderId, inboxLibraryId));
+        await _context.SaveChangesAsync();
+
+        FolderLibrary? inbox = await _repository.FindInboxFolderAsync("d:/drop");
+        FolderLibrary? movies = await _repository.FindInboxFolderAsync("/media/movies");
+
+        Assert.NotNull(inbox);
+        Assert.Equal(inboxLibraryId, inbox.LibraryId);
+        Assert.Equal(inboxFolderId, inbox.Folder.Id);
+        Assert.Null(movies);
     }
 
     [Fact]
