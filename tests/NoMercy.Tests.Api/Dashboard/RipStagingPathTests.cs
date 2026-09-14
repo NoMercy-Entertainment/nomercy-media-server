@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.Api.Controllers.V1.Dashboard.Media;
+using NoMercy.OpticalMedia.Rip;
 using Xunit;
 
 namespace NoMercy.Tests.Api.Dashboard;

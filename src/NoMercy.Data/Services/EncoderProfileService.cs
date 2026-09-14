@@ -19,7 +19,7 @@ using NoMercy.Database.Models.Media;
 using NoMercy.Encoder.Errors;
 using NoMercy.Encoder.Profiles;
 
-namespace NoMercy.Api.Services;
+namespace NoMercy.Data.Services;
 
 /// <summary>
 /// Business logic extracted from <see cref="NoMercy.Api.Controllers.V1.Encoder.EncoderProfilesController"/>.

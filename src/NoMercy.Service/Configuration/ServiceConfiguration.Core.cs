@@ -18,6 +18,7 @@ using NoMercy.Api.Security;
 using NoMercy.Api.Services;
 using NoMercy.Api.WebSockets;
 using NoMercy.Authorization;
+using NoMercy.Authorization.LiveIngest;
 using NoMercy.Data.Activity;
 using NoMercy.Data.Plugins;
 using NoMercy.Data.Repositories;

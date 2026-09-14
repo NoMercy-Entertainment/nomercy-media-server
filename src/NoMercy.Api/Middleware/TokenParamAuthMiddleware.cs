@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using NoMercy.Api.Services;
 using NoMercy.Authorization;
+using NoMercy.Authorization.LiveIngest;
 using NoMercy.Database.Models.Users;
 using NoMercy.NmSystem.Configuration;
 

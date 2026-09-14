@@ -12,7 +12,8 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 
-namespace NoMercy.Api.Services;
+using NoMercy.Authorization.LiveIngest;
+namespace NoMercy.Authorization.LiveIngest;
 
 /// <inheritdoc />
 public class LiveIngestKeyStore : ILiveIngestKeyStore

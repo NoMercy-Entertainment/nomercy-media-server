@@ -20,6 +20,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Api.Middleware;
 using NoMercy.Api.Services;
 using NoMercy.Authorization;
+using NoMercy.Authorization.LiveIngest;
 using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.Storage;

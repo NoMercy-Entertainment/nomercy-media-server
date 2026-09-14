@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using System.Reflection;
+using NoMercy.Data.Services;
 using NoMercy.Encoder.Codecs;
 using NoMercy.Encoder.Errors;
 using NoMercy.Encoder.Profiles;

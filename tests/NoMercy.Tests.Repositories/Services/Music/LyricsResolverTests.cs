@@ -9,16 +9,17 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
-using NoMercy.Api.Services.Music;
 using NoMercy.Data.Repositories;
+using NoMercy.Data.Services.Music;
 using NoMercy.Database.Models.Music;
 using NoMercy.Providers.Abstractions;
 using NoMercy.Providers.Lyrics;
 using Xunit;
 
-namespace NoMercy.Tests.Api.Services.Music;
+namespace NoMercy.Tests.Repositories.Services.Music;
 
 /// <summary>
 /// Covers the negative-cache classification added alongside the lyrics resolve

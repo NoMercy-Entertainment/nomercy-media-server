@@ -11,6 +11,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NoMercy.Api.Controllers.V1.Streaming.Dtos;
+using NoMercy.Authorization.LiveIngest;
 using NoMercy.Database;
 using NoMercy.Database.Models.Media;
 using NoMercy.Encoder.Analysis;

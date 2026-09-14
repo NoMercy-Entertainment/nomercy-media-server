@@ -18,6 +18,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NoMercy.Api.Middleware;
 using NoMercy.Api.Services;
+using NoMercy.Authorization.LiveIngest;
 using NoMercy.NmSystem.Configuration;
 using NoMercy.Tests.Api.Infrastructure;
 using Xunit;

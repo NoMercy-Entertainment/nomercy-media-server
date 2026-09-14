@@ -18,6 +18,7 @@ using NoMercy.Api.DTOs.Music;
 using NoMercy.Api.Services.Music;
 using NoMercy.Authorization;
 using NoMercy.Data.Repositories;
+using NoMercy.Data.Services.Music;
 using NoMercy.Database.Models.Music;
 using NoMercy.Events;
 using NoMercy.Events.Library;

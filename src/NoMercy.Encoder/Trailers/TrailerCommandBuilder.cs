@@ -12,7 +12,7 @@
 using System.Text;
 using System.Text.RegularExpressions;
 
-namespace NoMercy.Api.Controllers.V1.Media;
+namespace NoMercy.Encoder.Trailers;
 
 /// <summary>
 /// Builds the yt-dlp | ffmpeg shell command used to fetch and remux a trailer.

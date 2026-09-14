@@ -13,7 +13,7 @@ using Microsoft.Extensions.Logging;
 using NoMercy.Networking.Cast;
 using NoMercy.Setup.Cast;
 
-namespace NoMercy.Api.Services.Music;
+namespace NoMercy.Setup.Cast;
 
 /// <summary>
 /// Owns MusicHub.ChangeDeviceCommand's server-side Cast panel-wake LAUNCH

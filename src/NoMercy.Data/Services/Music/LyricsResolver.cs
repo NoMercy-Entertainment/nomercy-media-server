@@ -16,7 +16,7 @@ using NoMercy.Data.Repositories;
 using NoMercy.Database.Models.Music;
 using NoMercy.Providers.Lyrics;
 
-namespace NoMercy.Api.Services.Music;
+namespace NoMercy.Data.Services.Music;
 
 /// <summary>
 /// Coalesces concurrent lyric fetches per track. When several devices request

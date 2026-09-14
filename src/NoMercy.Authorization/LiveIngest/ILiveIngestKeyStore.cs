@@ -9,7 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-namespace NoMercy.Api.Services;
+namespace NoMercy.Authorization.LiveIngest;
 
 /// <summary>
 /// Mints and validates single-use ingest keys for the transcoder's loopback

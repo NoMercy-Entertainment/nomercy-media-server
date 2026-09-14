@@ -9,7 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-namespace NoMercy.Api.Controllers.V1.Dashboard.Media;
+namespace NoMercy.OpticalMedia.Rip;
 
 /// <summary>
 /// Confines a client-supplied rip output path to the server's own rip staging
