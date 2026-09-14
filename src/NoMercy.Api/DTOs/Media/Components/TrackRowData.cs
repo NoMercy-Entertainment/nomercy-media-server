@@ -181,33 +181,3 @@ public record TrackRowData
         });
     }
 }
-
-public record LyricLine
-{
-    [JsonProperty("time")]
-    public double Time { get; set; }
-
-    [JsonProperty("text")]
-    public string Text { get; set; } = null!;
-
-    [JsonProperty("link")]
-    public Uri Link { get; set; } = null!;
-
-    [JsonProperty("type")]
-    public string Type { get; set; } = null!;
-}
-
-public record TrackArtist
-{
-    [JsonProperty("id")]
-    public string Id { get; set; } = null!;
-
-    [JsonProperty("name")]
-    public string Name { get; set; } = null!;
-
-    [JsonProperty("link")]
-    public Uri Link { get; set; } = null!;
-
-    [JsonProperty("type")]
-    public string Type { get; set; } = null!;
-}

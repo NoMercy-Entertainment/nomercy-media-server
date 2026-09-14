@@ -24,15 +24,6 @@ using NoMercy.Setup.Cast;
 namespace NoMercy.Api.Services.Cast;
 
 /// <summary>
-/// Wakes a TV from the server, so no client needs a Cast SDK of its own.
-/// </summary>
-public interface IServerCastWaker
-{
-    /// <inheritdoc cref="ServerCastWaker.WakeAsync" />
-    Task<bool> WakeAsync(Device tv, Guid userId, CastIntent intent);
-}
-
-/// <summary>
 /// Wakes a TV the server cannot reach over its own bus, from the server.
 ///
 /// Casting used to be every client's own problem: the hubs answered

@@ -90,18 +90,3 @@ public class EpisodeDto
                 : null;
     }
 }
-
-public class MissingEpisodeDto(Episode episode) : EpisodeDto(episode)
-{
-    private readonly Episode _episode = episode;
-
-    [JsonProperty("link")]
-    public new Uri Link =>
-        new(
-            $"https://www.themoviedb.org/tv/{_episode.TvId}/season/{_episode.SeasonNumber}/episode/{_episode.EpisodeNumber}",
-            UriKind.Absolute
-        );
-
-    [JsonProperty("available")]
-    public new bool Available => true;
-}

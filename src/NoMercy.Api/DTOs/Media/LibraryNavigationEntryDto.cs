@@ -55,10 +55,3 @@ public record LibraryNavigationEntryDto
     [JsonProperty("route_type")]
     public string RouteType { get; set; } = string.Empty;
 }
-
-public static class LibraryNavigationOrigin
-{
-    public const string Library = "library";
-    public const string Page = "page";
-    public const string Plugin = "plugin";
-}

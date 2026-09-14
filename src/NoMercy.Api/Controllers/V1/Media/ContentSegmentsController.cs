@@ -152,20 +152,3 @@ public class ContentSegmentsController(IContentSegmentRepository repository) : B
         return deleted ? NoContent() : NotFoundResponse("Content segment not found");
     }
 }
-
-public record CreateContentSegmentRequest(
-    [property: JsonProperty("segment_type")] ContentSegmentType SegmentType,
-    [property: JsonProperty("start_seconds")] double StartSeconds,
-    [property: JsonProperty("end_seconds")] double EndSeconds,
-    [property: JsonProperty("episode_id")] int? EpisodeId = null,
-    [property: JsonProperty("movie_id")] int? MovieId = null,
-    [property: JsonProperty("source")] string? Source = null,
-    [property: JsonProperty("confidence")] double? Confidence = null
-);
-
-public record UpdateContentSegmentRequest(
-    [property: JsonProperty("segment_type")] ContentSegmentType? SegmentType = null,
-    [property: JsonProperty("start_seconds")] double? StartSeconds = null,
-    [property: JsonProperty("end_seconds")] double? EndSeconds = null,
-    [property: JsonProperty("confidence")] double? Confidence = null
-);

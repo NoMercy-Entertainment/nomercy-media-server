@@ -34,15 +34,3 @@ public record EmptyStateData
     [JsonProperty("auto_refresh", NullValueHandling = NullValueHandling.Ignore)]
     public bool? AutoRefresh { get; set; }
 }
-
-/// <summary>
-/// Optional call-to-action attached to an NMEmptyState component.
-/// </summary>
-public record EmptyStateActionData
-{
-    [JsonProperty("label")]
-    public string Label { get; set; } = string.Empty;
-
-    [JsonProperty("route")]
-    public string Route { get; set; } = string.Empty;
-}

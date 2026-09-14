@@ -345,24 +345,3 @@ public class PlaylistsController : BaseController
         );
     }
 }
-
-public class CreatePlaylistRequestDto
-{
-    [JsonProperty("name")]
-    public string Name { get; set; } = null!;
-
-    [JsonProperty("description")]
-    public string? Description { get; set; }
-
-    [JsonProperty("cover")]
-    public string? Cover { get; set; }
-
-    [JsonProperty("tracks")]
-    public List<Guid> Tracks { get; set; } = [];
-}
-
-public class CreatePlaylistTrackRequestDto
-{
-    [JsonProperty("id")]
-    public Guid Id { get; set; }
-}

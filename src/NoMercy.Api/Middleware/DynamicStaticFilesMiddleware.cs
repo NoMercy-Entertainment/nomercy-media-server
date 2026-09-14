@@ -22,13 +22,6 @@ using NoMercy.Storage;
 
 namespace NoMercy.Api.Middleware;
 
-/// <summary>
-/// Folder routing handle: maps a folder ULID to the driver instance + sub-path
-/// the file lives under. Resolved per-request through IStorageFactory so NFS,
-/// S3, WebDAV and local backends all stream through the same path.
-/// </summary>
-public readonly record struct FolderRef(Ulid DriverId, string SubPath);
-
 public class DynamicStaticFilesMiddleware(
     RequestDelegate next,
     ILogger<DynamicStaticFilesMiddleware> logger

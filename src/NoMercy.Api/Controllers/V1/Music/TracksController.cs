@@ -281,30 +281,3 @@ public class TracksController : BaseController
         return Ok(new StatusResponseDto<string> { Status = "ok", Message = "Playback recorded" });
     }
 }
-
-public record LyricsResponseDto
-{
-    [JsonProperty("data")]
-    public Lyric[] Data { get; set; } = [];
-
-    [JsonProperty("offset")]
-    public int? Offset { get; set; }
-}
-
-public record PatchLyricsOffsetDto
-{
-    [JsonProperty("offset")]
-    public int? Offset { get; set; }
-}
-
-public record LyricsOffsetResponseDto
-{
-    [JsonProperty("status")]
-    public string Status { get; set; } = string.Empty;
-
-    [JsonProperty("message")]
-    public string Message { get; set; } = string.Empty;
-
-    [JsonProperty("offset")]
-    public int? Offset { get; set; }
-}

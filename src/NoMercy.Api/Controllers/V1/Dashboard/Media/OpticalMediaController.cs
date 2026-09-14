@@ -997,29 +997,3 @@ public class OpticalMediaController(
         }
     }
 }
-
-/// <summary>
-/// Request body for <c>POST /optical/{drivePath}/confirm</c>.
-/// </summary>
-/// <summary>
-/// Request body for <c>POST /optical/{drivePath}/play/{playlistId}</c>. Reuses
-/// the rip endpoint's <see cref="AudioTrackSelection"/> shape so the dashboard
-/// client sends the same <c>{ StreamIndex, Include }</c> pairs it already
-/// builds for <see cref="RipRequest.AudioTracks"/> — no parallel DTO. Omitted
-/// or empty keeps the pre-existing single-default-track behaviour.
-/// </summary>
-public record PlayMediaRequest(AudioTrackSelection[]? AudioTracks = null);
-
-public record DiscConfirmRequest(
-    string TmdbId,
-    /// <summary>"movie" or "tv"</summary>
-    string MediaType,
-    string RipOutputPath,
-    Ulid LibraryId,
-    Ulid FolderId,
-    string? Title = null,
-    int? Year = null,
-    string? PosterUrl = null,
-    int? SeasonNumber = null,
-    int? EpisodeNumber = null
-);

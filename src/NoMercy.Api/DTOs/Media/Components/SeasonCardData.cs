@@ -111,27 +111,3 @@ public record SeasonCardData
         Link = dto.Link;
     }
 }
-
-/// <summary>
-/// Data for NMSeasonTitle component - displays a season header.
-/// </summary>
-public record SeasonTitleData
-{
-    [JsonProperty("seasonNumber")]
-    public int SeasonNumber { get; set; }
-
-    [JsonProperty("title")]
-    public string Title { get; set; } = string.Empty;
-
-    [JsonProperty("episodeCount")]
-    public int EpisodeCount { get; set; }
-
-    public SeasonTitleData() { }
-
-    public SeasonTitleData(int seasonNumber, int episodeCount)
-    {
-        SeasonNumber = seasonNumber;
-        Title = $"Season {seasonNumber}";
-        EpisodeCount = episodeCount;
-    }
-}

@@ -10,24 +10,6 @@
 // -----------------------------------------------------------------------------
 namespace NoMercy.Api.Services;
 
-/// <summary>
-/// Transport-neutral outcome of a live-transcode operation. Lets
-/// <see cref="LiveTranscodeService"/> own the domain decision (which kind of
-/// failure, which message) while the controller stays responsible for mapping
-/// each kind onto the matching HTTP response, preserving the existing wire
-/// behaviour exactly.
-/// </summary>
-public enum LiveResultKind
-{
-    Ok,
-    BadRequest,
-    NotFound,
-    Gone,
-    ServiceUnavailable,
-    InternalError,
-    EncoderError,
-}
-
 /// <inheritdoc cref="LiveResultKind" />
 public sealed record LiveResult
 {

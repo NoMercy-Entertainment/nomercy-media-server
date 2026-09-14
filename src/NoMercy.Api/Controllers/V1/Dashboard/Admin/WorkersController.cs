@@ -281,32 +281,3 @@ public class WorkersController(
         return NoContent();
     }
 }
-
-public record RegisterWorkerRequest(
-    [property: JsonProperty("worker_id")] string WorkerId,
-    [property: JsonProperty("base_url")] string BaseUrl,
-    [property: JsonProperty("cpu_cores")] int CpuCores,
-    [property: JsonProperty("available_cpu_threads")] int AvailableCpuThreads,
-    [property: JsonProperty("available_gpu_slots")] int AvailableGpuSlots,
-    [property: JsonProperty("gpus")] List<GpuDevice>? Gpus = null
-);
-
-public record HeartbeatRequest(
-    [property: JsonProperty("available_cpu_threads")] int AvailableCpuThreads,
-    [property: JsonProperty("available_gpu_slots")] int AvailableGpuSlots,
-    [property: JsonProperty("gpu_utilization")] double? GpuUtilization = null
-);
-
-public record ProgressUpdateRequest(
-    [property: JsonProperty("percent_complete")] double PercentComplete,
-    [property: JsonProperty("elapsed_seconds")] double ElapsedSeconds,
-    [property: JsonProperty("current_time_seconds")] double CurrentTimeSeconds,
-    [property: JsonProperty("duration_seconds")] double DurationSeconds,
-    [property: JsonProperty("current_fps")] double? CurrentFps = null,
-    [property: JsonProperty("current_speed")] double? CurrentSpeed = null,
-    [property: JsonProperty("current_stage")] string? CurrentStage = null,
-    [property: JsonProperty("current_operation")] string? CurrentOperation = null,
-    [property: JsonProperty("estimated_remaining_seconds")]
-        double? EstimatedRemainingSeconds = null,
-    [property: JsonProperty("bitrate_kbps")] int? BitrateKbps = null
-);

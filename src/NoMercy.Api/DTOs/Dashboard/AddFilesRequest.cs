@@ -27,12 +27,3 @@ public record AddFilesRequest
     [JsonProperty("files")]
     public AddFile[] Files { get; set; } = [];
 }
-
-public record AddFile
-{
-    [JsonProperty("path")]
-    public string Path { get; set; } = string.Empty;
-
-    [JsonProperty("id")]
-    public string Id { get; set; } = null!;
-}

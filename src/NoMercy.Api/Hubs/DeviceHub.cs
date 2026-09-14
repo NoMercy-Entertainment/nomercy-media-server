@@ -238,10 +238,3 @@ public sealed class DeviceHub : ConnectionHub
         await Clients.User(user.Id.ToString()).SendAsync("DeviceListChanged", list);
     }
 }
-
-public sealed record WakeResult([property: JsonProperty("status")] string Status);
-
-public sealed record DeviceDropNoticeDto(
-    [property: JsonProperty("device_name")] string DeviceName,
-    [property: JsonProperty("reason")] string Reason
-);

@@ -150,17 +150,3 @@ public class DiscOnboardingController(
             result_id = session.ResultId,
         };
 }
-
-public record DiscOnboardingConfirmRequest(
-    string Source,
-    string StableId,
-    string Title,
-    string MediaType,
-    int[] SelectedTitleIndices,
-    Ulid LibraryId,
-    Ulid FolderId,
-    int? Year = null,
-    string? PosterUrl = null,
-    int? SeasonNumber = null,
-    int? EpisodeNumber = null
-);

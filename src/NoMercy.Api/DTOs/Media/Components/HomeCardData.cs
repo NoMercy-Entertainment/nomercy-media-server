@@ -187,18 +187,3 @@ public record HomeCardData
         MediaType = cardDto.Type;
     }
 }
-
-public record VideoInfo
-{
-    [JsonProperty("id")]
-    public string? Id { get; set; }
-
-    [JsonProperty("name")]
-    public string? Name { get; set; }
-
-    [JsonProperty("site")]
-    public string? Site { get; set; }
-
-    [JsonProperty("type")]
-    public string? Type { get; set; }
-}

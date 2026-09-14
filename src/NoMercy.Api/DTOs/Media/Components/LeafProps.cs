@@ -47,12 +47,3 @@ public record LeafProps<TData> : ILeafProps<TData>
     [JsonProperty("properties", NullValueHandling = NullValueHandling.Ignore)]
     public Dictionary<string, dynamic>? Properties { get; set; }
 }
-
-/// <summary>
-/// Props for NMTrackRow component - single track in a list.
-/// </summary>
-public record TrackRowProps : LeafProps<TrackRowData>
-{
-    [JsonProperty("displayList", NullValueHandling = NullValueHandling.Ignore)]
-    public IEnumerable<TrackRowData>? DisplayList { get; set; }
-}

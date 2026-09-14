@@ -41,7 +41,6 @@ public class EncoderTrustedPublishersController(MediaContext mediaContext) : Bas
     [HttpGet]
     public async Task<IActionResult> Index()
     {
-
         IReadOnlyList<TrustedPublisherKey> keys = await mediaContext
             .TrustedPublisherKeys.AsNoTracking()
             .OrderBy(k => k.AddedAt)
@@ -58,7 +57,6 @@ public class EncoderTrustedPublishersController(MediaContext mediaContext) : Bas
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] AddTrustedPublisherRequest request)
     {
-
         // --- Validate base64 decodes to exactly 32 bytes (Ed25519 key length) ---
         byte[] publicKeyBytes;
         try
@@ -138,7 +136,6 @@ public class EncoderTrustedPublishersController(MediaContext mediaContext) : Bas
     [HttpDelete("{fingerprint}")]
     public async Task<IActionResult> Delete(string fingerprint)
     {
-
         TrustedPublisherKey? existing = await mediaContext.TrustedPublisherKeys.FirstOrDefaultAsync(
             k => k.Fingerprint == fingerprint
         );
@@ -152,8 +149,3 @@ public class EncoderTrustedPublishersController(MediaContext mediaContext) : Bas
         return NoContent();
     }
 }
-
-public record AddTrustedPublisherRequest(
-    [property: JsonProperty("label")] string Label,
-    [property: JsonProperty("public_key_base64")] string PublicKeyBase64
-);

@@ -107,27 +107,3 @@ public class MediaFilesController(IFileRepository fileRepository) : BaseControll
         };
     }
 }
-
-public class VideoFileSearchDto
-{
-    [JsonProperty("id")]
-    public string Id { get; set; } = string.Empty;
-
-    [JsonProperty("type")]
-    public string Type { get; set; } = string.Empty;
-
-    [JsonProperty("label")]
-    public string Label { get; set; } = string.Empty;
-
-    [JsonProperty("parent_label")]
-    public string ParentLabel { get; set; } = string.Empty;
-
-    [JsonProperty("filename")]
-    public string Filename { get; set; } = string.Empty;
-
-    [JsonProperty("quality")]
-    public string Quality { get; set; } = string.Empty;
-
-    [JsonProperty("duration")]
-    public string? Duration { get; set; }
-}
