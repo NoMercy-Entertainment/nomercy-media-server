@@ -24,17 +24,9 @@ namespace NoMercy.Api.Services;
 public class SetupService
 {
     private readonly MediaContext _mediaContext;
-    private readonly ILibraryRepository _libraryRepository;
-    private readonly IHomeRepository _homeRepository;
 
-    public SetupService(
-        IHomeRepository homeRepository,
-        ILibraryRepository libraryRepository,
-        MediaContext mediaContext
-    )
+    public SetupService(MediaContext mediaContext)
     {
-        _homeRepository = homeRepository;
-        _libraryRepository = libraryRepository;
         _mediaContext = mediaContext;
     }
 
@@ -61,50 +53,5 @@ public class SetupService
             .Playlists.AsNoTracking()
             .Where(playlist => playlist.UserId == userId)
             .ToListAsync();
-    }
-
-    public async Task<ScreensaverDto> GetSetupScreensaverContent(Guid userId)
-    {
-        HashSet<Image> data = await _homeRepository.GetScreensaverImagesAsync(userId);
-
-        // Logo lookups built once. The old per-backdrop FirstOrDefault over a lazy
-        // logo filter re-scanned every image for each backdrop (O(backdrops x images)),
-        // seconds of CPU on a large library. Index the logos by title id instead.
-        Dictionary<int, Image> logoByTv = data.Where(image =>
-                image is { Type: "logo", TvId: not null }
-            )
-            .GroupBy(image => image.TvId!.Value)
-            .ToDictionary(group => group.Key, group => group.First());
-        Dictionary<int, Image> logoByMovie = data.Where(image =>
-                image is { Type: "logo", MovieId: not null }
-            )
-            .GroupBy(image => image.MovieId!.Value)
-            .ToDictionary(group => group.Key, group => group.First());
-
-        IEnumerable<ScreensaverDataDto> tvCollection = data.Where(image =>
-                image is { TvId: not null, Type: "backdrop" }
-            )
-            .DistinctBy(image => image.TvId)
-            .Select(image => new ScreensaverDataDto(
-                image,
-                logoByTv.GetValueOrDefault(image.TvId!.Value)
-            ));
-
-        IEnumerable<ScreensaverDataDto> movieCollection = data.Where(image =>
-                image is { MovieId: not null, Type: "backdrop" }
-            )
-            .DistinctBy(image => image.MovieId)
-            .Select(image => new ScreensaverDataDto(
-                image,
-                logoByMovie.GetValueOrDefault(image.MovieId!.Value)
-            ));
-
-        return new()
-        {
-            Data = tvCollection
-                .Concat(movieCollection)
-                .Where(image => image.Meta?.Logo != null)
-                .Randomize(),
-        };
     }
 }

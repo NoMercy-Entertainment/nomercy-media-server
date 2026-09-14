@@ -32,7 +32,6 @@ public class MusicPlaybackService
     private readonly IEventBus? _eventBus;
     private readonly MusicActiveDeviceRegistry _activeDeviceRegistry;
     private readonly ILogger<MusicPlaybackService>? _logger;
-    private readonly string[] _repeatStates = ["off", "one", "all"];
     private static int PlayerStateEventId => Interlocked.Increment(ref field);
 
     public MusicPlaybackService(
