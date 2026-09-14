@@ -264,17 +264,17 @@ public class LiveTranscodeService(
         // them, otherwise a per-language live audio child for a raw source. Either
         // way the runtime carries the list and the client loads the master; a source
         // with no audio at all loads the plain (video-only) media playlist.
-        List<LiveAudioRendition> masterRenditions =
-            useFileRenditions ? fileRenditions
-            : rawMultiAudio
-                ? await StartAudioChildrenAsync(
-                    session.SessionId,
-                    liveRequest,
-                    mediaInfo.AudioStreams,
-                    audioStreamIndex,
-                    ct
-                )
-            : [];
+        List<LiveAudioRendition> masterRenditions = [];
+        if (useFileRenditions)
+            masterRenditions = fileRenditions;
+        else if (rawMultiAudio)
+            masterRenditions = await StartAudioChildrenAsync(
+                session.SessionId,
+                liveRequest,
+                mediaInfo.AudioStreams,
+                audioStreamIndex,
+                ct
+            );
         bool useMaster = masterRenditions.Count > 0;
 
         if (useMaster)

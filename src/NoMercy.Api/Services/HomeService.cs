@@ -356,15 +356,14 @@ public class HomeService(IHomeRepository homeRepository, ILibraryRepository libr
         bool hasContinueWatching = continueWatching.Count > 0;
         string? continueId = hasContinueWatching ? "continue" : null;
 
-        string? lastCarouselId =
-            genreCarousels.Count > 0 ? $"genre_{genreCarousels[^1].Id}"
-            : libraryCarousels.Count > 0 ? $"library_{libraryCarousels[^1].Id}"
-            : null;
-
-        string? afterContinueId =
-            libraryCarousels.Count > 0 ? $"library_{libraryCarousels[0].Id}"
-            : genreCarousels.Count > 0 ? $"genre_{genreCarousels[0].Id}"
-            : null;
+        List<string> carouselIds =
+        [
+            .. libraryCarousels.Select(library => $"library_{library.Id}"),
+            .. genreCarousels.Select(genre => $"genre_{genre.Id}"),
+        ];
+        (string? lastCarouselId, string? afterContinueId) = HomeCarouselNavigation.ForContinue(
+            carouselIds
+        );
 
         // Continue watching carousel (only when there are items to show)
         if (hasContinueWatching)
@@ -386,13 +385,11 @@ public class HomeService(IHomeRepository homeRepository, ILibraryRepository libr
         {
             GenreCarouselData lib = libraryCarousels[i];
 
-            string? prevId = i == 0 ? continueId : $"library_{libraryCarousels[i - 1].Id}";
-            string? nextId =
-                i == libraryCarousels.Count - 1
-                    ? genreCarousels.Count > 0
-                        ? $"genre_{genreCarousels[0].Id}"
-                        : continueId
-                    : $"library_{libraryCarousels[i + 1].Id}";
+            (string? prevId, string? nextId) = HomeCarouselNavigation.ForCarousel(
+                carouselIds,
+                i,
+                continueId
+            );
 
             components.Add(
                 Component
@@ -411,14 +408,11 @@ public class HomeService(IHomeRepository homeRepository, ILibraryRepository libr
         {
             GenreCarouselData genre = genreCarousels[i];
 
-            string? prevId =
-                i == 0
-                    ? libraryCarousels.Count > 0
-                        ? $"library_{libraryCarousels[^1].Id}"
-                        : continueId
-                    : $"genre_{genreCarousels[i - 1].Id}";
-            string? nextId =
-                i == genreCarousels.Count - 1 ? continueId : $"genre_{genreCarousels[i + 1].Id}";
+            (string? prevId, string? nextId) = HomeCarouselNavigation.ForCarousel(
+                carouselIds,
+                libraryCarousels.Count + i,
+                continueId
+            );
 
             components.Add(
                 Component
