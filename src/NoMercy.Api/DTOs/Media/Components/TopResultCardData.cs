@@ -50,6 +50,30 @@ public record TopResultCardData
 
     public TopResultCardData() { }
 
+    /// <summary>The top search result: the first track, else artist, else album.</summary>
+    public static TopResultCardData? FirstOf(Track? track, Artist? artist, Album? album)
+    {
+        if (track is not null)
+            return new(track);
+        if (artist is not null)
+            return new(artist);
+        return album is null ? null : new(album);
+    }
+
+    /// <summary>The top search result: the first track, else artist, else album.</summary>
+    public static TopResultCardData? FirstOf(
+        SearchTrackCardDto? track,
+        ArtistCardDto? artist,
+        AlbumCardDto? album
+    )
+    {
+        if (track is not null)
+            return new(track);
+        if (artist is not null)
+            return new(artist);
+        return album is null ? null : new(album);
+    }
+
     public TopResultCardData(Artist artist)
     {
         Id = artist.Id.ToString();

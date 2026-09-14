@@ -59,11 +59,7 @@ public class SearchController : BaseController
         Artist? topArtist = artists.FirstOrDefault();
         Album? topAlbum = albums.FirstOrDefault();
 
-        TopResultCardData? topResultData =
-            topTrack != null ? new(topTrack)
-            : topArtist != null ? new(topArtist)
-            : topAlbum != null ? new TopResultCardData(topAlbum)
-            : null;
+        TopResultCardData? topResultData = TopResultCardData.FirstOf(topTrack, topArtist, topAlbum);
 
         List<TrackRowData> songResults =
         [
@@ -198,18 +194,10 @@ public class SearchController : BaseController
     }
 
     [HttpGet("video/tv")]
-    public async Task<IActionResult> SearchTvVideo(
+    public Task<IActionResult> SearchTvVideo(
         [FromQuery] SearchQueryRequest request,
         CancellationToken ct = default
-    )
-    {
-        string country = Country();
-        string normalizedQuery = request.Query.NormalizeSearch();
-
-        return Ok(
-            ComponentResponse.From(await BuildVideoSearchGridAsync(normalizedQuery, country, ct))
-        );
-    }
+    ) => SearchVideo(request, ct);
 
     private async Task<(
         List<Artist> Artists,

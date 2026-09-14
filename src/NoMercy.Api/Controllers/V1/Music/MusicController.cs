@@ -384,11 +384,7 @@ public class MusicController : BaseController
         AlbumCardDto? topAlbum = albums.FirstOrDefault();
 
         // Build TopResultCardData from the first match
-        TopResultCardData? topResultData =
-            topTrack != null ? new(topTrack)
-            : topArtist != null ? new(topArtist)
-            : topAlbum != null ? new TopResultCardData(topAlbum)
-            : null;
+        TopResultCardData? topResultData = TopResultCardData.FirstOf(topTrack, topArtist, topAlbum);
 
         List<TrackRowData> songResults = tracks
             .Take(6)
@@ -397,48 +393,46 @@ public class MusicController : BaseController
 
         return Ok(
             ComponentResponse.From([
-                    Component
-                        .Container()
-                        .WithId("search-results")
-                        .WithItems([
-                                Component
-                                    .TopResultCard(topResultData!)
-                                    .WithId("top-result")
-                                    .WithTitle("Top Result".Localize())
-                                    .Build(),
-                                Component
-                                    .List()
-                                    .WithId("tracks")
-                                    .WithTitle("Tracks".Localize())
-                                    .WithItems(
-                                        songResults.Select(track =>
-                                            Component.TrackRow(track).WithDisplayList(songResults)
-                                        )
-                                    )
-                            ]
-                        )
-                        .Build(),
-                    Component
-                        .Carousel()
-                        .WithId("artists")
-                        .WithTitle("Artist".Localize())
-                        .WithItems(artists.Select(item => Component.MusicCard(new MusicCardData(item))))
-                        .Build(),
-                    Component
-                        .Carousel()
-                        .WithId("albums")
-                        .WithTitle("Albums".Localize())
-                        .WithItems(albums.Select(item => Component.MusicCard(new MusicCardData(item))))
-                        .Build(),
-                    Component
-                        .Carousel()
-                        .WithId("playlists")
-                        .WithTitle("Playlists".Localize())
-                        .WithItems(
-                            playlistCards.Select(item => Component.MusicCard(new MusicCardData(item)))
-                        )
-                ]
-            )
+                Component
+                    .Container()
+                    .WithId("search-results")
+                    .WithItems([
+                        Component
+                            .TopResultCard(topResultData!)
+                            .WithId("top-result")
+                            .WithTitle("Top Result".Localize())
+                            .Build(),
+                        Component
+                            .List()
+                            .WithId("tracks")
+                            .WithTitle("Tracks".Localize())
+                            .WithItems(
+                                songResults.Select(track =>
+                                    Component.TrackRow(track).WithDisplayList(songResults)
+                                )
+                            ),
+                    ])
+                    .Build(),
+                Component
+                    .Carousel()
+                    .WithId("artists")
+                    .WithTitle("Artist".Localize())
+                    .WithItems(artists.Select(item => Component.MusicCard(new MusicCardData(item))))
+                    .Build(),
+                Component
+                    .Carousel()
+                    .WithId("albums")
+                    .WithTitle("Albums".Localize())
+                    .WithItems(albums.Select(item => Component.MusicCard(new MusicCardData(item))))
+                    .Build(),
+                Component
+                    .Carousel()
+                    .WithId("playlists")
+                    .WithTitle("Playlists".Localize())
+                    .WithItems(
+                        playlistCards.Select(item => Component.MusicCard(new MusicCardData(item)))
+                    ),
+            ])
         );
     }
 
