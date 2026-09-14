@@ -41,7 +41,7 @@ public class AlbumsController : BaseController
 {
     private readonly IMusicRepository _musicRepository;
     private readonly IEventBus _eventBus;
-    private readonly IStorageFactory _storageFactory;
+    private readonly IMusicCoverStore _coverStore;
 
     private readonly ILogger<AlbumsController> _logger;
 
@@ -49,13 +49,13 @@ public class AlbumsController : BaseController
         ILogger<AlbumsController> logger,
         IMusicRepository musicService,
         IEventBus eventBus,
-        IStorageFactory storageFactory
+        IMusicCoverStore coverStore
     )
     {
         _logger = logger;
         _musicRepository = musicService;
         _eventBus = eventBus;
-        _storageFactory = storageFactory;
+        _coverStore = coverStore;
     }
 
     [HttpGet]
@@ -228,27 +228,13 @@ public class AlbumsController : BaseController
 
         if (request.Cover is not null)
         {
-            Match coverMatch = Regex.Match(request.Cover, "data:image/(?<type>.+?),(?<data>.+)");
-            if (!coverMatch.Success)
-                return BadRequestResponse("Cover must be a data:image/...;base64,... payload");
+            byte[]? binData = ImageDataUri.Decode(request.Cover, out string? coverError);
+            if (binData is null)
+                return BadRequestResponse(coverError!);
 
-            byte[] binData;
-            try
-            {
-                binData = Convert.FromBase64String(coverMatch.Groups["data"].Value);
-            }
-            catch (FormatException)
-            {
-                return BadRequestResponse("Cover payload is not valid base64");
-            }
-
-            cover = $"/{slug}.jpg";
-            string filePath = Path.Combine(AppFiles.ImagesPath, "music", slug + ".jpg");
-
-            await using (FileStream stream = new(filePath, FileMode.Create))
-                await stream.WriteAsync(binData);
-
-            colorPalette = await CoverArtImageManagerManager.ColorPalette("cover", new(filePath));
+            SavedMusicCover saved = await _coverStore.SaveAsync(slug, new MemoryStream(binData));
+            cover = saved.Cover;
+            colorPalette = saved.ColorPalette;
         }
 
         int result = await _musicRepository.UpdateAlbumMetadataAsync(
@@ -285,44 +271,21 @@ public class AlbumsController : BaseController
 
         string slug = album.Name.ToSlug();
 
-        IStorage folderStorage = _storageFactory.For(
-            album.LibraryFolder.Id,
-            album.LibraryFolder.DriverId,
-            string.Empty
-        );
-        // Resolve through the driver, not the IStorage facade: the facade's
-        // GetFullPath is a LocalStorage-only escape hatch that throws on every
-        // remote backend, so a facade call here 500'd cover uploads for
-        // NFS / SMB / S3 / WebDAV libraries.
-        string libraryRootFolder = folderStorage.Driver.GetFullPath(album.LibraryFolder.Path);
-        if (string.IsNullOrEmpty(libraryRootFolder))
-            return UnprocessableEntityResponse("Album library folder not found");
+        await using (Stream libraryCopy = image.OpenReadStream())
+            if (
+                !await _coverStore.SaveToLibraryAsync(
+                    album.LibraryFolder,
+                    album.HostFolder,
+                    "cover.jpg",
+                    libraryCopy
+                )
+            )
+                return UnprocessableEntityResponse("Album library folder not found");
 
-        // save to album folder
-        string filePath = Path.Combine(
-            libraryRootFolder,
-            album.HostFolder.TrimStart('\\'),
-            "cover.jpg"
-        );
-        _logger.LogInformation(filePath);
-        await using (FileStream stream = new(filePath, FileMode.Create))
-        {
-            await image.CopyToAsync(stream);
-        }
-
-        // save to app images folder
-        string filePath2 = Path.Combine(AppFiles.ImagesPath, "music", slug + ".jpg");
-        _logger.LogInformation(filePath2);
-        await using (FileStream stream = new(filePath2, FileMode.Create))
-        {
-            await image.CopyToAsync(stream);
-        }
-
-        string cover = $"/{slug}.jpg";
-        string colorPalette = await CoverArtImageManagerManager.ColorPalette(
-            "cover",
-            new(filePath2)
-        );
+        await using Stream servedCopy = image.OpenReadStream();
+        SavedMusicCover saved = await _coverStore.SaveAsync(slug, servedCopy);
+        string cover = saved.Cover;
+        string colorPalette = saved.ColorPalette;
 
         await _musicRepository.UpdateAlbumCoverAsync(id, cover, colorPalette);
 
