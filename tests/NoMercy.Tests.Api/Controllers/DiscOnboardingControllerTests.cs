@@ -32,7 +32,7 @@ public class DiscOnboardingControllerTests
             driveMonitor.Object,
             store: new DiscOnboardingSessionStore(),
             orchestrator: null!,
-            contextFactory: null!
+            libraryRepository: null!
         );
 
         IActionResult result = await controller.StartOnboarding(
@@ -53,7 +53,7 @@ public class DiscOnboardingControllerTests
             Mock.Of<IDriveMonitor>(),
             store,
             orchestrator: null!,
-            contextFactory: null!
+            libraryRepository: null!
         );
 
         IActionResult result = controller.GetOnboardingState("D:\\");
@@ -71,7 +71,7 @@ public class DiscOnboardingControllerTests
             Mock.Of<IDriveMonitor>(),
             store,
             orchestrator: null!,
-            contextFactory: null!
+            libraryRepository: null!
         );
 
         IActionResult result = controller.GetOnboardingState("D:\\");

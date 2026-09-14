@@ -34,4 +34,9 @@ public interface IDeviceRepository
     Task<List<Device>> GetAllAsync();
 
     Task DeleteAllActivityLogsAsync();
+
+    /// <summary>
+    /// The device a user owns with this client-reported device id and type, or null.
+    /// </summary>
+    Task<Device?> GetOwnedDeviceAsync(string deviceId, Guid ownerUserId, string type);
 }

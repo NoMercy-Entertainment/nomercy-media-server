@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NoMercy.Authorization;
+using NoMercy.Data.Repositories;
 using NoMercy.Database;
 using NoMercy.Database.Models.Users;
 
@@ -36,7 +37,7 @@ namespace NoMercy.Api.Controllers.V1;
 [Authorize]
 [Route("api/v{version:apiVersion}/cast")]
 public class CastProxyController(
-    IDbContextFactory<MediaContext> contextFactory,
+    IDeviceRepository deviceRepository,
     IHttpClientFactory httpClientFactory,
     ILogger<CastProxyController> logger
 ) : BaseController
@@ -75,12 +76,7 @@ public class CastProxyController(
         if (userId == Guid.Empty)
             return UnauthenticatedResponse("No authenticated user on the cast proxy request");
 
-        await using MediaContext mediaContext = await contextFactory.CreateDbContextAsync();
-        Device? tv = await mediaContext
-            .Devices.AsNoTracking()
-            .FirstOrDefaultAsync(d =>
-                d.DeviceId == deviceId && d.OwnerUserId == userId && d.Type == "tv"
-            );
+        Device? tv = await deviceRepository.GetOwnedDeviceAsync(deviceId, userId, "tv");
 
         if (tv is null)
         {

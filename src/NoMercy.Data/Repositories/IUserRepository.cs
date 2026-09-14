@@ -46,4 +46,7 @@ public interface IUserRepository
         bool? manage,
         IEnumerable<Ulid> libraryIds
     );
+
+    /// <summary>Users who may use the server: allowed users and owners.</summary>
+    Task<int> CountAllowedAsync(CancellationToken ct = default);
 }

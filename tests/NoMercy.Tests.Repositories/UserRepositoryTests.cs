@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Data.Repositories;
@@ -80,5 +81,25 @@ public class UserRepositoryTests : IDisposable
     {
         _context.Dispose();
         _connection.Dispose();
+    }
+
+    [Fact]
+    public async Task CountAllowedAsync_CountsAllowedUsersAndOwnersButNotBlockedUsers()
+    {
+        _context.Users.Add(
+            new()
+            {
+                Id = Guid.NewGuid(),
+                Email = "blocked@nomercy.tv",
+                Name = "Blocked",
+                Allowed = false,
+                Owner = false,
+            }
+        );
+        await _context.SaveChangesAsync();
+
+        int count = await _repository.CountAllowedAsync();
+
+        count.Should().Be(2);
     }
 }
