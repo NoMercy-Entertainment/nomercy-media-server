@@ -20,6 +20,7 @@ using NoMercy.Api.DTOs.Media;
 using NoMercy.Api.DTOs.Media.Components;
 using NoMercy.Authorization;
 using NoMercy.Data.Repositories;
+using NoMercy.Data.Services.Music;
 using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Extensions;
 
@@ -301,84 +302,19 @@ public class MusicController : BaseController
         string country = Country();
         string normalizedQuery = request.Query.NormalizeSearch();
 
-        // Bound every category. Without this a broad query fans thousands of matches
-        // through cross-reference and card projection into a multi-MB payload, while
-        // the view only renders the top result, six tracks, and the carousels. Capping
-        // the id lists keeps the rendered first-N identical and drops only the tail.
-        const int resultCap = UiLimits.SearchResultsPerCategory;
-
-        // Step 1: Get IDs using search methods
-        List<Guid> artistIds = (await _musicRepository.SearchArtistIdsAsync(normalizedQuery))
-            .Take(resultCap)
-            .ToList();
-        List<Guid> albumIds = (await _musicRepository.SearchAlbumIdsAsync(normalizedQuery))
-            .Take(resultCap)
-            .ToList();
-        List<Guid> playlistIds = (await _musicRepository.SearchPlaylistIdsAsync(normalizedQuery))
-            .Take(resultCap)
-            .ToList();
-        List<Guid> trackIds = (await _musicRepository.SearchTrackIdsAsync(normalizedQuery))
-            .Take(resultCap)
-            .ToList();
-
-        // Step 2: Cross-reference to find additional artists/albums
-        List<Guid> additionalArtistIds = [];
-        if (albumIds.Count > 0)
-            additionalArtistIds.AddRange(
-                await _musicRepository.GetArtistIdsFromAlbumsAsync(albumIds)
-            );
-        if (playlistIds.Count > 0)
-            additionalArtistIds.AddRange(
-                await _musicRepository.GetArtistIdsFromPlaylistTracksAsync(playlistIds)
-            );
-        if (trackIds.Count > 0)
-            additionalArtistIds.AddRange(
-                await _musicRepository.GetArtistIdsFromTracksAsync(trackIds)
-            );
-
-        List<Guid> allArtistIds = artistIds
-            .Union(additionalArtistIds)
-            .Distinct()
-            .Take(resultCap)
-            .ToList();
-
-        List<Guid> additionalAlbumIds = [];
-        if (trackIds.Count > 0)
-            additionalAlbumIds.AddRange(
-                await _musicRepository.GetAlbumIdsFromTracksAsync(trackIds)
-            );
-
-        List<Guid> allAlbumIds = albumIds
-            .Union(additionalAlbumIds)
-            .Distinct()
-            .Take(resultCap)
-            .ToList();
-
-        // Step 3: Get projection data
-        List<ArtistCardDto> artists =
-            allArtistIds.Count > 0
-                ? await _musicRepository.GetArtistCardsByIdsAsync(allArtistIds)
-                : [];
-        List<AlbumCardDto> albums =
-            allAlbumIds.Count > 0
-                ? await _musicRepository.GetAlbumCardsByIdsAsync(allAlbumIds)
-                : [];
-        List<PlaylistCardDto> playlistCards =
-            playlistIds.Count > 0
-                ? await _musicRepository.GetPlaylistCardsByIdsAsync(playlistIds)
-                : [];
-        List<SearchTrackCardDto> tracks =
-            trackIds.Count > 0
-                ? await _musicRepository.SearchTrackCardsAsync(trackIds, userId, country)
-                : [];
-
-        if (
-            artists.Count == 0
-            && albums.Count == 0
-            && playlistCards.Count == 0
-            && tracks.Count == 0
-        )
+        MusicSearchCards cards = await MusicSearch.FindCardsAsync(
+            _musicRepository,
+            normalizedQuery,
+            userId,
+            country
+        );
+        if (cards.IsEmpty)
             return NotFoundResponse("No results found");
+
+        List<ArtistCardDto> artists = cards.Artists;
+        List<AlbumCardDto> albums = cards.Albums;
+        List<PlaylistCardDto> playlistCards = cards.Playlists;
+        List<SearchTrackCardDto> tracks = cards.Tracks;
 
         SearchTrackCardDto? topTrack = tracks.FirstOrDefault();
         ArtistCardDto? topArtist = artists.FirstOrDefault();
