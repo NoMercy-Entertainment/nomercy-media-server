@@ -11,10 +11,8 @@
 
 using System.Net;
 using System.Security.Claims;
-using System.Text;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
 using NoMercy.Api.Services;
 using NoMercy.Authorization;
 using NoMercy.Database.Models.Users;
@@ -92,7 +90,7 @@ public class TokenParamAuthMiddleware(
         if (string.IsNullOrEmpty(claim))
         {
             logger.LogInformation("Unauthorized request, no jwt: {Url}", url);
-            await WriteProblemAsync(
+            await ProblemResponse.WriteAsync(
                 context,
                 statusCode: (int)HttpStatusCode.Unauthorized,
                 type: "https://nomercy.tv/problems/no-token",
@@ -106,7 +104,7 @@ public class TokenParamAuthMiddleware(
         if (!Guid.TryParse(claim, out Guid userId) || userId == Guid.Empty)
         {
             logger.LogInformation("Unauthorized request, guid malformed or empty: {Url}", url);
-            await WriteProblemAsync(
+            await ProblemResponse.WriteAsync(
                 context,
                 statusCode: (int)HttpStatusCode.Forbidden,
                 type: "https://nomercy.tv/problems/invalid-token",
@@ -122,7 +120,7 @@ public class TokenParamAuthMiddleware(
         if (user is null)
         {
             logger.LogInformation("Unauthorized request, user not found: {Url}", url);
-            await WriteProblemAsync(
+            await ProblemResponse.WriteAsync(
                 context,
                 statusCode: (int)HttpStatusCode.Forbidden,
                 type: "https://nomercy.tv/problems/user-not-found",
@@ -134,30 +132,5 @@ public class TokenParamAuthMiddleware(
         }
 
         await next(context);
-    }
-
-    private static async Task WriteProblemAsync(
-        HttpContext context,
-        int statusCode,
-        string type,
-        string title,
-        string detail,
-        string authError
-    )
-    {
-        context.Response.StatusCode = statusCode;
-        context.Response.ContentType = "application/problem+json";
-
-        object body = new
-        {
-            type,
-            title,
-            status = statusCode,
-            detail,
-            instance = context.Request.Path.Value,
-            authError,
-        };
-
-        await context.Response.WriteAsync(JsonConvert.SerializeObject(body), Encoding.UTF8);
     }
 }
