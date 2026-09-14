@@ -224,8 +224,10 @@ public partial class MusicHub
             string? targetIp = CastAddress.Resolve(targetTv.LanIp, targetTv.Ip);
             Ulid targetUlid = targetTv.Id;
             string serverIdString = Info.DeviceId.ToString();
-            string serverUrl = ResolveServerUrl();
-            string locale = ResolveSenderLocale();
+            string serverUrl = CastLaunchOrigin.ServerUrl(_networkDiscovery);
+            string locale = CastLaunchOrigin.SenderLocale(
+                _httpContextAccessor.HttpContext?.Request.Headers.AcceptLanguage.ToString()
+            );
             CastIntent intent = ResolveMusicIntent(user.Id, deviceId);
             bool apkOnline = _busRegistry.IsOnline(targetUlid);
 

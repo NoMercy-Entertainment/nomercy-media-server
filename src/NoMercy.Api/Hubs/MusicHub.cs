@@ -294,32 +294,6 @@ public partial class MusicHub : ConnectionHub
 
     // ── Cast-receiver helpers (Phase 0) ──────────────────────────────────────
 
-    private string ResolveServerUrl()
-    {
-        // Public origin the receiver should use for API + SignalR. NetworkDiscovery
-        // owns the authoritative external URL once Connectivity has resolved a path
-        // (Cloudflare tunnel, port-forward, or STUN). Fall back to ApiBaseUrl in
-        // the rare case Discovery isn't ready yet — receiver will get a working
-        // URL on the next launch once Connectivity stabilizes.
-        string? external = _networkDiscovery?.ExternalAddress;
-        return string.IsNullOrEmpty(external)
-            ? ExternalServicesConfig.Current.ApiBaseUrl
-            : external;
-    }
-
-    private string ResolveSenderLocale()
-    {
-        // Sender ships its locale via standard Accept-Language. We pick the first
-        // tag and pass it through; receiver uses it to seed i18n on first paint.
-        string? header =
-            _httpContextAccessor.HttpContext?.Request.Headers.AcceptLanguage.ToString();
-        if (string.IsNullOrEmpty(header))
-            return "en-US";
-
-        string first = header.Split(',')[0].Split(';')[0].Trim();
-        return string.IsNullOrEmpty(first) ? "en-US" : first;
-    }
-
     private CastIntent ResolveMusicIntent(Guid userId, string targetDeviceId)
     {
         // If the user has a live music player state when handing off to the TV,

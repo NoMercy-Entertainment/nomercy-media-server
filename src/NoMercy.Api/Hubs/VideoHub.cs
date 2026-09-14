@@ -84,25 +84,6 @@ public partial class VideoHub : ConnectionHub
 
     // ── Cast-receiver helpers (Phase 0) ──────────────────────────────────────
 
-    private string ResolveServerUrl()
-    {
-        string? external = _networkDiscovery?.ExternalAddress;
-        return string.IsNullOrEmpty(external)
-            ? ExternalServicesConfig.Current.ApiBaseUrl
-            : external;
-    }
-
-    private string ResolveSenderLocale()
-    {
-        string? header =
-            _httpContextAccessor.HttpContext?.Request.Headers.AcceptLanguage.ToString();
-        if (string.IsNullOrEmpty(header))
-            return "en-US";
-
-        string first = header.Split(',')[0].Split(';')[0].Trim();
-        return string.IsNullOrEmpty(first) ? "en-US" : first;
-    }
-
     private CastIntent ResolveVideoIntent(Guid userId)
     {
         // If the user has a live video player state when handing off to the TV,

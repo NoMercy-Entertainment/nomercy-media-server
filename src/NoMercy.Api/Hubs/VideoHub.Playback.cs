@@ -463,8 +463,10 @@ public partial class VideoHub
         {
             Ulid targetUlid = targetTv.Id;
             string serverIdString = Info.DeviceId.ToString();
-            string serverUrl = ResolveServerUrl();
-            string locale = ResolveSenderLocale();
+            string serverUrl = CastLaunchOrigin.ServerUrl(_networkDiscovery);
+            string locale = CastLaunchOrigin.SenderLocale(
+                _httpContextAccessor.HttpContext?.Request.Headers.AcceptLanguage.ToString()
+            );
             CastIntent intent = ResolveVideoIntent(user.Id);
 
             _ = Task.Run(async () =>
