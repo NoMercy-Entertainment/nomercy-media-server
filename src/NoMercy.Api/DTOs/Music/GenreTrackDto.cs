@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
+using NoMercy.Api.DTOs.Media.Components;
 using NoMercy.Database;
 using NoMercy.Database.Models.Music;
 
@@ -69,9 +70,7 @@ public record GenreTrackDto
     {
         Id = genreTrack.Track.Id;
         Name = genreTrack.Track.Name;
-        Cover = genreTrack.Track.Cover is not null
-            ? new Uri($"/images/music{genreTrack.Track.Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.UrlWhenSet(genreTrack.Track.Cover);
         Path = new Uri(
             $"/{genreTrack.Track.FolderId}{genreTrack.Track.Folder}{genreTrack.Track.Filename}",
             UriKind.Relative

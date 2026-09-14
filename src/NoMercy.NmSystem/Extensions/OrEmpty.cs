@@ -9,10 +9,20 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Diagnostics.CodeAnalysis;
+
 namespace NoMercy.NmSystem.Extensions;
 
 public static class NullableExtensions
 {
+    /// <summary>
+    /// The string, or <paramref name="fallback"/> when it is null or empty. A translated
+    /// title or overview falls back to the original this way.
+    /// </summary>
+    [return: NotNullIfNotNull(nameof(fallback))]
+    public static string? OrWhenEmpty(this string? value, string? fallback) =>
+        string.IsNullOrEmpty(value) ? fallback : value;
+
     /// <summary>
     /// Returns the string if not null, otherwise returns an empty string.
     /// Inspired by Kotlin's String?.orEmpty()

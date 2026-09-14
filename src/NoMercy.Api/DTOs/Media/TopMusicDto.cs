@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
+using NoMercy.Api.DTOs.Media.Components;
 using NoMercy.Data.Repositories;
 using NoMercy.Database;
 using NoMercy.Database.Models.Music;
@@ -49,9 +50,7 @@ public record TopMusicDto
         Type = "playlist";
         Link = new($"/music/playlists/{Id}", UriKind.Relative);
         Cover = musicPlay.Playlist.Cover;
-        Cover = Cover is not null
-            ? new Uri($"/images/music{Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.UrlWhenSet(Cover);
     }
 
     public TopMusicDto(AlbumTrack albumTrack)
@@ -62,9 +61,7 @@ public record TopMusicDto
         Type = "album";
         Link = new($"/music/albums/{Id}", UriKind.Relative);
         Cover = albumTrack.Album.Cover;
-        Cover = Cover is not null
-            ? new Uri($"/images/music{Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.UrlWhenSet(Cover);
     }
 
     public TopMusicDto(ArtistTrack artistTrack)
@@ -75,9 +72,7 @@ public record TopMusicDto
         Type = "artist";
         Link = new($"/music/artists/{Id}", UriKind.Relative);
         Cover = artistTrack.Artist.Cover;
-        Cover = Cover is not null
-            ? new Uri($"/images/music{Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.UrlWhenSet(Cover);
     }
 
     public TopMusicDto(TopMusicItemDto item)
@@ -88,8 +83,6 @@ public record TopMusicDto
         Type = item.Type;
         Link = item.Link;
         Cover = item.Cover;
-        Cover = Cover is not null
-            ? new Uri(Cover, UriKind.Relative).ToString()
-            : null;
+        Cover = Cover is not null ? new Uri(Cover, UriKind.Relative).ToString() : null;
     }
 }

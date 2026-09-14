@@ -12,6 +12,7 @@
 using Newtonsoft.Json;
 using NoMercy.Database;
 using NoMercy.Database.Models.TvShows;
+using NoMercy.NmSystem.Extensions;
 
 namespace NoMercy.Api.DTOs.Media.Components;
 
@@ -65,8 +66,8 @@ public record SeasonCardData
 
         TvId = episode.TvId;
         Id = episode.Id;
-        Title = !string.IsNullOrEmpty(title) ? title : episode.Title;
-        Overview = !string.IsNullOrEmpty(overview) ? overview : episode.Overview;
+        Title = title.OrWhenEmpty(episode.Title);
+        Overview = overview.OrWhenEmpty(episode.Overview);
         EpisodeNumber = episode.EpisodeNumber;
         SeasonNumber = episode.SeasonNumber;
         AirDate = episode.AirDate;

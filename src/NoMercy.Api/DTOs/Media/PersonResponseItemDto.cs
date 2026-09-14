@@ -13,6 +13,7 @@ using Newtonsoft.Json;
 using NoMercy.Database;
 using NoMercy.Database.Models.People;
 using NoMercy.NmSystem.Configuration;
+using NoMercy.NmSystem.Extensions;
 using NoMercy.NmSystem.NewtonSoftConverters;
 using NoMercy.Providers.TMDB.Models.People;
 using TmdbGender = NoMercy.Providers.TMDB.Models.People.TmdbGender;
@@ -100,7 +101,7 @@ public record PersonResponseItemDto
 
         Id = person.Id;
         Name = person.Name;
-        Biography = !string.IsNullOrEmpty(biography) ? biography : person.Biography;
+        Biography = biography.OrWhenEmpty(person.Biography);
         Adult = person.Adult;
         AlsoKnownAs = person.AlsoKnownAs.FromJson<string[]>() ?? [];
         Birthday = person.BirthDay;
@@ -159,7 +160,7 @@ public record PersonResponseItemDto
 
         Id = tmdbPersonAppends.Id;
         Name = tmdbPersonAppends.Name;
-        Biography = !string.IsNullOrEmpty(biography) ? biography : tmdbPersonAppends.Biography;
+        Biography = biography.OrWhenEmpty(tmdbPersonAppends.Biography);
         Adult = tmdbPersonAppends.Adult;
         AlsoKnownAs = tmdbPersonAppends.AlsoKnownAs;
         Birthday = tmdbPersonAppends.BirthDay;

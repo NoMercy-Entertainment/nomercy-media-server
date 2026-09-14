@@ -243,17 +243,9 @@ public class VideoPlaylistResponseDto
 
         ContentRating = episode
             .Tv.CertificationTvs.Where(certificationMovie =>
-                certificationMovie.Certification.Iso31661 == "US"
-                || certificationMovie.Certification.Iso31661 == country
+                RatingClass.IsShownIn(certificationMovie.Certification, country)
             )
-            .Select(certificationTv => new RatingClass
-            {
-                Rating = certificationTv.Certification.Rating,
-                Iso31661 = certificationTv.Certification.Iso31661,
-                Image = new(
-                    $"/{certificationTv.Certification.Iso31661}/{certificationTv.Certification.Iso31661}_{certificationTv.Certification.Rating}.svg"
-                ),
-            })
+            .Select(certificationTv => RatingClass.From(certificationTv.Certification))
             .FirstOrDefault();
     }
 
@@ -371,17 +363,9 @@ public class VideoPlaylistResponseDto
 
         ContentRating = movie
             .CertificationMovies.Where(certificationMovie =>
-                certificationMovie.Certification.Iso31661 == "US"
-                || certificationMovie.Certification.Iso31661 == country
+                RatingClass.IsShownIn(certificationMovie.Certification, country)
             )
-            .Select(certificationTv => new RatingClass
-            {
-                Rating = certificationTv.Certification.Rating,
-                Iso31661 = certificationTv.Certification.Iso31661,
-                Image = new(
-                    $"/{certificationTv.Certification.Iso31661}/{certificationTv.Certification.Iso31661}_{certificationTv.Certification.Rating}.svg"
-                ),
-            })
+            .Select(certificationTv => RatingClass.From(certificationTv.Certification))
             .FirstOrDefault();
 
         if (index is null)

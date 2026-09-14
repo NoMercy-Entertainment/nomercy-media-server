@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
+using NoMercy.Api.DTOs.Media.Components;
 using NoMercy.Database;
 using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.Music;
@@ -92,13 +93,9 @@ public record PlaylistTrackDto
         Image? img = ResolveBackdropImage(track, track.AlbumTrack.FirstOrDefault()?.Album);
         Id = track.Id;
         Name = track.Name;
-        Backdrop = img?.FilePath is not null
-            ? new Uri($"/images/music{img?.FilePath}", UriKind.Relative).ToString()
-            : null;
+        Backdrop = MusicCover.UrlWhenSet(img?.FilePath);
         Cover = track.AlbumTrack.FirstOrDefault()?.Album.Cover ?? track.Cover;
-        Cover = Cover is not null
-            ? new Uri($"/images/music{Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.UrlWhenSet(Cover);
         Path = new Uri(
             $"/{track.FolderId}{track.Folder}{track.Filename}",
             UriKind.Relative
@@ -135,14 +132,10 @@ public record PlaylistTrackDto
         );
         Id = artistTrack.Track.Id;
         Name = artistTrack.Track.Name;
-        Backdrop = img?.FilePath is not null
-            ? new Uri($"/images/music{img?.FilePath}", UriKind.Relative).ToString()
-            : null;
+        Backdrop = MusicCover.UrlWhenSet(img?.FilePath);
         Cover =
             artistTrack.Track.AlbumTrack.FirstOrDefault()?.Album.Cover ?? artistTrack.Track.Cover;
-        Cover = Cover is not null
-            ? new Uri($"/images/music{Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.UrlWhenSet(Cover);
         Path = new Uri(
             $"/{artistTrack.Track.FolderId}{artistTrack.Track.Folder}{artistTrack.Track.Filename}",
             UriKind.Relative
@@ -181,13 +174,9 @@ public record PlaylistTrackDto
         );
         Id = trackTrack.Track.Id;
         Name = trackTrack.Track.Name;
-        Backdrop = img?.FilePath is not null
-            ? new Uri($"/images/music{img?.FilePath}", UriKind.Relative).ToString()
-            : null;
+        Backdrop = MusicCover.UrlWhenSet(img?.FilePath);
         Cover = trackTrack.Track.AlbumTrack.FirstOrDefault()?.Album.Cover ?? trackTrack.Track.Cover;
-        Cover = Cover is not null
-            ? new Uri($"/images/music{Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.UrlWhenSet(Cover);
         Path = new Uri(
             $"/{trackTrack.Track.FolderId}{trackTrack.Track.Folder}{trackTrack.Track.Filename}",
             UriKind.Relative
@@ -224,14 +213,10 @@ public record PlaylistTrackDto
         );
         Id = artistTrack.Track.Id;
         Name = artistTrack.Track.Name;
-        Backdrop = img?.FilePath is not null
-            ? new Uri($"/images/music{img?.FilePath}", UriKind.Relative).ToString()
-            : null;
+        Backdrop = MusicCover.UrlWhenSet(img?.FilePath);
         Cover =
             artistTrack.Track.AlbumTrack.FirstOrDefault()?.Album.Cover ?? artistTrack.Track.Cover;
-        Cover = Cover is not null
-            ? new Uri($"/images/music{Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.UrlWhenSet(Cover);
         Path = new Uri(
             $"/{artistTrack.Track.FolderId}{artistTrack.Track.Folder}{artistTrack.Track.Filename}",
             UriKind.Relative
@@ -269,13 +254,9 @@ public record PlaylistTrackDto
         );
         Id = genreTrack.Track.Id;
         Name = genreTrack.Track.Name.ToTitleCase();
-        Backdrop = img?.FilePath is not null
-            ? new Uri($"/images/music{img?.FilePath}", UriKind.Relative).ToString()
-            : null;
+        Backdrop = MusicCover.UrlWhenSet(img?.FilePath);
         Cover = genreTrack.Track.AlbumTrack.FirstOrDefault()?.Album.Cover ?? genreTrack.Track.Cover;
-        Cover = Cover is not null
-            ? new Uri($"/images/music{Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.UrlWhenSet(Cover);
         Path = new Uri(
             $"/{genreTrack.Track.FolderId}{genreTrack.Track.Folder}{genreTrack.Track.Filename}",
             UriKind.Relative

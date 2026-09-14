@@ -11,9 +11,13 @@
 
 namespace NoMercy.Api.DTOs.Media.Components;
 
-/// <summary>The served URL of a stored music cover, or null when there is none.</summary>
-internal static class MusicCover
+/// <summary>The served URL of a stored music image.</summary>
+public static class MusicCover
 {
+    /// <summary>Null when there is no cover, empty included.</summary>
     public static string? Url(string? cover) =>
         string.IsNullOrEmpty(cover) ? null : $"/images/music{cover}";
+
+    /// <summary>Null only when the path is null; an empty path still yields the folder URL.</summary>
+    public static string? UrlWhenSet(string? path) => path is null ? null : $"/images/music{path}";
 }

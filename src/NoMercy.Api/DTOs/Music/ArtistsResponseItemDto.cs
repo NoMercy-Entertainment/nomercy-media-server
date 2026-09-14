@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
+using NoMercy.Api.DTOs.Media.Components;
 using NoMercy.Data.Repositories;
 using NoMercy.Database;
 using NoMercy.Database.Models.Music;
@@ -52,9 +53,7 @@ public record ArtistsResponseItemDto
     {
         ColorPalette = artist.ColorPalette;
         Cover = artist.Cover ?? artist.Images.FirstOrDefault()?.FilePath;
-        Cover = !string.IsNullOrEmpty(Cover)
-            ? new Uri($"/images/music{Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.Url(Cover);
         Disambiguation = artist.Disambiguation;
         Description = artist.Description;
         Id = artist.Id;
@@ -69,9 +68,7 @@ public record ArtistsResponseItemDto
     {
         ColorPalette = album.ColorPalette;
         Cover = album.Cover ?? album.Images.FirstOrDefault()?.FilePath;
-        Cover = !string.IsNullOrEmpty(Cover)
-            ? new Uri($"/images/music{Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.Url(Cover);
         Disambiguation = album.Disambiguation;
         Description = album.Description;
         Id = album.Id;
@@ -86,9 +83,7 @@ public record ArtistsResponseItemDto
     {
         ColorPalette = ColorPalette.FromJsonOrNull(artist.ColorPalette);
         Cover = artist.Cover ?? artist.ThumbImagePath;
-        Cover = !string.IsNullOrEmpty(Cover)
-            ? new Uri($"/images/music{Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.Url(Cover);
         Disambiguation = artist.Disambiguation;
         Description = artist.Description;
         Id = artist.Id;

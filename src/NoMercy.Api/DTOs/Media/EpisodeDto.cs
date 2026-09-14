@@ -70,8 +70,8 @@ public class EpisodeDto
 
         TvId = episode.TvId;
         Id = episode.Id;
-        Title = !string.IsNullOrEmpty(title) ? title : episode.Title;
-        Overview = !string.IsNullOrEmpty(overview) ? overview : episode.Overview;
+        Title = title.OrWhenEmpty(episode.Title);
+        Overview = overview.OrWhenEmpty(episode.Overview);
         EpisodeNumber = episode.EpisodeNumber;
         SeasonNumber = episode.SeasonNumber;
         AirDate = episode.AirDate;

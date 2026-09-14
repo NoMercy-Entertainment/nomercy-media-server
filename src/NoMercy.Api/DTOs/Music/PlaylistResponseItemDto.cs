@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
+using NoMercy.Api.DTOs.Media.Components;
 using NoMercy.Database;
 using NoMercy.Database.Models.Music;
 
@@ -59,9 +60,7 @@ public record PlaylistResponseItemDto
     public PlaylistResponseItemDto(Playlist playlist, string? country = "US")
     {
         ColorPalette = playlist.ColorPalette;
-        Cover = !string.IsNullOrEmpty(playlist.Cover)
-            ? new Uri($"/images/music{playlist.Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.Url(playlist.Cover);
         Description = playlist.Description;
         Id = playlist.Id;
         Name = playlist.Name;

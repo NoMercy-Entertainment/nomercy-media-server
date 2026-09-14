@@ -114,7 +114,7 @@ public record TrackRowData
         string? cover =
             track.AlbumTrack.FirstOrDefault()?.Album.Cover
             ?? track.ArtistTrack.FirstOrDefault()?.Artist.Cover;
-        Cover = cover is not null ? $"/images/music{cover}" : null;
+        Cover = MusicCover.UrlWhenSet(cover);
         Path = $"/{track.FolderId}{track.Folder}{track.Filename}";
         Link = $"/music/tracks/{track.Id}";
         Date = track.UpdatedAt.ToString("yyyy-MM-dd");
@@ -153,7 +153,7 @@ public record TrackRowData
         string? colorPaletteStr = track.AlbumColorPalette ?? track.ArtistColorPalette;
         ColorPalette = ColorPalette.FromJsonOrNull(colorPaletteStr);
         string? cover = track.AlbumCover ?? track.ArtistCover;
-        Cover = cover is not null ? $"/images/music{cover}" : null;
+        Cover = MusicCover.UrlWhenSet(cover);
         Path = $"/{track.FolderId}{track.Folder}{track.Filename}";
         Link = $"/music/tracks/{track.Id}";
         Date = track.UpdatedAt.ToString("yyyy-MM-dd");

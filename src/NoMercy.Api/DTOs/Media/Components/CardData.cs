@@ -84,8 +84,8 @@ public record CardData
         string? overview = movie.Translations.FirstOrDefault()?.Overview;
 
         Id = movie.Id;
-        Title = !string.IsNullOrEmpty(title) ? title : movie.Title;
-        Overview = !string.IsNullOrEmpty(overview) ? overview : movie.Overview;
+        Title = title.OrWhenEmpty(movie.Title);
+        Overview = overview.OrWhenEmpty(movie.Overview);
         Poster = movie.Poster;
         Backdrop = movie.Backdrop;
         Logo = movie.Images.FirstOrDefault(i => i.Type == "logo")?.FilePath;
@@ -101,17 +101,8 @@ public record CardData
         CreatedAt = movie.CreatedAt;
 
         Rating = movie
-            .CertificationMovies.Where(cm =>
-                cm.Certification.Iso31661 == "US" || cm.Certification.Iso31661 == country
-            )
-            .Select(cm => new RatingClass
-            {
-                Rating = cm.Certification.Rating,
-                Iso31661 = cm.Certification.Iso31661,
-                Image = new(
-                    $"/{cm.Certification.Iso31661}/{cm.Certification.Iso31661}_{cm.Certification.Rating}.svg"
-                ),
-            })
+            .CertificationMovies.Where(cm => RatingClass.IsShownIn(cm.Certification, country))
+            .Select(cm => RatingClass.From(cm.Certification))
             .FirstOrDefault();
     }
 
@@ -121,8 +112,8 @@ public record CardData
         string? overview = tv.Translations.FirstOrDefault()?.Overview;
 
         Id = tv.Id;
-        Title = !string.IsNullOrEmpty(title) ? title : tv.Title;
-        Overview = !string.IsNullOrEmpty(overview) ? overview : tv.Overview;
+        Title = title.OrWhenEmpty(tv.Title);
+        Overview = overview.OrWhenEmpty(tv.Overview);
         Poster = tv.Poster;
         Backdrop = tv.Backdrop;
         Logo = tv.Images.FirstOrDefault(i => i.Type == "logo")?.FilePath;
@@ -138,17 +129,8 @@ public record CardData
         ColorPalette = tv.ColorPalette;
 
         Rating = tv
-            .CertificationTvs.Where(ct =>
-                ct.Certification.Iso31661 == "US" || ct.Certification.Iso31661 == country
-            )
-            .Select(ct => new RatingClass
-            {
-                Rating = ct.Certification.Rating,
-                Iso31661 = ct.Certification.Iso31661,
-                Image = new(
-                    $"/{ct.Certification.Iso31661}/{ct.Certification.Iso31661}_{ct.Certification.Rating}.svg"
-                ),
-            })
+            .CertificationTvs.Where(ct => RatingClass.IsShownIn(ct.Certification, country))
+            .Select(ct => RatingClass.From(ct.Certification))
             .FirstOrDefault();
     }
 
@@ -158,8 +140,8 @@ public record CardData
         string? overview = collection.Translations.FirstOrDefault()?.Overview;
 
         Id = collection.Id;
-        Title = !string.IsNullOrEmpty(title) ? title : collection.Title;
-        Overview = !string.IsNullOrEmpty(overview) ? overview : collection.Overview;
+        Title = title.OrWhenEmpty(collection.Title);
+        Overview = overview.OrWhenEmpty(collection.Overview);
         Poster = collection.Poster;
         Backdrop = collection.Backdrop;
         Logo = collection.Images.FirstOrDefault(i => i.Type == "logo")?.FilePath;
@@ -183,15 +165,8 @@ public record CardData
 
         Rating = collection
             .CollectionMovies.SelectMany(cm => cm.Movie.CertificationMovies)
-            .Where(cm => cm.Certification.Iso31661 == "US" || cm.Certification.Iso31661 == country)
-            .Select(cm => new RatingClass
-            {
-                Rating = cm.Certification.Rating,
-                Iso31661 = cm.Certification.Iso31661,
-                Image = new(
-                    $"/{cm.Certification.Iso31661}/{cm.Certification.Iso31661}_{cm.Certification.Rating}.svg"
-                ),
-            })
+            .Where(cm => RatingClass.IsShownIn(cm.Certification, country))
+            .Select(cm => RatingClass.From(cm.Certification))
             .FirstOrDefault();
     }
 
@@ -225,15 +200,8 @@ public record CardData
 
         Rating = special
             .Items.SelectMany(i => i.Movie?.CertificationMovies ?? [])
-            .Where(cm => cm.Certification.Iso31661 == "US" || cm.Certification.Iso31661 == country)
-            .Select(cm => new RatingClass
-            {
-                Rating = cm.Certification.Rating,
-                Iso31661 = cm.Certification.Iso31661,
-                Image = new(
-                    $"/{cm.Certification.Iso31661}/{cm.Certification.Iso31661}_{cm.Certification.Rating}.svg"
-                ),
-            })
+            .Where(cm => RatingClass.IsShownIn(cm.Certification, country))
+            .Select(cm => RatingClass.From(cm.Certification))
             .FirstOrDefault();
     }
 
@@ -273,17 +241,9 @@ public record CardData
                 .Special.Items.SelectMany(specialItem =>
                     specialItem
                         .Episode?.Tv.CertificationTvs.Where(ct =>
-                            ct.Certification.Iso31661 == "US"
-                            || ct.Certification.Iso31661 == country
+                            RatingClass.IsShownIn(ct.Certification, country)
                         )
-                        .Select(ct => new RatingClass
-                        {
-                            Rating = ct.Certification.Rating,
-                            Iso31661 = ct.Certification.Iso31661,
-                            Image = new(
-                                $"/{ct.Certification.Iso31661}/{ct.Certification.Iso31661}_{ct.Certification.Rating}.svg"
-                            ),
-                        })
+                        .Select(ct => RatingClass.From(ct.Certification))
                     ?? []
                 )
                 .Concat(
@@ -291,17 +251,9 @@ public record CardData
                         .SelectMany(specialItem =>
                             specialItem
                                 .Movie?.CertificationMovies.Where(cm =>
-                                    cm.Certification.Iso31661 == "US"
-                                    || cm.Certification.Iso31661 == country
+                                    RatingClass.IsShownIn(cm.Certification, country)
                                 )
-                                .Select(cm => new RatingClass
-                                {
-                                    Rating = cm.Certification.Rating,
-                                    Iso31661 = cm.Certification.Iso31661,
-                                    Image = new(
-                                        $"/{cm.Certification.Iso31661}/{cm.Certification.Iso31661}_{cm.Certification.Rating}.svg"
-                                    ),
-                                })
+                                .Select(cm => RatingClass.From(cm.Certification))
                             ?? []
                         )
                 )
@@ -334,17 +286,8 @@ public record CardData
 
             Rating = item
                 .Collection.CollectionMovies.SelectMany(cm => cm.Movie.CertificationMovies)
-                .Where(cm =>
-                    cm.Certification.Iso31661 == "US" || cm.Certification.Iso31661 == country
-                )
-                .Select(cm => new RatingClass
-                {
-                    Rating = cm.Certification.Rating,
-                    Iso31661 = cm.Certification.Iso31661,
-                    Image = new(
-                        $"/{cm.Certification.Iso31661}/{cm.Certification.Iso31661}_{cm.Certification.Rating}.svg"
-                    ),
-                })
+                .Where(cm => RatingClass.IsShownIn(cm.Certification, country))
+                .Select(cm => RatingClass.From(cm.Certification))
                 .FirstOrDefault();
         }
         else if (item.Movie is not null)
@@ -366,16 +309,9 @@ public record CardData
 
             Rating = item
                 .Movie.CertificationMovies.Where(cm =>
-                    cm.Certification.Iso31661 == "US" || cm.Certification.Iso31661 == country
+                    RatingClass.IsShownIn(cm.Certification, country)
                 )
-                .Select(cm => new RatingClass
-                {
-                    Rating = cm.Certification.Rating,
-                    Iso31661 = cm.Certification.Iso31661,
-                    Image = new(
-                        $"/{cm.Certification.Iso31661}/{cm.Certification.Iso31661}_{cm.Certification.Rating}.svg"
-                    ),
-                })
+                .Select(cm => RatingClass.From(cm.Certification))
                 .FirstOrDefault();
         }
         else if (item.Tv is not null)
@@ -398,17 +334,8 @@ public record CardData
             );
 
             Rating = item
-                .Tv.CertificationTvs.Where(ct =>
-                    ct.Certification.Iso31661 == "US" || ct.Certification.Iso31661 == country
-                )
-                .Select(ct => new RatingClass
-                {
-                    Rating = ct.Certification.Rating,
-                    Iso31661 = ct.Certification.Iso31661,
-                    Image = new(
-                        $"/{ct.Certification.Iso31661}/{ct.Certification.Iso31661}_{ct.Certification.Rating}.svg"
-                    ),
-                })
+                .Tv.CertificationTvs.Where(ct => RatingClass.IsShownIn(ct.Certification, country))
+                .Select(ct => RatingClass.From(ct.Certification))
                 .FirstOrDefault();
         }
     }

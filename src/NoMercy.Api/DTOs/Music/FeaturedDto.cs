@@ -10,8 +10,10 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
+using NoMercy.Api.DTOs.Media.Components;
 using NoMercy.Database;
 using NoMercy.Database.Models.Music;
+using NoMercy.NmSystem.Extensions;
 
 namespace NoMercy.Api.DTOs.Music;
 
@@ -58,9 +60,7 @@ public class FeaturedDto
 
         Id = albumArtist.Album.Id;
         Name = albumArtist.Album.Name;
-        Cover = albumArtist.Album.Cover is not null
-            ? new Uri($"/images/music{albumArtist.Album.Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.UrlWhenSet(albumArtist.Album.Cover);
         Disambiguation = albumArtist.Album.Disambiguation;
         Link = new($"/music/albums/{Id}", UriKind.Relative);
         Description = !string.IsNullOrEmpty(description)
@@ -83,12 +83,10 @@ public class FeaturedDto
         Id = album.Id;
         Name = album.Name;
         Disambiguation = album.Disambiguation;
-        Cover = album.Cover is not null
-            ? new Uri($"/images/music{album.Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.UrlWhenSet(album.Cover);
         Link = new($"/music/artists/{Id}", UriKind.Relative);
         Type = "artist";
-        Description = !string.IsNullOrEmpty(description) ? description : album.Description;
+        Description = description.OrWhenEmpty(album.Description);
 
         ColorPalette = album.ColorPalette;
     }

@@ -11,6 +11,7 @@
 
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using NoMercy.Api.DTOs.Media.Components;
 using NoMercy.Database;
 using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.Music;
@@ -60,9 +61,7 @@ public class ArtistDto
             ? description
             : albumArtist.Artist.Description;
         Disambiguation = albumArtist.Artist.Disambiguation;
-        Cover = albumArtist.Artist.Cover is not null
-            ? new Uri($"/images/music{albumArtist.Artist.Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.UrlWhenSet(albumArtist.Artist.Cover);
         Backdrop = img?.FilePath is not null
             ? new Uri($"/images/music{img.FilePath}", UriKind.Relative).ToString()
             : null;
@@ -85,9 +84,7 @@ public class ArtistDto
             ? description
             : artistTrack.Artist.Description;
         Disambiguation = artistTrack.Artist.Disambiguation;
-        Cover = artistTrack.Artist.Cover is not null
-            ? new Uri($"/images/music{artistTrack.Artist.Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.UrlWhenSet(artistTrack.Artist.Cover);
         Backdrop = img?.FilePath is not null
             ? new Uri($"/images/music{img.FilePath}", UriKind.Relative).ToString()
             : null;

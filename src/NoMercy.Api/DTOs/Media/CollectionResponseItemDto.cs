@@ -105,8 +105,8 @@ public record CollectionResponseItemDto
         string? overview = collection.Translations.FirstOrDefault()?.Overview;
 
         Id = collection.Id;
-        Title = !string.IsNullOrEmpty(title) ? title : collection.Title;
-        Overview = !string.IsNullOrEmpty(overview) ? overview : collection.Overview;
+        Title = title.OrWhenEmpty(collection.Title);
+        Overview = overview.OrWhenEmpty(collection.Overview);
         Backdrop = collection.Backdrop;
         Poster = collection.Poster;
         TitleSort = collection.TitleSort;
@@ -163,11 +163,7 @@ public record CollectionResponseItemDto
                 collectionMovie.Movie.CertificationMovies
             )
             .DistinctBy(certification => certification.Certification.Iso31661)
-            .Select(certificationMovie => new ContentRating
-            {
-                Rating = certificationMovie.Certification.Rating,
-                Iso31661 = certificationMovie.Certification.Iso31661,
-            })
+            .Select(certificationMovie => ContentRating.From(certificationMovie.Certification))
             .ToArray();
 
         Collection = collection
@@ -214,8 +210,8 @@ public record CollectionResponseItemDto
             ?.Data.Overview;
 
         Id = tmdbCollectionAppends.Id;
-        Title = !string.IsNullOrEmpty(title) ? title : tmdbCollectionAppends.Name;
-        Overview = !string.IsNullOrEmpty(overview) ? overview : tmdbCollectionAppends.Overview;
+        Title = title.OrWhenEmpty(tmdbCollectionAppends.Name);
+        Overview = overview.OrWhenEmpty(tmdbCollectionAppends.Overview);
         Backdrop = tmdbCollectionAppends.BackdropPath;
         Poster = tmdbCollectionAppends.PosterPath;
         TitleSort = tmdbCollectionAppends.Name.TitleSort();

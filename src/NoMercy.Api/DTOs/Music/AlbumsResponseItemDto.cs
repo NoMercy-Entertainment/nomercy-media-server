@@ -10,10 +10,12 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
+using NoMercy.Api.DTOs.Media.Components;
 using NoMercy.Data.Repositories;
 using NoMercy.Database;
 using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.Music;
+using NoMercy.NmSystem.Extensions;
 
 namespace NoMercy.Api.DTOs.Music;
 
@@ -62,14 +64,12 @@ public record AlbumsResponseItemDto
             ?.Description;
         Image? img = album.Images.FirstOrDefault(image => image.Type == "background");
 
-        Description = !string.IsNullOrEmpty(description) ? description : album.Description;
+        Description = description.OrWhenEmpty(album.Description);
 
         Backdrop = !string.IsNullOrEmpty(img?.FilePath)
             ? new Uri($"/images/music{img.FilePath}", UriKind.Relative).ToString()
             : null;
-        Cover = !string.IsNullOrEmpty(album.Cover)
-            ? new Uri($"/images/music{album.Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.Url(album.Cover);
         ColorPalette = album.ColorPalette;
         if (ColorPalette is not null)
             ColorPalette.Backdrop = img?.ColorPalette?.Image;
@@ -91,12 +91,8 @@ public record AlbumsResponseItemDto
             ? album.TranslatedDescription
             : album.Description;
 
-        Backdrop = !string.IsNullOrEmpty(album.BackgroundImagePath)
-            ? new Uri($"/images/music{album.BackgroundImagePath}", UriKind.Relative).ToString()
-            : null;
-        Cover = !string.IsNullOrEmpty(album.Cover)
-            ? new Uri($"/images/music{album.Cover}", UriKind.Relative).ToString()
-            : null;
+        Backdrop = MusicCover.Url(album.BackgroundImagePath);
+        Cover = MusicCover.Url(album.Cover);
         ColorPalette = ColorPalette.FromJsonOrNull(album.ColorPalette);
         if (ColorPalette is not null)
         {

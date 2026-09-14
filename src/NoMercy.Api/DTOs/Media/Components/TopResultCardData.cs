@@ -160,7 +160,7 @@ public record TopResultCardData
         Type = "track";
         Link = $"/music/tracks/{track.Id}";
         string? cover = track.AlbumCover ?? track.ArtistCover;
-        Cover = cover is not null ? $"/images/music{cover}" : null;
+        Cover = MusicCover.UrlWhenSet(cover);
         string? colorPaletteStr = track.AlbumColorPalette ?? track.ArtistColorPalette;
         ColorPalette = ColorPalette.FromJsonOrNull(colorPaletteStr);
         Artists = track.Artists.Select(at => new TopResultArtist
@@ -211,7 +211,7 @@ public record TopResultCardData
         Title = artist.Name;
         Type = "artist";
         Link = $"/music/artists/{artist.Id}";
-        Cover = artist.Cover is not null ? $"/images/music{artist.Cover}" : null;
+        Cover = MusicCover.UrlWhenSet(artist.Cover);
         ColorPalette = ColorPalette.FromJsonOrNull(artist.ColorPalette);
     }
 
@@ -221,7 +221,7 @@ public record TopResultCardData
         Title = album.Name;
         Type = "album";
         Link = $"/music/albums/{album.Id}";
-        Cover = album.Cover is not null ? $"/images/music{album.Cover}" : null;
+        Cover = MusicCover.UrlWhenSet(album.Cover);
         ColorPalette = ColorPalette.FromJsonOrNull(album.ColorPalette);
     }
 }

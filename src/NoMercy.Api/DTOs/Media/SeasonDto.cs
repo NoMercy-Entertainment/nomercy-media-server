@@ -12,6 +12,7 @@
 using Newtonsoft.Json;
 using NoMercy.Database;
 using NoMercy.Database.Models.TvShows;
+using NoMercy.NmSystem.Extensions;
 
 namespace NoMercy.Api.DTOs.Media;
 
@@ -47,8 +48,8 @@ public record SeasonDto
         string? overview = season.Translations.FirstOrDefault()?.Overview;
 
         Id = season.Id;
-        Title = !string.IsNullOrEmpty(title) ? title : season.Title;
-        Overview = !string.IsNullOrEmpty(overview) ? overview : season.Overview;
+        Title = title.OrWhenEmpty(season.Title);
+        Overview = overview.OrWhenEmpty(season.Overview);
         Poster = season.Poster;
         SeasonNumber = season.SeasonNumber;
         ColorPalette = season.ColorPalette;

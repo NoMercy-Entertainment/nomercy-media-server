@@ -11,6 +11,7 @@
 
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using NoMercy.Api.DTOs.Media.Components;
 using NoMercy.Database;
 using NoMercy.Database.Models.Music;
 
@@ -121,9 +122,7 @@ public record ArtistTrackDto
         Cover =
             track.AlbumTrack.FirstOrDefault()?.Album.Cover
             ?? track.ArtistTrack.FirstOrDefault()?.Artist.Cover;
-        Cover = Cover is not null
-            ? new Uri($"/images/music{Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.UrlWhenSet(Cover);
         Path = new Uri(
             $"/{track.FolderId}{track.Folder}{track.Filename}",
             UriKind.Relative
