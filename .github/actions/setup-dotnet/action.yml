@@ -19,7 +19,10 @@ runs:
       uses: actions/cache@v5
       with:
         path: ~/.nuget/packages
-        key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+        # Named paths, not '**': the key is hashed again in the post step, after a
+        # test run has filled every bin/ and obj/, and walking that tree blew the
+        # 120 s hashFiles budget and failed jobs whose tests had all passed.
+        key: ${{ runner.os }}-nuget-${{ hashFiles('Directory.Packages.props', 'src/*/*.csproj', 'tests/*/*.csproj', 'benchmarks/*/*.csproj', 'templates/*/*.csproj', 'templates/*.csproj') }}
         restore-keys: |
           ${{ runner.os }}-nuget-
 
