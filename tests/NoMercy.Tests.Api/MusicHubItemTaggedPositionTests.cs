@@ -102,10 +102,9 @@ public class MusicHubItemTaggedPositionTests : IClassFixture<NoMercyApiFactory>
             _factory.Services.GetRequiredService<CastPanelWakeLauncher>();
         AuthManager authManager = _factory.Services.GetRequiredService<AuthManager>();
 
-        MusicDeviceManager musicDeviceManager = new(new());
-        MusicPlaylistManager musicPlaylistManager = new(new MusicRepository(contextFactory), new());
+        MusicPlaylistManager musicPlaylistManager = new(new MusicRepository(contextFactory));
         DeviceBusRegistry busRegistry = new(
-            contextFactory,
+            new DeviceStateRepository(contextFactory),
             Mock.Of<IHubContext<DeviceHub>>(),
             Mock.Of<ICastMdnsRegistry>()
         );
@@ -122,7 +121,6 @@ public class MusicHubItemTaggedPositionTests : IClassFixture<NoMercyApiFactory>
             clientMessenger,
             musicPlaybackService,
             stateManager,
-            musicDeviceManager,
             musicPlaylistManager,
             commandHandler,
             Mock.Of<IActivityLogger>(),
@@ -130,7 +128,8 @@ public class MusicHubItemTaggedPositionTests : IClassFixture<NoMercyApiFactory>
             castTokenService,
             Mock.Of<IChromeCastService>(),
             castPanelWakeLauncher,
-            activeDeviceRegistry
+            activeDeviceRegistry,
+            new DeviceStateRepository(contextFactory)
         );
 
         ClaimsPrincipal principal = new(

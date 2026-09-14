@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
+using NoMercy.Api.DTOs.Media.Components;
 using NoMercy.Database;
 using NoMercy.Database.Models.Music;
 
@@ -51,9 +52,7 @@ public record MusicSearchResponseItemDto
     {
         ColorPalette = artist.ColorPalette;
         Cover = artist.Cover ?? artist.Images.FirstOrDefault()?.FilePath;
-        Cover = !string.IsNullOrEmpty(Cover)
-            ? new Uri($"/images/music{Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.Url(Cover);
         Disambiguation = artist.Disambiguation;
         Description = artist.Description;
         Id = artist.Id;
@@ -68,9 +67,7 @@ public record MusicSearchResponseItemDto
     {
         ColorPalette = album.ColorPalette;
         Cover = album.Cover ?? album.Images.FirstOrDefault()?.FilePath;
-        Cover = !string.IsNullOrEmpty(Cover)
-            ? new Uri($"/images/music{Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.Url(Cover);
         Disambiguation = album.Disambiguation;
         Description = album.Description;
         Id = album.Id;

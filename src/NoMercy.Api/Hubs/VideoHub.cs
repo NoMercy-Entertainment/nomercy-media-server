@@ -9,7 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Collections.Concurrent;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -36,7 +35,6 @@ public partial class VideoHub : ConnectionHub
     private readonly IClientMessenger _clientMessenger;
     private readonly VideoPlaybackService _videoPlaybackService;
     private readonly VideoPlayerStateManager _videoPlayerStateManager;
-    private readonly VideoDeviceManager _videoDeviceManager;
     private readonly VideoPlaylistManager _videoPlaylistManager;
     private readonly VideoPlaybackCommandHandler _commandHandler;
     private readonly CastSessionTokenService _castTokenService;
@@ -44,9 +42,9 @@ public partial class VideoHub : ConnectionHub
     private readonly INetworkDiscovery? _networkDiscovery;
     private readonly IUserDataRepository _userDataRepository;
 
-    private readonly IDbContextFactory<MediaContext> _contextFactory;
+    private readonly IVideoFileRepository _videoFileRepository;
 
-    private readonly IChromeCastService _chromeCast;
+    private readonly CastPanelWakeLauncher _castPanelWakeLauncher;
 
     private readonly ILogger<VideoHub> _logger;
 
@@ -58,14 +56,14 @@ public partial class VideoHub : ConnectionHub
         IClientMessenger clientMessenger,
         VideoPlaybackService videoPlaybackService,
         VideoPlayerStateManager videoPlayerStateManager,
-        VideoDeviceManager videoDeviceManager,
         VideoPlaylistManager videoPlaylistManager,
         VideoPlaybackCommandHandler commandHandler,
         IActivityLogger activityLogger,
         CastSessionTokenService castTokenService,
         DeviceBusRegistry busRegistry,
-        IChromeCastService chromeCast,
+        CastPanelWakeLauncher castPanelWakeLauncher,
         IUserDataRepository userDataRepository,
+        IVideoFileRepository videoFileRepository,
         INetworkDiscovery? networkDiscovery = null
     )
         : base(httpContextAccessor, contextFactory, connectedClients, activityLogger)
@@ -73,41 +71,19 @@ public partial class VideoHub : ConnectionHub
         _logger = logger;
         _httpContextAccessor = httpContextAccessor;
         _clientMessenger = clientMessenger;
-        _contextFactory = contextFactory;
         _videoPlaybackService = videoPlaybackService;
         _videoPlayerStateManager = videoPlayerStateManager;
-        _videoDeviceManager = videoDeviceManager;
         _videoPlaylistManager = videoPlaylistManager;
         _commandHandler = commandHandler;
         _castTokenService = castTokenService;
         _busRegistry = busRegistry;
-        _chromeCast = chromeCast;
+        _castPanelWakeLauncher = castPanelWakeLauncher;
         _networkDiscovery = networkDiscovery;
         _userDataRepository = userDataRepository;
+        _videoFileRepository = videoFileRepository;
     }
-
-    private static readonly ConcurrentDictionary<Guid, Device> CurrentDevice = new();
 
     // ── Cast-receiver helpers (Phase 0) ──────────────────────────────────────
-
-    private string ResolveServerUrl()
-    {
-        string? external = _networkDiscovery?.ExternalAddress;
-        return string.IsNullOrEmpty(external)
-            ? ExternalServicesConfig.Current.ApiBaseUrl
-            : external;
-    }
-
-    private string ResolveSenderLocale()
-    {
-        string? header =
-            _httpContextAccessor.HttpContext?.Request.Headers.AcceptLanguage.ToString();
-        if (string.IsNullOrEmpty(header))
-            return "en-US";
-
-        string first = header.Split(',')[0].Split(';')[0].Trim();
-        return string.IsNullOrEmpty(first) ? "en-US" : first;
-    }
 
     private CastIntent ResolveVideoIntent(Guid userId)
     {
@@ -150,8 +126,6 @@ public partial class VideoHub : ConnectionHub
             if (_videoPlayerStateManager.TryGetValue(user.Id, out VideoPlayerState? state))
                 if (state.DeviceId == client.DeviceId)
                 {
-                    _videoDeviceManager.RemoveUserDevice(user.Id);
-
                     stopPlayback = true;
                     stoppedDeviceId = client.Id;
                     stoppedMediaId = state.CurrentItem?.VideoId ?? Ulid.Empty;

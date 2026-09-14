@@ -18,6 +18,7 @@ using Newtonsoft.Json;
 using NoMercy.Api.Services.Cast;
 using NoMercy.Api.WebSockets;
 using NoMercy.Authorization;
+using NoMercy.Data.Repositories;
 using NoMercy.Database;
 using NoMercy.Database.Activity;
 using NoMercy.Database.Models.Users;
@@ -34,7 +35,7 @@ namespace NoMercy.Api.Hubs;
 [Authorize]
 public sealed class DeviceHub : ConnectionHub
 {
-    private readonly IDbContextFactory<MediaContext> _contextFactory;
+    private readonly IDeviceStateRepository _deviceStateRepository;
     private readonly DeviceBusRegistry _busRegistry;
     private readonly IDeviceCapabilityRegistry _capabilityRegistry;
     private readonly ICastMdnsRegistry _castMdnsRegistry;
@@ -46,6 +47,7 @@ public sealed class DeviceHub : ConnectionHub
         IDbContextFactory<MediaContext> contextFactory,
         ConnectedClients connectedClients,
         DeviceBusRegistry busRegistry,
+        IDeviceStateRepository deviceStateRepository,
         IActivityLogger activityLogger,
         IDeviceCapabilityRegistry capabilityRegistry,
         ICastMdnsRegistry castMdnsRegistry,
@@ -54,7 +56,7 @@ public sealed class DeviceHub : ConnectionHub
     )
         : base(httpContextAccessor, contextFactory, connectedClients, activityLogger)
     {
-        _contextFactory = contextFactory;
+        _deviceStateRepository = deviceStateRepository;
         _busRegistry = busRegistry;
         _capabilityRegistry = capabilityRegistry;
         _castMdnsRegistry = castMdnsRegistry;
@@ -75,13 +77,13 @@ public sealed class DeviceHub : ConnectionHub
         if (deviceId is null)
             return; // unauthenticated or unknown — silently drop, never throw
 
-        await using MediaContext ctx = await _contextFactory.CreateDbContextAsync();
-        Device? device = await ctx.Devices.FirstOrDefaultAsync(d => d.DeviceId == deviceId);
-        if (device is null)
+        if (
+            !await _deviceStateRepository.SetCapabilitiesAsync(
+                deviceId,
+                JsonConvert.SerializeObject(payload)
+            )
+        )
             return;
-
-        device.CapabilitiesJson = JsonConvert.SerializeObject(payload);
-        await ctx.SaveChangesAsync();
 
         _capabilityRegistry.Set(deviceId, payload);
 
@@ -102,10 +104,7 @@ public sealed class DeviceHub : ConnectionHub
         if (user is null)
             return [];
 
-        await using MediaContext ctx = await _contextFactory.CreateDbContextAsync();
-        List<Device> rows = await ctx
-            .Devices.Where(d => d.OwnerUserId == user.Id && d.Fingerprint != null)
-            .ToListAsync();
+        List<Device> rows = await _deviceStateRepository.GetListedDevicesAsync(user.Id);
 
         return DeviceListComposer.Compose(
             rows,
@@ -115,7 +114,11 @@ public sealed class DeviceHub : ConnectionHub
         );
     }
 
-    public async Task<WakeResult> WakeForMusic(string deviceId)
+    public Task<WakeResult> WakeForMusic(string deviceId) => WakeAsync(deviceId, "wake_for_music");
+
+    public Task<WakeResult> WakeForVideo(string deviceId) => WakeAsync(deviceId, "wake_for_video");
+
+    private async Task<WakeResult> WakeAsync(string deviceId, string wakeType)
     {
         User? user = UserCacheService.GetUser(Context.User.UserId());
         if (user is null)
@@ -124,47 +127,15 @@ public sealed class DeviceHub : ConnectionHub
         if (!Ulid.TryParse(deviceId, out Ulid id))
             return new("not_owned");
 
-        await using MediaContext ctx = await _contextFactory.CreateDbContextAsync();
-        Device? device = await ctx.Devices.FindAsync(id);
-        if (device is null || device.OwnerUserId != user.Id)
+        Device? device = await _deviceStateRepository.GetOwnedAsync(id, user.Id);
+        if (device is null)
             return new("not_owned");
 
         if (_busRegistry.IsOnline(device.Id))
         {
             bool sent = await _busRegistry.SendAsync(
                 device.Id,
-                new { type = "wake_for_music", session_id = Guid.NewGuid().ToString() }
-            );
-            return new(sent ? "wake_sent" : "no_route");
-        }
-
-        // Off the bus: the server does the Cast wake itself rather than handing the
-        // job back to whichever client happened to ask. `cast_fallback` made the
-        // feature only as reliable as the weakest sender on the network — and left
-        // any client without a Cast SDK unable to wake a TV at all.
-        bool dispatched = await _castWaker.WakeAsync(device, user.Id, CastIntent.Idle());
-        return new(dispatched ? "wake_sent" : "no_route");
-    }
-
-    public async Task<WakeResult> WakeForVideo(string deviceId)
-    {
-        User? user = UserCacheService.GetUser(Context.User.UserId());
-        if (user is null)
-            return new("not_owned");
-
-        if (!Ulid.TryParse(deviceId, out Ulid id))
-            return new("not_owned");
-
-        await using MediaContext ctx = await _contextFactory.CreateDbContextAsync();
-        Device? device = await ctx.Devices.FindAsync(id);
-        if (device is null || device.OwnerUserId != user.Id)
-            return new("not_owned");
-
-        if (_busRegistry.IsOnline(device.Id))
-        {
-            bool sent = await _busRegistry.SendAsync(
-                device.Id,
-                new { type = "wake_for_video", session_id = Guid.NewGuid().ToString() }
+                new { type = wakeType, session_id = Guid.NewGuid().ToString() }
             );
             return new(sent ? "wake_sent" : "no_route");
         }
@@ -183,14 +154,9 @@ public sealed class DeviceHub : ConnectionHub
         if (user is null)
             return [];
 
-        await using MediaContext ctx = await _contextFactory.CreateDbContextAsync();
-        List<DeviceDropNotice> notices = await ctx
-            .DeviceDropNotices.Where(n => n.UserId == user.Id && !n.Acknowledged)
-            .ToListAsync();
-
-        foreach (DeviceDropNotice n in notices)
-            n.Acknowledged = true;
-        await ctx.SaveChangesAsync();
+        List<DeviceDropNotice> notices = await _deviceStateRepository.TakePendingDropNoticesAsync(
+            user.Id
+        );
 
         return [.. notices.Select(n => new DeviceDropNoticeDto(n.DeviceName, n.Reason))];
     }
@@ -238,10 +204,3 @@ public sealed class DeviceHub : ConnectionHub
         await Clients.User(user.Id.ToString()).SendAsync("DeviceListChanged", list);
     }
 }
-
-public sealed record WakeResult([property: JsonProperty("status")] string Status);
-
-public sealed record DeviceDropNoticeDto(
-    [property: JsonProperty("device_name")] string DeviceName,
-    [property: JsonProperty("reason")] string Reason
-);

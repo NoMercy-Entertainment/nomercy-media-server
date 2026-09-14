@@ -207,13 +207,20 @@ public static class StoragePathHelpers
     {
         folder = string.Empty;
 
-        if (string.IsNullOrWhiteSpace(directory) || string.IsNullOrWhiteSpace(folderRoot))
+        if (string.IsNullOrWhiteSpace(directory))
             return false;
 
         string normalizedDirectory = directory.Replace('\\', '/');
-        string normalizedRoot = folderRoot.Replace('\\', '/').Trim('/');
+        string normalizedRoot = (folderRoot ?? string.Empty).Replace('\\', '/').Trim('/');
+
+        // An empty root means the folder itself IS the driver's scope root
+        // (Folders.Path can be deliberately empty), so everything under it is
+        // already library-relative — not "no root to resolve against".
         if (normalizedRoot.Length == 0)
-            return false;
+        {
+            folder = "/" + normalizedDirectory.Trim('/');
+            return true;
+        }
 
         int rootIndex = normalizedDirectory.IndexOf(
             normalizedRoot,

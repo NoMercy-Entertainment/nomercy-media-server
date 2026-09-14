@@ -18,6 +18,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Api.Middleware;
 using NoMercy.Api.Services;
 using NoMercy.Authorization;
+using NoMercy.Authorization.LiveIngest;
 using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.Storage;
@@ -109,7 +110,8 @@ public sealed class TokenParamAuthMiddlewareTests : IAsyncLifetime, IDisposable
         return new(
             next,
             ingestKeyStore ?? new LiveIngestKeyStore(),
-            NullLogger<TokenParamAuthMiddleware>.Instance
+            NullLogger<TokenParamAuthMiddleware>.Instance,
+            UserCache.Current
         );
     }
 

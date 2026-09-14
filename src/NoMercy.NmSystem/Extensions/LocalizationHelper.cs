@@ -20,7 +20,19 @@ namespace NoMercy.NmSystem.Extensions;
 
 public static class LocalizationHelper
 {
+    private static readonly AsyncLocal<ILocalizer?> RequestLocalizer = new();
+
+    /// <summary>The localizer used outside a request, and by requests that set none.</summary>
     public static ILocalizer GlobalLocalizer { get; set; } = new Localizer();
+
+    /// <summary>
+    /// The localizer for the running request. It flows with the request's async
+    /// context, so concurrent requests in different languages never share one.
+    /// </summary>
+    public static ILocalizer CurrentLocalizer => RequestLocalizer.Value ?? GlobalLocalizer;
+
+    public static void UseForCurrentRequest(ILocalizer localizer) =>
+        RequestLocalizer.Value = localizer;
 
     // Single-writer lock + in-process dedup so two concurrent requests can't
     // race on the I18N.xml file handle and so we don't repeatedly load+save
@@ -30,7 +42,7 @@ public static class LocalizationHelper
 
     public static string Localize(this string key)
     {
-        string localized = GlobalLocalizer.Localize(key);
+        string localized = CurrentLocalizer.Localize(key);
         if (key == localized && Config.IsDev && IsCollectableKey(key))
         {
             TryAppendMissingLocalization(key);

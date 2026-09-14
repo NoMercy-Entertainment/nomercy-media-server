@@ -18,11 +18,6 @@ public class VideoPlayerStateManager
 {
     private readonly ConcurrentDictionary<Guid, VideoPlayerState> _playerStates = new();
 
-    public IEnumerable<VideoPlayerState> GetAllStates()
-    {
-        return _playerStates.Values;
-    }
-
     public VideoPlayerState? GetState(Guid userId)
     {
         return _playerStates.TryGetValue(userId, out VideoPlayerState? state) ? state : null;
@@ -46,15 +41,6 @@ public class VideoPlayerStateManager
     public void ClearAllStates()
     {
         _playerStates.Clear();
-    }
-
-    public void UpdateStateProperty(Guid userId, Action<VideoPlayerState> updateAction)
-    {
-        if (_playerStates.TryGetValue(userId, out VideoPlayerState? state))
-        {
-            updateAction(state);
-            _playerStates[userId] = state;
-        }
     }
 
     public bool TryGetValue(Guid userId, [NotNullWhen(true)] out VideoPlayerState? state)

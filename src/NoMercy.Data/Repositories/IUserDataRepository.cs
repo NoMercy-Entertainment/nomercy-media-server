@@ -45,4 +45,29 @@ public interface IUserDataRepository
         Ulid? ulidId,
         CancellationToken ct = default
     );
+
+    /// <summary>
+    /// Stores the time watched for a video file, keyed per playlist type. Returns
+    /// false, storing nothing, when the type is not a video type or a referenced row
+    /// does not exist, such as a file a rescan re-indexed mid-playback.
+    /// </summary>
+    Task<bool> UpsertWatchProgressAsync(WatchProgress progress, CancellationToken ct = default);
+
+    /// <summary>
+    /// Stores the track choice for the title being played, keyed per playlist type:
+    /// movie, show (anime included), collection or special.
+    /// </summary>
+    Task SavePlaybackPreferenceAsync(PlaybackPreference preference, string playlistType);
+
+    /// <summary>
+    /// The user with their playback preferences and, per preference, the library and its
+    /// movie and show links; null for an unknown user.
+    /// </summary>
+    Task<User?> GetWithPlaybackPreferencesAsync(Guid userId);
+
+    /// <summary>
+    /// Stores <paramref name="preference"/> as the user's default for libraries of
+    /// <paramref name="libraryType"/>, unless the user already has one.
+    /// </summary>
+    Task SaveLibraryPreferenceIfMissingAsync(PlaybackPreference preference, string? libraryType);
 }

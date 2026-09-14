@@ -18,6 +18,7 @@ using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.Storage;
+using NoMercy.NmSystem.Domain;
 using NoMercy.Tests.Repositories.Infrastructure;
 
 namespace NoMercy.Tests.Repositories;
@@ -35,6 +36,85 @@ public class LibraryRepositoryTests : IDisposable
             TestMediaContextFactory.CreateSeededFactory();
         _context = factory.CreateDbContext();
         _repository = new(factory);
+    }
+
+    [Fact]
+    public async Task FindInboxFolderAsync_MatchesOnlyAnInboxFolder_IgnoringSlashesAndCase()
+    {
+        Ulid inboxLibraryId = Ulid.NewUlid();
+        Ulid inboxFolderId = Ulid.NewUlid();
+        _context.Libraries.Add(
+            new Library
+            {
+                Id = inboxLibraryId,
+                Title = "Inbox",
+                Type = MediaTypes.InboxMediaType,
+            }
+        );
+        _context.Folders.Add(
+            new Folder
+            {
+                Id = inboxFolderId,
+                Path = "D:\\Drop\\",
+                DriverId = Driver.SystemLocalDriverId,
+            }
+        );
+        _context.FolderLibrary.Add(new(inboxFolderId, inboxLibraryId));
+        await _context.SaveChangesAsync();
+
+        FolderLibrary? inbox = await _repository.FindInboxFolderAsync("d:/drop");
+        FolderLibrary? movies = await _repository.FindInboxFolderAsync("/media/movies");
+
+        Assert.NotNull(inbox);
+        Assert.Equal(inboxLibraryId, inbox.LibraryId);
+        Assert.Equal(inboxFolderId, inbox.Folder.Id);
+        Assert.Null(movies);
+    }
+
+    [Fact]
+    public async Task GetImportFailures_FiltersByLibraryAndResolvedState_NewestFirst()
+    {
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        _context.ImportFailures.AddRange(
+            new ImportFailure
+            {
+                LibraryId = SeedConstants.MovieLibraryId,
+                FilePath = "/old.mkv",
+                LastAttemptAt = now.AddHours(-2),
+            },
+            new ImportFailure
+            {
+                LibraryId = SeedConstants.MovieLibraryId,
+                FilePath = "/new.mkv",
+                LastAttemptAt = now,
+            },
+            new ImportFailure
+            {
+                LibraryId = SeedConstants.MovieLibraryId,
+                FilePath = "/fixed.mkv",
+                LastAttemptAt = now.AddHours(-1),
+                Resolved = true,
+            },
+            new ImportFailure
+            {
+                LibraryId = SeedConstants.TvLibraryId,
+                FilePath = "/other-library.mkv",
+                LastAttemptAt = now,
+            }
+        );
+        await _context.SaveChangesAsync();
+
+        List<ImportFailure> all = await _repository.GetImportFailuresAsync(
+            SeedConstants.MovieLibraryId,
+            null
+        );
+        List<ImportFailure> open = await _repository.GetImportFailuresAsync(
+            SeedConstants.MovieLibraryId,
+            false
+        );
+
+        Assert.Equal(["/new.mkv", "/fixed.mkv", "/old.mkv"], all.Select(f => f.FilePath));
+        Assert.Equal(["/new.mkv", "/old.mkv"], open.Select(f => f.FilePath));
     }
 
     [Fact]

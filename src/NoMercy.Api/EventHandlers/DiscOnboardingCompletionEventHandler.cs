@@ -40,12 +40,11 @@ namespace NoMercy.Api.EventHandlers;
 /// session-eviction story (see the TODO on
 /// <see cref="DiscOnboardingSessionStore.Remove"/>).
 /// </summary>
-public class DiscOnboardingCompletionEventHandler : IDisposable
+public class DiscOnboardingCompletionEventHandler : EventSubscriber
 {
     private readonly DiscOnboardingSessionStore _store;
     private readonly IEventBus _eventBus;
     private readonly IDbContextFactory<MediaContext> _contextFactory;
-    private readonly List<IDisposable> _subscriptions = [];
 
     public DiscOnboardingCompletionEventHandler(
         IEventBus eventBus,
@@ -56,7 +55,7 @@ public class DiscOnboardingCompletionEventHandler : IDisposable
         _eventBus = eventBus;
         _store = store;
         _contextFactory = contextFactory;
-        _subscriptions.Add(eventBus.Subscribe<MediaFilesScannedEvent>(OnMediaFilesScanned));
+        Track(eventBus.Subscribe<MediaFilesScannedEvent>(OnMediaFilesScanned));
     }
 
     internal async Task OnMediaFilesScanned(MediaFilesScannedEvent @event, CancellationToken ct)
@@ -123,14 +122,5 @@ public class DiscOnboardingCompletionEventHandler : IDisposable
         }
 
         return null;
-    }
-
-    public void Dispose()
-    {
-        foreach (IDisposable subscription in _subscriptions)
-        {
-            subscription.Dispose();
-        }
-        _subscriptions.Clear();
     }
 }

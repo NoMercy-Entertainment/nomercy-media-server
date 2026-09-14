@@ -62,7 +62,6 @@ public class PluginRouteSubscriber(
 
         if (registrar.Attach(info, pluginManager))
         {
-            PluginActionDescriptorChangeProvider.Instance.TriggerChange();
             logger.LogInformation(
                 "Plugin {PluginName} is now serving its own endpoints.",
                 info.Name

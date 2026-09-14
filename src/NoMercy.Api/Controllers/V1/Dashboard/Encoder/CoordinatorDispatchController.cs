@@ -123,16 +123,3 @@ public class CoordinatorDispatchController(
         );
     }
 }
-
-/// <summary>Request body for POST /distribution/workers/dispatch.</summary>
-public record DispatchEncodeJobRequest(
-    [property: JsonProperty("tasks")] List<DispatchTaskRequest>? Tasks
-);
-
-/// <summary>Per-task descriptor in a dispatch request.</summary>
-public record DispatchTaskRequest(
-    [property: JsonProperty("output_path")] string OutputPath,
-    [property: JsonProperty("task_id")] string? TaskId = null,
-    [property: JsonProperty("arguments")] List<string>? Arguments = null,
-    [property: JsonProperty("task_type")] EncodeTaskType TaskType = EncodeTaskType.QualityVariant
-);

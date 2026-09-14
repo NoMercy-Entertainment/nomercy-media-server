@@ -247,7 +247,7 @@ public class EncodingPresetsController(
         {
             EncodingProfile resolved = presetResolver.Resolve(
                 request,
-                new RepositoryPresetLookup(presetRepository)
+                new RepositoryNamePresetLookup(presetRepository)
             );
             return Ok(resolved);
         }
@@ -519,64 +519,3 @@ public class EncodingPresetsController(
         }
     }
 }
-
-public record CreatePresetRequest(
-    string Name,
-    string ProfileJson,
-    string? Description = null,
-    string? Author = null,
-    string? Tags = null,
-    Ulid? ParentPresetId = null
-);
-
-/// <summary>
-/// Adapter that lets <see cref="INamePresetResolver"/> walk the parent chain by
-/// hitting the database once per ancestor. Synchronous lookup — the resolver
-/// is pure and doesn't await, so the adapter blocks on async repository
-/// calls. Fine for the rare resolve path; optimize if it ever gets called
-/// in a tight loop.
-/// </summary>
-internal sealed class RepositoryPresetLookup(IEncodingPresetRepository repository)
-    : INamePresetLookup
-{
-    public PresetResolveRequest? FindByName(string name)
-    {
-        EncodingPreset? preset = repository.GetByNameAsync(name).GetAwaiter().GetResult();
-        if (preset is null)
-            return null;
-
-        string? parentName = preset.ParentPresetId is Ulid parentId
-            ? repository.GetByIdAsync(parentId).GetAwaiter().GetResult()?.Name
-            : null;
-
-        return new(preset.Name, preset.ProfileJson, parentName);
-    }
-}
-
-public record PresetExport(
-    string Name,
-    string ProfileJson,
-    string? Description = null,
-    string? Author = null,
-    string? Tags = null
-);
-
-public record ImportFromUrlRequest(string Url);
-
-public record ClonePresetRequest(string? Name = null, string? Author = null);
-
-public record ValidatePresetRequest(string ProfileJson);
-
-public record PreviewRequest(
-    [property: JsonProperty("profile_json")] string ProfileJson,
-    [property: JsonProperty("video_file_id")] string VideoFileId
-);
-
-public record UpdatePresetRequest(
-    string? Name = null,
-    string? Description = null,
-    string? Author = null,
-    string? Tags = null,
-    string? ProfileJson = null,
-    Ulid? ParentPresetId = null
-);

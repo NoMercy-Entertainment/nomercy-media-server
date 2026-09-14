@@ -25,6 +25,7 @@ using NoMercy.Database.Models.Music;
 using NoMercy.Events;
 using NoMercy.Events.Library;
 using NoMercy.MediaProcessing.Images;
+using NoMercy.MediaProcessing.Jobs;
 using NoMercy.MediaProcessing.Jobs.PaletteJobs;
 using NoMercy.NmSystem.Extensions;
 using NoMercy.NmSystem.Information;
@@ -41,18 +42,24 @@ public class PlaylistsController : BaseController
 {
     private readonly IMusicRepository _musicRepository;
     private readonly IEventBus _eventBus;
+    private readonly IJobDispatcher _jobDispatcher;
+    private readonly IMusicCoverStore _coverStore;
 
     private readonly ILogger<PlaylistsController> _logger;
 
     public PlaylistsController(
         ILogger<PlaylistsController> logger,
         IMusicRepository musicService,
-        IEventBus eventBus
+        IEventBus eventBus,
+        IJobDispatcher jobDispatcher,
+        IMusicCoverStore coverStore
     )
     {
         _logger = logger;
         _musicRepository = musicService;
         _eventBus = eventBus;
+        _jobDispatcher = jobDispatcher;
+        _coverStore = coverStore;
     }
 
     [HttpGet]
@@ -86,16 +93,8 @@ public class PlaylistsController : BaseController
 
         string language = Language();
 
-        // Fire-and-forget: enqueue takes the queue's global write lock (held by the
-        // encoder workers), so dispatching inline blocked this read for seconds.
         if (string.IsNullOrEmpty(playlist._colorPalette) || playlist._colorPalette == "{}")
-            _ = Task.Run(() =>
-                QueueRunner.Current?.Dispatcher.Dispatch(
-                    new ColorPaletteJob("playlist", playlist.Id.ToString()),
-                    "palette",
-                    1
-                )
-            );
+            _jobDispatcher.QueueColorPaletteInBackground("playlist", playlist.Id.ToString());
 
         return Ok(new PlaylistResponseDto { Data = new(playlist, language) });
     }
@@ -118,34 +117,15 @@ public class PlaylistsController : BaseController
 
         string slug = newPlaylist.Name.ToSlug();
 
-        // save to app images folder
-        string filePath = Path.Combine(AppFiles.ImagesPath, "music", slug + ".jpg");
-        _logger.LogInformation(filePath);
-
         if (request.Cover is not null)
         {
-            Match coverMatch = Regex.Match(request.Cover, "data:image/(?<type>.+?),(?<data>.+)");
-            if (!coverMatch.Success)
-                return BadRequestResponse("Cover must be a data:image/...;base64,... payload");
+            byte[]? binData = ImageDataUri.Decode(request.Cover, out string? coverError);
+            if (binData is null)
+                return BadRequestResponse(coverError!);
 
-            byte[] binData;
-            try
-            {
-                binData = Convert.FromBase64String(coverMatch.Groups["data"].Value);
-            }
-            catch (FormatException)
-            {
-                return BadRequestResponse("Cover payload is not valid base64");
-            }
-
-            await using (FileStream stream = new(filePath, FileMode.OpenOrCreate))
-                await stream.WriteAsync(binData);
-
-            newPlaylist.Cover = $"/{slug}.jpg";
-            newPlaylist._colorPalette = await CoverArtImageManagerManager.ColorPalette(
-                "cover",
-                new(filePath)
-            );
+            SavedMusicCover saved = await _coverStore.SaveAsync(slug, new MemoryStream(binData));
+            newPlaylist.Cover = saved.Cover;
+            newPlaylist._colorPalette = saved.ColorPalette;
         }
 
         _logger.LogInformation("{Playlist}", newPlaylist);
@@ -176,27 +156,13 @@ public class PlaylistsController : BaseController
 
         if (request.Cover is not null)
         {
-            Match coverMatch = Regex.Match(request.Cover, "data:image/(?<type>.+?),(?<data>.+)");
-            if (!coverMatch.Success)
-                return BadRequestResponse("Cover must be a data:image/...;base64,... payload");
+            byte[]? binData = ImageDataUri.Decode(request.Cover, out string? coverError);
+            if (binData is null)
+                return BadRequestResponse(coverError!);
 
-            byte[] binData;
-            try
-            {
-                binData = Convert.FromBase64String(coverMatch.Groups["data"].Value);
-            }
-            catch (FormatException)
-            {
-                return BadRequestResponse("Cover payload is not valid base64");
-            }
-
-            cover = $"/{slug}.jpg";
-            string filePath = Path.Combine(AppFiles.ImagesPath, "music", slug + ".jpg");
-
-            await using (FileStream stream = new(filePath, FileMode.Create))
-                await stream.WriteAsync(binData);
-
-            colorPalette = await CoverArtImageManagerManager.ColorPalette("cover", new(filePath));
+            SavedMusicCover saved = await _coverStore.SaveAsync(slug, new MemoryStream(binData));
+            cover = saved.Cover;
+            colorPalette = saved.ColorPalette;
         }
 
         int result = await _musicRepository.UpdatePlaylistMetadataAsync(
@@ -256,19 +222,10 @@ public class PlaylistsController : BaseController
 
         string slug = playlist.Name.ToSlug();
 
-        // save to app images folder
-        string filePath2 = Path.Combine(AppFiles.ImagesPath, "music", slug + ".jpg");
-        _logger.LogInformation(filePath2);
-        await using (FileStream stream = new(filePath2, FileMode.Create))
-        {
-            await image.CopyToAsync(stream);
-        }
-
-        string cover = $"/{slug}.jpg";
-        string colorPalette = await CoverArtImageManagerManager.ColorPalette(
-            "cover",
-            new(filePath2)
-        );
+        await using Stream servedCopy = image.OpenReadStream();
+        SavedMusicCover saved = await _coverStore.SaveAsync(slug, servedCopy);
+        string cover = saved.Cover;
+        string colorPalette = saved.ColorPalette;
 
         await _musicRepository.UpdatePlaylistCoverAsync(id, User.UserId(), cover, colorPalette);
 
@@ -323,7 +280,7 @@ public class PlaylistsController : BaseController
     [HttpDelete]
     [Route("{id:guid}/tracks/{trackId:guid}")]
     [Authorize(Policy = "MediaAccess")]
-    public async Task<IActionResult> AddTrack(Guid id, Guid trackId)
+    public async Task<IActionResult> RemoveTrack(Guid id, Guid trackId)
     {
         int result = await _musicRepository.RemovePlaylistTrackAsync(id, trackId, User.UserId());
 
@@ -344,25 +301,4 @@ public class PlaylistsController : BaseController
             }
         );
     }
-}
-
-public class CreatePlaylistRequestDto
-{
-    [JsonProperty("name")]
-    public string Name { get; set; } = null!;
-
-    [JsonProperty("description")]
-    public string? Description { get; set; }
-
-    [JsonProperty("cover")]
-    public string? Cover { get; set; }
-
-    [JsonProperty("tracks")]
-    public List<Guid> Tracks { get; set; } = [];
-}
-
-public class CreatePlaylistTrackRequestDto
-{
-    [JsonProperty("id")]
-    public Guid Id { get; set; }
 }

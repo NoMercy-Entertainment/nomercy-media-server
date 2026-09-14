@@ -20,8 +20,30 @@ public interface IVideoFileRepository
 
     Task<bool> ExistsAsync(Ulid id, CancellationToken ct = default);
 
+    /// <summary>The probed chapters and tracks of a video file; null when it has none.</summary>
+    Task<Metadata?> GetMetadataAsync(Ulid id, CancellationToken ct = default);
+
+    /// <summary>
+    /// The file with its metadata, when the user can reach it through the movie or the
+    /// episode it belongs to; null otherwise.
+    /// </summary>
+    Task<VideoFile?> GetForUserWithMetadataAsync(
+        Ulid id,
+        Guid userId,
+        CancellationToken ct = default
+    );
+
+    /// <summary>Whether <paramref name="folderId"/> is a library folder row.</summary>
+    Task<bool> IsLibraryFolderAsync(Ulid folderId, CancellationToken ct = default);
+
+    /// <summary>Whether a video file is stored at this forward-slash host path.</summary>
+    Task<bool> ExistsAtHostPathAsync(string hostPath, CancellationToken ct = default);
+
     Task<List<Episode>> GetEncodedEpisodesForSeasonAsync(
         int seasonId,
         CancellationToken ct = default
     );
+
+    /// <summary>Looks up the parent show id for a season, for response shaping.</summary>
+    Task<int> GetShowIdForSeasonAsync(int seasonId, CancellationToken ct = default);
 }

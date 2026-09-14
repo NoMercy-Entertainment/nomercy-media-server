@@ -67,6 +67,8 @@ public sealed class DynamicStaticFilesMiddlewareTests
         return storage;
     }
 
+    private static readonly ServedFolderRegistry Registry = new();
+
     private static (
         DynamicStaticFilesMiddleware Middleware,
         Mock<IStorageFactory> StorageFactory,
@@ -81,6 +83,7 @@ public sealed class DynamicStaticFilesMiddlewareTests
                 nextCalled[0] = true;
                 return Task.CompletedTask;
             },
+            Registry,
             NullLogger<DynamicStaticFilesMiddleware>.Instance
         );
 
@@ -100,10 +103,10 @@ public sealed class DynamicStaticFilesMiddlewareTests
         public RegisteredFolder(string subPath = "")
         {
             FolderId = Ulid.NewUlid();
-            DynamicStaticFilesMiddleware.AddFolder(FolderId, Ulid.NewUlid(), subPath);
+            Registry.Add(FolderId, Ulid.NewUlid(), subPath);
         }
 
-        public void Dispose() => DynamicStaticFilesMiddleware.RemoveFolder(FolderId);
+        public void Dispose() => Registry.Remove(FolderId);
     }
 
     [Fact]
@@ -781,13 +784,13 @@ public sealed class DynamicStaticFilesMiddlewareTests
     public void AddFolder_ThenRemoveFolder_ForgetsTheRegistration()
     {
         Ulid folderId = Ulid.NewUlid();
-        DynamicStaticFilesMiddleware.AddFolder(folderId, Ulid.NewUlid(), "sub/path");
+        Registry.Add(folderId, Ulid.NewUlid(), "sub/path");
 
-        DynamicStaticFilesMiddleware.RemoveFolder(folderId);
+        Registry.Remove(folderId);
 
         // Re-removing an already-forgotten folder must be a safe no-op (used by
         // the RegisteredFolder test fixture's Dispose across every test above).
-        DynamicStaticFilesMiddleware.RemoveFolder(folderId);
+        Registry.Remove(folderId);
     }
 
     [Fact]
@@ -799,7 +802,7 @@ public sealed class DynamicStaticFilesMiddlewareTests
         // null! here pins that the defensive `?? string.Empty` actually runs
         // rather than just being dead decoration.
         Ulid folderId = Ulid.NewUlid();
-        DynamicStaticFilesMiddleware.AddFolder(folderId, Ulid.NewUlid(), null!);
+        Registry.Add(folderId, Ulid.NewUlid(), null!);
         try
         {
             Mock<IStorage> storage = CreateStorage();
@@ -817,7 +820,46 @@ public sealed class DynamicStaticFilesMiddlewareTests
         }
         finally
         {
-            DynamicStaticFilesMiddleware.RemoveFolder(folderId);
+            Registry.Remove(folderId);
         }
+    }
+
+    [Theory]
+    [InlineData("bytes=0-", true, 0, 1024 * 1024 - 1)]
+    [InlineData("bytes=0-", false, 0, 9_999_999)]
+    [InlineData("bytes=5000-", true, 5000, 9_999_999)]
+    [InlineData("bytes=100-199", true, 100, 199)]
+    [InlineData("bytes=100-99999999", true, 100, 9_999_999)]
+    public void TryResolveRange_SatisfiableRange_ResolvesStartAndEnd(
+        string header,
+        bool streamable,
+        long expectedStart,
+        long expectedEnd
+    )
+    {
+        bool resolved = DynamicStaticFilesMiddleware.TryResolveRange(
+            header,
+            10_000_000,
+            streamable,
+            out long start,
+            out long end
+        );
+
+        resolved.Should().BeTrue();
+        start.Should().Be(expectedStart);
+        end.Should().Be(expectedEnd);
+    }
+
+    [Theory]
+    [InlineData("bytes=abc-", 100)]
+    [InlineData("bytes=0-xyz", 100)]
+    [InlineData("bytes=100-", 100)]
+    [InlineData("bytes=0-", 0)]
+    public void TryResolveRange_UnsatisfiableRange_IsRejected(string header, long fileLength)
+    {
+        DynamicStaticFilesMiddleware
+            .TryResolveRange(header, fileLength, true, out _, out _)
+            .Should()
+            .BeFalse();
     }
 }

@@ -1,4 +1,4 @@
-﻿// -----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 //  Copyright (c) 2024-present NoMercy Entertainment. All rights reserved.
 //
 //  This file is part of NoMercy MediaServer, source-available software (NOT open
@@ -13,14 +13,10 @@ using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using NoMercy.Data.Repositories;
-using NoMercy.Database.Models.Media;
-using NoMercy.Database.Models.TvShows;
+using NoMercy.Data.Services;
 using NoMercy.Encoder.Codecs;
 using NoMercy.Encoder.ContentAnalysis;
-using NoMercy.Encoder.ContentAnalysis.Fingerprinting;
 using NoMercy.Encoder.Subtitles;
-using NoMercy.Storage;
 
 namespace NoMercy.Api.Controllers.V1.Dashboard.Analysis;
 
@@ -35,13 +31,9 @@ namespace NoMercy.Api.Controllers.V1.Dashboard.Analysis;
 [Authorize(Policy = "Owner")]
 [Route("api/v{version:apiVersion}/dashboard/content-analysis")]
 public class ContentAnalysisController(
-    ICropDetector cropDetector,
+    ContentAnalysisService contentAnalysisService,
     ISubtitleOcrEngine? ocrEngine,
-    IWhisperTranscriber? whisperTranscriber,
-    IAudioFingerprinter fingerprinter,
-    IIntroDetector introDetector,
-    IVideoFileRepository videoFileRepository,
-    IStorageDriver storageDriver
+    IWhisperTranscriber? whisperTranscriber
 ) : BaseController
 {
     /// <summary>
@@ -60,43 +52,32 @@ public class ContentAnalysisController(
         if (!Ulid.TryParse(videoFileId, out Ulid fileId))
             return BadRequestResponse("Invalid video file id");
 
-        VideoFile? file = await videoFileRepository.GetByIdAsync(fileId, ct);
+        ContentAnalysisService.CropOutcome outcome = await contentAnalysisService.DetectCropAsync(
+            fileId,
+            ct
+        );
 
-        if (file is null)
+        if (outcome.NotFound)
             return NotFoundResponse("Video file not found");
+        if (outcome.SourceMissingPath is not null)
+            return NotFoundResponse($"Source file missing on disk: {outcome.SourceMissingPath}");
+        if (outcome.ErrorMessage is not null)
+            return InternalServerErrorResponse($"Crop detection failed: {outcome.ErrorMessage}");
 
-        string path = storageDriver.CombinePath(file.HostFolder, file.Filename);
-        if (!storageDriver.FileExists(path))
-            return NotFoundResponse($"Source file missing on disk: {path}");
-
-        Guid sourceVideoFileId = new(fileId.ToByteArray());
-
-        try
-        {
-            CropResult result = await cropDetector.DetectAsync(
-                path,
-                sourceVideoFileId,
-                sourceIsHdr: null,
-                ct
-            );
-            return Ok(
-                new
-                {
-                    source_video_file_id = result.SourceVideoFileId,
-                    should_crop = result.ShouldCrop,
-                    width = result.Width,
-                    height = result.Height,
-                    x = result.X,
-                    y = result.Y,
-                    sample_frames_analyzed = result.SampleFramesAnalyzed,
-                    confidence = result.Confidence,
-                }
-            );
-        }
-        catch (Exception ex)
-        {
-            return InternalServerErrorResponse($"Crop detection failed: {ex.Message}");
-        }
+        CropResult result = outcome.Result!;
+        return Ok(
+            new
+            {
+                source_video_file_id = result.SourceVideoFileId,
+                should_crop = result.ShouldCrop,
+                width = result.Width,
+                height = result.Height,
+                x = result.X,
+                y = result.Y,
+                sample_frames_analyzed = result.SampleFramesAnalyzed,
+                confidence = result.Confidence,
+            }
+        );
     }
 
     /// <summary>
@@ -122,38 +103,32 @@ public class ContentAnalysisController(
         if (string.IsNullOrWhiteSpace(language))
             return BadRequestResponse("language query parameter is required");
 
-        VideoFile? file = await videoFileRepository.GetByIdAsync(fileId, ct);
-
-        if (file is null)
-            return NotFoundResponse("Video file not found");
-
-        string path = storageDriver.CombinePath(file.HostFolder, file.Filename);
-        if (!storageDriver.FileExists(path))
-            return NotFoundResponse($"Source file missing on disk: {path}");
-
-        try
-        {
-            SubtitleTrack track = await ocrEngine.OcrAsync(
-                path,
+        ContentAnalysisService.OcrOutcome outcome =
+            await contentAnalysisService.OcrBitmapSubtitleAsync(
+                fileId,
                 streamIndex,
                 language,
                 SubtitleCodecType.WebVtt,
                 ct
             );
-            return Ok(
-                new
-                {
-                    language,
-                    stream_index = streamIndex,
-                    cue_count = track.CueCount,
-                    file_path = track.FilePath,
-                }
-            );
-        }
-        catch (Exception ex)
-        {
-            return InternalServerErrorResponse($"OCR failed: {ex.Message}");
-        }
+
+        if (outcome.NotFound)
+            return NotFoundResponse("Video file not found");
+        if (outcome.SourceMissingPath is not null)
+            return NotFoundResponse($"Source file missing on disk: {outcome.SourceMissingPath}");
+        if (outcome.ErrorMessage is not null)
+            return InternalServerErrorResponse($"OCR failed: {outcome.ErrorMessage}");
+
+        SubtitleTrack track = outcome.Track!;
+        return Ok(
+            new
+            {
+                language,
+                stream_index = streamIndex,
+                cue_count = track.CueCount,
+                file_path = track.FilePath,
+            }
+        );
     }
 
     /// <summary>
@@ -180,45 +155,34 @@ public class ContentAnalysisController(
         if (string.IsNullOrWhiteSpace(language))
             return BadRequestResponse("language query parameter is required");
 
-        VideoFile? file = await videoFileRepository.GetByIdAsync(fileId, ct);
-
-        if (file is null)
-            return NotFoundResponse("Video file not found");
-
-        string path = storageDriver.CombinePath(file.HostFolder, file.Filename);
-        if (!storageDriver.FileExists(path))
-            return NotFoundResponse($"Source file missing on disk: {path}");
-
-        WhisperOptions options = new(
-            ModelPath: string.Empty, // Transcriber reads from EncoderOptions.WhisperModelPath.
-            ModelSize: WhisperModelSize.LargeV3,
-            TranslateToEnglish: translateToEnglish
-        );
-
-        try
-        {
-            SubtitleTrack track = await whisperTranscriber.TranscribeAsync(
-                path,
+        ContentAnalysisService.WhisperOutcome outcome =
+            await contentAnalysisService.TranscribeAsync(
+                fileId,
                 audioStreamIndex: 0,
                 language: language,
-                options: options,
+                modelSize: WhisperModelSize.LargeV3,
+                translateToEnglish: translateToEnglish,
                 progress: null,
                 ct: ct
             );
-            return Ok(
-                new
-                {
-                    language,
-                    translate_to_english = translateToEnglish,
-                    file_path = track.FilePath,
-                    cue_count = track.CueCount,
-                }
-            );
-        }
-        catch (Exception ex)
-        {
-            return InternalServerErrorResponse($"Transcription failed: {ex.Message}");
-        }
+
+        if (outcome.NotFound)
+            return NotFoundResponse("Video file not found");
+        if (outcome.SourceMissingPath is not null)
+            return NotFoundResponse($"Source file missing on disk: {outcome.SourceMissingPath}");
+        if (outcome.ErrorMessage is not null)
+            return InternalServerErrorResponse($"Transcription failed: {outcome.ErrorMessage}");
+
+        SubtitleTrack track = outcome.Track!;
+        return Ok(
+            new
+            {
+                language,
+                translate_to_english = translateToEnglish,
+                file_path = track.FilePath,
+                cue_count = track.CueCount,
+            }
+        );
     }
 
     /// <summary>
@@ -232,88 +196,42 @@ public class ContentAnalysisController(
     [HttpPost("intro/{seasonId:int}")]
     public async Task<IActionResult> DetectIntroForSeason(int seasonId, CancellationToken ct)
     {
-        List<Episode> encoded = await videoFileRepository.GetEncodedEpisodesForSeasonAsync(
-            seasonId,
-            ct
-        );
-
-        if (encoded.Count < 2)
-            return BadRequestResponse(
-                $"Need at least 2 encoded episodes, season has {encoded.Count}"
+        ContentAnalysisService.SeasonIntroOutcome outcome =
+            await contentAnalysisService.DetectIntroForSeasonAsync(
+                seasonId,
+                persistToDatabase: false,
+                ct
             );
 
-        List<AudioFingerprint> intros = [];
-        List<AudioFingerprint> outros = [];
-
-        foreach (Episode ep in encoded)
-        {
-            ct.ThrowIfCancellationRequested();
-            VideoFile? source = ep.VideoFiles.FirstOrDefault();
-            if (source is null)
-                continue;
-
-            string path = storageDriver.CombinePath(source.HostFolder, source.Filename);
-            if (!storageDriver.FileExists(path))
-                continue;
-
-            try
-            {
-                AudioFingerprint introPrint = await fingerprinter.FingerprintAsync(
-                    path,
-                    new(TimeSpan.Zero, TimeSpan.FromMinutes(3)),
-                    ct
-                );
-                intros.Add(introPrint);
-
-                TimeSpan duration = TimeSpan.TryParse(source.Duration, out TimeSpan parsed)
-                    ? parsed
-                    : TimeSpan.Zero;
-                TimeSpan outroStart =
-                    duration > TimeSpan.FromMinutes(3)
-                        ? duration - TimeSpan.FromMinutes(3)
-                        : TimeSpan.Zero;
-
-                AudioFingerprint outroPrint = await fingerprinter.FingerprintAsync(
-                    path,
-                    new(outroStart, TimeSpan.FromMinutes(3)),
-                    ct
-                );
-                outros.Add(outroPrint);
-            }
-            catch (Exception ex)
-            {
-                return InternalServerErrorResponse(
-                    $"Fingerprinting failed for episode {ep.Id}: {ex.Message}"
-                );
-            }
-        }
-
-        if (intros.Count < 2)
+        if (outcome.NotEnoughEpisodes)
+            return BadRequestResponse(
+                $"Need at least 2 encoded episodes, season has {outcome.EpisodesFound}"
+            );
+        if (outcome.FingerprintError is not null)
+            return InternalServerErrorResponse(outcome.FingerprintError);
+        if (outcome.NotEnoughFingerprints)
             return BadRequestResponse("Not enough successful fingerprints to compare");
-
-        IntroMarker? introMarker = introDetector.DetectIntro(intros);
-        IntroMarker? outroMarker = introDetector.DetectOutro(outros);
 
         return Ok(
             new
             {
                 season_id = seasonId,
-                episodes_scanned = intros.Count,
-                intro = introMarker is null
+                episodes_scanned = outcome.EpisodesScanned,
+                intro = outcome.IntroMarker is null
                     ? null
                     : new
                     {
-                        start_seconds = introMarker.Start.TotalSeconds,
-                        end_seconds = introMarker.End.TotalSeconds,
-                        confidence = introMarker.Confidence,
+                        start_seconds = outcome.IntroMarker.Start.TotalSeconds,
+                        end_seconds = outcome.IntroMarker.End.TotalSeconds,
+                        confidence = outcome.IntroMarker.Confidence,
                     },
-                outro = outroMarker is null
+                outro = outcome.OutroMarker is null
                     ? null
                     : new
                     {
-                        start_seconds = outroMarker.Start.TotalSeconds,
-                        end_seconds = outroMarker.End.TotalSeconds,
-                        confidence = outroMarker.Confidence,
+                        start_seconds = outcome.OutroMarker.Start.TotalSeconds,
+                        end_seconds = outcome.OutroMarker.End.TotalSeconds,
+                        confidence = outcome.OutroMarker.Confidence,
                     },
             }
         );

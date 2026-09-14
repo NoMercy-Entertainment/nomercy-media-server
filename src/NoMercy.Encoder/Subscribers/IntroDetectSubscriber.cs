@@ -32,7 +32,7 @@ namespace NoMercy.Encoder.Subscribers;
 ///
 /// Opt-out: set <see cref="EncoderOptions.EnableIntroDetectSubscriber"/> = false.
 /// </summary>
-public class IntroDetectSubscriber : IDisposable
+public class IntroDetectSubscriber : EventSubscriber
 {
     private readonly IAudioFingerprinter _fingerprinter;
     private readonly IIntroDetector _introDetector;
@@ -40,7 +40,6 @@ public class IntroDetectSubscriber : IDisposable
     private readonly ILogger<IntroDetectSubscriber> _logger;
     private readonly IStorage _storage;
     private readonly IDbContextFactory<MediaContext> _contextFactory;
-    private readonly List<IDisposable> _subscriptions = [];
 
     // Fingerprint the first 3 minutes for intro detection.
     private static readonly FingerprintWindow IntroWindow = new(
@@ -71,7 +70,7 @@ public class IntroDetectSubscriber : IDisposable
         _storage = storage;
         _contextFactory = contextFactory;
 
-        _subscriptions.Add(eventBus.Subscribe<LibraryScanCompletedEvent>(OnLibraryScanCompleted));
+        Track(eventBus.Subscribe<LibraryScanCompletedEvent>(OnLibraryScanCompleted));
     }
 
     internal async Task OnLibraryScanCompleted(
@@ -358,13 +357,5 @@ public class IntroDetectSubscriber : IDisposable
         }
 
         return results;
-    }
-
-    public void Dispose()
-    {
-        foreach (IDisposable subscription in _subscriptions)
-            subscription.Dispose();
-
-        _subscriptions.Clear();
     }
 }

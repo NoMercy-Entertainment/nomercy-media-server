@@ -16,7 +16,9 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Api.DTOs.Media;
+using NoMercy.Api.DTOs.Media.Components;
 using NoMercy.Authorization;
+using NoMercy.Data.Repositories;
 using NoMercy.NmSystem.Extensions;
 
 namespace NoMercy.Api.Controllers;
@@ -313,13 +315,30 @@ public class BaseController : Controller
         return Ok(response);
     }
 
+    /// <summary>A grid of movie and show cards, ordered by title.</summary>
+    protected static ContainerComponentBuilder TitleCardGrid(
+        string id,
+        IEnumerable<HomeMovieCardDto> movies,
+        IEnumerable<HomeTvCardDto> shows
+    ) =>
+        Component
+            .Grid()
+            .WithId(id)
+            .WithItems(
+                movies
+                    .Select(movie => new CardData(movie))
+                    .Concat(shows.Select(show => new CardData(show)))
+                    .OrderBy(card => card.TitleSort)
+                    .Select(card => Component.Card().WithData(card))
+            );
+
     protected string Language()
     {
         return HttpContext
                 .Request.Headers.AcceptLanguage.FirstOrDefault()
                 ?.Split("_")
                 .FirstOrDefault()
-            ?? LocalizationHelper.GlobalLocalizer.TargetLanguage;
+            ?? LocalizationHelper.CurrentLocalizer.TargetLanguage;
     }
 
     protected string Country()

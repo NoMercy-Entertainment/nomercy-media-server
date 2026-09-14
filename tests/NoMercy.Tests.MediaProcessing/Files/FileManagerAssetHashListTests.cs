@@ -443,6 +443,29 @@ public sealed class FileManagerAssetHashListTests : IDisposable
     }
 
     [Fact]
+    public void GetExtraFiles_EmptySheetFromAnInterruptedRebuild_IsIgnored()
+    {
+        // A preview rebuild writes its new sheet only when ffmpeg finishes. Stopped
+        // mid-run it leaves an empty thumbs_320x180.webp beside the working pair,
+        // and registering that empty sheet cost the title its scrub preview.
+        string hostDir = Path.Combine(_tempRoot, "Movie.InterruptedRebuild");
+        Directory.CreateDirectory(hostDir);
+        File.WriteAllBytes(Path.Combine(hostDir, "sprite.webp"), new byte[16]);
+        File.WriteAllText(Path.Combine(hostDir, "previews.vtt"), "WEBVTT\n");
+        File.WriteAllBytes(Path.Combine(hostDir, "thumbs_320x180.webp"), []);
+
+        List<VideoTrack> tracks = InvokeGetExtraFiles(BuildLocalStorage(), hostDir);
+
+        tracks
+            .Where(t => t.Kind == "sprite")
+            .Should()
+            .ContainSingle()
+            .Which.File.Should()
+            .Be("/sprite.webp");
+        tracks.Should().Contain(t => t.Kind == "thumbnails" && t.File == "/previews.vtt");
+    }
+
+    [Fact]
     public void GetExtraFiles_PreviewsVttWithoutASpriteSheet_IsExcluded()
     {
         // The legacy pairing is by name, so it must still require the sheet it

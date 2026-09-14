@@ -16,6 +16,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using NoMercy.Api.WebSockets;
 using NoMercy.Authorization;
+using NoMercy.Data.Repositories;
 using NoMercy.Database;
 using NoMercy.Database.Models.Users;
 
@@ -27,38 +28,37 @@ namespace NoMercy.Api.Controllers.Devices;
 [Route("api/v{version:apiVersion}/devices/{deviceId}/forget")]
 public sealed class ForgetDeviceController : BaseController
 {
-    private readonly IDbContextFactory<MediaContext> _contextFactory;
+    private readonly IDeviceRepository _deviceRepository;
+    private readonly IUserCache _userCache;
     private readonly DeviceBusRegistry _registry;
 
     public ForgetDeviceController(
-        IDbContextFactory<MediaContext> contextFactory,
+        IDeviceRepository deviceRepository,
+        IUserCache userCache,
         DeviceBusRegistry registry
     )
     {
-        _contextFactory = contextFactory;
+        _deviceRepository = deviceRepository;
+        _userCache = userCache;
         _registry = registry;
     }
 
     [HttpPost]
     public async Task<IActionResult> Forget(string deviceId)
     {
-        User? user = HttpContext
-            .RequestServices.GetRequiredService<IUserCache>()
-            .GetUser(HttpContext.User.UserId());
+        User? user = _userCache.GetUser(HttpContext.User.UserId());
         if (user is null)
             return UnauthenticatedResponse("Authentication required.");
         if (!Ulid.TryParse(deviceId, out Ulid id))
             return BadRequestResponse("Invalid device id.");
 
-        await using MediaContext ctx = await _contextFactory.CreateDbContextAsync();
-        Device? device = await ctx.Devices.FindAsync(id);
-        if (device is null || device.OwnerUserId != user.Id)
+        Device? device = await _deviceRepository.GetOwnerDeviceAsync(id, user.Id);
+        if (device is null)
             return NotFoundResponse("Device not found.");
 
-        Guid ownerUserId = device.OwnerUserId!.Value;
+        Guid ownerUserId = user.Id;
 
-        ctx.Devices.Remove(device);
-        await ctx.SaveChangesAsync();
+        await _deviceRepository.DeleteDeviceAsync(device);
 
         // Force-close the WS if still alive (best-effort); device is already gone from DB.
         _registry.ForceClose(id);

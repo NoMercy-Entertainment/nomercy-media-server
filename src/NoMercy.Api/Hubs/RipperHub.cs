@@ -27,8 +27,6 @@ namespace NoMercy.Api.Hubs;
 
 public class RipperHub : ConnectionHub
 {
-    private static readonly ConcurrentDictionary<string, Guid> CurrentDevices = new();
-
     private readonly IDriveMonitor _driveMonitor;
     private readonly DiscSourceFactory _discSourceFactory;
 
@@ -52,10 +50,6 @@ public class RipperHub : ConnectionHub
 
     public override async Task OnConnectedAsync()
     {
-        User user = UserCacheService.GetUser(Context.User.UserId())!;
-
-        CurrentDevices.TryAdd(Context.ConnectionId, user.Id);
-
         await base.OnConnectedAsync();
         _logger.LogDebug("Ripper client connected");
     }

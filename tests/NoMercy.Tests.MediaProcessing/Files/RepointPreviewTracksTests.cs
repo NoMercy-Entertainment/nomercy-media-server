@@ -109,6 +109,66 @@ public class RepointPreviewTracksTests : IDisposable
     }
 
     [Fact]
+    public async Task Repoints_the_preview_metadata_the_watch_response_reads()
+    {
+        // The watch response trusts the scanned preview metadata over the track
+        // rows. Repointing only the rows left it naming the sheet the rebuild had
+        // just deleted, so players fetched sprite.webp and previews.vtt and got 404.
+        Metadata metadata = new()
+        {
+            Filename = "/Show.S01E01.mkv",
+            Folder = "/Show/Show.S01E01",
+            HostFolder = HostFolder,
+            Previews =
+            [
+                new()
+                {
+                    ImageFileName = "/sprite.webp",
+                    ImageFileSize = 365456,
+                    TimeFileName = "/previews.vtt",
+                    TimeFileSize = 23385,
+                },
+            ],
+        };
+        await using (MediaContext seed = new(_options))
+        {
+            seed.Metadata.Add(metadata);
+            seed.VideoFiles.Add(
+                new()
+                {
+                    Filename = "/Show.S01E01.mkv",
+                    Folder = "/Show/Show.S01E01",
+                    HostFolder = HostFolder,
+                    Share = "share",
+                    Quality = "1080",
+                    Languages = "[]",
+                    MetadataId = metadata.Id,
+                    Tracks =
+                    [
+                        new() { File = "/sprite.webp", Kind = "sprite" },
+                        new() { File = "/previews.vtt", Kind = "thumbnails" },
+                    ],
+                }
+            );
+            await seed.SaveChangesAsync();
+        }
+
+        await using MediaContext context = new(_options);
+        FileRepository repository = new(context, Driver);
+
+        await repository.RepointPreviewTracksAsync(
+            HostFolder,
+            "thumbs_320x180.webp",
+            "thumbs_320x180.vtt"
+        );
+
+        await using MediaContext read = new(_options);
+        IPreview preview = (await read.Metadata.AsNoTracking().SingleAsync()).Previews!.Single();
+        preview.ImageFileName.Should().Be("/thumbs_320x180.webp");
+        preview.TimeFileName.Should().Be("/thumbs_320x180.vtt");
+    }
+
+    [Fact]
     public async Task Registers_the_rebuilt_cue_file_a_legacy_folder_never_had()
     {
         // What titles encoded before the tile size went into the name still look

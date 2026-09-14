@@ -12,8 +12,7 @@
 using Newtonsoft.Json;
 using NoMercy.Database;
 using NoMercy.Database.Models.TvShows;
-using NoMercy.Providers.TMDB.Client;
-using NoMercy.Providers.TMDB.Models.Season;
+using NoMercy.NmSystem.Extensions;
 
 namespace NoMercy.Api.DTOs.Media;
 
@@ -49,8 +48,8 @@ public record SeasonDto
         string? overview = season.Translations.FirstOrDefault()?.Overview;
 
         Id = season.Id;
-        Title = !string.IsNullOrEmpty(title) ? title : season.Title;
-        Overview = !string.IsNullOrEmpty(overview) ? overview : season.Overview;
+        Title = title.OrWhenEmpty(season.Title);
+        Overview = overview.OrWhenEmpty(season.Overview);
         Poster = season.Poster;
         SeasonNumber = season.SeasonNumber;
         ColorPalette = season.ColorPalette;
@@ -58,44 +57,5 @@ public record SeasonDto
         Episodes = season
             .Episodes.OrderBy(episode => episode.EpisodeNumber)
             .Select(episode => new EpisodeDto(episode));
-    }
-
-    public SeasonDto(int tvId, TmdbSeason tmdbSeason, string country)
-    {
-        TmdbSeasonClient tmdbSeasonClient = new(tvId, tmdbSeason.SeasonNumber);
-        TmdbSeasonAppends? seasonData = tmdbSeasonClient.WithAllAppends().Result;
-
-        string? title = seasonData
-            ?.Translations.Translations.FirstOrDefault(translation =>
-                translation.Iso31661 == country
-            )
-            ?.Data.Title;
-
-        string? overview = seasonData
-            ?.Translations.Translations.FirstOrDefault(translation =>
-                translation.Iso31661 == country
-            )
-            ?.Data.Overview;
-
-        Id = tmdbSeason.Id;
-        Title = !string.IsNullOrEmpty(title) ? title : tmdbSeason.Name;
-        Overview = !string.IsNullOrEmpty(overview) ? overview : tmdbSeason.Overview;
-        Poster = tmdbSeason.PosterPath;
-        SeasonNumber = tmdbSeason.SeasonNumber;
-        ColorPalette = new();
-        Translations =
-            seasonData?.Translations.Translations.Select(translation => new TranslationDto(
-                translation
-            )) ?? [];
-        Episodes =
-            seasonData
-                ?.Episodes.OrderBy(episode => episode.EpisodeNumber)
-                .Select(episode => new EpisodeDto(
-                    tvId,
-                    tmdbSeason.SeasonNumber,
-                    episode.EpisodeNumber,
-                    country
-                ))
-            ?? [];
     }
 }

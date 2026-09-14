@@ -62,6 +62,8 @@ public static class ServiceCollectionExtensions
 
         services.TryAddTransient<IDiscRipper, DiscRipper>();
         services.TryAddTransient<IAudioMetadataWriter, TagLibAudioMetadataWriter>();
+        services.TryAddScoped<IDiscConfirmationService, DiscConfirmationService>();
+        services.TryAddScoped<IDiscRipPreparationService, DiscRipPreparationService>();
 
         // IDiscSource implementations — registered as IEnumerable so the
         // factory can pick the right one per disc type. CdDiscSource

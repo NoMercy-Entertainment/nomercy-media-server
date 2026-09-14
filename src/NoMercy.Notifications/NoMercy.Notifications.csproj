@@ -10,6 +10,7 @@
   </PropertyGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="NoMercy.Tests.Notifications" />
+    <InternalsVisibleTo Include="NoMercy.Tests.Api" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\NoMercy.NmSystem\NoMercy.NmSystem.csproj" />

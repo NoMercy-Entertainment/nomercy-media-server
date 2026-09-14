@@ -321,28 +321,7 @@ public partial class MusicHub
 
         if (playlistIndex != -1)
         {
-            // Track is in the upcoming playlist
-            // Add current item to backlog
-            if (state.CurrentItem != null)
-            {
-                state.Backlog.Add(state.CurrentItem);
-            }
-
-            // Add all tracks BEFORE the selected one to backlog (they're being skipped over)
-            for (int i = 0; i < playlistIndex; i++)
-            {
-                state.Backlog.Add(state.Playlist[i]);
-            }
-
-            // Remove everything up to and including the selected track
-            state.Playlist.RemoveRange(0, playlistIndex + 1);
-
-            // Set the selected track as current
-            // The remaining playlist continues naturally from here
-            state.CurrentItem = item;
-            state.SetPosition(0);
-            state.IgnoreCurrentTimeUntil = DateTime.UtcNow.AddSeconds(1);
-            state.PlayState = true;
+            state.SkipTo(playlistIndex, item);
         }
         else
         {
@@ -402,7 +381,7 @@ public partial class MusicHub
         // Logging only — record who triggered the playlist change without
         // promoting them to active. The active flag is governed by
         // UpdateDeviceInfo, which respects an existing active device.
-        Device device = GetCallerDevice(user);
+        Device device = GetCallerDevice();
         try
         {
             await ActivityLogger.LogPlaybackAsync(
@@ -432,11 +411,7 @@ public partial class MusicHub
         List<PlaylistTrackDto> playlist
     )
     {
-        (List<PlaylistTrackDto> before, List<PlaylistTrackDto> after) =
-            _musicPlaylistManager.SplitPlaylist(playlist, item.Id);
-        List<PlaylistTrackDto> sortedPlaylist = [];
-        sortedPlaylist.AddRange(after);
-        sortedPlaylist.AddRange(before);
+        List<PlaylistTrackDto> sortedPlaylist = playlist.QueueAfter(track => track.Id == item.Id);
 
         state.CurrentItem = item;
         state.PlayState = true;
@@ -623,7 +598,12 @@ public partial class MusicHub
             user.Id,
             async () =>
             {
-                if (!_musicPlayerStateManager.TryGetValue(user.Id, out MusicPlayerState? playerState))
+                if (
+                    !_musicPlayerStateManager.TryGetValue(
+                        user.Id,
+                        out MusicPlayerState? playerState
+                    )
+                )
                 {
                     await _musicPlaybackService.UpdatePlaybackState(user, playerState);
                     return;
@@ -709,7 +689,12 @@ public partial class MusicHub
             user.Id,
             async () =>
             {
-                if (!_musicPlayerStateManager.TryGetValue(user.Id, out MusicPlayerState? playerState))
+                if (
+                    !_musicPlayerStateManager.TryGetValue(
+                        user.Id,
+                        out MusicPlayerState? playerState
+                    )
+                )
                 {
                     await _musicPlaybackService.UpdatePlaybackState(user, playerState);
                     return;

@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
+using NoMercy.Database.Models.Common;
 
 namespace NoMercy.Api.DTOs.Common;
 
@@ -20,4 +21,7 @@ public record ContentRating
 
     [JsonProperty("iso_3166_1")]
     public string? Iso31661 { get; set; }
+
+    public static ContentRating From(Certification certification) =>
+        new() { Rating = certification.Rating, Iso31661 = certification.Iso31661 };
 }

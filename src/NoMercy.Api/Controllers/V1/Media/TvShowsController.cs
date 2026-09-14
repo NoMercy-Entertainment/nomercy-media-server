@@ -77,8 +77,6 @@ public class TvShowsController(
         if (tvShowAppends is null)
             return NotFoundResponse("Tv show not found");
 
-        // await _tvShowRepository.AddTvShowAsync(id);
-
         return Ok(new InfoResponseDto { Data = new(tvShowAppends, country) });
     }
 
@@ -230,7 +228,7 @@ public class TvShowsController(
         }
         catch (Exception e)
         {
-            logger.LogError(e.Message);
+            logger.LogError(e, "{Message}", e.Message);
             return InternalServerErrorResponse(e.Message);
         }
 
@@ -274,15 +272,9 @@ public class TvShowsController(
         }
         else
         {
-            TmdbTvShowDetails? show = await tvShowMetadataProvider.GetTvShowDetailsAsync(id, ct);
-            if (show == null)
+            (bool found, string? mediaType) = await ClassifyShowAsync(id, ct);
+            if (!found)
                 return NotFoundResponse("Tv show not found");
-
-            string? mediaType = await mediaTypeClassifier.ClassifyAsync(
-                show.Name,
-                show.FirstAirDate.ParseYear(),
-                show.OriginCountry
-            );
 
             // null means the classification lookup was inconclusive, not "confirmed
             // not anime" — skip reclassification and keep the show where it already
@@ -335,15 +327,9 @@ public class TvShowsController(
         }
         else
         {
-            TmdbTvShowDetails? show = await tvShowMetadataProvider.GetTvShowDetailsAsync(id, ct);
-            if (show == null)
+            (bool found, string? mediaType) = await ClassifyShowAsync(id, ct);
+            if (!found)
                 return NotFoundResponse("Tv show not found");
-
-            string? mediaType = await mediaTypeClassifier.ClassifyAsync(
-                show.Name,
-                show.FirstAirDate.ParseYear(),
-                show.OriginCountry
-            );
 
             // No existing placement to fall back to for a brand-new show, so an
             // inconclusive lookup defaults to "tv" the same way a confirmed "not
@@ -367,7 +353,7 @@ public class TvShowsController(
         }
         catch (Exception e)
         {
-            logger.LogError(e.Message);
+            logger.LogError(e, "{Message}", e.Message);
             return InternalServerErrorResponse(e.Message);
         }
 
@@ -456,5 +442,26 @@ public class TvShowsController(
                     )
             )
         );
+    }
+
+    /// <summary>
+    /// The library type TMDB's details suggest for a show. Found is false when TMDB
+    /// does not know the show; a null media type means the lookup was inconclusive.
+    /// </summary>
+    private async Task<(bool Found, string? MediaType)> ClassifyShowAsync(
+        int id,
+        CancellationToken ct
+    )
+    {
+        TmdbTvShowDetails? show = await tvShowMetadataProvider.GetTvShowDetailsAsync(id, ct);
+        if (show is null)
+            return (false, null);
+
+        string? mediaType = await mediaTypeClassifier.ClassifyAsync(
+            show.Name,
+            show.FirstAirDate.ParseYear(),
+            show.OriginCountry
+        );
+        return (true, mediaType);
     }
 }

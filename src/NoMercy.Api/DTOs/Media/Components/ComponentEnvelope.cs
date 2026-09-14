@@ -34,27 +34,3 @@ public record ComponentEnvelope
     [JsonProperty("replacing", NullValueHandling = NullValueHandling.Ignore)]
     public Ulid? Replacing { get; set; }
 }
-
-/// <summary>
-/// Extension methods for creating ComponentEnvelopes fluently.
-/// </summary>
-public static class ComponentEnvelopeExtensions
-{
-    public static ComponentEnvelope WithId(this ComponentEnvelope envelope, Ulid id)
-    {
-        envelope.Id = id;
-        return envelope;
-    }
-
-    public static ComponentEnvelope WithUpdate(this ComponentEnvelope envelope, UpdateDto? update)
-    {
-        envelope.Update = update;
-        return envelope;
-    }
-
-    public static ComponentEnvelope WithReplacing(this ComponentEnvelope envelope, Ulid replacingId)
-    {
-        envelope.Replacing = replacingId;
-        return envelope;
-    }
-}

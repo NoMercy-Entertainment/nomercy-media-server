@@ -75,7 +75,6 @@ public class PluginRestEndpointRoutingTests : IClassFixture<PluginRestEndpointRo
                 Services.GetRequiredService<IPluginManager>();
 
             registrar.Attach(manager.GetInstalledPlugins()[0], manager);
-            PluginActionDescriptorChangeProvider.Instance.TriggerChange();
 
             return client;
         }

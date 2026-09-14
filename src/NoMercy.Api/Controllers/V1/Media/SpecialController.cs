@@ -60,10 +60,7 @@ public class SpecialController(
 
         if (request.Version != "lolomo")
         {
-            List<CardData> cardItems =
-            [
-                .. specials.Select(special => new CardData(special, country)),
-            ];
+            List<CardData> cardItems = [.. specials.Select(special => new CardData(special))];
 
             ComponentEnvelope response = Component
                 .Grid()
@@ -79,7 +76,7 @@ public class SpecialController(
                 List<CardData> letterItems =
                 [
                     .. specials
-                        .Select(special => new CardData(special, country))
+                        .Select(special => new CardData(special))
                         .Where(item => AlphaBucket.Matches(item.TitleSort, letter)),
                 ];
 
@@ -138,7 +135,7 @@ public class SpecialController(
 
     [HttpGet]
     [Route("{id:ulid}/available")]
-    public async Task<IActionResult> Available(Ulid id, CancellationToken ct = default)
+    public async Task<IActionResult> Available(Ulid id)
     {
         Guid userId = User.UserId();
 
@@ -146,9 +143,10 @@ public class SpecialController(
 
         bool hasFiles =
             special is not null
-            && (
-                special.Items.Select(movie => movie.Movie?.VideoFiles).Any()
-                || special.Items.Select(movie => movie.Episode?.VideoFiles).Any()
+            && special.Items.Any(item =>
+                (item.Movie?.VideoFiles ?? item.Episode?.VideoFiles ?? []).Any(file =>
+                    file.Folder != null
+                )
             );
 
         if (!hasFiles)
@@ -275,45 +273,22 @@ public class SpecialController(
         if (special is null)
             return UnprocessableEntityResponse("Special not found");
 
-        var movies = special
+        IEnumerable<(int Id, Ulid LibraryId)> movies = special
             .Items.Where(item => item.MovieId is not null)
-            .Select(item => new { id = item.MovieId ?? 0, libraryId = item.Movie!.LibraryId! })
-            .ToList();
-
-        foreach (var movie in movies)
-        {
-            try
-            {
-                jobDispatcher.DispatchJob<FileRescanJob>(movie.id, movie.libraryId);
-            }
-            catch (Exception e)
-            {
-                logger.LogError(e.Message);
-                return InternalServerErrorResponse(e.Message);
-            }
-        }
-
-        var tvs = special
+            .Select(item => (item.MovieId ?? 0, item.Movie!.LibraryId));
+        IEnumerable<(int Id, Ulid LibraryId)> shows = special
             .Items.Where(item => item.Episode is not null)
-            .Select(item => new
-            {
-                id = item.Episode?.TvId ?? 0,
-                libraryId = item.Episode?.Tv.LibraryId ?? Ulid.Empty,
-            })
-            .GroupBy(item => new { item.id, item.libraryId })
-            .DistinctBy(group => new { group.Key.id, group.Key.libraryId })
-            .Select(group => group.Key)
-            .ToList();
+            .Select(item => (item.Episode!.TvId, item.Episode.Tv.LibraryId));
 
-        foreach (var tv in tvs)
+        foreach ((int mediaId, Ulid libraryId) in movies.Concat(shows.Distinct()))
         {
             try
             {
-                jobDispatcher.DispatchJob<FileRescanJob>(tv.id, tv.libraryId);
+                jobDispatcher.DispatchJob<FileRescanJob>(mediaId, libraryId);
             }
             catch (Exception e)
             {
-                logger.LogError(e.Message);
+                logger.LogError(e, "{Message}", e.Message);
                 return InternalServerErrorResponse(e.Message);
             }
         }
@@ -328,40 +303,10 @@ public class SpecialController(
         );
     }
 
-    // [HttpPost]
-    // [Route("{id:ulid}/refresh")]
-    // [Authorize(Policy = "Moderator")]
-    // public async Task<IActionResult> Refresh(Ulid id, CancellationToken ct = default)
-    // {
-    //     Special? special = await specialRepository.GetSpecialByIdAsync(id, ct);
-    //
-    //     if (special is null)
-    //         return UnprocessableEntityResponse("Special not found");
-    //
-    //     try
-    //     {
-    //         jobDispatcher.DispatchJob<MovieImportJob>(id, special.Library.Id);
-    //     }
-    //     catch (Exception e)
-    //     {
-    //         logger.LogError(e.Message);
-    //         return InternalServerErrorResponse(e.Message);
-    //     }
-    //
-    //     return Ok(
-    //         new StatusResponseDto<string>
-    //         {
-    //             Status = "ok",
-    //             Message = "Refreshing {0} in the background",
-    //             Args = [special.Title ?? "Unknown"],
-    //         }
-    //     );
-    // }
-
     [HttpPost]
     [Route("seed")]
     [Authorize(Policy = "Moderator")]
-    public async Task<IActionResult> Seed(CancellationToken ct = default)
+    public async Task<IActionResult> Seed()
     {
         try
         {

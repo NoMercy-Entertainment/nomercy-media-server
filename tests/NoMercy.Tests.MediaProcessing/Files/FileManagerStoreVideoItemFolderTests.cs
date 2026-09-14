@@ -64,6 +64,21 @@ public sealed class FileManagerStoreVideoItemFolderTests : IDisposable
         property.SetValue(manager, value);
     }
 
+    // The scan already knows which Folder it enumerated each item from
+    // (FindFiles records it into this field as it walks Folders); seeding it
+    // directly here reproduces that without standing up a full scan.
+    private static void SeedItemOrigin(FileManager manager, MediaFile item, Folder origin)
+    {
+        FieldInfo field =
+            typeof(FileManager).GetField(
+                "_itemOriginFolder",
+                BindingFlags.NonPublic | BindingFlags.Instance
+            ) ?? throw new InvalidOperationException("_itemOriginFolder not found");
+        Dictionary<MediaFile, Folder> dictionary =
+            (Dictionary<MediaFile, Folder>)field.GetValue(manager)!;
+        dictionary[item] = origin;
+    }
+
     private static async Task InvokeStoreVideoItem(FileManager manager, MediaFile item)
     {
         MethodInfo method =
@@ -190,5 +205,109 @@ public sealed class FileManagerStoreVideoItemFolderTests : IDisposable
 
         stored().Should().NotBeNull();
         stored()!.Folder.Should().Be("/Haikyu!!.(2014)/Haikyu.S01E01");
+    }
+
+    [Fact]
+    public async Task StoreVideoItem_ItemTaggedWithOriginFolder_UsesThatFolder_NotASubstringMatch()
+    {
+        // An empty-root folder's derived title path is bare ("Show.(2013)",
+        // no library-root prefix) — a substring every deeper path ending in
+        // the same title segment also contains. Folders.FirstOrDefault(f =>
+        // itemPath.Contains(f.Path)) picked whichever folder happened to be
+        // first in the list, regardless of which folder the item actually
+        // came from (issue #55, contributing cause #4). The scan already
+        // knows the real origin; StoreVideoItem must trust that over
+        // re-deriving it by substring.
+        string realTitleDirectory = Path.Combine(
+            _libraryRoot,
+            "Marvels",
+            "TV.Shows",
+            "Show.(2013)"
+        );
+        Directory.CreateDirectory(realTitleDirectory);
+        MediaFile item = new()
+        {
+            Path = Path.Combine(realTitleDirectory, "Show.S01E01.NoMercy.mkv"),
+        };
+
+        VideoFile? stored = null;
+        Mock<IFileRepository> repoMock = new();
+        repoMock
+            .Setup(repo => repo.StoreMetadata(It.IsAny<Metadata>()))
+            .ReturnsAsync(Ulid.NewUlid());
+        repoMock
+            .Setup(repo => repo.StoreVideoFile(It.IsAny<VideoFile>()))
+            .Callback<VideoFile>(videoFile => stored = videoFile)
+            .Returns(Task.CompletedTask);
+
+        LocalStorageDriver driver = new();
+        Mock<IStorageFactory> factoryMock = new();
+        factoryMock
+            .Setup(factory => factory.For(It.IsAny<Ulid>(), It.IsAny<Ulid>(), It.IsAny<string>()))
+            .Returns(new LocalStorage(driver, new StoragePathGuard([], driver)));
+
+        FileManager manager = new(
+            repoMock.Object,
+            factoryMock.Object,
+            new Mock<IStorageDriver>().Object,
+            new Mock<IMediaAnalyzer>().Object,
+            TestFilenameParser.Default
+        );
+
+        Ulid emptyRootShare = Ulid.NewUlid();
+        Ulid realShare = Ulid.NewUlid();
+        Ulid driverId = Ulid.NewUlid();
+        Folder realFolder = new()
+        {
+            Id = realShare,
+            Path = realTitleDirectory,
+            DriverId = driverId,
+        };
+
+        SetPrivateProperty(
+            manager,
+            "LibraryRootFolders",
+            new List<Folder>
+            {
+                new()
+                {
+                    Id = realShare,
+                    Path = _libraryRoot,
+                    DriverId = driverId,
+                },
+            }
+        );
+        SetPrivateProperty(
+            manager,
+            "Folders",
+            new List<Folder>
+            {
+                // Listed first, so an unguarded substring match picks it.
+                new()
+                {
+                    Id = emptyRootShare,
+                    Path = "Show.(2013)",
+                    DriverId = driverId,
+                },
+                realFolder,
+            }
+        );
+        SetPrivateProperty(
+            manager,
+            "Show",
+            new Tv
+            {
+                Id = 60863,
+                Title = "Show",
+                Folder = "/Show.(2013)",
+            }
+        );
+
+        SeedItemOrigin(manager, item, realFolder);
+
+        await InvokeStoreVideoItem(manager, item);
+
+        stored.Should().NotBeNull();
+        stored!.Share.Should().Be(realShare.ToString());
     }
 }

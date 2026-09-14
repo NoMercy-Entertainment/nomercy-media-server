@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.Api.Controllers.V1.Media;
+using NoMercy.Encoder.Trailers;
 using Xunit;
 
 namespace NoMercy.Tests.Api.Media;

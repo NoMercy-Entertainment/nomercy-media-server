@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
+using NoMercy.Api.DTOs.Media.Components;
 using NoMercy.Database;
 using NoMercy.Database.Models.Music;
 using NoMercy.NmSystem.Information;
@@ -78,9 +79,7 @@ public record AlbumsResponseTrackDto
     public AlbumsResponseTrackDto(AlbumTrack artistTrack, Ulid libraryId, string country)
     {
         ColorPalette = artistTrack.Track.ColorPalette;
-        Cover = artistTrack.Track.Cover is not null
-            ? new Uri($"/images/music{artistTrack.Track.Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.UrlWhenSet(artistTrack.Track.Cover);
         Date = artistTrack.Track.Date;
         Disc = artistTrack.Track.DiscNumber;
         Duration = artistTrack.Track.Duration;

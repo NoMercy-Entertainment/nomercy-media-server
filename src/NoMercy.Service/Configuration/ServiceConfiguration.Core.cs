@@ -18,6 +18,7 @@ using NoMercy.Api.Security;
 using NoMercy.Api.Services;
 using NoMercy.Api.WebSockets;
 using NoMercy.Authorization;
+using NoMercy.Authorization.LiveIngest;
 using NoMercy.Data.Activity;
 using NoMercy.Data.Plugins;
 using NoMercy.Data.Repositories;
@@ -70,6 +71,7 @@ using NoMercy.Providers.Jikan;
 using NoMercy.Providers.Lyrics;
 using NoMercy.Providers.TMDB.Client;
 using NoMercy.Queue.MediaServer;
+using NoMercy.Queue.MediaServer.Repositories;
 using NoMercy.Service.Extensions;
 using NoMercy.Service.Seeds;
 using NoMercy.Service.Workers;
@@ -342,6 +344,10 @@ public static partial class ServiceConfiguration
         services.AddSingleton<MdnsDeviceScanner>();
         services.AddHostedService<MdnsDeviceScannerHostedService>();
         services.AddSingleton<DeviceBusRegistry>();
+        services.AddSingleton<
+            Data.Repositories.IDeviceStateRepository,
+            Data.Repositories.DeviceStateRepository
+        >();
         services.AddSingleton<IDeviceListChangeNotifier>(sp =>
             sp.GetRequiredService<DeviceBusRegistry>()
         );
@@ -433,11 +439,17 @@ public static partial class ServiceConfiguration
         services.AddScoped<ContentSegmentRepository>();
         services.AddScoped<LibraryRepository>();
         services.AddScoped<MediaProcessingLibraryRepository>();
+        services.AddScoped<
+            NoMercy.MediaProcessing.Libraries.ILibraryRepository,
+            MediaProcessingLibraryRepository
+        >();
         services.AddScoped<DeviceRepository>();
         services.AddScoped<FolderRepository>();
         services.AddScoped<DriverRepository>();
         services.AddScoped<MediaProcessingFileRepository>();
         services.AddScoped<IFileRepository, MediaProcessingFileRepository>();
+        services.AddScoped<IFileManager, FileManager>();
+        services.AddScoped<ILibraryLogicFactory, LibraryLogicFactory>();
         services.AddScoped<IMediaIdentificationService, MediaIdentificationService>();
         services.AddScoped<IFileListService, FileListService>();
 
@@ -548,6 +560,8 @@ public static partial class ServiceConfiguration
         services.AddScoped<ISpecialRepository, SpecialRepository>();
         services.AddScoped<ITvShowRepository, TvShowRepository>();
         services.AddScoped<IUserDataRepository, UserDataRepository>();
+        services.AddScoped<IServerConfigurationRepository, ServerConfigurationRepository>();
+        services.AddScoped<ITrustedPublisherKeyRepository, TrustedPublisherKeyRepository>();
         services.AddScoped<IUserPlaylistRepository, UserPlaylistRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IImageRepository, ImageRepository>();
@@ -555,6 +569,10 @@ public static partial class ServiceConfiguration
         services.AddScoped<InboxRepository>();
         services.AddScoped<IInboxRepository, InboxRepository>();
         services.AddScoped<IActivityRepository, ActivityRepository>();
+        services.AddScoped<IIncompleteEncodeRepository, IncompleteEncodeRepository>();
+        services.AddScoped<IQueueCardMediaRepository, QueueCardMediaRepository>();
+        services.AddScoped<IAudioAnalysisStatisticsRepository, AudioAnalysisStatisticsRepository>();
+        services.AddScoped<IQueueTaskRepository, QueueTaskRepository>();
 
         // Add Managers
         // services.AddScoped<EncoderManager>();
@@ -573,6 +591,7 @@ public static partial class ServiceConfiguration
         services.AddScoped<EpisodeManager>();
         services.AddScoped<PersonManager>();
         services.AddScoped<EncoderProfileService>();
+        services.AddScoped<ContentAnalysisService>();
         services.AddScoped<HomeService>();
         services.AddScoped<RecommendationService>();
         // Singleton: the ingest-key registry is shared across the scoped
@@ -580,7 +599,6 @@ public static partial class ServiceConfiguration
         // (validate), so its state must outlive any request scope.
         services.AddSingleton<ILiveIngestKeyStore, LiveIngestKeyStore>();
         services.AddScoped<ILiveTranscodeService, LiveTranscodeService>();
-        services.AddScoped<SetupService>();
 
         // Palette pipeline — contract-based DI, dispatched by EntityType
         services.AddScoped<IPaletteSource, MoviePaletteSource>();
@@ -656,7 +674,7 @@ public static partial class ServiceConfiguration
         >();
 
         // Transcode-scoped IStorage — paths are relative to AppFiles.TranscodePath.
-        // HomeController uses this so it can pass scope-relative paths (Rule 1 of
+        // TrailerCache uses this so it can pass scope-relative paths (Rule 1 of
         // the IStorage path contract) instead of Path.Combine(TranscodePath, ...).
         services.AddKeyedSingleton<IStorage>(
             "transcode",
@@ -683,6 +701,12 @@ public static partial class ServiceConfiguration
                 return new Storage.Drivers.Local.LocalStorage(driver, guard);
             }
         );
+        services.AddSingleton<MediaProcessing.Trailers.ITrailerCache>(
+            sp => new MediaProcessing.Trailers.TrailerCache(
+                sp.GetRequiredKeyedService<IStorage>("transcode"),
+                sp.GetRequiredService<ILogger<MediaProcessing.Trailers.TrailerCache>>()
+            )
+        );
         services.AddSingleton<IDerivedAudioStore>(sp => new DerivedAudioStore(
             sp.GetRequiredKeyedService<IStorage>("derived-audio"),
             sp.GetRequiredService<IDbContextFactory<MediaContext>>(),
@@ -694,6 +718,10 @@ public static partial class ServiceConfiguration
         // from QueueRunner/SessionManager. AddSingleton after AddNoMercyEncoder
         // overrides the TryAddSingleton the encoder registered.
         services.AddSingleton<IEncoderActivityProbe, EncoderActivityProbe>();
+        services.AddSingleton<
+            MediaProcessing.Images.IMusicCoverStore,
+            MediaProcessing.Images.MusicCoverStore
+        >();
         services.AddTransient<IOrphanCheckpointLookup, EncoderOrphanCheckpointLookup>();
 
         services.AddHostedService<EncodingNotificationSubscriber>();

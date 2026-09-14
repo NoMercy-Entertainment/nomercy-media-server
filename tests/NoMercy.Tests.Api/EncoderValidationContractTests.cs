@@ -14,6 +14,7 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using NoMercy.Data.Services;
 using NoMercy.Database;
 using NoMercy.Database.Models.Media;
 using NoMercy.Tests.Api.Infrastructure;
@@ -95,33 +96,32 @@ public class EncoderValidationContractTests : IClassFixture<NoMercyApiFactory>, 
         _childPresetId = Ulid.NewUlid();
 
         ctx.EncodingPresets.AddRange([
-                new EncodingPreset
-                {
-                    Id = _userPresetId,
-                    Name = $"User Preset {_userPresetId}",
-                    ProfileJson = ValidProfileJson,
-                    IsBuiltIn = false,
-                    Source = "db",
-                },
-                new EncodingPreset
-                {
-                    Id = _builtInPresetId,
-                    Name = $"BuiltIn Preset {_builtInPresetId}",
-                    ProfileJson = ValidProfileJson,
-                    IsBuiltIn = true,
-                    Source = "seed",
-                },
-                new EncodingPreset
-                {
-                    Id = _childPresetId,
-                    Name = $"Child Preset {_childPresetId}",
-                    ProfileJson = "{}",
-                    ParentPresetId = _userPresetId,
-                    IsBuiltIn = false,
-                    Source = "db",
-                }
-            ]
-        );
+            new EncodingPreset
+            {
+                Id = _userPresetId,
+                Name = $"User Preset {_userPresetId}",
+                ProfileJson = ValidProfileJson,
+                IsBuiltIn = false,
+                Source = "db",
+            },
+            new EncodingPreset
+            {
+                Id = _builtInPresetId,
+                Name = $"BuiltIn Preset {_builtInPresetId}",
+                ProfileJson = ValidProfileJson,
+                IsBuiltIn = true,
+                Source = "seed",
+            },
+            new EncodingPreset
+            {
+                Id = _childPresetId,
+                Name = $"Child Preset {_childPresetId}",
+                ProfileJson = "{}",
+                ParentPresetId = _userPresetId,
+                IsBuiltIn = false,
+                Source = "db",
+            },
+        ]);
 
         await ctx.SaveChangesAsync();
     }

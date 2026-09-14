@@ -25,6 +25,12 @@ public interface ILibraryRepository
 
     Task<List<Library>> GetLibrariesLite(Guid userId, CancellationToken ct = default);
 
+    /// <summary>Every library row, whoever can see it.</summary>
+    Task<int> CountAsync(CancellationToken ct = default);
+
+    /// <summary>Every library the user can see, inbox included, for the app setup screen.</summary>
+    Task<List<Library>> GetSetupLibrariesAsync(Guid userId, CancellationToken ct = default);
+
     Task<Dictionary<Ulid, int>> GetLibraryItemCountsAsync(
         Guid userId,
         CancellationToken ct = default
@@ -204,6 +210,35 @@ public interface ILibraryRepository
     Task<int> SyncEncodingPresetFolderAsync(
         List<EncodingPresetFolder> encodingPresetFolders,
         List<Folder> folders
+    );
+
+    /// <summary>
+    /// The inbox library folder at <paramref name="path"/>, compared without trailing
+    /// slashes, separator style or case; null when no inbox library owns that folder.
+    /// </summary>
+    Task<FolderLibrary?> FindInboxFolderAsync(string path, CancellationToken ct = default);
+
+    /// <summary>A library's import failures, newest attempt first, optionally by resolved state.</summary>
+    Task<List<ImportFailure>> GetImportFailuresAsync(
+        Ulid libraryId,
+        bool? resolved,
+        CancellationToken ct = default
+    );
+
+    /// <summary>Removes one encoding-preset-to-folder link. Returns the number of rows deleted.</summary>
+    Task<int> DeleteEncodingPresetFolderLinkAsync(
+        Ulid folderId,
+        Ulid encoderProfileId,
+        CancellationToken ct = default
+    );
+
+    /// <summary>
+    /// Every distinct host folder tracked for a music library, paired with one of the
+    /// albums it belongs to. Used to find which folders need their track matches re-run.
+    /// </summary>
+    Task<List<TrackHostFolderDto>> GetTrackHostFoldersForLibraryAsync(
+        Ulid libraryId,
+        CancellationToken ct = default
     );
 }
 

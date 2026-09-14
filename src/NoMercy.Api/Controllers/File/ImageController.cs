@@ -137,14 +137,15 @@ public class ImageController(
             catch (Exception e)
             {
                 logger.LogWarning(
-                    "Image conversion failed for {FilePath}: {Message}", [filePath, e.Message]
+                    "Image conversion failed for {FilePath}: {Message}",
+                    [filePath, e.Message]
                 );
                 return PhysicalFile(filePath, originalMimeType);
             }
         }
         catch (Exception e)
         {
-            logger.LogError(e.Message);
+            logger.LogError(e, "{Message}", e.Message);
             return ImageMiss("Image not found");
         }
     }
@@ -176,7 +177,7 @@ public class ImageController(
         }
         catch (Exception e)
         {
-            logger.LogError(e.Message);
+            logger.LogError(e, "{Message}", e.Message);
             return InternalServerErrorResponse("Image cache operation failed");
         }
     }

@@ -13,13 +13,12 @@ using System.Threading.Channels;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using NoMercy.Api.DTOs.Management;
-using NoMercy.Api.Middleware;
-using NoMercy.Database;
+using NoMercy.Api.Filters;
+using NoMercy.Data.Repositories;
 using NoMercy.Encoder.LiveTranscode;
 using NoMercy.Monitoring;
 using NoMercy.Networking.Connectivity;
@@ -30,6 +29,7 @@ using NoMercy.NmSystem.Information;
 using NoMercy.NmSystem.Status;
 using NoMercy.NmSystem.SystemCalls;
 using NoMercy.Plugins.Abstractions;
+using NoMercy.Queue.MediaServer.Repositories;
 using NoMercy.Setup.Server;
 using NoMercy.Storage;
 using NoMercyQueue;
@@ -46,7 +46,7 @@ public class ManagementController(
     ILogger<ManagementController> logger,
     ResourceMonitor resourceMonitor,
     IHostApplicationLifetime appLifetime,
-    AppDbContext appContext,
+    IServerConfigurationRepository serverConfiguration,
     QueueRunner queueRunner,
     IPluginManager pluginManager,
     AppProcessManager appProcessManager,
@@ -55,7 +55,7 @@ public class ManagementController(
     ISessionManager sessionManager,
     IStorageDriver storageDriver,
     IStorage storage,
-    IDbContextFactory<QueueContext> queueContextFactory,
+    IQueueTaskRepository queueTaskRepository,
     IBootStatus bootStatus,
     IUpdateStatus updateStatus,
     IConnectivityManager connectivityManager,
@@ -65,12 +65,9 @@ public class ManagementController(
 {
     [HttpGet("status")]
     [ProducesResponseType(typeof(ManagementStatusDto), StatusCodes.Status200OK)]
-    public IActionResult GetStatus()
+    public async Task<IActionResult> GetStatus()
     {
-        Configuration? serverNameConfig = appContext.Configuration.FirstOrDefault(c =>
-            c.Key == "serverName"
-        );
-        string serverName = serverNameConfig?.Value ?? Environment.MachineName;
+        string serverName = await serverConfiguration.GetServerNameAsync();
 
         return Ok(
             new ManagementStatusDto
@@ -259,87 +256,24 @@ public class ManagementController(
         {
             string tempPath = AppFiles.ServerTempExePath;
 
-            // Deployment type is decided before anything else. A container keeps its data
-            // volume across image updates, so a staging file written by some earlier attempt
-            // outlives every upgrade — and because the check below used to run first, that one
-            // stale file answered "already staged" forever and no update ever happened again.
-            if (Screen.IsDocker)
-            {
-                if (storageDriver.FileExists(tempPath))
-                {
-                    logger.LogInformation(
-                        "Removing a staged server binary left in the data volume — this is a container, so it can never be executed."
-                    );
-                    storageDriver.DeleteFile(tempPath);
-                }
+            StagingCheck check = ServerUpdateStaging.Check(
+                storageDriver,
+                Screen.IsDocker,
+                Software.GetReleaseVersion(),
+                tempPath,
+                AppFiles.ServerExePath,
+                path => Software.GetFileVersion(storageDriver, path)
+            );
 
-                return Ok(
-                    new
-                    {
-                        status = "ok",
-                        message = "This server runs in a container. Pull the new image to update it — "
-                            + "a binary swap here cannot take effect.",
-                        use_container_image = true,
-                        latest_version = updateStatus.LatestVersion,
-                    }
-                );
-            }
-
-            // Existence alone is not proof the staged file is the update anyone wants: a file
-            // from a previous, older attempt claims the slot just as convincingly. Only trust it
-            // when it is actually newer than what is running.
-            if (storageDriver.FileExists(tempPath))
-            {
-                string? stagedVersion = Software.GetFileVersion(storageDriver, tempPath);
-                string running = Software.GetReleaseVersion();
-
-                bool stagedIsNewer =
-                    stagedVersion is not null
-                    && Version.TryParse(stagedVersion, out Version? staged)
-                    && Version.TryParse(running, out Version? current)
-                    && staged > current;
-
-                if (stagedIsNewer)
-                {
-                    logger.LogInformation("Update already staged, skipping download.");
-                    return Ok(
-                        new
-                        {
-                            status = "ok",
-                            message = $"Update to {stagedVersion} already staged.",
-                            path = tempPath,
-                        }
-                    );
-                }
-
+            if (check.DiscardedStaleVersion is not null)
                 logger.LogInformation(
-                    "Discarding a stale staged binary ({StagedVersion}) that is not newer than the running server ({Running}).",
-                    [stagedVersion ?? "unknown", running]
+                    "Discarded a stale staged binary ({StagedVersion}) that is not newer than the running server.",
+                    check.DiscardedStaleVersion
                 );
-                storageDriver.DeleteFile(tempPath);
-            }
 
-            string? onDiskVersion = Software.GetFileVersion(storageDriver, AppFiles.ServerExePath);
-            string runningVersion = Software.GetReleaseVersion();
-            if (
-                onDiskVersion is not null
-                && Version.TryParse(onDiskVersion, out Version? diskVer)
-                && Version.TryParse(runningVersion, out Version? runVer)
-                && diskVer > runVer
-            )
-            {
-                logger.LogInformation(
-                    "Binary on disk is already {OnDiskVersion} (running {RunningVersion}), restart will apply the update.",
-                    [onDiskVersion, runningVersion]
-                );
-                return Ok(
-                    new
-                    {
-                        status = "ok",
-                        message = $"Binary on disk is already {onDiskVersion}, restart needed.",
-                    }
-                );
-            }
+            IActionResult? staged = StagedResponse(check, tempPath);
+            if (staged is not null)
+                return staged;
 
             logger.LogInformation("Downloading server update on demand...");
             ServerUpdateResult result = await new Binaries(
@@ -347,78 +281,7 @@ public class ManagementController(
                 storage
             ).DownloadServerUpdate();
 
-            switch (result)
-            {
-                case ServerUpdateResult.AlreadyUpToDate:
-                    return Ok(new { status = "ok", message = "Server is already up to date." });
-
-                case ServerUpdateResult.UseContainerImage:
-                    return Ok(
-                        new
-                        {
-                            status = "ok",
-                            message = "This server runs in a container. Pull the new image to update it — "
-                                + "a binary swap here cannot take effect.",
-                            use_container_image = true,
-                            latest_version = updateStatus.LatestVersion,
-                        }
-                    );
-
-                case ServerUpdateResult.UseInstaller:
-                    return Ok(
-                        new
-                        {
-                            status = "ok",
-                            message = "This is an installer deployment. Use the installer to update.",
-                            use_installer = true,
-                            latest_version = updateStatus.LatestVersion,
-                        }
-                    );
-
-                case ServerUpdateResult.RestartNeeded:
-                    return Ok(
-                        new
-                        {
-                            status = "ok",
-                            message = "Binary on disk is already the latest version, restart needed to apply.",
-                        }
-                    );
-
-                case ServerUpdateResult.NoAssetFound:
-                    return InternalServerErrorResponse(
-                        "No suitable update asset found for the current platform."
-                    );
-
-                case ServerUpdateResult.Downloaded:
-                    if (!storageDriver.FileExists(tempPath))
-                    {
-                        logger.LogError(
-                            "Server update staged file missing at {TempPath} after successful download",
-                            tempPath
-                        );
-                        return InternalServerErrorResponse(
-                            "Download completed but staged file not found. This may be caused by antivirus software quarantining the file."
-                        );
-                    }
-
-                    long fileSize = storageDriver.GetFileSize(tempPath);
-                    logger.LogInformation(
-                        "Server update staged at {TempPath} ({FileSize} bytes)",
-                        [tempPath, fileSize]
-                    );
-                    return Ok(
-                        new
-                        {
-                            status = "ok",
-                            message = "Update downloaded and staged.",
-                            path = tempPath,
-                            size = fileSize,
-                        }
-                    );
-
-                default:
-                    return InternalServerErrorResponse("Unexpected update result.");
-            }
+            return DownloadedResponse(result, tempPath);
         }
         catch (Exception e)
         {
@@ -426,6 +289,119 @@ public class ManagementController(
             return InternalServerErrorResponse("Failed to download update");
         }
     }
+
+    /// <summary>The answer when nothing needs downloading; null when a download should run.</summary>
+    private IActionResult? StagedResponse(StagingCheck check, string tempPath)
+    {
+        switch (check.State)
+        {
+            case StagingState.ContainerImage:
+                return Ok(ContainerImageResponse());
+
+            case StagingState.AlreadyStaged:
+                logger.LogInformation("Update already staged, skipping download.");
+                return Ok(
+                    new
+                    {
+                        status = "ok",
+                        message = $"Update to {check.Version} already staged.",
+                        path = tempPath,
+                    }
+                );
+
+            case StagingState.BinaryOnDiskIsNewer:
+                logger.LogInformation(
+                    "Binary on disk is already {OnDiskVersion}, restart will apply the update.",
+                    check.Version
+                );
+                return Ok(
+                    new
+                    {
+                        status = "ok",
+                        message = $"Binary on disk is already {check.Version}, restart needed.",
+                    }
+                );
+        }
+
+        return null;
+    }
+
+    private IActionResult DownloadedResponse(ServerUpdateResult result, string tempPath)
+    {
+        switch (result)
+        {
+            case ServerUpdateResult.AlreadyUpToDate:
+                return Ok(new { status = "ok", message = "Server is already up to date." });
+
+            case ServerUpdateResult.UseContainerImage:
+                return Ok(ContainerImageResponse());
+
+            case ServerUpdateResult.UseInstaller:
+                return Ok(
+                    new
+                    {
+                        status = "ok",
+                        message = "This is an installer deployment. Use the installer to update.",
+                        use_installer = true,
+                        latest_version = updateStatus.LatestVersion,
+                    }
+                );
+
+            case ServerUpdateResult.RestartNeeded:
+                return Ok(
+                    new
+                    {
+                        status = "ok",
+                        message = "Binary on disk is already the latest version, restart needed to apply.",
+                    }
+                );
+
+            case ServerUpdateResult.NoAssetFound:
+                return InternalServerErrorResponse(
+                    "No suitable update asset found for the current platform."
+                );
+
+            case ServerUpdateResult.Downloaded:
+                if (!storageDriver.FileExists(tempPath))
+                {
+                    logger.LogError(
+                        "Server update staged file missing at {TempPath} after successful download",
+                        tempPath
+                    );
+                    return InternalServerErrorResponse(
+                        "Download completed but staged file not found. This may be caused by antivirus software quarantining the file."
+                    );
+                }
+
+                long fileSize = storageDriver.GetFileSize(tempPath);
+                logger.LogInformation(
+                    "Server update staged at {TempPath} ({FileSize} bytes)",
+                    [tempPath, fileSize]
+                );
+                return Ok(
+                    new
+                    {
+                        status = "ok",
+                        message = "Update downloaded and staged.",
+                        path = tempPath,
+                        size = fileSize,
+                    }
+                );
+
+            default:
+                return InternalServerErrorResponse("Unexpected update result.");
+        }
+    }
+
+    private object ContainerImageResponse() =>
+        new
+        {
+            status = "ok",
+            message = "This server runs in a container. Pull the new image to update it — "
+                + "a binary swap here cannot take effect.",
+            use_container_image = true,
+            latest_version = updateStatus.LatestVersion,
+        };
 
     [HttpGet("autostart")]
     [ProducesResponseType(typeof(AutoStartDto), StatusCodes.Status200OK)]
@@ -448,18 +424,16 @@ public class ManagementController(
 
     [HttpGet("config")]
     [ProducesResponseType(typeof(ManagementConfigDto), StatusCodes.Status200OK)]
-    public IActionResult GetConfig()
+    public async Task<IActionResult> GetConfig()
     {
-        Configuration? serverNameConfig = appContext.Configuration.FirstOrDefault(c =>
-            c.Key == "serverName"
-        );
+        string serverName = await serverConfiguration.GetServerNameAsync();
 
         return Ok(
             new ManagementConfigDto
             {
                 InternalPort = runtimeSettings.InternalServerPort,
                 ExternalPort = runtimeSettings.ExternalServerPort,
-                ServerName = serverNameConfig?.Value ?? Environment.MachineName,
+                ServerName = serverName,
                 LibraryWorkers = runtimeSettings.LibraryWorkers.Value,
                 ImportWorkers = runtimeSettings.ImportWorkers.Value,
                 ExtrasWorkers = runtimeSettings.ExtrasWorkers.Value,
@@ -482,115 +456,67 @@ public class ManagementController(
     private async Task PersistWorkerCount(string queueName, int count)
     {
         string key = $"{queueName}Runners";
-        await appContext
-            .Configuration.Upsert(new() { Key = key, Value = count.ToString() })
-            .On(configuration => configuration.Key)
-            .WhenMatched((_, configuration) => new() { Value = configuration.Value })
-            .RunAsync();
+        await serverConfiguration.SetValueAsync(key, count.ToString(), null);
 
         await queueRunner.SetWorkerCount(queueName, count, null);
+    }
+
+    private async Task<KeyValuePair<string, int>> UpdateWorkerCountAsync(
+        KeyValuePair<string, int> current,
+        int? requested
+    )
+    {
+        if (requested is not { } newCount)
+            return current;
+
+        await PersistWorkerCount(current.Key, newCount);
+        return new(current.Key, newCount);
     }
 
     [HttpPut("config")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> UpdateConfig([FromBody] ManagementConfigUpdateDto request)
     {
-        if (request.LibraryWorkers is not null)
-        {
-            runtimeSettings.LibraryWorkers = new(
-                runtimeSettings.LibraryWorkers.Key,
-                (int)request.LibraryWorkers
-            );
-            await PersistWorkerCount(
-                runtimeSettings.LibraryWorkers.Key,
-                (int)request.LibraryWorkers
-            );
-        }
-
-        if (request.ImportWorkers is not null)
-        {
-            runtimeSettings.ImportWorkers = new(
-                runtimeSettings.ImportWorkers.Key,
-                (int)request.ImportWorkers
-            );
-            await PersistWorkerCount(runtimeSettings.ImportWorkers.Key, (int)request.ImportWorkers);
-        }
-
-        if (request.ExtrasWorkers is not null)
-        {
-            runtimeSettings.ExtrasWorkers = new(
-                runtimeSettings.ExtrasWorkers.Key,
-                (int)request.ExtrasWorkers
-            );
-            await PersistWorkerCount(runtimeSettings.ExtrasWorkers.Key, (int)request.ExtrasWorkers);
-        }
-
-        if (request.EncoderWorkers is not null)
-        {
-            runtimeSettings.EncoderWorkers = new(
-                runtimeSettings.EncoderWorkers.Key,
-                (int)request.EncoderWorkers
-            );
-            await PersistWorkerCount(
-                runtimeSettings.EncoderWorkers.Key,
-                (int)request.EncoderWorkers
-            );
-        }
-
-        if (request.CronWorkers is not null)
-        {
-            runtimeSettings.CronWorkers = new(
-                runtimeSettings.CronWorkers.Key,
-                (int)request.CronWorkers
-            );
-            await PersistWorkerCount(runtimeSettings.CronWorkers.Key, (int)request.CronWorkers);
-        }
-
-        if (request.ImageWorkers is not null)
-        {
-            runtimeSettings.ImageWorkers = new(
-                runtimeSettings.ImageWorkers.Key,
-                (int)request.ImageWorkers
-            );
-            await PersistWorkerCount(runtimeSettings.ImageWorkers.Key, (int)request.ImageWorkers);
-        }
-
-        if (request.FileWorkers is not null)
-        {
-            runtimeSettings.FileWorkers = new(
-                runtimeSettings.FileWorkers.Key,
-                (int)request.FileWorkers
-            );
-            await PersistWorkerCount(runtimeSettings.FileWorkers.Key, (int)request.FileWorkers);
-        }
-
-        if (request.MusicWorkers is not null)
-        {
-            runtimeSettings.MusicWorkers = new(
-                runtimeSettings.MusicWorkers.Key,
-                (int)request.MusicWorkers
-            );
-            await PersistWorkerCount(runtimeSettings.MusicWorkers.Key, (int)request.MusicWorkers);
-        }
+        runtimeSettings.LibraryWorkers = await UpdateWorkerCountAsync(
+            runtimeSettings.LibraryWorkers,
+            request.LibraryWorkers
+        );
+        runtimeSettings.ImportWorkers = await UpdateWorkerCountAsync(
+            runtimeSettings.ImportWorkers,
+            request.ImportWorkers
+        );
+        runtimeSettings.ExtrasWorkers = await UpdateWorkerCountAsync(
+            runtimeSettings.ExtrasWorkers,
+            request.ExtrasWorkers
+        );
+        runtimeSettings.EncoderWorkers = await UpdateWorkerCountAsync(
+            runtimeSettings.EncoderWorkers,
+            request.EncoderWorkers
+        );
+        runtimeSettings.CronWorkers = await UpdateWorkerCountAsync(
+            runtimeSettings.CronWorkers,
+            request.CronWorkers
+        );
+        runtimeSettings.ImageWorkers = await UpdateWorkerCountAsync(
+            runtimeSettings.ImageWorkers,
+            request.ImageWorkers
+        );
+        runtimeSettings.FileWorkers = await UpdateWorkerCountAsync(
+            runtimeSettings.FileWorkers,
+            request.FileWorkers
+        );
+        runtimeSettings.MusicWorkers = await UpdateWorkerCountAsync(
+            runtimeSettings.MusicWorkers,
+            request.MusicWorkers
+        );
 
         if (request.ServerName is not null)
         {
-            Configuration? existing = await appContext.Configuration.FirstOrDefaultAsync(c =>
-                c.Key == "serverName"
+            await serverConfiguration.SetValueAsync(
+                ServerConfigurationKeys.ServerName,
+                request.ServerName,
+                null
             );
-
-            if (existing is not null)
-            {
-                existing.Value = request.ServerName;
-            }
-            else
-            {
-                appContext.Configuration.Add(
-                    new() { Key = "serverName", Value = request.ServerName }
-                );
-            }
-
-            await appContext.SaveChangesAsync();
         }
 
         return Ok(new { status = "ok", message = "Configuration updated" });
@@ -620,10 +546,8 @@ public class ManagementController(
     [ProducesResponseType(typeof(ManagementQueueStatusDto), StatusCodes.Status200OK)]
     public async Task<IActionResult> GetQueueStatus()
     {
-        await using QueueContext queueContext = await queueContextFactory.CreateDbContextAsync();
-
-        int pendingJobs = await queueContext.QueueJobs.CountAsync();
-        int failedJobs = await queueContext.FailedJobs.CountAsync();
+        int pendingJobs = await queueTaskRepository.GetQueueJobCountAsync();
+        int failedJobs = await queueTaskRepository.GetFailedJobCountAsync();
 
         IReadOnlyDictionary<string, Thread> activeThreads = queueRunner.GetActiveWorkerThreads();
 

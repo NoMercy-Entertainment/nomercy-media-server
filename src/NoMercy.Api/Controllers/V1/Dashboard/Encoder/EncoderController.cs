@@ -162,91 +162,15 @@ public class EncoderController(
         CodecRegistry registry
     )
     {
-        VideoCodecType[] videoTypes =
-        [
-            VideoCodecType.H264,
-            VideoCodecType.H265,
-            VideoCodecType.Av1,
-            VideoCodecType.Vp9,
-        ];
-
-        VideoCodecDto[] videoCodecs =
-        [
-            .. videoTypes.Select(vt =>
-            {
-                ICodecDefinition def = registry.GetVideoDefinition(vt);
-                EncoderInfo sw = def.Encoders.First(e => e.RequiredVendor is null);
-
-                return new VideoCodecDto
-                {
-                    Name = vt.ToString(),
-                    Value = sw.FfmpegName,
-                    SimpleValue = vt.ToString().ToLowerInvariant(),
-                    RequiresGpu = false,
-                    IsDefault = vt == VideoCodecType.H264,
-                    AvailablePresets = [.. sw.Presets.Select(p => new LabelValueDto(p))],
-                    AvailableVideoProfiles = [.. sw.Profiles.Select(p => new LabelValueDto(p))],
-                };
-            }),
-        ];
-
-        AudioCodecType[] audioTypes =
-        [
-            AudioCodecType.Aac,
-            AudioCodecType.Opus,
-            AudioCodecType.Flac,
-            AudioCodecType.Ac3,
-            AudioCodecType.Eac3,
-            AudioCodecType.Mp3,
-        ];
-
-        AudioCodecDto[] audioCodecs =
-        [
-            .. audioTypes.Select(at =>
-            {
-                AudioEncoderInfo enc = AudioCodecDefinitions.GetEncoder(at);
-                return new AudioCodecDto
-                {
-                    Name = at.ToString(),
-                    Value = enc.FfmpegName,
-                    SimpleValue = at.ToString().ToLowerInvariant(),
-                    IsDefault = at == AudioCodecType.Aac,
-                };
-            }),
-        ];
-
-        SubtitleCodecDto[] subtitleCodecs =
-        [
-            new()
-            {
-                Name = "WebVTT",
-                Value = "webvtt",
-                SimpleValue = "webvtt",
-                IsDefault = true,
-            },
-            new()
-            {
-                Name = "ASS",
-                Value = "ass",
-                SimpleValue = "ass",
-            },
-            new()
-            {
-                Name = "SRT",
-                Value = "srt",
-                SimpleValue = "srt",
-            },
-        ];
-
         return new()
         {
             Label = label,
             Value = value,
             Type = type,
             IsDefault = isDefault,
-            AvailableVideoCodecs = videoCodecs,
-            AvailableAudioCodecs = audioCodecs,
-            AvailableSubtitleCodecs = subtitleCodecs,
+            AvailableVideoCodecs = VideoCodecs(registry),
+            AvailableAudioCodecs = AudioCodecs(),
+            AvailableSubtitleCodecs = SubtitleCodecs(),
             AvailableVideoSizes =
             [
                 new()
@@ -276,4 +200,86 @@ public class EncoderController(
             ],
         };
     }
+
+    private static VideoCodecDto[] VideoCodecs(CodecRegistry registry)
+    {
+        VideoCodecType[] videoTypes =
+        [
+            VideoCodecType.H264,
+            VideoCodecType.H265,
+            VideoCodecType.Av1,
+            VideoCodecType.Vp9,
+        ];
+
+        return
+        [
+            .. videoTypes.Select(vt =>
+            {
+                ICodecDefinition def = registry.GetVideoDefinition(vt);
+                EncoderInfo sw = def.Encoders.First(e => e.RequiredVendor is null);
+
+                return new VideoCodecDto
+                {
+                    Name = vt.ToString(),
+                    Value = sw.FfmpegName,
+                    SimpleValue = vt.ToString().ToLowerInvariant(),
+                    RequiresGpu = false,
+                    IsDefault = vt == VideoCodecType.H264,
+                    AvailablePresets = [.. sw.Presets.Select(p => new LabelValueDto(p))],
+                    AvailableVideoProfiles = [.. sw.Profiles.Select(p => new LabelValueDto(p))],
+                };
+            }),
+        ];
+    }
+
+    private static AudioCodecDto[] AudioCodecs()
+    {
+        AudioCodecType[] audioTypes =
+        [
+            AudioCodecType.Aac,
+            AudioCodecType.Opus,
+            AudioCodecType.Flac,
+            AudioCodecType.Ac3,
+            AudioCodecType.Eac3,
+            AudioCodecType.Mp3,
+        ];
+
+        return
+        [
+            .. audioTypes.Select(at =>
+            {
+                AudioEncoderInfo enc = AudioCodecDefinitions.GetEncoder(at);
+                return new AudioCodecDto
+                {
+                    Name = at.ToString(),
+                    Value = enc.FfmpegName,
+                    SimpleValue = at.ToString().ToLowerInvariant(),
+                    IsDefault = at == AudioCodecType.Aac,
+                };
+            }),
+        ];
+    }
+
+    private static SubtitleCodecDto[] SubtitleCodecs() =>
+        [
+            new()
+            {
+                Name = "WebVTT",
+                Value = "webvtt",
+                SimpleValue = "webvtt",
+                IsDefault = true,
+            },
+            new()
+            {
+                Name = "ASS",
+                Value = "ass",
+                SimpleValue = "ass",
+            },
+            new()
+            {
+                Name = "SRT",
+                Value = "srt",
+                SimpleValue = "srt",
+            },
+        ];
 }

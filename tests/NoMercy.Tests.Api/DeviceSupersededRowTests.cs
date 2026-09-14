@@ -9,7 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.Api.WebSockets;
+using NoMercy.Data.Repositories;
 using NoMercy.Database.Models.Users;
 using Xunit;
 
@@ -44,7 +44,7 @@ public class DeviceSupersededRowTests
     {
         Device stale = Row("Tv in woonkamer");
 
-        List<Device> superseded = DeviceBusEndpoint.SelectSuperseded([stale], _ => false);
+        List<Device> superseded = DeviceStateRepository.SelectSuperseded([stale], _ => false);
 
         Assert.Equal([stale], superseded);
     }
@@ -56,7 +56,7 @@ public class DeviceSupersededRowTests
         // and the one on the bus must stay in the picker.
         Device connected = Row("Tv in woonkamer");
 
-        List<Device> superseded = DeviceBusEndpoint.SelectSuperseded(
+        List<Device> superseded = DeviceStateRepository.SelectSuperseded(
             [connected],
             id => id == connected.Id
         );
@@ -70,7 +70,7 @@ public class DeviceSupersededRowTests
         Device connected = Row("Bedroom TV");
         Device stale = Row("Bedroom TV");
 
-        List<Device> superseded = DeviceBusEndpoint.SelectSuperseded(
+        List<Device> superseded = DeviceStateRepository.SelectSuperseded(
             [connected, stale],
             id => id == connected.Id
         );
@@ -87,7 +87,7 @@ public class DeviceSupersededRowTests
         stale.CustomName = "Bedroom TV";
         stale.VolumePercent = 42;
 
-        DeviceBusEndpoint.Retire(stale);
+        DeviceStateRepository.Retire(stale);
 
         // GetDevices filters on Fingerprint != null, so this is what removes it.
         Assert.Null(stale.Fingerprint);
@@ -111,7 +111,7 @@ public class DeviceSupersededRowTests
         Device current = Row("Tv in woonkamer");
         current.OwnerUserId = owner;
 
-        Func<Device, bool> matches = DeviceBusEndpoint
+        Func<Device, bool> matches = DeviceStateRepository
             .SupersededCandidateFilter(current, owner)
             .Compile();
 
@@ -125,7 +125,7 @@ public class DeviceSupersededRowTests
         Device device = Row("Tv in woonkamer");
         device.OwnerUserId = owner;
 
-        Func<Device, bool> matches = DeviceBusEndpoint
+        Func<Device, bool> matches = DeviceStateRepository
             .SupersededCandidateFilter(device, owner)
             .Compile();
 
@@ -142,7 +142,7 @@ public class DeviceSupersededRowTests
         Device theirs = Row("Tv in woonkamer");
         theirs.OwnerUserId = Guid.NewGuid();
 
-        Func<Device, bool> matches = DeviceBusEndpoint
+        Func<Device, bool> matches = DeviceStateRepository
             .SupersededCandidateFilter(mine, owner)
             .Compile();
 
@@ -159,7 +159,7 @@ public class DeviceSupersededRowTests
         Device bedroom = Row("Bedroom TV");
         bedroom.OwnerUserId = owner;
 
-        Func<Device, bool> matches = DeviceBusEndpoint
+        Func<Device, bool> matches = DeviceStateRepository
             .SupersededCandidateFilter(livingRoom, owner)
             .Compile();
 
@@ -177,7 +177,7 @@ public class DeviceSupersededRowTests
         alreadyRetired.OwnerUserId = owner;
         alreadyRetired.Fingerprint = null;
 
-        Func<Device, bool> matches = DeviceBusEndpoint
+        Func<Device, bool> matches = DeviceStateRepository
             .SupersededCandidateFilter(current, owner)
             .Compile();
 

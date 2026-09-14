@@ -13,6 +13,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Api.DTOs.Media;
+using NoMercy.Api.DTOs.Media.Components;
 using NoMercy.Database;
 using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.Music;
@@ -105,9 +106,7 @@ public record ArtistResponseItemDto
         JToken? palette = artist._colorPalette.ToRaw() ?? thumb?._colorPalette.ToRaw();
 
         Cover = artist.Cover ?? thumb?.FilePath;
-        Cover = Cover is not null
-            ? new Uri($"/images/music{Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.UrlWhenSet(Cover);
 
         ColorPalette = palette;
         Disambiguation = artist.Disambiguation;

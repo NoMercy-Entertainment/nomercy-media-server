@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.Api.Services;
+using NoMercy.Authorization.LiveIngest;
 using Xunit;
 
 namespace NoMercy.Tests.Api.Services;

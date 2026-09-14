@@ -161,4 +161,9 @@ public class UserRepository(MediaContext context, IDbContextFactory<MediaContext
 
         await permContext.SaveChangesAsync();
     }
+
+    public Task<int> CountAllowedAsync(CancellationToken ct = default)
+    {
+        return context.Users.AsNoTracking().CountAsync(user => user.Allowed || user.Owner, ct);
+    }
 }

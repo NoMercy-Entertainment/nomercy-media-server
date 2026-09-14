@@ -14,6 +14,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NoMercy.Api.DTOs.Music;
+using NoMercy.Api.Hubs.Shared;
 using NoMercy.Data.Repositories;
 using NoMercy.Database;
 using NoMercy.Database.Models.Users;
@@ -32,7 +33,6 @@ public class MusicPlaybackService
     private readonly IEventBus? _eventBus;
     private readonly MusicActiveDeviceRegistry _activeDeviceRegistry;
     private readonly ILogger<MusicPlaybackService>? _logger;
-    private readonly string[] _repeatStates = ["off", "one", "all"];
     private static int PlayerStateEventId => Interlocked.Increment(ref field);
 
     public MusicPlaybackService(
@@ -187,13 +187,9 @@ public class MusicPlaybackService
                     )
                     {
                         await using AsyncServiceScope scope = _serviceProvider.CreateAsyncScope();
-                        IDbContextFactory<MediaContext> factory =
-                            scope.ServiceProvider.GetRequiredService<
-                                IDbContextFactory<MediaContext>
-                            >();
-                        await using MediaContext ctx = await factory.CreateDbContextAsync();
-                        await ctx.MusicPlays.AddAsync(new(user.Id, playerState.CurrentItem.Id));
-                        await ctx.SaveChangesAsync();
+                        await scope
+                            .ServiceProvider.GetRequiredService<IMusicRepository>()
+                            .RecordPlaybackAsync(playerState.CurrentItem.Id, user.Id);
                         await PublishProgressEventAsync(user.Id, playerState);
                     }
 
@@ -460,24 +456,10 @@ public class MusicPlaybackService
 
         RemoveTimer(user.Id);
 
-        int currentIndex = state.Playlist.IndexOf(newTrack);
-
-        // Move the current item to the backlog.
-        if (state.CurrentItem != null)
-            state.Backlog.Add(state.CurrentItem);
-
-        // Move all tracks before newTrack to the backlog (they were skipped).
-        for (int i = 0; i < currentIndex; i++)
-            state.Backlog.Add(state.Playlist[i]);
-
-        state.Playlist.RemoveRange(0, currentIndex + 1);
-        state.CurrentItem = newTrack;
-        state.SetPosition(0);
-        state.IgnoreCurrentTimeUntil = DateTime.UtcNow.AddSeconds(1);
+        state.SkipTo(state.Playlist.IndexOf(newTrack), newTrack);
         state.CrossfadeSignalSent = false;
         state.IsCrossfading = false;
         state.CrossfadeDeviceId = null;
-        state.PlayState = true;
 
         await UpdatePlaybackState(user, state);
         StartPlaybackTimer(user);
@@ -545,12 +527,7 @@ public class MusicPlaybackService
         StartPlaybackTimer(user);
     }
 
-    public async Task ApplyItemLikeAsync(
-        Guid userId,
-        Guid itemId,
-        bool liked,
-        CancellationToken cancellationToken = default
-    )
+    public async Task ApplyItemLikeAsync(Guid userId, Guid itemId, bool liked)
     {
         if (!_stateManager.TryGetValue(userId, out MusicPlayerState? playerState))
             return;
@@ -601,7 +578,7 @@ public class MusicPlaybackService
             broadcastState = state.CloneForBroadcast();
         }
 
-        EventPayload<PlayerStateEventElement> payload = new()
+        EventPayload<PlayerStateEventElement<MusicPlayerState, MusicEventType>> payload = new()
         {
             Events =
             [
@@ -674,8 +651,7 @@ public class MusicPlaybackService
 
     internal async Task PublishStartedEventAsync(Guid userId, MusicPlayerState state)
     {
-        IEventBus? bus =
-            _eventBus ?? (EventBusProvider.IsConfigured ? EventBusProvider.Current : null);
+        IEventBus? bus = _eventBus;
         if (bus is null || state.CurrentItem is null)
             return;
 
@@ -693,8 +669,7 @@ public class MusicPlaybackService
 
     private async Task PublishProgressEventAsync(Guid userId, MusicPlayerState state)
     {
-        IEventBus? bus =
-            _eventBus ?? (EventBusProvider.IsConfigured ? EventBusProvider.Current : null);
+        IEventBus? bus = _eventBus;
         if (bus is null || state.CurrentItem is null)
             return;
 
@@ -714,8 +689,7 @@ public class MusicPlaybackService
 
     private async Task PublishCompletedEventAsync(Guid userId, MusicPlayerState state)
     {
-        IEventBus? bus =
-            _eventBus ?? (EventBusProvider.IsConfigured ? EventBusProvider.Current : null);
+        IEventBus? bus = _eventBus;
         if (bus is null || state.CurrentItem is null)
             return;
 
@@ -765,28 +739,9 @@ public class MusicPlaybackService
             case "all":
                 if (currentIndex == state.Playlist.Count - 1)
                 {
-                    // Move the current item to the backlog
                     if (state.CurrentItem != null)
                         state.Backlog.Add(state.CurrentItem);
-
-                    // Move the backlog to the playlist and start from the beginning
-                    state.Playlist = [.. state.Backlog];
-                    state.Backlog.Clear();
-
-                    if (state.Playlist.Count > 0)
-                    {
-                        state.CurrentItem = state.Playlist.First();
-                        state.Playlist.RemoveAt(0);
-                        state.SetPosition(0);
-                        state.PlayState = true;
-                    }
-                    else
-                    {
-                        // If the playlist is empty, stop playback
-                        state.PlayState = false;
-                        state.SetPosition(0);
-                        state.CurrentItem = null;
-                    }
+                    state.WrapBacklogIntoPlaylist();
                 }
                 else
                 {
@@ -810,9 +765,7 @@ public class MusicPlaybackService
                 }
                 else
                 {
-                    state.PlayState = false;
-                    state.SetPosition(0);
-                    state.CurrentItem = null;
+                    state.Stop();
                 }
 
                 break;

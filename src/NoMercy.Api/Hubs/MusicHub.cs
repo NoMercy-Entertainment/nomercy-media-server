@@ -17,6 +17,7 @@ using NoMercy.Api.Services.Music;
 using NoMercy.Api.WebSockets;
 using NoMercy.Authorization;
 using NoMercy.Data.Activity;
+using NoMercy.Data.Repositories;
 using NoMercy.Database;
 using NoMercy.Database.Models.Users;
 using NoMercy.Networking;
@@ -35,9 +36,9 @@ public partial class MusicHub : ConnectionHub
     private readonly IClientMessenger _clientMessenger;
     private readonly MusicPlaybackService _musicPlaybackService;
     private readonly MusicPlayerStateManager _musicPlayerStateManager;
-    private readonly MusicDeviceManager _musicDeviceManager;
     private readonly MusicPlaylistManager _musicPlaylistManager;
     private readonly MusicPlaybackCommandHandler _commandHandler;
+    private readonly IDeviceStateRepository _deviceStateRepository;
     private readonly DeviceBusRegistry _busRegistry;
     private readonly CastSessionTokenService _castTokenService;
     private readonly MusicActiveDeviceRegistry _activeDeviceRegistry;
@@ -56,7 +57,6 @@ public partial class MusicHub : ConnectionHub
         IClientMessenger clientMessenger,
         MusicPlaybackService musicPlaybackService,
         MusicPlayerStateManager musicPlayerStateManager,
-        MusicDeviceManager musicDeviceManager,
         MusicPlaylistManager musicPlaylistManager,
         MusicPlaybackCommandHandler commandHandler,
         IActivityLogger activityLogger,
@@ -65,6 +65,7 @@ public partial class MusicHub : ConnectionHub
         IChromeCastService chromeCast,
         CastPanelWakeLauncher castPanelWakeLauncher,
         MusicActiveDeviceRegistry activeDeviceRegistry,
+        IDeviceStateRepository deviceStateRepository,
         INetworkDiscovery? networkDiscovery = null
     )
         : base(httpContextAccessor, contextFactory, connectedClients, activityLogger)
@@ -74,9 +75,9 @@ public partial class MusicHub : ConnectionHub
         _clientMessenger = clientMessenger;
         _musicPlaybackService = musicPlaybackService;
         _musicPlayerStateManager = musicPlayerStateManager;
-        _musicDeviceManager = musicDeviceManager;
         _musicPlaylistManager = musicPlaylistManager;
         _commandHandler = commandHandler;
+        _deviceStateRepository = deviceStateRepository;
         _busRegistry = busRegistry;
         _castTokenService = castTokenService;
         _chromeCast = chromeCast;
@@ -91,38 +92,6 @@ public partial class MusicHub : ConnectionHub
     {
         return CommandLocks.GetOrAdd(userId, _ => new(1, 1));
     }
-
-    // Rebuilds the per-device volume map carried on every broadcast so a
-    // controller can render a slider per device and each device can read its
-    // own level. Scoped to the caller's user so one user never sees another's
-    // devices. Never-set volumes coalesce to the same safe default the scoped
-    // volume_percentage field uses.
-
-    // Back-compat: position in whole seconds. Quantizes to 1000ms, which is a
-    // dominant source of cross-device drift. New clients call ReportPositionCommand.
-
-    // The active device reports its real audio position in MILLISECONDS. This is
-    // the playback truth; the server relays it so every passive client computes
-    // the same position via reference-time (position + (serverNow - timestamp)).
-
-    // Clock-sync handshake. A client samples this a few times, keeps the
-    // lowest-RTT result, and derives offset = serverTime + rtt/2 - clientRecv so
-    // it can convert its local clock to the shared server clock. Every device
-    // using the same offset-corrected clock computes the same playback position
-    // regardless of its own wall-clock skew.
-
-    // Back-compat entry point: targets the active device (null deviceId).
-    // Old clients invoke this with a single argument; SignalR is strict about
-    // argument counts, so the signature must stay intact.
-
-    // Sets the volume of a NAMED device (null deviceId = the active device).
-    // Volume is owned by the device: setting a passive device's volume updates
-    // that device's stored level and the broadcast device_volumes map without
-    // disturbing the active device's playback level.
-
-    // Resolves which device a volume command targets, scoped to the requesting
-    // user so one user can never address another's device. Null/empty deviceId
-    // falls back to the user's active device (back-compat with ChangeVolumeCommand).
 
     public override async Task OnConnectedAsync()
     {
@@ -212,8 +181,6 @@ public partial class MusicHub : ConnectionHub
                     if (!otherConnectionForDeviceSurvives)
                     {
                         _musicPlaybackService.RemoveTimer(user.Id);
-
-                        _musicDeviceManager.RemoveUserDevice(user.Id);
 
                         stopPlayback = true;
                         wasCurrentDevice = true;
@@ -331,33 +298,7 @@ public partial class MusicHub : ConnectionHub
 
     // ── Cast-receiver helpers (Phase 0) ──────────────────────────────────────
 
-    private string ResolveServerUrl()
-    {
-        // Public origin the receiver should use for API + SignalR. NetworkDiscovery
-        // owns the authoritative external URL once Connectivity has resolved a path
-        // (Cloudflare tunnel, port-forward, or STUN). Fall back to ApiBaseUrl in
-        // the rare case Discovery isn't ready yet — receiver will get a working
-        // URL on the next launch once Connectivity stabilizes.
-        string? external = _networkDiscovery?.ExternalAddress;
-        return string.IsNullOrEmpty(external)
-            ? ExternalServicesConfig.Current.ApiBaseUrl
-            : external;
-    }
-
-    private string ResolveSenderLocale()
-    {
-        // Sender ships its locale via standard Accept-Language. We pick the first
-        // tag and pass it through; receiver uses it to seed i18n on first paint.
-        string? header =
-            _httpContextAccessor.HttpContext?.Request.Headers.AcceptLanguage.ToString();
-        if (string.IsNullOrEmpty(header))
-            return "en-US";
-
-        string first = header.Split(',')[0].Split(';')[0].Trim();
-        return string.IsNullOrEmpty(first) ? "en-US" : first;
-    }
-
-    private CastIntent ResolveMusicIntent(Guid userId, string targetDeviceId)
+    private CastIntent ResolveMusicIntent(Guid userId)
     {
         // If the user has a live music player state when handing off to the TV,
         // the receiver should resume that exact list. Otherwise idle — receiver

@@ -16,6 +16,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NoMercy.Api.DTOs.Dashboard;
+using NoMercy.Data.Repositories;
 using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.MediaProcessing.Files;
@@ -37,7 +38,7 @@ namespace NoMercy.Api.Controllers.V1.Dashboard.Admin;
 [Route("api/v{version:apiVersion}/dashboard/intake", Order = 10)]
 public class IntakeController(
     IIntakeSettings intakeSettings,
-    MediaContext mediaContext,
+    ILibraryRepository libraryRepository,
     ILogger<IntakeController> logger
 ) : BaseController
 {
@@ -76,18 +77,7 @@ public class IntakeController(
             return Ok(new { dropFolder = (string?)null });
         }
 
-        List<Library> inboxLibraries = await mediaContext
-            .Libraries.AsNoTracking()
-            .Include(library => library.FolderLibraries)
-                .ThenInclude(folderLibrary => folderLibrary.Folder)
-            .Where(library => library.Type == MediaTypes.InboxMediaType)
-            .ToListAsync(ct);
-
-        bool isInboxLibraryFolder = inboxLibraries
-            .SelectMany(library => library.FolderLibraries)
-            .Any(folderLibrary => PathsMatch(folderLibrary.Folder.Path, path));
-
-        if (!isInboxLibraryFolder)
+        if (await libraryRepository.FindInboxFolderAsync(path, ct) is null)
             return BadRequestResponse(
                 "The drop folder must be a folder of an Inbox-type library. Create/point an Inbox library at this folder first."
             );
@@ -120,11 +110,4 @@ public class IntakeController(
 
         return Ok(new { token });
     }
-
-    private static bool PathsMatch(string folderPath, string candidatePath) =>
-        NormalizeForComparison(folderPath)
-            .Equals(NormalizeForComparison(candidatePath), StringComparison.OrdinalIgnoreCase);
-
-    private static string NormalizeForComparison(string path) =>
-        path.Replace('\\', '/').TrimEnd('/');
 }

@@ -87,8 +87,8 @@ public record HomeCardData
         string? overview = movie.Translations.FirstOrDefault()?.Overview;
 
         Id = movie.Id;
-        Title = !string.IsNullOrEmpty(title) ? title : movie.Title;
-        Overview = !string.IsNullOrEmpty(overview) ? overview : movie.Overview;
+        Title = title.OrWhenEmpty(movie.Title);
+        Overview = overview.OrWhenEmpty(movie.Overview);
         Poster = movie.Poster;
         Backdrop = movie.Backdrop;
         Logo = movie.Images.FirstOrDefault(i => i.Type == "logo")?.FilePath;
@@ -111,17 +111,8 @@ public record HomeCardData
         VideoId = Videos.FirstOrDefault()?.Id;
 
         Rating = movie
-            .CertificationMovies.Where(cm =>
-                cm.Certification.Iso31661 == "US" || cm.Certification.Iso31661 == country
-            )
-            .Select(cm => new RatingClass
-            {
-                Rating = cm.Certification.Rating,
-                Iso31661 = cm.Certification.Iso31661,
-                Image = new(
-                    $"/{cm.Certification.Iso31661}/{cm.Certification.Iso31661}_{cm.Certification.Rating}.svg"
-                ),
-            })
+            .CertificationMovies.Where(cm => RatingClass.IsShownIn(cm.Certification, country))
+            .Select(cm => RatingClass.From(cm.Certification))
             .FirstOrDefault();
     }
 
@@ -131,8 +122,8 @@ public record HomeCardData
         string? overview = tv.Translations.FirstOrDefault()?.Overview;
 
         Id = tv.Id;
-        Title = !string.IsNullOrEmpty(title) ? title : tv.Title;
-        Overview = !string.IsNullOrEmpty(overview) ? overview : tv.Overview;
+        Title = title.OrWhenEmpty(tv.Title);
+        Overview = overview.OrWhenEmpty(tv.Overview);
         Poster = tv.Poster;
         Backdrop = tv.Backdrop;
         Logo = tv.Images.FirstOrDefault(i => i.Type == "logo")?.FilePath;
@@ -155,17 +146,8 @@ public record HomeCardData
         VideoId = Videos.FirstOrDefault()?.Id;
 
         Rating = tv
-            .CertificationTvs.Where(ct =>
-                ct.Certification.Iso31661 == "US" || ct.Certification.Iso31661 == country
-            )
-            .Select(ct => new RatingClass
-            {
-                Rating = ct.Certification.Rating,
-                Iso31661 = ct.Certification.Iso31661,
-                Image = new(
-                    $"/{ct.Certification.Iso31661}/{ct.Certification.Iso31661}_{ct.Certification.Rating}.svg"
-                ),
-            })
+            .CertificationTvs.Where(ct => RatingClass.IsShownIn(ct.Certification, country))
+            .Select(ct => RatingClass.From(ct.Certification))
             .FirstOrDefault();
     }
 
@@ -186,19 +168,4 @@ public record HomeCardData
         NumberOfItems = cardDto.NumberOfItems;
         MediaType = cardDto.Type;
     }
-}
-
-public record VideoInfo
-{
-    [JsonProperty("id")]
-    public string? Id { get; set; }
-
-    [JsonProperty("name")]
-    public string? Name { get; set; }
-
-    [JsonProperty("site")]
-    public string? Site { get; set; }
-
-    [JsonProperty("type")]
-    public string? Type { get; set; }
 }

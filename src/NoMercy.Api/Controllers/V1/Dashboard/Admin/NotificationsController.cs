@@ -16,6 +16,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Api.DTOs.Dashboard;
+using NoMercy.Data.Repositories;
 using NoMercy.Database;
 using NoMercy.Database.Models.Users;
 using NoMercy.Events;
@@ -47,7 +48,7 @@ namespace NoMercy.Api.Controllers.V1.Dashboard.Admin;
 [Authorize(Policy = "Moderator")]
 [Route("api/v{version:apiVersion}/dashboard/notifications", Order = 10)]
 public class NotificationsController(
-    MediaContext mediaContext,
+    IUserRepository userRepository,
     IEventBus eventBus,
     ConnectedClients connectedClients
 ) : BaseController
@@ -69,9 +70,7 @@ public class NotificationsController(
             ? DefaultNotificationType
             : request.Type;
 
-        int notifiedUsers = await mediaContext
-            .Users.AsNoTracking()
-            .CountAsync(user => user.Allowed || user.Owner);
+        int notifiedUsers = await userRepository.CountAllowedAsync();
 
         await eventBus.PublishAsync(
             new UserNotifiedEvent
@@ -109,9 +108,7 @@ public class NotificationsController(
         if (string.IsNullOrWhiteSpace(request.Body))
             return BadRequestResponse("body is required.");
 
-        User? user = await mediaContext
-            .Users.AsNoTracking()
-            .FirstOrDefaultAsync(u => u.Id == request.UserId);
+        User? user = await userRepository.GetByIdAsync(request.UserId);
         if (user is null)
             return NotFoundResponse("User not found.");
 

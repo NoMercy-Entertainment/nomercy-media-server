@@ -352,9 +352,11 @@ public static class ApplicationConfiguration
             // IStorageFactory, so we register every folder unconditionally
             // (DirectoryExists check would require materialising IStorage
             // here, which we don't have access to in the sync startup path).
+            IServedFolderRegistry servedFolders =
+                app.ApplicationServices.GetRequiredService<IServedFolderRegistry>();
             List<Folder> folderLibraries = mediaContext.Folders.ToList();
             foreach (Folder folder in folderLibraries)
-                DynamicStaticFilesMiddleware.AddFolder(folder.Id, folder.DriverId, folder.Path);
+                servedFolders.Add(folder.Id, folder.DriverId, folder.Path);
 
             // Refresh the cached folder IDs so AccessLogMiddleware allows
             // requests through before the background seeder finishes.

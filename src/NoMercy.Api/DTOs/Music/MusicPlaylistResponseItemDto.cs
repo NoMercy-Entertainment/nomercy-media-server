@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
+using NoMercy.Api.DTOs.Media.Components;
 using NoMercy.Database;
 using NoMercy.Database.Models.Music;
 
@@ -52,9 +53,7 @@ public record MusicPlaylistResponseItemDto
         Id = playlist.Id;
         Name = playlist.Name;
         Description = playlist.Description;
-        Cover = playlist.Cover is not null
-            ? new Uri($"/images/music{playlist.Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.UrlWhenSet(playlist.Cover);
         ColorPalette = playlist.ColorPalette;
         CreatedAt = playlist.CreatedAt;
         UpdatedAt = playlist.UpdatedAt;

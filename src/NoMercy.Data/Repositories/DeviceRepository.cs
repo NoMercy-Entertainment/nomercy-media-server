@@ -84,4 +84,13 @@ public class DeviceRepository(MediaContext context) : IDeviceRepository
         // Server-admin action: clear the entire device activity-log history.
         return context.ActivityLogs.ExecuteDeleteAsync();
     }
+
+    public Task<Device?> GetOwnedDeviceAsync(string deviceId, Guid ownerUserId, string type)
+    {
+        return context
+            .Devices.AsNoTracking()
+            .FirstOrDefaultAsync(d =>
+                d.DeviceId == deviceId && d.OwnerUserId == ownerUserId && d.Type == type
+            );
+    }
 }

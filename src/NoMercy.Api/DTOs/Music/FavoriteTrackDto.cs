@@ -11,6 +11,7 @@
 
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using NoMercy.Api.DTOs.Media.Components;
 using NoMercy.Database;
 using NoMercy.Database.Models.Music;
 using NoMercy.NmSystem.Extensions;
@@ -62,9 +63,7 @@ public class FavoriteTrackDto
     {
         Id = artistTrack.Track.Id;
         Name = artistTrack.Track.Name;
-        Cover = artistTrack.Track.Cover is not null
-            ? new Uri($"/images/music{artistTrack.Track.Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.UrlWhenSet(artistTrack.Track.Cover);
         Link = new($"/music/tracks/{Id}", UriKind.Relative);
         Type = "track";
         ColorPalette = artistTrack.Track._colorPalette.ToRaw();

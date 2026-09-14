@@ -50,6 +50,30 @@ public record TopResultCardData
 
     public TopResultCardData() { }
 
+    /// <summary>The top search result: the first track, else artist, else album.</summary>
+    public static TopResultCardData? FirstOf(Track? track, Artist? artist, Album? album)
+    {
+        if (track is not null)
+            return new(track);
+        if (artist is not null)
+            return new(artist);
+        return album is null ? null : new(album);
+    }
+
+    /// <summary>The top search result: the first track, else artist, else album.</summary>
+    public static TopResultCardData? FirstOf(
+        SearchTrackCardDto? track,
+        ArtistCardDto? artist,
+        AlbumCardDto? album
+    )
+    {
+        if (track is not null)
+            return new(track);
+        if (artist is not null)
+            return new(artist);
+        return album is null ? null : new(album);
+    }
+
     public TopResultCardData(Artist artist)
     {
         Id = artist.Id.ToString();
@@ -136,7 +160,7 @@ public record TopResultCardData
         Type = "track";
         Link = $"/music/tracks/{track.Id}";
         string? cover = track.AlbumCover ?? track.ArtistCover;
-        Cover = cover is not null ? $"/images/music{cover}" : null;
+        Cover = MusicCover.UrlWhenSet(cover);
         string? colorPaletteStr = track.AlbumColorPalette ?? track.ArtistColorPalette;
         ColorPalette = ColorPalette.FromJsonOrNull(colorPaletteStr);
         Artists = track.Artists.Select(at => new TopResultArtist
@@ -187,7 +211,7 @@ public record TopResultCardData
         Title = artist.Name;
         Type = "artist";
         Link = $"/music/artists/{artist.Id}";
-        Cover = artist.Cover is not null ? $"/images/music{artist.Cover}" : null;
+        Cover = MusicCover.UrlWhenSet(artist.Cover);
         ColorPalette = ColorPalette.FromJsonOrNull(artist.ColorPalette);
     }
 
@@ -197,73 +221,7 @@ public record TopResultCardData
         Title = album.Name;
         Type = "album";
         Link = $"/music/albums/{album.Id}";
-        Cover = album.Cover is not null ? $"/images/music{album.Cover}" : null;
+        Cover = MusicCover.UrlWhenSet(album.Cover);
         ColorPalette = ColorPalette.FromJsonOrNull(album.ColorPalette);
     }
-}
-
-public record TopResultArtist
-{
-    [JsonProperty("id")]
-    public string Id { get; set; } = null!;
-
-    [JsonProperty("name")]
-    public string Name { get; set; } = null!;
-
-    [JsonProperty("link")]
-    public Uri Link { get; set; } = null!;
-
-    [JsonProperty("type")]
-    public string Type { get; set; } = null!;
-}
-
-public record TopResultAlbum
-{
-    [JsonProperty("id")]
-    public string Id { get; set; } = null!;
-
-    [JsonProperty("name")]
-    public string Name { get; set; } = null!;
-
-    [JsonProperty("link")]
-    public Uri Link { get; set; } = null!;
-
-    [JsonProperty("type")]
-    public string Type { get; set; } = null!;
-}
-
-public record TopResultTrack
-{
-    [JsonProperty("id")]
-    public string Id { get; set; } = null!;
-
-    [JsonProperty("name")]
-    public string Name { get; set; } = null!;
-
-    [JsonProperty("duration")]
-    public string? Duration { get; set; }
-
-    [JsonProperty("path")]
-    public string? Path { get; set; }
-
-    [JsonProperty("link")]
-    public Uri Link { get; set; } = null!;
-
-    [JsonProperty("type")]
-    public string Type { get; set; } = null!;
-
-    [JsonProperty("disc")]
-    public int Disc { get; set; }
-
-    [JsonProperty("track")]
-    public int Track { get; set; }
-
-    [JsonProperty("quality")]
-    public int? Quality { get; set; }
-
-    [JsonProperty("artist_track")]
-    public IEnumerable<TopResultArtist> Artists { get; set; } = [];
-
-    [JsonProperty("album_track")]
-    public IEnumerable<TopResultAlbum> Albums { get; set; } = [];
 }

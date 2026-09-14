@@ -30,6 +30,7 @@ using NoMercy.Database.Models.Users;
 using NoMercy.Events;
 using NoMercy.Events.Library;
 using NoMercy.MediaProcessing.Files;
+using NoMercy.MediaProcessing.Intake;
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
 using NoMercy.Monitoring;
 using NoMercy.Networking.Discovery;
@@ -66,7 +67,7 @@ public partial class ServerController(
     ResourceMonitor resourceMonitor,
     IUpdateChecker updateChecker,
     IHostApplicationLifetime appLifetime,
-    AppDbContext appContext,
+    IServerConfigurationRepository serverConfiguration,
     FileRepository fileRepository,
     IFileListService fileListService,
     IJobDispatcher jobDispatcher,
@@ -127,23 +128,6 @@ public partial class ServerController(
             }
         );
     }
-
-    /// <summary>
-    /// Whether the file name states which episode it is, rather than leaving it
-    /// to be inferred. <c>S01E01</c>, <c>1x01</c> and a bare <c>- 175 -</c>
-    /// absolute index all count.
-    /// <para>Used only to break a tie between files that resolved to the same
-    /// episode. It is not a parser and does not need to be: the question is
-    /// which of two candidates said out loud what it belongs to.</para>
-    /// </summary>
-    private static bool DeclaresEpisode(string fileName) =>
-        ExplicitEpisodeMarker().IsMatch(fileName);
-
-    [GeneratedRegex(
-        @"(?<![A-Za-z0-9])(?:S\d{1,4}[\s._-]*E\d{1,4}|\d{1,2}x\d{1,3}|-[\s._]*\d{1,4}[\s._]*-)(?![A-Za-z0-9])",
-        RegexOptions.IgnoreCase
-    )]
-    private static partial Regex ExplicitEpisodeMarker();
 
     [HttpPost]
     [Route("start")]
@@ -208,21 +192,7 @@ public partial class ServerController(
     {
         Logger.SetLogLevel(level);
 
-        await appContext
-            .Configuration.Upsert(
-                new()
-                {
-                    Key = "logLevel",
-                    Value = level.ToString(),
-                    ModifiedBy = User.UserId(),
-                }
-            )
-            .On(configuration => configuration.Key)
-            .WhenMatched(
-                (_, configuration) =>
-                    new() { Value = configuration.Value, ModifiedBy = configuration.ModifiedBy }
-            )
-            .RunAsync();
+        await serverConfiguration.SetValueAsync("logLevel", level.ToString(), User.UserId());
 
         return Content("Log level set to " + level);
     }
@@ -289,47 +259,12 @@ public partial class ServerController(
             // gates only the automatic file-watcher path (AutoEncodeSubscriber),
             // never this manual import. A configured EncodePresetId narrows the
             // encode to that one preset; a null value keeps the folder's presets.
-            // One episode, one encode. Two files that resolved to the same media
-            // id are two encodes racing for one output directory, and the loser
-            // is whichever finishes first — the operator ends up with one of
-            // them under a name that describes the other.
-            //
-            // The match is decided by the file list and travels here inside the
-            // request, so no parser fix can reach a collision once it has been
-            // dispatched. Catching it at the only place encodes are created is
-            // what makes it a rule rather than a list of naming conventions:
-            // creditless openings sharing an episode with the episode itself, a
-            // dual-audio pair, a disc menu, a special the provider does not
-            // list. None of those need to be recognised by name to be stopped.
-            //
-            // Which one wins is not "whichever was listed first". The picker
-            // sorts by name, and a show's NCED and NCOP both sort ahead of its
-            // S01E01, so taking the first arrival would drop the real episode
-            // and keep its opening titles. A file that spells out the episode it
-            // belongs to is claiming it; one that does not is a guess, and a
-            // guess never beats a declaration.
-            List<AddFile> selected = [];
-            List<string> collided = [];
-
-            foreach (IGrouping<string, AddFile> claim in request.Files.GroupBy(f => $"{f.Id}"))
-            {
-                if (claim.Key.Length == 0)
-                {
-                    selected.AddRange(claim);
-                    continue;
-                }
-
-                AddFile winner =
-                    claim.FirstOrDefault(f => DeclaresEpisode(Path.GetFileName(f.Path)))
-                    ?? claim.First();
-
-                selected.Add(winner);
-                collided.AddRange(
-                    claim
-                        .Where(f => !ReferenceEquals(f, winner))
-                        .Select(f => Path.GetFileName(f.Path))
-                );
-            }
+            // One file per episode: see EpisodeClaims for why a declared episode wins.
+            (List<AddFile> selected, List<string> collided) = EpisodeClaims.PickOnePerEpisode(
+                request.Files,
+                file => $"{file.Id}",
+                file => file.Path
+            );
 
             foreach (AddFile file in selected)
             {
@@ -495,15 +430,6 @@ public partial class ServerController(
             .ThenBy(f => f.Path, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-    [NonAction]
-    private string DeviceName()
-    {
-        Configuration? device = appContext.Configuration.FirstOrDefault(device =>
-            device.Key == "serverName"
-        );
-        return device?.Value ?? Environment.MachineName;
-    }
-
     [HttpGet]
     [Route("info")]
     [ResponseCache(NoStore = true)]
@@ -518,7 +444,7 @@ public partial class ServerController(
                 Status = "ok",
                 Data = new()
                 {
-                    Server = DeviceName(),
+                    Server = await serverConfiguration.GetServerNameAsync(),
                     Cpu = Info.CpuNames,
                     Gpu = Info.GpuNames,
                     Os = $"{Info.Platform.ToTitleCase()} {Info.OsVersion}",
@@ -539,29 +465,13 @@ public partial class ServerController(
         if (!AuthPolicy.IsModerator(User))
             return UnauthorizedResponse("You do not have permission to update server information");
 
-        Configuration? configuration = await appContext
-            .Configuration.AsTracking()
-            .FirstOrDefaultAsync(configuration => configuration.Key == "serverName");
-
         try
         {
-            if (configuration == null)
-            {
-                configuration = new()
-                {
-                    Key = "serverName",
-                    Value = request.Name,
-                    ModifiedBy = userId,
-                };
-                await appContext.Configuration.AddAsync(configuration);
-            }
-            else
-            {
-                configuration.Value = request.Name;
-                configuration.ModifiedBy = userId;
-            }
-
-            await appContext.SaveChangesAsync();
+            await serverConfiguration.SetValueAsync(
+                ServerConfigurationKeys.ServerName,
+                request.Name,
+                userId
+            );
 
             HttpClient client = httpClientFactory.CreateClient(HttpClientNames.General);
             client.BaseAddress = new(ExternalServicesConfig.Current.ApiServerBaseUrl);
@@ -688,21 +598,7 @@ public partial class ServerController(
         // but does not write the Configuration table, so the count reverts to
         // the default on next boot without this write (mirrors
         // ConfigurationController.PersistWorkerCount).
-        await appContext
-            .Configuration.Upsert(
-                new()
-                {
-                    Key = $"{worker}Runners",
-                    Value = count.ToString(),
-                    ModifiedBy = userId,
-                }
-            )
-            .On(configuration => configuration.Key)
-            .WhenMatched(
-                (_, configuration) =>
-                    new() { Value = configuration.Value, ModifiedBy = configuration.ModifiedBy }
-            )
-            .RunAsync();
+        await serverConfiguration.SetValueAsync($"{worker}Runners", count.ToString(), userId);
 
         return Ok($"{worker} worker count set to {count}");
     }
@@ -787,21 +683,7 @@ public partial class ServerController(
 
         networkDiscovery.InternalIp = request.Ip;
 
-        await appContext
-            .Configuration.Upsert(
-                new()
-                {
-                    Key = "internalIp",
-                    Value = request.Ip,
-                    ModifiedBy = User.UserId(),
-                }
-            )
-            .On(configuration => configuration.Key)
-            .WhenMatched(
-                (_, configuration) =>
-                    new() { Value = configuration.Value, ModifiedBy = configuration.ModifiedBy }
-            )
-            .RunAsync();
+        await serverConfiguration.SetValueAsync("internalIp", request.Ip, User.UserId());
 
         return Ok(
             new StatusResponseDto<string>

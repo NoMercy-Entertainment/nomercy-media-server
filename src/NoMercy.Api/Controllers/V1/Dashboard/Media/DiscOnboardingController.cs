@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using NoMercy.Data.Repositories;
 using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.OpticalMedia.Drives;
@@ -31,7 +32,7 @@ public class DiscOnboardingController(
     IDriveMonitor driveMonitor,
     DiscOnboardingSessionStore store,
     DiscOnboardingOrchestrator orchestrator,
-    IDbContextFactory<MediaContext> contextFactory
+    ILibraryRepository libraryRepository
 ) : BaseController
 {
     /// <summary>
@@ -58,10 +59,7 @@ public class DiscOnboardingController(
         bool autoConfirmEnabled = false;
         if (libraryId.HasValue)
         {
-            await using MediaContext db = await contextFactory.CreateDbContextAsync(ct);
-            Library? library = await db
-                .Libraries.AsNoTracking()
-                .FirstOrDefaultAsync(l => l.Id == libraryId.Value, ct);
+            Library? library = await libraryRepository.GetLibraryByIdLiteAsync(libraryId.Value, ct);
             autoConfirmEnabled = library?.AutoConfirmDiscMatches ?? false;
         }
 
@@ -152,17 +150,3 @@ public class DiscOnboardingController(
             result_id = session.ResultId,
         };
 }
-
-public record DiscOnboardingConfirmRequest(
-    string Source,
-    string StableId,
-    string Title,
-    string MediaType,
-    int[] SelectedTitleIndices,
-    Ulid LibraryId,
-    Ulid FolderId,
-    int? Year = null,
-    string? PosterUrl = null,
-    int? SeasonNumber = null,
-    int? EpisodeNumber = null
-);

@@ -10,10 +10,9 @@
 // -----------------------------------------------------------------------------
 
 using System.Collections.Concurrent;
-using FlexLabs.EntityFrameworkCore.Upsert;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
-using NoMercy.Database;
+using NoMercy.Api.Hubs.Shared;
+using NoMercy.Data.Repositories;
 using NoMercy.Database.Models.Users;
 using NoMercy.Events;
 using NoMercy.Events.Library;
@@ -118,7 +117,7 @@ public class VideoPlaybackService
         if (state is not null)
             state.Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
-        EventPayload<PlayerStateEventElement> payload = new()
+        EventPayload<PlayerStateEventElement<VideoPlayerState, VideoEventType>> payload = new()
         {
             Events =
             [
@@ -174,8 +173,7 @@ public class VideoPlaybackService
 
     internal async Task PublishStartedEventAsync(Guid userId, VideoPlayerState state)
     {
-        IEventBus? bus =
-            _eventBus ?? (EventBusProvider.IsConfigured ? EventBusProvider.Current : null);
+        IEventBus? bus = _eventBus;
         if (bus is null || state.CurrentItem is null)
             return;
 
@@ -192,8 +190,7 @@ public class VideoPlaybackService
 
     private async Task PublishProgressEventAsync(Guid userId, VideoPlayerState state)
     {
-        IEventBus? bus =
-            _eventBus ?? (EventBusProvider.IsConfigured ? EventBusProvider.Current : null);
+        IEventBus? bus = _eventBus;
         if (bus is null || state.CurrentItem is null)
             return;
 
@@ -219,8 +216,7 @@ public class VideoPlaybackService
     /// </summary>
     private async Task PublishContinueWatchingRefreshAsync(Guid userId, VideoPlayerState state)
     {
-        IEventBus? bus =
-            _eventBus ?? (EventBusProvider.IsConfigured ? EventBusProvider.Current : null);
+        IEventBus? bus = _eventBus;
         if (bus is null)
             return;
 
@@ -258,8 +254,7 @@ public class VideoPlaybackService
 
     private async Task PublishCompletedEventAsync(Guid userId, VideoPlayerState state)
     {
-        IEventBus? bus =
-            _eventBus ?? (EventBusProvider.IsConfigured ? EventBusProvider.Current : null);
+        IEventBus? bus = _eventBus;
         if (bus is null || state.CurrentItem is null)
             return;
 
@@ -278,132 +273,33 @@ public class VideoPlaybackService
         if (state.CurrentItem is null || state.Time <= 0)
             return;
 
-        // Only the playable video types persist watch progression. Skip (never throw)
-        // for anything else — a stray type reaching the switch below used to throw and,
-        // from the async-void playback timer, take the whole server down.
-        if (
-            state.CurrentItem.PlaylistType
-            is not (
-                MediaTypes.MovieMediaType
-                or MediaTypes.TvMediaType
-                or MediaTypes.AnimeMediaType
-                or MediaTypes.CollectionMediaType
-                or MediaTypes.SpecialMediaType
-            )
-        )
-        {
-            Logger.App(
-                $"StoreWatchProgression: unsupported playlist type '{state.CurrentItem.PlaylistType}', skipping",
-                LogEventLevel.Warning
-            );
-            return;
-        }
-
-        UserData userdata = new()
-        {
-            UserId = user.Id,
-            Type = state.CurrentItem.PlaylistType,
-            Time = state.Time / 1000,
-            VideoFileId = state.CurrentItem.VideoId,
-            MovieId =
-                state.CurrentItem.PlaylistType == MediaTypes.MovieMediaType
-                    ? state.CurrentItem.TmdbId
-                    : null,
-            TvId = state.CurrentItem.PlaylistType
-                is MediaTypes.TvMediaType
-                    or MediaTypes.AnimeMediaType
-                ? state.CurrentItem.TmdbId
-                : null,
-            CollectionId =
-                state.CurrentItem.PlaylistType == MediaTypes.CollectionMediaType
-                    ? int.Parse(state.CurrentItem.PlaylistId)
-                    : null,
-            SpecialId =
-                state.CurrentItem.PlaylistType == MediaTypes.SpecialMediaType
-                    ? Ulid.Parse(state.CurrentItem.PlaylistId)
-                    : null,
-        };
-
         await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
-        IDbContextFactory<MediaContext> contextFactory = scope.ServiceProvider.GetRequiredService<
-            IDbContextFactory<MediaContext>
-        >();
-        await using MediaContext mediaContext = await contextFactory.CreateDbContextAsync();
+        IUserDataRepository userDataRepository =
+            scope.ServiceProvider.GetRequiredService<IUserDataRepository>();
 
-        // The id was captured when playback started. A rescan that runs mid-playback
-        // deletes and reinserts the VideoFile under a new id, so this one points at a
-        // row that no longer exists and the upsert fails the foreign key — once per
-        // tick, for the rest of the session. VideoHub.SetTime already refuses an
-        // unknown VideoFile; the timer has to make the same check or it turns a
-        // routine rescan into a wall of SQLite Error 19.
-        if (
-            !await mediaContext.VideoFiles.AnyAsync(videoFile =>
-                videoFile.Id == userdata.VideoFileId
+        // A rescan that runs mid-playback reinserts the VideoFile under a new id, so
+        // the id captured at start can point at a row that is gone; the upsert skips it.
+        bool stored = await userDataRepository.UpsertWatchProgressAsync(
+            new(
+                user.Id,
+                state.CurrentItem.PlaylistType,
+                Convert.ToString((object?)state.CurrentItem.PlaylistId) ?? string.Empty,
+                state.CurrentItem.TmdbId,
+                state.CurrentItem.VideoId,
+                state.Time / 1000,
+                null,
+                null,
+                null
             )
-        )
+        );
+        if (!stored)
         {
             Logger.App(
-                $"StoreWatchProgression: video file {userdata.VideoFileId} is gone "
-                    + "(re-indexed while playing), skipping progress write",
+                $"StoreWatchProgression: nothing stored for {state.CurrentItem.PlaylistType} video file {state.CurrentItem.VideoId}",
                 LogEventLevel.Warning
             );
             return;
         }
-
-        UpsertCommandBuilder<UserData> query = mediaContext.UserData.Upsert(userdata);
-
-        query = state.CurrentItem.PlaylistType switch
-        {
-            MediaTypes.MovieMediaType => query.On(x => new
-            {
-                x.VideoFileId,
-                x.UserId,
-                x.MovieId,
-            }),
-            MediaTypes.TvMediaType or MediaTypes.AnimeMediaType => query.On(x => new
-            {
-                x.VideoFileId,
-                x.UserId,
-                x.TvId,
-            }),
-            MediaTypes.CollectionMediaType => query.On(x => new
-            {
-                x.VideoFileId,
-                x.UserId,
-                x.CollectionId,
-            }),
-            MediaTypes.SpecialMediaType => query.On(x => new
-            {
-                x.VideoFileId,
-                x.UserId,
-                x.SpecialId,
-            }),
-            _ => throw new ArgumentException(
-                "Invalid playlist type",
-                state.CurrentItem.PlaylistType
-            ),
-        };
-
-        await query
-            .WhenMatched(
-                (uds, udi) =>
-                    new()
-                    {
-                        Id = uds.Id,
-                        Type = udi.Type,
-                        MovieId = udi.MovieId,
-                        TvId = udi.TvId,
-                        CollectionId = udi.CollectionId,
-                        SpecialId = udi.SpecialId,
-                        Time = udi.Time,
-                        Audio = udi.Audio,
-                        Subtitle = udi.Subtitle,
-                        SubtitleType = udi.SubtitleType,
-                        LastPlayedDate = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"),
-                        RemovedFromContinueWatching = false,
-                    }
-            )
-            .RunAsync();
 
         await PublishContinueWatchingRefreshAsync(user.Id, state);
     }

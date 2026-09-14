@@ -51,7 +51,8 @@ public class GenresController : BaseController
             userId,
             language,
             request.Take,
-            request.Page
+            request.Page,
+            ct
         );
 
         // Create cards for each genre
@@ -101,15 +102,7 @@ public class GenresController : BaseController
         if (request.Version != "lolomo")
         {
             // Simple grid view
-            IOrderedEnumerable<CardData> concat = movies
-                .Select(movie => new CardData(movie, country))
-                .Concat(tvShows.Select(tv => new CardData(tv, country)))
-                .OrderBy(card => card.TitleSort);
-
-            ComponentEnvelope response = Component
-                .Grid()
-                .WithId("genre-items")
-                .WithItems(concat.Select(card => Component.Card().WithData(card)));
+            ComponentEnvelope response = TitleCardGrid("genre-items", movies, tvShows);
 
             return Ok(ComponentResponse.From(response));
         }
@@ -124,11 +117,11 @@ public class GenresController : BaseController
                         List<CardData> carouselItems =
                         [
                             .. movies
-                                .Select(movie => new CardData(movie, country))
+                                .Select(movie => new CardData(movie))
                                 .Where(card => AlphaBucket.Matches(card.TitleSort, letter))
                                 .Concat(
                                     tvShows
-                                        .Select(tv => new CardData(tv, country))
+                                        .Select(tv => new CardData(tv))
                                         .Where(card => AlphaBucket.Matches(card.TitleSort, letter))
                                 )
                                 .OrderBy(card => card.TitleSort),

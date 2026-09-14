@@ -15,8 +15,6 @@ using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.TvShows;
 using NoMercy.Database.Models.Users;
 using NoMercy.NmSystem.Extensions;
-using NoMercy.Providers.TMDB.Client;
-using NoMercy.Providers.TMDB.Models.Episode;
 
 namespace NoMercy.Api.DTOs.Media;
 
@@ -72,8 +70,8 @@ public class EpisodeDto
 
         TvId = episode.TvId;
         Id = episode.Id;
-        Title = !string.IsNullOrEmpty(title) ? title : episode.Title;
-        Overview = !string.IsNullOrEmpty(overview) ? overview : episode.Overview;
+        Title = title.OrWhenEmpty(episode.Title);
+        Overview = overview.OrWhenEmpty(episode.Overview);
         EpisodeNumber = episode.EpisodeNumber;
         SeasonNumber = episode.SeasonNumber;
         AirDate = episode.AirDate;
@@ -91,48 +89,4 @@ public class EpisodeDto
                     )
                 : null;
     }
-
-    public EpisodeDto(int tvId, int seasonNumber, int episodeNumber, string language)
-    {
-        TmdbEpisodeClient tmdbEpisodeClient = new(tvId, seasonNumber, episodeNumber);
-        TmdbEpisodeAppends? episodeData = tmdbEpisodeClient.WithAllAppends().Result;
-
-        if (episodeData is null)
-            return;
-
-        string? overview = episodeData
-            .Translations.Translations.FirstOrDefault(translation =>
-                translation.Iso6391 == language
-            )
-            ?.Data.Overview;
-
-        Id = episodeData.Id;
-        Title = episodeData.Name;
-        Overview = !string.IsNullOrEmpty(overview) ? overview : episodeData.Overview;
-        EpisodeNumber = episodeData.EpisodeNumber;
-        SeasonNumber = episodeData.SeasonNumber;
-        AirDate = episodeData.AirDate;
-        Still = episodeData.StillPath;
-        ColorPalette = new();
-        Available = false;
-
-        Translations = episodeData.Translations.Translations.Select(
-            translation => new TranslationDto(translation)
-        );
-    }
-}
-
-public class MissingEpisodeDto(Episode episode) : EpisodeDto(episode)
-{
-    private readonly Episode _episode = episode;
-
-    [JsonProperty("link")]
-    public new Uri Link =>
-        new(
-            $"https://www.themoviedb.org/tv/{_episode.TvId}/season/{_episode.SeasonNumber}/episode/{_episode.EpisodeNumber}",
-            UriKind.Absolute
-        );
-
-    [JsonProperty("available")]
-    public new bool Available => true;
 }

@@ -64,7 +64,8 @@ public class CollectionsController(
             language,
             country,
             request.Take,
-            request.Page
+            request.Page,
+            ct
         );
 
         if (request.Version != "lolomo")
@@ -122,7 +123,9 @@ public class CollectionsController(
             userId,
             id,
             language,
-            country, ct);
+            country,
+            ct
+        );
 
         if (
             collection is not null
@@ -148,13 +151,14 @@ public class CollectionsController(
         if (!AuthPolicy.IsAllowed(User))
             return UnauthorizedResponse("You do not have permission to view collections");
 
-        Collection? collection = await collectionRepository.GetAvailableCollectionAsync(userId, id);
+        Collection? collection = await collectionRepository.GetAvailableCollectionAsync(
+            userId,
+            id,
+            ct
+        );
 
-        bool available =
-            collection is not null
-            && collection.CollectionMovies.Select(movie => movie.Movie.VideoFiles).Any();
-
-        if (!available)
+        // The query only returns a collection that has a movie with a stored file.
+        if (collection is null)
             return NotFoundResponse("Collection not found");
 
         return Ok(
@@ -182,7 +186,8 @@ public class CollectionsController(
             userId,
             id,
             language,
-            country
+            country,
+            ct
         );
 
         if (collection is null)
@@ -242,7 +247,7 @@ public class CollectionsController(
         if (!AuthPolicy.IsAllowed(User))
             return UnauthorizedResponse("You do not have permission to manage watch list");
 
-        bool success = await collectionRepository.AddToWatchListAsync(id, userId, request.Add);
+        bool success = await collectionRepository.AddToWatchListAsync(id, userId, request.Add, ct);
 
         if (!success)
             return UnprocessableEntityResponse("Collection not found");
@@ -289,7 +294,7 @@ public class CollectionsController(
         }
         catch (Exception e)
         {
-            logger.LogError(e.Message);
+            logger.LogError(e, "{Message}", e.Message);
             return InternalServerErrorResponse(e.Message);
         }
 
@@ -316,21 +321,8 @@ public class CollectionsController(
         if (collection is null)
             return UnprocessableEntityResponse("Collection not found");
 
-        try
-        {
-            foreach (CollectionMovie collectionMovie in collection.CollectionMovies)
-            {
-                jobDispatcher.DispatchJob<MovieImportJob>(
-                    collectionMovie.MovieId,
-                    collectionMovie.Movie.LibraryId
-                );
-            }
-        }
-        catch (Exception e)
-        {
-            logger.LogError(e.Message);
-            return InternalServerErrorResponse(e.Message);
-        }
+        if (!TryQueueMovieImports(collection, out string error))
+            return InternalServerErrorResponse(error);
 
         return Ok(
             new StatusResponseDto<string>
@@ -363,21 +355,8 @@ public class CollectionsController(
         if (collection is null)
             return UnprocessableEntityResponse("Collection not found");
 
-        try
-        {
-            foreach (CollectionMovie collectionMovie in collection.CollectionMovies)
-            {
-                jobDispatcher.DispatchJob<MovieImportJob>(
-                    collectionMovie.MovieId,
-                    collectionMovie.Movie.LibraryId
-                );
-            }
-        }
-        catch (Exception e)
-        {
-            logger.LogError(e.Message);
-            return InternalServerErrorResponse(e.Message);
-        }
+        if (!TryQueueMovieImports(collection, out string error))
+            return InternalServerErrorResponse(error);
 
         return Ok(
             new StatusResponseDto<string>
@@ -387,5 +366,25 @@ public class CollectionsController(
                 Args = [library.Title],
             }
         );
+    }
+
+    private bool TryQueueMovieImports(Collection collection, out string error)
+    {
+        try
+        {
+            foreach (CollectionMovie collectionMovie in collection.CollectionMovies)
+                jobDispatcher.DispatchJob<MovieImportJob>(
+                    collectionMovie.MovieId,
+                    collectionMovie.Movie.LibraryId
+                );
+            error = string.Empty;
+            return true;
+        }
+        catch (Exception e)
+        {
+            logger.LogError(e, "{Message}", e.Message);
+            error = e.Message;
+            return false;
+        }
     }
 }

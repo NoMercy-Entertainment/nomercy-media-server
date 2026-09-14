@@ -51,13 +51,12 @@ public class LibraryRescanDispatchTests
             Mock.Of<ILanguageRepository>(),
             Mock.Of<Microsoft.EntityFrameworkCore.IDbContextFactory<NoMercy.Database.MediaContext>>(),
             Mock.Of<NoMercy.Data.Activity.IActivityLogger>(),
-            Mock.Of<NoMercy.Storage.IStorageDriver>(),
-            Mock.Of<NoMercy.Storage.IStorageFactory>(),
             Mock.Of<NoMercy.MediaProcessing.Libraries.IDefaultEncodingPresetLinker>(),
-            Mock.Of<NoMercy.Encoder.Analysis.IMediaAnalyzer>(),
-            Mock.Of<NoMercy.MediaProcessing.Files.Parsing.IFilenameParserPipeline>(),
+            Mock.Of<NoMercy.MediaProcessing.Files.IFileManager>(),
             Mock.Of<NoMercy.MediaProcessing.Shows.IAnimeClassificationAuditService>(),
-            Mock.Of<Microsoft.Extensions.Logging.ILogger<LibrariesController>>()
+            Mock.Of<Microsoft.Extensions.Logging.ILogger<LibrariesController>>(),
+            Mock.Of<NoMercy.Events.IEventBus>(),
+            new NoMercy.Api.Middleware.ServedFolderRegistry()
         );
     }
 
@@ -174,13 +173,12 @@ public class LibraryRescanDispatchTests
             Mock.Of<ILanguageRepository>(),
             Mock.Of<Microsoft.EntityFrameworkCore.IDbContextFactory<NoMercy.Database.MediaContext>>(),
             Mock.Of<NoMercy.Data.Activity.IActivityLogger>(),
-            Mock.Of<NoMercy.Storage.IStorageDriver>(),
-            Mock.Of<NoMercy.Storage.IStorageFactory>(),
             Mock.Of<NoMercy.MediaProcessing.Libraries.IDefaultEncodingPresetLinker>(),
-            Mock.Of<NoMercy.Encoder.Analysis.IMediaAnalyzer>(),
-            Mock.Of<NoMercy.MediaProcessing.Files.Parsing.IFilenameParserPipeline>(),
+            Mock.Of<NoMercy.MediaProcessing.Files.IFileManager>(),
             Mock.Of<NoMercy.MediaProcessing.Shows.IAnimeClassificationAuditService>(),
-            Mock.Of<Microsoft.Extensions.Logging.ILogger<LibrariesController>>()
+            Mock.Of<Microsoft.Extensions.Logging.ILogger<LibrariesController>>(),
+            Mock.Of<NoMercy.Events.IEventBus>(),
+            new NoMercy.Api.Middleware.ServedFolderRegistry()
         );
 
         IActionResult result = await controller.RepairTrackMatches(Ulid.NewUlid());
@@ -217,13 +215,12 @@ public class LibraryRescanDispatchTests
             Mock.Of<ILanguageRepository>(),
             Mock.Of<Microsoft.EntityFrameworkCore.IDbContextFactory<NoMercy.Database.MediaContext>>(),
             Mock.Of<NoMercy.Data.Activity.IActivityLogger>(),
-            Mock.Of<NoMercy.Storage.IStorageDriver>(),
-            Mock.Of<NoMercy.Storage.IStorageFactory>(),
             Mock.Of<NoMercy.MediaProcessing.Libraries.IDefaultEncodingPresetLinker>(),
-            Mock.Of<NoMercy.Encoder.Analysis.IMediaAnalyzer>(),
-            Mock.Of<NoMercy.MediaProcessing.Files.Parsing.IFilenameParserPipeline>(),
+            Mock.Of<NoMercy.MediaProcessing.Files.IFileManager>(),
             Mock.Of<NoMercy.MediaProcessing.Shows.IAnimeClassificationAuditService>(),
-            Mock.Of<Microsoft.Extensions.Logging.ILogger<LibrariesController>>()
+            Mock.Of<Microsoft.Extensions.Logging.ILogger<LibrariesController>>(),
+            Mock.Of<NoMercy.Events.IEventBus>(),
+            new NoMercy.Api.Middleware.ServedFolderRegistry()
         );
 
         IActionResult result = await controller.RepairTrackMatches(libraryId);

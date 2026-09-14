@@ -101,4 +101,16 @@ public class AlphaBucketTests
         AlphaBucket.Matches("_apple", "#").Should().BeTrue();
         AlphaBucket.Matches(null, "#").Should().BeTrue();
     }
+
+    [Theory]
+    [InlineData([null, "#"])]
+    [InlineData(["", "#"])]
+    [InlineData(["abba", "A"])]
+    [InlineData(["Queen", "Q"])]
+    [InlineData(["2Pac", "#"])]
+    [InlineData(["Édith Piaf", "#"])]
+    public void LetterFor_TakesTheFirstAsciiLetterOrHash(string? name, string expected)
+    {
+        AlphaBucket.LetterFor(name).Should().Be(expected);
+    }
 }

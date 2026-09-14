@@ -9,10 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
-using NoMercy.Database;
-using NoMercy.Database.Models.Libraries;
 
 namespace NoMercy.Api.DTOs.Dashboard;
 
@@ -20,20 +17,4 @@ public record LibrariesDto
 {
     [JsonProperty("data")]
     public IEnumerable<LibrariesResponseItemDto> Data { get; set; } = [];
-
-    public static readonly Func<MediaContext, Guid, IAsyncEnumerable<Library?>> GetLibraries =
-        EF.CompileAsyncQuery(
-            (MediaContext mediaContext, Guid userId) =>
-                mediaContext
-                    .Libraries.AsNoTracking()
-                    .Where(library =>
-                        library.LibraryUsers.FirstOrDefault(u => u.UserId.Equals(userId)) != null
-                    )
-                    .Include(library => library.FolderLibraries)
-                        .ThenInclude(folderLibrary => folderLibrary.Folder)
-                            .ThenInclude(folder => folder.EncodingPresetFolders)
-                                .ThenInclude(link => link.Preset)
-                    .Include(library => library.LanguageLibraries)
-                        .ThenInclude(languageLibrary => languageLibrary.Language)
-        );
 }

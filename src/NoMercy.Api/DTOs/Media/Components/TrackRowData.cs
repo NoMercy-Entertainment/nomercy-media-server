@@ -104,7 +104,7 @@ public record TrackRowData
         });
     }
 
-    public TrackRowData(Track track, string country)
+    public TrackRowData(Track track)
     {
         Id = track.Id.ToString();
         Name = track.Name;
@@ -114,7 +114,7 @@ public record TrackRowData
         string? cover =
             track.AlbumTrack.FirstOrDefault()?.Album.Cover
             ?? track.ArtistTrack.FirstOrDefault()?.Artist.Cover;
-        Cover = cover is not null ? $"/images/music{cover}" : null;
+        Cover = MusicCover.UrlWhenSet(cover);
         Path = $"/{track.FolderId}{track.Folder}{track.Filename}";
         Link = $"/music/tracks/{track.Id}";
         Date = track.UpdatedAt.ToString("yyyy-MM-dd");
@@ -153,7 +153,7 @@ public record TrackRowData
         string? colorPaletteStr = track.AlbumColorPalette ?? track.ArtistColorPalette;
         ColorPalette = ColorPalette.FromJsonOrNull(colorPaletteStr);
         string? cover = track.AlbumCover ?? track.ArtistCover;
-        Cover = cover is not null ? $"/images/music{cover}" : null;
+        Cover = MusicCover.UrlWhenSet(cover);
         Path = $"/{track.FolderId}{track.Folder}{track.Filename}";
         Link = $"/music/tracks/{track.Id}";
         Date = track.UpdatedAt.ToString("yyyy-MM-dd");
@@ -180,34 +180,4 @@ public record TrackRowData
             Type = "album",
         });
     }
-}
-
-public record LyricLine
-{
-    [JsonProperty("time")]
-    public double Time { get; set; }
-
-    [JsonProperty("text")]
-    public string Text { get; set; } = null!;
-
-    [JsonProperty("link")]
-    public Uri Link { get; set; } = null!;
-
-    [JsonProperty("type")]
-    public string Type { get; set; } = null!;
-}
-
-public record TrackArtist
-{
-    [JsonProperty("id")]
-    public string Id { get; set; } = null!;
-
-    [JsonProperty("name")]
-    public string Name { get; set; } = null!;
-
-    [JsonProperty("link")]
-    public Uri Link { get; set; } = null!;
-
-    [JsonProperty("type")]
-    public string Type { get; set; } = null!;
 }

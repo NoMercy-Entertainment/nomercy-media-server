@@ -83,17 +83,15 @@ public class ServerUserSyncCronJob : ICronJobExecutor
         // not the table directly — refresh it so an invite accepted this run
         // grants access immediately instead of waiting for whatever unrelated
         // event happens to refresh the cache next.
-        await using MediaContext refreshContext = await _contextFactory.CreateDbContextAsync(
-            cancellationToken
-        );
-        await _userCache.RefreshUsersAsync(refreshContext);
+        await _userCache.RefreshUsersAsync(_contextFactory, cancellationToken);
 
         // A no-op sync (nobody revoked) is routine background chatter — keep it at
         // Debug. A run that actually revoked access is a real event worth Info.
         LogLevel syncLevel = result.RevokedCount > 0 ? LogLevel.Information : LogLevel.Debug;
         _logger.Log(
             syncLevel,
-            "Server user sync complete: {Count} upstream user(s), {Revoked} revoked locally", [result.UpstreamUserCount, result.RevokedCount]
+            "Server user sync complete: {Count} upstream user(s), {Revoked} revoked locally",
+            [result.UpstreamUserCount, result.RevokedCount]
         );
     }
 }

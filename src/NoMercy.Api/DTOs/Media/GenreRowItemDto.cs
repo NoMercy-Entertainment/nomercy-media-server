@@ -85,8 +85,8 @@ public record GenreRowItemDto
         string? overview = movie.Translations.FirstOrDefault()?.Overview;
 
         Id = movie.Id;
-        Title = !string.IsNullOrEmpty(title) ? title : movie.Title;
-        Overview = !string.IsNullOrEmpty(overview) ? overview : movie.Overview;
+        Title = title.OrWhenEmpty(movie.Title);
+        Overview = overview.OrWhenEmpty(movie.Overview);
         Poster = movie.Poster;
         Backdrop = movie.Backdrop;
         Logo = movie
@@ -110,14 +110,9 @@ public record GenreRowItemDto
 
         ContentRatings = movie
             .CertificationMovies.Where(certificationMovie =>
-                certificationMovie.Certification.Iso31661 == "US"
-                || certificationMovie.Certification.Iso31661 == country
+                RatingClass.IsShownIn(certificationMovie.Certification, country)
             )
-            .Select(certificationMovie => new ContentRating
-            {
-                Rating = certificationMovie.Certification.Rating,
-                Iso31661 = certificationMovie.Certification.Iso31661,
-            });
+            .Select(certificationMovie => ContentRating.From(certificationMovie.Certification));
     }
 
     public GenreRowItemDto(Tv tv, string country)
@@ -126,8 +121,8 @@ public record GenreRowItemDto
         string? overview = tv.Translations.FirstOrDefault()?.Overview;
 
         Id = tv.Id;
-        Title = !string.IsNullOrEmpty(title) ? title : tv.Title;
-        Overview = !string.IsNullOrEmpty(overview) ? overview : tv.Overview;
+        Title = title.OrWhenEmpty(tv.Title);
+        Overview = overview.OrWhenEmpty(tv.Overview);
         Poster = tv.Poster;
         Backdrop = tv.Backdrop;
         Logo = tv
@@ -152,17 +147,12 @@ public record GenreRowItemDto
 
         ContentRatings = tv
             .CertificationTvs.Where(certificationMovie =>
-                certificationMovie.Certification.Iso31661 == "US"
-                || certificationMovie.Certification.Iso31661 == country
+                RatingClass.IsShownIn(certificationMovie.Certification, country)
             )
-            .Select(certificationTv => new ContentRating
-            {
-                Rating = certificationTv.Certification.Rating,
-                Iso31661 = certificationTv.Certification.Iso31661,
-            });
+            .Select(certificationTv => ContentRating.From(certificationTv.Certification));
     }
 
-    public GenreRowItemDto(HomeMovieCardDto movie, string country)
+    public GenreRowItemDto(HomeMovieCardDto movie)
     {
         Id = movie.Id;
         Title = !string.IsNullOrEmpty(movie.TranslatedTitle) ? movie.TranslatedTitle : movie.Title;
@@ -197,7 +187,7 @@ public record GenreRowItemDto
         }
     }
 
-    public GenreRowItemDto(HomeTvCardDto tv, string country)
+    public GenreRowItemDto(HomeTvCardDto tv)
     {
         Id = tv.Id;
         Title = !string.IsNullOrEmpty(tv.TranslatedTitle) ? tv.TranslatedTitle : tv.Title;
@@ -239,8 +229,8 @@ public record GenreRowItemDto
         string? overview = collection.Translations.FirstOrDefault()?.Overview;
 
         Id = collection.Id;
-        Title = !string.IsNullOrEmpty(title) ? title : collection.Title;
-        Overview = !string.IsNullOrEmpty(overview) ? overview : collection.Overview;
+        Title = title.OrWhenEmpty(collection.Title);
+        Overview = overview.OrWhenEmpty(collection.Overview);
         Poster = collection.Poster;
         Backdrop = collection.Backdrop;
         Logo = collection
@@ -273,14 +263,9 @@ public record GenreRowItemDto
                 collectionMovie.Movie.CertificationMovies
             )
             .Where(certificationMovie =>
-                certificationMovie.Certification.Iso31661 == "US"
-                || certificationMovie.Certification.Iso31661 == country
+                RatingClass.IsShownIn(certificationMovie.Certification, country)
             )
-            .Select(certificationMovie => new ContentRating
-            {
-                Rating = certificationMovie.Certification.Rating,
-                Iso31661 = certificationMovie.Certification.Iso31661,
-            });
+            .Select(certificationMovie => ContentRating.From(certificationMovie.Certification));
     }
 
     public GenreRowItemDto(Special special, string country)
@@ -325,13 +310,8 @@ public record GenreRowItemDto
                 item.Movie?.CertificationMovies ?? Enumerable.Empty<CertificationMovie>()
             )
             .Where(certificationMovie =>
-                certificationMovie.Certification.Iso31661 == "US"
-                || certificationMovie.Certification.Iso31661 == country
+                RatingClass.IsShownIn(certificationMovie.Certification, country)
             )
-            .Select(certificationMovie => new ContentRating
-            {
-                Rating = certificationMovie.Certification.Rating,
-                Iso31661 = certificationMovie.Certification.Iso31661,
-            });
+            .Select(certificationMovie => ContentRating.From(certificationMovie.Certification));
     }
 }

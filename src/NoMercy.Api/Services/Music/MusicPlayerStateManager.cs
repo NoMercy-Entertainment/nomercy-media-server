@@ -25,11 +25,6 @@ public class MusicPlayerStateManager
     // broadcasts for the same user land in the same millisecond.
     private readonly ConcurrentDictionary<Guid, long> _lastSeq = new();
 
-    public IEnumerable<MusicPlayerState> GetAllStates()
-    {
-        return _playerStates.Values;
-    }
-
     public MusicPlayerState? GetState(Guid userId)
     {
         return _playerStates.TryGetValue(userId, out MusicPlayerState? state) ? state : null;
@@ -53,15 +48,6 @@ public class MusicPlayerStateManager
     public void ClearAllStates()
     {
         _playerStates.Clear();
-    }
-
-    public void UpdateStateProperty(Guid userId, Action<MusicPlayerState> updateAction)
-    {
-        if (_playerStates.TryGetValue(userId, out MusicPlayerState? state))
-        {
-            updateAction(state);
-            _playerStates[userId] = state;
-        }
     }
 
     public bool TryGetValue(Guid userId, [NotNullWhen(true)] out MusicPlayerState? state)

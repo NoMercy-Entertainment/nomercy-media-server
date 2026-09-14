@@ -161,7 +161,7 @@ public record InfoResponseItemDto
         Id = movie.Id;
         Adult = movie.Adult;
         Title = movie.Title;
-        Overview = !string.IsNullOrEmpty(overview) ? overview : movie.Overview;
+        Overview = overview.OrWhenEmpty(movie.Overview);
         Type = MediaTypes.MovieMediaType;
         MediaType = MediaTypes.MovieMediaType;
         Link = new($"/movie/{Id}", UriKind.Relative);
@@ -196,14 +196,9 @@ public record InfoResponseItemDto
 
         ContentRatings = movie
             .CertificationMovies.Where(certificationMovie =>
-                certificationMovie.Certification.Iso31661 == "US"
-                || certificationMovie.Certification.Iso31661 == country
+                RatingClass.IsShownIn(certificationMovie.Certification, country)
             )
-            .Select(certificationMovie => new ContentRating
-            {
-                Rating = certificationMovie.Certification.Rating,
-                Iso31661 = certificationMovie.Certification.Iso31661,
-            });
+            .Select(certificationMovie => ContentRating.From(certificationMovie.Certification));
 
         Keywords = movie.KeywordMovies.Select(keywordMovie => keywordMovie.Keyword.Name);
 
@@ -283,7 +278,7 @@ public record InfoResponseItemDto
         Id = tmdbMovie.Id;
         Adult = tmdbMovie.Adult;
         Title = tmdbMovie.Title;
-        Overview = !string.IsNullOrEmpty(overview) ? overview : tmdbMovie.Overview;
+        Overview = overview.OrWhenEmpty(tmdbMovie.Overview);
         Type = MediaTypes.MovieMediaType;
         MediaType = MediaTypes.MovieMediaType;
         Link = new($"/movie/{Id}", UriKind.Relative);
@@ -376,8 +371,8 @@ public record InfoResponseItemDto
         string? overview = tv.Translations.FirstOrDefault()?.Overview;
 
         Id = tv.Id;
-        Title = !string.IsNullOrEmpty(title) ? title : tv.Title;
-        Overview = !string.IsNullOrEmpty(overview) ? overview : tv.Overview;
+        Title = title.OrWhenEmpty(tv.Title);
+        Overview = overview.OrWhenEmpty(tv.Overview);
         Type = tv.Type ?? MediaTypes.TvMediaType;
         MediaType = MediaTypes.TvMediaType;
         Link = new($"/tv/{Id}", UriKind.Relative);
@@ -417,14 +412,9 @@ public record InfoResponseItemDto
 
         ContentRatings = tv
             .CertificationTvs.Where(certificationMovie =>
-                certificationMovie.Certification.Iso31661 == "US"
-                || certificationMovie.Certification.Iso31661 == country
+                RatingClass.IsShownIn(certificationMovie.Certification, country)
             )
-            .Select(certificationTv => new ContentRating
-            {
-                Rating = certificationTv.Certification.Rating,
-                Iso31661 = certificationTv.Certification.Iso31661,
-            });
+            .Select(certificationTv => ContentRating.From(certificationTv.Certification));
 
         Keywords = tv.KeywordTvs.Select(keywordTv => keywordTv.Keyword.Name);
 
@@ -539,8 +529,8 @@ public record InfoResponseItemDto
 
         Id = tmdbTv.Id;
         Adult = tmdbTv.Adult;
-        Title = !string.IsNullOrEmpty(title) ? title : tmdbTv.Name;
-        Overview = !string.IsNullOrEmpty(overview) ? overview : tmdbTv.Overview;
+        Title = title.OrWhenEmpty(tmdbTv.Name);
+        Overview = overview.OrWhenEmpty(tmdbTv.Overview);
         Type = tmdbTv.Type ?? MediaTypes.TvMediaType;
         MediaType = MediaTypes.TvMediaType;
         Link = new($"/tv/{Id}", UriKind.Relative);
@@ -563,7 +553,6 @@ public record InfoResponseItemDto
         Year = tmdbTv.FirstAirDate.ParseYear();
         VoteAverage = tmdbTv.VoteAverage;
 
-        // ColorPalette = tv.ColorPalette;
         Backdrop =
             tmdbTv.Images.Backdrops.FirstOrDefault(media => media.Iso6391 is "")?.FilePath
             ?? tmdbTv.BackdropPath;
@@ -656,13 +645,11 @@ public record InfoResponseItemDto
         string? overview = collection.Translations.FirstOrDefault()?.Overview;
 
         Id = collection.Id;
-        Title = !string.IsNullOrEmpty(title) ? title : collection.Title;
-        Overview = !string.IsNullOrEmpty(overview) ? overview : collection.Overview;
+        Title = title.OrWhenEmpty(collection.Title);
+        Overview = overview.OrWhenEmpty(collection.Overview);
         Type = MediaTypes.CollectionMediaType;
         MediaType = MediaTypes.CollectionMediaType;
         Link = new($"/collection/{Id}", UriKind.Relative);
-        // Watched = tv.Watched;
-        // Favorite = tv.Favorite;
         TitleSort = collection.Title.TitleSort(
             collection
                 .CollectionMovies.MinBy(collectionMovie => collectionMovie.Movie.ReleaseDate)
@@ -705,12 +692,12 @@ public record InfoResponseItemDto
         {
             Rating = certificationMovie
                 .Movie.CertificationMovies.First(cert =>
-                    cert.Certification.Iso31661 == "US" || cert.Certification.Iso31661 == country
+                    RatingClass.IsShownIn(cert.Certification, country)
                 )
                 .Certification.Rating,
             Iso31661 = certificationMovie
                 .Movie.CertificationMovies.First(cert =>
-                    cert.Certification.Iso31661 == "US" || cert.Certification.Iso31661 == country
+                    RatingClass.IsShownIn(cert.Certification, country)
                 )
                 .Certification.Iso31661,
         });

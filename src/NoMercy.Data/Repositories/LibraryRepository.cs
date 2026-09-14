@@ -101,6 +101,33 @@ public class LibraryRepository(IDbContextFactory<MediaContext> contextFactory) :
             .ToListAsync(ct);
     }
 
+    public async Task<int> CountAsync(CancellationToken ct = default)
+    {
+        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+        return await context.Libraries.CountAsync(ct);
+    }
+
+    public async Task<List<Library>> GetSetupLibrariesAsync(
+        Guid userId,
+        CancellationToken ct = default
+    )
+    {
+        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+        return await context
+            .Libraries.AsNoTracking()
+            .ForUser(userId)
+            .Include(library => library.FolderLibraries)
+                .ThenInclude(fl => fl.Folder)
+                    .ThenInclude(f => f.EncodingPresetFolders)
+                        .ThenInclude(link => link.Preset)
+            .Include(library => library.LanguageLibraries)
+                .ThenInclude(ll => ll.Language)
+            .Include(library => library.LibraryMovies)
+            .Include(library => library.LibraryTvs)
+            .OrderBy(library => library.Order)
+            .ToListAsync(ct);
+    }
+
     /// <summary>
     /// Lightweight library query for endpoints that don't need LibraryMovies/LibraryTvs collections.
     /// Use this in Mobile/TV/Home endpoints to avoid loading thousands of join entities into memory.
@@ -1417,5 +1444,81 @@ public class LibraryRepository(IDbContextFactory<MediaContext> contextFactory) :
             await transaction.RollbackAsync();
             throw;
         }
+    }
+
+    public async Task<FolderLibrary?> FindInboxFolderAsync(
+        string path,
+        CancellationToken ct = default
+    )
+    {
+        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+
+        List<FolderLibrary> inboxFolders = await context
+            .FolderLibrary.AsNoTracking()
+            .Include(folderLibrary => folderLibrary.Folder)
+            .Where(folderLibrary => folderLibrary.Library.Type == MediaTypes.InboxMediaType)
+            .ToListAsync(ct);
+
+        string wanted = NormalizeFolderPath(path);
+        return inboxFolders.FirstOrDefault(folderLibrary =>
+            NormalizeFolderPath(folderLibrary.Folder.Path)
+                .Equals(wanted, StringComparison.OrdinalIgnoreCase)
+        );
+    }
+
+    private static string NormalizeFolderPath(string path) => path.Replace('\\', '/').TrimEnd('/');
+
+    public async Task<List<ImportFailure>> GetImportFailuresAsync(
+        Ulid libraryId,
+        bool? resolved,
+        CancellationToken ct = default
+    )
+    {
+        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+
+        IQueryable<ImportFailure> query = context
+            .ImportFailures.AsNoTracking()
+            .Where(failure => failure.LibraryId == libraryId);
+
+        if (resolved is not null)
+            query = query.Where(failure => failure.Resolved == resolved);
+
+        // Ordered in memory: SQLite cannot order by the stored timestamp type.
+        return (await query.ToListAsync(ct))
+            .OrderByDescending(failure => failure.LastAttemptAt)
+            .ToList();
+    }
+
+    public async Task<int> DeleteEncodingPresetFolderLinkAsync(
+        Ulid folderId,
+        Ulid encoderProfileId,
+        CancellationToken ct = default
+    )
+    {
+        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+        return await context
+            .EncodingPresetFolders.Where(link =>
+                link.FolderId == folderId && link.PresetId == encoderProfileId
+            )
+            .ExecuteDeleteAsync(ct);
+    }
+
+    public async Task<List<TrackHostFolderDto>> GetTrackHostFoldersForLibraryAsync(
+        Ulid libraryId,
+        CancellationToken ct = default
+    )
+    {
+        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+
+        return await (
+            from track in context.Tracks
+            join libraryTrack in context.LibraryTrack on track.Id equals libraryTrack.TrackId
+            join albumTrack in context.AlbumTrack on track.Id equals albumTrack.TrackId
+            where
+                libraryTrack.LibraryId == libraryId
+                && track.HostFolder != null
+                && track.Filename != null
+            select new TrackHostFolderDto(track.HostFolder!, albumTrack.AlbumId)
+        ).ToListAsync(ct);
     }
 }

@@ -109,7 +109,7 @@ public class SpecialRepository(MediaContext context, IDbContextFactory<MediaCont
             .ToListAsync(ct);
     }
 
-    public Task<List<SpecialCardDto>> GetSpecialItemCardsAsync(
+    public async Task<List<SpecialCardDto>> GetSpecialItemCardsAsync(
         Guid userId,
         string language,
         string country,
@@ -118,7 +118,9 @@ public class SpecialRepository(MediaContext context, IDbContextFactory<MediaCont
         CancellationToken ct = default
     )
     {
-        return context
+        // Callers run this next to other queries, so it owns its context.
+        await using MediaContext db = await contextFactory.CreateDbContextAsync(ct);
+        return await db
             .Specials.AsNoTracking()
             .AsSingleQuery()
             .OrderBy(special => special.TitleSort)

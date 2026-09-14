@@ -22,11 +22,11 @@ namespace NoMercy.Data.Services;
 
 public class LibraryLogic(
     Ulid id,
-    MediaContext mediaContext,
+    IDbContextFactory<MediaContext> mediaContextFactory,
     IStorageDriver storageDriver,
     IStorageFactory storageFactory,
     ILogger<LibraryLogic> logger
-) : IDisposable, IAsyncDisposable
+)
 {
     private readonly IStorageDriver _storageDriver = storageDriver;
     private Library Library { get; set; } = new();
@@ -40,6 +40,8 @@ public class LibraryLogic(
 
     public async Task<bool> Process()
     {
+        await using MediaContext mediaContext = await mediaContextFactory.CreateDbContextAsync();
+
         Library? library = await mediaContext
             .Libraries.AsNoTracking()
             .Include(library => library.FolderLibraries)
@@ -114,15 +116,5 @@ public class LibraryLogic(
         }
 
         logger.LogInformation("Found {Count} subfolders", Titles.Count);
-    }
-
-    public void Dispose()
-    {
-        mediaContext.Dispose();
-    }
-
-    public async ValueTask DisposeAsync()
-    {
-        await mediaContext.DisposeAsync();
     }
 }

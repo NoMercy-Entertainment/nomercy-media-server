@@ -11,6 +11,8 @@
 
 using NoMercy.Api.Hubs;
 using NoMercy.Api.Services.Music;
+using NoMercy.Data.Services.Music;
+using NoMercy.Setup.Cast;
 
 namespace NoMercy.Service.Extensions;
 
@@ -29,7 +31,6 @@ public static class MusicHubServiceExtensions
 
         // Scoped - one instance per request
         services.AddScoped<MusicPlaylistManager>();
-        services.AddScoped<MusicDeviceManager>();
         services.AddScoped<MusicHub>();
 
         return services;

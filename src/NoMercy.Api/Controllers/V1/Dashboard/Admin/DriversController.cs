@@ -105,9 +105,7 @@ public class DriversController(
         string normalizedType = (request.Type ?? string.Empty).Trim().ToLowerInvariant();
 
         if (!DriverTypeMetadata.AllUserCreatable.Contains(normalizedType))
-            return BadRequestResponse(
-                $"Invalid type '{request.Type}'. Allowed values: {string.Join(", ", DriverTypeMetadata.AllUserCreatable)}."
-            );
+            return InvalidTypeResponse(request.Type);
 
         string? validationError = DriverTypeMetadata.ValidateConfig(normalizedType, request.Config);
         if (validationError is not null)
@@ -126,13 +124,7 @@ public class DriversController(
 
         if (request.Credentials is not null && HasMeaningfulCredentials(request.Credentials))
         {
-            string credRef = $"driver:{newId}";
-            CredentialManager.SetCredentials(
-                target: credRef,
-                username: request.Credentials.AccessKey,
-                password: request.Credentials.SecretKey,
-                apiKey: string.Empty
-            );
+            string credRef = StoreCredentials(newId, request.Credentials);
             logger.LogInformation(
                 "[DriversController] Stored credentials for new {NormalizedType} driver (id={NewId}, accessKey len={Length}, secret len={Length2})",
                 normalizedType,
@@ -141,9 +133,7 @@ public class DriversController(
                 request.Credentials.SecretKey.Length
             );
 
-            // Inject credentialsRef into Config so the StorageFactory can resolve it.
-            configToStore ??= new();
-            configToStore["credentialsRef"] = credRef;
+            configToStore = WithCredentialsRef(configToStore, credRef);
         }
         else if (request.Credentials is not null)
         {
@@ -191,31 +181,9 @@ public class DriversController(
         if (id == Driver.SystemLocalDriverId)
             return ConflictResponse("Cannot edit the built-in system local driver.");
 
-        if (request.Name is not null)
-        {
-            string trimmedName = request.Name.Trim();
-            if (string.IsNullOrEmpty(trimmedName))
-                return BadRequestResponse("name cannot be empty.");
-
-            bool nameExists = await driverRepository.NameExistsAsync(trimmedName, excludeId: id);
-            if (nameExists)
-                return ConflictResponse($"A driver named '{trimmedName}' already exists.");
-
-            driver.Name = trimmedName;
-        }
-
-        // Allow type change. UI lets the user switch backend in the form;
-        // server must honour it or we silently validate against the old
-        // type and reject configs that are valid for the new one.
-        if (request.Type is not null)
-        {
-            string normalizedType = request.Type.Trim().ToLowerInvariant();
-            if (!DriverTypeMetadata.AllUserCreatable.Contains(normalizedType))
-                return BadRequestResponse(
-                    $"Invalid type '{request.Type}'. Allowed values: {string.Join(", ", DriverTypeMetadata.AllUserCreatable)}."
-                );
-            driver.Type = normalizedType;
-        }
+        IActionResult? rejected = await ApplyNameAndTypeAsync(driver, request);
+        if (rejected is not null)
+            return rejected;
 
         JObject? configToStore = request.Config;
 
@@ -237,13 +205,7 @@ public class DriversController(
 
         if (request.Credentials is not null && HasMeaningfulCredentials(request.Credentials))
         {
-            string credRef = $"driver:{id}";
-            CredentialManager.SetCredentials(
-                target: credRef,
-                username: request.Credentials.AccessKey,
-                password: request.Credentials.SecretKey,
-                apiKey: string.Empty
-            );
+            string credRef = StoreCredentials(id, request.Credentials);
             logger.LogInformation(
                 "[DriversController] Updated credentials for driver {Id} ({Type}) (accessKey len={Length}, secret len={Length2})",
                 id,
@@ -252,10 +214,10 @@ public class DriversController(
                 request.Credentials.SecretKey.Length
             );
 
-            // Ensure credentialsRef is present in Config.
-            configToStore ??= request.Config ?? ParseConfigJson(driver.Config);
-            configToStore ??= new();
-            configToStore["credentialsRef"] = credRef;
+            configToStore = WithCredentialsRef(
+                configToStore ?? ParseConfigJson(driver.Config),
+                credRef
+            );
         }
         else if (request.Credentials is not null)
         {
@@ -284,10 +246,7 @@ public class DriversController(
 
         await driverRepository.UpdateDriverAsync(driver);
 
-        // Invalidate StorageFactory cache for all folders using this driver.
-        List<Ulid> folderIds = [.. driver.Folders.Select(f => f.Id)];
-        foreach (Ulid folderId in folderIds)
-            storageFactory.Invalidate(folderId);
+        InvalidateCachedStorage(driver);
 
         return Ok(MapToDto(driver));
     }
@@ -316,25 +275,15 @@ public class DriversController(
                 "access_key and secret_key are both required and must be non-empty."
             );
 
-        string credRef = $"driver:{id}";
-        CredentialManager.SetCredentials(
-            target: credRef,
-            username: request.AccessKey,
-            password: request.SecretKey,
-            apiKey: string.Empty
+        string credRef = StoreCredentials(id, request);
+        driver.Config = JsonConvert.SerializeObject(
+            WithCredentialsRef(ParseConfigJson(driver.Config), credRef)
         );
-
-        // Ensure credentialsRef is present in Config so the StorageFactory resolves it.
-        JObject? configObj = ParseConfigJson(driver.Config) ?? new();
-        configObj["credentialsRef"] = credRef;
-        driver.Config = JsonConvert.SerializeObject(configObj);
         driver.UpdatedAt = DateTimeOffset.UtcNow;
         await driverRepository.UpdateDriverAsync(driver);
 
-        // Invalidate any cached IStorage instances built without credentials.
-        List<Ulid> folderIds = [.. driver.Folders.Select(f => f.Id)];
-        foreach (Ulid folderId in folderIds)
-            storageFactory.Invalidate(folderId);
+        // Cached IStorage instances were built without these credentials.
+        int invalidated = InvalidateCachedStorage(driver);
 
         logger.LogInformation(
             "[DriversController] Direct credential write for driver {Id} ({Type}) (accessKey len={Length}, secret len={Length2}); invalidated {Count} cached folder(s).",
@@ -342,7 +291,7 @@ public class DriversController(
             driver.Type,
             request.AccessKey.Length,
             request.SecretKey.Length,
-            folderIds.Count
+            invalidated
         );
 
         return Ok(MapToDto(driver));
@@ -382,6 +331,76 @@ public class DriversController(
     // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
+
+    /// <summary>Applies a rename and a backend switch; the rejection when either is invalid.</summary>
+    private async Task<IActionResult?> ApplyNameAndTypeAsync(
+        Driver driver,
+        UpdateDriverRequestDto request
+    )
+    {
+        if (request.Name is not null)
+        {
+            string trimmedName = request.Name.Trim();
+            if (string.IsNullOrEmpty(trimmedName))
+                return BadRequestResponse("name cannot be empty.");
+
+            bool nameExists = await driverRepository.NameExistsAsync(
+                trimmedName,
+                excludeId: driver.Id
+            );
+            if (nameExists)
+                return ConflictResponse($"A driver named '{trimmedName}' already exists.");
+
+            driver.Name = trimmedName;
+        }
+
+        // Allow type change. UI lets the user switch backend in the form;
+        // server must honour it or we silently validate against the old
+        // type and reject configs that are valid for the new one.
+        if (request.Type is not null)
+        {
+            string normalizedType = request.Type.Trim().ToLowerInvariant();
+            if (!DriverTypeMetadata.AllUserCreatable.Contains(normalizedType))
+                return InvalidTypeResponse(request.Type);
+            driver.Type = normalizedType;
+        }
+
+        return null;
+    }
+
+    private IActionResult InvalidTypeResponse(string? requested) =>
+        BadRequestResponse(
+            $"Invalid type '{requested}'. Allowed values: {string.Join(", ", DriverTypeMetadata.AllUserCreatable)}."
+        );
+
+    /// <returns>The credential reference the driver config points at.</returns>
+    private static string StoreCredentials(Ulid driverId, DriverCredentialsDto credentials)
+    {
+        string credRef = $"driver:{driverId}";
+        CredentialManager.SetCredentials(
+            target: credRef,
+            username: credentials.AccessKey,
+            password: credentials.SecretKey,
+            apiKey: string.Empty
+        );
+        return credRef;
+    }
+
+    /// <summary>Points the config at the stored credentials so the StorageFactory can resolve them.</summary>
+    private static JObject WithCredentialsRef(JObject? config, string credRef)
+    {
+        config ??= new();
+        config["credentialsRef"] = credRef;
+        return config;
+    }
+
+    private int InvalidateCachedStorage(Driver driver)
+    {
+        List<Ulid> folderIds = [.. driver.Folders.Select(f => f.Id)];
+        foreach (Ulid folderId in folderIds)
+            storageFactory.Invalidate(folderId);
+        return folderIds.Count;
+    }
 
     private static DriverDto MapToDto(Driver driver)
     {

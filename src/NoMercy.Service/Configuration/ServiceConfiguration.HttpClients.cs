@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using NoMercy.Data.Services.Music;
 using NoMercy.NmSystem.Configuration;
 using NoMercy.NmSystem.Information;
 using NoMercy.Providers.Helpers;

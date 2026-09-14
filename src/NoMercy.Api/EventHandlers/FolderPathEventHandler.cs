@@ -19,48 +19,45 @@ using NoMercy.Events.Library;
 
 namespace NoMercy.Api.EventHandlers;
 
-public class FolderPathEventHandler : IDisposable
+public class FolderPathEventHandler : EventSubscriber
 {
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly List<IDisposable> _subscriptions = [];
+    private readonly IUserCache _userCache;
+    private readonly IServedFolderRegistry _servedFolders;
 
-    public FolderPathEventHandler(IEventBus eventBus, IServiceScopeFactory scopeFactory)
+    public FolderPathEventHandler(
+        IEventBus eventBus,
+        IServiceScopeFactory scopeFactory,
+        IUserCache userCache,
+        IServedFolderRegistry servedFolders
+    )
     {
+        _servedFolders = servedFolders;
         _scopeFactory = scopeFactory;
-        _subscriptions.Add(eventBus.Subscribe<FolderPathAddedEvent>(OnFolderPathAdded));
-        _subscriptions.Add(eventBus.Subscribe<FolderPathRemovedEvent>(OnFolderPathRemoved));
+        _userCache = userCache;
+        Track(eventBus.Subscribe<FolderPathAddedEvent>(OnFolderPathAdded));
+        Track(eventBus.Subscribe<FolderPathRemovedEvent>(OnFolderPathRemoved));
     }
 
     internal async Task OnFolderPathAdded(FolderPathAddedEvent @event, CancellationToken ct)
     {
-        DynamicStaticFilesMiddleware.AddFolder(@event.RequestPath, @event.DriverId, @event.SubPath);
+        _servedFolders.Add(@event.RequestPath, @event.DriverId, @event.SubPath);
 
         await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
         IDbContextFactory<MediaContext> contextFactory = scope.ServiceProvider.GetRequiredService<
             IDbContextFactory<MediaContext>
         >();
-        await using MediaContext mediaContext = await contextFactory.CreateDbContextAsync(ct);
-        await UserCache.Current.RefreshFolderIdsAsync(mediaContext);
+        await _userCache.RefreshFolderIdsAsync(contextFactory, ct);
     }
 
     internal async Task OnFolderPathRemoved(FolderPathRemovedEvent @event, CancellationToken ct)
     {
-        DynamicStaticFilesMiddleware.RemoveFolder(@event.RequestPath);
+        _servedFolders.Remove(@event.RequestPath);
 
         await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
         IDbContextFactory<MediaContext> contextFactory = scope.ServiceProvider.GetRequiredService<
             IDbContextFactory<MediaContext>
         >();
-        await using MediaContext mediaContext = await contextFactory.CreateDbContextAsync(ct);
-        await UserCache.Current.RefreshFolderIdsAsync(mediaContext);
-    }
-
-    public void Dispose()
-    {
-        foreach (IDisposable subscription in _subscriptions)
-        {
-            subscription.Dispose();
-        }
-        _subscriptions.Clear();
+        await _userCache.RefreshFolderIdsAsync(contextFactory, ct);
     }
 }

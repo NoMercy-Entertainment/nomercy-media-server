@@ -1516,20 +1516,31 @@ public sealed class NfsStorageDriver : IStorageDriver, IDisposable
         int openRc = OpenDirWithRetry(nfsDir, out IntPtr dir);
         if (openRc != 0)
         {
-            // -20 (NFS4ERR_NOTDIR / ENOTDIR) just means the caller (or the
-            // recursion below) probed a path that turned out to be a file —
-            // not a real failure, and noisy at Warning level.
-            if (openRc != -20)
-                _log.LogWarning(
-                    "NFS opendir failed for '{Path}' on {Server}:{Export} (v{Version}, rc={Rc}): {Error}",
-                    nfsDir,
-                    _config.Server,
-                    _config.Export,
-                    _config.Version,
-                    openRc,
-                    _libNfs.GetError(_nfs)
-                );
-            return;
+            // -2 (NFS4ERR_NOENT / ENOENT) and -20 (NFS4ERR_NOTDIR / ENOTDIR)
+            // are the only two outcomes that mean "this path genuinely is not
+            // a directory here" — the caller (or the recursion below) probed
+            // something that turned out to be gone or a file, not a real
+            // failure. Every other rc (EIO, permission denied, a dropped
+            // mount mid-listing) is a real enumeration failure and must not
+            // come back looking like "this folder has no entries" — a caller
+            // reconciling stale rows against what it actually saw this pass
+            // cannot tell "empty" from "failed" apart otherwise.
+            if (openRc is -2 or -20)
+                return;
+
+            string error = _libNfs.GetError(_nfs);
+            _log.LogWarning(
+                "NFS opendir failed for '{Path}' on {Server}:{Export} (v{Version}, rc={Rc}): {Error}",
+                nfsDir,
+                _config.Server,
+                _config.Export,
+                _config.Version,
+                openRc,
+                error
+            );
+            throw new IOException(
+                $"NFS opendir failed for '{nfsDir}' on {_config.Server}:{_config.Export} (rc={openRc}): {error}"
+            );
         }
 
         try

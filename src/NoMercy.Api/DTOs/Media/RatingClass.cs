@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
+using NoMercy.Database.Models.Common;
 
 namespace NoMercy.Api.DTOs.Media;
 
@@ -29,4 +30,17 @@ public record RatingClass
 
     [JsonProperty("image")]
     public string Image { get; set; } = string.Empty;
+
+    /// <summary>A rating is shown when it is the US rating or the viewer's own country's.</summary>
+    public static bool IsShownIn(Certification certification, string? country) =>
+        certification.Iso31661 == "US" || certification.Iso31661 == country;
+
+    public static RatingClass From(Certification certification) =>
+        new()
+        {
+            Rating = certification.Rating,
+            Iso31661 = certification.Iso31661,
+            Image =
+                $"/{certification.Iso31661}/{certification.Iso31661}_{certification.Rating}.svg",
+        };
 }

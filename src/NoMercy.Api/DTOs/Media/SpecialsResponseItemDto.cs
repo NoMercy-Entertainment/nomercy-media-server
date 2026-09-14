@@ -88,8 +88,8 @@ public record SpecialsResponseItemDto
         string? overview = item.Movie.Translations.FirstOrDefault()?.Overview;
 
         Id = item.Movie.Id.ToString();
-        Title = !string.IsNullOrEmpty(title) ? title : item.Movie.Title;
-        Overview = !string.IsNullOrEmpty(overview) ? overview : item.Movie.Overview;
+        Title = title.OrWhenEmpty(item.Movie.Title);
+        Overview = overview.OrWhenEmpty(item.Movie.Overview);
 
         Backdrop = item.Movie.Backdrop;
         Logo = item.Movie.Images.FirstOrDefault(media => media.Type == "logo")?.FilePath;
@@ -149,9 +149,5 @@ public record SpecialsResponseItemDto
             .ToArray();
 
         TotalDuration = movies.Sum() + episodes.Sum();
-
-        // VideoId = special.SpecialMovies?
-        //     .FirstOrDefault()
-        //     ?.Movie.Video;
     }
 }

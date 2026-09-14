@@ -130,7 +130,6 @@ public class VideoPlaylistResponseDto
         if (episode.Tv is null)
             return;
 
-        UserData? userData = videoFile.UserData.FirstOrDefault();
         string baseFolder = $"/{videoFile.Share}{videoFile.Folder}".EncodePath();
 
         string? logo = episode
@@ -162,98 +161,18 @@ public class VideoPlaylistResponseDto
         PlaylistType = playlistType;
         PlaylistId = playlistId;
         Year = episode.Tv.FirstAirDate.ParseYear();
-        Progress = userData?.LastPlayedDate is not null
-            ? new ProgressDto
-            {
-                Time = userData.Time ?? 0,
-                Date = DateTime.Parse(userData.LastPlayedDate),
-            }
-            : null;
         Image = episode.Still;
         Logo = logo;
-        File = $"{baseFolder}{videoFile.Filename.EncodePath()}";
-        Sources =
-        [
-            new()
-            {
-                Src = $"{baseFolder}{videoFile.Filename.EncodePath()}",
-                Type = videoFile.Filename.Contains(".mp4") ? "video/mp4" : "application/x-mpegURL",
-                Languages =
-                    JsonConvert
-                        .DeserializeObject<string?[]>(videoFile.Languages)
-                        ?.Where(lang => lang != null)
-                        .ToArray()
-                    ?? [],
-            },
-        ];
-
-        List<VideoTrack> fontsTrack = videoFile.Metadata?.Fonts is { Count: > 0 }
-            ? [new() { File = $"{baseFolder}/fonts.json", Kind = "fonts" }]
-            : [];
-
-        List<VideoTrack> chaptersTrack = videoFile.Metadata?.ChapterFile
-            is { FileSize: > 0 } chaptersFile
-            ?
-            [
-                new()
-                {
-                    File = $"{baseFolder}{chaptersFile.FileName.EncodePath()}",
-                    Kind = "chapters",
-                },
-            ]
-            : [];
-
-        Tracks = NormalizePreviewTracks(
-            videoFile
-                .Tracks.Select(t => new VideoTrack
-                {
-                    Label = t.Label,
-                    File = $"{baseFolder}{t.File.EncodePath()}",
-                    Language = t.Language,
-                    Kind = t.Kind,
-                })
-                .Concat(subs.TextTracks)
-                .Concat(fontsTrack)
-                .Concat(chaptersTrack)
-                .OrderBy(track => track.Language)
-                .ToList(),
-            videoFile.Metadata,
-            baseFolder
-        );
-
+        ApplyVideoFile(videoFile, baseFolder, subs);
         Season = index is not null ? 0 : episode.SeasonNumber;
         Episode = index ?? episode.EpisodeNumber;
         SeasonName = episode.Season.Title;
         EpisodeId = episode.Id;
-        Chapters = videoFile.Metadata?.Chapters ?? [];
-        Fonts =
-            videoFile
-                .Metadata?.Fonts?.Select(font => new IFont
-                {
-                    FileName = $"{baseFolder}{font.FileName.EncodePath()}",
-                    FileHash = font.FileHash,
-                    FileSize = font.FileSize,
-                })
-                .ToList()
-            ?? [];
-
-        Audio = videoFile.Metadata?.Audio ?? [];
-        Captions = videoFile.Metadata?.Subtitles ?? [];
-        Qualities = videoFile.Metadata?.Video ?? [];
-
         ContentRating = episode
             .Tv.CertificationTvs.Where(certificationMovie =>
-                certificationMovie.Certification.Iso31661 == "US"
-                || certificationMovie.Certification.Iso31661 == country
+                RatingClass.IsShownIn(certificationMovie.Certification, country)
             )
-            .Select(certificationTv => new RatingClass
-            {
-                Rating = certificationTv.Certification.Rating,
-                Iso31661 = certificationTv.Certification.Iso31661,
-                Image = new(
-                    $"/{certificationTv.Certification.Iso31661}/{certificationTv.Certification.Iso31661}_{certificationTv.Certification.Rating}.svg"
-                ),
-            })
+            .Select(certificationTv => RatingClass.From(certificationTv.Certification))
             .FirstOrDefault();
     }
 
@@ -274,7 +193,6 @@ public class VideoPlaylistResponseDto
             .Images.OrderByDescending(image => image.VoteAverage)
             .FirstOrDefault(image => image.Type == "logo")
             ?.FilePath;
-        UserData? userData = videoFile.UserData.FirstOrDefault();
         string baseFolder = $"/{videoFile.Share}{videoFile.Folder}".EncodePath();
 
         string title = movie.Translations.FirstOrDefault()?.Title ?? movie.Title;
@@ -294,6 +212,28 @@ public class VideoPlaylistResponseDto
         PlaylistType = playlistType;
         PlaylistId = playlistId;
         Year = movie.ReleaseDate.ParseYear();
+        Image = movie.Backdrop;
+        Logo = logo;
+        ApplyVideoFile(videoFile, baseFolder, subs);
+        ContentRating = movie
+            .CertificationMovies.Where(certificationMovie =>
+                RatingClass.IsShownIn(certificationMovie.Certification, country)
+            )
+            .Select(certificationTv => RatingClass.From(certificationTv.Certification))
+            .FirstOrDefault();
+
+        if (index is null)
+            return;
+        SeasonName = "Collection";
+        Season = 0;
+        Episode = index;
+        EpisodeId = movie.Id;
+    }
+
+    /// <summary>What playing the file needs: its sources, tracks, metadata and the viewer's progress.</summary>
+    private void ApplyVideoFile(VideoFile videoFile, string baseFolder, Subs subs)
+    {
+        UserData? userData = videoFile.UserData.FirstOrDefault();
         Progress = userData?.LastPlayedDate is not null
             ? new ProgressDto
             {
@@ -301,8 +241,6 @@ public class VideoPlaylistResponseDto
                 Date = DateTime.Parse(userData.LastPlayedDate),
             }
             : null;
-        Image = movie.Backdrop;
-        Logo = logo;
         File = $"{baseFolder}{videoFile.Filename.EncodePath()}";
         Sources =
         [
@@ -368,28 +306,6 @@ public class VideoPlaylistResponseDto
         Audio = videoFile.Metadata?.Audio ?? [];
         Captions = videoFile.Metadata?.Subtitles ?? [];
         Qualities = videoFile.Metadata?.Video ?? [];
-
-        ContentRating = movie
-            .CertificationMovies.Where(certificationMovie =>
-                certificationMovie.Certification.Iso31661 == "US"
-                || certificationMovie.Certification.Iso31661 == country
-            )
-            .Select(certificationTv => new RatingClass
-            {
-                Rating = certificationTv.Certification.Rating,
-                Iso31661 = certificationTv.Certification.Iso31661,
-                Image = new(
-                    $"/{certificationTv.Certification.Iso31661}/{certificationTv.Certification.Iso31661}_{certificationTv.Certification.Rating}.svg"
-                ),
-            })
-            .FirstOrDefault();
-
-        if (index is null)
-            return;
-        SeasonName = "Collection";
-        Season = 0;
-        Episode = index;
-        EpisodeId = movie.Id;
     }
 
     private record Subs

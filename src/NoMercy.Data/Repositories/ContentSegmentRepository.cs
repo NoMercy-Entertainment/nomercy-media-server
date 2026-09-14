@@ -134,4 +134,36 @@ public class ContentSegmentRepository(MediaContext context) : IContentSegmentRep
 
         await context.SaveChangesAsync();
     }
+
+    public Task<List<ContentSegment>> GetForEpisodesBySourceAsync(
+        IReadOnlyList<int> episodeIds,
+        string source
+    ) =>
+        context
+            .ContentSegments.AsNoTracking()
+            .Where(cs =>
+                cs.EpisodeId != null
+                && episodeIds.Contains(cs.EpisodeId.Value)
+                && cs.Source == source
+            )
+            .ToListAsync();
+
+    public async Task ReplaceSegmentsForEpisodesAsync(
+        IReadOnlyList<int> episodeIds,
+        string staleSource,
+        IReadOnlyList<ContentSegment> newSegments
+    )
+    {
+        List<ContentSegment> stale = await context
+            .ContentSegments.Where(cs =>
+                cs.EpisodeId != null
+                && episodeIds.Contains(cs.EpisodeId.Value)
+                && cs.Source == staleSource
+            )
+            .ToListAsync();
+
+        context.ContentSegments.RemoveRange(stale);
+        await context.ContentSegments.AddRangeAsync(newSegments);
+        await context.SaveChangesAsync();
+    }
 }

@@ -20,6 +20,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Api.Middleware;
 using NoMercy.Api.Services;
 using NoMercy.Authorization;
+using NoMercy.Authorization.LiveIngest;
 using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.Storage;
@@ -557,7 +558,12 @@ public sealed class TokenParamAuthDenyPrecisionTests : IAsyncLifetime, IDisposab
     }
 
     private static TokenParamAuthMiddleware BuildMiddleware(RequestDelegate next) =>
-        new(next, new LiveIngestKeyStore(), NullLogger<TokenParamAuthMiddleware>.Instance);
+        new(
+            next,
+            new LiveIngestKeyStore(),
+            NullLogger<TokenParamAuthMiddleware>.Instance,
+            UserCache.Current
+        );
 
     private static HttpContext BuildContext(string path, ClaimsPrincipal? user = null)
     {

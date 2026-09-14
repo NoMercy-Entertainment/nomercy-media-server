@@ -24,15 +24,6 @@ using NoMercy.Setup.Cast;
 namespace NoMercy.Api.Services.Cast;
 
 /// <summary>
-/// Wakes a TV from the server, so no client needs a Cast SDK of its own.
-/// </summary>
-public interface IServerCastWaker
-{
-    /// <inheritdoc cref="ServerCastWaker.WakeAsync" />
-    Task<bool> WakeAsync(Device tv, Guid userId, CastIntent intent);
-}
-
-/// <summary>
 /// Wakes a TV the server cannot reach over its own bus, from the server.
 ///
 /// Casting used to be every client's own problem: the hubs answered
@@ -77,8 +68,10 @@ public class ServerCastWaker(
         );
 
         Ulid deviceId = tv.Id;
-        string serverUrl = ResolveServerUrl();
-        string locale = ResolveSenderLocale();
+        string serverUrl = CastLaunchOrigin.ServerUrl(networkDiscovery);
+        string locale = CastLaunchOrigin.SenderLocale(
+            httpContextAccessor.HttpContext?.Request.Headers.AcceptLanguage.ToString()
+        );
 
         // Android receiver, not the Web Receiver. The bus-registry check the music
         // panel wake uses as a proxy for "our app is installed" is exactly wrong
@@ -101,30 +94,5 @@ public class ServerCastWaker(
         );
 
         return true;
-    }
-
-    /// <summary>
-    /// Public origin the receiver should use for API and SignalR, preferring the
-    /// path Connectivity actually resolved over the configured base URL.
-    /// </summary>
-    private string ResolveServerUrl()
-    {
-        string? external = networkDiscovery?.ExternalAddress;
-        return string.IsNullOrEmpty(external)
-            ? ExternalServicesConfig.Current.ApiBaseUrl
-            : external;
-    }
-
-    /// <summary>
-    /// The caller's own locale, so the receiver seeds i18n correctly on first paint.
-    /// </summary>
-    private string ResolveSenderLocale()
-    {
-        string? header = httpContextAccessor.HttpContext?.Request.Headers.AcceptLanguage.ToString();
-        if (string.IsNullOrEmpty(header))
-            return "en-US";
-
-        string first = header.Split(',')[0].Split(';')[0].Trim();
-        return string.IsNullOrEmpty(first) ? "en-US" : first;
     }
 }

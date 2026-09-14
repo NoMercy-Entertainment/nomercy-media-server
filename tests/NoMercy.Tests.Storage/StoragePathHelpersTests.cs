@@ -145,4 +145,39 @@ public class StoragePathHelpersTests
         StoragePathHelpers.Combine("a", "\\b").Should().Be("a/b");
         StoragePathHelpers.Combine("a\\", "\\b").Should().Be("a/b");
     }
+
+    // ── TryGetLibraryRelativeFolder ────────────────────────────────────────
+
+    [Fact]
+    public void TryGetLibraryRelativeFolder_EmptyRoot_TreatsTheDirectoryAsAlreadyRelative()
+    {
+        // A Folders.Path of "" means the folder IS the driver's scope root —
+        // not "no root to resolve against". Before this, an empty root was
+        // rejected outright, which made StoreVideoItem skip every file under
+        // a root-scoped folder and, combined with FindFiles' unconditional
+        // delete, permanently dropped that show's registrations (issue #55).
+        bool ok = StoragePathHelpers.TryGetLibraryRelativeFolder(
+            "Show.(2013)/Show.S09E01",
+            "",
+            out string folder
+        );
+
+        ok.Should().BeTrue();
+        folder.Should().Be("/Show.(2013)/Show.S09E01");
+    }
+
+    [Fact]
+    public void TryGetLibraryRelativeFolder_EmptyRootAndEmptyDirectory_ReturnsFalse()
+    {
+        // An empty root is a valid scope, but an empty directory still has
+        // nothing to resolve — that half of the guard is unchanged.
+        bool ok = StoragePathHelpers.TryGetLibraryRelativeFolder(
+            string.Empty,
+            string.Empty,
+            out string folder
+        );
+
+        ok.Should().BeFalse();
+        folder.Should().BeEmpty();
+    }
 }

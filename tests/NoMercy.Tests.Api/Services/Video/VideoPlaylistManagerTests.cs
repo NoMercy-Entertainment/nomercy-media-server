@@ -40,7 +40,6 @@ public sealed class VideoPlaylistManagerTests
     private VideoPlaylistManager CreateManager()
     {
         return new(
-            new MediaContext(),
             _movieRepository.Object,
             _collectionRepository.Object,
             _specialRepository.Object,
@@ -644,43 +643,5 @@ public sealed class VideoPlaylistManagerTests
         );
 
         playlist.Select(p => p.Id).Should().Equal(90, 91);
-    }
-
-    [Theory]
-    [InlineData(0, new int[] { }, new int[] { 21, 22 })]
-    [InlineData(1, new int[] { 20 }, new int[] { 22 })]
-    [InlineData(2, new int[] { 20, 21 }, new int[] { })]
-    public void SplitPlaylist_SplitsAroundTheCurrentTrack(
-        int currentIndex,
-        int[] expectedBefore,
-        int[] expectedAfter
-    )
-    {
-        VideoPlaylistManager manager = CreateManager();
-        List<VideoPlaylistResponseDto> playlist =
-        [
-            new() { Id = 20 },
-            new() { Id = 21 },
-            new() { Id = 22 },
-        ];
-
-        (List<VideoPlaylistResponseDto> before, List<VideoPlaylistResponseDto> after) =
-            manager.SplitPlaylist(playlist, playlist[currentIndex].Id);
-
-        before.Select(p => p.Id).Should().Equal(expectedBefore);
-        after.Select(p => p.Id).Should().Equal(expectedAfter);
-    }
-
-    [Fact]
-    public void SplitPlaylist_CurrentTrackNotInPlaylist_ReturnsEmptyBeforeAndFullAfter()
-    {
-        VideoPlaylistManager manager = CreateManager();
-        List<VideoPlaylistResponseDto> playlist = [new() { Id = 1 }, new() { Id = 2 }];
-
-        (List<VideoPlaylistResponseDto> before, List<VideoPlaylistResponseDto> after) =
-            manager.SplitPlaylist(playlist, currentTrackId: 999);
-
-        before.Should().BeEmpty();
-        after.Should().BeEquivalentTo(playlist, opts => opts.WithStrictOrdering());
     }
 }

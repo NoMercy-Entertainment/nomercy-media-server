@@ -83,8 +83,8 @@ public record CollectionsResponseItemDto
         string? overview = collectionMovie.Movie.Translations.FirstOrDefault()?.Overview;
 
         Id = collectionMovie.Movie.Id;
-        Title = !string.IsNullOrEmpty(title) ? title : collectionMovie.Movie.Title;
-        Overview = !string.IsNullOrEmpty(overview) ? overview : collectionMovie.Movie.Overview;
+        Title = title.OrWhenEmpty(collectionMovie.Movie.Title);
+        Overview = overview.OrWhenEmpty(collectionMovie.Movie.Overview);
 
         Backdrop = collectionMovie.Movie.Backdrop;
         Logo = collectionMovie.Movie.Images.FirstOrDefault(media => media.Type == "logo")?.FilePath;
@@ -114,8 +114,8 @@ public record CollectionsResponseItemDto
         string? overview = collection.Translations.FirstOrDefault()?.Overview;
 
         Id = collection.Id;
-        Title = !string.IsNullOrEmpty(title) ? title : collection.Title;
-        Overview = !string.IsNullOrEmpty(overview) ? overview : collection.Overview;
+        Title = title.OrWhenEmpty(collection.Title);
+        Overview = overview.OrWhenEmpty(collection.Overview);
         Backdrop = collection.Backdrop;
         Logo = collection.Images.FirstOrDefault(media => media.Type == "logo")?.FilePath;
         Link = new($"/collection/{Id}", UriKind.Relative);

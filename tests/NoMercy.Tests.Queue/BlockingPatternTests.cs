@@ -180,12 +180,10 @@ public class BlockingPatternTests : IDisposable
     }
 
     [Fact]
-    public void HomeController_SourceCode_NoBlockingWait()
+    public void TrailerCache_SourceCode_NoBlockingWait()
     {
-        // Static analysis: Verify HomeController.cs no longer uses Task.Delay().Wait().
-        string sourceFile = FindSourceFile(
-            "src/NoMercy.Api/Controllers/V1/Media/HomeController.cs"
-        );
+        // Static analysis: Verify TrailerCache.cs does not use Task.Delay().Wait().
+        string sourceFile = FindSourceFile("src/NoMercy.MediaProcessing/Trailers/TrailerCache.cs");
         string source = File.ReadAllText(sourceFile);
 
         string[] lines = source.Split('\n');
@@ -240,24 +238,20 @@ public class BlockingPatternTests : IDisposable
     }
 
     [Fact]
-    public void HomeController_UsesAsyncDelay()
+    public void TrailerCache_UsesAsyncDelay()
     {
-        // Verify the HomeController now uses await Task.Delay instead of .Wait().
-        string sourceFile = FindSourceFile(
-            "src/NoMercy.Api/Controllers/V1/Media/HomeController.cs"
-        );
+        // Verify the trailer segment wait uses await Task.Delay instead of .Wait().
+        string sourceFile = FindSourceFile("src/NoMercy.MediaProcessing/Trailers/TrailerCache.cs");
         string source = File.ReadAllText(sourceFile);
 
         Assert.Contains("await Task.Delay", source);
     }
 
     [Fact]
-    public void HomeController_HasTimeout()
+    public void TrailerCache_HasTimeout()
     {
-        // Verify the HomeController polling loop has a timeout to prevent infinite waits.
-        string sourceFile = FindSourceFile(
-            "src/NoMercy.Api/Controllers/V1/Media/HomeController.cs"
-        );
+        // Verify the trailer segment polling loop has a timeout to prevent infinite waits.
+        string sourceFile = FindSourceFile("src/NoMercy.MediaProcessing/Trailers/TrailerCache.cs");
         string source = File.ReadAllText(sourceFile);
 
         Assert.Contains("CancelAfter", source);

@@ -18,6 +18,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NoMercy.Api.Middleware;
 using NoMercy.Api.Services;
+using NoMercy.Authorization;
+using NoMercy.Authorization.LiveIngest;
 using NoMercy.NmSystem.Configuration;
 using NoMercy.Tests.Api.Infrastructure;
 using Xunit;
@@ -54,7 +56,8 @@ public class TokenParamAuthMiddlewareTests : IClassFixture<NoMercyApiFactory>
                 return Task.CompletedTask;
             },
             ingestKeyStore.Object,
-            NullLogger<TokenParamAuthMiddleware>.Instance
+            NullLogger<TokenParamAuthMiddleware>.Instance,
+            UserCache.Current
         );
         nextCalled = called;
         return middleware;

@@ -35,6 +35,8 @@ public interface IMusicRepository
 
     Task<Track?> GetTrackAsync(Guid id, CancellationToken ct = default);
 
+    Task<bool> IsTrackFavoriteAsync(Guid trackId, Guid userId, CancellationToken ct = default);
+
     Task<List<TrackUser>> GetTracks(Guid userId, CancellationToken ct = default);
 
     Task LikeTrackAsync(Guid userId, Track track, bool liked, CancellationToken ct = default);
@@ -114,6 +116,8 @@ public interface IMusicRepository
     Task<List<Artist>> GetArtistsByIdsAsync(List<Guid> artistIds, CancellationToken ct = default);
 
     Task<List<Album>> GetAlbumsByIdsAsync(List<Guid> albumIds, CancellationToken ct = default);
+
+    Task<List<Playlist>> GetUserPlaylistsAsync(Guid userId, CancellationToken ct = default);
 
     Task<List<Playlist>> GetPlaylistsByIdsAsync(
         List<Guid> playlistIds,

@@ -39,4 +39,27 @@ public interface IContentSegmentRepository
         int episodeId,
         IReadOnlyList<ContentSegment> newSegments
     );
+
+    /// <summary>
+    /// Bulk read across many episodes filtered by <see cref="ContentSegment.Source"/>.
+    /// Used by season-wide detection to find existing rows (e.g. manual
+    /// overrides to skip, or stale auto rows to replace) in one query
+    /// instead of one round trip per episode.
+    /// </summary>
+    Task<List<ContentSegment>> GetForEpisodesBySourceAsync(
+        IReadOnlyList<int> episodeIds,
+        string source
+    );
+
+    /// <summary>
+    /// Removes every row matching <paramref name="staleSource"/> across
+    /// <paramref name="episodeIds"/> and inserts <paramref name="newSegments"/>,
+    /// in one SaveChanges. Rows with a different source (e.g. manual edits)
+    /// are left untouched.
+    /// </summary>
+    Task ReplaceSegmentsForEpisodesAsync(
+        IReadOnlyList<int> episodeIds,
+        string staleSource,
+        IReadOnlyList<ContentSegment> newSegments
+    );
 }

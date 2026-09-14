@@ -83,48 +83,12 @@ public class SubtitlesController(
         if (type != MediaTypes.MovieMediaType && type != MediaTypes.TvMediaType)
             return BadRequestResponse($"Invalid type '{type}'. Expected 'movie' or 'tv'.");
 
-        Ulid? requestedVideoFileId = null;
-        if (!string.IsNullOrWhiteSpace(videoFileId))
-        {
-            if (!Ulid.TryParse(videoFileId, out Ulid parsedVideoFileId))
-                return BadRequestResponse("Invalid videoFileId");
-            requestedVideoFileId = parsedVideoFileId;
-        }
+        (IActionResult? rejection, VideoPlaylistResponseDto? target, VideoFile? file) =
+            await ResolveVideoFileAsync(userId, type, id, videoFileId, ct);
+        if (target is null || file is null)
+            return rejection!;
 
         string language = Language();
-        string country = Country();
-
-        (VideoPlaylistResponseDto? Item, List<VideoPlaylistResponseDto> Playlist) resolved;
-        try
-        {
-            // VideoPlaylistManager resolves listId via int.Parse(dynamic) internally — it
-            // must arrive as a string (the shape SignalR hands it JSON-deserialized), not
-            // a raw int, or the dynamic dispatch throws RuntimeBinderException.
-            resolved = await videoPlaylistManager.GetPlaylist(
-                userId,
-                type,
-                id.ToString(),
-                null,
-                language,
-                country
-            );
-        }
-        catch (ArgumentException)
-        {
-            return BadRequestResponse($"Invalid type '{type}'. Expected 'movie' or 'tv'.");
-        }
-
-        VideoPlaylistResponseDto? target = requestedVideoFileId is not null
-            ? resolved.Playlist.FirstOrDefault(p => p.VideoId == requestedVideoFileId.Value)
-                ?? resolved.Item
-            : resolved.Item;
-
-        if (target is null)
-            return NotFoundResponse("No video found for the given media");
-
-        VideoFile? file = await videoFileRepository.GetByIdAsync(target.VideoId, ct);
-        if (file is null)
-            return NotFoundResponse("Video file not found");
 
         string[] languages = ResolveLanguages(Request.Query, language);
 
@@ -225,6 +189,65 @@ public class SubtitlesController(
         if (!AuthPolicy.IsAllowed(User))
             return UnauthorizedResponse("You do not have permission to download subtitles");
 
+        IActionResult? invalid = await ValidateDownloadRequestAsync(request, ct);
+        if (invalid is not null)
+            return invalid;
+
+        (IActionResult? rejection, _, VideoFile? file) = await ResolveVideoFileAsync(
+            userId,
+            request.Type,
+            request.Id,
+            request.VideoFileId,
+            ct
+        );
+        if (file is null)
+            return rejection!;
+
+        (IActionResult? failed, string? vttContent) = await DownloadAsVttAsync(request, ct);
+        if (vttContent is null)
+            return failed!;
+
+        // Mirrors VideoPlaylistResponseDto.Subtitles(VideoFile)'s (pre-existing, unowned by this
+        // slice) URL construction exactly — that private helper is what the NEXT watch response
+        // reads to build the track URL, so the sidecar must land at the exact path it expects:
+        // "{baseFolder}/subtitles{filenameWithoutExt}.{language}.{type}.{ext}" with no separator
+        // between "subtitles" and the filename. Any change to that helper must update this too.
+        string filenameNoExt = file.Filename.OrEmpty().Replace(".mp4", "").Replace(".m3u8", "");
+        string sidecarFileName =
+            $"subtitles{filenameNoExt}.{request.Language}.{DownloadedSubtitleType}.{SidecarExtension}";
+        IActionResult? writeFailed = await WriteSidecarAsync(file, sidecarFileName, vttContent, ct);
+        if (writeFailed is not null)
+            return writeFailed;
+
+        await RegisterSubtitleAsync(file, request.Language, ct);
+
+        string baseFolder = $"/{file.Share}{file.Folder}".EncodePath();
+        string trackUrl =
+            $"{baseFolder}/subtitles{filenameNoExt.EncodePath()}.{request.Language}.{DownloadedSubtitleType}.{SidecarExtension}";
+
+        SubtitleDownloadResultDto result = new(
+            File: trackUrl,
+            Kind: "subtitles",
+            Label: DownloadedSubtitleType,
+            Language: request.Language
+        );
+
+        return Ok(
+            new StatusResponseDto<SubtitleDownloadResultDto>
+            {
+                Status = "ok",
+                Data = result,
+                Message = "Subtitle downloaded for {0}",
+                Args = [file.Filename],
+            }
+        );
+    }
+
+    private async Task<IActionResult?> ValidateDownloadRequestAsync(
+        SubtitleDownloadRequestDto request,
+        CancellationToken ct
+    )
+    {
         if (request.Type != MediaTypes.MovieMediaType && request.Type != MediaTypes.TvMediaType)
             return BadRequestResponse($"Invalid type '{request.Type}'. Expected 'movie' or 'tv'.");
 
@@ -243,46 +266,14 @@ public class SubtitlesController(
         if (string.IsNullOrWhiteSpace(request.Language))
             return BadRequestResponse("language is required");
 
-        Ulid? requestedVideoFileId = null;
-        if (!string.IsNullOrWhiteSpace(request.VideoFileId))
-        {
-            if (!Ulid.TryParse(request.VideoFileId, out Ulid parsedVideoFileId))
-                return BadRequestResponse("Invalid videoFileId");
-            requestedVideoFileId = parsedVideoFileId;
-        }
+        return null;
+    }
 
-        string language = Language();
-        string country = Country();
-
-        (VideoPlaylistResponseDto? Item, List<VideoPlaylistResponseDto> Playlist) resolved;
-        try
-        {
-            resolved = await videoPlaylistManager.GetPlaylist(
-                userId,
-                request.Type,
-                request.Id.ToString(),
-                null,
-                language,
-                country
-            );
-        }
-        catch (ArgumentException)
-        {
-            return BadRequestResponse($"Invalid type '{request.Type}'. Expected 'movie' or 'tv'.");
-        }
-
-        VideoPlaylistResponseDto? target = requestedVideoFileId is not null
-            ? resolved.Playlist.FirstOrDefault(p => p.VideoId == requestedVideoFileId.Value)
-                ?? resolved.Item
-            : resolved.Item;
-
-        if (target is null)
-            return NotFoundResponse("No video found for the given media");
-
-        VideoFile? file = await videoFileRepository.GetByIdAsync(target.VideoId, ct);
-        if (file is null)
-            return NotFoundResponse("Video file not found");
-
+    private async Task<(IActionResult? Failed, string? VttContent)> DownloadAsVttAsync(
+        SubtitleDownloadRequestDto request,
+        CancellationToken ct
+    )
+    {
         SubtitleCandidate candidate = new(
             Provider: "OpenSubtitles",
             Language: request.Language,
@@ -303,8 +294,11 @@ public class SubtitlesController(
         }
         catch (OpenSubtitlesRateLimitException)
         {
-            return TooManyRequestsResponse(
-                "OpenSubtitles is rate-limited by the upstream provider. Try again in a few minutes."
+            return (
+                TooManyRequestsResponse(
+                    "OpenSubtitles is rate-limited by the upstream provider. Try again in a few minutes."
+                ),
+                null
             );
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
@@ -314,7 +308,10 @@ public class SubtitlesController(
                 "Failed to download subtitle from {DownloadUrl}",
                 request.DownloadUrl
             );
-            return InternalServerErrorResponse($"Failed to download subtitle: {ex.Message}");
+            return (
+                InternalServerErrorResponse($"Failed to download subtitle: {ex.Message}"),
+                null
+            );
         }
 
         string vttContent;
@@ -328,20 +325,25 @@ public class SubtitlesController(
                 "Subtitle format {Format} is not convertible to WebVTT",
                 candidate.Format
             );
-            return UnprocessableEntityResponse(
-                $"Subtitle format '{candidate.Format}' is not supported — only SRT and VTT can be "
-                    + "converted to the WebVTT sidecar the player expects."
+            return (
+                UnprocessableEntityResponse(
+                    $"Subtitle format '{candidate.Format}' is not supported — only SRT and VTT can be "
+                        + "converted to the WebVTT sidecar the player expects."
+                ),
+                null
             );
         }
 
-        // Mirrors VideoPlaylistResponseDto.Subtitles(VideoFile)'s (pre-existing, unowned by this
-        // slice) URL construction exactly — that private helper is what the NEXT watch response
-        // reads to build the track URL, so the sidecar must land at the exact path it expects:
-        // "{baseFolder}/subtitles{filenameWithoutExt}.{language}.{type}.{ext}" with no separator
-        // between "subtitles" and the filename. Any change to that helper must update this too.
-        string filenameNoExt = file.Filename.OrEmpty().Replace(".mp4", "").Replace(".m3u8", "");
-        string sidecarFileName =
-            $"subtitles{filenameNoExt}.{request.Language}.{DownloadedSubtitleType}.{SidecarExtension}";
+        return (null, vttContent);
+    }
+
+    private async Task<IActionResult?> WriteSidecarAsync(
+        VideoFile file,
+        string sidecarFileName,
+        string vttContent,
+        CancellationToken ct
+    )
+    {
         IStorage? storage = await ResolveStorageAsync(file);
         if (storage is null)
         {
@@ -372,28 +374,7 @@ public class SubtitlesController(
             );
         }
 
-        await RegisterSubtitleAsync(file, request.Language, ct);
-
-        string baseFolder = $"/{file.Share}{file.Folder}".EncodePath();
-        string trackUrl =
-            $"{baseFolder}/subtitles{filenameNoExt.EncodePath()}.{request.Language}.{DownloadedSubtitleType}.{SidecarExtension}";
-
-        SubtitleDownloadResultDto result = new(
-            File: trackUrl,
-            Kind: "subtitles",
-            Label: DownloadedSubtitleType,
-            Language: request.Language
-        );
-
-        return Ok(
-            new StatusResponseDto<SubtitleDownloadResultDto>
-            {
-                Status = "ok",
-                Data = result,
-                Message = "Subtitle downloaded for {0}",
-                Args = [file.Filename],
-            }
-        );
+        return null;
     }
 
     /// <summary>
@@ -409,6 +390,68 @@ public class SubtitlesController(
             "vtt" or "webvtt" => rawText,
             _ => throw new NotSupportedException(format),
         };
+
+    /// <summary>
+    /// The video file a subtitle request targets: the requested file when it belongs to the
+    /// media, otherwise the media's current item. Returns the HTTP rejection when there is none.
+    /// </summary>
+    private async Task<(
+        IActionResult? Rejection,
+        VideoPlaylistResponseDto? Target,
+        VideoFile? File
+    )> ResolveVideoFileAsync(
+        Guid userId,
+        string type,
+        int id,
+        string? videoFileId,
+        CancellationToken ct
+    )
+    {
+        Ulid? requestedVideoFileId = null;
+        if (!string.IsNullOrWhiteSpace(videoFileId))
+        {
+            if (!Ulid.TryParse(videoFileId, out Ulid parsedVideoFileId))
+                return (BadRequestResponse("Invalid videoFileId"), null, null);
+            requestedVideoFileId = parsedVideoFileId;
+        }
+
+        (VideoPlaylistResponseDto? Item, List<VideoPlaylistResponseDto> Playlist) resolved;
+        try
+        {
+            // VideoPlaylistManager resolves listId via int.Parse(dynamic), so it must arrive
+            // as a string, the shape SignalR hands it, or the dynamic dispatch throws.
+            resolved = await videoPlaylistManager.GetPlaylist(
+                userId,
+                type,
+                id.ToString(),
+                null,
+                Language(),
+                Country()
+            );
+        }
+        catch (ArgumentException)
+        {
+            return (
+                BadRequestResponse($"Invalid type '{type}'. Expected 'movie' or 'tv'."),
+                null,
+                null
+            );
+        }
+
+        VideoPlaylistResponseDto? target = requestedVideoFileId is not null
+            ? resolved.Playlist.FirstOrDefault(p => p.VideoId == requestedVideoFileId.Value)
+                ?? resolved.Item
+            : resolved.Item;
+
+        if (target is null)
+            return (NotFoundResponse("No video found for the given media"), null, null);
+
+        VideoFile? file = await videoFileRepository.GetByIdAsync(target.VideoId, ct);
+        if (file is null)
+            return (NotFoundResponse("Video file not found"), null, null);
+
+        return (null, target, file);
+    }
 
     /// <summary>
     /// Merges the downloaded subtitle into <see cref="VideoFile.Subtitles"/> — the JSON column

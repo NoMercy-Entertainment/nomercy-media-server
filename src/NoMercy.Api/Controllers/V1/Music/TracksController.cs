@@ -18,6 +18,7 @@ using NoMercy.Api.DTOs.Music;
 using NoMercy.Api.Services.Music;
 using NoMercy.Authorization;
 using NoMercy.Data.Repositories;
+using NoMercy.Data.Services.Music;
 using NoMercy.Database.Models.Music;
 using NoMercy.Events;
 using NoMercy.Events.Library;
@@ -181,7 +182,7 @@ public class TracksController : BaseController
             return Ok(
                 new LyricsResponseDto
                 {
-                    Data = ApplyLyricsOffset(track.Lyrics, track.LyricsOffset),
+                    Data = LyricTimeline.ShiftBy(track.Lyrics, track.LyricsOffset),
                     Offset = track.LyricsOffset,
                 }
             );
@@ -199,7 +200,7 @@ public class TracksController : BaseController
             return Ok(
                 new LyricsResponseDto
                 {
-                    Data = ApplyLyricsOffset(lyrics, track.LyricsOffset),
+                    Data = LyricTimeline.ShiftBy(lyrics, track.LyricsOffset),
                     Offset = track.LyricsOffset,
                 }
             );
@@ -239,31 +240,6 @@ public class TracksController : BaseController
     // Pure: returns a new array and never mutates the input. The coalescing
     // LyricsResolver hands the same Lyric[] instance to every concurrent caller,
     // so in-place mutation here would double-apply the offset per extra device.
-    private static Lyric[] ApplyLyricsOffset(Lyric[] lyrics, int? offsetMs)
-    {
-        if (offsetMs is null or 0)
-            return lyrics;
-        double offsetSec = offsetMs.Value / 1000.0;
-        return lyrics
-            .Select(line =>
-            {
-                double newTotal = Math.Max(0, line.Time.Total + offsetSec);
-                int totalHundredths = (int)Math.Round(newTotal * 100);
-                return new Lyric
-                {
-                    Text = line.Text,
-                    Time = new()
-                    {
-                        Total = newTotal,
-                        Minutes = totalHundredths / 6000,
-                        Seconds = totalHundredths / 100 % 60,
-                        Hundredths = totalHundredths % 100,
-                    },
-                };
-            })
-            .ToArray();
-    }
-
     [HttpPost]
     [Route("{id:guid}/playback")]
     public async Task<IActionResult> Playback(Guid id)
@@ -279,31 +255,4 @@ public class TracksController : BaseController
 
         return Ok(new StatusResponseDto<string> { Status = "ok", Message = "Playback recorded" });
     }
-}
-
-public record LyricsResponseDto
-{
-    [JsonProperty("data")]
-    public Lyric[] Data { get; set; } = [];
-
-    [JsonProperty("offset")]
-    public int? Offset { get; set; }
-}
-
-public record PatchLyricsOffsetDto
-{
-    [JsonProperty("offset")]
-    public int? Offset { get; set; }
-}
-
-public record LyricsOffsetResponseDto
-{
-    [JsonProperty("status")]
-    public string Status { get; set; } = string.Empty;
-
-    [JsonProperty("message")]
-    public string Message { get; set; } = string.Empty;
-
-    [JsonProperty("offset")]
-    public int? Offset { get; set; }
 }

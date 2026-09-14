@@ -134,10 +134,9 @@ public class MusicHubDeviceCommandsTests : IClassFixture<NoMercyApiFactory>
             ? _factory.Services.GetRequiredService<CastPanelWakeLauncher>()
             : new(chromeCast, NullLogger<CastPanelWakeLauncher>.Instance);
 
-        MusicDeviceManager musicDeviceManager = new(new());
-        MusicPlaylistManager musicPlaylistManager = new(new MusicRepository(contextFactory), new());
+        MusicPlaylistManager musicPlaylistManager = new(new MusicRepository(contextFactory));
         busRegistry ??= new(
-            contextFactory,
+            new DeviceStateRepository(contextFactory),
             Mock.Of<IHubContext<DeviceHub>>(),
             Mock.Of<ICastMdnsRegistry>()
         );
@@ -154,7 +153,6 @@ public class MusicHubDeviceCommandsTests : IClassFixture<NoMercyApiFactory>
             clientMessenger,
             musicPlaybackService,
             stateManager,
-            musicDeviceManager,
             musicPlaylistManager,
             commandHandler,
             Mock.Of<IActivityLogger>(),
@@ -162,7 +160,8 @@ public class MusicHubDeviceCommandsTests : IClassFixture<NoMercyApiFactory>
             castTokenService,
             chromeCast ?? Mock.Of<IChromeCastService>(),
             castPanelWakeLauncher,
-            activeDeviceRegistry
+            activeDeviceRegistry,
+            new DeviceStateRepository(contextFactory)
         );
 
         ClaimsPrincipal principal = new(
@@ -526,7 +525,7 @@ public class MusicHubDeviceCommandsTests : IClassFixture<NoMercyApiFactory>
         connectedClients.Clients[phoneConnectionId] = phoneClient;
 
         DeviceBusRegistry busRegistry = new(
-            contextFactory,
+            new DeviceStateRepository(contextFactory),
             Mock.Of<IHubContext<DeviceHub>>(),
             Mock.Of<ICastMdnsRegistry>()
         );
@@ -622,7 +621,7 @@ public class MusicHubDeviceCommandsTests : IClassFixture<NoMercyApiFactory>
         connectedClients.Clients[phoneConnectionId] = phoneClient;
 
         DeviceBusRegistry busRegistry = new(
-            contextFactory,
+            new DeviceStateRepository(contextFactory),
             Mock.Of<IHubContext<DeviceHub>>(),
             Mock.Of<ICastMdnsRegistry>()
         );

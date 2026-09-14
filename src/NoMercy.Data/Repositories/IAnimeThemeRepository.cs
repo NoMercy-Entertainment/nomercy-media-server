@@ -13,6 +13,9 @@ namespace NoMercy.Data.Repositories;
 
 public interface IAnimeThemeRepository
 {
+    /// <summary>Whether any movie or show carries an anime theme.</summary>
+    Task<bool> AnyThemedTitlesAsync(CancellationToken ct = default);
+
     Task<List<AnimeThemeWithCountsDto>> GetThemesWithCountsAsync(
         Guid userId,
         string language,

@@ -12,6 +12,7 @@
 using Newtonsoft.Json;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Api.DTOs.Media;
+using NoMercy.Api.DTOs.Media.Components;
 using NoMercy.Database;
 using NoMercy.Database.Models.Music;
 
@@ -70,9 +71,7 @@ public record AlbumResponseItemDto
     public AlbumResponseItemDto(Album album, string? country = "US")
     {
         ColorPalette = album.ColorPalette;
-        Cover = !string.IsNullOrEmpty(album.Cover)
-            ? new Uri($"/images/music{album.Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.Url(album.Cover);
         Disambiguation = album.Disambiguation;
         Description = album.Description;
         Favorite = album.AlbumUser.Count != 0;

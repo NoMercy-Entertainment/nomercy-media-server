@@ -28,13 +28,6 @@ public static class DriverTypeMetadata
     // protected from user edit/delete.
     public static readonly string[] AllUserCreatable = ["local", "nfs", "s3", "r2", "webdav"];
 
-    // All recognised types — used by the factory and for validation of
-    // existing rows (e.g. the system local driver uses "local").
-    public static readonly string[] AllRecognized = ["local", "nfs", "s3", "r2", "webdav"];
-
-    // Alias kept for call sites that haven't been updated yet.
-    public static readonly string[] AllowedTypes = AllUserCreatable;
-
     public static readonly DriverMetadataDto[] All =
     [
         new()

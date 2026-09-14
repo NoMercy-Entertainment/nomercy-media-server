@@ -110,9 +110,6 @@ public class MoviesController(
         if (!AuthPolicy.IsAllowed(User))
             return UnauthorizedResponse("You do not have permission to view movies");
 
-        string language = Language();
-        string country = Country();
-
         bool available = await movieRepository.GetMovieAvailableAsync(userId, id, ct);
 
         if (!available)
@@ -225,7 +222,7 @@ public class MoviesController(
         }
         catch (Exception e)
         {
-            logger.LogError(e.Message);
+            logger.LogError(e, "{Message}", e.Message);
             return InternalServerErrorResponse(e.Message);
         }
 
@@ -255,7 +252,7 @@ public class MoviesController(
         }
         catch (Exception e)
         {
-            logger.LogError(e.Message);
+            logger.LogError(e, "{Message}", e.Message);
             return InternalServerErrorResponse(e.Message);
         }
 
@@ -305,7 +302,7 @@ public class MoviesController(
         }
         catch (Exception e)
         {
-            logger.LogError(e.Message);
+            logger.LogError(e, "{Message}", e.Message);
             return InternalServerErrorResponse(e.Message);
         }
 

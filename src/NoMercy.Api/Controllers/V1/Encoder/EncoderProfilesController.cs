@@ -19,6 +19,7 @@ using NoMercy.Api.DTOs.Dashboard;
 using NoMercy.Api.Services;
 using NoMercy.Authorization;
 using NoMercy.Data.Repositories;
+using NoMercy.Data.Services;
 using NoMercy.Database;
 using NoMercy.Database.Models.Media;
 using NoMercy.Encoder.Errors;
@@ -88,11 +89,9 @@ public class EncoderProfilesController(
     /// Returns the sparse DB row for a single encoding preset by its <see cref="Ulid"/> id.
     /// </summary>
     [HttpGet("{id:ulid}")]
-    public async Task<IActionResult> Get(Ulid id, CancellationToken ct)
+    public async Task<IActionResult> Get(Ulid id)
     {
-        EncodingPreset? preset = await mediaContext
-            .EncodingPresets.AsNoTracking()
-            .FirstOrDefaultAsync(p => p.Id == id, ct);
+        EncodingPreset? preset = await presetRepository.GetByIdAsync(id);
         if (preset is null)
             return NotFoundResponse("Preset not found.");
 
@@ -207,7 +206,7 @@ public class EncoderProfilesController(
         {
             EncodingProfile resolved = presetResolver.Resolve(
                 resolveRequest,
-                new EncoderProfilesPresetLookup(presetRepository)
+                new RepositoryNamePresetLookup(presetRepository)
             );
             return Ok(resolved);
         }
@@ -225,26 +224,18 @@ public class EncoderProfilesController(
     [HttpDelete("{id:ulid}")]
     public async Task<IActionResult> Delete(Ulid id, CancellationToken ct)
     {
-        EncodingPreset? row = await mediaContext.EncodingPresets.FirstOrDefaultAsync(
-            p => p.Id == id,
-            ct
-        );
+        EncodingPreset? row = await presetRepository.GetByIdAsync(id);
         if (row is null)
             return NotFoundResponse("Preset not found.");
         if (row.IsBuiltIn)
             return BadRequestResponse("Built-in presets cannot be deleted.");
 
-        bool hasChildren = await mediaContext.EncodingPresets.AnyAsync(
-            p => p.ParentPresetId == id,
-            ct
-        );
-        if (hasChildren)
+        if (await presetRepository.HasChildrenAsync(id, ct))
             return BadRequestResponse(
                 "Preset has children that inherit from it; reparent or delete them first."
             );
 
-        mediaContext.EncodingPresets.Remove(row);
-        await mediaContext.SaveChangesAsync(ct);
+        await presetRepository.DeleteAsync(id);
         return NoContent();
     }
 
@@ -325,8 +316,7 @@ public class EncoderProfilesController(
     [HttpPost("{id}/preview")]
     public async Task<IActionResult> Preview(
         string id,
-        [FromBody] PreviewEncoderProfileRequest request,
-        CancellationToken ct
+        [FromBody] PreviewEncoderProfileRequest request
     )
     {
         EncoderProfileService.PreviewParseResult parseResult =
@@ -350,16 +340,9 @@ public class EncoderProfilesController(
     /// chain intact and compact.
     /// </summary>
     [HttpPut("{id:ulid}")]
-    public async Task<IActionResult> Update(
-        Ulid id,
-        [FromBody] V2EncodingProfile incoming,
-        CancellationToken ct
-    )
+    public async Task<IActionResult> Update(Ulid id, [FromBody] V2EncodingProfile incoming)
     {
-        EncodingPreset? row = await mediaContext.EncodingPresets.FirstOrDefaultAsync(
-            p => p.Id == id,
-            ct
-        );
+        EncodingPreset? row = await presetRepository.GetByIdAsync(id);
         if (row is null)
             return NotFoundResponse("Preset not found.");
         if (row.IsBuiltIn)
@@ -380,9 +363,8 @@ public class EncoderProfilesController(
             sparseJson = Newtonsoft.Json.Linq.JObject.FromObject(incoming);
         }
 
-        row.ProfileJson = sparseJson.ToString(Formatting.None);
-        row.UpdatedAt = DateTime.UtcNow;
-        await mediaContext.SaveChangesAsync(ct);
+        string profileJson = sparseJson.ToString(Formatting.None);
+        await presetRepository.UpdateAsync(id, preset => preset.ProfileJson = profileJson);
 
         return NoContent();
     }
@@ -394,15 +376,9 @@ public class EncoderProfilesController(
     /// overrides need to be set via PUT.
     /// </summary>
     [HttpPost("{parentId:ulid}/clone")]
-    public async Task<IActionResult> Clone(
-        Ulid parentId,
-        [FromBody] CloneRequest request,
-        CancellationToken ct
-    )
+    public async Task<IActionResult> Clone(Ulid parentId, [FromBody] CloneRequest request)
     {
-        EncodingPreset? parent = await mediaContext
-            .EncodingPresets.AsNoTracking()
-            .FirstOrDefaultAsync(p => p.Id == parentId, ct);
+        EncodingPreset? parent = await presetRepository.GetByIdAsync(parentId);
         if (parent is null)
             return NotFoundResponse("Parent preset not found.");
         if (string.IsNullOrWhiteSpace(request.Name))
@@ -418,8 +394,7 @@ public class EncoderProfilesController(
             IsBuiltIn = false,
             Source = "db",
         };
-        mediaContext.EncodingPresets.Add(clone);
-        await mediaContext.SaveChangesAsync(ct);
+        await presetRepository.CreateAsync(clone);
 
         return CreatedAtAction(nameof(Get), new { id = clone.Id }, new { id = clone.Id });
     }
@@ -487,85 +462,5 @@ public class EncoderProfilesController(
         Response.Headers["Content-Disposition"] = $"attachment; filename=\"{fileName}\"";
 
         return Content(preset.ProfileJson, "application/json");
-    }
-}
-
-public class CloneRequest
-{
-    [JsonProperty("name")]
-    public required string Name { get; set; }
-
-    [JsonProperty("description")]
-    public string? Description { get; set; }
-}
-
-public record CreateEncoderProfileRequest(
-    [property: JsonProperty("name")] string Name,
-    [property: JsonProperty("profile_json")] string ProfileJson,
-    [property: JsonProperty("description")] string? Description = null,
-    [property: JsonProperty("author")] string? Author = null,
-    [property: JsonProperty("tags")] string? Tags = null,
-    [property: JsonProperty("parent_preset_id")] Ulid? ParentPresetId = null
-);
-
-public record ValidateEncoderProfileRequest(
-    [property: JsonProperty("profile_json")] string ProfileJson
-);
-
-public record PreviewEncoderProfileRequest(
-    [property: JsonProperty("profile_json")] string ProfileJson,
-    [property: JsonProperty("source_path")] string? SourcePath
-);
-
-[Obsolete("Replaced by V2EncodingProfile body on PUT /{id:ulid}. Kept for reference only.")]
-public record UpdateEncoderProfileRequest(
-    [property: JsonProperty("name")] string? Name = null,
-    [property: JsonProperty("description")] string? Description = null,
-    [property: JsonProperty("profile_json")] string? ProfileJson = null
-);
-
-public record ImportProfileRequest(
-    [property: JsonProperty("profile_json")] string? ProfileJson,
-    [property: JsonProperty("url")] string? Url
-);
-
-/// <summary>
-/// Adapter that lets <see cref="INamePresetResolver"/> walk the parent chain by
-/// hitting the database once per ancestor. Synchronous lookup — the resolver
-/// is pure and doesn't await, so the adapter blocks on async repository
-/// calls.
-/// </summary>
-internal sealed class EncoderProfilesPresetLookup(IEncodingPresetRepository repository)
-    : INamePresetLookup
-{
-    public PresetResolveRequest? FindByName(string name)
-    {
-        EncodingPreset? preset = repository.GetByNameAsync(name).GetAwaiter().GetResult();
-        if (preset is null)
-            return null;
-
-        string? parentName = preset.ParentPresetId is Ulid parentId
-            ? repository.GetByIdAsync(parentId).GetAwaiter().GetResult()?.Name
-            : null;
-
-        return new(preset.Name, preset.ProfileJson, parentName);
-    }
-}
-
-/// <summary>
-/// V2 <see cref="V2IPresetLookup"/> adapter — walks the parent chain by id
-/// directly against <see cref="MediaContext"/> so the V2 resolver can merge
-/// the inheritance layers without going through the V2.5 repository.
-/// Synchronous lookup is intentional: <see cref="PresetResolver"/> is a pure
-/// static method and the chain is short (max 8 hops by contract).
-/// </summary>
-internal sealed class DbPresetLookup(MediaContext context) : IPresetLookup
-{
-    public (string ProfileJson, Ulid? ParentPresetId)? Get(Ulid presetId)
-    {
-        EncodingPreset? row = context
-            .EncodingPresets.AsNoTracking()
-            .FirstOrDefault(p => p.Id == presetId);
-        return row is null ? null : (row.ProfileJson, row.ParentPresetId);
     }
 }

@@ -47,4 +47,13 @@ public interface IJobDispatcher : NoMercyQueue.Core.Interfaces.IJobDispatcher
 
     void DispatchJob<TJob>()
         where TJob : AbstractJob, new();
+
+    void DispatchJob<TJob>(
+        Ulid libraryId,
+        Ulid folderId,
+        string id,
+        string inputFile,
+        Ulid? sourceDriverId = null
+    )
+        where TJob : AbstractEncoderJob, new();
 }

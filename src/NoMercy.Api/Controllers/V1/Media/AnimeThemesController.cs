@@ -93,15 +93,7 @@ public class AnimeThemesController(IAnimeThemeRepository animeThemeRepository) :
         if (themeDetail is null || (movies.Count == 0 && tvShows.Count == 0))
             return NotFoundResponse("Anime theme not found");
 
-        IOrderedEnumerable<CardData> concat = movies
-            .Select(movie => new CardData(movie, country))
-            .Concat(tvShows.Select(tv => new CardData(tv, country)))
-            .OrderBy(card => card.TitleSort);
-
-        ComponentEnvelope response = Component
-            .Grid()
-            .WithId("anime-theme-items")
-            .WithItems(concat.Select(card => Component.Card().WithData(card)));
+        ComponentEnvelope response = TitleCardGrid("anime-theme-items", movies, tvShows);
 
         return Ok(ComponentResponse.From(response));
     }

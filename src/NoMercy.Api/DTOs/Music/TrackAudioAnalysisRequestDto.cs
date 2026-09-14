@@ -24,9 +24,3 @@ public record TrackAudioAnalysisRequestDto
     [JsonProperty("track_ids")]
     public List<Guid> TrackIds { get; set; } = [];
 }
-
-public record TrackAudioAnalysisResponseDto
-{
-    [JsonProperty("data")]
-    public List<TrackAudioAnalysisDto> Data { get; set; } = [];
-}

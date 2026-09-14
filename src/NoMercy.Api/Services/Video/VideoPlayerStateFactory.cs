@@ -9,9 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using Microsoft.EntityFrameworkCore;
 using NoMercy.Api.DTOs.Media;
-using NoMercy.Database;
 using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.Users;
 using NoMercy.NmSystem.Domain;
@@ -22,9 +20,11 @@ namespace NoMercy.Api.Services.Video;
 
 public class VideoPlayerStateFactory
 {
-    public static async Task<VideoPlayerState> Create(
-        IDbContextFactory<MediaContext> contextFactory,
-        User user,
+    /// <param name="userPreference">The user loaded with their playback preferences; null when the user row is gone.</param>
+    /// <param name="metadata">The current item's probed chapters and tracks.</param>
+    public static VideoPlayerState Create(
+        User? userPreference,
+        Metadata? metadata,
         Device device,
         VideoPlaylistResponseDto item,
         List<VideoPlaylistResponseDto> playlist,
@@ -32,8 +32,6 @@ public class VideoPlayerStateFactory
         dynamic listId
     )
     {
-        await using MediaContext context = await contextFactory.CreateDbContextAsync();
-
         ArgumentNullException.ThrowIfNull(listId);
 
         string id = listId.ToString();
@@ -41,86 +39,29 @@ public class VideoPlayerStateFactory
         // parse id once and safely
         TryParse(id, out int parsedId);
 
-        // Cast/remote-control needs the current item's structured chapter/audio/
-        // caption/quality lists (parsed chapter times, ordered track lists) which
-        // live on Metadata, not the slim wire DTO. Load them once for the current
-        // item so the state carries them for the VideoHub command handlers.
-        VideoFile? currentVideoFile = await context
-            .VideoFiles.AsNoTracking()
-            .Include(videoFile => videoFile.Metadata)
-            .FirstOrDefaultAsync(videoFile => videoFile.Id == item.VideoId);
-        Metadata? metadata = currentVideoFile?.Metadata;
         List<IChapter> chapters = metadata?.Chapters ?? [];
         List<IAudio> audioTracks = metadata?.Audio ?? [];
         List<ISubtitle> captions = metadata?.Subtitles ?? [];
         List<IVideo> qualities = metadata?.Video ?? [];
 
-        // Include playback preferences and their Library collections to ensure data available for matching
-        User? userPreference = await context
-            .Users.Include(u => u.PlaybackPreferences)
-                .ThenInclude(playbackPreference => playbackPreference.Library)
-                    .ThenInclude(library => library!.LibraryTvs)
-            .Include(u => u.PlaybackPreferences)
-                .ThenInclude(playbackPreference => playbackPreference.Library)
-                    .ThenInclude(library => library!.LibraryMovies)
-            .FirstOrDefaultAsync(u => u.Id == user.Id);
+        // A user that could not be loaded plays with no track choice at all; a loaded
+        // user without a matching preference gets the first quality, audio and caption.
+        PlaybackPreference? playbackPreference = null;
+        if (userPreference is not null)
+            playbackPreference =
+                FindPlaybackPreference(userPreference, id, parsedId, type)
+                ?? CreateDefaultPlaybackPreference(qualities, audioTracks, captions);
 
-        if (userPreference is null)
-        {
-            // Fallback to default playback preference when the user could not be loaded
-            return new()
-            {
-                DeviceId = device.DeviceId,
-                VolumePercentage = device.VolumePercent ?? Device.DefaultVolumePercent,
-                CurrentItem = item,
-                CurrentAudio = null,
-                CurrentCaption = null,
-                CurrentQuality = null,
-                Chapters = chapters,
-                Audio = audioTracks,
-                Captions = captions,
-                Qualities = qualities,
-                Playlist = playlist,
-                PlayState = true,
-                Time = (item.Progress?.Time ?? 0) * 1000,
-                Duration = item.Duration.ToMilliSeconds(),
-                CurrentList = new($"/{type}/{listId}/watch", UriKind.Relative),
-                Actions = new()
-                {
-                    Disallows = new()
-                    {
-                        Stopping = false,
-                        Seeking = false,
-                        Muting = false,
-                        Pausing = false,
-                        Resuming = true,
-                        Previous = playlist.IndexOf(item) == 0,
-                        Next = playlist.IndexOf(item) == playlist.Count - 1,
-                    },
-                },
-            };
-        }
-
-        PlaybackPreference? playbackPreference = FindPlaybackPreference(
-            userPreference,
-            id,
-            parsedId,
-            type
-        );
-
-        if (playbackPreference is null)
-        {
-            playbackPreference = CreateDefaultPlaybackPreference(qualities, audioTracks, captions);
-        }
+        int index = playlist.IndexOf(item);
 
         return new()
         {
             DeviceId = device.DeviceId,
             VolumePercentage = device.VolumePercent ?? Device.DefaultVolumePercent,
             CurrentItem = item,
-            CurrentAudio = playbackPreference.Audio,
-            CurrentCaption = playbackPreference.Subtitle,
-            CurrentQuality = playbackPreference.Video,
+            CurrentAudio = playbackPreference?.Audio,
+            CurrentCaption = playbackPreference?.Subtitle,
+            CurrentQuality = playbackPreference?.Video,
             Chapters = chapters,
             Audio = audioTracks,
             Captions = captions,
@@ -139,8 +80,8 @@ public class VideoPlayerStateFactory
                     Muting = false,
                     Pausing = false,
                     Resuming = true,
-                    Previous = playlist.IndexOf(item) == 0,
-                    Next = playlist.IndexOf(item) == playlist.Count - 1,
+                    Previous = index == 0,
+                    Next = index == playlist.Count - 1,
                 },
             },
         };

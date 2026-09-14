@@ -10,13 +10,14 @@
 // -----------------------------------------------------------------------------
 
 using System.Security.Claims;
-using FlexLabs.EntityFrameworkCore.Upsert;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NoMercy.Api.DTOs.Media;
+using NoMercy.Api.Hubs.Shared;
 using NoMercy.Api.Services.Video;
 using NoMercy.Authorization;
 using NoMercy.Database;
+using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.Users;
 using NoMercy.Networking.Cast;
 using NoMercy.Networking.Http;
@@ -43,109 +44,19 @@ public partial class VideoHub
         if (_videoPlayerStateManager.TryGetValue(user.Id, out VideoPlayerState? playerState))
             await _videoPlaybackService.ApplyClientProgress(user, playerState, request.Time * 1000);
 
-        await using MediaContext mediaContext = await _contextFactory.CreateDbContextAsync();
-
-        bool videoFileExists = await mediaContext.VideoFiles.AnyAsync(v => v.Id == request.VideoId);
-        if (!videoFileExists)
-            return;
-
-        int? movieId = request.PlaylistType == MediaTypes.MovieMediaType ? request.TmdbId : null;
-        int? tvId = request.PlaylistType == MediaTypes.TvMediaType ? request.TmdbId : null;
-
-        int? collectionId = null;
-        if (request.PlaylistType == MediaTypes.CollectionMediaType)
-        {
-            if (!int.TryParse(request.PlaylistId, out int parsed))
-                return;
-            collectionId = parsed;
-        }
-
-        Ulid? specialId = null;
-        if (request.PlaylistType == MediaTypes.SpecialMediaType)
-        {
-            if (!Ulid.TryParse(request.PlaylistId, out Ulid parsed))
-                return;
-            specialId = parsed;
-        }
-
-        if (movieId is not null && !await mediaContext.Movies.AnyAsync(m => m.Id == movieId))
-            return;
-        if (tvId is not null && !await mediaContext.Tvs.AnyAsync(t => t.Id == tvId))
-            return;
-        if (
-            collectionId is not null
-            && !await mediaContext.Collections.AnyAsync(c => c.Id == collectionId)
-        )
-            return;
-        if (specialId is not null && !await mediaContext.Specials.AnyAsync(s => s.Id == specialId))
-            return;
-
-        UserData userdata = new()
-        {
-            Audio = request.Audio,
-            Subtitle = request.Subtitle,
-            SubtitleType = request.SubtitleType,
-            UserId = user.Id,
-            Type = request.PlaylistType,
-            Time = request.Time,
-            VideoFileId = request.VideoId,
-            MovieId = movieId,
-            TvId = tvId,
-            CollectionId = collectionId,
-            SpecialId = specialId,
-        };
-
-        UpsertCommandBuilder<UserData> query = mediaContext.UserData.Upsert(userdata);
-
-        query = request.PlaylistType switch
-        {
-            MediaTypes.MovieMediaType => query.On(x => new
-            {
-                x.VideoFileId,
-                x.UserId,
-                x.MovieId,
-            }),
-            MediaTypes.TvMediaType => query.On(x => new
-            {
-                x.VideoFileId,
-                x.UserId,
-                x.TvId,
-            }),
-            MediaTypes.CollectionMediaType => query.On(x => new
-            {
-                x.VideoFileId,
-                x.UserId,
-                x.CollectionId,
-            }),
-            MediaTypes.SpecialMediaType => query.On(x => new
-            {
-                x.VideoFileId,
-                x.UserId,
-                x.SpecialId,
-            }),
-            _ => throw new ArgumentException("Invalid playlist type", request.PlaylistType),
-        };
-
-        await query
-            .WhenMatched(
-                (uds, udi) =>
-                    new()
-                    {
-                        Id = uds.Id,
-                        Type = udi.Type,
-                        MovieId = udi.MovieId,
-                        TvId = udi.TvId,
-                        CollectionId = udi.CollectionId,
-                        SpecialId = udi.SpecialId,
-                        Time = udi.Time,
-                        Audio = udi.Audio,
-                        Subtitle = udi.Subtitle,
-                        SubtitleType = udi.SubtitleType,
-                        LastPlayedDate = DateTime.UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ"),
-                        RemovedFromContinueWatching = false,
-                    }
+        await _userDataRepository.UpsertWatchProgressAsync(
+            new(
+                user.Id,
+                request.PlaylistType,
+                Convert.ToString((object?)request.PlaylistId) ?? string.Empty,
+                request.TmdbId,
+                request.VideoId,
+                request.Time,
+                request.Audio,
+                request.Subtitle,
+                request.SubtitleType
             )
-            .RunAsync();
+        );
     }
 
     public async Task RemoveWatched(VideoProgressRequest request)
@@ -304,10 +215,14 @@ public partial class VideoHub
         List<VideoPlaylistResponseDto> playlist
     )
     {
-        Device device = GetCurrentDevice(user);
-        VideoPlayerState videoPlayerState = await VideoPlayerStateFactory.Create(
-            _contextFactory,
-            user,
+        Device device = GetCallingDevice();
+        // Cast/remote-control needs the current item's structured chapter/audio/
+        // caption/quality lists, which live on Metadata, not the slim wire DTO.
+        Metadata? metadata = await _videoFileRepository.GetMetadataAsync(item.VideoId);
+        User? userPreference = await _userDataRepository.GetWithPlaybackPreferencesAsync(user.Id);
+        VideoPlayerState videoPlayerState = VideoPlayerStateFactory.Create(
+            userPreference,
+            metadata,
             device,
             item,
             playlist,
@@ -335,16 +250,7 @@ public partial class VideoHub
         }
     }
 
-    private Device GetCurrentDevice(User user)
-    {
-        if (CurrentDevice.TryGetValue(user.Id, out Device? device))
-            return device;
-
-        device = ConnectedClients.Clients.FirstOrDefault(d => d.Key == Context.ConnectionId).Value;
-        CurrentDevice[user.Id] = device;
-
-        return device;
-    }
+    private Device GetCallingDevice() => ConnectedClients.Clients[Context.ConnectionId];
 
     private static bool IsCurrentPlaylist(
         VideoPlayerState state,
@@ -393,7 +299,7 @@ public partial class VideoHub
         await _videoPlaybackService.UpdatePlaybackState(user, state);
         await _videoPlaybackService.PublishStartedEventAsync(user.Id, state);
 
-        Device device = GetCurrentDevice(user);
+        Device device = GetCallingDevice();
         try
         {
             await ActivityLogger.LogPlaybackAsync(
@@ -514,22 +420,10 @@ public partial class VideoHub
         // mirrors MusicHub.MusicDevicesAsync. Without this, the picker can't
         // hand video off to a sleeping TV. Live MusicHub clients are merged
         // with registered TV devices (online or not).
-        List<Device> connectedDevices = Devices();
-        await using (MediaContext ctx = await _contextFactory.CreateDbContextAsync())
-        {
-            List<Device> registeredTvs = await ctx
-                .Devices.Where(d => d.OwnerUserId == user.Id && d.Type == "tv")
-                .ToListAsync();
-
-            HashSet<string> seenDeviceIds = new(
-                connectedDevices.Select(d => d.DeviceId),
-                StringComparer.OrdinalIgnoreCase
-            );
-
-            foreach (Device tv in registeredTvs)
-                if (seenDeviceIds.Add(tv.DeviceId))
-                    connectedDevices.Add(tv);
-        }
+        (List<Device> connectedDevices, _) = await _busRegistry.WithOwnedTvsAsync(
+            user.Id,
+            Devices()
+        );
 
         await _clientMessenger.SendTo(
             "ConnectedDevicesState",
@@ -563,58 +457,27 @@ public partial class VideoHub
         {
             Ulid targetUlid = targetTv.Id;
             string serverIdString = Info.DeviceId.ToString();
-            string serverUrl = ResolveServerUrl();
-            string locale = ResolveSenderLocale();
+            string serverUrl = CastLaunchOrigin.ServerUrl(_networkDiscovery);
+            string locale = CastLaunchOrigin.SenderLocale(
+                _httpContextAccessor.HttpContext?.Request.Headers.AcceptLanguage.ToString()
+            );
             CastIntent intent = ResolveVideoIntent(user.Id);
 
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    string? receiverName = await _chromeCast.FindReceiverNameByIpAsync(targetIp);
-                    if (string.IsNullOrEmpty(receiverName))
-                    {
-                        _logger.LogWarning(
-                            "No Chromecast receiver discovered at {TargetIp} — video handoff will not wake panel via CEC",
-                            targetIp
-                        );
-                        return;
-                    }
-
-                    LaunchCustomData? launchData = await _castTokenService.MintAsync(
+            // A handoff always wakes the panel, so the target is treated as cold.
+            _ = _castPanelWakeLauncher.LaunchIfColdAsync(
+                targetIsLive: false,
+                targetIp,
+                useAndroidReceiver: _busRegistry.IsOnline(targetUlid),
+                () =>
+                    _castTokenService.MintAsync(
                         userId: user.Id,
                         serverId: serverIdString,
                         serverUrl: serverUrl,
                         deviceId: targetUlid,
                         intent: intent,
                         clientLocale: locale
-                    );
-
-                    if (launchData is null)
-                    {
-                        _logger.LogWarning(
-                            "Cast token mint failed for video handoff to {TargetIp} — falling back to LAUNCH without customData",
-                            targetIp
-                        );
-                    }
-
-                    bool apkOnline = _busRegistry.IsOnline(targetUlid);
-                    await _chromeCast.SelectChromecast(receiverName);
-                    await _chromeCast.LaunchAndroidReceiver(
-                        receiverName,
-                        launchData,
-                        useAndroidReceiver: apkOnline
-                    );
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(
-                        "Server-side video Cast launch failed for {TargetIp}: {Message}",
-                        targetIp,
-                        ex.Message
-                    );
-                }
-            });
+                    )
+            );
         }
 
         if (_videoPlayerStateManager.TryGetValue(user.Id, out VideoPlayerState? playerState))
@@ -627,7 +490,7 @@ public partial class VideoHub
             return;
         }
 
-        EventPayload<BroadcastEventPayload> payload = new()
+        EventPayload<BroadcastEventPayload<VideoEventType>> payload = new()
         {
             Events =
             [

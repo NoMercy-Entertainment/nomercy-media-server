@@ -57,13 +57,7 @@ public class HmacValidationMiddleware(
     {
         string path = context.Request.Path.Value ?? string.Empty;
 
-        if (!IsProtected(path))
-        {
-            await next(context);
-            return;
-        }
-
-        if (IsExempt(path))
+        if (!IsProtected(path) || IsExempt(path))
         {
             await next(context);
             return;
@@ -139,23 +133,12 @@ public class HmacValidationMiddleware(
             return;
         }
 
-        // Buffer the body so we can both verify and still let the controller read it.
-        context.Request.EnableBuffering();
-        byte[] bodyBytes;
-        using (MemoryStream ms = new())
-        {
-            await context.Request.Body.CopyToAsync(ms);
-            bodyBytes = ms.ToArray();
-        }
-
-        context.Request.Body.Position = 0;
-
         HmacSigner signer = new(secret);
         bool valid = signer.Verify(
             context.Request.Method,
             path,
             timestamp,
-            bodyBytes,
+            await ReadBufferedBodyAsync(context.Request),
             sigHeader.ToString(),
             ReplayWindow
         );
@@ -173,26 +156,22 @@ public class HmacValidationMiddleware(
         await next(context);
     }
 
-    private bool IsProtected(string path)
+    private bool IsProtected(string path) =>
+        hmacOptions.Value.ProtectedPrefixes.Any(prefix =>
+            path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+        );
+
+    private static bool IsExempt(string path) =>
+        ExemptSuffixes.Any(suffix => path.EndsWith(suffix, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>Reads the body for verification and rewinds it so the controller can still read it.</summary>
+    private static async Task<byte[]> ReadBufferedBodyAsync(HttpRequest request)
     {
-        foreach (string prefix in hmacOptions.Value.ProtectedPrefixes)
-        {
-            if (path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
-                return true;
-        }
-
-        return false;
-    }
-
-    private static bool IsExempt(string path)
-    {
-        foreach (string suffix in ExemptSuffixes)
-        {
-            if (path.EndsWith(suffix, StringComparison.OrdinalIgnoreCase))
-                return true;
-        }
-
-        return false;
+        request.EnableBuffering();
+        using MemoryStream buffer = new();
+        await request.Body.CopyToAsync(buffer);
+        request.Body.Position = 0;
+        return buffer.ToArray();
     }
 
     private static async Task WriteHmacError(HttpContext context, string reason, string detail)

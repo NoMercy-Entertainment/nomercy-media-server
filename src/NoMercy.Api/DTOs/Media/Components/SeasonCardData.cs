@@ -12,6 +12,7 @@
 using Newtonsoft.Json;
 using NoMercy.Database;
 using NoMercy.Database.Models.TvShows;
+using NoMercy.NmSystem.Extensions;
 
 namespace NoMercy.Api.DTOs.Media.Components;
 
@@ -65,8 +66,8 @@ public record SeasonCardData
 
         TvId = episode.TvId;
         Id = episode.Id;
-        Title = !string.IsNullOrEmpty(title) ? title : episode.Title;
-        Overview = !string.IsNullOrEmpty(overview) ? overview : episode.Overview;
+        Title = title.OrWhenEmpty(episode.Title);
+        Overview = overview.OrWhenEmpty(episode.Overview);
         EpisodeNumber = episode.EpisodeNumber;
         SeasonNumber = episode.SeasonNumber;
         AirDate = episode.AirDate;
@@ -109,29 +110,5 @@ public record SeasonCardData
         Available = dto.Available;
         TvId = dto.TvId;
         Link = dto.Link;
-    }
-}
-
-/// <summary>
-/// Data for NMSeasonTitle component - displays a season header.
-/// </summary>
-public record SeasonTitleData
-{
-    [JsonProperty("seasonNumber")]
-    public int SeasonNumber { get; set; }
-
-    [JsonProperty("title")]
-    public string Title { get; set; } = string.Empty;
-
-    [JsonProperty("episodeCount")]
-    public int EpisodeCount { get; set; }
-
-    public SeasonTitleData() { }
-
-    public SeasonTitleData(int seasonNumber, int episodeCount)
-    {
-        SeasonNumber = seasonNumber;
-        Title = $"Season {seasonNumber}";
-        EpisodeCount = episodeCount;
     }
 }

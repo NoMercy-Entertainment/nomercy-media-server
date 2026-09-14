@@ -151,20 +151,3 @@ public class EncoderHardwareController(
             : Ok(report);
     }
 }
-
-public record StartBenchmarkRequest(
-    [property: JsonProperty("codecs")] string[]? Codecs,
-    [property: JsonProperty("resolutions")] int[]? Resolutions
-);
-
-/// <summary>
-/// Point-in-time resource utilization snapshot returned by
-/// <c>GET /api/v1/encoder/hardware/utilization</c>.
-/// </summary>
-public record UtilizationSnapshot(
-    [property: JsonProperty("cpu_usage_percent")] double CpuUsagePercent,
-    [property: JsonProperty("available_memory_mb")] long AvailableMemoryMb,
-    [property: JsonProperty("gpu_samples")] IReadOnlyList<GpuProcessSample> GpuSamples,
-    [property: JsonProperty("concurrent_nvenc_sessions")] int ConcurrentNvencSessions,
-    [property: JsonProperty("gpus")] IReadOnlyList<GpuDevice> Gpus
-);

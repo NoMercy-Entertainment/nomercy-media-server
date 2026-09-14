@@ -109,7 +109,6 @@ public record SpecialItemsDto
         Overview = movie.Overview;
 
         Backdrop = movie.Backdrop;
-        // Watched = movie.Watched;
         Logo = movie.Images.FirstOrDefault(media => media.Type == "logo")?.FilePath;
 
         Backdrops = movie
@@ -161,7 +160,6 @@ public record SpecialItemsDto
         Overview = tv.Overview;
 
         Backdrop = tv.Backdrop;
-        // Watched = tv.Watched;
         Logo = tv.Images.FirstOrDefault(media => media.Type == "logo")?.FilePath;
 
         Backdrops = tv
@@ -202,11 +200,6 @@ public record SpecialItemsDto
         TotalDuration = tv.Episodes.Sum(item =>
             item.VideoFiles.FirstOrDefault()?.Duration?.ToSeconds() ?? 0
         );
-
-        // Watched = tv.Episodes
-        //     .SelectMany(episode => episode!.VideoFiles
-        //         .Where(videoFile => videoFile.UserData.Any(userData => userData.UserId.Equals(userId)))
-        //     .Count();
 
         VideoId = tv.Trailer;
 

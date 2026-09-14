@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
+using NoMercy.Api.DTOs.Media.Components;
 using NoMercy.Database;
 using NoMercy.Database.Models.Music;
 using NoMercy.NmSystem.Extensions;
@@ -61,9 +62,7 @@ public record CarouselResponseItemDto
     {
         ColorPalette = artist.ColorPalette;
         Cover = artist.Cover;
-        Cover = Cover is not null
-            ? new Uri($"/images/music{Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.UrlWhenSet(Cover);
         Disambiguation = artist.Disambiguation;
         Description = artist.Description;
         Folder = artist.Folder.OrEmpty();
@@ -83,9 +82,7 @@ public record CarouselResponseItemDto
     {
         ColorPalette = album.ColorPalette;
         Cover = album.Cover;
-        Cover = Cover is not null
-            ? new Uri($"/images/music{Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.UrlWhenSet(Cover);
         Disambiguation = album.Disambiguation;
         Description = album.Description;
         Folder = album.Folder.OrEmpty();
@@ -105,9 +102,7 @@ public record CarouselResponseItemDto
     {
         ColorPalette = artistUser.Artist.ColorPalette;
         Cover = artistUser.Artist.Cover ?? artistUser.Artist.Images.FirstOrDefault()?.FilePath;
-        Cover = Cover is not null
-            ? new Uri($"/images/music{Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.UrlWhenSet(Cover);
         Disambiguation = artistUser.Artist.Disambiguation;
         Description = artistUser.Artist.Description;
         Folder = artistUser.Artist.Folder.OrEmpty();
@@ -127,9 +122,7 @@ public record CarouselResponseItemDto
     {
         ColorPalette = playlist.Album.ColorPalette;
         Cover = playlist.Album.Cover;
-        Cover = Cover is not null
-            ? new Uri($"/images/music{Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.UrlWhenSet(Cover);
         Disambiguation = playlist.Album.Disambiguation;
         Description = playlist.Album.Description;
         Folder = playlist.Album.Folder.OrEmpty();
@@ -149,9 +142,7 @@ public record CarouselResponseItemDto
     {
         ColorPalette = playlist.ColorPalette;
         Cover = playlist.Cover;
-        Cover = Cover is not null
-            ? new Uri($"/images/music{Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.UrlWhenSet(Cover);
         Description = playlist.Description;
         Id = playlist.Id.ToString();
         Name = playlist.Name;
@@ -168,9 +159,7 @@ public record CarouselResponseItemDto
     {
         ColorPalette = track.ColorPalette;
         Cover = track.Cover;
-        Cover = Cover is not null
-            ? new Uri($"/images/music{Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.UrlWhenSet(Cover);
         Folder = track.Folder.OrEmpty();
         Id = track.Id.ToString();
         Name = track.Name;

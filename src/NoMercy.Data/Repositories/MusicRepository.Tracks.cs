@@ -20,6 +20,19 @@ public partial class MusicRepository
 {
     #region Track Queries
 
+    public async Task<bool> IsTrackFavoriteAsync(
+        Guid trackId,
+        Guid userId,
+        CancellationToken ct = default
+    )
+    {
+        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+        return await context.TrackUser.AnyAsync(
+            tu => tu.TrackId == trackId && tu.UserId == userId,
+            ct
+        );
+    }
+
     public async Task<Track?> GetTrackAsync(Guid id, CancellationToken ct = default)
     {
         await using MediaContext mediaContext = await contextFactory.CreateDbContextAsync(ct);

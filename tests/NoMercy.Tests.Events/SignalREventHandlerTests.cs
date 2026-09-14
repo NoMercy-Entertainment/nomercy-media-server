@@ -18,6 +18,7 @@ using NoMercy.Events.Library;
 using NoMercy.Events.Media;
 using NoMercy.Events.Playback;
 using NoMercy.Networking.Messaging;
+using NoMercy.Networking.Messaging.EventHandlers;
 using Xunit;
 
 namespace NoMercy.Tests.Events;

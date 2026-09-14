@@ -11,7 +11,10 @@
 
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Api.EventHandlers;
+using NoMercy.Api.Middleware;
 using NoMercy.Api.Services.Music;
+using NoMercy.Authorization;
+using NoMercy.Data.EventHandlers;
 using NoMercy.Database;
 using NoMercy.Events;
 using NoMercy.MediaProcessing.EventHandlers;
@@ -19,6 +22,7 @@ using NoMercy.MediaProcessing.Inbox;
 using NoMercy.MediaProcessing.Jobs;
 using NoMercy.MediaProcessing.Shows;
 using NoMercy.Networking.Messaging;
+using NoMercy.Networking.Messaging.EventHandlers;
 using NoMercy.NmSystem.Auth;
 using NoMercy.Notifications.Push;
 using NoMercy.Notifications.Transports;
@@ -96,7 +100,12 @@ public static class EventHandlerExtensions
         {
             IEventBus eventBus = sp.GetRequiredService<IEventBus>();
             IServiceScopeFactory scopeFactory = sp.GetRequiredService<IServiceScopeFactory>();
-            return new(eventBus, scopeFactory);
+            return new(
+                eventBus,
+                scopeFactory,
+                sp.GetRequiredService<IUserCache>(),
+                sp.GetRequiredService<IServedFolderRegistry>()
+            );
         });
 
         services.AddSingleton<MusicLikeEventHandler>(sp =>

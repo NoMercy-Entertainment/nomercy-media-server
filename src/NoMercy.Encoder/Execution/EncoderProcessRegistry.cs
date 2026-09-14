@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using System.Collections.Concurrent;
+using System.Diagnostics;
 using NoMercy.Encoder.Hardware;
 
 namespace NoMercy.Encoder.Execution;
@@ -133,6 +134,25 @@ public class EncoderProcessRegistry : IEncoderProcessRegistry
             {
                 return [.. _processes.Keys];
             }
+        }
+    }
+
+    public void KillProcesses(int jobId)
+    {
+        foreach (int processId in GetProcessIds(jobId))
+        {
+            try
+            {
+                using Process process = Process.GetProcessById(processId);
+                process.Kill(entireProcessTree: true);
+            }
+            catch (Exception)
+            {
+                // Process may have already exited or the pid may be stale —
+                // the registry entry is still cleared below.
+            }
+
+            Unregister(jobId, processId);
         }
     }
 }

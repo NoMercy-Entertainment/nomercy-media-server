@@ -11,6 +11,7 @@
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using NoMercy.Api.Hubs.Shared;
 using NoMercy.Api.Services.Music;
 using NoMercy.Authorization;
 using NoMercy.Database;
@@ -30,7 +31,7 @@ public partial class MusicHub
     /// need to log who triggered an action but do not want to promote them to
     /// active.
     /// </summary>
-    private Device GetCallerDevice(User user)
+    private Device GetCallerDevice()
     {
         if (!ConnectedClients.Clients.TryGetValue(Context.ConnectionId, out Client? device))
             throw new InvalidOperationException(
@@ -47,7 +48,7 @@ public partial class MusicHub
     /// </summary>
     private Device GetOrPromoteActiveDevice(User user)
     {
-        Device caller = GetCallerDevice(user);
+        Device caller = GetCallerDevice();
 
         if (_activeDeviceRegistry.TryGet(user.Id, out Device? existing) && existing is not null)
         {
@@ -77,21 +78,10 @@ public partial class MusicHub
         if (user is null)
             return connected;
 
-        await using MediaContext ctx = await ContextFactory.CreateDbContextAsync();
-        List<Device> registeredTvs = await ctx
-            .Devices.Where(d => d.OwnerUserId == user.Id && d.Type == "tv")
-            .ToListAsync();
-
-        HashSet<string> seenDeviceIds = new(
-            connected.Select(d => d.DeviceId),
-            StringComparer.OrdinalIgnoreCase
+        (List<Device> devices, List<Device> registeredTvs) = await _busRegistry.WithOwnedTvsAsync(
+            user.Id,
+            connected
         );
-
-        foreach (Device tv in registeredTvs)
-        {
-            if (seenDeviceIds.Add(tv.DeviceId))
-                connected.Add(tv);
-        }
 
         // Pre-warm sharpcaster's TLS pool for every owned TV so the first
         // ChangeDeviceCommand to that TV doesn't pay cold-handshake latency
@@ -121,7 +111,7 @@ public partial class MusicHub
             });
         }
 
-        return connected;
+        return devices;
     }
 
     private void UpdateDeviceInfo(MusicPlayerState state)
@@ -224,9 +214,11 @@ public partial class MusicHub
             string? targetIp = CastAddress.Resolve(targetTv.LanIp, targetTv.Ip);
             Ulid targetUlid = targetTv.Id;
             string serverIdString = Info.DeviceId.ToString();
-            string serverUrl = ResolveServerUrl();
-            string locale = ResolveSenderLocale();
-            CastIntent intent = ResolveMusicIntent(user.Id, deviceId);
+            string serverUrl = CastLaunchOrigin.ServerUrl(_networkDiscovery);
+            string locale = CastLaunchOrigin.SenderLocale(
+                _httpContextAccessor.HttpContext?.Request.Headers.AcceptLanguage.ToString()
+            );
+            CastIntent intent = ResolveMusicIntent(user.Id);
             bool apkOnline = _busRegistry.IsOnline(targetUlid);
 
             _ = Task.Run(() =>
@@ -325,7 +317,7 @@ public partial class MusicHub
         // don't gate anything the target needs in order to begin playback.
         await _musicPlaybackService.UpdatePlaybackState(user, playerState);
 
-        EventPayload<BroadcastEventPayload> payload = new()
+        EventPayload<BroadcastEventPayload<MusicEventType>> payload = new()
         {
             Events =
             [
@@ -442,10 +434,7 @@ public partial class MusicHub
         {
             try
             {
-                await using MediaContext mediaContext = await ContextFactory.CreateDbContextAsync();
-                await mediaContext
-                    .Devices.Where(d => d.DeviceId == targetDeviceId)
-                    .ExecuteUpdateAsync(d => d.SetProperty(x => x.VolumePercent, clamped));
+                await _deviceStateRepository.SetVolumeAsync(targetDeviceId, clamped);
             }
             catch (Exception ex)
             {

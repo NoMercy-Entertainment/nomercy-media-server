@@ -9,7 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
 using Microsoft.AspNetCore.Http;
@@ -22,20 +21,12 @@ using NoMercy.Storage;
 
 namespace NoMercy.Api.Middleware;
 
-/// <summary>
-/// Folder routing handle: maps a folder ULID to the driver instance + sub-path
-/// the file lives under. Resolved per-request through IStorageFactory so NFS,
-/// S3, WebDAV and local backends all stream through the same path.
-/// </summary>
-public readonly record struct FolderRef(Ulid DriverId, string SubPath);
-
 public class DynamicStaticFilesMiddleware(
     RequestDelegate next,
+    IServedFolderRegistry folders,
     ILogger<DynamicStaticFilesMiddleware> logger
 )
 {
-    private static readonly ConcurrentDictionary<Ulid, FolderRef> Folders = new();
-
     // Define streamable media file extensions
     private static readonly HashSet<string> StreamableExtensions = new(
         StringComparer.OrdinalIgnoreCase
@@ -67,33 +58,7 @@ public class DynamicStaticFilesMiddleware(
         MediaActivityMonitor activityMonitor
     )
     {
-        if (!context.Request.Path.HasValue)
-        {
-            await next(context);
-            return;
-        }
-
-        string? pathValue = context.Request.Path.Value;
-        string[] pathSegments = context
-            .Request.Path.ToString()
-            .Split('/', StringSplitOptions.RemoveEmptyEntries);
-
-        if (pathSegments.Length == 0)
-        {
-            await next(context);
-            return;
-        }
-
-        string rootPath = pathSegments[0];
-
-        // Allow API endpoints, Swagger, and other system paths to pass through
-        if (
-            rootPath.Equals("api", StringComparison.OrdinalIgnoreCase)
-            || rootPath.Equals("index.html", StringComparison.OrdinalIgnoreCase)
-            || rootPath.StartsWith("swagger", StringComparison.OrdinalIgnoreCase)
-            || rootPath.Equals("images", StringComparison.OrdinalIgnoreCase)
-            || rootPath.Equals("manage", StringComparison.OrdinalIgnoreCase)
-        )
+        if (!TryParseFolderId(context.Request.Path, out Ulid folderId))
         {
             await next(context);
             return;
@@ -101,13 +66,7 @@ public class DynamicStaticFilesMiddleware(
 
         try
         {
-            if (!Ulid.TryParse(rootPath, out Ulid folderId))
-            {
-                await next(context);
-                return;
-            }
-
-            if (!Folders.TryGetValue(folderId, out FolderRef folderRef))
+            if (!folders.TryGet(folderId, out FolderRef folderRef))
             {
                 logger.LogInformation(
                     "[DynamicStaticFiles] folder {FolderId} not registered (request: {Path})",
@@ -118,12 +77,7 @@ public class DynamicStaticFilesMiddleware(
                 return;
             }
 
-            // Strip the leading "/<folderId>" segment to get the file's
-            // sub-path within the folder. URL-decode + normalise to forward
-            // slashes so storage drivers see a consistent shape.
-            string relativeWithinFolder = pathValue is null
-                ? string.Empty
-                : Uri.UnescapeDataString(pathValue[pathValue.IndexOf('/', 1)..]).TrimStart('/');
+            string relativeWithinFolder = RelativeWithinFolder(context.Request.Path.Value);
 
             // Per-request server-side timing for media serves. Audio/video file
             // requests bypass AccessLogMiddleware, so without this they have zero
@@ -133,55 +87,14 @@ public class DynamicStaticFilesMiddleware(
             Stopwatch stopwatch = Stopwatch.StartNew();
             long resolvedAtMs = 0;
 
-            IStorage storage;
-            try
+            IStorage? storage = OpenExistingFile(
+                storageFactory,
+                folderId,
+                folderRef,
+                relativeWithinFolder
+            );
+            if (storage is null)
             {
-                storage = storageFactory.For(
-                    folderId: folderId,
-                    driverId: folderRef.DriverId,
-                    subPath: folderRef.SubPath
-                );
-            }
-            catch (Exception fEx)
-            {
-                logger.LogInformation(
-                    "[DynamicStaticFiles] factory.For failed for folder {FolderId} driver {DriverId} subPath '{SubPath}': {Message}",
-                    folderId,
-                    folderRef.DriverId,
-                    folderRef.SubPath,
-                    fEx.Message
-                );
-                await next(context);
-                return;
-            }
-
-            bool exists;
-            try
-            {
-                exists = storage.Exists(relativeWithinFolder);
-            }
-            catch (Exception eEx)
-            {
-                logger.LogInformation(
-                    "[DynamicStaticFiles] storage.Exists threw on '{RelativeWithinFolder}' (folder {FolderId}, driver {DriverId}): {Message}",
-                    relativeWithinFolder,
-                    folderId,
-                    folderRef.DriverId,
-                    eEx.Message
-                );
-                await next(context);
-                return;
-            }
-
-            if (!exists)
-            {
-                logger.LogInformation(
-                    "[DynamicStaticFiles] not found: folder={FolderId} driver={DriverId} subPath='{SubPath}' relative='{RelativeWithinFolder}'",
-                    folderId,
-                    folderRef.DriverId,
-                    folderRef.SubPath,
-                    relativeWithinFolder
-                );
                 await next(context);
                 return;
             }
@@ -209,21 +122,12 @@ public class DynamicStaticFilesMiddleware(
             await ServeFile(context, storage, relativeWithinFolder);
             stopwatch.Stop();
 
-            if (resolvedAtMs > 1000 || stopwatch.ElapsedMilliseconds > 2000)
-                logger.LogWarning(
-                    "[DynamicStaticFiles] SLOW serve '{RelativeWithinFolder}' prep={ResolvedAtMs}ms total={ElapsedMilliseconds}ms (driver={Name})",
-                    relativeWithinFolder,
-                    resolvedAtMs,
-                    stopwatch.ElapsedMilliseconds,
-                    storage.GetType().Name
-                );
-            else
-                logger.LogDebug(
-                    "[DynamicStaticFiles] serve '{RelativeWithinFolder}' prep={ResolvedAtMs}ms total={ElapsedMilliseconds}ms",
-                    relativeWithinFolder,
-                    resolvedAtMs,
-                    stopwatch.ElapsedMilliseconds
-                );
+            LogServeTiming(
+                relativeWithinFolder,
+                resolvedAtMs,
+                stopwatch.ElapsedMilliseconds,
+                storage
+            );
         }
         catch (Exception ex) when (ex is FileNotFoundException or DirectoryNotFoundException)
         {
@@ -271,6 +175,120 @@ public class DynamicStaticFilesMiddleware(
         }
     }
 
+    // API endpoints, Swagger and other system paths are never folder routes.
+    private static readonly string[] SystemRoots = ["api", "index.html", "images", "manage"];
+
+    /// <summary>A request for a file inside a registered folder has the folder id as its first segment.</summary>
+    internal static bool TryParseFolderId(PathString path, out Ulid folderId)
+    {
+        folderId = default;
+
+        string[] pathSegments = path.ToString().Split('/', StringSplitOptions.RemoveEmptyEntries);
+        if (!path.HasValue || pathSegments.Length == 0)
+            return false;
+
+        string rootPath = pathSegments[0];
+        if (
+            SystemRoots.Any(root => rootPath.Equals(root, StringComparison.OrdinalIgnoreCase))
+            || rootPath.StartsWith("swagger", StringComparison.OrdinalIgnoreCase)
+        )
+            return false;
+
+        return Ulid.TryParse(rootPath, out folderId);
+    }
+
+    /// <summary>
+    /// The file's path within its folder: the leading "/&lt;folderId&gt;" segment stripped,
+    /// URL-decoded, so storage drivers see a consistent shape.
+    /// </summary>
+    private static string RelativeWithinFolder(string? pathValue) =>
+        pathValue is null
+            ? string.Empty
+            : Uri.UnescapeDataString(pathValue[pathValue.IndexOf('/', 1)..]).TrimStart('/');
+
+    /// <summary>
+    /// The folder's storage when <paramref name="relativeWithinFolder"/> exists on it;
+    /// null, logged, when the storage cannot be opened or the file is not there.
+    /// </summary>
+    private IStorage? OpenExistingFile(
+        IStorageFactory storageFactory,
+        Ulid folderId,
+        FolderRef folderRef,
+        string relativeWithinFolder
+    )
+    {
+        IStorage storage;
+        try
+        {
+            storage = storageFactory.For(
+                folderId: folderId,
+                driverId: folderRef.DriverId,
+                subPath: folderRef.SubPath
+            );
+        }
+        catch (Exception fEx)
+        {
+            logger.LogInformation(
+                "[DynamicStaticFiles] factory.For failed for folder {FolderId} driver {DriverId} subPath '{SubPath}': {Message}",
+                folderId,
+                folderRef.DriverId,
+                folderRef.SubPath,
+                fEx.Message
+            );
+            return null;
+        }
+
+        try
+        {
+            if (storage.Exists(relativeWithinFolder))
+                return storage;
+        }
+        catch (Exception eEx)
+        {
+            logger.LogInformation(
+                "[DynamicStaticFiles] storage.Exists threw on '{RelativeWithinFolder}' (folder {FolderId}, driver {DriverId}): {Message}",
+                relativeWithinFolder,
+                folderId,
+                folderRef.DriverId,
+                eEx.Message
+            );
+            return null;
+        }
+
+        logger.LogInformation(
+            "[DynamicStaticFiles] not found: folder={FolderId} driver={DriverId} subPath='{SubPath}' relative='{RelativeWithinFolder}'",
+            folderId,
+            folderRef.DriverId,
+            folderRef.SubPath,
+            relativeWithinFolder
+        );
+        return null;
+    }
+
+    private void LogServeTiming(
+        string relativeWithinFolder,
+        long resolvedAtMs,
+        long elapsedMs,
+        IStorage storage
+    )
+    {
+        if (resolvedAtMs > 1000 || elapsedMs > 2000)
+            logger.LogWarning(
+                "[DynamicStaticFiles] SLOW serve '{RelativeWithinFolder}' prep={ResolvedAtMs}ms total={ElapsedMilliseconds}ms (driver={Name})",
+                relativeWithinFolder,
+                resolvedAtMs,
+                elapsedMs,
+                storage.GetType().Name
+            );
+        else
+            logger.LogDebug(
+                "[DynamicStaticFiles] serve '{RelativeWithinFolder}' prep={ResolvedAtMs}ms total={ElapsedMilliseconds}ms",
+                relativeWithinFolder,
+                resolvedAtMs,
+                elapsedMs
+            );
+    }
+
     private async Task ServeFile(HttpContext context, IStorage storage, string relativePath)
     {
         long fileLength = storage.Size(relativePath);
@@ -296,7 +314,6 @@ public class DynamicStaticFilesMiddleware(
         // responses are too large to ever cache (cap is 64 MB by default).
         context.Response.Headers.CacheControl = "no-store";
 
-        bool isStreamableMedia = IsStreamableMedia(relativePath);
         bool hasRangeRequest = context.Request.Headers.TryGetValue(
             "Range",
             out StringValues rangeValue
@@ -318,67 +335,15 @@ public class DynamicStaticFilesMiddleware(
             return;
         }
 
-        // Parse range or default to start of file for streamable media
-        long start = 0;
-        long end;
-
-        // Initial probe chunk size (1 MB) — serves the first slice fast for browsers
-        // that issue a "bytes=0-" or no-range request, so they can start parsing the
-        // moov atom without waiting on the whole file. Any other open-ended range
-        // (start > 0) is served to EOF: ExoPlayer's DefaultExtractorInput reads
-        // sequentially via Mp4Extractor.readFully, and capping at 1 MiB makes its
-        // read return -1 mid-atom and throws EOFException (web's <video> reopens
-        // the connection automatically; ExoPlayer does not).
-        const long initialProbeChunkSize = 1024 * 1024;
-
-        {
-            string?[] ranges = rangeValue.ToString().Replace("bytes=", "").Split('-');
-
-            if (!long.TryParse(ranges[0], out start))
-            {
-                context.Response.StatusCode = (int)HttpStatusCode.RequestedRangeNotSatisfiable;
-                context.Response.Headers.ContentRange = new ContentRangeHeaderValue(
-                    fileLength
-                ).ToString();
-                return;
-            }
-
-            if (ranges.Length > 1 && !string.IsNullOrEmpty(ranges[1]))
-            {
-                // Explicit end byte specified (e.g., "bytes=0-65535")
-                if (!long.TryParse(ranges[1], out end))
-                {
-                    context.Response.StatusCode = (int)HttpStatusCode.RequestedRangeNotSatisfiable;
-                    context.Response.Headers.ContentRange = new ContentRangeHeaderValue(
-                        fileLength
-                    ).ToString();
-                    return;
-                }
-            }
-            else if (isStreamableMedia && start == 0)
-            {
-                // Initial probe (browser asking "bytes=0-") — serve first chunk fast.
-                end = Math.Min(start + initialProbeChunkSize - 1, fileLength - 1);
-            }
-            else
-            {
-                // Open-ended range with non-zero start, or non-streamable file —
-                // serve everything from start to EOF. Required for ExoPlayer's
-                // sequential readFully across MP4 atoms.
-                end = fileLength - 1;
-            }
-        }
-
-        // Clamp an explicit end that runs past EOF, then reject any range that is
-        // still unsatisfiable. ContentRangeHeaderValue's ctor throws
-        // ArgumentOutOfRangeException on start<0 or start>end — a zero-length segment
-        // (end becomes fileLength-1 = -1) or a start seeked at/after the segment's EOF.
-        // Without this it surfaced as an unhandled 500 the player retried in a tight
-        // loop (spamming [DynamicStaticFiles] exceptions for one bad .m4s segment).
-        if (end > fileLength - 1)
-            end = fileLength - 1;
-
-        if (start < 0 || start > end)
+        if (
+            !TryResolveRange(
+                rangeValue.ToString(),
+                fileLength,
+                IsStreamableMedia(relativePath),
+                out long start,
+                out long end
+            )
+        )
         {
             context.Response.StatusCode = (int)HttpStatusCode.RequestedRangeNotSatisfiable;
             context.Response.Headers.ContentRange = new ContentRangeHeaderValue(
@@ -399,7 +364,62 @@ public class DynamicStaticFilesMiddleware(
         context.Response.ContentLength = length;
 
         await using Stream fs = storage.OpenRead(relativePath);
+        await CopyRangeAsync(fs, context, start, length);
+    }
 
+    /// <summary>
+    /// The byte range to answer a <c>Range</c> header with, clamped to the file;
+    /// false when the range cannot be satisfied.
+    /// </summary>
+    /// <remarks>
+    /// An open-ended <c>bytes=0-</c> on streamable media gets only the first 1 MB, so a
+    /// browser can parse the moov atom without waiting on the whole file. Any other
+    /// open-ended range (start &gt; 0) is served to EOF: ExoPlayer's DefaultExtractorInput
+    /// reads sequentially via Mp4Extractor.readFully, and capping at 1 MiB makes its read
+    /// return -1 mid-atom and throws EOFException (web's &lt;video&gt; reopens the
+    /// connection automatically; ExoPlayer does not). A range that starts past EOF or on a
+    /// zero-length file is rejected here, because ContentRangeHeaderValue throws on
+    /// start&lt;0 or start&gt;end and the player retried the resulting 500 in a tight loop.
+    /// </remarks>
+    internal static bool TryResolveRange(
+        string rangeHeader,
+        long fileLength,
+        bool isStreamableMedia,
+        out long start,
+        out long end
+    )
+    {
+        const long initialProbeChunkSize = 1024 * 1024;
+
+        string[] ranges = rangeHeader.Replace("bytes=", "").Split('-');
+        end = fileLength - 1;
+
+        if (!long.TryParse(ranges[0], out start))
+            return false;
+
+        if (ranges.Length > 1 && !string.IsNullOrEmpty(ranges[1]))
+        {
+            if (!long.TryParse(ranges[1], out end))
+                return false;
+        }
+        else if (isStreamableMedia && start == 0)
+        {
+            end = Math.Min(initialProbeChunkSize - 1, fileLength - 1);
+        }
+
+        if (end > fileLength - 1)
+            end = fileLength - 1;
+
+        return start >= 0 && start <= end;
+    }
+
+    private static async Task CopyRangeAsync(
+        Stream fs,
+        HttpContext context,
+        long start,
+        long length
+    )
+    {
         fs.Seek(start, SeekOrigin.Begin);
         byte[] buffer = new byte[64 * 1024];
         int bytesRead;
@@ -461,20 +481,5 @@ public class DynamicStaticFilesMiddleware(
         if (ContentTypeOverrides.TryGetValue(ext, out string? mapped))
             return mapped;
         return MimeUtility.GetMimeMapping(filePath);
-    }
-
-    /// <summary>
-    /// Register a folder for dynamic file serving. Pass the folder's ULID
-    /// (becomes the URL root segment), the driver instance it belongs to,
-    /// and its sub-path within that driver's root.
-    /// </summary>
-    public static void AddFolder(Ulid folderId, Ulid driverId, string subPath)
-    {
-        Folders[folderId] = new(driverId, subPath ?? string.Empty);
-    }
-
-    public static void RemoveFolder(Ulid folderId)
-    {
-        Folders.TryRemove(folderId, out _);
     }
 }

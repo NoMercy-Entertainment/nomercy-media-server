@@ -36,7 +36,7 @@ namespace NoMercy.Api.Controllers.V1.Dashboard.Admin;
 [Authorize]
 [Route("api/v{version:apiVersion}/dashboard/configuration", Order = 10)]
 public class ConfigurationController(
-    AppDbContext appContext,
+    IServerConfigurationRepository serverConfiguration,
     QueueRunner queueRunner,
     IActivityLogger activityLogger,
     ILanguageRepository languageRepository,
@@ -46,7 +46,7 @@ public class ConfigurationController(
 {
     [HttpGet]
     [Authorize(Policy = "Moderator")]
-    public IActionResult Index()
+    public async Task<IActionResult> Index()
     {
         return Ok(
             new ConfigDto
@@ -63,7 +63,7 @@ public class ConfigurationController(
                     ImageWorkers = runtimeSettings.ImageWorkers.Value,
                     FileWorkers = runtimeSettings.FileWorkers.Value,
                     MusicWorkers = runtimeSettings.MusicWorkers.Value,
-                    ServerName = DeviceName(),
+                    ServerName = await serverConfiguration.GetServerNameAsync(),
                     Swagger = runtimeSettings.Swagger,
                     AllowAdultContent = runtimeSettings.ShowAdultContent,
                     UseSynthesizedDns = runtimeSettings.UseSynthesizedDns,
@@ -73,15 +73,6 @@ public class ConfigurationController(
                 },
             }
         );
-    }
-
-    [NonAction]
-    private string DeviceName()
-    {
-        Configuration? device = appContext.Configuration.FirstOrDefault(device =>
-            device.Key == "serverName"
-        );
-        return device?.Value ?? Environment.MachineName;
     }
 
     /// <summary>
@@ -94,24 +85,29 @@ public class ConfigurationController(
     /// silently rots.
     /// </summary>
     [NonAction]
+    /// <summary>
+    /// Applies a requested worker count to a queue: persisted, handed to the running
+    /// queue and recorded as a change. The setting is returned unchanged when none was requested.
+    /// </summary>
+    private async Task<KeyValuePair<string, int>> UpdateWorkerCountAsync(
+        KeyValuePair<string, int> current,
+        int? requested,
+        Guid userId,
+        List<(string key, object? oldVal, object? newVal)> changes
+    )
+    {
+        if (requested is not { } newCount)
+            return current;
+
+        await PersistWorkerCount(current.Key, newCount, userId);
+        changes.Add((current.Key, current.Value, newCount));
+        return new(current.Key, newCount);
+    }
+
     private async Task PersistWorkerCount(string queueName, int count, Guid userId)
     {
         string key = $"{queueName}Runners";
-        await appContext
-            .Configuration.Upsert(
-                new()
-                {
-                    Key = key,
-                    Value = count.ToString(),
-                    ModifiedBy = userId,
-                }
-            )
-            .On(configuration => configuration.Key)
-            .WhenMatched(
-                (_, configuration) =>
-                    new() { Value = configuration.Value, ModifiedBy = configuration.ModifiedBy }
-            )
-            .RunAsync();
+        await serverConfiguration.SetValueAsync(key, count.ToString(), userId);
 
         await queueRunner.SetWorkerCount(queueName, count, userId);
     }
@@ -131,34 +127,64 @@ public class ConfigurationController(
     {
         Guid userId = User.UserId();
         List<(string key, object? oldVal, object? newVal)> changes = [];
-        bool restartRequired = false;
 
         if (request.DerivedAudioCapGb is < 1)
         {
             return BadRequestResponse("derived_audio_cap_gb must be at least 1");
         }
 
+        bool restartRequired = await UpdatePortsAsync(request, userId, changes);
+        await UpdateWorkerCountsAsync(request, userId, changes);
+        await UpdateServerOptionsAsync(request, userId, changes);
+        await LogChangesAsync(userId, changes);
+
+        return Ok(
+            new StatusResponseDto<string>
+            {
+                Message = restartRequired
+                    ? "Configuration updated successfully. Restart required for the port change to take effect."
+                    : "Configuration updated successfully",
+                Status = "success",
+                Args = [],
+            }
+        );
+    }
+
+    private async Task PersistAsync(
+        string key,
+        string storedValue,
+        object? oldValue,
+        object? newValue,
+        Guid userId,
+        List<(string key, object? oldVal, object? newVal)> changes
+    )
+    {
+        await serverConfiguration.SetValueAsync(key, storedValue, userId);
+        changes.Add((key, oldValue, newValue));
+    }
+
+    /// <returns>True when a port changed, which only takes effect after a restart.</returns>
+    private async Task<bool> UpdatePortsAsync(
+        ConfigDtoData request,
+        Guid userId,
+        List<(string key, object? oldVal, object? newVal)> changes
+    )
+    {
+        bool restartRequired = false;
+
         if (request.InternalServerPort != 0)
         {
             int oldPort = runtimeSettings.InternalServerPort;
-            restartRequired = restartRequired || oldPort != request.InternalServerPort;
+            restartRequired = oldPort != request.InternalServerPort;
             runtimeSettings.InternalServerPort = request.InternalServerPort;
-            await appContext
-                .Configuration.Upsert(
-                    new()
-                    {
-                        Key = "internalPort",
-                        Value = request.InternalServerPort.ToString(),
-                        ModifiedBy = userId,
-                    }
-                )
-                .On(configuration => configuration.Key)
-                .WhenMatched(
-                    (o, configuration) =>
-                        new() { Value = configuration.Value, ModifiedBy = configuration.ModifiedBy }
-                )
-                .RunAsync();
-            changes.Add(("internalPort", oldPort, request.InternalServerPort));
+            await PersistAsync(
+                "internalPort",
+                request.InternalServerPort.ToString(),
+                oldPort,
+                request.InternalServerPort,
+                userId,
+                changes
+            );
         }
 
         if (request.ExternalServerPort != 0)
@@ -166,217 +192,150 @@ public class ConfigurationController(
             int oldPort = runtimeSettings.ExternalServerPort;
             restartRequired = restartRequired || oldPort != request.ExternalServerPort;
             runtimeSettings.ExternalServerPort = request.ExternalServerPort;
-            await appContext
-                .Configuration.Upsert(
-                    new()
-                    {
-                        Key = "externalPort",
-                        Value = request.ExternalServerPort.ToString(),
-                        ModifiedBy = userId,
-                    }
-                )
-                .On(configuration => configuration.Key)
-                .WhenMatched(
-                    (o, configuration) =>
-                        new() { Value = configuration.Value, ModifiedBy = configuration.ModifiedBy }
-                )
-                .RunAsync();
-            changes.Add(("externalPort", oldPort, request.ExternalServerPort));
-        }
-
-        if (request.LibraryWorkers is not null)
-        {
-            int oldCount = runtimeSettings.LibraryWorkers.Value;
-            int newCount = (int)request.LibraryWorkers;
-            runtimeSettings.LibraryWorkers = new(runtimeSettings.LibraryWorkers.Key, newCount);
-            await PersistWorkerCount(runtimeSettings.LibraryWorkers.Key, newCount, userId);
-            changes.Add((runtimeSettings.LibraryWorkers.Key, oldCount, newCount));
-        }
-
-        if (request.ImportWorkers is not null)
-        {
-            int oldCount = runtimeSettings.ImportWorkers.Value;
-            int newCount = (int)request.ImportWorkers;
-            runtimeSettings.ImportWorkers = new(runtimeSettings.ImportWorkers.Key, newCount);
-            await PersistWorkerCount(runtimeSettings.ImportWorkers.Key, newCount, userId);
-            changes.Add((runtimeSettings.ImportWorkers.Key, oldCount, newCount));
-        }
-
-        if (request.ExtrasWorkers is not null)
-        {
-            int oldCount = runtimeSettings.ExtrasWorkers.Value;
-            int newCount = (int)request.ExtrasWorkers;
-            runtimeSettings.ExtrasWorkers = new(runtimeSettings.ExtrasWorkers.Key, newCount);
-            await PersistWorkerCount(runtimeSettings.ExtrasWorkers.Key, newCount, userId);
-            changes.Add((runtimeSettings.ExtrasWorkers.Key, oldCount, newCount));
-        }
-
-        if (request.EncoderWorkers is not null)
-        {
-            int oldCount = runtimeSettings.EncoderWorkers.Value;
-            int newCount = (int)request.EncoderWorkers;
-            runtimeSettings.EncoderWorkers = new(runtimeSettings.EncoderWorkers.Key, newCount);
-            await PersistWorkerCount(runtimeSettings.EncoderWorkers.Key, newCount, userId);
-            changes.Add((runtimeSettings.EncoderWorkers.Key, oldCount, newCount));
-        }
-
-        if (request.CronWorkers is not null)
-        {
-            int oldCount = runtimeSettings.CronWorkers.Value;
-            int newCount = (int)request.CronWorkers;
-            runtimeSettings.CronWorkers = new(runtimeSettings.CronWorkers.Key, newCount);
-            await PersistWorkerCount(runtimeSettings.CronWorkers.Key, newCount, userId);
-            changes.Add((runtimeSettings.CronWorkers.Key, oldCount, newCount));
-        }
-
-        if (request.ImageWorkers is not null)
-        {
-            int oldCount = runtimeSettings.ImageWorkers.Value;
-            int newCount = (int)request.ImageWorkers;
-            runtimeSettings.ImageWorkers = new(runtimeSettings.ImageWorkers.Key, newCount);
-            await PersistWorkerCount(runtimeSettings.ImageWorkers.Key, newCount, userId);
-            changes.Add((runtimeSettings.ImageWorkers.Key, oldCount, newCount));
-        }
-
-        if (request.FileWorkers is not null)
-        {
-            int oldCount = runtimeSettings.FileWorkers.Value;
-            int newCount = (int)request.FileWorkers;
-            runtimeSettings.FileWorkers = new(runtimeSettings.FileWorkers.Key, newCount);
-            await PersistWorkerCount(runtimeSettings.FileWorkers.Key, newCount, userId);
-            changes.Add((runtimeSettings.FileWorkers.Key, oldCount, newCount));
-        }
-
-        if (request.MusicWorkers is not null)
-        {
-            int oldCount = runtimeSettings.MusicWorkers.Value;
-            int newCount = (int)request.MusicWorkers;
-            runtimeSettings.MusicWorkers = new(runtimeSettings.MusicWorkers.Key, newCount);
-            await PersistWorkerCount(runtimeSettings.MusicWorkers.Key, newCount, userId);
-            changes.Add((runtimeSettings.MusicWorkers.Key, oldCount, newCount));
-        }
-
-        if (request.Swagger is not null)
-        {
-            bool oldSwagger = runtimeSettings.Swagger;
-            runtimeSettings.Swagger = (bool)request.Swagger;
-            await appContext
-                .Configuration.Upsert(
-                    new()
-                    {
-                        Key = "swagger",
-                        Value = runtimeSettings.Swagger.ToString(),
-                        ModifiedBy = User.UserId(),
-                    }
-                )
-                .On(configuration => configuration.Key)
-                .WhenMatched(
-                    (o, configuration) =>
-                        new()
-                        {
-                            Value = runtimeSettings.Swagger.ToString(),
-                            ModifiedBy = configuration.ModifiedBy,
-                        }
-                )
-                .RunAsync();
-            changes.Add(("swagger", oldSwagger, (bool)request.Swagger));
-        }
-
-        if (request.UseSynthesizedDns is not null)
-        {
-            bool oldUseSynthesizedDns = runtimeSettings.UseSynthesizedDns;
-            runtimeSettings.UseSynthesizedDns = (bool)request.UseSynthesizedDns;
-            await appContext
-                .Configuration.Upsert(
-                    new()
-                    {
-                        Key = "UseSynthesizedDns",
-                        Value = runtimeSettings.UseSynthesizedDns.ToString(),
-                        ModifiedBy = userId,
-                    }
-                )
-                .On(configuration => configuration.Key)
-                .WhenMatched(
-                    (o, configuration) =>
-                        new()
-                        {
-                            Value = runtimeSettings.UseSynthesizedDns.ToString(),
-                            ModifiedBy = configuration.ModifiedBy,
-                        }
-                )
-                .RunAsync();
-            changes.Add(
-                ("UseSynthesizedDns", oldUseSynthesizedDns, (bool)request.UseSynthesizedDns)
+            await PersistAsync(
+                "externalPort",
+                request.ExternalServerPort.ToString(),
+                oldPort,
+                request.ExternalServerPort,
+                userId,
+                changes
             );
         }
 
-        if (request.AllowAdultContent is not null)
+        return restartRequired;
+    }
+
+    private async Task UpdateWorkerCountsAsync(
+        ConfigDtoData request,
+        Guid userId,
+        List<(string key, object? oldVal, object? newVal)> changes
+    )
+    {
+        runtimeSettings.LibraryWorkers = await UpdateWorkerCountAsync(
+            runtimeSettings.LibraryWorkers,
+            request.LibraryWorkers,
+            userId,
+            changes
+        );
+        runtimeSettings.ImportWorkers = await UpdateWorkerCountAsync(
+            runtimeSettings.ImportWorkers,
+            request.ImportWorkers,
+            userId,
+            changes
+        );
+        runtimeSettings.ExtrasWorkers = await UpdateWorkerCountAsync(
+            runtimeSettings.ExtrasWorkers,
+            request.ExtrasWorkers,
+            userId,
+            changes
+        );
+        runtimeSettings.EncoderWorkers = await UpdateWorkerCountAsync(
+            runtimeSettings.EncoderWorkers,
+            request.EncoderWorkers,
+            userId,
+            changes
+        );
+        runtimeSettings.CronWorkers = await UpdateWorkerCountAsync(
+            runtimeSettings.CronWorkers,
+            request.CronWorkers,
+            userId,
+            changes
+        );
+        runtimeSettings.ImageWorkers = await UpdateWorkerCountAsync(
+            runtimeSettings.ImageWorkers,
+            request.ImageWorkers,
+            userId,
+            changes
+        );
+        runtimeSettings.FileWorkers = await UpdateWorkerCountAsync(
+            runtimeSettings.FileWorkers,
+            request.FileWorkers,
+            userId,
+            changes
+        );
+        runtimeSettings.MusicWorkers = await UpdateWorkerCountAsync(
+            runtimeSettings.MusicWorkers,
+            request.MusicWorkers,
+            userId,
+            changes
+        );
+    }
+
+    private async Task UpdateServerOptionsAsync(
+        ConfigDtoData request,
+        Guid userId,
+        List<(string key, object? oldVal, object? newVal)> changes
+    )
+    {
+        if (request.Swagger is bool swagger)
         {
-            bool oldAllowAdult = runtimeSettings.ShowAdultContent;
-            runtimeSettings.AllowAdultContent = request.AllowAdultContent;
-            await appContext
-                .Configuration.Upsert(
-                    new()
-                    {
-                        Key = "allowAdultContent",
-                        Value = runtimeSettings.ShowAdultContent.ToString(),
-                        ModifiedBy = userId,
-                    }
-                )
-                .On(configuration => configuration.Key)
-                .WhenMatched(
-                    (o, configuration) =>
-                        new() { Value = configuration.Value, ModifiedBy = configuration.ModifiedBy }
-                )
-                .RunAsync();
-            changes.Add(("allowAdultContent", oldAllowAdult, (bool)request.AllowAdultContent));
+            bool oldSwagger = runtimeSettings.Swagger;
+            runtimeSettings.Swagger = swagger;
+            await PersistAsync("swagger", swagger.ToString(), oldSwagger, swagger, userId, changes);
         }
 
-        if (request.DerivedAudioCapGb is not null)
+        if (request.UseSynthesizedDns is bool useSynthesizedDns)
         {
-            int newCapGb = (int)request.DerivedAudioCapGb;
+            bool oldUseSynthesizedDns = runtimeSettings.UseSynthesizedDns;
+            runtimeSettings.UseSynthesizedDns = useSynthesizedDns;
+            await PersistAsync(
+                "UseSynthesizedDns",
+                useSynthesizedDns.ToString(),
+                oldUseSynthesizedDns,
+                useSynthesizedDns,
+                userId,
+                changes
+            );
+        }
+
+        if (request.AllowAdultContent is bool allowAdultContent)
+        {
+            bool oldAllowAdult = runtimeSettings.ShowAdultContent;
+            runtimeSettings.AllowAdultContent = allowAdultContent;
+            await PersistAsync(
+                "allowAdultContent",
+                runtimeSettings.ShowAdultContent.ToString(),
+                oldAllowAdult,
+                allowAdultContent,
+                userId,
+                changes
+            );
+        }
+
+        if (request.DerivedAudioCapGb is int newCapGb)
+        {
             long oldCapBytes = runtimeSettings.DerivedAudioCapBytes;
             long newCapBytes = newCapGb * 1024L * 1024 * 1024;
             runtimeSettings.DerivedAudioCapBytes = newCapBytes;
-            await appContext
-                .Configuration.Upsert(
-                    new()
-                    {
-                        Key = "derivedAudioCapGb",
-                        Value = newCapGb.ToString(),
-                        ModifiedBy = userId,
-                    }
-                )
-                .On(configuration => configuration.Key)
-                .WhenMatched(
-                    (o, configuration) =>
-                        new() { Value = configuration.Value, ModifiedBy = configuration.ModifiedBy }
-                )
-                .RunAsync();
-            changes.Add(("derivedAudioCapGb", oldCapBytes, newCapBytes));
+            await PersistAsync(
+                "derivedAudioCapGb",
+                newCapGb.ToString(),
+                oldCapBytes,
+                newCapBytes,
+                userId,
+                changes
+            );
         }
 
         if (request.ServerName is not null)
         {
-            string oldName = DeviceName();
-            await appContext
-                .Configuration.Upsert(
-                    new()
-                    {
-                        Key = "serverName",
-                        Value = request.ServerName,
-                        ModifiedBy = User.UserId(),
-                    }
-                )
-                .On(configuration => configuration.Key)
-                .WhenMatched(
-                    (o, configuration) =>
-                        new() { Value = request.ServerName, ModifiedBy = configuration.ModifiedBy }
-                )
-                .RunAsync();
-            changes.Add(("serverName", oldName, request.ServerName));
+            string oldName = await serverConfiguration.GetServerNameAsync();
+            await PersistAsync(
+                "serverName",
+                request.ServerName,
+                oldName,
+                request.ServerName,
+                userId,
+                changes
+            );
         }
+    }
 
+    private async Task LogChangesAsync(
+        Guid userId,
+        List<(string key, object? oldVal, object? newVal)> changes
+    )
+    {
         foreach ((string key, object? oldVal, object? newVal) in changes)
         {
             try
@@ -395,17 +354,6 @@ public class ConfigurationController(
                 logger.LogWarning("Failed to log config change: {Message}", ex.Message);
             }
         }
-
-        return Ok(
-            new StatusResponseDto<string>
-            {
-                Message = restartRequired
-                    ? "Configuration updated successfully. Restart required for the port change to take effect."
-                    : "Configuration updated successfully",
-                Status = "success",
-                Args = [],
-            }
-        );
     }
 
     [HttpGet]

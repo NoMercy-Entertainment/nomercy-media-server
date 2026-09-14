@@ -34,6 +34,21 @@ public class VideoFileRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task ExistsAtHostPathAsync_MatchesOnlyTheStoredFolderAndFilename()
+    {
+        (
+            await _repository.ExistsAtHostPathAsync(
+                "/media/movies/Spirited Away (2001)/Spirited.Away.2001.1080p.mkv"
+            )
+        )
+            .Should()
+            .BeTrue();
+        (await _repository.ExistsAtHostPathAsync("/media/movies/Spirited.Away.2001.1080p.mkv"))
+            .Should()
+            .BeFalse();
+    }
+
+    [Fact]
     public async Task GetByIdAsync_ReturnsVideoFile_WhenIdExists()
     {
         VideoFile? result = await _repository.GetByIdAsync(SeedConstants.MovieVideoFile1Id);

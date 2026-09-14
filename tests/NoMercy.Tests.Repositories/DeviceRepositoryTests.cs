@@ -226,7 +226,7 @@ public class DeviceRepositoryTests : IDisposable
         hubMock.Setup(h => h.Clients).Returns(clientsMock.Object);
 
         DeviceBusRegistry registry = new(
-            factoryMock.Object,
+            new DeviceStateRepository(factoryMock.Object),
             hubMock.Object,
             Mock.Of<ICastMdnsRegistry>()
         );
@@ -268,7 +268,7 @@ public class DeviceRepositoryTests : IDisposable
         hubMock.Setup(h => h.Clients).Returns(clientsMock.Object);
 
         DeviceBusRegistry registry = new(
-            factoryMock.Object,
+            new DeviceStateRepository(factoryMock.Object),
             hubMock.Object,
             Mock.Of<ICastMdnsRegistry>()
         );
@@ -289,5 +289,33 @@ public class DeviceRepositoryTests : IDisposable
             Times.Once,
             "BroadcastChange must send DeviceListChanged to the owner"
         );
+    }
+
+    // =========================================================================
+    // GetOwnedDeviceAsync — by client device id, owner and type
+    // =========================================================================
+
+    [Fact]
+    public async Task GetOwnedDeviceAsync_MatchesOnlyTheOwnersDeviceOfThatType()
+    {
+        Device tv = MakeDevice(OwnerId, "tv");
+        tv.Type = "tv";
+        Device othersTv = MakeDevice(OtherOwnerId, "other-tv");
+        othersTv.Type = "tv";
+        othersTv.DeviceId = tv.DeviceId + "-other";
+        Device phone = MakeDevice(OwnerId, "phone");
+
+        await using (MediaContext seedCtx = OpenContext())
+        {
+            seedCtx.Devices.AddRange(tv, othersTv, phone);
+            await seedCtx.SaveChangesAsync();
+        }
+
+        await using MediaContext ctx = OpenContext();
+        DeviceRepository repo = BuildRepo(ctx);
+
+        (await repo.GetOwnedDeviceAsync(tv.DeviceId, OwnerId, "tv"))!.Id.Should().Be(tv.Id);
+        (await repo.GetOwnedDeviceAsync(othersTv.DeviceId, OwnerId, "tv")).Should().BeNull();
+        (await repo.GetOwnedDeviceAsync(phone.DeviceId, OwnerId, "tv")).Should().BeNull();
     }
 }

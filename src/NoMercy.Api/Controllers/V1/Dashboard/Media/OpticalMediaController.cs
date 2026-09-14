@@ -13,18 +13,12 @@ using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using NoMercy.Authorization;
-using NoMercy.Database;
-using NoMercy.Database.Models.Libraries;
 using NoMercy.DiscFormat.Abstractions.Disc;
 using NoMercy.DiscFormat.Composition;
 using NoMercy.DiscFormat.Disc.Bdmv;
 using NoMercy.Encoder.Analysis;
 using NoMercy.Encoder.LiveTranscode;
-using NoMercy.Events;
-using NoMercy.Events.FileWatcher;
-using NoMercy.MediaProcessing.Libraries;
 using NoMercy.NmSystem.Dto;
 using NoMercy.NmSystem.Information;
 using NoMercy.NmSystem.SystemCalls;
@@ -34,7 +28,6 @@ using NoMercy.OpticalMedia.Metadata;
 using NoMercy.OpticalMedia.Rip;
 using NoMercy.OpticalMedia.Sources;
 using NoMercy.Storage;
-using NoMercyQueue;
 
 namespace NoMercy.Api.Controllers.V1.Dashboard.Media;
 
@@ -51,14 +44,15 @@ public class OpticalMediaController(
     DiscSourceFactory discSourceFactory,
     DiscIdentificationService identificationService,
     IDriveMonitor driveMonitor,
-    IStorageFactory storageFactory,
     IStorageDriver localStorageDriver,
-    IDbContextFactory<MediaContext> contextFactory,
     ILiveDiscSession liveDiscSession,
     ILiveStreamingService liveStreamingService,
     ISessionManager sessionManager,
     IDiscSessionRegistry discSessionRegistry,
-    DiscIdentityDispatcher discIdentityDispatcher
+    DiscIdentityDispatcher discIdentityDispatcher,
+    IDiscConfirmationService discConfirmationService,
+    IDiscRipPreparationService discRipPreparationService,
+    NoMercyQueue.Core.Interfaces.IJobDispatcher jobDispatcher
 ) : BaseController
 {
     // ── Legacy endpoints (re-pointed to Module A) ──────────────────────────
@@ -592,23 +586,8 @@ public class OpticalMediaController(
                 "RipOutputPath must be inside the server rip staging directory"
             );
 
-        if (!System.IO.File.Exists(request.RipOutputPath))
+        if (!localStorageDriver.FileExists(request.RipOutputPath))
             return NotFoundResponse($"Rip output not found at {request.RipOutputPath}");
-
-        await using MediaContext db = await contextFactory.CreateDbContextAsync(ct);
-        LibraryRepository libraryRepository = new(db, localStorageDriver);
-
-        Folder? targetFolder = await libraryRepository.GetLibraryFolder(request.FolderId);
-        if (targetFolder is null)
-            return BadRequestResponse(
-                $"FolderId {request.FolderId} does not match any library folder"
-            );
-
-        Library? targetLibrary = await libraryRepository.GetLibraryByIdWithFolders(
-            request.LibraryId
-        );
-        if (targetLibrary is null)
-            return BadRequestResponse($"LibraryId {request.LibraryId} does not match any library");
 
         CustomMetadata meta =
             request.MediaType == "tv"
@@ -627,59 +606,24 @@ public class OpticalMediaController(
                     PosterUrl: request.PosterUrl
                 );
 
-        RipRequest syntheticRequest = new(
-            DrivePath: drivePath,
-            SelectedTitleIndices: [0],
-            MetadataId: request.TmdbId,
-            Custom: meta,
-            LibraryId: request.LibraryId,
-            FolderId: request.FolderId,
-            EncodingProfileId: null,
-            AudioTracks: [],
-            Subtitles: [],
-            Mode: RipMode.RipAndEncode
+        DiscConfirmationResult result = await discConfirmationService.ConfirmAsync(
+            request.FolderId,
+            request.LibraryId,
+            request.RipOutputPath,
+            meta,
+            ct
         );
 
-        string folderRelative = BuildOutputPath(syntheticRequest, targetLibrary.Type, 0, 0);
-
-        IStorage folderStorage = storageFactory.For(
-            targetFolder.Id,
-            targetFolder.DriverId,
-            string.Empty
-        );
-
-        string parentRelative = ParentRelative(folderRelative);
-        if (!string.IsNullOrEmpty(parentRelative))
-            await folderStorage.CreateDirectoryAsync(parentRelative, ct);
-
-        await using (FileStream src = new(request.RipOutputPath, FileMode.Open, FileAccess.Read))
-        await using (
-            Stream dst = await folderStorage.OpenWriteAsync(folderRelative, overwrite: true, ct)
-        )
+        switch (result.Outcome)
         {
-            await src.CopyToAsync(dst, ct);
-        }
-
-        try
-        {
-            System.IO.File.Delete(request.RipOutputPath);
-        }
-        catch
-        {
-            // best effort
-        }
-
-        string watcherFolderHost = ResolveHostPath(folderStorage, parentRelative);
-        if (EventBusProvider.IsConfigured)
-        {
-            await EventBusProvider.Current.PublishAsync(
-                new FileCreatedEvent
-                {
-                    FolderPath = watcherFolderHost,
-                    LibraryId = targetLibrary.Id,
-                    LibraryType = targetLibrary.Type,
-                }
-            );
+            case DiscConfirmationOutcome.FolderNotFound:
+                return BadRequestResponse(
+                    $"FolderId {request.FolderId} does not match any library folder"
+                );
+            case DiscConfirmationOutcome.LibraryNotFound:
+                return BadRequestResponse(
+                    $"LibraryId {request.LibraryId} does not match any library"
+                );
         }
 
         return Ok(
@@ -687,8 +631,8 @@ public class OpticalMediaController(
             {
                 tmdb_id = request.TmdbId,
                 media_type = request.MediaType,
-                destination = folderRelative,
-                library_refresh_triggered = EventBusProvider.IsConfigured,
+                destination = result.Destination,
+                library_refresh_triggered = true,
             }
         );
     }
@@ -720,84 +664,31 @@ public class OpticalMediaController(
         if (request.SelectedTitleIndices.Length == 0 && drive.DiscType != OpticalDiscType.Cd)
             return BadRequestResponse("At least one title must be selected");
 
-        // Fail fast if the disc is DRM-locked the host can't read.
-        IDiscSource? source = discSourceFactory.CreateFor(drive.DiscType);
-        if (source is not null)
-        {
-            DiscInfo precheck = await source.ProbeAsync(drive, ct);
-            if (precheck.Protection is not null)
-                return BadRequestResponse(
-                    $"Cannot rip — disc is {precheck.Protection.Kind}-protected: {precheck.Protection.Message}"
-                );
-        }
-
-        // Validate destination for RipAndEncode up front.
-        Folder? targetFolder = null;
-        Library? targetLibrary = null;
-        if (request.Mode == RipMode.RipAndEncode)
-        {
-            await using MediaContext lookupContext = await contextFactory.CreateDbContextAsync(ct);
-            LibraryRepository libraryRepository = new(lookupContext, localStorageDriver);
-            targetFolder = await libraryRepository.GetLibraryFolder(request.FolderId);
-            if (targetFolder is null)
-                return BadRequestResponse(
-                    $"FolderId {request.FolderId} does not match any library folder. "
-                        + "RipAndEncode needs a real folder so the rip output lands somewhere "
-                        + "the encoder can read it via the folder's driver."
-                );
-            targetLibrary = await libraryRepository.GetLibraryByIdWithFolders(request.LibraryId);
-            if (targetLibrary is null)
-                return BadRequestResponse(
-                    $"LibraryId {request.LibraryId} does not match any library."
-                );
-        }
-
-        string sanitisedDrive = drive
-            .Path.TrimEnd(Path.DirectorySeparatorChar)
-            .Replace(":", "")
-            .Replace(Path.DirectorySeparatorChar, '_');
-        string outputDir = Path.Combine(AppFiles.TranscodePath, "ripper", sanitisedDrive);
-        Directory.CreateDirectory(outputDir);
-
-        // For audio CDs, default to all probed tracks when the caller sent
-        // no SelectedTitleIndices (CD tracks don't map to video-title semantics).
-        RipRequest enriched = request with
-        {
-            DiscType = drive.DiscType,
-        };
-
-        if (drive.DiscType == OpticalDiscType.Cd && enriched.SelectedTitleIndices.Length == 0)
-        {
-            IDiscSource? cdSource = discSourceFactory.CreateFor(OpticalDiscType.Cd);
-            if (cdSource is not null)
-            {
-                DiscInfo cdInfo = await cdSource.ProbeAsync(drive, ct);
-                if (cdInfo.AudioTracks is { Length: > 0 })
-                {
-                    enriched = enriched with
-                    {
-                        SelectedTitleIndices = cdInfo.AudioTracks.Select(t => t.Index).ToArray(),
-                    };
-                }
-            }
-        }
-
-        DiscRipJob job = new(
-            enriched,
-            outputDir,
-            targetFolder?.Id,
-            targetLibrary?.Id,
-            targetLibrary?.Type
+        DiscRipPreparationResult prepared = await discRipPreparationService.PrepareAsync(
+            drive,
+            request,
+            ct
         );
 
-        QueueRunner.Current!.Dispatcher.Dispatch(job);
+        if (!prepared.Success)
+            return BadRequestResponse(prepared.ErrorMessage!);
+
+        DiscRipJob job = new(
+            prepared.EnrichedRequest!,
+            prepared.OutputDir!,
+            prepared.TargetFolderId,
+            prepared.TargetLibraryId,
+            prepared.TargetLibraryType
+        );
+
+        jobDispatcher.Dispatch(job, job.QueueName, job.Priority);
 
         return Accepted(
             new
             {
                 job_id = job.JobId,
                 drive_path = drive.Path,
-                output_dir = outputDir,
+                output_dir = prepared.OutputDir,
                 titles_queued = request.SelectedTitleIndices.Length,
                 mode = request.Mode.ToString(),
             }
@@ -973,55 +864,4 @@ public class OpticalMediaController(
                         StringComparison.OrdinalIgnoreCase
                     )
             );
-
-    private static string BuildOutputPath(
-        RipRequest request,
-        string libraryType,
-        int titleIndex,
-        int batchIndex
-    ) => RipOutputPathHelper.Build(request, libraryType, titleIndex, batchIndex);
-
-    private static string ParentRelative(string folderRelative)
-    {
-        int slash = folderRelative.LastIndexOf('/');
-        return slash <= 0 ? "" : folderRelative[..slash];
-    }
-
-    private static string ResolveHostPath(IStorage storage, string subPath)
-    {
-        try
-        {
-            return storage.GetFullPath(subPath);
-        }
-        catch
-        {
-            return subPath;
-        }
-    }
 }
-
-/// <summary>
-/// Request body for <c>POST /optical/{drivePath}/confirm</c>.
-/// </summary>
-/// <summary>
-/// Request body for <c>POST /optical/{drivePath}/play/{playlistId}</c>. Reuses
-/// the rip endpoint's <see cref="AudioTrackSelection"/> shape so the dashboard
-/// client sends the same <c>{ StreamIndex, Include }</c> pairs it already
-/// builds for <see cref="RipRequest.AudioTracks"/> — no parallel DTO. Omitted
-/// or empty keeps the pre-existing single-default-track behaviour.
-/// </summary>
-public record PlayMediaRequest(AudioTrackSelection[]? AudioTracks = null);
-
-public record DiscConfirmRequest(
-    string TmdbId,
-    /// <summary>"movie" or "tv"</summary>
-    string MediaType,
-    string RipOutputPath,
-    Ulid LibraryId,
-    Ulid FolderId,
-    string? Title = null,
-    int? Year = null,
-    string? PosterUrl = null,
-    int? SeasonNumber = null,
-    int? EpisodeNumber = null
-);

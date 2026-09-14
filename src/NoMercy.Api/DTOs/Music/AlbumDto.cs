@@ -11,9 +11,11 @@
 
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using NoMercy.Api.DTOs.Media.Components;
 using NoMercy.Database;
 using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.Music;
+using NoMercy.NmSystem.Extensions;
 
 namespace NoMercy.Api.DTOs.Music;
 
@@ -43,7 +45,6 @@ public class AlbumDto
     [JsonProperty("description")]
     public string? Description { get; set; }
 
-    // [JsonProperty("tracks")] public IEnumerable<Track> Tracks { get; set; }
     [JsonProperty("year")]
     public int? Year { get; set; }
 
@@ -63,9 +64,7 @@ public class AlbumDto
 
         Id = albumArtist.Album.Id;
         Name = albumArtist.Album.Name;
-        Cover = albumArtist.Album.Cover is not null
-            ? new Uri($"/images/music{albumArtist.Album.Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.UrlWhenSet(albumArtist.Album.Cover);
         Backdrop = img?.FilePath is not null
             ? new Uri($"/images/music{img.FilePath}", UriKind.Relative).ToString()
             : null;
@@ -76,7 +75,6 @@ public class AlbumDto
             : albumArtist.Album.Description;
         Type = "album";
         ColorPalette = albumArtist.Album._colorPalette.ToRaw();
-        // Tracks = albumArtist.Albums.AlbumTrack.Select(a => a.Track);
         Year = albumArtist.Album.Year;
 
         AlbumArtist = albumArtist.ArtistId;
@@ -93,9 +91,7 @@ public class AlbumDto
             ?.Album.Images.FirstOrDefault(image => image.Type == "background");
         Id = albumTrack.Album.Id;
         Name = albumTrack.Album.Name;
-        Cover = albumTrack.Album.Cover is not null
-            ? new Uri($"/images/music{albumTrack.Album.Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.UrlWhenSet(albumTrack.Album.Cover);
         Backdrop = img?.FilePath is not null
             ? new Uri($"/images/music{img.FilePath}", UriKind.Relative).ToString()
             : null;
@@ -122,19 +118,16 @@ public class AlbumDto
 
         Id = album.Id;
         Name = album.Name;
-        Cover = album.Cover is not null
-            ? new Uri($"/images/music{album.Cover}", UriKind.Relative).ToString()
-            : null;
+        Cover = MusicCover.UrlWhenSet(album.Cover);
         Backdrop = img?.FilePath is not null
             ? new Uri($"/images/music{img.FilePath}", UriKind.Relative).ToString()
             : null;
         Disambiguation = album.Disambiguation;
         Link = new($"/music/albums/{Id}", UriKind.Relative);
-        Description = !string.IsNullOrEmpty(description) ? description : album.Description;
+        Description = description.OrWhenEmpty(album.Description);
         Type = "album";
         ColorPalette = album._colorPalette.ToRaw();
         Disambiguation = album.Disambiguation;
-        // Tracks = album.AlbumTrack.Select(a => a.Track);
         Year = album.Year;
 
         List<IGrouping<Guid, AlbumArtist>> artists =

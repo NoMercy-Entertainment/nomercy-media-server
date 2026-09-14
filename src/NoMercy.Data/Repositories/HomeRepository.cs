@@ -429,7 +429,10 @@ public class HomeRepository(MediaContext context, IDbContextFactory<MediaContext
         CancellationToken ct = default
     )
     {
-        List<Movie> movies = await context
+        // Callers run this next to other queries, so it owns its context.
+        await using MediaContext db = await contextFactory.CreateDbContextAsync(ct);
+
+        List<Movie> movies = await db
             .Movies.AsNoTracking()
             .Where(movie => movie.MovieUser.Any(mu => mu.UserId == userId))
             .Where(movie => movie.VideoFiles.Any())
@@ -453,7 +456,7 @@ public class HomeRepository(MediaContext context, IDbContextFactory<MediaContext
                 .ThenInclude(c => c.Certification)
             .ToListAsync(ct);
 
-        List<Tv> tvShows = await context
+        List<Tv> tvShows = await db
             .Tvs.AsNoTracking()
             .Where(tv => tv.TvUser.Any(tu => tu.UserId == userId))
             .Where(tv => tv.Episodes.Any(e => e.VideoFiles.Any()))
@@ -476,7 +479,7 @@ public class HomeRepository(MediaContext context, IDbContextFactory<MediaContext
                 .ThenInclude(c => c.Certification)
             .ToListAsync(ct);
 
-        List<Collection> collections = await context
+        List<Collection> collections = await db
             .Collections.AsNoTracking()
             .Where(collection => collection.CollectionUser.Any(cu => cu.UserId == userId))
             .Where(collection => collection.CollectionMovies.Any(cm => cm.Movie.VideoFiles.Any()))
@@ -505,7 +508,7 @@ public class HomeRepository(MediaContext context, IDbContextFactory<MediaContext
                         .ThenInclude(c => c.Certification)
             .ToListAsync(ct);
 
-        List<Special> specials = await context
+        List<Special> specials = await db
             .Specials.AsNoTracking()
             .AsSplitQuery()
             .Where(special => special.SpecialUser.Any(su => su.UserId == userId))
