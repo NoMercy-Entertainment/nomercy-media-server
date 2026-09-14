@@ -108,16 +108,7 @@ public sealed class DeviceBusEndpoint(
                 }
                 else if (type == "status" && device is not null)
                 {
-                    bool foreground =
-                        doc.RootElement.TryGetProperty("foreground", out JsonElement fe)
-                        && fe.ValueKind == JsonValueKind.True;
-                    bool screenOn =
-                        doc.RootElement.TryGetProperty("screen_on", out JsonElement se)
-                        && se.ValueKind == JsonValueKind.True;
-
-                    registry.UpdateStatus(device.Id, foreground, screenOn);
-                    if (device.OwnerUserId is not null)
-                        await registry.BroadcastChange(device.OwnerUserId.Value);
+                    await HandleStatus(doc.RootElement, device);
                 }
             }
         }
@@ -128,56 +119,71 @@ public sealed class DeviceBusEndpoint(
         finally
         {
             if (device is not null)
+                await ReleaseDevice(device);
+        }
+    }
+
+    private async Task HandleStatus(JsonElement root, Device device)
+    {
+        bool foreground =
+            root.TryGetProperty("foreground", out JsonElement fe)
+            && fe.ValueKind == JsonValueKind.True;
+        bool screenOn =
+            root.TryGetProperty("screen_on", out JsonElement se)
+            && se.ValueKind == JsonValueKind.True;
+
+        registry.UpdateStatus(device.Id, foreground, screenOn);
+        if (device.OwnerUserId is not null)
+            await registry.BroadcastChange(device.OwnerUserId.Value);
+    }
+
+    /// <summary>Clears the active music claim when MusicHub agrees the device is gone, then unregisters it.</summary>
+    private async Task ReleaseDevice(Device device)
+    {
+        if (
+            device.OwnerUserId is not null
+            && musicPlayerStateManager.TryGetValue(
+                device.OwnerUserId.Value,
+                out MusicPlayerState? playerState
+            )
+            && string.Equals(
+                playerState.DeviceId,
+                device.DeviceId,
+                StringComparison.OrdinalIgnoreCase
+            )
+            && !IsStillOnMusicHub(connectedClients, device.DeviceId)
+        )
+        {
+            // device-bus is a secondary wake/status channel (30s ping cadence,
+            // TV-only, independent OkHttp socket) with its own reconnect churn —
+            // it going down is NOT proof the device stopped playing. MusicHub's own
+            // OnDisconnectedAsync already owns "is the active device really gone"
+            // for playback purposes, complete with the KMP double-connect survivor
+            // guard (see its otherConnectionForDeviceSurvives check). Clearing the
+            // active claim here too, unconditionally, meant a bare device-bus blip
+            // (a transient LAN hiccup, an OS-throttled background socket, mDNS churn
+            // from another device on the network coming online) paused a device that
+            // was still fully connected — and still playing — on MusicHub the whole
+            // time. Only fall through when MusicHub agrees the device is gone too.
+            logger.LogInformation(
+                "Active music device {DeviceName} disconnected from device-bus — clearing active",
+                device.Name
+            );
+            playerState.PlayState = false;
+            playerState.DeviceId = null;
+            User? owner = userCache.GetUser(device.OwnerUserId.Value);
+            try
             {
-                if (
-                    device.OwnerUserId is not null
-                    && musicPlayerStateManager.TryGetValue(
-                        device.OwnerUserId.Value,
-                        out MusicPlayerState? playerState
-                    )
-                    && string.Equals(
-                        playerState.DeviceId,
-                        device.DeviceId,
-                        StringComparison.OrdinalIgnoreCase
-                    )
-                    && !IsStillOnMusicHub(connectedClients, device.DeviceId)
-                )
-                {
-                    // device-bus is a secondary wake/status channel (30s ping cadence,
-                    // TV-only, independent OkHttp socket) with its own reconnect churn —
-                    // it going down is NOT proof the device stopped playing. MusicHub's own
-                    // OnDisconnectedAsync already owns "is the active device really gone"
-                    // for playback purposes, complete with the KMP double-connect survivor
-                    // guard (see its otherConnectionForDeviceSurvives check). Clearing the
-                    // active claim here too, unconditionally, meant a bare device-bus blip
-                    // (a transient LAN hiccup, an OS-throttled background socket, mDNS churn
-                    // from another device on the network coming online) paused a device that
-                    // was still fully connected — and still playing — on MusicHub the whole
-                    // time. Only fall through when MusicHub agrees the device is gone too.
-                    logger.LogInformation(
-                        "Active music device {DeviceName} disconnected from device-bus — clearing active",
-                        device.Name
-                    );
-                    playerState.PlayState = false;
-                    playerState.DeviceId = null;
-                    User? owner = userCache.GetUser(device.OwnerUserId.Value);
-                    try
-                    {
-                        if (owner is not null)
-                            await musicPlaybackService.UpdatePlaybackState(owner, playerState);
-                    }
-                    catch (Exception ex)
-                    {
-                        // Best-effort during teardown: the device still has to be unregistered.
-                        logger.LogDebug(
-                            ex,
-                            "device-bus teardown could not broadcast the cleared state"
-                        );
-                    }
-                }
-                await registry.Unregister(device.Id);
+                if (owner is not null)
+                    await musicPlaybackService.UpdatePlaybackState(owner, playerState);
+            }
+            catch (Exception ex)
+            {
+                // Best-effort during teardown: the device still has to be unregistered.
+                logger.LogDebug(ex, "device-bus teardown could not broadcast the cleared state");
             }
         }
+        await registry.Unregister(device.Id);
     }
 
     /// <summary>
