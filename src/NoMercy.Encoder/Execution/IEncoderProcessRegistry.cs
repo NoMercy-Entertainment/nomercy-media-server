@@ -62,4 +62,13 @@ public interface IEncoderProcessRegistry
     /// the argv-less <see cref="Register"/> overload are not counted.
     /// </summary>
     int CountConcurrentNvencSessions();
+
+    /// <summary>
+    /// Kills every ffmpeg process registered for <paramref name="jobId"/> (whole
+    /// process tree) and unregisters each one, so a caller that removes a queue
+    /// row can stop the live encode behind it without reaching into
+    /// <see cref="System.Diagnostics.Process"/> itself. A process that has
+    /// already exited, or whose pid is stale, is treated as already stopped.
+    /// </summary>
+    void KillProcesses(int jobId);
 }
