@@ -14,7 +14,7 @@ using NoMercy.Events;
 using NoMercy.Events.Users;
 using NoMercy.Networking.Messaging;
 
-namespace NoMercy.Api.EventHandlers;
+namespace NoMercy.Networking.Messaging.EventHandlers;
 
 public class UserPermissionsEventHandler : EventSubscriber
 {

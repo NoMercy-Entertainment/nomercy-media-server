@@ -17,7 +17,7 @@ using NoMercy.Events.Encoding;
 using NoMercy.Events.FileWatcher;
 using NoMercy.Events.Library;
 
-namespace NoMercy.Api.EventHandlers;
+namespace NoMercy.Data.EventHandlers;
 
 /// <summary>
 /// Writes the server's own work into the activity log.

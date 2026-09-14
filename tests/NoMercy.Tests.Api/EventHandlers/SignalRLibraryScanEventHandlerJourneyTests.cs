@@ -16,6 +16,7 @@ using NoMercy.Events;
 using NoMercy.Events.Library;
 using NoMercy.Events.Media;
 using NoMercy.Networking.Messaging;
+using NoMercy.Networking.Messaging.EventHandlers;
 using Xunit;
 
 namespace NoMercy.Tests.Api.EventHandlers;
@@ -200,8 +201,12 @@ public class SignalRLibraryScanEventHandlerJourneyTests
         calls
             .Select(c => c.Method)
             .Should()
-            .ContainInOrder(["LibraryScanStarted", "LibraryScanCompleted", "MediaAdded", "MediaRemoved"]
-            );
+            .ContainInOrder([
+                "LibraryScanStarted",
+                "LibraryScanCompleted",
+                "MediaAdded",
+                "MediaRemoved",
+            ]);
     }
 
     [Fact]

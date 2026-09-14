@@ -12,6 +12,7 @@
 using NoMercy.Events;
 using NoMercy.Events.Onboarding;
 using NoMercy.Networking.Messaging;
+using NoMercy.Networking.Messaging.EventHandlers;
 
 namespace NoMercy.Api.EventHandlers;
 

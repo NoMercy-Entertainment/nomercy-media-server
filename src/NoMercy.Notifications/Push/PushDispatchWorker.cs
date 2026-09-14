@@ -12,7 +12,7 @@
 using Microsoft.Extensions.Hosting;
 using NoMercy.Notifications.Push;
 
-namespace NoMercy.Api.EventHandlers;
+namespace NoMercy.Notifications.Push;
 
 public class PushDispatchWorker(IPushDispatchQueue queue) : BackgroundService
 {

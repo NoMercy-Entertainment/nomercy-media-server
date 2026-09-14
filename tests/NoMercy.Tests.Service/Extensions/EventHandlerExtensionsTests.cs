@@ -13,6 +13,7 @@ using Microsoft.Extensions.DependencyInjection;
 using NoMercy.Api.EventHandlers;
 using NoMercy.MediaProcessing.EventHandlers;
 using NoMercy.MediaProcessing.Inbox;
+using NoMercy.Networking.Messaging.EventHandlers;
 using NoMercy.Service.Extensions;
 
 namespace NoMercy.Tests.Service.Extensions;

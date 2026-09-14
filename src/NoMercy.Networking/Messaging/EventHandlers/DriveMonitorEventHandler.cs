@@ -13,7 +13,7 @@ using NoMercy.Events;
 using NoMercy.Events.DriveMonitor;
 using NoMercy.Networking.Messaging;
 
-namespace NoMercy.Api.EventHandlers;
+namespace NoMercy.Networking.Messaging.EventHandlers;
 
 public class DriveMonitorEventHandler : EventSubscriber
 {

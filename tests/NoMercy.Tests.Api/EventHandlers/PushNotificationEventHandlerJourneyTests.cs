@@ -19,6 +19,7 @@ using NoMercy.Events.Library;
 using NoMercy.Events.Media;
 using NoMercy.Networking.Http;
 using NoMercy.Networking.Messaging;
+using NoMercy.Networking.Messaging.EventHandlers;
 using NoMercy.NmSystem.Auth;
 using NoMercy.Notifications.Push;
 using NoMercy.Notifications.Transports;

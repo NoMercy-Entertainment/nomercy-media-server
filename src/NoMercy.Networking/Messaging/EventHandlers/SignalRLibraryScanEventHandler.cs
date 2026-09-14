@@ -15,7 +15,7 @@ using NoMercy.Events.Library;
 using NoMercy.Events.Media;
 using NoMercy.Networking.Messaging;
 
-namespace NoMercy.Api.EventHandlers;
+namespace NoMercy.Networking.Messaging.EventHandlers;
 
 public class SignalRLibraryScanEventHandler : EventSubscriber
 {

@@ -12,6 +12,7 @@
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Api.EventHandlers;
 using NoMercy.Api.Services.Music;
+using NoMercy.Data.EventHandlers;
 using NoMercy.Database;
 using NoMercy.Events;
 using NoMercy.MediaProcessing.EventHandlers;
@@ -19,6 +20,7 @@ using NoMercy.MediaProcessing.Inbox;
 using NoMercy.MediaProcessing.Jobs;
 using NoMercy.MediaProcessing.Shows;
 using NoMercy.Networking.Messaging;
+using NoMercy.Networking.Messaging.EventHandlers;
 using NoMercy.NmSystem.Auth;
 using NoMercy.Notifications.Push;
 using NoMercy.Notifications.Transports;

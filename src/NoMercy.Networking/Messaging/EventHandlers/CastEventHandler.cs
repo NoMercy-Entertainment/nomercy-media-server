@@ -10,28 +10,26 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.Events;
-using NoMercy.Events.Library;
-using NoMercy.Networking.Dto;
+using NoMercy.Events.Cast;
 using NoMercy.Networking.Messaging;
 
-namespace NoMercy.Api.EventHandlers;
+namespace NoMercy.Networking.Messaging.EventHandlers;
 
-public class SignalRLibraryRefreshEventHandler : EventSubscriber
+public class CastEventHandler : EventSubscriber
 {
     private readonly IClientMessenger _clientMessenger;
 
-    public SignalRLibraryRefreshEventHandler(IEventBus eventBus, IClientMessenger clientMessenger)
+    public CastEventHandler(IEventBus eventBus, IClientMessenger clientMessenger)
     {
         _clientMessenger = clientMessenger;
-        Track(eventBus.Subscribe<LibraryRefreshedEvent>(OnLibraryRefresh));
+        Track(eventBus.Subscribe<CastDeviceStatusChangedEvent>(OnCastDeviceStatusChanged));
     }
 
-    internal async Task OnLibraryRefresh(LibraryRefreshedEvent @event, CancellationToken ct)
+    internal async Task OnCastDeviceStatusChanged(
+        CastDeviceStatusChangedEvent @event,
+        CancellationToken ct
+    )
     {
-        await _clientMessenger.SendToAll(
-            "RefreshLibrary",
-            "videoHub",
-            new RefreshLibraryDto { QueryKey = @event.QueryKey }
-        );
+        await _clientMessenger.SendToAll(@event.EventType, "castHub", @event.StatusData);
     }
 }

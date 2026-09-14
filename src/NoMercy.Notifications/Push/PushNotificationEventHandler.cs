@@ -17,7 +17,7 @@ using NoMercy.Events.Plugins;
 using NoMercy.NmSystem.Auth;
 using NoMercy.Notifications.Push;
 
-namespace NoMercy.Api.EventHandlers;
+namespace NoMercy.Notifications.Push;
 
 /// <summary>
 /// Only events that describe something a person asked to be told about belong

@@ -14,7 +14,7 @@ using NoMercy.Events;
 using NoMercy.Events.Playback;
 using NoMercy.Networking.Messaging;
 
-namespace NoMercy.Api.EventHandlers;
+namespace NoMercy.Networking.Messaging.EventHandlers;
 
 public class SignalRPlaybackEventHandler : EventSubscriber
 {

@@ -14,7 +14,7 @@ using NoMercy.Events.Media;
 using NoMercy.Networking.Dto;
 using NoMercy.Networking.Messaging;
 
-namespace NoMercy.Api.EventHandlers;
+namespace NoMercy.Networking.Messaging.EventHandlers;
 
 public class SignalRNotificationEventHandler : EventSubscriber
 {

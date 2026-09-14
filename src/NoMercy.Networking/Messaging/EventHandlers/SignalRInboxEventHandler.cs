@@ -14,7 +14,7 @@ using NoMercy.Events;
 using NoMercy.Events.Inbox;
 using NoMercy.Networking.Messaging;
 
-namespace NoMercy.Api.EventHandlers;
+namespace NoMercy.Networking.Messaging.EventHandlers;
 
 public class SignalRInboxEventHandler : EventSubscriber
 {
