@@ -415,22 +415,10 @@ public partial class VideoHub
         // mirrors MusicHub.MusicDevicesAsync. Without this, the picker can't
         // hand video off to a sleeping TV. Live MusicHub clients are merged
         // with registered TV devices (online or not).
-        List<Device> connectedDevices = Devices();
-        await using (MediaContext ctx = await _contextFactory.CreateDbContextAsync())
-        {
-            List<Device> registeredTvs = await ctx
-                .Devices.Where(d => d.OwnerUserId == user.Id && d.Type == "tv")
-                .ToListAsync();
-
-            HashSet<string> seenDeviceIds = new(
-                connectedDevices.Select(d => d.DeviceId),
-                StringComparer.OrdinalIgnoreCase
-            );
-
-            foreach (Device tv in registeredTvs)
-                if (seenDeviceIds.Add(tv.DeviceId))
-                    connectedDevices.Add(tv);
-        }
+        (List<Device> connectedDevices, _) = await _busRegistry.WithOwnedTvsAsync(
+            user.Id,
+            Devices()
+        );
 
         await _clientMessenger.SendTo(
             "ConnectedDevicesState",

@@ -103,6 +103,23 @@ public class DeviceStateRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task GetOwnedTvsAsync_ReturnsTheOwnersTvsOnly()
+    {
+        Device tv = Seed("tv-1", "tv-1");
+        Device phone = Seed("phone-1", "phone-1");
+        await using (MediaContext context = new(_options))
+        {
+            (await context.Devices.SingleAsync(d => d.Id == phone.Id)).Type = "mobile";
+            await context.SaveChangesAsync();
+        }
+
+        List<Device> tvs = await _repository.GetOwnedTvsAsync(OwnerId);
+
+        tvs.Should().ContainSingle().Which.Id.Should().Be(tv.Id);
+        (await _repository.GetOwnedTvsAsync(Guid.NewGuid())).Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task SetVolumeAsync_StoresTheVolumeOnTheDevice()
     {
         Device device = Seed("tv-1", "tv-1");

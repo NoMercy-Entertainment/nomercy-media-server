@@ -101,6 +101,41 @@ public sealed class DeviceBusRegistryTests : IDisposable
     }
 
     [Fact]
+    public async Task WithOwnedTvsAsync_AddsOwnedTvsThatAreNotConnectedOnce()
+    {
+        Device connectedTv = await SeedOwnedDeviceAsync(DateTime.UtcNow);
+        Guid ownerId = connectedTv.OwnerUserId!.Value;
+        Device sleepingTv = new()
+        {
+            DeviceId = "sleeping-tv",
+            Fingerprint = "fp-sleeping-tv",
+            Name = "Bedroom TV",
+            Type = "tv",
+            OwnerUserId = ownerId,
+        };
+        await using (MediaContext ctx = await _contextFactory.CreateDbContextAsync())
+        {
+            ctx.Devices.Add(sleepingTv);
+            await ctx.SaveChangesAsync();
+        }
+        Device phone = new() { DeviceId = "phone", Type = "mobile" };
+        Device connectedCopy = new()
+        {
+            DeviceId = connectedTv.DeviceId.ToUpperInvariant(),
+            Type = "tv",
+        };
+
+        (List<Device> devices, List<Device> ownedTvs) = await MakeRegistry()
+            .WithOwnedTvsAsync(ownerId, [phone, connectedCopy]);
+
+        devices
+            .Select(d => d.DeviceId)
+            .Should()
+            .Equal("phone", connectedCopy.DeviceId, "sleeping-tv");
+        ownedTvs.Should().HaveCount(2);
+    }
+
+    [Fact]
     public async Task Unregister_LeavesWsConnectedAtUntouched()
     {
         DateTime seenViaMusicHub = DateTime.UtcNow;

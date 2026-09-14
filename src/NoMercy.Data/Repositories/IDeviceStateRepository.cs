@@ -24,6 +24,9 @@ public interface IDeviceStateRepository
     /// <summary>The owner's devices a picker offers: rows that still carry a fingerprint.</summary>
     Task<List<Device>> GetListedDevicesAsync(Guid ownerUserId);
 
+    /// <summary>Every TV row the user owns, connected or not.</summary>
+    Task<List<Device>> GetOwnedTvsAsync(Guid ownerUserId);
+
     /// <summary>
     /// The device row for <paramref name="fingerprint"/>, owned by <paramref name="userId"/>
     /// from now on, with the owner it had before (null for a new device).

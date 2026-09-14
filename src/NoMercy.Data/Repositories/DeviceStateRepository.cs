@@ -38,6 +38,15 @@ public class DeviceStateRepository(IDbContextFactory<MediaContext> contextFactor
             .ToListAsync();
     }
 
+    public async Task<List<Device>> GetOwnedTvsAsync(Guid ownerUserId)
+    {
+        await using MediaContext context = await contextFactory.CreateDbContextAsync();
+        return await context
+            .Devices.AsNoTracking()
+            .Where(device => device.OwnerUserId == ownerUserId && device.Type == "tv")
+            .ToListAsync();
+    }
+
     public async Task<(Device Device, Guid? PreviousOwner)> ClaimAsync(
         string fingerprint,
         Guid userId,

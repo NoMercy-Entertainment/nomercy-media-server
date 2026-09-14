@@ -78,21 +78,10 @@ public partial class MusicHub
         if (user is null)
             return connected;
 
-        await using MediaContext ctx = await ContextFactory.CreateDbContextAsync();
-        List<Device> registeredTvs = await ctx
-            .Devices.Where(d => d.OwnerUserId == user.Id && d.Type == "tv")
-            .ToListAsync();
-
-        HashSet<string> seenDeviceIds = new(
-            connected.Select(d => d.DeviceId),
-            StringComparer.OrdinalIgnoreCase
+        (List<Device> devices, List<Device> registeredTvs) = await _busRegistry.WithOwnedTvsAsync(
+            user.Id,
+            connected
         );
-
-        foreach (Device tv in registeredTvs)
-        {
-            if (seenDeviceIds.Add(tv.DeviceId))
-                connected.Add(tv);
-        }
 
         // Pre-warm sharpcaster's TLS pool for every owned TV so the first
         // ChangeDeviceCommand to that TV doesn't pay cold-handshake latency
@@ -122,7 +111,7 @@ public partial class MusicHub
             });
         }
 
-        return connected;
+        return devices;
     }
 
     private void UpdateDeviceInfo(MusicPlayerState state)

@@ -95,6 +95,24 @@ public sealed class DeviceBusRegistry(
             ws.Abort();
     }
 
+    /// <summary>
+    /// The hub's connected devices plus every TV the user owns that is not among them, so
+    /// a picker can hand playback to a sleeping TV. Also returns the owned TVs themselves.
+    /// </summary>
+    public async Task<(List<Device> Devices, List<Device> OwnedTvs)> WithOwnedTvsAsync(
+        Guid ownerUserId,
+        List<Device> connected
+    )
+    {
+        List<Device> ownedTvs = await deviceStateRepository.GetOwnedTvsAsync(ownerUserId);
+        HashSet<string> seenDeviceIds = new(
+            connected.Select(device => device.DeviceId),
+            StringComparer.OrdinalIgnoreCase
+        );
+
+        return ([.. connected, .. ownedTvs.Where(tv => seenDeviceIds.Add(tv.DeviceId))], ownedTvs);
+    }
+
     public async Task BroadcastChange(Guid ownerUserId)
     {
         List<Device> rows = await deviceStateRepository.GetListedDevicesAsync(ownerUserId);
