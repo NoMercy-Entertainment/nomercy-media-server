@@ -563,7 +563,6 @@ public record InfoResponseItemDto
         Year = tmdbTv.FirstAirDate.ParseYear();
         VoteAverage = tmdbTv.VoteAverage;
 
-        // ColorPalette = tv.ColorPalette;
         Backdrop =
             tmdbTv.Images.Backdrops.FirstOrDefault(media => media.Iso6391 is "")?.FilePath
             ?? tmdbTv.BackdropPath;
@@ -661,8 +660,6 @@ public record InfoResponseItemDto
         Type = MediaTypes.CollectionMediaType;
         MediaType = MediaTypes.CollectionMediaType;
         Link = new($"/collection/{Id}", UriKind.Relative);
-        // Watched = tv.Watched;
-        // Favorite = tv.Favorite;
         TitleSort = collection.Title.TitleSort(
             collection
                 .CollectionMovies.MinBy(collectionMovie => collectionMovie.Movie.ReleaseDate)

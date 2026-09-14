@@ -225,7 +225,7 @@ public class MoviesController(
         }
         catch (Exception e)
         {
-            logger.LogError(e.Message);
+            logger.LogError(e, "{Message}", e.Message);
             return InternalServerErrorResponse(e.Message);
         }
 
@@ -255,7 +255,7 @@ public class MoviesController(
         }
         catch (Exception e)
         {
-            logger.LogError(e.Message);
+            logger.LogError(e, "{Message}", e.Message);
             return InternalServerErrorResponse(e.Message);
         }
 
@@ -305,7 +305,7 @@ public class MoviesController(
         }
         catch (Exception e)
         {
-            logger.LogError(e.Message);
+            logger.LogError(e, "{Message}", e.Message);
             return InternalServerErrorResponse(e.Message);
         }
 

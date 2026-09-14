@@ -43,7 +43,6 @@ public class AlbumDto
     [JsonProperty("description")]
     public string? Description { get; set; }
 
-    // [JsonProperty("tracks")] public IEnumerable<Track> Tracks { get; set; }
     [JsonProperty("year")]
     public int? Year { get; set; }
 
@@ -76,7 +75,6 @@ public class AlbumDto
             : albumArtist.Album.Description;
         Type = "album";
         ColorPalette = albumArtist.Album._colorPalette.ToRaw();
-        // Tracks = albumArtist.Albums.AlbumTrack.Select(a => a.Track);
         Year = albumArtist.Album.Year;
 
         AlbumArtist = albumArtist.ArtistId;
@@ -134,7 +132,6 @@ public class AlbumDto
         Type = "album";
         ColorPalette = album._colorPalette.ToRaw();
         Disambiguation = album.Disambiguation;
-        // Tracks = album.AlbumTrack.Select(a => a.Track);
         Year = album.Year;
 
         List<IGrouping<Guid, AlbumArtist>> artists =

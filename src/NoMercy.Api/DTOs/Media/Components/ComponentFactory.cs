@@ -179,8 +179,6 @@ public static class Component
     /// <summary>
     /// Creates an NMMusicCard component with data.
     /// </summary>
-    // public static LeafComponentBuilder<MusicCardData> MusicCard(MusicCardData data) => new LeafComponentBuilder<MusicCardData>(ComponentTypes.MusicCard).WithData(data);
-
     public static ComponentEnvelope MusicCard(MusicCardData data) =>
         new LeafComponentBuilder<MusicCardData>(ComponentTypes.MusicCard).WithData(data);
 }

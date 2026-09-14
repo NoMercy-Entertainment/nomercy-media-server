@@ -92,7 +92,6 @@ public record CollectionMovieDto
 
         Backdrop = movie.Backdrop;
         Favorite = movie.MovieUser.Count != 0;
-        // Watched = movie.Watched;
         Logo = movie.Images.FirstOrDefault(media => media.Type == "logo")?.FilePath;
 
         MediaType = MediaTypes.MovieMediaType;
@@ -125,7 +124,6 @@ public record CollectionMovieDto
         Backdrop = tmdbMovie.BackdropPath;
         Favorite = false;
         Watched = false;
-        // Logo = movie.Logo;
         Genres = [];
         Link = new($"/movie/{Id}", UriKind.Relative);
         MediaType = MediaTypes.MovieMediaType;

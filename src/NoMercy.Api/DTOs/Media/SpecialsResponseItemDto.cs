@@ -149,9 +149,5 @@ public record SpecialsResponseItemDto
             .ToArray();
 
         TotalDuration = movies.Sum() + episodes.Sum();
-
-        // VideoId = special.SpecialMovies?
-        //     .FirstOrDefault()
-        //     ?.Movie.Video;
     }
 }

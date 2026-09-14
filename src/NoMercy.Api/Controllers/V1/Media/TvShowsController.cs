@@ -77,8 +77,6 @@ public class TvShowsController(
         if (tvShowAppends is null)
             return NotFoundResponse("Tv show not found");
 
-        // await _tvShowRepository.AddTvShowAsync(id);
-
         return Ok(new InfoResponseDto { Data = new(tvShowAppends, country) });
     }
 
@@ -230,7 +228,7 @@ public class TvShowsController(
         }
         catch (Exception e)
         {
-            logger.LogError(e.Message);
+            logger.LogError(e, "{Message}", e.Message);
             return InternalServerErrorResponse(e.Message);
         }
 
@@ -367,7 +365,7 @@ public class TvShowsController(
         }
         catch (Exception e)
         {
-            logger.LogError(e.Message);
+            logger.LogError(e, "{Message}", e.Message);
             return InternalServerErrorResponse(e.Message);
         }
 

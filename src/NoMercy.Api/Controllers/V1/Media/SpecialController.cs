@@ -291,7 +291,7 @@ public class SpecialController(
             }
             catch (Exception e)
             {
-                logger.LogError(e.Message);
+                logger.LogError(e, "{Message}", e.Message);
                 return InternalServerErrorResponse(e.Message);
             }
         }
@@ -305,36 +305,6 @@ public class SpecialController(
             }
         );
     }
-
-    // [HttpPost]
-    // [Route("{id:ulid}/refresh")]
-    // [Authorize(Policy = "Moderator")]
-    // public async Task<IActionResult> Refresh(Ulid id, CancellationToken ct = default)
-    // {
-    //     Special? special = await specialRepository.GetSpecialByIdAsync(id, ct);
-    //
-    //     if (special is null)
-    //         return UnprocessableEntityResponse("Special not found");
-    //
-    //     try
-    //     {
-    //         jobDispatcher.DispatchJob<MovieImportJob>(id, special.Library.Id);
-    //     }
-    //     catch (Exception e)
-    //     {
-    //         logger.LogError(e.Message);
-    //         return InternalServerErrorResponse(e.Message);
-    //     }
-    //
-    //     return Ok(
-    //         new StatusResponseDto<string>
-    //         {
-    //             Status = "ok",
-    //             Message = "Refreshing {0} in the background",
-    //             Args = [special.Title ?? "Unknown"],
-    //         }
-    //     );
-    // }
 
     [HttpPost]
     [Route("seed")]

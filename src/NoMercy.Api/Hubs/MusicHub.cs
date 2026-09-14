@@ -89,38 +89,6 @@ public partial class MusicHub : ConnectionHub
         return CommandLocks.GetOrAdd(userId, _ => new(1, 1));
     }
 
-    // Rebuilds the per-device volume map carried on every broadcast so a
-    // controller can render a slider per device and each device can read its
-    // own level. Scoped to the caller's user so one user never sees another's
-    // devices. Never-set volumes coalesce to the same safe default the scoped
-    // volume_percentage field uses.
-
-    // Back-compat: position in whole seconds. Quantizes to 1000ms, which is a
-    // dominant source of cross-device drift. New clients call ReportPositionCommand.
-
-    // The active device reports its real audio position in MILLISECONDS. This is
-    // the playback truth; the server relays it so every passive client computes
-    // the same position via reference-time (position + (serverNow - timestamp)).
-
-    // Clock-sync handshake. A client samples this a few times, keeps the
-    // lowest-RTT result, and derives offset = serverTime + rtt/2 - clientRecv so
-    // it can convert its local clock to the shared server clock. Every device
-    // using the same offset-corrected clock computes the same playback position
-    // regardless of its own wall-clock skew.
-
-    // Back-compat entry point: targets the active device (null deviceId).
-    // Old clients invoke this with a single argument; SignalR is strict about
-    // argument counts, so the signature must stay intact.
-
-    // Sets the volume of a NAMED device (null deviceId = the active device).
-    // Volume is owned by the device: setting a passive device's volume updates
-    // that device's stored level and the broadcast device_volumes map without
-    // disturbing the active device's playback level.
-
-    // Resolves which device a volume command targets, scoped to the requesting
-    // user so one user can never address another's device. Null/empty deviceId
-    // falls back to the user's active device (back-compat with ChangeVolumeCommand).
-
     public override async Task OnConnectedAsync()
     {
         await base.OnConnectedAsync();
