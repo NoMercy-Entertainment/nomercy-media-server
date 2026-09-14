@@ -435,6 +435,10 @@ public static partial class ServiceConfiguration
         services.AddScoped<ContentSegmentRepository>();
         services.AddScoped<LibraryRepository>();
         services.AddScoped<MediaProcessingLibraryRepository>();
+        services.AddScoped<
+            NoMercy.MediaProcessing.Libraries.ILibraryRepository,
+            MediaProcessingLibraryRepository
+        >();
         services.AddScoped<DeviceRepository>();
         services.AddScoped<FolderRepository>();
         services.AddScoped<DriverRepository>();
