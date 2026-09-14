@@ -36,7 +36,7 @@ namespace NoMercy.Api.Controllers.V1.Dashboard.Admin;
 [Authorize]
 [Route("api/v{version:apiVersion}/dashboard/configuration", Order = 10)]
 public class ConfigurationController(
-    AppDbContext appContext,
+    IServerConfigurationRepository serverConfiguration,
     QueueRunner queueRunner,
     IActivityLogger activityLogger,
     ILanguageRepository languageRepository,
@@ -46,7 +46,7 @@ public class ConfigurationController(
 {
     [HttpGet]
     [Authorize(Policy = "Moderator")]
-    public IActionResult Index()
+    public async Task<IActionResult> Index()
     {
         return Ok(
             new ConfigDto
@@ -63,7 +63,7 @@ public class ConfigurationController(
                     ImageWorkers = runtimeSettings.ImageWorkers.Value,
                     FileWorkers = runtimeSettings.FileWorkers.Value,
                     MusicWorkers = runtimeSettings.MusicWorkers.Value,
-                    ServerName = DeviceName(),
+                    ServerName = await serverConfiguration.GetServerNameAsync(),
                     Swagger = runtimeSettings.Swagger,
                     AllowAdultContent = runtimeSettings.ShowAdultContent,
                     UseSynthesizedDns = runtimeSettings.UseSynthesizedDns,
@@ -73,15 +73,6 @@ public class ConfigurationController(
                 },
             }
         );
-    }
-
-    [NonAction]
-    private string DeviceName()
-    {
-        Configuration? device = appContext.Configuration.FirstOrDefault(device =>
-            device.Key == "serverName"
-        );
-        return device?.Value ?? Environment.MachineName;
     }
 
     /// <summary>
@@ -97,21 +88,7 @@ public class ConfigurationController(
     private async Task PersistWorkerCount(string queueName, int count, Guid userId)
     {
         string key = $"{queueName}Runners";
-        await appContext
-            .Configuration.Upsert(
-                new()
-                {
-                    Key = key,
-                    Value = count.ToString(),
-                    ModifiedBy = userId,
-                }
-            )
-            .On(configuration => configuration.Key)
-            .WhenMatched(
-                (_, configuration) =>
-                    new() { Value = configuration.Value, ModifiedBy = configuration.ModifiedBy }
-            )
-            .RunAsync();
+        await serverConfiguration.SetValueAsync(key, count.ToString(), userId);
 
         await queueRunner.SetWorkerCount(queueName, count, userId);
     }
@@ -143,21 +120,11 @@ public class ConfigurationController(
             int oldPort = runtimeSettings.InternalServerPort;
             restartRequired = restartRequired || oldPort != request.InternalServerPort;
             runtimeSettings.InternalServerPort = request.InternalServerPort;
-            await appContext
-                .Configuration.Upsert(
-                    new()
-                    {
-                        Key = "internalPort",
-                        Value = request.InternalServerPort.ToString(),
-                        ModifiedBy = userId,
-                    }
-                )
-                .On(configuration => configuration.Key)
-                .WhenMatched(
-                    (o, configuration) =>
-                        new() { Value = configuration.Value, ModifiedBy = configuration.ModifiedBy }
-                )
-                .RunAsync();
+            await serverConfiguration.SetValueAsync(
+                "internalPort",
+                request.InternalServerPort.ToString(),
+                userId
+            );
             changes.Add(("internalPort", oldPort, request.InternalServerPort));
         }
 
@@ -166,21 +133,11 @@ public class ConfigurationController(
             int oldPort = runtimeSettings.ExternalServerPort;
             restartRequired = restartRequired || oldPort != request.ExternalServerPort;
             runtimeSettings.ExternalServerPort = request.ExternalServerPort;
-            await appContext
-                .Configuration.Upsert(
-                    new()
-                    {
-                        Key = "externalPort",
-                        Value = request.ExternalServerPort.ToString(),
-                        ModifiedBy = userId,
-                    }
-                )
-                .On(configuration => configuration.Key)
-                .WhenMatched(
-                    (o, configuration) =>
-                        new() { Value = configuration.Value, ModifiedBy = configuration.ModifiedBy }
-                )
-                .RunAsync();
+            await serverConfiguration.SetValueAsync(
+                "externalPort",
+                request.ExternalServerPort.ToString(),
+                userId
+            );
             changes.Add(("externalPort", oldPort, request.ExternalServerPort));
         }
 
@@ -260,25 +217,11 @@ public class ConfigurationController(
         {
             bool oldSwagger = runtimeSettings.Swagger;
             runtimeSettings.Swagger = (bool)request.Swagger;
-            await appContext
-                .Configuration.Upsert(
-                    new()
-                    {
-                        Key = "swagger",
-                        Value = runtimeSettings.Swagger.ToString(),
-                        ModifiedBy = User.UserId(),
-                    }
-                )
-                .On(configuration => configuration.Key)
-                .WhenMatched(
-                    (o, configuration) =>
-                        new()
-                        {
-                            Value = runtimeSettings.Swagger.ToString(),
-                            ModifiedBy = configuration.ModifiedBy,
-                        }
-                )
-                .RunAsync();
+            await serverConfiguration.SetValueAsync(
+                "swagger",
+                runtimeSettings.Swagger.ToString(),
+                User.UserId()
+            );
             changes.Add(("swagger", oldSwagger, (bool)request.Swagger));
         }
 
@@ -286,25 +229,11 @@ public class ConfigurationController(
         {
             bool oldUseSynthesizedDns = runtimeSettings.UseSynthesizedDns;
             runtimeSettings.UseSynthesizedDns = (bool)request.UseSynthesizedDns;
-            await appContext
-                .Configuration.Upsert(
-                    new()
-                    {
-                        Key = "UseSynthesizedDns",
-                        Value = runtimeSettings.UseSynthesizedDns.ToString(),
-                        ModifiedBy = userId,
-                    }
-                )
-                .On(configuration => configuration.Key)
-                .WhenMatched(
-                    (o, configuration) =>
-                        new()
-                        {
-                            Value = runtimeSettings.UseSynthesizedDns.ToString(),
-                            ModifiedBy = configuration.ModifiedBy,
-                        }
-                )
-                .RunAsync();
+            await serverConfiguration.SetValueAsync(
+                "UseSynthesizedDns",
+                runtimeSettings.UseSynthesizedDns.ToString(),
+                userId
+            );
             changes.Add(
                 ("UseSynthesizedDns", oldUseSynthesizedDns, (bool)request.UseSynthesizedDns)
             );
@@ -314,21 +243,11 @@ public class ConfigurationController(
         {
             bool oldAllowAdult = runtimeSettings.ShowAdultContent;
             runtimeSettings.AllowAdultContent = request.AllowAdultContent;
-            await appContext
-                .Configuration.Upsert(
-                    new()
-                    {
-                        Key = "allowAdultContent",
-                        Value = runtimeSettings.ShowAdultContent.ToString(),
-                        ModifiedBy = userId,
-                    }
-                )
-                .On(configuration => configuration.Key)
-                .WhenMatched(
-                    (o, configuration) =>
-                        new() { Value = configuration.Value, ModifiedBy = configuration.ModifiedBy }
-                )
-                .RunAsync();
+            await serverConfiguration.SetValueAsync(
+                "allowAdultContent",
+                runtimeSettings.ShowAdultContent.ToString(),
+                userId
+            );
             changes.Add(("allowAdultContent", oldAllowAdult, (bool)request.AllowAdultContent));
         }
 
@@ -338,42 +257,22 @@ public class ConfigurationController(
             long oldCapBytes = runtimeSettings.DerivedAudioCapBytes;
             long newCapBytes = newCapGb * 1024L * 1024 * 1024;
             runtimeSettings.DerivedAudioCapBytes = newCapBytes;
-            await appContext
-                .Configuration.Upsert(
-                    new()
-                    {
-                        Key = "derivedAudioCapGb",
-                        Value = newCapGb.ToString(),
-                        ModifiedBy = userId,
-                    }
-                )
-                .On(configuration => configuration.Key)
-                .WhenMatched(
-                    (o, configuration) =>
-                        new() { Value = configuration.Value, ModifiedBy = configuration.ModifiedBy }
-                )
-                .RunAsync();
+            await serverConfiguration.SetValueAsync(
+                "derivedAudioCapGb",
+                newCapGb.ToString(),
+                userId
+            );
             changes.Add(("derivedAudioCapGb", oldCapBytes, newCapBytes));
         }
 
         if (request.ServerName is not null)
         {
-            string oldName = DeviceName();
-            await appContext
-                .Configuration.Upsert(
-                    new()
-                    {
-                        Key = "serverName",
-                        Value = request.ServerName,
-                        ModifiedBy = User.UserId(),
-                    }
-                )
-                .On(configuration => configuration.Key)
-                .WhenMatched(
-                    (o, configuration) =>
-                        new() { Value = request.ServerName, ModifiedBy = configuration.ModifiedBy }
-                )
-                .RunAsync();
+            string oldName = await serverConfiguration.GetServerNameAsync();
+            await serverConfiguration.SetValueAsync(
+                "serverName",
+                request.ServerName,
+                User.UserId()
+            );
             changes.Add(("serverName", oldName, request.ServerName));
         }
 

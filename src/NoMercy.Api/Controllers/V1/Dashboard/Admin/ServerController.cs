@@ -66,7 +66,7 @@ public partial class ServerController(
     ResourceMonitor resourceMonitor,
     IUpdateChecker updateChecker,
     IHostApplicationLifetime appLifetime,
-    AppDbContext appContext,
+    IServerConfigurationRepository serverConfiguration,
     FileRepository fileRepository,
     IFileListService fileListService,
     IJobDispatcher jobDispatcher,
@@ -208,21 +208,7 @@ public partial class ServerController(
     {
         Logger.SetLogLevel(level);
 
-        await appContext
-            .Configuration.Upsert(
-                new()
-                {
-                    Key = "logLevel",
-                    Value = level.ToString(),
-                    ModifiedBy = User.UserId(),
-                }
-            )
-            .On(configuration => configuration.Key)
-            .WhenMatched(
-                (_, configuration) =>
-                    new() { Value = configuration.Value, ModifiedBy = configuration.ModifiedBy }
-            )
-            .RunAsync();
+        await serverConfiguration.SetValueAsync("logLevel", level.ToString(), User.UserId());
 
         return Content("Log level set to " + level);
     }
@@ -495,15 +481,6 @@ public partial class ServerController(
             .ThenBy(f => f.Path, StringComparer.OrdinalIgnoreCase)
             .ToList();
 
-    [NonAction]
-    private string DeviceName()
-    {
-        Configuration? device = appContext.Configuration.FirstOrDefault(device =>
-            device.Key == "serverName"
-        );
-        return device?.Value ?? Environment.MachineName;
-    }
-
     [HttpGet]
     [Route("info")]
     [ResponseCache(NoStore = true)]
@@ -518,7 +495,7 @@ public partial class ServerController(
                 Status = "ok",
                 Data = new()
                 {
-                    Server = DeviceName(),
+                    Server = await serverConfiguration.GetServerNameAsync(),
                     Cpu = Info.CpuNames,
                     Gpu = Info.GpuNames,
                     Os = $"{Info.Platform.ToTitleCase()} {Info.OsVersion}",
@@ -539,29 +516,13 @@ public partial class ServerController(
         if (!AuthPolicy.IsModerator(User))
             return UnauthorizedResponse("You do not have permission to update server information");
 
-        Configuration? configuration = await appContext
-            .Configuration.AsTracking()
-            .FirstOrDefaultAsync(configuration => configuration.Key == "serverName");
-
         try
         {
-            if (configuration == null)
-            {
-                configuration = new()
-                {
-                    Key = "serverName",
-                    Value = request.Name,
-                    ModifiedBy = userId,
-                };
-                await appContext.Configuration.AddAsync(configuration);
-            }
-            else
-            {
-                configuration.Value = request.Name;
-                configuration.ModifiedBy = userId;
-            }
-
-            await appContext.SaveChangesAsync();
+            await serverConfiguration.SetValueAsync(
+                ServerConfigurationKeys.ServerName,
+                request.Name,
+                userId
+            );
 
             HttpClient client = httpClientFactory.CreateClient(HttpClientNames.General);
             client.BaseAddress = new(ExternalServicesConfig.Current.ApiServerBaseUrl);
@@ -688,21 +649,7 @@ public partial class ServerController(
         // but does not write the Configuration table, so the count reverts to
         // the default on next boot without this write (mirrors
         // ConfigurationController.PersistWorkerCount).
-        await appContext
-            .Configuration.Upsert(
-                new()
-                {
-                    Key = $"{worker}Runners",
-                    Value = count.ToString(),
-                    ModifiedBy = userId,
-                }
-            )
-            .On(configuration => configuration.Key)
-            .WhenMatched(
-                (_, configuration) =>
-                    new() { Value = configuration.Value, ModifiedBy = configuration.ModifiedBy }
-            )
-            .RunAsync();
+        await serverConfiguration.SetValueAsync($"{worker}Runners", count.ToString(), userId);
 
         return Ok($"{worker} worker count set to {count}");
     }
@@ -787,21 +734,7 @@ public partial class ServerController(
 
         networkDiscovery.InternalIp = request.Ip;
 
-        await appContext
-            .Configuration.Upsert(
-                new()
-                {
-                    Key = "internalIp",
-                    Value = request.Ip,
-                    ModifiedBy = User.UserId(),
-                }
-            )
-            .On(configuration => configuration.Key)
-            .WhenMatched(
-                (_, configuration) =>
-                    new() { Value = configuration.Value, ModifiedBy = configuration.ModifiedBy }
-            )
-            .RunAsync();
+        await serverConfiguration.SetValueAsync("internalIp", request.Ip, User.UserId());
 
         return Ok(
             new StatusResponseDto<string>

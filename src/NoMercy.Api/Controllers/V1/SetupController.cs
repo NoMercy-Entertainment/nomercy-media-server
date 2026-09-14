@@ -38,7 +38,7 @@ namespace NoMercy.Api.Controllers.V1;
 [Route("api/v{version:apiVersion}/setup")]
 public class SetupController(
     MediaContext context,
-    AppDbContext appContext,
+    IServerConfigurationRepository serverConfiguration,
     SetupService setupService,
     HomeService homeService,
     ILibraryRepository libraryRepository,
@@ -337,15 +337,10 @@ public class SetupController(
     [Route("server-info")]
     [ResponseCache(NoStore = true, Duration = 0)]
     [Authorize(Policy = "MediaAccess")]
-    public IActionResult ServerInfo()
+    public async Task<IActionResult> ServerInfo()
     {
-        bool setupComplete =
-            context.Libraries.Any() && context.Folders.Any() && context.EncodingPresets.Any();
-
-        Configuration? device = appContext.Configuration.FirstOrDefault(device =>
-            device.Key == "serverName"
-        );
-        string serverName = device?.Value ?? Environment.MachineName;
+        bool setupComplete = await libraryRepository.HasCompletedSetupAsync();
+        string serverName = await serverConfiguration.GetServerNameAsync();
 
         return Ok(
             new StatusResponseDto<ServerInfoDto>

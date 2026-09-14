@@ -549,6 +549,7 @@ public static partial class ServiceConfiguration
         services.AddScoped<ISpecialRepository, SpecialRepository>();
         services.AddScoped<ITvShowRepository, TvShowRepository>();
         services.AddScoped<IUserDataRepository, UserDataRepository>();
+        services.AddScoped<IServerConfigurationRepository, ServerConfigurationRepository>();
         services.AddScoped<IUserPlaylistRepository, UserPlaylistRepository>();
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<IImageRepository, ImageRepository>();

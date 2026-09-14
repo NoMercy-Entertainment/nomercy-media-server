@@ -19,6 +19,7 @@ using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using NoMercy.Api.DTOs.Management;
 using NoMercy.Api.Middleware;
+using NoMercy.Data.Repositories;
 using NoMercy.Database;
 using NoMercy.Encoder.LiveTranscode;
 using NoMercy.Monitoring;
@@ -46,7 +47,7 @@ public class ManagementController(
     ILogger<ManagementController> logger,
     ResourceMonitor resourceMonitor,
     IHostApplicationLifetime appLifetime,
-    AppDbContext appContext,
+    IServerConfigurationRepository serverConfiguration,
     QueueRunner queueRunner,
     IPluginManager pluginManager,
     AppProcessManager appProcessManager,
@@ -65,12 +66,9 @@ public class ManagementController(
 {
     [HttpGet("status")]
     [ProducesResponseType(typeof(ManagementStatusDto), StatusCodes.Status200OK)]
-    public IActionResult GetStatus()
+    public async Task<IActionResult> GetStatus()
     {
-        Configuration? serverNameConfig = appContext.Configuration.FirstOrDefault(c =>
-            c.Key == "serverName"
-        );
-        string serverName = serverNameConfig?.Value ?? Environment.MachineName;
+        string serverName = await serverConfiguration.GetServerNameAsync();
 
         return Ok(
             new ManagementStatusDto
@@ -448,18 +446,16 @@ public class ManagementController(
 
     [HttpGet("config")]
     [ProducesResponseType(typeof(ManagementConfigDto), StatusCodes.Status200OK)]
-    public IActionResult GetConfig()
+    public async Task<IActionResult> GetConfig()
     {
-        Configuration? serverNameConfig = appContext.Configuration.FirstOrDefault(c =>
-            c.Key == "serverName"
-        );
+        string serverName = await serverConfiguration.GetServerNameAsync();
 
         return Ok(
             new ManagementConfigDto
             {
                 InternalPort = runtimeSettings.InternalServerPort,
                 ExternalPort = runtimeSettings.ExternalServerPort,
-                ServerName = serverNameConfig?.Value ?? Environment.MachineName,
+                ServerName = serverName,
                 LibraryWorkers = runtimeSettings.LibraryWorkers.Value,
                 ImportWorkers = runtimeSettings.ImportWorkers.Value,
                 ExtrasWorkers = runtimeSettings.ExtrasWorkers.Value,
@@ -482,11 +478,7 @@ public class ManagementController(
     private async Task PersistWorkerCount(string queueName, int count)
     {
         string key = $"{queueName}Runners";
-        await appContext
-            .Configuration.Upsert(new() { Key = key, Value = count.ToString() })
-            .On(configuration => configuration.Key)
-            .WhenMatched((_, configuration) => new() { Value = configuration.Value })
-            .RunAsync();
+        await serverConfiguration.SetValueAsync(key, count.ToString(), null);
 
         await queueRunner.SetWorkerCount(queueName, count, null);
     }
@@ -575,22 +567,11 @@ public class ManagementController(
 
         if (request.ServerName is not null)
         {
-            Configuration? existing = await appContext.Configuration.FirstOrDefaultAsync(c =>
-                c.Key == "serverName"
+            await serverConfiguration.SetValueAsync(
+                ServerConfigurationKeys.ServerName,
+                request.ServerName,
+                null
             );
-
-            if (existing is not null)
-            {
-                existing.Value = request.ServerName;
-            }
-            else
-            {
-                appContext.Configuration.Add(
-                    new() { Key = "serverName", Value = request.ServerName }
-                );
-            }
-
-            await appContext.SaveChangesAsync();
         }
 
         return Ok(new { status = "ok", message = "Configuration updated" });
