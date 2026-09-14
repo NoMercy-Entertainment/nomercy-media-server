@@ -22,6 +22,9 @@ runs:
       with:
         dotnet-version: ${{ inputs.dotnet-version }}
 
+    - name: Heal NuGet cache
+      uses: ./.github/actions/heal-nuget-cache
+
     - name: Restore
       shell: pwsh
       run: dotnet restore NoMercy.Server.sln

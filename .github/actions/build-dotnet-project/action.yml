@@ -34,6 +34,9 @@ runs:
       with:
         node-version: 20
 
+    - name: Heal NuGet cache
+      uses: ./.github/actions/heal-nuget-cache
+
     - name: Restore dependencies
       shell: bash
       run: dotnet restore NoMercy.Server.sln

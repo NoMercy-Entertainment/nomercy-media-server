@@ -15,6 +15,9 @@ runs:
       with:
         dotnet-version: ${{ inputs.dotnet-version }}
 
+    - name: Heal NuGet cache
+      uses: ./.github/actions/heal-nuget-cache
+
     - name: Cache NuGet packages
       uses: actions/cache@v5
       with:

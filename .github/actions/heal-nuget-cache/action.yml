@@ -1,0 +1,21 @@
+name: 'Heal NuGet cache'
+description: 'Removes package folders whose metadata was left corrupt by an interrupted run, so restore does not fail on a self-hosted runner that keeps its cache between jobs'
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Drop packages with corrupt metadata
+      shell: bash
+      run: |
+        # A runner that dies mid-restore leaves .nupkg.metadata files of NUL bytes
+        # behind. NuGet then fails every later restore on that runner with
+        # "'0x00' is an invalid start of a value" until the folder is gone.
+        cache="${NUGET_PACKAGES:-$HOME/.nuget/packages}"
+        [ -d "$cache" ] || exit 0
+        find "$cache" -name .nupkg.metadata -print0 2>/dev/null | while IFS= read -r -d '' f; do
+          if [ ! -s "$f" ] || [ "$(head -c1 "$f" | od -An -tx1 | tr -d ' ')" = "00" ]; then
+            d=$(dirname "$f")
+            echo "Removing corrupt package folder: $d"
+            rm -rf "$d"
+          fi
+        done
