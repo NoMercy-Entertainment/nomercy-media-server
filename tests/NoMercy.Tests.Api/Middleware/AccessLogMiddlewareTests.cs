@@ -54,7 +54,8 @@ public class AccessLogMiddlewareTests : IClassFixture<NoMercyApiFactory>
                 called.Value = true;
                 return Task.CompletedTask;
             },
-            NullLogger<AccessLogMiddleware>.Instance
+            NullLogger<AccessLogMiddleware>.Instance,
+            UserCache.Current
         );
         nextCalled = called;
         return middleware;

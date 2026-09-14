@@ -23,7 +23,8 @@ namespace NoMercy.Api.Middleware;
 /// SignalR hub filter that logs errors for invalid method calls, wrong arguments, and exceptions.
 /// This helps debug client-side calls to hub methods that don't exist or have incorrect parameters.
 /// </summary>
-public class HubErrorLoggingFilter(ILogger<HubErrorLoggingFilter> logger) : IHubFilter
+public class HubErrorLoggingFilter(ILogger<HubErrorLoggingFilter> logger, IUserCache userCache)
+    : IHubFilter
 {
     public async ValueTask<object?> InvokeMethodAsync(
         HubInvocationContext invocationContext,
@@ -52,7 +53,7 @@ public class HubErrorLoggingFilter(ILogger<HubErrorLoggingFilter> logger) : IHub
             );
             return await next(invocationContext);
         }
-        User? user = UserCache.Current.Users.FirstOrDefault(x => x.Id.Equals(userId));
+        User? user = userCache.Users.FirstOrDefault(x => x.Id.Equals(userId));
 
         if (user == null)
         {

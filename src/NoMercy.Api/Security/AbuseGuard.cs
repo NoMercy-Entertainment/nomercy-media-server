@@ -35,7 +35,8 @@ public class AbuseGuard(
     IActivityLogger activityLogger,
     IEventBus eventBus,
     ILogger<AbuseGuard> logger,
-    TimeProvider timeProvider
+    TimeProvider timeProvider,
+    IUserCache userCache
 ) : IAbuseGuard
 {
     private readonly ConcurrentDictionary<string, List<Offence>> _offences = new();
@@ -200,7 +201,7 @@ public class AbuseGuard(
         CancellationToken ct
     )
     {
-        foreach (User owner in UserCache.Current.Users.Where(user => user.Owner))
+        foreach (User owner in userCache.Users.Where(user => user.Owner))
         {
             await eventBus.PublishAsync(
                 new UserNotifiedEvent

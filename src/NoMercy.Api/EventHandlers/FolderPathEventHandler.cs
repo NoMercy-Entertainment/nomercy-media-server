@@ -22,10 +22,16 @@ namespace NoMercy.Api.EventHandlers;
 public class FolderPathEventHandler : EventSubscriber
 {
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IUserCache _userCache;
 
-    public FolderPathEventHandler(IEventBus eventBus, IServiceScopeFactory scopeFactory)
+    public FolderPathEventHandler(
+        IEventBus eventBus,
+        IServiceScopeFactory scopeFactory,
+        IUserCache userCache
+    )
     {
         _scopeFactory = scopeFactory;
+        _userCache = userCache;
         Track(eventBus.Subscribe<FolderPathAddedEvent>(OnFolderPathAdded));
         Track(eventBus.Subscribe<FolderPathRemovedEvent>(OnFolderPathRemoved));
     }
@@ -39,7 +45,7 @@ public class FolderPathEventHandler : EventSubscriber
             IDbContextFactory<MediaContext>
         >();
         await using MediaContext mediaContext = await contextFactory.CreateDbContextAsync(ct);
-        await UserCache.Current.RefreshFolderIdsAsync(mediaContext);
+        await _userCache.RefreshFolderIdsAsync(mediaContext);
     }
 
     internal async Task OnFolderPathRemoved(FolderPathRemovedEvent @event, CancellationToken ct)
@@ -51,6 +57,6 @@ public class FolderPathEventHandler : EventSubscriber
             IDbContextFactory<MediaContext>
         >();
         await using MediaContext mediaContext = await contextFactory.CreateDbContextAsync(ct);
-        await UserCache.Current.RefreshFolderIdsAsync(mediaContext);
+        await _userCache.RefreshFolderIdsAsync(mediaContext);
     }
 }

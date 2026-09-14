@@ -558,7 +558,12 @@ public sealed class TokenParamAuthDenyPrecisionTests : IAsyncLifetime, IDisposab
     }
 
     private static TokenParamAuthMiddleware BuildMiddleware(RequestDelegate next) =>
-        new(next, new LiveIngestKeyStore(), NullLogger<TokenParamAuthMiddleware>.Instance);
+        new(
+            next,
+            new LiveIngestKeyStore(),
+            NullLogger<TokenParamAuthMiddleware>.Instance,
+            UserCache.Current
+        );
 
     private static HttpContext BuildContext(string path, ClaimsPrincipal? user = null)
     {

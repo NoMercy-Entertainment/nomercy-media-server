@@ -110,7 +110,8 @@ public sealed class TokenParamAuthMiddlewareTests : IAsyncLifetime, IDisposable
         return new(
             next,
             ingestKeyStore ?? new LiveIngestKeyStore(),
-            NullLogger<TokenParamAuthMiddleware>.Instance
+            NullLogger<TokenParamAuthMiddleware>.Instance,
+            UserCache.Current
         );
     }
 

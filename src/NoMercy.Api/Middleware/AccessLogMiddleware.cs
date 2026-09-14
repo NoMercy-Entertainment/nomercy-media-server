@@ -27,11 +27,17 @@ public class AccessLogMiddleware
     private readonly RequestDelegate _next;
 
     private readonly ILogger<AccessLogMiddleware> _logger;
+    private readonly IUserCache _userCache;
 
-    public AccessLogMiddleware(RequestDelegate next, ILogger<AccessLogMiddleware> logger)
+    public AccessLogMiddleware(
+        RequestDelegate next,
+        ILogger<AccessLogMiddleware> logger,
+        IUserCache userCache
+    )
     {
         _next = next;
         _logger = logger;
+        _userCache = userCache;
     }
 
     // Log-level hints only — NOT an authorization list. Whether a request may
@@ -104,7 +110,7 @@ public class AccessLogMiddleware
         );
 
         // Skip logging for file access paths (folder ID prefix)
-        bool isFolderPath = UserCache.Current.FolderIds.Any(x =>
+        bool isFolderPath = _userCache.FolderIds.Any(x =>
             path.StartsWith("/" + x, StringComparison.OrdinalIgnoreCase)
         );
 
@@ -188,13 +194,13 @@ public class AccessLogMiddleware
             return;
         }
 
-        User? user = UserCache.Current.Users.FirstOrDefault(x => x.Id.Equals(userId));
+        User? user = _userCache.Users.FirstOrDefault(x => x.Id.Equals(userId));
         if (user is null)
         {
             // User cache may not be populated yet during startup — try refreshing from DB
             MediaContext mediaContext = context.RequestServices.GetRequiredService<MediaContext>();
-            await UserCache.Current.RefreshUsersAsync(mediaContext);
-            user = UserCache.Current.Users.FirstOrDefault(x => x.Id.Equals(userId));
+            await _userCache.RefreshUsersAsync(mediaContext);
+            user = _userCache.Users.FirstOrDefault(x => x.Id.Equals(userId));
         }
 
         if (user is null)

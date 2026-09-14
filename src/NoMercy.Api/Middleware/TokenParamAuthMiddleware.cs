@@ -24,7 +24,8 @@ namespace NoMercy.Api.Middleware;
 public class TokenParamAuthMiddleware(
     RequestDelegate next,
     ILiveIngestKeyStore ingestKeyStore,
-    ILogger<TokenParamAuthMiddleware> logger
+    ILogger<TokenParamAuthMiddleware> logger,
+    IUserCache userCache
 )
 {
     public async Task InvokeAsync(HttpContext context)
@@ -78,7 +79,7 @@ public class TokenParamAuthMiddleware(
         string url = context.Request.Path;
 
         if (
-            !UserCache.Current.FolderIds.Any(x => url.StartsWith("/" + x))
+            !userCache.FolderIds.Any(x => url.StartsWith("/" + x))
             || context.Request.Headers.Authorization.ToString().Contains("Bearer")
         )
         {
@@ -116,7 +117,7 @@ public class TokenParamAuthMiddleware(
             return;
         }
 
-        User? user = UserCache.Current.Users.FirstOrDefault(x => x.Id.Equals(userId));
+        User? user = userCache.Users.FirstOrDefault(x => x.Id.Equals(userId));
 
         if (user is null)
         {

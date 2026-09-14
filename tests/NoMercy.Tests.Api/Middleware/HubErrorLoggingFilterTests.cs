@@ -67,7 +67,7 @@ public sealed class HubErrorLoggingFilterTests
 
     private static HubErrorLoggingFilter CreateFilter()
     {
-        return new(NullLogger<HubErrorLoggingFilter>.Instance);
+        return new(NullLogger<HubErrorLoggingFilter>.Instance, UserCache.Current);
     }
 
     [Fact]

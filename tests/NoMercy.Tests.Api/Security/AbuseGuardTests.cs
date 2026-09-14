@@ -14,6 +14,7 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Moq;
 using NoMercy.Api.Security;
+using NoMercy.Authorization;
 using NoMercy.Database.Activity;
 using NoMercy.Database.Models.Security;
 using NoMercy.Events;
@@ -39,7 +40,8 @@ public class AbuseGuardTests
             Mock.Of<IActivityLogger>(),
             Mock.Of<IEventBus>(),
             Mock.Of<ILogger<AbuseGuard>>(),
-            time
+            time,
+            UserCache.Current
         );
 
     [Fact]
