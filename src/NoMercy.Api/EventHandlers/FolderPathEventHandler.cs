@@ -47,8 +47,7 @@ public class FolderPathEventHandler : EventSubscriber
         IDbContextFactory<MediaContext> contextFactory = scope.ServiceProvider.GetRequiredService<
             IDbContextFactory<MediaContext>
         >();
-        await using MediaContext mediaContext = await contextFactory.CreateDbContextAsync(ct);
-        await _userCache.RefreshFolderIdsAsync(mediaContext);
+        await _userCache.RefreshFolderIdsAsync(contextFactory, ct);
     }
 
     internal async Task OnFolderPathRemoved(FolderPathRemovedEvent @event, CancellationToken ct)
@@ -59,7 +58,6 @@ public class FolderPathEventHandler : EventSubscriber
         IDbContextFactory<MediaContext> contextFactory = scope.ServiceProvider.GetRequiredService<
             IDbContextFactory<MediaContext>
         >();
-        await using MediaContext mediaContext = await contextFactory.CreateDbContextAsync(ct);
-        await _userCache.RefreshFolderIdsAsync(mediaContext);
+        await _userCache.RefreshFolderIdsAsync(contextFactory, ct);
     }
 }

@@ -25,6 +25,9 @@ public interface ILibraryRepository
 
     Task<List<Library>> GetLibrariesLite(Guid userId, CancellationToken ct = default);
 
+    /// <summary>Every library row, whoever can see it.</summary>
+    Task<int> CountAsync(CancellationToken ct = default);
+
     /// <summary>Every library the user can see, inbox included, for the app setup screen.</summary>
     Task<List<Library>> GetSetupLibrariesAsync(Guid userId, CancellationToken ct = default);
 

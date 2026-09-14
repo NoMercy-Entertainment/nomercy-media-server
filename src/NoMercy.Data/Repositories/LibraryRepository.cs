@@ -101,6 +101,12 @@ public class LibraryRepository(IDbContextFactory<MediaContext> contextFactory) :
             .ToListAsync(ct);
     }
 
+    public async Task<int> CountAsync(CancellationToken ct = default)
+    {
+        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+        return await context.Libraries.CountAsync(ct);
+    }
+
     public async Task<List<Library>> GetSetupLibrariesAsync(
         Guid userId,
         CancellationToken ct = default

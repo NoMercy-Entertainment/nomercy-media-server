@@ -90,9 +90,7 @@ public class LibrariesController(
 
         try
         {
-            await using MediaContext mediaContext =
-                await mediaContextFactory.CreateDbContextAsync();
-            int libraries = await mediaContext.Libraries.CountAsync();
+            int libraries = await libraryRepository.CountAsync();
 
             Library library = new()
             {
@@ -386,8 +384,7 @@ public class LibrariesController(
         foreach (FolderLibrary fl in library.FolderLibraries)
             servedFolders.Remove(fl.FolderId);
 
-        await using MediaContext refreshContext = await mediaContextFactory.CreateDbContextAsync();
-        await UserCacheService.RefreshFolderIdsAsync(refreshContext);
+        await UserCacheService.RefreshFolderIdsAsync(mediaContextFactory);
     }
 
     private async Task PublishLibraryDeletedEventsAsync(Library library)
@@ -802,8 +799,7 @@ public class LibrariesController(
     {
         // Register the folder with the middleware directly so it can serve files immediately
         servedFolders.Add(folder.Id, folder.DriverId, folder.Path);
-        await using MediaContext refreshContext = await mediaContextFactory.CreateDbContextAsync();
-        await UserCacheService.RefreshFolderIdsAsync(refreshContext);
+        await UserCacheService.RefreshFolderIdsAsync(mediaContextFactory);
 
         await eventBus.PublishAsync(
             new FolderPathAddedEvent
@@ -837,12 +833,7 @@ public class LibrariesController(
             // Update the middleware directly so it can serve files from the new path immediately
             servedFolders.Remove(folder.Id);
             servedFolders.Add(folder.Id, folder.DriverId, folder.Path);
-            await using (
-                MediaContext refreshContext = await mediaContextFactory.CreateDbContextAsync()
-            )
-            {
-                await UserCacheService.RefreshFolderIdsAsync(refreshContext);
-            }
+            await UserCacheService.RefreshFolderIdsAsync(mediaContextFactory);
 
             await eventBus.PublishAsync(new FolderPathRemovedEvent { RequestPath = folder.Id });
             await eventBus.PublishAsync(
@@ -885,12 +876,7 @@ public class LibrariesController(
 
             // Remove the folder from the middleware immediately
             servedFolders.Remove(folder.Id);
-            await using (
-                MediaContext refreshContext = await mediaContextFactory.CreateDbContextAsync()
-            )
-            {
-                await UserCacheService.RefreshFolderIdsAsync(refreshContext);
-            }
+            await UserCacheService.RefreshFolderIdsAsync(mediaContextFactory);
 
             await eventBus.PublishAsync(new FolderPathRemovedEvent { RequestPath = folder.Id });
 
