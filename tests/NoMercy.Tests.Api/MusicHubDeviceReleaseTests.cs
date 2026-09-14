@@ -123,7 +123,7 @@ public class MusicHubDeviceReleaseTests : IClassFixture<NoMercyApiFactory>
 
         MusicPlaylistManager musicPlaylistManager = new(new MusicRepository(contextFactory), new());
         DeviceBusRegistry busRegistry = new(
-            contextFactory,
+            new DeviceStateRepository(contextFactory),
             Mock.Of<IHubContext<DeviceHub>>(),
             Mock.Of<ICastMdnsRegistry>()
         );

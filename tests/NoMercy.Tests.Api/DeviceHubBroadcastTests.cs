@@ -18,6 +18,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NoMercy.Api.Hubs;
 using NoMercy.Api.WebSockets;
+using NoMercy.Data.Repositories;
 using NoMercy.Database;
 using NoMercy.Database.Models.Users;
 using NoMercy.Encoder.Devices;
@@ -89,7 +90,7 @@ public class DeviceHubBroadcastTests : IClassFixture<NoMercyApiFactory>
         >();
         ConnectedClients connectedClients = _factory.GetConnectedClients();
         DeviceBusRegistry busRegistry = new(
-            contextFactory,
+            new DeviceStateRepository(contextFactory),
             Mock.Of<IHubContext<DeviceHub>>(),
             Mock.Of<ICastMdnsRegistry>()
         );
@@ -102,6 +103,7 @@ public class DeviceHubBroadcastTests : IClassFixture<NoMercyApiFactory>
             contextFactory,
             connectedClients,
             busRegistry,
+            new DeviceStateRepository(contextFactory),
             Mock.Of<Database.Activity.IActivityLogger>(),
             Mock.Of<IDeviceCapabilityRegistry>(),
             Mock.Of<ICastMdnsRegistry>(),

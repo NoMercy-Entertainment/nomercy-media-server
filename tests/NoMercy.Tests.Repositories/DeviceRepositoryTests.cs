@@ -226,7 +226,7 @@ public class DeviceRepositoryTests : IDisposable
         hubMock.Setup(h => h.Clients).Returns(clientsMock.Object);
 
         DeviceBusRegistry registry = new(
-            factoryMock.Object,
+            new DeviceStateRepository(factoryMock.Object),
             hubMock.Object,
             Mock.Of<ICastMdnsRegistry>()
         );
@@ -268,7 +268,7 @@ public class DeviceRepositoryTests : IDisposable
         hubMock.Setup(h => h.Clients).Returns(clientsMock.Object);
 
         DeviceBusRegistry registry = new(
-            factoryMock.Object,
+            new DeviceStateRepository(factoryMock.Object),
             hubMock.Object,
             Mock.Of<ICastMdnsRegistry>()
         );

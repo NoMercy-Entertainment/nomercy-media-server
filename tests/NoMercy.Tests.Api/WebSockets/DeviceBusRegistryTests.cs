@@ -15,6 +15,7 @@ using Microsoft.EntityFrameworkCore;
 using Moq;
 using NoMercy.Api.Hubs;
 using NoMercy.Api.WebSockets;
+using NoMercy.Data.Repositories;
 using NoMercy.Database;
 using NoMercy.Database.Models.Users;
 using NoMercy.Networking.Discovery;
@@ -75,7 +76,11 @@ public sealed class DeviceBusRegistryTests : IDisposable
     public void Dispose() => _contextFactory.Dispose();
 
     private DeviceBusRegistry MakeRegistry() =>
-        new(_contextFactory, _hubContext.Object, _castMdnsRegistry.Object);
+        new(
+            new DeviceStateRepository(_contextFactory),
+            _hubContext.Object,
+            _castMdnsRegistry.Object
+        );
 
     private async Task<Device> SeedOwnedDeviceAsync(DateTime wsConnectedAt)
     {
@@ -117,7 +122,10 @@ public sealed class DeviceBusRegistryTests : IDisposable
     {
         Device device = await SeedOwnedDeviceAsync(DateTime.UtcNow);
         DeviceBusRegistry registry = MakeRegistry();
-        await registry.Register(device.Id, Mock.Of<WebSocket>(ws => ws.State == WebSocketState.Open));
+        await registry.Register(
+            device.Id,
+            Mock.Of<WebSocket>(ws => ws.State == WebSocketState.Open)
+        );
         Assert.True(registry.IsOnline(device.Id));
 
         await registry.Unregister(device.Id);

@@ -136,7 +136,7 @@ public class MusicHubDeviceCommandsTests : IClassFixture<NoMercyApiFactory>
 
         MusicPlaylistManager musicPlaylistManager = new(new MusicRepository(contextFactory), new());
         busRegistry ??= new(
-            contextFactory,
+            new DeviceStateRepository(contextFactory),
             Mock.Of<IHubContext<DeviceHub>>(),
             Mock.Of<ICastMdnsRegistry>()
         );
@@ -524,7 +524,7 @@ public class MusicHubDeviceCommandsTests : IClassFixture<NoMercyApiFactory>
         connectedClients.Clients[phoneConnectionId] = phoneClient;
 
         DeviceBusRegistry busRegistry = new(
-            contextFactory,
+            new DeviceStateRepository(contextFactory),
             Mock.Of<IHubContext<DeviceHub>>(),
             Mock.Of<ICastMdnsRegistry>()
         );
@@ -620,7 +620,7 @@ public class MusicHubDeviceCommandsTests : IClassFixture<NoMercyApiFactory>
         connectedClients.Clients[phoneConnectionId] = phoneClient;
 
         DeviceBusRegistry busRegistry = new(
-            contextFactory,
+            new DeviceStateRepository(contextFactory),
             Mock.Of<IHubContext<DeviceHub>>(),
             Mock.Of<ICastMdnsRegistry>()
         );

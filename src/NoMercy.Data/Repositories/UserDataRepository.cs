@@ -246,4 +246,79 @@ public class UserDataRepository(IDbContextFactory<MediaContext> contextFactory)
 
         return true;
     }
+
+    public async Task SavePlaybackPreferenceAsync(
+        PlaybackPreference preference,
+        string playlistType
+    )
+    {
+        await using MediaContext context = await contextFactory.CreateDbContextAsync();
+
+        UpsertCommandBuilder<PlaybackPreference> query = context.PlaybackPreferences.Upsert(
+            preference
+        );
+
+        switch (playlistType)
+        {
+            case MediaTypes.MovieMediaType:
+                query.On(p => new { p.UserId, p.MovieId });
+                break;
+            case MediaTypes.TvMediaType:
+            case MediaTypes.AnimeMediaType:
+                query.On(p => new { p.UserId, p.TvId });
+                break;
+            case MediaTypes.CollectionMediaType:
+                query.On(p => new { p.UserId, p.CollectionId });
+                break;
+            case MediaTypes.SpecialMediaType:
+                query.On(p => new { p.UserId, p.SpecialId });
+                break;
+        }
+
+        await query
+            .WhenMatched(
+                (_, incoming) =>
+                    new()
+                    {
+                        _audio = incoming._audio,
+                        _video = incoming._video,
+                        _subtitle = incoming._subtitle,
+                    }
+            )
+            .RunAsync();
+    }
+
+    public async Task SaveLibraryPreferenceIfMissingAsync(
+        PlaybackPreference preference,
+        string? libraryType
+    )
+    {
+        await using MediaContext context = await contextFactory.CreateDbContextAsync();
+
+        bool hasLibraryPreference = await context.PlaybackPreferences.AnyAsync(p =>
+            p.UserId == preference.UserId && p.Library != null && p.Library.Type == libraryType
+        );
+        if (hasLibraryPreference)
+            return;
+
+        preference.LibraryId = await context
+            .Libraries.Where(library => library.Type == libraryType)
+            .Select(library => library.Id)
+            .FirstOrDefaultAsync();
+
+        await context
+            .PlaybackPreferences.Upsert(preference)
+            .On(p => new { p.UserId, p.LibraryId })
+            .WhenMatched(
+                (_, incoming) =>
+                    new()
+                    {
+                        LibraryId = incoming.LibraryId,
+                        _audio = incoming._audio,
+                        _video = incoming._video,
+                        _subtitle = incoming._subtitle,
+                    }
+            )
+            .RunAsync();
+    }
 }

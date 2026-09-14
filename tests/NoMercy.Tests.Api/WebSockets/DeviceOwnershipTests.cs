@@ -11,6 +11,7 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Api.WebSockets;
+using NoMercy.Data.Repositories;
 using NoMercy.Database;
 using NoMercy.Database.Models.Users;
 using NoMercy.Networking.Http;
@@ -54,7 +55,7 @@ public class DeviceOwnershipTests
         await using MediaContext ctx = MakeContext();
         Guid userA = Guid.NewGuid();
 
-        (Device device, Guid? previousOwner) = await DeviceBusEndpoint.ResolveOwnedDeviceAsync(
+        (Device device, Guid? previousOwner) = await DeviceStateRepository.ResolveOwnedDeviceAsync(
             ctx,
             "fp-1",
             userA,
@@ -84,7 +85,7 @@ public class DeviceOwnershipTests
         );
         await ctx.SaveChangesAsync();
 
-        (Device device, Guid? previousOwner) = await DeviceBusEndpoint.ResolveOwnedDeviceAsync(
+        (Device device, Guid? previousOwner) = await DeviceStateRepository.ResolveOwnedDeviceAsync(
             ctx,
             "fp-1",
             userA,
@@ -118,7 +119,7 @@ public class DeviceOwnershipTests
         );
         await ctx.SaveChangesAsync();
 
-        (Device device, Guid? previousOwner) = await DeviceBusEndpoint.ResolveOwnedDeviceAsync(
+        (Device device, Guid? previousOwner) = await DeviceStateRepository.ResolveOwnedDeviceAsync(
             ctx,
             "fp-1",
             userA,

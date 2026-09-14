@@ -14,9 +14,8 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
 using Microsoft.AspNetCore.SignalR;
-using Microsoft.EntityFrameworkCore;
 using NoMercy.Api.Hubs;
-using NoMercy.Database;
+using NoMercy.Data.Repositories;
 using NoMercy.Database.Models.Users;
 using NoMercy.Networking.Devices;
 using NoMercy.Networking.Discovery;
@@ -24,7 +23,7 @@ using NoMercy.Networking.Discovery;
 namespace NoMercy.Api.WebSockets;
 
 public sealed class DeviceBusRegistry(
-    IDbContextFactory<MediaContext> contextFactory,
+    IDeviceStateRepository deviceStateRepository,
     IHubContext<DeviceHub> hubContext,
     ICastMdnsRegistry castMdnsRegistry
 ) : IDeviceListChangeNotifier
@@ -49,10 +48,8 @@ public sealed class DeviceBusRegistry(
     {
         _live[deviceId] = ws;
 
-        await using MediaContext ctx = await contextFactory.CreateDbContextAsync();
-        Device? device = await ctx.Devices.FindAsync(deviceId);
-        if (device?.OwnerUserId is not null)
-            await BroadcastChange(device.OwnerUserId.Value);
+        if (await deviceStateRepository.GetOwnerAsync(deviceId) is { } owner)
+            await BroadcastChange(owner);
     }
 
     public async Task Unregister(Ulid deviceId)
@@ -60,10 +57,7 @@ public sealed class DeviceBusRegistry(
         _live.TryRemove(deviceId, out _);
         _status.TryRemove(deviceId, out _);
 
-        await using MediaContext ctx = await contextFactory.CreateDbContextAsync();
-        Device? device = await ctx.Devices.FindAsync(deviceId);
-        if (device is null)
-            return;
+        Guid? owner = await deviceStateRepository.GetOwnerAsync(deviceId);
 
         // WsConnectedAt is not "is the device-bus socket open right now" — it's
         // DeviceDropRuleCronJob's and DeviceListComposer's only record of when
@@ -78,8 +72,8 @@ public sealed class DeviceBusRegistry(
         // as abandoned, repeatedly, hours apart, while under continuous real
         // MusicHub control the whole time.
 
-        if (device.OwnerUserId is not null)
-            await BroadcastChange(device.OwnerUserId.Value);
+        if (owner is not null)
+            await BroadcastChange(owner.Value);
     }
 
     public bool IsOnline(Ulid deviceId) => _live.ContainsKey(deviceId);
@@ -103,10 +97,7 @@ public sealed class DeviceBusRegistry(
 
     public async Task BroadcastChange(Guid ownerUserId)
     {
-        await using MediaContext ctx = await contextFactory.CreateDbContextAsync();
-        List<Device> rows = await ctx
-            .Devices.Where(d => d.OwnerUserId == ownerUserId && d.Fingerprint != null)
-            .ToListAsync();
+        List<Device> rows = await deviceStateRepository.GetListedDevicesAsync(ownerUserId);
 
         List<DeviceListItem> items = DeviceListComposer.Compose(
             rows,

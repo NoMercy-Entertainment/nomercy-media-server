@@ -52,4 +52,16 @@ public interface IUserDataRepository
     /// does not exist, such as a file a rescan re-indexed mid-playback.
     /// </summary>
     Task<bool> UpsertWatchProgressAsync(WatchProgress progress, CancellationToken ct = default);
+
+    /// <summary>
+    /// Stores the track choice for the title being played, keyed per playlist type:
+    /// movie, show (anime included), collection or special.
+    /// </summary>
+    Task SavePlaybackPreferenceAsync(PlaybackPreference preference, string playlistType);
+
+    /// <summary>
+    /// Stores <paramref name="preference"/> as the user's default for libraries of
+    /// <paramref name="libraryType"/>, unless the user already has one.
+    /// </summary>
+    Task SaveLibraryPreferenceIfMissingAsync(PlaybackPreference preference, string? libraryType);
 }

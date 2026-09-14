@@ -9,13 +9,11 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using FlexLabs.EntityFrameworkCore.Upsert;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using NoMercy.Api.DTOs.Media;
-using NoMercy.Database;
+using NoMercy.Data.Repositories;
 using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.Users;
 using NoMercy.Networking.Http;
@@ -28,6 +26,7 @@ namespace NoMercy.Api.Services.Video;
 public class VideoPlaybackCommandHandler(
     VideoPlaybackService videoPlaybackService,
     IServiceScopeFactory scopeFactory,
+    IDeviceStateRepository deviceStateRepository,
     ILogger<VideoPlaybackCommandHandler> logger
 )
 {
@@ -281,13 +280,7 @@ public class VideoPlaybackCommandHandler(
         {
             device.VolumePercent = volume;
 
-            await using AsyncServiceScope scope = scopeFactory.CreateAsyncScope();
-            IDbContextFactory<MediaContext> contextFactory =
-                scope.ServiceProvider.GetRequiredService<IDbContextFactory<MediaContext>>();
-            await using MediaContext mediaContext = await contextFactory.CreateDbContextAsync();
-            await mediaContext
-                .Devices.Where(d => d.DeviceId == device.DeviceId)
-                .ExecuteUpdateAsync(d => d.SetProperty(x => x.VolumePercent, volume));
+            await deviceStateRepository.SetVolumeAsync(device.DeviceId, volume);
         }
     }
 
@@ -515,26 +508,12 @@ public class VideoPlaybackCommandHandler(
     }
 
     private async Task UserSetLibraryPreference(
-        MediaContext mediaContext,
+        IUserDataRepository userDataRepository,
         User user,
         VideoPlayerState state
     )
     {
         if (state.CurrentItem is null)
-            return;
-
-        bool userHasLibraryPreference = await mediaContext
-            .Users.Include(u => u.PlaybackPreferences)
-                .ThenInclude(playbackPreference => playbackPreference.Library)
-            .Where(u => u.Id == user.Id)
-            .Select(x =>
-                x.PlaybackPreferences.Any(p =>
-                    p.Library != null && p.Library.Type == state.CurrentItem!.LibraryType
-                )
-            )
-            .FirstAsync();
-
-        if (userHasLibraryPreference)
             return;
 
         PlaybackPreference playbackPreference = new()
@@ -561,26 +540,12 @@ public class VideoPlaybackCommandHandler(
                     FileSize = null,
                 }
                 : null,
-            LibraryId = mediaContext
-                .Libraries.Where(l => l.Type == state.CurrentItem!.LibraryType)
-                .Select(l => l.Id)
-                .FirstOrDefault(),
         };
 
-        await mediaContext
-            .PlaybackPreferences.Upsert(playbackPreference)
-            .On(p => new { p.UserId, p.LibraryId })
-            .WhenMatched(
-                (po, pi) =>
-                    new()
-                    {
-                        LibraryId = pi.LibraryId,
-                        _audio = pi._audio,
-                        _video = pi._video,
-                        _subtitle = pi._subtitle,
-                    }
-            )
-            .RunAsync();
+        await userDataRepository.SaveLibraryPreferenceIfMissingAsync(
+            playbackPreference,
+            state.CurrentItem.LibraryType
+        );
     }
 
     private async Task SetPlaybackPreference(
@@ -638,44 +603,14 @@ public class VideoPlaybackCommandHandler(
         };
 
         await using AsyncServiceScope scope = scopeFactory.CreateAsyncScope();
-        IDbContextFactory<MediaContext> contextFactory = scope.ServiceProvider.GetRequiredService<
-            IDbContextFactory<MediaContext>
-        >();
-        await using MediaContext mediaContext = await contextFactory.CreateDbContextAsync();
+        IUserDataRepository userDataRepository =
+            scope.ServiceProvider.GetRequiredService<IUserDataRepository>();
 
-        UpsertCommandBuilder<PlaybackPreference> query = mediaContext.PlaybackPreferences.Upsert(
-            playbackPreference
+        await userDataRepository.SavePlaybackPreferenceAsync(
+            playbackPreference,
+            state.CurrentItem.PlaylistType
         );
 
-        switch (state.CurrentItem.PlaylistType)
-        {
-            case MediaTypes.MovieMediaType:
-                query.On(p => new { p.UserId, p.MovieId });
-                break;
-            case MediaTypes.TvMediaType:
-            case MediaTypes.AnimeMediaType:
-                query.On(p => new { p.UserId, p.TvId });
-                break;
-            case MediaTypes.CollectionMediaType:
-                query.On(p => new { p.UserId, p.CollectionId });
-                break;
-            case MediaTypes.SpecialMediaType:
-                query.On(p => new { p.UserId, p.SpecialId });
-                break;
-        }
-
-        await query
-            .WhenMatched(
-                (po, pi) =>
-                    new()
-                    {
-                        _audio = pi._audio,
-                        _video = pi._video,
-                        _subtitle = pi._subtitle,
-                    }
-            )
-            .RunAsync();
-
-        await UserSetLibraryPreference(mediaContext, user, state);
+        await UserSetLibraryPreference(userDataRepository, user, state);
     }
 }

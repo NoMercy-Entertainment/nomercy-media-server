@@ -344,6 +344,10 @@ public static partial class ServiceConfiguration
         services.AddSingleton<MdnsDeviceScanner>();
         services.AddHostedService<MdnsDeviceScannerHostedService>();
         services.AddSingleton<DeviceBusRegistry>();
+        services.AddSingleton<
+            Data.Repositories.IDeviceStateRepository,
+            Data.Repositories.DeviceStateRepository
+        >();
         services.AddSingleton<IDeviceListChangeNotifier>(sp =>
             sp.GetRequiredService<DeviceBusRegistry>()
         );
