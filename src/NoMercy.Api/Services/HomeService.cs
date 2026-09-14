@@ -9,24 +9,111 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using Microsoft.EntityFrameworkCore;
 using NoMercy.Api.DTOs.Media;
 using NoMercy.Api.DTOs.Media.Components;
 using NoMercy.Data.Repositories;
+using NoMercy.Database;
 using NoMercy.Database.Models.Common;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.Media;
+using NoMercy.Database.Models.Movies;
+using NoMercy.Database.Models.TvShows;
 using NoMercy.Database.Models.Users;
 using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Extensions;
+using NoMercy.NmSystem.Information;
 
 namespace NoMercy.Api.Services;
 
-public class HomeService(IHomeRepository homeRepository, ILibraryRepository libraryRepository)
+public class HomeService(
+    IHomeRepository homeRepository,
+    ILibraryRepository libraryRepository,
+    IDbContextFactory<MediaContext> contextFactory
+)
 {
     /// <summary>
     /// Render variant used by the mobile and TV clients, which build their own library rows.
     /// </summary>
     private const string LolomoVersion = "lolomo";
+
+    /// <summary>
+    /// A "Latest in {library}" row per library, newest first, highest library order first.
+    /// </summary>
+    public async Task<List<GenreRowDto<GenreRowItemDto>>> GetLatestInLibraryRowsAsync(
+        Guid userId,
+        string language,
+        string country,
+        CancellationToken ct
+    )
+    {
+        List<Library> libraries = await libraryRepository.GetLibrariesLite(userId, ct);
+
+        // Fetch all library data in parallel - each task needs its own MediaContext for thread safety
+        Task<(Library library, List<Movie> movies, List<Tv> shows)>[] libraryDataTasks =
+        [
+            .. libraries.Select(async library =>
+            {
+                await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+                List<Movie> libraryMovies = [];
+                await foreach (
+                    Movie movie in libraryRepository
+                        .GetLibraryMovies(
+                            context,
+                            userId,
+                            library.Id,
+                            language,
+                            UiLimits.MaximumCardsInCarousel,
+                            0,
+                            m => m.CreatedAt,
+                            "desc"
+                        )
+                        .WithCancellation(ct)
+                )
+                {
+                    libraryMovies.Add(movie);
+                }
+
+                List<Tv> libraryShows = [];
+                await foreach (
+                    Tv tv in libraryRepository
+                        .GetLibraryShows(
+                            context,
+                            userId,
+                            library.Id,
+                            language,
+                            UiLimits.MaximumCardsInCarousel,
+                            0,
+                            m => m.CreatedAt,
+                            "desc"
+                        )
+                        .WithCancellation(ct)
+                )
+                {
+                    libraryShows.Add(tv);
+                }
+
+                return (library, libraryMovies, libraryShows);
+            }),
+        ];
+
+        (Library library, List<Movie> movies, List<Tv> shows)[] libraryDataResults =
+            await Task.WhenAll(libraryDataTasks);
+
+        return
+        [
+            .. libraryDataResults
+                .OrderByDescending(r => r.library.Order)
+                .Select(r => new GenreRowDto<GenreRowItemDto>
+                {
+                    Title = "Latest in " + r.library.Title,
+                    MoreLink = new($"/libraries/{r.library.Id}", UriKind.Relative),
+                    Items = r
+                        .movies.Select(movie => new GenreRowItemDto(movie, country))
+                        .Concat(r.shows.Select(tv => new GenreRowItemDto(tv, country))),
+                }),
+        ];
+    }
 
     public async Task<List<GenreRowDto<GenreRowItemDto>>> GetHomePageContent(
         Guid userId,

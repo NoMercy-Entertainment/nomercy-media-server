@@ -13,18 +13,13 @@ using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Api.DTOs.Media;
 using NoMercy.Api.DTOs.Media.Components;
 using NoMercy.Api.Services;
 using NoMercy.Authorization;
-using NoMercy.Data.Repositories;
 using NoMercy.Database;
-using NoMercy.Database.Models.Libraries;
-using NoMercy.Database.Models.Movies;
-using NoMercy.Database.Models.TvShows;
 using NoMercy.MediaProcessing.Trailers;
 using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Extensions;
@@ -41,25 +36,19 @@ namespace NoMercy.Api.Controllers.V1.Media;
 public class HomeController : BaseController
 {
     private readonly HomeService _homeService;
-    private readonly IDbContextFactory<MediaContext> _contextFactory;
     private readonly ITrailerCache _trailerCache;
-    private readonly ILibraryRepository _libraryRepository;
 
     private readonly ILogger<HomeController> _logger;
 
     public HomeController(
         ILogger<HomeController> logger,
         HomeService homeService,
-        IDbContextFactory<MediaContext> contextFactory,
-        ITrailerCache trailerCache,
-        ILibraryRepository libraryRepository
+        ITrailerCache trailerCache
     )
     {
         _logger = logger;
         _homeService = homeService;
-        _contextFactory = contextFactory;
         _trailerCache = trailerCache;
-        _libraryRepository = libraryRepository;
     }
 
     [HttpGet]
@@ -100,78 +89,15 @@ public class HomeController : BaseController
         if (request.Version == "lolomo")
             return Ok(response);
 
-        List<Library> libraries = await _libraryRepository.GetLibrariesLite(userId, ct);
-
-        // Fetch all library data in parallel - each task needs its own MediaContext for thread safety
-        Task<(Library library, List<Movie> movies, List<Tv> shows)>[] libraryDataTasks =
-        [
-            .. libraries.Select(async library =>
-            {
-                await using MediaContext context = await _contextFactory.CreateDbContextAsync(ct);
-                List<Movie> libraryMovies = [];
-                await foreach (
-                    Movie movie in _libraryRepository
-                        .GetLibraryMovies(
-                            context,
-                            userId,
-                            library.Id,
-                            language,
-                            UiLimits.MaximumCardsInCarousel,
-                            request.Page,
-                            m => m.CreatedAt,
-                            "desc"
-                        )
-                        .WithCancellation(ct)
-                )
-                {
-                    libraryMovies.Add(movie);
-                }
-
-                List<Tv> libraryShows = [];
-                await foreach (
-                    Tv tv in _libraryRepository
-                        .GetLibraryShows(
-                            context,
-                            userId,
-                            library.Id,
-                            language,
-                            UiLimits.MaximumCardsInCarousel,
-                            request.Page,
-                            m => m.CreatedAt,
-                            "desc"
-                        )
-                        .WithCancellation(ct)
-                )
-                {
-                    libraryShows.Add(tv);
-                }
-
-                return (library, libraryMovies, libraryShows);
-            }),
-        ];
-
-        (Library library, List<Movie> movies, List<Tv> shows)[] libraryDataResults =
-            await Task.WhenAll(libraryDataTasks);
-
         foreach (
-            (
-                Library library,
-                List<Movie> libraryMovies,
-                List<Tv> libraryShows
-            ) in libraryDataResults.OrderByDescending(r => r.library.Order)
+            GenreRowDto<GenreRowItemDto> row in await _homeService.GetLatestInLibraryRowsAsync(
+                userId,
+                language,
+                country,
+                ct
+            )
         )
-        {
-            response.Data = response.Data.Prepend(
-                new()
-                {
-                    Title = "Latest in " + library.Title,
-                    MoreLink = new($"/libraries/{library.Id}", UriKind.Relative),
-                    Items = libraryMovies
-                        .Select(movie => new GenreRowItemDto(movie, country))
-                        .Concat(libraryShows.Select(tv => new GenreRowItemDto(tv, country))),
-                }
-            );
-        }
+            response.Data = response.Data.Prepend(row);
 
         return Ok(response);
     }

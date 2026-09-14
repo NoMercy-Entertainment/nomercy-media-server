@@ -119,4 +119,62 @@ public class RecommendationScoringTests
 
         picked.Should().Equal(("movie", 9), ("tv", 1));
     }
+
+    [Fact]
+    public void HighSignalKeywordMaps_KeepsOnlyStrongSignalsAndSplitsByType()
+    {
+        UserAffinityProfile profile = new()
+        {
+            SourceItems = new()
+            {
+                [1] = new()
+                {
+                    ItemId = 1,
+                    MediaType = "movie",
+                    IsFavorited = true,
+                    KeywordIds = [100],
+                },
+                [2] = new()
+                {
+                    ItemId = 2,
+                    MediaType = "tv",
+                    TimeWatched = 60,
+                    Duration = 100,
+                    KeywordIds = [200],
+                },
+                [3] = new()
+                {
+                    ItemId = 3,
+                    MediaType = "anime",
+                    Rating = 7,
+                    KeywordIds = [300],
+                },
+                [4] = new()
+                {
+                    ItemId = 4,
+                    MediaType = "movie",
+                    Rating = 5,
+                    TimeWatched = 10,
+                    Duration = 100,
+                    KeywordIds = [400],
+                },
+                [5] = new()
+                {
+                    ItemId = 5,
+                    MediaType = "movie",
+                    IsFavorited = true,
+                },
+            },
+        };
+
+        (
+            Dictionary<int, List<int>> movie,
+            Dictionary<int, List<int>> tv,
+            Dictionary<int, List<int>> anime
+        ) = RecommendationScoring.HighSignalKeywordMaps(profile);
+
+        movie.Keys.Should().Equal(1);
+        tv.Keys.Should().Equal(2);
+        anime.Keys.Should().Equal(3);
+    }
 }

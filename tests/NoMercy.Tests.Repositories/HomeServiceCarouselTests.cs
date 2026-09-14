@@ -42,7 +42,7 @@ public class HomeServiceCarouselTests : IDisposable
         await using MediaContext mainContext = await _factory.CreateDbContextAsync();
         HomeRepository homeRepository = new(mainContext, _factory);
         LibraryRepository libraryRepository = new(_factory);
-        HomeService service = new(homeRepository, libraryRepository);
+        HomeService service = new(homeRepository, libraryRepository, _factory);
 
         ComponentResponse response = await service.GetHomeData(SeedConstants.UserId, "en", "US");
 

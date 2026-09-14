@@ -81,6 +81,46 @@ public static class RecommendationScoring
         };
     }
 
+    /// <summary>
+    /// Keyword ids per source title, split by media type, for the titles the user
+    /// favorited, rated 6 or higher, or watched past half.
+    /// </summary>
+    public static (
+        Dictionary<int, List<int>> Movie,
+        Dictionary<int, List<int>> Tv,
+        Dictionary<int, List<int>> Anime
+    ) HighSignalKeywordMaps(UserAffinityProfile profile)
+    {
+        Dictionary<int, List<int>> movie = new();
+        Dictionary<int, List<int>> tv = new();
+        Dictionary<int, List<int>> anime = new();
+
+        foreach (UserAffinitySourceDto src in profile.SourceItems.Values)
+        {
+            if (src.KeywordIds.Count == 0)
+                continue;
+
+            bool isHighSignal =
+                src.IsFavorited
+                || src.Rating is >= 6
+                || (
+                    src is { TimeWatched: > 0, Duration: > 0 }
+                    && (double)src.TimeWatched / src.Duration.Value > 0.5
+                );
+            if (!isHighSignal)
+                continue;
+
+            if (src.MediaType == MediaTypes.MovieMediaType)
+                movie[src.ItemId] = src.KeywordIds;
+            else if (src.MediaType == MediaTypes.AnimeMediaType)
+                anime[src.ItemId] = src.KeywordIds;
+            else
+                tv[src.ItemId] = src.KeywordIds;
+        }
+
+        return (movie, tv, anime);
+    }
+
     public static List<RecommendationCandidateDto> MergeCandidates(
         params List<RecommendationCandidateDto>[] candidateLists
     )

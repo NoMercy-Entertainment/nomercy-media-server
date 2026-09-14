@@ -50,120 +50,115 @@ public class MusicController : BaseController
         // Run 3 groups of 3 queries in parallel using separate DbContext instances
         MusicStartPageData data = await _musicRepository.GetMusicStartPageAsync(userId);
 
-        List<ComponentEnvelope> items = [];
-        List<ComponentEnvelope> items2 = [];
-
-        // Add favorite home cards
-        if (data.TopArtist is not null && request.Version != "lolomo")
+        List<ComponentEnvelope> favorites = [];
+        if (request.Version != "lolomo")
         {
-            TopMusicDto favoriteArtist = new(data.TopArtist);
-            items2.Add(
-                Component
-                    .MusicHomeCard(new(favoriteArtist))
-                    .WithId("favorite-artist")
-                    .WithTitle("Most listened artist".Localize())
+            AddFavorite(
+                favorites,
+                data.TopArtist,
+                "favorite-artist",
+                "Most listened artist".Localize()
+            );
+            AddFavorite(
+                favorites,
+                data.TopAlbum,
+                "favorite-album",
+                "Most listened album".Localize()
+            );
+            AddFavorite(
+                favorites,
+                data.TopPlaylist,
+                "favorite-playlist",
+                "Most listened playlist".Localize()
             );
         }
 
-        if (data.TopAlbum is not null && request.Version != "lolomo")
-        {
-            TopMusicDto favoriteAlbum = new(data.TopAlbum);
-            items2.Add(
-                Component
-                    .MusicHomeCard(new(favoriteAlbum))
-                    .WithId("favorite-album")
-                    .WithTitle("Most listened album".Localize())
-            );
-        }
-
-        if (data.TopPlaylist is not null && request.Version != "lolomo")
-        {
-            TopMusicDto favoritePlaylist = new(data.TopPlaylist);
-            items2.Add(
-                Component
-                    .MusicHomeCard(new(favoritePlaylist))
-                    .WithId("favorite-playlist")
-                    .WithTitle("Most listened playlist".Localize())
-            );
-        }
-
-        items.Add(Component.Container().WithItems(items2));
-
-        // Add carousels
-        items.Add(
-            Component
-                .Carousel()
-                .WithId("favorite-artists")
-                .WithTitle("Favorite Artists".Localize())
-                .WithNavigation("", "favorite-albums")
-                .WithItems(
-                    data.FavoriteArtists.Select(item =>
-                        Component.MusicCard(new MusicCardData(item))
-                    )
-                )
-        );
-
-        items.Add(
-            Component
-                .Carousel()
-                .WithId("favorite-albums")
-                .WithTitle("Favorite Albums".Localize())
-                .WithNavigation("favorite-artists", "playlists")
-                .WithItems(
-                    data.FavoriteAlbums.Select(item => Component.MusicCard(new MusicCardData(item)))
-                )
-        );
-
-        items.Add(
-            Component
-                .Carousel()
-                .WithId("playlists")
-                .WithTitle("Playlists".Localize())
-                .WithMoreLink("/music/playlists")
-                .WithNavigation("favorite-albums", "artists")
-                .WithItems(
-                    data.Playlists.Select(item => Component.MusicCard(new MusicCardData(item)))
-                )
-        );
-
-        items.Add(
-            Component
-                .Carousel()
-                .WithId("artists")
-                .WithTitle("Artists".Localize())
-                .WithMoreLink("/music/artists/letter/_")
-                .WithNavigation("playlists", "albums")
-                .WithItems(
-                    data.LatestArtists.Select(item => Component.MusicCard(new MusicCardData(item)))
-                )
-        );
-
-        items.Add(
-            Component
-                .Carousel()
-                .WithId("albums")
-                .WithTitle("Albums".Localize())
-                .WithMoreLink("/music/albums/letter/_")
-                .WithNavigation("artists", "genres")
-                .WithItems(
-                    data.LatestAlbums.Select(item => Component.MusicCard(new MusicCardData(item)))
-                )
-        );
-
-        items.Add(
-            Component
-                .Carousel()
-                .WithId("genres")
-                .WithTitle("Genres".Localize())
-                .WithMoreLink("/music/genres/letter/_")
-                .WithNavigation("albums")
-                .WithItems(
-                    data.LatestGenres.Select(item => Component.MusicCard(new MusicCardData(item)))
-                )
-        );
+        List<ComponentEnvelope> items =
+        [
+            Component.Container().WithItems(favorites),
+            MusicCarousel(
+                "favorite-artists",
+                "Favorite Artists".Localize(),
+                "",
+                "favorite-albums",
+                null,
+                data.FavoriteArtists.Select(item => new MusicCardData(item))
+            ),
+            MusicCarousel(
+                "favorite-albums",
+                "Favorite Albums".Localize(),
+                "favorite-artists",
+                "playlists",
+                null,
+                data.FavoriteAlbums.Select(item => new MusicCardData(item))
+            ),
+            MusicCarousel(
+                "playlists",
+                "Playlists".Localize(),
+                "favorite-albums",
+                "artists",
+                "/music/playlists",
+                data.Playlists.Select(item => new MusicCardData(item))
+            ),
+            MusicCarousel(
+                "artists",
+                "Artists".Localize(),
+                "playlists",
+                "albums",
+                "/music/artists/letter/_",
+                data.LatestArtists.Select(item => new MusicCardData(item))
+            ),
+            MusicCarousel(
+                "albums",
+                "Albums".Localize(),
+                "artists",
+                "genres",
+                "/music/albums/letter/_",
+                data.LatestAlbums.Select(item => new MusicCardData(item))
+            ),
+            MusicCarousel(
+                "genres",
+                "Genres".Localize(),
+                "albums",
+                null,
+                "/music/genres/letter/_",
+                data.LatestGenres.Select(item => new MusicCardData(item))
+            ),
+        ];
 
         return Ok(ComponentResponse.From(items));
     }
+
+    private static void AddFavorite(
+        List<ComponentEnvelope> favorites,
+        TopMusicItemDto? top,
+        string id,
+        string title
+    )
+    {
+        if (top is null)
+            return;
+
+        favorites.Add(
+            Component.MusicHomeCard(new(new TopMusicDto(top))).WithId(id).WithTitle(title)
+        );
+    }
+
+    private static ContainerComponentBuilder MusicCarousel(
+        string id,
+        string title,
+        string previousId,
+        string? nextId,
+        string? moreLink,
+        IEnumerable<MusicCardData> cards
+    ) =>
+        Component
+            .Carousel()
+            .WithId(id)
+            .WithTitle(title)
+            .WithMoreLink(moreLink)
+            .WithNavigation(previousId, nextId)
+            .WithItems(cards.Select(Component.MusicCard));
 
     [HttpPost]
     [Route("start/favorites")]
