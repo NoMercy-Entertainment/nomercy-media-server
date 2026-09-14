@@ -71,6 +71,7 @@ using NoMercy.Providers.Jikan;
 using NoMercy.Providers.Lyrics;
 using NoMercy.Providers.TMDB.Client;
 using NoMercy.Queue.MediaServer;
+using NoMercy.Queue.MediaServer.Repositories;
 using NoMercy.Service.Extensions;
 using NoMercy.Service.Seeds;
 using NoMercy.Service.Workers;
@@ -558,6 +559,10 @@ public static partial class ServiceConfiguration
         services.AddScoped<InboxRepository>();
         services.AddScoped<IInboxRepository, InboxRepository>();
         services.AddScoped<IActivityRepository, ActivityRepository>();
+        services.AddScoped<IIncompleteEncodeRepository, IncompleteEncodeRepository>();
+        services.AddScoped<IQueueCardMediaRepository, QueueCardMediaRepository>();
+        services.AddScoped<IAudioAnalysisStatisticsRepository, AudioAnalysisStatisticsRepository>();
+        services.AddScoped<IQueueTaskRepository, QueueTaskRepository>();
 
         // Add Managers
         // services.AddScoped<EncoderManager>();
