@@ -8,11 +8,11 @@
 //
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
-using Microsoft.EntityFrameworkCore;
+
 using Microsoft.Extensions.Logging;
 using NoMercy.Api.Controllers.V1.Streaming.Dtos;
 using NoMercy.Authorization.LiveIngest;
-using NoMercy.Database;
+using NoMercy.Data.Repositories;
 using NoMercy.Database.Models.Media;
 using NoMercy.Encoder.Analysis;
 using NoMercy.Encoder.Devices;
@@ -39,7 +39,7 @@ public class LiveTranscodeService(
     IPlaybackDecisionEngine decisionEngine,
     SpeedIndex speedIndex,
     IResourceBudget budget,
-    IDbContextFactory<MediaContext> contextFactory,
+    IVideoFileRepository videoFileRepository,
     LiveSessionLimits sessionLimits,
     IStorage storage,
     IDeviceCapabilityRegistry capabilityRegistry,
@@ -92,13 +92,7 @@ public class LiveTranscodeService(
         if (!Ulid.TryParse(request.VideoFileId, out Ulid videoFileId))
             return LiveResult.BadRequest("video_file_id is not a valid identifier");
 
-        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
-        AuthorizedFile? resolved = await ResolveAuthorizedFileAsync(
-            context,
-            videoFileId,
-            userId,
-            ct
-        );
+        AuthorizedFile? resolved = await ResolveAuthorizedFileAsync(videoFileId, userId, ct);
         if (resolved is null)
             return LiveResult.NotFound("Video file not found or you lack access");
 
@@ -886,25 +880,20 @@ public class LiveTranscodeService(
     }
 
     private async Task<AuthorizedFile?> ResolveAuthorizedFileAsync(
-        MediaContext context,
         Ulid videoFileId,
         Guid userId,
         CancellationToken ct
     )
     {
-        VideoFile? file = await context
-            .VideoFiles.AsNoTracking()
-            .Include(vf => vf.Metadata)
-            .FirstOrDefaultAsync(vf => vf.Id == videoFileId, ct);
+        VideoFile? file = await videoFileRepository.GetForUserWithMetadataAsync(
+            videoFileId,
+            userId,
+            ct
+        );
         if (file is null)
             return null;
 
-        bool allowed = await UserHasAccessAsync(context, file, userId, ct);
-        if (!allowed)
-            return null;
-
         (string inputPath, string[]? extraInputArgs, string? ingestKey) = await ResolveInputAsync(
-            context,
             file,
             ct
         );
@@ -927,17 +916,14 @@ public class LiveTranscodeService(
         string InputPath,
         string[]? ExtraInputArgs,
         string? IngestKey
-    )> ResolveInputAsync(MediaContext context, VideoFile file, CancellationToken ct)
+    )> ResolveInputAsync(VideoFile file, CancellationToken ct)
     {
         string localPath = storage.CombinePath(file.HostFolder, file.Filename);
 
         if (!Ulid.TryParse(file.Share, out Ulid folderId))
             return (localPath, null, null);
 
-        bool folderExists = await context
-            .Folders.AsNoTracking()
-            .AnyAsync(f => f.Id == folderId, ct);
-        if (!folderExists)
+        if (!await videoFileRepository.IsLibraryFolderAsync(folderId, ct))
             return (localPath, null, null);
 
         string servedPath = BuildServedUrl(file);
@@ -946,36 +932,6 @@ public class LiveTranscodeService(
         string url = $"http://127.0.0.1:{httpPort}{servedPath.EncodePath()}";
         string[] headers = ["-headers", $"X-NoMercy-Ingest-Key: {ingestKey}\r\n"];
         return (url, headers, ingestKey);
-    }
-
-    private static async Task<bool> UserHasAccessAsync(
-        MediaContext context,
-        VideoFile file,
-        Guid userId,
-        CancellationToken ct
-    )
-    {
-        if (file.MovieId is int movieId)
-        {
-            bool fromMovie = await context.Movies.AnyAsync(
-                m => m.Id == movieId && m.Library.LibraryUsers.Any(u => u.UserId == userId),
-                ct
-            );
-            if (fromMovie)
-                return true;
-        }
-
-        if (file.EpisodeId is int episodeId)
-        {
-            bool fromEpisode = await context.Episodes.AnyAsync(
-                e => e.Id == episodeId && e.Tv.Library.LibraryUsers.Any(u => u.UserId == userId),
-                ct
-            );
-            if (fromEpisode)
-                return true;
-        }
-
-        return false;
     }
 
     private sealed record AuthorizedFile(
