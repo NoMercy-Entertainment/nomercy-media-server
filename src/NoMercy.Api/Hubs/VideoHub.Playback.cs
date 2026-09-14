@@ -17,6 +17,7 @@ using NoMercy.Api.Hubs.Shared;
 using NoMercy.Api.Services.Video;
 using NoMercy.Authorization;
 using NoMercy.Database;
+using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.Users;
 using NoMercy.Networking.Cast;
 using NoMercy.Networking.Http;
@@ -215,9 +216,13 @@ public partial class VideoHub
     )
     {
         Device device = GetCallingDevice();
-        VideoPlayerState videoPlayerState = await VideoPlayerStateFactory.Create(
-            _contextFactory,
-            user,
+        // Cast/remote-control needs the current item's structured chapter/audio/
+        // caption/quality lists, which live on Metadata, not the slim wire DTO.
+        Metadata? metadata = await _videoFileRepository.GetMetadataAsync(item.VideoId);
+        User? userPreference = await _userDataRepository.GetWithPlaybackPreferencesAsync(user.Id);
+        VideoPlayerState videoPlayerState = VideoPlayerStateFactory.Create(
+            userPreference,
+            metadata,
             device,
             item,
             playlist,

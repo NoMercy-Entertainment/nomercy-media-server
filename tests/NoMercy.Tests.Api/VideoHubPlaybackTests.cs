@@ -67,6 +67,12 @@ public class VideoHubPlaybackTests : IClassFixture<NoMercyApiFactory>
         IServiceScope scope = _factory.Services.CreateScope();
 
         Mock<IUserDataRepository> userDataRepository = new();
+        userDataRepository
+            .Setup(r => r.GetWithPlaybackPreferencesAsync(It.IsAny<Guid>()))
+            .Returns(
+                (Guid id) =>
+                    new UserDataRepository(contextFactory).GetWithPlaybackPreferencesAsync(id)
+            );
 
         DefaultHttpContext httpContext = new() { RequestServices = null! };
         httpContext.Request.Path = "/videoHub";
@@ -86,6 +92,7 @@ public class VideoHubPlaybackTests : IClassFixture<NoMercyApiFactory>
             _factory.Services.GetRequiredService<DeviceBusRegistry>(),
             _factory.Services.GetRequiredService<CastPanelWakeLauncher>(),
             userDataRepository.Object,
+            new VideoFileRepository(contextFactory),
             null as INetworkDiscovery
         );
 

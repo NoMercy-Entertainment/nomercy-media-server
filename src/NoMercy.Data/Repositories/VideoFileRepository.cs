@@ -68,6 +68,16 @@ public class VideoFileRepository(IDbContextFactory<MediaContext> contextFactory)
         return await context.Folders.AsNoTracking().AnyAsync(f => f.Id == folderId, ct);
     }
 
+    public async Task<Metadata?> GetMetadataAsync(Ulid id, CancellationToken ct = default)
+    {
+        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+        VideoFile? file = await context
+            .VideoFiles.AsNoTracking()
+            .Include(videoFile => videoFile.Metadata)
+            .FirstOrDefaultAsync(videoFile => videoFile.Id == id, ct);
+        return file?.Metadata;
+    }
+
     public async Task<bool> ExistsAsync(Ulid id, CancellationToken ct = default)
     {
         await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);

@@ -247,6 +247,19 @@ public class UserDataRepository(IDbContextFactory<MediaContext> contextFactory)
         return true;
     }
 
+    public async Task<User?> GetWithPlaybackPreferencesAsync(Guid userId)
+    {
+        await using MediaContext context = await contextFactory.CreateDbContextAsync();
+        return await context
+            .Users.Include(u => u.PlaybackPreferences)
+                .ThenInclude(playbackPreference => playbackPreference.Library)
+                    .ThenInclude(library => library!.LibraryTvs)
+            .Include(u => u.PlaybackPreferences)
+                .ThenInclude(playbackPreference => playbackPreference.Library)
+                    .ThenInclude(library => library!.LibraryMovies)
+            .FirstOrDefaultAsync(u => u.Id == userId);
+    }
+
     public async Task SavePlaybackPreferenceAsync(
         PlaybackPreference preference,
         string playlistType

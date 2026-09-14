@@ -20,6 +20,9 @@ public interface IVideoFileRepository
 
     Task<bool> ExistsAsync(Ulid id, CancellationToken ct = default);
 
+    /// <summary>The probed chapters and tracks of a video file; null when it has none.</summary>
+    Task<Metadata?> GetMetadataAsync(Ulid id, CancellationToken ct = default);
+
     /// <summary>
     /// The file with its metadata, when the user can reach it through the movie or the
     /// episode it belongs to; null otherwise.

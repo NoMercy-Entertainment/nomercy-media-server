@@ -42,7 +42,7 @@ public partial class VideoHub : ConnectionHub
     private readonly INetworkDiscovery? _networkDiscovery;
     private readonly IUserDataRepository _userDataRepository;
 
-    private readonly IDbContextFactory<MediaContext> _contextFactory;
+    private readonly IVideoFileRepository _videoFileRepository;
 
     private readonly CastPanelWakeLauncher _castPanelWakeLauncher;
 
@@ -63,6 +63,7 @@ public partial class VideoHub : ConnectionHub
         DeviceBusRegistry busRegistry,
         CastPanelWakeLauncher castPanelWakeLauncher,
         IUserDataRepository userDataRepository,
+        IVideoFileRepository videoFileRepository,
         INetworkDiscovery? networkDiscovery = null
     )
         : base(httpContextAccessor, contextFactory, connectedClients, activityLogger)
@@ -70,7 +71,6 @@ public partial class VideoHub : ConnectionHub
         _logger = logger;
         _httpContextAccessor = httpContextAccessor;
         _clientMessenger = clientMessenger;
-        _contextFactory = contextFactory;
         _videoPlaybackService = videoPlaybackService;
         _videoPlayerStateManager = videoPlayerStateManager;
         _videoPlaylistManager = videoPlaylistManager;
@@ -80,6 +80,7 @@ public partial class VideoHub : ConnectionHub
         _castPanelWakeLauncher = castPanelWakeLauncher;
         _networkDiscovery = networkDiscovery;
         _userDataRepository = userDataRepository;
+        _videoFileRepository = videoFileRepository;
     }
 
     // ── Cast-receiver helpers (Phase 0) ──────────────────────────────────────

@@ -60,6 +60,12 @@ public interface IUserDataRepository
     Task SavePlaybackPreferenceAsync(PlaybackPreference preference, string playlistType);
 
     /// <summary>
+    /// The user with their playback preferences and, per preference, the library and its
+    /// movie and show links; null for an unknown user.
+    /// </summary>
+    Task<User?> GetWithPlaybackPreferencesAsync(Guid userId);
+
+    /// <summary>
     /// Stores <paramref name="preference"/> as the user's default for libraries of
     /// <paramref name="libraryType"/>, unless the user already has one.
     /// </summary>
