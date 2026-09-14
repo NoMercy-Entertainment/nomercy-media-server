@@ -13,6 +13,7 @@ using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
+using Newtonsoft.Json;
 using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.Media;
@@ -860,7 +861,8 @@ public class FileRepository(MediaContext context, IStorageDriver storageDriver) 
         string folder = hostFolder.Replace("\\", "/");
 
         List<VideoFile> videoFiles = await context
-            .VideoFiles.Where(videoFile => videoFile.HostFolder == folder)
+            .VideoFiles.Include(videoFile => videoFile.Metadata)
+            .Where(videoFile => videoFile.HostFolder == folder)
             .ToListAsync(ct);
 
         int repointed = 0;
@@ -903,6 +905,11 @@ public class FileRepository(MediaContext context, IStorageDriver storageDriver) 
                 changed = true;
             }
 
+            // The watch response reads the preview names from the metadata before
+            // the track rows, so it has to name the rebuilt pair as well.
+            if (RepointPreviewMetadata(videoFile.Metadata, sheetFileName, vttFileName))
+                changed = true;
+
             if (!changed)
                 continue;
 
@@ -914,6 +921,36 @@ public class FileRepository(MediaContext context, IStorageDriver storageDriver) 
             await context.SaveChangesAsync(ct);
 
         return repointed;
+    }
+
+    private static bool RepointPreviewMetadata(
+        Metadata? metadata,
+        string sheetFileName,
+        string vttFileName
+    )
+    {
+        List<IPreview>? previews = metadata?.Previews;
+        if (metadata is null || previews is not { Count: > 0 })
+            return false;
+
+        bool changed = false;
+        foreach (IPreview preview in previews)
+        {
+            if (
+                preview.ImageFileName == $"/{sheetFileName}"
+                && preview.TimeFileName == $"/{vttFileName}"
+            )
+                continue;
+
+            preview.ImageFileName = $"/{sheetFileName}";
+            preview.TimeFileName = $"/{vttFileName}";
+            changed = true;
+        }
+
+        if (changed)
+            metadata._previews = JsonConvert.SerializeObject(previews);
+
+        return changed;
     }
 
     public async Task<List<RecordedVideoFileLocation>> GetRecordedVideoFileLocationsByMovieIdAsync(
