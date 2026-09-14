@@ -256,86 +256,49 @@ public class ManagementController(
         {
             string tempPath = AppFiles.ServerTempExePath;
 
-            // Deployment type is decided before anything else. A container keeps its data
-            // volume across image updates, so a staging file written by some earlier attempt
-            // outlives every upgrade — and because the check below used to run first, that one
-            // stale file answered "already staged" forever and no update ever happened again.
-            if (Screen.IsDocker)
-            {
-                if (storageDriver.FileExists(tempPath))
-                {
-                    logger.LogInformation(
-                        "Removing a staged server binary left in the data volume — this is a container, so it can never be executed."
-                    );
-                    storageDriver.DeleteFile(tempPath);
-                }
+            StagingCheck check = ServerUpdateStaging.Check(
+                storageDriver,
+                Screen.IsDocker,
+                Software.GetReleaseVersion(),
+                tempPath,
+                AppFiles.ServerExePath,
+                path => Software.GetFileVersion(storageDriver, path)
+            );
 
-                return Ok(
-                    new
-                    {
-                        status = "ok",
-                        message = "This server runs in a container. Pull the new image to update it — "
-                            + "a binary swap here cannot take effect.",
-                        use_container_image = true,
-                        latest_version = updateStatus.LatestVersion,
-                    }
+            if (check.DiscardedStaleVersion is not null)
+                logger.LogInformation(
+                    "Discarded a stale staged binary ({StagedVersion}) that is not newer than the running server.",
+                    check.DiscardedStaleVersion
                 );
-            }
 
-            // Existence alone is not proof the staged file is the update anyone wants: a file
-            // from a previous, older attempt claims the slot just as convincingly. Only trust it
-            // when it is actually newer than what is running.
-            if (storageDriver.FileExists(tempPath))
+            switch (check.State)
             {
-                string? stagedVersion = Software.GetFileVersion(storageDriver, tempPath);
-                string running = Software.GetReleaseVersion();
+                case StagingState.ContainerImage:
+                    return Ok(ContainerImageResponse());
 
-                bool stagedIsNewer =
-                    stagedVersion is not null
-                    && Version.TryParse(stagedVersion, out Version? staged)
-                    && Version.TryParse(running, out Version? current)
-                    && staged > current;
-
-                if (stagedIsNewer)
-                {
+                case StagingState.AlreadyStaged:
                     logger.LogInformation("Update already staged, skipping download.");
                     return Ok(
                         new
                         {
                             status = "ok",
-                            message = $"Update to {stagedVersion} already staged.",
+                            message = $"Update to {check.Version} already staged.",
                             path = tempPath,
                         }
                     );
-                }
 
-                logger.LogInformation(
-                    "Discarding a stale staged binary ({StagedVersion}) that is not newer than the running server ({Running}).",
-                    [stagedVersion ?? "unknown", running]
-                );
-                storageDriver.DeleteFile(tempPath);
-            }
-
-            string? onDiskVersion = Software.GetFileVersion(storageDriver, AppFiles.ServerExePath);
-            string runningVersion = Software.GetReleaseVersion();
-            if (
-                onDiskVersion is not null
-                && Version.TryParse(onDiskVersion, out Version? diskVer)
-                && Version.TryParse(runningVersion, out Version? runVer)
-                && diskVer > runVer
-            )
-            {
-                logger.LogInformation(
-                    "Binary on disk is already {OnDiskVersion} (running {RunningVersion}), restart will apply the update.",
-                    [onDiskVersion, runningVersion]
-                );
-                return Ok(
-                    new
-                    {
-                        status = "ok",
-                        message = $"Binary on disk is already {onDiskVersion}, restart needed.",
-                    }
-                );
+                case StagingState.BinaryOnDiskIsNewer:
+                    logger.LogInformation(
+                        "Binary on disk is already {OnDiskVersion}, restart will apply the update.",
+                        check.Version
+                    );
+                    return Ok(
+                        new
+                        {
+                            status = "ok",
+                            message = $"Binary on disk is already {check.Version}, restart needed.",
+                        }
+                    );
             }
 
             logger.LogInformation("Downloading server update on demand...");
@@ -350,16 +313,7 @@ public class ManagementController(
                     return Ok(new { status = "ok", message = "Server is already up to date." });
 
                 case ServerUpdateResult.UseContainerImage:
-                    return Ok(
-                        new
-                        {
-                            status = "ok",
-                            message = "This server runs in a container. Pull the new image to update it — "
-                                + "a binary swap here cannot take effect.",
-                            use_container_image = true,
-                            latest_version = updateStatus.LatestVersion,
-                        }
-                    );
+                    return Ok(ContainerImageResponse());
 
                 case ServerUpdateResult.UseInstaller:
                     return Ok(
@@ -423,6 +377,16 @@ public class ManagementController(
             return InternalServerErrorResponse("Failed to download update");
         }
     }
+
+    private object ContainerImageResponse() =>
+        new
+        {
+            status = "ok",
+            message = "This server runs in a container. Pull the new image to update it — "
+                + "a binary swap here cannot take effect.",
+            use_container_image = true,
+            latest_version = updateStatus.LatestVersion,
+        };
 
     [HttpGet("autostart")]
     [ProducesResponseType(typeof(AutoStartDto), StatusCodes.Status200OK)]
