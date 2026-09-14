@@ -24,4 +24,7 @@ public interface IVideoFileRepository
         int seasonId,
         CancellationToken ct = default
     );
+
+    /// <summary>Looks up the parent show id for a season, for response shaping.</summary>
+    Task<int> GetShowIdForSeasonAsync(int seasonId, CancellationToken ct = default);
 }

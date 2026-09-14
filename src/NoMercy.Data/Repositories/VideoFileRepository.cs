@@ -47,4 +47,14 @@ public class VideoFileRepository(IDbContextFactory<MediaContext> contextFactory)
             .ThenBy(episode => episode.Id)
             .ToListAsync(ct);
     }
+
+    public async Task<int> GetShowIdForSeasonAsync(int seasonId, CancellationToken ct = default)
+    {
+        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+        return await context
+            .Seasons.AsNoTracking()
+            .Where(season => season.Id == seasonId)
+            .Select(season => season.TvId)
+            .FirstOrDefaultAsync(ct);
+    }
 }
