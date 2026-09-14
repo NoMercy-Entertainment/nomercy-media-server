@@ -469,54 +469,21 @@ public partial class VideoHub
             );
             CastIntent intent = ResolveVideoIntent(user.Id);
 
-            _ = Task.Run(async () =>
-            {
-                try
-                {
-                    string? receiverName = await _chromeCast.FindReceiverNameByIpAsync(targetIp);
-                    if (string.IsNullOrEmpty(receiverName))
-                    {
-                        _logger.LogWarning(
-                            "No Chromecast receiver discovered at {TargetIp} — video handoff will not wake panel via CEC",
-                            targetIp
-                        );
-                        return;
-                    }
-
-                    LaunchCustomData? launchData = await _castTokenService.MintAsync(
+            // A handoff always wakes the panel, so the target is treated as cold.
+            _ = _castPanelWakeLauncher.LaunchIfColdAsync(
+                targetIsLive: false,
+                targetIp,
+                useAndroidReceiver: _busRegistry.IsOnline(targetUlid),
+                () =>
+                    _castTokenService.MintAsync(
                         userId: user.Id,
                         serverId: serverIdString,
                         serverUrl: serverUrl,
                         deviceId: targetUlid,
                         intent: intent,
                         clientLocale: locale
-                    );
-
-                    if (launchData is null)
-                    {
-                        _logger.LogWarning(
-                            "Cast token mint failed for video handoff to {TargetIp} — falling back to LAUNCH without customData",
-                            targetIp
-                        );
-                    }
-
-                    bool apkOnline = _busRegistry.IsOnline(targetUlid);
-                    await _chromeCast.SelectChromecast(receiverName);
-                    await _chromeCast.LaunchAndroidReceiver(
-                        receiverName,
-                        launchData,
-                        useAndroidReceiver: apkOnline
-                    );
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning(
-                        "Server-side video Cast launch failed for {TargetIp}: {Message}",
-                        targetIp,
-                        ex.Message
-                    );
-                }
-            });
+                    )
+            );
         }
 
         if (_videoPlayerStateManager.TryGetValue(user.Id, out VideoPlayerState? playerState))

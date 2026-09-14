@@ -152,32 +152,15 @@ public class MusicPlaybackCommandHandler(MusicPlaybackService musicPlaybackServi
                 musicPlaybackService.StartPlaybackTimer(user);
                 break;
             case "all":
-                // If repeat all, move the backlog to the playlist and start from the beginning
-                state.Playlist = [.. state.Backlog];
-                state.Backlog.Clear();
-                if (state.Playlist.Count > 0)
+                if (state.WrapBacklogIntoPlaylist())
                 {
-                    state.CurrentItem = state.Playlist.First();
-                    state.Playlist.RemoveAt(0);
-                    state.SetPosition(0);
                     state.IgnoreCurrentTimeUntil = DateTime.UtcNow.AddSeconds(1);
-                    state.PlayState = true;
                     musicPlaybackService.StartPlaybackTimer(user);
-                }
-                else
-                {
-                    // If the playlist is empty, stop playback
-                    state.PlayState = false;
-                    state.SetPosition(0);
-                    state.CurrentItem = null;
                 }
 
                 break;
             default:
-                // If repeat is off, stop playback
-                state.PlayState = false;
-                state.SetPosition(0);
-                state.CurrentItem = null;
+                state.Stop();
                 break;
         }
     }

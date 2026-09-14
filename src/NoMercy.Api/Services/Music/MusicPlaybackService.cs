@@ -459,24 +459,10 @@ public class MusicPlaybackService
 
         RemoveTimer(user.Id);
 
-        int currentIndex = state.Playlist.IndexOf(newTrack);
-
-        // Move the current item to the backlog.
-        if (state.CurrentItem != null)
-            state.Backlog.Add(state.CurrentItem);
-
-        // Move all tracks before newTrack to the backlog (they were skipped).
-        for (int i = 0; i < currentIndex; i++)
-            state.Backlog.Add(state.Playlist[i]);
-
-        state.Playlist.RemoveRange(0, currentIndex + 1);
-        state.CurrentItem = newTrack;
-        state.SetPosition(0);
-        state.IgnoreCurrentTimeUntil = DateTime.UtcNow.AddSeconds(1);
+        state.SkipTo(state.Playlist.IndexOf(newTrack), newTrack);
         state.CrossfadeSignalSent = false;
         state.IsCrossfading = false;
         state.CrossfadeDeviceId = null;
-        state.PlayState = true;
 
         await UpdatePlaybackState(user, state);
         StartPlaybackTimer(user);
@@ -668,8 +654,7 @@ public class MusicPlaybackService
 
     internal async Task PublishStartedEventAsync(Guid userId, MusicPlayerState state)
     {
-        IEventBus? bus =
-            _eventBus ?? (EventBusProvider.IsConfigured ? EventBusProvider.Current : null);
+        IEventBus? bus = _eventBus;
         if (bus is null || state.CurrentItem is null)
             return;
 
@@ -687,8 +672,7 @@ public class MusicPlaybackService
 
     private async Task PublishProgressEventAsync(Guid userId, MusicPlayerState state)
     {
-        IEventBus? bus =
-            _eventBus ?? (EventBusProvider.IsConfigured ? EventBusProvider.Current : null);
+        IEventBus? bus = _eventBus;
         if (bus is null || state.CurrentItem is null)
             return;
 
@@ -708,8 +692,7 @@ public class MusicPlaybackService
 
     private async Task PublishCompletedEventAsync(Guid userId, MusicPlayerState state)
     {
-        IEventBus? bus =
-            _eventBus ?? (EventBusProvider.IsConfigured ? EventBusProvider.Current : null);
+        IEventBus? bus = _eventBus;
         if (bus is null || state.CurrentItem is null)
             return;
 
@@ -759,28 +742,9 @@ public class MusicPlaybackService
             case "all":
                 if (currentIndex == state.Playlist.Count - 1)
                 {
-                    // Move the current item to the backlog
                     if (state.CurrentItem != null)
                         state.Backlog.Add(state.CurrentItem);
-
-                    // Move the backlog to the playlist and start from the beginning
-                    state.Playlist = [.. state.Backlog];
-                    state.Backlog.Clear();
-
-                    if (state.Playlist.Count > 0)
-                    {
-                        state.CurrentItem = state.Playlist.First();
-                        state.Playlist.RemoveAt(0);
-                        state.SetPosition(0);
-                        state.PlayState = true;
-                    }
-                    else
-                    {
-                        // If the playlist is empty, stop playback
-                        state.PlayState = false;
-                        state.SetPosition(0);
-                        state.CurrentItem = null;
-                    }
+                    state.WrapBacklogIntoPlaylist();
                 }
                 else
                 {
@@ -804,9 +768,7 @@ public class MusicPlaybackService
                 }
                 else
                 {
-                    state.PlayState = false;
-                    state.SetPosition(0);
-                    state.CurrentItem = null;
+                    state.Stop();
                 }
 
                 break;

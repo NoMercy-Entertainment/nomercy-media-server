@@ -258,203 +258,66 @@ public class CastHub : ConnectionHub
         await _chromeCast.Disconnect();
     }
 
-    public async Task Play()
-    {
-        User? user = UserCacheService.GetUser(Context.User.UserId());
-        if (user is null)
-            return;
-        await _clientMessenger.SendTo("Play", "castHub", user.Id);
-    }
+    public Task Play() => RelayToCaller("Play");
 
-    public async Task Pause()
-    {
-        User? user = UserCacheService.GetUser(Context.User.UserId());
-        if (user is null)
-            return;
-        await _clientMessenger.SendTo("Pause", "castHub", user.Id);
-    }
+    public Task Pause() => RelayToCaller("Pause");
 
-    public async Task Time(TimeData time)
-    {
-        User? user = UserCacheService.GetUser(Context.User.UserId());
-        if (user is null)
-            return;
-        await _clientMessenger.SendTo("Time", "castHub", user.Id, time);
-    }
+    public Task Time(TimeData time) => RelayToCaller("Time", time);
 
-    public async Task Ended()
-    {
-        User? user = UserCacheService.GetUser(Context.User.UserId());
-        if (user is null)
-            return;
-        await _clientMessenger.SendTo("Ended", "castHub", user.Id);
-    }
+    public Task Ended() => RelayToCaller("Ended");
 
-    public async Task Volume(int volume)
-    {
-        User? user = UserCacheService.GetUser(Context.User.UserId());
-        if (user is null)
-            return;
-        await _clientMessenger.SendTo("Volume", "castHub", user.Id, volume);
-    }
+    public Task Volume(int volume) => RelayToCaller("Volume", volume);
 
-    public async Task Muted(bool muted)
-    {
-        User? user = UserCacheService.GetUser(Context.User.UserId());
-        if (user is null)
-            return;
-        await _clientMessenger.SendTo("Muted", "castHub", user.Id, muted);
-    }
+    public Task Muted(bool muted) => RelayToCaller("Muted", muted);
 
-    public async Task Item(PlaylistItem item)
-    {
-        User? user = UserCacheService.GetUser(Context.User.UserId());
-        if (user is null)
-            return;
-        await _clientMessenger.SendTo("Item", "castHub", user.Id, item);
-    }
+    public Task Item(PlaylistItem item) => RelayToCaller("Item", item);
 
-    public async Task Playlist(PlaylistItem[] item)
-    {
-        User? user = UserCacheService.GetUser(Context.User.UserId());
-        if (user is null)
-            return;
-        await _clientMessenger.SendTo("Playlist", "castHub", user.Id, item);
-    }
+    public Task Playlist(PlaylistItem[] item) => RelayToCaller("Playlist", item);
 
-    public async Task SubtitleTracks(TextTrack[] subtitleTracks)
-    {
-        User? user = UserCacheService.GetUser(Context.User.UserId());
-        if (user is null)
-            return;
-        await _clientMessenger.SendTo("SubtitleTracks", "castHub", user.Id, subtitleTracks);
-    }
+    public Task SubtitleTracks(TextTrack[] subtitleTracks) =>
+        RelayToCaller("SubtitleTracks", subtitleTracks);
 
-    public async Task CurrentSubtitleTrack(TextTrack subtitleTrack)
-    {
-        User? user = UserCacheService.GetUser(Context.User.UserId());
-        if (user is null)
-            return;
-        await _clientMessenger.SendTo("CurrentSubtitleTrack", "castHub", user.Id, subtitleTrack);
-    }
+    public Task CurrentSubtitleTrack(TextTrack subtitleTrack) =>
+        RelayToCaller("CurrentSubtitleTrack", subtitleTrack);
 
-    public async Task AudioTracks(AudioTrack[] audioTrack)
-    {
-        User? user = UserCacheService.GetUser(Context.User.UserId());
-        if (user is null)
-            return;
-        await _clientMessenger.SendTo("AudioTracks", "castHub", user.Id, audioTrack);
-    }
+    public Task AudioTracks(AudioTrack[] audioTrack) => RelayToCaller("AudioTracks", audioTrack);
 
-    public async Task CurrentAudioTrack(AudioTrack audioTrack)
-    {
-        User? user = UserCacheService.GetUser(Context.User.UserId());
-        if (user is null)
-            return;
-        await _clientMessenger.SendTo("CurrentAudioTrack", "castHub", user.Id, audioTrack);
-    }
+    public Task CurrentAudioTrack(AudioTrack audioTrack) =>
+        RelayToCaller("CurrentAudioTrack", audioTrack);
 
-    public async Task GetPlayerState()
-    {
-        User? user = UserCacheService.GetUser(Context.User.UserId());
-        if (user is null)
-            return;
-        await _clientMessenger.SendTo("GetPlayerState", "castHub", user.Id);
-    }
+    public Task GetPlayerState() => RelayToCaller("GetPlayerState");
 
-    public async Task PlayerState(CastPlayerState state)
-    {
-        User? user = UserCacheService.GetUser(Context.User.UserId());
-        if (user is null)
-            return;
-        await _clientMessenger.SendTo("MusicPlayerState", "castHub", user.Id, state);
-    }
+    public Task PlayerState(CastPlayerState state) => RelayToCaller("MusicPlayerState", state);
 
-    public async Task SetAudioTrack(int audioTrack)
-    {
-        User? user = UserCacheService.GetUser(Context.User.UserId());
-        if (user is null)
-            return;
-        await _clientMessenger.SendTo("SetAudioTrack", "castHub", user.Id, audioTrack);
-    }
+    public Task SetAudioTrack(int audioTrack) => RelayToCaller("SetAudioTrack", audioTrack);
 
-    public async Task SetSubtitleTrack(int subtitleTrack)
-    {
-        User? user = UserCacheService.GetUser(Context.User.UserId());
-        if (user is null)
-            return;
-        await _clientMessenger.SendTo("SetSubtitleTrack", "castHub", user.Id, subtitleTrack);
-    }
+    public Task SetSubtitleTrack(int subtitleTrack) =>
+        RelayToCaller("SetSubtitleTrack", subtitleTrack);
 
-    public async Task SetPlaylistItem(int item)
-    {
-        User? user = UserCacheService.GetUser(Context.User.UserId());
-        if (user is null)
-            return;
-        await _clientMessenger.SendTo("SetPlaylistItem", "castHub", user.Id, item);
-    }
+    public Task SetPlaylistItem(int item) => RelayToCaller("SetPlaylistItem", item);
 
-    public async Task SetVolume(int volume)
-    {
-        User? user = UserCacheService.GetUser(Context.User.UserId());
-        if (user is null)
-            return;
-        await _clientMessenger.SendTo("SetVolume", "castHub", user.Id, volume);
-    }
+    public Task SetVolume(int volume) => RelayToCaller("SetVolume", volume);
 
-    public async Task SetMuted(bool muted)
-    {
-        User? user = UserCacheService.GetUser(Context.User.UserId());
-        if (user is null)
-            return;
-        await _clientMessenger.SendTo("SetMuted", "castHub", user.Id, muted);
-    }
+    public Task SetMuted(bool muted) => RelayToCaller("SetMuted", muted);
 
-    public async Task SetSeek(int time)
-    {
-        User? user = UserCacheService.GetUser(Context.User.UserId());
-        if (user is null)
-            return;
-        await _clientMessenger.SendTo("SetSeek", "castHub", user.Id, time);
-    }
+    public Task SetSeek(int time) => RelayToCaller("SetSeek", time);
 
-    public async Task SetNext()
-    {
-        User? user = UserCacheService.GetUser(Context.User.UserId());
-        if (user is null)
-            return;
-        await _clientMessenger.SendTo("SetNext", "castHub", user.Id);
-    }
+    public Task SetNext() => RelayToCaller("SetNext");
 
-    public async Task SetPrevious()
-    {
-        User? user = UserCacheService.GetUser(Context.User.UserId());
-        if (user is null)
-            return;
-        await _clientMessenger.SendTo("SetPrevious", "castHub", user.Id);
-    }
+    public Task SetPrevious() => RelayToCaller("SetPrevious");
 
-    public async Task SetPlay()
-    {
-        User? user = UserCacheService.GetUser(Context.User.UserId());
-        if (user is null)
-            return;
-        await _clientMessenger.SendTo("SetPlay", "castHub", user.Id);
-    }
+    public Task SetPlay() => RelayToCaller("SetPlay");
 
-    public async Task SetPause()
-    {
-        User? user = UserCacheService.GetUser(Context.User.UserId());
-        if (user is null)
-            return;
-        await _clientMessenger.SendTo("SetPause", "castHub", user.Id);
-    }
+    public Task SetPause() => RelayToCaller("SetPause");
 
-    public async Task SetStop()
+    public Task SetStop() => RelayToCaller("SetStop");
+
+    /// <summary>Relays a cast event to the calling user's other castHub connections.</summary>
+    private async Task RelayToCaller(string eventName, object? data = null)
     {
         User? user = UserCacheService.GetUser(Context.User.UserId());
         if (user is null)
             return;
-        await _clientMessenger.SendTo("SetStop", "castHub", user.Id);
+        await _clientMessenger.SendTo(eventName, "castHub", user.Id, data);
     }
 }

@@ -172,8 +172,7 @@ public class VideoPlaybackService
 
     internal async Task PublishStartedEventAsync(Guid userId, VideoPlayerState state)
     {
-        IEventBus? bus =
-            _eventBus ?? (EventBusProvider.IsConfigured ? EventBusProvider.Current : null);
+        IEventBus? bus = _eventBus;
         if (bus is null || state.CurrentItem is null)
             return;
 
@@ -190,8 +189,7 @@ public class VideoPlaybackService
 
     private async Task PublishProgressEventAsync(Guid userId, VideoPlayerState state)
     {
-        IEventBus? bus =
-            _eventBus ?? (EventBusProvider.IsConfigured ? EventBusProvider.Current : null);
+        IEventBus? bus = _eventBus;
         if (bus is null || state.CurrentItem is null)
             return;
 
@@ -217,8 +215,7 @@ public class VideoPlaybackService
     /// </summary>
     private async Task PublishContinueWatchingRefreshAsync(Guid userId, VideoPlayerState state)
     {
-        IEventBus? bus =
-            _eventBus ?? (EventBusProvider.IsConfigured ? EventBusProvider.Current : null);
+        IEventBus? bus = _eventBus;
         if (bus is null)
             return;
 
@@ -256,8 +253,7 @@ public class VideoPlaybackService
 
     private async Task PublishCompletedEventAsync(Guid userId, VideoPlayerState state)
     {
-        IEventBus? bus =
-            _eventBus ?? (EventBusProvider.IsConfigured ? EventBusProvider.Current : null);
+        IEventBus? bus = _eventBus;
         if (bus is null || state.CurrentItem is null)
             return;
 

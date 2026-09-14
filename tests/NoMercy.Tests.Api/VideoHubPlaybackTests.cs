@@ -84,7 +84,7 @@ public class VideoHubPlaybackTests : IClassFixture<NoMercyApiFactory>
             Mock.Of<IActivityLogger>(),
             _factory.Services.GetRequiredService<CastSessionTokenService>(),
             _factory.Services.GetRequiredService<DeviceBusRegistry>(),
-            Mock.Of<IChromeCastService>(),
+            _factory.Services.GetRequiredService<CastPanelWakeLauncher>(),
             userDataRepository.Object,
             null as INetworkDiscovery
         );

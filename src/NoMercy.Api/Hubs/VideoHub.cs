@@ -44,7 +44,7 @@ public partial class VideoHub : ConnectionHub
 
     private readonly IDbContextFactory<MediaContext> _contextFactory;
 
-    private readonly IChromeCastService _chromeCast;
+    private readonly CastPanelWakeLauncher _castPanelWakeLauncher;
 
     private readonly ILogger<VideoHub> _logger;
 
@@ -61,7 +61,7 @@ public partial class VideoHub : ConnectionHub
         IActivityLogger activityLogger,
         CastSessionTokenService castTokenService,
         DeviceBusRegistry busRegistry,
-        IChromeCastService chromeCast,
+        CastPanelWakeLauncher castPanelWakeLauncher,
         IUserDataRepository userDataRepository,
         INetworkDiscovery? networkDiscovery = null
     )
@@ -77,7 +77,7 @@ public partial class VideoHub : ConnectionHub
         _commandHandler = commandHandler;
         _castTokenService = castTokenService;
         _busRegistry = busRegistry;
-        _chromeCast = chromeCast;
+        _castPanelWakeLauncher = castPanelWakeLauncher;
         _networkDiscovery = networkDiscovery;
         _userDataRepository = userDataRepository;
     }

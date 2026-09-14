@@ -321,28 +321,7 @@ public partial class MusicHub
 
         if (playlistIndex != -1)
         {
-            // Track is in the upcoming playlist
-            // Add current item to backlog
-            if (state.CurrentItem != null)
-            {
-                state.Backlog.Add(state.CurrentItem);
-            }
-
-            // Add all tracks BEFORE the selected one to backlog (they're being skipped over)
-            for (int i = 0; i < playlistIndex; i++)
-            {
-                state.Backlog.Add(state.Playlist[i]);
-            }
-
-            // Remove everything up to and including the selected track
-            state.Playlist.RemoveRange(0, playlistIndex + 1);
-
-            // Set the selected track as current
-            // The remaining playlist continues naturally from here
-            state.CurrentItem = item;
-            state.SetPosition(0);
-            state.IgnoreCurrentTimeUntil = DateTime.UtcNow.AddSeconds(1);
-            state.PlayState = true;
+            state.SkipTo(playlistIndex, item);
         }
         else
         {

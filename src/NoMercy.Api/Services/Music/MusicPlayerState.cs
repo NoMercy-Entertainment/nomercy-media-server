@@ -242,4 +242,53 @@ public class MusicPlayerState
             Album = [.. track.Album.Select(album => album.ForBroadcastQueueEntry())],
             Artist = [.. track.Artist.Select(artist => artist.ForBroadcastQueueEntry())],
         };
+
+    /// <summary>Nothing is playing: no current item, at the start, paused.</summary>
+    public void Stop()
+    {
+        PlayState = false;
+        SetPosition(0);
+        CurrentItem = null;
+    }
+
+    /// <summary>
+    /// Jumps ahead to the queued track at <paramref name="playlistIndex"/>: the current
+    /// track and every track skipped over go to the backlog, and <paramref name="track"/>
+    /// starts from the beginning.
+    /// </summary>
+    public void SkipTo(int playlistIndex, PlaylistTrackDto track)
+    {
+        if (CurrentItem != null)
+            Backlog.Add(CurrentItem);
+
+        Backlog.AddRange(Playlist.Take(playlistIndex));
+        Playlist.RemoveRange(0, playlistIndex + 1);
+
+        CurrentItem = track;
+        SetPosition(0);
+        IgnoreCurrentTimeUntil = DateTime.UtcNow.AddSeconds(1);
+        PlayState = true;
+    }
+
+    /// <summary>
+    /// Repeat-all wrap: the played tracks become the queue again and the first one
+    /// starts. Stops when there is nothing to wrap to. Returns true when a track starts.
+    /// </summary>
+    public bool WrapBacklogIntoPlaylist()
+    {
+        Playlist = [.. Backlog];
+        Backlog.Clear();
+
+        if (Playlist.Count == 0)
+        {
+            Stop();
+            return false;
+        }
+
+        CurrentItem = Playlist.First();
+        Playlist.RemoveAt(0);
+        SetPosition(0);
+        PlayState = true;
+        return true;
+    }
 }
