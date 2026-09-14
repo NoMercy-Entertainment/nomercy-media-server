@@ -70,27 +70,15 @@ public class VideoPlaylistManager
                 country
             ),
             MediaTypes.TvMediaType => await GetTvItems(userId, listId, itemId, language, country),
-            MediaTypes.MovieMediaType => await GetMovieItems(userId, listId, itemId, language, country),
+            MediaTypes.MovieMediaType => await GetMovieItems(
+                userId,
+                listId,
+                itemId,
+                language,
+                country
+            ),
             _ => throw new ArgumentException("Invalid playlist type", nameof(type)),
         };
-    }
-
-    public (
-        List<VideoPlaylistResponseDto> before,
-        List<VideoPlaylistResponseDto> after
-    ) SplitPlaylist(List<VideoPlaylistResponseDto> playlist, int currentTrackId)
-    {
-        int index = playlist.FindIndex(p => p.Id == currentTrackId);
-        if (index == -1)
-            return ([], playlist);
-
-        List<VideoPlaylistResponseDto> before = playlist.GetRange(0, index);
-        List<VideoPlaylistResponseDto> after = playlist.GetRange(
-            index + 1,
-            playlist.Count - index - 1
-        );
-
-        return (before, after);
     }
 
     private async Task<(

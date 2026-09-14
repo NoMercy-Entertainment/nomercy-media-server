@@ -432,11 +432,7 @@ public partial class MusicHub
         List<PlaylistTrackDto> playlist
     )
     {
-        (List<PlaylistTrackDto> before, List<PlaylistTrackDto> after) =
-            _musicPlaylistManager.SplitPlaylist(playlist, item.Id);
-        List<PlaylistTrackDto> sortedPlaylist = [];
-        sortedPlaylist.AddRange(after);
-        sortedPlaylist.AddRange(before);
+        List<PlaylistTrackDto> sortedPlaylist = playlist.QueueAfter(track => track.Id == item.Id);
 
         state.CurrentItem = item;
         state.PlayState = true;
@@ -623,7 +619,12 @@ public partial class MusicHub
             user.Id,
             async () =>
             {
-                if (!_musicPlayerStateManager.TryGetValue(user.Id, out MusicPlayerState? playerState))
+                if (
+                    !_musicPlayerStateManager.TryGetValue(
+                        user.Id,
+                        out MusicPlayerState? playerState
+                    )
+                )
                 {
                     await _musicPlaybackService.UpdatePlaybackState(user, playerState);
                     return;
@@ -709,7 +710,12 @@ public partial class MusicHub
             user.Id,
             async () =>
             {
-                if (!_musicPlayerStateManager.TryGetValue(user.Id, out MusicPlayerState? playerState))
+                if (
+                    !_musicPlayerStateManager.TryGetValue(
+                        user.Id,
+                        out MusicPlayerState? playerState
+                    )
+                )
                 {
                     await _musicPlaybackService.UpdatePlaybackState(user, playerState);
                     return;

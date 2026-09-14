@@ -14,6 +14,7 @@ using NoMercy.Api.DTOs.Music;
 using NoMercy.Data.Repositories;
 using NoMercy.Database;
 using NoMercy.Database.Models.Music;
+using NoMercy.NmSystem.Extensions;
 
 namespace NoMercy.Api.Services.Music;
 
@@ -47,21 +48,6 @@ public class MusicPlaylistManager
             "genre" => await GetGenreTracks(userId, listId, trackId, country),
             _ => throw new ArgumentException($"Invalid playlist type: '{type}'", nameof(type)),
         };
-    }
-
-    public (List<PlaylistTrackDto> before, List<PlaylistTrackDto> after) SplitPlaylist(
-        List<PlaylistTrackDto> playlist,
-        Guid currentTrackId
-    )
-    {
-        int index = playlist.FindIndex(p => p.Id == currentTrackId);
-        if (index == -1)
-            return ([], playlist);
-
-        List<PlaylistTrackDto> before = playlist.GetRange(0, index);
-        List<PlaylistTrackDto> after = playlist.GetRange(index + 1, playlist.Count - index - 1);
-
-        return (before, after);
     }
 
     private async Task<(PlaylistTrackDto, List<PlaylistTrackDto>)> GetSingleTrack(
@@ -112,15 +98,7 @@ public class MusicPlaylistManager
 
         PlaylistTrackDto item =
             playlist.FirstOrDefault(p => p.Id == trackId) ?? throw new("Playlist track not found");
-        (List<PlaylistTrackDto> before, List<PlaylistTrackDto> after) = SplitPlaylist(
-            playlist,
-            trackId
-        );
-        List<PlaylistTrackDto> sortedPlaylist = [];
-        sortedPlaylist.AddRange(after);
-        sortedPlaylist.AddRange(before);
-
-        return (item, sortedPlaylist);
+        return (item, playlist.QueueAfter(track => track.Id == trackId));
     }
 
     private async Task<(PlaylistTrackDto, List<PlaylistTrackDto>)> GetAlbumTracks(
@@ -143,15 +121,7 @@ public class MusicPlaylistManager
 
         PlaylistTrackDto item =
             playlist.FirstOrDefault(p => p.Id == trackId) ?? throw new("Album track not found");
-        (List<PlaylistTrackDto> before, List<PlaylistTrackDto> after) = SplitPlaylist(
-            playlist,
-            trackId
-        );
-        List<PlaylistTrackDto> sortedPlaylist = [];
-        sortedPlaylist.AddRange(after);
-        sortedPlaylist.AddRange(before);
-
-        return (item, sortedPlaylist);
+        return (item, playlist.QueueAfter(track => track.Id == trackId));
     }
 
     private async Task<(PlaylistTrackDto, List<PlaylistTrackDto>)> GetArtistTracks(
@@ -179,15 +149,7 @@ public class MusicPlaylistManager
 
         PlaylistTrackDto item =
             playlist.FirstOrDefault(p => p.Id == trackId) ?? throw new("Artist track not found");
-        (List<PlaylistTrackDto> before, List<PlaylistTrackDto> after) = SplitPlaylist(
-            playlist,
-            trackId
-        );
-        List<PlaylistTrackDto> sortedPlaylist = [];
-        sortedPlaylist.AddRange(after);
-        sortedPlaylist.AddRange(before);
-
-        return (item, sortedPlaylist);
+        return (item, playlist.QueueAfter(track => track.Id == trackId));
     }
 
     private async Task<(PlaylistTrackDto, List<PlaylistTrackDto>)> GetGenreTracks(
@@ -214,14 +176,6 @@ public class MusicPlaylistManager
 
         PlaylistTrackDto item =
             playlist.FirstOrDefault(p => p.Id == trackId) ?? throw new("Genre track not found");
-        (List<PlaylistTrackDto> before, List<PlaylistTrackDto> after) = SplitPlaylist(
-            playlist,
-            trackId
-        );
-        List<PlaylistTrackDto> sortedPlaylist = [];
-        sortedPlaylist.AddRange(after);
-        sortedPlaylist.AddRange(before);
-
-        return (item, sortedPlaylist);
+        return (item, playlist.QueueAfter(track => track.Id == trackId));
     }
 }
