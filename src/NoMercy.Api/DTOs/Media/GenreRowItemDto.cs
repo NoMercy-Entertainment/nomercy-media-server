@@ -162,7 +162,7 @@ public record GenreRowItemDto
             });
     }
 
-    public GenreRowItemDto(HomeMovieCardDto movie, string country)
+    public GenreRowItemDto(HomeMovieCardDto movie)
     {
         Id = movie.Id;
         Title = !string.IsNullOrEmpty(movie.TranslatedTitle) ? movie.TranslatedTitle : movie.Title;
@@ -197,7 +197,7 @@ public record GenreRowItemDto
         }
     }
 
-    public GenreRowItemDto(HomeTvCardDto tv, string country)
+    public GenreRowItemDto(HomeTvCardDto tv)
     {
         Id = tv.Id;
         Title = !string.IsNullOrEmpty(tv.TranslatedTitle) ? tv.TranslatedTitle : tv.Title;

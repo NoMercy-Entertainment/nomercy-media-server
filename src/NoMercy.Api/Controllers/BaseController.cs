@@ -319,16 +319,15 @@ public class BaseController : Controller
     protected static ContainerComponentBuilder TitleCardGrid(
         string id,
         IEnumerable<HomeMovieCardDto> movies,
-        IEnumerable<HomeTvCardDto> shows,
-        string country
+        IEnumerable<HomeTvCardDto> shows
     ) =>
         Component
             .Grid()
             .WithId(id)
             .WithItems(
                 movies
-                    .Select(movie => new CardData(movie, country))
-                    .Concat(shows.Select(show => new CardData(show, country)))
+                    .Select(movie => new CardData(movie))
+                    .Concat(shows.Select(show => new CardData(show)))
                     .OrderBy(card => card.TitleSort)
                     .Select(card => Component.Card().WithData(card))
             );

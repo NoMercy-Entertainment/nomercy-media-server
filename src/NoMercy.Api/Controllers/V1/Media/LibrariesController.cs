@@ -207,8 +207,8 @@ public class LibrariesController(
                     MoreLink = moreLink,
                     Items =
                     [
-                        .. libraryMovies.Select(m => new NmCardDto(m, country)),
-                        .. libraryShows.Select(t => new NmCardDto(t, country)),
+                        .. libraryMovies.Select(m => new NmCardDto(m)),
+                        .. libraryShows.Select(t => new NmCardDto(t)),
                     ],
                 }
             );
@@ -237,9 +237,7 @@ public class LibrariesController(
             {
                 Title = "Collections",
                 MoreLink = new("/collection", UriKind.Relative),
-                Items = collections
-                    .Select(collection => new NmCardDto(collection, country))
-                    .ToList(),
+                Items = collections.Select(collection => new NmCardDto(collection)).ToList(),
             }
         );
 
@@ -248,16 +246,16 @@ public class LibrariesController(
             {
                 Title = "Specials",
                 MoreLink = new("/specials", UriKind.Relative),
-                Items = specials.Select(special => new NmCardDto(special, country)).ToList(),
+                Items = specials.Select(special => new NmCardDto(special)).ToList(),
             }
         );
 
         List<NmCardDto> genres = [];
         if (tv != null)
-            genres.Add(new(tv, country));
+            genres.Add(new(tv));
 
         if (movie != null)
-            genres.Add(new(movie, country));
+            genres.Add(new(movie));
 
         NmCardDto? homeCardItem = genres
             .Where(g => !string.IsNullOrWhiteSpace(g.Title))
@@ -443,8 +441,8 @@ public class LibrariesController(
                     Title = library.Title,
                     MoreLink = new($"/libraries/{library.Id}", UriKind.Relative),
                     Items = libraryMovies
-                        .Select(m => new NmCardDto(m, country))
-                        .Concat(libraryShows.Select(t => new NmCardDto(t, country)))
+                        .Select(m => new NmCardDto(m))
+                        .Concat(libraryShows.Select(t => new NmCardDto(t)))
                         .ToList(),
                 }
             );
@@ -476,9 +474,7 @@ public class LibrariesController(
                 Id = "library_collections",
                 Title = "Collections",
                 MoreLink = new("/collection", UriKind.Relative),
-                Items = collections
-                    .Select(collection => new NmCardDto(collection, country))
-                    .ToList(),
+                Items = collections.Select(collection => new NmCardDto(collection)).ToList(),
             }
         );
 
@@ -488,16 +484,16 @@ public class LibrariesController(
                 Id = "library_specials",
                 Title = "Specials",
                 MoreLink = new("/specials", UriKind.Relative),
-                Items = specials.Select(special => new NmCardDto(special, country)).ToList(),
+                Items = specials.Select(special => new NmCardDto(special)).ToList(),
             }
         );
 
         List<NmCardDto> genres = [];
         if (tv != null)
-            genres.Add(new(tv, country));
+            genres.Add(new(tv));
 
         if (movie != null)
-            genres.Add(new(movie, country));
+            genres.Add(new(movie));
 
         List<ComponentEnvelope> components = new();
 
@@ -562,8 +558,8 @@ public class LibrariesController(
         if (request.Version != "lolomo")
         {
             List<CardData> cardItems = libraryMovies
-                .Select(movie => new CardData(movie, country))
-                .Concat(libraryShows.Select(tv => new CardData(tv, country)))
+                .Select(movie => new CardData(movie))
+                .Concat(libraryShows.Select(tv => new CardData(tv)))
                 .OrderBy(item => item.TitleSort)
                 .ToList();
 
@@ -581,11 +577,11 @@ public class LibrariesController(
             int index = Array.IndexOf(Letters, letter);
 
             List<CardData> carouselItems = libraryMovies
-                .Select(movie => new CardData(movie, country))
+                .Select(movie => new CardData(movie))
                 .Where(collection => AlphaBucket.Matches(collection.TitleSort, letter))
                 .Concat(
                     libraryShows
-                        .Select(tv => new CardData(tv, country))
+                        .Select(tv => new CardData(tv))
                         .Where(collection => AlphaBucket.Matches(collection.TitleSort, letter))
                 )
                 .OrderBy(item => item.TitleSort)
@@ -654,12 +650,7 @@ public class LibrariesController(
         List<HomeMovieCardDto> movies = moviesTask.Result;
         List<HomeTvCardDto> shows = showsTask.Result;
 
-        ComponentEnvelope response = TitleCardGrid(
-                $"library-{libraryId}-{letter}",
-                movies,
-                shows,
-                country
-            )
+        ComponentEnvelope response = TitleCardGrid($"library-{libraryId}-{letter}", movies, shows)
             .WithTitle(letter);
 
         return Ok(ComponentResponse.From(response));

@@ -60,10 +60,7 @@ public class SpecialController(
 
         if (request.Version != "lolomo")
         {
-            List<CardData> cardItems =
-            [
-                .. specials.Select(special => new CardData(special, country)),
-            ];
+            List<CardData> cardItems = [.. specials.Select(special => new CardData(special))];
 
             ComponentEnvelope response = Component
                 .Grid()
@@ -79,7 +76,7 @@ public class SpecialController(
                 List<CardData> letterItems =
                 [
                     .. specials
-                        .Select(special => new CardData(special, country))
+                        .Select(special => new CardData(special))
                         .Where(item => AlphaBucket.Matches(item.TitleSort, letter)),
                 ];
 
@@ -138,7 +135,7 @@ public class SpecialController(
 
     [HttpGet]
     [Route("{id:ulid}/available")]
-    public async Task<IActionResult> Available(Ulid id, CancellationToken ct = default)
+    public async Task<IActionResult> Available(Ulid id)
     {
         Guid userId = User.UserId();
 
@@ -309,7 +306,7 @@ public class SpecialController(
     [HttpPost]
     [Route("seed")]
     [Authorize(Policy = "Moderator")]
-    public async Task<IActionResult> Seed(CancellationToken ct = default)
+    public async Task<IActionResult> Seed()
     {
         try
         {

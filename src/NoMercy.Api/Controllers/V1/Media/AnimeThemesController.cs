@@ -93,7 +93,7 @@ public class AnimeThemesController(IAnimeThemeRepository animeThemeRepository) :
         if (themeDetail is null || (movies.Count == 0 && tvShows.Count == 0))
             return NotFoundResponse("Anime theme not found");
 
-        ComponentEnvelope response = TitleCardGrid("anime-theme-items", movies, tvShows, country);
+        ComponentEnvelope response = TitleCardGrid("anime-theme-items", movies, tvShows);
 
         return Ok(ComponentResponse.From(response));
     }

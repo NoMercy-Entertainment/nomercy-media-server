@@ -402,7 +402,7 @@ public partial class MusicHub
         // Logging only — record who triggered the playlist change without
         // promoting them to active. The active flag is governed by
         // UpdateDeviceInfo, which respects an existing active device.
-        Device device = GetCallerDevice(user);
+        Device device = GetCallerDevice();
         try
         {
             await ActivityLogger.LogPlaybackAsync(

@@ -64,7 +64,8 @@ public class CollectionsController(
             language,
             country,
             request.Take,
-            request.Page
+            request.Page,
+            ct
         );
 
         if (request.Version != "lolomo")
@@ -150,7 +151,11 @@ public class CollectionsController(
         if (!AuthPolicy.IsAllowed(User))
             return UnauthorizedResponse("You do not have permission to view collections");
 
-        Collection? collection = await collectionRepository.GetAvailableCollectionAsync(userId, id);
+        Collection? collection = await collectionRepository.GetAvailableCollectionAsync(
+            userId,
+            id,
+            ct
+        );
 
         // The query only returns a collection that has a movie with a stored file.
         if (collection is null)
@@ -181,7 +186,8 @@ public class CollectionsController(
             userId,
             id,
             language,
-            country
+            country,
+            ct
         );
 
         if (collection is null)
@@ -241,7 +247,7 @@ public class CollectionsController(
         if (!AuthPolicy.IsAllowed(User))
             return UnauthorizedResponse("You do not have permission to manage watch list");
 
-        bool success = await collectionRepository.AddToWatchListAsync(id, userId, request.Add);
+        bool success = await collectionRepository.AddToWatchListAsync(id, userId, request.Add, ct);
 
         if (!success)
             return UnprocessableEntityResponse("Collection not found");

@@ -42,10 +42,10 @@ public class VideoPlaybackCommandHandler(
         switch (command)
         {
             case "play":
-                HandlePlay(user, state);
+                HandlePlay(state);
                 break;
             case "pause":
-                HandlePause(user, state);
+                HandlePause(state);
                 break;
             case "seek":
                 await HandleSeek(user, state, data);
@@ -105,12 +105,12 @@ public class VideoPlaybackCommandHandler(
         }
     }
 
-    private void HandlePlay(User user, VideoPlayerState state)
+    private static void HandlePlay(VideoPlayerState state)
     {
         state.PlayState = true;
     }
 
-    private void HandlePause(User user, VideoPlayerState state)
+    private static void HandlePause(VideoPlayerState state)
     {
         state.PlayState = false;
     }

@@ -26,11 +26,6 @@ public class MusicLikeEventHandler : EventSubscriber
 
     internal Task OnMusicItemLiked(MusicItemLikedEvent @event, CancellationToken ct)
     {
-        return _musicPlaybackService.ApplyItemLikeAsync(
-            @event.UserId,
-            @event.ItemId,
-            @event.Liked,
-            ct
-        );
+        return _musicPlaybackService.ApplyItemLikeAsync(@event.UserId, @event.ItemId, @event.Liked);
     }
 }

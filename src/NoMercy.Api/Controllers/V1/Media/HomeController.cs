@@ -188,10 +188,7 @@ public partial class HomeController : BaseController
     [HttpGet("home")]
     [ResponseCache(NoStore = true)]
     [Authorize(Policy = "MediaAccess")]
-    public async Task<IActionResult> Home(
-        [FromQuery] PageRequestDto request,
-        CancellationToken ct = default
-    )
+    public async Task<IActionResult> Home([FromQuery] PageRequestDto request)
     {
         ComponentResponse result = await _homeService.GetHomeData(
             User.UserId(),
@@ -205,10 +202,7 @@ public partial class HomeController : BaseController
 
     [HttpPost("home/card")]
     [Authorize(Policy = "MediaAccess")]
-    public async Task<IActionResult> HomeCard(
-        [FromBody] CardRequestDto request,
-        CancellationToken ct = default
-    )
+    public async Task<IActionResult> HomeCard([FromBody] CardRequestDto request)
     {
         ComponentResponse result = await _homeService.GetHomeCard(
             User.UserId(),
@@ -222,7 +216,7 @@ public partial class HomeController : BaseController
 
     [HttpGet("home/tv")]
     [Authorize(Policy = "MediaAccess")]
-    public async Task<IActionResult> HomeTv(CancellationToken ct = default)
+    public async Task<IActionResult> HomeTv()
     {
         ComponentResponse result = await _homeService.GetHomeTvContent(
             User.UserId(),
@@ -235,10 +229,7 @@ public partial class HomeController : BaseController
 
     [HttpPost("home/continue")]
     [Authorize(Policy = "MediaAccess")]
-    public async Task<IActionResult> HomeContinue(
-        [FromBody] CardRequestDto request,
-        CancellationToken ct = default
-    )
+    public async Task<IActionResult> HomeContinue([FromBody] CardRequestDto request)
     {
         ComponentResponse result = await _homeService.GetHomeContinueContent(
             User.UserId(),
@@ -253,11 +244,7 @@ public partial class HomeController : BaseController
     [HttpHead]
     [Route("trailer/{trailerId}")]
     [Authorize(Policy = "MediaAccess")]
-    public async Task<IActionResult> HasTrailer(
-        int id,
-        string trailerId,
-        CancellationToken ct = default
-    )
+    public async Task<IActionResult> HasTrailer(string trailerId, CancellationToken ct = default)
     {
         if (!TrailerIdRegex().IsMatch(trailerId))
             return NotFoundResponse("Trailer not found");
@@ -297,11 +284,7 @@ public partial class HomeController : BaseController
     [HttpGet]
     [Route("trailer/{trailerId}")]
     [Authorize(Policy = "MediaAccess")]
-    public async Task<IActionResult> Trailer(
-        int id,
-        string trailerId,
-        CancellationToken ct = default
-    )
+    public async Task<IActionResult> Trailer(string trailerId, CancellationToken ct = default)
     {
         if (!TrailerIdRegex().IsMatch(trailerId))
             return NotFoundResponse("Trailer not found");
@@ -424,11 +407,7 @@ public partial class HomeController : BaseController
     [HttpDelete]
     [Route("trailer/{trailerId}")]
     [Authorize(Policy = "MediaAccess")]
-    public async Task<IActionResult> RemoveTrailer(
-        int id,
-        string trailerId,
-        CancellationToken ct = default
-    )
+    public async Task<IActionResult> RemoveTrailer(string trailerId, CancellationToken ct = default)
     {
         if (!TrailerIdRegex().IsMatch(trailerId))
             return NotFoundResponse("Trailer not found");

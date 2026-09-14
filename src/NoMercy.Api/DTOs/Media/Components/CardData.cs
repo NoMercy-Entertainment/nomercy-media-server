@@ -486,7 +486,7 @@ public record CardData
         }
     }
 
-    public CardData(MovieCardDto movie, string country, bool watch = false)
+    public CardData(MovieCardDto movie, bool watch = false)
     {
         Id = movie.Id;
         Title = movie.Title;
@@ -520,7 +520,7 @@ public record CardData
         }
     }
 
-    public CardData(HomeMovieCardDto movie, string country, bool watch = false)
+    public CardData(HomeMovieCardDto movie, bool watch = false)
     {
         Id = movie.Id;
         Title = !string.IsNullOrEmpty(movie.TranslatedTitle) ? movie.TranslatedTitle : movie.Title;
@@ -555,7 +555,7 @@ public record CardData
         }
     }
 
-    public CardData(HomeTvCardDto tv, string country, bool watch = false)
+    public CardData(HomeTvCardDto tv, bool watch = false)
     {
         Id = tv.Id;
         Title = !string.IsNullOrEmpty(tv.TranslatedTitle) ? tv.TranslatedTitle : tv.Title;
@@ -590,7 +590,7 @@ public record CardData
         }
     }
 
-    public CardData(SpecialCardDto dto, string country)
+    public CardData(SpecialCardDto dto)
     {
         Id = dto.Id;
         Title = dto.Title;
@@ -635,7 +635,7 @@ public record CardData
         ColorPalette = rec.ColorPalette;
     }
 
-    public CardData(TvCardDto tv, string country, bool watch = false)
+    public CardData(TvCardDto tv, bool watch = false)
     {
         Id = tv.Id;
         Title = tv.Title;

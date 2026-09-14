@@ -71,12 +71,7 @@ public class HomeService(IHomeRepository homeRepository, ILibraryRepository libr
         {
             genre.Items = genre
                 .Source.Select(source =>
-                    TransformToRowItemDto(
-                        country,
-                        source,
-                        tvsAndMovies.TvData,
-                        tvsAndMovies.MovieData
-                    )
+                    TransformToRowItemDto(source, tvsAndMovies.TvData, tvsAndMovies.MovieData)
                 )
                 .Where(genreRow => genreRow != null);
         }
@@ -85,7 +80,6 @@ public class HomeService(IHomeRepository homeRepository, ILibraryRepository libr
     }
 
     private static GenreRowItemDto? TransformToRowItemDto(
-        string country,
         HomeSourceDto source,
         List<HomeTvCardDto> tvData,
         List<HomeMovieCardDto> movieData
@@ -94,11 +88,11 @@ public class HomeService(IHomeRepository homeRepository, ILibraryRepository libr
         return source.MediaType switch
         {
             MediaTypes.TvMediaType => tvData.FirstOrDefault(t => t.Id == source.Id) is { } tv
-                ? new GenreRowItemDto(tv, country)
+                ? new GenreRowItemDto(tv)
                 : null,
             MediaTypes.MovieMediaType => movieData.FirstOrDefault(m => m.Id == source.Id)
                 is { } movie
-                ? new GenreRowItemDto(movie, country)
+                ? new GenreRowItemDto(movie)
                 : null,
             _ => null,
         };
@@ -270,7 +264,7 @@ public class HomeService(IHomeRepository homeRepository, ILibraryRepository libr
                 g.Id,
                 g.Title,
                 g.MoreLink,
-                g.Source.Select(source => ResolveCardData(source, tvData, movieData, country))
+                g.Source.Select(source => ResolveCardData(source, tvData, movieData))
                     .Where(c => c != null)
                     .Cast<CardData>()
                     .ToList()
@@ -312,8 +306,8 @@ public class HomeService(IHomeRepository homeRepository, ILibraryRepository libr
                 );
 
             List<CardData> items = libraryMovies
-                .Select(m => new CardData(m, country))
-                .Concat(libraryShows.Select(t => new CardData(t, country)))
+                .Select(m => new CardData(m))
+                .Concat(libraryShows.Select(t => new CardData(t)))
                 .OrderByDescending(c => c.CreatedAt)
                 .ToList();
 
@@ -433,18 +427,17 @@ public class HomeService(IHomeRepository homeRepository, ILibraryRepository libr
         HomeSourceDto source,
         List<HomeTvCardDto> tvData,
         List<HomeMovieCardDto> movieData,
-        string country,
         bool watch = false
     )
     {
         return source.MediaType switch
         {
             MediaTypes.TvMediaType => tvData.FirstOrDefault(t => t.Id == source.Id) is { } tv
-                ? new CardData(tv, country, watch)
+                ? new CardData(tv, watch)
                 : null,
             MediaTypes.MovieMediaType => movieData.FirstOrDefault(m => m.Id == source.Id)
                 is { } movie
-                ? new CardData(movie, country, watch)
+                ? new CardData(movie, watch)
                 : null,
             _ => null,
         };
@@ -498,9 +491,9 @@ public class HomeService(IHomeRepository homeRepository, ILibraryRepository libr
 
         List<CardData> candidates = [];
         if (tv != null)
-            candidates.Add(new(tv, country));
+            candidates.Add(new(tv));
         if (movie != null)
-            candidates.Add(new(movie, country));
+            candidates.Add(new(movie));
 
         CardData? homeCardItem = candidates
             .Where(c => !string.IsNullOrWhiteSpace(c.Title))
@@ -675,7 +668,6 @@ public class HomeService(IHomeRepository homeRepository, ILibraryRepository libr
                             source,
                             tvsAndMovies.TvData,
                             tvsAndMovies.MovieData,
-                            country,
                             watch: false
                         )
                     )

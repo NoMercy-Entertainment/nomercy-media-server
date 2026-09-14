@@ -294,7 +294,7 @@ public partial class MusicHub : ConnectionHub
 
     // ── Cast-receiver helpers (Phase 0) ──────────────────────────────────────
 
-    private CastIntent ResolveMusicIntent(Guid userId, string targetDeviceId)
+    private CastIntent ResolveMusicIntent(Guid userId)
     {
         // If the user has a live music player state when handing off to the TV,
         // the receiver should resume that exact list. Otherwise idle — receiver

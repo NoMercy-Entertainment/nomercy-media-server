@@ -63,7 +63,7 @@ public class SearchController : BaseController
 
         List<TrackRowData> songResults =
         [
-            .. songs.Take(6).Select(track => new TrackRowData(track, country)),
+            .. songs.Take(6).Select(track => new TrackRowData(track)),
         ];
 
         return Ok(

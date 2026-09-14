@@ -89,7 +89,7 @@ public class EncoderProfilesController(
     /// Returns the sparse DB row for a single encoding preset by its <see cref="Ulid"/> id.
     /// </summary>
     [HttpGet("{id:ulid}")]
-    public async Task<IActionResult> Get(Ulid id, CancellationToken ct)
+    public async Task<IActionResult> Get(Ulid id)
     {
         EncodingPreset? preset = await presetRepository.GetByIdAsync(id);
         if (preset is null)
@@ -316,8 +316,7 @@ public class EncoderProfilesController(
     [HttpPost("{id}/preview")]
     public async Task<IActionResult> Preview(
         string id,
-        [FromBody] PreviewEncoderProfileRequest request,
-        CancellationToken ct
+        [FromBody] PreviewEncoderProfileRequest request
     )
     {
         EncoderProfileService.PreviewParseResult parseResult =
@@ -341,11 +340,7 @@ public class EncoderProfilesController(
     /// chain intact and compact.
     /// </summary>
     [HttpPut("{id:ulid}")]
-    public async Task<IActionResult> Update(
-        Ulid id,
-        [FromBody] V2EncodingProfile incoming,
-        CancellationToken ct
-    )
+    public async Task<IActionResult> Update(Ulid id, [FromBody] V2EncodingProfile incoming)
     {
         EncodingPreset? row = await presetRepository.GetByIdAsync(id);
         if (row is null)
@@ -381,11 +376,7 @@ public class EncoderProfilesController(
     /// overrides need to be set via PUT.
     /// </summary>
     [HttpPost("{parentId:ulid}/clone")]
-    public async Task<IActionResult> Clone(
-        Ulid parentId,
-        [FromBody] CloneRequest request,
-        CancellationToken ct
-    )
+    public async Task<IActionResult> Clone(Ulid parentId, [FromBody] CloneRequest request)
     {
         EncodingPreset? parent = await presetRepository.GetByIdAsync(parentId);
         if (parent is null)

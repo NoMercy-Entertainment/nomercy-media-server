@@ -312,7 +312,7 @@ public class DynamicStaticFilesMiddleware(
         }
 
         // Parse range or default to start of file for streamable media
-        long start = 0;
+        long start;
         long end;
 
         // Initial probe chunk size (1 MB) — serves the first slice fast for browsers

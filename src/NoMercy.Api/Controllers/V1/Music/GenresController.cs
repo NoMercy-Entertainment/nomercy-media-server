@@ -95,7 +95,6 @@ public class GenresController : BaseController
     [HttpGet]
     [Route("letter/{letter}")]
     public async Task<IActionResult> LibraryByLetter(
-        Ulid libraryId,
         string letter,
         [FromQuery] PageRequestDto request
     )

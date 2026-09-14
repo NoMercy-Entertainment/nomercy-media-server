@@ -91,7 +91,7 @@ public class AnimeSeasonsController(IAnimeSeasonRepository animeSeasonRepository
         if (seasonDetail is null || (movies.Count == 0 && tvShows.Count == 0))
             return NotFoundResponse("Anime season not found");
 
-        ComponentEnvelope response = TitleCardGrid("anime-season-items", movies, tvShows, country);
+        ComponentEnvelope response = TitleCardGrid("anime-season-items", movies, tvShows);
 
         return Ok(ComponentResponse.From(response));
     }

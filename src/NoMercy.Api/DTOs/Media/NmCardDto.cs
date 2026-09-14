@@ -250,7 +250,7 @@ public class NmCardDto
             .FirstOrDefault();
     }
 
-    public NmCardDto(HomeMovieCardDto movie, string country)
+    public NmCardDto(HomeMovieCardDto movie)
     {
         Id = movie.Id;
         Title = !string.IsNullOrEmpty(movie.TranslatedTitle) ? movie.TranslatedTitle : movie.Title;
@@ -282,7 +282,7 @@ public class NmCardDto
         }
     }
 
-    public NmCardDto(HomeTvCardDto tv, string country)
+    public NmCardDto(HomeTvCardDto tv)
     {
         Id = tv.Id;
         Title = !string.IsNullOrEmpty(tv.TranslatedTitle) ? tv.TranslatedTitle : tv.Title;
@@ -314,7 +314,7 @@ public class NmCardDto
         }
     }
 
-    public NmCardDto(CollectionListDto dto, string country)
+    public NmCardDto(CollectionListDto dto)
     {
         Id = dto.Id;
         Title = !string.IsNullOrEmpty(dto.TranslatedTitle) ? dto.TranslatedTitle : dto.Title;
@@ -348,7 +348,7 @@ public class NmCardDto
         }
     }
 
-    public NmCardDto(SpecialCardDto dto, string country)
+    public NmCardDto(SpecialCardDto dto)
     {
         Id = dto.Id;
         Title = dto.Title;
@@ -580,7 +580,7 @@ public class NmCardDto
         HaveItems = 0;
     }
 
-    public NmCardDto(MovieCardDto movie, string country)
+    public NmCardDto(MovieCardDto movie)
     {
         Id = movie.Id;
         Title = movie.Title;
@@ -611,7 +611,7 @@ public class NmCardDto
         }
     }
 
-    public NmCardDto(TvCardDto tv, string country)
+    public NmCardDto(TvCardDto tv)
     {
         Id = tv.Id;
         Title = tv.Title;

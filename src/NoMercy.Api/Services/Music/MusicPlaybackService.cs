@@ -544,12 +544,7 @@ public class MusicPlaybackService
         StartPlaybackTimer(user);
     }
 
-    public async Task ApplyItemLikeAsync(
-        Guid userId,
-        Guid itemId,
-        bool liked,
-        CancellationToken cancellationToken = default
-    )
+    public async Task ApplyItemLikeAsync(Guid userId, Guid itemId, bool liked)
     {
         if (!_stateManager.TryGetValue(userId, out MusicPlayerState? playerState))
             return;

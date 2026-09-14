@@ -30,7 +30,7 @@ public partial class MusicHub
     /// need to log who triggered an action but do not want to promote them to
     /// active.
     /// </summary>
-    private Device GetCallerDevice(User user)
+    private Device GetCallerDevice()
     {
         if (!ConnectedClients.Clients.TryGetValue(Context.ConnectionId, out Client? device))
             throw new InvalidOperationException(
@@ -47,7 +47,7 @@ public partial class MusicHub
     /// </summary>
     private Device GetOrPromoteActiveDevice(User user)
     {
-        Device caller = GetCallerDevice(user);
+        Device caller = GetCallerDevice();
 
         if (_activeDeviceRegistry.TryGet(user.Id, out Device? existing) && existing is not null)
         {
@@ -228,7 +228,7 @@ public partial class MusicHub
             string locale = CastLaunchOrigin.SenderLocale(
                 _httpContextAccessor.HttpContext?.Request.Headers.AcceptLanguage.ToString()
             );
-            CastIntent intent = ResolveMusicIntent(user.Id, deviceId);
+            CastIntent intent = ResolveMusicIntent(user.Id);
             bool apkOnline = _busRegistry.IsOnline(targetUlid);
 
             _ = Task.Run(() =>

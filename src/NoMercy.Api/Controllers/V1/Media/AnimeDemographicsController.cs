@@ -94,12 +94,7 @@ public class AnimeDemographicsController(IAnimeDemographicRepository animeDemogr
         if (demographicDetail is null || (movies.Count == 0 && tvShows.Count == 0))
             return NotFoundResponse("Anime demographic not found");
 
-        ComponentEnvelope response = TitleCardGrid(
-            "anime-demographic-items",
-            movies,
-            tvShows,
-            country
-        );
+        ComponentEnvelope response = TitleCardGrid("anime-demographic-items", movies, tvShows);
 
         return Ok(ComponentResponse.From(response));
     }

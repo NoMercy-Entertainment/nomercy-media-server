@@ -110,9 +110,6 @@ public class MoviesController(
         if (!AuthPolicy.IsAllowed(User))
             return UnauthorizedResponse("You do not have permission to view movies");
 
-        string language = Language();
-        string country = Country();
-
         bool available = await movieRepository.GetMovieAvailableAsync(userId, id, ct);
 
         if (!available)

@@ -104,7 +104,7 @@ public record TrackRowData
         });
     }
 
-    public TrackRowData(Track track, string country)
+    public TrackRowData(Track track)
     {
         Id = track.Id.ToString();
         Name = track.Name;

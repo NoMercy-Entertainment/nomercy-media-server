@@ -50,8 +50,6 @@ public class RipperHub : ConnectionHub
 
     public override async Task OnConnectedAsync()
     {
-        User user = UserCacheService.GetUser(Context.User.UserId())!;
-
         await base.OnConnectedAsync();
         _logger.LogDebug("Ripper client connected");
     }
