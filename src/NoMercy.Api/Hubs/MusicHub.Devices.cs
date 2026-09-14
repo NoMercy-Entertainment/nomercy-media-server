@@ -434,10 +434,7 @@ public partial class MusicHub
         {
             try
             {
-                await using MediaContext mediaContext = await ContextFactory.CreateDbContextAsync();
-                await mediaContext
-                    .Devices.Where(d => d.DeviceId == targetDeviceId)
-                    .ExecuteUpdateAsync(d => d.SetProperty(x => x.VolumePercent, clamped));
+                await _deviceStateRepository.SetVolumeAsync(targetDeviceId, clamped);
             }
             catch (Exception ex)
             {

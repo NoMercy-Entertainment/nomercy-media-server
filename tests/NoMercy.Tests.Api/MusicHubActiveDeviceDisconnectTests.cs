@@ -147,7 +147,8 @@ public class MusicHubActiveDeviceDisconnectTests : IClassFixture<NoMercyApiFacto
             castTokenService,
             Mock.Of<IChromeCastService>(),
             castPanelWakeLauncher,
-            activeDeviceRegistry
+            activeDeviceRegistry,
+            new DeviceStateRepository(contextFactory)
         );
 
         ClaimsPrincipal principal = new(

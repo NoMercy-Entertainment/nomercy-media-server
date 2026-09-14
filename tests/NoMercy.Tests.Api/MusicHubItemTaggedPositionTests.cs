@@ -128,7 +128,8 @@ public class MusicHubItemTaggedPositionTests : IClassFixture<NoMercyApiFactory>
             castTokenService,
             Mock.Of<IChromeCastService>(),
             castPanelWakeLauncher,
-            activeDeviceRegistry
+            activeDeviceRegistry,
+            new DeviceStateRepository(contextFactory)
         );
 
         ClaimsPrincipal principal = new(

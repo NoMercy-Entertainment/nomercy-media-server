@@ -160,7 +160,8 @@ public class MusicHubDeviceCommandsTests : IClassFixture<NoMercyApiFactory>
             castTokenService,
             chromeCast ?? Mock.Of<IChromeCastService>(),
             castPanelWakeLauncher,
-            activeDeviceRegistry
+            activeDeviceRegistry,
+            new DeviceStateRepository(contextFactory)
         );
 
         ClaimsPrincipal principal = new(

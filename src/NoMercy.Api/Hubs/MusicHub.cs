@@ -17,6 +17,7 @@ using NoMercy.Api.Services.Music;
 using NoMercy.Api.WebSockets;
 using NoMercy.Authorization;
 using NoMercy.Data.Activity;
+using NoMercy.Data.Repositories;
 using NoMercy.Database;
 using NoMercy.Database.Models.Users;
 using NoMercy.Networking;
@@ -37,6 +38,7 @@ public partial class MusicHub : ConnectionHub
     private readonly MusicPlayerStateManager _musicPlayerStateManager;
     private readonly MusicPlaylistManager _musicPlaylistManager;
     private readonly MusicPlaybackCommandHandler _commandHandler;
+    private readonly IDeviceStateRepository _deviceStateRepository;
     private readonly DeviceBusRegistry _busRegistry;
     private readonly CastSessionTokenService _castTokenService;
     private readonly MusicActiveDeviceRegistry _activeDeviceRegistry;
@@ -63,6 +65,7 @@ public partial class MusicHub : ConnectionHub
         IChromeCastService chromeCast,
         CastPanelWakeLauncher castPanelWakeLauncher,
         MusicActiveDeviceRegistry activeDeviceRegistry,
+        IDeviceStateRepository deviceStateRepository,
         INetworkDiscovery? networkDiscovery = null
     )
         : base(httpContextAccessor, contextFactory, connectedClients, activityLogger)
@@ -74,6 +77,7 @@ public partial class MusicHub : ConnectionHub
         _musicPlayerStateManager = musicPlayerStateManager;
         _musicPlaylistManager = musicPlaylistManager;
         _commandHandler = commandHandler;
+        _deviceStateRepository = deviceStateRepository;
         _busRegistry = busRegistry;
         _castTokenService = castTokenService;
         _chromeCast = chromeCast;
