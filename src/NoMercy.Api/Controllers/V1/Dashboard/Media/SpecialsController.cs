@@ -14,7 +14,6 @@ using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Api.DTOs.Media;
@@ -22,11 +21,9 @@ using NoMercy.Authorization;
 using NoMercy.Data.Repositories;
 using NoMercy.Data.Requests;
 using NoMercy.Data.Services;
-using NoMercy.Database;
 using NoMercy.Database.Models.Movies;
 using NoMercy.Database.Models.TvShows;
 using NoMercy.NmSystem.Extensions;
-using NoMercy.Storage;
 
 namespace NoMercy.Api.Controllers.V1.Dashboard.Media;
 
@@ -36,12 +33,8 @@ namespace NoMercy.Api.Controllers.V1.Dashboard.Media;
 [Authorize(Policy = "Moderator")]
 [Route("api/v{version:apiVersion}/dashboard/specials", Order = 11)]
 public class SpecialsController(
-    // TODO: remove mediaContext once LibraryLogic accepts IDbContextFactory instead of MediaContext
-    MediaContext mediaContext,
     ISpecialRepository specialRepository,
-    IStorageDriver storageDriver,
-    IStorageFactory storageFactory,
-    ILogger<LibraryLogic> libraryLogicLogger
+    ILibraryLogicFactory libraryLogicFactory
 ) : BaseController
 {
     [HttpGet]
@@ -205,15 +198,7 @@ public class SpecialsController(
     [Route("{id:ulid}/rescan")]
     public async Task<IActionResult> Rescan(Ulid id)
     {
-        // BLOCKER: LibraryLogic requires a raw MediaContext until it is refactored
-        // to accept IDbContextFactory. Remove mediaContext from the ctor at that point.
-        LibraryLogic specialLogic = new(
-            id,
-            mediaContext,
-            storageDriver,
-            storageFactory,
-            libraryLogicLogger
-        );
+        LibraryLogic specialLogic = libraryLogicFactory.Create(id);
 
         if (await specialLogic.Process())
             return Ok(

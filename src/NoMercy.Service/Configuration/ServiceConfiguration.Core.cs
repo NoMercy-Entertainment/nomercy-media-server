@@ -441,6 +441,7 @@ public static partial class ServiceConfiguration
         services.AddScoped<MediaProcessingFileRepository>();
         services.AddScoped<IFileRepository, MediaProcessingFileRepository>();
         services.AddScoped<IFileManager, FileManager>();
+        services.AddScoped<ILibraryLogicFactory, LibraryLogicFactory>();
         services.AddScoped<IMediaIdentificationService, MediaIdentificationService>();
         services.AddScoped<IFileListService, FileListService>();
 
