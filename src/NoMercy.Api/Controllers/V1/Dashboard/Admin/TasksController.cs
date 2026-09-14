@@ -62,7 +62,8 @@ public class TasksController(
     IEncoderProcessRegistry processRegistry,
     ProcessThrottle processThrottle,
     IEncodingHistoryRepository historyRepository,
-    IAudioAnalysisScheduler audioAnalysisScheduler
+    IAudioAnalysisScheduler audioAnalysisScheduler,
+    IEventBus eventBus
 ) : BaseController
 {
     [HttpGet]
@@ -544,31 +545,28 @@ public class TasksController(
                 .Select(entry => entry.Row.Id),
         ];
 
-        if (EventBusProvider.IsConfigured)
+        foreach (QueueJobDto dto in queueJobs.Where(dto => reservedRowIds.Contains(dto.Id)))
         {
-            foreach (QueueJobDto dto in queueJobs.Where(dto => reservedRowIds.Contains(dto.Id)))
-            {
-                // Lower-case keys are the encoder-progress contract — every other
-                // producer on this channel emits them, and the serializer has no
-                // naming strategy, so an anonymous object with PascalCase members
-                // reached the dashboard as {Id, Status, Title}. Reading data.status
-                // off that gives undefined, which is not in-flight, so the card was
-                // never restored and the miss ran the handler's removal branch
-                // instead — one refetch per running row per poll, each refetch
-                // re-broadcasting the same unreadable payload.
-                _ = EventBusProvider.Current.PublishAsync(
-                    new EncodingProgressBroadcastedEvent
+            // Lower-case keys are the encoder-progress contract — every other
+            // producer on this channel emits them, and the serializer has no
+            // naming strategy, so an anonymous object with PascalCase members
+            // reached the dashboard as {Id, Status, Title}. Reading data.status
+            // off that gives undefined, which is not in-flight, so the card was
+            // never restored and the miss ran the handler's removal branch
+            // instead — one refetch per running row per poll, each refetch
+            // re-broadcasting the same unreadable payload.
+            _ = eventBus.PublishAsync(
+                new EncodingProgressBroadcastedEvent
+                {
+                    ProgressData = new
                     {
-                        ProgressData = new
-                        {
-                            id = dto.PayloadId.ToInt(),
-                            status = "running",
-                            title = dto.Title,
-                            message = "Encoding video",
-                        },
-                    }
-                );
-            }
+                        id = dto.PayloadId.ToInt(),
+                        status = "running",
+                        title = dto.Title,
+                        message = "Encoding video",
+                    },
+                }
+            );
         }
 
         return Ok(new DataResponseDto<QueueJobDto[]> { Data = queueJobs });

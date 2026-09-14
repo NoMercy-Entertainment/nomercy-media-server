@@ -33,7 +33,7 @@ namespace NoMercy.Api.Controllers.V1.Dashboard.Admin;
 [ApiVersion(1.0)]
 [Authorize]
 [Route("api/v{version:apiVersion}/dashboard/users", Order = 10)]
-public class UsersController(IUserRepository userRepository) : BaseController
+public class UsersController(IUserRepository userRepository, IEventBus eventBus) : BaseController
 {
     [HttpGet]
     [Authorize(Policy = "Owner")]
@@ -223,10 +223,9 @@ public class UsersController(IUserRepository userRepository) : BaseController
         if (updatedUser is not null)
             UserCacheService.UpdateUser(updatedUser);
 
-        if (EventBusProvider.IsConfigured)
-            await EventBusProvider.Current.PublishAsync(
-                new UserPermissionsChangedEvent { UserId = id, ChangedBy = userId }
-            );
+        await eventBus.PublishAsync(
+            new UserPermissionsChangedEvent { UserId = id, ChangedBy = userId }
+        );
 
         return Ok(new StatusResponseDto<string> { Status = "success", Message = "User updated" });
     }

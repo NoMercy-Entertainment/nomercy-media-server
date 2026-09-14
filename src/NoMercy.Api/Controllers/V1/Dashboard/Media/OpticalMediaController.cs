@@ -58,7 +58,8 @@ public class OpticalMediaController(
     ILiveStreamingService liveStreamingService,
     ISessionManager sessionManager,
     IDiscSessionRegistry discSessionRegistry,
-    DiscIdentityDispatcher discIdentityDispatcher
+    DiscIdentityDispatcher discIdentityDispatcher,
+    IEventBus eventBus
 ) : BaseController
 {
     // ── Legacy endpoints (re-pointed to Module A) ──────────────────────────
@@ -670,17 +671,14 @@ public class OpticalMediaController(
         }
 
         string watcherFolderHost = ResolveHostPath(folderStorage, parentRelative);
-        if (EventBusProvider.IsConfigured)
-        {
-            await EventBusProvider.Current.PublishAsync(
-                new FileCreatedEvent
-                {
-                    FolderPath = watcherFolderHost,
-                    LibraryId = targetLibrary.Id,
-                    LibraryType = targetLibrary.Type,
-                }
-            );
-        }
+        await eventBus.PublishAsync(
+            new FileCreatedEvent
+            {
+                FolderPath = watcherFolderHost,
+                LibraryId = targetLibrary.Id,
+                LibraryType = targetLibrary.Type,
+            }
+        );
 
         return Ok(
             new
@@ -688,7 +686,7 @@ public class OpticalMediaController(
                 tmdb_id = request.TmdbId,
                 media_type = request.MediaType,
                 destination = folderRelative,
-                library_refresh_triggered = EventBusProvider.IsConfigured,
+                library_refresh_triggered = true,
             }
         );
     }

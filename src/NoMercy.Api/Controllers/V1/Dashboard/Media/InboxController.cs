@@ -34,13 +34,15 @@ namespace NoMercy.Api.Controllers.V1.Dashboard.Media;
 [ApiVersion(1.0)]
 [Authorize(Policy = "Moderator")]
 [Route("api/v{version:apiVersion}/dashboard/inbox", Order = 10)]
-public class InboxController(IInboxRepository inboxRepository, IInboxMetadataProbe metadataProbe)
-    : BaseController
+public class InboxController(
+    IInboxRepository inboxRepository,
+    IInboxMetadataProbe metadataProbe,
+    IEventBus eventBus
+) : BaseController
 {
     [HttpGet]
     public async Task<IActionResult> Index([FromQuery] string? status)
     {
-
         List<InboxItem> items = await inboxRepository.GetAllAsync(
             status,
             HttpContext.RequestAborted
@@ -52,7 +54,6 @@ public class InboxController(IInboxRepository inboxRepository, IInboxMetadataPro
     [HttpGet("{id:ulid}")]
     public async Task<IActionResult> Show(Ulid id)
     {
-
         InboxItem? item = await inboxRepository.GetByIdAsync(id, HttpContext.RequestAborted);
 
         if (item is null)
@@ -68,7 +69,6 @@ public class InboxController(IInboxRepository inboxRepository, IInboxMetadataPro
         [FromQuery] string query
     )
     {
-
         if (string.IsNullOrWhiteSpace(type))
             return BadRequestResponse("type is required");
 
@@ -112,7 +112,6 @@ public class InboxController(IInboxRepository inboxRepository, IInboxMetadataPro
     [HttpPost("{id:ulid}/assign")]
     public async Task<IActionResult> Assign(Ulid id, [FromBody] InboxAssignRequest request)
     {
-
         InboxItem? item = await inboxRepository.GetTrackedByIdAsync(id, HttpContext.RequestAborted);
 
         if (item is null)
@@ -156,12 +155,9 @@ public class InboxController(IInboxRepository inboxRepository, IInboxMetadataPro
             );
         }
 
-        if (EventBusProvider.IsConfigured)
-        {
-            await EventBusProvider.Current.PublishAsync(
-                new InboxItemUpdatedEvent { Id = item.Id.ToString(), Status = item.Status }
-            );
-        }
+        await eventBus.PublishAsync(
+            new InboxItemUpdatedEvent { Id = item.Id.ToString(), Status = item.Status }
+        );
 
         return Ok(
             new StatusResponseDto<InboxItemDto>
@@ -176,7 +172,6 @@ public class InboxController(IInboxRepository inboxRepository, IInboxMetadataPro
     [HttpPost("{id:ulid}/dismiss")]
     public async Task<IActionResult> Dismiss(Ulid id)
     {
-
         InboxItem? item = await inboxRepository.GetTrackedByIdAsync(id, HttpContext.RequestAborted);
 
         if (item is null)
@@ -184,12 +179,9 @@ public class InboxController(IInboxRepository inboxRepository, IInboxMetadataPro
 
         await inboxRepository.DismissAsync(item, HttpContext.RequestAborted);
 
-        if (EventBusProvider.IsConfigured)
-        {
-            await EventBusProvider.Current.PublishAsync(
-                new InboxItemUpdatedEvent { Id = item.Id.ToString(), Status = item.Status }
-            );
-        }
+        await eventBus.PublishAsync(
+            new InboxItemUpdatedEvent { Id = item.Id.ToString(), Status = item.Status }
+        );
 
         return Ok(
             new StatusResponseDto<string> { Status = "ok", Message = "Inbox item dismissed." }
@@ -199,7 +191,6 @@ public class InboxController(IInboxRepository inboxRepository, IInboxMetadataPro
     [HttpDelete("{id:ulid}")]
     public async Task<IActionResult> Delete(Ulid id)
     {
-
         InboxItem? item = await inboxRepository.GetTrackedByIdAsync(id, HttpContext.RequestAborted);
 
         if (item is null)

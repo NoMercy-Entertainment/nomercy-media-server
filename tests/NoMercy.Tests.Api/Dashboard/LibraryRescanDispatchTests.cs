@@ -57,7 +57,8 @@ public class LibraryRescanDispatchTests
             Mock.Of<NoMercy.Encoder.Analysis.IMediaAnalyzer>(),
             Mock.Of<NoMercy.MediaProcessing.Files.Parsing.IFilenameParserPipeline>(),
             Mock.Of<NoMercy.MediaProcessing.Shows.IAnimeClassificationAuditService>(),
-            Mock.Of<Microsoft.Extensions.Logging.ILogger<LibrariesController>>()
+            Mock.Of<Microsoft.Extensions.Logging.ILogger<LibrariesController>>(),
+            Mock.Of<NoMercy.Events.IEventBus>()
         );
     }
 
@@ -180,7 +181,8 @@ public class LibraryRescanDispatchTests
             Mock.Of<NoMercy.Encoder.Analysis.IMediaAnalyzer>(),
             Mock.Of<NoMercy.MediaProcessing.Files.Parsing.IFilenameParserPipeline>(),
             Mock.Of<NoMercy.MediaProcessing.Shows.IAnimeClassificationAuditService>(),
-            Mock.Of<Microsoft.Extensions.Logging.ILogger<LibrariesController>>()
+            Mock.Of<Microsoft.Extensions.Logging.ILogger<LibrariesController>>(),
+            Mock.Of<NoMercy.Events.IEventBus>()
         );
 
         IActionResult result = await controller.RepairTrackMatches(Ulid.NewUlid());
@@ -223,7 +225,8 @@ public class LibraryRescanDispatchTests
             Mock.Of<NoMercy.Encoder.Analysis.IMediaAnalyzer>(),
             Mock.Of<NoMercy.MediaProcessing.Files.Parsing.IFilenameParserPipeline>(),
             Mock.Of<NoMercy.MediaProcessing.Shows.IAnimeClassificationAuditService>(),
-            Mock.Of<Microsoft.Extensions.Logging.ILogger<LibrariesController>>()
+            Mock.Of<Microsoft.Extensions.Logging.ILogger<LibrariesController>>(),
+            Mock.Of<NoMercy.Events.IEventBus>()
         );
 
         IActionResult result = await controller.RepairTrackMatches(libraryId);

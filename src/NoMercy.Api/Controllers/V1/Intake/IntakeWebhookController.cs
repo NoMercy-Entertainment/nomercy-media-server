@@ -46,7 +46,8 @@ namespace NoMercy.Api.Controllers.V1.Intake;
 [Route("api/v{version:apiVersion}/intake/webhook")]
 public class IntakeWebhookController(
     IIntakeSettings intakeSettings,
-    IDbContextFactory<MediaContext> contextFactory
+    IDbContextFactory<MediaContext> contextFactory,
+    IEventBus eventBus
 ) : BaseController
 {
     private const string TokenHeaderName = "X-Intake-Token";
@@ -107,12 +108,7 @@ public class IntakeWebhookController(
                 "The configured drop folder is not registered as an inbox library."
             );
 
-        if (!EventBusProvider.IsConfigured)
-            return ServiceUnavailableResponse(
-                "The event bus is not configured; the dropped file cannot be processed right now."
-            );
-
-        await EventBusProvider.Current.PublishAsync(
+        await eventBus.PublishAsync(
             new FileCreatedEvent
             {
                 FolderPath = ownedFolder.Folder.Path,

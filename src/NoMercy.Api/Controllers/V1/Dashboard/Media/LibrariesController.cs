@@ -63,7 +63,8 @@ public class LibrariesController(
     IMediaAnalyzer mediaAnalyzer,
     IFilenameParserPipeline filenameParser,
     IAnimeClassificationAuditService animeClassificationAuditService,
-    ILogger<LibrariesController> logger
+    ILogger<LibrariesController> logger,
+    IEventBus eventBus
 ) : BaseController
 {
     [HttpGet]
@@ -355,17 +356,14 @@ public class LibrariesController(
                 await UserCacheService.RefreshFolderIdsAsync(refreshContext);
             }
 
-            if (EventBusProvider.IsConfigured)
-            {
-                await EventBusProvider.Current.PublishAsync(
-                    new LibraryDeletedEvent { LibraryId = library.Id, LibraryName = library.Title }
-                );
+            await eventBus.PublishAsync(
+                new LibraryDeletedEvent { LibraryId = library.Id, LibraryName = library.Title }
+            );
 
-                foreach (FolderLibrary fl in library.FolderLibraries)
-                    await EventBusProvider.Current.PublishAsync(
-                        new FolderPathRemovedEvent { RequestPath = fl.FolderId }
-                    );
-            }
+            foreach (FolderLibrary fl in library.FolderLibraries)
+                await eventBus.PublishAsync(
+                    new FolderPathRemovedEvent { RequestPath = fl.FolderId }
+                );
 
             try
             {
@@ -762,17 +760,14 @@ public class LibrariesController(
         await using MediaContext refreshContext = await mediaContextFactory.CreateDbContextAsync();
         await UserCacheService.RefreshFolderIdsAsync(refreshContext);
 
-        if (EventBusProvider.IsConfigured)
-        {
-            await EventBusProvider.Current.PublishAsync(
-                new FolderPathAddedEvent
-                {
-                    RequestPath = pathAsync.Id,
-                    DriverId = pathAsync.DriverId,
-                    SubPath = pathAsync.Path,
-                }
-            );
-        }
+        await eventBus.PublishAsync(
+            new FolderPathAddedEvent
+            {
+                RequestPath = pathAsync.Id,
+                DriverId = pathAsync.DriverId,
+                SubPath = pathAsync.Path,
+            }
+        );
 
         return Ok(
             new StatusResponseDto<FolderLibrary>
@@ -814,20 +809,15 @@ public class LibrariesController(
                 await UserCacheService.RefreshFolderIdsAsync(refreshContext);
             }
 
-            if (EventBusProvider.IsConfigured)
-            {
-                await EventBusProvider.Current.PublishAsync(
-                    new FolderPathRemovedEvent { RequestPath = folder.Id }
-                );
-                await EventBusProvider.Current.PublishAsync(
-                    new FolderPathAddedEvent
-                    {
-                        RequestPath = folder.Id,
-                        DriverId = folder.DriverId,
-                        SubPath = folder.Path,
-                    }
-                );
-            }
+            await eventBus.PublishAsync(new FolderPathRemovedEvent { RequestPath = folder.Id });
+            await eventBus.PublishAsync(
+                new FolderPathAddedEvent
+                {
+                    RequestPath = folder.Id,
+                    DriverId = folder.DriverId,
+                    SubPath = folder.Path,
+                }
+            );
 
             return Ok(
                 new StatusResponseDto<string>
@@ -867,12 +857,7 @@ public class LibrariesController(
                 await UserCacheService.RefreshFolderIdsAsync(refreshContext);
             }
 
-            if (EventBusProvider.IsConfigured)
-            {
-                await EventBusProvider.Current.PublishAsync(
-                    new FolderPathRemovedEvent { RequestPath = folder.Id }
-                );
-            }
+            await eventBus.PublishAsync(new FolderPathRemovedEvent { RequestPath = folder.Id });
 
             return Ok(
                 new StatusResponseDto<string>
