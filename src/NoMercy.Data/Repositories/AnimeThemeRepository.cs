@@ -23,6 +23,10 @@ public class AnimeThemeDetailDto
 
 public class AnimeThemeRepository(MediaContext context) : IAnimeThemeRepository
 {
+    public async Task<bool> AnyThemedTitlesAsync(CancellationToken ct = default) =>
+        await context.AnimeThemeTv.AsNoTracking().AnyAsync(ct)
+        || await context.AnimeThemeMovie.AsNoTracking().AnyAsync(ct);
+
     public async Task<List<AnimeThemeWithCountsDto>> GetThemesWithCountsAsync(
         Guid userId,
         string language,

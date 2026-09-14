@@ -13,14 +13,12 @@ using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Api.DTOs.Dashboard;
 using NoMercy.Api.DTOs.Media;
 using NoMercy.Api.Services;
 using NoMercy.Authorization;
 using NoMercy.Data.Repositories;
-using NoMercy.Database;
 using NoMercy.Database.Models.Common;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.Music;
@@ -37,7 +35,7 @@ namespace NoMercy.Api.Controllers.V1;
 [Authorize]
 [Route("api/v{version:apiVersion}/setup")]
 public class SetupController(
-    MediaContext context,
+    IAnimeThemeRepository animeThemeRepository,
     IServerConfigurationRepository serverConfiguration,
     SetupService setupService,
     HomeService homeService,
@@ -66,229 +64,20 @@ public class SetupController(
     [Route("navigation")]
     public async Task<IActionResult> Navigation(CancellationToken ct = default)
     {
-        Guid userId = User.UserId();
+        List<Library> libraries = await libraryRepository.GetLibraries(User.UserId(), ct);
+        bool hasAnime =
+            LibraryNavigation.HasVideo(libraries)
+            && await animeThemeRepository.AnyThemedTitlesAsync(ct);
 
-        List<Library> libraries = await libraryRepository.GetLibraries(userId, ct);
-        List<LibraryNavigationEntryDto> entries = [];
-
-        foreach (
-            Library library in libraries
-                .Where(library => library.Type != "music")
-                .OrderBy(library => library.Order)
-        )
-        {
-            entries.Add(
-                new()
-                {
-                    Id = library.Id.ToString(),
-                    Label = library.Title,
-                    Icon = IconForLibraryType(library.Type),
-                    Link = $"/libraries/{library.Id}",
-                    Origin = LibraryNavigationOrigin.Library,
-                    RouteType = "library",
-                }
-            );
-        }
-
-        bool hasVideo = libraries.Any(library => library.Type != "music");
-        bool hasMovies = libraries.Any(library => library.Type == "movie");
-
-        if (hasMovies)
-        {
-            entries.Add(
-                Page(
-                    id: "collections",
-                    label: "library.base.collections",
-                    icon: "collection1",
-                    link: "/collection",
-                    routeType: "library"
-                )
-            );
-        }
-
-        if (hasVideo)
-        {
-            entries.Add(
-                Page(
-                    id: "specials",
-                    label: "library.base.specials",
-                    icon: "sparkles",
-                    link: "/specials",
-                    routeType: "library"
-                )
-            );
-            entries.Add(
-                Page(
-                    id: "genres",
-                    label: "library.base.genres",
-                    icon: "witchHat",
-                    link: "/genres",
-                    routeType: "library"
-                )
-            );
-            entries.Add(
-                Page(
-                    id: "people",
-                    label: "library.base.people",
-                    icon: "user",
-                    link: "/person",
-                    routeType: "library"
-                )
-            );
-            entries.Add(
-                Page(
-                    id: "favorites",
-                    label: "library.base.favorites",
-                    icon: "heart",
-                    link: "/favorites",
-                    routeType: "library"
-                )
-            );
-            entries.Add(
-                Page(
-                    id: "lists",
-                    label: "library.base.my_lists",
-                    icon: "bulletList",
-                    link: "/lists",
-                    routeType: "library"
-                )
-            );
-
-            // Only surfaced once the user actually has anime — these tables stay
-            // empty for a library with no anime, and there is no point offering
-            // a browse entry that always renders an empty grid.
-            bool hasAnime =
-                await context.AnimeThemeTv.AsNoTracking().AnyAsync(ct)
-                || await context.AnimeThemeMovie.AsNoTracking().AnyAsync(ct);
-
-            if (hasAnime)
-            {
-                entries.Add(
-                    Page(
-                        id: "anime-themes",
-                        label: "library.base.anime_themes",
-                        icon: "witchHat",
-                        link: "/anime/themes",
-                        routeType: "library"
-                    )
-                );
-                entries.Add(
-                    Page(
-                        id: "anime-demographics",
-                        label: "library.base.anime_demographics",
-                        icon: "user",
-                        link: "/anime/demographics",
-                        routeType: "library"
-                    )
-                );
-                entries.Add(
-                    Page(
-                        id: "anime-seasons",
-                        label: "library.base.anime_seasons",
-                        icon: "collection1",
-                        link: "/anime/seasons",
-                        routeType: "library"
-                    )
-                );
-            }
-        }
-
-        entries.AddRange(PluginEntries(PluginKind.Library, PluginKind.Video));
-
-        entries.Add(
-            new()
-            {
-                Id = "MusicStart",
-                Label = "Start",
-                Icon = IconForLibraryType("speaker"),
-                Link = "/music/start",
-                Origin = LibraryNavigationOrigin.Page,
-                RouteType = "music",
-            }
+        List<LibraryNavigationEntryDto> entries = LibraryNavigation.Build(
+            libraries,
+            hasAnime,
+            PluginEntries(PluginKind.Library, PluginKind.Video),
+            PluginEntries(PluginKind.Music)
         );
-
-        entries.Add(
-            new()
-            {
-                Id = "MusicArtists",
-                Label = "Artists",
-                Icon = "speaker",
-                Link = "/music/artists",
-                Origin = LibraryNavigationOrigin.Page,
-                RouteType = "music",
-            }
-        );
-
-        entries.Add(
-            new()
-            {
-                Id = "MusicAlbums",
-                Label = "Albums",
-                Icon = "disk",
-                Link = "/music/albums",
-                Origin = LibraryNavigationOrigin.Page,
-                RouteType = "music",
-            }
-        );
-
-        entries.Add(
-            new()
-            {
-                Id = "MusicGenres",
-                Label = "Genres",
-                Icon = "noteClefTreble",
-                Link = "/music/genres",
-                Origin = LibraryNavigationOrigin.Page,
-                RouteType = "music",
-            }
-        );
-
-        entries.Add(
-            new()
-            {
-                Id = "MusicFavorites",
-                Label = "Songs you like",
-                Icon = "heart",
-                Link = "/music/favorites",
-                Origin = LibraryNavigationOrigin.Page,
-                RouteType = "music",
-            }
-        );
-
-        entries.AddRange(PluginEntries(PluginKind.Music));
 
         return Ok(new DataResponseDto<List<LibraryNavigationEntryDto>> { Data = entries });
     }
-
-    private static LibraryNavigationEntryDto Page(
-        string id,
-        string label,
-        string icon,
-        string link,
-        string routeType
-    ) =>
-        new()
-        {
-            Id = id,
-            Label = label,
-            Icon = icon,
-            Link = link,
-            Origin = LibraryNavigationOrigin.Page,
-            RouteType = routeType,
-        };
-
-    /// <summary>
-    /// A library the app has no glyph for is still a library: it gets the folder
-    /// rather than nothing, which is what an unmapped type used to draw.
-    /// </summary>
-    private static string IconForLibraryType(string? type) =>
-        type switch
-        {
-            "anime" or "tv" => "monitor",
-            "movie" => "movieClap",
-            "music" => "noteDouble",
-            _ => "folder",
-        };
 
     /// <summary>
     /// The pages plugins mount into this section. A plugin awaiting consent or
