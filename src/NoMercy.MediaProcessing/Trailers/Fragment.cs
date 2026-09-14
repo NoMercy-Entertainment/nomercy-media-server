@@ -9,23 +9,16 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using Mono.Nat;
 using Newtonsoft.Json;
 using NoMercy.Providers.Helpers;
 
-namespace NoMercy.Api.DTOs.Common;
+namespace NoMercy.MediaProcessing.Trailers;
 
-public class HttpHeaders
+public class Fragment
 {
-    [JsonProperty("User-Agent")]
-    public string? UserAgent { get; set; }
+    [JsonProperty("url")]
+    public Uri? Url { get; set; }
 
-    [JsonProperty("Accept")]
-    public string? Accept { get; set; }
-
-    [JsonProperty("Accept-Language")]
-    public string? AcceptLanguage { get; set; }
-
-    [JsonProperty("Sec-Fetch-Mode")]
-    public string? SecFetchMode { get; set; }
+    [JsonProperty("duration")]
+    public double Duration { get; set; }
 }

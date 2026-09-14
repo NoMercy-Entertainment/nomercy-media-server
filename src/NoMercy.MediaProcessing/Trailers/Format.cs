@@ -9,11 +9,10 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using Mono.Nat;
 using Newtonsoft.Json;
 using NoMercy.Providers.Helpers;
 
-namespace NoMercy.Api.DTOs.Common;
+namespace NoMercy.MediaProcessing.Trailers;
 
 public class Format
 {
@@ -27,7 +26,7 @@ public class Format
     public string? Ext { get; set; }
 
     [JsonProperty("protocol")]
-    public Protocol Protocol { get; set; }
+    public string? Protocol { get; set; }
 
     [JsonProperty("acodec", NullValueHandling = NullValueHandling.Ignore)]
     public string? Acodec { get; set; }

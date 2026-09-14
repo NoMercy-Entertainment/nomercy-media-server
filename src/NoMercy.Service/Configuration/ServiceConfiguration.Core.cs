@@ -671,7 +671,7 @@ public static partial class ServiceConfiguration
         >();
 
         // Transcode-scoped IStorage — paths are relative to AppFiles.TranscodePath.
-        // HomeController uses this so it can pass scope-relative paths (Rule 1 of
+        // TrailerCache uses this so it can pass scope-relative paths (Rule 1 of
         // the IStorage path contract) instead of Path.Combine(TranscodePath, ...).
         services.AddKeyedSingleton<IStorage>(
             "transcode",
@@ -697,6 +697,12 @@ public static partial class ServiceConfiguration
                 );
                 return new Storage.Drivers.Local.LocalStorage(driver, guard);
             }
+        );
+        services.AddSingleton<MediaProcessing.Trailers.ITrailerCache>(
+            sp => new MediaProcessing.Trailers.TrailerCache(
+                sp.GetRequiredKeyedService<IStorage>("transcode"),
+                sp.GetRequiredService<ILogger<MediaProcessing.Trailers.TrailerCache>>()
+            )
         );
         services.AddSingleton<IDerivedAudioStore>(sp => new DerivedAudioStore(
             sp.GetRequiredKeyedService<IStorage>("derived-audio"),

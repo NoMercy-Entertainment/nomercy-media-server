@@ -9,23 +9,13 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using Mono.Nat;
 using Newtonsoft.Json;
 using NoMercy.Providers.Helpers;
 
-namespace NoMercy.Api.DTOs.Common;
+namespace NoMercy.MediaProcessing.Trailers;
 
-public class Caption
+public class DownloaderOptions
 {
-    [JsonProperty("ext")]
-    public string? Ext { get; set; }
-
-    [JsonProperty("url")]
-    public Uri? Url { get; set; }
-
-    [JsonProperty("name")]
-    public string? Name { get; set; }
-
-    [JsonProperty("__yt_dlp_client")]
-    public string? YtDlpClient { get; set; }
+    [JsonProperty("http_chunk_size")]
+    public long HttpChunkSize { get; set; }
 }

@@ -9,17 +9,19 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using Mono.Nat;
 using Newtonsoft.Json;
 using NoMercy.Providers.Helpers;
 
-namespace NoMercy.Api.DTOs.Common;
+namespace NoMercy.MediaProcessing.Trailers;
 
-public class Fragment
+public class Heatmap
 {
-    [JsonProperty("url")]
-    public Uri? Url { get; set; }
+    [JsonProperty("start_time")]
+    public double StartTime { get; set; }
 
-    [JsonProperty("duration")]
-    public double Duration { get; set; }
+    [JsonProperty("end_time")]
+    public double EndTime { get; set; }
+
+    [JsonProperty("value")]
+    public double Value { get; set; }
 }
