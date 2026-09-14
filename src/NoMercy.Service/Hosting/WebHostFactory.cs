@@ -1,4 +1,4 @@
-﻿// -----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 //  Copyright (c) 2024-present NoMercy Entertainment. All rights reserved.
 //
 //  This file is part of NoMercy MediaServer, source-available software (NOT open
@@ -14,6 +14,7 @@ using Asp.Versioning;
 using Asp.Versioning.ApiExplorer;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using NoMercy.Networking.Certificate;
+using NoMercy.Networking.Http;
 using NoMercy.NmSystem.Configuration;
 using NoMercy.NmSystem.Information;
 using NoMercy.NmSystem.SystemCalls;
@@ -26,10 +27,9 @@ public static class WebHostFactory
 {
     public static WebApplication Create(StartupOptions options, bool forceHttp = false)
     {
-        List<IPAddress> localAddresses = [IPAddress.Any];
-
-        // if (Software.IsWindows || Software.IsMac)
-        //     localAddresses.Add(IPAddress.IPv6Any);
+        // One dual-mode socket serves IPv4 and IPv6 clients. It falls back to IPv4-only
+        // when the host cannot bind "::", so an install that never had IPv6 boots as before.
+        List<IPAddress> localAddresses = [ListenAddresses.Wildcard()];
 
         WebApplicationBuilder builder = WebApplication.CreateBuilder();
         builder.Services.AddSingleton<NmSystem.Logging.NoMercyLoggerOptions>(_ =>
