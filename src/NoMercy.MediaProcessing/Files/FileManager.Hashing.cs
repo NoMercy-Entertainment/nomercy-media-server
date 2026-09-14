@@ -578,7 +578,9 @@ public partial class FileManager
         Dictionary<string, string> spriteByStem = new(StringComparer.OrdinalIgnoreCase);
         List<(string Name, string Stem)> vttCandidates = [];
 
-        foreach (StorageEntry entry in files.Where(e => !e.IsDirectory))
+        // An empty sheet or cue file is a rebuild that was stopped before ffmpeg
+        // wrote it; registering it replaces a working preview with nothing.
+        foreach (StorageEntry entry in files.Where(e => !e.IsDirectory && !IsEmptyPreviewFile(e)))
         {
             string name = storage.GetName(entry.Path);
             string stem = storage.GetNameWithoutExtension(entry.Path);
@@ -628,6 +630,9 @@ public partial class FileManager
 
         return tracks;
     }
+
+    private static bool IsEmptyPreviewFile(StorageEntry entry) =>
+        entry.SizeBytes == 0 && (entry.Path.EndsWith(".webp") || entry.Path.EndsWith(".vtt"));
 
     private static List<Subtitle> GetSubtitles(IStorage storage, string hostFolder)
     {
