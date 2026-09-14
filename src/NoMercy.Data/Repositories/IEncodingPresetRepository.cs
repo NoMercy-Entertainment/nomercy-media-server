@@ -33,5 +33,8 @@ public interface IEncodingPresetRepository
 
     Task<bool> DeleteAsync(Ulid id);
 
+    /// <summary>Whether any preset inherits from the preset with this id.</summary>
+    Task<bool> HasChildrenAsync(Ulid id, CancellationToken ct = default);
+
     Task<int> GetTotalCountAsync();
 }

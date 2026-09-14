@@ -207,6 +207,18 @@ public class EncodingPresetRepositoryTests : IDisposable
         Assert.Equal(["1080p", "anime", "archival"], tags);
     }
 
+    [Fact]
+    public async Task HasChildrenAsync_IsTrueOnlyForAPresetSomethingInheritsFrom()
+    {
+        EncodingPreset parent = await _repository.CreateAsync(Build(name: "Parent"));
+        EncodingPreset child = Build(name: "Child");
+        child.ParentPresetId = parent.Id;
+        await _repository.CreateAsync(child);
+
+        Assert.True(await _repository.HasChildrenAsync(parent.Id));
+        Assert.False(await _repository.HasChildrenAsync(child.Id));
+    }
+
     private static EncodingPreset Build(
         string name = "Sample",
         string? description = null,

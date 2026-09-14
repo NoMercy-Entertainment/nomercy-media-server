@@ -127,5 +127,8 @@ public class EncodingPresetRepository(MediaContext context) : IEncodingPresetRep
         return true;
     }
 
+    public Task<bool> HasChildrenAsync(Ulid id, CancellationToken ct = default) =>
+        context.EncodingPresets.AsNoTracking().AnyAsync(p => p.ParentPresetId == id, ct);
+
     public Task<int> GetTotalCountAsync() => context.EncodingPresets.CountAsync();
 }

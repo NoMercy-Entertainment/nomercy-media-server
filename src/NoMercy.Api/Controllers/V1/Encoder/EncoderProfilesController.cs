@@ -91,9 +91,7 @@ public class EncoderProfilesController(
     [HttpGet("{id:ulid}")]
     public async Task<IActionResult> Get(Ulid id, CancellationToken ct)
     {
-        EncodingPreset? preset = await mediaContext
-            .EncodingPresets.AsNoTracking()
-            .FirstOrDefaultAsync(p => p.Id == id, ct);
+        EncodingPreset? preset = await presetRepository.GetByIdAsync(id);
         if (preset is null)
             return NotFoundResponse("Preset not found.");
 
@@ -226,26 +224,18 @@ public class EncoderProfilesController(
     [HttpDelete("{id:ulid}")]
     public async Task<IActionResult> Delete(Ulid id, CancellationToken ct)
     {
-        EncodingPreset? row = await mediaContext.EncodingPresets.FirstOrDefaultAsync(
-            p => p.Id == id,
-            ct
-        );
+        EncodingPreset? row = await presetRepository.GetByIdAsync(id);
         if (row is null)
             return NotFoundResponse("Preset not found.");
         if (row.IsBuiltIn)
             return BadRequestResponse("Built-in presets cannot be deleted.");
 
-        bool hasChildren = await mediaContext.EncodingPresets.AnyAsync(
-            p => p.ParentPresetId == id,
-            ct
-        );
-        if (hasChildren)
+        if (await presetRepository.HasChildrenAsync(id, ct))
             return BadRequestResponse(
                 "Preset has children that inherit from it; reparent or delete them first."
             );
 
-        mediaContext.EncodingPresets.Remove(row);
-        await mediaContext.SaveChangesAsync(ct);
+        await presetRepository.DeleteAsync(id);
         return NoContent();
     }
 
@@ -357,10 +347,7 @@ public class EncoderProfilesController(
         CancellationToken ct
     )
     {
-        EncodingPreset? row = await mediaContext.EncodingPresets.FirstOrDefaultAsync(
-            p => p.Id == id,
-            ct
-        );
+        EncodingPreset? row = await presetRepository.GetByIdAsync(id);
         if (row is null)
             return NotFoundResponse("Preset not found.");
         if (row.IsBuiltIn)
@@ -381,9 +368,8 @@ public class EncoderProfilesController(
             sparseJson = Newtonsoft.Json.Linq.JObject.FromObject(incoming);
         }
 
-        row.ProfileJson = sparseJson.ToString(Formatting.None);
-        row.UpdatedAt = DateTime.UtcNow;
-        await mediaContext.SaveChangesAsync(ct);
+        string profileJson = sparseJson.ToString(Formatting.None);
+        await presetRepository.UpdateAsync(id, preset => preset.ProfileJson = profileJson);
 
         return NoContent();
     }
@@ -401,9 +387,7 @@ public class EncoderProfilesController(
         CancellationToken ct
     )
     {
-        EncodingPreset? parent = await mediaContext
-            .EncodingPresets.AsNoTracking()
-            .FirstOrDefaultAsync(p => p.Id == parentId, ct);
+        EncodingPreset? parent = await presetRepository.GetByIdAsync(parentId);
         if (parent is null)
             return NotFoundResponse("Parent preset not found.");
         if (string.IsNullOrWhiteSpace(request.Name))
@@ -419,8 +403,7 @@ public class EncoderProfilesController(
             IsBuiltIn = false,
             Source = "db",
         };
-        mediaContext.EncodingPresets.Add(clone);
-        await mediaContext.SaveChangesAsync(ct);
+        await presetRepository.CreateAsync(clone);
 
         return CreatedAtAction(nameof(Get), new { id = clone.Id }, new { id = clone.Id });
     }
