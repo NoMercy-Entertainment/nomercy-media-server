@@ -19,16 +19,15 @@ using NoMercy.Events.Library;
 
 namespace NoMercy.Api.EventHandlers;
 
-public class FolderPathEventHandler : IDisposable
+public class FolderPathEventHandler : EventSubscriber
 {
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly List<IDisposable> _subscriptions = [];
 
     public FolderPathEventHandler(IEventBus eventBus, IServiceScopeFactory scopeFactory)
     {
         _scopeFactory = scopeFactory;
-        _subscriptions.Add(eventBus.Subscribe<FolderPathAddedEvent>(OnFolderPathAdded));
-        _subscriptions.Add(eventBus.Subscribe<FolderPathRemovedEvent>(OnFolderPathRemoved));
+        Track(eventBus.Subscribe<FolderPathAddedEvent>(OnFolderPathAdded));
+        Track(eventBus.Subscribe<FolderPathRemovedEvent>(OnFolderPathRemoved));
     }
 
     internal async Task OnFolderPathAdded(FolderPathAddedEvent @event, CancellationToken ct)
@@ -53,14 +52,5 @@ public class FolderPathEventHandler : IDisposable
         >();
         await using MediaContext mediaContext = await contextFactory.CreateDbContextAsync(ct);
         await UserCache.Current.RefreshFolderIdsAsync(mediaContext);
-    }
-
-    public void Dispose()
-    {
-        foreach (IDisposable subscription in _subscriptions)
-        {
-            subscription.Dispose();
-        }
-        _subscriptions.Clear();
     }
 }

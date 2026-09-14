@@ -16,10 +16,9 @@ using NoMercy.Networking.Messaging;
 
 namespace NoMercy.Api.EventHandlers;
 
-public class SignalRPlaybackEventHandler : IDisposable
+public class SignalRPlaybackEventHandler : EventSubscriber
 {
     private readonly IClientMessenger _clientMessenger;
-    private readonly List<IDisposable> _subscriptions = [];
 
     private readonly ILogger<SignalRPlaybackEventHandler> _logger;
 
@@ -31,9 +30,9 @@ public class SignalRPlaybackEventHandler : IDisposable
     {
         _logger = logger;
         _clientMessenger = clientMessenger;
-        _subscriptions.Add(eventBus.Subscribe<PlaybackStartedEvent>(OnPlaybackStarted));
-        _subscriptions.Add(eventBus.Subscribe<PlaybackProgressUpdatedEvent>(OnPlaybackProgress));
-        _subscriptions.Add(eventBus.Subscribe<PlaybackCompletedEvent>(OnPlaybackCompleted));
+        Track(eventBus.Subscribe<PlaybackStartedEvent>(OnPlaybackStarted));
+        Track(eventBus.Subscribe<PlaybackProgressUpdatedEvent>(OnPlaybackProgress));
+        Track(eventBus.Subscribe<PlaybackCompletedEvent>(OnPlaybackCompleted));
     }
 
     internal async Task OnPlaybackStarted(PlaybackStartedEvent @event, CancellationToken ct)
@@ -53,7 +52,8 @@ public class SignalRPlaybackEventHandler : IDisposable
         );
 
         _logger.LogInformation(
-            "Playback started: User={UserId}, Media={MediaId}, Type={MediaType}", [@event.UserId, @event.MediaId, @event.MediaType]
+            "Playback started: User={UserId}, Media={MediaId}, Type={MediaType}",
+            [@event.UserId, @event.MediaId, @event.MediaType]
         );
     }
 
@@ -93,16 +93,8 @@ public class SignalRPlaybackEventHandler : IDisposable
         );
 
         _logger.LogInformation(
-            "Playback completed: User={UserId}, Media={MediaId}, Type={MediaType}", [@event.UserId, @event.MediaId, @event.MediaType]
+            "Playback completed: User={UserId}, Media={MediaId}, Type={MediaType}",
+            [@event.UserId, @event.MediaId, @event.MediaType]
         );
-    }
-
-    public void Dispose()
-    {
-        foreach (IDisposable subscription in _subscriptions)
-        {
-            subscription.Dispose();
-        }
-        _subscriptions.Clear();
     }
 }

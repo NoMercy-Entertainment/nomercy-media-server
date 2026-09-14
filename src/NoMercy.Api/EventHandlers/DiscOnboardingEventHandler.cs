@@ -20,17 +20,14 @@ namespace NoMercy.Api.EventHandlers;
 /// <see cref="DiscOnboardingStateChangedEvent"/> and rebroadcasts it on
 /// <c>ripperHub</c> and <c>drivesHub</c> as <c>"DiscOnboardingState"</c>.
 /// </summary>
-public class DiscOnboardingEventHandler : IDisposable
+public class DiscOnboardingEventHandler : EventSubscriber
 {
     private readonly IClientMessenger _clientMessenger;
-    private readonly List<IDisposable> _subscriptions = [];
 
     public DiscOnboardingEventHandler(IEventBus eventBus, IClientMessenger clientMessenger)
     {
         _clientMessenger = clientMessenger;
-        _subscriptions.Add(
-            eventBus.Subscribe<DiscOnboardingStateChangedEvent>(OnDiscOnboardingStateChanged)
-        );
+        Track(eventBus.Subscribe<DiscOnboardingStateChangedEvent>(OnDiscOnboardingStateChanged));
     }
 
     internal async Task OnDiscOnboardingStateChanged(
@@ -40,14 +37,5 @@ public class DiscOnboardingEventHandler : IDisposable
     {
         await _clientMessenger.SendToAll("DiscOnboardingState", "ripperHub", @event.StateData);
         await _clientMessenger.SendToAll("DiscOnboardingState", "drivesHub", @event.StateData);
-    }
-
-    public void Dispose()
-    {
-        foreach (IDisposable subscription in _subscriptions)
-        {
-            subscription.Dispose();
-        }
-        _subscriptions.Clear();
     }
 }

@@ -16,10 +16,9 @@ using NoMercy.Networking.Messaging;
 
 namespace NoMercy.Api.EventHandlers;
 
-public class SignalRInboxEventHandler : IDisposable
+public class SignalRInboxEventHandler : EventSubscriber
 {
     private readonly IClientMessenger _clientMessenger;
-    private readonly List<IDisposable> _subscriptions = [];
 
     private readonly ILogger<SignalRInboxEventHandler> _logger;
 
@@ -31,8 +30,8 @@ public class SignalRInboxEventHandler : IDisposable
     {
         _logger = logger;
         _clientMessenger = clientMessenger;
-        _subscriptions.Add(eventBus.Subscribe<InboxItemDetectedEvent>(OnItemDetected));
-        _subscriptions.Add(eventBus.Subscribe<InboxItemUpdatedEvent>(OnItemUpdated));
+        Track(eventBus.Subscribe<InboxItemDetectedEvent>(OnItemDetected));
+        Track(eventBus.Subscribe<InboxItemUpdatedEvent>(OnItemUpdated));
     }
 
     internal async Task OnItemDetected(InboxItemDetectedEvent @event, CancellationToken ct)
@@ -50,7 +49,8 @@ public class SignalRInboxEventHandler : IDisposable
         );
 
         _logger.LogInformation(
-            "Inbox item detected: {Id} ({DetectedType}, {Confidence})", [@event.Id, @event.DetectedType, @event.Confidence]
+            "Inbox item detected: {Id} ({DetectedType}, {Confidence})",
+            [@event.Id, @event.DetectedType, @event.Confidence]
         );
     }
 
@@ -63,14 +63,5 @@ public class SignalRInboxEventHandler : IDisposable
         );
 
         _logger.LogInformation("Inbox item updated: {Id} → {Status}", [@event.Id, @event.Status]);
-    }
-
-    public void Dispose()
-    {
-        foreach (IDisposable subscription in _subscriptions)
-        {
-            subscription.Dispose();
-        }
-        _subscriptions.Clear();
     }
 }

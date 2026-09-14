@@ -16,10 +16,9 @@ using NoMercy.Networking.Messaging;
 
 namespace NoMercy.Api.EventHandlers;
 
-public class UserPermissionsEventHandler : IDisposable
+public class UserPermissionsEventHandler : EventSubscriber
 {
     private readonly IClientMessenger _clientMessenger;
-    private readonly List<IDisposable> _subscriptions = [];
 
     private readonly ILogger<UserPermissionsEventHandler> _logger;
 
@@ -31,9 +30,7 @@ public class UserPermissionsEventHandler : IDisposable
     {
         _logger = logger;
         _clientMessenger = clientMessenger;
-        _subscriptions.Add(
-            eventBus.Subscribe<UserPermissionsChangedEvent>(OnUserPermissionsChanged)
-        );
+        Track(eventBus.Subscribe<UserPermissionsChangedEvent>(OnUserPermissionsChanged));
     }
 
     internal async Task OnUserPermissionsChanged(
@@ -48,16 +45,8 @@ public class UserPermissionsEventHandler : IDisposable
         );
 
         _logger.LogInformation(
-            "User permissions changed: UserId={UserId}, ChangedBy={ChangedBy}", [@event.UserId, @event.ChangedBy]
+            "User permissions changed: UserId={UserId}, ChangedBy={ChangedBy}",
+            [@event.UserId, @event.ChangedBy]
         );
-    }
-
-    public void Dispose()
-    {
-        foreach (IDisposable subscription in _subscriptions)
-        {
-            subscription.Dispose();
-        }
-        _subscriptions.Clear();
     }
 }

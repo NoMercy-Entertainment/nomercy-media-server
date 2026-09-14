@@ -14,15 +14,14 @@ using NoMercy.Events.Music;
 
 namespace NoMercy.Api.EventHandlers;
 
-public class MusicLikeEventHandler : IDisposable
+public class MusicLikeEventHandler : EventSubscriber
 {
-    private readonly List<IDisposable> _subscriptions = [];
     private readonly MusicPlaybackService _musicPlaybackService;
 
     public MusicLikeEventHandler(IEventBus eventBus, MusicPlaybackService musicPlaybackService)
     {
         _musicPlaybackService = musicPlaybackService;
-        _subscriptions.Add(eventBus.Subscribe<MusicItemLikedEvent>(OnMusicItemLiked));
+        Track(eventBus.Subscribe<MusicItemLikedEvent>(OnMusicItemLiked));
     }
 
     internal Task OnMusicItemLiked(MusicItemLikedEvent @event, CancellationToken ct)
@@ -33,15 +32,5 @@ public class MusicLikeEventHandler : IDisposable
             @event.Liked,
             ct
         );
-    }
-
-    public void Dispose()
-    {
-        foreach (IDisposable subscription in _subscriptions)
-        {
-            subscription.Dispose();
-        }
-
-        _subscriptions.Clear();
     }
 }

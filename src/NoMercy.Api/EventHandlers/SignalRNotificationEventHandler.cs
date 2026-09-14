@@ -16,15 +16,14 @@ using NoMercy.Networking.Messaging;
 
 namespace NoMercy.Api.EventHandlers;
 
-public class SignalRNotificationEventHandler : IDisposable
+public class SignalRNotificationEventHandler : EventSubscriber
 {
     private readonly IClientMessenger _clientMessenger;
-    private readonly List<IDisposable> _subscriptions = [];
 
     public SignalRNotificationEventHandler(IEventBus eventBus, IClientMessenger clientMessenger)
     {
         _clientMessenger = clientMessenger;
-        _subscriptions.Add(eventBus.Subscribe<UserNotifiedEvent>(OnUserNotification));
+        Track(eventBus.Subscribe<UserNotifiedEvent>(OnUserNotification));
     }
 
     // Broadcast only. A notification aimed at one user goes through
@@ -44,14 +43,5 @@ public class SignalRNotificationEventHandler : IDisposable
         };
 
         await _clientMessenger.SendToAll("Notify", @event.Hub, payload);
-    }
-
-    public void Dispose()
-    {
-        foreach (IDisposable subscription in _subscriptions)
-        {
-            subscription.Dispose();
-        }
-        _subscriptions.Clear();
     }
 }

@@ -15,29 +15,19 @@ using NoMercy.Networking.Messaging;
 
 namespace NoMercy.Api.EventHandlers;
 
-public class DriveMonitorEventHandler : IDisposable
+public class DriveMonitorEventHandler : EventSubscriber
 {
     private readonly IClientMessenger _clientMessenger;
-    private readonly List<IDisposable> _subscriptions = [];
 
     public DriveMonitorEventHandler(IEventBus eventBus, IClientMessenger clientMessenger)
     {
         _clientMessenger = clientMessenger;
-        _subscriptions.Add(eventBus.Subscribe<DriveStateChangedEvent>(OnDriveStateChanged));
+        Track(eventBus.Subscribe<DriveStateChangedEvent>(OnDriveStateChanged));
     }
 
     internal async Task OnDriveStateChanged(DriveStateChangedEvent @event, CancellationToken ct)
     {
         await _clientMessenger.SendToAll("DriveState", "ripperHub", @event.DriveStateData);
         await _clientMessenger.SendToAll("DriveState", "drivesHub", @event.DriveStateData);
-    }
-
-    public void Dispose()
-    {
-        foreach (IDisposable subscription in _subscriptions)
-        {
-            subscription.Dispose();
-        }
-        _subscriptions.Clear();
     }
 }

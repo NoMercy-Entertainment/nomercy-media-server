@@ -32,11 +32,10 @@ namespace NoMercy.Api.EventHandlers;
 /// is a second subscriber, not a second call site, so no job had to learn what an activity log
 /// is.
 /// </remarks>
-public class ActivityEventHandler : IDisposable
+public class ActivityEventHandler : EventSubscriber
 {
     private readonly IActivityLogger _activityLogger;
     private readonly ILogger<ActivityEventHandler> _logger;
-    private readonly List<IDisposable> _subscriptions = [];
 
     public ActivityEventHandler(
         ILogger<ActivityEventHandler> logger,
@@ -47,12 +46,12 @@ public class ActivityEventHandler : IDisposable
         _logger = logger;
         _activityLogger = activityLogger;
 
-        _subscriptions.Add(eventBus.Subscribe<EncodingStartedEvent>(OnEncodingStarted));
-        _subscriptions.Add(eventBus.Subscribe<EncodingCompletedEvent>(OnEncodingCompleted));
-        _subscriptions.Add(eventBus.Subscribe<EncodingFailedEvent>(OnEncodingFailed));
-        _subscriptions.Add(eventBus.Subscribe<LibraryScanStartedEvent>(OnScanStarted));
-        _subscriptions.Add(eventBus.Subscribe<LibraryScanCompletedEvent>(OnScanCompleted));
-        _subscriptions.Add(eventBus.Subscribe<FileCreatedEvent>(OnFileCreated));
+        Track(eventBus.Subscribe<EncodingStartedEvent>(OnEncodingStarted));
+        Track(eventBus.Subscribe<EncodingCompletedEvent>(OnEncodingCompleted));
+        Track(eventBus.Subscribe<EncodingFailedEvent>(OnEncodingFailed));
+        Track(eventBus.Subscribe<LibraryScanStartedEvent>(OnScanStarted));
+        Track(eventBus.Subscribe<LibraryScanCompletedEvent>(OnScanCompleted));
+        Track(eventBus.Subscribe<FileCreatedEvent>(OnFileCreated));
     }
 
     internal Task OnEncodingStarted(EncodingStartedEvent @event, CancellationToken ct) =>
@@ -165,14 +164,4 @@ public class ActivityEventHandler : IDisposable
         string.IsNullOrWhiteSpace(path)
             ? string.Empty
             : path.Replace('\\', '/').TrimEnd('/').Split('/').Last();
-
-    public void Dispose()
-    {
-        foreach (IDisposable subscription in _subscriptions)
-        {
-            subscription.Dispose();
-        }
-
-        _subscriptions.Clear();
-    }
 }

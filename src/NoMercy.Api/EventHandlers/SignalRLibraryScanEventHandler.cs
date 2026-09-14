@@ -17,10 +17,9 @@ using NoMercy.Networking.Messaging;
 
 namespace NoMercy.Api.EventHandlers;
 
-public class SignalRLibraryScanEventHandler : IDisposable
+public class SignalRLibraryScanEventHandler : EventSubscriber
 {
     private readonly IClientMessenger _clientMessenger;
-    private readonly List<IDisposable> _subscriptions = [];
 
     private readonly ILogger<SignalRLibraryScanEventHandler> _logger;
 
@@ -32,10 +31,10 @@ public class SignalRLibraryScanEventHandler : IDisposable
     {
         _logger = logger;
         _clientMessenger = clientMessenger;
-        _subscriptions.Add(eventBus.Subscribe<LibraryScanStartedEvent>(OnScanStarted));
-        _subscriptions.Add(eventBus.Subscribe<LibraryScanCompletedEvent>(OnScanCompleted));
-        _subscriptions.Add(eventBus.Subscribe<MediaAddedEvent>(OnMediaAdded));
-        _subscriptions.Add(eventBus.Subscribe<MediaRemovedEvent>(OnMediaRemoved));
+        Track(eventBus.Subscribe<LibraryScanStartedEvent>(OnScanStarted));
+        Track(eventBus.Subscribe<LibraryScanCompletedEvent>(OnScanCompleted));
+        Track(eventBus.Subscribe<MediaAddedEvent>(OnMediaAdded));
+        Track(eventBus.Subscribe<MediaRemovedEvent>(OnMediaRemoved));
     }
 
     internal async Task OnScanStarted(LibraryScanStartedEvent @event, CancellationToken ct)
@@ -70,7 +69,8 @@ public class SignalRLibraryScanEventHandler : IDisposable
         );
 
         _logger.LogInformation(
-            "Library scan completed: {LibraryName}, {ItemsFound} items found", [@event.LibraryName, @event.ItemsFound]
+            "Library scan completed: {LibraryName}, {ItemsFound} items found",
+            [@event.LibraryName, @event.ItemsFound]
         );
     }
 
@@ -104,14 +104,5 @@ public class SignalRLibraryScanEventHandler : IDisposable
                 @event.Timestamp,
             }
         );
-    }
-
-    public void Dispose()
-    {
-        foreach (IDisposable subscription in _subscriptions)
-        {
-            subscription.Dispose();
-        }
-        _subscriptions.Clear();
     }
 }

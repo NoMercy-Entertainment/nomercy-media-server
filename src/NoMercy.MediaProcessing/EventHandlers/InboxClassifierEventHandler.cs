@@ -24,14 +24,13 @@ using NoMercy.Storage;
 
 namespace NoMercy.MediaProcessing.EventHandlers;
 
-public class InboxClassifierEventHandler : IDisposable
+public class InboxClassifierEventHandler : EventSubscriber
 {
     private readonly IEventBus _eventBus;
     private readonly InboxClassifier _classifier;
     private readonly InboxRoutingService _routing;
     private readonly Func<MediaContext> _contextFactory;
     private readonly IStorageFactory _storageFactory;
-    private readonly List<IDisposable> _subscriptions = [];
 
     // Content-hash dedup keyed by (size, first-64KB MD5). Catches hard links and
     // duplicate copies that the SourcePath check misses. Per-process lifetime.
@@ -56,7 +55,7 @@ public class InboxClassifierEventHandler : IDisposable
         _routing = routing;
         _contextFactory = contextFactory;
         _storageFactory = storageFactory;
-        _subscriptions.Add(eventBus.Subscribe<FileCreatedEvent>(OnFileCreated));
+        Track(eventBus.Subscribe<FileCreatedEvent>(OnFileCreated));
     }
 
     private static async Task<FileContentFingerprint?> TryComputeFingerprintAsync(
@@ -254,14 +253,5 @@ public class InboxClassifierEventHandler : IDisposable
                 );
             }
         }
-    }
-
-    public void Dispose()
-    {
-        foreach (IDisposable subscription in _subscriptions)
-        {
-            subscription.Dispose();
-        }
-        _subscriptions.Clear();
     }
 }

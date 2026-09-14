@@ -25,13 +25,12 @@ namespace NoMercy.Api.EventHandlers;
 /// carrying a QueryKey, published from dozens of sites and several times per
 /// single user action, including every continue-watching edit.
 /// </summary>
-public class PushNotificationEventHandler : IDisposable
+public class PushNotificationEventHandler : EventSubscriber
 {
     private const string UserNotificationChannel = "user-notification";
 
     private readonly IAuthTokenStore _authTokenStore;
     private readonly NotificationSink _notificationSink;
-    private readonly List<IDisposable> _subscriptions = [];
 
     public PushNotificationEventHandler(
         IEventBus eventBus,
@@ -41,13 +40,13 @@ public class PushNotificationEventHandler : IDisposable
     {
         _authTokenStore = authTokenStore;
         _notificationSink = notificationSink;
-        _subscriptions.Add(eventBus.Subscribe<EncodingStartedEvent>(OnEncodingStarted));
-        _subscriptions.Add(eventBus.Subscribe<EncodingCompletedEvent>(OnEncodingCompleted));
-        _subscriptions.Add(eventBus.Subscribe<EncodingFailedEvent>(OnEncodingFailed));
-        _subscriptions.Add(eventBus.Subscribe<MediaAddedEvent>(OnMediaAdded));
-        _subscriptions.Add(eventBus.Subscribe<LibraryScanCompletedEvent>(OnLibraryScanCompleted));
-        _subscriptions.Add(eventBus.Subscribe<PluginErrorOccurredEvent>(OnPluginError));
-        _subscriptions.Add(eventBus.Subscribe<UserNotifiedEvent>(OnUserNotified));
+        Track(eventBus.Subscribe<EncodingStartedEvent>(OnEncodingStarted));
+        Track(eventBus.Subscribe<EncodingCompletedEvent>(OnEncodingCompleted));
+        Track(eventBus.Subscribe<EncodingFailedEvent>(OnEncodingFailed));
+        Track(eventBus.Subscribe<MediaAddedEvent>(OnMediaAdded));
+        Track(eventBus.Subscribe<LibraryScanCompletedEvent>(OnLibraryScanCompleted));
+        Track(eventBus.Subscribe<PluginErrorOccurredEvent>(OnPluginError));
+        Track(eventBus.Subscribe<UserNotifiedEvent>(OnUserNotified));
     }
 
     internal Task OnEncodingStarted(EncodingStartedEvent @event, CancellationToken _)
@@ -159,14 +158,5 @@ public class PushNotificationEventHandler : IDisposable
             return;
 
         _notificationSink.Notify(channel, payload, accessToken);
-    }
-
-    public void Dispose()
-    {
-        foreach (IDisposable subscription in _subscriptions)
-        {
-            subscription.Dispose();
-        }
-        _subscriptions.Clear();
     }
 }

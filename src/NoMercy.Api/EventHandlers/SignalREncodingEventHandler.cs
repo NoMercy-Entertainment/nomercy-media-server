@@ -16,10 +16,9 @@ using NoMercy.Networking.Messaging;
 
 namespace NoMercy.Api.EventHandlers;
 
-public class SignalREncodingEventHandler : IDisposable
+public class SignalREncodingEventHandler : EventSubscriber
 {
     private readonly IClientMessenger _clientMessenger;
-    private readonly List<IDisposable> _subscriptions = [];
 
     private readonly ILogger<SignalREncodingEventHandler> _logger;
 
@@ -31,14 +30,12 @@ public class SignalREncodingEventHandler : IDisposable
     {
         _logger = logger;
         _clientMessenger = clientMessenger;
-        _subscriptions.Add(eventBus.Subscribe<EncodingStartedEvent>(OnEncodingStarted));
-        _subscriptions.Add(eventBus.Subscribe<EncodingProgressUpdatedEvent>(OnEncodingProgress));
-        _subscriptions.Add(eventBus.Subscribe<EncodingCompletedEvent>(OnEncodingCompleted));
-        _subscriptions.Add(eventBus.Subscribe<EncodingFailedEvent>(OnEncodingFailed));
-        _subscriptions.Add(eventBus.Subscribe<EncodingStageChangedEvent>(OnEncodingStageChanged));
-        _subscriptions.Add(
-            eventBus.Subscribe<EncodingProgressBroadcastedEvent>(OnEncoderProgressBroadcast)
-        );
+        Track(eventBus.Subscribe<EncodingStartedEvent>(OnEncodingStarted));
+        Track(eventBus.Subscribe<EncodingProgressUpdatedEvent>(OnEncodingProgress));
+        Track(eventBus.Subscribe<EncodingCompletedEvent>(OnEncodingCompleted));
+        Track(eventBus.Subscribe<EncodingFailedEvent>(OnEncodingFailed));
+        Track(eventBus.Subscribe<EncodingStageChangedEvent>(OnEncodingStageChanged));
+        Track(eventBus.Subscribe<EncodingProgressBroadcastedEvent>(OnEncoderProgressBroadcast));
     }
 
     internal async Task OnEncodingStarted(EncodingStartedEvent @event, CancellationToken ct)
@@ -56,7 +53,8 @@ public class SignalREncodingEventHandler : IDisposable
             }
         );
         _logger.LogInformation(
-            "Encoding started: Job={JobId}, Profile={ProfileName}", [@event.JobId, @event.ProfileName]
+            "Encoding started: Job={JobId}, Profile={ProfileName}",
+            [@event.JobId, @event.ProfileName]
         );
     }
 
@@ -112,7 +110,8 @@ public class SignalREncodingEventHandler : IDisposable
             }
         );
         _logger.LogInformation(
-            "Encoding failed: Job={JobId}, Error={ErrorMessage}", [@event.JobId, @event.ErrorMessage]
+            "Encoding failed: Job={JobId}, Error={ErrorMessage}",
+            [@event.JobId, @event.ErrorMessage]
         );
     }
 
@@ -147,15 +146,5 @@ public class SignalREncodingEventHandler : IDisposable
     )
     {
         await _clientMessenger.SendToAll("encoder-progress", "dashboardHub", @event.ProgressData);
-    }
-
-    public void Dispose()
-    {
-        foreach (IDisposable subscription in _subscriptions)
-        {
-            subscription.Dispose();
-        }
-
-        _subscriptions.Clear();
     }
 }

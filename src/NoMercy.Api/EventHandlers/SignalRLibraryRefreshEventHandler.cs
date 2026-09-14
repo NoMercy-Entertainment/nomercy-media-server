@@ -16,15 +16,14 @@ using NoMercy.Networking.Messaging;
 
 namespace NoMercy.Api.EventHandlers;
 
-public class SignalRLibraryRefreshEventHandler : IDisposable
+public class SignalRLibraryRefreshEventHandler : EventSubscriber
 {
     private readonly IClientMessenger _clientMessenger;
-    private readonly List<IDisposable> _subscriptions = [];
 
     public SignalRLibraryRefreshEventHandler(IEventBus eventBus, IClientMessenger clientMessenger)
     {
         _clientMessenger = clientMessenger;
-        _subscriptions.Add(eventBus.Subscribe<LibraryRefreshedEvent>(OnLibraryRefresh));
+        Track(eventBus.Subscribe<LibraryRefreshedEvent>(OnLibraryRefresh));
     }
 
     internal async Task OnLibraryRefresh(LibraryRefreshedEvent @event, CancellationToken ct)
@@ -34,14 +33,5 @@ public class SignalRLibraryRefreshEventHandler : IDisposable
             "videoHub",
             new RefreshLibraryDto { QueryKey = @event.QueryKey }
         );
-    }
-
-    public void Dispose()
-    {
-        foreach (IDisposable subscription in _subscriptions)
-        {
-            subscription.Dispose();
-        }
-        _subscriptions.Clear();
     }
 }
