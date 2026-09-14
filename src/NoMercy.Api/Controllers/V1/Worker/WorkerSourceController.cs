@@ -9,16 +9,14 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Security.Cryptography;
-using System.Text;
 using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using NoMercy.Database;
+using NoMercy.Data.Repositories;
 using NoMercy.Encoder.Composition;
+using NoMercy.Encoder.Distribution;
 using NoMercy.Storage;
 
 namespace NoMercy.Api.Controllers.V1.Worker;
@@ -51,14 +49,12 @@ namespace NoMercy.Api.Controllers.V1.Worker;
 [Obsolete("Use /api/v{version}/worker/source — kept for backwards compatibility")]
 [Route("api/v{version:apiVersion}/worker-source")]
 public class WorkerSourceController(
-    IDbContextFactory<MediaContext> contextFactory,
+    IVideoFileRepository videoFileRepository,
     EncoderOptions encoderOptions,
     ILogger<WorkerSourceController> logger,
     IStorage storage
 ) : BaseController
 {
-    private static readonly TimeSpan MaxSignatureAge = TimeSpan.FromMinutes(5);
-
     [HttpGet]
     public async Task<IActionResult> Stream(
         [FromQuery] string path,
@@ -75,28 +71,14 @@ public class WorkerSourceController(
         if (string.IsNullOrWhiteSpace(path) || string.IsNullOrWhiteSpace(sig))
             return BadRequestResponse("path and sig query parameters are required");
 
-        // Freshness check first — cheap reject for stale / replayed requests.
-        DateTimeOffset requestTime = DateTimeOffset.FromUnixTimeSeconds(ts);
-        if ((DateTimeOffset.UtcNow - requestTime).Duration() > MaxSignatureAge)
+        if (!SourcePathSignature.IsFresh(ts, DateTimeOffset.UtcNow))
         {
             logger.LogWarning("Rejected worker-source request: signature too old");
             return UnauthenticatedResponse("signature expired");
         }
 
-        // Signature verification.
         byte[] key = encoderOptions.GetDistributedEncodingSigningKey();
-        string expectedInput = $"{path}|{ts}";
-        using HMACSHA256 hmac = new(key);
-        string expectedSig = Convert.ToBase64String(
-            hmac.ComputeHash(Encoding.UTF8.GetBytes(expectedInput))
-        );
-
-        if (
-            !CryptographicOperations.FixedTimeEquals(
-                Encoding.UTF8.GetBytes(sig),
-                Encoding.UTF8.GetBytes(expectedSig)
-            )
-        )
+        if (!SourcePathSignature.Matches(key, path, ts, sig))
         {
             logger.LogWarning(
                 "Rejected worker-source request: signature mismatch for path {Path}",
@@ -105,16 +87,10 @@ public class WorkerSourceController(
             return UnauthenticatedResponse("signature invalid");
         }
 
-        // Library membership check — only serve paths the server already
-        // knows about. Prevents using the signed endpoint as a generic
-        // file-read oracle if someone obtains the signing key.
-        // VideoFile.HostFolder/Filename are normalised to forward-slash by
-        // model setters, so a single forward-slash comparison covers both
-        // Windows hosts and Linux workers.
-        string normalizedPath = path.Replace('\\', '/');
-        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
-        bool isKnownFile = await context.VideoFiles.AnyAsync(
-            v => v.HostFolder + "/" + v.Filename == normalizedPath,
+        // Only paths the library already knows are served, so a leaked signing key
+        // cannot turn this endpoint into a general file-read oracle.
+        bool isKnownFile = await videoFileRepository.ExistsAtHostPathAsync(
+            path.Replace('\\', '/'),
             ct
         );
 

@@ -171,11 +171,10 @@ public class HttpSourceFetcher(
     private string BuildSignedQuery(string path)
     {
         long timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        byte[] key = options.GetDistributedEncodingSigningKey();
-        string signatureInput = $"{path}|{timestamp}";
-        using HMACSHA256 hmac = new(key);
-        string signature = Convert.ToBase64String(
-            hmac.ComputeHash(Encoding.UTF8.GetBytes(signatureInput))
+        string signature = SourcePathSignature.Compute(
+            options.GetDistributedEncodingSigningKey(),
+            path,
+            timestamp
         );
 
         // URL-encode the path and signature; timestamp is a simple int.

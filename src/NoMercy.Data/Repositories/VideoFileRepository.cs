@@ -33,6 +33,14 @@ public class VideoFileRepository(IDbContextFactory<MediaContext> contextFactory)
         return await context.VideoFiles.AsNoTracking().AnyAsync(file => file.Id == id, ct);
     }
 
+    public async Task<bool> ExistsAtHostPathAsync(string hostPath, CancellationToken ct = default)
+    {
+        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+        return await context
+            .VideoFiles.AsNoTracking()
+            .AnyAsync(file => file.HostFolder + "/" + file.Filename == hostPath, ct);
+    }
+
     public async Task<List<Episode>> GetEncodedEpisodesForSeasonAsync(
         int seasonId,
         CancellationToken ct = default

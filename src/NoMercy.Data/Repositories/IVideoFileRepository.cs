@@ -20,6 +20,9 @@ public interface IVideoFileRepository
 
     Task<bool> ExistsAsync(Ulid id, CancellationToken ct = default);
 
+    /// <summary>Whether a video file is stored at this forward-slash host path.</summary>
+    Task<bool> ExistsAtHostPathAsync(string hostPath, CancellationToken ct = default);
+
     Task<List<Episode>> GetEncodedEpisodesForSeasonAsync(
         int seasonId,
         CancellationToken ct = default
