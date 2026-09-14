@@ -599,7 +599,6 @@ public static partial class ServiceConfiguration
         // (validate), so its state must outlive any request scope.
         services.AddSingleton<ILiveIngestKeyStore, LiveIngestKeyStore>();
         services.AddScoped<ILiveTranscodeService, LiveTranscodeService>();
-        services.AddScoped<SetupService>();
 
         // Palette pipeline — contract-based DI, dispatched by EntityType
         services.AddScoped<IPaletteSource, MoviePaletteSource>();

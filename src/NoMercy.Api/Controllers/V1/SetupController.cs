@@ -37,7 +37,7 @@ namespace NoMercy.Api.Controllers.V1;
 public class SetupController(
     IAnimeThemeRepository animeThemeRepository,
     IServerConfigurationRepository serverConfiguration,
-    SetupService setupService,
+    IMusicRepository musicRepository,
     HomeService homeService,
     ILibraryRepository libraryRepository,
     IPluginManager pluginManager
@@ -115,7 +115,9 @@ public class SetupController(
         if (!AuthPolicy.IsAllowed(User))
             return UnauthorizedResponse("You do not have permission to view libraries");
 
-        List<LibrariesResponseItemDto> response = (await setupService.GetSetupLibraries(userId))
+        List<LibrariesResponseItemDto> response = (
+            await libraryRepository.GetSetupLibrariesAsync(userId)
+        )
             .Select(library => new LibrariesResponseItemDto(library))
             .ToList();
 
@@ -173,7 +175,7 @@ public class SetupController(
         if (!AuthPolicy.IsAllowed(User))
             return UnauthorizedResponse("You do not have permission to view playlists");
 
-        List<Playlist> playlistItems = await setupService.GetSetupPlaylistsAsync(userId);
+        List<Playlist> playlistItems = await musicRepository.GetUserPlaylistsAsync(userId);
 
         return Ok(
             new StatusResponseDto<List<PlaylistDto>>

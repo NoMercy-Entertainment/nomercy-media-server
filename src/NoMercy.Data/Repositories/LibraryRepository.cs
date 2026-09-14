@@ -101,6 +101,27 @@ public class LibraryRepository(IDbContextFactory<MediaContext> contextFactory) :
             .ToListAsync(ct);
     }
 
+    public async Task<List<Library>> GetSetupLibrariesAsync(
+        Guid userId,
+        CancellationToken ct = default
+    )
+    {
+        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+        return await context
+            .Libraries.AsNoTracking()
+            .ForUser(userId)
+            .Include(library => library.FolderLibraries)
+                .ThenInclude(fl => fl.Folder)
+                    .ThenInclude(f => f.EncodingPresetFolders)
+                        .ThenInclude(link => link.Preset)
+            .Include(library => library.LanguageLibraries)
+                .ThenInclude(ll => ll.Language)
+            .Include(library => library.LibraryMovies)
+            .Include(library => library.LibraryTvs)
+            .OrderBy(library => library.Order)
+            .ToListAsync(ct);
+    }
+
     /// <summary>
     /// Lightweight library query for endpoints that don't need LibraryMovies/LibraryTvs collections.
     /// Use this in Mobile/TV/Home endpoints to avoid loading thousands of join entities into memory.

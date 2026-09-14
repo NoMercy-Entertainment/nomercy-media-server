@@ -115,6 +115,8 @@ public interface IMusicRepository
 
     Task<List<Album>> GetAlbumsByIdsAsync(List<Guid> albumIds, CancellationToken ct = default);
 
+    Task<List<Playlist>> GetUserPlaylistsAsync(Guid userId, CancellationToken ct = default);
+
     Task<List<Playlist>> GetPlaylistsByIdsAsync(
         List<Guid> playlistIds,
         CancellationToken ct = default

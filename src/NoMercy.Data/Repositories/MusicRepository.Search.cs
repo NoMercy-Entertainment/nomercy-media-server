@@ -120,6 +120,18 @@ public partial class MusicRepository
             .ToListAsync(ct);
     }
 
+    public async Task<List<Playlist>> GetUserPlaylistsAsync(
+        Guid userId,
+        CancellationToken ct = default
+    )
+    {
+        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+        return await context
+            .Playlists.AsNoTracking()
+            .Where(playlist => playlist.UserId == userId)
+            .ToListAsync(ct);
+    }
+
     public async Task<List<Playlist>> GetPlaylistsByIdsAsync(
         List<Guid> playlistIds,
         CancellationToken ct = default
