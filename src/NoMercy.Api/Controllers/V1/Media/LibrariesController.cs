@@ -766,17 +766,13 @@ public class LibrariesController(
         List<HomeMovieCardDto> movies = moviesTask.Result;
         List<HomeTvCardDto> shows = showsTask.Result;
 
-        List<CardData> concat = movies
-            .Select(movie => new CardData(movie, country))
-            .Concat(shows.Select(tv => new CardData(tv, country)))
-            .OrderBy(item => item.TitleSort)
-            .ToList();
-
-        ComponentEnvelope response = Component
-            .Grid()
-            .WithId($"library-{libraryId}-{letter}")
-            .WithTitle(letter)
-            .WithItems(concat.Select(item => Component.Card().WithData(item)));
+        ComponentEnvelope response = TitleCardGrid(
+                $"library-{libraryId}-{letter}",
+                movies,
+                shows,
+                country
+            )
+            .WithTitle(letter);
 
         return Ok(ComponentResponse.From(response));
     }

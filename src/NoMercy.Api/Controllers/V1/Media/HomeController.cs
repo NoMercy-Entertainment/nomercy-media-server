@@ -324,40 +324,7 @@ public partial class HomeController : BaseController
         string firstSegmentPath = _transcodeStorage.CombinePath(trailerId, "video_00002.ts");
         if (await _transcodeStorage.ExistsAsync(firstSegmentPath, ct))
         {
-            return Ok(
-                new VideoPlaylistResponseDto
-                {
-                    Id = 0,
-                    Title = trailerInfo.Title,
-                    Description = trailerInfo.Description,
-                    Duration = trailerInfo.Duration.ToHis(),
-                    Image = trailerInfo.Thumbnail?.ToString(),
-                    File = $"/transcodes/{trailerId}/video.m3u8",
-                    Origin = Info.DeviceId,
-                    PlaylistId = trailerInfo.Id!,
-                    Tracks =
-                    [
-                        .. trailerInfo
-                            .Subtitles.Where(t => t.Value.Any(s => s.Ext == "vtt"))
-                            .Select(t => new VideoTrack
-                            {
-                                Label = t.Value.First(s => s.Ext == "vtt").Name,
-                                File = $"/transcodes/{trailerId}/-.{t.Key}.vtt",
-                                Language = t.Key,
-                                Kind = "subtitles",
-                            }),
-                    ],
-                    Sources =
-                    [
-                        new()
-                        {
-                            Src = $"/transcodes/{trailerId}/video.m3u8",
-                            Type = "application/x-mpegURL",
-                            Languages = [trailerInfo.Language.OrEmpty()],
-                        },
-                    ],
-                }
-            );
+            return Ok(TrailerPlaylist(trailerInfo, trailerId));
         }
 
         string trailerWorkDir = Path.Combine(AppFiles.TranscodePath, trailerId);
@@ -414,41 +381,45 @@ public partial class HomeController : BaseController
             await Task.Delay(1000, timeoutCts.Token);
         }
 
-        return Ok(
-            new VideoPlaylistResponseDto
-            {
-                Id = 0,
-                Title = trailerInfo.Title,
-                Description = trailerInfo.Description,
-                Duration = trailerInfo.Duration.ToHis(),
-                Image = trailerInfo.Thumbnail?.ToString(),
-                File = $"/transcodes/{trailerId}/video.m3u8",
-                Origin = Info.DeviceId,
-                PlaylistId = trailerInfo.Id!,
-                Tracks =
-                [
-                    .. trailerInfo
-                        .Subtitles.Where(t => t.Value.Any(s => s.Ext == "vtt"))
-                        .Select(t => new VideoTrack
-                        {
-                            Label = t.Value.First(s => s.Ext == "vtt").Name,
-                            File = $"/transcodes/{trailerId}/-.{t.Key}.vtt",
-                            Language = t.Key,
-                            Kind = "subtitles",
-                        }),
-                ],
-                Sources =
-                [
-                    new()
-                    {
-                        Src = $"/transcodes/{trailerId}/video.m3u8",
-                        Type = "application/x-mpegURL",
-                        Languages = [trailerInfo.Language.OrEmpty()],
-                    },
-                ],
-            }
-        );
+        return Ok(TrailerPlaylist(trailerInfo, trailerId));
     }
+
+    private static VideoPlaylistResponseDto TrailerPlaylist(
+        TrailerInfo trailerInfo,
+        string trailerId
+    ) =>
+        new VideoPlaylistResponseDto
+        {
+            Id = 0,
+            Title = trailerInfo.Title,
+            Description = trailerInfo.Description,
+            Duration = trailerInfo.Duration.ToHis(),
+            Image = trailerInfo.Thumbnail?.ToString(),
+            File = $"/transcodes/{trailerId}/video.m3u8",
+            Origin = Info.DeviceId,
+            PlaylistId = trailerInfo.Id!,
+            Tracks =
+            [
+                .. trailerInfo
+                    .Subtitles.Where(t => t.Value.Any(s => s.Ext == "vtt"))
+                    .Select(t => new VideoTrack
+                    {
+                        Label = t.Value.First(s => s.Ext == "vtt").Name,
+                        File = $"/transcodes/{trailerId}/-.{t.Key}.vtt",
+                        Language = t.Key,
+                        Kind = "subtitles",
+                    }),
+            ],
+            Sources =
+            [
+                new()
+                {
+                    Src = $"/transcodes/{trailerId}/video.m3u8",
+                    Type = "application/x-mpegURL",
+                    Languages = [trailerInfo.Language.OrEmpty()],
+                },
+            ],
+        };
 
     [HttpDelete]
     [Route("trailer/{trailerId}")]
