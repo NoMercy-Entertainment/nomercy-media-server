@@ -11,6 +11,7 @@
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using NoMercy.Api.Hubs.Shared;
 using NoMercy.Api.Services.Music;
 using NoMercy.Authorization;
 using NoMercy.Database;
@@ -327,7 +328,7 @@ public partial class MusicHub
         // don't gate anything the target needs in order to begin playback.
         await _musicPlaybackService.UpdatePlaybackState(user, playerState);
 
-        EventPayload<BroadcastEventPayload> payload = new()
+        EventPayload<BroadcastEventPayload<MusicEventType>> payload = new()
         {
             Events =
             [

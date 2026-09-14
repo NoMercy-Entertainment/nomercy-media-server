@@ -8,11 +8,9 @@
 //
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
-
 using Newtonsoft.Json;
-using NoMercy.Database.Models.Users;
 
-namespace NoMercy.Api.Services.Video;
+namespace NoMercy.Api.Hubs.Shared;
 
 public class EventPayload<T>
 {

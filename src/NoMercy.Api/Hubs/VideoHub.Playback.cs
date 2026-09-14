@@ -13,6 +13,7 @@ using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NoMercy.Api.DTOs.Media;
+using NoMercy.Api.Hubs.Shared;
 using NoMercy.Api.Services.Video;
 using NoMercy.Authorization;
 using NoMercy.Database;
@@ -496,7 +497,7 @@ public partial class VideoHub
             return;
         }
 
-        EventPayload<BroadcastEventPayload> payload = new()
+        EventPayload<BroadcastEventPayload<VideoEventType>> payload = new()
         {
             Events =
             [

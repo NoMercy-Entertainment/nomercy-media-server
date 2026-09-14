@@ -11,6 +11,7 @@
 
 using System.Collections.Concurrent;
 using Microsoft.Extensions.DependencyInjection;
+using NoMercy.Api.Hubs.Shared;
 using NoMercy.Data.Repositories;
 using NoMercy.Database.Models.Users;
 using NoMercy.Events;
@@ -116,7 +117,7 @@ public class VideoPlaybackService
         if (state is not null)
             state.Timestamp = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
-        EventPayload<PlayerStateEventElement> payload = new()
+        EventPayload<PlayerStateEventElement<VideoPlayerState, VideoEventType>> payload = new()
         {
             Events =
             [

@@ -8,19 +8,26 @@
 //
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
-
 using Newtonsoft.Json;
-using NoMercy.Database.Models.Users;
 
-namespace NoMercy.Api.Services.Music;
+namespace NoMercy.Api.Hubs.Shared;
 
-public class DeviceBroadcastStatus
+/// <typeparam name="TEventType">MusicEventType or VideoEventType.</typeparam>
+public class BroadcastEventPayload<TEventType>
+    where TEventType : struct, Enum
+{
+    [JsonProperty("deviceBroadcastStatus")]
+    public DeviceBroadcastStatus<TEventType> DeviceBroadcastStatus { get; set; } = new();
+}
+
+public class DeviceBroadcastStatus<TEventType>
+    where TEventType : struct, Enum
 {
     [JsonProperty("timestamp")]
     public long Timestamp { get; set; }
 
     [JsonProperty("broadcast_status")]
-    public MusicEventType BroadcastStatus { get; set; } = MusicEventType.Null;
+    public TEventType BroadcastStatus { get; set; }
 
     [JsonProperty("device_id")]
     public string DeviceId { get; set; } = null!;

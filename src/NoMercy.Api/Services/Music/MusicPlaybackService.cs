@@ -14,6 +14,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NoMercy.Api.DTOs.Music;
+using NoMercy.Api.Hubs.Shared;
 using NoMercy.Data.Repositories;
 using NoMercy.Database;
 using NoMercy.Database.Models.Users;
@@ -581,7 +582,7 @@ public class MusicPlaybackService
             broadcastState = state.CloneForBroadcast();
         }
 
-        EventPayload<PlayerStateEventElement> payload = new()
+        EventPayload<PlayerStateEventElement<MusicPlayerState, MusicEventType>> payload = new()
         {
             Events =
             [
