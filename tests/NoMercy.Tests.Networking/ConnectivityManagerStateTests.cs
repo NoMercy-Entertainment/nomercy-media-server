@@ -62,6 +62,8 @@ public sealed class ConnectivityManagerStateTests : IDisposable
         ConnectivityConfidence confidence = ConnectivityConfidence.Verified
     ) : IConnectivityStrategy
     {
+        private bool _succeeds = succeeds;
+
         public string Name => name;
         public int Priority => priority;
         public ConnectivityType Type => type;
@@ -69,12 +71,14 @@ public sealed class ConnectivityManagerStateTests : IDisposable
         public int AttemptCount { get; private set; }
         public int TeardownCount { get; private set; }
 
+        public void SetSucceeds(bool value) => _succeeds = value;
+
         public Task<ConnectivityResult> TryEstablishAsync(CancellationToken ct)
         {
             WasAttempted = true;
             AttemptCount++;
             return Task.FromResult(
-                succeeds ? new ConnectivityResult(true, confidence) : ConnectivityResult.Failed()
+                _succeeds ? new ConnectivityResult(true, confidence) : ConnectivityResult.Failed()
             );
         }
 
@@ -735,6 +739,110 @@ public sealed class ConnectivityManagerStateTests : IDisposable
                 Assert.Equal(ConnectivityState.LocalOnly, manager.CurrentState);
             }
         );
+    }
+
+    // ── Quick tunnel upgrade ────────────────────────────────────────────────
+    //
+    // The account-less quick tunnel is a floor, not a destination. Once the control plane
+    // hands out a named-tunnel token, supervision must not leave the server sitting on the
+    // quick tunnel until something else knocks it down.
+
+    [Fact]
+    public async Task ShouldUpgradeFromQuickTunnel_QuickTunnelActive_TokenAvailable_ReturnsTrue()
+    {
+        ConnectivityStatus status = new() { TunnelAvailability = TunnelAvailability.Available };
+        StubStrategy portForward = new(
+            "PortForward",
+            1,
+            ConnectivityType.PortForward,
+            succeeds: false
+        );
+        StubStrategy named = new(
+            "CloudflareTunnel",
+            3,
+            ConnectivityType.CloudflareTunnel,
+            succeeds: false
+        );
+        StubStrategy quick = new("QuickTunnel", 4, ConnectivityType.QuickTunnel, succeeds: true);
+        ConnectivityManager manager = BuildManager(null, status, quick, named, portForward);
+
+        await manager.EvaluateAsync(CancellationToken.None);
+
+        Assert.True(manager.ShouldUpgradeFromQuickTunnel());
+    }
+
+    [Fact]
+    public async Task ShouldUpgradeFromQuickTunnel_QuickTunnelActive_NoToken_ReturnsFalse()
+    {
+        ConnectivityStatus status = new();
+        StubStrategy portForward = new(
+            "PortForward",
+            1,
+            ConnectivityType.PortForward,
+            succeeds: false
+        );
+        StubStrategy named = new(
+            "CloudflareTunnel",
+            3,
+            ConnectivityType.CloudflareTunnel,
+            succeeds: false
+        );
+        StubStrategy quick = new("QuickTunnel", 4, ConnectivityType.QuickTunnel, succeeds: true);
+        ConnectivityManager manager = BuildManager(null, status, quick, named, portForward);
+
+        await manager.EvaluateAsync(CancellationToken.None);
+
+        Assert.False(manager.ShouldUpgradeFromQuickTunnel());
+    }
+
+    [Fact]
+    public async Task ShouldUpgradeFromQuickTunnel_PortForwardActive_TokenAvailable_ReturnsFalse()
+    {
+        ConnectivityStatus status = new() { TunnelAvailability = TunnelAvailability.Available };
+        StubStrategy portForward = new(
+            "PortForward",
+            1,
+            ConnectivityType.PortForward,
+            succeeds: true
+        );
+        ConnectivityManager manager = BuildManager(null, status, portForward);
+
+        await manager.EvaluateAsync(CancellationToken.None);
+
+        Assert.False(manager.ShouldUpgradeFromQuickTunnel());
+    }
+
+    [Fact]
+    public async Task QuickTunnelUpgrade_WhenTokenBecomesAvailable_EvaluateSwitchesToNamedTunnel()
+    {
+        ConnectivityStatus status = new();
+        StubStrategy portForward = new(
+            "PortForward",
+            1,
+            ConnectivityType.PortForward,
+            succeeds: false
+        );
+        StubStrategy named = new(
+            "CloudflareTunnel",
+            3,
+            ConnectivityType.CloudflareTunnel,
+            succeeds: false
+        );
+        StubStrategy quick = new("QuickTunnel", 4, ConnectivityType.QuickTunnel, succeeds: true);
+        ConnectivityManager manager = BuildManager(null, status, quick, named, portForward);
+
+        await manager.EvaluateAsync(CancellationToken.None);
+        Assert.Equal(ConnectivityType.QuickTunnel, manager.ActiveStrategy);
+
+        // The control plane hands out a token and the named strategy can now succeed.
+        status.TunnelAvailability = TunnelAvailability.Available;
+        named.SetSucceeds(true);
+        Assert.True(manager.ShouldUpgradeFromQuickTunnel());
+
+        await manager.EvaluateAsync(CancellationToken.None);
+
+        Assert.Equal(ConnectivityType.CloudflareTunnel, manager.ActiveStrategy);
+        Assert.Equal(1, quick.TeardownCount);
     }
 
     [Fact]
