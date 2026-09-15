@@ -148,6 +148,9 @@ public class NetworkDiscovery : INetworkDiscovery
             ? $"https://{ExternalDomain}"
             : $"https://{ExternalDomain}:{RuntimeServerSettings.Current.ExternalServerPort}";
 
+    public string DirectExternalAddress =>
+        $"https://{ExternalIp.SafeHost()}.{Info.DeviceId}.{DnsSuffix}:{RuntimeServerSettings.Current.ExternalServerPort}";
+
     public string? ExternalAddressV6 =>
         ExternalIpV6 is not null
             ? $"https://[{ExternalIpV6}]:{RuntimeServerSettings.Current.ExternalServerPort}"

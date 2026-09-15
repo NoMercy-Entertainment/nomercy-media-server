@@ -161,6 +161,7 @@ public sealed class SelfSignedCertificateFallbackTests : IDisposable
         public string InternalAddress => $"https://{InternalDomain}:7626";
         public string ExternalDomain => "203-0-113-9.test-device.nomercy.tv";
         public string ExternalAddress => $"https://{ExternalDomain}:7627";
+        public string DirectExternalAddress => ExternalAddress;
         public string? ExternalAddressV6 => null;
         public bool Ipv6Enabled => false;
 
@@ -357,6 +358,7 @@ public sealed class SelfSignedCertificateFallbackTests : IDisposable
         public string InternalAddress => throw new InvalidOperationException("boom");
         public string ExternalDomain => throw new InvalidOperationException("boom");
         public string ExternalAddress => throw new InvalidOperationException("boom");
+        public string DirectExternalAddress => ExternalAddress;
         public string? ExternalAddressV6 => null;
         public bool Ipv6Enabled => false;
 

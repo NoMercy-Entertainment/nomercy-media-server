@@ -35,6 +35,7 @@ public class ConnectivityManager : IConnectivityManager, IHostedService, IDispos
     private readonly IBootStatus _bootStatus;
     private readonly IConnectivityStatus _connectivityStatus;
     private readonly Func<Task>? _tunnelAvailability;
+    private readonly Func<Task>? _transportChanged;
 
     // Collapses every supervision wait to a single short value. Set only by tests, which
     // otherwise could not exercise the recovery path without sleeping through the real
@@ -62,9 +63,11 @@ public class ConnectivityManager : IConnectivityManager, IHostedService, IDispos
         Func<Task>? tunnelAvailability = null,
         TimeSpan? delayOverride = null,
         TimeSpan? readinessDeferralWindow = null,
-        IHostApplicationLifetime? lifetime = null
+        IHostApplicationLifetime? lifetime = null,
+        Func<Task>? transportChanged = null
     )
     {
+        _transportChanged = transportChanged;
         _logger = logger;
         _authTokenStore = authTokenStore;
         _networkDiscovery = networkDiscovery;
@@ -82,25 +85,14 @@ public class ConnectivityManager : IConnectivityManager, IHostedService, IDispos
     }
 
     /// <summary>
-    /// Attempt order for the current evaluation. A tunnel is only ever provisioned by an
-    /// explicit act in the dashboard, and nobody assigns one to a server they want reached
-    /// some other way, so a token present means the operator already chose. Without this the
-    /// assignment is silently ignored on any server whose port forward happens to answer,
-    /// which is the whole reason assigning a proxy appeared to do nothing.
+    /// Attempt order for the current evaluation: plain priority, direct paths first. A
+    /// direct path only wins when it is verified from outside, and an assigned tunnel that
+    /// registers with the edge still beats a port forward nothing could confirm, because an
+    /// unverified result is only ever held as a fallback. Putting the tunnel first whenever
+    /// a token existed sent every client through Cloudflare even when the router forwarded
+    /// perfectly well.
     /// </summary>
-    private IEnumerable<IConnectivityStrategy> OrderedStrategies()
-    {
-        if (string.IsNullOrEmpty(_connectivityStatus.CloudflareTunnelToken))
-            return _strategies;
-
-        _logger.LogInformation(
-            "A Cloudflare tunnel is assigned to this server — trying it before the other transports"
-        );
-
-        return _strategies
-            .OrderBy(s => s.Type is ConnectivityType.CloudflareTunnel ? 0 : 1)
-            .ThenBy(s => s.Priority);
-    }
+    private IEnumerable<IConnectivityStrategy> OrderedStrategies() => _strategies;
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
@@ -195,6 +187,7 @@ public class ConnectivityManager : IConnectivityManager, IHostedService, IDispos
         if (mode is ConnectivityMode.LocalOnly)
         {
             SetState(ConnectivityState.LocalOnly);
+            await ReportTransportAsync("local");
             return;
         }
 
@@ -228,7 +221,7 @@ public class ConnectivityManager : IConnectivityManager, IHostedService, IDispos
 
                 if (result is { Established: true, Confidence: ConnectivityConfidence.Verified })
                 {
-                    Activate(strategy);
+                    await ActivateAsync(strategy);
                     return;
                 }
 
@@ -271,7 +264,7 @@ public class ConnectivityManager : IConnectivityManager, IHostedService, IDispos
             ConnectivityResult fallbackResult = await unverified.TryEstablishAsync(ct);
             if (fallbackResult.Established)
             {
-                Activate(unverified);
+                await ActivateAsync(unverified);
                 return;
             }
 
@@ -283,6 +276,7 @@ public class ConnectivityManager : IConnectivityManager, IHostedService, IDispos
 
         SetState(ConnectivityState.LocalOnly);
         _logger.LogWarning("No remote connectivity strategy succeeded — server is local-only");
+        await ReportTransportAsync("local");
     }
 
     /// <summary>
@@ -411,6 +405,37 @@ public class ConnectivityManager : IConnectivityManager, IHostedService, IDispos
             ConnectivityMode.LocalOnly => false,
             _ => true,
         };
+    }
+
+    private async Task ReportTransportAsync(string transport)
+    {
+        _connectivityStatus.Transport = transport;
+
+        if (_transportChanged is null)
+            return;
+
+        try
+        {
+            await _transportChanged();
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug("Could not report the transport: {Message}", ex.Message);
+        }
+    }
+
+    private static string TransportName(ConnectivityType type) =>
+        type switch
+        {
+            ConnectivityType.PortForward => "port_forward",
+            ConnectivityType.CloudflareTunnel => "tunnel",
+            _ => "local",
+        };
+
+    private async Task ActivateAsync(IConnectivityStrategy strategy)
+    {
+        Activate(strategy);
+        await ReportTransportAsync(TransportName(strategy.Type));
     }
 
     private void Activate(IConnectivityStrategy strategy)
