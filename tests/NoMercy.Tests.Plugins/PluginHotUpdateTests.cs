@@ -38,6 +38,7 @@ namespace NoMercy.Tests.Plugins;
 /// Fixed, this update completes hot on every run.
 /// </para>
 /// </summary>
+[Trait("Category", "Unit")]
 public class PluginHotUpdateTests : IDisposable
 {
     private static readonly Ulid PluginId = Ulid.Parse("01ECH000000000000000000000");
