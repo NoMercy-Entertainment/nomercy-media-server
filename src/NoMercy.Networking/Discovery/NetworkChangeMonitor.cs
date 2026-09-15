@@ -256,6 +256,7 @@ public class NetworkChangeMonitor : IHostedService, IDisposable
                 { "stun_public_port", (_connectivityStatus.StunPublicPort?.ToString()).OrEmpty() },
                 { "stun_nat_type", _connectivityStatus.NatStatus.ToString() },
                 { "transport", _connectivityStatus.Transport },
+                { "public_url", _connectivityStatus.PublicUrl ?? string.Empty },
             };
 
             _logger.LogInformation("Updating server information ({Reason})...", reason);

@@ -134,19 +134,31 @@ public class NetworkDiscovery : INetworkDiscovery
     /// </summary>
     private bool IsTunneled => _connectivityStatus.NatStatus == NatStatus.Tunneled;
 
+    /// <summary>
+    /// A quick tunnel has no name of ours; Cloudflare assigned one, and that is the only
+    /// address anything can reach the server on.
+    /// </summary>
+    private string? QuickTunnelUrl =>
+        IsTunneled && !string.IsNullOrEmpty(_connectivityStatus.PublicUrl)
+            ? _connectivityStatus.PublicUrl
+            : null;
+
     public string InternalDomain => $"{InternalIp.SafeHost()}.{Info.DeviceId}.{DnsSuffix}";
     public string InternalAddress =>
         $"https://{InternalDomain}:{RuntimeServerSettings.Current.InternalServerPort}";
 
     public string ExternalDomain =>
-        IsTunneled
-            ? $"{Info.DeviceId}.{ApexDnsSuffix}"
-            : $"{ExternalIp.SafeHost()}.{Info.DeviceId}.{DnsSuffix}";
+        QuickTunnelUrl is not null ? new Uri(QuickTunnelUrl).Host
+        : IsTunneled ? $"{Info.DeviceId}.{ApexDnsSuffix}"
+        : $"{ExternalIp.SafeHost()}.{Info.DeviceId}.{DnsSuffix}";
 
     public string ExternalAddress =>
-        IsTunneled
-            ? $"https://{ExternalDomain}"
-            : $"https://{ExternalDomain}:{RuntimeServerSettings.Current.ExternalServerPort}";
+        QuickTunnelUrl
+        ?? (
+            IsTunneled
+                ? $"https://{ExternalDomain}"
+                : $"https://{ExternalDomain}:{RuntimeServerSettings.Current.ExternalServerPort}"
+        );
 
     public string DirectExternalAddress =>
         $"https://{ExternalIp.SafeHost()}.{Info.DeviceId}.{DnsSuffix}:{RuntimeServerSettings.Current.ExternalServerPort}";

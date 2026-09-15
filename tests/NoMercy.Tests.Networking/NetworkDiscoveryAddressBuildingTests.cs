@@ -96,6 +96,39 @@ public sealed class NetworkDiscoveryAddressBuildingTests
     }
 
     [Fact]
+    public void ExternalAddress_WhenAQuickTunnelIsUp_IsTheAssignedName()
+    {
+        ConnectivityStatus status = new()
+        {
+            NatStatus = NatStatus.Tunneled,
+            PublicUrl = "https://dirt-excel-occupied-sim.trycloudflare.com",
+        };
+        NetworkDiscovery discovery = BuildDiscovery(status);
+        discovery.ExternalIp = "203.0.113.42";
+
+        // Cloudflare assigned the name; nothing of ours resolves to a quick tunnel.
+        Assert.Equal("dirt-excel-occupied-sim.trycloudflare.com", discovery.ExternalDomain);
+        Assert.Equal(
+            "https://dirt-excel-occupied-sim.trycloudflare.com",
+            discovery.ExternalAddress
+        );
+    }
+
+    [Fact]
+    public void ExternalDomain_WhenAQuickTunnelNameIsStale_ButNotTunneled_IgnoresIt()
+    {
+        ConnectivityStatus status = new()
+        {
+            NatStatus = NatStatus.Open,
+            PublicUrl = "https://dirt-excel-occupied-sim.trycloudflare.com",
+        };
+        NetworkDiscovery discovery = BuildDiscovery(status);
+        discovery.ExternalIp = "203.0.113.42";
+
+        Assert.Equal($"203-0-113-42.{Info.DeviceId}.nomercy.tv", discovery.ExternalDomain);
+    }
+
+    [Fact]
     public void ExternalDomain_WhenNotTunneled_KeepsTheIpDerivedHost()
     {
         ConnectivityStatus status = new() { NatStatus = NatStatus.Open };

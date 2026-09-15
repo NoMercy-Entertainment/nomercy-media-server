@@ -402,6 +402,7 @@ public class ConnectivityManager : IConnectivityManager, IHostedService, IDispos
         {
             ConnectivityMode.PortForward => strategy.Type is ConnectivityType.PortForward,
             ConnectivityMode.CloudflareTunnel => strategy.Type is ConnectivityType.CloudflareTunnel,
+            ConnectivityMode.QuickTunnel => strategy.Type is ConnectivityType.QuickTunnel,
             ConnectivityMode.LocalOnly => false,
             _ => true,
         };
@@ -429,6 +430,7 @@ public class ConnectivityManager : IConnectivityManager, IHostedService, IDispos
         {
             ConnectivityType.PortForward => "port_forward",
             ConnectivityType.CloudflareTunnel => "tunnel",
+            ConnectivityType.QuickTunnel => "quick_tunnel",
             _ => "local",
         };
 
@@ -447,6 +449,7 @@ public class ConnectivityManager : IConnectivityManager, IHostedService, IDispos
                 ConnectivityType.PortForward => ConnectivityState.DirectAccess,
                 ConnectivityType.StunHolePunch => ConnectivityState.HolePunched,
                 ConnectivityType.CloudflareTunnel => ConnectivityState.Tunneled,
+                ConnectivityType.QuickTunnel => ConnectivityState.Tunneled,
                 _ => ConnectivityState.DirectAccess,
             }
         );
