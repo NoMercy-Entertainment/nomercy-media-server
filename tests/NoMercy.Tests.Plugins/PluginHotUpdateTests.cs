@@ -38,6 +38,7 @@ namespace NoMercy.Tests.Plugins;
 /// Fixed, this update completes hot on every run.
 /// </para>
 /// </summary>
+[Trait("Category", "Unit")]
 public class PluginHotUpdateTests : IDisposable
 {
     private static readonly Ulid PluginId = Ulid.Parse("01ECH000000000000000000000");
@@ -92,20 +93,17 @@ public class PluginHotUpdateTests : IDisposable
         catch (Exception) { }
     }
 
-    private static string EchoBinDir()
+    private static string EchoBinDir() => SampleBinDir("NoMercy.Plugin.Samples.Echo");
+
+    private static string EchoNextBinDir() => SampleBinDir("NoMercy.Plugin.Samples.EchoNext");
+
+    private static string SampleBinDir(string project)
     {
         string testBinDir = Path.GetDirectoryName(typeof(PluginHotUpdateTests).Assembly.Location)!;
         string buildConfig = Path.GetFileName(Path.GetDirectoryName(testBinDir)!);
         string repoRoot = Path.GetFullPath(Path.Combine(testBinDir, "..", "..", "..", "..", ".."));
 
-        string preferred = Path.Combine(
-            repoRoot,
-            "tests",
-            "NoMercy.Plugin.Samples.Echo",
-            "bin",
-            buildConfig,
-            "net10.0"
-        );
+        string preferred = Path.Combine(repoRoot, "tests", project, "bin", buildConfig, "net10.0");
 
         if (Directory.Exists(preferred))
             return preferred;
@@ -113,7 +111,7 @@ public class PluginHotUpdateTests : IDisposable
         return Path.Combine(
             repoRoot,
             "tests",
-            "NoMercy.Plugin.Samples.Echo",
+            project,
             "bin",
             string.Equals(buildConfig, "Release", StringComparison.OrdinalIgnoreCase)
                 ? "Debug"
@@ -247,6 +245,166 @@ public class PluginHotUpdateTests : IDisposable
         {
             readAfter.Dispose();
         }
+    }
+
+    /// <summary>
+    /// The v2 archive built from the Echo sample's next release: a different
+    /// assembly under the same name, reporting version 2.0.0 from its own
+    /// code. This is what a real plugin update is, and the only shape that
+    /// can tell "the new code runs" apart from "the manifest changed".
+    /// </summary>
+    private string BuildV2ArchiveFromNextRelease()
+    {
+        string binDir = EchoNextBinDir();
+        string dllSrc = Path.Combine(binDir, AssemblyName);
+
+        if (!File.Exists(dllSrc))
+            throw new FileNotFoundException(
+                $"EchoNext plugin DLL not found at '{dllSrc}'. Build NoMercy.Plugin.Samples.EchoNext first."
+            );
+
+        string archivePath = Path.Combine(_pluginsDir, "echo-next-2.0.0.zip");
+
+        using ZipArchive archive = ZipFile.Open(archivePath, ZipArchiveMode.Create);
+
+        foreach (string file in Directory.EnumerateFiles(binDir, "*.dll"))
+            archive.CreateEntryFromFile(file, $"{FolderName}/{Path.GetFileName(file)}");
+
+        foreach (string file in Directory.EnumerateFiles(binDir, "*.deps.json"))
+            archive.CreateEntryFromFile(file, $"{FolderName}/{Path.GetFileName(file)}");
+
+        using (StreamWriter writer = new(archive.CreateEntry($"{FolderName}/plugin.json").Open()))
+            writer.Write(Manifest("2.0.0"));
+
+        return archivePath;
+    }
+
+    /// <summary>
+    /// The update seen on the Proxmox server on 2026-09-15: the dashboard said
+    /// Torrent Downloader 0.5.0 was installed, the folder on disk held 0.5.0,
+    /// and the process kept running 0.4.1 ("Torrent Downloader 0.4.1 awake"
+    /// after every restart). The old load context was never collected, and
+    /// the runtime handed every later load of the same path the image it
+    /// already had. An update must either run the new code or say it could
+    /// not; reporting the new version while running the old one is the one
+    /// outcome this forbids.
+    /// </summary>
+    [Fact]
+    public async Task UpdatingAResidentPlugin_RunsTheNewCode_OrSaysItNeedsARestart()
+    {
+        StageEchoV1();
+        await _manager.LoadPluginsFromDirectoryAsync();
+
+        // A real plugin keeps itself alive after Dispose (threads, sockets,
+        // timers). Holding the old instance here stands in for that, so the
+        // old load context cannot be collected during the swap.
+        IPlugin? before = _manager.GetPluginInstance(PluginId);
+        before.Should().NotBeNull();
+        before!.Version.ToString().Should().Be("0.1.0");
+
+        string archivePath = BuildV2ArchiveFromNextRelease();
+
+        try
+        {
+            await _manager.InstallPluginArchiveAsync(archivePath);
+        }
+        catch (PluginUpdatePendingRestartException)
+        {
+            // Honest: the update is staged and the owner is told to restart.
+            GC.KeepAlive(before);
+            return;
+        }
+
+        IPlugin? after = _manager.GetPluginInstance(PluginId);
+        after.Should().NotBeNull("the update reported success, so a plugin must be resident");
+        after!
+            .Version.ToString()
+            .Should()
+            .Be(
+                "2.0.0",
+                "an update that reports success must run the new code, not the old image at the same path"
+            );
+        ReferenceEquals(before, after).Should().BeFalse();
+
+        _manager
+            .GetInstalledPlugins()
+            .Should()
+            .ContainSingle(p => p.Id == PluginId)
+            .Which.Version.ToString()
+            .Should()
+            .Be("2.0.0");
+
+        GC.KeepAlive(before);
+    }
+
+    /// <summary>
+    /// The second load path: disable, replace the files on disk (a sideload
+    /// or a deploy script), enable. Enable reloads from the installed folder
+    /// while the old context may still be alive, so it must not get the old
+    /// image either.
+    /// </summary>
+    [Fact]
+    public async Task EnablingAfterTheFilesChangedOnDisk_RunsTheNewCode()
+    {
+        StageEchoV1();
+        await _manager.LoadPluginsFromDirectoryAsync();
+
+        IPlugin? before = _manager.GetPluginInstance(PluginId);
+        before.Should().NotBeNull();
+
+        await _manager.DisablePluginAsync(PluginId);
+
+        string binDir = EchoNextBinDir();
+        foreach (string file in Directory.EnumerateFiles(binDir, "*.dll"))
+            File.Copy(file, Path.Combine(_echoPluginDir, Path.GetFileName(file)), overwrite: true);
+        foreach (string file in Directory.EnumerateFiles(binDir, "*.deps.json"))
+            File.Copy(file, Path.Combine(_echoPluginDir, Path.GetFileName(file)), overwrite: true);
+
+        await _manager.EnablePluginAsync(PluginId);
+
+        IPlugin? after = _manager.GetPluginInstance(PluginId);
+        after.Should().NotBeNull();
+        after!.Version.ToString().Should().Be("2.0.0", "enable must run what is on disk now");
+        ReferenceEquals(before, after).Should().BeFalse();
+
+        GC.KeepAlive(before);
+    }
+
+    /// <summary>
+    /// The third load path: a bare .dll dropped over a resident plugin.
+    /// </summary>
+    [Fact]
+    public async Task UpdatingAResidentPluginFromABareAssembly_RunsTheNewCode_OrSaysItNeedsARestart()
+    {
+        StageEchoV1();
+        await _manager.LoadPluginsFromDirectoryAsync();
+
+        IPlugin? before = _manager.GetPluginInstance(PluginId);
+        before.Should().NotBeNull();
+
+        string nextDll = Path.Combine(EchoNextBinDir(), AssemblyName);
+        string upload = Path.Combine(_pluginsDir, "upload-" + AssemblyName);
+        File.Copy(nextDll, upload, overwrite: true);
+
+        try
+        {
+            await _manager.InstallPluginAsync(upload);
+        }
+        catch (PluginUpdatePendingRestartException)
+        {
+            GC.KeepAlive(before);
+            return;
+        }
+
+        IPlugin? after = _manager.GetPluginInstance(PluginId);
+        after.Should().NotBeNull("the install reported success, so a plugin must be resident");
+        after!
+            .Version.ToString()
+            .Should()
+            .Be("2.0.0", "a bare-assembly update must run the new code");
+        ReferenceEquals(before, after).Should().BeFalse();
+
+        GC.KeepAlive(before);
     }
 
     [Fact]

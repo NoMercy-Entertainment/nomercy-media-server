@@ -46,6 +46,7 @@ internal sealed class PluginRegistry : IPluginRegistry
             {
                 replaced.Instance?.Dispose();
                 replaced.LoadContext?.Unload();
+                PluginShadowCopy.TryDelete(replaced.ShadowDirectory);
             }
         }
     }

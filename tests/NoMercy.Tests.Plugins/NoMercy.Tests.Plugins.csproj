@@ -44,6 +44,10 @@
       ReferenceOutputAssembly="false"
     />
     <ProjectReference
+      Include="..\NoMercy.Plugin.Samples.EchoNext\NoMercy.Plugin.Samples.EchoNext.csproj"
+      ReferenceOutputAssembly="false"
+    />
+    <ProjectReference
       Include="..\NoMercy.Plugin.Samples.Failures\NoMercy.Plugin.Samples.Failures.csproj"
       ReferenceOutputAssembly="false"
     />

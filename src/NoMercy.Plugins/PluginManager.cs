@@ -1053,6 +1053,10 @@ public class PluginManager : IPluginManager, IDisposable
             return;
         }
 
+        // Before anything else: no plugin is loaded yet, so every per-load
+        // copy left by the previous run is garbage.
+        PluginShadowCopy.PurgeAll(_pluginsPath);
+
         // Before the scan below, because this is the one moment no plugin
         // assembly is held and a staged update can replace the files it needs to.
         ApplyPendingUpdates();
@@ -1085,6 +1089,7 @@ public class PluginManager : IPluginManager, IDisposable
                     or PendingUpdatesFolder
                     or RollbackFolder
                     or PendingDeletesFolder
+                    or PluginShadowCopy.Folder
             )
             {
                 continue;

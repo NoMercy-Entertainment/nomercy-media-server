@@ -171,12 +171,18 @@ internal sealed class PluginLoader(
                 return;
             }
 
-            PluginLoadContext loadContext = new(absoluteAssemblyPath, _sharedAssemblies);
+            // Loaded from a fresh copy, never from the installed folder: the
+            // runtime keeps the image it mapped for a path while any old
+            // context is alive, so an update loaded from the same path ran
+            // the old code (Torrent Downloader 0.4.1 reported as 0.5.0).
+            string loadPath = PluginShadowCopy.Create(_pluginsPath, absoluteAssemblyPath);
+            string shadowDir = Path.GetDirectoryName(loadPath)!;
+
+            PluginLoadContext loadContext = new(loadPath, _sharedAssemblies);
 
             try
             {
-                Assembly assembly = loadContext.LoadFromAssemblyPath(absoluteAssemblyPath);
-                Type[] x = assembly.GetTypes();
+                Assembly assembly = loadContext.LoadFromAssemblyPath(loadPath);
                 List<Type> pluginTypes = assembly
                     .GetTypes()
                     .Where(t =>
@@ -254,7 +260,7 @@ internal sealed class PluginLoader(
                                 verification.Trusted
                             );
 
-                            LoadedPlugin errorLoaded = new(errorInfo, null, loadContext);
+                            LoadedPlugin errorLoaded = new(errorInfo, null, loadContext, shadowDir);
                             _registry[manifest.Id] = errorLoaded;
                             foundPlugin = true;
 
@@ -301,7 +307,7 @@ internal sealed class PluginLoader(
                         instance.Dispose();
                     }
 
-                    LoadedPlugin loaded = new(info, storedInstance, loadContext);
+                    LoadedPlugin loaded = new(info, storedInstance, loadContext, shadowDir);
                     _registry[manifest.Id] = loaded;
                     foundPlugin = true;
 
@@ -322,6 +328,7 @@ internal sealed class PluginLoader(
                 if (!foundPlugin)
                 {
                     loadContext.Unload();
+                    PluginShadowCopy.TryDelete(shadowDir);
                 }
             }
             catch (ReflectionTypeLoadException ex)
@@ -348,6 +355,7 @@ internal sealed class PluginLoader(
                 );
 
                 loadContext.Unload();
+                PluginShadowCopy.TryDelete(shadowDir);
             }
             catch (Exception ex)
             {
@@ -368,6 +376,7 @@ internal sealed class PluginLoader(
                 );
 
                 loadContext.Unload();
+                PluginShadowCopy.TryDelete(shadowDir);
             }
         }
         catch (Exception ex)
@@ -396,6 +405,8 @@ internal sealed class PluginLoader(
     {
         string absoluteAssemblyPath = ToLocalAssemblyPath(assemblyPath);
         PluginLoadContext loadContext;
+        string loadPath;
+        string shadowDir;
         try
         {
             // AssemblyDependencyResolver reads the assembly's .deps.json via the
@@ -404,7 +415,9 @@ internal sealed class PluginLoader(
             // Windows tolerates it. Constructing outside the try let that escape
             // and abort discovery of every other plugin — guard it so a bad
             // assembly is skipped and reported, not fatal.
-            loadContext = new(absoluteAssemblyPath, _sharedAssemblies);
+            loadPath = PluginShadowCopy.Create(_pluginsPath, absoluteAssemblyPath);
+            shadowDir = Path.GetDirectoryName(loadPath)!;
+            loadContext = new(loadPath, _sharedAssemblies);
         }
         catch (Exception loadContextEx)
         {
@@ -429,7 +442,7 @@ internal sealed class PluginLoader(
 
         try
         {
-            Assembly assembly = loadContext.LoadFromAssemblyPath(absoluteAssemblyPath);
+            Assembly assembly = loadContext.LoadFromAssemblyPath(loadPath);
             List<Type> pluginTypes = assembly
                 .GetTypes()
                 .Where(t =>
@@ -502,7 +515,7 @@ internal sealed class PluginLoader(
                         TargetAbi = known?.Info.TargetAbi,
                     };
 
-                    LoadedPlugin loaded = new(info, instance, loadContext);
+                    LoadedPlugin loaded = new(info, instance, loadContext, shadowDir);
                     _registry[instance.Id] = loaded;
 
                     await _eventBus.PublishAsync(
@@ -554,7 +567,7 @@ internal sealed class PluginLoader(
                         AssemblyPath = assemblyPath,
                     };
 
-                    LoadedPlugin loaded = new(info, null, loadContext);
+                    LoadedPlugin loaded = new(info, null, loadContext, shadowDir);
                     if (identity.Id != Ulid.Empty)
                     {
                         _registry[identity.Id] = loaded;
@@ -576,6 +589,7 @@ internal sealed class PluginLoader(
             if (pluginTypes.Count == 0)
             {
                 loadContext.Unload();
+                PluginShadowCopy.TryDelete(shadowDir);
             }
         }
         catch (ReflectionTypeLoadException ex)
@@ -603,6 +617,7 @@ internal sealed class PluginLoader(
             );
 
             loadContext.Unload();
+            PluginShadowCopy.TryDelete(shadowDir);
         }
         catch (Exception ex)
         {
@@ -625,6 +640,7 @@ internal sealed class PluginLoader(
             );
 
             loadContext.Unload();
+            PluginShadowCopy.TryDelete(shadowDir);
         }
     }
 

@@ -15,7 +15,7 @@
     <Compile
       Include="$(MSBuildThisFileDirectory)SharedTestParallelization.cs"
       Link="SharedTestParallelization.cs"
-      Condition="'$(MSBuildProjectName)' != 'NoMercy.Plugin.Samples.Echo' AND '$(MSBuildProjectName)' != 'NoMercy.Tests.Common'"
+      Condition="'$(MSBuildProjectName)' != 'NoMercy.Plugin.Samples.Echo' AND '$(MSBuildProjectName)' != 'NoMercy.Plugin.Samples.EchoNext' AND '$(MSBuildProjectName)' != 'NoMercy.Tests.Common'"
     />
   </ItemGroup>
   <ItemGroup>

@@ -376,10 +376,35 @@ public class ConnectivityManager : IConnectivityManager, IHostedService, IDispos
                 continue;
             }
 
+            if (_activeStrategy?.Type is ConnectivityType.QuickTunnel)
+            {
+                await RefreshTunnelAvailabilityAsync();
+
+                if (ShouldUpgradeFromQuickTunnel())
+                {
+                    // The control plane can hand out a token at any time after the server
+                    // already settled on the account-less floor. Waiting for the quick
+                    // tunnel to drop on its own would strand the server on it indefinitely.
+                    _logger.LogInformation(
+                        "A named tunnel token became available — upgrading from the quick tunnel"
+                    );
+                    attempt = 0;
+                    await EvaluateAsync(ct);
+                    continue;
+                }
+            }
+
             attempt = 0;
             await Task.Delay(_delayOverride ?? SupervisionInterval, ct);
         }
     }
+
+    /// <summary>
+    /// True while the quick tunnel carries the server and a named-tunnel token has since arrived.
+    /// </summary>
+    internal bool ShouldUpgradeFromQuickTunnel() =>
+        _activeStrategy?.Type is ConnectivityType.QuickTunnel
+        && _connectivityStatus.TunnelAvailability is TunnelAvailability.Available;
 
     private async Task RefreshTunnelAvailabilityAsync()
     {
