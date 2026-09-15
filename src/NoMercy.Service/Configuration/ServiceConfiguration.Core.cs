@@ -285,6 +285,13 @@ public static partial class ServiceConfiguration
             sp.GetRequiredService<ILogger<CloudflareTunnelStrategy>>(),
             sp.GetRequiredService<IConnectivityStatus>()
         ));
+        // The floor: an account-less quick tunnel that needs nothing from the router, the
+        // control plane or the user. Last in the order, so it only runs when nothing
+        // above it could be verified.
+        services.AddSingleton<IConnectivityStrategy>(sp => new QuickTunnelStrategy(
+            sp.GetRequiredService<ILogger<QuickTunnelStrategy>>(),
+            sp.GetRequiredService<IConnectivityStatus>()
+        ));
 
         // Add Auth services
         services.AddSingleton<IAuthTokenStore, AuthTokenStore>();

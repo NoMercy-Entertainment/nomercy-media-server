@@ -21,5 +21,6 @@ public enum ConnectivityMode
     Auto,
     PortForward,
     CloudflareTunnel,
+    QuickTunnel,
     LocalOnly,
 }

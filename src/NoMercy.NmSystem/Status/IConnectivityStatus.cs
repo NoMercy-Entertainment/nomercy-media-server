@@ -29,6 +29,12 @@ public interface IConnectivityStatus
     /// the address clients should actually use.
     /// </summary>
     string Transport { get; set; }
+
+    /// <summary>
+    /// The public URL a quick tunnel was assigned, or null. Reported to the control plane,
+    /// which publishes it as the server's address for as long as the quick tunnel is up.
+    /// </summary>
+    string? PublicUrl { get; set; }
 }
 
 public class ConnectivityStatus : IConnectivityStatus
@@ -41,4 +47,5 @@ public class ConnectivityStatus : IConnectivityStatus
     public string? CloudflareTunnelToken { get; set; }
     public TunnelAvailability TunnelAvailability { get; set; } = TunnelAvailability.Unknown;
     public string Transport { get; set; } = "local";
+    public string? PublicUrl { get; set; }
 }

@@ -313,6 +313,7 @@ public class ServerRegistrationService : IServerRegistrationService
             { "stun_nat_type", _connectivityStatus.NatStatus.ToString() },
             { "dns_scheme", RuntimeServerSettings.Current.UseSynthesizedDns ? "srv" : "apex" },
             { "transport", _connectivityStatus.Transport },
+            { "public_url", _connectivityStatus.PublicUrl ?? string.Empty },
         };
     }
 

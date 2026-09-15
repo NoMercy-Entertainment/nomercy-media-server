@@ -89,6 +89,7 @@ public enum ConnectivityType
     PortForward,
     StunHolePunch,
     CloudflareTunnel,
+    QuickTunnel,
     LocalOnly,
 }
 

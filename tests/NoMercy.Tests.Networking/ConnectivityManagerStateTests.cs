@@ -501,6 +501,55 @@ public sealed class ConnectivityManagerStateTests : IDisposable
     }
 
     [Fact]
+    public async Task EvaluateAsync_AQuickTunnel_IsTheFloor_AndReportsQuickTunnel()
+    {
+        ConnectivityStatus status = new();
+        StubStrategy portForward = new(
+            "PortForward",
+            1,
+            ConnectivityType.PortForward,
+            succeeds: false
+        );
+        StubStrategy named = new(
+            "CloudflareTunnel",
+            3,
+            ConnectivityType.CloudflareTunnel,
+            succeeds: false
+        );
+        StubStrategy quick = new("QuickTunnel", 4, ConnectivityType.QuickTunnel, succeeds: true);
+        ConnectivityManager manager = BuildManager(null, status, quick, named, portForward);
+
+        await manager.EvaluateAsync(CancellationToken.None);
+
+        // Nothing above it verified, so the floor carries the server. The control plane
+        // publishes the assigned name because the transport says so.
+        Assert.Equal(ConnectivityState.Tunneled, manager.CurrentState);
+        Assert.Equal(ConnectivityType.QuickTunnel, manager.ActiveStrategy);
+        Assert.Equal("quick_tunnel", status.Transport);
+        Assert.True(portForward.WasAttempted);
+        Assert.True(named.WasAttempted);
+    }
+
+    [Fact]
+    public async Task EvaluateAsync_AVerifiedPortForward_IsNeverReplacedByTheQuickTunnel()
+    {
+        ConnectivityStatus status = new();
+        StubStrategy portForward = new(
+            "PortForward",
+            1,
+            ConnectivityType.PortForward,
+            succeeds: true
+        );
+        StubStrategy quick = new("QuickTunnel", 4, ConnectivityType.QuickTunnel, succeeds: true);
+        ConnectivityManager manager = BuildManager(null, status, quick, portForward);
+
+        await manager.EvaluateAsync(CancellationToken.None);
+
+        Assert.Equal(ConnectivityState.DirectAccess, manager.CurrentState);
+        Assert.False(quick.WasAttempted);
+    }
+
+    [Fact]
     public async Task EvaluateAsync_WhenNothingWorks_ReportsLocal()
     {
         ConnectivityStatus status = new() { Transport = "tunnel" };
