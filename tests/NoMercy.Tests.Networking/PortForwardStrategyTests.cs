@@ -14,6 +14,7 @@ using NoMercy.Networking.Connectivity;
 using NoMercy.Networking.Connectivity.Strategies;
 using NoMercy.Networking.Discovery;
 using NoMercy.NmSystem.Dto;
+using NoMercy.NmSystem.Networking;
 using NoMercy.NmSystem.Status;
 using Xunit;
 
@@ -40,6 +41,7 @@ public sealed class PortForwardStrategyTests
         public string InternalAddress => string.Empty;
         public string ExternalDomain => string.Empty;
         public string ExternalAddress => string.Empty;
+        public string DirectExternalAddress => $"https://{ExternalIp.Replace('.', '-')}.stub:7626";
         public string? ExternalAddressV6 => null;
         public bool Ipv6Enabled => false;
 
@@ -50,6 +52,17 @@ public sealed class PortForwardStrategyTests
         public Task<bool> IsPortOpenAsync() => Task.FromResult(_portOpen);
 
         public Task RemovePortMappingsAsync() => Task.CompletedTask;
+    }
+
+    private sealed class FakeProbe(ReachabilityVerdict verdict) : IReachabilityProbe
+    {
+        public string? ProbedUrl { get; private set; }
+
+        public Task<ReachabilityVerdict> ProbeAsync(string url, CancellationToken ct)
+        {
+            ProbedUrl = url;
+            return Task.FromResult(verdict);
+        }
     }
 
     private static PortForwardStrategy BuildStrategy(
@@ -207,6 +220,7 @@ public sealed class PortForwardStrategyTests
         public string InternalAddress => string.Empty;
         public string ExternalDomain => string.Empty;
         public string ExternalAddress => string.Empty;
+        public string DirectExternalAddress => $"https://{ExternalIp.Replace('.', '-')}.stub:7626";
         public string? ExternalAddressV6 => null;
         public bool Ipv6Enabled => false;
 
@@ -221,5 +235,105 @@ public sealed class PortForwardStrategyTests
         }
 
         public Task RemovePortMappingsAsync() => Task.CompletedTask;
+    }
+
+    // ── Verified from outside ───────────────────────────────────────────────
+    //
+    // Most routers refuse to hairpin, so the in-LAN probe fails on a port that is open to
+    // the world. The cloud probe is the only check that can tell that apart from closed.
+
+    [Fact]
+    public async Task TryEstablishAsync_WhenTheCloudReachesTheServer_IsVerified()
+    {
+        ConnectivityStatus status = new() { NatStatus = NatStatus.Filtered };
+        FakeProbe probe = new(ReachabilityVerdict.Reachable);
+        PortForwardStrategy strategy = new(
+            new StubNetworkDiscovery(portOpen: false),
+            status,
+            NullLogger<PortForwardStrategy>.Instance,
+            probe
+        );
+
+        ConnectivityResult result = await strategy.TryEstablishAsync(CancellationToken.None);
+
+        Assert.Equal(ConnectivityConfidence.Verified, result.Confidence);
+        Assert.Equal(NatStatus.Open, status.NatStatus);
+        Assert.True(status.PortForwarded);
+        Assert.Equal("https://1-2-3-4.stub:7626", probe.ProbedUrl);
+    }
+
+    [Fact]
+    public async Task TryEstablishAsync_WhenTheCloudCannotReachTheServer_FailsEvenWithAUpnpMapping()
+    {
+        ConnectivityStatus status = new() { NatStatus = NatStatus.Filtered };
+        PortForwardStrategy strategy = new(
+            new StubNetworkDiscovery(portOpen: false),
+            status,
+            NullLogger<PortForwardStrategy>.Instance,
+            new FakeProbe(ReachabilityVerdict.Unreachable)
+        );
+
+        ConnectivityResult result = await strategy.TryEstablishAsync(CancellationToken.None);
+
+        // The router said yes to the mapping and the outside said no. The outside is right;
+        // holding this as a fallback would advertise an address that nothing can reach.
+        Assert.False(result.Established);
+        Assert.False(status.PortForwarded);
+    }
+
+    [Fact]
+    public async Task TryEstablishAsync_WhenTheCloudCheckCouldNotRun_FallsBackToTheUpnpClaim()
+    {
+        ConnectivityStatus status = new() { NatStatus = NatStatus.Filtered };
+        PortForwardStrategy strategy = new(
+            new StubNetworkDiscovery(portOpen: false),
+            status,
+            NullLogger<PortForwardStrategy>.Instance,
+            new FakeProbe(ReachabilityVerdict.Unknown)
+        );
+
+        ConnectivityResult result = await strategy.TryEstablishAsync(CancellationToken.None);
+
+        // An API outage is not evidence about the router.
+        Assert.True(result.Established);
+        Assert.Equal(ConnectivityConfidence.Assumed, result.Confidence);
+    }
+
+    [Fact]
+    public async Task TryEstablishAsync_WhenTheHairpinProbeAlreadyConnected_DoesNotAskTheCloud()
+    {
+        ConnectivityStatus status = new() { NatStatus = NatStatus.None };
+        FakeProbe probe = new(ReachabilityVerdict.Unreachable);
+        PortForwardStrategy strategy = new(
+            new StubNetworkDiscovery(portOpen: true),
+            status,
+            NullLogger<PortForwardStrategy>.Instance,
+            probe
+        );
+
+        ConnectivityResult result = await strategy.TryEstablishAsync(CancellationToken.None);
+
+        Assert.Equal(ConnectivityConfidence.Verified, result.Confidence);
+        Assert.Null(probe.ProbedUrl);
+    }
+
+    [Fact]
+    public async Task TryEstablishAsync_WithNoPublicAddressYet_DoesNotAskTheCloud()
+    {
+        ConnectivityStatus status = new() { NatStatus = NatStatus.Filtered };
+        FakeProbe probe = new(ReachabilityVerdict.Reachable);
+        StubNetworkDiscovery discovery = new(portOpen: false) { ExternalIp = "0.0.0.0" };
+        PortForwardStrategy strategy = new(
+            discovery,
+            status,
+            NullLogger<PortForwardStrategy>.Instance,
+            probe
+        );
+
+        ConnectivityResult result = await strategy.TryEstablishAsync(CancellationToken.None);
+
+        // Probing 0-0-0-0 asks the API to reach nothing; the honest answer is "unknown".
+        Assert.Null(probe.ProbedUrl);
+        Assert.Equal(ConnectivityConfidence.Assumed, result.Confidence);
     }
 }

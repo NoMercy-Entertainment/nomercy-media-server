@@ -59,6 +59,7 @@ using NoMercy.NmSystem.Configuration;
 using NoMercy.NmSystem.FFProbe;
 using NoMercy.NmSystem.Images;
 using NoMercy.NmSystem.Information;
+using NoMercy.NmSystem.Networking;
 using NoMercy.NmSystem.Status;
 using NoMercy.NmSystem.SystemCalls;
 using NoMercy.NmSystem.Wallpaper;
@@ -268,12 +269,18 @@ public static partial class ServiceConfiguration
         services.AddSingleton<IResourceMonitorService, ResourceMonitorService>();
 
         // Connectivity strategies (ordered by priority)
+        // The outside-in check that turns a port forward from a claim into a fact: the API
+        // connects to the server's public address from the cloud, which a probe from inside
+        // the LAN cannot do on a router that refuses to hairpin.
+        services.AddSingleton<IReachabilityProbe>(sp => new CloudReachabilityProbe(
+            sp.GetRequiredService<IAuthTokenStore>()
+        ));
         services.AddSingleton<IConnectivityStrategy>(sp => new PortForwardStrategy(
             (NetworkDiscovery)sp.GetRequiredService<INetworkDiscovery>(),
             sp.GetRequiredService<IConnectivityStatus>(),
-            sp.GetRequiredService<ILogger<PortForwardStrategy>>()
+            sp.GetRequiredService<ILogger<PortForwardStrategy>>(),
+            sp.GetRequiredService<IReachabilityProbe>()
         ));
-        services.AddSingleton<IConnectivityStrategy, StunHolePunchStrategy>();
         services.AddSingleton<IConnectivityStrategy>(sp => new CloudflareTunnelStrategy(
             sp.GetRequiredService<ILogger<CloudflareTunnelStrategy>>(),
             sp.GetRequiredService<IConnectivityStatus>()
@@ -330,7 +337,11 @@ public static partial class ServiceConfiguration
             () => sp.GetRequiredService<IServerRegistrationService>().GetTunnelAvailability(),
             delayOverride: null,
             readinessDeferralWindow: null,
-            lifetime: sp.GetRequiredService<IHostApplicationLifetime>()
+            lifetime: sp.GetRequiredService<IHostApplicationLifetime>(),
+            // The control plane publishes the address clients use, so it must learn which
+            // transport won the moment the decision is made, not on the next IP change.
+            transportChanged: () =>
+                sp.GetRequiredService<NetworkChangeMonitor>().SendUpdate("transport decided")
         ));
         services.AddHostedService(sp =>
             (ConnectivityManager)sp.GetRequiredService<IConnectivityManager>()

@@ -235,7 +235,9 @@ public class NetworkChangeMonitor : IHostedService, IDisposable
 
     // Internal so the no-auth-token early-out (the only branch reachable
     // without a live POST to the NoMercy API) is directly unit-testable.
-    internal async Task SendUpdate()
+    public Task SendUpdate() => SendUpdate("network change");
+
+    public async Task SendUpdate(string reason)
     {
         try
         {
@@ -253,9 +255,10 @@ public class NetworkChangeMonitor : IHostedService, IDisposable
                 { "stun_public_ip", _connectivityStatus.StunPublicIp.OrEmpty() },
                 { "stun_public_port", (_connectivityStatus.StunPublicPort?.ToString()).OrEmpty() },
                 { "stun_nat_type", _connectivityStatus.NatStatus.ToString() },
+                { "transport", _connectivityStatus.Transport },
             };
 
-            _logger.LogInformation("Your IP address has changed, updating server information...");
+            _logger.LogInformation("Updating server information ({Reason})...", reason);
 
             string? token = _authTokenStore.AccessToken;
             if (string.IsNullOrEmpty(token))

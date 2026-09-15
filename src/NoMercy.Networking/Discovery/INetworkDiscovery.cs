@@ -29,6 +29,13 @@ public interface INetworkDiscovery
     string InternalAddress { get; }
     string ExternalDomain { get; }
     string ExternalAddress { get; }
+
+    /// <summary>
+    /// The port-forward form of the public address, whatever transport is active.
+    /// This is what an outside probe checks and what the server advertises when a
+    /// direct path is verified.
+    /// </summary>
+    string DirectExternalAddress { get; }
     string? ExternalAddressV6 { get; }
     bool Ipv6Enabled { get; }
     Task DiscoverExternalIpAsync();

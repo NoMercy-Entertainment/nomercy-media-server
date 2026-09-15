@@ -22,6 +22,13 @@ public interface IConnectivityStatus
 
     string? CloudflareTunnelToken { get; set; }
     TunnelAvailability TunnelAvailability { get; set; }
+
+    /// <summary>
+    /// The transport the manager last settled on, in the API's vocabulary:
+    /// port_forward, tunnel or local. Reported to the control plane so it publishes
+    /// the address clients should actually use.
+    /// </summary>
+    string Transport { get; set; }
 }
 
 public class ConnectivityStatus : IConnectivityStatus
@@ -33,4 +40,5 @@ public class ConnectivityStatus : IConnectivityStatus
 
     public string? CloudflareTunnelToken { get; set; }
     public TunnelAvailability TunnelAvailability { get; set; } = TunnelAvailability.Unknown;
+    public string Transport { get; set; } = "local";
 }

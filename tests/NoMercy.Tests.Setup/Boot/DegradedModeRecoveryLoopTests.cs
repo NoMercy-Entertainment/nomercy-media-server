@@ -383,6 +383,7 @@ public sealed class DegradedModeRecoveryLoopTests : IDisposable
         public string InternalAddress => "0.0.0.0";
         public string ExternalDomain => "local";
         public string ExternalAddress => "0.0.0.0";
+        public string DirectExternalAddress => ExternalAddress;
         public string? ExternalAddressV6 => null;
         public bool Ipv6Enabled => false;
 

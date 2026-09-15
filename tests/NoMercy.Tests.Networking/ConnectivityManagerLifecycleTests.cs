@@ -63,6 +63,7 @@ public sealed class ConnectivityManagerLifecycleTests : IDisposable
         public string InternalAddress => string.Empty;
         public string ExternalDomain => string.Empty;
         public string ExternalAddress => string.Empty;
+        public string DirectExternalAddress => ExternalAddress;
         public string? ExternalAddressV6 => null;
         public bool Ipv6Enabled => false;
 

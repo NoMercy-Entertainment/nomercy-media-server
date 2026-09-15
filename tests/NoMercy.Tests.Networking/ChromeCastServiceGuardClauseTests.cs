@@ -42,6 +42,7 @@ public sealed class ChromeCastServiceGuardClauseTests
         public string InternalAddress => string.Empty;
         public string ExternalDomain => string.Empty;
         public string ExternalAddress => "https://external.example.com:7626";
+        public string DirectExternalAddress => ExternalAddress;
         public string? ExternalAddressV6 => null;
         public bool Ipv6Enabled => false;
 
