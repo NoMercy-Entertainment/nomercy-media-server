@@ -20,10 +20,23 @@ namespace NoMercy.Plugins;
 internal sealed class LoadedPlugin(
     PluginInfo info,
     IPlugin? instance,
-    PluginLoadContext? loadContext
+    PluginLoadContext? loadContext,
+    string? shadowDirectory = null
 )
 {
     public PluginInfo Info { get; } = info;
     public IPlugin? Instance { get; set; } = instance;
     public PluginLoadContext? LoadContext { get; } = loadContext;
+
+    /// <summary>
+    /// The per-load copy the assemblies were loaded from (see
+    /// <see cref="PluginShadowCopy"/>), or null when nothing was loaded.
+    /// </summary>
+    public string? ShadowDirectory { get; } = shadowDirectory;
+
+    /// <summary>The assembly file the runtime actually mapped, when one was.</summary>
+    public string? LoadedAssemblyPath =>
+        ShadowDirectory is null || Info.AssemblyPath is null
+            ? null
+            : Path.Combine(ShadowDirectory, Path.GetFileName(Info.AssemblyPath));
 }

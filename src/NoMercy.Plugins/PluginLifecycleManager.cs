@@ -237,8 +237,12 @@ internal sealed class PluginLifecycleManager(
 
         if (loaded.LoadContext is not null)
         {
-            _assemblyTracker?.TrackUnload(pluginId, loaded.Info.AssemblyPath);
+            _assemblyTracker?.TrackUnload(
+                pluginId,
+                loaded.LoadedAssemblyPath ?? loaded.Info.AssemblyPath
+            );
             loaded.LoadContext.Unload();
+            PluginShadowCopy.TryDelete(loaded.ShadowDirectory);
         }
 
         return Task.FromResult(true);
@@ -285,8 +289,12 @@ internal sealed class PluginLifecycleManager(
         {
             // Tracked before the unload is asked for, so whether it actually
             // went can be answered later by looking.
-            _assemblyTracker?.TrackUnload(pluginId, loaded.Info.AssemblyPath);
+            _assemblyTracker?.TrackUnload(
+                pluginId,
+                loaded.LoadedAssemblyPath ?? loaded.Info.AssemblyPath
+            );
             loaded.LoadContext.Unload();
+            PluginShadowCopy.TryDelete(loaded.ShadowDirectory);
         }
 
         PluginLifecycle.Transition(loaded.Info, PluginStatus.Deleted);

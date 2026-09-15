@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <!-- The same assembly name as the Echo sample on purpose: this is what the
+         Echo plugin's next release looks like on disk, so a hot update can
+         be proven to run the new code rather than the old image. -->
+    <AssemblyName>NoMercy.Plugin.Samples.Echo</AssemblyName>
+    <RootNamespace>NoMercy.Plugin.Samples.Echo</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="..\TestEnvironmentSetup.cs" />
+    <ProjectReference Remove="..\..\src\NoMercy.NmSystem\NoMercy.NmSystem.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\NoMercy.Plugins.Abstractions\NoMercy.Plugins.Abstractions.csproj" />
+  </ItemGroup>
+</Project>
