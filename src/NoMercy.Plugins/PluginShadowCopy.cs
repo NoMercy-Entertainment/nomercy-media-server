@@ -96,9 +96,23 @@ internal static class PluginShadowCopy
             return;
         }
 
+        // One copy at a time, so a copy the OS still holds (Windows keeps a
+        // mapped file locked until its context is collected) does not stop the
+        // rest from being cleared.
+        foreach (string pluginFolder in Directory.EnumerateDirectories(root))
+        {
+            foreach (string copy in Directory.EnumerateDirectories(pluginFolder))
+            {
+                TryDelete(copy);
+            }
+        }
+
         try
         {
-            Directory.Delete(root, recursive: true);
+            if (!Directory.EnumerateFileSystemEntries(root).Any())
+            {
+                Directory.Delete(root);
+            }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
     }

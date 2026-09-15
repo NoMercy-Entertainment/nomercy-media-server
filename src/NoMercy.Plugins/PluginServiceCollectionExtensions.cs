@@ -263,7 +263,7 @@ public static class PluginServiceCollectionExtensions
         foreach (string pluginDir in Directory.EnumerateDirectories(pluginsPath))
         {
             string dirName = Path.GetFileName(pluginDir);
-            if (dirName is "configurations" or "data")
+            if (dirName is "configurations" or "data" || dirName.StartsWith('.'))
                 continue;
 
             string manifestPath = Path.Combine(pluginDir, "plugin.json");
@@ -280,10 +280,14 @@ public static class PluginServiceCollectionExtensions
                     continue;
 
                 // Load into a temporary context for discovery only; unloaded after registration.
-                PluginLoadContext discoveryCtx = new(assemblyPath);
+                // From a copy, like every other load: the services registered here
+                // keep this context alive, and loading the installed file directly
+                // would pin it and cache its image under the installed path.
+                string loadPath = PluginShadowCopy.Create(pluginsPath, assemblyPath);
+                PluginLoadContext discoveryCtx = new(loadPath);
                 try
                 {
-                    Assembly assembly = discoveryCtx.LoadFromAssemblyPath(assemblyPath);
+                    Assembly assembly = discoveryCtx.LoadFromAssemblyPath(loadPath);
 
                     IEnumerable<Type> registratorTypes = assembly
                         .GetTypes()
@@ -317,6 +321,7 @@ public static class PluginServiceCollectionExtensions
                 finally
                 {
                     discoveryCtx.Unload();
+                    PluginShadowCopy.TryDelete(Path.GetDirectoryName(loadPath));
                 }
             }
             catch (Exception)
