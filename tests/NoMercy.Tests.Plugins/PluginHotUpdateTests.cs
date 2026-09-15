@@ -336,6 +336,76 @@ public class PluginHotUpdateTests : IDisposable
         GC.KeepAlive(before);
     }
 
+    /// <summary>
+    /// The second load path: disable, replace the files on disk (a sideload
+    /// or a deploy script), enable. Enable reloads from the installed folder
+    /// while the old context may still be alive, so it must not get the old
+    /// image either.
+    /// </summary>
+    [Fact]
+    public async Task EnablingAfterTheFilesChangedOnDisk_RunsTheNewCode()
+    {
+        StageEchoV1();
+        await _manager.LoadPluginsFromDirectoryAsync();
+
+        IPlugin? before = _manager.GetPluginInstance(PluginId);
+        before.Should().NotBeNull();
+
+        await _manager.DisablePluginAsync(PluginId);
+
+        string binDir = EchoNextBinDir();
+        foreach (string file in Directory.EnumerateFiles(binDir, "*.dll"))
+            File.Copy(file, Path.Combine(_echoPluginDir, Path.GetFileName(file)), overwrite: true);
+        foreach (string file in Directory.EnumerateFiles(binDir, "*.deps.json"))
+            File.Copy(file, Path.Combine(_echoPluginDir, Path.GetFileName(file)), overwrite: true);
+
+        await _manager.EnablePluginAsync(PluginId);
+
+        IPlugin? after = _manager.GetPluginInstance(PluginId);
+        after.Should().NotBeNull();
+        after!.Version.ToString().Should().Be("2.0.0", "enable must run what is on disk now");
+        ReferenceEquals(before, after).Should().BeFalse();
+
+        GC.KeepAlive(before);
+    }
+
+    /// <summary>
+    /// The third load path: a bare .dll dropped over a resident plugin.
+    /// </summary>
+    [Fact]
+    public async Task UpdatingAResidentPluginFromABareAssembly_RunsTheNewCode_OrSaysItNeedsARestart()
+    {
+        StageEchoV1();
+        await _manager.LoadPluginsFromDirectoryAsync();
+
+        IPlugin? before = _manager.GetPluginInstance(PluginId);
+        before.Should().NotBeNull();
+
+        string nextDll = Path.Combine(EchoNextBinDir(), AssemblyName);
+        string upload = Path.Combine(_pluginsDir, "upload-" + AssemblyName);
+        File.Copy(nextDll, upload, overwrite: true);
+
+        try
+        {
+            await _manager.InstallPluginAsync(upload);
+        }
+        catch (PluginUpdatePendingRestartException)
+        {
+            GC.KeepAlive(before);
+            return;
+        }
+
+        IPlugin? after = _manager.GetPluginInstance(PluginId);
+        after.Should().NotBeNull("the install reported success, so a plugin must be resident");
+        after!
+            .Version.ToString()
+            .Should()
+            .Be("2.0.0", "a bare-assembly update must run the new code");
+        ReferenceEquals(before, after).Should().BeFalse();
+
+        GC.KeepAlive(before);
+    }
+
     [Fact]
     public async Task UpdatingAResidentPlugin_WhenApplyingTheSwapFails_RollsBackAndLeavesNoStagedCopyBehind()
     {
