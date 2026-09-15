@@ -122,14 +122,16 @@ jobs:
       # (Integration), and re-running all ~4600 of them plus the real encodes is
       # what made this job take 70-90 minutes and gate every release behind itself.
       # A missing trait satisfies every `!=` clause, so this selects exactly the
-      # gap the job exists to close.
+      # gap the job exists to close. Performance is excluded too: those tests
+      # time live TMDB calls against a wall-clock budget and have their own job,
+      # and a slow TMDB day failed this gate twice in a row on 2026-09-15.
       - name: Run uncategorized tests
         run: >
           dotnet test NoMercy.Server.sln
           --configuration Release
           --verbosity minimal
           --blame-hang-timeout 10m
-          --filter "Category!=Unit&Category!=ErrorHandling&Category!=Characterization&Category!=Integration"
+          --filter "Category!=Unit&Category!=ErrorHandling&Category!=Characterization&Category!=Integration&Category!=Performance"
 
   # Integration tests - run on the dev release path (direct pushes to dev), master,
   # releases, or manually. PRs (github.ref = refs/pull/N/merge) don't match the
