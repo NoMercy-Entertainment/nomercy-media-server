@@ -85,16 +85,25 @@ public class PluginManagerVerificationTests : IDisposable
         File.Exists(InstalledPathFor(sourceDll)).Should().BeFalse();
     }
 
+    /// <summary>
+    /// A checksum describes the plugin's .zip package, so hashing a bare
+    /// assembly is a published checksum nobody can reproduce. It is refused
+    /// with the .zip named, rather than quietly accepted on this one route and
+    /// rejected on the archive route.
+    /// </summary>
     [Fact]
-    public async Task InstallPluginAsync_ChecksumMatch_CopiesAssembly()
+    public async Task InstallPluginAsync_ChecksumOverABareAssembly_IsRefusedAndDoesNotCopy()
     {
         byte[] bytes = [1, 2, 3, 4, 5];
         string sourceDll = WriteSourceDll(bytes);
         string sha = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
 
-        await _manager.InstallPluginAsync(sourceDll, expectedChecksum: sha);
+        Func<Task> act = () => _manager.InstallPluginAsync(sourceDll, expectedChecksum: sha);
 
-        File.Exists(InstalledPathFor(sourceDll)).Should().BeTrue();
+        (await act.Should().ThrowAsync<PluginVerificationException>())
+            .Which.Message.Should()
+            .Contain(PluginRefusalCode.ChecksumSubjectNotAPackage);
+        File.Exists(InstalledPathFor(sourceDll)).Should().BeFalse();
     }
 
     [Fact]

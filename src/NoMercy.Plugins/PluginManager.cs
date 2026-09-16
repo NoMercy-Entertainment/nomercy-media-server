@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using System.IO.Compression;
-using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Logging;
@@ -177,6 +176,10 @@ public class PluginManager : IPluginManager, IDisposable
             // alongside it, so ABI cannot be judged here (TargetAbi stays null
             // and that stage passes by design); only the checksum a repository
             // caller supplies is enforced, before anything is copied to disk.
+            //
+            // The file that arrived is the subject, whatever it is. A bare
+            // assembly is not a package, so the stage refuses it and names the
+            // .zip a publisher should have hashed instead.
             PluginManifest checksumManifest = new()
             {
                 Id = Ulid.Empty,
@@ -189,7 +192,8 @@ public class PluginManager : IPluginManager, IDisposable
             PluginVerificationResult verification = _verifier.Verify(
                 checksumManifest,
                 fullPath,
-                expectedChecksum
+                expectedChecksum,
+                fullPath
             );
 
             if (!verification.Verified)
@@ -359,13 +363,11 @@ public class PluginManager : IPluginManager, IDisposable
         // have existed on disk anywhere the loader looks.
         if (!string.IsNullOrWhiteSpace(expectedChecksum))
         {
-            string actual = await ComputeSha256Async(fullPath, ct);
+            string? refusal = PluginPackageChecksum.Refuse(fullPath, expectedChecksum);
 
-            if (!actual.Equals(expectedChecksum.Trim(), StringComparison.OrdinalIgnoreCase))
+            if (refusal is not null)
             {
-                throw new PluginVerificationException(
-                    $"Plugin archive failed verification: expected checksum {expectedChecksum}, got {actual}"
-                );
+                throw new PluginVerificationException(refusal);
             }
         }
 
@@ -1012,14 +1014,6 @@ public class PluginManager : IPluginManager, IDisposable
             ?? throw new PluginVerificationException(
                 $"Plugin archive does not contain the assembly its manifest names: {manifest.AssemblyFileName}"
             );
-    }
-
-    private async Task<string> ComputeSha256Async(string path, CancellationToken ct)
-    {
-        await using Stream stream = _driver.OpenRead(path);
-        byte[] hash = await SHA256.HashDataAsync(stream, ct);
-
-        return Convert.ToHexStringLower(hash);
     }
 
     // Zip entries name their own separator and a Windows-built archive uses the

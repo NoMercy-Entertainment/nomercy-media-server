@@ -32,7 +32,8 @@ public class PluginVerifier : IPluginVerifier
     public PluginVerificationResult Verify(
         PluginManifest manifest,
         string assemblyPath,
-        string? expectedChecksum
+        string? expectedChecksum,
+        string? packagePath = null
     )
     {
         PluginVerificationContext context = new()
@@ -40,6 +41,7 @@ public class PluginVerifier : IPluginVerifier
             Manifest = manifest,
             AssemblyPath = assemblyPath,
             ExpectedChecksum = expectedChecksum,
+            PackagePath = packagePath,
         };
 
         List<string> failures = [];
