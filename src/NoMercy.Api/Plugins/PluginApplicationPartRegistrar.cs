@@ -34,14 +34,22 @@ public class PluginApplicationPartRegistrar(
     ILogger<PluginApplicationPartRegistrar> logger
 ) : IPluginAssemblyCatalog
 {
-    private readonly ConcurrentDictionary<Ulid, Assembly> _attached = new();
+    private readonly ConcurrentDictionary<Ulid, AttachedPlugin> _attached = new();
 
-    public Ulid? OwnerOf(Assembly assembly)
+    /// <summary>What the route convention needs to know about an attached part.</summary>
+    private sealed record AttachedPlugin(Assembly Assembly, bool AllowsAnonymousRest);
+
+    public Ulid? OwnerOf(Assembly assembly) => Find(assembly)?.Key;
+
+    public bool AllowsAnonymousRest(Assembly assembly) =>
+        Find(assembly)?.Value.AllowsAnonymousRest ?? false;
+
+    private KeyValuePair<Ulid, AttachedPlugin>? Find(Assembly assembly)
     {
-        foreach (KeyValuePair<Ulid, Assembly> entry in _attached)
+        foreach (KeyValuePair<Ulid, AttachedPlugin> entry in _attached)
         {
-            if (ReferenceEquals(entry.Value, assembly))
-                return entry.Key;
+            if (ReferenceEquals(entry.Value.Assembly, assembly))
+                return entry;
         }
 
         return null;
@@ -94,7 +102,7 @@ public class PluginApplicationPartRegistrar(
             return false;
 
         partManager.ApplicationParts.Add(new AssemblyPart(assembly));
-        _attached[info.Id] = assembly;
+        _attached[info.Id] = new(assembly, info.Capabilities?.RestAnonymous ?? false);
 
         logger.LogInformation(
             "Attached controllers from plugin {PluginName} ({PluginId}).",
@@ -107,12 +115,12 @@ public class PluginApplicationPartRegistrar(
 
     public void Detach(Ulid pluginId)
     {
-        if (!_attached.TryRemove(pluginId, out Assembly? assembly))
+        if (!_attached.TryRemove(pluginId, out AttachedPlugin? attached))
             return;
 
         ApplicationPart? part = partManager.ApplicationParts.FirstOrDefault(candidate =>
             candidate is AssemblyPart assemblyPart
-            && ReferenceEquals(assemblyPart.Assembly, assembly)
+            && ReferenceEquals(assemblyPart.Assembly, attached.Assembly)
         );
 
         if (part is not null)

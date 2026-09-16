@@ -27,4 +27,14 @@ public interface IPluginAssemblyCatalog
 {
     /// <summary>The plugin an assembly belongs to, or null when it is not one.</summary>
     Ulid? OwnerOf(Assembly assembly);
+
+    /// <summary>
+    /// Whether this plugin's manifest asked for a REST surface that answers
+    /// without a token.
+    /// <para>
+    /// False by default, and false for a catalogue that cannot answer: an
+    /// endpoint whose intent the host is unsure of is shut, never open.
+    /// </para>
+    /// </summary>
+    bool AllowsAnonymousRest(Assembly assembly) => false;
 }

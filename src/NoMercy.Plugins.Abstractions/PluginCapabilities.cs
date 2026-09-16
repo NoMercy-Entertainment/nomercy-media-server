@@ -27,6 +27,18 @@ public class PluginCapabilities
     [JsonPropertyName("rest")]
     public bool Rest { get; init; }
 
+    /// <summary>
+    /// Whether this plugin's REST routes answer a caller with no token.
+    /// <para>
+    /// Off unless the manifest says otherwise. Every plugin route carries the
+    /// server's own authorization, imposed by the host rather than written by
+    /// the plugin, so an open endpoint is a line the owner can read in the
+    /// manifest instead of an attribute buried in code nobody reviews.
+    /// </para>
+    /// </summary>
+    [JsonPropertyName("restAnonymous")]
+    public bool RestAnonymous { get; init; }
+
     [JsonPropertyName("ws")]
     public bool Ws { get; init; }
 }
