@@ -73,6 +73,17 @@ public sealed class PluginAudioTools(
     /// </summary>
     internal TimeSpan RunTimeout { get; init; } = TimeSpan.FromMinutes(10);
 
+    /// <summary>
+    /// How long a run is given to exit on its own after its stdout carries
+    /// ffmpeg's own "progress=end" line before the host ends it - see
+    /// <see cref="RunFfmpegAsync" />.
+    /// <para>
+    /// Init-only for the same reason as <see cref="RunTimeout" />: so a test
+    /// can prove the path without waiting for it.
+    /// </para>
+    /// </summary>
+    internal TimeSpan ExitGracePeriod { get; init; } = TimeSpan.FromSeconds(2);
+
     /// <summary>The derived store's own scratch folder; its eviction sweep also cleans it.</summary>
     private const string TempFolder = "tmp";
 
@@ -311,7 +322,8 @@ public sealed class PluginAudioTools(
                 arguments,
                 null,
                 CaptureStdErr,
-                ct
+                ct,
+                watchForExitMarker: true
             );
 
             if (result is null)
@@ -458,28 +470,84 @@ public sealed class PluginAudioTools(
     /// One ffmpeg run with the host's own timeout on top of the caller's
     /// token. Null means the timeout fired; the caller decides what that is
     /// worth to it.
+    /// <para>
+    /// The Windows ffmpeg build links ggml (stemsplit, whisper) against GCC's
+    /// libgomp. At process exit libgomp tears down its worker pool, and on
+    /// this MinGW build that teardown intermittently deadlocks - reproduced
+    /// 2026-09-16 on the owner's server, roughly two splits in three, the
+    /// minidump showing the exit handler still waiting on its own worker
+    /// pool. ffmpeg's outputs are already complete - trailer and AVIO
+    /// statistics included - by the time it writes "progress=end" to stdout
+    /// (stemsplit asks for that marker; see <see cref="PluginAudioArguments.StemSplit" />),
+    /// so <paramref name="watchForExitMarker" /> starts the kill signal's own
+    /// grace timer on that line - the same mechanism
+    /// <see cref="NoMercy.Encoder.Execution.FfmpegExecutor" /> uses for the same reason - and
+    /// a process still running once it fires is stuck at exit, not mid-write;
+    /// ending it loses nothing. The root fix is GGML_OPENMP=OFF in
+    /// nomercy-ffmpeg; this is the guard for every installation until that
+    /// ships.
+    /// </para>
     /// </summary>
+    /// <param name="watchForExitMarker">
+    /// Stem split only. A plugin's own filter-graph text can print anything,
+    /// "progress=end" included, on purpose or by coincidence - the marker
+    /// watch would end a run the plugin never asked to end, so
+    /// <see cref="RunFilterGraphCoreAsync" /> never sets this.
+    /// </param>
     private async Task<ProcessResult?> RunFfmpegAsync(
         string ffmpegPath,
         string[] arguments,
         Action<string>? onStdOut,
         Action<string>? onStdErr,
-        CancellationToken ct
+        CancellationToken ct,
+        bool watchForExitMarker = false
     )
     {
         using CancellationTokenSource runCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         runCts.CancelAfter(RunTimeout);
+
+        // Disposed after the run has returned, as FfmpegExecutor does - never
+        // through a `using`.
+        CancellationTokenSource killCts = new();
+
+        void ObserveStdOut(string line)
+        {
+            onStdOut?.Invoke(line);
+
+            if (watchForExitMarker && line == "progress=end")
+            {
+                _logger.LogDebug(
+                    "plugin {PluginId}: progress=end received, ending the run after {Grace}s if it has not exited",
+                    pluginId,
+                    ExitGracePeriod.TotalSeconds
+                );
+                killCts.CancelAfter(ExitGracePeriod);
+            }
+        }
 
         try
         {
             return await processRunner.RunAsync(
                 ffmpegPath,
                 arguments,
-                onStdOut,
+                ObserveStdOut,
                 onStdErr,
                 AppFiles.FfmpegFolder,
-                runCts.Token
+                runCts.Token,
+                killCts.Token
             );
+        }
+        catch (OperationCanceledException)
+            when (killCts.IsCancellationRequested && !ct.IsCancellationRequested)
+        {
+            // A runner that surfaces the grace-period kill as a thrown
+            // cancellation instead of returning normally - the way the real
+            // ProcessRunner does for its own kill signal, ExitCode 0 - still
+            // finished successfully: ffmpeg's own "progress=end" already said
+            // the outputs were complete. The caller's own token is checked
+            // too, so a cancellation the caller itself asked for is never
+            // reported back as success.
+            return new ProcessResult(0, string.Empty, string.Empty, TimeSpan.Zero);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
@@ -489,6 +557,24 @@ public sealed class PluginAudioTools(
                 RunTimeout.TotalSeconds
             );
             return null;
+        }
+        finally
+        {
+            // Whether the workaround actually fired - the marker-received log
+            // above only says the grace timer was started, not that ffmpeg
+            // was still stuck once it elapsed. The owner reads this line to
+            // judge the ffmpeg root fix (GGML_OPENMP=OFF): once that ships,
+            // it should stop appearing.
+            if (killCts.IsCancellationRequested && !ct.IsCancellationRequested)
+            {
+                _logger.LogDebug(
+                    "plugin {PluginId}: ffmpeg finished its outputs but did not exit; ended it after {Grace}s",
+                    pluginId,
+                    ExitGracePeriod.TotalSeconds
+                );
+            }
+
+            killCts.Dispose();
         }
     }
 
