@@ -99,12 +99,13 @@ public class PluginCronRegistrarTests
     }
 
     [Fact]
-    public async Task RegisterAll_PluginMissingFromInstalledList_IsIgnored()
+    public async Task RegisterAll_PluginMissingFromInstalledList_StillRegistersOnTheBaseline()
     {
         // GetPluginsOfType and GetInstalledPlugins are two independent reads —
         // a plugin returned by the former with no matching entry in the latter
         // must fall back to null capabilities (`?.Capabilities`) rather than
-        // throw, and null capabilities never declares the scheduledTask hook.
+        // throw. Null capabilities means the baseline, and scheduledTask is
+        // baseline, so the work is scheduled rather than silently dropped.
         FakeScheduledTaskPlugin plugin = new("*/10 * * * *");
         FakePluginManager manager = FakePluginManager.WithScheduledTaskNotInInstalledList(plugin);
         CronWorker cronWorker = BuildCronWorker();
@@ -113,7 +114,7 @@ public class PluginCronRegistrarTests
         Action act = () => registrar.RegisterAll();
 
         act.Should().NotThrow();
-        GetCodeDefinedJobs(cronWorker).Should().BeEmpty();
+        GetCodeDefinedJobs(cronWorker).Should().NotBeEmpty();
 
         using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
         await cronWorker.StopAsync(cts.Token);

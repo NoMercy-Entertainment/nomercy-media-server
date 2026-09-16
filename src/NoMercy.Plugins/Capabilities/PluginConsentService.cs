@@ -23,13 +23,6 @@ public interface IPluginConsentStore
 
 public class PluginConsentService(IPluginConsentStore store) : IPluginConsentService
 {
-    private static readonly HashSet<string> BaselineHooks = new(StringComparer.OrdinalIgnoreCase)
-    {
-        PluginHookCapability.MediaSource,
-        PluginHookCapability.Metadata,
-        PluginHookCapability.Ui,
-    };
-
     public bool IsBaseline(PluginCapabilities? capabilities)
     {
         if (capabilities is null)
@@ -38,7 +31,7 @@ public class PluginConsentService(IPluginConsentStore store) : IPluginConsentSer
         if (capabilities.Rest || capabilities.Ws || capabilities.Network is not null)
             return false;
 
-        return capabilities.Hooks.All(hook => BaselineHooks.Contains(hook));
+        return capabilities.Hooks.All(PluginHookCapability.Baseline.Contains);
     }
 
     public bool HasConsent(Ulid pluginId) => store.Contains(pluginId);
@@ -52,8 +45,11 @@ public class PluginConsentService(IPluginConsentStore store) : IPluginConsentSer
         return !PluginCapabilityGuard.HasWidened(grant.Capabilities, capabilities);
     }
 
-    public void GrantConsent(Ulid pluginId, PluginCapabilities? capabilities, Version manifestVersion) =>
-        store.Add(pluginId, capabilities, manifestVersion);
+    public void GrantConsent(
+        Ulid pluginId,
+        PluginCapabilities? capabilities,
+        Version manifestVersion
+    ) => store.Add(pluginId, capabilities, manifestVersion);
 
     public void RevokeConsent(Ulid pluginId) => store.Remove(pluginId);
 }

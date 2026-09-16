@@ -22,8 +22,13 @@ public class PluginCapabilityGuardTests
     {
         Assert.True(PluginCapabilityGuard.DeclaresHook(null, PluginHookCapability.MediaSource));
         Assert.True(PluginCapabilityGuard.DeclaresHook(null, PluginHookCapability.Metadata));
+        Assert.True(PluginCapabilityGuard.DeclaresHook(null, PluginHookCapability.Ui));
+
+        // Running on a schedule is baseline: it is not a permission, and what
+        // the task then does needs whatever hook that work declares.
+        Assert.True(PluginCapabilityGuard.DeclaresHook(null, PluginHookCapability.ScheduledTask));
+
         Assert.False(PluginCapabilityGuard.DeclaresHook(null, PluginHookCapability.Auth));
-        Assert.False(PluginCapabilityGuard.DeclaresHook(null, PluginHookCapability.ScheduledTask));
     }
 
     [Fact]

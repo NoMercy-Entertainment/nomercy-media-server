@@ -79,6 +79,32 @@ public static class PluginHookCapability
     public const string MusicAnalysisWrite = "musicAnalysisWrite";
 
     /// <summary>
+    /// The hooks a plugin may run without the owner being asked first.
+    /// <para>
+    /// The one definition. It used to be written out separately in the consent
+    /// service and in the capability guard, the two lists did not agree, and
+    /// <see cref="ScheduledTask"/> was in neither — so a plugin that only runs
+    /// on a schedule installed Disabled waiting for a prompt that described
+    /// nothing dangerous. Running on a schedule is not a permission; what the
+    /// task then does is, and that is whatever other hook it declares beside
+    /// this one.
+    /// </para>
+    /// <para>
+    /// Every hook is in exactly one of this set and <see cref="Elevated"/>. A
+    /// new hook that is in neither is one nobody classified, and a test in the
+    /// plugin suite refuses it.
+    /// </para>
+    /// </summary>
+    public static IReadOnlySet<string> Baseline { get; } =
+        new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            MediaSource,
+            Metadata,
+            Ui,
+            ScheduledTask,
+        };
+
+    /// <summary>
     /// Hooks that can never be baseline, whatever else a plugin declares.
     /// <para>Consent classification asks whether every declared hook is
     /// harmless. A hook that can delete a user's media is not, so it is named
