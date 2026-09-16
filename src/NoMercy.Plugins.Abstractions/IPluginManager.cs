@@ -57,6 +57,18 @@ public interface IPluginManager
 
     Task UninstallPluginAsync(Ulid pluginId, CancellationToken ct = default);
 
+    /// <summary>
+    /// Removes a plugin, and with it the data folder, consent, grants and
+    /// secrets the server held for it — unless the owner asks to keep them.
+    /// <para>
+    /// Defaulted to the purging overload so existing implementers (test
+    /// doubles) keep compiling, and so a manager that has not been taught about
+    /// keeping data removes everything rather than quietly keeping it.
+    /// </para>
+    /// </summary>
+    Task UninstallPluginAsync(Ulid pluginId, bool keepData, CancellationToken ct = default) =>
+        UninstallPluginAsync(pluginId, ct);
+
     // Boot-time scan: load all plugins in the plugins directory, isolating failures
     // per plugin so one bad plugin never blocks the others.
     Task<IReadOnlyList<PluginLoadResult>> LoadAllAsync(CancellationToken ct = default);

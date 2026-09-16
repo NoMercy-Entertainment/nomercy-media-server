@@ -1,4 +1,4 @@
-﻿// -----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 //  Copyright (c) 2024-present NoMercy Entertainment. All rights reserved.
 //
 //  This file is part of NoMercy MediaServer, source-available software (NOT open
@@ -127,6 +127,13 @@ public class PluginManager : IPluginManager, IDisposable
             _registry,
             _loader,
             factory,
+            new PluginDataPurge(
+                _pluginsPath,
+                _storage,
+                _consentService,
+                new ConfigPluginGrantStore(PlatformConfiguration()),
+                PlatformConfiguration()
+            ),
             assemblyTracker,
             releaseScheduledWork,
             registerScheduledWork
@@ -1043,7 +1050,12 @@ public class PluginManager : IPluginManager, IDisposable
 
     public Task UninstallPluginAsync(Ulid pluginId, CancellationToken ct = default)
     {
-        return _lifecycle.UninstallPluginAsync(pluginId, ct);
+        return _lifecycle.UninstallPluginAsync(pluginId, keepData: false, ct);
+    }
+
+    public Task UninstallPluginAsync(Ulid pluginId, bool keepData, CancellationToken ct = default)
+    {
+        return _lifecycle.UninstallPluginAsync(pluginId, keepData, ct);
     }
 
     public async Task LoadPluginsFromDirectoryAsync(CancellationToken ct = default)

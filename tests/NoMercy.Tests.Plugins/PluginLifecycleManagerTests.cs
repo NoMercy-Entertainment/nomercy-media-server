@@ -18,6 +18,7 @@ using NoMercy.Plugins;
 using NoMercy.Plugins.Abstractions;
 using NoMercy.Plugins.Capabilities;
 using NoMercy.Plugins.Verification;
+using NoMercy.Storage;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;
@@ -69,7 +70,8 @@ public class PluginLifecycleManagerTests : IDisposable
             TestStorageHelper.CreateStorage(_tempDir),
             _registry,
             loader,
-            TestPluginPlatform.ContextFactory(_eventBus, TestStorageHelper.CreateStorage(_tempDir))
+            TestPluginPlatform.ContextFactory(_eventBus, TestStorageHelper.CreateStorage(_tempDir)),
+            DataPurge(_tempDir)
         );
     }
 
@@ -97,6 +99,24 @@ public class PluginLifecycleManagerTests : IDisposable
             }
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+    }
+
+    /// <summary>The real purge, over the same temp plugins root the manager uses.</summary>
+    private static IPluginDataPurge DataPurge(string pluginsPath)
+    {
+        IStorage storage = TestStorageHelper.CreateStorage(pluginsPath);
+        IPluginConfiguration platform = new PluginConfiguration(
+            Path.Combine(pluginsPath, "data", "platform"),
+            storage
+        );
+
+        return new PluginDataPurge(
+            pluginsPath,
+            storage,
+            new PluginConsentService(new ConfigPluginConsentStore(platform)),
+            new ConfigPluginGrantStore(platform),
+            platform
+        );
     }
 
     private static PluginInfo Info(Ulid id, PluginStatus status, string? assemblyPath = null) =>
@@ -392,6 +412,7 @@ public class PluginLifecycleManagerTests : IDisposable
                 )
             ),
             TestPluginPlatform.ContextFactory(_eventBus, TestStorageHelper.CreateStorage(_tempDir)),
+            DataPurge(_tempDir),
             releaseScheduledWork: releasedId =>
                 wasStillRegisteredWhenReleased = _registry.TryGetValue(releasedId, out _)
         );
@@ -435,6 +456,49 @@ public class PluginLifecycleManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task UninstallPluginAsync_PurgesTheDataFolderConsentAndGrants()
+    {
+        Ulid id = Ulid.NewUlid();
+        _registry[id] = new(Info(id, PluginStatus.Active), new FakePlugin(), null);
+
+        string dataFolder = Path.Combine(_tempDir, "data", id.ToString());
+        Directory.CreateDirectory(dataFolder);
+        File.WriteAllText(Path.Combine(dataFolder, "state.json"), "{}");
+
+        IPluginConfiguration platform = new PluginConfiguration(
+            Path.Combine(_tempDir, "data", "platform"),
+            TestStorageHelper.CreateStorage(_tempDir)
+        );
+        IPluginConsentService consent = new PluginConsentService(
+            new ConfigPluginConsentStore(platform)
+        );
+        IPluginGrantStore grants = new ConfigPluginGrantStore(platform);
+        consent.GrantConsent(id, new() { Rest = true }, new(1, 0, 0));
+        grants.Grant(id, PluginGrantKind.PlayerSource, "ice1.somafm.com");
+
+        await _lifecycle.UninstallPluginAsync(id);
+
+        Directory.Exists(dataFolder).Should().BeFalse();
+        consent.HasConsent(id).Should().BeFalse();
+        grants.Granted(id, PluginGrantKind.PlayerSource).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task UninstallPluginAsync_KeepData_LeavesTheOwnersRecordsWhereTheyWere()
+    {
+        Ulid id = Ulid.NewUlid();
+        _registry[id] = new(Info(id, PluginStatus.Active), new FakePlugin(), null);
+
+        string dataFolder = Path.Combine(_tempDir, "data", id.ToString());
+        Directory.CreateDirectory(dataFolder);
+        File.WriteAllText(Path.Combine(dataFolder, "state.json"), "{}");
+
+        await _lifecycle.UninstallPluginAsync(id, keepData: true);
+
+        Directory.Exists(dataFolder).Should().BeTrue();
+    }
+
+    [Fact]
     public async Task UninstallPluginAsync_ReleasesScheduledWork_WhilePluginStillInRegistry()
     {
         // A scheduled-task plugin's named per-job cron executors are removed
@@ -469,6 +533,7 @@ public class PluginLifecycleManagerTests : IDisposable
                 )
             ),
             TestPluginPlatform.ContextFactory(_eventBus, TestStorageHelper.CreateStorage(_tempDir)),
+            DataPurge(_tempDir),
             releaseScheduledWork: releasedId =>
                 wasStillRegisteredWhenReleased = _registry.TryGetValue(releasedId, out _)
         );

@@ -361,12 +361,22 @@ public class PluginController(
         return lastSeparator < 0 ? candidate : candidate[(lastSeparator + 1)..];
     }
 
+    /// <summary>
+    /// Removes a plugin and everything the server held for it.
+    /// <para>
+    /// <c>keepData</c> keeps the plugin's data folder, consent, grants and
+    /// secrets, for an owner who means to put the same plugin back. Left out it
+    /// is false: removing a plugin means it is gone, and one that came back
+    /// still holding its old permissions was never approved for the copy now
+    /// running.
+    /// </para>
+    /// </summary>
     [HttpDelete("{id:ulid}")]
-    public async Task<IActionResult> Uninstall(Ulid id)
+    public async Task<IActionResult> Uninstall(Ulid id, [FromQuery] bool keepData = false)
     {
         try
         {
-            await pluginManager.UninstallPluginAsync(id);
+            await pluginManager.UninstallPluginAsync(id, keepData);
 
             return Ok(
                 new StatusResponseDto<string>
