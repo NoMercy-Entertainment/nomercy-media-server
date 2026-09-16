@@ -1,4 +1,4 @@
-﻿// -----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 //  Copyright (c) 2024-present NoMercy Entertainment. All rights reserved.
 //
 //  This file is part of NoMercy MediaServer, source-available software (NOT open
@@ -107,6 +107,40 @@ public class PluginRepositoryController(
         }
 
         return Ok(new StatusResponseDto<string> { Status = "ok", Message = "Repository removed" });
+    }
+
+    /// <summary>
+    /// Trusts a repository, or takes that back.
+    /// <para>
+    /// Trust is provenance and nothing more: a plugin from a trusted index
+    /// still waits for the owner's consent before it runs. From Phase 3 it
+    /// skips the marketplace review hold, which is a delay before a release is
+    /// published, and never a decision about the owner's own machine.
+    /// </para>
+    /// </summary>
+    [HttpPatch("{name}")]
+    public async Task<IActionResult> SetTrust(
+        string name,
+        [FromBody] PluginRepositoryTrustRequestDto request,
+        CancellationToken ct
+    )
+    {
+        try
+        {
+            await repository.SetRepositoryTrustAsync(name, request.Trusted, ct);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return NotFoundResponse(ex.Message);
+        }
+
+        return Ok(
+            new StatusResponseDto<string>
+            {
+                Status = "ok",
+                Message = request.Trusted ? "Repository trusted" : "Repository no longer trusted",
+            }
+        );
     }
 
     /// <summary>Re-reads every enabled repository's index.</summary>

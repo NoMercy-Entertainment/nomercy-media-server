@@ -1,4 +1,4 @@
-﻿// -----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 //  Copyright (c) 2024-present NoMercy Entertainment. All rights reserved.
 //
 //  This file is part of NoMercy MediaServer, source-available software (NOT open
@@ -284,6 +284,7 @@ public class RouteContractSnapshotTests : IClassFixture<NoMercyApiFactory>
         "HEAD api/v{version:apiVersion}/trailer/{trailerId} [Home.HasTrailer]",
         "PATCH api/v{version:apiVersion}/dashboard/configuration [Configuration.Update]",
         "PATCH api/v{version:apiVersion}/dashboard/libraries/sort [Libraries.Sort]",
+        "PATCH api/v{version:apiVersion}/dashboard/plugins/repositories/{name} [PluginRepository.SetTrust]",
         "PATCH api/v{version:apiVersion}/dashboard/libraries/{id:ulid} [Libraries.Update]",
         "PATCH api/v{version:apiVersion}/dashboard/libraries/{id:ulid}/folders/{folderId:ulid} [Libraries.UpdateFolder]",
         "PATCH api/v{version:apiVersion}/dashboard/security/settings [Security.UpdateSettings]",

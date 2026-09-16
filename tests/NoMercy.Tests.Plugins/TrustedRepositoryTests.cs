@@ -58,7 +58,7 @@ public class TrustedRepositoryTests
     }
 
     [Fact]
-    public void APluginNoTrustedIndexLists_GoesThroughConsent()
+    public void APluginNoTrustedIndexLists_EarnsNoTrust()
     {
         TrustedRepositoryVerificationStage stage = new(() => new FakeRepository(Listed));
 

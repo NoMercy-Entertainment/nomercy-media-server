@@ -204,34 +204,14 @@ internal sealed class PluginLoader(
                     // An elevated plugin (declares network/rest/ws/auth capabilities)
                     // must not silently start reaching the network or claims pipeline
                     // on first install — it loads but stays Disabled until the owner
-                    // grants consent from the dashboard (Phase 2).
-                    bool isBaseline = _consentService.IsBaseline(manifest.Capabilities);
-                    bool consentCoversCurrent = _consentService.ConsentCoversCapabilities(
-                        manifest.Id,
-                        manifest.Capabilities
-                    );
-
-                    bool mayAutoEnable =
-                        manifest.AutoEnabled
-                        && (
-                            isBaseline
-                            || consentCoversCurrent
-                            // Or it came from a repository the owner trusts.
-                            // Approving each plugin from an index they added
-                            // themselves is a prompt that teaches them to click
-                            // through the one that matters.
-                            || verification.Trusted
-                        );
+                    // grants consent from the dashboard. Where it came from does
+                    // not answer that question: see PluginAutoEnable.
+                    bool mayAutoEnable = PluginAutoEnable.Allows(manifest, _consentService);
 
                     // A manifest that widened past what the owner already
                     // approved must not ride the old consent to Active — the
                     // owner said yes to a smaller request than this one.
-                    if (
-                        !isBaseline
-                        && !verification.Trusted
-                        && _consentService.HasConsent(manifest.Id)
-                        && !consentCoversCurrent
-                    )
+                    if (PluginAutoEnable.NeedsReConsent(manifest, _consentService))
                     {
                         _logger.LogWarning(
                             "Plugin {PluginName} widened its capabilities past its recorded consent and was disabled pending re-consent.",

@@ -23,6 +23,19 @@ public interface IPluginRepository
     IReadOnlyList<PluginRepositoryInfo> GetRepositories();
     Task AddRepositoryAsync(string name, string url, CancellationToken ct = default);
     Task RemoveRepositoryAsync(string name, CancellationToken ct = default);
+
+    /// <summary>
+    /// Marks a repository trusted, or takes that back.
+    /// <para>
+    /// Trust is the strongest thing an owner says about where plugins come
+    /// from, and it used to be changeable only by editing repositories.json on
+    /// the server by hand. Defaulted to a refusal rather than to doing nothing:
+    /// an implementation that cannot record this must say so, not accept the
+    /// call and leave the owner believing they changed something.
+    /// </para>
+    /// </summary>
+    Task SetRepositoryTrustAsync(string name, bool trusted, CancellationToken ct = default) =>
+        throw new NotSupportedException("This repository cannot change what it trusts.");
     Task RefreshAsync(CancellationToken ct = default);
     IReadOnlyList<PluginRepositoryEntry> GetAvailablePlugins();
     PluginRepositoryEntry? FindPlugin(Ulid pluginId);
@@ -47,8 +60,14 @@ public class PluginRepositoryInfo
     public bool Enabled { get; set; } = true;
 
     /// <summary>
-    /// Whether a plugin listed here is one the owner already trusts, so it
-    /// enables on install instead of waiting to be approved one at a time.
+    /// Whether a plugin listed here comes from somewhere the owner trusts.
+    /// <para>
+    /// Provenance, not consent. It used to enable a plugin on install, which
+    /// meant a repository flag answered the consent question on the owner's
+    /// behalf for every plugin that index ever lists. From Phase 3 it skips the
+    /// marketplace review hold — a delay before a release is published — and
+    /// never the owner's decision about their own machine.
+    /// </para>
     /// <para>
     /// Trust belongs to where a plugin came from, not to what its manifest says
     /// about itself: an author line is free text any file can copy, and a list

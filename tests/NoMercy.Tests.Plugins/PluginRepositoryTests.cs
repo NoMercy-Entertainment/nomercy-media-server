@@ -1,4 +1,4 @@
-﻿// -----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 //  Copyright (c) 2024-present NoMercy Entertainment. All rights reserved.
 //
 //  This file is part of NoMercy MediaServer, source-available software (NOT open
@@ -185,6 +185,56 @@ public class PluginRepositoryTests : IDisposable
         repos[0].Name.Should().Be("test");
         repos[0].Url.Should().Be("https://example.com/repo.json");
         repos[0].Enabled.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task ARepositoryStartsUntrusted()
+    {
+        PluginRepository repo = MakeRepo();
+        await repo.AddRepositoryAsync("test", "https://example.com/repo.json");
+
+        repo.GetRepositories().Single(info => info.Name == "test").Trusted.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task SetRepositoryTrustAsync_ChangesTheFlagAndPersistsIt()
+    {
+        PluginRepository repo = MakeRepo();
+        await repo.AddRepositoryAsync("test", "https://example.com/repo.json");
+
+        await repo.SetRepositoryTrustAsync("test", trusted: true);
+
+        PluginRepository reader = MakeRepo();
+        await reader.LoadAsync();
+        reader.GetRepositories().Single(info => info.Name == "test").Trusted.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SetRepositoryTrustAsync_UnknownName_ThrowsInvalidOperation()
+    {
+        PluginRepository repo = MakeRepo();
+
+        Func<Task> act = () => repo.SetRepositoryTrustAsync("nothing-here", trusted: true);
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+    }
+
+    [Fact]
+    public async Task Trust_Withdrawn_StopsTrustingWhatThatIndexLists()
+    {
+        PluginRepositoryManifest manifest = CreateTestManifest();
+        PluginRepository repo = MakeRepo(CreateMockHttpClient(manifest));
+        await repo.AddRepositoryAsync("test", "https://example.com/repo.json");
+        await repo.SetRepositoryTrustAsync("test", trusted: true);
+        await repo.RefreshAsync();
+
+        Ulid listed = repo.GetAvailablePlugins()[0].Id;
+        repo.IsFromTrustedRepository(listed).Should().BeTrue();
+
+        await repo.SetRepositoryTrustAsync("test", trusted: false);
+        await repo.RefreshAsync();
+
+        repo.IsFromTrustedRepository(listed).Should().BeFalse();
     }
 
     [Fact]
