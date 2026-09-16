@@ -11,6 +11,7 @@
 
 using System.Text.Json;
 using FluentAssertions;
+using NoMercy.Plugins.Abstractions;
 using NoMercy.Tests.Common;
 using Xunit;
 
@@ -238,6 +239,22 @@ public class PluginTemplateTests
             .Should()
             .BeTrue("manifest must have targetAbi");
         targetAbi.GetString().Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
+    public void PluginManifest_TargetAbi_MatchesCurrentAbi()
+    {
+        string manifestPath = Path.Combine(TemplateRoot, "plugin.json");
+        string json = File.ReadAllText(manifestPath);
+        JsonDocument doc = JsonDocument.Parse(json);
+        string targetAbi = doc.RootElement.GetProperty("targetAbi").GetString()!;
+
+        targetAbi
+            .Should()
+            .Be(
+                PluginAbi.Current.ToString(),
+                "a scaffolded plugin must target the ABI the host actually runs, not a stale version"
+            );
     }
 
     [Fact]

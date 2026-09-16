@@ -3,7 +3,7 @@
   "name": "NoMercy.Plugin.Template",
   "description": "PLUGIN-DESCRIPTION-PLACEHOLDER",
   "version": "1.0.0",
-  "targetAbi": "9.0",
+  "targetAbi": "10.2",
   "author": "AUTHOR-NAME-PLACEHOLDER",
   "assembly": "NoMercy.Plugin.Template.dll",
   "autoEnabled": true
