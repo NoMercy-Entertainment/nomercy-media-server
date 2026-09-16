@@ -1196,7 +1196,7 @@ public class PluginAudioToolsTests : IDisposable
                     Action<string>? onStdOut,
                     Action<string>? onStdErr,
                     string? _,
-                    CancellationToken _,
+                    CancellationToken cancellationToken,
                     CancellationToken killSignal,
                     Action<int>? _
                 ) =>
@@ -1205,9 +1205,20 @@ public class PluginAudioToolsTests : IDisposable
                     onStdErr?.Invoke(VersionLine);
                     onStdOut?.Invoke("progress=end");
 
+                    // Linked to both tokens, and CreateTools below is given a
+                    // short runTimeout on top of the short grace period: if a
+                    // future regression stops the kill signal firing, the run
+                    // token's own timeout still ends the delay, so the test
+                    // fails fast instead of hanging the suite.
+                    using CancellationTokenSource linked =
+                        CancellationTokenSource.CreateLinkedTokenSource(
+                            cancellationToken,
+                            killSignal
+                        );
+
                     try
                     {
-                        await Task.Delay(Timeout.InfiniteTimeSpan, killSignal);
+                        await Task.Delay(Timeout.InfiniteTimeSpan, linked.Token);
                     }
                     catch (OperationCanceledException)
                     {
@@ -1221,6 +1232,7 @@ public class PluginAudioToolsTests : IDisposable
             );
 
         PluginStemSplitResult result = await CreateTools(
+                runTimeout: TimeSpan.FromSeconds(5),
                 exitGracePeriod: TimeSpan.FromMilliseconds(20)
             )
             .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);

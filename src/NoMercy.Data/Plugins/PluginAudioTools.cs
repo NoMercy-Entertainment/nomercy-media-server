@@ -481,7 +481,7 @@ public sealed class PluginAudioTools(
     /// (stemsplit asks for that marker; see <see cref="PluginAudioArguments.StemSplit" />),
     /// so <paramref name="watchForExitMarker" /> starts the kill signal's own
     /// grace timer on that line - the same mechanism
-    /// <see cref="Execution.FfmpegExecutor" /> uses for the same reason - and
+    /// <see cref="NoMercy.Encoder.Execution.FfmpegExecutor" /> uses for the same reason - and
     /// a process still running once it fires is stuck at exit, not mid-write;
     /// ending it loses nothing. The root fix is GGML_OPENMP=OFF in
     /// nomercy-ffmpeg; this is the guard for every installation until that
@@ -506,12 +506,8 @@ public sealed class PluginAudioTools(
         using CancellationTokenSource runCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         runCts.CancelAfter(RunTimeout);
 
-        // Disposed manually in the finally below, once the run itself has
-        // fully returned - never through a `using`, so a stdout line the
-        // reader thread delivers late can never land on an already-disposed
-        // source. ProcessRunner's own WaitForExit() call drains the
-        // redirected streams before RunAsync's task completes, so by the
-        // time the finally runs there is nothing left to deliver.
+        // Disposed after the run has returned, as FfmpegExecutor does - never
+        // through a `using`.
         CancellationTokenSource killCts = new();
 
         void ObserveStdOut(string line)
@@ -564,6 +560,20 @@ public sealed class PluginAudioTools(
         }
         finally
         {
+            // Whether the workaround actually fired - the marker-received log
+            // above only says the grace timer was started, not that ffmpeg
+            // was still stuck once it elapsed. The owner reads this line to
+            // judge the ffmpeg root fix (GGML_OPENMP=OFF): once that ships,
+            // it should stop appearing.
+            if (killCts.IsCancellationRequested && !ct.IsCancellationRequested)
+            {
+                _logger.LogDebug(
+                    "plugin {PluginId}: ffmpeg finished its outputs but did not exit; ended it after {Grace}s",
+                    pluginId,
+                    ExitGracePeriod.TotalSeconds
+                );
+            }
+
             killCts.Dispose();
         }
     }
