@@ -73,6 +73,17 @@ public sealed class PluginAudioTools(
     /// </summary>
     internal TimeSpan RunTimeout { get; init; } = TimeSpan.FromMinutes(10);
 
+    /// <summary>
+    /// How long a run is given to exit on its own after its stdout carries
+    /// ffmpeg's own "progress=end" line before the host ends it - see
+    /// <see cref="RunFfmpegAsync" />.
+    /// <para>
+    /// Init-only for the same reason as <see cref="RunTimeout" />: so a test
+    /// can prove the path without waiting for it.
+    /// </para>
+    /// </summary>
+    internal TimeSpan ExitGracePeriod { get; init; } = TimeSpan.FromSeconds(2);
+
     /// <summary>The derived store's own scratch folder; its eviction sweep also cleans it.</summary>
     private const string TempFolder = "tmp";
 
@@ -458,6 +469,20 @@ public sealed class PluginAudioTools(
     /// One ffmpeg run with the host's own timeout on top of the caller's
     /// token. Null means the timeout fired; the caller decides what that is
     /// worth to it.
+    /// <para>
+    /// The Windows ffmpeg build links ggml (stemsplit, whisper) against GCC's
+    /// libgomp. At process exit libgomp tears down its worker pool, and on
+    /// this MinGW build that teardown intermittently deadlocks - reproduced
+    /// 2026-09-16 on the owner's server, roughly two splits in three, the
+    /// minidump showing the exit handler still waiting on its own worker
+    /// pool. ffmpeg's outputs are already complete - trailer and AVIO
+    /// statistics included - by the time it writes "progress=end" to stdout
+    /// (stemsplit asks for that marker; see <see cref="PluginAudioArguments.StemSplit" />),
+    /// so a process still running a short grace period after that line is
+    /// stuck at exit, not mid-write, and ending it loses nothing. The root
+    /// fix is GGML_OPENMP=OFF in nomercy-ffmpeg; this is the guard for every
+    /// installation until that ships.
+    /// </para>
     /// </summary>
     private async Task<ProcessResult?> RunFfmpegAsync(
         string ffmpegPath,
@@ -470,16 +495,47 @@ public sealed class PluginAudioTools(
         using CancellationTokenSource runCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         runCts.CancelAfter(RunTimeout);
 
+        using CancellationTokenSource killCts = new();
+        using CancellationTokenSource graceCts = CancellationTokenSource.CreateLinkedTokenSource(
+            runCts.Token
+        );
+
+        bool endedAfterGrace = false;
+        Task? gracePeriodTask = null;
+
+        void ObserveStdOut(string line)
+        {
+            onStdOut?.Invoke(line);
+
+            if (line == "progress=end" && gracePeriodTask is null)
+            {
+                gracePeriodTask = EndAfterGraceAsync(
+                    killCts,
+                    graceCts.Token,
+                    () => endedAfterGrace = true
+                );
+            }
+        }
+
         try
         {
             return await processRunner.RunAsync(
                 ffmpegPath,
                 arguments,
-                onStdOut,
+                ObserveStdOut,
                 onStdErr,
                 AppFiles.FfmpegFolder,
-                runCts.Token
+                runCts.Token,
+                killCts.Token
             );
+        }
+        catch (OperationCanceledException) when (endedAfterGrace)
+        {
+            // The runner surfaced the grace-period kill as a cancellation
+            // instead of returning normally, the way the real ProcessRunner
+            // does for its own kill signal. ffmpeg's own "progress=end" word
+            // already said the outputs were complete, so this is success.
+            return new ProcessResult(0, string.Empty, string.Empty, TimeSpan.Zero);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
@@ -489,6 +545,61 @@ public sealed class PluginAudioTools(
                 RunTimeout.TotalSeconds
             );
             return null;
+        }
+        finally
+        {
+            await graceCts.CancelAsync();
+            if (gracePeriodTask is not null)
+            {
+                await gracePeriodTask;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Waits <see cref="ExitGracePeriod" /> for ffmpeg to exit on its own
+    /// after "progress=end"; if it still has not, ends the run through
+    /// <paramref name="killCts" /> - <see cref="IProcessRunner" />'s own kill
+    /// signal, documented there for exactly this: a process whose output is
+    /// complete but that will not exit.
+    /// </summary>
+    private async Task EndAfterGraceAsync(
+        CancellationTokenSource killCts,
+        CancellationToken ct,
+        Action markEndedAfterGrace
+    )
+    {
+        try
+        {
+            await Task.Delay(ExitGracePeriod, ct);
+        }
+        catch (OperationCanceledException)
+        {
+            // The run finished - or was itself cancelled or timed out -
+            // before the grace period elapsed. Nothing left to end.
+            return;
+        }
+
+        _logger.LogDebug(
+            "plugin {PluginId}: ffmpeg finished its outputs but did not exit; ended it after {Grace} s",
+            pluginId,
+            ExitGracePeriod.TotalSeconds
+        );
+
+        // Set before the kill signal fires: the run's own await can observe
+        // the resulting cancellation and needs the flag already true to tell
+        // it apart from the unrelated RunTimeout backstop.
+        markEndedAfterGrace();
+
+        try
+        {
+            killCts.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The caller's `using` disposed it between the delay completing
+            // and this call landing - the run ended on its own around the
+            // same moment.
         }
     }
 

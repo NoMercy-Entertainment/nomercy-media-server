@@ -93,6 +93,14 @@ internal static class PluginAudioArguments
     ) =>
         [
             "-nostdin",
+            // Progress on stdout, one key=value block per update, terminated by
+            // its own "progress=end" line once every output is written and
+            // closed. PluginAudioTools watches for that line to work around a
+            // libgomp exit-teardown deadlock in this ffmpeg build - see the
+            // comment on PluginAudioTools.RunFfmpegAsync.
+            "-nostats",
+            "-progress",
+            "pipe:1",
             .. windowArguments,
             "-i",
             inputPath,
