@@ -23,6 +23,20 @@ public interface IPluginGrantStore
     void Grant(Ulid pluginId, string kind, string value);
     void Revoke(Ulid pluginId, string kind, string value);
 
+    /// <summary>
+    /// Takes away everything one plugin holds, whatever the kind, and clears
+    /// what it was still asking for.
+    /// <para>
+    /// Withdrawing consent used to walk a list of kinds written out by hand, so
+    /// a kind that list did not name survived the owner saying no —
+    /// <see cref="PluginGrantKind.PlayerSource"/> did, and every
+    /// <see cref="PluginGrantKind.ForCapability"/> kind is built at runtime and
+    /// could never have been on it. Asking the store to empty itself for one
+    /// plugin removes the list, so there is nothing left to forget.
+    /// </para>
+    /// </summary>
+    void RevokeAll(Ulid pluginId);
+
     /// <summary>Records a plugin's request. Asking twice for one thing records once.</summary>
     void Request(Ulid pluginId, string kind, string value, string reason);
 
@@ -136,6 +150,20 @@ public class ConfigPluginGrantStore(IPluginConfiguration configuration) : IPlugi
                 && string.Equals(entry.Kind, kind, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(entry.Value, value, StringComparison.OrdinalIgnoreCase)
             );
+
+            if (removed > 0)
+                configuration.SaveConfiguration(record);
+        }
+    }
+
+    public void RevokeAll(Ulid pluginId)
+    {
+        lock (_gate)
+        {
+            PluginGrantRecord record = Read();
+
+            int removed = record.Grants.RemoveAll(entry => entry.PluginId == pluginId);
+            removed += record.Requests.RemoveAll(entry => entry.PluginId == pluginId);
 
             if (removed > 0)
                 configuration.SaveConfiguration(record);

@@ -131,10 +131,7 @@ public class PluginController(
     public async Task<IActionResult> RevokeConsent(Ulid id)
     {
         consentService.RevokeConsent(id);
-
-        foreach (string kind in AllGrantKinds)
-        foreach (string value in grantStore.Granted(id, kind))
-            grantStore.Revoke(id, kind, value);
+        grantStore.RevokeAll(id);
 
         try
         {
@@ -190,13 +187,6 @@ public class PluginController(
     /// </summary>
     private bool AwaitingConsent(PluginInfo plugin) =>
         !consentService.IsBaseline(plugin.Capabilities) && !consentService.HasConsent(plugin.Id);
-
-    private static readonly string[] AllGrantKinds =
-    [
-        PluginGrantKind.Capability,
-        PluginGrantKind.NetworkHost,
-        PluginGrantKind.LibraryWrite,
-    ];
 
     [HttpPost("{id:ulid}/enable")]
     public async Task<IActionResult> Enable(Ulid id)
