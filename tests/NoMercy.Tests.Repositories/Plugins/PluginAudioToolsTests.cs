@@ -1220,11 +1220,14 @@ public class PluginAudioToolsTests : IDisposable
                     {
                         await Task.Delay(Timeout.InfiniteTimeSpan, linked.Token);
                     }
-                    catch (OperationCanceledException)
+                    catch (OperationCanceledException) when (killSignal.IsCancellationRequested)
                     {
                         // The kill signal fired - exactly what a real kill of
                         // the process tree looks like from here: the runner
                         // returns normally, exit code 0, instead of throwing.
+                        // A run-token cancellation (the runTimeout backstop
+                        // above) is a different event and must propagate
+                        // instead, the same as the throwing fallback test.
                     }
 
                     return new ProcessResult(0, string.Empty, string.Empty, TimeSpan.Zero);
