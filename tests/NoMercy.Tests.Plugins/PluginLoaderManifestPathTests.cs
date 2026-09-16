@@ -173,7 +173,7 @@ public class PluginLoaderManifestPathTests : IDisposable
             """;
         string manifestPath = StageManifestFailurePlugin(manifestJson);
         InMemoryConsentStore consentStore = new();
-        consentStore.Add(ManifestFailurePluginId);
+        consentStore.Add(ManifestFailurePluginId, new PluginCapabilities { Rest = true }, new Version(0, 1, 0));
         PluginConsentService consentService = new(consentStore);
         PluginManager manager = BuildManager(consentService);
 

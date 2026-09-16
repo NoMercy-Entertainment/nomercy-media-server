@@ -63,4 +63,65 @@ public class PluginCapabilityGuardTests
             PluginCapabilityGuard.DeclaresHook(caps, PluginHookCapability.MusicAnalysisWrite)
         );
     }
+
+    [Fact]
+    public void HasWidened_SameCapabilities_IsFalse()
+    {
+        PluginCapabilities caps = new() { Hooks = ["mediaSource"] };
+        Assert.False(PluginCapabilityGuard.HasWidened(caps, caps));
+    }
+
+    [Fact]
+    public void HasWidened_NarrowerCapabilities_IsFalse()
+    {
+        PluginCapabilities consented = new() { Hooks = ["mediaSource", "metadata"] };
+        PluginCapabilities current = new() { Hooks = ["mediaSource"] };
+        Assert.False(PluginCapabilityGuard.HasWidened(consented, current));
+    }
+
+    [Fact]
+    public void HasWidened_NewHook_IsTrue()
+    {
+        PluginCapabilities consented = new() { Hooks = ["mediaSource"] };
+        PluginCapabilities current = new() { Hooks = ["mediaSource", "auth"] };
+        Assert.True(PluginCapabilityGuard.HasWidened(consented, current));
+    }
+
+    [Fact]
+    public void HasWidened_RestTurnedOn_IsTrue()
+    {
+        PluginCapabilities consented = new() { Hooks = ["ui"] };
+        PluginCapabilities current = new() { Hooks = ["ui"], Rest = true };
+        Assert.True(PluginCapabilityGuard.HasWidened(consented, current));
+    }
+
+    [Fact]
+    public void HasWidened_NewNetworkHost_IsTrue()
+    {
+        PluginCapabilities consented = new()
+        {
+            Hooks = ["ui"],
+            Network = new() { Hosts = ["a.example.com"] },
+        };
+        PluginCapabilities current = new()
+        {
+            Hooks = ["ui"],
+            Network = new() { Hosts = ["a.example.com", "b.example.com"] },
+        };
+        Assert.True(PluginCapabilityGuard.HasWidened(consented, current));
+    }
+
+    [Fact]
+    public void HasWidened_NullConsented_ElevatedCurrent_IsTrue()
+    {
+        PluginCapabilities current = new() { Hooks = ["auth"] };
+        Assert.True(PluginCapabilityGuard.HasWidened(null, current));
+    }
+
+    [Fact]
+    public void HasWidened_NullConsented_BaselineCurrent_IsFalse()
+    {
+        PluginCapabilities current = new() { Hooks = ["mediaSource", "ui"] };
+        Assert.False(PluginCapabilityGuard.HasWidened(null, current));
+    }
 }

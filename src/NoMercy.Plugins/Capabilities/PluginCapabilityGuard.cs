@@ -29,4 +29,38 @@ public static class PluginCapabilityGuard
 
         return capabilities.Hooks.Contains(hook, StringComparer.OrdinalIgnoreCase);
     }
+
+    /// <summary>
+    /// Whether <paramref name="current"/> asks for anything the owner was never
+    /// asked about when they consented to <paramref name="consented"/>.
+    /// <para>
+    /// Narrowing what a plugin asks for never needs a new prompt; adding a
+    /// hook, turning on rest/ws, or naming a new network host does, because
+    /// the owner's earlier "yes" was scoped to a smaller request.
+    /// </para>
+    /// </summary>
+    public static bool HasWidened(PluginCapabilities? consented, PluginCapabilities? current)
+    {
+        if (current is null)
+            return false;
+
+        List<string> consentedHooksBaseline = consented?.Hooks ?? [.. ImplicitBaseline];
+
+        if (
+            current.Hooks.Any(hook =>
+                !consentedHooksBaseline.Contains(hook, StringComparer.OrdinalIgnoreCase)
+            )
+        )
+            return true;
+
+        if (current.Rest && consented?.Rest != true)
+            return true;
+
+        if (current.Ws && consented?.Ws != true)
+            return true;
+
+        List<string> consentedHosts = consented?.Network?.Hosts ?? [];
+        List<string> currentHosts = current.Network?.Hosts ?? [];
+        return currentHosts.Any(host => !consentedHosts.Contains(host, StringComparer.OrdinalIgnoreCase));
+    }
 }

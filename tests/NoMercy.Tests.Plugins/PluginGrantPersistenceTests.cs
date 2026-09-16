@@ -128,7 +128,7 @@ public class PluginGrantPersistenceTests : IDisposable
         IPluginConsentStore consent = new ConfigPluginConsentStore(configuration);
 
         grants.Grant(PluginId, PluginGrantKind.NetworkHost, "tracker.example");
-        consent.Add(PluginId);
+        consent.Add(PluginId, null, new Version(1, 0));
 
         // Both answers, from stores rebuilt over the file rather than the ones
         // that wrote it: what the next request and the next boot actually read.
@@ -147,7 +147,7 @@ public class PluginGrantPersistenceTests : IDisposable
     {
         IPluginConfiguration configuration = Configuration();
 
-        new ConfigPluginConsentStore(configuration).Add(PluginId);
+        new ConfigPluginConsentStore(configuration).Add(PluginId, null, new Version(1, 0));
         new ConfigPluginGrantStore(configuration).Grant(
             PluginId,
             PluginGrantKind.NetworkHost,
@@ -172,7 +172,7 @@ public class PluginGrantPersistenceTests : IDisposable
     {
         IPluginConfiguration configuration = Configuration();
 
-        new ConfigPluginConsentStore(configuration).Add(PluginId);
+        new ConfigPluginConsentStore(configuration).Add(PluginId, null, new Version(1, 0));
         new ConfigPluginGrantStore(configuration).Grant(
             PluginId,
             PluginGrantKind.NetworkHost,

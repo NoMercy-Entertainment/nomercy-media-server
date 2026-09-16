@@ -17,6 +17,13 @@ public interface IPluginConsentService
 {
     bool IsBaseline(PluginCapabilities? capabilities);
     bool HasConsent(Ulid pluginId);
-    void GrantConsent(Ulid pluginId);
+
+    /// <summary>
+    /// Whether a recorded consent still covers what <paramref name="capabilities"/>
+    /// asks for. False when there is no consent at all, or when the manifest
+    /// has widened past what the owner approved.
+    /// </summary>
+    bool ConsentCoversCapabilities(Ulid pluginId, PluginCapabilities? capabilities);
+    void GrantConsent(Ulid pluginId, PluginCapabilities? capabilities, Version manifestVersion);
     void RevokeConsent(Ulid pluginId);
 }

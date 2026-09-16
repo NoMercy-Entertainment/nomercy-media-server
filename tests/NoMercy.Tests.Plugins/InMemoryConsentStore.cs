@@ -9,17 +9,26 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using NoMercy.Plugins.Abstractions;
 using NoMercy.Plugins.Capabilities;
 
 namespace NoMercy.Tests.Plugins;
 
 internal sealed class InMemoryConsentStore : IPluginConsentStore
 {
-    private readonly HashSet<Ulid> _granted = [];
+    private readonly Dictionary<Ulid, PluginConsentGrant> _granted = [];
 
-    public bool Contains(Ulid pluginId) => _granted.Contains(pluginId);
+    public bool Contains(Ulid pluginId) => _granted.ContainsKey(pluginId);
 
-    public void Add(Ulid pluginId) => _granted.Add(pluginId);
+    public PluginConsentGrant? Get(Ulid pluginId) =>
+        _granted.TryGetValue(pluginId, out PluginConsentGrant? grant) ? grant : null;
+
+    public void Add(Ulid pluginId, PluginCapabilities? capabilities, Version manifestVersion) =>
+        _granted[pluginId] = new PluginConsentGrant
+        {
+            Capabilities = capabilities,
+            ManifestVersion = manifestVersion.ToString(),
+        };
 
     public void Remove(Ulid pluginId) => _granted.Remove(pluginId);
 }

@@ -186,6 +186,13 @@ public static class EventHandlerExtensions
             );
         });
 
+        services.AddSingleton<PluginConsentEventHandler>(sp =>
+        {
+            IEventBus eventBus = sp.GetRequiredService<IEventBus>();
+            IUserCache userCache = sp.GetRequiredService<IUserCache>();
+            return new(eventBus, userCache);
+        });
+
         services.AddSingleton<IInboxMetadataProbe, TmdbMusicBrainzMetadataProbe>();
         services.AddSingleton<IInboxAudioTagReader>(sp =>
         {
@@ -254,6 +261,7 @@ public static class EventHandlerExtensions
         serviceProvider.GetRequiredService<DiscOnboardingCompletionEventHandler>();
         serviceProvider.GetRequiredService<CastEventHandler>();
         serviceProvider.GetRequiredService<UserPermissionsEventHandler>();
+        serviceProvider.GetRequiredService<PluginConsentEventHandler>();
         serviceProvider.GetRequiredService<InboxClassifierEventHandler>();
         serviceProvider.GetRequiredService<SignalRInboxEventHandler>();
 

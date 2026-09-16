@@ -99,7 +99,7 @@ public class PluginController(
         if (plugin is null)
             return NotFoundResponse("Plugin not found");
 
-        consentService.GrantConsent(id);
+        consentService.GrantConsent(id, plugin.Capabilities, plugin.Version);
 
         // Grants named in the same call, so consenting to a plugin that needs a
         // library or a host is one decision for the owner rather than three

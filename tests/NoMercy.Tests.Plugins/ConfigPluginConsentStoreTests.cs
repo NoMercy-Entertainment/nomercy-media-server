@@ -11,6 +11,7 @@
 
 using FluentAssertions;
 using NoMercy.Plugins;
+using NoMercy.Plugins.Abstractions;
 using NoMercy.Plugins.Capabilities;
 using Xunit;
 
@@ -63,7 +64,7 @@ public class ConfigPluginConsentStoreTests : IDisposable
         ConfigPluginConsentStore store = MakeStore();
         Ulid id = Ulid.NewUlid();
 
-        store.Add(id);
+        store.Add(id, null, new Version(1, 0));
 
         store.Contains(id).Should().BeTrue();
     }
@@ -75,7 +76,7 @@ public class ConfigPluginConsentStoreTests : IDisposable
         // a second store instance reading the SAME config file must observe
         // the grant a completely different store instance made.
         Ulid id = Ulid.NewUlid();
-        MakeStore().Add(id);
+        MakeStore().Add(id, null, new Version(1, 0));
 
         ConfigPluginConsentStore secondInstance = MakeStore();
 
@@ -88,8 +89,8 @@ public class ConfigPluginConsentStoreTests : IDisposable
         ConfigPluginConsentStore store = MakeStore();
         Ulid id = Ulid.NewUlid();
 
-        store.Add(id);
-        Action act = () => store.Add(id);
+        store.Add(id, null, new Version(1, 0));
+        Action act = () => store.Add(id, null, new Version(1, 0));
 
         act.Should().NotThrow();
         store.Contains(id).Should().BeTrue();
@@ -102,8 +103,8 @@ public class ConfigPluginConsentStoreTests : IDisposable
         Ulid first = Ulid.NewUlid();
         Ulid second = Ulid.NewUlid();
 
-        store.Add(first);
-        store.Add(second);
+        store.Add(first, null, new Version(1, 0));
+        store.Add(second, null, new Version(1, 0));
 
         store.Contains(first).Should().BeTrue();
         store.Contains(second).Should().BeTrue();
@@ -124,7 +125,7 @@ public class ConfigPluginConsentStoreTests : IDisposable
     {
         ConfigPluginConsentStore store = MakeStore();
         Ulid granted = Ulid.NewUlid();
-        store.Add(granted);
+        store.Add(granted, null, new Version(1, 0));
 
         Action act = () => store.Remove(Ulid.NewUlid());
 
@@ -137,7 +138,7 @@ public class ConfigPluginConsentStoreTests : IDisposable
     {
         ConfigPluginConsentStore store = MakeStore();
         Ulid id = Ulid.NewUlid();
-        store.Add(id);
+        store.Add(id, null, new Version(1, 0));
 
         store.Remove(id);
 
@@ -149,12 +150,43 @@ public class ConfigPluginConsentStoreTests : IDisposable
     {
         Ulid id = Ulid.NewUlid();
         ConfigPluginConsentStore first = MakeStore();
-        first.Add(id);
+        first.Add(id, null, new Version(1, 0));
         first.Remove(id);
 
         ConfigPluginConsentStore second = MakeStore();
 
         second.Contains(id).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Add_RecordsCapabilitiesAndManifestVersion_AndGetReturnsThem()
+    {
+        ConfigPluginConsentStore store = MakeStore();
+        Ulid id = Ulid.NewUlid();
+        PluginCapabilities capabilities = new() { Hooks = ["auth"] };
+
+        store.Add(id, capabilities, new Version(2, 1));
+
+        PluginConsentGrant? grant = store.Get(id);
+        grant.Should().NotBeNull();
+        grant!.Capabilities!.Hooks.Should().Contain("auth");
+        grant.ManifestVersion.Should().Be("2.1");
+    }
+
+    [Fact]
+    public void Get_LegacyGrantedId_ReturnsGrantWithNoCapabilities()
+    {
+        Guid legacyId = Guid.Parse("395df423-3e2f-4a1c-bc5b-dbc41a9133ef");
+        File.WriteAllText(
+            Path.Combine(_tempDir, "config.json"),
+            $@"{{""GrantedPluginIds"":[""{legacyId}""]}}"
+        );
+
+        ConfigPluginConsentStore store = MakeStore();
+
+        PluginConsentGrant? grant = store.Get(new(legacyId));
+        grant.Should().NotBeNull();
+        grant!.Capabilities.Should().BeNull();
     }
 
     [Fact]
