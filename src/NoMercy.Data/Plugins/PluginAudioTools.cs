@@ -322,7 +322,8 @@ public sealed class PluginAudioTools(
                 arguments,
                 null,
                 CaptureStdErr,
-                ct
+                ct,
+                watchForExitMarker: true
             );
 
             if (result is null)
@@ -478,42 +479,53 @@ public sealed class PluginAudioTools(
     /// pool. ffmpeg's outputs are already complete - trailer and AVIO
     /// statistics included - by the time it writes "progress=end" to stdout
     /// (stemsplit asks for that marker; see <see cref="PluginAudioArguments.StemSplit" />),
-    /// so a process still running a short grace period after that line is
-    /// stuck at exit, not mid-write, and ending it loses nothing. The root
-    /// fix is GGML_OPENMP=OFF in nomercy-ffmpeg; this is the guard for every
-    /// installation until that ships.
+    /// so <paramref name="watchForExitMarker" /> starts the kill signal's own
+    /// grace timer on that line - the same mechanism
+    /// <see cref="Execution.FfmpegExecutor" /> uses for the same reason - and
+    /// a process still running once it fires is stuck at exit, not mid-write;
+    /// ending it loses nothing. The root fix is GGML_OPENMP=OFF in
+    /// nomercy-ffmpeg; this is the guard for every installation until that
+    /// ships.
     /// </para>
     /// </summary>
+    /// <param name="watchForExitMarker">
+    /// Stem split only. A plugin's own filter-graph text can print anything,
+    /// "progress=end" included, on purpose or by coincidence - the marker
+    /// watch would end a run the plugin never asked to end, so
+    /// <see cref="RunFilterGraphCoreAsync" /> never sets this.
+    /// </param>
     private async Task<ProcessResult?> RunFfmpegAsync(
         string ffmpegPath,
         string[] arguments,
         Action<string>? onStdOut,
         Action<string>? onStdErr,
-        CancellationToken ct
+        CancellationToken ct,
+        bool watchForExitMarker = false
     )
     {
         using CancellationTokenSource runCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         runCts.CancelAfter(RunTimeout);
 
-        using CancellationTokenSource killCts = new();
-        using CancellationTokenSource graceCts = CancellationTokenSource.CreateLinkedTokenSource(
-            runCts.Token
-        );
-
-        bool endedAfterGrace = false;
-        Task? gracePeriodTask = null;
+        // Disposed manually in the finally below, once the run itself has
+        // fully returned - never through a `using`, so a stdout line the
+        // reader thread delivers late can never land on an already-disposed
+        // source. ProcessRunner's own WaitForExit() call drains the
+        // redirected streams before RunAsync's task completes, so by the
+        // time the finally runs there is nothing left to deliver.
+        CancellationTokenSource killCts = new();
 
         void ObserveStdOut(string line)
         {
             onStdOut?.Invoke(line);
 
-            if (line == "progress=end" && gracePeriodTask is null)
+            if (watchForExitMarker && line == "progress=end")
             {
-                gracePeriodTask = EndAfterGraceAsync(
-                    killCts,
-                    graceCts.Token,
-                    () => endedAfterGrace = true
+                _logger.LogDebug(
+                    "plugin {PluginId}: progress=end received, ending the run after {Grace}s if it has not exited",
+                    pluginId,
+                    ExitGracePeriod.TotalSeconds
                 );
+                killCts.CancelAfter(ExitGracePeriod);
             }
         }
 
@@ -529,12 +541,16 @@ public sealed class PluginAudioTools(
                 killCts.Token
             );
         }
-        catch (OperationCanceledException) when (endedAfterGrace)
+        catch (OperationCanceledException)
+            when (killCts.IsCancellationRequested && !ct.IsCancellationRequested)
         {
-            // The runner surfaced the grace-period kill as a cancellation
-            // instead of returning normally, the way the real ProcessRunner
-            // does for its own kill signal. ffmpeg's own "progress=end" word
-            // already said the outputs were complete, so this is success.
+            // A runner that surfaces the grace-period kill as a thrown
+            // cancellation instead of returning normally - the way the real
+            // ProcessRunner does for its own kill signal, ExitCode 0 - still
+            // finished successfully: ffmpeg's own "progress=end" already said
+            // the outputs were complete. The caller's own token is checked
+            // too, so a cancellation the caller itself asked for is never
+            // reported back as success.
             return new ProcessResult(0, string.Empty, string.Empty, TimeSpan.Zero);
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
@@ -548,58 +564,7 @@ public sealed class PluginAudioTools(
         }
         finally
         {
-            await graceCts.CancelAsync();
-            if (gracePeriodTask is not null)
-            {
-                await gracePeriodTask;
-            }
-        }
-    }
-
-    /// <summary>
-    /// Waits <see cref="ExitGracePeriod" /> for ffmpeg to exit on its own
-    /// after "progress=end"; if it still has not, ends the run through
-    /// <paramref name="killCts" /> - <see cref="IProcessRunner" />'s own kill
-    /// signal, documented there for exactly this: a process whose output is
-    /// complete but that will not exit.
-    /// </summary>
-    private async Task EndAfterGraceAsync(
-        CancellationTokenSource killCts,
-        CancellationToken ct,
-        Action markEndedAfterGrace
-    )
-    {
-        try
-        {
-            await Task.Delay(ExitGracePeriod, ct);
-        }
-        catch (OperationCanceledException)
-        {
-            // The run finished - or was itself cancelled or timed out -
-            // before the grace period elapsed. Nothing left to end.
-            return;
-        }
-
-        _logger.LogDebug(
-            "plugin {PluginId}: ffmpeg finished its outputs but did not exit; ended it after {Grace} s",
-            pluginId,
-            ExitGracePeriod.TotalSeconds
-        );
-
-        // Set before the kill signal fires: the run's own await can observe
-        // the resulting cancellation and needs the flag already true to tell
-        // it apart from the unrelated RunTimeout backstop.
-        markEndedAfterGrace();
-
-        try
-        {
-            killCts.Cancel();
-        }
-        catch (ObjectDisposedException)
-        {
-            // The caller's `using` disposed it between the delay completing
-            // and this call landing - the run ended on its own around the
-            // same moment.
+            killCts.Dispose();
         }
     }
 

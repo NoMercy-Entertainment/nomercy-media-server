@@ -436,6 +436,8 @@ public class PluginAudioToolsTests : IDisposable
             "-nostats",
             "-progress",
             "pipe:1",
+            "-stats_period",
+            "5",
             .. windowArguments,
             "-i",
             "/library/folder/track.flac",
@@ -1100,9 +1102,79 @@ public class PluginAudioToolsTests : IDisposable
     /// <c>RunFfmpegAsync</c> that builds success from what "progress=end"
     /// already promised, for a runner that does not hand back a clean result
     /// of its own the way the real <c>ProcessRunner</c> does.
+    /// <para>
+    /// The delay is linked to both the kill signal and the run's own
+    /// cancellation token, and <see cref="CreateTools" /> is given a short
+    /// <c>runTimeout</c> on top of the short grace period: if a future
+    /// regression stops the kill signal firing, the run token's own timeout
+    /// still ends the delay, so the test fails fast instead of hanging the
+    /// suite.
+    /// </para>
     /// </summary>
     [Fact]
     public async Task SplitStems_EndsARunThatFinishedButDidNotExit_AfterTheGracePeriod()
+    {
+        _runner
+            .Setup(runner =>
+                runner.RunAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string[]>(),
+                    It.IsAny<Action<string>?>(),
+                    It.IsAny<Action<string>?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<Action<int>?>()
+                )
+            )
+            .Returns(
+                async (
+                    string _,
+                    string[] _,
+                    Action<string>? onStdOut,
+                    Action<string>? onStdErr,
+                    string? _,
+                    CancellationToken cancellationToken,
+                    CancellationToken killSignal,
+                    Action<int>? _
+                ) =>
+                {
+                    _runCount++;
+                    onStdErr?.Invoke(VersionLine);
+                    onStdOut?.Invoke("progress=end");
+
+                    using CancellationTokenSource linked =
+                        CancellationTokenSource.CreateLinkedTokenSource(
+                            cancellationToken,
+                            killSignal
+                        );
+                    await Task.Delay(Timeout.InfiniteTimeSpan, linked.Token);
+                    return new ProcessResult(0, string.Empty, string.Empty, TimeSpan.Zero);
+                }
+            );
+
+        PluginStemSplitResult result = await CreateTools(
+                runTimeout: TimeSpan.FromSeconds(5),
+                exitGracePeriod: TimeSpan.FromMilliseconds(20)
+            )
+            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
+
+        result.Refusal.Should().BeNull();
+        result.Stems.Should().HaveCount(2);
+        result.Stems.Select(stem => stem.Kind).Should().Equal("vocals", "accompaniment");
+    }
+
+    /// <summary>
+    /// The real <see cref="ProcessRunner" /> does not throw when its kill
+    /// signal fires - it kills the process tree and returns a normal
+    /// <see cref="ProcessResult" /> with exit code 0
+    /// (<c>killedBySignal ? 0 : process.ExitCode</c>). This scripts exactly
+    /// that instead of the throwing fallback above, so the common case -
+    /// the real runner's own behaviour - is proven directly rather than only
+    /// through the fallback path.
+    /// </summary>
+    [Fact]
+    public async Task SplitStems_EndsARunThatFinishedButDidNotExit_ViaTheRunnersOwnKillResult()
     {
         _runner
             .Setup(runner =>
@@ -1133,7 +1205,17 @@ public class PluginAudioToolsTests : IDisposable
                     onStdErr?.Invoke(VersionLine);
                     onStdOut?.Invoke("progress=end");
 
-                    await Task.Delay(Timeout.InfiniteTimeSpan, killSignal);
+                    try
+                    {
+                        await Task.Delay(Timeout.InfiniteTimeSpan, killSignal);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        // The kill signal fired - exactly what a real kill of
+                        // the process tree looks like from here: the runner
+                        // returns normally, exit code 0, instead of throwing.
+                    }
+
                     return new ProcessResult(0, string.Empty, string.Empty, TimeSpan.Zero);
                 }
             );
@@ -1146,6 +1228,24 @@ public class PluginAudioToolsTests : IDisposable
         result.Refusal.Should().BeNull();
         result.Stems.Should().HaveCount(2);
         result.Stems.Select(stem => stem.Kind).Should().Equal("vocals", "accompaniment");
+
+        _writer.Verify(
+            writer =>
+                writer.RegisterStemsAsync(
+                    It.Is<IReadOnlyList<PluginTrackStem>>(stems =>
+                        stems.Count == 2
+                        && stems[0].Kind == "vocals"
+                        && stems[1].Kind == "accompaniment"
+                    ),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Once
+        );
+        _registeredStems
+            .Should()
+            .OnlyContain(stem =>
+                stem.ProducerVersion == AppFiles.StemsplitModel + "@9.0-NoMercy-MediaServer"
+            );
     }
 
     /// <summary>
@@ -1244,10 +1344,11 @@ public class PluginAudioToolsTests : IDisposable
     }
 
     /// <summary>
-    /// Regression for the argument list itself: <c>-nostats</c> and
-    /// <c>-progress pipe:1</c> ahead of <c>-i</c>, the way every other global
-    /// option here is, so ffmpeg writes progress to stdout for the whole run
-    /// rather than for one file it never opens.
+    /// Regression for the argument list itself: <c>-nostats</c>,
+    /// <c>-progress pipe:1</c> and <c>-stats_period 5</c> ahead of
+    /// <c>-i</c>, the way every other global option here is, so ffmpeg
+    /// writes progress to stdout - five seconds apart, not its faster
+    /// default - for the whole run rather than for one file it never opens.
     /// </summary>
     [Fact]
     public async Task SplitStems_ArgumentsRequestProgressOnStdout_AheadOfTheInput()
@@ -1264,5 +1365,9 @@ public class PluginAudioToolsTests : IDisposable
         int progressIndex = Array.IndexOf(_capturedArguments, "-progress");
         progressIndex.Should().BeLessThan(inputIndex);
         _capturedArguments[progressIndex + 1].Should().Be("pipe:1");
+
+        int statsPeriodIndex = Array.IndexOf(_capturedArguments, "-stats_period");
+        statsPeriodIndex.Should().BeLessThan(inputIndex);
+        _capturedArguments[statsPeriodIndex + 1].Should().Be("5");
     }
 }

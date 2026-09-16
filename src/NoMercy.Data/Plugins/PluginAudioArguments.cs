@@ -97,10 +97,15 @@ internal static class PluginAudioArguments
             // its own "progress=end" line once every output is written and
             // closed. PluginAudioTools watches for that line to work around a
             // libgomp exit-teardown deadlock in this ffmpeg build - see the
-            // comment on PluginAudioTools.RunFfmpegAsync.
+            // comment on PluginAudioTools.RunFfmpegAsync. -stats_period keeps
+            // those updates five seconds apart instead of ffmpeg's default,
+            // so a long split doesn't grow the stdout buffer ten times faster
+            // than it needs to.
             "-nostats",
             "-progress",
             "pipe:1",
+            "-stats_period",
+            "5",
             .. windowArguments,
             "-i",
             inputPath,
