@@ -282,6 +282,11 @@ public class PluginAudioToolsTests : IDisposable
             .Setup(factory => factory.CreateFor(It.IsAny<Ulid>()))
             .Returns(_writer.Object);
 
+        // The 8-arg overload with a kill signal is what RunFfmpegAsync always
+        // calls now - see PluginAudioTools.RunFfmpegAsync for why (the
+        // libgomp exit-hang workaround). Tests that need the kill signal or
+        // the "progress=end" marker override this per-test; every other test
+        // gets the same synchronous, successful run it always did.
         _runner
             .Setup(runner =>
                 runner.RunAsync(
@@ -290,7 +295,9 @@ public class PluginAudioToolsTests : IDisposable
                     It.IsAny<Action<string>?>(),
                     It.IsAny<Action<string>?>(),
                     It.IsAny<string?>(),
-                    It.IsAny<CancellationToken>()
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<Action<int>?>()
                 )
             )
             .Returns(
@@ -300,7 +307,9 @@ public class PluginAudioToolsTests : IDisposable
                     Action<string>? onStdOut,
                     Action<string>? onStdErr,
                     string? workingDirectory,
-                    CancellationToken _
+                    CancellationToken _,
+                    CancellationToken _,
+                    Action<int>? _
                 ) =>
                 {
                     _runCount++;
@@ -336,7 +345,10 @@ public class PluginAudioToolsTests : IDisposable
             Issues: []
         );
 
-    private PluginAudioTools CreateTools(TimeSpan? runTimeout = null)
+    private PluginAudioTools CreateTools(
+        TimeSpan? runTimeout = null,
+        TimeSpan? exitGracePeriod = null
+    )
     {
         Mock<IDbContextFactory<MediaContext>> contextFactory = new();
         contextFactory
@@ -357,6 +369,7 @@ public class PluginAudioToolsTests : IDisposable
         )
         {
             RunTimeout = runTimeout ?? TimeSpan.FromMinutes(10),
+            ExitGracePeriod = exitGracePeriod ?? TimeSpan.FromSeconds(2),
         };
 
         return tools;
@@ -420,6 +433,11 @@ public class PluginAudioToolsTests : IDisposable
         return
         [
             "-nostdin",
+            "-nostats",
+            "-progress",
+            "pipe:1",
+            "-stats_period",
+            "5",
             .. windowArguments,
             "-i",
             "/library/folder/track.flac",
@@ -768,7 +786,9 @@ public class PluginAudioToolsTests : IDisposable
                     It.IsAny<Action<string>?>(),
                     It.IsAny<Action<string>?>(),
                     It.IsAny<string?>(),
-                    It.IsAny<CancellationToken>()
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<Action<int>?>()
                 )
             )
             .Returns(
@@ -778,7 +798,9 @@ public class PluginAudioToolsTests : IDisposable
                     Action<string>? _,
                     Action<string>? _,
                     string? _,
-                    CancellationToken ct
+                    CancellationToken ct,
+                    CancellationToken _,
+                    Action<int>? _
                 ) =>
                 {
                     // The real runner kills the process when its token trips;
@@ -1008,7 +1030,9 @@ public class PluginAudioToolsTests : IDisposable
                     It.IsAny<Action<string>?>(),
                     It.IsAny<Action<string>?>(),
                     It.IsAny<string?>(),
-                    It.IsAny<CancellationToken>()
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<Action<int>?>()
                 )
             )
             .ThrowsAsync(new IOException("the library volume went away"));
@@ -1059,5 +1083,306 @@ public class PluginAudioToolsTests : IDisposable
 
         result.Refusal.Should().Be($"track {_trackWithoutDurationId} has no duration");
         _runCount.Should().Be(0);
+    }
+
+    // --- SplitStemsAsync: the libgomp exit-hang workaround -----------------
+    //
+    // The Windows ffmpeg build links ggml against libgomp, whose worker-pool
+    // teardown can deadlock at process exit after every output is already
+    // written. stemsplit asks ffmpeg for progress on stdout so the host can
+    // tell "finished but stuck" apart from "still working": these tests
+    // stand in for the real ffmpeg process by scripting the runner directly
+    // rather than through SetUpMocks's default fake.
+
+    /// <summary>
+    /// The scripted runner here never completes on its own - only reacting to
+    /// the kill signal, the way a real process that is stuck at exit would
+    /// only react to being killed. It also throws the cancellation rather
+    /// than returning a result, proving the fallback path in
+    /// <c>RunFfmpegAsync</c> that builds success from what "progress=end"
+    /// already promised, for a runner that does not hand back a clean result
+    /// of its own the way the real <c>ProcessRunner</c> does.
+    /// <para>
+    /// The delay is linked to both the kill signal and the run's own
+    /// cancellation token, and <see cref="CreateTools" /> is given a short
+    /// <c>runTimeout</c> on top of the short grace period: if a future
+    /// regression stops the kill signal firing, the run token's own timeout
+    /// still ends the delay, so the test fails fast instead of hanging the
+    /// suite.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task SplitStems_EndsARunThatFinishedButDidNotExit_AfterTheGracePeriod()
+    {
+        _runner
+            .Setup(runner =>
+                runner.RunAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string[]>(),
+                    It.IsAny<Action<string>?>(),
+                    It.IsAny<Action<string>?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<Action<int>?>()
+                )
+            )
+            .Returns(
+                async (
+                    string _,
+                    string[] _,
+                    Action<string>? onStdOut,
+                    Action<string>? onStdErr,
+                    string? _,
+                    CancellationToken cancellationToken,
+                    CancellationToken killSignal,
+                    Action<int>? _
+                ) =>
+                {
+                    _runCount++;
+                    onStdErr?.Invoke(VersionLine);
+                    onStdOut?.Invoke("progress=end");
+
+                    using CancellationTokenSource linked =
+                        CancellationTokenSource.CreateLinkedTokenSource(
+                            cancellationToken,
+                            killSignal
+                        );
+                    await Task.Delay(Timeout.InfiniteTimeSpan, linked.Token);
+                    return new ProcessResult(0, string.Empty, string.Empty, TimeSpan.Zero);
+                }
+            );
+
+        PluginStemSplitResult result = await CreateTools(
+                runTimeout: TimeSpan.FromSeconds(5),
+                exitGracePeriod: TimeSpan.FromMilliseconds(20)
+            )
+            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
+
+        result.Refusal.Should().BeNull();
+        result.Stems.Should().HaveCount(2);
+        result.Stems.Select(stem => stem.Kind).Should().Equal("vocals", "accompaniment");
+    }
+
+    /// <summary>
+    /// The real <see cref="ProcessRunner" /> does not throw when its kill
+    /// signal fires - it kills the process tree and returns a normal
+    /// <see cref="ProcessResult" /> with exit code 0
+    /// (<c>killedBySignal ? 0 : process.ExitCode</c>). This scripts exactly
+    /// that instead of the throwing fallback above, so the common case -
+    /// the real runner's own behaviour - is proven directly rather than only
+    /// through the fallback path.
+    /// </summary>
+    [Fact]
+    public async Task SplitStems_EndsARunThatFinishedButDidNotExit_ViaTheRunnersOwnKillResult()
+    {
+        _runner
+            .Setup(runner =>
+                runner.RunAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string[]>(),
+                    It.IsAny<Action<string>?>(),
+                    It.IsAny<Action<string>?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<Action<int>?>()
+                )
+            )
+            .Returns(
+                async (
+                    string _,
+                    string[] _,
+                    Action<string>? onStdOut,
+                    Action<string>? onStdErr,
+                    string? _,
+                    CancellationToken cancellationToken,
+                    CancellationToken killSignal,
+                    Action<int>? _
+                ) =>
+                {
+                    _runCount++;
+                    onStdErr?.Invoke(VersionLine);
+                    onStdOut?.Invoke("progress=end");
+
+                    // Linked to both tokens, and CreateTools below is given a
+                    // short runTimeout on top of the short grace period: if a
+                    // future regression stops the kill signal firing, the run
+                    // token's own timeout still ends the delay, so the test
+                    // fails fast instead of hanging the suite.
+                    using CancellationTokenSource linked =
+                        CancellationTokenSource.CreateLinkedTokenSource(
+                            cancellationToken,
+                            killSignal
+                        );
+
+                    try
+                    {
+                        await Task.Delay(Timeout.InfiniteTimeSpan, linked.Token);
+                    }
+                    catch (OperationCanceledException) when (killSignal.IsCancellationRequested)
+                    {
+                        // The kill signal fired - exactly what a real kill of
+                        // the process tree looks like from here: the runner
+                        // returns normally, exit code 0, instead of throwing.
+                        // A run-token cancellation (the runTimeout backstop
+                        // above) is a different event and must propagate
+                        // instead, the same as the throwing fallback test.
+                    }
+
+                    return new ProcessResult(0, string.Empty, string.Empty, TimeSpan.Zero);
+                }
+            );
+
+        PluginStemSplitResult result = await CreateTools(
+                runTimeout: TimeSpan.FromSeconds(5),
+                exitGracePeriod: TimeSpan.FromMilliseconds(20)
+            )
+            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
+
+        result.Refusal.Should().BeNull();
+        result.Stems.Should().HaveCount(2);
+        result.Stems.Select(stem => stem.Kind).Should().Equal("vocals", "accompaniment");
+
+        _writer.Verify(
+            writer =>
+                writer.RegisterStemsAsync(
+                    It.Is<IReadOnlyList<PluginTrackStem>>(stems =>
+                        stems.Count == 2
+                        && stems[0].Kind == "vocals"
+                        && stems[1].Kind == "accompaniment"
+                    ),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Once
+        );
+        _registeredStems
+            .Should()
+            .OnlyContain(stem =>
+                stem.ProducerVersion == AppFiles.StemsplitModel + "@9.0-NoMercy-MediaServer"
+            );
+    }
+
+    /// <summary>
+    /// A run that exits on its own soon after "progress=end" is not touched:
+    /// the grace period was cancelled before it ever fired the kill signal.
+    /// A long grace period here proves that - the test does not actually wait
+    /// for it, since the run's own completion cancels the pending delay.
+    /// </summary>
+    [Fact]
+    public async Task SplitStems_ProgressEndFollowedByANormalExit_IsUnaffected()
+    {
+        _runner
+            .Setup(runner =>
+                runner.RunAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string[]>(),
+                    It.IsAny<Action<string>?>(),
+                    It.IsAny<Action<string>?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<Action<int>?>()
+                )
+            )
+            .Returns(
+                (
+                    string _,
+                    string[] _,
+                    Action<string>? onStdOut,
+                    Action<string>? onStdErr,
+                    string? _,
+                    CancellationToken _,
+                    CancellationToken _,
+                    Action<int>? _
+                ) =>
+                {
+                    _runCount++;
+                    onStdErr?.Invoke(VersionLine);
+                    onStdOut?.Invoke("progress=end");
+                    return Task.FromResult(
+                        new ProcessResult(0, string.Empty, string.Empty, TimeSpan.Zero)
+                    );
+                }
+            );
+
+        PluginStemSplitResult result = await CreateTools(exitGracePeriod: TimeSpan.FromSeconds(30))
+            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
+
+        result.Refusal.Should().BeNull();
+        result.Stems.Should().HaveCount(2);
+    }
+
+    /// <summary>
+    /// A run that never prints "progress=end" - stuck for a reason that has
+    /// nothing to do with the exit-teardown deadlock, or simply never
+    /// finishing - still hits the ten-minute (here: milliseconds) backstop
+    /// the same way it always did.
+    /// </summary>
+    [Fact]
+    public async Task SplitStems_WithoutTheProgressMarker_StillHitsTheRunTimeout()
+    {
+        _runner
+            .Setup(runner =>
+                runner.RunAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string[]>(),
+                    It.IsAny<Action<string>?>(),
+                    It.IsAny<Action<string>?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<Action<int>?>()
+                )
+            )
+            .Returns(
+                async (
+                    string _,
+                    string[] _,
+                    Action<string>? _,
+                    Action<string>? _,
+                    string? _,
+                    CancellationToken ct,
+                    CancellationToken _,
+                    Action<int>? _
+                ) =>
+                {
+                    await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+                    return new ProcessResult(0, string.Empty, string.Empty, TimeSpan.Zero);
+                }
+            );
+
+        PluginStemSplitResult result = await CreateTools(runTimeout: TimeSpan.FromMilliseconds(50))
+            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
+
+        result.Refusal.Should().StartWith("stemsplit timed out after");
+    }
+
+    /// <summary>
+    /// Regression for the argument list itself: <c>-nostats</c>,
+    /// <c>-progress pipe:1</c> and <c>-stats_period 5</c> ahead of
+    /// <c>-i</c>, the way every other global option here is, so ffmpeg
+    /// writes progress to stdout - five seconds apart, not its faster
+    /// default - for the whole run rather than for one file it never opens.
+    /// </summary>
+    [Fact]
+    public async Task SplitStems_ArgumentsRequestProgressOnStdout_AheadOfTheInput()
+    {
+        await CreateTools()
+            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
+
+        int inputIndex = Array.IndexOf(_capturedArguments, "-i");
+        inputIndex.Should().BePositive();
+
+        _capturedArguments.Should().Contain("-nostats");
+        Array.IndexOf(_capturedArguments, "-nostats").Should().BeLessThan(inputIndex);
+
+        int progressIndex = Array.IndexOf(_capturedArguments, "-progress");
+        progressIndex.Should().BeLessThan(inputIndex);
+        _capturedArguments[progressIndex + 1].Should().Be("pipe:1");
+
+        int statsPeriodIndex = Array.IndexOf(_capturedArguments, "-stats_period");
+        statsPeriodIndex.Should().BeLessThan(inputIndex);
+        _capturedArguments[statsPeriodIndex + 1].Should().Be("5");
     }
 }
