@@ -757,6 +757,12 @@ public static partial class ServiceConfiguration
         services.AddSingleton<IUnresolvablePathRepair, UnresolvablePathRepair>();
         services.AddHostedService<UnresolvablePathRepairStartupService>();
 
+        // Same shape and the same reason: a data glitch an earlier importer
+        // wrote that no rescan repairs, swept once per boot. Separate from the
+        // sweep above because it rewrites rows rather than removing them.
+        services.AddSingleton<IDoubledHostFolderRepair, DoubledHostFolderRepair>();
+        services.AddHostedService<DoubledHostFolderRepairStartupService>();
+
         // Before AddPluginSystem, so its null-object fallback stays a no-op.
         // This host maps /pluginHub, so a plugin's Hub.PushAsync reaches real
         // subscribers here rather than silently succeeding.

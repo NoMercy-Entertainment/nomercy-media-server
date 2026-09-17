@@ -774,11 +774,28 @@ public partial class MusicLogic : IAsyncDisposable
             insert.Quality = (int)Math.Floor(ffProbeData.Format.BitRate / 1000.0);
             insert.Duration = HmsRegex().Replace(ffProbeData.Duration.ToString(@"hh\:mm\:ss"), "");
 
-            insert.FolderId = Folder!.Id;
-            insert.Folder = relativeFolder;
-            insert.HostFolder = (
+            string hostFolder = (
                 StoragePathHelpers.GetParent(file.Replace('\\', '/')) ?? string.Empty
             ).PathName();
+
+            // A host folder holding two rooted paths is the shape an older
+            // import wrote: the album folder once with forward slashes and once
+            // with backslashes. Combined with Filename it addresses nothing, so
+            // the track is unplayable and its analysis fails on every sweep.
+            // The row fails loudly here rather than being guessed at: which half
+            // is the real folder is not something the importer can know.
+            if (HostFolderPath.TrySplitAtSecondRoot(hostFolder, out string head, out string tail))
+            {
+                _logger.LogError(
+                    "Refusing to store track {Title}: its host folder holds two rooted paths, '{First}' followed by '{Second}'",
+                    [musicBrainzTrack.Title, head, tail]
+                );
+                return null;
+            }
+
+            insert.FolderId = Folder!.Id;
+            insert.Folder = relativeFolder;
+            insert.HostFolder = hostFolder;
         }
 
         // A track with no file on disk has no folder and no filename, so its
