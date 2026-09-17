@@ -168,9 +168,13 @@ public class DoubledHostFolderRepair(
 
         int verdictsReset = 0;
 
+        // The save is short and bounded, and it is why the loop above stops
+        // early: cancelling it too would throw the decided repairs away and
+        // turn the early stop into the very loss it exists to prevent, so the
+        // token is deliberately not passed on.
         if (repairs.Count > 0)
         {
-            verdictsReset = await ApplyAsync(mediaContext, repairs, cancellationToken);
+            verdictsReset = await ApplyAsync(mediaContext, repairs);
         }
 
         if (warningsSuppressed > 0)
@@ -214,15 +218,15 @@ public class DoubledHostFolderRepair(
     /// </summary>
     private static async Task<int> ApplyAsync(
         MediaContext mediaContext,
-        Dictionary<Guid, string> repairs,
-        CancellationToken cancellationToken
+        Dictionary<Guid, string> repairs
     )
     {
+
         List<Guid> trackIds = [.. repairs.Keys];
 
         List<Track> tracks = await mediaContext
             .Tracks.Where(track => trackIds.Contains(track.Id))
-            .ToListAsync(cancellationToken);
+            .ToListAsync();
 
         foreach (Track track in tracks)
             track.HostFolder = repairs[track.Id];
@@ -231,7 +235,7 @@ public class DoubledHostFolderRepair(
             .TrackAudioAnalysis.Where(analysis =>
                 trackIds.Contains(analysis.TrackId) && analysis.State != AudioAnalysisState.Pending
             )
-            .ToListAsync(cancellationToken);
+            .ToListAsync();
 
         foreach (TrackAudioAnalysis verdict in verdicts)
         {
@@ -239,7 +243,7 @@ public class DoubledHostFolderRepair(
             verdict.FailureReason = null;
         }
 
-        await mediaContext.SaveChangesAsync(cancellationToken);
+        await mediaContext.SaveChangesAsync();
 
         return verdicts.Count;
     }

@@ -367,6 +367,43 @@ public class DoubledHostFolderRepairTests : IDisposable
         stored.Should().Contain(DoubledLinuxAlbumFolder);
     }
 
+    /// <summary>
+    /// A shutdown during the sweep stops it between rows, and what was decided
+    /// before the stop is written all the same: the sweep runs on every boot,
+    /// and a server that is restarted twice must not lose the same repairs
+    /// twice.
+    /// </summary>
+    [Fact]
+    public async Task Writes_the_repairs_decided_before_a_cancellation()
+    {
+        await AddTrack(DoubledAlbumFolder);
+        await AddTrack(DoubledAlbumFolder);
+
+        using CancellationTokenSource cancellation = new();
+        Mock<IStorageDriver> driver = Driver(AlbumFolder + TrackFile);
+        driver
+            .Setup(d => d.FileExists(It.IsAny<string>()))
+            .Returns<string>(path =>
+            {
+                // The first row asks the driver; cancel while it is being
+                // decided, so the second row is never reached.
+                cancellation.Cancel();
+                return path == AlbumFolder + TrackFile;
+            });
+
+        int repaired = await BuildRepair(driver).RunAsync(cancellation.Token);
+
+        repaired.Should().Be(1);
+
+        await using MediaContext ctx = new(_options);
+        List<string?> stored = await ctx
+            .Tracks.AsNoTracking()
+            .Select(track => track.HostFolder)
+            .ToListAsync();
+
+        stored.Should().BeEquivalentTo([AlbumFolder, PathAsStored(DoubledAlbumFolder)]);
+    }
+
     // Track.HostFolder normalises separators on the way in, so an untouched row
     // reads back with forward slashes whatever it was written with. The test
     // asserts "unchanged", not "byte-identical to the literal above".
