@@ -26,6 +26,16 @@ namespace NoMercy.Storage;
 /// write such a value and a startup sweep repairs the rows already stored.
 /// </para>
 /// <para>
+/// Three shapes are recognised. Two carry a marker and are what
+/// <see cref="ContainsSecondRoot"/> answers to, so the importer can refuse them
+/// on sight: a drive-letter root (<c>"…/album\Q:\…"</c>) and a share root
+/// (<c>"…/album\\\nas\…"</c>). The third has no marker at all — a rooted Linux
+/// path repeated (<c>"/mnt/music/album/mnt/music/album"</c>) is
+/// indistinguishable from a real folder by shape alone — so only
+/// <see cref="RepairDoubled"/> knows it, and only when the two halves are
+/// character-for-character the same folder.
+/// </para>
+/// <para>
 /// Pure string work: no disk access, no separator assumptions beyond "a
 /// separator is <c>'/'</c> or <c>'\'</c>", so it holds for local paths, UNC
 /// shares and remote driver keys alike.
@@ -72,20 +82,62 @@ public static class HostFolderPath
 
     /// <summary>
     /// Returns the single folder a doubled <c>HostFolder</c> was built from:
-    /// the part before the second root, when the part from the second root is
-    /// the same folder written with the other separator. Null for anything
-    /// else — no second root at all, or two halves that name different folders,
-    /// which is a value only a human can judge. The returned half keeps its
-    /// original spelling, so a UNC root stays a UNC root.
+    /// the half before the doubling, when the half after it is the same folder,
+    /// separator style aside. Null for anything else — a value that is not
+    /// doubled, or two halves that name different folders, which is a value
+    /// only a human can judge. The returned half keeps its original spelling,
+    /// so a UNC root stays a UNC root.
+    /// <para>
+    /// Tries the second root first, then — for the marker-free Linux shape —
+    /// every separator as a split point. The second pass answers only when the
+    /// halves are provably the same folder, so it never widens what
+    /// <see cref="ContainsSecondRoot"/> refuses; it only finds a repair the
+    /// marker rules cannot see. It is still a shape, not a proof: the caller
+    /// verifies the repaired path against the disk before it stores it.
+    /// </para>
     /// </summary>
     public static string? RepairDoubled(string? hostFolder)
     {
-        if (!TrySplitAtSecondRoot(hostFolder, out string first, out string second))
+        if (string.IsNullOrEmpty(hostFolder))
             return null;
 
-        return Canonical(first).Equals(Canonical(second), StringComparison.OrdinalIgnoreCase)
-            ? first
-            : null;
+        if (
+            TrySplitAtSecondRoot(hostFolder, out string first, out string second)
+            && CanonicalEquals(first, second)
+        )
+            return first;
+
+        return RepairRepeatedHalf(hostFolder);
+    }
+
+    /// <summary>
+    /// The marker-free case: a rooted path followed by the same rooted path,
+    /// which on Linux carries nothing that says "a second path starts here".
+    /// Walks every separator and answers at the first split whose halves are
+    /// the same folder.
+    /// </summary>
+    private static string? RepairRepeatedHalf(string value)
+    {
+        for (int index = 1; index < value.Length - 1; index++)
+        {
+            if (!IsSeparator(value[index]))
+                continue;
+
+            string left = value[..index];
+            string right = value[index..];
+
+            if (!CanonicalEquals(left, right))
+                continue;
+
+            // A value that is nothing but separators has two equal halves and
+            // no folder in it; repairing it to the empty string would take the
+            // row from wrong to unaddressable.
+            string repaired = left.TrimEnd('/', '\\');
+            if (repaired.Length > 0)
+                return repaired;
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -98,6 +150,12 @@ public static class HostFolderPath
     /// separator mid-path, which no scanner should produce and which no
     /// consumer can be trusted to resolve: refusing it loudly is the point.
     /// </para>
+    /// <para>
+    /// A drive letter has to be a root on both sides — a separator before it and
+    /// a separator after the colon — or a folder whose name merely starts with a
+    /// letter and a colon (<c>"/music/D:Ream/album"</c>) would cost the track
+    /// its import.
+    /// </para>
     /// </summary>
     private static int FindSecondRoot(string value)
     {
@@ -109,7 +167,13 @@ public static class HostFolderPath
             if (IsSeparator(current) && IsSeparator(next))
                 return index;
 
-            if (next == ':' && char.IsLetter(current) && IsSeparator(value[index - 1]))
+            if (
+                next == ':'
+                && char.IsLetter(current)
+                && IsSeparator(value[index - 1])
+                && index + 2 < value.Length
+                && IsSeparator(value[index + 2])
+            )
                 return index;
         }
 
@@ -122,6 +186,9 @@ public static class HostFolderPath
     /// Only ever used to compare the two halves of one value against each
     /// other, never to build a path a driver is handed.
     /// </summary>
+    private static bool CanonicalEquals(string left, string right) =>
+        Canonical(left).Equals(Canonical(right), StringComparison.OrdinalIgnoreCase);
+
     private static string Canonical(string value)
     {
         StringBuilder builder = new(value.Length);

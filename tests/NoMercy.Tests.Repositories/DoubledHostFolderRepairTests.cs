@@ -16,7 +16,10 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NoMercy.Data.Services;
 using NoMercy.Database;
+using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.Music;
+using NoMercy.MediaProcessing.AudioAnalysis;
+using NoMercy.NmSystem.Domain;
 using NoMercy.Storage;
 
 namespace NoMercy.Tests.Repositories;
@@ -35,9 +38,13 @@ public class DoubledHostFolderRepairTests : IDisposable
     private const string DoubledAlbumFolder =
         @"Q:/Music/Nine Vaults/Paper Lanterns\Q:\Music\Nine Vaults\Paper Lanterns";
     private const string TrackFile = "/03. Paper Lanterns.flac";
+    private const string LinuxAlbumFolder = "/mnt/vault/music/Nine Vaults/Paper Lanterns";
+    private const string DoubledLinuxAlbumFolder = LinuxAlbumFolder + LinuxAlbumFolder;
+    private const int AnalyzerVersion = 3;
 
     private static readonly Ulid DriverId = Ulid.NewUlid();
     private static readonly Ulid FolderId = Ulid.NewUlid();
+    private static readonly Ulid LibraryId = Ulid.NewUlid();
 
     private readonly SqliteConnection _connection;
     private readonly DbContextOptions<MediaContext> _options;
@@ -66,6 +73,15 @@ public class DoubledHostFolderRepairTests : IDisposable
                 Id = FolderId,
                 DriverId = DriverId,
                 Path = "Libraries/Music",
+            }
+        );
+        ctx.Libraries.Add(
+            new()
+            {
+                Id = LibraryId,
+                Title = "Music",
+                Type = MediaTypes.MusicMediaType,
+                AnalyzeAudio = true,
             }
         );
         ctx.SaveChanges();
@@ -102,13 +118,24 @@ public class DoubledHostFolderRepairTests : IDisposable
             NullLogger<DoubledHostFolderRepair>.Instance
         );
 
-    private async Task AddTrack(string? hostFolder, string? filename = TrackFile)
+    /// <summary>
+    /// One track in the music library, optionally carrying the verdict the
+    /// affected rows really have: Failed, at the analyzer version that is
+    /// current, which every "needs analysis" check reads as an answer.
+    /// </summary>
+    private async Task<Guid> AddTrack(
+        string? hostFolder,
+        string? filename = TrackFile,
+        AudioAnalysisState? verdict = null
+    )
     {
+        Guid trackId = Guid.NewGuid();
+
         await using MediaContext ctx = new(_options);
         ctx.Tracks.Add(
             new()
             {
-                Id = Guid.NewGuid(),
+                Id = trackId,
                 Name = "Paper Lanterns",
                 HostFolder = hostFolder,
                 Filename = filename,
@@ -116,13 +143,36 @@ public class DoubledHostFolderRepairTests : IDisposable
                 Duration = "03:12",
             }
         );
+        ctx.LibraryTrack.Add(new(LibraryId, trackId));
+
+        if (verdict is not null)
+            ctx.TrackAudioAnalysis.Add(
+                new()
+                {
+                    TrackId = trackId,
+                    AnalyzerVersion = AnalyzerVersion,
+                    State = verdict.Value,
+                    FailureReason = "no file at the doubled path",
+                    AnalyzedAt = DateTime.UtcNow,
+                }
+            );
+
         await ctx.SaveChangesAsync();
+        return trackId;
     }
 
     private async Task<string?> ReadHostFolder()
     {
         await using MediaContext ctx = new(_options);
         return (await ctx.Tracks.AsNoTracking().SingleAsync()).HostFolder;
+    }
+
+    private async Task<List<Guid>> TracksNeedingAnalysis()
+    {
+        await using MediaContext ctx = new(_options);
+        return await AudioAnalysisQueries
+            .TracksNeedingAnalysis(ctx, [LibraryId], AnalyzerVersion)
+            .ToListAsync();
     }
 
     [Fact]
@@ -198,6 +248,123 @@ public class DoubledHostFolderRepairTests : IDisposable
         (await BuildRepair(driver).RunAsync(CancellationToken.None)).Should().Be(0);
 
         (await ReadHostFolder()).Should().Be(AlbumFolder);
+    }
+
+    /// <summary>
+    /// On Linux the doubling carries no marker at all — no drive letter, no
+    /// doubled separator — so the shape is found only by splitting and comparing.
+    /// </summary>
+    [Fact]
+    public async Task Collapses_a_repeated_linux_folder_when_the_file_is_there()
+    {
+        await AddTrack(DoubledLinuxAlbumFolder);
+
+        int repaired = await BuildRepair(Driver(LinuxAlbumFolder + TrackFile))
+            .RunAsync(CancellationToken.None);
+
+        repaired.Should().Be(1);
+        (await ReadHostFolder()).Should().Be(LinuxAlbumFolder);
+    }
+
+    [Theory]
+    [InlineData(LinuxAlbumFolder)]
+    [InlineData("/mnt/vault/music/mnt/vault/photos")]
+    [InlineData("/music/Nine Vaults/music/Nine Vaults Live")]
+    public async Task Leaves_a_linux_folder_that_is_not_doubled_alone(string hostFolder)
+    {
+        await AddTrack(hostFolder);
+
+        int repaired = await BuildRepair(Driver(LinuxAlbumFolder + TrackFile))
+            .RunAsync(CancellationToken.None);
+
+        repaired.Should().Be(0);
+        (await ReadHostFolder()).Should().Be(hostFolder);
+    }
+
+    /// <summary>
+    /// A folder that merely looks repeated — a library really mounted at
+    /// <c>/music/music</c> — resolves as it stands, and a sweep that "repaired"
+    /// it would point a playable row at a different file.
+    /// </summary>
+    [Fact]
+    public async Task Leaves_a_folder_alone_when_the_stored_path_already_resolves()
+    {
+        await AddTrack("/music/music");
+
+        int repaired = await BuildRepair(Driver("/music/music" + TrackFile, "/music" + TrackFile))
+            .RunAsync(CancellationToken.None);
+
+        repaired.Should().Be(0);
+        (await ReadHostFolder()).Should().Be("/music/music");
+    }
+
+    /// <summary>
+    /// The affected tracks already carry a Failed verdict at the current
+    /// analyzer version, which both the sweep query and the job's own check read
+    /// as an answer. Without the reset the row would be correct and still never
+    /// analysed — the bug the owner reported.
+    /// </summary>
+    [Fact]
+    public async Task Resets_the_verdict_of_a_repaired_track_so_it_is_analysed_again()
+    {
+        Guid trackId = await AddTrack(DoubledAlbumFolder, verdict: AudioAnalysisState.Failed);
+
+        (await TracksNeedingAnalysis()).Should().BeEmpty();
+
+        await BuildRepair(Driver(AlbumFolder + TrackFile)).RunAsync(CancellationToken.None);
+
+        (await TracksNeedingAnalysis()).Should().ContainSingle().Which.Should().Be(trackId);
+
+        await using MediaContext ctx = new(_options);
+        TrackAudioAnalysis verdict = await ctx.TrackAudioAnalysis.AsNoTracking().SingleAsync();
+        verdict.State.Should().Be(AudioAnalysisState.Pending);
+        verdict.FailureReason.Should().BeNull();
+    }
+
+    /// <summary>
+    /// A verdict is an answer about a file the row really addresses; only a row
+    /// this sweep moved has reason to be measured again.
+    /// </summary>
+    [Fact]
+    public async Task Leaves_the_verdict_of_a_track_it_did_not_repair_alone()
+    {
+        await AddTrack(AlbumFolder, verdict: AudioAnalysisState.Failed);
+
+        await BuildRepair(Driver(AlbumFolder + TrackFile)).RunAsync(CancellationToken.None);
+
+        await using MediaContext ctx = new(_options);
+        TrackAudioAnalysis verdict = await ctx.TrackAudioAnalysis.AsNoTracking().SingleAsync();
+        verdict.State.Should().Be(AudioAnalysisState.Failed);
+    }
+
+    /// <summary>
+    /// A driver that throws on one path — a share that went away, a permission
+    /// it lacks — must cost that row and no other: the sweep runs on boot, and
+    /// one unreachable mount cannot be allowed to keep every other row broken.
+    /// </summary>
+    [Fact]
+    public async Task Keeps_sweeping_when_the_driver_throws_on_one_row()
+    {
+        await AddTrack(DoubledLinuxAlbumFolder);
+        await AddTrack(DoubledAlbumFolder);
+
+        Mock<IStorageDriver> driver = Driver(AlbumFolder + TrackFile);
+        driver
+            .Setup(d => d.FileExists(It.Is<string>(path => path.StartsWith("/mnt/vault"))))
+            .Throws(new IOException("the mount is gone"));
+
+        int repaired = await BuildRepair(driver).RunAsync(CancellationToken.None);
+
+        repaired.Should().Be(1);
+
+        await using MediaContext ctx = new(_options);
+        List<string?> stored = await ctx
+            .Tracks.AsNoTracking()
+            .Select(track => track.HostFolder)
+            .ToListAsync();
+
+        stored.Should().Contain(AlbumFolder);
+        stored.Should().Contain(DoubledLinuxAlbumFolder);
     }
 
     // Track.HostFolder normalises separators on the way in, so an untouched row

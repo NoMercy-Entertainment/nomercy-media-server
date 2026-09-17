@@ -21,6 +21,7 @@ namespace NoMercy.Tests.Storage;
 /// regression here either lets the bad shape back in or throws away a folder
 /// that was fine.
 /// </summary>
+[Trait("Category", "Unit")]
 public class HostFolderPathTests
 {
     // The production shape, with invented names: the same album folder twice,
@@ -102,12 +103,51 @@ public class HostFolderPathTests
     }
 
     /// <summary>
-    /// A drive letter that is not preceded by a separator is part of a name,
-    /// not a root — the only colon that counts is one that starts a path.
+    /// A drive letter is a root only with a separator on both sides of it. A
+    /// colon inside a name — whether or not a separator happens to sit in front
+    /// of the letter — is part of the folder, and refusing it would cost a band
+    /// with a colon in its name every track it has.
+    /// </summary>
+    [Theory]
+    [InlineData("Q:/Music/Live A:B Sessions")]
+    [InlineData("/music/D:Ream/album")]
+    [InlineData(@"Q:\Music\D:Ream\Album")]
+    public void ContainsSecondRoot_IgnoresAColonThatStartsNoPath(string hostFolder)
+    {
+        HostFolderPath.ContainsSecondRoot(hostFolder).Should().BeFalse();
+        HostFolderPath.RepairDoubled(hostFolder).Should().BeNull();
+    }
+
+    /// <summary>
+    /// A rooted Linux path repeated carries no marker at all — no drive letter,
+    /// no doubled separator — so only the split-and-compare pass finds it, and
+    /// only because the two halves are character-for-character the same folder.
     /// </summary>
     [Fact]
-    public void ContainsSecondRoot_IgnoresAColonThatStartsNoPath()
+    public void RepairDoubled_ReturnsTheFirstHalfOfARepeatedLinuxFolder()
     {
-        HostFolderPath.ContainsSecondRoot("Q:/Music/Live A:B Sessions").Should().BeFalse();
+        const string doubled =
+            "/mnt/vault/music/Nine Vaults/Paper Lanterns"
+            + "/mnt/vault/music/Nine Vaults/Paper Lanterns";
+
+        HostFolderPath
+            .RepairDoubled(doubled)
+            .Should()
+            .Be("/mnt/vault/music/Nine Vaults/Paper Lanterns");
+    }
+
+    /// <summary>
+    /// The marker-free pass must answer only to halves that are provably the
+    /// same folder: a deep Linux path that merely repeats a segment, or shares a
+    /// prefix with its own tail, is an ordinary folder.
+    /// </summary>
+    [Theory]
+    [InlineData("/mnt/vault/music/Nine Vaults/Paper Lanterns")]
+    [InlineData("/mnt/vault/music/mnt/vault/photos")]
+    [InlineData("/music/Nine Vaults/music/Nine Vaults Live")]
+    public void RepairDoubled_LeavesALinuxFolderThatIsNotDoubledAlone(string hostFolder)
+    {
+        HostFolderPath.ContainsSecondRoot(hostFolder).Should().BeFalse();
+        HostFolderPath.RepairDoubled(hostFolder).Should().BeNull();
     }
 }
