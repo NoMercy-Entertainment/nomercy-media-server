@@ -30,4 +30,7 @@ public static class PluginRefusalCode
 
     /// <summary>A checksum was supplied with no package to take it over.</summary>
     public const string ChecksumSubjectMissing = "PLUGIN_CHECKSUM_SUBJECT_MISSING";
+
+    /// <summary>A caller reached a plugin route with its bearer token in the URL.</summary>
+    public const string TokenInUrl = "PLUGIN_TOKEN_IN_URL";
 }

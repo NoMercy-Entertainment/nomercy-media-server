@@ -51,6 +51,10 @@ public static partial class ServiceConfiguration
         {
             options.Conventions.Add(new PluginRouteConvention(registrar));
             options.Filters.Add<PluginControllerCapabilityFilter>();
+
+            // After the capability filter, so a request to a plugin that is not
+            // serving REST at all is a 404 rather than a lesson about tokens.
+            options.Filters.Add<PluginQueryTokenFilter>();
         });
     }
 }
