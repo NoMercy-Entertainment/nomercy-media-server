@@ -13,14 +13,7 @@ namespace NoMercy.Plugins.Abstractions;
 
 public static class PluginAbi
 {
-    // 10.1 added IPluginMusicQuery and IPluginContext.Music. Both are additive
-    // and the member defaults to null, so every plugin targeting 10.0 still
-    // loads — which is what IsCompatible's "minor may be lower" rule means.
-    // 10.2 added IPluginAudioTools, IPluginDerivedAudio, IPluginMusicAnalysisWriter and the
-    // DJ members of IPluginMusicQuery. Additive; the context members default to null.
-    // IPluginMusicAnalysisWriter.RegisterStemsAsync joined 10.2 with a default implementation,
-    // so it needs no bump: an implementer written before it keeps compiling.
-    public static Version Current { get; } = new(10, 2);
+    public static Version Current { get; } = new(11, 0);
 
     public static bool IsCompatible(string? targetAbi)
     {
@@ -32,6 +25,11 @@ public static class PluginAbi
         if (!Version.TryParse(targetAbi, out Version? requested))
         {
             return false;
+        }
+
+        if (requested.Major == Current.Major - 1)
+        {
+            return true;
         }
 
         return requested.Major == Current.Major && requested.Minor <= Current.Minor;
