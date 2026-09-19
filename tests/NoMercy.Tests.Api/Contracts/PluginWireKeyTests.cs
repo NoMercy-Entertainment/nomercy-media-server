@@ -9,9 +9,13 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Reflection;
+using System.Text.Json.Serialization;
 using FluentAssertions;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Converters;
+using Newtonsoft.Json.Linq;
+using Newtonsoft.Json.Serialization;
 using NoMercy.Api.Plugins;
 using NoMercy.Plugins.Abstractions;
 using Xunit;
@@ -73,14 +77,88 @@ public class PluginWireKeyTests
     [Fact]
     public void A_view_travels_under_the_keys_the_plugin_host_reads()
     {
-        PluginView view = new() { Components = [new() { Id = "station-0", Component = "NMCard" }] };
+        PluginView view = new()
+        {
+            Components =
+            [
+                new() { Id = "station-0", Component = "NMCard" },
+                new() { Id = "station-1", Component = "NMImage" },
+            ],
+        };
 
-        string json = Serialize(view);
+        JObject parsed = JObject.Parse(Serialize(view));
+        JArray components = (JArray)parsed["components"]!;
 
-        json.Should().Contain("\"components\"");
-        json.Should().Contain("\"id\"");
-        json.Should().Contain("\"component\"");
-        json.Should().NotContain("\"Components\"");
+        // The ids and their order, not the count: two cards that collapse to
+        // one id still count two, and the second station opens the first.
+        components
+            .Select(component => component["id"]!.Value<string>())
+            .Should()
+            .Equal("station-0", "station-1");
+        components
+            .Select(component => component["component"]!.Value<string>())
+            .Should()
+            .Equal("NMCard", "NMImage");
+        parsed.Properties().Select(property => property.Name).Should().NotContain("Components");
+    }
+
+    /// <summary>
+    /// Every contract property, not the three a test happened to name.
+    /// <para>
+    /// The manifest is read by System.Text.Json and the response is written by
+    /// Newtonsoft, so the one thing that has to hold is that both call a
+    /// property the same thing. This walks the whole assembly and says which
+    /// property disagrees, rather than leaving the types nobody wrote a test
+    /// for to drift quietly.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void Every_contract_property_is_written_under_the_name_it_is_read_by()
+    {
+        PluginContractResolver resolver = new();
+        List<string> disagreements = [];
+        int checkedProperties = 0;
+
+        foreach (Type type in typeof(PluginView).Assembly.GetExportedTypes())
+        {
+            if (type.IsEnum || type.IsInterface || type.IsAbstract)
+                continue;
+
+            // An exception goes through ISerializable and a converter is
+            // machinery, not payload. Neither is a shape a client reads.
+            if (typeof(Exception).IsAssignableFrom(type))
+                continue;
+
+            if (typeof(System.Text.Json.Serialization.JsonConverter).IsAssignableFrom(type))
+                continue;
+
+            if (resolver.ResolveContract(type) is not JsonObjectContract contract)
+                continue;
+
+            foreach (JsonProperty property in contract.Properties)
+            {
+                if (property.UnderlyingName is null)
+                    continue;
+
+                PropertyInfo? member = type.GetProperty(property.UnderlyingName);
+                if (member is null)
+                    continue;
+
+                checkedProperties++;
+
+                string expected =
+                    member.GetCustomAttribute<JsonPropertyNameAttribute>()?.Name
+                    ?? char.ToLowerInvariant(member.Name[0]) + member.Name[1..];
+
+                if (property.PropertyName != expected)
+                    disagreements.Add(
+                        $"{type.Name}.{member.Name} writes {property.PropertyName}, read as {expected}"
+                    );
+            }
+        }
+
+        checkedProperties.Should().BeGreaterThan(50);
+        disagreements.Should().BeEmpty();
     }
 
     [Fact]
