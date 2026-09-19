@@ -28,8 +28,9 @@ public static class PluginCapabilityGuard
     /// asked about when they consented to <paramref name="consented"/>.
     /// <para>
     /// Narrowing what a plugin asks for never needs a new prompt; adding a
-    /// hook, turning on rest/ws, or naming a new network host does, because
-    /// the owner's earlier "yes" was scoped to a smaller request.
+    /// hook, turning on rest/ws, opening a route to anonymous callers, or
+    /// naming a new network host does, because the owner's earlier "yes" was
+    /// scoped to a smaller request.
     /// </para>
     /// </summary>
     public static bool HasWidened(PluginCapabilities? consented, PluginCapabilities? current)
@@ -51,6 +52,13 @@ public static class PluginCapabilityGuard
             return true;
 
         if (current.Ws && consented?.Ws != true)
+            return true;
+
+        // Opening an endpoint to callers with no token at all is the widest
+        // ask a manifest carries, and it was not compared: a plugin could go
+        // from "every route needs a token" to "this one does not" on a consent
+        // the owner gave to the first of those.
+        if (current.RestAnonymous && consented?.RestAnonymous != true)
             return true;
 
         List<string> consentedHosts = consented?.Network?.Hosts ?? [];

@@ -100,6 +100,45 @@ public class PluginCapabilityGuardTests
         Assert.True(PluginCapabilityGuard.HasWidened(consented, current));
     }
 
+    /// <summary>
+    /// Opening an endpoint to callers with no token is the largest thing a
+    /// plugin can ask for and it was not compared at all, so a plugin could
+    /// update from "everyone needs a token" to "nobody does" on a consent the
+    /// owner gave to the first of those.
+    /// </summary>
+    [Fact]
+    public void HasWidened_RestOpenedToAnonymousCallers_IsTrue()
+    {
+        PluginCapabilities consented = new() { Hooks = ["ui"], Rest = true };
+        PluginCapabilities current = new()
+        {
+            Hooks = ["ui"],
+            Rest = true,
+            RestAnonymous = true,
+        };
+        Assert.True(PluginCapabilityGuard.HasWidened(consented, current));
+    }
+
+    [Fact]
+    public void HasWidened_RestClosedToAnonymousCallers_IsFalse()
+    {
+        PluginCapabilities consented = new()
+        {
+            Hooks = ["ui"],
+            Rest = true,
+            RestAnonymous = true,
+        };
+        PluginCapabilities current = new() { Hooks = ["ui"], Rest = true };
+        Assert.False(PluginCapabilityGuard.HasWidened(consented, current));
+    }
+
+    [Fact]
+    public void HasWidened_NullConsented_AnonymousRest_IsTrue()
+    {
+        PluginCapabilities current = new() { Hooks = ["ui"], RestAnonymous = true };
+        Assert.True(PluginCapabilityGuard.HasWidened(null, current));
+    }
+
     [Fact]
     public void HasWidened_NewNetworkHost_IsTrue()
     {
