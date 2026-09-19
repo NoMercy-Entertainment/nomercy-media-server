@@ -1,7 +1,7 @@
 import { join } from 'node:path';
 
 import { loadContract } from './contract.js';
-import { emitCapabilityNames, emitCapabilityVocabulary, emitRefusalCodes } from './emit-csharp.js';
+import { emitCapabilityNames, emitCapabilityVocabulary, emitManifestSchema, emitRefusalCodes } from './emit-csharp.js';
 import { emitDocsIndex } from './emit-docs-index.js';
 import { emitCapabilitiesKotlin } from './emit-kotlin.js';
 import { emitCapabilitiesTypescript } from './emit-typescript.js';
@@ -24,6 +24,7 @@ export function generatedFiles(): GeneratedFile[] {
     { path: join(ABSTRACTIONS_GENERATED, 'PluginCapabilityVocabulary.cs'), content: emitCapabilityVocabulary(contract.capabilities) },
     { path: join(ABSTRACTIONS_GENERATED, 'PluginCapabilityNames.cs'), content: emitCapabilityNames(contract.capabilities) },
     { path: join(ABSTRACTIONS_GENERATED, 'PluginRefusalCodes.cs'), content: emitRefusalCodes(contract.refusals) },
+    { path: join(ABSTRACTIONS_GENERATED, 'PluginManifestSchema.cs'), content: emitManifestSchema(contract.manifestSchema, contract.capabilities) },
     { path: WEB_CAPABILITIES, content: emitCapabilitiesTypescript(contract.capabilities) },
     { path: KMP_CAPABILITIES, content: emitCapabilitiesKotlin(contract.capabilities, KMP_PACKAGE) },
     { path: DOCS_INDEX, content: emitDocsIndex(contract.capabilities) },

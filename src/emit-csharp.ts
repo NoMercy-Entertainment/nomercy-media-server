@@ -138,3 +138,32 @@ export function emitRefusalCodes(refusals: Refusal[]): string {
     '',
   ].join('\n');
 }
+
+export function emitManifestSchema(schema: unknown, capabilities: Capability[]): string {
+  const filled = JSON.parse(JSON.stringify(schema)) as {
+    $defs?: { capabilityGrant?: { properties?: { name?: { enum?: string[] } } } };
+  };
+  const name = filled.$defs?.capabilityGrant?.properties?.name;
+  if (name === undefined)
+    throw new Error('manifest.schema.json has no $defs.capabilityGrant.properties.name to fill');
+
+  name.enum = capabilities.map(capability => capability.name);
+
+  const body: string[] = JSON.stringify(filled, null, 2)
+    .split('\n')
+    .map(line => `        ${line}`);
+
+  return [
+    LICENSE_HEADER,
+    'namespace NoMercy.Plugins.Abstractions;',
+    '',
+    '/// <summary>The schema a plugin.json is read against, with the capability names the server knows.</summary>',
+    'public static class PluginManifestSchema',
+    '{',
+    '    public const string Json = """',
+    ...body,
+    '        """;',
+    '}',
+    '',
+  ].join('\n');
+}

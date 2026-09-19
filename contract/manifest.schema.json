@@ -1,1 +1,50 @@
-{}
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://nomercy.tv/schemas/plugin-manifest-v3.json",
+  "title": "NoMercy plugin manifest v3",
+  "type": "object",
+  "required": ["id", "name", "description", "version", "targetAbi", "assembly", "entry"],
+  "additionalProperties": false,
+  "properties": {
+    "id": { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+    "name": { "type": "string", "minLength": 1 },
+    "description": { "type": "string", "minLength": 1 },
+    "version": { "type": "string", "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$" },
+    "targetAbi": { "type": "string", "pattern": "^\\d+\\.\\d+$" },
+    "publisher": { "type": "string", "pattern": "^[0-9A-HJKMNP-TV-Z]{26}$" },
+    "tier": { "type": "string", "enum": ["free", "paid"] },
+    "assembly": { "type": "string", "minLength": 1 },
+    "entry": { "type": "string", "minLength": 1 },
+    "license": { "type": "string" },
+    "projectUrl": { "type": "string" },
+    "docs": { "type": "string" },
+    "autoEnabled": { "type": "boolean" },
+    "translations": { "type": "object" },
+    "capabilities": { "type": "array", "items": { "$ref": "#/$defs/capabilityGrant" } },
+    "dependencies": { "type": "array", "items": { "type": "object" } },
+    "ui": { "type": "object" },
+    "signature": { "$ref": "#/$defs/signature" }
+  },
+  "$defs": {
+    "capabilityGrant": {
+      "type": "object",
+      "required": ["name"],
+      "additionalProperties": false,
+      "properties": {
+        "name": { "type": "string", "enum": [] },
+        "scope": { "type": "string" },
+        "reason": { "type": "string" }
+      }
+    },
+    "signature": {
+      "type": "object",
+      "required": ["algorithm", "keyId", "value"],
+      "additionalProperties": false,
+      "properties": {
+        "algorithm": { "type": "string" },
+        "keyId": { "type": "string" },
+        "value": { "type": "string" }
+      }
+    }
+  }
+}
