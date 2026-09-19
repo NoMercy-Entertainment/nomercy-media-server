@@ -62,17 +62,27 @@ public class WireShapeThroughTheServerTests : IClassFixture<NoMercyApiFactory>
     }
 
     /// <summary>
-    /// Names the resolver the pipeline holds. Replacing it is how every response
-    /// in the API turned pascal case once, while a check that built its own
-    /// settings could not see the difference.
+    /// The naming strategy the pipeline holds, which is what decides every key.
+    /// <para>
+    /// The framework sets a <see cref="DefaultContractResolver" /> and gives it a
+    /// camel case strategy. Subclassing that resolver inherits the type and not
+    /// the strategy, so a subclass registered here renames every property of
+    /// every response to pascal case. That shipped, and a check that asserted
+    /// the resolver's type alone would have let it through.
+    /// </para>
     /// </summary>
     [Fact]
-    public void The_api_serializes_with_the_frameworks_camel_case_resolver()
+    public void The_api_names_every_property_with_the_frameworks_camel_case_strategy()
     {
-        ServerSettings()
-            .ContractResolver.Should()
-            .BeOfType<CamelCasePropertyNamesContractResolver>(
-                "a different resolver renames every property on every response"
+        IContractResolver resolver = ServerSettings().ContractResolver!;
+
+        resolver
+            .Should()
+            .BeAssignableTo<DefaultContractResolver>("the naming strategy lives on that resolver");
+        ((DefaultContractResolver)resolver)
+            .NamingStrategy.Should()
+            .BeOfType<CamelCaseNamingStrategy>(
+                "without it every property on every response is pascal case"
             );
     }
 
