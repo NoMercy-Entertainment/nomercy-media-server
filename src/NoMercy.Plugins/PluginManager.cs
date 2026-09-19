@@ -80,7 +80,8 @@ public class PluginManager : IPluginManager, IDisposable
                         _storage.CombinePath(_pluginsPath, "data", "platform"),
                         _storage
                     )
-                )
+                ),
+                _logger
             );
         _registry = new PluginRegistry();
         _assemblyTracker = assemblyTracker;

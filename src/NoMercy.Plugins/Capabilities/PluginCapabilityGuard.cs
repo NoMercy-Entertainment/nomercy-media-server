@@ -28,9 +28,14 @@ public static class PluginCapabilityGuard
     /// asked about when they consented to <paramref name="consented"/>.
     /// <para>
     /// Narrowing what a plugin asks for never needs a new prompt; adding a
-    /// hook, turning on rest/ws, opening a route to anonymous callers, or
-    /// naming a new network host does, because the owner's earlier "yes" was
-    /// scoped to a smaller request.
+    /// hook, turning on rest/ws, opening a route to anonymous callers, asking
+    /// for a place in the main navigation, or naming a new network host does,
+    /// because the owner's earlier "yes" was scoped to a smaller request.
+    /// </para>
+    /// <para>
+    /// Moving or renaming a mount inside a section the owner already approved
+    /// is not a widening. Where a plugin appears in its own section is its own
+    /// business; asking to sit beside the app's own sections is not.
     /// </para>
     /// </summary>
     public static bool HasWidened(PluginCapabilities? consented, PluginCapabilities? current)
@@ -59,6 +64,24 @@ public static class PluginCapabilityGuard
         // from "every route needs a token" to "this one does not" on a consent
         // the owner gave to the first of those.
         if (current.RestAnonymous && consented?.RestAnonymous != true)
+            return true;
+
+        // A place in the main navigation is a request the owner answers, so a
+        // plugin cannot grow into one on a consent given when it had none.
+        List<string> consentedTopLevel =
+        [
+            .. (consented?.Ui?.Mounts ?? [])
+                .Where(mount => mount.RequestsTopLevel)
+                .Select(mount => mount.Route),
+        ];
+
+        if (
+            (current.Ui?.Mounts ?? [])
+                .Where(mount => mount.RequestsTopLevel)
+                .Any(mount =>
+                    !consentedTopLevel.Contains(mount.Route, StringComparer.OrdinalIgnoreCase)
+                )
+        )
             return true;
 
         List<string> consentedHosts = consented?.Network?.Hosts ?? [];

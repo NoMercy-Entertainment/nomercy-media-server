@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using Microsoft.Extensions.Logging;
 using NoMercy.Plugins.Abstractions;
 
 namespace NoMercy.Plugins.Capabilities;
@@ -21,7 +22,8 @@ public interface IPluginConsentStore
     void Remove(Ulid pluginId);
 }
 
-public class PluginConsentService(IPluginConsentStore store) : IPluginConsentService
+public class PluginConsentService(IPluginConsentStore store, ILogger? logger = null)
+    : IPluginConsentService
 {
     public bool IsBaseline(PluginCapabilities? capabilities)
     {
@@ -51,7 +53,18 @@ public class PluginConsentService(IPluginConsentStore store) : IPluginConsentSer
         // step a genuine widening would keep migrating instead of asking.
         if (grant.IsLegacy)
         {
+            // A record from before consent carried a capability list says only
+            // that the owner said yes, never to what. The installed manifest is
+            // the closest thing to what they saw, so it is what gets written,
+            // and the log names it because the owner cannot read it back off a
+            // record that never held it.
             store.Add(pluginId, capabilities, installedVersion);
+            logger?.LogInformation(
+                "Plugin {PluginId}: an approval from before capabilities were recorded now covers {Capabilities}, read from the installed manifest at {Version}.",
+                pluginId,
+                Describe(capabilities),
+                installedVersion
+            );
             return true;
         }
 
@@ -68,4 +81,26 @@ public class PluginConsentService(IPluginConsentStore store) : IPluginConsentSer
     ) => store.Add(pluginId, capabilities, manifestVersion);
 
     public void RevokeConsent(Ulid pluginId) => store.Remove(pluginId);
+
+    private static string Describe(PluginCapabilities? capabilities)
+    {
+        if (capabilities is null)
+            return "nothing beyond the ordinary set";
+
+        List<string> parts = [];
+
+        if (capabilities.Hooks.Count > 0)
+            parts.Add($"hooks {string.Join(", ", capabilities.Hooks)}");
+
+        if (capabilities.Rest)
+            parts.Add(capabilities.RestAnonymous ? "its own endpoints, open" : "its own endpoints");
+
+        if (capabilities.Ws)
+            parts.Add("a socket");
+
+        if (capabilities.Network?.Hosts.Count > 0)
+            parts.Add($"network hosts {string.Join(", ", capabilities.Network.Hosts)}");
+
+        return parts.Count > 0 ? string.Join("; ", parts) : "nothing beyond the ordinary set";
+    }
 }

@@ -106,6 +106,55 @@ public class PluginCapabilityGuardTests
     /// update from "everyone needs a token" to "nobody does" on a consent the
     /// owner gave to the first of those.
     /// </summary>
+    private static PluginUiCapability Mounts(params (string Route, bool TopLevel)[] mounts)
+    {
+        return new()
+        {
+            Mounts =
+            [
+                .. mounts.Select(mount => new PluginUiMount
+                {
+                    Section = "music",
+                    Label = "Radio",
+                    Route = mount.Route,
+                    RequestsTopLevel = mount.TopLevel,
+                }),
+            ],
+        };
+    }
+
+    [Fact]
+    public void HasWidened_AskingForTheMainNavigation_IsTrue()
+    {
+        PluginCapabilities consented = new()
+        {
+            Hooks = ["ui"],
+            Ui = Mounts(("/music/plugins/radio", false)),
+        };
+        PluginCapabilities current = new()
+        {
+            Hooks = ["ui"],
+            Ui = Mounts(("/music/plugins/radio", true)),
+        };
+        Assert.True(PluginCapabilityGuard.HasWidened(consented, current));
+    }
+
+    [Fact]
+    public void HasWidened_MovingAMountInsideItsOwnSection_IsFalse()
+    {
+        PluginCapabilities consented = new()
+        {
+            Hooks = ["ui"],
+            Ui = Mounts(("/music/plugins/radio", false)),
+        };
+        PluginCapabilities current = new()
+        {
+            Hooks = ["ui"],
+            Ui = Mounts(("/music/plugins/radio/browse", false)),
+        };
+        Assert.False(PluginCapabilityGuard.HasWidened(consented, current));
+    }
+
     [Fact]
     public void HasWidened_RestOpenedToAnonymousCallers_IsTrue()
     {
