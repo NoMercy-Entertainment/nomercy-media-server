@@ -40,7 +40,6 @@ public static partial class ServiceConfiguration
                 options.SerializerSettings.DateFormatHandling = DateFormatHandling.IsoDateFormat;
                 options.SerializerSettings.DateTimeZoneHandling = DateTimeZoneHandling.Utc;
                 options.SerializerSettings.Converters.Add(new StringEnumConverter());
-                options.SerializerSettings.ContractResolver = new PluginContractResolver();
             });
 
         ConfigurePluginMvc(services, mvc);
