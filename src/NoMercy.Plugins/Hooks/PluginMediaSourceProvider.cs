@@ -64,6 +64,9 @@ public class PluginMediaSourceProvider(
             }
             catch (Exception ex)
             {
+                if (PluginStaleMemberLog.Explain(logger, plugin.Id, ex, "offering a media source"))
+                    continue;
+
                 logger.LogWarning(
                     ex,
                     "Media source plugin {Plugin} failed or timed out scanning {Path}; its files are skipped.",

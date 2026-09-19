@@ -13,6 +13,7 @@ using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Api.DTOs.Dashboard;
 using NoMercy.Api.DTOs.Media;
@@ -40,7 +41,8 @@ public class SetupController(
     IMusicRepository musicRepository,
     HomeService homeService,
     ILibraryRepository libraryRepository,
-    IPluginManager pluginManager
+    IPluginManager pluginManager,
+    ILogger<SetupController> logger
 ) : BaseController
 {
     /// <summary>
@@ -88,25 +90,57 @@ public class SetupController(
         [
             .. pluginManager
                 .GetInstalledPlugins()
-                .SelectMany(info =>
-                    (pluginManager.GetPluginInstance(info.Id) as IUiPlugin)
-                        ?.NavEntries.Where(entry => kinds.Contains(entry.Section))
-                        .Select(entry => new LibraryNavigationEntryDto
-                        {
-                            Id = $"plugin-{info.Id}-{entry.Route.Trim('/')}".TrimEnd('-'),
-                            Label = entry.Label,
-                            Icon = entry.Icon ?? string.Empty,
-                            Link =
-                                PluginRoutes.PrefixFor(entry.Section, info.Id).TrimEnd('/')
-                                + (entry.Route == "/" ? string.Empty : entry.Route),
-                            Origin = LibraryNavigationOrigin.Plugin,
-                            PluginId = info.Id,
-                            RouteType = kinds.First(),
-                        })
-                    ?? []
-                )
+                .SelectMany(info => EntriesOf(info, kinds) ?? [])
                 .OrderBy(entry => entry.Label),
         ];
+
+    /// <summary>
+    /// One plugin's navigation entries, or none when that plugin was built
+    /// against a contract member v3 took away.
+    /// <para>
+    /// This walks every installed plugin, so letting one plugin's failure
+    /// escape empties the whole navigation. It is left out and named in the log
+    /// instead.
+    /// </para>
+    /// </summary>
+    private IEnumerable<LibraryNavigationEntryDto>? EntriesOf(PluginInfo info, string[] kinds)
+    {
+        try
+        {
+            return (pluginManager.GetPluginInstance(info.Id) as IUiPlugin)
+                ?.NavEntries.Where(entry => kinds.Contains(entry.Section))
+                .Select(entry => new LibraryNavigationEntryDto
+                {
+                    Id = $"plugin-{info.Id}-{entry.Route.Trim('/')}".TrimEnd('-'),
+                    Label = entry.Label,
+                    Icon = entry.Icon ?? string.Empty,
+                    Link =
+                        PluginRoutes.PrefixFor(entry.Section, info.Id).TrimEnd('/')
+                        + (entry.Route == "/" ? string.Empty : entry.Route),
+                    Origin = LibraryNavigationOrigin.Plugin,
+                    PluginId = info.Id,
+                    RouteType = kinds.First(),
+                })
+                .ToList();
+        }
+        catch (MissingMemberException missing)
+        {
+            PluginRefusal refusal = PluginRefusalMessages.RemovedContractMember(
+                info.Id.ToString(),
+                missing.Message
+            );
+
+            logger.LogError(
+                "Plugin {Plugin} is left out of the navigation. {What} {Why} {Fix}",
+                info.Name,
+                refusal.What,
+                refusal.Why,
+                refusal.Fix
+            );
+
+            return null;
+        }
+    }
 
     [HttpGet("libraries")]
     public async Task<IActionResult> Libraries()

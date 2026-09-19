@@ -58,6 +58,9 @@ public class PluginHubRouter(IPluginManager pluginManager, ILogger<PluginHubRout
         {
             // A throwing plugin must not take the hub connection down with it;
             // every other plugin is multiplexed over the same one.
+            if (PluginStaleMemberLog.Explain(logger, pluginId, exception, "handling a hub message"))
+                return false;
+
             logger.LogError(
                 exception,
                 "Plugin {PluginId} threw handling hub method {Method}.",
