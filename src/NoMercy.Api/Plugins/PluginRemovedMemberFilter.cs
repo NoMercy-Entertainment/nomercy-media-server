@@ -36,10 +36,13 @@ public class PluginRemovedMemberFilter(ILogger<PluginRemovedMemberFilter> logger
 {
     public Task OnExceptionAsync(ExceptionContext context)
     {
-        // An exception filter has no controller instance, so the plugin route
-        // is what identifies one. PluginRouteConvention puts every plugin under
-        // a route carrying pluginId and nothing else has that key.
-        string? plugin = context.RouteData.Values["pluginId"]?.ToString();
+        // An exception filter has no controller instance, so the route is what
+        // identifies a plugin. Two routes reach plugin code and they spell it
+        // differently: PluginRouteConvention writes pluginId on a plugin's own
+        // controllers, and PluginUiController takes id. Keying on one of them
+        // misses the other, and the view route is the one a plugin's
+        // GetViewAsync runs on.
+        string? plugin = PluginOnThisRoute(context);
         if (string.IsNullOrEmpty(plugin))
             return Task.CompletedTask;
 
@@ -62,6 +65,20 @@ public class PluginRemovedMemberFilter(ILogger<PluginRemovedMemberFilter> logger
         context.Result = new ObjectResult(PluginRefusalDto.From(refusal)) { StatusCode = 501 };
         context.ExceptionHandled = true;
         return Task.CompletedTask;
+    }
+
+    /// <summary>The plugin this route belongs to, under either spelling.</summary>
+    private static string? PluginOnThisRoute(ExceptionContext context)
+    {
+        if (context.RouteData.Values["pluginId"]?.ToString() is { Length: > 0 } fromConvention)
+            return fromConvention;
+
+        // Only a route the host serves on a plugin's behalf, never an id that
+        // happens to be called id on one of the server's own controllers.
+        if (context.ActionDescriptor.DisplayName?.Contains("PluginUiController") != true)
+            return null;
+
+        return context.RouteData.Values["id"]?.ToString();
     }
 
     /// <summary>

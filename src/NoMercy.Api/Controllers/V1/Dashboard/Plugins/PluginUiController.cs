@@ -13,8 +13,10 @@ using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Api.DTOs.Dashboard;
+using NoMercy.Api.Plugins;
 using NoMercy.Authorization;
 using NoMercy.Plugins.Abstractions;
 using NoMercy.Plugins.Capabilities;
@@ -34,7 +36,8 @@ namespace NoMercy.Api.Controllers.V1.Dashboard.Plugins;
 [Tags("Plugin UI")]
 [ApiVersion(1.0)]
 [Authorize]
-public class PluginUiController(IPluginManager pluginManager) : BaseController
+public class PluginUiController(IPluginManager pluginManager, ILogger<PluginUiController> logger)
+    : BaseController
 {
     /// <summary>
     /// Every plugin the caller's client should show in its navigation.
@@ -83,23 +86,26 @@ public class PluginUiController(IPluginManager pluginManager) : BaseController
             .GetInstalledPlugins()
             .Where(HasUi)
             .SelectMany(info =>
-                (pluginManager.GetPluginInstance(info.Id) as IUiPlugin)?.NavEntries.Select(
-                    entry => new
-                    {
-                        PluginId = info.Id,
-                        PluginName = info.Name,
-                        entry.Label,
-                        entry.Icon,
-                        Kind = PluginKind.IsKnown(entry.Section)
-                            ? entry.Section
-                            : PluginKind.Dashboard,
-                        entry.Route,
-                        // Offered here at all, which is a different question from
-                        // what it looks like once opened.
-                        AppearsHere = entry.AppearsOn(asking),
-                    }
-                )
-                ?? []
+                WithoutStalePlugins(
+                    info,
+                    () =>
+                        (pluginManager.GetPluginInstance(info.Id) as IUiPlugin)?.NavEntries.Select(
+                            entry => new
+                            {
+                                PluginId = info.Id,
+                                PluginName = info.Name,
+                                entry.Label,
+                                entry.Icon,
+                                Kind = PluginKind.IsKnown(entry.Section)
+                                    ? entry.Section
+                                    : PluginKind.Dashboard,
+                                entry.Route,
+                                // Offered here at all, which is a different question from
+                                // what it looks like once opened.
+                                AppearsHere = entry.AppearsOn(asking),
+                            }
+                        )
+                ) ?? []
             )
             // A kind the server does not place is dropped rather than listed
             // with a route nothing answers, which would read as a broken plugin.
@@ -144,11 +150,16 @@ public class PluginUiController(IPluginManager pluginManager) : BaseController
             .GetInstalledPlugins()
             .Where(HasUi)
             .Select(info =>
-                PluginUiDescriptorDto.From(
+                WithoutStalePlugins(
                     info,
-                    pluginManager.GetPluginInstance(info.Id) as IUiPlugin
+                    () =>
+                        PluginUiDescriptorDto.From(
+                            info,
+                            pluginManager.GetPluginInstance(info.Id) as IUiPlugin
+                        )
                 )
             )
+            .OfType<PluginUiDescriptorDto>()
             .ToList();
 
         return Ok(new DataResponseDto<IEnumerable<PluginUiDescriptorDto>> { Data = descriptors });
@@ -239,6 +250,20 @@ public class PluginUiController(IPluginManager pluginManager) : BaseController
         {
             throw;
         }
+        catch (MissingMemberException missing)
+        {
+            // A plugin built against contract v2 reaching a member v3 took away.
+            // The runtime raises this when the method is prepared, so it lands
+            // here rather than inside whatever the plugin wrapped in a try. The
+            // author needs the member named and the version to rebuild against,
+            // which the raw message does not carry.
+            PluginRefusal refusal = PluginRefusalMessages.RemovedContractMember(
+                id.ToString(),
+                missing.Message
+            );
+
+            return StatusCode(501, PluginRefusalDto.From(refusal));
+        }
         catch (Exception exception)
         {
             // A plugin throwing while building its own screen is that plugin's
@@ -246,6 +271,41 @@ public class PluginUiController(IPluginManager pluginManager) : BaseController
             // empty panel rather than a 500 the user reads as the server
             // breaking.
             return BadRequestResponse($"Plugin could not render this view: {exception.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Reads something from a plugin, and answers null when that plugin was
+    /// built against a contract member v3 took away.
+    /// <para>
+    /// These endpoints walk every installed plugin. Letting one plugin's
+    /// missing member escape takes the whole list down, so the addons page goes
+    /// blank because a single plugin is out of date. It is skipped and named in
+    /// the log instead, with the refusal of design section 3.9.
+    /// </para>
+    /// </summary>
+    private T? WithoutStalePlugins<T>(PluginInfo info, Func<T?> read)
+    {
+        try
+        {
+            return read();
+        }
+        catch (MissingMemberException missing)
+        {
+            PluginRefusal refusal = PluginRefusalMessages.RemovedContractMember(
+                info.Id.ToString(),
+                missing.Message
+            );
+
+            logger.LogError(
+                "Plugin {Plugin} is not listed: {What} {Why} {Fix}",
+                info.Name,
+                refusal.What,
+                refusal.Why,
+                refusal.Fix
+            );
+
+            return default;
         }
     }
 
