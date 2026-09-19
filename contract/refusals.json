@@ -1,1 +1,212 @@
-[]
+[
+  {
+    "code": "PLUGIN_CAPABILITY_NOT_DECLARED",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "A call needed a capability the manifest does not declare."
+  },
+  {
+    "code": "PLUGIN_CAPABILITY_NOT_CONSENTED",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "The manifest declares the capability and the owner has not granted it."
+  },
+  {
+    "code": "PLUGIN_CAPABILITY_SCOPE_REFUSED",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "The call fell outside the scope the owner consented to."
+  },
+  {
+    "code": "PLUGIN_TRUST_TOO_LOW",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "The publisher's trust level is below the capability's floor."
+  },
+  {
+    "code": "PLUGIN_GUEST_CAPABILITY_IRREVERSIBLE",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "A guest brought a plugin holding a capability whose effect does not reverse when the guest leaves."
+  },
+  {
+    "code": "PLUGIN_HOST_SERVICES_REMOVED",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "The plugin asked the host container for a service. Contract v3 has facades instead."
+  },
+  {
+    "code": "PLUGIN_EVENT_BUS_REMOVED",
+    "severity": "blocked",
+    "capability": "events.subscribe",
+    "summary": "The plugin used the raw event bus. Contract v3 has a topic list instead."
+  },
+  {
+    "code": "PLUGIN_TOKEN_IN_URL",
+    "severity": "blocked",
+    "capability": "media.proxy",
+    "summary": "The plugin put a bearer token in a media URL. The host mints every media URL."
+  },
+  {
+    "code": "PLUGIN_FILE_OUTSIDE_GRANT",
+    "severity": "blocked",
+    "capability": "storage.path",
+    "summary": "The plugin read or wrote a folder the owner has not granted."
+  },
+  {
+    "code": "PLUGIN_PROCESS_SPAWN_UNDECLARED",
+    "severity": "blocked",
+    "capability": "process.spawn",
+    "summary": "The plugin started a process without process.spawn."
+  },
+  {
+    "code": "PLUGIN_SOCKET_UNDECLARED",
+    "severity": "blocked",
+    "capability": "network.dial",
+    "summary": "The plugin opened a raw socket without network.dial."
+  },
+  {
+    "code": "PLUGIN_LISTENER_UNDECLARED",
+    "severity": "blocked",
+    "capability": "network.listen",
+    "summary": "The plugin bound a listening socket without network.listen."
+  },
+  {
+    "code": "PLUGIN_HOST_NOT_ALLOWED",
+    "severity": "blocked",
+    "capability": "network.fetch",
+    "summary": "The request went to a host outside the glob the owner granted."
+  },
+  {
+    "code": "PLUGIN_ROUTE_RESERVED_PREFIX",
+    "severity": "blocked",
+    "capability": "ui.mount",
+    "summary": "The plugin claimed a route under the underscore prefix the host owns."
+  },
+  {
+    "code": "PLUGIN_ROUTE_ACCESS_DENIED",
+    "severity": "blocked",
+    "capability": "rest",
+    "summary": "The caller does not hold the access the route declares."
+  },
+  {
+    "code": "PLUGIN_ABI_UNSUPPORTED",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "The manifest targets an ABI this server does not load."
+  },
+  {
+    "code": "PLUGIN_MANIFEST_INVALID",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "The manifest does not match the schema the server reads."
+  },
+  {
+    "code": "PLUGIN_MANIFEST_V2_DEPRECATED",
+    "severity": "warning",
+    "capability": null,
+    "summary": "The plugin ships a contract v2 manifest, which the server still reads through the mapping table."
+  },
+  {
+    "code": "PLUGIN_DEPENDENCY_MISSING",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "The plugin depends on another plugin the server does not have."
+  },
+  {
+    "code": "PLUGIN_DEPENDENCY_PAID_NOT_OWNED",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "The plugin depends on a paid plugin this server does not own."
+  },
+  {
+    "code": "PLUGIN_DEPENDENCY_TIER_MISMATCH",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "A free plugin depends on a paid one, which the marketplace does not allow."
+  },
+  {
+    "code": "PLUGIN_DEPENDENCY_PAUSED",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "The plugin a dependency points at is paused, so the call has nothing to reach."
+  },
+  {
+    "code": "PLUGIN_CONTRACT_VERSION_MISMATCH",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "The cross-plugin contract version the caller asks for is not the one the provider offers."
+  },
+  {
+    "code": "PLUGIN_USER_SCOPE_REQUIRED",
+    "severity": "blocked",
+    "capability": "user.identity",
+    "summary": "The call needs a user scope and ran without one."
+  },
+  {
+    "code": "PLUGIN_USER_DATA_EGRESS",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "The plugin sent user data to a host outside the server."
+  },
+  {
+    "code": "PLUGIN_SETTINGS_FIELD_READ_ONLY",
+    "severity": "blocked",
+    "capability": "settings",
+    "summary": "The plugin wrote a settings field its schema marks read only."
+  },
+  {
+    "code": "PLUGIN_SECRET_FIELD_IN_SETTINGS",
+    "severity": "blocked",
+    "capability": "secrets",
+    "summary": "A secret was written into settings, where it would be readable. Secrets live in the secret store."
+  },
+  {
+    "code": "PLUGIN_QUOTA_DISK_EXCEEDED",
+    "severity": "blocked",
+    "capability": "storage.private",
+    "summary": "The plugin is at its disk quota, so the write has nowhere to go."
+  },
+  {
+    "code": "PLUGIN_SCHEDULER_WORKER_CRASHED",
+    "severity": "degraded",
+    "capability": "scheduler",
+    "summary": "A supervised worker crashed and the host restarted it."
+  },
+  {
+    "code": "PLUGIN_LIVE_LINK_FAILED",
+    "severity": "degraded",
+    "capability": "media.live",
+    "summary": "The live link the plugin published stopped answering."
+  },
+  {
+    "code": "PLUGIN_RECORDING_DISK_FULL",
+    "severity": "blocked",
+    "capability": "media.record",
+    "summary": "The recording stopped because the disk it writes to is full."
+  },
+  {
+    "code": "PLUGIN_REMUX_UNSUPPORTED_CODEC",
+    "severity": "degraded",
+    "capability": "media.remux",
+    "summary": "The stream carries a codec the remuxer cannot repackage."
+  },
+  {
+    "code": "PLUGIN_BROWSER_NAVIGATION_BLOCKED",
+    "severity": "blocked",
+    "capability": "browser.headless",
+    "summary": "The headless browser navigated to a host outside the granted scope."
+  },
+  {
+    "code": "PLUGIN_UI_INPUT_UNDECLARED",
+    "severity": "blocked",
+    "capability": "ui.input",
+    "summary": "The plugin asked the user for input without ui.input."
+  },
+  {
+    "code": "PLUGIN_NATIVE_CODE_UNSIGNED",
+    "severity": "blocked",
+    "capability": "native.code",
+    "summary": "The native library the plugin loads carries no signature this server trusts."
+  }
+]

@@ -1,4 +1,4 @@
-import type { Capability } from './contract.js';
+import type { Capability, Refusal } from './contract.js';
 import { pascalOf } from './contract.js';
 
 export const LICENSE_HEADER: string = [
@@ -79,6 +79,61 @@ export function emitCapabilityNames(capabilities: Capability[]): string {
     'public static class PluginCapabilityNames',
     '{',
     rows.join('\n'),
+    '}',
+    '',
+  ].join('\n');
+}
+
+function refusalConstantOf(code: string): string {
+  return code
+    .replace(/^PLUGIN_/, '')
+    .split('_')
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join('');
+}
+
+function severityOf(refusal: Refusal): string {
+  return refusal.severity.charAt(0).toUpperCase() + refusal.severity.slice(1);
+}
+
+function refusalDescriptorOf(refusal: Refusal): string {
+  const args: string[] = [
+    quote(refusal.code),
+    `PluginRefusalSeverity.${severityOf(refusal)}`,
+    refusal.capability === null ? 'null' : quote(refusal.capability),
+    quote(refusal.summary),
+  ];
+
+  return [
+    '        new(',
+    ...args.map((argument, index) => `            ${argument}${index < args.length - 1 ? ',' : ''}`),
+    '        ),',
+  ].join('\n');
+}
+
+export function emitRefusalCodes(refusals: Refusal[]): string {
+  const constants: string[] = refusals.map(
+    refusal => `    public const string ${refusalConstantOf(refusal.code)} = ${quote(refusal.code)};`,
+  );
+
+  return [
+    LICENSE_HEADER,
+    'namespace NoMercy.Plugins.Abstractions;',
+    '',
+    '/// <summary>Every code a refusal may carry, with its severity and the capability it belongs to.</summary>',
+    'public static class PluginRefusalCodes',
+    '{',
+    constants.join('\n'),
+    '',
+    '    public static IReadOnlyList<PluginRefusalDescriptor> All { get; } =',
+    '    [',
+    refusals.map(refusalDescriptorOf).join('\n'),
+    '    ];',
+    '',
+    '    public static PluginRefusalDescriptor? ByCode(string code)',
+    '    {',
+    '        return All.FirstOrDefault(refusal => refusal.Code == code);',
+    '    }',
     '}',
     '',
   ].join('\n');
