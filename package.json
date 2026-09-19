@@ -1,0 +1,20 @@
+{
+  "name": "@nomercy-entertainment/plugin-contract",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "scripts": {
+    "generate": "tsx src/generate.ts",
+    "check": "tsx src/check-drift.ts",
+    "check:docs": "tsx src/check-docs.ts",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "gate": "npm run typecheck && npm run generate && npm run check && npm run check:docs && npm run test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.10"
+  }
+}
