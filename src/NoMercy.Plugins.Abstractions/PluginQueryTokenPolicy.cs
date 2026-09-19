@@ -58,6 +58,6 @@ public static class PluginQueryTokenPolicy
 
     /// <summary>The one line the server log carries while the token is still served.</summary>
     public static string Warning(string pluginName) =>
-        $"{What(pluginName)} {Why} Accepted on ABI {PluginAbi.Current.Major}.x and refused from "
+        $"{What(pluginName)} {Why} Accepted on ABI {RefusedFromAbiMajor - 1}.x and refused from "
         + $"ABI {RefusedFromAbiMajor}: {Fix}";
 }
