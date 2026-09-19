@@ -34,6 +34,9 @@ public class LogEntry
     [JsonPropertyName("@t")]
     public DateTime Time { get; set; }
 
+    // Two ignores: System.Text.Json reads the log file, Newtonsoft writes the
+    // API. Only the second keeps this off a live log stream.
+    [Newtonsoft.Json.JsonIgnore]
     [System.Text.Json.Serialization.JsonIgnore]
     public dynamic LogMessage { get; set; } = default!;
 
@@ -46,6 +49,7 @@ public class LogEntry
         set => LogMessage = value;
     }
 
+    [Newtonsoft.Json.JsonIgnore]
     [System.Text.Json.Serialization.JsonIgnore]
     public LogEventLevel LogLevel { get; set; }
 
