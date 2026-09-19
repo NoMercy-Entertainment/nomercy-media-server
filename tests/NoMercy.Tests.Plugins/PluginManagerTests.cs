@@ -432,8 +432,8 @@ public class PluginManagerTests : IDisposable
             services: services
         );
 
-        context.EventBus.Should().BeSameAs(bus);
-        context.Services.Should().BeSameAs(services);
+        context.Events.Should().BeOfType<PluginEvents>();
+        typeof(IPluginContext).GetProperty("Services").Should().BeNull();
         context.Logger.Should().BeSameAs(logger);
         context.DataFolderPath.Should().Be(dataFolder);
     }

@@ -79,7 +79,7 @@ public sealed record PluginJobStatus(
 }
 
 /// <summary>
-/// Raised on <see cref="IPluginContext.EventBus" /> when a job a plugin asked
+/// Raised on <see cref="IPluginContext.Events" /> when a job a plugin asked
 /// for is done, so a plugin can be told rather than having to poll.
 /// </summary>
 public sealed record PluginJobFinished(string JobId, bool Succeeded, string? Failure);

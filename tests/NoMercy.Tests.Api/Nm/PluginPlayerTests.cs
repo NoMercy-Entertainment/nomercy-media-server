@@ -13,7 +13,8 @@ public class PluginPlayerTests
         // separately, because it is a different amount of trust.
         Assert.NotEqual(
             PluginGrantKind.PlayerSource,
-            PluginGrantKind.ForCapability(PluginCapability.Player));
+            PluginGrantKind.ForCapability(PluginCapability.Player)
+        );
 
         Assert.Equal("capability.player", PluginGrantKind.ForCapability(PluginCapability.Player));
         Assert.Equal("player.source", PluginGrantKind.PlayerSource);
@@ -26,7 +27,7 @@ public class PluginPlayerTests
         // player it was never given finds null rather than a stub that silently
         // does nothing.
         Assert.Null(((IPluginContext)new BareContext()).Player);
-        Assert.Null(((IPluginContext)new BareContext()).System);
+        Assert.Null(typeof(IPluginContext).GetProperty("System"));
     }
 
     [Fact]
@@ -37,7 +38,7 @@ public class PluginPlayerTests
             Url = "https://example.invalid/stream.mp3",
             Title = "Radio",
             IsLive = true,
-            PluginId = Ulid.NewUlid()
+            PluginId = Ulid.NewUlid(),
         };
 
         Assert.True(stream.IsLive);
@@ -68,8 +69,7 @@ public class PluginPlayerTests
 
     private class BareContext : IPluginContext
     {
-        public NoMercy.Events.IEventBus EventBus => null!;
-        public IServiceProvider Services => null!;
+        public IPluginEvents Events => null!;
         public Microsoft.Extensions.Logging.ILogger Logger => null!;
         public string DataFolderPath => string.Empty;
         public IPluginConfiguration Configuration => null!;
