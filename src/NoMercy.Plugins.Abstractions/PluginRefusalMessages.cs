@@ -25,4 +25,25 @@ public static class PluginRefusalMessages
             PluginRefusalSeverity.Blocked
         );
     }
+
+    /// <summary>
+    /// A plugin compiled against contract v2 calling a member v3 took away.
+    /// <para>
+    /// The runtime raises this the first time the method runs, not at load, so
+    /// the plugin installs and enables and then fails on one route. Naming the
+    /// member is the whole value: the exception alone says a method is missing
+    /// and not which contract it belonged to.
+    /// </para>
+    /// </summary>
+    public static PluginRefusal RemovedContractMember(string plugin, string missingMember)
+    {
+        return new PluginRefusal(
+            PluginRefusalCodes.HostServicesRemoved,
+            plugin,
+            $"The plugin called a member contract v3 removed: {missingMember}",
+            "Contract v3 hands a plugin facades on IPluginContext instead of the host's own container and event bus, so the owner can see and revoke every route into the server.",
+            "Rebuild against NoMercy.Plugins.Abstractions 11.0 and replace the call with the facade for what it needed. Docs: /nomercy-plugins/migration/v2-to-v3",
+            PluginRefusalSeverity.Blocked
+        );
+    }
 }

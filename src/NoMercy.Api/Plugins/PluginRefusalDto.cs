@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
+using NoMercy.Plugins.Abstractions;
 
 namespace NoMercy.Api.Plugins;
 
@@ -44,4 +45,17 @@ public class PluginRefusalDto
     /// </summary>
     [JsonProperty("severity")]
     public string Severity { get; init; } = "blocked";
+
+    public static PluginRefusalDto From(PluginRefusal refusal)
+    {
+        return new()
+        {
+            Code = refusal.Code,
+            Plugin = refusal.Plugin,
+            What = refusal.What,
+            Why = refusal.Why,
+            Fix = refusal.Fix,
+            Severity = refusal.Severity.ToString().ToLowerInvariant(),
+        };
+    }
 }
