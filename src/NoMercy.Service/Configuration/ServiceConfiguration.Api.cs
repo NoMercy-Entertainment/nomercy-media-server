@@ -15,6 +15,7 @@ using Newtonsoft.Json.Converters;
 using NoMercy.Api.Constraints;
 using NoMercy.Api.Hubs.Filters;
 using NoMercy.Api.Middleware;
+using NoMercy.Api.Plugins;
 using NoMercy.NmSystem.Information;
 using NoMercy.NmSystem.NewtonSoftConverters;
 using NoMercy.Service.Configuration.Swagger;
@@ -39,6 +40,7 @@ public static partial class ServiceConfiguration
                 options.SerializerSettings.DateFormatHandling = DateFormatHandling.IsoDateFormat;
                 options.SerializerSettings.DateTimeZoneHandling = DateTimeZoneHandling.Utc;
                 options.SerializerSettings.Converters.Add(new StringEnumConverter());
+                options.SerializerSettings.ContractResolver = new PluginContractResolver();
             });
 
         ConfigurePluginMvc(services, mvc);
