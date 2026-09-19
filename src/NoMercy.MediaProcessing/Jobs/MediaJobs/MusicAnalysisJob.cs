@@ -112,6 +112,21 @@ public class MusicAnalysisJob : IShouldQueue
 
         string path = _storageDriver.CombinePath(track.HostFolder, track.Filename);
 
+        // The analyzer's own failure names only the combined path, and a path
+        // built from two broken halves reads as one odd string. Name both
+        // stored columns separately here, so the next data glitch — a host
+        // folder holding its album folder twice, say — is diagnosable from the
+        // log alone, without a query against the database.
+        if (!_storageDriver.FileExists(path))
+        {
+            _logger.LogWarning(
+                "audio analysis found no file for track {TrackId}: host folder '{HostFolder}', file name '{Filename}'",
+                [TrackId, track.HostFolder, track.Filename]
+            );
+            await Persist(mediaContext, existing, null, $"no file at '{path}'");
+            return;
+        }
+
         AudioAnalysisResult? result;
         try
         {

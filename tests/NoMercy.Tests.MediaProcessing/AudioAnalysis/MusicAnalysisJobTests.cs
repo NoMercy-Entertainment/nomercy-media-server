@@ -11,6 +11,7 @@
 
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NoMercy.Database;
@@ -93,14 +94,11 @@ public class MusicAnalysisJobTests : IDisposable
 
     private MusicAnalysisJob CreateJobFrom(
         Mock<IAudioAnalyzer> analyzer,
-        Mock<IEventBus>? eventBus = null
+        Mock<IEventBus>? eventBus = null,
+        bool fileExists = true,
+        ILoggerFactory? loggerFactory = null
     )
     {
-        Mock<IStorageDriver> storageDriver = new();
-        storageDriver
-            .Setup(s => s.CombinePath(It.IsAny<string>(), It.IsAny<string[]>()))
-            .Returns<string, string[]>((folder, segments) => folder + string.Concat(segments));
-
         Mock<IDbContextFactory<MediaContext>> factory = new();
         factory
             .Setup(f => f.CreateDbContextAsync(It.IsAny<CancellationToken>()))
@@ -110,14 +108,26 @@ public class MusicAnalysisJobTests : IDisposable
 
         return new MusicAnalysisJob(
             analyzer.Object,
-            storageDriver.Object,
+            StorageDriver(fileExists).Object,
             factory.Object,
-            NullLoggerFactory.Instance,
+            loggerFactory ?? NullLoggerFactory.Instance,
             bus.Object
         )
         {
             TrackId = _trackId,
         };
+    }
+
+    // The job only analyses a file it can see, so every case that is not about
+    // a missing file says the file is there.
+    private static Mock<IStorageDriver> StorageDriver(bool fileExists = true)
+    {
+        Mock<IStorageDriver> storageDriver = new();
+        storageDriver
+            .Setup(s => s.CombinePath(It.IsAny<string>(), It.IsAny<string[]>()))
+            .Returns<string, string[]>((folder, segments) => folder + string.Concat(segments));
+        storageDriver.Setup(s => s.FileExists(It.IsAny<string>())).Returns(fileExists);
+        return storageDriver;
     }
 
     private static AudioAnalysisResult SampleResult() =>
@@ -216,6 +226,48 @@ public class MusicAnalysisJobTests : IDisposable
         Assert.Contains("file vanished", row.FailureReason);
     }
 
+    /// <summary>
+    /// A track whose stored columns combine into a path that is not there — the
+    /// doubled host folder an older import wrote, a mount that is gone — must
+    /// not reach the analyzer at all, and the warning has to name both columns
+    /// separately. The analyzer's own error names only the combined path, which
+    /// for a doubled host folder reads as one odd string and tells nobody which
+    /// column is wrong.
+    /// </summary>
+    [Fact]
+    public async Task Handle_NamesHostFolderAndFilenameSeparatelyWhenTheFileIsNotThere()
+    {
+        RecordingLoggerFactory loggers = new();
+        Mock<IAudioAnalyzer> analyzer = new();
+        analyzer.SetupGet(a => a.Version).Returns(AnalyzerVersion);
+
+        await CreateJobFrom(analyzer, fileExists: false, loggerFactory: loggers).Handle();
+
+        analyzer.Verify(
+            a => a.AnalyzeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Never
+        );
+
+        string warning = Assert.Single(loggers.Warnings);
+        Assert.Contains("/music/album", warning);
+        Assert.Contains("/track.flac", warning);
+    }
+
+    [Fact]
+    public async Task Handle_RecordsAFailureWhenTheFileIsNotThere()
+    {
+        Mock<IAudioAnalyzer> analyzer = new();
+        analyzer.SetupGet(a => a.Version).Returns(AnalyzerVersion);
+
+        await CreateJobFrom(analyzer, fileExists: false).Handle();
+
+        TrackAudioAnalysis? row = ReadRow();
+
+        Assert.NotNull(row);
+        Assert.Equal(AudioAnalysisState.Failed, row.State);
+        Assert.False(string.IsNullOrWhiteSpace(row.FailureReason));
+    }
+
     [Fact]
     public async Task Handle_DoesNotAnalyzeATrackThisVersionAlreadyDid()
     {
@@ -241,11 +293,6 @@ public class MusicAnalysisJobTests : IDisposable
             .Setup(a => a.AnalyzeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(SampleResult() with { Bpm = 174.0 });
 
-        Mock<IStorageDriver> storageDriver = new();
-        storageDriver
-            .Setup(s => s.CombinePath(It.IsAny<string>(), It.IsAny<string[]>()))
-            .Returns<string, string[]>((folder, segments) => folder + string.Concat(segments));
-
         Mock<IDbContextFactory<MediaContext>> factory = new();
         factory
             .Setup(f => f.CreateDbContextAsync(It.IsAny<CancellationToken>()))
@@ -253,7 +300,7 @@ public class MusicAnalysisJobTests : IDisposable
 
         MusicAnalysisJob job = new(
             newer.Object,
-            storageDriver.Object,
+            StorageDriver().Object,
             factory.Object,
             NullLoggerFactory.Instance,
             new Mock<IEventBus>().Object
@@ -367,5 +414,40 @@ public class MusicAnalysisJobTests : IDisposable
                 ),
             Times.Once
         );
+    }
+
+    /// <summary>
+    /// Keeps the rendered text of every warning, so a test can assert what a
+    /// log line actually says rather than only that one was written.
+    /// </summary>
+    private sealed class RecordingLoggerFactory : ILoggerFactory
+    {
+        public List<string> Warnings { get; } = [];
+
+        public ILogger CreateLogger(string categoryName) => new RecordingLogger(Warnings);
+
+        public void AddProvider(ILoggerProvider provider) { }
+
+        public void Dispose() { }
+
+        private sealed class RecordingLogger(List<string> warnings) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state)
+                where TState : notnull => null;
+
+            public bool IsEnabled(LogLevel logLevel) => true;
+
+            public void Log<TState>(
+                LogLevel logLevel,
+                EventId eventId,
+                TState state,
+                Exception? exception,
+                Func<TState, Exception?, string> formatter
+            )
+            {
+                if (logLevel == LogLevel.Warning)
+                    warnings.Add(formatter(state, exception));
+            }
+        }
     }
 }

@@ -118,6 +118,27 @@ public partial class RecordingManager(
                 string path =
                     StoragePathHelpers.GetParent(mediaFile.Path.Replace('\\', '/')) ?? string.Empty;
 
+                string trackHostFolder = path.PathName();
+
+                // Two rooted paths in one host folder is the shape an older
+                // import wrote — the album folder twice, once per separator
+                // style. Combined with Filename it addresses nothing, so the
+                // row fails loudly rather than being guessed at.
+                if (
+                    HostFolderPath.TrySplitAtSecondRoot(
+                        trackHostFolder,
+                        out string head,
+                        out string tail
+                    )
+                )
+                {
+                    logger.LogError(
+                        "Skipping recording {Title}: its host folder holds two rooted paths, '{First}' followed by '{Second}'",
+                        [musicBrainzTrack.Title, head, tail]
+                    );
+                    continue;
+                }
+
                 Track insert = new()
                 {
                     Id = musicBrainzTrack.Id,
@@ -150,7 +171,7 @@ public partial class RecordingManager(
 
                     FolderId = libraryFolder.Id,
                     Folder = relativeFolder,
-                    HostFolder = path.PathName(),
+                    HostFolder = trackHostFolder,
 
                     Cover = releaseCoverPalette?.Url is not null
                         ? $"/{releaseCoverPalette.Url.FileName()}"
@@ -560,6 +581,20 @@ public partial class RecordingManager(
         string path =
             StoragePathHelpers.GetParent(mediaFile.Path.Replace('\\', '/')) ?? string.Empty;
 
+        string trackHostFolder = path.PathName();
+
+        // See the same guard on the release path above: a host folder holding
+        // two rooted paths addresses no file at all, so the row fails loudly
+        // instead of being stored with a value nothing can resolve.
+        if (HostFolderPath.TrySplitAtSecondRoot(trackHostFolder, out string head, out string tail))
+        {
+            logger.LogError(
+                "Skipping recording {Title}: its host folder holds two rooted paths, '{First}' followed by '{Second}'",
+                [trackAppends.Title, head, tail]
+            );
+            return;
+        }
+
         Track insert = new()
         {
             Id = trackAppends.Id,
@@ -591,7 +626,7 @@ public partial class RecordingManager(
 
             FolderId = libraryFolder.Id,
             Folder = relativeFolder,
-            HostFolder = path.PathName(),
+            HostFolder = trackHostFolder,
 
             Cover = releaseCoverPalette?.Url is not null
                 ? $"/{releaseCoverPalette.Url.FileName()}"
