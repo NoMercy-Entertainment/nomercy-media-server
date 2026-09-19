@@ -22,4 +22,22 @@ public sealed record PluginCaller(
     PluginAccess Access,
     string Locale,
     string Surface
-);
+)
+{
+    public bool Admits(PluginRouteAccess access)
+    {
+        return access == PluginRouteAccess.Shared || Role is PluginRole.Owner or PluginRole.Manager;
+    }
+
+    public static PluginRefusal RefuseRoute(PluginCaller caller, string route, string plugin)
+    {
+        return new PluginRefusal(
+            PluginRefusalCodes.RouteAccessDenied,
+            plugin,
+            $"{caller.DisplayName} opened {route}, which the plugin marks owner only.",
+            "A route marked owner is for the person who runs the server, not for members or guests.",
+            "Mark the route access shared in the route table if members should see it. Docs: /nomercy-plugins/tour/callers-and-access",
+            PluginRefusalSeverity.Blocked
+        );
+    }
+}

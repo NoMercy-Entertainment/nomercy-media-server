@@ -23,12 +23,15 @@ public class PluginViewRequest
     public Dictionary<string, string> Query { get; init; } = new();
 
     /// <summary>
-    /// Who is asking. A plugin that shows per-user state needs it, and reading
-    /// it from the request is the only way it can get it — a view is served on
-    /// the caller's behalf, not the server's.
+    /// Who is asking, with the role and access the host resolved. A view is
+    /// served on the caller's behalf, not the server's.
     /// </summary>
+    [JsonPropertyName("caller")]
+    public required PluginCaller Caller { get; init; }
+
+    /// <summary>The caller's id, so a plugin that only wants that keeps reading it.</summary>
     [JsonPropertyName("userId")]
-    public string? UserId { get; init; }
+    public UserId UserId => Caller.Id;
 
     /// <summary>
     /// Which kind of screen is asking, from <see cref="PluginSurface" />.

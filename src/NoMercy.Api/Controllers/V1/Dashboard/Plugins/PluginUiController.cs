@@ -61,13 +61,16 @@ public class PluginUiController(IPluginManager pluginManager) : BaseController
 
         return plugin
             .Routes.On(surface)
-            .Select(object (route) => new
-            {
-                route.Name,
-                route.Label,
-                Layout = route.LayoutFor(surface),
-                Path = prefix + (route.Path == "/" ? string.Empty : route.Path)
-            })
+            .Select(
+                object (route) =>
+                    new
+                    {
+                        route.Name,
+                        route.Label,
+                        Layout = route.LayoutFor(surface),
+                        Path = prefix + (route.Path == "/" ? string.Empty : route.Path),
+                    }
+            )
             .ToList();
     }
 
@@ -80,18 +83,23 @@ public class PluginUiController(IPluginManager pluginManager) : BaseController
             .GetInstalledPlugins()
             .Where(HasUi)
             .SelectMany(info =>
-                (pluginManager.GetPluginInstance(info.Id) as IUiPlugin)?.NavEntries.Select(entry => new
-                {
-                    PluginId = info.Id,
-                    PluginName = info.Name,
-                    entry.Label,
-                    entry.Icon,
-                    Kind = PluginKind.IsKnown(entry.Section) ? entry.Section : PluginKind.Dashboard,
-                    entry.Route,
-                    // Offered here at all, which is a different question from
-                    // what it looks like once opened.
-                    AppearsHere = entry.AppearsOn(asking)
-                }) ?? []
+                (pluginManager.GetPluginInstance(info.Id) as IUiPlugin)?.NavEntries.Select(
+                    entry => new
+                    {
+                        PluginId = info.Id,
+                        PluginName = info.Name,
+                        entry.Label,
+                        entry.Icon,
+                        Kind = PluginKind.IsKnown(entry.Section)
+                            ? entry.Section
+                            : PluginKind.Dashboard,
+                        entry.Route,
+                        // Offered here at all, which is a different question from
+                        // what it looks like once opened.
+                        AppearsHere = entry.AppearsOn(asking),
+                    }
+                )
+                ?? []
             )
             // A kind the server does not place is dropped rather than listed
             // with a route nothing answers, which would read as a broken plugin.
@@ -119,10 +127,10 @@ public class PluginUiController(IPluginManager pluginManager) : BaseController
                         // Every page the plugin declares, so a client registers a
                         // named route for each when a server is chosen rather than
                         // discovering them one navigation at a time.
-                        Pages = Pages(entry.PluginId, entry.Kind, asking)
+                        Pages = Pages(entry.PluginId, entry.Kind, asking),
                     })
                     .OrderBy(entry => entry.PluginName)
-                    .ToList()
+                    .ToList(),
             })
             .ToList();
 
@@ -168,7 +176,11 @@ public class PluginUiController(IPluginManager pluginManager) : BaseController
         // The manager owns the fallback because it is the thing holding the
         // manifest: a viewer whose language the plugin does not ship reads it in
         // the language it was written in, never in empty labels.
-        Dictionary<string, string>? strings = await pluginManager.ReadTranslationsAsync(id, locale, ct);
+        Dictionary<string, string>? strings = await pluginManager.ReadTranslationsAsync(
+            id,
+            locale,
+            ct
+        );
 
         return Ok(new DataResponseDto<Dictionary<string, string>> { Data = strings ?? [] });
     }
@@ -178,7 +190,8 @@ public class PluginUiController(IPluginManager pluginManager) : BaseController
         Ulid id,
         [FromQuery] string? route,
         [FromQuery] string? surface,
-        CancellationToken ct)
+        CancellationToken ct
+    )
     {
         PluginInfo? info = pluginManager.GetPluginInfo(id);
 
@@ -194,7 +207,14 @@ public class PluginUiController(IPluginManager pluginManager) : BaseController
             Query = Request
                 .Query.Where(entry => entry.Key != "route" && entry.Key != "surface")
                 .ToDictionary(entry => entry.Key, entry => entry.Value.ToString()),
-            UserId = User.UserId().ToString(),
+            Caller = new PluginCaller(
+                new UserId(new Ulid(User.UserId())),
+                User.UserName(),
+                User.Role() == "owner" ? PluginRole.Owner : PluginRole.Member,
+                PluginAccess.Owned,
+                Request.Headers.AcceptLanguage.ToString() is { Length: > 0 } locale ? locale : "en",
+                PluginSurface.IsKnown(surface) ? surface! : PluginSurface.Web
+            ),
             // An unknown surface falls back rather than being passed through. A
             // plugin branching on it would hit its own default and serve the
             // desktop shape to a television, which looks like a plugin bug.

@@ -27,6 +27,13 @@ public class PluginActionIntent
     public Dictionary<string, object?> Payload { get; init; } = new();
 
     /// <summary>
+    /// Who may run this action, so a button on a card can be owner only without
+    /// the whole page being.
+    /// </summary>
+    [JsonPropertyName("access")]
+    public PluginRouteAccess Access { get; init; } = PluginRouteAccess.Shared;
+
+    /// <summary>
     /// Shown before the action runs. Set for anything that destroys data, so
     /// the confirmation is part of the contract instead of something every
     /// plugin reimplements and one of them forgets.

@@ -20,11 +20,14 @@ public class PluginTranslationValidatorTests
     {
         List<PluginTranslationProblem> problems = PluginTranslationValidator.Validate(
             Declared("en", "nl"),
-            Files(new()
-            {
-                ["en"] = """{"title":"Library","empty":"Nothing here"}""",
-                ["nl"] = """{"title":"Bibliotheek","empty":"Niets hier"}"""
-            }));
+            Files(
+                new()
+                {
+                    ["en"] = """{"title":"Library","empty":"Nothing here"}""",
+                    ["nl"] = """{"title":"Bibliotheek","empty":"Niets hier"}""",
+                }
+            )
+        );
 
         Assert.Empty(problems);
     }
@@ -36,13 +39,19 @@ public class PluginTranslationValidatorTests
         // label sits in English for every Dutch viewer.
         List<PluginTranslationProblem> problems = PluginTranslationValidator.Validate(
             Declared("en", "nl"),
-            Files(new()
-            {
-                ["en"] = """{"title":"Library","empty":"Nothing here"}""",
-                ["nl"] = """{"title":"Bibliotheek"}"""
-            }));
+            Files(
+                new()
+                {
+                    ["en"] = """{"title":"Library","empty":"Nothing here"}""",
+                    ["nl"] = """{"title":"Bibliotheek"}""",
+                }
+            )
+        );
 
-        Assert.Contains(problems, problem => problem.Locale == "nl" && problem.Detail.Contains("empty"));
+        Assert.Contains(
+            problems,
+            problem => problem.Locale == "nl" && problem.Detail.Contains("empty")
+        );
     }
 
     [Fact]
@@ -52,11 +61,8 @@ public class PluginTranslationValidatorTests
         // reads as a broken page rather than as an untranslated one.
         List<PluginTranslationProblem> problems = PluginTranslationValidator.Validate(
             Declared("en", "nl"),
-            Files(new()
-            {
-                ["en"] = """{"title":"Library"}""",
-                ["nl"] = """{"title":"   "}"""
-            }));
+            Files(new() { ["en"] = """{"title":"Library"}""", ["nl"] = """{"title":"   "}""" })
+        );
 
         Assert.Contains(problems, problem => problem.Detail.Contains("empty"));
     }
@@ -67,11 +73,14 @@ public class PluginTranslationValidatorTests
         // Left behind by a rename. It translates fine and is never shown.
         List<PluginTranslationProblem> problems = PluginTranslationValidator.Validate(
             Declared("en", "nl"),
-            Files(new()
-            {
-                ["en"] = """{"title":"Library"}""",
-                ["nl"] = """{"title":"Bibliotheek","heading":"Oud"}"""
-            }));
+            Files(
+                new()
+                {
+                    ["en"] = """{"title":"Library"}""",
+                    ["nl"] = """{"title":"Bibliotheek","heading":"Oud"}""",
+                }
+            )
+        );
 
         Assert.Contains(problems, problem => problem.Detail.Contains("heading"));
     }
@@ -81,7 +90,8 @@ public class PluginTranslationValidatorTests
     {
         List<PluginTranslationProblem> problems = PluginTranslationValidator.Validate(
             Declared("en", "de"),
-            Files(new() { ["en"] = """{"title":"Library"}""" }));
+            Files(new() { ["en"] = """{"title":"Library"}""" })
+        );
 
         Assert.Contains(problems, problem => problem.Locale == "de");
     }
@@ -93,7 +103,8 @@ public class PluginTranslationValidatorTests
         // every other locale as complete would be worse than reporting nothing.
         List<PluginTranslationProblem> problems = PluginTranslationValidator.Validate(
             Declared("en", "nl"),
-            Files(new() { ["nl"] = """{"title":"Bibliotheek"}""" }));
+            Files(new() { ["nl"] = """{"title":"Bibliotheek"}""" })
+        );
 
         Assert.Single(problems);
         Assert.Equal("en", problems[0].Locale);
@@ -113,7 +124,20 @@ public class PluginSurfaceTests
     [Fact]
     public void ServesTheFullestViewWhenTheCallerSaysNothing()
     {
-        Assert.Equal(PluginSurface.Web, new PluginViewRequest { Route = "/" }.Surface);
+        PluginViewRequest request = new()
+        {
+            Route = "/",
+            Caller = new PluginCaller(
+                UserId.Empty,
+                "Stoney",
+                PluginRole.Owner,
+                PluginAccess.Owned,
+                "en",
+                PluginSurface.Web
+            ),
+        };
+
+        Assert.Equal(PluginSurface.Web, request.Surface);
     }
 
     [Fact]
