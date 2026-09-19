@@ -23,7 +23,8 @@ public class PluginAbiTests
     [InlineData(["10.2", true])]
     [InlineData(["10.9", true])]
     [InlineData(["11.0", true])]
-    [InlineData(["11.1", false])]
+    [InlineData(["11.1", true])]
+    [InlineData(["11.2", false])]
     [InlineData(["9.5", false])]
     [InlineData(["12.0", false])]
     [InlineData(["not-a-version", false])]
@@ -33,8 +34,8 @@ public class PluginAbiTests
     }
 
     [Fact]
-    public void Current_IsElevenZero()
+    public void Current_IsElevenOne()
     {
-        Assert.Equal(new Version(11, 0), PluginAbi.Current);
+        Assert.Equal(new Version(11, 1), PluginAbi.Current);
     }
 }

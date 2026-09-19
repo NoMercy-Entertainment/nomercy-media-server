@@ -13,7 +13,11 @@ namespace NoMercy.Plugins.Abstractions;
 
 public static class PluginAbi
 {
-    public static Version Current { get; } = new(11, 0);
+    // 11.1 added IPluginMusicQuery.GetFailedDjAnalysisAsync and PluginTrackDjFailure. Additive
+    // for every plugin already loading; a plugin that targets 11.1 needs a host that has the
+    // member, which is what the minor ceiling in IsCompatible refuses on an 11.0 server -
+    // instead of a MissingMethodException on the plugin's first call.
+    public static Version Current { get; } = new(11, 1);
 
     public static bool IsCompatible(string? targetAbi)
     {
