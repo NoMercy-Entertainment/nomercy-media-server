@@ -23,3 +23,5 @@ if (missing > 0) {
   console.error(`check-docs: ${missing} capability page(s) missing. Run npm run build:plugins-reference in docs/nomercy-docs.`);
   process.exit(1);
 }
+
+console.log(`check-docs: ${contract.capabilities.length} capabilities have a page.`);
