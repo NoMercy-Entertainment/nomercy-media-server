@@ -362,17 +362,18 @@ public class PluginController(
     }
 
     /// <summary>
-    /// Removes a plugin and everything the server held for it.
+    /// Removes a plugin, and keeps or purges what the server held for it.
     /// <para>
     /// <c>keepData</c> keeps the plugin's data folder, consent, grants and
-    /// secrets, for an owner who means to put the same plugin back. Left out it
-    /// is false: removing a plugin means it is gone, and one that came back
-    /// still holding its old permissions was never approved for the copy now
-    /// running.
+    /// secrets. Left out it is true, because a purge cannot be undone and every
+    /// client written before the flag existed sends nothing: defaulting the
+    /// other way made those clients destroy the owner's plugin data on an
+    /// ordinary uninstall, without asking and without a way back. An owner who
+    /// wants the data gone says so.
     /// </para>
     /// </summary>
     [HttpDelete("{id:ulid}")]
-    public async Task<IActionResult> Uninstall(Ulid id, [FromQuery] bool keepData = false)
+    public async Task<IActionResult> Uninstall(Ulid id, [FromQuery] bool keepData = true)
     {
         try
         {

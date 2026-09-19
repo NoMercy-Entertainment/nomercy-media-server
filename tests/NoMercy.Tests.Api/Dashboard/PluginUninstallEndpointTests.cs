@@ -22,8 +22,9 @@ using Xunit;
 namespace NoMercy.Tests.Api.Dashboard;
 
 /// <summary>
-/// Removing a plugin has to mean it is gone. Keeping its data is the owner
-/// asking for it, so the route has to carry the answer rather than assume one.
+/// Purging a plugin's data, consent, grants and secrets cannot be irreversible
+/// and silent. A client that sends no answer gets the answer the route has
+/// always given: the data stays. Purging is the caller asking for it.
 /// </summary>
 public class PluginUninstallEndpointTests
 {
@@ -80,11 +81,23 @@ public class PluginUninstallEndpointTests
         };
 
     [Fact]
-    public async Task Uninstalling_purges_what_the_server_held_unless_asked_otherwise()
+    public async Task Uninstalling_without_an_answer_keeps_the_data_folder()
     {
         RecordingPluginManager manager = new();
 
         await BuildController(manager).Uninstall(PluginId);
+
+        manager
+            .KeepDataAskedFor.Should()
+            .BeTrue("a client that predates the flag never asked for a purge");
+    }
+
+    [Fact]
+    public async Task An_owner_who_asks_for_a_purge_gets_one()
+    {
+        RecordingPluginManager manager = new();
+
+        await BuildController(manager).Uninstall(PluginId, keepData: false);
 
         manager.KeepDataAskedFor.Should().BeFalse();
     }
