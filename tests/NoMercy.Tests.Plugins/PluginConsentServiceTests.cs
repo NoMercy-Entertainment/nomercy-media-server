@@ -74,7 +74,7 @@ public class PluginConsentServiceTests
         PluginConsentService service = new(new InMemoryConsentStore());
         Ulid id = Ulid.NewUlid();
 
-        Assert.False(service.ConsentCoversCapabilities(id, Caps("auth")));
+        Assert.False(service.ConsentCoversCapabilities(id, Caps("auth"), new Version(1, 0)));
     }
 
     [Fact]
@@ -86,7 +86,7 @@ public class PluginConsentServiceTests
 
         service.GrantConsent(id, caps, new Version(1, 0));
 
-        Assert.True(service.ConsentCoversCapabilities(id, caps));
+        Assert.True(service.ConsentCoversCapabilities(id, caps, new Version(1, 0)));
     }
 
     [Fact]
@@ -97,6 +97,8 @@ public class PluginConsentServiceTests
 
         service.GrantConsent(id, Caps("auth"), new Version(1, 0));
 
-        Assert.False(service.ConsentCoversCapabilities(id, Caps("auth", "encoder")));
+        Assert.False(
+            service.ConsentCoversCapabilities(id, Caps("auth", "encoder"), new Version(1, 0))
+        );
     }
 }

@@ -22,6 +22,13 @@ public class PluginConsentGrant
 {
     public PluginCapabilities? Capabilities { get; init; }
     public string? ManifestVersion { get; init; }
+
+    /// <summary>
+    /// An id-only record from before consent wrote down what it was granted
+    /// for. It carries no capability set, so it can never be compared against a
+    /// manifest; it has to be upgraded from the installed manifest first.
+    /// </summary>
+    public bool IsLegacy { get; init; }
 }
 
 public class PluginConsentRecord
@@ -52,7 +59,8 @@ public class ConfigPluginConsentStore(IPluginConfiguration configuration) : IPlu
         if (record is null)
             return false;
 
-        return record.GrantedPluginIds.Contains(pluginId) || record.ConsentGrants.ContainsKey(Key(pluginId));
+        return record.GrantedPluginIds.Contains(pluginId)
+            || record.ConsentGrants.ContainsKey(Key(pluginId));
     }
 
     public PluginConsentGrant? Get(Ulid pluginId)
@@ -64,9 +72,13 @@ public class ConfigPluginConsentStore(IPluginConfiguration configuration) : IPlu
         if (record.ConsentGrants.TryGetValue(Key(pluginId), out PluginConsentGrant? grant))
             return grant;
 
-        // A legacy entry was consented before capabilities were recorded, so
-        // there is nothing to compare a widened manifest against.
-        return record.GrantedPluginIds.Contains(pluginId) ? new PluginConsentGrant() : null;
+        // A legacy entry was consented before capabilities were recorded. It
+        // is flagged rather than returned empty, because an empty capability
+        // set compares as "the owner approved nothing" and would disable every
+        // plugin they had already said yes to.
+        return record.GrantedPluginIds.Contains(pluginId)
+            ? new PluginConsentGrant { IsLegacy = true }
+            : null;
     }
 
     public void Add(Ulid pluginId, PluginCapabilities? capabilities, Version manifestVersion)

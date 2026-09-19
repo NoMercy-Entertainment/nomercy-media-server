@@ -36,11 +36,24 @@ public class PluginConsentService(IPluginConsentStore store) : IPluginConsentSer
 
     public bool HasConsent(Ulid pluginId) => store.Contains(pluginId);
 
-    public bool ConsentCoversCapabilities(Ulid pluginId, PluginCapabilities? capabilities)
+    public bool ConsentCoversCapabilities(
+        Ulid pluginId,
+        PluginCapabilities? capabilities,
+        Version installedVersion
+    )
     {
         PluginConsentGrant? grant = store.Get(pluginId);
         if (grant is null)
             return false;
+
+        // Upgraded in place, and the legacy id goes with it, so the next read
+        // has a real record to compare a later manifest against. Without this
+        // step a genuine widening would keep migrating instead of asking.
+        if (grant.IsLegacy)
+        {
+            store.Add(pluginId, capabilities, installedVersion);
+            return true;
+        }
 
         return !PluginCapabilityGuard.HasWidened(grant.Capabilities, capabilities);
     }

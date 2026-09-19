@@ -37,7 +37,11 @@ public static class PluginAutoEnable
             return false;
 
         return consentService.IsBaseline(manifest.Capabilities)
-            || consentService.ConsentCoversCapabilities(manifest.Id, manifest.Capabilities);
+            || consentService.ConsentCoversCapabilities(
+                manifest.Id,
+                manifest.Capabilities,
+                InstalledVersion(manifest)
+            );
     }
 
     /// <summary>
@@ -50,6 +54,18 @@ public static class PluginAutoEnable
             return false;
 
         return consentService.HasConsent(manifest.Id)
-            && !consentService.ConsentCoversCapabilities(manifest.Id, manifest.Capabilities);
+            && !consentService.ConsentCoversCapabilities(
+                manifest.Id,
+                manifest.Capabilities,
+                InstalledVersion(manifest)
+            );
     }
+
+    /// <summary>
+    /// The version a legacy consent record is upgraded at. A manifest version
+    /// the platform cannot read is recorded as 0.0 rather than refused: what
+    /// was consented is the capability set, and the version is the label on it.
+    /// </summary>
+    private static Version InstalledVersion(PluginManifest manifest) =>
+        Version.TryParse(manifest.Version, out Version? parsed) ? parsed : new Version(0, 0);
 }
