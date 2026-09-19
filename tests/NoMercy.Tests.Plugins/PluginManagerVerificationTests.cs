@@ -133,7 +133,7 @@ public class PluginManagerVerificationTests : IDisposable
             ""description"": ""A test"",
             ""version"": ""1.0.0"",
             ""assembly"": ""AbiMismatchPlugin.dll"",
-            ""targetAbi"": ""11.0""
+            ""targetAbi"": ""12.0""
         }}";
         string manifestPath = Path.Combine(pluginDir, "plugin.json");
         await File.WriteAllTextAsync(manifestPath, manifestJson);

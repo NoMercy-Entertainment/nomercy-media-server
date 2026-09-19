@@ -48,7 +48,7 @@ public class PluginVerifierTests
     {
         string dll = WriteTempDll([1, 2, 3]);
         PluginVerifier verifier = new();
-        PluginVerificationResult result = verifier.Verify(Manifest("11.0"), dll, null);
+        PluginVerificationResult result = verifier.Verify(Manifest("12.0"), dll, null);
         Assert.False(result.Verified);
         Assert.Contains(result.Failures, f => f.Contains("ABI"));
     }
