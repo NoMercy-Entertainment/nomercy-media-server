@@ -50,14 +50,7 @@ public class PluginController(
         IReadOnlyList<PluginInfo> plugins = pluginManager.GetInstalledPlugins();
 
         return Ok(
-            new DataResponseDto<IEnumerable<PluginInfoDto>>
-            {
-                Data = plugins.Select(p => new PluginInfoDto(
-                    p,
-                    restartAdvisor.Evaluate(p, PluginOperation.Enable),
-                    AwaitingConsent(p)
-                )),
-            }
+            new DataResponseDto<IEnumerable<PluginInfoDto>> { Data = plugins.Select(Describe) }
         );
     }
 
@@ -68,16 +61,7 @@ public class PluginController(
         if (plugin is null)
             return NotFoundResponse("Plugin not found");
 
-        return Ok(
-            new DataResponseDto<PluginInfoDto>
-            {
-                Data = new(
-                    plugin,
-                    restartAdvisor.Evaluate(plugin, PluginOperation.Enable),
-                    AwaitingConsent(plugin)
-                ),
-            }
-        );
+        return Ok(new DataResponseDto<PluginInfoDto> { Data = Describe(plugin) });
     }
 
     /// <summary>
@@ -182,11 +166,40 @@ public class PluginController(
     }
 
     /// <summary>
-    /// An elevated plugin with no recorded consent is waiting on the owner, not
-    /// failing. The dashboard needs to tell those two apart.
+    /// An elevated plugin whose recorded consent does not cover what its
+    /// manifest now asks for is waiting on the owner, not failing. The
+    /// dashboard needs to tell those two apart.
+    /// <para>
+    /// Not <c>HasConsent</c>: that is true for a record covering a smaller
+    /// request, so a plugin that widened showed as plain Disabled with nothing
+    /// on screen offering the owner the decision it was actually waiting for.
+    /// </para>
     /// </summary>
+    /// <summary>
+    /// One plugin as the dashboard reads it. Ordered: the consent check is what
+    /// upgrades a legacy record, so the consented set is read after it and
+    /// reports what the owner approved rather than the empty record it was
+    /// held in.
+    /// </summary>
+    private PluginInfoDto Describe(PluginInfo plugin)
+    {
+        bool awaiting = AwaitingConsent(plugin);
+
+        return new(
+            plugin,
+            restartAdvisor.Evaluate(plugin, PluginOperation.Enable),
+            awaiting,
+            consentService.ConsentedCapabilities(plugin.Id)
+        );
+    }
+
     private bool AwaitingConsent(PluginInfo plugin) =>
-        !consentService.IsBaseline(plugin.Capabilities) && !consentService.HasConsent(plugin.Id);
+        !consentService.IsBaseline(plugin.Capabilities)
+        && !consentService.ConsentCoversCapabilities(
+            plugin.Id,
+            plugin.Capabilities,
+            plugin.Version
+        );
 
     [HttpPost("{id:ulid}/enable")]
     public async Task<IActionResult> Enable(Ulid id)

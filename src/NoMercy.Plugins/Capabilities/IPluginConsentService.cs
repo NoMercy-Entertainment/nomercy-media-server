@@ -34,6 +34,14 @@ public interface IPluginConsentService
         PluginCapabilities? capabilities,
         Version installedVersion
     );
+
+    /// <summary>
+    /// What the owner approved, as the consent record holds it. Null when
+    /// there is no consent yet, so a client can tell "never approved" from
+    /// "approved a smaller set" and name the difference to the owner.
+    /// </summary>
+    PluginCapabilities? ConsentedCapabilities(Ulid pluginId);
+
     void GrantConsent(Ulid pluginId, PluginCapabilities? capabilities, Version manifestVersion);
     void RevokeConsent(Ulid pluginId);
 }

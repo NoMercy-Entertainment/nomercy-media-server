@@ -39,6 +39,7 @@ public class PluginLifecycleManagerTests : IDisposable
     private readonly InMemoryEventBus _eventBus;
     private readonly PluginRegistry _registry;
     private readonly PluginLifecycleManager _lifecycle;
+    private readonly InMemoryConsentStore _consentStore = new();
 
     public PluginLifecycleManagerTests()
     {
@@ -71,7 +72,8 @@ public class PluginLifecycleManagerTests : IDisposable
             _registry,
             loader,
             TestPluginPlatform.ContextFactory(_eventBus, TestStorageHelper.CreateStorage(_tempDir)),
-            DataPurge(_tempDir)
+            DataPurge(_tempDir),
+            new PluginConsentService(_consentStore)
         );
     }
 
@@ -119,7 +121,12 @@ public class PluginLifecycleManagerTests : IDisposable
         );
     }
 
-    private static PluginInfo Info(Ulid id, PluginStatus status, string? assemblyPath = null) =>
+    private static PluginInfo Info(
+        Ulid id,
+        PluginStatus status,
+        string? assemblyPath = null,
+        PluginCapabilities? capabilities = null
+    ) =>
         new()
         {
             Id = id,
@@ -128,6 +135,7 @@ public class PluginLifecycleManagerTests : IDisposable
             Version = new(1, 0, 0),
             Status = status,
             AssemblyPath = assemblyPath,
+            Capabilities = capabilities,
         };
 
     // ── EnablePluginAsync ────────────────────────────────────────────────────
@@ -175,6 +183,39 @@ public class PluginLifecycleManagerTests : IDisposable
         _registry.TryGetValue(id, out LoadedPlugin? afterward).Should().BeTrue();
         afterward!.Info.Status.Should().Be(PluginStatus.Active);
         loaded.Should().ContainSingle(e => e.PluginId == id.ToString());
+    }
+
+    [Fact]
+    public async Task EnablePluginAsync_ElevatedPlugin_RecordsTheConsentItActedOn()
+    {
+        // Enabling from the dashboard IS the owner's answer. Recorded nowhere,
+        // it was forgotten at shutdown and the next start read the plugin as
+        // never consented and disabled it again.
+        Ulid id = Ulid.NewUlid();
+        PluginCapabilities capabilities = new() { Rest = true };
+        _registry[id] = new(
+            Info(id, PluginStatus.Disabled, capabilities: capabilities),
+            new FakePlugin(),
+            null
+        );
+
+        await _lifecycle.EnablePluginAsync(id);
+
+        PluginConsentGrant? grant = _consentStore.Get(id);
+        grant.Should().NotBeNull();
+        grant!.Capabilities!.Rest.Should().BeTrue();
+        grant.ManifestVersion.Should().Be("1.0.0");
+    }
+
+    [Fact]
+    public async Task EnablePluginAsync_BaselinePlugin_RecordsNothing()
+    {
+        Ulid id = Ulid.NewUlid();
+        _registry[id] = new(Info(id, PluginStatus.Disabled), new FakePlugin(), null);
+
+        await _lifecycle.EnablePluginAsync(id);
+
+        _consentStore.Contains(id).Should().BeFalse("baseline capabilities need no consent");
     }
 
     [Fact]
@@ -413,6 +454,7 @@ public class PluginLifecycleManagerTests : IDisposable
             ),
             TestPluginPlatform.ContextFactory(_eventBus, TestStorageHelper.CreateStorage(_tempDir)),
             DataPurge(_tempDir),
+            new PluginConsentService(new InMemoryConsentStore()),
             releaseScheduledWork: releasedId =>
                 wasStillRegisteredWhenReleased = _registry.TryGetValue(releasedId, out _)
         );
@@ -534,6 +576,7 @@ public class PluginLifecycleManagerTests : IDisposable
             ),
             TestPluginPlatform.ContextFactory(_eventBus, TestStorageHelper.CreateStorage(_tempDir)),
             DataPurge(_tempDir),
+            new PluginConsentService(new InMemoryConsentStore()),
             releaseScheduledWork: releasedId =>
                 wasStillRegisteredWhenReleased = _registry.TryGetValue(releasedId, out _)
         );

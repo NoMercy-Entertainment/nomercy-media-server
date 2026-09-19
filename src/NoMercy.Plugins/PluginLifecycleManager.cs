@@ -12,6 +12,7 @@ using Microsoft.Extensions.Logging;
 using NoMercy.Events;
 using NoMercy.Events.Plugins;
 using NoMercy.Plugins.Abstractions;
+using NoMercy.Plugins.Capabilities;
 using NoMercy.Storage;
 
 namespace NoMercy.Plugins;
@@ -32,6 +33,7 @@ internal sealed class PluginLifecycleManager(
     PluginLoader loader,
     IPluginContextFactory contextFactory,
     IPluginDataPurge dataPurge,
+    IPluginConsentService consentService,
     IPluginAssemblyTracker? assemblyTracker = null,
     Action<Ulid>? releaseScheduledWork = null,
     Action<Ulid>? registerScheduledWork = null
@@ -46,6 +48,7 @@ internal sealed class PluginLifecycleManager(
     private readonly PluginLoader _loader = loader;
     private readonly IPluginContextFactory _contextFactory = contextFactory;
     private readonly IPluginDataPurge _dataPurge = dataPurge;
+    private readonly IPluginConsentService _consentService = consentService;
     private readonly IPluginAssemblyTracker? _assemblyTracker = assemblyTracker;
     private readonly Action<Ulid>? _releaseScheduledWork = releaseScheduledWork;
 
@@ -74,6 +77,15 @@ internal sealed class PluginLifecycleManager(
         if (loaded.Info.Status == PluginStatus.Active)
         {
             return;
+        }
+
+        // Turning a plugin on is the owner answering the consent question, so
+        // the answer is written down here. Left unrecorded, the next start read
+        // the plugin as never consented and disabled it again, and the owner
+        // had to enable it after every restart with no way to make it stick.
+        if (!_consentService.IsBaseline(loaded.Info.Capabilities))
+        {
+            _consentService.GrantConsent(pluginId, loaded.Info.Capabilities, loaded.Info.Version);
         }
 
         if (loaded.Instance is null && loaded.Info.AssemblyPath is not null)

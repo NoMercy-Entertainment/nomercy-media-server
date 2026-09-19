@@ -58,6 +58,9 @@ public class PluginConsentService(IPluginConsentStore store) : IPluginConsentSer
         return !PluginCapabilityGuard.HasWidened(grant.Capabilities, capabilities);
     }
 
+    public PluginCapabilities? ConsentedCapabilities(Ulid pluginId) =>
+        store.Get(pluginId)?.Capabilities;
+
     public void GrantConsent(
         Ulid pluginId,
         PluginCapabilities? capabilities,

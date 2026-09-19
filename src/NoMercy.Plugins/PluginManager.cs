@@ -133,6 +133,7 @@ public class PluginManager : IPluginManager, IDisposable
                 new ConfigPluginGrantStore(PlatformConfiguration()),
                 PlatformConfiguration()
             ),
+            _consentService,
             assemblyTracker,
             releaseScheduledWork,
             registerScheduledWork
