@@ -9,13 +9,10 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Text.Json.Serialization;
-
 namespace NoMercy.Plugins.Abstractions;
 
-/// <summary>One plugin this plugin needs, by id and semver range. Free depends only on free.</summary>
-public sealed record PluginDependency(
-    [property: JsonPropertyName("id")] PluginId Id,
-    [property: JsonPropertyName("range")] string Range,
-    [property: JsonPropertyName("tier")] PluginTier Tier
-);
+/// <summary>Either the answer or the refusal, never a throw across the plugin boundary.</summary>
+public sealed record PluginContractResult<TResponse>(TResponse? Value, PluginRefusal? Refusal)
+{
+    public bool Ok => Refusal is null;
+}

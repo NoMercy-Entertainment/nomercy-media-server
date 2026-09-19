@@ -13,9 +13,12 @@ using System.Text.Json.Serialization;
 
 namespace NoMercy.Plugins.Abstractions;
 
-/// <summary>One plugin this plugin needs, by id and semver range. Free depends only on free.</summary>
-public sealed record PluginDependency(
-    [property: JsonPropertyName("id")] PluginId Id,
-    [property: JsonPropertyName("range")] string Range,
-    [property: JsonPropertyName("tier")] PluginTier Tier
-);
+[JsonConverter(typeof(JsonStringEnumConverter<PluginAccess>))]
+public enum PluginAccess
+{
+    [JsonStringEnumMemberName("owned")]
+    Owned,
+
+    [JsonStringEnumMemberName("shared")]
+    Shared,
+}

@@ -9,13 +9,13 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Text.Json.Serialization;
-
 namespace NoMercy.Plugins.Abstractions;
 
-/// <summary>One plugin this plugin needs, by id and semver range. Free depends only on free.</summary>
-public sealed record PluginDependency(
-    [property: JsonPropertyName("id")] PluginId Id,
-    [property: JsonPropertyName("range")] string Range,
-    [property: JsonPropertyName("tier")] PluginTier Tier
+/// <summary>A call from another plugin: who asked, on whose behalf, and what they sent.</summary>
+public sealed record PluginContractCall<TRequest>(
+    PluginId Caller,
+    PluginCaller User,
+    string Contract,
+    int Version,
+    TRequest Request
 );

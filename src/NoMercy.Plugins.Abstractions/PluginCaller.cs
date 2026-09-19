@@ -9,13 +9,17 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Text.Json.Serialization;
-
 namespace NoMercy.Plugins.Abstractions;
 
-/// <summary>One plugin this plugin needs, by id and semver range. Free depends only on free.</summary>
-public sealed record PluginDependency(
-    [property: JsonPropertyName("id")] PluginId Id,
-    [property: JsonPropertyName("range")] string Range,
-    [property: JsonPropertyName("tier")] PluginTier Tier
+/// <summary>
+/// Who is asking. A caller with no access never reaches the plugin: the server
+/// answers 403 before dispatch, which is the enforcement point for rule 2.6.1.
+/// </summary>
+public sealed record PluginCaller(
+    UserId Id,
+    string DisplayName,
+    PluginRole Role,
+    PluginAccess Access,
+    string Locale,
+    string Surface
 );
