@@ -186,6 +186,16 @@ public interface IPluginContext
             PluginRefusalMessages.FacadeNotOnThisHost(PluginId.ToString(), "IPluginContext.Browser")
         );
 
+    /// <summary>
+    /// Proxying, transcoding and remuxing a stream the plugin did not author.
+    /// The host mints every playable URL, so a plugin holding a provider
+    /// credential never hands one to a client.
+    /// </summary>
+    IPluginMedia Media =>
+        throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(PluginId.ToString(), "IPluginContext.Media")
+        );
+
     /// <summary>Native libraries, gated on the marketplace signature rather than a capability.</summary>
     IPluginNative Native =>
         throw new PluginRefusedException(

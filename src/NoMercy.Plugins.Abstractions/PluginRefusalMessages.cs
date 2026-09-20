@@ -161,6 +161,26 @@ public static class PluginRefusalMessages
     /// names the server version to update to instead.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// A plugin that put a credential in a URL it built itself.
+    /// <para>
+    /// The radio plugin kept the viewer's bearer token in a mutable static and
+    /// appended it to every stream URL, which put a live credential into the
+    /// server log, the client's history and every link a viewer shared.
+    /// </para>
+    /// </summary>
+    public static PluginRefusal TokenInUrl(string plugin, string url)
+    {
+        return new PluginRefusal(
+            PluginRefusalCodes.TokenInUrl,
+            plugin,
+            $"The plugin built a media URL carrying a credential: {url}",
+            "A credential in a URL is written to the server log, kept in the client's history and travels with every link a viewer shares. It also outlives the session, because nothing revokes a query string.",
+            "Hand the upstream to context.Media.Proxy.MintAsync and play the URL it returns. The host mints one bound to this user and this session, and keeps the upstream's own credentials on the server. Docs: /nomercy-plugins/capabilities/media-proxy",
+            PluginRefusalSeverity.Blocked
+        );
+    }
+
     public static PluginRefusal FacadeNotOnThisHost(string plugin, string facade)
     {
         return new PluginRefusal(
