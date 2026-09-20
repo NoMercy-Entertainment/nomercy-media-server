@@ -35,6 +35,7 @@
     <ProjectReference Include="..\NoMercy.Tests.Common\NoMercy.Tests.Common.csproj" />
     <ProjectReference Include="..\..\src\NoMercy.Plugins\NoMercy.Plugins.csproj" />
     <ProjectReference Include="..\..\src\NoMercy.Events\NoMercy.Events.csproj" />
+    <ProjectReference Include="..\..\src\NoMercy.Plugins.Mvc\NoMercy.Plugins.Mvc.csproj" />
     <ProjectReference Include="..\..\src\NoMercy.Storage\NoMercy.Storage.csproj" />
     <!-- Build dependency only — do NOT copy Echo/Failures DLLs to test bin. If they were in
          the default AssemblyLoadContext, PluginLoadContext isolation would break (type
