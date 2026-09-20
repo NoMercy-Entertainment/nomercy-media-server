@@ -112,11 +112,22 @@ jobs:
 
       - name: Pack the plugin contract
         run: |
-          # All four in the shared-assembly set a plugin compiles against.
-          # A mismatch across them fails restore with NU1102 naming only the
-          # one a caller forgot, so every one is packed at the same version.
-          for project in NoMercy.Events NoMercy.Design NoMercy.Plugins.Abstractions NoMercy.Plugins.Mvc; do
-            dotnet pack "src/$project/$project.csproj"               --configuration Release               -p:Version=${{ inputs.version }}               --output ./output
+          # Every package a plugin compiles or tests against. A mismatch across
+          # them fails restore with NU1102 naming only the one a caller forgot,
+          # so all six are packed together from one place.
+          #
+          # No -p:Version here. These version with the contract rather than with
+          # the server, because a plugin's manifest names a targetAbi and the
+          # template asks for that major. Overriding with the server's version
+          # would publish packages no manifest claims compatibility with.
+          for project in \
+            src/NoMercy.Events \
+            src/NoMercy.Design \
+            src/NoMercy.Plugins.Abstractions \
+            src/NoMercy.Plugins.Mvc \
+            src/NoMercy.Plugins.Testing \
+            src/NoMercy.Plugins.Analyzers; do
+            dotnet pack "$project" --configuration Release --output ./output
           done
 
       # Third-party plugin authors restore these from nuget.org — there is no
