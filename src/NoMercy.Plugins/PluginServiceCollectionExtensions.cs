@@ -30,6 +30,7 @@ using NoMercy.Plugins.Entitlements;
 using NoMercy.Plugins.Guests;
 using NoMercy.Plugins.Hooks;
 using NoMercy.Plugins.Hub;
+using NoMercy.Plugins.Lan;
 using NoMercy.Plugins.Library;
 using NoMercy.Plugins.Media;
 using NoMercy.Plugins.Offline;
@@ -206,6 +207,17 @@ public static class PluginServiceCollectionExtensions
             new(
                 sp.GetRequiredService<IPluginCatalogue>(),
                 sp.GetRequiredService<IPluginManifestSource>()
+            )
+        );
+
+        // Software on the owner's network that cannot sign in. Kept on disk,
+        // because the television does not come back and ask for a new address
+        // after the server restarts.
+        services.TryAddSingleton<IPluginLanDeviceStore>(new PluginLanDeviceStore());
+        services.AddSingleton<PluginLanDeviceMinter>(sp =>
+            new(
+                sp.GetRequiredService<IPluginLanDeviceStore>(),
+                sp.GetRequiredService<TimeProvider>()
             )
         );
 
