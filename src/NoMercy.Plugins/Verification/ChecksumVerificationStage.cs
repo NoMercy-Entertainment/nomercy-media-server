@@ -9,8 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Security.Cryptography;
-
 namespace NoMercy.Plugins.Verification;
 
 public class ChecksumVerificationStage : IPluginVerificationStage
@@ -23,15 +21,13 @@ public class ChecksumVerificationStage : IPluginVerificationStage
         if (string.IsNullOrWhiteSpace(context.ExpectedChecksum))
             return (PluginStageOutcome.Pass, null);
 
-        byte[] bytes = File.ReadAllBytes(context.AssemblyPath);
-        string actual = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
-
-        if (string.Equals(actual, context.ExpectedChecksum, StringComparison.OrdinalIgnoreCase))
-            return (PluginStageOutcome.Trust, null);
-
-        return (
-            PluginStageOutcome.Fail,
-            $"Assembly checksum mismatch: expected {context.ExpectedChecksum}, got {actual}."
+        string? refusal = PluginPackageChecksum.Refuse(
+            context.PackagePath,
+            context.ExpectedChecksum
         );
+
+        return refusal is null
+            ? (PluginStageOutcome.Trust, null)
+            : (PluginStageOutcome.Fail, refusal);
     }
 }

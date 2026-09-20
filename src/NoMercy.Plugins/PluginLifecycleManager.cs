@@ -12,6 +12,7 @@ using Microsoft.Extensions.Logging;
 using NoMercy.Events;
 using NoMercy.Events.Plugins;
 using NoMercy.Plugins.Abstractions;
+using NoMercy.Plugins.Capabilities;
 using NoMercy.Storage;
 
 namespace NoMercy.Plugins;
@@ -31,6 +32,8 @@ internal sealed class PluginLifecycleManager(
     IPluginRegistry registry,
     PluginLoader loader,
     IPluginContextFactory contextFactory,
+    IPluginDataPurge dataPurge,
+    IPluginConsentService consentService,
     IPluginAssemblyTracker? assemblyTracker = null,
     Action<Ulid>? releaseScheduledWork = null,
     Action<Ulid>? registerScheduledWork = null
@@ -44,6 +47,8 @@ internal sealed class PluginLifecycleManager(
     private readonly IPluginRegistry _registry = registry;
     private readonly PluginLoader _loader = loader;
     private readonly IPluginContextFactory _contextFactory = contextFactory;
+    private readonly IPluginDataPurge _dataPurge = dataPurge;
+    private readonly IPluginConsentService _consentService = consentService;
     private readonly IPluginAssemblyTracker? _assemblyTracker = assemblyTracker;
     private readonly Action<Ulid>? _releaseScheduledWork = releaseScheduledWork;
 
@@ -72,6 +77,15 @@ internal sealed class PluginLifecycleManager(
         if (loaded.Info.Status == PluginStatus.Active)
         {
             return;
+        }
+
+        // Turning a plugin on is the owner answering the consent question, so
+        // the answer is written down here. Left unrecorded, the next start read
+        // the plugin as never consented and disabled it again, and the owner
+        // had to enable it after every restart with no way to make it stick.
+        if (!_consentService.IsBaseline(loaded.Info.Capabilities))
+        {
+            _consentService.GrantConsent(pluginId, loaded.Info.Capabilities, loaded.Info.Version);
         }
 
         if (loaded.Instance is null && loaded.Info.AssemblyPath is not null)
@@ -269,7 +283,22 @@ internal sealed class PluginLifecycleManager(
         await EnablePluginAsync(pluginId, ct);
     }
 
-    public async Task UninstallPluginAsync(Ulid pluginId, CancellationToken ct = default)
+    /// <summary>
+    /// Removes a plugin and everything the server holds about it.
+    /// <para>
+    /// <paramref name="keepData"/> is the owner keeping the plugin's data
+    /// folder, consent, grants and secrets across an uninstall, for the case
+    /// where they mean to put the same plugin back. It defaults to false
+    /// because the ordinary meaning of removing something is that it is gone —
+    /// a plugin that silently inherited its old permissions on reinstall was
+    /// never approved by anyone for the copy that is now running.
+    /// </para>
+    /// </summary>
+    public async Task UninstallPluginAsync(
+        Ulid pluginId,
+        bool keepData = false,
+        CancellationToken ct = default
+    )
     {
         if (!_registry.TryGetValue(pluginId, out LoadedPlugin? loaded))
         {
@@ -307,6 +336,9 @@ internal sealed class PluginLifecycleManager(
                 await DeleteOrQueueForDeletionAsync(pluginDir, ct);
             }
         }
+
+        if (!keepData)
+            await _dataPurge.PurgeAsync(pluginId, ct);
 
         await _eventBus.PublishAsync(
             new PluginDisabledEvent

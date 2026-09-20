@@ -181,6 +181,62 @@ public class PluginGrantStoreTests
     }
 
     [Fact]
+    public void Revoking_everything_takes_away_every_kind_including_player_source()
+    {
+        // The withdraw path used to walk a hand-written list of kinds, so a
+        // kind added later - player.source, and every capability.<name> grant
+        // built at runtime - survived the owner saying no.
+        IPluginGrantStore store = Store();
+        store.Grant(PluginA, PluginGrantKind.NetworkHost, "tracker.example.com");
+        store.Grant(PluginA, PluginGrantKind.LibraryWrite, "library-1");
+        store.Grant(PluginA, PluginGrantKind.PlayerSource, "ice1.somafm.com");
+        store.Grant(
+            PluginA,
+            PluginGrantKind.ForCapability(PluginCapability.Player),
+            PluginGrant.Everything
+        );
+
+        store.RevokeAll(PluginA);
+
+        store.Granted(PluginA, PluginGrantKind.NetworkHost).Should().BeEmpty();
+        store.Granted(PluginA, PluginGrantKind.LibraryWrite).Should().BeEmpty();
+        store.Granted(PluginA, PluginGrantKind.PlayerSource).Should().BeEmpty();
+        store
+            .Holds(
+                PluginA,
+                PluginGrantKind.ForCapability(PluginCapability.Player),
+                PluginGrant.Everything
+            )
+            .Should()
+            .BeFalse();
+    }
+
+    [Fact]
+    public void Revoking_everything_leaves_another_plugin_untouched()
+    {
+        IPluginGrantStore store = Store();
+        store.Grant(PluginA, PluginGrantKind.PlayerSource, "ice1.somafm.com");
+        store.Grant(PluginB, PluginGrantKind.PlayerSource, "ice1.somafm.com");
+
+        store.RevokeAll(PluginA);
+
+        store.Holds(PluginB, PluginGrantKind.PlayerSource, "ice1.somafm.com").Should().BeTrue();
+    }
+
+    [Fact]
+    public void Revoking_everything_also_clears_what_the_plugin_was_still_asking_for()
+    {
+        // A pending request that outlives the withdrawal comes back as a prompt
+        // the owner already answered with no.
+        IPluginGrantStore store = Store();
+        store.Request(PluginA, PluginGrantKind.NetworkHost, "indexer.example.com", "to search");
+
+        store.RevokeAll(PluginA);
+
+        store.PendingRequests().Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task An_enormous_reason_is_bounded()
     {
         // The reason renders on the owner's dashboard and is written by a

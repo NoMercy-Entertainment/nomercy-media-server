@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.AspNetCore.Mvc;
+using NoMercy.Plugins.Abstractions;
 
 namespace NoMercy.Plugins.Mvc;
 
@@ -39,6 +40,26 @@ public abstract class PluginControllerBase : ControllerBase
     /// </summary>
     protected Ulid PluginId =>
         Ulid.TryParse(RouteData.Values["pluginId"]?.ToString(), out Ulid id) ? id : Ulid.Empty;
+
+    /// <summary>
+    /// Who is asking, put there by the host before the action runs. A plugin
+    /// never reads a bearer token: it reads the caller the host resolved.
+    /// </summary>
+    protected PluginCaller Caller =>
+        HttpContext.Items[CallerItemKey] as PluginCaller
+        ?? throw new PluginRefusedException(
+            new PluginRefusal(
+                PluginRefusalCodes.RouteAccessDenied,
+                PluginId.ToString(),
+                "A plugin controller read Caller on a request the host did not resolve a caller for.",
+                "Every plugin request carries the caller the host resolved, so the plugin never has to trust a token.",
+                "Reach this controller through the plugin route prefix. Docs: /nomercy-plugins/tour/callers-and-access",
+                PluginRefusalSeverity.Blocked
+            )
+        );
+
+    /// <summary>Where the host puts the caller on the request.</summary>
+    public const string CallerItemKey = "PluginCaller";
 
     /// <summary>A payload, in the <c>{ data }</c> envelope.</summary>
     protected OkObjectResult Data<T>(T data) => Ok(new PluginDataResponse<T> { Data = data });

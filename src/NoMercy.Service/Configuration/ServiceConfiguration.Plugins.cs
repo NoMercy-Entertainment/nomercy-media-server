@@ -51,6 +51,15 @@ public static partial class ServiceConfiguration
         {
             options.Conventions.Add(new PluginRouteConvention(registrar));
             options.Filters.Add<PluginControllerCapabilityFilter>();
+
+            // After the capability filter, so a request to a plugin that is not
+            // serving REST at all is a 404 rather than a lesson about tokens.
+            options.Filters.Add<PluginQueryTokenFilter>();
+
+            // A plugin built against contract v2 that calls a member v3 removed
+            // fails the first time that method runs. Without this the owner
+            // sees a 500 and the author sees nothing they can act on.
+            options.Filters.Add<PluginRemovedMemberFilter>();
         });
     }
 }

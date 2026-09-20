@@ -22,3 +22,10 @@ public class PluginRepositoryRequestDto
     [JsonProperty("url")]
     public string Url { get; set; } = string.Empty;
 }
+
+/// <summary>Whether the owner trusts a repository they already added.</summary>
+public class PluginRepositoryTrustRequestDto
+{
+    [JsonProperty("trusted")]
+    public bool Trusted { get; set; }
+}

@@ -18,6 +18,13 @@ public class PluginVerificationContext
     public required PluginManifest Manifest { get; init; }
     public required string AssemblyPath { get; init; }
     public string? ExpectedChecksum { get; init; }
+
+    /// <summary>
+    /// The artifact the server received, which is what
+    /// <see cref="ExpectedChecksum"/> describes. Null when nothing was
+    /// downloaded — a manual drop into the plugins folder, or a boot-time scan.
+    /// </summary>
+    public string? PackagePath { get; init; }
 }
 
 public enum PluginStageOutcome

@@ -9,6 +9,8 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Encoder.Codecs;
 using NoMercy.Encoder.Pipeline;
 using NoMercy.Plugins.Abstractions;
@@ -30,15 +32,48 @@ namespace NoMercy.Plugins;
 /// owns the bridge in both directions: encoder MediaInfo → plugin MediaInfo to
 /// call the hook, and the returned flat profile → a full encoder profile.
 /// </summary>
-public class PluginProfileOverride(IPluginManager pluginManager) : IProfileOverride
+public class PluginProfileOverride(
+    IPluginManager pluginManager,
+    ILogger<PluginProfileOverride>? logger = null
+) : IProfileOverride
 {
+    private readonly ILogger _log = logger ?? NullLogger<PluginProfileOverride>.Instance;
+
     public EncodingProfile Apply(EncodingProfile configured, EncoderMediaInfo media)
     {
         MediaInfo pluginMedia = ToPluginMediaInfo(media);
 
         foreach (IEncoderPlugin plugin in pluginManager.GetPluginsOfType<IEncoderPlugin>())
         {
-            PluginProfile? pluginProfile = plugin.GetProfile(pluginMedia);
+            PluginProfile? pluginProfile;
+
+            try
+            {
+                pluginProfile = plugin.GetProfile(pluginMedia);
+            }
+            catch (Exception exception)
+            {
+                // An encode in flight is worth more than one plugin's opinion
+                // of the profile, so a plugin that cannot answer is skipped.
+                if (
+                    !PluginStaleMemberLog.Explain(
+                        _log,
+                        plugin.Id,
+                        exception,
+                        "choosing an encoding profile"
+                    )
+                )
+                {
+                    _log.LogError(
+                        exception,
+                        "Plugin {Plugin} threw choosing an encoding profile; the configured one is used.",
+                        plugin.Id
+                    );
+                }
+
+                continue;
+            }
+
             if (pluginProfile is not null)
                 return ToEncodingProfile(pluginProfile);
         }

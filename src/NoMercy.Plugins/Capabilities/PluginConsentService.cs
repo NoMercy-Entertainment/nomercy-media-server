@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using Microsoft.Extensions.Logging;
 using NoMercy.Plugins.Abstractions;
 
 namespace NoMercy.Plugins.Capabilities;
@@ -16,19 +17,14 @@ namespace NoMercy.Plugins.Capabilities;
 public interface IPluginConsentStore
 {
     bool Contains(Ulid pluginId);
-    void Add(Ulid pluginId);
+    PluginConsentGrant? Get(Ulid pluginId);
+    void Add(Ulid pluginId, PluginCapabilities? capabilities, Version manifestVersion);
     void Remove(Ulid pluginId);
 }
 
-public class PluginConsentService(IPluginConsentStore store) : IPluginConsentService
+public class PluginConsentService(IPluginConsentStore store, ILogger? logger = null)
+    : IPluginConsentService
 {
-    private static readonly HashSet<string> BaselineHooks = new(StringComparer.OrdinalIgnoreCase)
-    {
-        PluginHookCapability.MediaSource,
-        PluginHookCapability.Metadata,
-        PluginHookCapability.Ui,
-    };
-
     public bool IsBaseline(PluginCapabilities? capabilities)
     {
         if (capabilities is null)
@@ -37,12 +33,74 @@ public class PluginConsentService(IPluginConsentStore store) : IPluginConsentSer
         if (capabilities.Rest || capabilities.Ws || capabilities.Network is not null)
             return false;
 
-        return capabilities.Hooks.All(hook => BaselineHooks.Contains(hook));
+        return capabilities.Hooks.All(PluginHookCapability.Baseline.Contains);
     }
 
     public bool HasConsent(Ulid pluginId) => store.Contains(pluginId);
 
-    public void GrantConsent(Ulid pluginId) => store.Add(pluginId);
+    public bool ConsentCoversCapabilities(
+        Ulid pluginId,
+        PluginCapabilities? capabilities,
+        Version installedVersion
+    )
+    {
+        PluginConsentGrant? grant = store.Get(pluginId);
+        if (grant is null)
+            return false;
+
+        // Upgraded in place, and the legacy id goes with it, so the next read
+        // has a real record to compare a later manifest against. Without this
+        // step a genuine widening would keep migrating instead of asking.
+        if (grant.IsLegacy)
+        {
+            // A record from before consent carried a capability list says only
+            // that the owner said yes, never to what. The installed manifest is
+            // the closest thing to what they saw, so it is what gets written,
+            // and the log names it because the owner cannot read it back off a
+            // record that never held it.
+            store.Add(pluginId, capabilities, installedVersion);
+            logger?.LogInformation(
+                "Plugin {PluginId}: an approval from before capabilities were recorded now covers {Capabilities}, read from the installed manifest at {Version}.",
+                pluginId,
+                Describe(capabilities),
+                installedVersion
+            );
+            return true;
+        }
+
+        return !PluginCapabilityGuard.HasWidened(grant.Capabilities, capabilities);
+    }
+
+    public PluginCapabilities? ConsentedCapabilities(Ulid pluginId) =>
+        store.Get(pluginId)?.Capabilities;
+
+    public void GrantConsent(
+        Ulid pluginId,
+        PluginCapabilities? capabilities,
+        Version manifestVersion
+    ) => store.Add(pluginId, capabilities, manifestVersion);
 
     public void RevokeConsent(Ulid pluginId) => store.Remove(pluginId);
+
+    private static string Describe(PluginCapabilities? capabilities)
+    {
+        if (capabilities is null)
+            return "nothing beyond the ordinary set";
+
+        List<string> parts = [];
+
+        if (capabilities.Hooks.Count > 0)
+            parts.Add($"hooks {string.Join(", ", capabilities.Hooks)}");
+
+        if (capabilities.Rest)
+            parts.Add(capabilities.RestAnonymous ? "its own endpoints, open" : "its own endpoints");
+
+        if (capabilities.Ws)
+            parts.Add("a socket");
+
+        if (capabilities.Network?.Hosts.Count > 0)
+            parts.Add($"network hosts {string.Join(", ", capabilities.Network.Hosts)}");
+
+        return parts.Count > 0 ? string.Join("; ", parts) : "nothing beyond the ordinary set";
+    }
 }

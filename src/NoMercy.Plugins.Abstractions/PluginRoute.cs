@@ -37,6 +37,12 @@ public class PluginRoute
     public string? Label { get; init; }
 
     /// <summary>
+    /// Who may open this page. A page that says nothing is shared: an author
+    /// who forgets the word gets the safe half of the contract, not the owner's.
+    /// </summary>
+    public PluginRouteAccess Access { get; init; } = PluginRouteAccess.Shared;
+
+    /// <summary>
     /// The shell this page sits in, from <see cref="PluginLayout" />. A page
     /// that says nothing gets the ordinary one.
     /// </summary>

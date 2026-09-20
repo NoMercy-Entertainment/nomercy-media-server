@@ -22,8 +22,13 @@ public class PluginCapabilityGuardTests
     {
         Assert.True(PluginCapabilityGuard.DeclaresHook(null, PluginHookCapability.MediaSource));
         Assert.True(PluginCapabilityGuard.DeclaresHook(null, PluginHookCapability.Metadata));
+        Assert.True(PluginCapabilityGuard.DeclaresHook(null, PluginHookCapability.Ui));
+
+        // Running on a schedule is baseline: it is not a permission, and what
+        // the task then does needs whatever hook that work declares.
+        Assert.True(PluginCapabilityGuard.DeclaresHook(null, PluginHookCapability.ScheduledTask));
+
         Assert.False(PluginCapabilityGuard.DeclaresHook(null, PluginHookCapability.Auth));
-        Assert.False(PluginCapabilityGuard.DeclaresHook(null, PluginHookCapability.ScheduledTask));
     }
 
     [Fact]
@@ -62,5 +67,154 @@ public class PluginCapabilityGuardTests
         Assert.True(
             PluginCapabilityGuard.DeclaresHook(caps, PluginHookCapability.MusicAnalysisWrite)
         );
+    }
+
+    [Fact]
+    public void HasWidened_SameCapabilities_IsFalse()
+    {
+        PluginCapabilities caps = new() { Hooks = ["mediaSource"] };
+        Assert.False(PluginCapabilityGuard.HasWidened(caps, caps));
+    }
+
+    [Fact]
+    public void HasWidened_NarrowerCapabilities_IsFalse()
+    {
+        PluginCapabilities consented = new() { Hooks = ["mediaSource", "metadata"] };
+        PluginCapabilities current = new() { Hooks = ["mediaSource"] };
+        Assert.False(PluginCapabilityGuard.HasWidened(consented, current));
+    }
+
+    [Fact]
+    public void HasWidened_NewHook_IsTrue()
+    {
+        PluginCapabilities consented = new() { Hooks = ["mediaSource"] };
+        PluginCapabilities current = new() { Hooks = ["mediaSource", "auth"] };
+        Assert.True(PluginCapabilityGuard.HasWidened(consented, current));
+    }
+
+    [Fact]
+    public void HasWidened_RestTurnedOn_IsTrue()
+    {
+        PluginCapabilities consented = new() { Hooks = ["ui"] };
+        PluginCapabilities current = new() { Hooks = ["ui"], Rest = true };
+        Assert.True(PluginCapabilityGuard.HasWidened(consented, current));
+    }
+
+    /// <summary>
+    /// Opening an endpoint to callers with no token is the largest thing a
+    /// plugin can ask for and it was not compared at all, so a plugin could
+    /// update from "everyone needs a token" to "nobody does" on a consent the
+    /// owner gave to the first of those.
+    /// </summary>
+    private static PluginUiCapability Mounts(params (string Route, bool TopLevel)[] mounts)
+    {
+        return new()
+        {
+            Mounts =
+            [
+                .. mounts.Select(mount => new PluginUiMount
+                {
+                    Section = "music",
+                    Label = "Radio",
+                    Route = mount.Route,
+                    RequestsTopLevel = mount.TopLevel,
+                }),
+            ],
+        };
+    }
+
+    [Fact]
+    public void HasWidened_AskingForTheMainNavigation_IsTrue()
+    {
+        PluginCapabilities consented = new()
+        {
+            Hooks = ["ui"],
+            Ui = Mounts(("/music/plugins/radio", false)),
+        };
+        PluginCapabilities current = new()
+        {
+            Hooks = ["ui"],
+            Ui = Mounts(("/music/plugins/radio", true)),
+        };
+        Assert.True(PluginCapabilityGuard.HasWidened(consented, current));
+    }
+
+    [Fact]
+    public void HasWidened_MovingAMountInsideItsOwnSection_IsFalse()
+    {
+        PluginCapabilities consented = new()
+        {
+            Hooks = ["ui"],
+            Ui = Mounts(("/music/plugins/radio", false)),
+        };
+        PluginCapabilities current = new()
+        {
+            Hooks = ["ui"],
+            Ui = Mounts(("/music/plugins/radio/browse", false)),
+        };
+        Assert.False(PluginCapabilityGuard.HasWidened(consented, current));
+    }
+
+    [Fact]
+    public void HasWidened_RestOpenedToAnonymousCallers_IsTrue()
+    {
+        PluginCapabilities consented = new() { Hooks = ["ui"], Rest = true };
+        PluginCapabilities current = new()
+        {
+            Hooks = ["ui"],
+            Rest = true,
+            RestAnonymous = true,
+        };
+        Assert.True(PluginCapabilityGuard.HasWidened(consented, current));
+    }
+
+    [Fact]
+    public void HasWidened_RestClosedToAnonymousCallers_IsFalse()
+    {
+        PluginCapabilities consented = new()
+        {
+            Hooks = ["ui"],
+            Rest = true,
+            RestAnonymous = true,
+        };
+        PluginCapabilities current = new() { Hooks = ["ui"], Rest = true };
+        Assert.False(PluginCapabilityGuard.HasWidened(consented, current));
+    }
+
+    [Fact]
+    public void HasWidened_NullConsented_AnonymousRest_IsTrue()
+    {
+        PluginCapabilities current = new() { Hooks = ["ui"], RestAnonymous = true };
+        Assert.True(PluginCapabilityGuard.HasWidened(null, current));
+    }
+
+    [Fact]
+    public void HasWidened_NewNetworkHost_IsTrue()
+    {
+        PluginCapabilities consented = new()
+        {
+            Hooks = ["ui"],
+            Network = new() { Hosts = ["a.example.com"] },
+        };
+        PluginCapabilities current = new()
+        {
+            Hooks = ["ui"],
+            Network = new() { Hosts = ["a.example.com", "b.example.com"] },
+        };
+        Assert.True(PluginCapabilityGuard.HasWidened(consented, current));
+    }
+
+    [Fact]
+    public void HasWidened_NullConsented_ElevatedCurrent_IsTrue()
+    {
+        PluginCapabilities current = new() { Hooks = ["auth"] };
+        Assert.True(PluginCapabilityGuard.HasWidened(null, current));
+    }
+
+    [Fact]
+    public void HasWidened_NullConsented_BaselineCurrent_IsFalse()
+    {
+        PluginCapabilities current = new() { Hooks = ["mediaSource", "ui"] };
+        Assert.False(PluginCapabilityGuard.HasWidened(null, current));
     }
 }

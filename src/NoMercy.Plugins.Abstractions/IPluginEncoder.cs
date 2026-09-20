@@ -16,7 +16,7 @@ namespace NoMercy.Plugins.Abstractions;
 ///
 /// <para>
 /// There was no way to ask, so a plugin reached the server's own types by name
-/// through <see cref="IPluginContext.Services" /> and drove them with reflection.
+/// through the host container and drove them with reflection.
 /// Between 22 and 24 August 2026 that construction broke four separate times and
 /// every break looked identical from the outside: the plugin simply never
 /// encoded anything, for days, while all of its tests stayed green. An overload

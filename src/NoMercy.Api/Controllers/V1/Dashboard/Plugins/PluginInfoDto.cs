@@ -62,6 +62,18 @@ public record PluginInfoDto
     public bool AwaitingConsent { get; init; }
 
     /// <summary>
+    /// What the owner already approved, in the same shape as
+    /// <see cref="Capabilities"/>. Null when nothing was approved yet.
+    /// <para>
+    /// Without it a client can say a plugin widened but not what it now asks
+    /// for that it did not before, which is the one thing the owner needs to
+    /// answer the question.
+    /// </para>
+    /// </summary>
+    [JsonProperty("consented_capabilities")]
+    public PluginCapabilities? ConsentedCapabilities { get; init; }
+
+    /// <summary>
     /// Whether enabling this needs the server restarted, and why. Empty means
     /// it takes effect immediately, which is the usual answer and the one worth
     /// stating — an owner told nothing either way restarts after everything.
@@ -77,11 +89,13 @@ public record PluginInfoDto
     public PluginInfoDto(
         PluginInfo info,
         PluginRestartRequirement? restart = null,
-        bool awaitingConsent = false
+        bool awaitingConsent = false,
+        PluginCapabilities? consentedCapabilities = null
     )
     {
         Capabilities = info.Capabilities;
         AwaitingConsent = awaitingConsent;
+        ConsentedCapabilities = consentedCapabilities;
         RestartRequired = restart?.Required ?? false;
         RestartReasons = restart?.Explain() ?? [];
         Id = info.Id;

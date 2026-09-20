@@ -32,6 +32,9 @@ on:
       GPG_PRIVATE_KEY:
         description: 'ASCII-armored GPG private key for signing the release manifest'
         required: false
+      NUGET_API_KEY:
+        description: 'nuget.org API key for publishing the plugin contract packages'
+        required: false
 
 jobs:
   create_release:
@@ -109,11 +112,33 @@ jobs:
 
       - name: Pack the plugin contract
         run: |
-          # Events too: Abstractions depends on it, and a package whose
-          # dependency cannot be restored is a package nobody can use.
-          for project in NoMercy.Events NoMercy.Plugins.Abstractions; do
+          # All four in the shared-assembly set a plugin compiles against.
+          # A mismatch across them fails restore with NU1102 naming only the
+          # one a caller forgot, so every one is packed at the same version.
+          for project in NoMercy.Events NoMercy.Design NoMercy.Plugins.Abstractions NoMercy.Plugins.Mvc; do
             dotnet pack "src/$project/$project.csproj"               --configuration Release               -p:Version=${{ inputs.version }}               --output ./output
           done
+
+      # Third-party plugin authors restore these from nuget.org — there is no
+      # other distribution path once scripts/pack-abstractions.sh (the local
+      # sibling-feed workaround) is gone. Draft prereleases from staged-release
+      # (feature branches, not yet a real release) are skipped: nuget.org has
+      # no way to delete a published version, so a build from a branch that
+      # never ships must never land there. --skip-duplicate makes a rerun of
+      # an already-published version a no-op instead of a failure.
+      - name: Publish plugin contract packages to NuGet.org
+        if: ${{ inputs.draft != true }}
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          if [ -z "${NUGET_API_KEY:-}" ]; then
+            echo "::warning::NUGET_API_KEY is not set — skipping NuGet.org publish. Plugin authors are still on the local feed."
+            exit 0
+          fi
+          dotnet nuget push "./output/*.nupkg" \
+            --api-key "$NUGET_API_KEY" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
 
       - name: Generate SHA-256 checksums and release-info.json
         run: |

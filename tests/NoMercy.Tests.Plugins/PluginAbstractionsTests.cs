@@ -162,8 +162,9 @@ public class PluginAbstractionsTests
 
     private sealed class TestPluginContext : IPluginContext
     {
-        public IEventBus EventBus { get; }
-        public IServiceProvider Services { get; }
+        private readonly IEventBus _eventBus;
+
+        public IPluginEvents Events { get; }
         public ILogger Logger { get; }
         public string DataFolderPath { get; }
         public IPluginConfiguration Configuration { get; }
@@ -177,8 +178,8 @@ public class PluginAbstractionsTests
 
         public TestPluginContext(IEventBus eventBus, string dataFolder = "/tmp/plugin-test")
         {
-            EventBus = eventBus;
-            Services = new MinimalServiceProvider();
+            _eventBus = eventBus;
+            Events = new PluginEvents(Ulid.Empty, eventBus);
             Logger = NullLogger.Instance;
             DataFolderPath = dataFolder;
             Configuration = new NullPluginConfiguration();
@@ -190,7 +191,7 @@ public class PluginAbstractionsTests
         }
 
         public Task PublishAsync<T>(string name, T payload, CancellationToken ct = default) =>
-            EventBus.PublishAsync(PluginMessageEvent.From(PluginId, name, payload), ct);
+            _eventBus.PublishAsync(PluginMessageEvent.From(PluginId, name, payload), ct);
 
         private sealed class DenyingGrants : IPluginGrants
         {
@@ -283,12 +284,13 @@ public class PluginAbstractionsTests
     }
 
     [Fact]
-    public void IPluginContext_ProvidesEventBus()
+    public void IPluginContext_ProvidesTheTopicEventFacade()
     {
         InMemoryEventBus bus = new();
         TestPluginContext context = new(bus);
 
-        context.EventBus.Should().BeSameAs(bus);
+        context.Events.Should().BeOfType<PluginEvents>();
+        typeof(IPluginContext).GetProperty("EventBus").Should().BeNull();
     }
 
     [Fact]
@@ -550,24 +552,19 @@ public class PluginAbstractionsTests
         InMemoryEventBus bus = new();
         TestPluginContext context = new(bus);
 
-        List<IEvent> received = [];
-        context.EventBus.Subscribe<PlaybackStartedEvent>(
-            (evt, _) =>
+        List<string> received = [];
+        context.Events.Subscribe<string>(
+            "radio.started",
+            (payload, _) =>
             {
-                received.Add(evt);
+                received.Add(payload);
                 return Task.CompletedTask;
             }
         );
 
-        await bus.PublishAsync(
-            new PlaybackStartedEvent
-            {
-                UserId = Guid.NewGuid(),
-                MediaId = 1,
-                MediaType = "movie",
-            }
-        );
+        await context.Events.PublishAsync("radio.stopped", "kink");
+        await context.Events.PublishAsync("radio.started", "kink");
 
-        received.Should().ContainSingle();
+        received.Should().ContainSingle().Which.Should().Be("kink");
     }
 }

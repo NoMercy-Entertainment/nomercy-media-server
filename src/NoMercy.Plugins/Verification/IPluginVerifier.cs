@@ -15,9 +15,21 @@ namespace NoMercy.Plugins.Verification;
 
 public interface IPluginVerifier
 {
+    /// <summary>
+    /// Judges a plugin before it is loaded or copied into place.
+    /// <para>
+    /// <paramref name="packagePath"/> is the artifact the server received — the
+    /// .zip a repository published, or the file the owner uploaded — and it is
+    /// the only thing <paramref name="expectedChecksum"/> ever describes.
+    /// Leaving it out with a checksum supplied is refused rather than taken
+    /// over the assembly instead, because one published checksum has to mean
+    /// one file on every install path.
+    /// </para>
+    /// </summary>
     PluginVerificationResult Verify(
         PluginManifest manifest,
         string assemblyPath,
-        string? expectedChecksum
+        string? expectedChecksum,
+        string? packagePath = null
     );
 }

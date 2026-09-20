@@ -88,6 +88,9 @@ public class PluginClaimsAugmentor(
             }
             catch (Exception ex)
             {
+                if (PluginStaleMemberLog.Explain(logger, plugin.Id, ex, "adding claims"))
+                    continue;
+
                 logger.LogWarning(
                     ex,
                     "Auth plugin {Plugin} failed or timed out; ignoring its claims (auth is never weakened).",

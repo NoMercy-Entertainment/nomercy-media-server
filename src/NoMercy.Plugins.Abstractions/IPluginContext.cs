@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.Extensions.Logging;
-using NoMercy.Events;
 
 namespace NoMercy.Plugins.Abstractions;
 
@@ -27,8 +26,13 @@ namespace NoMercy.Plugins.Abstractions;
 /// </summary>
 public interface IPluginContext
 {
-    IEventBus EventBus { get; }
-    IServiceProvider Services { get; }
+    /// <summary>
+    /// Server events by topic, and the plugin's own events. The raw host bus
+    /// left the contract: it carried every event the server raises, including
+    /// ones about users this plugin has no capability for.
+    /// </summary>
+    IPluginEvents Events { get; }
+
     ILogger Logger { get; }
     string DataFolderPath { get; }
     IPluginConfiguration Configuration { get; }
@@ -53,15 +57,6 @@ public interface IPluginContext
     /// plugin checks for absence rather than catching a throw.
     /// </summary>
     IPluginMusicQuery? Music => null;
-
-    /// <summary>
-    /// Everything the plugin can reach that it does not own, by name.
-    ///
-    /// The general way in. A host grows a capability without this contract
-    /// moving, and a plugin asks whether one exists before depending on it.
-    /// Null when the host mediates nothing, so existing hosts keep compiling.
-    /// </summary>
-    IPluginSystem? System => null;
 
     /// <summary>
     /// Playback, as a typed surface over <see cref="PluginCapability.Player" />.

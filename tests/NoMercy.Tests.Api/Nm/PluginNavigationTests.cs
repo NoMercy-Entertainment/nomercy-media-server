@@ -51,7 +51,7 @@ public class PluginNavigationTests
     public async Task ServesANestedPageOfItsOwn()
     {
         PluginView view = await Plugin.GetViewAsync(
-            new() { Route = "/details/42", Surface = PluginSurface.Web }, CancellationToken.None);
+            new() { Route = "/details/42", Surface = PluginSurface.Web, Caller = PluginTestCaller.Any }, CancellationToken.None);
 
         Assert.Contains(view.Components ?? [], component => component.Id == "detail");
     }
@@ -62,7 +62,7 @@ public class PluginNavigationTests
         // A viewer following a stale link should land on the plugin rather than
         // on an empty page that looks like the plugin is broken.
         PluginView view = await Plugin.GetViewAsync(
-            new() { Route = "/gone", Surface = PluginSurface.Web }, CancellationToken.None);
+            new() { Route = "/gone", Surface = PluginSurface.Web, Caller = PluginTestCaller.Any }, CancellationToken.None);
 
         Assert.Contains(view.Components ?? [], component => component.Id == "recent");
     }
@@ -148,9 +148,9 @@ public class PluginSurfaceViewsTests
         DashboardSamplePlugin plugin = new();
 
         PluginView phone = await plugin.GetViewAsync(
-            new() { Route = "/", Surface = PluginSurface.Mobile }, CancellationToken.None);
+            new() { Route = "/", Surface = PluginSurface.Mobile, Caller = PluginTestCaller.Any }, CancellationToken.None);
         PluginView television = await plugin.GetViewAsync(
-            new() { Route = "/", Surface = PluginSurface.Tv }, CancellationToken.None);
+            new() { Route = "/", Surface = PluginSurface.Tv, Caller = PluginTestCaller.Any }, CancellationToken.None);
 
         Assert.NotEqual(Columns(phone), Columns(television));
     }

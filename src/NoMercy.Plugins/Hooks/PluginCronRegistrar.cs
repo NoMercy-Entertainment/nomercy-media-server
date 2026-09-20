@@ -9,6 +9,8 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Plugins.Abstractions;
 using NoMercy.Plugins.Capabilities;
 using NoMercyQueue.Workers;
@@ -20,9 +22,14 @@ namespace NoMercy.Plugins.Hooks;
 /// <c>scheduledTask</c> capability as a cron executor instance on
 /// <see cref="CronWorker"/>. Called once, post plugin-load.
 /// </summary>
-public class PluginCronRegistrar(IPluginManager pluginManager, CronWorker cronWorker)
-    : IPluginCronRegistrar
+public class PluginCronRegistrar(
+    IPluginManager pluginManager,
+    CronWorker cronWorker,
+    ILogger<PluginCronRegistrar>? logger = null
+) : IPluginCronRegistrar
 {
+    private readonly ILogger _log = logger ?? NullLogger<PluginCronRegistrar>.Instance;
+
     public void RegisterAll()
     {
         foreach (
@@ -46,6 +53,27 @@ public class PluginCronRegistrar(IPluginManager pluginManager, CronWorker cronWo
     }
 
     private void RegisterOne(IScheduledTaskPlugin plugin)
+    {
+        try
+        {
+            RegisterOneOrThrow(plugin);
+        }
+        catch (Exception exception)
+        {
+            // One plugin that cannot be scheduled must not stop the others
+            // being scheduled, and must not take startup down.
+            if (PluginStaleMemberLog.Explain(_log, plugin.Id, exception, "registering its tasks"))
+                return;
+
+            _log.LogError(
+                exception,
+                "Plugin {Plugin} threw while its scheduled tasks were registered; it runs none.",
+                plugin.Id
+            );
+        }
+    }
+
+    private void RegisterOneOrThrow(IScheduledTaskPlugin plugin)
     {
         PluginCapabilities? capabilities = pluginManager.GetPluginInfo(plugin.Id)?.Capabilities;
 

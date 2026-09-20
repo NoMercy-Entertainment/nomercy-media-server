@@ -14,13 +14,15 @@ using NoMercy.Plugins.Abstractions;
 namespace NoMercy.Plugins.Verification;
 
 /// <summary>
-/// A plugin listed by a repository the owner trusts does not need approving one
-/// at a time.
+/// Records that a plugin came from a repository the owner trusts.
 /// <para>
-/// Consent exists so a stranger's plugin cannot quietly start reaching the
-/// network on first install. A plugin from an index the owner already added and
-/// marked trusted is not a stranger, and asking about each one teaches them to
-/// click through the prompt that is supposed to mean something.
+/// Provenance, and only that. It used to enable such a plugin on install, which
+/// let a repository flag answer the consent question on the owner's behalf for
+/// every plugin that index ever lists. Consent exists so nothing starts
+/// reaching the network on first install without the owner saying so, and where
+/// a plugin came from is not the owner saying so. From Phase 3 trust skips the
+/// marketplace review hold — a delay before a release is published — and never
+/// a decision about the owner's own machine.
 /// </para>
 /// <para>
 /// Provenance, never self-description: the manifest's author line is free text
@@ -41,8 +43,8 @@ public class TrustedRepositoryVerificationStage(Func<IPluginRepository?> reposit
     public string Name => "trusted-repository";
 
     /// <summary>
-    /// Never enforced. This stage grants trust and never withholds it, so a
-    /// plugin no trusted index lists simply goes through the ordinary consent.
+    /// Never enforced. This stage grants trust and never withholds it, so an
+    /// index nobody could read costs a plugin nothing.
     /// </summary>
     public bool Enforced => false;
 

@@ -22,8 +22,9 @@ namespace NoMercy.Plugins;
 
 public class PluginContext : IPluginContext
 {
-    public IEventBus EventBus { get; }
-    public IServiceProvider Services { get; }
+    private readonly IEventBus _eventBus;
+
+    public IPluginEvents Events { get; }
     public ILogger Logger { get; }
     public string DataFolderPath { get; }
     public IPluginConfiguration Configuration { get; }
@@ -105,8 +106,9 @@ public class PluginContext : IPluginContext
         MusicAnalysisWriter = musicAnalysisWriter;
 
         PluginId = pluginId;
-        EventBus = eventBus ?? throw new ArgumentNullException(nameof(eventBus));
-        Services = services ?? throw new ArgumentNullException(nameof(services));
+        _eventBus = eventBus ?? throw new ArgumentNullException(nameof(eventBus));
+        ArgumentNullException.ThrowIfNull(services);
+        Events = new PluginEvents(pluginId, _eventBus);
         Logger = logger ?? throw new ArgumentNullException(nameof(logger));
         DataFolderPath = dataFolderPath ?? throw new ArgumentNullException(nameof(dataFolderPath));
         Configuration = new PluginConfiguration(dataFolderPath, storage);
@@ -142,6 +144,6 @@ public class PluginContext : IPluginContext
         // The envelope, not the plugin's own event class: a type declared in a
         // collectible load context has an identity no host subscriber can name,
         // so publishing one reaches nobody.
-        return EventBus.PublishAsync(PluginMessageEvent.From(PluginId, name, payload), ct);
+        return _eventBus.PublishAsync(PluginMessageEvent.From(PluginId, name, payload), ct);
     }
 }

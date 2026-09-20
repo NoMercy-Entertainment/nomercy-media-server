@@ -18,7 +18,7 @@ public class DashboardSamplePluginTests
     private static async Task<PluginView> ViewFor(string surface)
     {
         return await Plugin.GetViewAsync(
-            new() { Route = "/", Surface = surface },
+            new() { Route = "/", Surface = surface, Caller = PluginTestCaller.Any },
             CancellationToken.None
         );
     }

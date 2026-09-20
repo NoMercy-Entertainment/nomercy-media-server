@@ -13,9 +13,39 @@ using NoMercy.Plugins.Abstractions;
 
 namespace NoMercy.Plugins.Capabilities;
 
+/// <summary>
+/// What the owner was told about when they consented: the capability set and
+/// the manifest version it came from, so a later widened manifest can be told
+/// apart from the one the owner actually approved.
+/// </summary>
+public class PluginConsentGrant
+{
+    public PluginCapabilities? Capabilities { get; init; }
+    public string? ManifestVersion { get; init; }
+
+    /// <summary>
+    /// An id-only record from before consent wrote down what it was granted
+    /// for. It carries no capability set, so it can never be compared against a
+    /// manifest; it has to be upgraded from the installed manifest first.
+    /// </summary>
+    public bool IsLegacy { get; init; }
+}
+
 public class PluginConsentRecord
 {
+    // Legacy shape from before consent recorded what it was granted for. Read
+    // for backward compatibility only; new grants are written to Grants.
     public List<Ulid> GrantedPluginIds { get; init; } = [];
+
+    // Named distinctly from PluginGrantRecord.Grants: both records share one
+    // platform config file, and Merge() replaces a top-level JSON key
+    // wholesale for whichever record wrote it last - the two "Grants" would
+    // have overwritten each other every time both stores saved.
+    //
+    // Keyed by the string form of the plugin id: System.Text.Json cannot use
+    // Ulid as a dictionary key through PluginIdJsonConverter, which only
+    // implements value (de)serialization, not property-name (de)serialization.
+    public Dictionary<string, PluginConsentGrant> ConsentGrants { get; init; } = [];
 }
 
 // Backed by IPluginConfiguration under a platform-scoped data folder (not a
@@ -26,26 +56,57 @@ public class ConfigPluginConsentStore(IPluginConfiguration configuration) : IPlu
     public bool Contains(Ulid pluginId)
     {
         PluginConsentRecord? record = configuration.GetConfiguration<PluginConsentRecord>();
-        return record?.GrantedPluginIds.Contains(pluginId) ?? false;
+        if (record is null)
+            return false;
+
+        return record.GrantedPluginIds.Contains(pluginId)
+            || record.ConsentGrants.ContainsKey(Key(pluginId));
     }
 
-    public void Add(Ulid pluginId)
+    public PluginConsentGrant? Get(Ulid pluginId)
+    {
+        PluginConsentRecord? record = configuration.GetConfiguration<PluginConsentRecord>();
+        if (record is null)
+            return null;
+
+        if (record.ConsentGrants.TryGetValue(Key(pluginId), out PluginConsentGrant? grant))
+            return grant;
+
+        // A legacy entry was consented before capabilities were recorded. It
+        // is flagged rather than returned empty, because an empty capability
+        // set compares as "the owner approved nothing" and would disable every
+        // plugin they had already said yes to.
+        return record.GrantedPluginIds.Contains(pluginId)
+            ? new PluginConsentGrant { IsLegacy = true }
+            : null;
+    }
+
+    public void Add(Ulid pluginId, PluginCapabilities? capabilities, Version manifestVersion)
     {
         PluginConsentRecord record = configuration.GetConfiguration<PluginConsentRecord>() ?? new();
 
-        if (record.GrantedPluginIds.Contains(pluginId))
-            return;
+        record.GrantedPluginIds.Remove(pluginId);
+        record.ConsentGrants[Key(pluginId)] = new PluginConsentGrant
+        {
+            Capabilities = capabilities,
+            ManifestVersion = manifestVersion.ToString(),
+        };
 
-        record.GrantedPluginIds.Add(pluginId);
         configuration.SaveConfiguration(record);
     }
 
     public void Remove(Ulid pluginId)
     {
         PluginConsentRecord? record = configuration.GetConfiguration<PluginConsentRecord>();
-        if (record is null || !record.GrantedPluginIds.Remove(pluginId))
+        if (record is null)
             return;
 
-        configuration.SaveConfiguration(record);
+        bool removedLegacy = record.GrantedPluginIds.Remove(pluginId);
+        bool removedGrant = record.ConsentGrants.Remove(Key(pluginId));
+
+        if (removedLegacy || removedGrant)
+            configuration.SaveConfiguration(record);
     }
+
+    private static string Key(Ulid pluginId) => pluginId.ToString();
 }

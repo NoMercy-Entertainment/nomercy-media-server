@@ -105,6 +105,31 @@ public class PluginSecretStore(
         return Task.FromResult(keys);
     }
 
+    /// <summary>
+    /// Deletes every secret one plugin stored. Here rather than in the caller
+    /// because the key scoping is this class's rule, and a second place that
+    /// knows the prefix is a second place that can get it wrong and wipe
+    /// another plugin's values.
+    /// </summary>
+    public static void Purge(Ulid pluginId, IPluginConfiguration configuration)
+    {
+        PluginSecretRecord record = configuration.GetConfiguration<PluginSecretRecord>() ?? new();
+        string prefix = $"{pluginId:D}:";
+
+        List<string> owned =
+        [
+            .. record.Values.Keys.Where(key => key.StartsWith(prefix, StringComparison.Ordinal)),
+        ];
+
+        if (owned.Count == 0)
+            return;
+
+        foreach (string key in owned)
+            record.Values.Remove(key);
+
+        configuration.SaveConfiguration(record);
+    }
+
     private string Scoped(string key) => $"{pluginId:D}:{key}";
 
     private PluginSecretRecord Read() =>

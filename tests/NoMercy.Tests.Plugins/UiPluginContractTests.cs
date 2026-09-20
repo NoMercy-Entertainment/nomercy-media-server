@@ -23,6 +23,15 @@ namespace NoMercy.Tests.Plugins;
 [Trait("Category", "Unit")]
 public class UiPluginContractTests
 {
+    private static readonly PluginCaller AnyCaller = new(
+        UserId.Empty,
+        "Stoney",
+        PluginRole.Owner,
+        PluginAccess.Owned,
+        "en",
+        PluginSurface.Web
+    );
+
     private sealed class DownloaderPlugin : IUiPlugin
     {
         public static readonly Ulid KnownId = Ulid.Parse("01ECH000000000000000000000");
@@ -73,7 +82,7 @@ public class UiPluginContractTests
         plugin.NavEntries[0].Section.Should().Be(PluginUiSection.Addon);
 
         PluginView view = await plugin.GetViewAsync(
-            new() { Route = "/active" },
+            new() { Route = "/active", Caller = AnyCaller },
             CancellationToken.None
         );
 
@@ -91,7 +100,10 @@ public class UiPluginContractTests
         // the server harder than the browser for the same screen.
         IUiPlugin plugin = new DownloaderPlugin();
 
-        PluginView view = await plugin.GetViewAsync(new() { Route = "/" }, CancellationToken.None);
+        PluginView view = await plugin.GetViewAsync(
+            new() { Route = "/", Caller = AnyCaller },
+            CancellationToken.None
+        );
 
         view.RefreshInterval.Should().Be(2);
     }

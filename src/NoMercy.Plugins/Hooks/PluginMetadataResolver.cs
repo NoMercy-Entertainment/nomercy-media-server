@@ -66,6 +66,9 @@ public class PluginMetadataResolver(
             }
             catch (Exception ex)
             {
+                if (PluginStaleMemberLog.Explain(logger, plugin.Id, ex, "answering for metadata"))
+                    continue;
+
                 logger.LogWarning(
                     ex,
                     "Metadata plugin {Plugin} failed or timed out for {Title}; its answer is skipped.",

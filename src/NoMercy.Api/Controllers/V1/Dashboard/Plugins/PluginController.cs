@@ -50,14 +50,7 @@ public class PluginController(
         IReadOnlyList<PluginInfo> plugins = pluginManager.GetInstalledPlugins();
 
         return Ok(
-            new DataResponseDto<IEnumerable<PluginInfoDto>>
-            {
-                Data = plugins.Select(p => new PluginInfoDto(
-                    p,
-                    restartAdvisor.Evaluate(p, PluginOperation.Enable),
-                    AwaitingConsent(p)
-                )),
-            }
+            new DataResponseDto<IEnumerable<PluginInfoDto>> { Data = plugins.Select(Describe) }
         );
     }
 
@@ -68,16 +61,7 @@ public class PluginController(
         if (plugin is null)
             return NotFoundResponse("Plugin not found");
 
-        return Ok(
-            new DataResponseDto<PluginInfoDto>
-            {
-                Data = new(
-                    plugin,
-                    restartAdvisor.Evaluate(plugin, PluginOperation.Enable),
-                    AwaitingConsent(plugin)
-                ),
-            }
-        );
+        return Ok(new DataResponseDto<PluginInfoDto> { Data = Describe(plugin) });
     }
 
     /// <summary>
@@ -99,7 +83,7 @@ public class PluginController(
         if (plugin is null)
             return NotFoundResponse("Plugin not found");
 
-        consentService.GrantConsent(id);
+        consentService.GrantConsent(id, plugin.Capabilities, plugin.Version);
 
         // Grants named in the same call, so consenting to a plugin that needs a
         // library or a host is one decision for the owner rather than three
@@ -131,10 +115,7 @@ public class PluginController(
     public async Task<IActionResult> RevokeConsent(Ulid id)
     {
         consentService.RevokeConsent(id);
-
-        foreach (string kind in AllGrantKinds)
-        foreach (string value in grantStore.Granted(id, kind))
-            grantStore.Revoke(id, kind, value);
+        grantStore.RevokeAll(id);
 
         try
         {
@@ -185,18 +166,40 @@ public class PluginController(
     }
 
     /// <summary>
-    /// An elevated plugin with no recorded consent is waiting on the owner, not
-    /// failing. The dashboard needs to tell those two apart.
+    /// An elevated plugin whose recorded consent does not cover what its
+    /// manifest now asks for is waiting on the owner, not failing. The
+    /// dashboard needs to tell those two apart.
+    /// <para>
+    /// Not <c>HasConsent</c>: that is true for a record covering a smaller
+    /// request, so a plugin that widened showed as plain Disabled with nothing
+    /// on screen offering the owner the decision it was actually waiting for.
+    /// </para>
     /// </summary>
-    private bool AwaitingConsent(PluginInfo plugin) =>
-        !consentService.IsBaseline(plugin.Capabilities) && !consentService.HasConsent(plugin.Id);
+    /// <summary>
+    /// One plugin as the dashboard reads it. Ordered: the consent check is what
+    /// upgrades a legacy record, so the consented set is read after it and
+    /// reports what the owner approved rather than the empty record it was
+    /// held in.
+    /// </summary>
+    private PluginInfoDto Describe(PluginInfo plugin)
+    {
+        bool awaiting = AwaitingConsent(plugin);
 
-    private static readonly string[] AllGrantKinds =
-    [
-        PluginGrantKind.Capability,
-        PluginGrantKind.NetworkHost,
-        PluginGrantKind.LibraryWrite,
-    ];
+        return new(
+            plugin,
+            restartAdvisor.Evaluate(plugin, PluginOperation.Enable),
+            awaiting,
+            consentService.ConsentedCapabilities(plugin.Id)
+        );
+    }
+
+    private bool AwaitingConsent(PluginInfo plugin) =>
+        !consentService.IsBaseline(plugin.Capabilities)
+        && !consentService.ConsentCoversCapabilities(
+            plugin.Id,
+            plugin.Capabilities,
+            plugin.Version
+        );
 
     [HttpPost("{id:ulid}/enable")]
     public async Task<IActionResult> Enable(Ulid id)
@@ -371,12 +374,23 @@ public class PluginController(
         return lastSeparator < 0 ? candidate : candidate[(lastSeparator + 1)..];
     }
 
+    /// <summary>
+    /// Removes a plugin, and keeps or purges what the server held for it.
+    /// <para>
+    /// <c>keepData</c> keeps the plugin's data folder, consent, grants and
+    /// secrets. Left out it is true, because a purge cannot be undone and every
+    /// client written before the flag existed sends nothing: defaulting the
+    /// other way made those clients destroy the owner's plugin data on an
+    /// ordinary uninstall, without asking and without a way back. An owner who
+    /// wants the data gone says so.
+    /// </para>
+    /// </summary>
     [HttpDelete("{id:ulid}")]
-    public async Task<IActionResult> Uninstall(Ulid id)
+    public async Task<IActionResult> Uninstall(Ulid id, [FromQuery] bool keepData = true)
     {
         try
         {
-            await pluginManager.UninstallPluginAsync(id);
+            await pluginManager.UninstallPluginAsync(id, keepData);
 
             return Ok(
                 new StatusResponseDto<string>

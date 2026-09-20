@@ -140,6 +140,35 @@ public class PluginRepository : IPluginRepository
         await SaveRepositoriesToDiskAsync(ct);
     }
 
+    public async Task SetRepositoryTrustAsync(
+        string name,
+        bool trusted,
+        CancellationToken ct = default
+    )
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(name);
+
+        lock (_lock)
+        {
+            PluginRepositoryInfo? repository = _repositories.FirstOrDefault(r => r.Name == name);
+
+            if (repository is null)
+            {
+                throw new InvalidOperationException($"Repository '{name}' not found.");
+            }
+
+            repository.Trusted = trusted;
+
+            // Cleared rather than adjusted. An entry does not carry which index
+            // listed it, so the only honest answer until the next refresh
+            // rebuilds the set is that nothing is trusted — and an owner who
+            // takes trust back means now, not at the next refresh.
+            _trustedPluginIds.Clear();
+        }
+
+        await SaveRepositoriesToDiskAsync(ct);
+    }
+
     public async Task RefreshAsync(CancellationToken ct = default)
     {
         List<PluginRepositoryInfo> repos;
@@ -280,8 +309,8 @@ public class PluginRepository : IPluginRepository
         Url =
             "https://raw.githubusercontent.com/NoMercy-Entertainment/nomercy-plugins/master/index.json?v=1",
         // Someone running this server has already decided to trust what we
-        // publish. Asking them to approve our own plugins one at a time teaches
-        // them to click through the prompt that is supposed to mean something.
+        // publish. Trust is provenance only: a plugin listed here still waits
+        // for the owner's consent before it runs.
         Trusted = true,
     };
 

@@ -24,4 +24,11 @@ public class PluginRepositoryInfoDto(PluginRepositoryInfo info)
 
     [JsonProperty("enabled")]
     public bool Enabled { get; } = info.Enabled;
+
+    /// <summary>
+    /// Whether the owner trusts where these plugins come from. The strongest
+    /// thing they say about a repository, and it was in no response at all.
+    /// </summary>
+    [JsonProperty("trusted")]
+    public bool Trusted { get; } = info.Trusted;
 }

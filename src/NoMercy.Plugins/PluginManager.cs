@@ -1,4 +1,4 @@
-﻿// -----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 //  Copyright (c) 2024-present NoMercy Entertainment. All rights reserved.
 //
 //  This file is part of NoMercy MediaServer, source-available software (NOT open
@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using System.IO.Compression;
-using System.Security.Cryptography;
 using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Logging;
@@ -81,7 +80,8 @@ public class PluginManager : IPluginManager, IDisposable
                         _storage.CombinePath(_pluginsPath, "data", "platform"),
                         _storage
                     )
-                )
+                ),
+                _logger
             );
         _registry = new PluginRegistry();
         _assemblyTracker = assemblyTracker;
@@ -127,6 +127,14 @@ public class PluginManager : IPluginManager, IDisposable
             _registry,
             _loader,
             factory,
+            new PluginDataPurge(
+                _pluginsPath,
+                _storage,
+                _consentService,
+                new ConfigPluginGrantStore(PlatformConfiguration()),
+                PlatformConfiguration()
+            ),
+            _consentService,
             assemblyTracker,
             releaseScheduledWork,
             registerScheduledWork
@@ -170,6 +178,10 @@ public class PluginManager : IPluginManager, IDisposable
             // alongside it, so ABI cannot be judged here (TargetAbi stays null
             // and that stage passes by design); only the checksum a repository
             // caller supplies is enforced, before anything is copied to disk.
+            //
+            // The file that arrived is the subject, whatever it is. A bare
+            // assembly is not a package, so the stage refuses it and names the
+            // .zip a publisher should have hashed instead.
             PluginManifest checksumManifest = new()
             {
                 Id = Ulid.Empty,
@@ -182,7 +194,8 @@ public class PluginManager : IPluginManager, IDisposable
             PluginVerificationResult verification = _verifier.Verify(
                 checksumManifest,
                 fullPath,
-                expectedChecksum
+                expectedChecksum,
+                fullPath
             );
 
             if (!verification.Verified)
@@ -352,13 +365,11 @@ public class PluginManager : IPluginManager, IDisposable
         // have existed on disk anywhere the loader looks.
         if (!string.IsNullOrWhiteSpace(expectedChecksum))
         {
-            string actual = await ComputeSha256Async(fullPath, ct);
+            string? refusal = PluginPackageChecksum.Refuse(fullPath, expectedChecksum);
 
-            if (!actual.Equals(expectedChecksum.Trim(), StringComparison.OrdinalIgnoreCase))
+            if (refusal is not null)
             {
-                throw new PluginVerificationException(
-                    $"Plugin archive failed verification: expected checksum {expectedChecksum}, got {actual}"
-                );
+                throw new PluginVerificationException(refusal);
             }
         }
 
@@ -1007,14 +1018,6 @@ public class PluginManager : IPluginManager, IDisposable
             );
     }
 
-    private async Task<string> ComputeSha256Async(string path, CancellationToken ct)
-    {
-        await using Stream stream = _driver.OpenRead(path);
-        byte[] hash = await SHA256.HashDataAsync(stream, ct);
-
-        return Convert.ToHexStringLower(hash);
-    }
-
     // Zip entries name their own separator and a Windows-built archive uses the
     // other one, so both count regardless of the host this runs on.
     private static readonly char[] ArchiveSeparators = ['/', '\\'];
@@ -1043,7 +1046,12 @@ public class PluginManager : IPluginManager, IDisposable
 
     public Task UninstallPluginAsync(Ulid pluginId, CancellationToken ct = default)
     {
-        return _lifecycle.UninstallPluginAsync(pluginId, ct);
+        return _lifecycle.UninstallPluginAsync(pluginId, keepData: false, ct);
+    }
+
+    public Task UninstallPluginAsync(Ulid pluginId, bool keepData, CancellationToken ct = default)
+    {
+        return _lifecycle.UninstallPluginAsync(pluginId, keepData, ct);
     }
 
     public async Task LoadPluginsFromDirectoryAsync(CancellationToken ct = default)

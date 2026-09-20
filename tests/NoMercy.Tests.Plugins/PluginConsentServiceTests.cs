@@ -51,7 +51,7 @@ public class PluginConsentServiceTests
         PluginConsentService service = new(new InMemoryConsentStore());
         Ulid id = Ulid.NewUlid();
         Assert.False(service.HasConsent(id));
-        service.GrantConsent(id);
+        service.GrantConsent(id, Caps("mediaSource"), new Version(1, 0));
         Assert.True(service.HasConsent(id));
     }
 
@@ -60,11 +60,45 @@ public class PluginConsentServiceTests
     {
         PluginConsentService service = new(new InMemoryConsentStore());
         Ulid id = Ulid.NewUlid();
-        service.GrantConsent(id);
+        service.GrantConsent(id, Caps("mediaSource"), new Version(1, 0));
         Assert.True(service.HasConsent(id));
 
         service.RevokeConsent(id);
 
         Assert.False(service.HasConsent(id));
+    }
+
+    [Fact]
+    public void ConsentCoversCapabilities_NoConsent_IsFalse()
+    {
+        PluginConsentService service = new(new InMemoryConsentStore());
+        Ulid id = Ulid.NewUlid();
+
+        Assert.False(service.ConsentCoversCapabilities(id, Caps("auth"), new Version(1, 0)));
+    }
+
+    [Fact]
+    public void ConsentCoversCapabilities_SameCapabilities_IsTrue()
+    {
+        PluginConsentService service = new(new InMemoryConsentStore());
+        Ulid id = Ulid.NewUlid();
+        PluginCapabilities caps = Caps("auth");
+
+        service.GrantConsent(id, caps, new Version(1, 0));
+
+        Assert.True(service.ConsentCoversCapabilities(id, caps, new Version(1, 0)));
+    }
+
+    [Fact]
+    public void ConsentCoversCapabilities_WidenedCapabilities_IsFalse()
+    {
+        PluginConsentService service = new(new InMemoryConsentStore());
+        Ulid id = Ulid.NewUlid();
+
+        service.GrantConsent(id, Caps("auth"), new Version(1, 0));
+
+        Assert.False(
+            service.ConsentCoversCapabilities(id, Caps("auth", "encoder"), new Version(1, 0))
+        );
     }
 }

@@ -25,6 +25,13 @@ public class PluginVerifierTests
         return path;
     }
 
+    private static string WriteTempPackage(byte[] bytes)
+    {
+        string path = Path.Combine(Path.GetTempPath(), $"plugin-{Ulid.NewUlid():N}.zip");
+        File.WriteAllBytes(path, bytes);
+        return path;
+    }
+
     private static PluginManifest Manifest(string? abi) =>
         new()
         {
@@ -41,7 +48,7 @@ public class PluginVerifierTests
     {
         string dll = WriteTempDll([1, 2, 3]);
         PluginVerifier verifier = new();
-        PluginVerificationResult result = verifier.Verify(Manifest("11.0"), dll, null);
+        PluginVerificationResult result = verifier.Verify(Manifest("12.0"), dll, null);
         Assert.False(result.Verified);
         Assert.Contains(result.Failures, f => f.Contains("ABI"));
     }
@@ -50,10 +57,11 @@ public class PluginVerifierTests
     public void Verify_ChecksumMatch_TrustedAndVerified()
     {
         byte[] bytes = [10, 20, 30, 40];
-        string dll = WriteTempDll(bytes);
+        string package = WriteTempPackage(bytes);
+        string dll = WriteTempDll([1, 1, 1]);
         string sha = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
         PluginVerifier verifier = new();
-        PluginVerificationResult result = verifier.Verify(Manifest("10.0"), dll, sha);
+        PluginVerificationResult result = verifier.Verify(Manifest("10.0"), dll, sha, package);
         Assert.True(result.Verified);
         Assert.True(result.Trusted);
     }
@@ -61,9 +69,15 @@ public class PluginVerifierTests
     [Fact]
     public void Verify_ChecksumMismatch_NotVerified()
     {
+        string package = WriteTempPackage([1, 1, 1]);
         string dll = WriteTempDll([1, 1, 1]);
         PluginVerifier verifier = new();
-        PluginVerificationResult result = verifier.Verify(Manifest("10.0"), dll, "deadbeef");
+        PluginVerificationResult result = verifier.Verify(
+            Manifest("10.0"),
+            dll,
+            "deadbeef",
+            package
+        );
         Assert.False(result.Verified);
         Assert.Contains(result.Failures, f => f.Contains("checksum"));
     }
