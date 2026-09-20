@@ -89,8 +89,6 @@ public class FileRescanJob : AbstractMediaJob
             MediaTypes.MusicMediaType => "music",
             _ => "unknown",
         };
-        
-        await Task.Delay(1000);
 
         if (EventBusProvider.IsConfigured)
         {

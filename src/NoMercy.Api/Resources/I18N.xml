@@ -900,24 +900,4 @@
     <Key>Grant given</Key>
     <Value lang="nl">Toestemming verleend</Value>
   </Entry>
-  <Entry>
-    <Key>download_url must be an absolute http(s) URL that resolves to a public host.</Key>
-    <Value lang="nl">download_url must be an absolute http(s) URL that resolves to a public host.</Value>
-  </Entry>
-  <Entry>
-    <Key>Driver not found</Key>
-    <Value lang="nl">Driver not found</Value>
-  </Entry>
-  <Entry>
-    <Key>Invalid type 'book'. Expected 'movie' or 'tv'.</Key>
-    <Value lang="nl">Invalid type 'book'. Expected 'movie' or 'tv'.</Value>
-  </Entry>
-  <Entry>
-    <Key>Cannot edit the built-in system local driver.</Key>
-    <Value lang="nl">Cannot edit the built-in system local driver.</Value>
-  </Entry>
-  <Entry>
-    <Key>Device not found.</Key>
-    <Value lang="nl">Device not found.</Value>
-  </Entry>
 </I18N>
