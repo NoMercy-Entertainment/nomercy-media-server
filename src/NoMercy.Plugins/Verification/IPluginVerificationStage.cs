@@ -25,6 +25,20 @@ public class PluginVerificationContext
     /// downloaded — a manual drop into the plugins folder, or a boot-time scan.
     /// </summary>
     public string? PackagePath { get; init; }
+
+    /// <summary>
+    /// The signature the repository published for this package, when it came
+    /// from one. Null for a sideload or a boot scan, which is a different
+    /// situation from a marketplace package arriving unsigned.
+    /// </summary>
+    public PluginSignatureBlock? Signature { get; init; }
+
+    /// <summary>
+    /// Whether this install came from a repository. A marketplace package must
+    /// be signed; a file the owner dropped in themselves is their own decision
+    /// and is not held to that.
+    /// </summary>
+    public bool FromMarketplace { get; init; }
 }
 
 public enum PluginStageOutcome

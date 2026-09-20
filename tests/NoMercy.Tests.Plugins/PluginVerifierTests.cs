@@ -143,16 +143,16 @@ public class PluginVerifierTests
     }
 
     [Fact]
-    public void SignatureVerificationStage_ExposesNameAndIsNotEnforced()
+    public void SignatureVerificationStage_ExposesNameAndIsEnforced()
     {
         SignatureVerificationStage stage = new();
 
         Assert.Equal("Signature", stage.Name);
-        Assert.False(stage.Enforced);
+        Assert.True(stage.Enforced);
     }
 
     [Fact]
-    public void SignatureVerificationStage_Evaluate_AlwaysPasses()
+    public void SignatureVerificationStage_Evaluate_PassesWhatTheOwnerInstalledThemselves()
     {
         SignatureVerificationStage stage = new();
         PluginVerificationContext context = new()

@@ -21,6 +21,7 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Extensions.Logging" />
     <PackageReference Include="Moq" />
+    <PackageReference Include="BouncyCastle.Cryptography" />
     <!--
       So the wire assertions can serialize the way the API does. They used
       System.Text.Json, which writes no response in this server, and passed

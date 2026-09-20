@@ -226,7 +226,12 @@ public class PluginRepositoryController(
             // copied into the plugins folder. A repository that publishes none
             // installs unverified, and the dashboard says so before you pick it.
             if (isArchive)
-                await pluginManager.InstallPluginArchiveAsync(stagedPath, target.Checksum, ct);
+                await pluginManager.InstallPluginArchiveAsync(
+                    stagedPath,
+                    target.Checksum,
+                    ct,
+                    fromMarketplace: true
+                );
             else
                 await pluginManager.InstallPluginAsync(stagedPath, target.Checksum, ct);
         }

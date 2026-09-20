@@ -33,7 +33,8 @@ public class PluginVerifier : IPluginVerifier
         PluginManifest manifest,
         string assemblyPath,
         string? expectedChecksum,
-        string? packagePath = null
+        string? packagePath = null,
+        bool fromMarketplace = false
     )
     {
         PluginVerificationContext context = new()
@@ -42,6 +43,8 @@ public class PluginVerifier : IPluginVerifier
             AssemblyPath = assemblyPath,
             ExpectedChecksum = expectedChecksum,
             PackagePath = packagePath,
+            Signature = manifest.Signature,
+            FromMarketplace = fromMarketplace,
         };
 
         List<string> failures = [];

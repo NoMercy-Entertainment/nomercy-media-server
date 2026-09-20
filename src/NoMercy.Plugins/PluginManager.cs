@@ -349,7 +349,8 @@ public class PluginManager : IPluginManager, IDisposable
     public async Task InstallPluginArchiveAsync(
         string archivePath,
         string? expectedChecksum = null,
-        CancellationToken ct = default
+        CancellationToken ct = default,
+        bool fromMarketplace = false
     )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(archivePath);
@@ -376,6 +377,26 @@ public class PluginManager : IPluginManager, IDisposable
         await using ZipArchive archive = await ZipFile.OpenReadAsync(fullPath, ct);
 
         PluginManifestEntry manifest = FindManifest(archive, fullPath);
+
+        // Before a byte is unpacked, and against the archive rather than
+        // anything extracted from it: the signature covers the file the
+        // publisher signed, and by the time entries are on disk it is too late
+        // to ask who wrote them.
+        PluginVerificationResult signature = _verifier.Verify(
+            manifest.Manifest,
+            _storage.CombinePath(fullPath, manifest.AssemblyFileName),
+            expectedChecksum: null,
+            packagePath: fullPath,
+            fromMarketplace: fromMarketplace
+        );
+
+        if (!signature.Verified)
+        {
+            throw new PluginVerificationException(
+                $"Plugin '{manifest.FolderName}' failed verification: {string.Join("; ", signature.Failures)}"
+            );
+        }
+
         string pluginDir = _storage.CombinePath(_pluginsPath, manifest.FolderName);
         string staging = _storage.CombinePath(
             _pluginsPath,
@@ -947,7 +968,8 @@ public class PluginManager : IPluginManager, IDisposable
             prefix,
             parsed.Assembly,
             Path.GetFileNameWithoutExtension(parsed.Assembly),
-            parsed.Id.Value
+            parsed.Id.Value,
+            parsed
         );
     }
 
@@ -1026,7 +1048,8 @@ public class PluginManager : IPluginManager, IDisposable
         string Prefix,
         string AssemblyFileName,
         string FolderName,
-        Ulid Id
+        Ulid Id,
+        PluginManifest Manifest
     );
 
     public Task EnablePluginAsync(Ulid pluginId, CancellationToken ct = default)

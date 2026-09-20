@@ -49,11 +49,22 @@ public static class PluginServiceCollectionExtensions
         // Built from the container rather than by the parameterless constructor,
         // because one stage asks the repository where a plugin came from and
         // that answer is the only thing trust may rest on.
+        // Keyed by the id a signature block names so a publisher can rotate
+        // without a flag day. None configured is not an error: the stage reads
+        // that emptiness and records the question as unanswered rather than
+        // refusing every marketplace install on a server that trusts nobody.
+        services.AddSingleton<IPluginTrustedKeys>(sp => new PluginTrustedKeys(
+            sp.GetService<IConfiguration>()
+                ?.GetSection("Plugins:TrustedKeys")
+                .Get<Dictionary<string, string>>()
+                ?? []
+        ));
+
         services.AddSingleton<IPluginVerifier>(sp => new PluginVerifier([
             new AbiVerificationStage(),
             new ChecksumVerificationStage(),
             new TrustedRepositoryVerificationStage(() => sp.GetService<IPluginRepository>()),
-            new SignatureVerificationStage(),
+            new SignatureVerificationStage(sp.GetRequiredService<IPluginTrustedKeys>()),
         ]));
         PluginAssemblyTracker assemblyTracker = new();
         services.AddSingleton<IPluginAssemblyTracker>(assemblyTracker);
