@@ -63,7 +63,7 @@ public static class PluginCapabilityVocabulary
             "folder id",
             PluginTrust.Low,
             false,
-            "IPluginContext.Storage.Path",
+            "IPluginContext.Storage.PathAsync",
             "read and write inside a folder the owner picked"
         ),
         new(

@@ -171,4 +171,25 @@ public static class PluginRefusalMessages
             PluginRefusalSeverity.Blocked
         );
     }
+
+    /// <summary>
+    /// A page navigating to a host the plugin's network globs do not match.
+    /// <para>
+    /// A challenge page redirecting to a host nobody listed is the ordinary way
+    /// this fires, so the message says the browser rides on the network grant
+    /// rather than replacing it. An author who reads it as a browser bug adds a
+    /// retry loop and never adds the host.
+    /// </para>
+    /// </summary>
+    public static PluginRefusal BrowserNavigationBlocked(string plugin, string url)
+    {
+        return new PluginRefusal(
+            PluginRefusalCodes.BrowserNavigationBlocked,
+            plugin,
+            $"The plugin navigated the headless browser to {url}.",
+            "The browser does not widen the network grant, it rides on it: a page may only reach the hosts the plugin's network.fetch globs already match. Otherwise a page would be the way around a host list the owner reviewed.",
+            $"Add a glob matching {url} to the network capability in plugin.json, beside browser.headless. Docs: /nomercy-plugins/capabilities/browser-headless",
+            PluginRefusalSeverity.Blocked
+        );
+    }
 }
