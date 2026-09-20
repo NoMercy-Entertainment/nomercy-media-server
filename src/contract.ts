@@ -31,6 +31,7 @@ export interface Contract {
   slots: Slot[];
   analyzers: AnalyzerRule[];
   manifestSchema: unknown;
+  settingsSchema: unknown;
 }
 
 function read<T>(file: string): T {
@@ -51,6 +52,7 @@ export function loadContract(): Contract {
     slots: read<Slot[]>('slots.json'),
     analyzers: read<AnalyzerRule[]>('analyzers.json'),
     manifestSchema: read<unknown>('manifest.schema.json'),
+    settingsSchema: read<unknown>('settings.schema.json'),
   };
 
   const names = new Set(contract.capabilities.map(capability => capability.name));

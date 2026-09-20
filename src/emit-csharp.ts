@@ -168,3 +168,30 @@ export function emitManifestSchema(schema: unknown, capabilities: Capability[]):
     '',
   ].join('\n');
 }
+
+/**
+ * The settings schema, as a C# constant.
+ *
+ * Emitted rather than hand-written for the same reason the manifest schema is:
+ * a schema kept in two places is a schema that disagrees with itself, and the
+ * half that disagrees is always the one a plugin author reads.
+ */
+export function emitSettingsSchema(schema: unknown): string {
+  const body: string[] = JSON.stringify(schema, null, 2)
+    .split('\n')
+    .map(line => `        ${line}`);
+
+  return [
+    LICENSE_HEADER,
+    'namespace NoMercy.Plugins.Abstractions;',
+    '',
+    '/// <summary>The schema a plugin settings declaration is read against.</summary>',
+    'public static class PluginSettingsSchema',
+    '{',
+    '    public const string Json = """',
+    ...body,
+    '        """;',
+    '}',
+    '',
+  ].join('\n');
+}

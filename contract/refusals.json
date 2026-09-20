@@ -208,5 +208,11 @@
     "severity": "blocked",
     "capability": "hub",
     "summary": "A hub method was reached on a connection the host could not resolve a caller for."
+  },
+  {
+    "code": "PLUGIN_SECRET_HAS_NO_CALLER",
+    "severity": "blocked",
+    "capability": "secrets",
+    "summary": "A per-user secret was reached on a call with no resolved caller."
   }
 ]
