@@ -281,7 +281,10 @@ internal sealed class PluginLoader(
                                 {
                                     PluginId = manifest.Id.ToString(),
                                     PluginName = manifest.Name,
-                                    ErrorMessage = ex.Message,
+                                    ErrorMessage = PluginStaleMemberLog.Describe(
+                                        manifest.Id.Value,
+                                        ex
+                                    ),
                                     ExceptionType = ex.GetType().Name,
                                 },
                                 ct
@@ -381,7 +384,7 @@ internal sealed class PluginLoader(
                     {
                         PluginId = manifest.Id.ToString(),
                         PluginName = manifest.Name,
-                        ErrorMessage = ex.Message,
+                        ErrorMessage = PluginStaleMemberLog.Describe(manifest.Id.Value, ex),
                         ExceptionType = ex.GetType().Name,
                     },
                     ct
@@ -590,7 +593,7 @@ internal sealed class PluginLoader(
                         {
                             PluginId = identity.Id.ToString(),
                             PluginName = identity.Name,
-                            ErrorMessage = ex.Message,
+                            ErrorMessage = PluginStaleMemberLog.Describe(identity.Id, ex),
                             ExceptionType = ex.GetType().Name,
                         },
                         ct
@@ -645,7 +648,7 @@ internal sealed class PluginLoader(
                 {
                     PluginId = Ulid.Empty.ToString(),
                     PluginName = assemblyName,
-                    ErrorMessage = ex.Message,
+                    ErrorMessage = PluginStaleMemberLog.Describe(Ulid.Empty, ex),
                     ExceptionType = ex.GetType().Name,
                 },
                 ct

@@ -155,7 +155,7 @@ internal sealed class PluginLifecycleManager(
                     {
                         PluginId = pluginId.ToString(),
                         PluginName = loaded.Info.Name,
-                        ErrorMessage = ex.Message,
+                        ErrorMessage = PluginStaleMemberLog.Describe(pluginId, ex),
                         ExceptionType = ex.GetType().Name,
                     },
                     ct
