@@ -162,6 +162,12 @@
     "summary": "The plugin is at its disk quota, so the write has nowhere to go."
   },
   {
+    "code": "PLUGIN_LAN_CREDENTIAL_INVALID",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "A device on the network used a credential the server does not know, or one the owner revoked."
+  },
+  {
     "code": "PLUGIN_SCHEDULER_WORKER_CRASHED",
     "severity": "degraded",
     "capability": "scheduler",
