@@ -20,6 +20,7 @@
   <PropertyGroup>
     <IsPackable>true</IsPackable>
     <PackageId>NoMercy.Plugins.Mvc</PackageId>
+    <Version>$(PluginPackageVersion)</Version>
     <Authors>NoMercy Entertainment</Authors>
     <Description>The base class a NoMercy MediaServer plugin's REST controllers inherit.</Description>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>

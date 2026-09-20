@@ -4,6 +4,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>true</IsPackable>
+    <PackageId>NoMercy.Plugins.Testing</PackageId>
+    <Version>$(PluginPackageVersion)</Version>
+    <Authors>NoMercy Entertainment</Authors>
+    <Description>Drive a NoMercy MediaServer plugin through a fake context, with the owner grants a test switches on and off.</Description>
   </PropertyGroup>
 
   <ItemGroup>

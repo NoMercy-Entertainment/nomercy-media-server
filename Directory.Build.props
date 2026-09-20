@@ -12,6 +12,14 @@
     <RepositoryUrl>https://github.com/NoMercy-Entertainment/nomercy-media-server</RepositoryUrl>
 
     <Version>0.1.404</Version>
+
+    <!--
+      The plugin packages version with the contract, not with the server. A
+      plugin's manifest names a targetAbi, and the template references the
+      packages as 11.0.*, so a package version that tracked the server would
+      resolve to something the manifest never claimed compatibility with.
+    -->
+    <PluginPackageVersion>11.0.0</PluginPackageVersion>
     <AssemblyVersion>$(Version).0</AssemblyVersion>
     <FileVersion>$(Version).0</FileVersion>
   </PropertyGroup>

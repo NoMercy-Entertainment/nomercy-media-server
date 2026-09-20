@@ -95,23 +95,25 @@ public class ServerUserSyncService(IServerUserApiClient apiClient) : IServerUser
 
         Logger.Setup($"Found {serverUsers.Length} server users", LogEventLevel.Verbose);
 
-        User[] incomingUsers = serverUsers
-            // Skip rows whose UserId can't be parsed — a single bad row from the
-            // upstream API used to abort the whole sync via FormatException,
-            // leaving the server with no users at all.
-            .Where(serverUser => Guid.TryParse(serverUser.UserId, out _))
-            .Select(serverUser => new User
-            {
-                Id = Guid.Parse(serverUser.UserId),
-                Email = serverUser.Email,
-                Name = serverUser.Name,
-                Allowed = true,
-                AudioTranscoding = serverUser.Enabled,
-                NoTranscoding = serverUser.Enabled,
-                VideoTranscoding = serverUser.Enabled,
-                Owner = serverUser.IsOwner,
-            })
-            .ToArray();
+        User[] incomingUsers =
+        [
+            .. serverUsers
+                // Skip rows whose UserId can't be parsed — a single bad row from the
+                // upstream API used to abort the whole sync via FormatException,
+                // leaving the server with no users at all.
+                .Where(serverUser => Guid.TryParse(serverUser.UserId, out _))
+                .Select(serverUser => new User
+                {
+                    Id = Guid.Parse(serverUser.UserId),
+                    Email = serverUser.Email,
+                    Name = serverUser.Name,
+                    Allowed = true,
+                    AudioTranscoding = serverUser.Enabled,
+                    NoTranscoding = serverUser.Enabled,
+                    VideoTranscoding = serverUser.Enabled,
+                    Owner = serverUser.IsOwner,
+                })
+        ];
 
         // Self floor check (defense in depth against a 200-with-bad-shape response
         // that parses "successfully" into an empty/partial list, e.g. `{"data":[]}`
