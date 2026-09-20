@@ -1,0 +1,11 @@
+{
+  "name": "AUTHOR-NAME-PLACEHOLDER's plugins",
+  "plugins": [
+    {
+      "id": "PLUGIN-ULID-PLACEHOLDER",
+      "name": "NoMercy.Plugin.Template",
+      "description": "PLUGIN-DESCRIPTION-PLACEHOLDER",
+      "versions": []
+    }
+  ]
+}

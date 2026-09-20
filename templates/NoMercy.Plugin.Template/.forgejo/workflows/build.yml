@@ -1,0 +1,52 @@
+name: build
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  pull_request:
+
+jobs:
+  build:
+    runs-on: docker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - run: dotnet restore
+      - run: dotnet build --no-restore --configuration Release
+      - run: dotnet test --no-build --configuration Release
+
+      - name: Package
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          dotnet publish --configuration Release --output publish
+          cd publish && zip -r ../plugin.zip .
+
+      # The repository file lives at one path for the life of the plugin. A
+      # server's repository list points at a URL, so a path that moves per
+      # release is a list that stops updating and says nothing.
+      - name: Write repository.json
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          python3 - <<'PY'
+          import json, os, hashlib
+          version = os.environ['GITHUB_REF_NAME'].lstrip('v')
+          digest = hashlib.sha256(open('plugin.zip', 'rb').read()).hexdigest()
+          repository = json.load(open('repository.json'))
+          repository['plugins'][0]['versions'].insert(0, {
+              'version': version,
+              'url': f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/releases/download/v{version}/plugin.zip",
+              'sha256': digest,
+          })
+          json.dump(repository, open('repository.json', 'w'), indent=2)
+          PY
+
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: |
+            plugin.zip
+            repository.json

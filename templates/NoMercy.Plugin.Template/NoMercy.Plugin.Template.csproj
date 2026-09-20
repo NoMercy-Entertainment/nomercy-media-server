@@ -6,11 +6,18 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="NoMercy.Plugins.Abstractions" Version="*" />
+    <!--
+      Pinned to the contract's major, not to *. A floating reference means the
+      plugin quietly rebuilds against a contract it was never tested with, and
+      the first sign is a server refusing to load it.
+    -->
+    <PackageReference Include="NoMercy.Plugins.Abstractions" Version="11.0.*" />
+    <PackageReference Include="NoMercy.Plugins.Mvc" Version="11.0.*" />
+    <PackageReference Include="NoMercy.Plugins.Analyzers" Version="11.0.*" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="plugin.json">
+    <None Update="plugin.json;settings.schema.json;lang\**\*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

@@ -270,4 +270,165 @@ public class PluginTemplateTests
             .BeTrue("manifest must have autoEnabled");
         autoEnabled.ValueKind.Should().Be(JsonValueKind.True, "autoEnabled should default to true");
     }
+
+    [Fact]
+    public void The_template_targets_the_current_abi()
+    {
+        JsonDocument manifest = JsonDocument.Parse(
+            File.ReadAllText(Path.Combine(TemplateRoot, "plugin.json"))
+        );
+
+        manifest
+            .RootElement.GetProperty("targetAbi")
+            .GetString()
+            .Should()
+            .Be(
+                PluginAbi.Current.ToString(),
+                "a template that scaffolds against a contract the server no longer speaks is a first run that fails"
+            );
+    }
+
+    [Fact]
+    public void The_template_declares_only_capabilities_it_uses()
+    {
+        JsonDocument manifest = JsonDocument.Parse(
+            File.ReadAllText(Path.Combine(TemplateRoot, "plugin.json"))
+        );
+        JsonElement capabilities = manifest.RootElement.GetProperty("capabilities");
+
+        capabilities
+            .ValueKind.Should()
+            .Be(
+                JsonValueKind.Object,
+                "capabilities are an object on the manifest, not a list of names"
+            );
+        capabilities.GetProperty("rest").GetBoolean().Should().BeTrue();
+        capabilities
+            .TryGetProperty("network", out _)
+            .Should()
+            .BeFalse("a template that asks for the network teaches every author to ask for it");
+    }
+
+    [Fact]
+    public void Every_ui_mount_names_a_kind_the_server_knows()
+    {
+        JsonDocument manifest = JsonDocument.Parse(
+            File.ReadAllText(Path.Combine(TemplateRoot, "plugin.json"))
+        );
+
+        IEnumerable<string> sections = manifest
+            .RootElement.GetProperty("capabilities")
+            .GetProperty("ui")
+            .GetProperty("mounts")
+            .EnumerateArray()
+            .Select(mount => mount.GetProperty("section").GetString()!);
+
+        sections.Should().OnlyContain(section => PluginKind.IsKnown(section));
+    }
+
+    [Fact]
+    public void Every_label_in_the_manifest_is_a_key_that_both_locales_carry()
+    {
+        JsonDocument manifest = JsonDocument.Parse(
+            File.ReadAllText(Path.Combine(TemplateRoot, "plugin.json"))
+        );
+        Dictionary<string, string> english = JsonSerializer.Deserialize<Dictionary<string, string>>(
+            File.ReadAllText(Path.Combine(TemplateRoot, "lang", "en.json"))
+        )!;
+        Dictionary<string, string> dutch = JsonSerializer.Deserialize<Dictionary<string, string>>(
+            File.ReadAllText(Path.Combine(TemplateRoot, "lang", "nl.json"))
+        )!;
+
+        IEnumerable<string> labels = manifest
+            .RootElement.GetProperty("capabilities")
+            .GetProperty("ui")
+            .GetProperty("mounts")
+            .EnumerateArray()
+            .Select(mount => mount.GetProperty("label").GetString()!);
+
+        foreach (string label in labels)
+        {
+            english.Should().ContainKey(label);
+            dutch
+                .Should()
+                .ContainKey(
+                    label,
+                    "a second locale missing a key is a page that falls back silently"
+                );
+        }
+    }
+
+    [Fact]
+    public void The_two_locales_carry_the_same_keys()
+    {
+        Dictionary<string, string> english = JsonSerializer.Deserialize<Dictionary<string, string>>(
+            File.ReadAllText(Path.Combine(TemplateRoot, "lang", "en.json"))
+        )!;
+        Dictionary<string, string> dutch = JsonSerializer.Deserialize<Dictionary<string, string>>(
+            File.ReadAllText(Path.Combine(TemplateRoot, "lang", "nl.json"))
+        )!;
+
+        dutch.Keys.Should().BeEquivalentTo(english.Keys);
+    }
+
+    [Fact]
+    public void The_settings_schema_reads_against_the_generated_schema()
+    {
+        JsonDocument settings = JsonDocument.Parse(
+            File.ReadAllText(Path.Combine(TemplateRoot, "settings.schema.json"))
+        );
+
+        JsonElement field = settings.RootElement.GetProperty("fields").EnumerateArray().First();
+
+        field.GetProperty("type").GetString().Should().BeOneOf(PluginFormFieldType.All);
+        field.GetProperty("scope").GetString().Should().BeOneOf("server", "user");
+        PluginSettingsSchema.Json.Should().Contain("\"fields\"");
+    }
+
+    [Fact]
+    public void The_package_reference_is_pinned_to_a_major_rather_than_floating()
+    {
+        string csproj = File.ReadAllText(
+            Path.Combine(TemplateRoot, "NoMercy.Plugin.Template.csproj")
+        );
+
+        csproj
+            .Should()
+            .NotContain(
+                "Version=\"*\"",
+                "a floating reference rebuilds against a contract the plugin was never tested with"
+            );
+        csproj.Should().Contain("NoMercy.Plugins.Analyzers");
+    }
+
+    [Fact]
+    public void The_template_ships_for_both_forges()
+    {
+        File.Exists(Path.Combine(TemplateRoot, ".github", "workflows", "build.yml"))
+            .Should()
+            .BeTrue();
+        File.Exists(Path.Combine(TemplateRoot, ".forgejo", "workflows", "build.yml"))
+            .Should()
+            .BeTrue("Fillz publishes from Forgejo, so a GitHub-only template is one he rewrites");
+    }
+
+    [Fact]
+    public void Nothing_user_facing_is_written_in_the_template_source()
+    {
+        IEnumerable<string> sources = Directory.EnumerateFiles(
+            TemplateRoot,
+            "*.cs",
+            SearchOption.AllDirectories
+        );
+
+        foreach (string source in sources)
+        {
+            File.ReadAllText(source)
+                .Should()
+                .NotContain(
+                    "\"It works\"",
+                    $"{Path.GetFileName(source)} writes a sentence no translator can reach"
+                );
+        }
+    }
 }
