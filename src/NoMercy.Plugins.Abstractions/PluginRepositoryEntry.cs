@@ -31,6 +31,13 @@ public class PluginRepositoryEntry
     [JsonPropertyName("projectUrl")]
     public string? ProjectUrl { get; init; }
 
+    /// <summary>
+    /// What this costs. Free unless the catalogue says otherwise, so a
+    /// repository written before the field existed still reads correctly.
+    /// </summary>
+    [JsonPropertyName("tier")]
+    public PluginTier Tier { get; init; } = PluginTier.Free;
+
     [JsonPropertyName("versions")]
     public required List<PluginVersionEntry> Versions { get; init; }
 }
@@ -54,4 +61,12 @@ public class PluginVersionEntry
 
     [JsonPropertyName("timestamp")]
     public DateTime? Timestamp { get; init; }
+
+    /// <summary>
+    /// What this version needs alongside it. Named in the catalogue so the
+    /// server can plan an install before downloading anything; the manifest
+    /// inside the package is what the gate enforces afterwards.
+    /// </summary>
+    [JsonPropertyName("dependencies")]
+    public List<PluginDependency> Dependencies { get; init; } = [];
 }

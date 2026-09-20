@@ -87,6 +87,7 @@ public static class PluginManifestParser
             Trusted = trusted,
             Capabilities = manifest.Capabilities,
             Settings = manifest.Settings,
+            Dependencies = manifest.Dependencies,
             Tier = manifest.Tier,
             Sideloaded = sideloaded,
         };

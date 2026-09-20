@@ -30,6 +30,9 @@ public class PluginInfo
     /// <summary>The fields the host draws on this plugin's settings page.</summary>
     public IReadOnlyList<PluginSettingsField> Settings { get; init; } = [];
 
+    /// <summary>Other plugins this one needs before it can run.</summary>
+    public IReadOnlyList<PluginDependency> Dependencies { get; init; } = [];
+
     /// <summary>What the marketplace says this costs. Free until it says otherwise.</summary>
     public PluginTier Tier { get; init; } = PluginTier.Free;
 

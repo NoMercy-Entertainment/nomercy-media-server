@@ -25,6 +25,7 @@ using NoMercy.NmSystem.Information;
 using NoMercy.Plugins.Abstractions;
 using NoMercy.Plugins.Access;
 using NoMercy.Plugins.Capabilities;
+using NoMercy.Plugins.Dependencies;
 using NoMercy.Plugins.Entitlements;
 using NoMercy.Plugins.Guests;
 using NoMercy.Plugins.Hooks;
@@ -187,6 +188,27 @@ public static class PluginServiceCollectionExtensions
         services.TryAddSingleton<IPluginQuotaSource>(quotas);
         services.TryAddSingleton(quotas);
         services.TryAddSingleton<IPluginResourceCeilingSource>(quotas);
+        // A plugin runs only while what it leans on runs, and a free
+        // dependency installs beside it rather than leaving the owner to work
+        // out why nothing started.
+        services.AddSingleton<PluginDependencyGate>(sp =>
+            new(
+                sp.GetRequiredService<IPluginManifestSource>(),
+                sp.GetRequiredService<IPluginEntitlementStore>(),
+                sp.GetRequiredService<TimeProvider>(),
+                () => sp.GetService<IPluginOwner>()?.Id ?? Guid.Empty
+            )
+        );
+        services.AddSingleton<IPluginCatalogue>(sp => new PluginRepositoryCatalogue(
+            sp.GetRequiredService<IPluginRepository>()
+        ));
+        services.AddSingleton<PluginDependencyResolver>(sp =>
+            new(
+                sp.GetRequiredService<IPluginCatalogue>(),
+                sp.GetRequiredService<IPluginManifestSource>()
+            )
+        );
+
         services.AddSingleton<PluginQuotaMeter>(sp =>
             new(
                 sp.GetRequiredService<IPluginQuotaSource>(),
