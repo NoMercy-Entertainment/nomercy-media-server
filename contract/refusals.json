@@ -298,5 +298,11 @@
     "severity": "blocked",
     "capability": null,
     "summary": "A plugin was restarted too many times in an hour, so the server stopped restarting it."
+  },
+  {
+    "code": "PLUGIN_QUOTA_UPLOAD_EXCEEDED",
+    "severity": "degraded",
+    "capability": "media.proxy",
+    "summary": "A plugin is sending faster than the share of the uplink the owner allowed it."
   }
 ]
