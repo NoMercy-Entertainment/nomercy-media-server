@@ -142,12 +142,19 @@ public static class PluginServiceCollectionExtensions
         // one says so rather than minting a link bound to the empty account.
         services.TryAddSingleton<IPluginCallerAccessor>(NoPluginCaller.Instance);
 
+        // In memory: a channel carries a callback that resolves a
+        // credential-bearing address, and a callback cannot be written to disk.
+        // A plugin republishes on start, which it already does to pick up what
+        // the provider changed.
+        services.TryAddSingleton<IPluginLiveStore>(new PluginLiveStore());
+
         services.AddSingleton<IPluginMediaFactory>(sp => new PluginMediaFactory(
             sp.GetRequiredService<IPluginManifestSource>(),
             sp.GetRequiredService<IPluginCapabilityBroker>(),
             sp.GetRequiredService<IPluginGrantStore>(),
             sp.GetRequiredService<PluginMediaTicketMinter>(),
             sp.GetRequiredService<IPluginCallerAccessor>(),
+            sp.GetRequiredService<IPluginLiveStore>(),
             sp.GetRequiredService<ILoggerFactory>()
         ));
 

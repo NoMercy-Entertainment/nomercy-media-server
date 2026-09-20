@@ -16,20 +16,22 @@ namespace NoMercy.Plugins.Media;
 /// <summary>
 /// What <c>context.Media</c> is on this host.
 /// <para>
-/// Proxying is here. The other four are not built yet, and each says so by
-/// name rather than being null: a plugin that reaches for one gets a sentence
-/// saying this host does not carry it, which is a thing an author can act on.
+/// Proxying and live channels are here. The other three are not built yet, and
+/// each says so by name rather than being null: a plugin that reaches for one
+/// gets a sentence saying this host does not carry it, which is a thing an
+/// author can act on.
 /// </para>
 /// </summary>
-public class PluginMedia(Ulid pluginId, IPluginMediaProxy proxy) : IPluginMedia
+public class PluginMedia(Ulid pluginId, IPluginMediaProxy proxy, IPluginMediaLive live)
+    : IPluginMedia
 {
     public IPluginMediaProxy Proxy => proxy;
+
+    public IPluginMediaLive Live => live;
 
     public IPluginMediaTranscode Transcode => throw NotHere("IPluginContext.Media.Transcode");
 
     public IPluginMediaRemux Remux => throw NotHere("IPluginContext.Media.Remux");
-
-    public IPluginMediaLive Live => throw NotHere("IPluginContext.Media.Live");
 
     public IPluginRecorder Record => throw NotHere("IPluginContext.Media.Record");
 

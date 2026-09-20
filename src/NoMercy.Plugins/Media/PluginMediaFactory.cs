@@ -31,10 +31,12 @@ public class PluginMediaFactory(
     IPluginGrantStore grants,
     PluginMediaTicketMinter minter,
     IPluginCallerAccessor caller,
+    IPluginLiveStore live,
     ILoggerFactory loggers
 ) : IPluginMediaFactory
 {
-    public IPluginMedia CreateFor(Ulid pluginId) => new PluginMedia(pluginId, Build(pluginId));
+    public IPluginMedia CreateFor(Ulid pluginId) =>
+        new PluginMedia(pluginId, Build(pluginId), new PluginMediaLive(pluginId, broker, live));
 
     public IPluginMediaFetcher FetcherFor(Ulid pluginId) => Build(pluginId);
 
