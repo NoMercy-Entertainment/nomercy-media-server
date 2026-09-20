@@ -13,11 +13,16 @@ using System.Text.Json.Serialization;
 
 namespace NoMercy.Plugins.Abstractions;
 
-public class PluginManifest
+/// <summary>
+/// The one shape a plugin.json is read against. Every field an older
+/// plugin.json does not carry is optional with a sensible default, so a
+/// manifest written before a field existed keeps loading rather than needing
+/// a second, tolerant type beside this one.
+/// </summary>
+public sealed record PluginManifest
 {
     [JsonPropertyName("id")]
-    [JsonConverter(typeof(PluginIdJsonConverter))]
-    public required Ulid Id { get; init; }
+    public required PluginId Id { get; init; }
 
     [JsonPropertyName("name")]
     public required string Name { get; init; }
@@ -31,27 +36,45 @@ public class PluginManifest
     [JsonPropertyName("targetAbi")]
     public string? TargetAbi { get; init; }
 
-    [JsonPropertyName("author")]
-    public string? Author { get; init; }
+    [JsonPropertyName("publisher")]
+    public PluginId? Publisher { get; init; }
 
-    [JsonPropertyName("projectUrl")]
-    public string? ProjectUrl { get; init; }
+    [JsonPropertyName("tier")]
+    public PluginTier Tier { get; init; } = PluginTier.Free;
 
     [JsonPropertyName("assembly")]
     public required string Assembly { get; init; }
 
+    [JsonPropertyName("entry")]
+    public string Entry { get; init; } = string.Empty;
+
+    [JsonPropertyName("author")]
+    public string? Author { get; init; }
+
+    [JsonPropertyName("license")]
+    public string? License { get; init; }
+
+    [JsonPropertyName("projectUrl")]
+    public string? ProjectUrl { get; init; }
+
+    [JsonPropertyName("docs")]
+    public string? Docs { get; init; }
+
     [JsonPropertyName("autoEnabled")]
     public bool AutoEnabled { get; init; } = true;
 
-    /// <summary>
-    /// The translations this plugin ships, checked when it loads.
-    /// </summary>
     [JsonPropertyName("translations")]
     public PluginTranslations? Translations { get; init; }
 
     [JsonPropertyName("capabilities")]
     public PluginCapabilities? Capabilities { get; init; }
 
+    [JsonPropertyName("dependencies")]
+    public IReadOnlyList<PluginDependency> Dependencies { get; init; } = [];
+
+    [JsonPropertyName("ui")]
+    public PluginUiSpec? Ui { get; init; }
+
     [JsonPropertyName("signature")]
-    public string? Signature { get; init; }
+    public PluginSignatureBlock? Signature { get; init; }
 }

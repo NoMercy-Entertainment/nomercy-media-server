@@ -56,7 +56,7 @@ public class PluginChecksumSubjectTests : IDisposable
     private static PluginManifest Manifest() =>
         new()
         {
-            Id = Ulid.NewUlid(),
+            Id = new PluginId(Ulid.NewUlid()),
             Name = "Internet Radio",
             Description = "d",
             Version = "1.2.0",

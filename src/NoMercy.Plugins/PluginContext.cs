@@ -45,8 +45,6 @@ public class PluginContext : IPluginContext
 
     public IPluginJobs? Jobs { get; }
 
-    public IPluginStorage? Storage { get; }
-
     /// <summary>
     /// Running ffmpeg over a track or a derived file, and splitting stems.
     /// Null when the plugin never declared the <c>audioTools</c> hook.
@@ -91,7 +89,6 @@ public class PluginContext : IPluginContext
         IPluginHubContext? hub = null,
         IPluginEncoder? encoder = null,
         IPluginJobs? jobs = null,
-        IPluginStorage? pluginStorage = null,
         IPluginMusicQuery? music = null,
         IPluginAudioTools? audioTools = null,
         IPluginDerivedAudio? derivedAudio = null,
@@ -100,7 +97,6 @@ public class PluginContext : IPluginContext
     {
         Encoder = encoder;
         Jobs = jobs;
-        Storage = pluginStorage;
         AudioTools = audioTools;
         DerivedAudio = derivedAudio;
         MusicAnalysisWriter = musicAnalysisWriter;

@@ -11,7 +11,7 @@
 
 namespace NoMercy.Events.Plugins;
 
-public sealed class PluginErrorOccurredEvent : EventBase
+public sealed class PluginErrorOccurredEvent : EventBase, IEventExplainsItself
 {
     public override string Source => "PluginManager";
 
@@ -19,4 +19,9 @@ public sealed class PluginErrorOccurredEvent : EventBase
     public required string PluginName { get; init; }
     public required string ErrorMessage { get; init; }
     public string? ExceptionType { get; init; }
+
+    public string Why =>
+        ExceptionType is null
+            ? $"{PluginName}: {ErrorMessage}"
+            : $"{PluginName}: {ErrorMessage} ({ExceptionType})";
 }

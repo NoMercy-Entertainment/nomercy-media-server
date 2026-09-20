@@ -35,7 +35,7 @@ public class PluginVerifierTests
     private static PluginManifest Manifest(string? abi) =>
         new()
         {
-            Id = Ulid.NewUlid(),
+            Id = new PluginId(Ulid.NewUlid()),
             Name = "n",
             Description = "d",
             Version = "1.0.0",

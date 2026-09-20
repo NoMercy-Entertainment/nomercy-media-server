@@ -35,7 +35,7 @@ public static class PluginHookCapability
 
     /// <summary>
     /// Writing files anywhere the server can write, through
-    /// <see cref="IPluginStorage" />.
+    /// <see cref="IPluginFolderCatalog" />.
     /// <para>
     /// Elevated: a plugin that can write into a library folder can overwrite an
     /// owner's media, which is not a thing to arrive through a baseline

@@ -54,7 +54,7 @@ public class TrustedRepositoryVerificationStage(Func<IPluginRepository?> reposit
         if (repository() is not { } catalogue)
             return (PluginStageOutcome.Pass, null);
 
-        if (!catalogue.IsFromTrustedRepository(context.Manifest.Id))
+        if (!catalogue.IsFromTrustedRepository(context.Manifest.Id.Value))
             return (PluginStageOutcome.Pass, null);
 
         return (

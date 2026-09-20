@@ -48,10 +48,11 @@ public class PluginConsentService(IPluginConsentStore store, ILogger? logger = n
         if (grant is null)
             return false;
 
-        // Upgraded in place, and the legacy id goes with it, so the next read
-        // has a real record to compare a later manifest against. Without this
-        // step a genuine widening would keep migrating instead of asking.
-        if (grant.IsLegacy)
+        // Upgraded in place, and the old id-only entry goes with it, so the
+        // next read has a real record to compare a later manifest against.
+        // Without this step a genuine widening would keep migrating instead
+        // of asking.
+        if (grant.PredatesCapabilityTracking)
         {
             // A record from before consent carried a capability list says only
             // that the owner said yes, never to what. The installed manifest is

@@ -34,7 +34,6 @@ public class PluginContextFactory(
     IPluginHubContextFactory hubContextFactory,
     IPluginEncoder? encoder = null,
     IPluginJobs? jobs = null,
-    IPluginStorage? pluginStorage = null,
     IPluginMusicQuery? musicQuery = null,
     IPluginAudioToolsFactory? audioToolsFactory = null,
     IPluginDerivedAudio? derivedAudio = null,
@@ -75,10 +74,6 @@ public class PluginContextFactory(
             jobsFacade = jobs;
         }
 
-        IPluginStorage? storageFacade = null;
-        if (PluginCapabilityGuard.DeclaresHook(capabilities, PluginHookCapability.Storage))
-            storageFacade = pluginStorage;
-
         // The three analysis facades: each gated on its own hook, the same
         // "declaring is not holding" rule as the writer and the storage/encoder
         // pair above.
@@ -117,7 +112,6 @@ public class PluginContextFactory(
             hubContextFactory.For(pluginId),
             encoderFacade,
             jobsFacade,
-            storageFacade,
             musicQuery,
             audioToolsFacade,
             derivedAudioFacade,

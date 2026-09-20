@@ -9,13 +9,21 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Text.Json.Serialization;
-
 namespace NoMercy.Plugins.Abstractions;
 
-/// <summary>One capability the manifest asks for, with the scope and the i18n key that explains why.</summary>
-public sealed record PluginCapabilityGrantRequest(
-    [property: JsonPropertyName("name")] string Name,
-    [property: JsonPropertyName("scope")] string? Scope,
-    [property: JsonPropertyName("reason")] string? Reason
-);
+/// <summary>
+/// A port the owner consented to this plugin holding open.
+/// <para>
+/// The port is read back rather than assumed, because a plugin that asked for
+/// any free port needs to know which one it got before it can announce itself
+/// to a tracker or a peer.
+/// </para>
+/// </summary>
+public interface IPluginListener : IAsyncDisposable
+{
+    /// <summary>The port actually bound, which is not the requested port when the request was zero.</summary>
+    int Port { get; }
+
+    /// <summary>The next inbound connection. Cancelling is how a plugin stops listening.</summary>
+    Task<Stream> AcceptAsync(CancellationToken ct = default);
+}

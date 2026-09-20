@@ -34,7 +34,7 @@ public class TrustedRepositoryTests
         {
             Manifest = new()
             {
-                Id = id,
+                Id = new PluginId(id),
                 Name = "Internet Radio",
                 Description = "Stations",
                 Version = "1.0.2",

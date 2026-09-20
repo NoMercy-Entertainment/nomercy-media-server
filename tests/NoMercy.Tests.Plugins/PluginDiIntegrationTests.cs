@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Reflection;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -236,7 +237,6 @@ public class PluginDiIntegrationTests : IDisposable
         services.AddSingleton(TestStorageHelper.CreateBackend());
         services.AddSingleton(Mock.Of<IPluginEncoder>());
         services.AddSingleton(Mock.Of<IPluginJobs>());
-        services.AddSingleton(Mock.Of<IPluginStorage>());
         services.AddSingleton(Mock.Of<IPluginMusicQuery>());
         services.AddSingleton(audioToolsFactory.Object);
         services.AddSingleton(Mock.Of<IPluginDerivedAudio>());
@@ -261,7 +261,6 @@ public class PluginDiIntegrationTests : IDisposable
 
         context.Music.Should().NotBeNull();
         context.Encoder.Should().NotBeNull();
-        context.Storage.Should().NotBeNull();
         context.AudioTools.Should().NotBeNull();
         context.DerivedAudio.Should().NotBeNull();
         context.MusicAnalysisWriter.Should().NotBeNull();
@@ -269,9 +268,9 @@ public class PluginDiIntegrationTests : IDisposable
 
     /// <summary>
     /// A host that never calls <c>AddPluginLibraryAccess</c> or wires the
-    /// encoder/storage facades still gets a working platform - the resolve
-    /// must not throw, and every optional facade gates to null exactly as it
-    /// would when the plugin never declared the hook.
+    /// encoder facade still gets a working platform - the resolve must not
+    /// throw, and every optional facade gates to null exactly as it would
+    /// when the plugin never declared the hook.
     /// </summary>
     [Fact]
     public void DiBuiltFactory_WithoutFacadesStillCreatesAContext()
@@ -300,10 +299,56 @@ public class PluginDiIntegrationTests : IDisposable
 
         context.Music.Should().BeNull();
         context.Encoder.Should().BeNull();
-        context.Storage.Should().BeNull();
         context.AudioTools.Should().BeNull();
         context.DerivedAudio.Should().BeNull();
         context.MusicAnalysisWriter.Should().BeNull();
+    }
+
+    /// <summary>
+    /// A facade this server build does not wire yet refuses and names itself,
+    /// rather than answering null.
+    /// <para>
+    /// The members above answer null, and that taught an author to branch
+    /// and then quietly do nothing: the plugin looked idle, the owner saw no
+    /// error, and nobody learned the server was the old one.
+    /// </para>
+    /// </summary>
+    [Theory]
+    [InlineData("Net")]
+    [InlineData("Storage")]
+    [InlineData("Process")]
+    [InlineData("Server")]
+    [InlineData("Native")]
+    public void An_unwired_v3_facade_refuses_and_names_itself(string member)
+    {
+        ServiceCollection services = new();
+        services.AddSingleton<IEventBus, InMemoryEventBus>();
+        services.AddLogging();
+        services.AddSingleton(TestStorageHelper.CreateBackend());
+
+        services.AddPluginSystem(_tempPluginsDir);
+
+        ServiceProvider provider = services.BuildServiceProvider();
+        IPluginContextFactory factory = provider.GetRequiredService<IPluginContextFactory>();
+
+        IPluginContext context = factory.Create(
+            Ulid.NewUlid(),
+            _tempPluginsDir,
+            NullLogger.Instance,
+            new PluginCapabilities()
+        );
+
+        Action reaching = () => typeof(IPluginContext).GetProperty(member)!.GetValue(context);
+
+        PluginRefusedException refused = reaching
+            .Should()
+            .Throw<TargetInvocationException>()
+            .WithInnerException<PluginRefusedException>()
+            .Which;
+
+        refused.Refusal.Code.Should().Be(PluginRefusalCodes.ContractVersionMismatch);
+        refused.Refusal.What.Should().Contain($"IPluginContext.{member}");
+        refused.Refusal.Fix.Should().Contain("context.Server.Version");
     }
 
     public interface ITestService

@@ -28,12 +28,12 @@ public class PluginConsentGrant
     /// for. It carries no capability set, so it can never be compared against a
     /// manifest; it has to be upgraded from the installed manifest first.
     /// </summary>
-    public bool IsLegacy { get; init; }
+    public bool PredatesCapabilityTracking { get; init; }
 }
 
 public class PluginConsentRecord
 {
-    // Legacy shape from before consent recorded what it was granted for. Read
+    // The shape written before consent recorded what it was granted for. Read
     // for backward compatibility only; new grants are written to Grants.
     public List<Ulid> GrantedPluginIds { get; init; } = [];
 
@@ -72,12 +72,12 @@ public class ConfigPluginConsentStore(IPluginConfiguration configuration) : IPlu
         if (record.ConsentGrants.TryGetValue(Key(pluginId), out PluginConsentGrant? grant))
             return grant;
 
-        // A legacy entry was consented before capabilities were recorded. It
-        // is flagged rather than returned empty, because an empty capability
-        // set compares as "the owner approved nothing" and would disable every
-        // plugin they had already said yes to.
+        // An entry consented before capabilities were recorded. It is flagged
+        // rather than returned empty, because an empty capability set compares
+        // as "the owner approved nothing" and would disable every plugin they
+        // had already said yes to.
         return record.GrantedPluginIds.Contains(pluginId)
-            ? new PluginConsentGrant { IsLegacy = true }
+            ? new PluginConsentGrant { PredatesCapabilityTracking = true }
             : null;
     }
 
@@ -101,10 +101,10 @@ public class ConfigPluginConsentStore(IPluginConfiguration configuration) : IPlu
         if (record is null)
             return;
 
-        bool removedLegacy = record.GrantedPluginIds.Remove(pluginId);
+        bool removedOldEntry = record.GrantedPluginIds.Remove(pluginId);
         bool removedGrant = record.ConsentGrants.Remove(Key(pluginId));
 
-        if (removedLegacy || removedGrant)
+        if (removedOldEntry || removedGrant)
             configuration.SaveConfiguration(record);
     }
 

@@ -15,6 +15,7 @@ using NoMercy.Events.Encoding;
 using NoMercy.Events.Library;
 using NoMercy.Events.Media;
 using NoMercy.Events.Playback;
+using NoMercy.Events.Plugins;
 using Xunit;
 
 namespace NoMercy.Tests.Events;
@@ -25,6 +26,52 @@ public class LoggingEventBusDecoratorTests
     {
         public override string Source => "TestSource";
         public string Data { get; init; } = string.Empty;
+    }
+
+    /// <summary>
+    /// A failure event says what went wrong, not only that something did.
+    /// <para>
+    /// A plugin that would not load logged one line carrying an event name, an
+    /// id and a timestamp. The reason was written to a logger nothing in the
+    /// container was reading, so the owner saw a plugin missing from the list
+    /// and had nowhere at all to find out why. That is the shape of the report
+    /// this whole platform exists to answer.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task An_event_that_explains_itself_has_its_reason_logged()
+    {
+        InMemoryEventBus inner = new();
+        List<string> logMessages = [];
+        LoggingEventBusDecorator decorator = new(inner, message => logMessages.Add(message));
+
+        await decorator.PublishAsync(
+            new PluginErrorOccurredEvent
+            {
+                PluginId = "1SBQT26FHF98EBRPYVRGD92CZF",
+                PluginName = "Torrent Downloader",
+                ErrorMessage = "Could not load type 'NoMercy.Plugin.TorrentDownloader.Plugin'.",
+                ExceptionType = "ReflectionTypeLoadException",
+            }
+        );
+
+        logMessages.Should().ContainSingle();
+        logMessages[0].Should().Contain("Torrent Downloader");
+        logMessages[0].Should().Contain("Could not load type");
+        logMessages[0].Should().Contain("ReflectionTypeLoadException");
+    }
+
+    [Fact]
+    public async Task An_event_with_nothing_to_explain_logs_the_line_it_always_did()
+    {
+        InMemoryEventBus inner = new();
+        List<string> logMessages = [];
+        LoggingEventBusDecorator decorator = new(inner, message => logMessages.Add(message));
+
+        await decorator.PublishAsync(new TestEvent { Data = "hello" });
+
+        logMessages[0].Should().Contain("TestEvent");
+        logMessages[0].Should().NotContain(" | Why=");
     }
 
     [Fact]
@@ -292,7 +339,9 @@ public class LoggingEventBusDecoratorTests
                 ProfileName = "x264",
             }
         );
-        await decorator.PublishAsync(new EncodingProgressUpdatedEvent { JobId = 1, Percentage = 50 });
+        await decorator.PublishAsync(
+            new EncodingProgressUpdatedEvent { JobId = 1, Percentage = 50 }
+        );
         await decorator.PublishAsync(
             new EncodingCompletedEvent
             {

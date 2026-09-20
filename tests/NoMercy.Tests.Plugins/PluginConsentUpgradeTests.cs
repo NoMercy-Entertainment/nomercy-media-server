@@ -22,24 +22,27 @@ namespace NoMercy.Tests.Plugins;
 /// marked consented at the version that was installed, and nothing the owner
 /// already approved is asked again.
 /// <para>
-/// A legacy record says only "this id was approved". Compared against a
-/// manifest that declares rest, ws or a network host, an empty capability set
-/// reads as a widening, so every elevated plugin the owner had already said
-/// yes to came back Disabled on the first start after the upgrade.
+/// A record from before consent tracked capabilities says only "this id was
+/// approved". Compared against a manifest that declares rest, ws or a network
+/// host, an empty capability set reads as a widening, so every elevated
+/// plugin the owner had already said yes to came back Disabled on the first
+/// start after the upgrade.
 /// </para>
 /// </summary>
-public class PluginLegacyConsentMigrationTests : IDisposable
+public class PluginConsentUpgradeTests : IDisposable
 {
-    private static readonly Guid LegacyId = Guid.Parse("395df423-3e2f-4a1c-bc5b-dbc41a9133ef");
-    private static readonly Ulid PluginId = new(LegacyId);
+    private static readonly Guid PreUpgradeGuid = Guid.Parse(
+        "395df423-3e2f-4a1c-bc5b-dbc41a9133ef"
+    );
+    private static readonly Ulid PluginId = new(PreUpgradeGuid);
 
     private readonly string _tempDir;
 
-    public PluginLegacyConsentMigrationTests()
+    public PluginConsentUpgradeTests()
     {
         _tempDir = Path.Combine(
             Path.GetTempPath(),
-            "nomercy-legacy-consent-" + Ulid.NewUlid().ToString()
+            "nomercy-consent-upgrade-" + Ulid.NewUlid().ToString()
         );
         Directory.CreateDirectory(_tempDir);
     }
@@ -61,13 +64,13 @@ public class PluginLegacyConsentMigrationTests : IDisposable
     private ConfigPluginConsentStore MakeStore() =>
         new(new PluginConfiguration(_tempDir, TestStorageHelper.CreateStorage(_tempDir)));
 
-    private void WriteLegacyRecord() =>
-        File.WriteAllText(ConfigPath, $@"{{""GrantedPluginIds"":[""{LegacyId}""]}}");
+    private void WritePreUpgradeRecord() =>
+        File.WriteAllText(ConfigPath, $@"{{""GrantedPluginIds"":[""{PreUpgradeGuid}""]}}");
 
     private static PluginManifest Manifest(PluginCapabilities capabilities, string version) =>
         new()
         {
-            Id = PluginId,
+            Id = new(PluginId),
             Name = "Internet Radio",
             Description = "d",
             Version = version,
@@ -84,9 +87,9 @@ public class PluginLegacyConsentMigrationTests : IDisposable
         };
 
     [Fact]
-    public void A_legacy_consent_still_starts_the_plugin_the_owner_approved()
+    public void A_pre_upgrade_consent_still_starts_the_plugin_the_owner_approved()
     {
-        WriteLegacyRecord();
+        WritePreUpgradeRecord();
         PluginConsentService service = new(MakeStore());
 
         PluginAutoEnable
@@ -96,38 +99,41 @@ public class PluginLegacyConsentMigrationTests : IDisposable
     }
 
     [Fact]
-    public void A_legacy_consent_is_not_reported_as_waiting_on_the_owner()
+    public void A_pre_upgrade_consent_is_not_reported_as_waiting_on_the_owner()
     {
-        WriteLegacyRecord();
+        WritePreUpgradeRecord();
         PluginConsentService service = new(MakeStore());
 
         PluginAutoEnable.NeedsReConsent(Manifest(Installed(), "1.4.0"), service).Should().BeFalse();
     }
 
     [Fact]
-    public void Reading_a_legacy_consent_upgrades_it_and_drops_the_legacy_id()
+    public void Reading_a_pre_upgrade_consent_upgrades_it_and_drops_the_old_id_list()
     {
-        WriteLegacyRecord();
+        WritePreUpgradeRecord();
         PluginConsentService service = new(MakeStore());
 
         service.ConsentCoversCapabilities(PluginId, Installed(), new Version(1, 4, 0));
 
         PluginConsentGrant? upgraded = MakeStore().Get(PluginId);
         upgraded.Should().NotBeNull();
-        upgraded!.IsLegacy.Should().BeFalse();
+        upgraded!.PredatesCapabilityTracking.Should().BeFalse();
         upgraded.Capabilities!.Rest.Should().BeTrue();
         upgraded.Capabilities.Network!.Hosts.Should().Contain("radio-browser.info");
         upgraded.ManifestVersion.Should().Be("1.4.0");
 
         File.ReadAllText(ConfigPath)
             .Should()
-            .NotContain(LegacyId.ToString(), "the legacy id is replaced, not kept beside the row");
+            .NotContain(
+                PreUpgradeGuid.ToString(),
+                "the pre-upgrade id is replaced, not kept beside the row"
+            );
     }
 
     [Fact]
     public void An_update_that_widens_past_the_upgraded_record_still_asks_again()
     {
-        WriteLegacyRecord();
+        WritePreUpgradeRecord();
         PluginConsentService service = new(MakeStore());
 
         service.ConsentCoversCapabilities(PluginId, Installed(), new Version(1, 4, 0));

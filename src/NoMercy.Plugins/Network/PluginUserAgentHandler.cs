@@ -47,7 +47,7 @@ public partial class PluginUserAgentHandler(
     /// <summary>
     /// The product token for one plugin: its name reduced to token characters,
     /// or its id when the name has none left.
-    /// <para>A plugin name is author-supplied text. "My Plugin (v2)" is not a
+    /// <para>A plugin name is author-supplied text. "My Plugin (Beta)" is not a
     /// product token — the space ends it and the parenthesis opens a comment —
     /// so an unsanitised name is a malformed header, and a name containing a
     /// newline would be worse than malformed.</para>

@@ -144,7 +144,6 @@ public static class PluginServiceCollectionExtensions
             // failing for every plugin on every host.
             encoder: sp.GetService<IPluginEncoder>(),
             jobs: sp.GetService<IPluginJobs>(),
-            pluginStorage: sp.GetService<IPluginStorage>(),
             musicQuery: sp.GetService<IPluginMusicQuery>(),
             audioToolsFactory: sp.GetService<IPluginAudioToolsFactory>(),
             derivedAudio: sp.GetService<IPluginDerivedAudio>(),
@@ -316,7 +315,7 @@ public static class PluginServiceCollectionExtensions
                     // and contributes no services — which is most of them — was
                     // never marked, so it reported "needs a restart" after every
                     // boot including the restart the owner had just performed.
-                    RestartAdvisorIn(services)?.MarkRegisteredAtStartup(manifest.Id);
+                    RestartAdvisorIn(services)?.MarkRegisteredAtStartup(manifest.Id.Value);
                 }
                 finally
                 {

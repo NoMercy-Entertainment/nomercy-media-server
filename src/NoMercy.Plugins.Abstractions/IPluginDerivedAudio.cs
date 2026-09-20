@@ -20,7 +20,7 @@ namespace NoMercy.Plugins.Abstractions;
 /// own.
 /// <para>
 /// Elevated - see <see cref="PluginHookCapability.DerivedAudio" /> - for the
-/// same reason <see cref="IPluginStorage" /> is: it is a place the plugin did
+/// same reason <see cref="IPluginFolderCatalog" /> is: it is a place the plugin did
 /// not stage itself into, and deleting from it is not harmless.
 /// </para>
 /// <para>

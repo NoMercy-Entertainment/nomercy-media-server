@@ -88,7 +88,7 @@ public class PluginManifestParserTests : IDisposable
 
         PluginManifest manifest = PluginManifestParser.Parse(json);
 
-        manifest.Id.Should().Be(pluginId);
+        manifest.Id.Value.Should().Be(pluginId);
         manifest.Name.Should().Be("MyPlugin");
         manifest.Version.Should().Be("2.1.0");
         manifest.Assembly.Should().Be("MyPlugin.dll");
@@ -102,14 +102,14 @@ public class PluginManifestParserTests : IDisposable
         // carries. A server update does not get to stop loading it, and the id
         // it resolves to has to be the same one on every start, or the plugin
         // loses its stored consent and grants.
-        Guid legacyId = Guid.Parse("395df423-3e2f-4a1c-bc5b-dbc41a9133ef");
+        Guid preUpgradeId = Guid.Parse("395df423-3e2f-4a1c-bc5b-dbc41a9133ef");
         string json =
-            $@"{{""id"":""{legacyId}"",""name"":""Test"",""description"":""d"",""version"":""1.0.0"",""assembly"":""t.dll""}}";
+            $@"{{""id"":""{preUpgradeId}"",""name"":""Test"",""description"":""d"",""version"":""1.0.0"",""assembly"":""t.dll""}}";
 
         PluginManifest manifest = PluginManifestParser.Parse(json);
 
-        manifest.Id.Should().Be(new Ulid(legacyId));
-        manifest.Id.ToGuid().Should().Be(legacyId);
+        manifest.Id.Value.Should().Be(new Ulid(preUpgradeId));
+        manifest.Id.Value.ToGuid().Should().Be(preUpgradeId);
     }
 
     [Fact]
@@ -244,7 +244,7 @@ public class PluginManifestParserTests : IDisposable
 
         PluginManifest manifest = PluginManifestParser.Parse(json);
 
-        manifest.Id.Should().Be(id);
+        manifest.Id.Value.Should().Be(id);
     }
 
     [Fact]
@@ -262,7 +262,7 @@ public class PluginManifestParserTests : IDisposable
 
         PluginManifest manifest = PluginManifestParser.Parse(json);
 
-        manifest.Id.Should().Be(id);
+        manifest.Id.Value.Should().Be(id);
     }
 
     [Fact]
@@ -276,7 +276,7 @@ public class PluginManifestParserTests : IDisposable
         IStorage storage = TestStorageHelper.CreateStorage(_tempDir);
         PluginManifest manifest = await PluginManifestParser.ParseFileAsync(filePath, storage);
 
-        manifest.Id.Should().Be(id);
+        manifest.Id.Value.Should().Be(id);
         manifest.Name.Should().Be("FilePlugin");
     }
 
@@ -309,7 +309,7 @@ public class PluginManifestParserTests : IDisposable
         Ulid id = Ulid.NewUlid();
         PluginManifest manifest = new()
         {
-            Id = id,
+            Id = new PluginId(id),
             Name = "TestPlugin",
             Description = "A test",
             Version = "2.0.1",
@@ -351,7 +351,7 @@ public class PluginManifestParserTests : IDisposable
     {
         PluginManifest manifest = new()
         {
-            Id = Ulid.NewUlid(),
+            Id = new PluginId(Ulid.NewUlid()),
             Name = "Test",
             Description = "d",
             Version = "1.0.0",

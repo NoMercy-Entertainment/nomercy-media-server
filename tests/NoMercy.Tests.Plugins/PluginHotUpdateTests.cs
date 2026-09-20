@@ -132,7 +132,7 @@ public class PluginHotUpdateTests : IDisposable
             }
             """;
 
-    private void StageEchoV1()
+    private void StageEchoInitial()
     {
         string binDir = EchoBinDir();
         string dllSrc = Path.Combine(binDir, AssemblyName);
@@ -152,13 +152,13 @@ public class PluginHotUpdateTests : IDisposable
     }
 
     /// <summary>
-    /// The v2 update archive: every file the v1 install has, republished as an
+    /// The next-release update archive: every file the initial install has, republished as an
     /// archive with a bumped manifest version. The assembly bytes are
     /// identical — a real update need not change code to prove the swap
     /// mechanics, and using the same real, loadable DLL is what makes this a
     /// genuine residency case rather than another stub.
     /// </summary>
-    private string BuildV2Archive()
+    private string BuildUpdateArchive()
     {
         string archivePath = Path.Combine(_pluginsDir, "echo-2.0.0.zip");
 
@@ -182,7 +182,7 @@ public class PluginHotUpdateTests : IDisposable
     [Fact]
     public async Task UpdatingAResidentPlugin_AlwaysConvergesOnTheNewVersion()
     {
-        StageEchoV1();
+        StageEchoInitial();
         await _manager.LoadPluginsFromDirectoryAsync();
 
         _manager
@@ -193,7 +193,7 @@ public class PluginHotUpdateTests : IDisposable
             .Should()
             .Be("1.0.0");
 
-        string archivePath = BuildV2Archive();
+        string archivePath = BuildUpdateArchive();
 
         PluginManager readAfter = _manager;
 
@@ -248,12 +248,12 @@ public class PluginHotUpdateTests : IDisposable
     }
 
     /// <summary>
-    /// The v2 archive built from the Echo sample's next release: a different
+    /// The archive built from the Echo sample's next release: a different
     /// assembly under the same name, reporting version 2.0.0 from its own
     /// code. This is what a real plugin update is, and the only shape that
     /// can tell "the new code runs" apart from "the manifest changed".
     /// </summary>
-    private string BuildV2ArchiveFromNextRelease()
+    private string BuildNextReleaseArchive()
     {
         string binDir = EchoNextBinDir();
         string dllSrc = Path.Combine(binDir, AssemblyName);
@@ -292,7 +292,7 @@ public class PluginHotUpdateTests : IDisposable
     [Fact]
     public async Task UpdatingAResidentPlugin_RunsTheNewCode_OrSaysItNeedsARestart()
     {
-        StageEchoV1();
+        StageEchoInitial();
         await _manager.LoadPluginsFromDirectoryAsync();
 
         // A real plugin keeps itself alive after Dispose (threads, sockets,
@@ -302,7 +302,7 @@ public class PluginHotUpdateTests : IDisposable
         before.Should().NotBeNull();
         before!.Version.ToString().Should().Be("0.1.0");
 
-        string archivePath = BuildV2ArchiveFromNextRelease();
+        string archivePath = BuildNextReleaseArchive();
 
         try
         {
@@ -346,7 +346,7 @@ public class PluginHotUpdateTests : IDisposable
     [Fact]
     public async Task EnablingAfterTheFilesChangedOnDisk_RunsTheNewCode()
     {
-        StageEchoV1();
+        StageEchoInitial();
         await _manager.LoadPluginsFromDirectoryAsync();
 
         IPlugin? before = _manager.GetPluginInstance(PluginId);
@@ -376,7 +376,7 @@ public class PluginHotUpdateTests : IDisposable
     [Fact]
     public async Task UpdatingAResidentPluginFromABareAssembly_RunsTheNewCode_OrSaysItNeedsARestart()
     {
-        StageEchoV1();
+        StageEchoInitial();
         await _manager.LoadPluginsFromDirectoryAsync();
 
         IPlugin? before = _manager.GetPluginInstance(PluginId);
@@ -427,7 +427,7 @@ public class PluginHotUpdateTests : IDisposable
         Ulid pluginId = Ulid.NewUlid();
         string pluginDir = Path.Combine(_pluginsDir, FolderName);
         Directory.CreateDirectory(pluginDir);
-        await File.WriteAllTextAsync(Path.Combine(pluginDir, AssemblyName), "v1 content");
+        await File.WriteAllTextAsync(Path.Combine(pluginDir, AssemblyName), "initial content");
         await File.WriteAllTextAsync(Path.Combine(pluginDir, "plugin.json"), Manifest("1.0.0"));
 
         string lockFile = Path.Combine(_pluginsDir, "lock.marker");
@@ -459,7 +459,7 @@ public class PluginHotUpdateTests : IDisposable
                     archive.CreateEntry($"{FolderName}/{AssemblyName}").Open()
                 )
             )
-                writer.Write("v2 content");
+                writer.Write("second release content");
         }
 
         manager.CopyStreamOverride = (_, _) =>
@@ -494,7 +494,7 @@ public class PluginHotUpdateTests : IDisposable
         File.ReadAllText(Path.Combine(pluginDir, AssemblyName))
             .Should()
             .Be(
-                "v1 content",
+                "initial content",
                 "a failed update must restore exactly what was there before, not the half-applied copy"
             );
     }

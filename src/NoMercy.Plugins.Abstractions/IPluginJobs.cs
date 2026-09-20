@@ -42,6 +42,34 @@ public interface IPluginJobs
     /// reading the whole queue, and the server does not offer it.
     /// </remarks>
     Task<PluginJobStatus?> StatusAsync(string jobId, CancellationToken ct = default);
+
+    /// <summary>
+    /// Queues one piece of work.
+    /// <para>
+    /// A plugin with no way to ask reached the server's own job classes by name
+    /// and drove them with reflection. The class moved, the plugin kept
+    /// compiling, and the work stopped happening with no line anywhere saying
+    /// so. A kind is a word the host knows, so that cannot happen again.
+    /// </para>
+    /// <para>
+    /// The parent, when given, is a job this plugin already dispatched, so the
+    /// server can order them and the plugin need not wait on one to ask for the
+    /// next.
+    /// </para>
+    /// </summary>
+    Task<JobId> DispatchAsync(
+        PluginJobKind kind,
+        MediaId subject,
+        JobId? parent = null,
+        CancellationToken ct = default
+    ) =>
+        throw new PluginRefusedException(
+            PluginRefusalMessages.CapabilityNotDeclared(
+                "unknown plugin",
+                PluginCapabilityNames.JobsDispatch,
+                "The plugin asked the server to queue work."
+            )
+        );
 }
 
 /// <summary>

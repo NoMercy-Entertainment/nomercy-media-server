@@ -44,7 +44,7 @@ public static class PluginLibraryServiceCollectionExtensions
         // while all of its tests stayed green.
         services.AddSingleton<IPluginEncoder, PluginEncoder>();
         services.AddSingleton<IPluginJobs, PluginJobs>();
-        services.AddSingleton<IPluginStorage, PluginStorage>();
+        services.AddSingleton<IPluginFolderCatalog, PluginStorage>();
 
         // The three analysis facades: audio tools, the derived-audio store and
         // the DJ analysis writer. Same story as the three above them - without

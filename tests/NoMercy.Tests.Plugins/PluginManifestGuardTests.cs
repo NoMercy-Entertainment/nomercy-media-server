@@ -67,7 +67,7 @@ public class PluginManifestGuardTests
 
         PluginManifest manifest = PluginManifestParser.Parse(json);
 
-        manifest.Id.Should().NotBe(Ulid.Empty);
+        manifest.Id.Value.Should().NotBe(Ulid.Empty);
     }
 
     [Fact]
@@ -185,7 +185,7 @@ public class PluginManifestGuardTests
 
         PluginManifest manifest = PluginManifestParser.Parse(json);
 
-        manifest.Id.Should().Be(KnownId);
+        manifest.Id.Value.Should().Be(KnownId);
         manifest.Name.Should().Be("ValidPlugin");
     }
 
@@ -236,7 +236,7 @@ public class PluginManifestGuardTests
 
         PluginManifest manifest = PluginManifestParser.Parse(json);
 
-        manifest.Id.Should().NotBe(Ulid.Empty);
+        manifest.Id.Value.Should().NotBe(Ulid.Empty);
         manifest.Assembly.Should().NotBeNullOrWhiteSpace();
     }
 

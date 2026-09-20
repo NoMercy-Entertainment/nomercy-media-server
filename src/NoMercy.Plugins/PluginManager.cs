@@ -184,7 +184,7 @@ public class PluginManager : IPluginManager, IDisposable
             // .zip a publisher should have hashed instead.
             PluginManifest checksumManifest = new()
             {
-                Id = Ulid.Empty,
+                Id = PluginId.Empty,
                 Name = Path.GetFileNameWithoutExtension(fullPath),
                 Description = string.Empty,
                 Version = "0.0.0",
@@ -947,7 +947,7 @@ public class PluginManager : IPluginManager, IDisposable
             prefix,
             parsed.Assembly,
             Path.GetFileNameWithoutExtension(parsed.Assembly),
-            parsed.Id
+            parsed.Id.Value
         );
     }
 

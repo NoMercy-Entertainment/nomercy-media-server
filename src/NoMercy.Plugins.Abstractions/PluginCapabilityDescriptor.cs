@@ -17,5 +17,6 @@ public sealed record PluginCapabilityDescriptor(
     PluginTrust Trust,
     bool Reversible,
     string Facade,
-    string Summary
+    string Summary,
+    string DocsUrl
 );

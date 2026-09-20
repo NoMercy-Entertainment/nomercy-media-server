@@ -667,7 +667,7 @@ public class PluginRepositoryTests : IDisposable
                 new()
                 {
                     Version = "2.0.0",
-                    DownloadUrl = "https://example.com/v2.zip",
+                    DownloadUrl = "https://example.com/release-2.zip",
                     TargetAbi = "9.0.0",
                 },
             ],

@@ -17,8 +17,8 @@ namespace NoMercy.Plugins;
 /// <summary>
 /// Says which contract member a plugin reached for that is no longer there.
 /// <para>
-/// The host calls into plugin code from ten places. A plugin built against
-/// contract v2 fails at whichever of them runs first, with a runtime message
+/// The host calls into plugin code from ten places. A plugin built against an
+/// older SDK fails at whichever of them runs first, with a runtime message
 /// that names a method and not the contract it belonged to. Every one of those
 /// places logs the same refusal so the author reads the same sentence wherever
 /// it surfaces, which is the point of design section 3.9.
@@ -27,9 +27,10 @@ namespace NoMercy.Plugins;
 public static class PluginStaleMemberLog
 {
     /// <summary>
-    /// Whether this failure is a plugin reaching a member v3 took away, and if
-    /// so, says so in the log. Returns false for anything else, so a caller
-    /// keeps whatever it already does with an ordinary failure.
+    /// Whether this failure is a plugin reaching a member that does not exist
+    /// in this server's SDK, and if so, says so in the log. Returns false for
+    /// anything else, so a caller keeps whatever it already does with an
+    /// ordinary failure.
     /// </summary>
     public static bool Explain(ILogger logger, Ulid pluginId, Exception exception, string doing)
     {
