@@ -268,5 +268,17 @@
     "severity": "blocked",
     "capability": null,
     "summary": "The plugin is not shared with the account asking for it on this server."
+  },
+  {
+    "code": "PLUGIN_MEDIA_TICKET_EXPIRED",
+    "severity": "blocked",
+    "capability": "media.proxy",
+    "summary": "A media link the server minted has run out, or was never one it minted."
+  },
+  {
+    "code": "PLUGIN_MEDIA_TICKET_USER_MISMATCH",
+    "severity": "blocked",
+    "capability": "media.proxy",
+    "summary": "A media link minted for one account was used by another."
   }
 ]
