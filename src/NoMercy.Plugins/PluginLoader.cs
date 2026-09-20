@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 using System.Reflection;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NoMercy.Events;
 using NoMercy.Events.Plugins;
@@ -57,6 +58,31 @@ internal sealed class PluginLoader(
     private readonly IReadOnlySet<string> _sharedAssemblies = (
         hostOptions ?? new PluginHostOptions()
     ).SharedAssemblies;
+
+    /// <summary>
+    /// The run gate's answer for a plugin that is not in the registry yet.
+    /// Null on a host that registered no gate, which is every host outside
+    /// the server itself.
+    /// </summary>
+    private PluginRefusal? RunRefusal(
+        PluginManifest manifest,
+        string assemblyPath,
+        string manifestPath,
+        PluginVerificationResult verification
+    ) =>
+        _serviceProvider
+            .GetService<IPluginRunGate>()
+            ?.MayRun(
+                PluginManifestParser.ToPluginInfo(
+                    manifest,
+                    assemblyPath,
+                    PluginStatus.Active,
+                    manifestPath,
+                    verification.Verified,
+                    verification.Trusted,
+                    PluginSideloadMarker.IsMarked(manifestPath)
+                )
+            );
 
     /// <summary>
     /// Whether the plugin's own assembly carries an
@@ -208,6 +234,28 @@ internal sealed class PluginLoader(
                     // grants consent from the dashboard. Where it came from does
                     // not answer that question: see PluginAutoEnable.
                     bool mayAutoEnable = PluginAutoEnable.Allows(manifest, _consentService);
+
+                    // And the four questions the server asks before anything
+                    // runs: revoked, unpaid, missing a dependency, unanswered.
+                    // Asked here rather than after the registry, because a
+                    // gate that can only be asked about a plugin the server
+                    // already started cannot stop one from starting.
+                    PluginRefusal? refused = RunRefusal(
+                        manifest,
+                        assemblyPath,
+                        manifestPath,
+                        verification
+                    );
+
+                    if (refused is not null)
+                    {
+                        mayAutoEnable = false;
+
+                        _logger.LogWarning(
+                            "Plugin {PluginName} did not start: {Why} {Fix}",
+                            [manifest.Name, refused.Why, refused.Fix]
+                        );
+                    }
 
                     // A manifest that widened past what the owner already
                     // approved must not ride the old consent to Active — the

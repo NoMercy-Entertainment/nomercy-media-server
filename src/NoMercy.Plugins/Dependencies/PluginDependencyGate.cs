@@ -30,11 +30,11 @@ public class PluginDependencyGate(
     Func<Guid> owner
 )
 {
-    public PluginRefusal? Check(Ulid pluginId)
-    {
-        if (plugins.Find(pluginId) is not { } dependent)
-            return null;
+    public PluginRefusal? Check(Ulid pluginId) =>
+        plugins.Find(pluginId) is { } dependent ? Check(dependent) : null;
 
+    public PluginRefusal? Check(PluginInfo dependent)
+    {
         foreach (PluginDependency dependency in dependent.Dependencies)
         {
             if (Refuse(dependent, dependency) is { } refusal)

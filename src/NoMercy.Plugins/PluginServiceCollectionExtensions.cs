@@ -211,6 +211,43 @@ public static class PluginServiceCollectionExtensions
             )
         );
 
+        // The four questions asked before a plugin runs. Registration fixes
+        // the order once, here, so no caller can ask them in an order that
+        // tells an owner to buy a build that was withdrawn.
+        services.AddSingleton<PluginRevocationRunCheck>(sp =>
+            new(
+                new PluginRevocationGate(
+                    sp.GetRequiredService<IPluginRevocationStore>(),
+                    sp.GetRequiredService<TimeProvider>()
+                ),
+                sp.GetRequiredService<IPluginRevocationStore>()
+            )
+        );
+        services.AddSingleton<PluginEntitlementRunCheck>(sp =>
+            new(
+                new PluginEntitlementGate(
+                    sp.GetRequiredService<IPluginEntitlementStore>(),
+                    sp.GetRequiredService<TimeProvider>(),
+                    sp.GetService<IPluginOwner>()?.Id ?? Guid.Empty
+                )
+            )
+        );
+        services.AddSingleton<PluginDependencyRunCheck>(sp =>
+            new(sp.GetRequiredService<PluginDependencyGate>())
+        );
+        services.AddSingleton<PluginConsentRunCheck>(sp =>
+            new(sp.GetRequiredService<IPluginConsentService>())
+        );
+        services.AddSingleton<IPluginRunGate>(sp => new PluginRunGate(
+            [
+                sp.GetRequiredService<PluginRevocationRunCheck>(),
+                sp.GetRequiredService<PluginEntitlementRunCheck>(),
+                sp.GetRequiredService<PluginDependencyRunCheck>(),
+                sp.GetRequiredService<PluginConsentRunCheck>(),
+            ],
+            sp.GetRequiredService<IPluginManifestSource>()
+        ));
+
         // One folder per person per plugin, which is what makes handing
         // somebody their data and removing it possible at all.
         services.AddSingleton<PluginUserDataExporter>(
