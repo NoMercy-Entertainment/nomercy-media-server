@@ -1,11 +1,11 @@
 import { join } from 'node:path';
 
 import { loadContract } from './contract.js';
-import { emitCapabilityNames, emitCapabilityVocabulary, emitManifestSchema, emitSettingsSchema, emitSlots, emitRefusalCodes } from './emit-csharp.js';
+import { emitCapabilityNames, emitCapabilityVocabulary, emitManifestSchema, emitSettingsSchema, emitSlots, emitAnalyzerDescriptors, emitRefusalCodes } from './emit-csharp.js';
 import { emitDocsIndex } from './emit-docs-index.js';
 import { emitCapabilitiesKotlin } from './emit-kotlin.js';
 import { emitCapabilitiesTypescript } from './emit-typescript.js';
-import { ABSTRACTIONS_GENERATED, DOCS_INDEX, KMP_CAPABILITIES, WEB_CAPABILITIES } from './paths.js';
+import { ABSTRACTIONS_GENERATED, ANALYZERS_GENERATED, DOCS_INDEX, KMP_CAPABILITIES, WEB_CAPABILITIES } from './paths.js';
 
 export interface GeneratedFile { path: string; content: string }
 
@@ -27,6 +27,7 @@ export function generatedFiles(): GeneratedFile[] {
     { path: join(ABSTRACTIONS_GENERATED, 'PluginManifestSchema.cs'), content: emitManifestSchema(contract.manifestSchema, contract.capabilities) },
     { path: join(ABSTRACTIONS_GENERATED, 'PluginSettingsSchema.cs'), content: emitSettingsSchema(contract.settingsSchema) },
     { path: join(ABSTRACTIONS_GENERATED, 'PluginSlots.cs'), content: emitSlots(contract.slots) },
+    { path: join(ANALYZERS_GENERATED, 'PluginAnalyzerDescriptors.cs'), content: emitAnalyzerDescriptors(contract.analyzers) },
     { path: WEB_CAPABILITIES, content: emitCapabilitiesTypescript(contract.capabilities) },
     { path: KMP_CAPABILITIES, content: emitCapabilitiesKotlin(contract.capabilities, KMP_PACKAGE) },
     { path: DOCS_INDEX, content: emitDocsIndex(contract.capabilities) },

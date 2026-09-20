@@ -1,1 +1,18 @@
-[]
+[
+  { "id": "NMP0001", "title": "Building an HttpClient reaches hosts the manifest cannot name. Use context.HttpClient.", "capability": "network.fetch" },
+  { "id": "NMP0002", "title": "Opening a socket directly bypasses the granted host list. Use context.Net.DialAsync.", "capability": "network.dial" },
+  { "id": "NMP0003", "title": "Listening on a port the host did not open cannot be closed when the plugin stops. Use context.Net.ListenAsync.", "capability": "network.listen" },
+  { "id": "NMP0004", "title": "Starting a process directly escapes the binary allowlist. Use context.Process.SpawnAsync.", "capability": "process.spawn" },
+  { "id": "NMP0005", "title": "Reading or writing a path directly escapes the granted folders. Use context.Storage.", "capability": "storage.path" },
+  { "id": "NMP0006", "title": "A password kept in a field or a file is a password in the log and the export. Use context.Secrets.", "capability": "secrets" },
+  { "id": "NMP0007", "title": "Loading a native library yourself skips the signature check. Use context.Native.", "capability": "native.code" },
+  { "id": "NMP0008", "title": "A capability is used that plugin.json does not declare.", "capability": null },
+  { "id": "NMP0009", "title": "A user-facing string is written in English instead of a translation key.", "capability": null },
+  { "id": "NMP0010", "title": "A refusal code is written as a literal rather than taken from PluginRefusalCodes.", "capability": null },
+  { "id": "NMP0011", "title": "A media URL is built by the plugin. Use context.Media.Proxy.MintAsync.", "capability": "media.proxy" },
+  { "id": "NMP0012", "title": "User data is written outside the per-user scope. Use context.Storage.ForUser.", "capability": "user.identity" },
+  { "id": "NMP0013", "title": "A long cycle is awaited inside a request. Use context.Scheduler.RunNowAsync.", "capability": "scheduler" },
+  { "id": "NMP0014", "title": "A route path starts with an underscore, which the host keeps for itself.", "capability": "rest" },
+  { "id": "NMP0015", "title": "A UI mount names a slot that does not exist for its kind.", "capability": "ui.mount" },
+  { "id": "NMP0016", "title": "IScheduledTaskPlugin is obsolete. Register jobs through context.Scheduler.", "capability": "scheduler" }
+]

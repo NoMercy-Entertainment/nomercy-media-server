@@ -1,4 +1,4 @@
-import type { Capability, Refusal, Slot } from './contract.js';
+import type { AnalyzerRule, Capability, Refusal, Slot } from './contract.js';
 import { pascalOf, slugOf } from './contract.js';
 
 export const LICENSE_HEADER: string = [
@@ -233,6 +233,49 @@ export function emitSlots(slots: Slot[]): string {
     '            string.Equals(descriptor.Kind, kind, StringComparison.Ordinal)',
     '            && string.Equals(descriptor.Slot, slot, StringComparison.Ordinal)',
     '        );',
+    '}',
+    '',
+  ].join('\n');
+}
+
+/**
+ * The analyzer rules, as a C# table.
+ *
+ * Each rule's message is the sentence the matching refusal already carries, so
+ * an author meets one wording in the editor and the same one at run time.
+ */
+export function emitAnalyzerDescriptors(rules: AnalyzerRule[]): string {
+  const rows: string[] = rules.map(
+    rule =>
+      `        new("${rule.id}", ${JSON.stringify(rule.title)}, ${rule.capability === null ? 'null' : `"${rule.capability}"`}),`,
+  );
+
+  return [
+    LICENSE_HEADER,
+    '// netstandard2.0, so nothing is implicit: an analyzer runs inside Roslyn,',
+    '// not inside the server, and that target has no implicit usings.',
+    'using System;',
+    'using System.Collections.Generic;',
+    'using System.Linq;',
+    '',
+    'namespace NoMercy.Plugins.Analyzers;',
+    '',
+    '/// <summary>One analyzer rule.</summary>',
+    '/// <param name="Id">The diagnostic id, NMP0001 upward.</param>',
+    '/// <param name="Title">What the author reads, worded as the refusal words it.</param>',
+    '/// <param name="Capability">The capability it is about, or null when it is about none.</param>',
+    'public sealed record PluginAnalyzerDescriptor(string Id, string Title, string? Capability);',
+    '',
+    '/// <summary>Every rule this contract declares.</summary>',
+    'public static class PluginAnalyzerDescriptors',
+    '{',
+    '    public static readonly IReadOnlyList<PluginAnalyzerDescriptor> All =',
+    '    [',
+    ...rows,
+    '    ];',
+    '',
+    '    public static PluginAnalyzerDescriptor ById(string id) =>',
+    '        All.Single(descriptor => string.Equals(descriptor.Id, id, StringComparison.Ordinal));',
     '}',
     '',
   ].join('\n');

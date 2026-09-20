@@ -11,6 +11,7 @@ export const MEDIA_SERVER: string = resolve(REPO_ROOT, 'apps', 'nomercy-media-se
 export const ABSTRACTIONS: string = resolve(MEDIA_SERVER, 'src', 'NoMercy.Plugins.Abstractions');
 export const ABSTRACTIONS_GENERATED: string = resolve(ABSTRACTIONS, 'Generated');
 export const ANALYZERS: string = resolve(MEDIA_SERVER, 'src', 'NoMercy.Plugins.Analyzers');
+export const ANALYZERS_GENERATED: string = resolve(ANALYZERS, 'Generated');
 
 export const WEB_CAPABILITIES: string = resolve(
   REPO_ROOT, 'apps', 'nomercy-app-web', 'src', 'types', 'pluginCapabilities.ts',
