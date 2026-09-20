@@ -9,7 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Text;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using NoMercy.Plugins.Verification;
@@ -60,8 +59,8 @@ public class PluginRevocationClient(
 
     /// <summary>
     /// The signed payload is the issue time followed by the entries array
-    /// exactly as it was written. Signing the parsed form instead would let a
-    /// sender reorder or reformat what we read without breaking the signature.
+    /// exactly as it was written, which <see cref="PluginSignedEnvelope"/>
+    /// builds from those two property names.
     /// </summary>
     public bool TryRead(string body, out PluginRevocationList? list)
     {
@@ -72,42 +71,11 @@ public class PluginRevocationClient(
             using JsonDocument document = JsonDocument.Parse(body);
             JsonElement root = document.RootElement;
 
-            if (
-                !root.TryGetProperty("signature", out JsonElement signature)
-                || !root.TryGetProperty("issued_at", out JsonElement issuedAt)
-                || !root.TryGetProperty("entries", out JsonElement entries)
-            )
+            if (!PluginSignedEnvelope.Verifies(root, trustedKeys, "issued_at", "entries"))
                 return false;
 
-            string algorithm = signature.GetProperty("alg").GetString() ?? string.Empty;
-
-            if (
-                !string.Equals(
-                    algorithm,
-                    PluginEd25519.Algorithm,
-                    StringComparison.OrdinalIgnoreCase
-                )
-            )
-                return false;
-
-            string? publicKey = trustedKeys.Find(
-                signature.GetProperty("kid").GetString() ?? string.Empty
-            );
-
-            byte[] signed = Encoding.UTF8.GetBytes($"{issuedAt.GetString()}{entries.GetRawText()}");
-
-            // One condition, because a key this server does not hold and a
-            // signature that does not verify are the same answer: we cannot say
-            // NoMercy sent this.
-            if (
-                publicKey is null
-                || !PluginEd25519.Verify(
-                    signed,
-                    signature.GetProperty("value").GetString() ?? string.Empty,
-                    publicKey
-                )
-            )
-                return false;
+            JsonElement issuedAt = root.GetProperty("issued_at");
+            JsonElement entries = root.GetProperty("entries");
 
             list = new(
                 issuedAt.GetDateTimeOffset(),

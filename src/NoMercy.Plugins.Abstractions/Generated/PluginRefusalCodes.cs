@@ -54,6 +54,8 @@ public static class PluginRefusalCodes
     public const string SecretHasNoCaller = "PLUGIN_SECRET_HAS_NO_CALLER";
     public const string Revoked = "PLUGIN_REVOKED";
     public const string RevocationListStale = "PLUGIN_REVOCATION_LIST_STALE";
+    public const string EntitlementMissing = "PLUGIN_ENTITLEMENT_MISSING";
+    public const string EntitlementDormant = "PLUGIN_ENTITLEMENT_DORMANT";
 
     public static IReadOnlyList<PluginRefusalDescriptor> All { get; } =
     [
@@ -284,6 +286,18 @@ public static class PluginRefusalCodes
             PluginRefusalSeverity.Blocked,
             null,
             "The server has not reached the revocation list in over a week, so it cannot say a plugin is still allowed."
+        ),
+        new(
+            "PLUGIN_ENTITLEMENT_MISSING",
+            PluginRefusalSeverity.Blocked,
+            null,
+            "A paid plugin, and the server owner holds no entitlement for it."
+        ),
+        new(
+            "PLUGIN_ENTITLEMENT_DORMANT",
+            PluginRefusalSeverity.Blocked,
+            null,
+            "The server could not confirm a purchase for over a week, so the plugin is installed and not running."
         ),
     ];
 
