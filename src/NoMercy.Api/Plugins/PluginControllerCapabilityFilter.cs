@@ -60,6 +60,12 @@ public class PluginControllerCapabilityFilter(
             return Task.CompletedTask;
         }
 
+        // A surface the manifest declares open has no account to resolve
+        // access for. Asking anyway refuses every caller, which is an open
+        // surface that is shut.
+        if (info.Capabilities.RestAnonymous)
+            return next();
+
         if (
             accessResolver.Resolve(pluginId, context.HttpContext.User.UserId()) == PluginAccess.None
         )

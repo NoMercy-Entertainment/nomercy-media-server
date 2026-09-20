@@ -15,6 +15,7 @@ using Moq;
 using NoMercy.Api.Controllers.V1.Dashboard.Plugins;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Api.DTOs.Dashboard;
+using NoMercy.Api.Plugins;
 using NoMercy.Plugins.Abstractions;
 using NoMercy.Plugins.Capabilities;
 using Xunit;
@@ -50,7 +51,7 @@ public class PluginCapabilityEndpointTests
                 }
             );
 
-        return new(_plugins.Object, _consent.Object);
+        return new(_plugins.Object, _consent.Object, new(_consent.Object));
     }
 
     private static IEnumerable<PluginCapabilityStateDto> Body(IActionResult result) =>
@@ -122,14 +123,15 @@ public class PluginCapabilityEndpointTests
     [Fact]
     public void An_unknown_plugin_is_not_found_rather_than_an_empty_list()
     {
-        PluginCapabilityController controller = new(_plugins.Object, _consent.Object);
+        PluginCapabilityController controller = new(
+            _plugins.Object,
+            _consent.Object,
+            new(_consent.Object)
+        );
 
-        controller
-            .Index(Ulid.NewUlid())
-            .Should()
-            .BeOfType<NotFoundObjectResult>(
-                "an empty list reads as a plugin that asks for nothing"
-            );
+        ((ObjectResult)controller.Index(Ulid.NewUlid()))
+            .StatusCode.Should()
+            .Be(404, "an empty list reads as a plugin that asks for nothing");
     }
 
     [Fact]
@@ -169,7 +171,7 @@ public class PluginCapabilityEndpointTests
             ]
         );
 
-        result.Should().BeOfType<UnprocessableEntityObjectResult>();
+        ((ObjectResult)result).StatusCode.Should().Be(422);
         _consent.Verify(
             service =>
                 service.ApproveCapability(
