@@ -45,6 +45,22 @@ public class PluginContext : IPluginContext
 
     private readonly IPluginMedia? _media;
     private readonly IPluginLibraryImport? _libraryImport;
+    private readonly IPluginStorage? _hostStorage;
+    private readonly IPluginServerInfo? _server;
+
+    /// <summary>Every place this plugin may read and write.</summary>
+    public IPluginStorage Storage =>
+        _hostStorage
+        ?? throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(PluginId.ToString(), "IPluginContext.Storage")
+        );
+
+    /// <summary>What this server is, so a plugin branches on a fact.</summary>
+    public IPluginServerInfo Server =>
+        _server
+        ?? throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(PluginId.ToString(), "IPluginContext.Server")
+        );
 
     public IPluginLibraryImport LibraryImport =>
         _libraryImport
@@ -117,10 +133,14 @@ public class PluginContext : IPluginContext
         IPluginDerivedAudio? derivedAudio = null,
         IPluginMusicAnalysisWriter? musicAnalysisWriter = null,
         IPluginMedia? media = null,
-        IPluginLibraryImport? libraryImport = null
+        IPluginLibraryImport? libraryImport = null,
+        IPluginStorage? hostStorage = null,
+        IPluginServerInfo? server = null
     )
     {
         _media = media;
+        _hostStorage = hostStorage;
+        _server = server;
         _libraryImport = libraryImport;
         Encoder = encoder;
         Jobs = jobs;

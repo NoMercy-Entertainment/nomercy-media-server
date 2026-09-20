@@ -16,6 +16,8 @@ using NoMercy.Plugins.Abstractions;
 using NoMercy.Plugins.Capabilities;
 using NoMercy.Plugins.Hub;
 using NoMercy.Plugins.Library;
+using NoMercy.Plugins.Quotas;
+using NoMercy.Plugins.Storage;
 using NoMercy.Storage;
 
 namespace NoMercy.Plugins;
@@ -40,7 +42,13 @@ public class PluginContextFactory(
     IPluginDerivedAudio? derivedAudio = null,
     IPluginMusicAnalysisWriterFactory? analysisWriterFactory = null,
     Func<IPluginMediaFactory?>? mediaFactory = null,
-    IPluginLibraryScanner? libraryScanner = null
+    IPluginLibraryScanner? libraryScanner = null,
+    string? pluginsRoot = null,
+    IPluginFolderCatalog? folderCatalog = null,
+    IPluginGrantedLocations? grantedLocations = null,
+    IPluginFreeSpaceProbe? freeSpace = null,
+    PluginQuotaMeter? quotas = null,
+    Version? serverVersion = null
 ) : IPluginContextFactory
 {
     public IPluginContext Create(
@@ -125,7 +133,40 @@ public class PluginContextFactory(
             writer is null
             || libraryScanner is null
                 ? null
-                : new PluginLibraryImport(pluginId, writer, libraryScanner, logger)
+                : new PluginLibraryImport(pluginId, writer, libraryScanner, logger),
+            HostStorage(pluginId),
+            ServerInfo(pluginId)
+        );
+    }
+
+    /// <summary>
+    /// The plugin's own folders, and the owner's folders it was granted. Null
+    /// on a host that wired no folder catalogue, where the facade refuses by
+    /// name rather than opening a path nothing checked.
+    /// </summary>
+    private IPluginStorage? HostStorage(Ulid pluginId) =>
+        pluginsRoot is null || folderCatalog is null
+            ? null
+            : new PluginHostStorage(pluginId, pluginsRoot, folderCatalog, grantStore, quotas);
+
+    /// <summary>
+    /// Refreshed as the context is built rather than read live: a plugin reads
+    /// GrantedPaths in a loop, and a property that queried would turn its loop
+    /// into the server's slowest one.
+    /// </summary>
+    private IPluginServerInfo? ServerInfo(Ulid pluginId)
+    {
+        if (grantedLocations is null || freeSpace is null)
+            return null;
+
+        grantedLocations.RefreshAsync(pluginId).GetAwaiter().GetResult();
+
+        return new PluginServerInfo(
+            pluginId,
+            serverVersion ?? new Version(0, 0),
+            grantedLocations,
+            freeSpace,
+            grantStore
         );
     }
 }

@@ -37,6 +37,7 @@ using NoMercy.Plugins.Offline;
 using NoMercy.Plugins.Quotas;
 using NoMercy.Plugins.Revocation;
 using NoMercy.Plugins.Sideload;
+using NoMercy.Plugins.Storage;
 using NoMercy.Plugins.Telemetry;
 using NoMercy.Plugins.UserData;
 using NoMercy.Plugins.Verification;
@@ -246,6 +247,15 @@ public static class PluginServiceCollectionExtensions
                 sp.GetRequiredService<PluginConsentRunCheck>(),
             ],
             sp.GetRequiredService<IPluginManifestSource>()
+        ));
+
+        // The granted folders, cached, because a plugin reads them in a loop.
+        // The free-space probe is registered by the host, which has the
+        // database; with none, a plugin gets no server facade rather than a
+        // measurement nothing took.
+        services.TryAddSingleton<IPluginGrantedLocations>(sp => new PluginGrantedLocations(
+            sp.GetService<IPluginFolderCatalog>(),
+            sp.GetRequiredService<IPluginGrantStore>()
         ));
 
         // One folder per person per plugin, which is what makes handing
@@ -475,7 +485,16 @@ public static class PluginServiceCollectionExtensions
             // Optional like the rest: a host that never wired media processing
             // gives a plugin a LibraryImport that refuses by name rather than
             // a resolve that fails for every plugin on every host.
-            libraryScanner: sp.GetService<IPluginLibraryScanner>()
+            libraryScanner: sp.GetService<IPluginLibraryScanner>(),
+            // The plugin's own folders and the facts about this server.
+            // Optional like the rest: a host that wired no folder catalogue
+            // gives a plugin a Storage that refuses by name.
+            pluginsRoot: pluginsPath,
+            folderCatalog: sp.GetService<IPluginFolderCatalog>(),
+            grantedLocations: sp.GetService<IPluginGrantedLocations>(),
+            freeSpace: sp.GetService<IPluginFreeSpaceProbe>(),
+            quotas: sp.GetRequiredService<PluginQuotaMeter>(),
+            serverVersion: Assembly.GetEntryAssembly()?.GetName().Version
         ));
 
         services.AddSingleton<IPluginManager>(sp =>

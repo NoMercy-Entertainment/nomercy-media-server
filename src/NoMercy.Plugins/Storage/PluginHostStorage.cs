@@ -1,0 +1,119 @@
+// -----------------------------------------------------------------------------
+//  Copyright (c) 2024-present NoMercy Entertainment. All rights reserved.
+//
+//  This file is part of NoMercy MediaServer, source-available software (NOT open
+//  source). Personal use and contributions are welcome; distribution, resale,
+//  relicensing, and commercial exploitation are prohibited without explicit
+//  written consent. See LICENSE for full terms. Distributed WITHOUT ANY WARRANTY.
+//
+//  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
+// -----------------------------------------------------------------------------
+
+using NoMercy.Plugins.Abstractions;
+using NoMercy.Plugins.Capabilities;
+using NoMercy.Plugins.Quotas;
+
+namespace NoMercy.Plugins.Storage;
+
+/// <summary>
+/// Every place one plugin may read and write.
+/// <para>
+/// Three scopes the server made and hands over, and the owner's own folders
+/// reached through the same catalogue the server uses for its own media. The
+/// grant is checked here, in one place, rather than in each scope: a folder
+/// the owner never granted is not opened at all.
+/// </para>
+/// </summary>
+public class PluginHostStorage : IPluginStorage
+{
+    private readonly Ulid _pluginId;
+    private readonly IPluginFolderCatalog _catalog;
+    private readonly IPluginGrantStore _grants;
+
+    public PluginHostStorage(
+        Ulid pluginId,
+        string pluginsRoot,
+        IPluginFolderCatalog catalog,
+        IPluginGrantStore grants,
+        PluginQuotaMeter? quotas = null
+    )
+    {
+        _pluginId = pluginId;
+        _catalog = catalog;
+        _grants = grants;
+
+        PluginLocalStorageScope privateScope = new(
+            pluginId,
+            Path.Combine(pluginsRoot, "data", pluginId.ToString())
+        );
+        PluginLocalStorageScope temporary = new(
+            pluginId,
+            Path.Combine(pluginsRoot, "temp", pluginId.ToString())
+        );
+        PluginLocalStorageScope derived = new(
+            pluginId,
+            Path.Combine(pluginsRoot, "derived", pluginId.ToString())
+        );
+
+        privateScope.EnsureExists();
+        temporary.EnsureExists();
+        derived.EnsureExists();
+
+        // Temp is emptied on every start, which is what makes it temporary.
+        // A folder called temp that survives restarts is a folder that grows
+        // until a disk fills, and nobody looks in it until then.
+        temporary.Purge();
+
+        // Only the private folder is metered. Temp is emptied every start, and
+        // derived is the server's own cache, evicted by the server: counting
+        // either against the plugin would charge it for the host's decisions.
+        Private = quotas is null
+            ? privateScope
+            : new PluginMeteredStorageScope(privateScope, pluginId, quotas);
+        Temp = temporary;
+        Derived = derived;
+    }
+
+    public IPluginStorageScope Private { get; }
+
+    public IPluginStorageScope Temp { get; }
+
+    public IPluginStorageScope Derived { get; }
+
+    public async Task<IPluginStorageScope> PathAsync(
+        string folderId,
+        CancellationToken ct = default
+    )
+    {
+        if (!_grants.Holds(_pluginId, Kind, folderId))
+            throw Refused(folderId);
+
+        // A folder the owner granted and then removed from the server reads
+        // as null. Refused rather than answered with an empty scope, which a
+        // plugin would write into and find gone.
+        return await _catalog.OpenAsync(folderId, ct) ?? throw Refused(folderId);
+    }
+
+    /// <summary>The caller's own corner. Built in Phase 2 task 23; not reachable from here yet.</summary>
+    public IPluginUserScope ForUser =>
+        throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(
+                _pluginId.ToString(),
+                "IPluginStorage.ForUser"
+            )
+        );
+
+    /// <summary>A database in the private folder. Phase 2 task 27 opens it.</summary>
+    public Task<IPluginDatabase> OpenDatabaseAsync(string name, CancellationToken ct = default) =>
+        throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(
+                _pluginId.ToString(),
+                "IPluginStorage.OpenDatabaseAsync"
+            )
+        );
+
+    private static string Kind => PluginGrantKind.ForCapability(PluginCapabilityNames.StoragePath);
+
+    private PluginRefusedException Refused(string folderId) =>
+        new(PluginRefusalMessages.FileOutsideGrant(_pluginId.ToString(), folderId));
+}

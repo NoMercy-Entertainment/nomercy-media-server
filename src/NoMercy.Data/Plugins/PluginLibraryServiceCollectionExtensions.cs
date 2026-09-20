@@ -12,6 +12,7 @@
 using Microsoft.Extensions.DependencyInjection;
 using NoMercy.Plugins;
 using NoMercy.Plugins.Abstractions;
+using NoMercy.Plugins.Storage;
 
 namespace NoMercy.Data.Plugins;
 
@@ -45,6 +46,11 @@ public static class PluginLibraryServiceCollectionExtensions
         services.AddSingleton<IPluginEncoder, PluginEncoder>();
         services.AddSingleton<IPluginJobs, PluginJobs>();
         services.AddSingleton<IPluginFolderCatalog, PluginStorage>();
+
+        // Free space on a granted folder. Here rather than in the platform
+        // because only a local folder can be answered honestly, and knowing
+        // which a folder is means reading the driver row.
+        services.AddSingleton<IPluginFreeSpaceProbe, PluginFolderFreeSpaceProbe>();
 
         // The three analysis facades: audio tools, the derived-audio store and
         // the DJ analysis writer. Same story as the three above them - without
