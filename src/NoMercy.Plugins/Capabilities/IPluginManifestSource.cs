@@ -25,10 +25,15 @@ namespace NoMercy.Plugins.Capabilities;
 public interface IPluginManifestSource
 {
     PluginInfo? Find(Ulid pluginId);
+
+    /// <summary>Every plugin installed here, for the answers that are about all of them.</summary>
+    IReadOnlyList<PluginInfo> All();
 }
 
 /// <summary>The manager, narrowed.</summary>
 public sealed class PluginManagerManifestSource(IPluginManager plugins) : IPluginManifestSource
 {
     public PluginInfo? Find(Ulid pluginId) => plugins.GetPluginInfo(pluginId);
+
+    public IReadOnlyList<PluginInfo> All() => [.. plugins.GetInstalledPlugins()];
 }

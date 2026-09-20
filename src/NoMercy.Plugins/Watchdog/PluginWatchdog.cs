@@ -11,6 +11,7 @@
 
 using System.Collections.Concurrent;
 using NoMercy.Plugins.Abstractions;
+using NoMercy.Plugins.Telemetry;
 
 namespace NoMercy.Plugins.Watchdog;
 
@@ -51,7 +52,8 @@ public enum PluginWatchdogAction
 public class PluginWatchdog(
     IPluginResourceCeilingSource ceilings,
     IPluginWatchdogLifecycle lifecycle,
-    TimeProvider clock
+    TimeProvider clock,
+    IPluginCrashCounter? counter = null
 )
 {
     /// <summary>
@@ -146,7 +148,13 @@ public class PluginWatchdog(
         string why,
         string fix,
         PluginRefusalSeverity severity
-    ) => _refusals[pluginId] = new(code, pluginId.ToString(), what, why, fix, severity);
+    )
+    {
+        _refusals[pluginId] = new(code, pluginId.ToString(), what, why, fix, severity);
+
+        if (code == PluginRefusalCodes.ResourceCeiling)
+            counter?.RecordCeilingHit(pluginId);
+    }
 }
 
 /// <summary>Where the ceilings for one plugin come from.</summary>

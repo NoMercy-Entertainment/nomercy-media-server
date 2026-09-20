@@ -183,6 +183,8 @@ public class PluginCapabilityBrokerTests
                     Status = PluginStatus.Active,
                     Capabilities = capabilities,
                 };
+
+        public IReadOnlyList<PluginInfo> All() => Find(id) is { } only ? [only] : [];
     }
 
     private sealed class StubConsentService(bool consented) : IPluginConsentService

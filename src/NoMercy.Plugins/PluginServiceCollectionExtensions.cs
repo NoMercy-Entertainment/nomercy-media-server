@@ -19,6 +19,9 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using NoMercy.Encoder.Pipeline;
 using NoMercy.Events;
+using NoMercy.NmSystem.Auth;
+using NoMercy.NmSystem.Configuration;
+using NoMercy.NmSystem.Information;
 using NoMercy.Plugins.Abstractions;
 using NoMercy.Plugins.Access;
 using NoMercy.Plugins.Capabilities;
@@ -32,6 +35,7 @@ using NoMercy.Plugins.Offline;
 using NoMercy.Plugins.Quotas;
 using NoMercy.Plugins.Revocation;
 using NoMercy.Plugins.Sideload;
+using NoMercy.Plugins.Telemetry;
 using NoMercy.Plugins.Verification;
 using NoMercy.Plugins.Watchdog;
 using NoMercy.Storage;
@@ -56,6 +60,11 @@ public static class PluginServiceCollectionExtensions
         // to disk — that configuration still applies, and a host that forgets
         // gets a working platform instead of a resolve failure at plugin load.
         services.AddDataProtection();
+
+        // One clock for the whole platform. Seven services need one, and seven
+        // fallbacks to the system clock would be seven places a test that
+        // moves time could quietly fail to.
+        services.TryAddSingleton(TimeProvider.System);
 
         // Built from the container rather than by the parameterless constructor,
         // because one stage asks the repository where a plugin came from and
@@ -113,7 +122,7 @@ public static class PluginServiceCollectionExtensions
             sp.GetRequiredService<IPluginInstallFacts>(),
             sp.GetRequiredService<IPluginEntitlementStore>(),
             sp.GetService<IPluginMembership>() ?? new NobodyIsAMember(),
-            sp.GetService<TimeProvider>() ?? TimeProvider.System,
+            sp.GetRequiredService<TimeProvider>(),
             () => sp.GetService<IPluginOwner>()?.Id ?? Guid.Empty
         ));
 
@@ -160,7 +169,7 @@ public static class PluginServiceCollectionExtensions
         services.AddSingleton<PluginQuotaMeter>(sp =>
             new(
                 sp.GetRequiredService<IPluginQuotaSource>(),
-                sp.GetService<TimeProvider>() ?? TimeProvider.System,
+                sp.GetRequiredService<TimeProvider>(),
                 sp.GetRequiredService<IPluginRefusalCounter>()
             )
         );
@@ -174,10 +183,39 @@ public static class PluginServiceCollectionExtensions
             new(
                 sp.GetRequiredService<IPluginResourceCeilingSource>(),
                 sp.GetRequiredService<IPluginWatchdogLifecycle>(),
-                sp.GetService<TimeProvider>() ?? TimeProvider.System
+                sp.GetRequiredService<TimeProvider>(),
+                sp.GetRequiredService<IPluginCrashCounter>()
             )
         );
         services.AddHostedService<PluginWatchdogService>();
+
+        // What this server tells NoMercy about its plugins. Refusal counts
+        // always; crash and ceiling counters only if the owner said yes; a
+        // sideload never, not even that it exists.
+        services.TryAddSingleton<IPluginCrashCounter, PluginCrashCounter>();
+        services.TryAddSingleton<IPluginTelemetrySink>(sp => new PluginHttpTelemetrySink(
+            TelemetryClient(),
+            sp.GetRequiredService<IAuthTokenStore>(),
+            sp.GetRequiredService<ILogger<PluginHttpTelemetrySink>>()
+        ));
+        services.AddSingleton<PluginCrashListener>(sp =>
+            new(sp.GetRequiredService<IEventBus>(), sp.GetRequiredService<IPluginCrashCounter>())
+        );
+        services.AddSingleton<PluginTelemetryReporter>(sp =>
+            new(
+                sp.GetRequiredService<IPluginManifestSource>(),
+                sp.GetRequiredService<IPluginRefusalCounter>(),
+                sp.GetRequiredService<IPluginCrashCounter>(),
+                sp.GetRequiredService<IPluginInstallFacts>(),
+                sp.GetRequiredService<IPluginTelemetrySink>(),
+                // Read every window rather than once at startup, so an owner
+                // changing their mind takes effect without a restart.
+                () => PluginTelemetryOptions.Load(),
+                sp.GetRequiredService<TimeProvider>(),
+                Info.DeviceId
+            )
+        );
+        services.AddHostedService<PluginTelemetryService>();
 
         // In memory: a channel carries a callback that resolves a
         // credential-bearing address, and a callback cannot be written to disk.
@@ -198,7 +236,7 @@ public static class PluginServiceCollectionExtensions
 
         services.AddSingleton<PluginMediaTicketMinter>(sp =>
             new(
-                sp.GetService<TimeProvider>() ?? TimeProvider.System,
+                sp.GetRequiredService<TimeProvider>(),
                 SHA256.HashData(
                     sp.GetRequiredService<IDataProtectionProvider>()
                         .CreateProtector("NoMercy.Plugins.Media.Tickets")
@@ -216,7 +254,7 @@ public static class PluginServiceCollectionExtensions
             new(
                 () => sp.GetRequiredService<IPluginDeveloperModeSource>().Enabled,
                 sp.GetRequiredService<IPluginEntitlementStore>(),
-                sp.GetService<TimeProvider>() ?? TimeProvider.System,
+                sp.GetRequiredService<TimeProvider>(),
                 () => sp.GetService<IPluginOwner>()?.Id ?? Guid.Empty
             )
         );
@@ -226,7 +264,7 @@ public static class PluginServiceCollectionExtensions
                 sp.GetRequiredService<IPluginEntitlementStore>(),
                 sp.GetRequiredService<IPluginRevocationStore>(),
                 sp.GetRequiredService<IPluginTrustedKeys>(),
-                sp.GetService<TimeProvider>() ?? TimeProvider.System
+                sp.GetRequiredService<TimeProvider>()
             )
         );
 
@@ -403,6 +441,18 @@ public static class PluginServiceCollectionExtensions
         services
             .FirstOrDefault(descriptor => descriptor.ServiceType == typeof(IPluginRestartAdvisor))
             ?.ImplementationInstance as IPluginRestartAdvisor;
+
+    /// <summary>
+    /// Its own client, with a short timeout. Telemetry is the least important
+    /// thing this server does, and it must never be the thing holding a
+    /// connection open while somebody is trying to watch something.
+    /// </summary>
+    private static HttpClient TelemetryClient() =>
+        new()
+        {
+            BaseAddress = new(ExternalServicesConfig.Current.ApiServerBaseUrl),
+            Timeout = TimeSpan.FromSeconds(10),
+        };
 
     private static IStorage PluginStorage(IServiceProvider sp, string pluginsPath)
     {
