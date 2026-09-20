@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Runtime.Loader;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -61,6 +62,10 @@ public class PluginLoaderFailureFixtureTests : IDisposable
     private static readonly Ulid TypeSignatureDependsOnMissingAssemblyPluginId = Ulid.Parse(
         "01SAMPLE000000000000000005"
     );
+
+    // PluginShadowCopy.Folder, copied rather than referenced: the type is
+    // internal to NoMercy.Plugins and this assembly is not a friend of it.
+    private const string PluginShadowCopyFolder = ".loaded";
 
     private readonly string _tempPluginsDir;
     private readonly InMemoryEventBus _eventBus;
@@ -299,6 +304,65 @@ public class PluginLoaderFailureFixtureTests : IDisposable
 
         await act.Should().NotThrowAsync();
         _manager.GetInstalledPlugins().Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// An assembly that holds no plugin types leaves no live load context
+    /// behind.
+    /// <para>
+    /// This is the leak that costs a running server: every boot scan and every
+    /// reload builds a context, and one that nothing releases stays for the
+    /// life of the process along with everything it mapped. The measurement is
+    /// the runtime's own list of live contexts, not the shadow copy on disk —
+    /// the copy deletes after a collection even while the context is strongly
+    /// referenced, so disk says nothing about this.
+    /// </para>
+    /// <para>
+    /// The leak this reddens on is the real one: a context that something
+    /// still holds AND that was never unloaded. Those are the two halves,
+    /// and either one alone is survivable. A context nothing references is
+    /// collected whether or not Unload was called, and an unloaded context
+    /// leaves this list immediately, so mutating away only the Unload call
+    /// or only the last reference leaves the test green. Both together is
+    /// what keeps it resident, and that is what goes red here.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task LoadPluginAssemblyAsync_AssemblyWithNoPluginTypes_LeavesNoLiveLoadContext()
+    {
+        string abstractionsPath = GetAbstractionsAssemblyPath();
+        await _manager.LoadPluginAssemblyAsync(abstractionsPath);
+
+        // Collection is what ends a collectible context, and it is not
+        // immediate: Unload only makes it eligible. Matched on this test's own
+        // shadow root, which carries a ULID, so a context another test class
+        // is loading in parallel can never be counted as this one's leak.
+        List<string> live = [];
+        string shadowRoot = Path.Combine(_tempPluginsDir, PluginShadowCopyFolder);
+
+        for (int attempt = 0; attempt < 20; attempt++)
+        {
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+
+            live =
+            [
+                .. AssemblyLoadContext
+                    .All.Select(c => c.Name)
+                    .Where(n => n is not null && n.StartsWith(shadowRoot, StringComparison.Ordinal))
+                    .Select(n => n!),
+            ];
+
+            if (live.Count == 0)
+            {
+                break;
+            }
+
+            await Task.Delay(50);
+        }
+
+        live.Should()
+            .BeEmpty("a context nothing releases stays for the life of the process, one per scan");
     }
 
     [Fact]

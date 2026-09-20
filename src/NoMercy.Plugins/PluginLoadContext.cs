@@ -20,8 +20,13 @@ public class PluginLoadContext : AssemblyLoadContext
     private readonly string _pluginDir;
     private readonly IReadOnlySet<string> _sharedAssemblies;
 
+    // Named after the assembly it was built for, because a nameless context is
+    // unidentifiable: every one of them reads as null in a memory dump and in
+    // AssemblyLoadContext.All, so a context that outlives its plugin cannot be
+    // told from any other. The path carries the shadow copy's id, so the name
+    // is unique per load as well as per plugin.
     public PluginLoadContext(string pluginPath, IReadOnlySet<string>? sharedAssemblies = null)
-        : base(isCollectible: true)
+        : base(name: pluginPath, isCollectible: true)
     {
         _resolver = new(pluginPath);
         _pluginDir =
