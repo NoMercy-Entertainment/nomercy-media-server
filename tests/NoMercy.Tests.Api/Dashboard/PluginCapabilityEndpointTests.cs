@@ -108,7 +108,7 @@ public class PluginCapabilityEndpointTests
         _consent.Setup(service => service.IsApproved(PluginId, "network.fetch")).Returns(true);
         _consent
             .Setup(service => service.ApprovedAt(PluginId, "network.fetch"))
-            .Returns(new Version(1, 0, 0));
+            .Returns(new System.Version(1, 0, 0));
         PluginCapabilityController controller = BuildController("network.fetch");
 
         PluginCapabilityStateDto state = Body(controller.Index(PluginId)).Single();
@@ -140,7 +140,8 @@ public class PluginCapabilityEndpointTests
         controller.Store(PluginId, [new() { Name = "network.fetch", Approved = true }]);
 
         _consent.Verify(
-            service => service.ApproveCapability(PluginId, "network.fetch", new Version(2, 0, 0)),
+            service =>
+                service.ApproveCapability(PluginId, "network.fetch", new System.Version(2, 0, 0)),
             Times.Once
         );
     }
@@ -174,7 +175,7 @@ public class PluginCapabilityEndpointTests
                 service.ApproveCapability(
                     It.IsAny<Ulid>(),
                     It.IsAny<string>(),
-                    It.IsAny<Version>()
+                    It.IsAny<System.Version>()
                 ),
             Times.Never,
             "applied halfway, the owner approves a set they never saw"
