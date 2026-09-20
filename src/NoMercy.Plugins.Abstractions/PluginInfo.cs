@@ -27,6 +27,9 @@ public class PluginInfo
     public bool Trusted { get; init; }
     public PluginCapabilities? Capabilities { get; init; }
 
+    /// <summary>The fields the host draws on this plugin's settings page.</summary>
+    public IReadOnlyList<PluginSettingsField> Settings { get; init; } = [];
+
     /// <summary>What the marketplace says this costs. Free until it says otherwise.</summary>
     public PluginTier Tier { get; init; } = PluginTier.Free;
 

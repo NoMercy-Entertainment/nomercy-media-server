@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using NoMercy.Api.Hubs;
+using NoMercy.Api.Plugins;
 using NoMercy.Api.Security;
 using NoMercy.Api.Services;
 using NoMercy.Api.WebSockets;
@@ -783,6 +784,10 @@ public static partial class ServiceConfiguration
         services.AddSingleton<IPluginCallerAccessor, HttpPluginCallerAccessor>();
 
         services.AddPluginSystem(AppFiles.PluginsPath);
+
+        // One builder for the capability list, so the consent page and the
+        // permissions page cannot give an owner two accounts of one plugin.
+        services.AddSingleton<PluginCapabilityStates>();
 
         // The real library, replacing the platform's null objects. Separate
         // call because NoMercy.Plugins must not reference the database.

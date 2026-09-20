@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Api.DTOs.Dashboard;
+using NoMercy.Api.Plugins;
 using NoMercy.Plugins.Abstractions;
 using NoMercy.Plugins.Capabilities;
 
@@ -36,7 +37,8 @@ namespace NoMercy.Api.Controllers.V1.Dashboard.Plugins;
 [Route("api/v{version:apiVersion}/dashboard/plugins/{id:ulid}/capabilities", Order = 10)]
 public class PluginCapabilityController(
     IPluginManager pluginManager,
-    IPluginConsentService consentService
+    IPluginConsentService consentService,
+    PluginCapabilityStates states
 ) : BaseController
 {
     [HttpGet]
@@ -48,10 +50,7 @@ public class PluginCapabilityController(
             return NotFoundResponse("Plugin not found");
 
         return Ok(
-            new DataResponseDto<IEnumerable<PluginCapabilityStateDto>>
-            {
-                Data = Declared(plugin).Select(descriptor => Describe(id, descriptor)),
-            }
+            new DataResponseDto<IEnumerable<PluginCapabilityStateDto>> { Data = states.For(plugin) }
         );
     }
 
@@ -63,7 +62,10 @@ public class PluginCapabilityController(
         if (plugin is null)
             return NotFoundResponse("Plugin not found");
 
-        HashSet<string> declared = [.. Declared(plugin).Select(descriptor => descriptor.Name)];
+        HashSet<string> declared =
+        [
+            .. PluginCapabilityStates.Declared(plugin).Select(descriptor => descriptor.Name),
+        ];
 
         // Every name is checked before anything is written. An answer list with
         // one bad name applied halfway would leave the owner having approved a
@@ -85,33 +87,7 @@ public class PluginCapabilityController(
                 consentService.RevokeCapability(id, decision.Name);
 
         return Ok(
-            new DataResponseDto<IEnumerable<PluginCapabilityStateDto>>
-            {
-                Data = Declared(plugin).Select(descriptor => Describe(id, descriptor)),
-            }
+            new DataResponseDto<IEnumerable<PluginCapabilityStateDto>> { Data = states.For(plugin) }
         );
     }
-
-    /// <summary>
-    /// The capabilities this plugin's manifest declares, as the vocabulary
-    /// describes them. A hook the vocabulary does not carry is skipped rather
-    /// than shown: the owner cannot meaningfully answer for something the
-    /// server has no description of.
-    /// </summary>
-    private static IEnumerable<PluginCapabilityDescriptor> Declared(PluginInfo plugin) =>
-        (plugin.Capabilities?.Hooks ?? [])
-            .Select(PluginCapabilityVocabulary.ByName)
-            .Where(descriptor => descriptor is not null)
-            .Select(descriptor => descriptor!);
-
-    private PluginCapabilityStateDto Describe(Ulid id, PluginCapabilityDescriptor descriptor) =>
-        new()
-        {
-            Name = descriptor.Name,
-            SummaryKey = descriptor.Summary,
-            Trust = descriptor.Trust.ToString().ToLowerInvariant(),
-            DocsUrl = descriptor.DocsUrl,
-            Approved = consentService.IsApproved(id, descriptor.Name),
-            ApprovedAtVersion = consentService.ApprovedAt(id, descriptor.Name)?.ToString(),
-        };
 }
