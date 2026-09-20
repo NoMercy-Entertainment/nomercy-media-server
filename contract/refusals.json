@@ -226,5 +226,17 @@
     "severity": "blocked",
     "capability": null,
     "summary": "The server has not reached the revocation list in over a week, so it cannot say a plugin is still allowed."
+  },
+  {
+    "code": "PLUGIN_ENTITLEMENT_MISSING",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "A paid plugin, and the server owner holds no entitlement for it."
+  },
+  {
+    "code": "PLUGIN_ENTITLEMENT_DORMANT",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "The server could not confirm a purchase for over a week, so the plugin is installed and not running."
   }
 ]
