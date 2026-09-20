@@ -250,5 +250,17 @@
     "severity": "blocked",
     "capability": null,
     "summary": "An offline bundle older than the validity it was issued with."
+  },
+  {
+    "code": "PLUGIN_SIDELOAD_DISABLED",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "Installing a plugin from a file is off, because the server cannot check who wrote it."
+  },
+  {
+    "code": "PLUGIN_SIDELOAD_PAID_ID",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "The id belongs to a paid plugin and the owner holds no entitlement for it."
   }
 ]
