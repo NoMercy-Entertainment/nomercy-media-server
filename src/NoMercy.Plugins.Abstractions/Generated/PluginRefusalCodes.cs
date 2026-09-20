@@ -61,6 +61,8 @@ public static class PluginRefusalCodes
     public const string SideloadDisabled = "PLUGIN_SIDELOAD_DISABLED";
     public const string SideloadPaidId = "PLUGIN_SIDELOAD_PAID_ID";
     public const string AccessDenied = "PLUGIN_ACCESS_DENIED";
+    public const string MediaTicketExpired = "PLUGIN_MEDIA_TICKET_EXPIRED";
+    public const string MediaTicketUserMismatch = "PLUGIN_MEDIA_TICKET_USER_MISMATCH";
 
     public static IReadOnlyList<PluginRefusalDescriptor> All { get; } =
     [
@@ -333,6 +335,18 @@ public static class PluginRefusalCodes
             PluginRefusalSeverity.Blocked,
             null,
             "The plugin is not shared with the account asking for it on this server."
+        ),
+        new(
+            "PLUGIN_MEDIA_TICKET_EXPIRED",
+            PluginRefusalSeverity.Blocked,
+            "media.proxy",
+            "A media link the server minted has run out, or was never one it minted."
+        ),
+        new(
+            "PLUGIN_MEDIA_TICKET_USER_MISMATCH",
+            PluginRefusalSeverity.Blocked,
+            "media.proxy",
+            "A media link minted for one account was used by another."
         ),
     ];
 

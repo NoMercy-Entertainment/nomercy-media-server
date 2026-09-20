@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using System.Reflection;
+using System.Security.Cryptography;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
@@ -25,6 +26,7 @@ using NoMercy.Plugins.Entitlements;
 using NoMercy.Plugins.Guests;
 using NoMercy.Plugins.Hooks;
 using NoMercy.Plugins.Hub;
+using NoMercy.Plugins.Media;
 using NoMercy.Plugins.Offline;
 using NoMercy.Plugins.Revocation;
 using NoMercy.Plugins.Sideload;
@@ -111,6 +113,22 @@ public static class PluginServiceCollectionExtensions
             sp.GetService<TimeProvider>() ?? TimeProvider.System,
             () => sp.GetService<IPluginOwner>()?.Id ?? Guid.Empty
         ));
+
+        // The key every media ticket is signed with, derived once from this
+        // server's data-protection material. It is not read from configuration
+        // a plugin can see, and it changes on restart, which expires every
+        // outstanding ticket. Tickets live for minutes, so that costs a viewer
+        // one reopen and removes a key that would otherwise sit on disk.
+        services.AddSingleton<PluginMediaTicketMinter>(sp =>
+            new(
+                sp.GetService<TimeProvider>() ?? TimeProvider.System,
+                SHA256.HashData(
+                    sp.GetRequiredService<IDataProtectionProvider>()
+                        .CreateProtector("NoMercy.Plugins.Media.Tickets")
+                        .Protect("media-ticket-signing-key"u8.ToArray())
+                )
+            )
+        );
 
         // A file the owner dropped in themselves. Developer mode is read per
         // call, so turning it off takes effect on the next install rather than
