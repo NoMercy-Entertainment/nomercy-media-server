@@ -262,5 +262,11 @@
     "severity": "blocked",
     "capability": null,
     "summary": "The id belongs to a paid plugin and the owner holds no entitlement for it."
+  },
+  {
+    "code": "PLUGIN_ACCESS_DENIED",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "The plugin is not shared with the account asking for it on this server."
   }
 ]
