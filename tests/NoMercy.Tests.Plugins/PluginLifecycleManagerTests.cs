@@ -297,6 +297,46 @@ public class PluginLifecycleManagerTests : IDisposable
         errors.Should().ContainSingle(e => e.PluginId == id.ToString());
     }
 
+    /// <summary>
+    /// The event an owner actually reads carries the refusal, not the runtime's
+    /// sentence.
+    /// <para>
+    /// This is the failure a real server produced. Reporting
+    /// <c>Method not found: 'IPluginContext.get_EventBus()'</c> names a
+    /// compiler-generated getter rather than the capability to declare
+    /// instead, and reads as a server fault rather than a plugin built against
+    /// something older.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task EnablePluginAsync_RemovedMember_ReportsTheRefusalAndNotTheGetter()
+    {
+        Ulid id = Ulid.NewUlid();
+        _registry[id] = new(
+            Info(id, PluginStatus.Disabled),
+            new ReachesARemovedMemberPlugin(),
+            null
+        );
+        List<PluginErrorOccurredEvent> errors = [];
+        _eventBus.Subscribe<PluginErrorOccurredEvent>(
+            (evt, _) =>
+            {
+                errors.Add(evt);
+                return Task.CompletedTask;
+            }
+        );
+
+        await _lifecycle.EnablePluginAsync(id);
+
+        PluginErrorOccurredEvent reported = errors.Should().ContainSingle().Which;
+
+        reported.ErrorMessage.Should().Contain("get_EventBus", "the author needs the member named");
+        reported
+            .ErrorMessage.Should()
+            .Contain("11.0", "and the version to rebuild against, which the runtime never says");
+        reported.ErrorMessage.Should().Contain("/nomercy-plugins/migration");
+    }
+
     // ── DisablePluginAsync ───────────────────────────────────────────────────
 
     [Fact]
@@ -807,6 +847,26 @@ public class PluginLifecycleManagerTests : IDisposable
 
         public void Initialize(IPluginContext context) =>
             throw new ApplicationException("initialize boom");
+
+        public void Dispose() { }
+    }
+
+    /// <summary>
+    /// What the torrent downloader on a real server does: reaches a member the
+    /// contract removed. The runtime raises this when the method is prepared,
+    /// which is why the plugin's own try/catch does not see it.
+    /// </summary>
+    private sealed class ReachesARemovedMemberPlugin : IPlugin
+    {
+        public string Name => "Torrent Downloader";
+        public string Description => "d";
+        public Ulid Id { get; } = Ulid.NewUlid();
+        public Version Version { get; } = new(0, 6, 5);
+
+        public void Initialize(IPluginContext context) =>
+            throw new MissingMethodException(
+                "Method not found: 'NoMercy.Events.IEventBus NoMercy.Plugins.Abstractions.IPluginContext.get_EventBus()'."
+            );
 
         public void Dispose() { }
     }
