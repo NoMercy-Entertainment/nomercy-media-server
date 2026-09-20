@@ -9,15 +9,16 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using Microsoft.AspNetCore.SignalR;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Hub;
+namespace NoMercy.Plugins.Abstractions;
 
-namespace NoMercy.Api.Hubs;
-
-public class PluginHubContextFactory(IHubContext<PluginHub> hubContext, IPluginHubRouter router)
-    : IPluginHubContextFactory
+/// <summary>
+/// The choices a client already honours. A plugin reads them so its own surface
+/// matches the rest of the app rather than asking the viewer the same questions
+/// a second time.
+/// </summary>
+public sealed record PluginUserPreferences
 {
-    public IPluginHubContext For(Ulid pluginId) =>
-        new PluginHubBroadcaster(hubContext, pluginId, router);
+    public string? Locale { get; init; }
+    public string? AudioLanguage { get; init; }
+    public string? SubtitleLanguage { get; init; }
 }

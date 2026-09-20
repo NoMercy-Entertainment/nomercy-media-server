@@ -50,6 +50,7 @@ public static class PluginRefusalCodes
     public const string BrowserNavigationBlocked = "PLUGIN_BROWSER_NAVIGATION_BLOCKED";
     public const string UiInputUndeclared = "PLUGIN_UI_INPUT_UNDECLARED";
     public const string NativeCodeUnsigned = "PLUGIN_NATIVE_CODE_UNSIGNED";
+    public const string HubCallerNotResolved = "PLUGIN_HUB_CALLER_NOT_RESOLVED";
 
     public static IReadOnlyList<PluginRefusalDescriptor> All { get; } =
     [
@@ -256,6 +257,12 @@ public static class PluginRefusalCodes
             PluginRefusalSeverity.Blocked,
             "native.code",
             "The native library the plugin loads carries no signature this server trusts."
+        ),
+        new(
+            "PLUGIN_HUB_CALLER_NOT_RESOLVED",
+            PluginRefusalSeverity.Blocked,
+            "hub",
+            "A hub method was reached on a connection the host could not resolve a caller for."
         ),
     ];
 

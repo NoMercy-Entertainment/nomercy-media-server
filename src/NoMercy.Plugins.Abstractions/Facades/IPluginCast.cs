@@ -9,15 +9,14 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using Microsoft.AspNetCore.SignalR;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Hub;
+namespace NoMercy.Plugins.Abstractions;
 
-namespace NoMercy.Api.Hubs;
-
-public class PluginHubContextFactory(IHubContext<PluginHub> hubContext, IPluginHubRouter router)
-    : IPluginHubContextFactory
+/// <summary>
+/// Moves the caller's session to a device. The plugin names the device and
+/// nothing else: what is playing and where its audio goes are already the
+/// client's business, which is why a plugin never held a player.
+/// </summary>
+public interface IPluginCast
 {
-    public IPluginHubContext For(Ulid pluginId) =>
-        new PluginHubBroadcaster(hubContext, pluginId, router);
+    Task SendAsync(string device, CancellationToken ct = default);
 }

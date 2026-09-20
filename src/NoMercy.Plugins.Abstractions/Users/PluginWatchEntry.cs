@@ -9,15 +9,13 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using Microsoft.AspNetCore.SignalR;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Hub;
+namespace NoMercy.Plugins.Abstractions;
 
-namespace NoMercy.Api.Hubs;
-
-public class PluginHubContextFactory(IHubContext<PluginHub> hubContext, IPluginHubRouter router)
-    : IPluginHubContextFactory
+/// <summary>One thing the caller watched, and how far they got.</summary>
+public sealed record PluginWatchEntry
 {
-    public IPluginHubContext For(Ulid pluginId) =>
-        new PluginHubBroadcaster(hubContext, pluginId, router);
+    public required MediaId Media { get; init; }
+    public required DateTimeOffset WatchedAt { get; init; }
+    public TimeSpan Position { get; init; }
+    public bool Finished { get; init; }
 }

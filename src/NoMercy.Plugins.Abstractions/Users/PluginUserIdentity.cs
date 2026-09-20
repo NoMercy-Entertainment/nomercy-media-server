@@ -9,15 +9,14 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using Microsoft.AspNetCore.SignalR;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Hub;
+namespace NoMercy.Plugins.Abstractions;
 
-namespace NoMercy.Api.Hubs;
-
-public class PluginHubContextFactory(IHubContext<PluginHub> hubContext, IPluginHubRouter router)
-    : IPluginHubContextFactory
+/// <summary>Who is asking. No email and no token: a plugin needs neither to
+/// greet someone or to key its own per-user storage.</summary>
+public sealed record PluginUserIdentity
 {
-    public IPluginHubContext For(Ulid pluginId) =>
-        new PluginHubBroadcaster(hubContext, pluginId, router);
+    public required UserId Id { get; init; }
+    public required string DisplayName { get; init; }
+    public bool IsOwner { get; init; }
+    public string? Locale { get; init; }
 }

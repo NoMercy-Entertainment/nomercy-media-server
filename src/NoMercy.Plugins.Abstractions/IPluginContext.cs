@@ -196,6 +196,43 @@ public interface IPluginContext
             PluginRefusalMessages.FacadeNotOnThisHost(PluginId.ToString(), "IPluginContext.Media")
         );
 
+    /// <summary>The caller's own data. Nothing here takes a user id.</summary>
+    IPluginUserData User =>
+        throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(PluginId.ToString(), "IPluginContext.User")
+        );
+
+    /// <summary>Everyone on this server, owner-only.</summary>
+    IPluginUsers Users =>
+        throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(PluginId.ToString(), "IPluginContext.Users")
+        );
+
+    /// <summary>Telling someone something, in keys rather than sentences.</summary>
+    IPluginNotifications Notifications =>
+        throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(
+                PluginId.ToString(),
+                "IPluginContext.Notifications"
+            )
+        );
+
+    /// <summary>Moving the caller's session to a device.</summary>
+    IPluginCast Cast =>
+        throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(PluginId.ToString(), "IPluginContext.Cast")
+        );
+
+    /// <summary>What this install is entitled to, asked of the host rather than
+    /// of nomercy.tv, so a paid feature works on an offline server.</summary>
+    IPluginMarketplace Marketplace =>
+        throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(
+                PluginId.ToString(),
+                "IPluginContext.Marketplace"
+            )
+        );
+
     /// <summary>Native libraries, gated on the marketplace signature rather than a capability.</summary>
     IPluginNative Native =>
         throw new PluginRefusedException(

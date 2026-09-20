@@ -9,15 +9,13 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using Microsoft.AspNetCore.SignalR;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Hub;
+namespace NoMercy.Plugins.Abstractions;
 
-namespace NoMercy.Api.Hubs;
-
-public class PluginHubContextFactory(IHubContext<PluginHub> hubContext, IPluginHubRouter router)
-    : IPluginHubContextFactory
+/// <summary>
+/// Everyone on this server. Owner-only, and it answers identities rather than
+/// accounts: a plugin that needs to list members does not need their addresses.
+/// </summary>
+public interface IPluginUsers
 {
-    public IPluginHubContext For(Ulid pluginId) =>
-        new PluginHubBroadcaster(hubContext, pluginId, router);
+    Task<IReadOnlyList<PluginUserIdentity>> ListAsync(CancellationToken ct = default);
 }

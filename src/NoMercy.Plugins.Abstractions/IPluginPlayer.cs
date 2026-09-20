@@ -49,6 +49,16 @@ public interface IPluginPlayer
     /// is, or when no session has reported in.
     /// </summary>
     Task<PluginPlaybackState?> GetStateAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// What is lined up after the current item. A default member rather than a
+    /// required one, so a host that cannot reach a queue says so at the call
+    /// instead of failing every plugin that only ever plays.
+    /// </summary>
+    IPluginPlayerQueue Queue =>
+        throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(string.Empty, "IPluginContext.Player.Queue")
+        );
 }
 
 /// <summary>

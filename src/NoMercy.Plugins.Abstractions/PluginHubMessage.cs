@@ -31,4 +31,13 @@ public class PluginHubMessage
     public JsonNode? Payload { get; init; }
     public required string ConnectionId { get; init; }
     public string? UserId { get; init; }
+
+    /// <summary>
+    /// Who sent it, as the host resolved them. Null when the host could not
+    /// resolve a caller, and a handler registered through
+    /// <see cref="IPluginHubContext.Handle" /> is not run in that case: a hub
+    /// method that cannot tell the owner from a guest ends up trusting whoever
+    /// connected.
+    /// </summary>
+    public PluginCaller? Caller { get; init; }
 }

@@ -23,7 +23,16 @@ public class PluginHubRouter(IPluginManager pluginManager, ILogger<PluginHubRout
 
     public void Register(IPluginHubHandler handler) => _handlers[handler.PluginId] = handler;
 
-    public void Unregister(Ulid pluginId) => _handlers.TryRemove(pluginId, out _);
+    private readonly ConcurrentDictionary<Ulid, PluginDelegateHubHandler> _delegates = new();
+
+    public void Unregister(Ulid pluginId)
+    {
+        _handlers.TryRemove(pluginId, out _);
+        _delegates.TryRemove(pluginId, out _);
+    }
+
+    public PluginDelegateHubHandler DelegateHandlerFor(Ulid pluginId) =>
+        _delegates.GetOrAdd(pluginId, static id => new(id));
 
     public async Task<bool> RouteAsync(
         Ulid pluginId,
@@ -32,7 +41,10 @@ public class PluginHubRouter(IPluginManager pluginManager, ILogger<PluginHubRout
         CancellationToken ct
     )
     {
-        if (!_handlers.TryGetValue(pluginId, out IPluginHubHandler? handler))
+        _handlers.TryGetValue(pluginId, out IPluginHubHandler? handler);
+        _delegates.TryGetValue(pluginId, out PluginDelegateHubHandler? delegateHandler);
+
+        if (handler is null && delegateHandler is null)
             return false;
 
         PluginInfo? info = pluginManager.GetPluginInfo(pluginId);
@@ -45,7 +57,12 @@ public class PluginHubRouter(IPluginManager pluginManager, ILogger<PluginHubRout
 
         try
         {
-            await handler.HandleAsync(message, client, ct);
+            if (handler is not null)
+                await handler.HandleAsync(message, client, ct);
+
+            if (delegateHandler is not null)
+                await delegateHandler.HandleAsync(message, client, ct);
+
             return true;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)

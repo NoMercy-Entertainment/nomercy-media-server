@@ -205,6 +205,21 @@ public static class PluginRefusalMessages
         );
     }
 
+    /// <summary>
+    /// A hub method reached on a connection with no resolved caller.
+    /// </summary>
+    public static PluginRefusal HubCallerNotResolved(string plugin, string method)
+    {
+        return new PluginRefusal(
+            PluginRefusalCodes.HubCallerNotResolved,
+            plugin,
+            $"The hub method {method} was reached on a connection the host could not identify.",
+            "A handler that runs without knowing who asked cannot tell the owner from a guest, and the plugin has no way to find out afterwards, so it ends up trusting whoever connected.",
+            "Nothing to change in the plugin. The connection reached the hub without an identity the server recognises, which means the client connected without signing in. Docs: /nomercy-plugins/tour/callers-and-access",
+            PluginRefusalSeverity.Blocked
+        );
+    }
+
     public static PluginRefusal TokenInUrl(string plugin, string url)
     {
         return new PluginRefusal(
