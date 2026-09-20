@@ -35,6 +35,12 @@ public interface IPluginMembership
 {
     bool IsAcceptedMember(Guid userId);
 
+    /// <summary>
+    /// The owner and every accepted member. Everyone who could be told an
+    /// answer, so nobody is left holding a stale one.
+    /// </summary>
+    IReadOnlyList<Guid> EveryoneOn(Guid ownerId);
+
     /// <summary>Seats claimed so far, first come first served.</summary>
     int SeatsTakenFor(Ulid pluginId);
 }

@@ -10,7 +10,9 @@
 // -----------------------------------------------------------------------------
 
 using System.Text.Json;
+using NoMercy.Events;
 using NoMercy.NmSystem.Information;
+using NoMercy.Plugins.Access;
 
 namespace NoMercy.Plugins.Entitlements;
 
@@ -18,7 +20,8 @@ namespace NoMercy.Plugins.Entitlements;
 /// The bundle on disk, so a server that starts offline still knows what it was
 /// last told it may run.
 /// </summary>
-public class PluginEntitlementStore(string? folder = null) : IPluginEntitlementStore
+public class PluginEntitlementStore(string? folder = null, IEventBus? events = null)
+    : IPluginEntitlementStore
 {
     private readonly string _folder = folder ?? AppFiles.PluginConfigPath;
 
@@ -66,5 +69,9 @@ public class PluginEntitlementStore(string? folder = null) : IPluginEntitlementS
         Directory.CreateDirectory(_folder);
         System.IO.File.WriteAllText(File, JsonSerializer.Serialize(replacement, Json));
         _cached = replacement;
+
+        // A list names what it now blocks, never what it stopped blocking, so
+        // every account is told its answer rather than a guess at whose changed.
+        PluginAccessAnnouncement.Changed(events);
     }
 }

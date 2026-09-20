@@ -37,6 +37,16 @@ public class PluginMembership(IUserCache userCache) : IPluginMembership
     public bool IsAcceptedMember(Guid userId) =>
         userCache.Users.Any(user => user.Id == userId && (user.Allowed || user.Owner));
 
+    public IReadOnlyList<Guid> EveryoneOn(Guid ownerId) =>
+        [
+            .. userCache
+                .Users.Where(user => user.Allowed || user.Owner)
+                .Select(user => user.Id)
+                .Append(ownerId)
+                .Where(id => id != Guid.Empty)
+                .Distinct(),
+        ];
+
     public int SeatsTakenFor(Ulid pluginId) =>
         Register().TryGetValue(pluginId.ToString(), out List<Guid>? seated) ? seated.Count : 0;
 

@@ -256,6 +256,8 @@ public class PluginAccessResolverTests
     {
         public bool IsAcceptedMember(Guid userId) => members.Contains(userId);
 
+        public IReadOnlyList<Guid> EveryoneOn(Guid ownerId) => [.. members.Append(ownerId)];
+
         public int SeatsTakenFor(Ulid pluginId) => seatsTaken;
     }
 

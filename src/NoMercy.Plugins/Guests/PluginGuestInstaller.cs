@@ -9,7 +9,9 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using NoMercy.Events;
 using NoMercy.Plugins.Abstractions;
+using NoMercy.Plugins.Access;
 
 namespace NoMercy.Plugins.Guests;
 
@@ -22,7 +24,11 @@ namespace NoMercy.Plugins.Guests;
 /// it, not by a list here that somebody has to remember to update.
 /// </para>
 /// </summary>
-public class PluginGuestInstaller(IPluginGuestInstallStore store, IPluginDataPurge purge)
+public class PluginGuestInstaller(
+    IPluginGuestInstallStore store,
+    IPluginDataPurge purge,
+    IEventBus? events = null
+)
 {
     public PluginRefusal? Install(PluginManifest manifest, Guid guestId)
     {
@@ -39,6 +45,7 @@ public class PluginGuestInstaller(IPluginGuestInstallStore store, IPluginDataPur
             );
 
         store.Record(manifest.Id.Value, guestId);
+        PluginAccessAnnouncement.Changed(events, manifest.Id.Value);
 
         return null;
     }
@@ -58,6 +65,7 @@ public class PluginGuestInstaller(IPluginGuestInstallStore store, IPluginDataPur
         {
             await purge.PurgeAsync(pluginId, ct);
             store.Forget(pluginId);
+            PluginAccessAnnouncement.Changed(events, pluginId);
         }
 
         return removed;

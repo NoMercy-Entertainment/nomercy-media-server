@@ -783,6 +783,10 @@ public static partial class ServiceConfiguration
         // because there is no account to bind it to.
         services.AddSingleton<IPluginCallerAccessor, HttpPluginCallerAccessor>();
 
+        // This host maps /pluginHub, so an access answer reaches every device
+        // the person is signed in on rather than nobody.
+        services.AddSingleton<IPluginAccessHub, PluginAccessHubSender>();
+
         services.AddPluginSystem(AppFiles.PluginsPath);
 
         // One builder for the capability list, so the consent page and the

@@ -84,8 +84,12 @@ public static class PluginServiceCollectionExtensions
         // this build still allowed, and may this owner run it. Both are kept
         // on disk so a server that starts with no connection still knows what
         // it was last told.
-        services.AddSingleton<IPluginRevocationStore>(new PluginRevocationStore());
-        services.AddSingleton<IPluginEntitlementStore>(new PluginEntitlementStore());
+        services.AddSingleton<IPluginRevocationStore>(sp => new PluginRevocationStore(
+            events: sp.GetService<IEventBus>()
+        ));
+        services.AddSingleton<IPluginEntitlementStore>(sp => new PluginEntitlementStore(
+            events: sp.GetService<IEventBus>()
+        ));
         // One answer for every screen that can show or open a plugin. The
         // membership side is registered by the host, which has the user list;
         // with none registered nothing is shared and the owner still sees
@@ -111,7 +115,8 @@ public static class PluginServiceCollectionExtensions
                     sp.GetRequiredService<IPluginConsentService>(),
                     new ConfigPluginGrantStore(configuration),
                     configuration
-                )
+                ),
+                sp.GetService<IEventBus>()
             );
         });
         services.AddSingleton<IPluginInstallFacts>(sp => new PluginInstallFacts(
@@ -125,6 +130,22 @@ public static class PluginServiceCollectionExtensions
             sp.GetRequiredService<TimeProvider>(),
             () => sp.GetService<IPluginOwner>()?.Id ?? Guid.Empty
         ));
+
+        // Every device a person is signed in on is told their own answer when
+        // one of the four gates moves. A client that missed a message would
+        // otherwise stay wrong until somebody reloaded it.
+        services.AddSingleton<PluginAccessNotifier>(sp =>
+            new(
+                sp.GetRequiredService<IPluginAccessResolver>(),
+                sp.GetService<IPluginMembership>() ?? new NobodyIsAMember(),
+                sp.GetRequiredService<IPluginManifestSource>(),
+                sp.GetService<IPluginAccessHub>() ?? new NobodyIsListening(),
+                () => sp.GetService<IPluginOwner>()?.Id ?? Guid.Empty
+            )
+        );
+        services.AddSingleton<PluginAccessChangedListener>(sp =>
+            new(sp.GetRequiredService<IEventBus>(), sp.GetRequiredService<PluginAccessNotifier>())
+        );
 
         // The key every media ticket is signed with, derived once from this
         // server's data-protection material. It is not read from configuration
@@ -216,6 +237,7 @@ public static class PluginServiceCollectionExtensions
             )
         );
         services.AddHostedService<PluginTelemetryService>();
+        services.AddHostedService<PluginListenerService>();
 
         // In memory: a channel carries a callback that resolves a
         // credential-bearing address, and a callback cannot be written to disk.
@@ -580,9 +602,20 @@ public static class PluginServiceCollectionExtensions
 /// member. The owner still sees everything they installed, and nothing is
 /// shared with people the platform cannot confirm belong here.
 /// </summary>
+/// <summary>
+/// What a host with no hub does with an access answer: nothing. Outside the
+/// web host there is nobody connected to tell.
+/// </summary>
+internal sealed class NobodyIsListening : IPluginAccessHub
+{
+    public void Send(Guid userId, Ulid pluginId, string access) { }
+}
+
 internal sealed class NobodyIsAMember : IPluginMembership
 {
     public bool IsAcceptedMember(Guid userId) => false;
+
+    public IReadOnlyList<Guid> EveryoneOn(Guid ownerId) => ownerId == Guid.Empty ? [] : [ownerId];
 
     public int SeatsTakenFor(Ulid pluginId) => 0;
 }

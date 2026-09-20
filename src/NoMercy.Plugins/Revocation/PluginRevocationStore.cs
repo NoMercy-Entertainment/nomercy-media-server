@@ -11,7 +11,9 @@
 
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using NoMercy.Events;
 using NoMercy.NmSystem.Information;
+using NoMercy.Plugins.Access;
 
 namespace NoMercy.Plugins.Revocation;
 
@@ -20,7 +22,8 @@ namespace NoMercy.Plugins.Revocation;
 /// last told. Kept beside the other plugin configuration rather than in the
 /// database: the gate runs before anything else is up.
 /// </summary>
-public class PluginRevocationStore(string? folder = null) : IPluginRevocationStore
+public class PluginRevocationStore(string? folder = null, IEventBus? events = null)
+    : IPluginRevocationStore
 {
     private readonly string _folder = folder ?? AppFiles.PluginConfigPath;
 
@@ -69,5 +72,9 @@ public class PluginRevocationStore(string? folder = null) : IPluginRevocationSto
         Directory.CreateDirectory(_folder);
         System.IO.File.WriteAllText(File, JsonSerializer.Serialize(replacement, Json));
         _cached = replacement;
+
+        // A list names what it now blocks, never what it stopped blocking, so
+        // every account is told its answer rather than a guess at whose changed.
+        PluginAccessAnnouncement.Changed(events);
     }
 }

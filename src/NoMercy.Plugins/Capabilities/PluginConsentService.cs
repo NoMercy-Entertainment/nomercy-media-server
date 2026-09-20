@@ -10,7 +10,9 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.Extensions.Logging;
+using NoMercy.Events;
 using NoMercy.Plugins.Abstractions;
+using NoMercy.Plugins.Access;
 
 namespace NoMercy.Plugins.Capabilities;
 
@@ -28,8 +30,11 @@ public interface IPluginConsentStore
     void Save(Ulid pluginId, PluginConsentGrant grant);
 }
 
-public class PluginConsentService(IPluginConsentStore store, ILogger? logger = null)
-    : IPluginConsentService
+public class PluginConsentService(
+    IPluginConsentStore store,
+    ILogger? logger = null,
+    IEventBus? events = null
+) : IPluginConsentService
 {
     public bool IsBaseline(PluginCapabilities? capabilities)
     {
@@ -116,6 +121,7 @@ public class PluginConsentService(IPluginConsentStore store, ILogger? logger = n
         PluginConsentGrant grant = store.Get(pluginId) ?? new();
         grant.ApprovedCapabilities[capability] = manifestVersion.ToString();
         store.Save(pluginId, grant);
+        PluginAccessAnnouncement.Changed(events, pluginId);
     }
 
     public void RevokeCapability(Ulid pluginId, string capability)
@@ -126,6 +132,7 @@ public class PluginConsentService(IPluginConsentStore store, ILogger? logger = n
             return;
 
         store.Save(pluginId, grant);
+        PluginAccessAnnouncement.Changed(events, pluginId);
     }
 
     public bool IsApproved(Ulid pluginId, string capability) =>
