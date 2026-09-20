@@ -51,6 +51,7 @@ public static class PluginRefusalCodes
     public const string UiInputUndeclared = "PLUGIN_UI_INPUT_UNDECLARED";
     public const string NativeCodeUnsigned = "PLUGIN_NATIVE_CODE_UNSIGNED";
     public const string HubCallerNotResolved = "PLUGIN_HUB_CALLER_NOT_RESOLVED";
+    public const string SecretHasNoCaller = "PLUGIN_SECRET_HAS_NO_CALLER";
 
     public static IReadOnlyList<PluginRefusalDescriptor> All { get; } =
     [
@@ -263,6 +264,12 @@ public static class PluginRefusalCodes
             PluginRefusalSeverity.Blocked,
             "hub",
             "A hub method was reached on a connection the host could not resolve a caller for."
+        ),
+        new(
+            "PLUGIN_SECRET_HAS_NO_CALLER",
+            PluginRefusalSeverity.Blocked,
+            "secrets",
+            "A per-user secret was reached on a call with no resolved caller."
         ),
     ];
 

@@ -152,4 +152,90 @@ public class PluginSecretStoreTests
 
         await act.Should().ThrowAsync<ArgumentException>();
     }
+
+    private static readonly UserId Alice = new(Ulid.Parse("248H248H248H248H248H248HAA"));
+    private static readonly UserId Bob = new(Ulid.Parse("248H248H248H248H248H248HBB"));
+
+    // One protection provider shared between the callers, deliberately. A
+    // fresh ephemeral provider per store cannot unprotect the other's values,
+    // so every cross-caller read comes back null whatever the key scoping is,
+    // and a test built that way passes with the scoping removed. Found by
+    // mutation.
+    private static PluginSecretStore StoreFor(
+        Ulid pluginId,
+        IPluginConfiguration configuration,
+        UserId? caller,
+        IDataProtectionProvider protection
+    ) => new(pluginId, protection, configuration, () => caller);
+
+    [Fact]
+    public async Task One_members_secret_is_not_another_members()
+    {
+        // A provider login every member shares is one no member can revoke on
+        // their own, which is the whole reason the per-user slot exists.
+        InMemoryPluginConfiguration shared = new();
+        EphemeralDataProtectionProvider protection = new();
+        await StoreFor(PluginA, shared, Alice, protection)
+            .SetForUserAsync("provider", "alice-password");
+
+        string? bobs = await StoreFor(PluginA, shared, Bob, protection).GetForUserAsync("provider");
+
+        bobs.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task A_members_secret_is_not_the_servers()
+    {
+        InMemoryPluginConfiguration shared = new();
+        PluginSecretStore store = StoreFor(
+            PluginA,
+            shared,
+            Alice,
+            new EphemeralDataProtectionProvider()
+        );
+
+        await store.SetForUserAsync("provider", "alice-password");
+
+        (await store.GetAsync("provider"))
+            .Should()
+            .BeNull(
+                "the server's own slot and a member's are different places, not one with a prefix"
+            );
+    }
+
+    [Fact]
+    public async Task Listing_keys_never_hands_back_a_members_key_names()
+    {
+        InMemoryPluginConfiguration shared = new();
+        PluginSecretStore store = StoreFor(
+            PluginA,
+            shared,
+            Alice,
+            new EphemeralDataProtectionProvider()
+        );
+        await store.SetAsync("server-token", "s");
+        await store.SetForUserAsync("provider", "alice-password");
+
+        IReadOnlyList<string> keys = await store.KeysAsync();
+
+        keys.Should().ContainSingle().Which.Should().Be("server-token");
+    }
+
+    [Fact]
+    public async Task A_per_user_secret_with_no_caller_refuses_rather_than_using_the_server_slot()
+    {
+        PluginSecretStore store = StoreFor(
+            PluginA,
+            new InMemoryPluginConfiguration(),
+            null,
+            new EphemeralDataProtectionProvider()
+        );
+
+        Func<Task> act = () => store.SetForUserAsync("provider", "password");
+
+        PluginRefusedException thrown = (
+            await act.Should().ThrowAsync<PluginRefusedException>()
+        ).Which;
+        thrown.Refusal.Code.Should().Be(PluginRefusalCodes.SecretHasNoCaller);
+    }
 }

@@ -232,6 +232,20 @@ public class PluginAbstractionsTests
 
             public Task<IReadOnlyList<string>> KeysAsync(CancellationToken ct = default) =>
                 Task.FromResult<IReadOnlyList<string>>(_values.Keys.ToList());
+
+            // One caller in this double, so the per-user slot is its own key
+            // space rather than a second dictionary.
+            public Task<string?> GetForUserAsync(string key, CancellationToken ct = default) =>
+                GetAsync($"user:{key}", ct);
+
+            public Task SetForUserAsync(
+                string key,
+                string value,
+                CancellationToken ct = default
+            ) => SetAsync($"user:{key}", value, ct);
+
+            public Task DeleteForUserAsync(string key, CancellationToken ct = default) =>
+                DeleteAsync($"user:{key}", ct);
         }
 
         private sealed class MinimalServiceProvider : IServiceProvider

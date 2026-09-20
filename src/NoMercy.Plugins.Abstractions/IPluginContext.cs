@@ -245,6 +245,18 @@ public interface IPluginContext
             )
         );
 
+    /// <summary>
+    /// The values behind the settings page the host renders from this plugin's
+    /// schema.
+    /// </summary>
+    IPluginSettings Settings =>
+        throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(
+                PluginId.ToString(),
+                "IPluginContext.Settings"
+            )
+        );
+
     /// <summary>Native libraries, gated on the marketplace signature rather than a capability.</summary>
     IPluginNative Native =>
         throw new PluginRefusedException(

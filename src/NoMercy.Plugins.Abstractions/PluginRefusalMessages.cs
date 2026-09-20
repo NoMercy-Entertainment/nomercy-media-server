@@ -235,6 +235,51 @@ public static class PluginRefusalMessages
         );
     }
 
+    /// <summary>
+    /// A password read back from settings rather than from the secret store.
+    /// </summary>
+    public static PluginRefusal SecretFieldInSettings(string plugin, string key)
+    {
+        return new PluginRefusal(
+            PluginRefusalCodes.SecretFieldInSettings,
+            plugin,
+            $"The field {key} is a password and was read from settings.",
+            "Settings are written to a file the owner can open, travel in an export and appear in any log line that dumps them. A password kept there is a password in all three.",
+            "Read it with context.Secrets.GetAsync instead. The host already stored it there when the owner filled the field in. Docs: /nomercy-plugins/capabilities/settings",
+            PluginRefusalSeverity.Blocked
+        );
+    }
+
+    /// <summary>
+    /// A write to a field the plugin's own schema marks read only.
+    /// </summary>
+    public static PluginRefusal SettingsFieldReadOnly(string plugin, string key)
+    {
+        return new PluginRefusal(
+            PluginRefusalCodes.SettingsFieldReadOnly,
+            plugin,
+            $"The plugin wrote to {key}, which its own schema marks read only.",
+            "A field the plugin can overwrite is one the owner cannot keep set: whatever they chose is replaced the next time the plugin runs, and nothing tells them it happened.",
+            "Mark the field writable in the settings schema if the plugin is meant to change it. Docs: /nomercy-plugins/capabilities/settings",
+            PluginRefusalSeverity.Blocked
+        );
+    }
+
+    /// <summary>
+    /// A per-user secret reached where the host resolved nobody.
+    /// </summary>
+    public static PluginRefusal SecretHasNoCaller(string plugin, string key)
+    {
+        return new PluginRefusal(
+            PluginRefusalCodes.SecretHasNoCaller,
+            plugin,
+            $"The per-user secret {key} was reached on a call with no caller.",
+            "Falling back to the server's own slot would put one member's provider login where every member reads it, and the member who set it could never revoke it on their own.",
+            "Reach per-user secrets from a request or a hub call, where the host has resolved who is asking. Background work has no caller, so use context.Secrets.GetAsync for values the server owns. Docs: /nomercy-plugins/capabilities/secrets",
+            PluginRefusalSeverity.Blocked
+        );
+    }
+
     public static PluginRefusal TokenInUrl(string plugin, string url)
     {
         return new PluginRefusal(
