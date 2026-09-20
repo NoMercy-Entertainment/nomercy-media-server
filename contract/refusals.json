@@ -238,5 +238,17 @@
     "severity": "blocked",
     "capability": null,
     "summary": "The server could not confirm a purchase for over a week, so the plugin is installed and not running."
+  },
+  {
+    "code": "PLUGIN_OFFLINE_BUNDLE_INVALID",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "An offline bundle that NoMercy did not sign, or that was edited after signing."
+  },
+  {
+    "code": "PLUGIN_OFFLINE_BUNDLE_EXPIRED",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "An offline bundle older than the validity it was issued with."
   }
 ]
