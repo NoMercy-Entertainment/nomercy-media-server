@@ -286,5 +286,17 @@
     "severity": "blocked",
     "capability": "library.write",
     "summary": "A plugin offered a file to a library it may not write to, or from a path outside one."
+  },
+  {
+    "code": "PLUGIN_RESOURCE_CEILING",
+    "severity": "degraded",
+    "capability": null,
+    "summary": "A plugin went past the CPU or memory the owner allowed it, and the server acted."
+  },
+  {
+    "code": "PLUGIN_DISABLED_AFTER_RESTARTS",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "A plugin was restarted too many times in an hour, so the server stopped restarting it."
   }
 ]
