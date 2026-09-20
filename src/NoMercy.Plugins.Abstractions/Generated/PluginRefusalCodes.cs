@@ -60,6 +60,7 @@ public static class PluginRefusalCodes
     public const string OfflineBundleExpired = "PLUGIN_OFFLINE_BUNDLE_EXPIRED";
     public const string SideloadDisabled = "PLUGIN_SIDELOAD_DISABLED";
     public const string SideloadPaidId = "PLUGIN_SIDELOAD_PAID_ID";
+    public const string AccessDenied = "PLUGIN_ACCESS_DENIED";
 
     public static IReadOnlyList<PluginRefusalDescriptor> All { get; } =
     [
@@ -326,6 +327,12 @@ public static class PluginRefusalCodes
             PluginRefusalSeverity.Blocked,
             null,
             "The id belongs to a paid plugin and the owner holds no entitlement for it."
+        ),
+        new(
+            "PLUGIN_ACCESS_DENIED",
+            PluginRefusalSeverity.Blocked,
+            null,
+            "The plugin is not shared with the account asking for it on this server."
         ),
     ];
 

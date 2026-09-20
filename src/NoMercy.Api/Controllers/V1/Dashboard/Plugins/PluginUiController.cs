@@ -19,6 +19,7 @@ using NoMercy.Api.DTOs.Dashboard;
 using NoMercy.Api.Plugins;
 using NoMercy.Authorization;
 using NoMercy.Plugins.Abstractions;
+using NoMercy.Plugins.Access;
 using NoMercy.Plugins.Capabilities;
 
 namespace NoMercy.Api.Controllers.V1.Dashboard.Plugins;
@@ -36,9 +37,18 @@ namespace NoMercy.Api.Controllers.V1.Dashboard.Plugins;
 [Tags("Plugin UI")]
 [ApiVersion(1.0)]
 [Authorize]
-public class PluginUiController(IPluginManager pluginManager, ILogger<PluginUiController> logger)
-    : BaseController
+public class PluginUiController(
+    IPluginManager pluginManager,
+    IPluginAccessResolver accessResolver,
+    ILogger<PluginUiController> logger
+) : BaseController
 {
+    /// <summary>
+    /// What this caller may see. One resolver for the listings and for the
+    /// page, so nobody is offered something that then refuses them.
+    /// </summary>
+    private PluginAccess AccessTo(Ulid pluginId) => accessResolver.Resolve(pluginId, User.UserId());
+
     /// <summary>
     /// Every plugin the caller's client should show in its navigation.
     /// </summary>
@@ -85,6 +95,7 @@ public class PluginUiController(IPluginManager pluginManager, ILogger<PluginUiCo
         var groups = pluginManager
             .GetInstalledPlugins()
             .Where(HasUi)
+            .Where(info => AccessTo(info.Id) != PluginAccess.None)
             .SelectMany(info =>
                 WithoutStalePlugins(
                     info,
@@ -149,13 +160,16 @@ public class PluginUiController(IPluginManager pluginManager, ILogger<PluginUiCo
         List<PluginUiDescriptorDto> descriptors = pluginManager
             .GetInstalledPlugins()
             .Where(HasUi)
-            .Select(info =>
+            .Select(info => (Info: info, Access: AccessTo(info.Id)))
+            .Where(entry => entry.Access != PluginAccess.None)
+            .Select(entry =>
                 WithoutStalePlugins(
-                    info,
+                    entry.Info,
                     () =>
                         PluginUiDescriptorDto.From(
-                            info,
-                            pluginManager.GetPluginInstance(info.Id) as IUiPlugin
+                            entry.Info,
+                            pluginManager.GetPluginInstance(entry.Info.Id) as IUiPlugin,
+                            entry.Access
                         )
                 )
             )
@@ -208,6 +222,11 @@ public class PluginUiController(IPluginManager pluginManager, ILogger<PluginUiCo
 
         if (info is null || !HasUi(info))
             return NotFoundResponse("Plugin not found");
+
+        // Before the plugin is asked for anything: a page that renders and
+        // then refuses has already told the caller what is installed here.
+        if (AccessTo(id) == PluginAccess.None)
+            return ForbiddenResponse(PluginAccessRefusal.For(id));
 
         if (pluginManager.GetPluginInstance(id) is not IUiPlugin plugin)
             return NotFoundResponse("Plugin provides no UI");

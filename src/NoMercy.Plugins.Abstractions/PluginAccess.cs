@@ -21,4 +21,11 @@ public enum PluginAccess
 
     [JsonStringEnumMemberName("shared")]
     Shared,
+
+    /// <summary>
+    /// Not visible to this account. A listing drops the entry and a page
+    /// answers 403, so nobody is offered something that will refuse them.
+    /// </summary>
+    [JsonStringEnumMemberName("none")]
+    None,
 }

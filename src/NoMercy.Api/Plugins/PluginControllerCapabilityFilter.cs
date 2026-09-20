@@ -9,9 +9,13 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
+using NoMercy.Api.DTOs.Common;
+using NoMercy.Authorization;
 using NoMercy.Plugins.Abstractions;
+using NoMercy.Plugins.Access;
 using NoMercy.Plugins.Mvc;
 
 namespace NoMercy.Api.Plugins;
@@ -25,11 +29,17 @@ namespace NoMercy.Api.Plugins;
 /// current state, so the window is closed rather than narrowed.
 /// </para>
 /// <para>
-/// A refused request is a 404 and not a 403: whether a plugin is installed is
-/// not something an unauthorised caller should be able to probe for.
+/// A plugin that is not installed, not running, or serves no REST is a 404:
+/// whether a plugin is here is not something to let a caller probe for. A
+/// plugin that is here and is not shared with this account is a 403 carrying
+/// the same refusal its page gives, because the caller already knows it exists
+/// from the listing and a bare 404 would send them looking for a bug.
 /// </para>
 /// </summary>
-public class PluginControllerCapabilityFilter(IPluginManager pluginManager) : IAsyncActionFilter
+public class PluginControllerCapabilityFilter(
+    IPluginManager pluginManager,
+    IPluginAccessResolver accessResolver
+) : IAsyncActionFilter
 {
     public Task OnActionExecutionAsync(ActionExecutingContext context, ActionExecutionDelegate next)
     {
@@ -47,6 +57,20 @@ public class PluginControllerCapabilityFilter(IPluginManager pluginManager) : IA
         if (info is null || info.Status != PluginStatus.Active || info.Capabilities?.Rest != true)
         {
             context.Result = new NotFoundResult();
+            return Task.CompletedTask;
+        }
+
+        if (
+            accessResolver.Resolve(pluginId, context.HttpContext.User.UserId()) == PluginAccess.None
+        )
+        {
+            context.Result = new ObjectResult(
+                new DataResponseDto<PluginRefusal> { Data = PluginAccessRefusal.For(pluginId) }
+            )
+            {
+                StatusCode = StatusCodes.Status403Forbidden,
+            };
+
             return Task.CompletedTask;
         }
 

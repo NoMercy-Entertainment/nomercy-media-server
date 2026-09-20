@@ -96,6 +96,18 @@ public class BaseController : Controller
         );
     }
 
+    /// <summary>
+    /// A refusal as the 403 body, for the same reason the 422 helper exists:
+    /// the caller reads the same three lines the server logs.
+    /// </summary>
+    protected IActionResult ForbiddenResponse(PluginRefusal refusal)
+    {
+        return StatusCode(
+            StatusCodes.Status403Forbidden,
+            new DataResponseDto<PluginRefusal> { Data = refusal }
+        );
+    }
+
     protected IActionResult NotFoundResponse(string detail)
     {
         return ProblemWithTrace(

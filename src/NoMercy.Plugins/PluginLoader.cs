@@ -14,6 +14,7 @@ using NoMercy.Events;
 using NoMercy.Events.Plugins;
 using NoMercy.Plugins.Abstractions;
 using NoMercy.Plugins.Capabilities;
+using NoMercy.Plugins.Sideload;
 using NoMercy.Plugins.Verification;
 using NoMercy.Storage;
 
@@ -300,7 +301,8 @@ internal sealed class PluginLoader(
                         initialStatus,
                         manifestPath,
                         verification.Verified,
-                        verification.Trusted
+                        verification.Trusted,
+                        PluginSideloadMarker.IsMarked(manifestPath)
                     );
 
                     // Decides whether enabling this later can take full effect

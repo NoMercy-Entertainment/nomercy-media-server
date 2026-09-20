@@ -66,6 +66,7 @@ using NoMercy.NmSystem.Wallpaper;
 using NoMercy.OpticalMedia.Composition;
 using NoMercy.Plugins;
 using NoMercy.Plugins.Abstractions;
+using NoMercy.Plugins.Access;
 using NoMercy.Plugins.Hub;
 using NoMercy.Providers.AniDb.Client;
 using NoMercy.Providers.AniList;
@@ -774,6 +775,7 @@ public static partial class ServiceConfiguration
         // owns this server for the two questions only an owner answers, and
         // falls back to nobody when a host registers nothing.
         services.AddSingleton<IPluginOwner, PluginOwner>();
+        services.AddSingleton<IPluginMembership, PluginMembership>();
 
         services.AddPluginSystem(AppFiles.PluginsPath);
 

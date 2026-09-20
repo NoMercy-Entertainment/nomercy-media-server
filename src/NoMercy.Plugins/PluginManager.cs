@@ -454,6 +454,14 @@ public class PluginManager : IPluginManager, IDisposable
 
         ApplyStaged(staging, pluginDir);
 
+        // A fact about how this arrived, written beside it rather than taken
+        // from the manifest: anything a plugin says about itself is not
+        // something the server can rely on.
+        if (!fromMarketplace)
+        {
+            PluginSideloadMarker.Mark(pluginDir);
+        }
+
         await LoadPluginFromManifestAsync(_storage.CombinePath(pluginDir, "plugin.json"), ct);
 
         _registerScheduledWork?.Invoke(manifest.Id);

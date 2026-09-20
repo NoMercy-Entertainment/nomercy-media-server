@@ -19,6 +19,7 @@ using Microsoft.Extensions.Options;
 using NoMercy.Encoder.Pipeline;
 using NoMercy.Events;
 using NoMercy.Plugins.Abstractions;
+using NoMercy.Plugins.Access;
 using NoMercy.Plugins.Capabilities;
 using NoMercy.Plugins.Entitlements;
 using NoMercy.Plugins.Hooks;
@@ -70,6 +71,21 @@ public static class PluginServiceCollectionExtensions
         // it was last told.
         services.AddSingleton<IPluginRevocationStore>(new PluginRevocationStore());
         services.AddSingleton<IPluginEntitlementStore>(new PluginEntitlementStore());
+        // One answer for every screen that can show or open a plugin. The
+        // membership side is registered by the host, which has the user list;
+        // with none registered nothing is shared and the owner still sees
+        // everything they installed.
+        services.AddSingleton<IPluginInstallFacts>(sp => new PluginInstallFacts(
+            sp.GetRequiredService<IPluginManager>()
+        ));
+        services.AddSingleton<IPluginAccessResolver>(sp => new PluginAccessResolver(
+            sp.GetRequiredService<IPluginInstallFacts>(),
+            sp.GetRequiredService<IPluginEntitlementStore>(),
+            sp.GetService<IPluginMembership>() ?? new NobodyIsAMember(),
+            sp.GetService<TimeProvider>() ?? TimeProvider.System,
+            () => sp.GetService<IPluginOwner>()?.Id ?? Guid.Empty
+        ));
+
         // A file the owner dropped in themselves. Developer mode is read per
         // call, so turning it off takes effect on the next install rather than
         // the next restart.
@@ -374,4 +390,16 @@ public static class PluginServiceCollectionExtensions
 
         return services;
     }
+}
+
+/// <summary>
+/// What a host that never registered a membership source answers: nobody is a
+/// member. The owner still sees everything they installed, and nothing is
+/// shared with people the platform cannot confirm belong here.
+/// </summary>
+internal sealed class NobodyIsAMember : IPluginMembership
+{
+    public bool IsAcceptedMember(Guid userId) => false;
+
+    public int SeatsTakenFor(Ulid pluginId) => 0;
 }

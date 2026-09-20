@@ -45,9 +45,22 @@ public record PluginUiDescriptorDto
     [JsonProperty("supports_rest")]
     public bool SupportsRest { get; init; }
 
-    public static PluginUiDescriptorDto From(PluginInfo info, IUiPlugin? plugin) =>
+    /// <summary>
+    /// Whether this is the caller's own or shared with them by the owner. A
+    /// client built before this field ignores it and keeps rendering, and the
+    /// entries it no longer receives are the ones it should never have shown.
+    /// </summary>
+    [JsonProperty("access")]
+    public string Access { get; init; } = "owned";
+
+    public static PluginUiDescriptorDto From(
+        PluginInfo info,
+        IUiPlugin? plugin,
+        PluginAccess access = PluginAccess.Owned
+    ) =>
         new()
         {
+            Access = access.ToString().ToLowerInvariant(),
             Id = info.Id,
             Name = info.Name,
             Version = info.Version.ToString(),
