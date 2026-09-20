@@ -20,6 +20,7 @@ using NoMercy.Api.DTOs.Media.Components;
 using NoMercy.Authorization;
 using NoMercy.Data.Repositories;
 using NoMercy.NmSystem.Extensions;
+using NoMercy.Plugins.Abstractions;
 
 namespace NoMercy.Api.Controllers;
 
@@ -173,6 +174,16 @@ public class BaseController : Controller
             statusCode: StatusCodes.Status422UnprocessableEntity,
             type: "/docs/errors/unprocessable-entity"
         );
+    }
+
+    /// <summary>
+    /// A refusal as the error body rather than a sentence about it, so the
+    /// owner reads the same three lines the server logs and a client can show
+    /// the fix without knowing what went wrong.
+    /// </summary>
+    protected IActionResult UnprocessableEntityResponse(PluginRefusal refusal)
+    {
+        return UnprocessableEntity(new DataResponseDto<PluginRefusal> { Data = refusal });
     }
 
     protected IActionResult TooManyRequestsResponse(string detail)

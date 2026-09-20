@@ -65,6 +65,7 @@ using NoMercy.NmSystem.SystemCalls;
 using NoMercy.NmSystem.Wallpaper;
 using NoMercy.OpticalMedia.Composition;
 using NoMercy.Plugins;
+using NoMercy.Plugins.Abstractions;
 using NoMercy.Plugins.Hub;
 using NoMercy.Providers.AniDb.Client;
 using NoMercy.Providers.AniList;
@@ -74,6 +75,7 @@ using NoMercy.Providers.TMDB.Client;
 using NoMercy.Queue.MediaServer;
 using NoMercy.Queue.MediaServer.Repositories;
 using NoMercy.Service.Extensions;
+using NoMercy.Service.Plugins;
 using NoMercy.Service.Seeds;
 using NoMercy.Service.Workers;
 using NoMercy.Setup.Auth;
@@ -767,6 +769,11 @@ public static partial class ServiceConfiguration
         // This host maps /pluginHub, so a plugin's Hub.PushAsync reaches real
         // subscribers here rather than silently succeeding.
         services.AddSingleton<IPluginHubContextFactory, PluginHubContextFactory>();
+
+        // Before AddPluginSystem for the same reason: the platform asks who
+        // owns this server for the two questions only an owner answers, and
+        // falls back to nobody when a host registers nothing.
+        services.AddSingleton<IPluginOwner, PluginOwner>();
 
         services.AddPluginSystem(AppFiles.PluginsPath);
 

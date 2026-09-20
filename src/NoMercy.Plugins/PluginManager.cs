@@ -17,6 +17,7 @@ using NoMercy.Events;
 using NoMercy.Plugins.Abstractions;
 using NoMercy.Plugins.Capabilities;
 using NoMercy.Plugins.Hub;
+using NoMercy.Plugins.Sideload;
 using NoMercy.Plugins.Verification;
 using NoMercy.Storage;
 
@@ -31,6 +32,7 @@ public class PluginManager : IPluginManager, IDisposable
     private readonly IStorage _storage;
     private readonly IStorageDriver _driver;
     private readonly IPluginVerifier _verifier;
+    private readonly PluginSideloadPolicy? _sideloadPolicy;
     private readonly IPluginConsentService _consentService;
     private readonly IPluginRegistry _registry;
     private readonly PluginLoader _loader;
@@ -61,7 +63,8 @@ public class PluginManager : IPluginManager, IDisposable
         PluginHostOptions? hostOptions = null,
         IPluginAssemblyTracker? assemblyTracker = null,
         Action<Ulid>? releaseScheduledWork = null,
-        Action<Ulid>? registerScheduledWork = null
+        Action<Ulid>? registerScheduledWork = null,
+        PluginSideloadPolicy? sideloadPolicy = null
     )
     {
         _eventBus = eventBus ?? throw new ArgumentNullException(nameof(eventBus));
@@ -72,6 +75,7 @@ public class PluginManager : IPluginManager, IDisposable
         _driver = driver ?? throw new ArgumentNullException(nameof(driver));
         _storage = storage ?? throw new ArgumentNullException(nameof(storage));
         _verifier = verifier ?? new PluginVerifier();
+        _sideloadPolicy = sideloadPolicy;
         _consentService =
             consentService
             ?? new PluginConsentService(
@@ -395,6 +399,13 @@ public class PluginManager : IPluginManager, IDisposable
             throw new PluginVerificationException(
                 $"Plugin '{manifest.FolderName}' failed verification: {string.Join("; ", signature.Failures)}"
             );
+        }
+
+        // A file the owner supplied. The tier is only knowable here, once the
+        // manifest has been read out of the archive.
+        if (!fromMarketplace && _sideloadPolicy?.Check(manifest.Manifest) is { } sideload)
+        {
+            throw new PluginVerificationException($"{sideload.Why} {sideload.Fix}");
         }
 
         string pluginDir = _storage.CombinePath(_pluginsPath, manifest.FolderName);

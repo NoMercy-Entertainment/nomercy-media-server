@@ -25,6 +25,7 @@ using NoMercy.Plugins.Hooks;
 using NoMercy.Plugins.Hub;
 using NoMercy.Plugins.Offline;
 using NoMercy.Plugins.Revocation;
+using NoMercy.Plugins.Sideload;
 using NoMercy.Plugins.Verification;
 using NoMercy.Storage;
 using NoMercy.Storage.Drivers.Local;
@@ -69,6 +70,18 @@ public static class PluginServiceCollectionExtensions
         // it was last told.
         services.AddSingleton<IPluginRevocationStore>(new PluginRevocationStore());
         services.AddSingleton<IPluginEntitlementStore>(new PluginEntitlementStore());
+        // A file the owner dropped in themselves. Developer mode is read per
+        // call, so turning it off takes effect on the next install rather than
+        // the next restart.
+        services.AddSingleton<PluginSideloadPolicy>(sp =>
+            new(
+                () => PluginDeveloperMode.Load().Enabled,
+                sp.GetRequiredService<IPluginEntitlementStore>(),
+                sp.GetService<TimeProvider>() ?? TimeProvider.System,
+                () => sp.GetService<IPluginOwner>()?.Id ?? Guid.Empty
+            )
+        );
+
         services.AddSingleton<PluginOfflineBundleImporter>(sp =>
             new(
                 sp.GetRequiredService<IPluginEntitlementStore>(),
@@ -205,7 +218,8 @@ public static class PluginServiceCollectionExtensions
                 // The counterpart, for the same reason: install, restart and
                 // update all bring a scheduled-task plugin's instance back
                 // without going through the boot path that registers it.
-                pluginId => sp.GetService<IPluginCronRegistrar>()?.RegisterPlugin(pluginId)
+                pluginId => sp.GetService<IPluginCronRegistrar>()?.RegisterPlugin(pluginId),
+                sp.GetRequiredService<PluginSideloadPolicy>()
             );
         });
 

@@ -58,6 +58,8 @@ public static class PluginRefusalCodes
     public const string EntitlementDormant = "PLUGIN_ENTITLEMENT_DORMANT";
     public const string OfflineBundleInvalid = "PLUGIN_OFFLINE_BUNDLE_INVALID";
     public const string OfflineBundleExpired = "PLUGIN_OFFLINE_BUNDLE_EXPIRED";
+    public const string SideloadDisabled = "PLUGIN_SIDELOAD_DISABLED";
+    public const string SideloadPaidId = "PLUGIN_SIDELOAD_PAID_ID";
 
     public static IReadOnlyList<PluginRefusalDescriptor> All { get; } =
     [
@@ -312,6 +314,18 @@ public static class PluginRefusalCodes
             PluginRefusalSeverity.Blocked,
             null,
             "An offline bundle older than the validity it was issued with."
+        ),
+        new(
+            "PLUGIN_SIDELOAD_DISABLED",
+            PluginRefusalSeverity.Blocked,
+            null,
+            "Installing a plugin from a file is off, because the server cannot check who wrote it."
+        ),
+        new(
+            "PLUGIN_SIDELOAD_PAID_ID",
+            PluginRefusalSeverity.Blocked,
+            null,
+            "The id belongs to a paid plugin and the owner holds no entitlement for it."
         ),
     ];
 

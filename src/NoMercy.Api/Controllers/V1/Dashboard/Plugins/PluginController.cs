@@ -22,6 +22,7 @@ using NoMercy.NmSystem.Information;
 using NoMercy.Plugins;
 using NoMercy.Plugins.Abstractions;
 using NoMercy.Plugins.Capabilities;
+using NoMercy.Plugins.Sideload;
 using NoMercy.Plugins.Verification;
 using NoMercy.Storage;
 
@@ -307,6 +308,20 @@ public class PluginController(
             && !fileName.EndsWith(PluginAssemblyExtension, StringComparison.OrdinalIgnoreCase)
         )
             return UnprocessableEntityResponse("A plugin is installed from its .zip or its .dll");
+
+        // Before the upload is written anywhere. A file the server will not
+        // install has no reason to reach the disk first.
+        if (!PluginDeveloperMode.Load().Enabled)
+            return UnprocessableEntityResponse(
+                new PluginRefusal(
+                    PluginRefusalCodes.SideloadDisabled,
+                    fileName,
+                    "The server did not install the file.",
+                    "Installing a plugin from a file is off, because the server cannot check who wrote it.",
+                    "Turn on developer mode in server settings, read the warning there, then install the file again.",
+                    PluginRefusalSeverity.Blocked
+                )
+            );
 
         string stagingDirectory = Path.Combine(
             AppFiles.TempPath,
