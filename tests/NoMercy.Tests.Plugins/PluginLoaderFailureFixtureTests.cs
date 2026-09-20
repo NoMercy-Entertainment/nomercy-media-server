@@ -291,7 +291,7 @@ public class PluginLoaderFailureFixtureTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadPluginAssemblyAsync_AssemblyWithNoPluginTypes_UnloadsContextWithoutRegisteringAnything()
+    public async Task LoadPluginAssemblyAsync_AssemblyWithNoPluginTypes_RegistersNothingAndDoesNotThrow()
     {
         string abstractionsPath = GetAbstractionsAssemblyPath();
 
