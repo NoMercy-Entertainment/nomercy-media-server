@@ -52,6 +52,8 @@ public static class PluginRefusalCodes
     public const string NativeCodeUnsigned = "PLUGIN_NATIVE_CODE_UNSIGNED";
     public const string HubCallerNotResolved = "PLUGIN_HUB_CALLER_NOT_RESOLVED";
     public const string SecretHasNoCaller = "PLUGIN_SECRET_HAS_NO_CALLER";
+    public const string Revoked = "PLUGIN_REVOKED";
+    public const string RevocationListStale = "PLUGIN_REVOCATION_LIST_STALE";
 
     public static IReadOnlyList<PluginRefusalDescriptor> All { get; } =
     [
@@ -270,6 +272,18 @@ public static class PluginRefusalCodes
             PluginRefusalSeverity.Blocked,
             "secrets",
             "A per-user secret was reached on a call with no resolved caller."
+        ),
+        new(
+            "PLUGIN_REVOKED",
+            PluginRefusalSeverity.Blocked,
+            null,
+            "This exact build was revoked, so it does not run."
+        ),
+        new(
+            "PLUGIN_REVOCATION_LIST_STALE",
+            PluginRefusalSeverity.Blocked,
+            null,
+            "The server has not reached the revocation list in over a week, so it cannot say a plugin is still allowed."
         ),
     ];
 

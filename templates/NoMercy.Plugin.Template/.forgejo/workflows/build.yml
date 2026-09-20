@@ -19,6 +19,12 @@ jobs:
       - run: dotnet build --no-restore --configuration Release
       - run: dotnet test --no-build --configuration Release
 
+      # The analyzer already ran during the build: it is a package reference,
+      # so NMP0001 to NMP0016 are compile errors here rather than a refusal on
+      # someone's server. This reads the manifest, which the compiler cannot.
+      - run: dotnet tool install --global nomercy-plugin
+      - run: nomercy-plugin verify .
+
       - name: Package
         if: startsWith(github.ref, 'refs/tags/')
         run: |
