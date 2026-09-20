@@ -39,7 +39,10 @@ public class PluginScheduledJobTests
         public List<string> Ran { get; } = [];
 
         public IReadOnlyList<PluginScheduledJob> Jobs =>
-            [new("fast", "* * * * *"), new("slow", "0 * * * *")];
+            [
+                new() { Name = "fast", CronExpression = "* * * * *" },
+                new() { Name = "slow", CronExpression = "0 * * * *" },
+            ];
 
         public void Initialize(IPluginContext context) { }
 
@@ -120,7 +123,10 @@ public class PluginScheduledJobTests
         // pile up, which is the thing a plugin could not express before.
         TaskCompletionSource release = new();
         BlockingPlugin plugin = new(release.Task);
-        PluginCronExecutor executor = new(plugin, new("slow", "* * * * *"));
+        PluginCronExecutor executor = new(
+            plugin,
+            new() { Name = "slow", CronExpression = "* * * * *" }
+        );
 
         Task first = executor.ExecuteAsync(string.Empty);
         await executor.ExecuteAsync(string.Empty);
@@ -138,7 +144,12 @@ public class PluginScheduledJobTests
         BlockingPlugin plugin = new(release.Task);
         PluginCronExecutor executor = new(
             plugin,
-            new("parallel", "* * * * *", AllowConcurrent: true)
+            new()
+            {
+                Name = "parallel",
+                CronExpression = "* * * * *",
+                AllowConcurrent = true,
+            }
         );
 
         Task first = executor.ExecuteAsync(string.Empty);

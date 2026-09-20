@@ -220,6 +220,21 @@ public static class PluginRefusalMessages
         );
     }
 
+    /// <summary>
+    /// A worker the host stopped restarting.
+    /// </summary>
+    public static PluginRefusal WorkerCrashed(string plugin, string worker, int restarts)
+    {
+        return new PluginRefusal(
+            PluginRefusalCodes.SchedulerWorkerCrashed,
+            plugin,
+            $"The worker {worker} was disabled after crashing {restarts} times in an hour.",
+            "A worker that crashes three times in an hour is crashing on startup rather than hitting something passing, and restarting it for ever costs more than the worker was doing.",
+            "Fix what the worker throws on, then enable the plugin again to start it. The log line above this one carries the exception. Docs: /nomercy-plugins/capabilities/scheduler",
+            PluginRefusalSeverity.Degraded
+        );
+    }
+
     public static PluginRefusal TokenInUrl(string plugin, string url)
     {
         return new PluginRefusal(

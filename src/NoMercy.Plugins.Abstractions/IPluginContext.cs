@@ -233,6 +233,18 @@ public interface IPluginContext
             )
         );
 
+    /// <summary>
+    /// Named jobs on a schedule, and workers the host supervises. A plugin
+    /// registers its work here rather than awaiting a cycle inside a request.
+    /// </summary>
+    IPluginScheduler Scheduler =>
+        throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(
+                PluginId.ToString(),
+                "IPluginContext.Scheduler"
+            )
+        );
+
     /// <summary>Native libraries, gated on the marketplace signature rather than a capability.</summary>
     IPluginNative Native =>
         throw new PluginRefusedException(
