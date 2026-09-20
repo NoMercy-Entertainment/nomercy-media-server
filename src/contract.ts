@@ -22,7 +22,11 @@ export interface Refusal {
   summary: string;
 }
 
-export interface Slot { kind: string; slot: string }
+export interface Slot {
+  kind: string;
+  slot: string;
+  summary: string;
+}
 export interface AnalyzerRule { id: string; title: string; capability: string | null }
 
 export interface Contract {

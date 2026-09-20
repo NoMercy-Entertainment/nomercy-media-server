@@ -1,4 +1,4 @@
-import type { Capability, Refusal } from './contract.js';
+import type { Capability, Refusal, Slot } from './contract.js';
 import { pascalOf, slugOf } from './contract.js';
 
 export const LICENSE_HEADER: string = [
@@ -191,6 +191,48 @@ export function emitSettingsSchema(schema: unknown): string {
     '    public const string Json = """',
     ...body,
     '        """;',
+    '}',
+    '',
+  ].join('\n');
+}
+
+/**
+ * The slot list, as a C# table.
+ *
+ * A slot a client does not draw is a plugin that vanishes on that client with
+ * nothing said, so the list is one source that every platform emits from
+ * rather than three lists that drift.
+ */
+export function emitSlots(slots: Slot[]): string {
+  const rows: string[] = slots.map(
+    slot =>
+      `        new("${slot.kind}", "${slot.slot}", ${JSON.stringify(slot.summary)}),`,
+  );
+
+  return [
+    LICENSE_HEADER,
+    'namespace NoMercy.Plugins.Abstractions;',
+    '',
+    '/// <summary>Where a plugin may place itself, by kind.</summary>',
+    '/// <param name="Kind">One of <see cref="PluginKind.All" />.</param>',
+    '/// <param name="Slot">The place within that kind.</param>',
+    '/// <param name="Summary">What a client draws there.</param>',
+    'public sealed record PluginSlotDescriptor(string Kind, string Slot, string Summary);',
+    '',
+    '/// <summary>Every slot this server knows.</summary>',
+    'public static class PluginSlots',
+    '{',
+    '    public static readonly IReadOnlyList<PluginSlotDescriptor> All =',
+    '    [',
+    ...rows,
+    '    ];',
+    '',
+    '    /// <summary>Whether this kind can be placed in this slot.</summary>',
+    '    public static bool IsKnown(string kind, string slot) =>',
+    '        All.Any(descriptor =>',
+    '            string.Equals(descriptor.Kind, kind, StringComparison.Ordinal)',
+    '            && string.Equals(descriptor.Slot, slot, StringComparison.Ordinal)',
+    '        );',
     '}',
     '',
   ].join('\n');
