@@ -372,6 +372,34 @@ public static class PluginRefusalMessages
     }
 
     /// <summary>
+    /// A capability the plugin declared, used on something outside what the
+    /// owner granted.
+    /// <para>
+    /// Distinct from not declaring it at all, and the difference matters to the
+    /// reader: one is a line to add to plugin.json, the other is a value the
+    /// owner deliberately did not approve. Reported as one code, an author
+    /// edits the manifest and wonders why nothing changed.
+    /// </para>
+    /// </summary>
+    public static PluginRefusal CapabilityScopeRefused(
+        string plugin,
+        string capability,
+        string scope
+    )
+    {
+        PluginCapabilityDescriptor? descriptor = PluginCapabilityVocabulary.ByName(capability);
+
+        return new PluginRefusal(
+            PluginRefusalCodes.CapabilityScopeRefused,
+            plugin,
+            $"The plugin used {capability} on {scope}, which the owner did not grant.",
+            $"{capability} is declared and granted, but not for {scope}. A capability is granted for the things the manifest named, not for everything of that kind.",
+            $"Add {scope} to the {capability} entry in plugin.json and publish the new version, so the owner is asked about it. Docs: {descriptor?.DocsUrl ?? "/nomercy-plugins/capabilities"}",
+            PluginRefusalSeverity.Blocked
+        );
+    }
+
+    /// <summary>
     /// A page navigating to a host the plugin's network globs do not match.
     /// <para>
     /// A challenge page redirecting to a host nobody listed is the ordinary way
