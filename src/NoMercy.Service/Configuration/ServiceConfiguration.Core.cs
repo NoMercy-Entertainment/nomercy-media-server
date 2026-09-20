@@ -777,6 +777,11 @@ public static partial class ServiceConfiguration
         services.AddSingleton<IPluginOwner, PluginOwner>();
         services.AddSingleton<IPluginMembership, PluginMembership>();
 
+        // Who is asking, read from the request being served. Without this the
+        // platform's own answer is nobody, and a media link cannot be minted
+        // because there is no account to bind it to.
+        services.AddSingleton<IPluginCallerAccessor, HttpPluginCallerAccessor>();
+
         services.AddPluginSystem(AppFiles.PluginsPath);
 
         // The real library, replacing the platform's null objects. Separate

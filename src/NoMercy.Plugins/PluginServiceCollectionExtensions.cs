@@ -119,6 +119,38 @@ public static class PluginServiceCollectionExtensions
         // a plugin can see, and it changes on restart, which expires every
         // outstanding ticket. Tickets live for minutes, so that costs a viewer
         // one reopen and removes a key that would otherwise sit on disk.
+        // Resolved lazily through the manager: the broker and the media
+        // factory both ask what a plugin declared, and neither should be able
+        // to install or uninstall one to find out.
+        services.TryAddSingleton<IPluginManifestSource>(sp => new PluginManagerManifestSource(
+            sp.GetRequiredService<IPluginManager>()
+        ));
+
+        // The three questions asked before a plugin acts, and the tally of what
+        // was refused. Registered here rather than built by each caller so one
+        // plugin's refusals are counted once.
+        services.TryAddSingleton<IPluginRefusalCounter>(new PluginRefusalCounter());
+        services.TryAddSingleton<IPluginCapabilityBroker>(sp => new PluginCapabilityBroker(
+            sp.GetRequiredService<IPluginManifestSource>(),
+            sp.GetRequiredService<IPluginConsentService>(),
+            sp.GetRequiredService<IPluginGrantStore>(),
+            sp.GetRequiredService<IPluginRefusalCounter>(),
+            sp.GetRequiredService<ILogger<PluginCapabilityBroker>>()
+        ));
+
+        // Nobody is asking outside a request, and a host that never registers
+        // one says so rather than minting a link bound to the empty account.
+        services.TryAddSingleton<IPluginCallerAccessor>(NoPluginCaller.Instance);
+
+        services.AddSingleton<IPluginMediaFactory>(sp => new PluginMediaFactory(
+            sp.GetRequiredService<IPluginManifestSource>(),
+            sp.GetRequiredService<IPluginCapabilityBroker>(),
+            sp.GetRequiredService<IPluginGrantStore>(),
+            sp.GetRequiredService<PluginMediaTicketMinter>(),
+            sp.GetRequiredService<IPluginCallerAccessor>(),
+            sp.GetRequiredService<ILoggerFactory>()
+        ));
+
         services.AddSingleton<PluginMediaTicketMinter>(sp =>
             new(
                 sp.GetService<TimeProvider>() ?? TimeProvider.System,
@@ -133,9 +165,11 @@ public static class PluginServiceCollectionExtensions
         // A file the owner dropped in themselves. Developer mode is read per
         // call, so turning it off takes effect on the next install rather than
         // the next restart.
+        services.TryAddSingleton<IPluginDeveloperModeSource>(new PluginDeveloperModeFile());
+
         services.AddSingleton<PluginSideloadPolicy>(sp =>
             new(
-                () => PluginDeveloperMode.Load().Enabled,
+                () => sp.GetRequiredService<IPluginDeveloperModeSource>().Enabled,
                 sp.GetRequiredService<IPluginEntitlementStore>(),
                 sp.GetService<TimeProvider>() ?? TimeProvider.System,
                 () => sp.GetService<IPluginOwner>()?.Id ?? Guid.Empty
@@ -249,7 +283,12 @@ public static class PluginServiceCollectionExtensions
             musicQuery: sp.GetService<IPluginMusicQuery>(),
             audioToolsFactory: sp.GetService<IPluginAudioToolsFactory>(),
             derivedAudio: sp.GetService<IPluginDerivedAudio>(),
-            analysisWriterFactory: sp.GetService<IPluginMusicAnalysisWriterFactory>()
+            analysisWriterFactory: sp.GetService<IPluginMusicAnalysisWriterFactory>(),
+            // Lazily, like the cron registrar below: the media factory asks
+            // what a plugin declared, that answer comes from the manager, and
+            // the manager is built with this context factory. Resolving it
+            // when a plugin context is actually made breaks the ring.
+            mediaFactory: () => sp.GetService<IPluginMediaFactory>()
         ));
 
         services.AddSingleton<IPluginManager>(sp =>

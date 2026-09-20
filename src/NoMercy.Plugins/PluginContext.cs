@@ -43,6 +43,19 @@ public class PluginContext : IPluginContext
     /// </summary>
     public IPluginEncoder? Encoder { get; }
 
+    private readonly IPluginMedia? _media;
+
+    /// <summary>
+    /// Refused rather than null when this host carries none of it, so a plugin
+    /// reaching for it reads why instead of a NullReferenceException with no
+    /// name on it.
+    /// </summary>
+    public IPluginMedia Media =>
+        _media
+        ?? throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(PluginId.ToString(), "IPluginContext.Media")
+        );
+
     public IPluginJobs? Jobs { get; }
 
     /// <summary>
@@ -92,9 +105,11 @@ public class PluginContext : IPluginContext
         IPluginMusicQuery? music = null,
         IPluginAudioTools? audioTools = null,
         IPluginDerivedAudio? derivedAudio = null,
-        IPluginMusicAnalysisWriter? musicAnalysisWriter = null
+        IPluginMusicAnalysisWriter? musicAnalysisWriter = null,
+        IPluginMedia? media = null
     )
     {
+        _media = media;
         Encoder = encoder;
         Jobs = jobs;
         AudioTools = audioTools;

@@ -36,7 +36,7 @@ public class PluginMediaProxyTests
     ) =>
         new(
             Radio,
-            Listener,
+            new StubCaller(Listener),
             new StubBroker(refusal),
             new(TimeProvider.System, "a-server-key-that-is-long-enough-for-hmac"u8.ToArray()),
             new HttpClient(
@@ -99,7 +99,7 @@ public class PluginMediaProxyTests
         CountingBroker broker = new();
         PluginMediaProxy proxy = new(
             Radio,
-            Listener,
+            new StubCaller(Listener),
             broker,
             new(TimeProvider.System, "a-server-key-that-is-long-enough-for-hmac"u8.ToArray()),
             new HttpClient(new StubHandler(_ => new(HttpStatusCode.OK))),
@@ -115,6 +115,28 @@ public class PluginMediaProxyTests
             .Equal(
                 ["a.example.com", "b.example.com"],
                 "falling through to a second link must not reach a host the manifest never named"
+            );
+    }
+
+    [Fact]
+    public async Task A_link_minted_with_nobody_asking_is_refused()
+    {
+        PluginMediaProxy proxy = new(
+            Radio,
+            new StubCaller(Guid.Empty),
+            new StubBroker(null),
+            new(TimeProvider.System, "a-server-key-that-is-long-enough-for-hmac"u8.ToArray()),
+            new HttpClient(new StubHandler(_ => new(HttpStatusCode.OK))),
+            NullLogger.Instance
+        );
+
+        Func<Task> act = () => proxy.MintAsync(Request("https://stream.example.com/a.aac"));
+
+        (await act.Should().ThrowAsync<PluginRefusedException>())
+            .Which.Refusal.Why.Should()
+            .Contain(
+                "Nothing is asking",
+                "a ticket bound to the empty account is a ticket anybody can play"
             );
     }
 
@@ -408,6 +430,11 @@ public class PluginMediaProxyTests
             );
 
         response.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
+    }
+
+    private sealed class StubCaller(Guid userId) : IPluginCallerAccessor
+    {
+        public Guid CurrentUserId => userId;
     }
 
     private sealed class StubBroker(PluginRefusal? refusal) : IPluginCapabilityBroker

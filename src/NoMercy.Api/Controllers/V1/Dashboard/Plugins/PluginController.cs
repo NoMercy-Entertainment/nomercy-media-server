@@ -38,7 +38,8 @@ public class PluginController(
     IPluginConsentService consentService,
     IPluginGrantStore grantStore,
     IPluginRestartAdvisor restartAdvisor,
-    IStorageDriver storageDriver
+    IStorageDriver storageDriver,
+    IPluginDeveloperModeSource developerMode
 ) : BaseController
 {
     private const long MaximumUploadBytes = 64L * 1024 * 1024;
@@ -290,8 +291,8 @@ public class PluginController(
     [RequestSizeLimit(MaximumUploadBytes)]
     public async Task<IActionResult> Install(
         IFormFile? file,
-        [FromQuery] Guid? forUser,
-        CancellationToken ct
+        CancellationToken ct,
+        [FromQuery] Guid? forUser = null
     )
     {
         if (file is null || file.Length == 0)
@@ -315,7 +316,7 @@ public class PluginController(
 
         // Before the upload is written anywhere. A file the server will not
         // install has no reason to reach the disk first.
-        if (!PluginDeveloperMode.Load().Enabled)
+        if (!developerMode.Enabled)
             return UnprocessableEntityResponse(
                 new PluginRefusal(
                     PluginRefusalCodes.SideloadDisabled,

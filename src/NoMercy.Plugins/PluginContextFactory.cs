@@ -37,7 +37,8 @@ public class PluginContextFactory(
     IPluginMusicQuery? musicQuery = null,
     IPluginAudioToolsFactory? audioToolsFactory = null,
     IPluginDerivedAudio? derivedAudio = null,
-    IPluginMusicAnalysisWriterFactory? analysisWriterFactory = null
+    IPluginMusicAnalysisWriterFactory? analysisWriterFactory = null,
+    Func<IPluginMediaFactory?>? mediaFactory = null
 ) : IPluginContextFactory
 {
     public IPluginContext Create(
@@ -115,9 +116,36 @@ public class PluginContextFactory(
             musicQuery,
             audioToolsFacade,
             derivedAudioFacade,
-            analysisWriter
+            analysisWriter,
+            mediaFactory?.Invoke()?.CreateFor(pluginId)
         );
     }
+}
+
+/// <summary>
+/// Builds the media facade for one plugin. Separate because the proxy needs an
+/// HTTP client bound to that plugin's allowlist, which only the host can build.
+/// </summary>
+public interface IPluginMediaFactory
+{
+    IPluginMedia CreateFor(Ulid pluginId);
+
+    /// <summary>
+    /// The fetching half, for the route that serves a ticket. Separate from
+    /// the facade a plugin holds: fetching is the host acting on a ticket it
+    /// minted, and nothing a plugin calls.
+    /// </summary>
+    IPluginMediaFetcher FetcherFor(Ulid pluginId);
+}
+
+/// <summary>What the media route calls once a ticket has been checked.</summary>
+public interface IPluginMediaFetcher
+{
+    Task<HttpResponseMessage> FetchAsync(
+        PluginProxyRequest request,
+        string? range,
+        CancellationToken ct
+    );
 }
 
 /// <summary>

@@ -27,12 +27,12 @@ namespace NoMercy.Plugins.Media;
 /// </summary>
 public class PluginMediaProxy(
     Ulid pluginId,
-    Guid callerId,
+    IPluginCallerAccessor caller,
     IPluginCapabilityBroker broker,
     PluginMediaTicketMinter minter,
     HttpClient http,
     ILogger logger
-) : IPluginMediaProxy
+) : IPluginMediaProxy, IPluginMediaFetcher
 {
     public static TimeSpan TicketLifetime { get; } = TimeSpan.FromMinutes(15);
 
@@ -141,12 +141,36 @@ public class PluginMediaProxy(
     private PluginMediaUrl Minted(PluginProxyRequest request)
     {
         DateTimeOffset expiresAt = DateTimeOffset.UtcNow.Add(TicketLifetime);
-        string ticket = minter.Mint(pluginId, callerId, request, TicketLifetime);
+        string ticket = minter.Mint(pluginId, Asking(), request, TicketLifetime);
 
         return PluginMediaUrl.Minted(
             new($"/api/v1/plugins/{pluginId}/media/{ticket}", UriKind.Relative),
             expiresAt,
             default
+        );
+    }
+
+    /// <summary>
+    /// The account this link is for. Refused rather than minted for nobody: a
+    /// ticket bound to the empty account is a ticket anybody can play, and a
+    /// plugin minting one outside a request has nobody to play it.
+    /// </summary>
+    private Guid Asking()
+    {
+        Guid userId = caller.CurrentUserId;
+
+        if (userId != Guid.Empty)
+            return userId;
+
+        throw new PluginRefusedException(
+            new(
+                PluginRefusalCodes.MediaTicketUserMismatch,
+                pluginId.ToString(),
+                "The server did not mint a media link.",
+                "Nothing is asking for it, so there is no account to bind it to.",
+                "Mint the link while serving a request. A scheduled job has no viewer to mint for.",
+                PluginRefusalSeverity.Blocked
+            )
         );
     }
 
@@ -192,7 +216,7 @@ public class PluginMediaProxy(
                     ],
                 };
 
-                return $"/api/v1/plugins/{pluginId}/media/{minter.Mint(pluginId, callerId, child, TicketLifetime)}";
+                return $"/api/v1/plugins/{pluginId}/media/{minter.Mint(pluginId, Asking(), child, TicketLifetime)}";
             });
 
         return new(response.StatusCode)
