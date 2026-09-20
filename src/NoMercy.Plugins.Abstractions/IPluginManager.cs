@@ -44,7 +44,8 @@ public interface IPluginManager
         string archivePath,
         string? expectedChecksum = null,
         CancellationToken ct = default,
-        bool fromMarketplace = false
+        bool fromMarketplace = false,
+        Guid? forUser = null
     ) => throw new NotSupportedException("This plugin manager cannot install from an archive.");
 
     Task EnablePluginAsync(Ulid pluginId, CancellationToken ct = default);

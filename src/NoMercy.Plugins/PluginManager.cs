@@ -16,6 +16,7 @@ using Microsoft.Extensions.Logging;
 using NoMercy.Events;
 using NoMercy.Plugins.Abstractions;
 using NoMercy.Plugins.Capabilities;
+using NoMercy.Plugins.Guests;
 using NoMercy.Plugins.Hub;
 using NoMercy.Plugins.Sideload;
 using NoMercy.Plugins.Verification;
@@ -33,6 +34,7 @@ public class PluginManager : IPluginManager, IDisposable
     private readonly IStorageDriver _driver;
     private readonly IPluginVerifier _verifier;
     private readonly PluginSideloadPolicy? _sideloadPolicy;
+    private readonly PluginGuestInstaller? _guestInstaller;
     private readonly IPluginConsentService _consentService;
     private readonly IPluginRegistry _registry;
     private readonly PluginLoader _loader;
@@ -64,7 +66,8 @@ public class PluginManager : IPluginManager, IDisposable
         IPluginAssemblyTracker? assemblyTracker = null,
         Action<Ulid>? releaseScheduledWork = null,
         Action<Ulid>? registerScheduledWork = null,
-        PluginSideloadPolicy? sideloadPolicy = null
+        PluginSideloadPolicy? sideloadPolicy = null,
+        PluginGuestInstaller? guestInstaller = null
     )
     {
         _eventBus = eventBus ?? throw new ArgumentNullException(nameof(eventBus));
@@ -76,6 +79,7 @@ public class PluginManager : IPluginManager, IDisposable
         _storage = storage ?? throw new ArgumentNullException(nameof(storage));
         _verifier = verifier ?? new PluginVerifier();
         _sideloadPolicy = sideloadPolicy;
+        _guestInstaller = guestInstaller;
         _consentService =
             consentService
             ?? new PluginConsentService(
@@ -354,7 +358,8 @@ public class PluginManager : IPluginManager, IDisposable
         string archivePath,
         string? expectedChecksum = null,
         CancellationToken ct = default,
-        bool fromMarketplace = false
+        bool fromMarketplace = false,
+        Guid? forUser = null
     )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(archivePath);
@@ -406,6 +411,16 @@ public class PluginManager : IPluginManager, IDisposable
         if (!fromMarketplace && _sideloadPolicy?.Check(manifest.Manifest) is { } sideload)
         {
             throw new PluginVerificationException($"{sideload.Why} {sideload.Fix}");
+        }
+
+        // Recorded before a byte is unpacked, for the same reason: a guest's
+        // plugin that is refused must never have been on the owner's disk.
+        if (
+            forUser is { } guest
+            && _guestInstaller?.Install(manifest.Manifest, guest) is { } denied
+        )
+        {
+            throw new PluginVerificationException($"{denied.Why} {denied.Fix}");
         }
 
         string pluginDir = _storage.CombinePath(_pluginsPath, manifest.FolderName);

@@ -22,6 +22,7 @@ using NoMercy.Plugins.Abstractions;
 using NoMercy.Plugins.Access;
 using NoMercy.Plugins.Capabilities;
 using NoMercy.Plugins.Entitlements;
+using NoMercy.Plugins.Guests;
 using NoMercy.Plugins.Hooks;
 using NoMercy.Plugins.Hub;
 using NoMercy.Plugins.Offline;
@@ -75,8 +76,33 @@ public static class PluginServiceCollectionExtensions
         // membership side is registered by the host, which has the user list;
         // with none registered nothing is shared and the owner still sees
         // everything they installed.
+        services.AddSingleton<IPluginGuestInstallStore>(new PluginGuestInstallStore());
+        services.AddSingleton<PluginGuestInstaller>(sp =>
+        {
+            IStorageDriver driver = sp.GetRequiredService<IStorageDriver>();
+            IStorage storage = new LocalStorage(driver, new([pluginsPath], driver));
+            IPluginConfiguration configuration = new PluginConfiguration(
+                Path.Combine(pluginsPath, "data", "platform"),
+                storage
+            );
+
+            // Built here the way the manager builds its own: the purge is not
+            // a registered service, and a guest leaving has to remove exactly
+            // what uninstalling would.
+            return new(
+                sp.GetRequiredService<IPluginGuestInstallStore>(),
+                new PluginDataPurge(
+                    pluginsPath,
+                    storage,
+                    sp.GetRequiredService<IPluginConsentService>(),
+                    new ConfigPluginGrantStore(configuration),
+                    configuration
+                )
+            );
+        });
         services.AddSingleton<IPluginInstallFacts>(sp => new PluginInstallFacts(
-            sp.GetRequiredService<IPluginManager>()
+            sp.GetRequiredService<IPluginManager>(),
+            sp.GetRequiredService<IPluginGuestInstallStore>()
         ));
         services.AddSingleton<IPluginAccessResolver>(sp => new PluginAccessResolver(
             sp.GetRequiredService<IPluginInstallFacts>(),
@@ -235,7 +261,8 @@ public static class PluginServiceCollectionExtensions
                 // update all bring a scheduled-task plugin's instance back
                 // without going through the boot path that registers it.
                 pluginId => sp.GetService<IPluginCronRegistrar>()?.RegisterPlugin(pluginId),
-                sp.GetRequiredService<PluginSideloadPolicy>()
+                sp.GetRequiredService<PluginSideloadPolicy>(),
+                sp.GetRequiredService<PluginGuestInstaller>()
             );
         });
 

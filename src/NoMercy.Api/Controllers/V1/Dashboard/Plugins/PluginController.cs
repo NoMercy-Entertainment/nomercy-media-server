@@ -288,7 +288,11 @@ public class PluginController(
     /// </summary>
     [HttpPost("install")]
     [RequestSizeLimit(MaximumUploadBytes)]
-    public async Task<IActionResult> Install(IFormFile? file, CancellationToken ct)
+    public async Task<IActionResult> Install(
+        IFormFile? file,
+        [FromQuery] Guid? forUser,
+        CancellationToken ct
+    )
     {
         if (file is null || file.Length == 0)
             return UnprocessableEntityResponse("No file was uploaded");
@@ -341,10 +345,26 @@ public class PluginController(
             // An archive carries the manifest and everything the plugin ships
             // with; a bare assembly is one file and no manifest at all. They are
             // different installs, not one install with a flag.
-            if (isArchive)
+            // A guest's plugin is judged against the manifest inside the
+            // archive, which only the manager reads. A bare assembly carries
+            // no manifest, so there is nothing to judge and no guest install.
+            if (forUser is { } guest && guest != Guid.Empty)
+            {
+                if (!isArchive)
+                    return UnprocessableEntityResponse(
+                        "A plugin installed for one person is installed from its .zip: a bare .dll carries no manifest to check."
+                    );
+
+                await pluginManager.InstallPluginArchiveAsync(stagedPath, null, ct, forUser: guest);
+            }
+            else if (isArchive)
+            {
                 await pluginManager.InstallPluginArchiveAsync(stagedPath, null, ct);
+            }
             else
+            {
                 await pluginManager.InstallPluginAsync(stagedPath, ct);
+            }
 
             return Ok(
                 new StatusResponseDto<string>

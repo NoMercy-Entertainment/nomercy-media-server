@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.Plugins.Abstractions;
+using NoMercy.Plugins.Guests;
 
 namespace NoMercy.Plugins.Access;
 
@@ -21,16 +22,13 @@ namespace NoMercy.Plugins.Access;
 /// answering generously is the dangerous answer.
 /// </para>
 /// </summary>
-public class PluginInstallFacts(IPluginManager plugins) : IPluginInstallFacts
+public class PluginInstallFacts(IPluginManager plugins, IPluginGuestInstallStore guests)
+    : IPluginInstallFacts
 {
     public PluginTier TierOf(Ulid pluginId) =>
         plugins.GetPluginInfo(pluginId)?.Tier ?? PluginTier.Paid;
 
     public bool IsSideloaded(Ulid pluginId) => plugins.GetPluginInfo(pluginId)?.Sideloaded ?? false;
 
-    /// <summary>
-    /// Null until an install can belong to one guest. The resolver asks
-    /// because the rule is part of access; nothing answers yes yet.
-    /// </summary>
-    public Guid? GuestFor(Ulid pluginId) => null;
+    public Guid? GuestFor(Ulid pluginId) => guests.GuestFor(pluginId);
 }
