@@ -319,6 +319,40 @@ public class PluginLoaderFailureFixtureTests : IDisposable
         encoderPlugins.Should().BeEmpty();
     }
 
+    /// <summary>
+    /// A live instance whose status is no longer Active is excluded.
+    /// <para>
+    /// The test below this one says it isolates the status half of the
+    /// predicate, and it does not: disabling already clears the instance, so
+    /// the type half alone answers and removing the status check leaves it
+    /// green. Found by mutation. This sets the status directly and keeps the
+    /// instance, which is the only arrangement the status check decides.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task GetPluginsOfType_LiveInstanceThatIsNoLongerActive_IsExcluded()
+    {
+        string dllPath = StageFailuresPluginDll();
+        await _manager.LoadPluginAssemblyAsync(dllPath);
+
+        PluginInfo stillLoaded = _manager
+            .GetInstalledPlugins()
+            .Single(p => p.Id == ServiceRegistratorPluginId);
+
+        stillLoaded.Status = PluginStatus.Disabled;
+
+        IEnumerable<IPlugin> active = _manager.GetPluginsOfType<IPlugin>();
+
+        active
+            .Should()
+            .ContainSingle()
+            .Which.Id.Should()
+            .Be(
+                TypeSignatureDependsOnMissingAssemblyPluginId,
+                "the instance is still there, so only the status can exclude it"
+            );
+    }
+
     [Fact]
     public async Task GetPluginsOfType_DisabledPluginWithSurvivingInstance_IsExcluded()
     {
@@ -400,6 +434,94 @@ public class PluginLoaderFailureFixtureTests : IDisposable
             .Contain(e => e.PluginId == InitializeThrowsPluginId.ToString())
             .And.Contain(e => e.PluginId == InitializeThrowsDisposeSucceedsPluginId.ToString())
             .And.Contain(e => e.PluginId == Ulid.Empty.ToString());
+    }
+
+    /// <summary>
+    /// The assembly-level backstop, reached by a file that is named like an
+    /// assembly and is not one. Loading it raises
+    /// <see cref="BadImageFormatException" />, which the reflection-type-load
+    /// catch above it does not take.
+    /// <para>
+    /// What matters here is that the describer leaves an ordinary failure
+    /// alone. Rewriting every failure as "rebuild against 11.0" would send an
+    /// author chasing a contract change that is not there, and a corrupt file
+    /// is the plainest case of a failure that has nothing to do with the
+    /// contract.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task LoadPluginAssemblyAsync_CorruptAssembly_KeepsTheRuntimesOwnMessage()
+    {
+        string pluginDir = Path.Combine(_tempPluginsDir, "Corrupt");
+        Directory.CreateDirectory(pluginDir);
+
+        string dllPath = Path.Combine(pluginDir, "NoMercy.Plugin.Corrupt.dll");
+        await File.WriteAllTextAsync(dllPath, "this is not an assembly");
+
+        List<PluginErrorOccurredEvent> errors = [];
+        _eventBus.Subscribe<PluginErrorOccurredEvent>(
+            (evt, _) =>
+            {
+                errors.Add(evt);
+                return Task.CompletedTask;
+            }
+        );
+
+        await _manager.LoadPluginAssemblyAsync(dllPath);
+
+        PluginErrorOccurredEvent reported = errors.Should().ContainSingle().Which;
+
+        reported.PluginName.Should().Be("NoMercy.Plugin.Corrupt");
+        reported.ErrorMessage.Should().NotContain("11.0");
+        reported.ErrorMessage.Should().NotContain("/nomercy-plugins/migration");
+        reported.ErrorMessage.Should().NotBeNullOrWhiteSpace();
+    }
+
+    /// <summary>
+    /// The same backstop on the manifest path, which is a different catch.
+    /// </summary>
+    [Fact]
+    public async Task LoadAllAsync_CorruptAssembly_KeepsTheRuntimesOwnMessage()
+    {
+        string pluginDir = Path.Combine(_tempPluginsDir, "CorruptManifest");
+        Directory.CreateDirectory(pluginDir);
+
+        await File.WriteAllTextAsync(
+            Path.Combine(pluginDir, "NoMercy.Plugin.Corrupt.dll"),
+            "this is not an assembly"
+        );
+        await File.WriteAllTextAsync(
+            Path.Combine(pluginDir, "plugin.json"),
+            """
+            {
+              "id": "01SAMPLE000000000000000007",
+              "name": "Corrupt",
+              "description": "A file named like an assembly that is not one",
+              "version": "1.0.0",
+              "assembly": "NoMercy.Plugin.Corrupt.dll",
+              "autoEnabled": true
+            }
+            """
+        );
+
+        List<PluginErrorOccurredEvent> errors = [];
+        _eventBus.Subscribe<PluginErrorOccurredEvent>(
+            (evt, _) =>
+            {
+                errors.Add(evt);
+                return Task.CompletedTask;
+            }
+        );
+
+        await _manager.LoadAllAsync();
+
+        PluginErrorOccurredEvent reported = errors
+            .Should()
+            .ContainSingle(e => e.PluginName == "Corrupt")
+            .Which;
+
+        reported.ErrorMessage.Should().NotContain("11.0");
+        reported.ErrorMessage.Should().NotBeNullOrWhiteSpace();
     }
 
     /// <summary>
