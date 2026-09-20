@@ -29,6 +29,7 @@ public class PluginHostStorage : IPluginStorage
     private readonly Ulid _pluginId;
     private readonly IPluginFolderCatalog _catalog;
     private readonly IPluginGrantStore _grants;
+    private readonly string _databaseRoot;
 
     public PluginHostStorage(
         Ulid pluginId,
@@ -41,6 +42,7 @@ public class PluginHostStorage : IPluginStorage
         _pluginId = pluginId;
         _catalog = catalog;
         _grants = grants;
+        _databaseRoot = Path.Combine(pluginsRoot, "data", pluginId.ToString());
 
         PluginLocalStorageScope privateScope = new(
             pluginId,
@@ -103,14 +105,25 @@ public class PluginHostStorage : IPluginStorage
             )
         );
 
-    /// <summary>A database in the private folder. Phase 2 task 27 opens it.</summary>
-    public Task<IPluginDatabase> OpenDatabaseAsync(string name, CancellationToken ct = default) =>
-        throw new PluginRefusedException(
-            PluginRefusalMessages.FacadeNotOnThisHost(
-                _pluginId.ToString(),
-                "IPluginStorage.OpenDatabaseAsync"
-            )
-        );
+    /// <summary>
+    /// A SQLite file in the plugin's private folder, opened by the host.
+    /// <para>
+    /// The name becomes a file name in that one folder, so it cannot name the
+    /// server's own database or anything outside the plugin's corner.
+    /// </para>
+    /// </summary>
+    public async Task<IPluginDatabase> OpenDatabaseAsync(
+        string name,
+        CancellationToken ct = default
+    )
+    {
+        if (name.Contains('/') || name.Contains('\\') || name.Contains(".."))
+            throw new PluginRefusedException(
+                PluginRefusalMessages.FileOutsideGrant(_pluginId.ToString(), name)
+            );
+
+        return await PluginDatabase.OpenAsync(Path.Combine(_databaseRoot, $"{name}.sqlite"), ct);
+    }
 
     private static string Kind => PluginGrantKind.ForCapability(PluginCapabilityNames.StoragePath);
 
