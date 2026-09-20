@@ -202,5 +202,11 @@
     "severity": "blocked",
     "capability": "native.code",
     "summary": "The native library the plugin loads carries no signature this server trusts."
+  },
+  {
+    "code": "PLUGIN_HUB_CALLER_NOT_RESOLVED",
+    "severity": "blocked",
+    "capability": "hub",
+    "summary": "A hub method was reached on a connection the host could not resolve a caller for."
   }
 ]
