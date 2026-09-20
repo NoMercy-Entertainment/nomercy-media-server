@@ -96,15 +96,6 @@ public interface IPluginContext
     IPluginJobs? Jobs => null;
 
     /// <summary>
-    /// The places the server can write, rather than a path the owner typed.
-    /// <para>
-    /// Present only when the plugin declared
-    /// <see cref="PluginHookCapability.Storage" />.
-    /// </para>
-    /// </summary>
-    IPluginStorage? Storage => null;
-
-    /// <summary>
     /// Running ffmpeg over a track or a derived file, and splitting stems.
     /// <para>
     /// Present only when the plugin declared
@@ -134,6 +125,49 @@ public interface IPluginContext
     /// </para>
     /// </summary>
     IPluginMusicAnalysisWriter? MusicAnalysisWriter => null;
+
+    /// <summary>
+    /// Sockets, discovery and port mapping, as far as the owner granted them.
+    /// <para>
+    /// Non-nullable, unlike the v2 members above it. A null facade taught a
+    /// plugin author to branch and then quietly do nothing, so the plugin looked
+    /// idle and the owner never learned a capability was missing. Reaching a
+    /// member without the capability refuses instead, and the refusal names the
+    /// line of plugin.json to add.
+    /// </para>
+    /// </summary>
+    IPluginNet Net =>
+        throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(PluginId.ToString(), "IPluginContext.Net")
+        );
+
+    /// <summary>
+    /// Every place this plugin may read and write. Replaces the v2
+    /// <c>IPluginStorage</c>, which listed the server's folders and offered the
+    /// plugin's own as a bare path string.
+    /// </summary>
+    IPluginStorageV3 Storage =>
+        throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(PluginId.ToString(), "IPluginContext.Storage")
+        );
+
+    /// <summary>Child processes, for the binaries the manifest names.</summary>
+    IPluginProcess Process =>
+        throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(PluginId.ToString(), "IPluginContext.Process")
+        );
+
+    /// <summary>What this server is, so a plugin branches on a fact.</summary>
+    IPluginServerInfo Server =>
+        throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(PluginId.ToString(), "IPluginContext.Server")
+        );
+
+    /// <summary>Native libraries, gated on the marketplace signature rather than a capability.</summary>
+    IPluginNative Native =>
+        throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(PluginId.ToString(), "IPluginContext.Native")
+        );
 
     /// <summary>What the owner has granted this plugin, and how to ask for more.</summary>
     IPluginGrants Grants { get; }

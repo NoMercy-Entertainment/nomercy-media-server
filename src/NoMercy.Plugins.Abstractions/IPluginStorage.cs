@@ -51,18 +51,3 @@ public interface IPluginStorage
 /// <param name="Kind">local, nfs, smb, s3 or webdav - what the owner would call it.</param>
 /// <param name="Writable">Whether the server can write here, which the owner should not have to guess.</param>
 public sealed record PluginStorageLocation(string Id, string Name, string Kind, bool Writable);
-
-/// <summary>One place, opened. Every path is relative to it.</summary>
-public interface IPluginStorageScope
-{
-    /// <summary>The location this scope was opened on.</summary>
-    PluginStorageLocation Location { get; }
-
-    Task<bool> ExistsAsync(string path, CancellationToken ct = default);
-
-    Task<Stream> OpenReadAsync(string path, CancellationToken ct = default);
-
-    Task<Stream> OpenWriteAsync(string path, bool overwrite, CancellationToken ct = default);
-
-    Task DeleteAsync(string path, CancellationToken ct = default);
-}

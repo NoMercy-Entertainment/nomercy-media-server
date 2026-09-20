@@ -144,7 +144,6 @@ public static class PluginServiceCollectionExtensions
             // failing for every plugin on every host.
             encoder: sp.GetService<IPluginEncoder>(),
             jobs: sp.GetService<IPluginJobs>(),
-            pluginStorage: sp.GetService<IPluginStorage>(),
             musicQuery: sp.GetService<IPluginMusicQuery>(),
             audioToolsFactory: sp.GetService<IPluginAudioToolsFactory>(),
             derivedAudio: sp.GetService<IPluginDerivedAudio>(),

@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
@@ -96,7 +97,7 @@ public class PluginStorage(
 internal class PluginStorageScope(PluginStorageLocation location, IStorage storage)
     : IPluginStorageScope
 {
-    public PluginStorageLocation Location { get; } = location;
+    public PluginStorageLocation? Location { get; } = location;
 
     public Task<bool> ExistsAsync(string path, CancellationToken ct = default)
     {
@@ -116,5 +117,22 @@ internal class PluginStorageScope(PluginStorageLocation location, IStorage stora
     public Task DeleteAsync(string path, CancellationToken ct = default)
     {
         return storage.DeleteAsync(path, ct);
+    }
+
+    public async IAsyncEnumerable<PluginStorageEntry> ListAsync(
+        string path,
+        bool recursive = false,
+        [EnumeratorCancellation] CancellationToken ct = default
+    )
+    {
+        await foreach (StorageEntry entry in storage.ListAsync(path, null, recursive, ct))
+        {
+            yield return new PluginStorageEntry(
+                entry.Path,
+                entry.IsDirectory,
+                entry.SizeBytes,
+                entry.LastModified
+            );
+        }
     }
 }
