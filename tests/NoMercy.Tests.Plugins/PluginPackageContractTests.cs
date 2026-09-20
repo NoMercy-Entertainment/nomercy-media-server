@@ -122,8 +122,8 @@ public class PluginPackageContractTests
         csproj
             .Should()
             .Contain(
-                $"Version=\"{PluginAbi.Current.Major}.{PluginAbi.Current.Minor}.*\"",
-                "both plugins on the server today float at *, which is what an author does when versions are unpredictable"
+                $"Version=\"{PluginAbi.Current.Major}.*\"",
+                "the major is the compatibility promise; pinning the minor would make every additive change re-pin every plugin"
             );
     }
 }
