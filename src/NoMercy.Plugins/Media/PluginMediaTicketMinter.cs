@@ -31,16 +31,29 @@ public class PluginMediaTicketMinter(TimeProvider clock, byte[] serverKey)
 {
     private readonly ConcurrentDictionary<
         string,
-        (string Upstream, DateTimeOffset Until)
+        (PluginProxyRequest Request, DateTimeOffset Until)
     > _upstreams = new();
 
-    public string Mint(Ulid pluginId, Guid userId, string upstream, TimeSpan lifetime)
+    /// <summary>One address, which is what most plugins hand over.</summary>
+    public string Mint(Ulid pluginId, Guid userId, string upstream, TimeSpan lifetime) =>
+        Mint(
+            pluginId,
+            userId,
+            new PluginProxyRequest { Links = [new() { Url = new(upstream) }] },
+            lifetime
+        );
+
+    public string Mint(Ulid pluginId, Guid userId, PluginProxyRequest request, TimeSpan lifetime)
     {
         DateTimeOffset expiresAt = clock.GetUtcNow().Add(lifetime);
-        string digest = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(upstream)));
+
+        // A fresh handle per ticket rather than a hash of the address. Two
+        // viewers opening the same stream get their own ticket, and one
+        // running out does not take the other's address with it.
+        string digest = Ulid.NewUlid().ToString();
 
         Forget();
-        _upstreams[digest] = (upstream, expiresAt);
+        _upstreams[digest] = (request, expiresAt);
 
         string payload = JsonSerializer.Serialize(
             new
@@ -82,7 +95,7 @@ public class PluginMediaTicketMinter(TimeProvider clock, byte[] serverKey)
             if (
                 !_upstreams.TryGetValue(
                     root.GetProperty("s").GetString() ?? string.Empty,
-                    out (string Upstream, DateTimeOffset Until) held
+                    out (PluginProxyRequest Request, DateTimeOffset Until) held
                 )
             )
                 return null;
@@ -90,7 +103,7 @@ public class PluginMediaTicketMinter(TimeProvider clock, byte[] serverKey)
             return new(
                 Ulid.Parse(root.GetProperty("p").GetString()!),
                 Guid.Parse(root.GetProperty("u").GetString()!),
-                held.Upstream,
+                held.Request,
                 DateTimeOffset.FromUnixTimeSeconds(root.GetProperty("e").GetInt64())
             );
         }
@@ -142,7 +155,12 @@ public class PluginMediaTicketMinter(TimeProvider clock, byte[] serverKey)
     {
         DateTimeOffset now = clock.GetUtcNow();
 
-        foreach (KeyValuePair<string, (string Upstream, DateTimeOffset Until)> held in _upstreams)
+        foreach (
+            KeyValuePair<
+                string,
+                (PluginProxyRequest Request, DateTimeOffset Until)
+            > held in _upstreams
+        )
         {
             if (held.Value.Until <= now)
                 _upstreams.TryRemove(held.Key, out _);

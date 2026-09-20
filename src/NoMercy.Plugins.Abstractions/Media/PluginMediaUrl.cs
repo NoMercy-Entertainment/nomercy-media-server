@@ -21,4 +21,18 @@ public sealed record PluginMediaUrl
     public Uri Url { get; internal init; } = null!;
     public DateTimeOffset ExpiresAt { get; internal init; }
     public MediaId Media { get; internal init; }
+
+    /// <summary>
+    /// The one way one of these is made, and it is not reachable from a plugin:
+    /// the host platform calls it after minting a ticket. It is here rather
+    /// than a public constructor so the shape cannot be forged by the code the
+    /// facade hands it to.
+    /// </summary>
+    internal static PluginMediaUrl Minted(Uri url, DateTimeOffset expiresAt, MediaId media) =>
+        new()
+        {
+            Url = url,
+            ExpiresAt = expiresAt,
+            Media = media,
+        };
 }
