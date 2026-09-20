@@ -448,12 +448,22 @@ public class PluginLoaderFailureFixtureTests : IDisposable
 
         await _manager.LoadAllAsync();
 
-        errors
+        // Named by id, not just counted. A refusal reported against the wrong
+        // plugin sends the owner to a plugin that is working, and an assertion
+        // that only asks whether some error said "get_EventBus" cannot tell
+        // the two apart.
+        PluginErrorOccurredEvent reported = errors
             .Should()
-            .Contain(
-                e => e.ErrorMessage.Contains("get_EventBus") && e.ErrorMessage.Contains("11.0"),
+            .ContainSingle(
+                e => e.PluginId == StaleMemberPluginId.ToString(),
                 "the manifest path is the one a server boots through"
-            );
+            )
+            .Which;
+
+        reported.PluginName.Should().Be("StaleMember");
+        reported.ErrorMessage.Should().Contain("get_EventBus");
+        reported.ErrorMessage.Should().Contain("11.0");
+        reported.ErrorMessage.Should().Contain("/nomercy-plugins/migration");
     }
 
     /// <summary>
