@@ -144,6 +144,12 @@
     "summary": "The plugin sent user data to a host outside the server."
   },
   {
+    "code": "PLUGIN_USER_DATA_SCOPE_REQUIRED",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "A capability that reads a person's own data was called with nobody asking."
+  },
+  {
     "code": "PLUGIN_SETTINGS_FIELD_READ_ONLY",
     "severity": "blocked",
     "capability": "settings",
