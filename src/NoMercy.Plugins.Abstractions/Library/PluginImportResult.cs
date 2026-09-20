@@ -9,19 +9,19 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-namespace NoMercy.Events.Plugins;
+namespace NoMercy.Plugins.Abstractions;
 
-public sealed class PluginErrorOccurredEvent : EventBase, IEventExplainsItself
+/// <summary>
+/// What the library made of the file.
+/// <para>
+/// A refusal is answered rather than thrown, because an import that the owner's
+/// grants do not allow is an ordinary outcome for a plugin working through a
+/// queue, not an exceptional one. A plugin that had to catch would wrap every
+/// item and lose the reason.
+/// </para>
+/// </summary>
+/// <param name="Media">The id the library gave it, or empty when it refused.</param>
+public sealed record PluginImportResult(MediaId Media, PluginRefusal? Refusal)
 {
-    public override string Source => "PluginManager";
-
-    public required string PluginId { get; init; }
-    public required string PluginName { get; init; }
-    public required string ErrorMessage { get; init; }
-    public string? ExceptionType { get; init; }
-
-    public string Why =>
-        ExceptionType is null
-            ? $"{PluginName}: {ErrorMessage}"
-            : $"{PluginName}: {ErrorMessage} ({ExceptionType})";
+    public bool Ok => Refusal is null;
 }

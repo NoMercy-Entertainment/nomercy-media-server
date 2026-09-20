@@ -11,12 +11,19 @@
 
 namespace NoMercy.Plugins.Abstractions;
 
-public sealed record PluginCapabilityDescriptor(
-    string Name,
-    string Scope,
-    PluginTrust Trust,
-    bool Reversible,
-    string Facade,
-    string Summary,
-    string DocsUrl
-);
+/// <summary>
+/// Being told when a library changes, rather than asking.
+/// <para>
+/// A plugin that reacts to new media used to poll the library on a timer. On a
+/// large library that is a full read every few minutes to notice one row, and
+/// the owner sees the disk spin for nothing.
+/// </para>
+/// </summary>
+public interface IPluginLibraryWatch
+{
+    /// <summary>
+    /// Watches one library. Disposing the handle stops the subscription, and
+    /// the host disposes whatever a plugin leaves behind when it stops.
+    /// </summary>
+    IDisposable Subscribe(LibraryId library, Action<PluginLibraryChange> onChange);
+}

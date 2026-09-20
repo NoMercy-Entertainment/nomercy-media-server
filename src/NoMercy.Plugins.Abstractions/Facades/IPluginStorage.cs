@@ -14,7 +14,7 @@ namespace NoMercy.Plugins.Abstractions;
 /// <summary>
 /// Every place a plugin may read and write, as the owner granted them.
 /// <para>
-/// Contract v2 offered the plugin's own folder as a string and the server's
+/// An earlier SDK offered the plugin's own folder as a string and the server's
 /// libraries not at all, so a plugin that produced files either wrote beside its
 /// own database or took an absolute path the owner typed. Both were outside
 /// anything the owner could later see or revoke.
@@ -25,7 +25,7 @@ namespace NoMercy.Plugins.Abstractions;
 /// rather than resolving.
 /// </para>
 /// </summary>
-public interface IPluginStorageV3
+public interface IPluginStorage
 {
     /// <summary>The plugin's own folder. Always present; counted against the disk quota.</summary>
     IPluginStorageScope Private { get; }

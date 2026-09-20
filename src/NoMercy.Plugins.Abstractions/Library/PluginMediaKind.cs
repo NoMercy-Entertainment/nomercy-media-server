@@ -9,19 +9,24 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-namespace NoMercy.Events.Plugins;
+namespace NoMercy.Plugins.Abstractions;
 
-public sealed class PluginErrorOccurredEvent : EventBase, IEventExplainsItself
+/// <summary>
+/// What a plugin is handing the library.
+/// <para>
+/// <see cref="File" /> is the honest answer when the plugin does not know, and
+/// the server works it out the way it does for anything the owner drops in a
+/// folder. A plugin that guesses wrong files a film under episodes, and the
+/// owner has to undo it by hand.
+/// </para>
+/// </summary>
+public enum PluginMediaKind
 {
-    public override string Source => "PluginManager";
-
-    public required string PluginId { get; init; }
-    public required string PluginName { get; init; }
-    public required string ErrorMessage { get; init; }
-    public string? ExceptionType { get; init; }
-
-    public string Why =>
-        ExceptionType is null
-            ? $"{PluginName}: {ErrorMessage}"
-            : $"{PluginName}: {ErrorMessage} ({ExceptionType})";
+    File,
+    Movie,
+    Show,
+    Episode,
+    Album,
+    Track,
+    Recording,
 }

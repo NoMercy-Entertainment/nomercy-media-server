@@ -24,7 +24,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IPluginContext.Http",
-            "outbound HTTP through context.Http"
+            "outbound HTTP through context.Http",
+            "/nomercy-plugins/capabilities/network-fetch"
         ),
         new(
             "network.dial",
@@ -32,7 +33,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Medium,
             true,
             "IPluginContext.Net.DialAsync",
-            "raw TCP and UDP client sockets through context.Net"
+            "raw TCP and UDP client sockets through context.Net",
+            "/nomercy-plugins/capabilities/network-dial"
         ),
         new(
             "network.listen",
@@ -40,7 +42,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Medium,
             false,
             "IPluginContext.Net.ListenAsync",
-            "listening sockets, inbound connections and UPnP port mapping"
+            "listening sockets, inbound connections and UPnP port mapping",
+            "/nomercy-plugins/capabilities/network-listen"
         ),
         new(
             "network.discover",
@@ -48,7 +51,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Medium,
             false,
             "IPluginContext.Net.Discovery",
-            "mDNS, SSDP and LSD discovery on the owner's network"
+            "mDNS, SSDP and LSD discovery on the owner's network",
+            "/nomercy-plugins/capabilities/network-discover"
         ),
         new(
             "storage.private",
@@ -56,7 +60,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IPluginContext.Storage.Private",
-            "the plugin's own data folder and its SQLite databases"
+            "the plugin's own data folder and its SQLite databases",
+            "/nomercy-plugins/capabilities/storage-private"
         ),
         new(
             "storage.path",
@@ -64,7 +69,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             false,
             "IPluginContext.Storage.PathAsync",
-            "read and write inside a folder the owner picked"
+            "read and write inside a folder the owner picked",
+            "/nomercy-plugins/capabilities/storage-path"
         ),
         new(
             "storage.temp",
@@ -72,7 +78,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IPluginContext.Storage.Temp",
-            "scratch space the host purges"
+            "scratch space the host purges",
+            "/nomercy-plugins/capabilities/storage-temp"
         ),
         new(
             "storage.derived",
@@ -80,7 +87,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IPluginContext.Storage.Derived",
-            "the derived audio and video store with LRU eviction"
+            "the derived audio and video store with LRU eviction",
+            "/nomercy-plugins/capabilities/storage-derived"
         ),
         new(
             "library.read",
@@ -88,7 +96,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IPluginContext.Library",
-            "library queries through context.Library"
+            "library queries through context.Library",
+            "/nomercy-plugins/capabilities/library-read"
         ),
         new(
             "library.write",
@@ -96,7 +105,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Medium,
             false,
             "IPluginContext.Library.Write",
-            "recycle, delete and move inside the library"
+            "recycle, delete and move inside the library",
+            "/nomercy-plugins/capabilities/library-write"
         ),
         new(
             "library.import",
@@ -104,7 +114,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             false,
             "IPluginContext.Library.Import",
-            "register a file, show, movie, album or recording into the library"
+            "register a file, show, movie, album or recording into the library",
+            "/nomercy-plugins/capabilities/library-import"
         ),
         new(
             "library.watch",
@@ -112,7 +123,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IPluginContext.Library.Watch",
-            "events when the library changes"
+            "events when the library changes",
+            "/nomercy-plugins/capabilities/library-watch"
         ),
         new(
             "metadata.query",
@@ -120,7 +132,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IPluginContext.Metadata.QueryAsync",
-            "ask the server's metadata providers inside its quotas"
+            "ask the server's metadata providers inside its quotas",
+            "/nomercy-plugins/capabilities/metadata-query"
         ),
         new(
             "metadata.provide",
@@ -128,7 +141,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IMetadataPlugin",
-            "be a metadata provider for a media type"
+            "be a metadata provider for a media type",
+            "/nomercy-plugins/capabilities/metadata-provide"
         ),
         new(
             "media.source",
@@ -136,7 +150,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IMediaSourcePlugin",
-            "be a media source the scanner asks"
+            "be a media source the scanner asks",
+            "/nomercy-plugins/capabilities/media-source"
         ),
         new(
             "media.proxy",
@@ -144,7 +159,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IPluginContext.Media.Proxy",
-            "serve third-party audio, video and images through the server under the app CSP"
+            "serve third-party audio, video and images through the server under the app CSP",
+            "/nomercy-plugins/capabilities/media-proxy"
         ),
         new(
             "media.live",
@@ -152,7 +168,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IPluginContext.Media.Live",
-            "publish live channels, EPG and time-shift descriptors the player plays natively"
+            "publish live channels, EPG and time-shift descriptors the player plays natively",
+            "/nomercy-plugins/capabilities/media-live"
         ),
         new(
             "media.transcode",
@@ -160,7 +177,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IPluginContext.Media.Transcode",
-            "ask the server to transcode a proxied stream on the fly"
+            "ask the server to transcode a proxied stream on the fly",
+            "/nomercy-plugins/capabilities/media-transcode"
         ),
         new(
             "media.remux",
@@ -168,7 +186,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IPluginContext.Media.Remux",
-            "repackage TS into HLS or MP4 with the server's ffmpeg"
+            "repackage TS into HLS or MP4 with the server's ffmpeg",
+            "/nomercy-plugins/capabilities/media-remux"
         ),
         new(
             "media.record",
@@ -176,7 +195,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             false,
             "IPluginContext.Media.Record",
-            "schedule and keep recordings of live channels on the owner's disk"
+            "schedule and keep recordings of live channels on the owner's disk",
+            "/nomercy-plugins/capabilities/media-record"
         ),
         new(
             "encoder.profile",
@@ -184,7 +204,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IEncoderPlugin",
-            "override the encode profiles the server uses"
+            "override the encode profiles the server uses",
+            "/nomercy-plugins/capabilities/encoder-profile"
         ),
         new(
             "encoder.dispatch",
@@ -192,7 +213,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IPluginContext.Encoder",
-            "queue an encode on the server"
+            "queue an encode on the server",
+            "/nomercy-plugins/capabilities/encoder-dispatch"
         ),
         new(
             "jobs.dispatch",
@@ -200,7 +222,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IPluginContext.Jobs.DispatchAsync",
-            "queue a server job by kind"
+            "queue a server job by kind",
+            "/nomercy-plugins/capabilities/jobs-dispatch"
         ),
         new(
             "jobs.status",
@@ -208,7 +231,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IPluginContext.Jobs.StatusAsync",
-            "watch the outcome of a queued job"
+            "watch the outcome of a queued job",
+            "/nomercy-plugins/capabilities/jobs-status"
         ),
         new(
             "scheduler",
@@ -216,7 +240,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IPluginContext.Scheduler",
-            "named cron jobs, one-shot jobs and run-now from the settings page"
+            "named cron jobs, one-shot jobs and run-now from the settings page",
+            "/nomercy-plugins/capabilities/scheduler"
         ),
         new(
             "audio.tools",
@@ -224,7 +249,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IPluginContext.AudioTools",
-            "ffmpeg filter graphs and stem splitting"
+            "ffmpeg filter graphs and stem splitting",
+            "/nomercy-plugins/capabilities/audio-tools"
         ),
         new(
             "music.analysis.read",
@@ -232,7 +258,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IPluginContext.Music",
-            "read the BPM, key and stems the server analyzed"
+            "read the BPM, key and stems the server analyzed",
+            "/nomercy-plugins/capabilities/music-analysis-read"
         ),
         new(
             "music.analysis.write",
@@ -240,7 +267,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IPluginContext.MusicAnalysisWriter",
-            "write DJ analysis and stems back to the server"
+            "write DJ analysis and stems back to the server",
+            "/nomercy-plugins/capabilities/music-analysis-write"
         ),
         new(
             "player.source",
@@ -248,7 +276,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IPluginContext.Player.PlayAsync",
-            "play or enqueue a URL on the caller's player"
+            "play or enqueue a URL on the caller's player",
+            "/nomercy-plugins/capabilities/player-source"
         ),
         new(
             "player.control",
@@ -256,7 +285,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IPluginContext.Player.Control",
-            "play, pause, skip, seek and volume on the caller's player"
+            "play, pause, skip, seek and volume on the caller's player",
+            "/nomercy-plugins/capabilities/player-control"
         ),
         new(
             "player.state",
@@ -264,7 +294,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IPluginContext.Player.StateAsync",
-            "read what the caller is playing now"
+            "read what the caller is playing now",
+            "/nomercy-plugins/capabilities/player-state"
         ),
         new(
             "player.queue",
@@ -272,7 +303,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IPluginContext.Player.Queue",
-            "read and edit the caller's queue"
+            "read and edit the caller's queue",
+            "/nomercy-plugins/capabilities/player-queue"
         ),
         new(
             "cast.send",
@@ -280,7 +312,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IPluginContext.Cast",
-            "cast the caller's session to a device"
+            "cast the caller's session to a device",
+            "/nomercy-plugins/capabilities/cast-send"
         ),
         new(
             "user.identity",
@@ -288,7 +321,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IPluginContext.User.Identity",
-            "the caller's id, display name, role and access answer"
+            "the caller's id, display name, role and access answer",
+            "/nomercy-plugins/capabilities/user-identity"
         ),
         new(
             "user.watch",
@@ -296,7 +330,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Medium,
             true,
             "IPluginContext.User.Watch",
-            "the caller's watch history and progress"
+            "the caller's watch history and progress",
+            "/nomercy-plugins/capabilities/user-watch"
         ),
         new(
             "user.playlists",
@@ -304,7 +339,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IPluginContext.User.Playlists",
-            "read and edit the caller's playlists"
+            "read and edit the caller's playlists",
+            "/nomercy-plugins/capabilities/user-playlists"
         ),
         new(
             "user.preferences",
@@ -312,7 +348,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IPluginContext.User.Preferences",
-            "read the caller's language, subtitle and audio preferences"
+            "read the caller's language, subtitle and audio preferences",
+            "/nomercy-plugins/capabilities/user-preferences"
         ),
         new(
             "users.list",
@@ -320,7 +357,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Medium,
             true,
             "IPluginContext.Users.ListAsync",
-            "list the members of the server on owner-only pages"
+            "list the members of the server on owner-only pages",
+            "/nomercy-plugins/capabilities/users-list"
         ),
         new(
             "notifications.push",
@@ -328,7 +366,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IPluginContext.Notifications",
-            "push a notification to a user or the owner, inside a rate limit"
+            "push a notification to a user or the owner, inside a rate limit",
+            "/nomercy-plugins/capabilities/notifications-push"
         ),
         new(
             "secrets",
@@ -336,7 +375,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IPluginContext.Secrets",
-            "encrypted key and value storage for the plugin"
+            "encrypted key and value storage for the plugin",
+            "/nomercy-plugins/capabilities/secrets"
         ),
         new(
             "settings",
@@ -344,7 +384,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IPluginContext.Settings",
-            "typed read and write of the host-rendered settings page"
+            "typed read and write of the host-rendered settings page",
+            "/nomercy-plugins/capabilities/settings"
         ),
         new(
             "events.subscribe",
@@ -352,7 +393,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IPluginContext.Events.Subscribe",
-            "server events about the library, playback, users and jobs"
+            "server events about the library, playback, users and jobs",
+            "/nomercy-plugins/capabilities/events-subscribe"
         ),
         new(
             "events.publish",
@@ -360,7 +402,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IPluginContext.Events.PublishAsync",
-            "plugin-scoped events other plugins may subscribe to"
+            "plugin-scoped events other plugins may subscribe to",
+            "/nomercy-plugins/capabilities/events-publish"
         ),
         new(
             "hub",
@@ -368,7 +411,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IPluginContext.Hub",
-            "push to clients over SignalR and receive their calls"
+            "push to clients over SignalR and receive their calls",
+            "/nomercy-plugins/capabilities/hub"
         ),
         new(
             "rest",
@@ -376,7 +420,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "PluginControllerBase",
-            "plugin-owned REST endpoints under the plugin prefix"
+            "plugin-owned REST endpoints under the plugin prefix",
+            "/nomercy-plugins/capabilities/rest"
         ),
         new(
             "auth.claims",
@@ -384,7 +429,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.High,
             false,
             "IAuthPlugin",
-            "add claims after Keycloak has validated the token"
+            "add claims after Keycloak has validated the token",
+            "/nomercy-plugins/capabilities/auth-claims"
         ),
         new(
             "process.spawn",
@@ -392,7 +438,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.High,
             false,
             "IPluginContext.Process",
-            "run a bundled or allowlisted binary in the plugin sandbox"
+            "run a bundled or allowlisted binary in the plugin sandbox",
+            "/nomercy-plugins/capabilities/process-spawn"
         ),
         new(
             "browser.headless",
@@ -400,7 +447,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Medium,
             true,
             "IPluginContext.Browser",
-            "drive the headless browser the platform ships and sandboxes"
+            "drive the headless browser the platform ships and sandboxes",
+            "/nomercy-plugins/capabilities/browser-headless"
         ),
         new(
             "native.code",
@@ -408,7 +456,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.High,
             false,
             "IPluginContext.Native",
-            "ship native libraries, which need a manual review"
+            "ship native libraries, which need a manual review",
+            "/nomercy-plugins/capabilities/native-code"
         ),
         new(
             "server.info",
@@ -416,7 +465,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IPluginContext.Server",
-            "version, platform, the paths the owner allowed and free space"
+            "version, platform, the paths the owner allowed and free space",
+            "/nomercy-plugins/capabilities/server-info"
         ),
         new(
             "ui.mount",
@@ -424,7 +474,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "IUiPlugin",
-            "placements in the slots that kind offers"
+            "placements in the slots that kind offers",
+            "/nomercy-plugins/capabilities/ui-mount"
         ),
         new(
             "ui.input",
@@ -432,7 +483,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Low,
             true,
             "PluginFormField",
-            "receive typed text, files and folder picks from forms and search"
+            "receive typed text, files and folder picks from forms and search",
+            "/nomercy-plugins/capabilities/ui-input"
         ),
         new(
             "ui.webview",
@@ -440,7 +492,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Medium,
             true,
             "PluginWebViewRef",
-            "a sandboxed webview for custom UI"
+            "a sandboxed webview for custom UI",
+            "/nomercy-plugins/capabilities/ui-webview"
         ),
         new(
             "ui.overlay",
@@ -448,7 +501,8 @@ public static class PluginCapabilityVocabulary
             PluginTrust.Medium,
             true,
             "PluginOverlay",
-            "a panel inside the player for lyrics, chat or stats"
+            "a panel inside the player for lyrics, chat or stats",
+            "/nomercy-plugins/capabilities/ui-overlay"
         ),
     ];
 

@@ -174,17 +174,17 @@ public class ConfigPluginConsentStoreTests : IDisposable
     }
 
     [Fact]
-    public void Get_LegacyGrantedId_ReturnsGrantWithNoCapabilities()
+    public void Get_PreUpgradeGrantedId_ReturnsGrantWithNoCapabilities()
     {
-        Guid legacyId = Guid.Parse("395df423-3e2f-4a1c-bc5b-dbc41a9133ef");
+        Guid preUpgradeId = Guid.Parse("395df423-3e2f-4a1c-bc5b-dbc41a9133ef");
         File.WriteAllText(
             Path.Combine(_tempDir, "config.json"),
-            $@"{{""GrantedPluginIds"":[""{legacyId}""]}}"
+            $@"{{""GrantedPluginIds"":[""{preUpgradeId}""]}}"
         );
 
         ConfigPluginConsentStore store = MakeStore();
 
-        PluginConsentGrant? grant = store.Get(new(legacyId));
+        PluginConsentGrant? grant = store.Get(new(preUpgradeId));
         grant.Should().NotBeNull();
         grant!.Capabilities.Should().BeNull();
     }
@@ -195,14 +195,14 @@ public class ConfigPluginConsentStoreTests : IDisposable
         // The file a server that ran the GUID build left behind. A malformed
         // config reads as no config, so getting this wrong does not throw —
         // it silently un-consents every plugin the user already approved.
-        Guid legacyId = Guid.Parse("395df423-3e2f-4a1c-bc5b-dbc41a9133ef");
+        Guid preUpgradeId = Guid.Parse("395df423-3e2f-4a1c-bc5b-dbc41a9133ef");
         File.WriteAllText(
             Path.Combine(_tempDir, "config.json"),
-            $@"{{""GrantedPluginIds"":[""{legacyId}""]}}"
+            $@"{{""GrantedPluginIds"":[""{preUpgradeId}""]}}"
         );
 
         ConfigPluginConsentStore store = MakeStore();
 
-        store.Contains(new(legacyId)).Should().BeTrue();
+        store.Contains(new(preUpgradeId)).Should().BeTrue();
     }
 }

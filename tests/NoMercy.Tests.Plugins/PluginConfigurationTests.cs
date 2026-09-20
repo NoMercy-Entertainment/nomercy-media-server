@@ -391,16 +391,16 @@ public class PluginConfigurationTests : IDisposable
         // Consent and grant records written before a plugin id was a Ulid.
         // A record that fails to parse reads as no record at all, which would
         // quietly revoke everything the owner had already allowed.
-        Guid legacyId = Guid.Parse("395df423-3e2f-4a1c-bc5b-dbc41a9133ef");
+        Guid preUpgradeId = Guid.Parse("395df423-3e2f-4a1c-bc5b-dbc41a9133ef");
         File.WriteAllText(
             Path.Combine(_tempDir, "config.json"),
-            $@"{{""Grants"":[{{""PluginId"":""{legacyId}"",""Kind"":""network.host""}}]}}"
+            $@"{{""Grants"":[{{""PluginId"":""{preUpgradeId}"",""Kind"":""network.host""}}]}}"
         );
 
         GrantRecord? record = _config.GetConfiguration<GrantRecord>();
 
         record.Should().NotBeNull();
         record!.Grants.Should().ContainSingle();
-        record.Grants[0].PluginId.Should().Be(new Ulid(legacyId));
+        record.Grants[0].PluginId.Should().Be(new Ulid(preUpgradeId));
     }
 }

@@ -16,10 +16,11 @@ namespace NoMercy.Plugins.Abstractions;
 /// the URL.
 /// <para>
 /// Plugin routes carry the server's own authorization now, and a token in a
-/// URL is on its way out with it. Design section 10 item 18 says v3 ships the
-/// replacement capabilities before v2 code outside the contract is blocked, so
-/// a plugin built against ABI 10 keeps being served and is told, once, what to
-/// change. From ABI 11 the same request is refused.
+/// URL is on its way out with it. Design section 10 item 18 says the
+/// replacement capabilities ship before older plugin code outside the
+/// contract is blocked, so a plugin built against an earlier ABI keeps being
+/// served and is told, once, what to change. From this server's current ABI
+/// the same request is refused.
 /// </para>
 /// </summary>
 public static class PluginQueryTokenPolicy
@@ -39,8 +40,8 @@ public static class PluginQueryTokenPolicy
     /// <summary>
     /// Whether the token is still accepted for a plugin built against
     /// <paramref name="targetAbi"/>. A manifest that names no ABI, or names one
-    /// the platform cannot read, is a v2-era manifest and is accepted: refusing
-    /// it would break a plugin for a line it never wrote.
+    /// the platform cannot read, predates ABI tracking and is accepted:
+    /// refusing it would break a plugin for a line it never wrote.
     /// </summary>
     public static bool Accepts(string? targetAbi)
     {

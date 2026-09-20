@@ -17,7 +17,8 @@ using NoMercy.Plugins.Abstractions;
 namespace NoMercy.Api.Plugins;
 
 /// <summary>
-/// What a plugin sees when it calls a member contract v3 took away.
+/// What a plugin sees when it calls a member that does not exist in this
+/// server's SDK.
 /// <para>
 /// Removing a member from the contract is a source break for anyone compiling
 /// against it and a runtime break for an assembly already compiled. The second
@@ -55,7 +56,7 @@ public class PluginRemovedMemberFilter(ILogger<PluginRemovedMemberFilter> logger
         );
 
         logger.LogError(
-            "Plugin {Plugin} called a member contract v3 removed. {What} {Why} {Fix}",
+            "Plugin {Plugin} called a member that does not exist. {What} {Why} {Fix}",
             plugin,
             refusal.What,
             refusal.Why,

@@ -17,7 +17,7 @@ using Xunit;
 namespace NoMercy.Tests.Plugins;
 
 /// <summary>
-/// The facades contract v3 puts on <see cref="IPluginContext" /> in place of the
+/// The facades this server puts on <see cref="IPluginContext" /> in place of the
 /// host container, and the refusals a plugin meets when it reaches past them.
 /// </summary>
 public class PluginFacadeSurfaceTests
@@ -26,7 +26,7 @@ public class PluginFacadeSurfaceTests
         new()
         {
             { "Net", typeof(IPluginNet) },
-            { "Storage", typeof(IPluginStorageV3) },
+            { "Storage", typeof(IPluginStorage) },
             { "Process", typeof(IPluginProcess) },
             { "Server", typeof(IPluginServerInfo) },
             { "Native", typeof(IPluginNative) },

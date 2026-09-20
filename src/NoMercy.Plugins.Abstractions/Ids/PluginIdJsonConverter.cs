@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Reflection;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -24,9 +25,19 @@ public sealed class PluginIdJsonConverter<T> : JsonConverter<T>
     )
     {
         string text = reader.GetString() ?? string.Empty;
-        object? parsed = typeof(T).GetMethod("Parse", [typeof(string)])!.Invoke(null, [text]);
 
-        return (T)parsed!;
+        try
+        {
+            object? parsed = typeof(T).GetMethod("Parse", [typeof(string)])!.Invoke(null, [text]);
+            return (T)parsed!;
+        }
+        catch (TargetInvocationException exception)
+        {
+            throw new JsonException(
+                $"'{text}' is not a valid {typeToConvert.Name}.",
+                exception.InnerException
+            );
+        }
     }
 
     public override void Write(Utf8JsonWriter writer, T value, JsonSerializerOptions options)

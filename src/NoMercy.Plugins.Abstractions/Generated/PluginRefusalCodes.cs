@@ -33,7 +33,6 @@ public static class PluginRefusalCodes
     public const string RouteAccessDenied = "PLUGIN_ROUTE_ACCESS_DENIED";
     public const string AbiUnsupported = "PLUGIN_ABI_UNSUPPORTED";
     public const string ManifestInvalid = "PLUGIN_MANIFEST_INVALID";
-    public const string ManifestV2Deprecated = "PLUGIN_MANIFEST_V2_DEPRECATED";
     public const string DependencyMissing = "PLUGIN_DEPENDENCY_MISSING";
     public const string DependencyPaidNotOwned = "PLUGIN_DEPENDENCY_PAID_NOT_OWNED";
     public const string DependencyTierMismatch = "PLUGIN_DEPENDENCY_TIER_MISMATCH";
@@ -88,13 +87,13 @@ public static class PluginRefusalCodes
             "PLUGIN_HOST_SERVICES_REMOVED",
             PluginRefusalSeverity.Blocked,
             null,
-            "The plugin asked the host container for a service. Contract v3 has facades instead."
+            "The plugin asked the host container for a service. The contract has facades instead."
         ),
         new(
             "PLUGIN_EVENT_BUS_REMOVED",
             PluginRefusalSeverity.Blocked,
             "events.subscribe",
-            "The plugin used the raw event bus. Contract v3 has a topic list instead."
+            "The plugin used the raw event bus. The contract has a topic list instead."
         ),
         new(
             "PLUGIN_TOKEN_IN_URL",
@@ -155,12 +154,6 @@ public static class PluginRefusalCodes
             PluginRefusalSeverity.Blocked,
             null,
             "The manifest does not match the schema the server reads."
-        ),
-        new(
-            "PLUGIN_MANIFEST_V2_DEPRECATED",
-            PluginRefusalSeverity.Warning,
-            null,
-            "The plugin ships a contract v2 manifest, which the server still reads through the mapping table."
         ),
         new(
             "PLUGIN_DEPENDENCY_MISSING",

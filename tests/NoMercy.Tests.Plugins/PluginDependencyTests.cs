@@ -18,13 +18,13 @@ namespace NoMercy.Tests.Plugins;
 
 public class PluginDependencyTests
 {
-    private static PluginManifestV3 Manifest(
+    private static PluginManifest Manifest(
         string id,
         PluginTier tier,
         params PluginDependency[] dependencies
     )
     {
-        return new PluginManifestV3
+        return new PluginManifest
         {
             Id = PluginId.Parse(id),
             Name = id,

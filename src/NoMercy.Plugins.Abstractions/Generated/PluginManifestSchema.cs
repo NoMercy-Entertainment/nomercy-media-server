@@ -19,8 +19,8 @@ public static class PluginManifestSchema
     public const string Json = """
         {
           "$schema": "https://json-schema.org/draft/2020-12/schema",
-          "$id": "https://nomercy.tv/schemas/plugin-manifest-v3.json",
-          "title": "NoMercy plugin manifest v3",
+          "$id": "https://nomercy.tv/schemas/plugin-manifest.json",
+          "title": "NoMercy plugin manifest",
           "type": "object",
           "required": [
             "id",

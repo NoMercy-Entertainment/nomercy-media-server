@@ -269,7 +269,7 @@ public class PluginDiIntegrationTests : IDisposable
     /// <summary>
     /// A host that never calls <c>AddPluginLibraryAccess</c> or wires the
     /// encoder facade still gets a working platform - the resolve must not
-    /// throw, and every optional v2 facade gates to null exactly as it would
+    /// throw, and every optional facade gates to null exactly as it would
     /// when the plugin never declared the hook.
     /// </summary>
     [Fact]
@@ -305,10 +305,10 @@ public class PluginDiIntegrationTests : IDisposable
     }
 
     /// <summary>
-    /// A contract v3 facade this server build does not wire yet refuses and
-    /// names itself, rather than answering null.
+    /// A facade this server build does not wire yet refuses and names itself,
+    /// rather than answering null.
     /// <para>
-    /// The v2 members above answer null, and that taught an author to branch
+    /// The members above answer null, and that taught an author to branch
     /// and then quietly do nothing: the plugin looked idle, the owner saw no
     /// error, and nobody learned the server was the old one.
     /// </para>

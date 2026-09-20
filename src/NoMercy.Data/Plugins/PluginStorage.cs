@@ -19,7 +19,7 @@ using NoMercy.Storage;
 namespace NoMercy.Data.Plugins;
 
 /// <summary>
-/// The server side of <see cref="IPluginStorage" />.
+/// The server side of <see cref="IPluginFolderCatalog" />.
 ///
 /// <para>
 /// A location is one of the server's own folders, with the driver that reaches
@@ -31,7 +31,7 @@ namespace NoMercy.Data.Plugins;
 public class PluginStorage(
     IDbContextFactory<MediaContext> contextFactory,
     IStorageFactory storageFactory
-) : IPluginStorage
+) : IPluginFolderCatalog
 {
     public async Task<IReadOnlyList<PluginStorageLocation>> LocationsAsync(
         CancellationToken ct = default

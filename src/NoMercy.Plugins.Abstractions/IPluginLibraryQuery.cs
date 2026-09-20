@@ -31,6 +31,30 @@ namespace NoMercy.Plugins.Abstractions;
 /// </summary>
 public interface IPluginLibraryQuery
 {
+    /// <summary>
+    /// Offering a finished file to a library. Needs <c>library.import</c>;
+    /// reaching it without refuses rather than answering null, the rule this
+    /// server sets for every facade it added.
+    /// </summary>
+    IPluginLibraryImport Import =>
+        throw new PluginRefusedException(
+            PluginRefusalMessages.CapabilityNotDeclared(
+                "unknown plugin",
+                PluginCapabilityNames.LibraryImport,
+                "The plugin offered a file to a library."
+            )
+        );
+
+    /// <summary>Being told when a library changes, rather than polling it.</summary>
+    IPluginLibraryWatch Watch =>
+        throw new PluginRefusedException(
+            PluginRefusalMessages.CapabilityNotDeclared(
+                "unknown plugin",
+                PluginCapabilityNames.LibraryWatch,
+                "The plugin subscribed to a library."
+            )
+        );
+
     /// <summary>Every library the server has, of every type.</summary>
     Task<IReadOnlyList<PluginLibrary>> GetLibrariesAsync(CancellationToken ct = default);
 

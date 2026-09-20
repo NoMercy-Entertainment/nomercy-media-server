@@ -16,8 +16,8 @@ namespace NoMercy.Plugins.Manifest;
 public static class PluginDependencyResolver
 {
     public static PluginRefusal? Resolve(
-        PluginManifestV3 manifest,
-        IReadOnlyList<PluginManifestV3> installed
+        PluginManifest manifest,
+        IReadOnlyList<PluginManifest> installed
     )
     {
         string plugin = $"{manifest.Name} {manifest.Version}";
@@ -36,7 +36,7 @@ public static class PluginDependencyResolver
                 );
             }
 
-            PluginManifestV3? match = installed.FirstOrDefault(candidate =>
+            PluginManifest? match = installed.FirstOrDefault(candidate =>
                 candidate.Id == dependency.Id
             );
 

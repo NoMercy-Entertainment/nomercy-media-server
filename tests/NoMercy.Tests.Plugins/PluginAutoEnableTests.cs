@@ -37,7 +37,7 @@ public class PluginAutoEnableTests
     ) =>
         new()
         {
-            Id = PluginId,
+            Id = new PluginId(PluginId),
             Name = "Torrent Downloader",
             Description = "d",
             Version = "0.5.0",

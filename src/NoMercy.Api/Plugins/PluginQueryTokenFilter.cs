@@ -26,9 +26,10 @@ namespace NoMercy.Api.Plugins;
 /// Plugin routes ask for a token now, and Internet Radio's audio proxy puts
 /// that token in a query string. Refusing it here the day authorization
 /// arrived would stop radio playback on a server that works today, which
-/// design section 10 item 18 says is premature: v3 ships the replacement
-/// capabilities first. So a plugin on ABI 10.x is served and told once, and a
-/// plugin on ABI 11 is refused with the teaching message of section 3.9.
+/// design section 10 item 18 says is premature: the replacement capabilities
+/// ship first. So a plugin built against an earlier ABI is served and told
+/// once, and a plugin on this server's current ABI is refused with the
+/// teaching message of section 3.9.
 /// </para>
 /// </summary>
 public class PluginQueryTokenFilter(

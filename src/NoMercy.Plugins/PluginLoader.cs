@@ -155,7 +155,7 @@ internal sealed class PluginLoader(
                     verification.Trusted
                 );
 
-                _registry[manifest.Id] = new(malfunctionedInfo, null, null);
+                _registry[manifest.Id.Value] = new(malfunctionedInfo, null, null);
 
                 await _eventBus.PublishAsync(
                     new PluginErrorOccurredEvent
@@ -273,7 +273,7 @@ internal sealed class PluginLoader(
                             );
 
                             LoadedPlugin errorLoaded = new(errorInfo, null, loadContext, shadowDir);
-                            _registry[manifest.Id] = errorLoaded;
+                            _registry[manifest.Id.Value] = errorLoaded;
                             foundPlugin = true;
 
                             await _eventBus.PublishAsync(
@@ -320,7 +320,7 @@ internal sealed class PluginLoader(
                     }
 
                     LoadedPlugin loaded = new(info, storedInstance, loadContext, shadowDir);
-                    _registry[manifest.Id] = loaded;
+                    _registry[manifest.Id.Value] = loaded;
                     foundPlugin = true;
 
                     if (initialStatus == PluginStatus.Active)

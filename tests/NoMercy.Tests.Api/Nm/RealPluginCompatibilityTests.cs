@@ -14,7 +14,10 @@ namespace NoMercy.Tests.Api.NmComponents;
 /// </summary>
 public class RealPluginCompatibilityTests
 {
-    private static readonly JsonSerializerOptions Json = new() { PropertyNameCaseInsensitive = true };
+    private static readonly JsonSerializerOptions Json = new()
+    {
+        PropertyNameCaseInsensitive = true,
+    };
 
     private static PluginManifest Load(string name)
     {
@@ -96,13 +99,15 @@ public class RealPluginCompatibilityTests
         // describe that as comfortably as it describes a dozen pages.
         PluginUiMount mount = Load("torrent.plugin.json").Capabilities!.Ui!.Mounts[0];
 
-        PluginRouteTable table = new(new PluginRoute
-        {
-            Name = "settings",
-            Path = mount.Route,
-            Label = mount.Label,
-            Layout = PluginLayout.Form
-        });
+        PluginRouteTable table = new(
+            new PluginRoute
+            {
+                Name = "settings",
+                Path = mount.Route,
+                Label = mount.Label,
+                Layout = PluginLayout.Form,
+            }
+        );
 
         PluginRouteMatch? match = table.Resolve("/settings");
 

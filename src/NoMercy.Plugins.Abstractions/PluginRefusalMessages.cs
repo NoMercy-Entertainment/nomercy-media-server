@@ -20,19 +20,20 @@ public static class PluginRefusalMessages
             PluginRefusalCodes.HostServicesRemoved,
             plugin,
             $"The plugin asked the host container for {service}.",
-            "Contract v3 has no host container. Every route into the server is a facade on IPluginContext, so the owner can see and revoke it.",
+            "There is no host container. Every route into the server is a facade on IPluginContext, so the owner can see and revoke it.",
             "Use context.Metadata.QueryAsync (capability metadata.query). Docs: /nomercy-plugins/capabilities/metadata-query",
             PluginRefusalSeverity.Blocked
         );
     }
 
     /// <summary>
-    /// A plugin compiled against contract v2 calling a member v3 took away.
+    /// A plugin built against an older SDK calling a member that does not
+    /// exist in this server's build.
     /// <para>
     /// The runtime raises this the first time the method runs, not at load, so
     /// the plugin installs and enables and then fails on one route. Naming the
     /// member is the whole value: the exception alone says a method is missing
-    /// and not which contract it belonged to.
+    /// and not which SDK it belonged to.
     /// </para>
     /// </summary>
     public static PluginRefusal RemovedContractMember(string plugin, string missingMember)
@@ -40,9 +41,9 @@ public static class PluginRefusalMessages
         return new PluginRefusal(
             PluginRefusalCodes.HostServicesRemoved,
             plugin,
-            $"The plugin called a member contract v3 removed: {missingMember}",
-            "Contract v3 hands a plugin facades on IPluginContext instead of the host's own container and event bus, so the owner can see and revoke every route into the server.",
-            "Rebuild against NoMercy.Plugins.Abstractions 11.0 and replace the call with the facade for what it needed. Docs: /nomercy-plugins/migration/v2-to-v3",
+            $"The plugin called a member that does not exist: {missingMember}",
+            "This server hands a plugin facades on IPluginContext instead of the host's own container and event bus, so the owner can see and revoke every route into the server.",
+            $"Rebuild against NoMercy.Plugins.Abstractions {PluginAbi.Current} and replace the call with the facade for what it needed. Docs: /nomercy-plugins/migration",
             PluginRefusalSeverity.Blocked
         );
     }
@@ -168,6 +169,28 @@ public static class PluginRefusalMessages
             $"The plugin used {facade}, which this server does not offer.",
             "The contract the plugin was built against is newer than this server. The member exists on the contract and there is nothing behind it here.",
             "Update the server to a build that offers this facade, or declare a lower minimum server version in plugin.json and check context.Server.Version before using it. Docs: /nomercy-plugins/handbook/versioning",
+            PluginRefusalSeverity.Blocked
+        );
+    }
+
+    /// <summary>
+    /// A plugin using a facade its manifest never asked for.
+    /// <para>
+    /// The one builder every capability can use, so a new capability does not
+    /// need a new sentence written for it and cannot be given a docs link that
+    /// points at a page nobody wrote. The link is the generated one.
+    /// </para>
+    /// </summary>
+    public static PluginRefusal CapabilityNotDeclared(string plugin, string capability, string what)
+    {
+        PluginCapabilityDescriptor? descriptor = PluginCapabilityVocabulary.ByName(capability);
+
+        return new PluginRefusal(
+            PluginRefusalCodes.CapabilityNotDeclared,
+            plugin,
+            what,
+            $"The plugin did not declare {capability}, and the owner grants what the manifest asks for rather than what the code turns out to use.",
+            $"Declare {capability} in plugin.json and publish the new version. The owner is asked to approve it on update. Docs: {descriptor?.DocsUrl ?? "/nomercy-plugins/capabilities"}",
             PluginRefusalSeverity.Blocked
         );
     }

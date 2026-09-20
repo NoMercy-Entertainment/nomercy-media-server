@@ -129,7 +129,7 @@ public interface IPluginContext
     /// <summary>
     /// Sockets, discovery and port mapping, as far as the owner granted them.
     /// <para>
-    /// Non-nullable, unlike the v2 members above it. A null facade taught a
+    /// Non-nullable, unlike the members above it. A null facade taught a
     /// plugin author to branch and then quietly do nothing, so the plugin looked
     /// idle and the owner never learned a capability was missing. Reaching a
     /// member without the capability refuses instead, and the refusal names the
@@ -142,11 +142,12 @@ public interface IPluginContext
         );
 
     /// <summary>
-    /// Every place this plugin may read and write. Replaces the v2
-    /// <c>IPluginStorage</c>, which listed the server's folders and offered the
-    /// plugin's own as a bare path string.
+    /// Every place this plugin may read and write, as the owner granted them.
+    /// The server's own folder catalogue sits behind
+    /// <see cref="IPluginStorage.PathAsync" /> rather than in front of it, so
+    /// the grant is checked in one place.
     /// </summary>
-    IPluginStorageV3 Storage =>
+    IPluginStorage Storage =>
         throw new PluginRefusedException(
             PluginRefusalMessages.FacadeNotOnThisHost(PluginId.ToString(), "IPluginContext.Storage")
         );
@@ -161,6 +162,18 @@ public interface IPluginContext
     IPluginServerInfo Server =>
         throw new PluginRefusedException(
             PluginRefusalMessages.FacadeNotOnThisHost(PluginId.ToString(), "IPluginContext.Server")
+        );
+
+    /// <summary>
+    /// Asking the metadata providers the owner already configured, rather than
+    /// carrying a key of the plugin's own that outlives the grant.
+    /// </summary>
+    IPluginMetadata Metadata =>
+        throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(
+                PluginId.ToString(),
+                "IPluginContext.Metadata"
+            )
         );
 
     /// <summary>

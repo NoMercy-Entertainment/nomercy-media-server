@@ -11,5 +11,5 @@
 
 namespace NoMercy.Plugins.Abstractions;
 
-/// <summary>Task 19 of the SDK v3 contract plan gives this record its members.</summary>
+/// <summary>Reserved for the declarative UI spec; not yet populated.</summary>
 public sealed record PluginUiSpec;

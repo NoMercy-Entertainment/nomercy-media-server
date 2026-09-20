@@ -12,15 +12,14 @@
 namespace NoMercy.Plugins.Abstractions;
 
 /// <summary>
-/// The places the server can write, as the owner sees them.
+/// Every folder the server can write, and opening one of them.
 ///
 /// <para>
-/// A plugin that produces files had nowhere sanctioned to put them.
-/// <see cref="IPluginContext.DataFolderPath" /> is the plugin's own corner,
-/// which is right for a database and wrong for a four-gigabyte episode.
-/// Anything else was an absolute path the owner typed, unvalidated, on whatever
-/// machine the server happens to be. And a library on NFS or S3 was unreachable
-/// to a plugin altogether, though the server itself reaches it happily.
+/// The host's own catalogue, not a plugin facade. A plugin reaches a folder
+/// through <see cref="IPluginStorage.PathAsync" />, which checks the owner's
+/// grant and then asks this for the folder behind the id. Keeping the two
+/// apart is what lets the grant check live in one place instead of in every
+/// caller.
 /// </para>
 ///
 /// <para>
@@ -39,7 +38,7 @@ namespace NoMercy.Plugins.Abstractions;
 /// encoder. That is the kind of place this is for.
 /// </para>
 /// </summary>
-public interface IPluginStorage
+public interface IPluginFolderCatalog
 {
     /// <summary>Every place the server can write, as the owner sees them.</summary>
     Task<IReadOnlyList<PluginStorageLocation>> LocationsAsync(CancellationToken ct = default);

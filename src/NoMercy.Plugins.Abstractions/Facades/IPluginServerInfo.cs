@@ -29,7 +29,7 @@ public interface IPluginServerInfo
 
     /// <summary>
     /// The folders the owner granted this plugin, in the same shape
-    /// <see cref="IPluginStorageV3.PathAsync" /> takes an id for. Empty when the
+    /// <see cref="IPluginStorage.PathAsync" /> takes an id for. Empty when the
     /// owner granted none, which is a plugin's cue to ask rather than to fail.
     /// </summary>
     IReadOnlyList<PluginStorageLocation> GrantedPaths { get; }

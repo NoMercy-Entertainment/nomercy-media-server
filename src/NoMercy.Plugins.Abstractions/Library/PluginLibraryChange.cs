@@ -9,19 +9,21 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-namespace NoMercy.Events.Plugins;
+namespace NoMercy.Plugins.Abstractions;
 
-public sealed class PluginErrorOccurredEvent : EventBase, IEventExplainsItself
+/// <summary>What happened to one item in a library.</summary>
+public enum PluginLibraryChangeKind
 {
-    public override string Source => "PluginManager";
-
-    public required string PluginId { get; init; }
-    public required string PluginName { get; init; }
-    public required string ErrorMessage { get; init; }
-    public string? ExceptionType { get; init; }
-
-    public string Why =>
-        ExceptionType is null
-            ? $"{PluginName}: {ErrorMessage}"
-            : $"{PluginName}: {ErrorMessage} ({ExceptionType})";
+    Added,
+    Updated,
+    Removed,
 }
+
+/// <param name="Media">The item. Still meaningful for a removal, so a plugin can forget what it cached.</param>
+public sealed record PluginLibraryChange(
+    LibraryId Library,
+    MediaId Media,
+    PluginMediaKind Kind,
+    PluginLibraryChangeKind Change,
+    DateTimeOffset At
+);

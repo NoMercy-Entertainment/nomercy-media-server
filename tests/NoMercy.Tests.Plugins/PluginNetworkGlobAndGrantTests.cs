@@ -12,9 +12,9 @@
 using System.Net;
 using System.Net.Http.Headers;
 using FluentAssertions;
+using NoMercy.NmSystem.Configuration;
 using NoMercy.Plugins.Network;
 using Xunit;
-using NoMercy.NmSystem.Configuration;
 
 namespace NoMercy.Tests.Plugins;
 
@@ -184,7 +184,7 @@ public class PluginUserAgentHandlerTests
     [Theory]
     // A plugin name is author-supplied text, and a product token is a narrow
     // grammar. Anything outside it has to go or the header is malformed.
-    [InlineData("My Plugin (v2)", "NoMercyPlugin-My-Plugin-v2/1.2.3")]
+    [InlineData("My Plugin (Beta)", "NoMercyPlugin-My-Plugin-Beta/1.2.3")]
     [InlineData("Torrent/Downloader", "NoMercyPlugin-Torrent-Downloader/1.2.3")]
     [InlineData("naïve", "NoMercyPlugin-na-ve/1.2.3")]
     public void A_name_is_reduced_to_a_product_token(string name, string expected) =>

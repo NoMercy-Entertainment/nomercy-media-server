@@ -9,13 +9,21 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Text.Json.Serialization;
-
 namespace NoMercy.Plugins.Abstractions;
 
-/// <summary>One capability the manifest asks for, with the scope and the i18n key that explains why.</summary>
-public sealed record PluginCapabilityGrantRequest(
-    [property: JsonPropertyName("name")] string Name,
-    [property: JsonPropertyName("scope")] string? Scope,
-    [property: JsonPropertyName("reason")] string? Reason
-);
+/// <summary>
+/// The work a plugin may ask the server to do.
+/// <para>
+/// A word the host knows, never the name of a job type. Plugins used to reach
+/// the server's own job classes by name and drive them with reflection, which
+/// broke silently four times in three days: the class moved, the plugin kept
+/// compiling, and the work simply stopped happening.
+/// </para>
+/// </summary>
+public enum PluginJobKind
+{
+    Rescan,
+    FetchImages,
+    RefreshMetadata,
+    Encode,
+}
