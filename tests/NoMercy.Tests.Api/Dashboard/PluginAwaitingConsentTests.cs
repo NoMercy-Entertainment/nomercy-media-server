@@ -161,12 +161,23 @@ public class PluginAwaitingConsentTests
             Ulid pluginId,
             PluginCapabilities? capabilities,
             System.Version manifestVersion
-        ) =>
+        )
+        {
+            // Carries the per-capability answers over, the way the real store
+            // does. Dropping them here would let a test pass on a store that
+            // silently re-approves everything the owner said no to.
+            _granted.TryGetValue(pluginId, out PluginConsentGrant? existing);
+
             _granted[pluginId] = new PluginConsentGrant
             {
                 Capabilities = capabilities,
                 ManifestVersion = manifestVersion.ToString(),
+                ApprovedCapabilities =
+                    existing?.ApprovedCapabilities ?? new(StringComparer.Ordinal),
             };
+        }
+
+        public void Save(Ulid pluginId, PluginConsentGrant grant) => _granted[pluginId] = grant;
 
         public void Remove(Ulid pluginId) => _granted.Remove(pluginId);
     }
