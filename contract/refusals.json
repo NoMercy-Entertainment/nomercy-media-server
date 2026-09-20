@@ -280,5 +280,11 @@
     "severity": "blocked",
     "capability": "media.proxy",
     "summary": "A media link minted for one account was used by another."
+  },
+  {
+    "code": "PLUGIN_LIBRARY_IMPORT_DENIED",
+    "severity": "blocked",
+    "capability": "library.write",
+    "summary": "A plugin offered a file to a library it may not write to, or from a path outside one."
   }
 ]
