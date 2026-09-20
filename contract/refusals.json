@@ -214,5 +214,17 @@
     "severity": "blocked",
     "capability": "secrets",
     "summary": "A per-user secret was reached on a call with no resolved caller."
+  },
+  {
+    "code": "PLUGIN_REVOKED",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "This exact build was revoked, so it does not run."
+  },
+  {
+    "code": "PLUGIN_REVOCATION_LIST_STALE",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "The server has not reached the revocation list in over a week, so it cannot say a plugin is still allowed."
   }
 ]
