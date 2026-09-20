@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using System.Text.RegularExpressions;
+using NoMercy.Plugins.Capabilities;
 
 namespace NoMercy.Plugins.Network;
 
@@ -56,31 +57,15 @@ public class PluginNetworkAllowlistHandler : DelegatingHandler
     /// only way to talk to one was to leave.
     /// </para>
     /// </summary>
-    internal static Regex ToPattern(string host)
-    {
-        // Marked before escaping, with control characters no hostname contains
-        // and Regex.Escape leaves alone. Escaping first would turn both glob
-        // widths into the same "\*" and the distinction would be gone.
-        const string crossesDots = "";
-        const string withinLabel = "";
-
-        string marked = host.Replace("**", crossesDots).Replace("*", withinLabel);
-
-        string escaped = Regex
-            .Escape(marked)
-            .Replace(crossesDots, ".+")
-            .Replace(withinLabel, "[^.]+");
-
-        return new($"^{escaped}$", RegexOptions.IgnoreCase);
-    }
+    internal static Regex ToPattern(string host) => PluginScopeGlob.ToPattern(host);
 
     private bool IsAllowed(string host)
     {
-        if (_manifestHosts.Any(pattern => ToPattern(pattern).IsMatch(host)))
+        if (PluginScopeGlob.AnyMatches(_manifestHosts, host))
             return true;
 
         IReadOnlyList<string> granted = _grantedHosts?.Invoke() ?? [];
-        return granted.Any(pattern => ToPattern(pattern).IsMatch(host));
+        return PluginScopeGlob.AnyMatches(granted, host);
     }
 
     protected override Task<HttpResponseMessage> SendAsync(

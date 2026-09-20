@@ -372,6 +372,28 @@ public static class PluginRefusalMessages
     }
 
     /// <summary>
+    /// A capability the manifest declares that the owner has not approved.
+    /// <para>
+    /// Separate from not declaring it, because the fix is not the author's. A
+    /// message telling them to edit plugin.json would have them change a line
+    /// that is already correct and watch nothing happen.
+    /// </para>
+    /// </summary>
+    public static PluginRefusal CapabilityNotConsented(string plugin, string capability)
+    {
+        PluginCapabilityDescriptor? descriptor = PluginCapabilityVocabulary.ByName(capability);
+
+        return new PluginRefusal(
+            PluginRefusalCodes.CapabilityNotConsented,
+            plugin,
+            $"The plugin used {capability}, which the owner has not approved.",
+            "The manifest asks for it and nobody has said yes yet. A plugin runs on what the owner approved, not on what it asked for.",
+            $"Open the plugin's permissions page on this server and approve {capability}. Nothing needs to change in the plugin. Docs: {descriptor?.DocsUrl ?? "/nomercy-plugins/capabilities"}",
+            PluginRefusalSeverity.Blocked
+        );
+    }
+
+    /// <summary>
     /// A capability the plugin declared, used on something outside what the
     /// owner granted.
     /// <para>
