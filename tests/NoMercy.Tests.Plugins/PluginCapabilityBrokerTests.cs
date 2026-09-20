@@ -199,6 +199,19 @@ public class PluginCapabilityBrokerTests
 
         public PluginCapabilities? ConsentedCapabilities(Ulid pluginId) => null;
 
+        private readonly HashSet<string> _approved = new(StringComparer.Ordinal);
+
+        public void ApproveCapability(Ulid pluginId, string capability, Version manifestVersion) =>
+            _approved.Add(capability);
+
+        public void RevokeCapability(Ulid pluginId, string capability) =>
+            _approved.Remove(capability);
+
+        public bool IsApproved(Ulid pluginId, string capability) => _approved.Contains(capability);
+
+        public Version? ApprovedAt(Ulid pluginId, string capability) =>
+            _approved.Contains(capability) ? new Version(1, 0, 0) : null;
+
         public void GrantConsent(
             Ulid pluginId,
             PluginCapabilities? capabilities,

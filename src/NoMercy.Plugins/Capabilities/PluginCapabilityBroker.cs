@@ -61,7 +61,18 @@ public sealed class PluginCapabilityBroker(
                 )
             );
 
-        if (!consent.ConsentCoversCapabilities(pluginId, info.Capabilities, info.Version))
+        // This capability, not the plugin. An owner who approved the network
+        // and refused process spawning gets exactly that, and a plugin that
+        // later asks for more finds the new one pending rather than inheriting
+        // the earlier yes.
+        //
+        // The blanket check still runs first, so a plugin approved before
+        // consent was tracked per capability keeps working rather than being
+        // refused for answers nobody was ever asked.
+        if (
+            !consent.IsApproved(pluginId, capability)
+            && !consent.ConsentCoversCapabilities(pluginId, info.Capabilities, info.Version)
+        )
             return Refuse(pluginId, PluginRefusalMessages.CapabilityNotConsented(who, capability));
 
         // The scope is checked last so a value the owner granted after install

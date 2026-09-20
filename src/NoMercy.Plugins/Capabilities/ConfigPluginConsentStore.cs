@@ -29,6 +29,21 @@ public class PluginConsentGrant
     /// manifest; it has to be upgraded from the installed manifest first.
     /// </summary>
     public bool PredatesCapabilityTracking { get; init; }
+
+    /// <summary>
+    /// Which capabilities the owner said yes to, and the plugin version that
+    /// asked.
+    /// <para>
+    /// Per capability rather than one yes for the plugin, because an owner who
+    /// wants a radio plugin to reach the internet and not to spawn processes
+    /// had no way to say so: the only answers were everything or nothing, and
+    /// nothing meant the plugin did not run. The version is recorded per entry
+    /// so a plugin that later asks for more leaves the new one pending without
+    /// disturbing what was already approved.
+    /// </para>
+    /// </summary>
+    public Dictionary<string, string> ApprovedCapabilities { get; init; } =
+        new(StringComparer.Ordinal);
 }
 
 public class PluginConsentRecord
@@ -86,11 +101,27 @@ public class ConfigPluginConsentStore(IPluginConfiguration configuration) : IPlu
         PluginConsentRecord record = configuration.GetConfiguration<PluginConsentRecord>() ?? new();
 
         record.GrantedPluginIds.Remove(pluginId);
+        // Approvals already given are carried over. Replacing the record
+        // wholesale here turned an update into a silent re-approval of
+        // everything the owner had said no to.
+        record.ConsentGrants.TryGetValue(Key(pluginId), out PluginConsentGrant? existing);
+
         record.ConsentGrants[Key(pluginId)] = new PluginConsentGrant
         {
             Capabilities = capabilities,
             ManifestVersion = manifestVersion.ToString(),
+            ApprovedCapabilities = existing?.ApprovedCapabilities ?? new(StringComparer.Ordinal),
         };
+
+        configuration.SaveConfiguration(record);
+    }
+
+    public void Save(Ulid pluginId, PluginConsentGrant grant)
+    {
+        PluginConsentRecord record = configuration.GetConfiguration<PluginConsentRecord>() ?? new();
+
+        record.GrantedPluginIds.Remove(pluginId);
+        record.ConsentGrants[Key(pluginId)] = grant;
 
         configuration.SaveConfiguration(record);
     }
