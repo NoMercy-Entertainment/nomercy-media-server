@@ -211,10 +211,35 @@ public class PluginUiController(
     }
 
     [HttpGet("api/v{version:apiVersion}/plugins/{id:ulid}/view")]
-    public async Task<IActionResult> View(
+    public Task<IActionResult> View(
         Ulid id,
         [FromQuery] string? route,
         [FromQuery] string? surface,
+        CancellationToken ct
+    ) => Render(id, route, surface, input: null, ct);
+
+    /// <summary>
+    /// The same view, with what the caller typed.
+    /// <para>
+    /// A sibling rather than a flag on the GET: a form submission has a body,
+    /// and a GET carrying one is a request caches and proxies are entitled to
+    /// treat as the plain page.
+    /// </para>
+    /// </summary>
+    [HttpPost("api/v{version:apiVersion}/plugins/{id:ulid}/view")]
+    public Task<IActionResult> Submit(
+        Ulid id,
+        [FromQuery] string? route,
+        [FromQuery] string? surface,
+        [FromBody] PluginViewInputDto? input,
+        CancellationToken ct
+    ) => Render(id, route, surface, input, ct);
+
+    private async Task<IActionResult> Render(
+        Ulid id,
+        string? route,
+        string? surface,
+        PluginViewInputDto? input,
         CancellationToken ct
     )
     {
@@ -249,6 +274,10 @@ public class PluginUiController(
             // plugin branching on it would hit its own default and serve the
             // desktop shape to a television, which looks like a plugin bug.
             Surface = PluginSurface.IsKnown(surface) ? surface! : PluginSurface.Web,
+            // Empty for a page that was simply opened, so a plugin written
+            // before forms existed behaves exactly as it did.
+            Values = input?.Values ?? new Dictionary<string, object?>(),
+            Action = input?.Action,
         };
 
         try

@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace NoMercy.Plugins.Abstractions;
@@ -47,4 +48,60 @@ public class PluginViewRequest
     /// </summary>
     [JsonPropertyName("surface")]
     public string Surface { get; init; } = PluginSurface.Web;
+
+    /// <summary>
+    /// What the caller typed, keyed by the field the plugin named. Empty for a
+    /// plain page view, so a plugin written before forms existed behaves
+    /// exactly as it did.
+    /// <para>
+    /// Untrusted: these are values a person entered, reaching plugin code.
+    /// </para>
+    /// </summary>
+    [JsonPropertyName("values")]
+    public IReadOnlyDictionary<string, object?> Values { get; init; } =
+        new Dictionary<string, object?>();
+
+    /// <summary>
+    /// Which button was pressed, when the view offered more than one. Null for
+    /// a page that was simply opened.
+    /// </summary>
+    [JsonPropertyName("action")]
+    public string? Action { get; init; }
+
+    /// <summary>
+    /// One value, or null when the caller sent nothing for that field. Typed
+    /// rather than cast at the call site: a number arrives from JSON as a
+    /// JsonElement, and every plugin unwrapping that by hand is every plugin
+    /// getting it wrong in its own way.
+    /// </summary>
+    public T? Value<T>(string field)
+    {
+        if (!Values.TryGetValue(field, out object? raw) || raw is null)
+            return default;
+
+        if (raw is JsonElement element)
+        {
+            try
+            {
+                return element.Deserialize<T>();
+            }
+            catch (JsonException)
+            {
+                return default;
+            }
+        }
+
+        // Hands back what it was given when the shape already matches, which
+        // is why there is no fast path above it: one would be a second way of
+        // saying the same thing, and neither could then be proven.
+        try
+        {
+            return (T)Convert.ChangeType(raw, typeof(T));
+        }
+        catch (Exception exception)
+            when (exception is InvalidCastException or FormatException or OverflowException)
+        {
+            return default;
+        }
+    }
 }
