@@ -15,6 +15,7 @@
     "tier": { "type": "string", "enum": ["free", "paid"] },
     "assembly": { "type": "string", "minLength": 1 },
     "entry": { "type": "string", "minLength": 1 },
+    "author": { "type": "string" },
     "license": { "type": "string" },
     "projectUrl": { "type": "string" },
     "docs": { "type": "string" },
@@ -22,6 +23,7 @@
     "translations": { "type": "object" },
     "capabilities": { "type": "array", "items": { "$ref": "#/$defs/capabilityGrant" } },
     "dependencies": { "type": "array", "items": { "type": "object" } },
+    "settings": { "type": "array", "items": { "type": "object" } },
     "ui": { "type": "object" },
     "signature": { "$ref": "#/$defs/signature" }
   },
