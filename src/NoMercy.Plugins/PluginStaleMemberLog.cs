@@ -56,6 +56,33 @@ public static class PluginStaleMemberLog
     }
 
     /// <summary>
+    /// The same failure written for somewhere that carries a message rather
+    /// than a log call: the refusal when a plugin reached a member the contract
+    /// does not have, and the exception's own message otherwise.
+    /// <para>
+    /// The torrent downloader on a real server produced <c>Method not found:
+    /// 'NoMercy.Events.IEventBus IPluginContext.get_EventBus()'</c>. Accurate
+    /// and useless: it names a getter rather than the capability to declare
+    /// instead, and it reads as a server fault rather than a plugin built
+    /// against something older.
+    /// </para>
+    /// </summary>
+    public static string Describe(Ulid pluginId, Exception exception)
+    {
+        MissingMemberException? missing = Find(exception);
+
+        if (missing is null)
+            return exception.Message;
+
+        PluginRefusal refusal = PluginRefusalMessages.RemovedContractMember(
+            pluginId.ToString(),
+            missing.Message
+        );
+
+        return $"{refusal.What} {refusal.Why} {refusal.Fix}";
+    }
+
+    /// <summary>
     /// A missing member is the innermost thing that went wrong, and the host
     /// calls a plugin through delegates and tasks that wrap it on the way out.
     /// </summary>
