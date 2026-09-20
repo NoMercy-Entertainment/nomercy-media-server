@@ -54,6 +54,10 @@ public class PluginLoaderFailureFixtureTests : IDisposable
     private static readonly Ulid InitializeThrowsDisposeSucceedsPluginId = Ulid.Parse(
         "01SAMPLE000000000000000004"
     );
+    private static readonly Ulid ReachesARemovedMemberPluginId = Ulid.Parse(
+        "01SAMPLE000000000000000005"
+    );
+    private static readonly Ulid StaleMemberPluginId = Ulid.Parse("01SAMPLE000000000000000006");
     private static readonly Ulid TypeSignatureDependsOnMissingAssemblyPluginId = Ulid.Parse(
         "01SAMPLE000000000000000005"
     );
@@ -396,6 +400,110 @@ public class PluginLoaderFailureFixtureTests : IDisposable
             .Contain(e => e.PluginId == InitializeThrowsPluginId.ToString())
             .And.Contain(e => e.PluginId == InitializeThrowsDisposeSucceedsPluginId.ToString())
             .And.Contain(e => e.PluginId == Ulid.Empty.ToString());
+    }
+
+    /// <summary>
+    /// The path a server actually boots through: a plugin directory with a
+    /// manifest, discovered and loaded by <c>LoadAllAsync</c>. This is the site
+    /// that fired on the Proxmox box, and it is a different catch from the one
+    /// the assembly-only load reaches.
+    /// </summary>
+    [Fact]
+    public async Task LoadAllAsync_RemovedMember_ReportsTheRefusalFromTheManifestPath()
+    {
+        // Its own assembly on purpose. The manifest path walks every plugin
+        // type in the assembly it names, so a fixture sharing one with other
+        // failing plugins reports whichever fails first and pins nothing.
+        string binDir = GetFailuresPluginBinDir()
+            .Replace("NoMercy.Plugin.Samples.Failures", "NoMercy.Plugin.Samples.StaleMember");
+
+        string pluginDir = Path.Combine(_tempPluginsDir, "StaleMember");
+        Directory.CreateDirectory(pluginDir);
+
+        foreach (string file in Directory.EnumerateFiles(binDir, "*.dll"))
+            File.Copy(file, Path.Combine(pluginDir, Path.GetFileName(file)), overwrite: true);
+
+        await File.WriteAllTextAsync(
+            Path.Combine(pluginDir, "plugin.json"),
+            $$"""
+            {
+              "id": "{{StaleMemberPluginId}}",
+              "name": "StaleMember",
+              "description": "Reaches a member the contract removed",
+              "version": "0.6.5",
+              "assembly": "NoMercy.Plugin.Samples.StaleMember.dll",
+              "autoEnabled": true
+            }
+            """
+        );
+
+        List<PluginErrorOccurredEvent> errors = [];
+        _eventBus.Subscribe<PluginErrorOccurredEvent>(
+            (evt, _) =>
+            {
+                errors.Add(evt);
+                return Task.CompletedTask;
+            }
+        );
+
+        await _manager.LoadAllAsync();
+
+        errors
+            .Should()
+            .Contain(
+                e => e.ErrorMessage.Contains("get_EventBus") && e.ErrorMessage.Contains("11.0"),
+                "the manifest path is the one a server boots through"
+            );
+    }
+
+    /// <summary>
+    /// The loader's own initialization site, staged from a real assembly on
+    /// disk rather than a hand-built exception context.
+    /// <para>
+    /// This is the failure a real server produced at boot. Reporting
+    /// <c>Method not found: 'IPluginContext.get_EventBus()'</c> names a
+    /// compiler-generated getter, not the capability to declare instead, and
+    /// reads as a server fault rather than a plugin built against something
+    /// older.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public async Task LoadPluginAssemblyAsync_RemovedMember_ReportsTheRefusalAndNotTheGetter()
+    {
+        string dllPath = StageFailuresPluginDll();
+        List<PluginErrorOccurredEvent> errors = [];
+        _eventBus.Subscribe<PluginErrorOccurredEvent>(
+            (evt, _) =>
+            {
+                errors.Add(evt);
+                return Task.CompletedTask;
+            }
+        );
+
+        await _manager.LoadPluginAssemblyAsync(dllPath);
+
+        PluginErrorOccurredEvent reported = errors
+            .Should()
+            .ContainSingle(e => e.PluginId == ReachesARemovedMemberPluginId.ToString())
+            .Which;
+
+        reported.ErrorMessage.Should().Contain("get_EventBus", "the author needs the member named");
+        reported
+            .ErrorMessage.Should()
+            .Contain("11.0", "and the version to rebuild against, which the runtime never says");
+        reported.ErrorMessage.Should().Contain("/nomercy-plugins/migration");
+
+        // The plugin beside it in the same assembly fails for its own reason and
+        // must keep its own message. A blanket "rebuild against 11.0" on every
+        // failure would send an author chasing a contract change that is not
+        // there.
+        PluginErrorOccurredEvent ordinary = errors
+            .Should()
+            .ContainSingle(e => e.PluginId == InitializeThrowsPluginId.ToString())
+            .Which;
+
+        ordinary.ErrorMessage.Should().Contain("initialize boom");
+        ordinary.ErrorMessage.Should().NotContain("11.0");
     }
 
     [Fact]

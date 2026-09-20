@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+  </PropertyGroup>
+
+  <!-- Opt out of the shared test infrastructure. This is a plugin project —
+       it must not depend on server internals. -->
+  <ItemGroup>
+    <Compile Remove="..\TestEnvironmentSetup.cs" />
+    <Compile Remove="..\SharedTestParallelization.cs" />
+    <ProjectReference Remove="..\..\src\NoMercy.NmSystem\NoMercy.NmSystem.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\NoMercy.Plugins.Abstractions\NoMercy.Plugins.Abstractions.csproj" />
+  </ItemGroup>
+</Project>

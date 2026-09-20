@@ -56,5 +56,9 @@
       Include="..\NoMercy.Plugin.Samples.ManifestFailure\NoMercy.Plugin.Samples.ManifestFailure.csproj"
       ReferenceOutputAssembly="false"
     />
+    <ProjectReference
+      Include="..\NoMercy.Plugin.Samples.StaleMember\NoMercy.Plugin.Samples.StaleMember.csproj"
+      ReferenceOutputAssembly="false"
+    />
   </ItemGroup>
 </Project>
