@@ -40,6 +40,7 @@ public static class PluginRefusalCodes
     public const string ContractVersionMismatch = "PLUGIN_CONTRACT_VERSION_MISMATCH";
     public const string UserScopeRequired = "PLUGIN_USER_SCOPE_REQUIRED";
     public const string UserDataEgress = "PLUGIN_USER_DATA_EGRESS";
+    public const string UserDataScopeRequired = "PLUGIN_USER_DATA_SCOPE_REQUIRED";
     public const string SettingsFieldReadOnly = "PLUGIN_SETTINGS_FIELD_READ_ONLY";
     public const string SecretFieldInSettings = "PLUGIN_SECRET_FIELD_IN_SETTINGS";
     public const string QuotaDiskExceeded = "PLUGIN_QUOTA_DISK_EXCEEDED";
@@ -214,6 +215,12 @@ public static class PluginRefusalCodes
             PluginRefusalSeverity.Blocked,
             null,
             "The plugin sent user data to a host outside the server."
+        ),
+        new(
+            "PLUGIN_USER_DATA_SCOPE_REQUIRED",
+            PluginRefusalSeverity.Blocked,
+            null,
+            "A capability that reads a person's own data was called with nobody asking."
         ),
         new(
             "PLUGIN_SETTINGS_FIELD_READ_ONLY",

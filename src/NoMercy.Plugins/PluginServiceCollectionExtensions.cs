@@ -38,6 +38,7 @@ using NoMercy.Plugins.Quotas;
 using NoMercy.Plugins.Revocation;
 using NoMercy.Plugins.Sideload;
 using NoMercy.Plugins.Telemetry;
+using NoMercy.Plugins.UserData;
 using NoMercy.Plugins.Verification;
 using NoMercy.Plugins.Watchdog;
 using NoMercy.Storage;
@@ -208,6 +209,12 @@ public static class PluginServiceCollectionExtensions
                 sp.GetRequiredService<IPluginCatalogue>(),
                 sp.GetRequiredService<IPluginManifestSource>()
             )
+        );
+
+        // One folder per person per plugin, which is what makes handing
+        // somebody their data and removing it possible at all.
+        services.AddSingleton<PluginUserDataExporter>(
+            new PluginUserDataExporter(Path.Combine(pluginsPath, "data"))
         );
 
         // Software on the owner's network that cannot sign in. Kept on disk,

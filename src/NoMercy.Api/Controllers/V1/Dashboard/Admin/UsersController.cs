@@ -26,6 +26,7 @@ using NoMercy.Database.Models.Users;
 using NoMercy.Events;
 using NoMercy.Events.Users;
 using NoMercy.Plugins.Guests;
+using NoMercy.Plugins.UserData;
 
 namespace NoMercy.Api.Controllers.V1.Dashboard.Admin;
 
@@ -37,7 +38,8 @@ namespace NoMercy.Api.Controllers.V1.Dashboard.Admin;
 public class UsersController(
     IUserRepository userRepository,
     IEventBus eventBus,
-    PluginGuestInstaller guestInstaller
+    PluginGuestInstaller guestInstaller,
+    PluginUserDataExporter pluginUserData
 ) : BaseController
 {
     [HttpGet]
@@ -126,6 +128,11 @@ public class UsersController(
         // guest's install was never the server's, so leaving it behind would
         // keep someone's data on a machine they no longer have an account on.
         await guestInstaller.PurgeForAsync(id, ct);
+
+        // And what every other plugin on this server kept about them. One
+        // plugin left holding somebody's history is the same failure as all
+        // of them, and the person who left cannot check.
+        pluginUserData.PurgeEverywhere(id);
 
         await userRepository.DeleteAsync(id);
 
