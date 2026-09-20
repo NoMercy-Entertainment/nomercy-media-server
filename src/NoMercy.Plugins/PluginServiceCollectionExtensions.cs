@@ -20,8 +20,11 @@ using NoMercy.Encoder.Pipeline;
 using NoMercy.Events;
 using NoMercy.Plugins.Abstractions;
 using NoMercy.Plugins.Capabilities;
+using NoMercy.Plugins.Entitlements;
 using NoMercy.Plugins.Hooks;
 using NoMercy.Plugins.Hub;
+using NoMercy.Plugins.Offline;
+using NoMercy.Plugins.Revocation;
 using NoMercy.Plugins.Verification;
 using NoMercy.Storage;
 using NoMercy.Storage.Drivers.Local;
@@ -59,6 +62,21 @@ public static class PluginServiceCollectionExtensions
                 .Get<Dictionary<string, string>>()
                 ?? []
         ));
+
+        // The two answers a server needs about a plugin before it runs: is
+        // this build still allowed, and may this owner run it. Both are kept
+        // on disk so a server that starts with no connection still knows what
+        // it was last told.
+        services.AddSingleton<IPluginRevocationStore>(new PluginRevocationStore());
+        services.AddSingleton<IPluginEntitlementStore>(new PluginEntitlementStore());
+        services.AddSingleton<PluginOfflineBundleImporter>(sp =>
+            new(
+                sp.GetRequiredService<IPluginEntitlementStore>(),
+                sp.GetRequiredService<IPluginRevocationStore>(),
+                sp.GetRequiredService<IPluginTrustedKeys>(),
+                sp.GetService<TimeProvider>() ?? TimeProvider.System
+            )
+        );
 
         services.AddSingleton<IPluginVerifier>(sp => new PluginVerifier([
             new AbiVerificationStage(),

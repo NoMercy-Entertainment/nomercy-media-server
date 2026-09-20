@@ -56,6 +56,8 @@ public static class PluginRefusalCodes
     public const string RevocationListStale = "PLUGIN_REVOCATION_LIST_STALE";
     public const string EntitlementMissing = "PLUGIN_ENTITLEMENT_MISSING";
     public const string EntitlementDormant = "PLUGIN_ENTITLEMENT_DORMANT";
+    public const string OfflineBundleInvalid = "PLUGIN_OFFLINE_BUNDLE_INVALID";
+    public const string OfflineBundleExpired = "PLUGIN_OFFLINE_BUNDLE_EXPIRED";
 
     public static IReadOnlyList<PluginRefusalDescriptor> All { get; } =
     [
@@ -298,6 +300,18 @@ public static class PluginRefusalCodes
             PluginRefusalSeverity.Blocked,
             null,
             "The server could not confirm a purchase for over a week, so the plugin is installed and not running."
+        ),
+        new(
+            "PLUGIN_OFFLINE_BUNDLE_INVALID",
+            PluginRefusalSeverity.Blocked,
+            null,
+            "An offline bundle that NoMercy did not sign, or that was edited after signing."
+        ),
+        new(
+            "PLUGIN_OFFLINE_BUNDLE_EXPIRED",
+            PluginRefusalSeverity.Blocked,
+            null,
+            "An offline bundle older than the validity it was issued with."
         ),
     ];
 
