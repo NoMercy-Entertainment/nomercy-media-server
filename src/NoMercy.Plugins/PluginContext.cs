@@ -44,6 +44,16 @@ public class PluginContext : IPluginContext
     public IPluginEncoder? Encoder { get; }
 
     private readonly IPluginMedia? _media;
+    private readonly IPluginLibraryImport? _libraryImport;
+
+    public IPluginLibraryImport LibraryImport =>
+        _libraryImport
+        ?? throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(
+                PluginId.ToString(),
+                "IPluginContext.LibraryImport"
+            )
+        );
 
     /// <summary>
     /// Refused rather than null when this host carries none of it, so a plugin
@@ -106,10 +116,12 @@ public class PluginContext : IPluginContext
         IPluginAudioTools? audioTools = null,
         IPluginDerivedAudio? derivedAudio = null,
         IPluginMusicAnalysisWriter? musicAnalysisWriter = null,
-        IPluginMedia? media = null
+        IPluginMedia? media = null,
+        IPluginLibraryImport? libraryImport = null
     )
     {
         _media = media;
+        _libraryImport = libraryImport;
         Encoder = encoder;
         Jobs = jobs;
         AudioTools = audioTools;

@@ -73,6 +73,19 @@ public interface IPluginContext
     IPluginLibraryWriter? LibraryWriter { get; }
 
     /// <summary>
+    /// Where a finished download or recording is handed over. Refused rather
+    /// than null when this host does not carry it, so a plugin reaching for it
+    /// reads why instead of a NullReferenceException with no name on it.
+    /// </summary>
+    IPluginLibraryImport LibraryImport =>
+        throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(
+                PluginId.ToString(),
+                "IPluginContext.LibraryImport"
+            )
+        );
+
+    /// <summary>
     /// Asking the server to encode a file the plugin has staged.
     /// <para>
     /// Present only when the plugin declared

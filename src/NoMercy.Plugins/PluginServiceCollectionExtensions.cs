@@ -26,6 +26,7 @@ using NoMercy.Plugins.Entitlements;
 using NoMercy.Plugins.Guests;
 using NoMercy.Plugins.Hooks;
 using NoMercy.Plugins.Hub;
+using NoMercy.Plugins.Library;
 using NoMercy.Plugins.Media;
 using NoMercy.Plugins.Offline;
 using NoMercy.Plugins.Revocation;
@@ -295,7 +296,11 @@ public static class PluginServiceCollectionExtensions
             // what a plugin declared, that answer comes from the manager, and
             // the manager is built with this context factory. Resolving it
             // when a plugin context is actually made breaks the ring.
-            mediaFactory: () => sp.GetService<IPluginMediaFactory>()
+            mediaFactory: () => sp.GetService<IPluginMediaFactory>(),
+            // Optional like the rest: a host that never wired media processing
+            // gives a plugin a LibraryImport that refuses by name rather than
+            // a resolve that fails for every plugin on every host.
+            libraryScanner: sp.GetService<IPluginLibraryScanner>()
         ));
 
         services.AddSingleton<IPluginManager>(sp =>

@@ -15,6 +15,7 @@ using NoMercy.Events;
 using NoMercy.Plugins.Abstractions;
 using NoMercy.Plugins.Capabilities;
 using NoMercy.Plugins.Hub;
+using NoMercy.Plugins.Library;
 using NoMercy.Storage;
 
 namespace NoMercy.Plugins;
@@ -38,7 +39,8 @@ public class PluginContextFactory(
     IPluginAudioToolsFactory? audioToolsFactory = null,
     IPluginDerivedAudio? derivedAudio = null,
     IPluginMusicAnalysisWriterFactory? analysisWriterFactory = null,
-    Func<IPluginMediaFactory?>? mediaFactory = null
+    Func<IPluginMediaFactory?>? mediaFactory = null,
+    IPluginLibraryScanner? libraryScanner = null
 ) : IPluginContextFactory
 {
     public IPluginContext Create(
@@ -117,7 +119,13 @@ public class PluginContextFactory(
             audioToolsFacade,
             derivedAudioFacade,
             analysisWriter,
-            mediaFactory?.Invoke()?.CreateFor(pluginId)
+            mediaFactory?.Invoke()?.CreateFor(pluginId),
+            // Only when the plugin holds a writer: importing is a write, and
+            // one without the other is a door with no lock on it.
+            writer is null
+            || libraryScanner is null
+                ? null
+                : new PluginLibraryImport(pluginId, writer, libraryScanner, logger)
         );
     }
 }

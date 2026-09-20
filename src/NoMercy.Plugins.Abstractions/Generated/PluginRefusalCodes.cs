@@ -63,6 +63,7 @@ public static class PluginRefusalCodes
     public const string AccessDenied = "PLUGIN_ACCESS_DENIED";
     public const string MediaTicketExpired = "PLUGIN_MEDIA_TICKET_EXPIRED";
     public const string MediaTicketUserMismatch = "PLUGIN_MEDIA_TICKET_USER_MISMATCH";
+    public const string LibraryImportDenied = "PLUGIN_LIBRARY_IMPORT_DENIED";
 
     public static IReadOnlyList<PluginRefusalDescriptor> All { get; } =
     [
@@ -347,6 +348,12 @@ public static class PluginRefusalCodes
             PluginRefusalSeverity.Blocked,
             "media.proxy",
             "A media link minted for one account was used by another."
+        ),
+        new(
+            "PLUGIN_LIBRARY_IMPORT_DENIED",
+            PluginRefusalSeverity.Blocked,
+            "library.write",
+            "A plugin offered a file to a library it may not write to, or from a path outside one."
         ),
     ];
 
