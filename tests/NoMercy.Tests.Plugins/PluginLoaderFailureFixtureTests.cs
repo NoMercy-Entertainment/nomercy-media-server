@@ -354,13 +354,14 @@ public class PluginLoaderFailureFixtureTests : IDisposable
     }
 
     [Fact]
-    public async Task GetPluginsOfType_DisabledPluginWithSurvivingInstance_IsExcluded()
+    public async Task GetPluginsOfType_DisabledPlugin_IsExcludedAndItsNeighborIsNot()
     {
-        // DisablePluginAsync disposes the instance but the LoadedPlugin record
-        // (and its Instance reference) is immutable and stays in the registry —
-        // this reproduces "type matches but status is no longer Active" without
-        // needing a second fixture, isolating the `&& Info.Status == Active`
-        // half of the predicate from the `is T` half.
+        // Disabling one plugin removes THAT plugin from the query and leaves
+        // the other one, which is why the surviving id is asserted rather than
+        // the count: a disable that took both down would still leave one row
+        // if the wrong plugin were the casualty, and a count check sails past
+        // that. The test above isolates the status half of the predicate;
+        // this drives the whole disable path end to end.
         string dllPath = StageFailuresPluginDll();
         await _manager.LoadPluginAssemblyAsync(dllPath);
         await _manager.DisablePluginAsync(ServiceRegistratorPluginId);
