@@ -174,10 +174,7 @@ public class PluginServiceRegistrationTests : IDisposable
     public void RegisterPluginServicesFromManifests_NonExistentDir_DoesNotThrow()
     {
         IServiceCollection services = new ServiceCollection();
-        string missing = Path.Combine(
-            Path.GetTempPath(),
-            "no-such-" + Ulid.NewUlid().ToString()
-        );
+        string missing = Path.Combine(Path.GetTempPath(), "no-such-" + Ulid.NewUlid().ToString());
 
         Action act = () => services.RegisterPluginServicesFromManifests(missing);
 
@@ -272,13 +269,14 @@ public class PluginServiceRegistrationTests : IDisposable
     }
 
     [Fact]
-    public void RegisterPluginServicesFromManifests_FailuresPlugin_DiscoversAndRegistersServiceRegistrator()
+    public void RegisterPluginServicesFromManifests_FailuresPlugin_PutsNothingInTheHostContainer()
     {
-        // The Failures fixture assembly contains a healthy IPluginServiceRegistrator
-        // (ServiceRegistratorPlugin), a non-instantiable abstract one
-        // (AbstractServiceRegistratorBase, which must be found but never
-        // constructed), and two IPlugin-only types that must not match the
-        // IPluginServiceRegistrator filter at all.
+        // The Failures fixture assembly carries a healthy
+        // IPluginServiceRegistrator, and this pass used to run it into the
+        // host's own collection after loading the assembly a second time in a
+        // throwaway load context. A plugin's services are now its own: they go
+        // into the container PluginInstanceFactory.ChildContainer builds at
+        // load, where no other plugin and not the host can reach them.
         string pluginDir = Path.Combine(_tempPluginsDir, "Failures");
         StageFailuresPlugin(pluginDir);
 
@@ -286,14 +284,8 @@ public class PluginServiceRegistrationTests : IDisposable
 
         services.RegisterPluginServicesFromManifests(_tempPluginsDir);
 
-        // The registered service's Type was loaded through a transient,
-        // already-unloaded PluginLoadContext — comparing by CLR type identity
-        // (or resolving it back out of a ServiceProvider) is unsafe across that
-        // ALC boundary. Comparing the descriptor's type NAME is the correct,
-        // ALC-agnostic way to prove RegisterServices actually ran.
-        services.Should().ContainSingle();
-        services[0]
-            .ServiceType.FullName.Should()
-            .Be("NoMercy.Plugin.Samples.Failures.FailuresPluginMarker");
+        services
+            .Should()
+            .BeEmpty("a plugin's registrations belong to the plugin, not to the server");
     }
 }

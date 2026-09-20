@@ -249,6 +249,11 @@ internal sealed class PluginLifecycleManager(
 
         loaded.Instance?.Dispose();
 
+        // Before the load context goes: a disposable the plugin registered is
+        // a type whose assembly is about to be unloaded, and disposing it after
+        // that is a crash in the finalizer.
+        loaded.ServiceProvider?.Dispose();
+
         if (loaded.LoadContext is not null)
         {
             _assemblyTracker?.TrackUnload(
@@ -313,6 +318,11 @@ internal sealed class PluginLifecycleManager(
         _registry.TryRemove(pluginId, out _);
 
         loaded.Instance?.Dispose();
+
+        // Before the load context goes: a disposable the plugin registered is
+        // a type whose assembly is about to be unloaded, and disposing it after
+        // that is a crash in the finalizer.
+        loaded.ServiceProvider?.Dispose();
 
         if (loaded.LoadContext is not null)
         {

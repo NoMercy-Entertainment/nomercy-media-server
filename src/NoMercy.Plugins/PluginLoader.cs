@@ -220,9 +220,21 @@ internal sealed class PluginLoader(
 
                 bool foundPlugin = false;
 
+                // The plugin's own container, built from the assembly that is
+                // already loaded. Null when it registers nothing, which is most
+                // of them, and then the host provider is what its constructor
+                // is given.
+                PluginServiceProvider? pluginServices = PluginInstanceFactory.ChildContainer(
+                    _serviceProvider,
+                    assembly
+                );
+
                 foreach (Type pluginType in pluginTypes)
                 {
-                    IPlugin? instance = PluginInstanceFactory.Create(_serviceProvider, pluginType);
+                    IPlugin? instance = PluginInstanceFactory.Create(
+                        pluginServices ?? _serviceProvider,
+                        pluginType
+                    );
                     if (instance is null)
                     {
                         continue;
@@ -321,7 +333,13 @@ internal sealed class PluginLoader(
                                 verification.Trusted
                             );
 
-                            LoadedPlugin errorLoaded = new(errorInfo, null, loadContext, shadowDir);
+                            LoadedPlugin errorLoaded = new(
+                                errorInfo,
+                                null,
+                                loadContext,
+                                shadowDir,
+                                pluginServices
+                            );
                             _registry[manifest.Id.Value] = errorLoaded;
                             foundPlugin = true;
 
@@ -372,7 +390,13 @@ internal sealed class PluginLoader(
                         instance.Dispose();
                     }
 
-                    LoadedPlugin loaded = new(info, storedInstance, loadContext, shadowDir);
+                    LoadedPlugin loaded = new(
+                        info,
+                        storedInstance,
+                        loadContext,
+                        shadowDir,
+                        pluginServices
+                    );
                     _registry[manifest.Id.Value] = loaded;
                     foundPlugin = true;
 
@@ -392,6 +416,9 @@ internal sealed class PluginLoader(
 
                 if (!foundPlugin)
                 {
+                    // Nothing holds the container now, and it must go before
+                    // the assembly it was built from.
+                    pluginServices?.Dispose();
                     loadContext.Unload();
                     PluginShadowCopy.TryDelete(shadowDir);
                 }
@@ -516,6 +543,13 @@ internal sealed class PluginLoader(
                 )
                 .ToList();
 
+            // Same container the first-load path builds, for the same reason:
+            // a reloaded plugin's services are its own.
+            PluginServiceProvider? pluginServices = PluginInstanceFactory.ChildContainer(
+                _serviceProvider,
+                assembly
+            );
+
             foreach (Type pluginType in pluginTypes)
             {
                 // Isolate each plugin type: a single malfunctioning plugin —
@@ -525,7 +559,10 @@ internal sealed class PluginLoader(
                 IPlugin? instance = null;
                 try
                 {
-                    instance = PluginInstanceFactory.Create(_serviceProvider, pluginType);
+                    instance = PluginInstanceFactory.Create(
+                        pluginServices ?? _serviceProvider,
+                        pluginType
+                    );
                     if (instance is null)
                     {
                         continue;
@@ -580,7 +617,13 @@ internal sealed class PluginLoader(
                         TargetAbi = known?.Info.TargetAbi,
                     };
 
-                    LoadedPlugin loaded = new(info, instance, loadContext, shadowDir);
+                    LoadedPlugin loaded = new(
+                        info,
+                        instance,
+                        loadContext,
+                        shadowDir,
+                        pluginServices
+                    );
                     _registry[instance.Id] = loaded;
 
                     await _eventBus.PublishAsync(
@@ -632,7 +675,7 @@ internal sealed class PluginLoader(
                         AssemblyPath = assemblyPath,
                     };
 
-                    LoadedPlugin loaded = new(info, null, loadContext, shadowDir);
+                    LoadedPlugin loaded = new(info, null, loadContext, shadowDir, pluginServices);
                     if (identity.Id != Ulid.Empty)
                     {
                         _registry[identity.Id] = loaded;

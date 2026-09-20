@@ -70,6 +70,12 @@ public static class PluginServiceCollectionExtensions
         // moves time could quietly fail to.
         services.TryAddSingleton(TimeProvider.System);
 
+        // The host's own registration list, kept so a plugin's container can
+        // hand those service types straight back to the host rather than
+        // building second copies of them. Read at plugin load, by which time
+        // the collection is complete.
+        services.TryAddSingleton(new PluginHostServiceCollection(services));
+
         // Built from the container rather than by the parameterless constructor,
         // because one stage asks the repository where a plugin came from and
         // that answer is the only thing trust may rest on.
@@ -602,14 +608,17 @@ public static class PluginServiceCollectionExtensions
         }
     }
 
-    // Pre-build registration: discovers IPluginServiceRegistrator implementations before
-    // the DI container is built so plugins can contribute services to the host container.
-    //
-    // LIMITATION: This loads each plugin assembly into a temporary AssemblyLoadContext for
-    // service-registration discovery only. The runtime load (LoadAllAsync) loads it again
-    // into the canonical context. This two-phase approach is a known-fragile MVI shortcut —
-    // see the future refactor TODO: introduce a proper plugin DI sub-container that avoids
-    // loading the same assembly twice in different contexts.
+    /// <summary>
+    /// Records which plugins were present before the request pipeline was
+    /// built, which is the only moment a plugin's routes can join it.
+    /// <para>
+    /// It used to load every plugin assembly a second time, in a throwaway load
+    /// context, to register that plugin's services into the host's container.
+    /// A plugin now gets its own container at load (see
+    /// <c>PluginInstanceFactory.ChildContainer</c>), so nothing here loads
+    /// anything: the manifest is read, and that is all.
+    /// </para>
+    /// </summary>
     public static IServiceCollection RegisterPluginServicesFromManifests(
         this IServiceCollection services,
         string pluginsPath
@@ -639,50 +648,16 @@ public static class PluginServiceCollectionExtensions
                 if (!File.Exists(assemblyPath))
                     continue;
 
-                // Load into a temporary context for discovery only; unloaded after registration.
-                // From a copy, like every other load: the services registered here
-                // keep this context alive, and loading the installed file directly
-                // would pin it and cache its image under the installed path.
-                string loadPath = PluginShadowCopy.Create(pluginsPath, assemblyPath);
-                PluginLoadContext discoveryCtx = new(loadPath);
-                try
-                {
-                    Assembly assembly = discoveryCtx.LoadFromAssemblyPath(loadPath);
-
-                    IEnumerable<Type> registratorTypes = assembly
-                        .GetTypes()
-                        .Where(t =>
-                            typeof(IPluginServiceRegistrator).IsAssignableFrom(t)
-                            && t is { IsAbstract: false, IsInterface: false }
-                        );
-
-                    foreach (Type registratorType in registratorTypes)
-                    {
-                        if (
-                            Activator.CreateInstance(registratorType)
-                            is IPluginServiceRegistrator registrator
-                        )
-                        {
-                            registrator.RegisterServices(services);
-                        }
-                    }
-
-                    // Marked because the plugin was PRESENT for this pass, not
-                    // because it registered anything in it.
-                    //
-                    // This is also where a plugin's controllers are picked up,
-                    // and the advisor consults the same flag for routes. Gating
-                    // it on `registeredAny` meant a plugin that declares `rest`
-                    // and contributes no services — which is most of them — was
-                    // never marked, so it reported "needs a restart" after every
-                    // boot including the restart the owner had just performed.
-                    RestartAdvisorIn(services)?.MarkRegisteredAtStartup(manifest.Id.Value);
-                }
-                finally
-                {
-                    discoveryCtx.Unload();
-                    PluginShadowCopy.TryDelete(Path.GetDirectoryName(loadPath));
-                }
+                // Marked because the plugin was PRESENT for this pass, not
+                // because it registered anything in it.
+                //
+                // This is also where a plugin's controllers are picked up, and
+                // the advisor consults the same flag for routes. Gating it on
+                // what a plugin registered meant a plugin that declares `rest`
+                // and contributes no services — which is most of them — was
+                // never marked, so it reported "needs a restart" after every
+                // boot including the restart the owner had just performed.
+                RestartAdvisorIn(services)?.MarkRegisteredAtStartup(manifest.Id.Value);
             }
             catch (Exception)
             {
