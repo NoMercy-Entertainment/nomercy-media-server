@@ -64,6 +64,8 @@ public static class PluginRefusalCodes
     public const string MediaTicketExpired = "PLUGIN_MEDIA_TICKET_EXPIRED";
     public const string MediaTicketUserMismatch = "PLUGIN_MEDIA_TICKET_USER_MISMATCH";
     public const string LibraryImportDenied = "PLUGIN_LIBRARY_IMPORT_DENIED";
+    public const string ResourceCeiling = "PLUGIN_RESOURCE_CEILING";
+    public const string DisabledAfterRestarts = "PLUGIN_DISABLED_AFTER_RESTARTS";
 
     public static IReadOnlyList<PluginRefusalDescriptor> All { get; } =
     [
@@ -354,6 +356,18 @@ public static class PluginRefusalCodes
             PluginRefusalSeverity.Blocked,
             "library.write",
             "A plugin offered a file to a library it may not write to, or from a path outside one."
+        ),
+        new(
+            "PLUGIN_RESOURCE_CEILING",
+            PluginRefusalSeverity.Degraded,
+            null,
+            "A plugin went past the CPU or memory the owner allowed it, and the server acted."
+        ),
+        new(
+            "PLUGIN_DISABLED_AFTER_RESTARTS",
+            PluginRefusalSeverity.Blocked,
+            null,
+            "A plugin was restarted too many times in an hour, so the server stopped restarting it."
         ),
     ];
 

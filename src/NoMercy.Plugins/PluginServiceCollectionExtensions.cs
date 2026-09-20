@@ -32,6 +32,7 @@ using NoMercy.Plugins.Offline;
 using NoMercy.Plugins.Revocation;
 using NoMercy.Plugins.Sideload;
 using NoMercy.Plugins.Verification;
+using NoMercy.Plugins.Watchdog;
 using NoMercy.Storage;
 using NoMercy.Storage.Drivers.Local;
 using NoMercy.Storage.Validation;
@@ -142,6 +143,27 @@ public static class PluginServiceCollectionExtensions
         // Nobody is asking outside a request, and a host that never registers
         // one says so rather than minting a link bound to the empty account.
         services.TryAddSingleton<IPluginCallerAccessor>(NoPluginCaller.Instance);
+
+        // The ceilings and what happens when a plugin goes past them. The
+        // sampler measures nothing in this stage and says so by answering
+        // null, which the watchdog reads as a plugin to leave alone; a number
+        // invented here would produce restarts nobody could explain.
+        services.TryAddSingleton<IPluginResourceSampler>(new PluginAssemblyResourceSampler());
+        services.TryAddSingleton<IPluginResourceCeilingSource>(new PluginDefaultCeilings());
+        services.TryAddSingleton<IPluginWatchdogLifecycle>(sp => new PluginManagerWatchdogLifecycle(
+            // Lazily, for the same reason the media factory is: the manager is
+            // what the watchdog acts on, and it is built after this.
+            () => sp.GetService<IPluginManager>(),
+            sp.GetRequiredService<ILogger<PluginManagerWatchdogLifecycle>>()
+        ));
+        services.AddSingleton<PluginWatchdog>(sp =>
+            new(
+                sp.GetRequiredService<IPluginResourceCeilingSource>(),
+                sp.GetRequiredService<IPluginWatchdogLifecycle>(),
+                sp.GetService<TimeProvider>() ?? TimeProvider.System
+            )
+        );
+        services.AddHostedService<PluginWatchdogService>();
 
         // In memory: a channel carries a callback that resolves a
         // credential-bearing address, and a callback cannot be written to disk.
