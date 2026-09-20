@@ -169,6 +169,42 @@ public static class PluginRefusalMessages
     /// server log, the client's history and every link a viewer shared.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// A recording that cannot be written because the disk is full.
+    /// </summary>
+    public static PluginRefusal RecordingDiskFull(string plugin, string channelId)
+    {
+        return new PluginRefusal(
+            PluginRefusalCodes.RecordingDiskFull,
+            plugin,
+            $"The recording of {channelId} stopped because the disk it writes to is full.",
+            "A recording writes for as long as the program runs, so the space it needs is not known when it is scheduled. What was captured before the disk filled is kept.",
+            "Free space on the recording library's disk, or lower the retention on this plugin so older recordings are removed sooner. Docs: /nomercy-plugins/capabilities/media-record",
+            PluginRefusalSeverity.Blocked
+        );
+    }
+
+    /// <summary>
+    /// One upstream out of several that stopped answering.
+    /// <para>
+    /// Degraded rather than blocked: the point of an ordered link list is that
+    /// the next one is tried, so one dead mirror is not a reason to end the
+    /// channel. It is still reported, because a provider that always falls
+    /// through to its last mirror is failing quietly.
+    /// </para>
+    /// </summary>
+    public static PluginRefusal LiveLinkFailed(string plugin, string channelId, int linkIndex)
+    {
+        return new PluginRefusal(
+            PluginRefusalCodes.LiveLinkFailed,
+            plugin,
+            $"Link {linkIndex} for channel {channelId} did not answer.",
+            "The host fell through to the next link in the list, so playback continued. A link that keeps failing means the provider changed something or the credential behind it expired.",
+            "Check the upstream this link points at and remove it if the provider retired it. Docs: /nomercy-plugins/capabilities/media-live",
+            PluginRefusalSeverity.Degraded
+        );
+    }
+
     public static PluginRefusal TokenInUrl(string plugin, string url)
     {
         return new PluginRefusal(

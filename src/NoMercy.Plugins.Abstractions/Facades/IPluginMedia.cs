@@ -19,6 +19,8 @@ public interface IPluginMedia
     IPluginMediaProxy Proxy { get; }
     IPluginMediaTranscode Transcode { get; }
     IPluginMediaRemux Remux { get; }
+    IPluginMediaLive Live { get; }
+    IPluginRecorder Record { get; }
 }
 
 /// <summary>

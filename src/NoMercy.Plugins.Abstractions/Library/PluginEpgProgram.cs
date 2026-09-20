@@ -40,4 +40,15 @@ public sealed record PluginEpgProgram
     public int? Episode { get; init; }
 
     public IReadOnlyList<string> Categories { get; init; } = [];
+
+    /// <summary>The provider's own rating string, kept verbatim because every
+    /// country words it differently and parental controls compare it to what the
+    /// owner configured, not to a scale we invented.</summary>
+    public string? AgeRating { get; init; }
+
+    public Uri? IconUrl { get; init; }
+
+    /// <summary>False unless the guide said so: a repeat marked new is worse
+    /// than one marked nothing.</summary>
+    public bool IsNew { get; init; }
 }
