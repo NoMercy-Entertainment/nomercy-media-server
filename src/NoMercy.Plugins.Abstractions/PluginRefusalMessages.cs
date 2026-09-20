@@ -310,6 +310,21 @@ public static class PluginRefusalMessages
         );
     }
 
+    /// <summary>
+    /// A route claiming a path the host keeps for itself.
+    /// </summary>
+    public static PluginRefusal RouteReservedPrefix(string plugin, string path)
+    {
+        return new PluginRefusal(
+            PluginRefusalCodes.RouteReservedPrefix,
+            plugin,
+            $"The route {path} starts with an underscore, which the host keeps.",
+            "Paths beginning with an underscore are where the host adds pages to every plugin. A plugin that claims one keeps working until the host adds that page, and then stops for a reason its author had nothing to do with.",
+            "Rename the route without the leading underscore. Every other path is the plugin's. Docs: /nomercy-plugins/tour/routes",
+            PluginRefusalSeverity.Blocked
+        );
+    }
+
     public static PluginRefusal TokenInUrl(string plugin, string url)
     {
         return new PluginRefusal(

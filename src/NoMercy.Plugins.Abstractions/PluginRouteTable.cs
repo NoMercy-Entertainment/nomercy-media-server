@@ -26,10 +26,10 @@ public class PluginRouteTable
     {
         _routes = [.. routes];
 
-        // Two routes claiming one path is a plugin whose behaviour depends on
+        // Two routes claiming one path is a plugin whose behavior depends on
         // declaration order, and whichever lost is a page nobody can reach.
         List<string> duplicates = _routes
-            .GroupBy(route => Normalise(route.Path))
+            .GroupBy(route => Normalize(route.Path))
             .Where(group => group.Count() > 1)
             .Select(group => group.Key)
             .ToList();
@@ -45,6 +45,19 @@ public class PluginRouteTable
 
         if (names.Count > 0)
             throw new ArgumentException($"two routes are named '{names[0]}'", nameof(routes));
+
+        // The host keeps the underscore prefix for pages it adds to every
+        // plugin later. A plugin that claimed one would stop working on an
+        // upgrade it had nothing to do with, so it is refused now rather than
+        // broken then.
+        PluginRoute? reserved = _routes.FirstOrDefault(route =>
+            Normalize(route.Path).StartsWith('_')
+        );
+
+        if (reserved is not null)
+            throw new PluginRefusedException(
+                PluginRefusalMessages.RouteReservedPrefix(reserved.Name, reserved.Path)
+            );
     }
 
     public IReadOnlyList<PluginRoute> Routes => _routes;
@@ -94,7 +107,7 @@ public class PluginRouteTable
         return _routes.Where(route => route.ExistsOn(surface));
     }
 
-    private static string Normalise(string path)
+    private static string Normalize(string path)
     {
         // Two routes differing only in what they call a parameter are the same
         // route: `/stations/:id` and `/stations/:slug` both match one path.
