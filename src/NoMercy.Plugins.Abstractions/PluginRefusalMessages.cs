@@ -280,6 +280,36 @@ public static class PluginRefusalMessages
         );
     }
 
+    /// <summary>
+    /// User data held somewhere other than the per-user scope.
+    /// </summary>
+    public static PluginRefusal UserScopeRequired(string plugin, string path)
+    {
+        return new PluginRefusal(
+            PluginRefusalCodes.UserScopeRequired,
+            plugin,
+            $"The plugin wrote user data to {path}, which is not a per-user scope.",
+            "Data about a person mixed into the plugin's own files cannot be handed to that person, and cannot be removed when they leave. Nobody finds out until one of them asks.",
+            "Write it through context.Storage.ForUser instead. The host exports and erases that scope on its own, so the plugin has nothing to remember. Docs: /nomercy-plugins/capabilities/user-scope",
+            PluginRefusalSeverity.Blocked
+        );
+    }
+
+    /// <summary>
+    /// User data sent off the server.
+    /// </summary>
+    public static PluginRefusal UserDataEgress(string plugin, string host)
+    {
+        return new PluginRefusal(
+            PluginRefusalCodes.UserDataEgress,
+            plugin,
+            $"The plugin sent user data to {host}.",
+            "There is no capability for this, and there is not going to be one. Once a person's data is on someone else's server the owner cannot export it, cannot erase it, and cannot tell the person where it went.",
+            "Keep it in context.Storage.ForUser. If the plugin needs to ask an upstream something, send what the question needs and not who asked it. Docs: /nomercy-plugins/capabilities/user-scope",
+            PluginRefusalSeverity.Blocked
+        );
+    }
+
     public static PluginRefusal TokenInUrl(string plugin, string url)
     {
         return new PluginRefusal(
