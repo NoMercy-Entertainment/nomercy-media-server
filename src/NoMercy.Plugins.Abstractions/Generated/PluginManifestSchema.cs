@@ -72,6 +72,9 @@ public static class PluginManifestSchema
               "type": "string",
               "minLength": 1
             },
+            "author": {
+              "type": "string"
+            },
             "license": {
               "type": "string"
             },
@@ -94,6 +97,12 @@ public static class PluginManifestSchema
               }
             },
             "dependencies": {
+              "type": "array",
+              "items": {
+                "type": "object"
+              }
+            },
+            "settings": {
               "type": "array",
               "items": {
                 "type": "object"
