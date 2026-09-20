@@ -33,13 +33,13 @@
     "code": "PLUGIN_HOST_SERVICES_REMOVED",
     "severity": "blocked",
     "capability": null,
-    "summary": "The plugin asked the host container for a service. Contract v3 has facades instead."
+    "summary": "The plugin asked the host container for a service. The contract has facades instead."
   },
   {
     "code": "PLUGIN_EVENT_BUS_REMOVED",
     "severity": "blocked",
     "capability": "events.subscribe",
-    "summary": "The plugin used the raw event bus. Contract v3 has a topic list instead."
+    "summary": "The plugin used the raw event bus. The contract has a topic list instead."
   },
   {
     "code": "PLUGIN_TOKEN_IN_URL",
@@ -100,12 +100,6 @@
     "severity": "blocked",
     "capability": null,
     "summary": "The manifest does not match the schema the server reads."
-  },
-  {
-    "code": "PLUGIN_MANIFEST_V2_DEPRECATED",
-    "severity": "warning",
-    "capability": null,
-    "summary": "The plugin ships a contract v2 manifest, which the server still reads through the mapping table."
   },
   {
     "code": "PLUGIN_DEPENDENCY_MISSING",

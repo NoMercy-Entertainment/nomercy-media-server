@@ -1,5 +1,5 @@
 import type { Capability, Refusal } from './contract.js';
-import { pascalOf } from './contract.js';
+import { pascalOf, slugOf } from './contract.js';
 
 export const LICENSE_HEADER: string = [
   '// -----------------------------------------------------------------------------',
@@ -33,6 +33,7 @@ function descriptorOf(capability: Capability): string {
     `${capability.reversible}`,
     quote(capability.facade),
     quote(capability.summary),
+    quote(`/nomercy-plugins/capabilities/${slugOf(capability.name)}`),
   ];
 
   return [

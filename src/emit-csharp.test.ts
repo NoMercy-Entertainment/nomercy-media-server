@@ -19,10 +19,12 @@ describe('the generated C# vocabulary', () => {
     expect(source).toContain(descriptor(
       '"network.fetch"', '"host glob"', 'PluginTrust.Low', 'true',
       '"IPluginContext.Http"', '"outbound HTTP through context.Http"',
+      '"/nomercy-plugins/capabilities/network-fetch"',
     ));
     expect(source).toContain(descriptor(
       '"process.spawn"', '"binary name"', 'PluginTrust.High', 'false',
       '"IPluginContext.Process"', '"run a bundled or allowlisted binary in the plugin sandbox"',
+      '"/nomercy-plugins/capabilities/process-spawn"',
     ));
     expect(source).toContain('public static IReadOnlyList<PluginCapabilityDescriptor> All { get; }');
   });
