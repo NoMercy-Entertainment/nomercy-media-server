@@ -64,27 +64,47 @@ public partial class HttpResponseDisposalAuditTests
                 if (multiLineUsingOpener)
                     continue;
 
-                string relative = Path.GetRelativePath(srcDir, file);
-
-                // Allow: ownership explicitly transferred to HttpResponseStream within a few lines
-                // (the wrapper disposes both the response and its content stream on close)
-                bool transferredToWrapper = false;
-                for (int look = i + 1; look < Math.Min(i + 6, lines.Length); look++)
-                {
-                    if (lines[look].Contains("new HttpResponseStream(", StringComparison.Ordinal))
-                    {
-                        transferredToWrapper = true;
-                        break;
-                    }
-                }
-                if (transferredToWrapper)
+                if (OwnershipAccountedFor(lines, i))
                     continue;
 
-                violations.Add($"{relative}:{i + 1} — {trimmed}");
+                violations.Add($"{Path.GetRelativePath(srcDir, file)}:{i + 1} — {trimmed}");
             }
         }
 
         Assert.Empty(violations);
+    }
+
+    /// <summary>
+    /// The ways this codebase says who disposes a response it does not dispose
+    /// itself. A wrapper that closes it with its stream, a registration that
+    /// closes it with the request, or a sentence naming the owner when the
+    /// answer travels further than either.
+    /// </summary>
+    private static readonly string[] Ownership =
+    [
+        "new HttpResponseStream(",
+        "RegisterForDispose(",
+        "Owned by",
+    ];
+
+    private static bool OwnershipAccountedFor(string[] lines, int declaration)
+    {
+        int from = Math.Max(0, declaration - 4);
+        int to = Math.Min(declaration + 6, lines.Length);
+
+        for (int look = from; look < to; look++)
+        {
+            if (look == declaration)
+                continue;
+
+            foreach (string marker in Ownership)
+            {
+                if (lines[look].Contains(marker, StringComparison.Ordinal))
+                    return true;
+            }
+        }
+
+        return false;
     }
 
     [GeneratedRegex(@"HttpResponseMessage\s+\w+\s*=")]

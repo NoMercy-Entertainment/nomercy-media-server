@@ -9,14 +9,14 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Text.Json.Serialization;
+using Newtonsoft.Json;
 
 namespace NoMercy.Api.DTOs.Dashboard;
 
 /// <summary>Whether this server runs from imported bundles, and for how long one counts.</summary>
 public record PluginOfflineModeDto
 {
-    [JsonPropertyName("enabled")]
+    [JsonProperty("enabled")]
     public bool Enabled { get; init; }
 
     /// <summary>
@@ -24,6 +24,6 @@ public record PluginOfflineModeDto
     /// number and that one decides; this is what the owner asks NoMercy to
     /// issue next time.
     /// </summary>
-    [JsonPropertyName("bundle_validity_days")]
+    [JsonProperty("bundleValidityDays")]
     public int BundleValidityDays { get; init; }
 }

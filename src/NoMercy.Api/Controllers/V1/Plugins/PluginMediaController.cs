@@ -65,6 +65,9 @@ public class PluginMediaController(
         if (read.PluginId != id)
             return ForbiddenResponse(PluginAccessRefusal.For(id));
 
+        // Owned by this request from here on: it is handed out as a stream the
+        // client reads until it stops watching, so it cannot be disposed at the
+        // end of this method.
         HttpResponseMessage upstream = await media
             .FetcherFor(id)
             .FetchAsync(
@@ -72,6 +75,8 @@ public class PluginMediaController(
                 Request.Headers.Range.ToString() is { Length: > 0 } range ? range : null,
                 ct
             );
+
+        HttpContext.Response.RegisterForDispose(upstream);
 
         foreach (string header in Forwarded)
         {

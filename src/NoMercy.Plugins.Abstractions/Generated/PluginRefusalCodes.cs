@@ -66,6 +66,7 @@ public static class PluginRefusalCodes
     public const string LibraryImportDenied = "PLUGIN_LIBRARY_IMPORT_DENIED";
     public const string ResourceCeiling = "PLUGIN_RESOURCE_CEILING";
     public const string DisabledAfterRestarts = "PLUGIN_DISABLED_AFTER_RESTARTS";
+    public const string QuotaUploadExceeded = "PLUGIN_QUOTA_UPLOAD_EXCEEDED";
 
     public static IReadOnlyList<PluginRefusalDescriptor> All { get; } =
     [
@@ -368,6 +369,12 @@ public static class PluginRefusalCodes
             PluginRefusalSeverity.Blocked,
             null,
             "A plugin was restarted too many times in an hour, so the server stopped restarting it."
+        ),
+        new(
+            "PLUGIN_QUOTA_UPLOAD_EXCEEDED",
+            PluginRefusalSeverity.Degraded,
+            "media.proxy",
+            "A plugin is sending faster than the share of the uplink the owner allowed it."
         ),
     ];
 

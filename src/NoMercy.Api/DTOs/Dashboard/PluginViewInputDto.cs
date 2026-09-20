@@ -9,7 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Text.Json.Serialization;
+using Newtonsoft.Json;
 
 namespace NoMercy.Api.DTOs.Dashboard;
 
@@ -23,9 +23,9 @@ namespace NoMercy.Api.DTOs.Dashboard;
 /// </summary>
 public record PluginViewInputDto
 {
-    [JsonPropertyName("values")]
+    [JsonProperty("values")]
     public Dictionary<string, object?> Values { get; init; } = [];
 
-    [JsonPropertyName("action")]
+    [JsonProperty("action")]
     public string? Action { get; init; }
 }

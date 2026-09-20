@@ -14,6 +14,7 @@ using System.Text;
 using Microsoft.Extensions.Logging;
 using NoMercy.Plugins.Abstractions;
 using NoMercy.Plugins.Capabilities;
+using NoMercy.Plugins.Quotas;
 
 namespace NoMercy.Plugins.Media;
 
@@ -31,7 +32,8 @@ public class PluginMediaProxy(
     IPluginCapabilityBroker broker,
     PluginMediaTicketMinter minter,
     HttpClient http,
-    ILogger logger
+    ILogger logger,
+    PluginQuotaMeter? quotas = null
 ) : IPluginMediaProxy, IPluginMediaFetcher
 {
     public static TimeSpan TicketLifetime { get; } = TimeSpan.FromMinutes(15);
@@ -91,16 +93,48 @@ public class PluginMediaProxy(
             // 206 is a 2xx, so a range answer counts as working here without
             // naming it: a seek is the request being served, not one failing.
             if (last.IsSuccessStatusCode)
-                return last;
+                return await MeteredAsync(last, ct);
 
             logger.LogInformation(
                 "Plugin {PluginId}: a media link answered {StatusCode}, trying the next one.",
                 pluginId,
                 last.StatusCode
             );
+
+            // The answer nobody is going to read still holds a connection, and
+            // a provider with four dead links would hold four of them for as
+            // long as the viewer keeps trying.
+            if (link != request.Links[^1])
+                last.Dispose();
         }
 
         return last ?? new(HttpStatusCode.NotFound);
+    }
+
+    /// <summary>
+    /// Every byte the client is about to receive, counted against the plugin's
+    /// uplink allowance. Counted here rather than from the length header: a
+    /// live stream declares no length, and that is exactly the plugin that can
+    /// spend an uplink all evening.
+    /// </summary>
+    private async Task<HttpResponseMessage> MeteredAsync(
+        HttpResponseMessage response,
+        CancellationToken ct
+    )
+    {
+        if (quotas is null)
+            return response;
+
+        StreamContent metered = new(
+            quotas.Metered(pluginId, await response.Content.ReadAsStreamAsync(ct))
+        );
+
+        foreach (KeyValuePair<string, IEnumerable<string>> header in response.Content.Headers)
+            metered.Headers.TryAddWithoutValidation(header.Key, header.Value);
+
+        response.Content = metered;
+
+        return response;
     }
 
     private async Task<HttpResponseMessage> FetchOneAsync(
@@ -126,6 +160,8 @@ public class PluginMediaProxy(
         if (link.UserAgent is not null)
             message.Headers.TryAddWithoutValidation("User-Agent", link.UserAgent);
 
+        // Owned by whoever asked: the body is a stream the viewer reads, so it
+        // outlives this method and the caller disposes it.
         HttpResponseMessage response = await http.SendAsync(
             message,
             HttpCompletionOption.ResponseHeadersRead,

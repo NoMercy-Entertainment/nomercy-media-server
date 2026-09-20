@@ -13,6 +13,7 @@ using Microsoft.Extensions.Logging;
 using NoMercy.Plugins.Abstractions;
 using NoMercy.Plugins.Capabilities;
 using NoMercy.Plugins.Network;
+using NoMercy.Plugins.Quotas;
 
 namespace NoMercy.Plugins.Media;
 
@@ -32,7 +33,8 @@ public class PluginMediaFactory(
     PluginMediaTicketMinter minter,
     IPluginCallerAccessor caller,
     IPluginLiveStore live,
-    ILoggerFactory loggers
+    ILoggerFactory loggers,
+    PluginQuotaMeter? quotas = null
 ) : IPluginMediaFactory
 {
     public IPluginMedia CreateFor(Ulid pluginId) =>
@@ -60,7 +62,8 @@ public class PluginMediaFactory(
             broker,
             minter,
             http,
-            loggers.CreateLogger($"NoMercy.Plugins.Media.{pluginId}")
+            loggers.CreateLogger($"NoMercy.Plugins.Media.{pluginId}"),
+            quotas
         );
     }
 }

@@ -29,6 +29,7 @@ using NoMercy.Plugins.Hub;
 using NoMercy.Plugins.Library;
 using NoMercy.Plugins.Media;
 using NoMercy.Plugins.Offline;
+using NoMercy.Plugins.Quotas;
 using NoMercy.Plugins.Revocation;
 using NoMercy.Plugins.Sideload;
 using NoMercy.Plugins.Verification;
@@ -149,7 +150,20 @@ public static class PluginServiceCollectionExtensions
         // null, which the watchdog reads as a plugin to leave alone; a number
         // invented here would produce restarts nobody could explain.
         services.TryAddSingleton<IPluginResourceSampler>(new PluginAssemblyResourceSampler());
-        services.TryAddSingleton<IPluginResourceCeilingSource>(new PluginDefaultCeilings());
+        // One store answers both: the ceilings the watchdog reads and the
+        // allowances the meter reads are the same numbers, and two stores
+        // would be two places for an owner's change to land in one of.
+        PluginQuotaStore quotas = new();
+        services.TryAddSingleton<IPluginQuotaSource>(quotas);
+        services.TryAddSingleton(quotas);
+        services.TryAddSingleton<IPluginResourceCeilingSource>(quotas);
+        services.AddSingleton<PluginQuotaMeter>(sp =>
+            new(
+                sp.GetRequiredService<IPluginQuotaSource>(),
+                sp.GetService<TimeProvider>() ?? TimeProvider.System,
+                sp.GetRequiredService<IPluginRefusalCounter>()
+            )
+        );
         services.TryAddSingleton<IPluginWatchdogLifecycle>(sp => new PluginManagerWatchdogLifecycle(
             // Lazily, for the same reason the media factory is: the manager is
             // what the watchdog acts on, and it is built after this.
@@ -178,7 +192,8 @@ public static class PluginServiceCollectionExtensions
             sp.GetRequiredService<PluginMediaTicketMinter>(),
             sp.GetRequiredService<IPluginCallerAccessor>(),
             sp.GetRequiredService<IPluginLiveStore>(),
-            sp.GetRequiredService<ILoggerFactory>()
+            sp.GetRequiredService<ILoggerFactory>(),
+            sp.GetRequiredService<PluginQuotaMeter>()
         ));
 
         services.AddSingleton<PluginMediaTicketMinter>(sp =>
