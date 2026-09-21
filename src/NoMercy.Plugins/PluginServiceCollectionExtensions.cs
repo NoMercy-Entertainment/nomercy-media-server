@@ -474,7 +474,14 @@ public static class PluginServiceCollectionExtensions
         services.TryAddSingleton<IPluginLibraryQuery, NullPluginLibraryQuery>();
         services.TryAddSingleton<IPluginLibraryWriterFactory, NullPluginLibraryWriterFactory>();
 
-        services.AddSingleton<IPluginHubRouter, PluginHubRouter>();
+        // Lazily, like the cron registrar: the web host's hub context factory
+        // takes this router, the plugin context factory takes that, and the
+        // manager is built with the context factory. Handing the router the
+        // manager itself here re-enters the manager's own factory forever.
+        services.AddSingleton<IPluginHubRouter>(sp => new PluginHubRouter(
+            () => sp.GetRequiredService<IPluginManager>(),
+            sp.GetRequiredService<ILogger<PluginHubRouter>>()
+        ));
 
         // The real one needs IHubContext<PluginHub>, which only exists where the
         // hub is mapped. TryAdd so the web host's registration wins and every

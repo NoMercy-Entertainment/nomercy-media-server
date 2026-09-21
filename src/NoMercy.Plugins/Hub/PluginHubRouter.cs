@@ -16,9 +16,16 @@ using NoMercy.Plugins.Capabilities;
 
 namespace NoMercy.Plugins.Hub;
 
-public class PluginHubRouter(IPluginManager pluginManager, ILogger<PluginHubRouter> logger)
+public class PluginHubRouter(Func<IPluginManager> pluginManager, ILogger<PluginHubRouter> logger)
     : IPluginHubRouter
 {
+    // The manager is built with the context factory, the context factory
+    // needs the hub context factory, and that needs this router: taking the
+    // manager at construction closes a ring the container cannot resolve.
+    // It is only consulted when a message arrives, so it is looked up then.
+    public PluginHubRouter(IPluginManager pluginManager, ILogger<PluginHubRouter> logger)
+        : this(() => pluginManager, logger) { }
+
     private readonly ConcurrentDictionary<Ulid, IPluginHubHandler> _handlers = new();
 
     public void Register(IPluginHubHandler handler) => _handlers[handler.PluginId] = handler;
@@ -47,7 +54,7 @@ public class PluginHubRouter(IPluginManager pluginManager, ILogger<PluginHubRout
         if (handler is null && delegateHandler is null)
             return false;
 
-        PluginInfo? info = pluginManager.GetPluginInfo(pluginId);
+        PluginInfo? info = pluginManager().GetPluginInfo(pluginId);
 
         if (info is null || info.Status != PluginStatus.Active)
             return false;
