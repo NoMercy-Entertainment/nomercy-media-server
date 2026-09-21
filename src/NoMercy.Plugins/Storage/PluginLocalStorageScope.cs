@@ -37,8 +37,16 @@ public class PluginLocalStorageScope(Ulid pluginId, string root) : IPluginStorag
         return Task.FromResult(File.Exists(full) || Directory.Exists(full));
     }
 
+    /// <summary>
+    /// The stream is the caller's to dispose, like every Open on this facade.
+    /// Built rather than taken from <c>File.OpenRead</c> so the sharing mode is
+    /// stated: the server reads its own library while a plugin is reading, and
+    /// an exclusive handle would be the plugin locking the owner out of it.
+    /// </summary>
     public Task<Stream> OpenReadAsync(string path, CancellationToken ct = default) =>
-        Task.FromResult<Stream>(File.OpenRead(Resolve(path)));
+        Task.FromResult<Stream>(
+            new FileStream(Resolve(path), FileMode.Open, FileAccess.Read, FileShare.Read)
+        );
 
     public Task<Stream> OpenWriteAsync(string path, bool overwrite, CancellationToken ct = default)
     {
