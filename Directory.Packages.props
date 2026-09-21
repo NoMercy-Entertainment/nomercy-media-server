@@ -10,6 +10,10 @@
     <PackageVersion Include="Asp.Versioning.Mvc.ApiExplorer" Version="10.0.1" />
     <PackageVersion Include="AspNetCore.SwaggerUI.Themes" Version="3.0.2" />
     <PackageVersion Include="Makaretu.Dns" Version="2.0.1" />
+    <PackageVersion Include="Grpc.AspNetCore" Version="2.71.0" />
+    <PackageVersion Include="Grpc.Net.Client" Version="2.71.0" />
+    <PackageVersion Include="protobuf-net.Grpc" Version="1.2.2" />
+    <PackageVersion Include="protobuf-net.Grpc.AspNetCore" Version="1.2.2" />
     <PackageVersion Include="Makaretu.Dns.Multicast" Version="0.27.0" />
     <PackageVersion Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.7" />
     <PackageVersion Include="Microsoft.AspNetCore.Http.Extensions" Version="2.3.9" />
