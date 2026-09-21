@@ -9,176 +9,214 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Text;
+using System.Text.Json;
 using FluentAssertions;
 using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.UserData;
+using NoMercy.Plugins.Storage;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;
 
 /// <summary>
-/// One folder per person per plugin, which is what makes an export and an
-/// erasure possible at all. A plugin that mixed the two could do neither, and
-/// nobody would find out until somebody asked.
+/// What the per-user scope actually does, not what its interface says.
+/// <para>
+/// The shape tests next door proved the contract exists. These prove the
+/// export can be handed to a person and the purge leaves nothing, which is
+/// the whole reason the scope is owned by the host rather than the plugin.
+/// </para>
 /// </summary>
 public class PluginUserDataScopeTests : IDisposable
 {
-    private static readonly Ulid Radio = Ulid.Parse("01J9ZK5V8Y0000000000000012");
-    private static readonly Ulid Torrent = Ulid.Parse("01J9ZK5V8Y0000000000000013");
-    private static readonly Guid Listener = Guid.Parse("55555555-5555-5555-5555-555555555555");
-    private static readonly Guid Other = Guid.Parse("66666666-6666-6666-6666-666666666666");
-
     private readonly string _root = Path.Combine(
         Path.GetTempPath(),
-        $"plugin-user-data-{Ulid.NewUlid()}"
+        "nm-user-scope-" + Ulid.NewUlid()
     );
 
-    private PluginUserDataScope Scope(Ulid pluginId, Guid userId) => new(_root, pluginId, userId);
+    private readonly Ulid _plugin = Ulid.NewUlid();
 
     public void Dispose()
     {
         if (Directory.Exists(_root))
-            Directory.Delete(_root, recursive: true);
+            Directory.Delete(_root, true);
 
         GC.SuppressFinalize(this);
     }
 
-    [Fact]
-    public async Task What_a_person_stores_reads_back()
-    {
-        await Scope(Radio, Listener).SetAsync("last_station", "Radio Paradise");
+    private PluginUserDataScope ScopeFor(UserId user) => new(_plugin, user, _root);
 
-        (await Scope(Radio, Listener).GetAsync<string>("last_station"))
+    private static async Task WriteAsync(IPluginStorageScope scope, string path, string contents)
+    {
+        await using Stream stream = await scope.OpenWriteAsync(path, true);
+        await stream.WriteAsync(Encoding.UTF8.GetBytes(contents));
+    }
+
+    [Fact]
+    public async Task One_person_files_are_not_in_another_person_scope()
+    {
+        UserId first = new(Ulid.NewUlid());
+        UserId second = new(Ulid.NewUlid());
+
+        await WriteAsync(ScopeFor(first).Files, "favorites.json", "[\"kink\"]");
+
+        bool leaked = await ScopeFor(second).Files.ExistsAsync("favorites.json");
+
+        // A plugin that mixes users into one file can neither export nor
+        // erase, and nobody finds out until somebody asks.
+        leaked.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task The_export_carries_what_the_plugin_holds_about_that_person()
+    {
+        UserId user = new(Ulid.NewUlid());
+        PluginUserDataScope scope = ScopeFor(user);
+
+        await WriteAsync(scope.Files, "favorites.json", "{\"stations\":[\"BBC\"]}");
+
+        PluginUserScopeExport export = await scope.ExportAsync();
+
+        export.User.Should().Be(user);
+        export.Plugin.Value.Should().Be(_plugin);
+        export.Files.Should().Contain("favorites.json");
+
+        JsonElement parsed = JsonSerializer.Deserialize<JsonElement>(export.Json);
+
+        parsed
+            .GetProperty("favorites.json")
+            .GetProperty("stations")[0]
+            .GetString()
             .Should()
-            .Be("Radio Paradise");
+            .Be("BBC", "an export only the plugin can read answers on paper and not in fact");
     }
 
     [Fact]
-    public async Task What_one_person_stores_is_not_visible_to_another()
+    public async Task A_large_file_is_named_in_the_export_rather_than_inlined()
     {
-        await Scope(Radio, Listener).SetAsync("last_station", "Radio Paradise");
+        UserId user = new(Ulid.NewUlid());
+        PluginUserDataScope scope = ScopeFor(user);
 
-        (await Scope(Radio, Other).GetAsync<string>("last_station")).Should().BeNull();
+        await WriteAsync(scope.Files, "history.json", new string('x', 2 * 1024 * 1024));
+
+        PluginUserScopeExport export = await scope.ExportAsync();
+
+        // Building somebody's whole download history in memory before anybody
+        // can read it is how an export request becomes an outage.
+        export.Files.Should().Contain("history.json");
+        export.Json.Should().NotContain("xxxxxxxxxx");
     }
 
     [Fact]
-    public async Task What_one_plugin_stores_is_not_visible_to_another()
+    public async Task A_file_the_plugin_named_json_and_wrote_as_something_else_still_travels()
     {
-        await Scope(Radio, Listener).SetAsync("last_station", "Radio Paradise");
+        UserId user = new(Ulid.NewUlid());
+        PluginUserDataScope scope = ScopeFor(user);
 
-        (await Scope(Torrent, Listener).GetAsync<string>("last_station")).Should().BeNull();
+        await WriteAsync(scope.Files, "notes.json", "not json at all");
+
+        PluginUserScopeExport export = await scope.ExportAsync();
+
+        // It is still that person's data. Dropping it from their own export
+        // because the plugin author was careless is not their problem.
+        JsonSerializer
+            .Deserialize<JsonElement>(export.Json)
+            .GetProperty("notes.json")
+            .GetString()
+            .Should()
+            .Be("not json at all");
     }
 
     [Fact]
-    public async Task A_key_cannot_climb_out_of_the_folder()
+    public async Task A_purge_leaves_nothing_behind()
     {
-        await Scope(Radio, Listener).SetAsync("../../escaped", "somewhere else");
+        UserId user = new(Ulid.NewUlid());
+        PluginUserDataScope scope = ScopeFor(user);
+
+        await WriteAsync(scope.Files, "favorites.json", "[]");
+        await WriteAsync(scope.Files, "deep/nested/thing.bin", "bytes");
+
+        await scope.PurgeAsync();
 
         Directory
-            .EnumerateFiles(Scope(Radio, Listener).Folder)
+            .Exists(Path.Combine(_root, "users", user.Value.ToString()))
             .Should()
-            .ContainSingle("a key is a name, and a name that walks up is still a name");
+            .BeFalse(
+                "\"mostly deleted\" is not a thing you can tell somebody who asked to be forgotten"
+            );
     }
 
     [Fact]
-    public async Task Removing_a_key_removes_it()
+    public async Task A_purge_does_not_touch_anybody_else()
     {
-        PluginUserDataScope scope = Scope(Radio, Listener);
-        await scope.SetAsync("last_station", "Radio Paradise");
+        UserId leaving = new(Ulid.NewUlid());
+        UserId staying = new(Ulid.NewUlid());
 
-        await scope.DeleteAsync("last_station");
+        await WriteAsync(ScopeFor(leaving).Files, "favorites.json", "[]");
+        await WriteAsync(ScopeFor(staying).Files, "favorites.json", "[]");
 
-        (await scope.GetAsync<string>("last_station")).Should().BeNull();
+        await ScopeFor(leaving).PurgeAsync();
+
+        bool stillThere = await ScopeFor(staying).Files.ExistsAsync("favorites.json");
+
+        stillThere.Should().BeTrue();
     }
 
     [Fact]
-    public void A_user_capability_called_with_nobody_asking_is_refused()
+    public async Task A_purge_leaves_the_plugin_own_files_alone()
     {
-        PluginRefusal refusal = PluginUserDataScope.Require(null, Radio)!;
+        UserId user = new(Ulid.NewUlid());
+        Directory.CreateDirectory(_root);
+        await File.WriteAllTextAsync(Path.Combine(_root, "stations.db"), "plugin data");
 
-        refusal.Code.Should().Be(PluginRefusalCodes.UserDataScopeRequired);
-        refusal.Why.Should().Contain("per user");
+        await WriteAsync(ScopeFor(user).Files, "favorites.json", "[]");
+        await ScopeFor(user).PurgeAsync();
+
+        // Per-user data lives under "users", so forgetting one person never
+        // takes the plugin's own catalogue with them.
+        File.Exists(Path.Combine(_root, "stations.db")).Should().BeTrue();
     }
 
     [Fact]
-    public void The_empty_account_is_nobody_asking()
+    public async Task A_purge_on_a_scope_nobody_wrote_to_is_not_an_error()
     {
-        PluginUserDataScope
-            .Require(Guid.Empty, Radio)
+        Func<Task> purge = () => ScopeFor(new UserId(Ulid.NewUlid())).PurgeAsync();
+
+        // The host calls this when anybody leaves, including people who never
+        // used the plugin. Throwing there would fail an account deletion.
+        await purge.Should().NotThrowAsync();
+    }
+
+    [Theory]
+    [InlineData("../escape")]
+    [InlineData("nested/name")]
+    [InlineData("back\\slash")]
+    public async Task A_database_name_that_walks_out_of_the_folder_refuses(string name)
+    {
+        PluginUserDataScope scope = ScopeFor(new UserId(Ulid.NewUlid()));
+
+        Func<Task> open = () => scope.OpenDatabaseAsync(name);
+
+        // A name that escaped would be one person's scope reading another's.
+        await open.Should().ThrowAsync<PluginRefusedException>();
+    }
+
+    [Fact]
+    public async Task A_database_opened_in_the_scope_is_purged_with_it()
+    {
+        UserId user = new(Ulid.NewUlid());
+        PluginUserDataScope scope = ScopeFor(user);
+
+        await using (IPluginDatabase database = await scope.OpenDatabaseAsync("listens"))
+        {
+            await database.ExecuteAsync("CREATE TABLE plays (id TEXT PRIMARY KEY)");
+        }
+
+        await scope.PurgeAsync();
+
+        // A database somewhere the host does not look is user data that
+        // survives an erasure request.
+        File.Exists(Path.Combine(_root, "users", user.Value.ToString(), "listens.sqlite"))
             .Should()
-            .NotBeNull("an unauthenticated caller and a scheduled job are the same nobody");
-    }
-
-    [Fact]
-    public void Somebody_asking_is_not_refused()
-    {
-        PluginUserDataScope.Require(Listener, Radio).Should().BeNull();
-    }
-
-    [Fact]
-    public async Task Export_returns_every_key_that_person_has_with_that_plugin()
-    {
-        PluginUserDataScope scope = Scope(Radio, Listener);
-        await scope.SetAsync("last_station", "Radio Paradise");
-        await scope.SetAsync("volume", 0.7);
-
-        string json = await new PluginUserDataExporter(_root).ExportAsync(Radio, Listener);
-
-        json.Should().Contain("last_station").And.Contain("volume").And.Contain("Radio Paradise");
-    }
-
-    [Fact]
-    public async Task Export_leaves_out_what_belongs_to_somebody_else()
-    {
-        await Scope(Radio, Listener).SetAsync("last_station", "Radio Paradise");
-        await Scope(Radio, Other).SetAsync("last_station", "Soma FM");
-
-        string json = await new PluginUserDataExporter(_root).ExportAsync(Radio, Listener);
-
-        json.Should().NotContain("Soma FM");
-    }
-
-    [Fact]
-    public async Task Export_of_a_person_with_nothing_is_empty_rather_than_an_error()
-    {
-        string json = await new PluginUserDataExporter(_root).ExportAsync(Radio, Listener);
-
-        json.Should().Be("{}");
-    }
-
-    [Fact]
-    public async Task Purge_removes_everything_for_that_person_and_nothing_for_another()
-    {
-        await Scope(Radio, Listener).SetAsync("last_station", "Radio Paradise");
-        await Scope(Radio, Other).SetAsync("last_station", "Soma FM");
-
-        new PluginUserDataExporter(_root).Purge(Radio, Listener);
-
-        (await Scope(Radio, Listener).GetAsync<string>("last_station")).Should().BeNull();
-        (await Scope(Radio, Other).GetAsync<string>("last_station")).Should().Be("Soma FM");
-    }
-
-    [Fact]
-    public async Task Purging_a_person_across_every_plugin_leaves_nothing_behind()
-    {
-        await Scope(Radio, Listener).SetAsync("a", 1);
-        await Scope(Torrent, Listener).SetAsync("b", 2);
-        await Scope(Torrent, Other).SetAsync("b", 3);
-
-        new PluginUserDataExporter(_root).PurgeEverywhere(Listener);
-
-        (await Scope(Radio, Listener).GetAsync<int?>("a")).Should().BeNull();
-        (await Scope(Torrent, Listener).GetAsync<int?>("b")).Should().BeNull();
-        (await Scope(Torrent, Other).GetAsync<int?>("b"))
-            .Should()
-            .Be(3, "one person leaving is not everybody leaving");
-    }
-
-    [Fact]
-    public void Purging_a_server_that_has_stored_nothing_is_not_an_error()
-    {
-        Action purging = () => new PluginUserDataExporter(_root).PurgeEverywhere(Listener);
-
-        purging.Should().NotThrow();
+            .BeFalse();
     }
 }
