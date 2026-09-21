@@ -8,25 +8,23 @@
 //
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
-
-using System.Text.Json.Serialization;
-
 namespace NoMercy.Plugins.Abstractions;
 
 /// <summary>
-/// What a caller needs to open one route of a plugin.
+/// One entry of a channel's guide, in the words every client draws.
 ///
-/// Coarser than PluginAccess on purpose: a plugin is owned, shared or out of
-/// reach, and within a plugin somebody can see a route only the owner may use.
-/// The server hides an owner route from a member before the client sees it,
-/// because offering a page that answers 403 is worse than not offering it.
+/// Start and stop carry their offset. A guide written in the server's local
+/// time read three hours wrong for anyone watching from another country, and
+/// nothing about the row said so.
 /// </summary>
-[JsonConverter(typeof(JsonStringEnumConverter<PluginRouteAccess>))]
-public enum PluginRouteAccess
-{
-    [JsonStringEnumMemberName("shared")]
-    Shared,
-
-    [JsonStringEnumMemberName("owner")]
-    Owner,
-}
+public sealed record PluginEpgProgramme(
+    string ProgrammeId,
+    string ChannelId,
+    string Title,
+    string? Description,
+    DateTimeOffset Start,
+    DateTimeOffset Stop,
+    string? Category,
+    string? AgeRating,
+    Uri? Image
+);

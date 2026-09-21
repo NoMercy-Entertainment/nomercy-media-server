@@ -30,18 +30,21 @@ public class PluginHostStorage : IPluginStorage
     private readonly IPluginFolderCatalog _catalog;
     private readonly IPluginGrantStore _grants;
     private readonly string _databaseRoot;
+    private readonly UserId? _userId;
 
     public PluginHostStorage(
         Ulid pluginId,
         string pluginsRoot,
         IPluginFolderCatalog catalog,
         IPluginGrantStore grants,
-        PluginQuotaMeter? quotas = null
+        PluginQuotaMeter? quotas = null,
+        UserId? userId = null
     )
     {
         _pluginId = pluginId;
         _catalog = catalog;
         _grants = grants;
+        _userId = userId;
         _databaseRoot = Path.Combine(pluginsRoot, "data", pluginId.ToString());
 
         PluginLocalStorageScope privateScope = new(
@@ -96,14 +99,25 @@ public class PluginHostStorage : IPluginStorage
         return await _catalog.OpenAsync(folderId, ct) ?? throw Refused(folderId);
     }
 
-    /// <summary>The caller's own corner. Built in Phase 2 task 23; not reachable from here yet.</summary>
+    /// <summary>
+    /// The caller's own corner, when there is a caller.
+    /// <para>
+    /// A plugin running as the server rather than for somebody, a scheduled
+    /// job for instance, has no per-user scope to hand back. Refusing there
+    /// is the honest answer: returning a scope belonging to nobody would let
+    /// a job write user data into a folder no export or purge would ever
+    /// find.
+    /// </para>
+    /// </summary>
     public IPluginUserScope ForUser =>
-        throw new PluginRefusedException(
-            PluginRefusalMessages.FacadeNotOnThisHost(
-                _pluginId.ToString(),
-                "IPluginStorage.ForUser"
-            )
-        );
+        _userId is { } user
+            ? new PluginUserDataScope(_pluginId, user, _databaseRoot)
+            : throw new PluginRefusedException(
+                PluginRefusalMessages.UserScopeRequired(
+                    _pluginId.ToString(),
+                    "IPluginStorage.ForUser"
+                )
+            );
 
     /// <summary>
     /// A SQLite file in the plugin's private folder, opened by the host.

@@ -69,6 +69,38 @@ public class PluginBasePathController(
                     Author = plugin.Author,
                     Status = plugin.Status.ToString().ToLowerInvariant(),
                     Sideloaded = plugin.Sideloaded,
+                    ProjectUrl = plugin.ProjectUrl,
+                },
+            }
+        );
+
+    /// <summary>
+    /// A link, never the fetched page. Rendering documentation an author
+    /// controls would put their markup inside the viewer's session.
+    /// </summary>
+    [HttpGet("api/v{version:apiVersion}/plugins/{id:ulid}/_/docs")]
+    public IActionResult Docs(Ulid id) =>
+        Answer(
+            id,
+            ownerOnly: false,
+            plugin => new DataResponseDto<PluginDocsPageDto>
+            {
+                Data = new() { Url = plugin.Docs, ProjectUrl = plugin.ProjectUrl },
+            }
+        );
+
+    [HttpGet("api/v{version:apiVersion}/plugins/{id:ulid}/_/license")]
+    public IActionResult License(Ulid id) =>
+        Answer(
+            id,
+            ownerOnly: false,
+            plugin => new DataResponseDto<PluginLicensePageDto>
+            {
+                Data = new()
+                {
+                    License = plugin.License,
+                    Author = plugin.Author,
+                    ProjectUrl = plugin.ProjectUrl,
                 },
             }
         );

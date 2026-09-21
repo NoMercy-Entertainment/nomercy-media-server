@@ -111,6 +111,12 @@ public class PluginUiController(
                                     ? entry.Section
                                     : PluginKind.Dashboard,
                                 entry.Route,
+                                // Where inside the kind it draws. A client
+                                // reserves the space for a slot before any
+                                // plugin is seen, so browsing has to say which
+                                // one each entry asked for.
+                                entry.Slot,
+                                Access = entry.Access.ToString().ToLowerInvariant(),
                                 // Offered here at all, which is a different question from
                                 // what it looks like once opened.
                                 AppearsHere = entry.AppearsOn(asking),
@@ -133,6 +139,8 @@ public class PluginUiController(
                         entry.PluginName,
                         entry.Label,
                         entry.Icon,
+                        entry.Slot,
+                        entry.Access,
                         Path = PluginRoutes.PrefixFor(entry.Kind, entry.PluginId).TrimEnd('/')
                             + (entry.Route == "/" ? string.Empty : entry.Route),
                         // The mount on its own, without this entry's route on

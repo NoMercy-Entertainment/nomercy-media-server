@@ -9,24 +9,26 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Text.Json.Serialization;
-
 namespace NoMercy.Plugins.Abstractions;
 
 /// <summary>
-/// What a caller needs to open one route of a plugin.
+/// How the caller is driving this surface.
 ///
-/// Coarser than PluginAccess on purpose: a plugin is owned, shared or out of
-/// reach, and within a plugin somebody can see a route only the owner may use.
-/// The server hides an owner route from a member before the client sees it,
-/// because offering a page that answers 403 is worse than not offering it.
+/// A form that works with a mouse is unusable with a remote, so the view
+/// declares what it needs and the client says what it has. Neither guesses
+/// from the screen size: a phone on a television stand is still touch, and a
+/// browser on a television is still a remote.
 /// </summary>
-[JsonConverter(typeof(JsonStringEnumConverter<PluginRouteAccess>))]
-public enum PluginRouteAccess
+public static class PluginInputDevice
 {
-    [JsonStringEnumMemberName("shared")]
-    Shared,
+    public const string Pointer = "pointer";
+    public const string Touch = "touch";
+    public const string Remote = "remote";
 
-    [JsonStringEnumMemberName("owner")]
-    Owner,
+    public static IReadOnlyList<string> All { get; } = [Pointer, Touch, Remote];
+
+    public static bool IsKnown(string? device)
+    {
+        return device is not null && All.Contains(device);
+    }
 }

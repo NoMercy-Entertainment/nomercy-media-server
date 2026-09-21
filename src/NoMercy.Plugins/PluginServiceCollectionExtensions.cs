@@ -38,6 +38,7 @@ using NoMercy.Plugins.Offline;
 using NoMercy.Plugins.Quotas;
 using NoMercy.Plugins.Revocation;
 using NoMercy.Plugins.Runtime;
+using NoMercy.Plugins.Search;
 using NoMercy.Plugins.Sideload;
 using NoMercy.Plugins.Storage;
 using NoMercy.Plugins.Telemetry;
@@ -159,6 +160,14 @@ public static class PluginServiceCollectionExtensions
             sp.GetService<IPluginMembership>() ?? new NobodyIsAMember(),
             sp.GetRequiredService<TimeProvider>(),
             () => sp.GetService<IPluginOwner>()?.Id ?? Guid.Empty
+        ));
+
+        // The search box asks every plugin the caller may use, at once and with
+        // a deadline: one slow provider was one slow search box for everyone.
+        services.AddSingleton<IPluginSearchService>(sp => new PluginSearchService(
+            sp.GetRequiredService<IPluginManager>(),
+            sp.GetRequiredService<IPluginAccessResolver>(),
+            sp.GetRequiredService<ILogger<PluginSearchService>>()
         ));
 
         // Every device a person is signed in on is told their own answer when

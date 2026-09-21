@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Reflection;
 using NoMercy.Plugins.Abstractions;
 using Xunit;
 
@@ -36,5 +37,34 @@ public class PluginAbiTests
     public void Current_IsElevenZero()
     {
         Assert.Equal(new Version(11, 0), PluginAbi.Current);
+    }
+
+    /// <summary>
+    /// A plugin pins the major, so a member that existed in 11.0 is still
+    /// called by binaries nobody is going to rebuild. This one went away and
+    /// took both installed plugins off every screen in the ecosystem, and the
+    /// only word anywhere was a MissingMethodException in the server log.
+    /// </summary>
+    [Theory]
+    [InlineData(typeof(PluginScheduledJob), new[] { typeof(string), typeof(string), typeof(bool) })]
+    public void ConstructorsElevenZeroPluginsCall_AreStillThere(Type type, Type[] parameters)
+    {
+        ConstructorInfo? found = type.GetConstructor(parameters);
+
+        Assert.True(
+            found is not null,
+            $"{type.Name} no longer has .ctor({string.Join(", ", parameters.Select(one => one.Name))}). "
+                + "Every plugin built against 11.0 fails to load with MissingMethodException."
+        );
+    }
+
+    [Fact]
+    public void ScheduledJob_BuiltTheWayElevenZeroBuiltIt_CarriesItsValues()
+    {
+        PluginScheduledJob job = new("refresh", "0 */6 * * *", true);
+
+        Assert.Equal("refresh", job.Name);
+        Assert.Equal("0 */6 * * *", job.CronExpression);
+        Assert.True(job.AllowConcurrent);
     }
 }

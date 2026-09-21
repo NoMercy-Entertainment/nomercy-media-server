@@ -37,6 +37,90 @@ public record PluginInfoPageDto
 
     [JsonProperty("sideloaded")]
     public bool Sideloaded { get; init; }
+
+    [JsonProperty("projectUrl")]
+    public string? ProjectUrl { get; init; }
+}
+
+/// <summary>
+/// One place the server can write, as a picker offers it.
+/// <para>
+/// The id is the host's own and the only thing a picker may send back. A path
+/// would have to exist on the server, and the person choosing is not on it.
+/// </para>
+/// </summary>
+public record PluginLocationDto
+{
+    [JsonProperty("id")]
+    public string Id { get; init; } = string.Empty;
+
+    [JsonProperty("name")]
+    public string Name { get; init; } = string.Empty;
+
+    /// <summary>local, nfs, smb, s3 or webdav: what the owner would call it.</summary>
+    [JsonProperty("kind")]
+    public string Kind { get; init; } = string.Empty;
+
+    /// <summary>Whether the server can write here, which the owner should not have to guess.</summary>
+    [JsonProperty("writable")]
+    public bool Writable { get; init; }
+}
+
+/// <summary>
+/// One entry inside a location, as a picker offers it.
+/// <para>
+/// The id is the entry's path relative to the scope, which is what makes it
+/// safe to hand back: it cannot name anything outside the folder the owner
+/// chose.
+/// </para>
+/// </summary>
+public record PluginLocationEntryDto
+{
+    [JsonProperty("id")]
+    public string Id { get; init; } = string.Empty;
+
+    [JsonProperty("name")]
+    public string Name { get; init; } = string.Empty;
+
+    [JsonProperty("isDirectory")]
+    public bool IsDirectory { get; init; }
+
+    /// <summary>Zero for a directory.</summary>
+    [JsonProperty("sizeBytes")]
+    public long SizeBytes { get; init; }
+}
+
+/// <summary>
+/// Where a plugin's own documentation lives. Open to anyone it is shared with.
+/// <para>
+/// A link rather than the prose: the host does not fetch and render a page a
+/// plugin author controls, because that page would then be running inside the
+/// viewer's session.
+/// </para>
+/// </summary>
+public record PluginDocsPageDto
+{
+    [JsonProperty("url")]
+    public string? Url { get; init; }
+
+    [JsonProperty("projectUrl")]
+    public string? ProjectUrl { get; init; }
+}
+
+/// <summary>
+/// What the owner agreed to when they installed this. Open to anyone it is
+/// shared with: a license nobody can read before installing is not one.
+/// </summary>
+public record PluginLicensePageDto
+{
+    [JsonProperty("license")]
+    public string? License { get; init; }
+
+    [JsonProperty("author")]
+    public string? Author { get; init; }
+
+    [JsonProperty("projectUrl")]
+    public string? ProjectUrl { get; init; }
 }
 
 /// <summary>

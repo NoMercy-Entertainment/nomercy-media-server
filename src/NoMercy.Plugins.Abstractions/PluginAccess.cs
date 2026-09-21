@@ -13,6 +13,13 @@ using System.Text.Json.Serialization;
 
 namespace NoMercy.Plugins.Abstractions;
 
+/// <summary>
+/// What a caller may do with a plugin.
+///
+/// The server answers this once per user per plugin and every client obeys it.
+/// A caller with none never reaches the plugin: the request is refused before
+/// dispatch, so the client filter is the second line rather than the first.
+/// </summary>
 [JsonConverter(typeof(JsonStringEnumConverter<PluginAccess>))]
 public enum PluginAccess
 {
