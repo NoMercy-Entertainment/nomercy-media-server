@@ -54,9 +54,12 @@ public class LiveTranscodeService(
     private static readonly TimeSpan SegmentWaitTimeout = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan SegmentPollInterval = TimeSpan.FromMilliseconds(200);
 
-    public IReadOnlyList<LiveSessionDto> ListSessions()
+    public IReadOnlyList<LiveSessionDto> ListSessions(Guid userId, bool includeAll)
     {
         IReadOnlyList<LiveSessionSnapshot> snapshots = streamingService.GetActiveSessions();
+        if (!includeAll)
+            snapshots = [.. snapshots.Where(s => CallerOwnsSession(userId, s.SessionId))];
+
         return
         [
             .. snapshots.Select(s => new LiveSessionDto(
@@ -330,9 +333,9 @@ public class LiveTranscodeService(
         );
     }
 
-    public LiveResult GetMasterPlaylist(string sessionId)
+    public LiveResult GetMasterPlaylist(Guid userId, string sessionId)
     {
-        if (!streamingService.TryGetRuntime(sessionId, out LiveRuntimeSession runtime))
+        if (!TryGetOwnedRuntime(userId, sessionId, out LiveRuntimeSession runtime))
             return SessionGoneOrNotFound(sessionId);
 
         runtime.TouchLastAccess();
@@ -351,9 +354,9 @@ public class LiveTranscodeService(
         return LiveResult.Ok(master);
     }
 
-    public LiveResult GetPlaylist(string sessionId)
+    public LiveResult GetPlaylist(Guid userId, string sessionId)
     {
-        if (!streamingService.TryGetRuntime(sessionId, out LiveRuntimeSession runtime))
+        if (!TryGetOwnedRuntime(userId, sessionId, out LiveRuntimeSession runtime))
             return SessionGoneOrNotFound(sessionId);
 
         runtime.TouchLastAccess();
@@ -372,13 +375,14 @@ public class LiveTranscodeService(
     }
 
     public async Task<LiveResult> GetSegmentAsync(
+        Guid userId,
         string sessionId,
         string epoch,
         int index,
         CancellationToken ct
     )
     {
-        if (!streamingService.TryGetRuntime(sessionId, out LiveRuntimeSession runtime))
+        if (!TryGetOwnedRuntime(userId, sessionId, out LiveRuntimeSession runtime))
             return SessionGoneOrNotFound(sessionId);
 
         // No stale-epoch gate: the client holds one cached whole-runtime VOD
@@ -467,9 +471,9 @@ public class LiveTranscodeService(
         }
     }
 
-    public LiveResult ReportPosition(string sessionId, ReportPositionRequest request)
+    public LiveResult ReportPosition(Guid userId, string sessionId, ReportPositionRequest request)
     {
-        if (!streamingService.TryGetRuntime(sessionId, out LiveRuntimeSession runtime))
+        if (!TryGetOwnedRuntime(userId, sessionId, out LiveRuntimeSession runtime))
             return SessionGoneOrNotFound(sessionId);
 
         double clampedSeconds = Math.Max(0, request.TimeSeconds);
@@ -481,9 +485,13 @@ public class LiveTranscodeService(
         return LiveResult.Ok(new ReportPositionResponse(clampedSeconds, isPaused));
     }
 
-    public LiveResult ReportBufferHealth(string sessionId, ReportBufferHealthRequest request)
+    public LiveResult ReportBufferHealth(
+        Guid userId,
+        string sessionId,
+        ReportBufferHealthRequest request
+    )
     {
-        if (!streamingService.TryGetRuntime(sessionId, out LiveRuntimeSession runtime))
+        if (!TryGetOwnedRuntime(userId, sessionId, out LiveRuntimeSession runtime))
             return SessionGoneOrNotFound(sessionId);
 
         double clampedBufferedSeconds = Math.Max(0, request.BufferedSeconds);
@@ -501,6 +509,7 @@ public class LiveTranscodeService(
     }
 
     public async Task<LiveResult> ChangeQualityAsync(
+        Guid userId,
         string sessionId,
         ChangeQualityRequest request,
         CancellationToken ct
@@ -509,7 +518,7 @@ public class LiveTranscodeService(
         if (string.IsNullOrWhiteSpace(request.QualityId))
             return LiveResult.BadRequest("quality_id is required");
 
-        if (!streamingService.TryGetRuntime(sessionId, out LiveRuntimeSession runtime))
+        if (!TryGetOwnedRuntime(userId, sessionId, out LiveRuntimeSession runtime))
             return SessionGoneOrNotFound(sessionId);
 
         if (runtime.CachedMediaInfo is null || runtime.ClientCapabilities is null)
@@ -547,12 +556,13 @@ public class LiveTranscodeService(
     }
 
     public async Task<LiveResult> SeekAsync(
+        Guid userId,
         string sessionId,
         SeekRequest request,
         CancellationToken ct
     )
     {
-        if (!streamingService.TryGetRuntime(sessionId, out LiveRuntimeSession runtime))
+        if (!TryGetOwnedRuntime(userId, sessionId, out LiveRuntimeSession runtime))
             return SessionGoneOrNotFound(sessionId);
 
         double clampedSeconds = Math.Max(0, request.PositionSeconds);
@@ -642,8 +652,15 @@ public class LiveTranscodeService(
             && storage.Exists(storage.CombinePath(scratch, $"seg_{index:D5}.ts"));
     }
 
-    public async Task EndSessionAsync(string sessionId, CancellationToken ct)
+    public async Task<LiveResult> EndSessionAsync(
+        Guid userId,
+        string sessionId,
+        CancellationToken ct
+    )
     {
+        if (!TryGetOwnedRuntime(userId, sessionId, out _))
+            return SessionGoneOrNotFound(sessionId);
+
         await PushIfTransportAsync(
                 sessionId,
                 new SessionEndedMessage(Reason: SessionEndReason.ClientDisconnected),
@@ -659,7 +676,26 @@ public class LiveTranscodeService(
         // Kill the file's self-ingest key the moment the session ends so no
         // spent key survives on its absolute-lifetime backstop.
         ingestKeyStore.RevokeSession(sessionId);
+
+        return LiveResult.Ok(null);
     }
+
+    // A session another user started reads as absent, the same as one that never
+    // existed, so a guessed or leaked id reveals nothing about what is playing.
+    private bool TryGetOwnedRuntime(Guid userId, string sessionId, out LiveRuntimeSession runtime)
+    {
+        if (!streamingService.TryGetRuntime(sessionId, out runtime))
+            return false;
+
+        return CallerOwnsSession(userId, sessionId);
+    }
+
+    private bool CallerOwnsSession(Guid userId, string sessionId) =>
+        string.Equals(
+            sessionManager.GetOwnerUserId(sessionId),
+            userId.ToString(),
+            StringComparison.OrdinalIgnoreCase
+        );
 
     private LiveResult SessionGoneOrNotFound(string sessionId) =>
         streamingService.WasRecentlyRemoved(sessionId)

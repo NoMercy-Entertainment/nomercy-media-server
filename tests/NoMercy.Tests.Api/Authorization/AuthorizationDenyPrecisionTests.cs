@@ -487,7 +487,7 @@ public sealed class AuthorizationDenyPrecisionTests
 }
 
 [Trait("Category", "Authorization")]
-public sealed class TokenParamAuthDenyPrecisionTests : IAsyncLifetime, IDisposable
+public sealed class FolderAccessDenyPrecisionTests : IAsyncLifetime, IDisposable
 {
     private readonly SqliteConnection _connection;
     private readonly DbContextOptions<MediaContext> _dbOptions;
@@ -495,7 +495,7 @@ public sealed class TokenParamAuthDenyPrecisionTests : IAsyncLifetime, IDisposab
     private static readonly Ulid KnownFolderId = Ulid.NewUlid();
     private static readonly Guid KnownUserId = Guid.NewGuid();
 
-    public TokenParamAuthDenyPrecisionTests()
+    public FolderAccessDenyPrecisionTests()
     {
         _connection = new($"DataSource={Guid.NewGuid():N};Mode=Memory;Cache=Shared");
         _connection.Open();
@@ -557,12 +557,12 @@ public sealed class TokenParamAuthDenyPrecisionTests : IAsyncLifetime, IDisposab
         _connection.Dispose();
     }
 
-    private static TokenParamAuthMiddleware BuildMiddleware(RequestDelegate next) =>
+    private static FolderAccessMiddleware BuildMiddleware(RequestDelegate next) =>
         new(
             next,
+            UserCache.Current,
             new LiveIngestKeyStore(),
-            NullLogger<TokenParamAuthMiddleware>.Instance,
-            UserCache.Current
+            NullLogger<FolderAccessMiddleware>.Instance
         );
 
     private static HttpContext BuildContext(string path, ClaimsPrincipal? user = null)
@@ -585,7 +585,7 @@ public sealed class TokenParamAuthDenyPrecisionTests : IAsyncLifetime, IDisposab
     public async Task Denies_WithForbidden_WhenSubIsGuidEmptyString()
     {
         bool nextCalled = false;
-        TokenParamAuthMiddleware middleware = BuildMiddleware(_ =>
+        FolderAccessMiddleware middleware = BuildMiddleware(_ =>
         {
             nextCalled = true;
             return Task.CompletedTask;
@@ -606,7 +606,7 @@ public sealed class TokenParamAuthDenyPrecisionTests : IAsyncLifetime, IDisposab
     {
         UserCache.Current.Reset();
         bool nextCalled = false;
-        TokenParamAuthMiddleware middleware = BuildMiddleware(_ =>
+        FolderAccessMiddleware middleware = BuildMiddleware(_ =>
         {
             nextCalled = true;
             return Task.CompletedTask;

@@ -617,7 +617,7 @@ public static partial class ServiceConfiguration
         services.AddScoped<HomeService>();
         services.AddScoped<RecommendationService>();
         // Singleton: the ingest-key registry is shared across the scoped
-        // LiveTranscodeService (mint/revoke) and the TokenParamAuthMiddleware
+        // LiveTranscodeService (mint/revoke) and the FolderAccessMiddleware
         // (validate), so its state must outlive any request scope.
         services.AddSingleton<ILiveIngestKeyStore, LiveIngestKeyStore>();
         services.AddScoped<ILiveTranscodeService, LiveTranscodeService>();

@@ -28,7 +28,7 @@ public class LiveTranscodeController(ILiveTranscodeService service) : BaseContro
     [HttpGet("sessions")]
     public IActionResult ListSessions()
     {
-        return Ok(service.ListSessions());
+        return Ok(service.ListSessions(User.UserId(), includeAll: AuthPolicy.IsModerator(User)));
     }
 
     [HttpPost("sessions")]
@@ -44,7 +44,7 @@ public class LiveTranscodeController(ILiveTranscodeService service) : BaseContro
     [HttpGet("sessions/{sessionId}/master.m3u8")]
     public IActionResult GetMasterPlaylist(string sessionId)
     {
-        LiveResult result = service.GetMasterPlaylist(sessionId);
+        LiveResult result = service.GetMasterPlaylist(User.UserId(), sessionId);
         if (result.Kind != LiveResultKind.Ok)
             return MapResult(result);
 
@@ -54,7 +54,7 @@ public class LiveTranscodeController(ILiveTranscodeService service) : BaseContro
     [HttpGet("sessions/{sessionId}/playlist.m3u8")]
     public IActionResult GetPlaylist(string sessionId)
     {
-        LiveResult result = service.GetPlaylist(sessionId);
+        LiveResult result = service.GetPlaylist(User.UserId(), sessionId);
         if (result.Kind != LiveResultKind.Ok)
             return MapResult(result);
 
@@ -69,7 +69,13 @@ public class LiveTranscodeController(ILiveTranscodeService service) : BaseContro
         CancellationToken ct = default
     )
     {
-        LiveResult result = await service.GetSegmentAsync(sessionId, epoch, index, ct);
+        LiveResult result = await service.GetSegmentAsync(
+            User.UserId(),
+            sessionId,
+            epoch,
+            index,
+            ct
+        );
         if (result.Kind != LiveResultKind.Ok)
             return MapResult(result);
 
@@ -80,7 +86,7 @@ public class LiveTranscodeController(ILiveTranscodeService service) : BaseContro
     [HttpPost("sessions/{sessionId}/position")]
     public IActionResult ReportPosition(string sessionId, [FromBody] ReportPositionRequest request)
     {
-        return MapResult(service.ReportPosition(sessionId, request));
+        return MapResult(service.ReportPosition(User.UserId(), sessionId, request));
     }
 
     /// <summary>
@@ -94,7 +100,7 @@ public class LiveTranscodeController(ILiveTranscodeService service) : BaseContro
         [FromBody] ReportBufferHealthRequest request
     )
     {
-        return MapResult(service.ReportBufferHealth(sessionId, request));
+        return MapResult(service.ReportBufferHealth(User.UserId(), sessionId, request));
     }
 
     [HttpPost("sessions/{sessionId}/quality")]
@@ -104,7 +110,7 @@ public class LiveTranscodeController(ILiveTranscodeService service) : BaseContro
         CancellationToken ct = default
     )
     {
-        return MapResult(await service.ChangeQualityAsync(sessionId, request, ct));
+        return MapResult(await service.ChangeQualityAsync(User.UserId(), sessionId, request, ct));
     }
 
     [HttpPost("sessions/{sessionId}/seek")]
@@ -114,13 +120,20 @@ public class LiveTranscodeController(ILiveTranscodeService service) : BaseContro
         CancellationToken ct = default
     )
     {
-        return MapResult(await service.SeekAsync(sessionId, request, ct));
+        return MapResult(await service.SeekAsync(User.UserId(), sessionId, request, ct));
     }
 
     [HttpDelete("sessions/{sessionId}")]
     public async Task<IActionResult> EndSession(string sessionId)
     {
-        await service.EndSessionAsync(sessionId, HttpContext.RequestAborted);
+        LiveResult result = await service.EndSessionAsync(
+            User.UserId(),
+            sessionId,
+            HttpContext.RequestAborted
+        );
+        if (result.Kind != LiveResultKind.Ok)
+            return MapResult(result);
+
         return NoContent();
     }
 

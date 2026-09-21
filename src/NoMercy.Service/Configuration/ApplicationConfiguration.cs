@@ -148,6 +148,7 @@ public static class ApplicationConfiguration
         app.UseAuthorization();
         app.UseMiddleware<HmacValidationMiddleware>();
         app.UseMiddleware<AccessLogMiddleware>();
+        app.UseMiddleware<FolderAccessMiddleware>();
         app.UseMiddleware<DynamicStaticFilesMiddleware>();
 
         app.UseWebSockets();
