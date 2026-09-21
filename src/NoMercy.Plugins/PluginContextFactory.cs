@@ -139,7 +139,9 @@ public class PluginContextFactory(
                 : new PluginLibraryImport(pluginId, writer, libraryScanner, logger),
             HostStorage(pluginId),
             ServerInfo(pluginId),
-            Net(pluginId)
+            Net(pluginId),
+            Spawning(pluginId),
+            NativeCode(pluginId, dataFolderPath)
         );
     }
 
@@ -188,6 +190,49 @@ public class PluginContextFactory(
         }
 
         return new PluginNet(pluginId, broker, manifestSource, ledger, discovery, portMap);
+    }
+
+    /// <summary>
+    /// Running one of the binaries the owner approved. Resolved lazily for the
+    /// same reason as the sockets above: the broker's answer comes from the
+    /// manager, and the manager is built with this factory.
+    /// </summary>
+    private IPluginProcess? Spawning(Ulid pluginId)
+    {
+        IPluginCapabilityBroker? broker = services.GetService<IPluginCapabilityBroker>();
+        IPluginProcessStarter? starter = services.GetService<IPluginProcessStarter>();
+        IPluginResourceLedger? ledger = services.GetService<IPluginResourceLedger>();
+
+        return broker is null || starter is null || ledger is null
+            ? null
+            : new PluginProcess(
+                pluginId,
+                broker,
+                services.GetService<IPluginApprovedBinaries>()
+                    ?? new PluginApprovedBinaries(grantStore),
+                starter,
+                ledger
+            );
+    }
+
+    /// <summary>
+    /// Native code from the plugin's own bundle, gated on the marketplace
+    /// signature. A host that wired no signature stage answers that nothing is
+    /// signed, which refuses: not knowing a bundle is safe is not the same as
+    /// knowing it is.
+    /// </summary>
+    private IPluginNative? NativeCode(Ulid pluginId, string pluginDirectory)
+    {
+        INativeLibraryLoader? loader = services.GetService<INativeLibraryLoader>();
+
+        return loader is null
+            ? null
+            : new PluginNative(
+                pluginId,
+                services.GetService<IPluginBundleSignature>() ?? new NothingIsSigned(),
+                loader,
+                pluginDirectory
+            );
     }
 
     /// <summary>

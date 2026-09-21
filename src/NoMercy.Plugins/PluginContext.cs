@@ -48,6 +48,22 @@ public class PluginContext : IPluginContext
     private readonly IPluginStorage? _hostStorage;
     private readonly IPluginServerInfo? _server;
     private readonly IPluginNet? _net;
+    private readonly IPluginProcess? _process;
+    private readonly IPluginNative? _native;
+
+    /// <summary>Running one of the binaries the owner approved.</summary>
+    public IPluginProcess Process =>
+        _process
+        ?? throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(PluginId.ToString(), "IPluginContext.Process")
+        );
+
+    /// <summary>Native code from the plugin's own signed bundle.</summary>
+    public IPluginNative Native =>
+        _native
+        ?? throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(PluginId.ToString(), "IPluginContext.Native")
+        );
 
     /// <summary>Sockets the owner consented to.</summary>
     public IPluginNet Net =>
@@ -144,10 +160,14 @@ public class PluginContext : IPluginContext
         IPluginLibraryImport? libraryImport = null,
         IPluginStorage? hostStorage = null,
         IPluginServerInfo? server = null,
-        IPluginNet? net = null
+        IPluginNet? net = null,
+        IPluginProcess? process = null,
+        IPluginNative? native = null
     )
     {
         _net = net;
+        _process = process;
+        _native = native;
         _media = media;
         _hostStorage = hostStorage;
         _server = server;

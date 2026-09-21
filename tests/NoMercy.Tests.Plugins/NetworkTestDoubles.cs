@@ -97,6 +97,71 @@ public sealed class FakePortMapClient : IPluginPortMapClient
 }
 
 /// <summary>
+/// The same plugin, plus the grants the owner made. Kept beside the network
+/// double because the two differ only in whether the grant store answers
+/// anything, and a second near-copy is how they drift apart.
+/// </summary>
+public sealed class GrantingPlugin(
+    Ulid id,
+    PluginCapabilities? capabilities,
+    string kind,
+    params string[] granted
+) : IPluginManifestSource, IPluginConsentService, IPluginGrantStore
+{
+    private readonly NetworkPlugin _plugin = new(id, capabilities);
+
+    public PluginInfo? Find(Ulid pluginId) => _plugin.Find(pluginId);
+
+    public IReadOnlyList<PluginInfo> All() => _plugin.All();
+
+    public bool IsBaseline(PluginCapabilities? declared) => false;
+
+    public bool HasConsent(Ulid pluginId) => true;
+
+    public bool ConsentCoversCapabilities(
+        Ulid pluginId,
+        PluginCapabilities? declared,
+        Version installedVersion
+    ) => true;
+
+    public PluginCapabilities? ConsentedCapabilities(Ulid pluginId) => null;
+
+    public void ApproveCapability(Ulid pluginId, string capability, Version manifestVersion) { }
+
+    public void RevokeCapability(Ulid pluginId, string capability) { }
+
+    public bool IsApproved(Ulid pluginId, string capability) => true;
+
+    public Version? ApprovedAt(Ulid pluginId, string capability) => new(1, 0, 0);
+
+    public void GrantConsent(
+        Ulid pluginId,
+        PluginCapabilities? declared,
+        Version installedVersion
+    ) { }
+
+    public void RevokeConsent(Ulid pluginId) { }
+
+    public IReadOnlyList<string> Granted(Ulid pluginId, string grantKind) =>
+        pluginId == id && grantKind == kind ? granted : [];
+
+    public bool Holds(Ulid pluginId, string grantKind, string value) =>
+        Granted(pluginId, grantKind).Contains(value);
+
+    public void Grant(Ulid pluginId, string grantKind, string value) { }
+
+    public void Revoke(Ulid pluginId, string grantKind, string value) { }
+
+    public void RevokeAll(Ulid pluginId) { }
+
+    public void Request(Ulid pluginId, string grantKind, string value, string reason) { }
+
+    public IReadOnlyList<PluginGrantRequest> PendingRequests() => [];
+
+    public void ClearRequest(Ulid pluginId, string grantKind, string value) { }
+}
+
+/// <summary>
 /// A clock a test can push forward. A lease that lapses in production lapses
 /// here in one line, which is why renewal is driven by a clock rather than by
 /// a timer inside the facade.

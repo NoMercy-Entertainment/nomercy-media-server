@@ -85,6 +85,12 @@ public static class PluginServiceCollectionExtensions
         // The two halves of being findable on the owner's own network. Both
         // are TryAdd so a host that speaks to its network some other way can
         // replace either without replacing the platform.
+        // The two ways a plugin leaves everything the host mediates. Both are
+        // registered so the facades exist; both refuse on their own terms.
+        services.TryAddSingleton<IPluginProcessStarter, SystemProcessStarter>();
+        services.TryAddSingleton<INativeLibraryLoader, SystemNativeLibraryLoader>();
+        services.TryAddSingleton<IPluginBundleSignature, NothingIsSigned>();
+
         services.TryAddSingleton<IPluginServiceDiscoveryClient, MulticastDiscoveryClient>();
         services.TryAddSingleton<IPluginPortMapClient, NatPortMapClient>();
         services.TryAddSingleton<PluginPortMapRenewalService>();
