@@ -238,6 +238,80 @@ export function emitSlots(slots: Slot[]): string {
   ].join('\n');
 }
 
+/** `channel-strip` as `ChannelStrip`, the member name every language derives. */
+function memberOf(slot: string): string {
+  return slot
+    .split('-')
+    .map(part => part.charAt(0).toUpperCase() + part.slice(1))
+    .join('');
+}
+
+/**
+ * The slot words on their own, as a C# vocabulary.
+ *
+ * `PluginSlots` answers whether a pair is known; this answers what the words
+ * are. The clients need the words, because tools/nm-components reads a
+ * `public const string` vocabulary and writes it into TypeScript, Kotlin and
+ * Swift. A slot spelled by hand in a client is a placement that silently
+ * vanishes on that client alone.
+ */
+export function emitSlotVocabulary(slots: Slot[]): string {
+  const distinct: string[] = [...new Set(slots.map(slot => slot.slot))];
+  const kinds: string[] = [...new Set(slots.map(slot => slot.kind))];
+
+  const constants: string[] = distinct.flatMap(slot => [
+    `    /// <summary>${slots.find(row => row.slot === slot)?.summary ?? ''}</summary>`,
+    `    public const string ${memberOf(slot)} = "${slot}";`,
+    '',
+  ]);
+
+  const byKind: string[] = kinds.map(kind => {
+    const members: string = slots
+      .filter(row => row.kind === kind)
+      .map(row => memberOf(row.slot))
+      .join(', ');
+
+    return `        [PluginKind.${kind.charAt(0).toUpperCase() + kind.slice(1)}] = [${members}],`;
+  });
+
+  return [
+    LICENSE_HEADER,
+    'namespace NoMercy.Plugins.Abstractions;',
+    '',
+    '/// <summary>',
+    '/// Where inside a kind a placement lands.',
+    '///',
+    '/// A plugin says which kind it is and which slot it wants; the client owns the',
+    '/// drawing. Without slots every placement was a navigation entry, so a plugin',
+    '/// that belonged on the music home page could only add a sidebar link.',
+    '/// </summary>',
+    'public static class PluginSlot',
+    '{',
+    ...constants,
+    '    public static IReadOnlyList<string> All { get; } =',
+    `    [${distinct.map(slot => memberOf(slot)).join(', ')}];`,
+    '',
+    '    private static readonly Dictionary<string, string[]> ByKind = new()',
+    '    {',
+    ...byKind,
+    '    };',
+    '',
+    '    /// <summary>The slots this kind may ask for, in the order clients draw them.</summary>',
+    '    public static IReadOnlyList<string> For(string kind)',
+    '    {',
+    '        return ByKind.TryGetValue(kind, out string[]? slots) ? slots : [];',
+    '    }',
+    '',
+    '    /// <summary>Whether this kind can be placed in this slot.</summary>',
+    '    public static bool IsValid(string kind, string slot)',
+    '    {',
+    '        return For(kind).Contains(slot);',
+    '    }',
+    '}',
+    '',
+  ].join('\n');
+}
+
 /**
  * The analyzer rules, as a C# table.
  *
