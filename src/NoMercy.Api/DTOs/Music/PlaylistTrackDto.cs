@@ -74,6 +74,25 @@ public record PlaylistTrackDto
     [JsonProperty("artist_track")]
     public List<ArtistDto> Artist { get; set; }
 
+    /// <summary>
+    /// The plugin this item belongs to, or null for server media.
+    /// <para>
+    /// Every device in the session renders the frame rather than its own queue,
+    /// so a plugin's station has to arrive with everything a device needs to
+    /// play it and nothing a device would have to ask the plugin for.
+    /// </para>
+    /// </summary>
+    [JsonProperty("plugin_id")]
+    public string? PluginId { get; set; }
+
+    /// <summary>Host minted and user bound, which is why it carries no query.</summary>
+    [JsonProperty("proxy_url")]
+    public Uri? ProxyUrl { get; set; }
+
+    /// <summary>Whether the item has no end, which decides what the transport draws.</summary>
+    [JsonProperty("live")]
+    public bool Live { get; set; }
+
     private static Image? ResolveBackdropImage(Track track, Album? primaryAlbum)
     {
         Image? trackArtistBackdrop = track
@@ -86,6 +105,21 @@ public record PlaylistTrackDto
             ?? primaryAlbum
                 ?.AlbumArtist.FirstOrDefault()
                 ?.Artist.Images.FirstOrDefault(image => image.Type == "background");
+    }
+
+    /// <summary>
+    /// For the serializer, and for the frame assertions that are the contract
+    /// four clients read. A real track comes from the constructor below.
+    /// </summary>
+    public PlaylistTrackDto()
+    {
+        Name = string.Empty;
+        Path = string.Empty;
+        Duration = string.Empty;
+        Type = string.Empty;
+        Link = new Uri("/", UriKind.Relative);
+        Album = [];
+        Artist = [];
     }
 
     public PlaylistTrackDto(Track track, string country)
