@@ -333,6 +333,11 @@ internal sealed class PluginLoader(
                                 verification.Trusted
                             );
 
+                            errorInfo.Malfunction = PluginStaleMemberLog.Describe(
+                                manifest.Id.Value,
+                                ex
+                            );
+
                             LoadedPlugin errorLoaded = new(
                                 errorInfo,
                                 null,

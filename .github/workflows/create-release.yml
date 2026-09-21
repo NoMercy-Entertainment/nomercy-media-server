@@ -32,9 +32,6 @@ on:
       GPG_PRIVATE_KEY:
         description: 'ASCII-armored GPG private key for signing the release manifest'
         required: false
-      NUGET_API_KEY:
-        description: 'nuget.org API key for publishing the plugin contract packages'
-        required: false
 
 jobs:
   create_release:
@@ -137,19 +134,12 @@ jobs:
       # no way to delete a published version, so a build from a branch that
       # never ships must never land there. --skip-duplicate makes a rerun of
       # an already-published version a no-op instead of a failure.
-      - name: Publish plugin contract packages to NuGet.org
-        if: ${{ inputs.draft != true }}
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
-        run: |
-          if [ -z "${NUGET_API_KEY:-}" ]; then
-            echo "::warning::NUGET_API_KEY is not set — skipping NuGet.org publish. Plugin authors are still on the local feed."
-            exit 0
-          fi
-          dotnet nuget push "./output/*.nupkg" \
-            --api-key "$NUGET_API_KEY" \
-            --source https://api.nuget.org/v3/index.json \
-            --skip-duplicate
+      # The packages stay here so they ride along as release assets. Pushing
+      # them to nuget.org happens in ci-cd-pipeline.yml instead: nuget.org
+      # matches a trusted publishing policy against the workflow file the JOB
+      # is defined in, not the one the run entered through, so a push from
+      # this reusable workflow is refused with a workflow mismatch however the
+      # policy names the caller.
 
       - name: Generate SHA-256 checksums and release-info.json
         run: |

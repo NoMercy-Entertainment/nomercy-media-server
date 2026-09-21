@@ -18,6 +18,17 @@ public class PluginInfo
     public required string Description { get; init; }
     public required Version Version { get; init; }
     public required PluginStatus Status { get; set; }
+
+    /// <summary>
+    /// Why this plugin is malfunctioning, in the words the owner is shown.
+    /// <para>
+    /// The reason was written to the log and thrown away, so every surface
+    /// could say a plugin had malfunctioned and none could say why. An owner
+    /// then has a broken plugin, no author to ask, and nothing to send them.
+    /// </para>
+    /// </summary>
+    public string? Malfunction { get; set; }
+
     public string? Author { get; init; }
     public string? ProjectUrl { get; init; }
 

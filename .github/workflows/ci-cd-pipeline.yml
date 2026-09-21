@@ -95,6 +95,70 @@ jobs:
     with:
       version: ${{ needs.version_management.outputs.version }}
 
+  # Step 6b: Publish the plugin contract packages to nuget.org.
+  #
+  # Defined here rather than inside create-release.yml because nuget.org
+  # matches a trusted publishing policy against the workflow file the JOB is
+  # defined in, not the one the run entered through. Published from the
+  # reusable workflow it is refused with "Workflow mismatch ... expected
+  # 'ci-cd-pipeline.yml', actual 'create-release.yml'" no matter what the
+  # policy names.
+  #
+  # Trusted publishing rather than a stored key: nuget.org exchanges this run's
+  # OIDC token for a key that lives minutes, so there is no long-lived secret
+  # to leak or rotate.
+  publish_plugin_packages:
+    needs: [version_management, create_release]
+    if: needs.version_management.outputs.should_deploy == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      # Third-party plugin authors restore these from nuget.org — there is no
+      # other distribution path. All six are packed together because a version
+      # mismatch across them fails restore with NU1102 naming only the one a
+      # caller forgot.
+      - name: Pack the plugin contract
+        run: |
+          for project in \
+            src/NoMercy.Events \
+            src/NoMercy.Design \
+            src/NoMercy.Plugins.Abstractions \
+            src/NoMercy.Plugins.Mvc \
+            src/NoMercy.Plugins.Testing \
+            src/NoMercy.Plugins.Analyzers; do
+            dotnet pack "$project" --configuration Release --output ./output
+          done
+
+      - name: Exchange this run's identity for a short-lived NuGet key
+        id: nuget_login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ vars.NUGET_USER }}
+
+      - name: Publish to NuGet.org
+        run: |
+          # Loud rather than skipped. The step this replaced warned and exited
+          # zero when it had no key, so six packages silently never published
+          # and every plugin author stayed on the local feed with a green
+          # release.
+          if [ -z "${{ steps.nuget_login.outputs.NUGET_API_KEY }}" ]; then
+            echo "::error::Trusted publishing returned no key. Set the NUGET_USER repository variable to the nuget.org account that created the policy, and confirm the policy names this repository and ci-cd-pipeline.yml."
+            exit 1
+          fi
+          dotnet nuget push "./output/*.nupkg" \
+            --api-key "${{ steps.nuget_login.outputs.NUGET_API_KEY }}" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+
   # Step 7: Promote Docker images from RC tags to stable floating tags.
   # Runs ONLY after create_release succeeds so users cannot pull :latest or
   # :<version> until the GitHub Release (with all file assets) is fully published.

@@ -308,6 +308,10 @@ public class ServerRegistrationService : IServerRegistrationService
             { "external_port", RuntimeServerSettings.Current.ExternalServerPort.ToString() },
             { "version", Software.Version!.ToString() },
             { "platform", Info.Platform },
+            // Whether this is a development run. The API cannot otherwise tell
+            // a developer's machine from a real install, because --dev changes
+            // where data is kept and not which API is called.
+            { "dev", Config.IsDev ? "1" : "0" },
             { "stun_public_ip", _connectivityStatus.StunPublicIp.OrEmpty() },
             { "stun_public_port", (_connectivityStatus.StunPublicPort?.ToString()).OrEmpty() },
             { "stun_nat_type", _connectivityStatus.NatStatus.ToString() },

@@ -166,6 +166,7 @@ internal sealed class PluginLifecycleManager(
                 // Status directly matches how PluginLoader already records a
                 // malfunction on a freshly built PluginInfo.
                 loaded.Info.Status = PluginStatus.Malfunctioned;
+                loaded.Info.Malfunction = PluginStaleMemberLog.Describe(pluginId, ex);
 
                 await _eventBus.PublishAsync(
                     new PluginErrorOccurredEvent

@@ -44,6 +44,13 @@ public record PluginInfoDto
     [JsonProperty("status")]
     public string Status { get; init; } = null!;
 
+    /// <summary>
+    /// Why the plugin is malfunctioning, when it is. Absent otherwise, so a
+    /// client never has to decide whether an empty string means healthy.
+    /// </summary>
+    [JsonProperty("malfunction", NullValueHandling = NullValueHandling.Ignore)]
+    public string? Malfunction { get; init; }
+
     [JsonProperty("author")]
     public string? Author { get; init; }
 
@@ -103,6 +110,7 @@ public record PluginInfoDto
         Description = info.Description;
         Version = info.Version.ToString();
         Status = info.Status.ToString().ToLowerInvariant();
+        Malfunction = info.Malfunction;
         Author = info.Author;
         ProjectUrl = info.ProjectUrl;
     }
