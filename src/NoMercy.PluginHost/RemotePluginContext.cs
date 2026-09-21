@@ -11,56 +11,87 @@
 
 using Microsoft.Extensions.Logging;
 using NoMercy.Plugins.Abstractions;
+using NoMercy.Plugins.Ipc;
 
 namespace NoMercy.PluginHost;
 
 /// <summary>
-/// The context the plugin holds, with every facade still on the far side.
+/// The context the plugin holds, with every facade a proxy over the channel.
 /// <para>
-/// A stub in this task: the process boots, loads the assembly and answers,
-/// and everything a plugin asks the server for refuses by naming the facade.
-/// Each facade becomes a proxy over the broker channel in its own task, so a
-/// half-connected one never looks like a working one.
+/// A plugin must not be able to tell that it moved out of the server process.
+/// It holds the same <see cref="IPluginContext" /> the contract published, and
+/// each facade turns its call into one named message instead of a method call
+/// on an object in the same heap.
+/// </para>
+/// <para>
+/// Three members stay local. The id and the data folder are fixed for the life
+/// of the process, so a round trip for either would make every plugin pay for
+/// the boundary on its first line. The logger writes to stdout, which the
+/// supervisor drains into the server log — a log line is the one thing that
+/// must still arrive when the channel is the thing that broke.
 /// </para>
 /// </summary>
-public sealed class RemotePluginContext(PluginHostLaunch launch) : IPluginContext
+public sealed class RemotePluginContext : IPluginContext
 {
-    public Ulid PluginId => launch.PluginId;
+    private readonly PluginHostLaunch _launch;
+    private readonly RemoteEvents _events;
 
-    public string DataFolderPath => launch.DataFolder;
+    public RemotePluginContext(PluginHostLaunch launch, IPluginBrokerService broker)
+    {
+        _launch = launch;
+
+        RemoteCall call = new(launch.PluginId, broker);
+
+        _events = new RemoteEvents(call);
+        Secrets = new RemoteSecrets(call);
+        Grants = new RemoteGrants(call);
+        Hub = new RemoteHub(call);
+        Configuration = new RemoteConfiguration(call);
+        Call = call;
+    }
+
+    internal RemoteCall Call { get; }
+
+    public Ulid PluginId => _launch.PluginId;
+
+    public string DataFolderPath => _launch.DataFolder;
 
     public HttpClient HttpClient { get; } = new();
 
     public ILogger Logger { get; } =
         LoggerFactory.Create(builder => builder.AddSimpleConsole()).CreateLogger("plugin");
 
-    public IPluginEvents Events =>
-        throw new PluginRefusedException(NotYet(nameof(IPluginContext.Events)));
+    public IPluginEvents Events => _events;
 
-    public IPluginConfiguration Configuration =>
-        throw new PluginRefusedException(NotYet(nameof(IPluginContext.Configuration)));
+    public IPluginConfiguration Configuration { get; }
 
-    public IPluginSecretStore Secrets =>
-        throw new PluginRefusedException(NotYet(nameof(IPluginContext.Secrets)));
+    public IPluginSecretStore Secrets { get; }
 
+    public IPluginGrants Grants { get; }
+
+    public IPluginHubContext Hub { get; }
+
+    /// <summary>
+    /// Reads of the owner's library cross the boundary in their own task. A
+    /// half-connected facade that answered an empty list would look to a
+    /// plugin exactly like a library with nothing in it.
+    /// </summary>
     public IPluginLibraryQuery Library =>
         throw new PluginRefusedException(NotYet(nameof(IPluginContext.Library)));
 
-    public IPluginGrants Grants =>
-        throw new PluginRefusedException(NotYet(nameof(IPluginContext.Grants)));
-
     public IPluginLibraryWriter? LibraryWriter => null;
 
-    public IPluginHubContext Hub =>
-        throw new PluginRefusedException(NotYet(nameof(IPluginContext.Hub)));
-
     public Task PublishAsync<T>(string name, T payload, CancellationToken ct = default) =>
-        throw new PluginRefusedException(NotYet(nameof(IPluginContext.PublishAsync)));
+        _events.PublishAsync(name, payload, ct);
 
-    private static PluginRefusal NotYet(string facade) =>
+    /// <summary>Delivery of a subscribed topic, handed in by the host.</summary>
+    public Task DeliverAsync(string topic, string payloadJson, CancellationToken ct = default) =>
+        _events.DeliverAsync(topic, payloadJson, ct);
+
+    private PluginRefusal NotYet(string facade) =>
         new(
             PluginRefusalCodes.HostServicesRemoved,
-            "unknown plugin",
+            _launch.PluginId.ToString(),
             $"A plugin in its own process asked for {facade}.",
             "This server runs the plugin out of process, and that facade does not cross the boundary yet.",
             "Run this plugin in the server's own process until the facade is carried across. Docs: /nomercy-plugins/handbook/runtime-and-isolation",
