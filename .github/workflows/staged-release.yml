@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   prepare:
-    runs-on: [self-hosted, Linux, X64, beast-unit]
+    runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.tag.outputs.tag }}

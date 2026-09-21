@@ -22,7 +22,7 @@ permissions:
 jobs:
   full-test:
     if: ${{ contains(github.event.head_commit.message, '[test-only]') }}
-    runs-on: [self-hosted, Linux, X64, beast-unit]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
         with:
@@ -60,10 +60,9 @@ jobs:
             exit 1
           fi
 
-          # The runner is self-hosted and its /tmp survives between jobs, so a
-          # tarball from a previous version can still be sitting here. Two
-          # matches on the glob below turns `tar -xzf a.tar.gz b.tar.gz` into
-          # "extract member b.tar.gz from archive a.tar.gz", which fails.
+          # Start from an empty staging dir. Two matches on the glob below turns
+          # `tar -xzf a.tar.gz b.tar.gz` into "extract member b.tar.gz from
+          # archive a.tar.gz", which fails.
           rm -rf /tmp/nmff
           mkdir -p /tmp/nmff
 

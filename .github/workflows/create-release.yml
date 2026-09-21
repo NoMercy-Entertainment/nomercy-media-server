@@ -38,7 +38,7 @@ on:
 
 jobs:
   create_release:
-    runs-on: [self-hosted, Linux, X64, beast-unit]
+    runs-on: ubuntu-latest
 
     steps:
       - name: Disable autocrlf before checkout

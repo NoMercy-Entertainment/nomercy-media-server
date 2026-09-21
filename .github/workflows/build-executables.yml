@@ -29,7 +29,7 @@ on:
 
 jobs:
   build_executables:
-    runs-on: [self-hosted, Linux, X64, beast-unit]
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         project: [Service, App, Launcher, Cli]

@@ -33,7 +33,7 @@ concurrency:
 
 jobs:
   retract:
-    runs-on: [self-hosted, Linux, X64, beast-unit]
+    runs-on: ubuntu-latest
     permissions:
       contents: write
       packages: write

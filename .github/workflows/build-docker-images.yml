@@ -29,7 +29,7 @@ jobs:
   # job in ci-cd-pipeline.yml AFTER create_release succeeds, so users never pull
   # a half-baked image as stable.
   package:
-    runs-on: [self-hosted, Linux, X64, beast-unit]
+    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
