@@ -25,6 +25,27 @@ public static class PluginActionType
     public const string OpenWebView = "openWebView";
     public const string RefreshView = "refreshView";
 
+    /// <summary>
+    /// What the caller typed, posted back to the same view.
+    ///
+    /// A form is not a plugin method call: the answer is the next state of the
+    /// page, so it goes through the view the caller is already looking at
+    /// rather than through an endpoint that returns something else.
+    /// </summary>
+    public const string SubmitForm = "submitForm";
+
+    /// <summary>
+    /// A file the host resolved, named by the id the host gave it.
+    ///
+    /// Never a path. The person choosing is at a browser, a phone or a
+    /// television, and the file has to exist on the server; a path typed on
+    /// the wrong machine is the bug this replaces.
+    /// </summary>
+    public const string PickFile = "pickFile";
+
+    /// <summary>A folder the host resolved, named by the host's own id.</summary>
+    public const string PickFolder = "pickFolder";
+
     public static IReadOnlySet<string> All { get; } =
         new HashSet<string>(StringComparer.Ordinal)
         {
@@ -34,5 +55,8 @@ public static class PluginActionType
             CallPlugin,
             OpenWebView,
             RefreshView,
+            SubmitForm,
+            PickFile,
+            PickFolder,
         };
 }
