@@ -83,6 +83,42 @@ public static class PluginRefusalMessages
     }
 
     /// <summary>
+    /// The router said no to a port forward.
+    /// <para>
+    /// Not the plugin's fault and not fixable in its manifest, so the message
+    /// points at the router rather than at plugin.json. A plugin that treats
+    /// this as fatal is wrong: plenty of owners run without forwarding.
+    /// </para>
+    /// </summary>
+    public static PluginRefusal RouterDeclined(int port, int resultCode)
+    {
+        return new PluginRefusal(
+            PluginRefusalCodes.RouterDeclined,
+            "the router",
+            $"The router refused to forward port {port} (NAT-PMP result {resultCode}).",
+            "Forwarding a port is the router's decision, not the server's.",
+            "Switch on NAT-PMP or port forwarding in the router, or carry on without it: a plugin that cannot forward a port is reachable on the local network and not from outside it. Docs: /nomercy-plugins/capabilities/network-listen",
+            PluginRefusalSeverity.Blocked
+        );
+    }
+
+    /// <summary>
+    /// Nothing on this network answered a forwarding request, which is the
+    /// usual answer from a router with NAT-PMP switched off.
+    /// </summary>
+    public static PluginRefusal NoRouterFound()
+    {
+        return new PluginRefusal(
+            PluginRefusalCodes.NoRouterFound,
+            "the router",
+            "No router on this network answered a port-forwarding request.",
+            "The server asks the default gateway over NAT-PMP, and a router with it switched off answers nothing at all.",
+            "Switch on NAT-PMP in the router, or forward the port by hand: a plugin that cannot forward a port still works on the local network. Docs: /nomercy-plugins/capabilities/network-listen",
+            PluginRefusalSeverity.Blocked
+        );
+    }
+
+    /// <summary>
     /// A plugin reading or writing outside every folder it was granted.
     /// <para>
     /// This fires on an absolute path and on a <c>..</c> segment as well as on

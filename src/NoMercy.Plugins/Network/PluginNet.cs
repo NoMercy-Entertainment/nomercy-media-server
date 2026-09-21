@@ -29,7 +29,9 @@ public class PluginNet(
     Ulid pluginId,
     IPluginCapabilityBroker broker,
     IPluginManifestSource manifests,
-    IPluginResourceLedger ledger
+    IPluginResourceLedger ledger,
+    IPluginNetDiscovery? discovery = null,
+    IPluginPortMap? portMap = null
 ) : IPluginNet
 {
     public async Task<Stream> DialAsync(
@@ -109,15 +111,25 @@ public class PluginNet(
         return Task.FromResult(listener);
     }
 
-    /// <summary>Built in Phase 2 task 29; not reachable from here yet.</summary>
+    /// <summary>
+    /// Finding peers and devices on the owner's network. Refuses by name on a
+    /// host that wired no discovery client, rather than answering an empty
+    /// stream a plugin would read as "nothing out there".
+    /// </summary>
     public IPluginNetDiscovery Discovery =>
-        throw new PluginRefusedException(
+        discovery
+        ?? throw new PluginRefusedException(
             PluginRefusalMessages.FacadeNotOnThisHost(pluginId.ToString(), "IPluginNet.Discovery")
         );
 
-    /// <summary>Built in Phase 2 task 29; not reachable from here yet.</summary>
+    /// <summary>
+    /// Asking the router to forward a port. Refuses by name where no router
+    /// client is wired, so a plugin learns its port is not forwarded instead
+    /// of advertising one that is not.
+    /// </summary>
     public IPluginPortMap PortMap =>
-        throw new PluginRefusedException(
+        portMap
+        ?? throw new PluginRefusedException(
             PluginRefusalMessages.FacadeNotOnThisHost(pluginId.ToString(), "IPluginNet.PortMap")
         );
 }

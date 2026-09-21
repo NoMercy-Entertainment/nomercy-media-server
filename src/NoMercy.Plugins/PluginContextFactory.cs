@@ -161,9 +161,33 @@ public class PluginContextFactory(
         IPluginManifestSource? manifestSource = services.GetService<IPluginManifestSource>();
         IPluginResourceLedger? ledger = services.GetService<IPluginResourceLedger>();
 
-        return broker is null || manifestSource is null || ledger is null
-            ? null
-            : new PluginNet(pluginId, broker, manifestSource, ledger);
+        if (broker is null || manifestSource is null || ledger is null)
+            return null;
+
+        IPluginNetDiscovery? discovery = services.GetService<IPluginServiceDiscoveryClient>()
+            is { } discoveryClient
+            ? new PluginNetDiscovery(pluginId, broker, discoveryClient, ledger)
+            : null;
+
+        IPluginPortMap? portMap = null;
+
+        if (services.GetService<IPluginPortMapClient>() is { } routerClient)
+        {
+            PluginPortMap map = new(
+                pluginId,
+                broker,
+                routerClient,
+                ledger,
+                services.GetService<TimeProvider>() ?? TimeProvider.System
+            );
+
+            // The host renews the leases, because the plugin asking for a
+            // mapping has no reason to know a NAT-PMP lease is minutes long.
+            services.GetService<PluginPortMapRenewalService>()?.Track(pluginId, map);
+            portMap = map;
+        }
+
+        return new PluginNet(pluginId, broker, manifestSource, ledger, discovery, portMap);
     }
 
     /// <summary>

@@ -45,6 +45,8 @@ public static class PluginRefusalCodes
     public const string SecretFieldInSettings = "PLUGIN_SECRET_FIELD_IN_SETTINGS";
     public const string QuotaDiskExceeded = "PLUGIN_QUOTA_DISK_EXCEEDED";
     public const string LanCredentialInvalid = "PLUGIN_LAN_CREDENTIAL_INVALID";
+    public const string RouterDeclined = "PLUGIN_ROUTER_DECLINED";
+    public const string NoRouterFound = "PLUGIN_NO_ROUTER_FOUND";
     public const string SchedulerWorkerCrashed = "PLUGIN_SCHEDULER_WORKER_CRASHED";
     public const string LiveLinkFailed = "PLUGIN_LIVE_LINK_FAILED";
     public const string RecordingDiskFull = "PLUGIN_RECORDING_DISK_FULL";
@@ -245,6 +247,18 @@ public static class PluginRefusalCodes
             PluginRefusalSeverity.Blocked,
             null,
             "A device on the network used a credential the server does not know, or one the owner revoked."
+        ),
+        new(
+            "PLUGIN_ROUTER_DECLINED",
+            PluginRefusalSeverity.Blocked,
+            "network.listen",
+            "The router refused to forward the port, which no change to the plugin can fix."
+        ),
+        new(
+            "PLUGIN_NO_ROUTER_FOUND",
+            PluginRefusalSeverity.Blocked,
+            "network.listen",
+            "No router on this network answered a port-forwarding request."
         ),
         new(
             "PLUGIN_SCHEDULER_WORKER_CRASHED",

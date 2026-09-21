@@ -126,12 +126,22 @@ public sealed class PluginCapabilityBroker(
     /// The values the manifest named for this capability. Network is the only
     /// one with a shape of its own today; everything else declares the
     /// capability and asks the owner for each value.
+    /// <para>
+    /// Discovery reads its own list. A service type is not a host, and looking
+    /// one up in the host globs would have meant a plugin allowed to reach
+    /// <c>*.example.com</c> was allowed to enumerate the owner's network.
+    /// </para>
     /// </summary>
     private static IReadOnlyList<string> ScopesFor(
         PluginCapabilities capabilities,
         string capability
-    ) =>
-        capability.StartsWith("network.", StringComparison.Ordinal)
+    )
+    {
+        if (capability == PluginCapabilityNames.NetworkDiscover)
+            return capabilities.Network?.Protocols ?? [];
+
+        return capability.StartsWith("network.", StringComparison.Ordinal)
             ? capabilities.Network?.Hosts ?? []
             : [];
+    }
 }

@@ -59,6 +59,18 @@ public class PluginNetworkCapability
     /// </summary>
     [JsonPropertyName("ports")]
     public List<string> Ports { get; init; } = [];
+
+    /// <summary>
+    /// The service types this plugin may look for on the owner's network, as
+    /// DNS-SD writes them: <c>_bittorrent._tcp</c>.
+    /// <para>
+    /// Its own list because discovery enumerates machines the owner never
+    /// mentioned to the server. An empty list is nothing at all, never
+    /// everything.
+    /// </para>
+    /// </summary>
+    [JsonPropertyName("protocols")]
+    public List<string> Protocols { get; init; } = [];
 }
 
 public class PluginUiCapability

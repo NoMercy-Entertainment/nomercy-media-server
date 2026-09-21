@@ -33,6 +33,7 @@ using NoMercy.Plugins.Hub;
 using NoMercy.Plugins.Lan;
 using NoMercy.Plugins.Library;
 using NoMercy.Plugins.Media;
+using NoMercy.Plugins.Network;
 using NoMercy.Plugins.Offline;
 using NoMercy.Plugins.Quotas;
 using NoMercy.Plugins.Revocation;
@@ -80,6 +81,14 @@ public static class PluginServiceCollectionExtensions
         // What a plugin holds outside the process, so stopping it gives all of
         // it back. Shared by sockets, router mappings and child processes.
         services.TryAddSingleton<IPluginResourceLedger, PluginResourceLedger>();
+
+        // The two halves of being findable on the owner's own network. Both
+        // are TryAdd so a host that speaks to its network some other way can
+        // replace either without replacing the platform.
+        services.TryAddSingleton<IPluginServiceDiscoveryClient, MulticastDiscoveryClient>();
+        services.TryAddSingleton<IPluginPortMapClient, NatPortMapClient>();
+        services.TryAddSingleton<PluginPortMapRenewalService>();
+        services.AddHostedService(sp => sp.GetRequiredService<PluginPortMapRenewalService>());
 
         // Built from the container rather than by the parameterless constructor,
         // because one stage asks the repository where a plugin came from and
