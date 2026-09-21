@@ -15,6 +15,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Api.Middleware;
 using NoMercy.Authorization;
@@ -502,5 +503,42 @@ public sealed class FolderAccessMiddlewareTests : IAsyncLifetime, IDisposable
         );
 
         nextCalled().Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Denial_LogsTheRequestedPathOnASingleLine()
+    {
+        CapturingLogger logger = new();
+        FolderAccessMiddleware middleware = new(
+            _ => Task.CompletedTask,
+            UserCache.Current,
+            new LiveIngestKeyStore(),
+            logger
+        );
+
+        await middleware.InvokeAsync(
+            BuildContext($"/{GrantedFolderId}/x\nInfo: access granted for everyone")
+        );
+
+        logger.Messages.Should().ContainSingle();
+        logger.Messages[0].Should().NotContain("\n").And.NotContain("\r");
+    }
+
+    private sealed class CapturingLogger : ILogger<FolderAccessMiddleware>
+    {
+        public List<string> Messages { get; } = [];
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter
+        ) => Messages.Add(formatter(state, exception));
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
     }
 }
