@@ -16,9 +16,14 @@ using NoMercy.Authorization;
 using NoMercy.Database;
 using NoMercy.Events;
 using NoMercy.Events.Library;
+using NoMercy.Events.Users;
 
 namespace NoMercy.Api.EventHandlers;
 
+/// <summary>
+/// Keeps the served-folder registry and the user cache's folder view current:
+/// which folders exist, and which users hold a library grant covering each one.
+/// </summary>
 public class FolderPathEventHandler : EventSubscriber
 {
     private readonly IServiceScopeFactory _scopeFactory;
@@ -37,23 +42,29 @@ public class FolderPathEventHandler : EventSubscriber
         _userCache = userCache;
         Track(eventBus.Subscribe<FolderPathAddedEvent>(OnFolderPathAdded));
         Track(eventBus.Subscribe<FolderPathRemovedEvent>(OnFolderPathRemoved));
+        Track(eventBus.Subscribe<UserPermissionsChangedEvent>(OnUserPermissionsChanged));
     }
 
     internal async Task OnFolderPathAdded(FolderPathAddedEvent @event, CancellationToken ct)
     {
         _servedFolders.Add(@event.RequestPath, @event.DriverId, @event.SubPath);
-
-        await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
-        IDbContextFactory<MediaContext> contextFactory = scope.ServiceProvider.GetRequiredService<
-            IDbContextFactory<MediaContext>
-        >();
-        await _userCache.RefreshFolderIdsAsync(contextFactory, ct);
+        await RefreshFolderCacheAsync(ct);
     }
 
     internal async Task OnFolderPathRemoved(FolderPathRemovedEvent @event, CancellationToken ct)
     {
         _servedFolders.Remove(@event.RequestPath);
+        await RefreshFolderCacheAsync(ct);
+    }
 
+    // A library grant change decides which folders a user may be served from.
+    internal Task OnUserPermissionsChanged(
+        UserPermissionsChangedEvent @event,
+        CancellationToken ct
+    ) => RefreshFolderCacheAsync(ct);
+
+    private async Task RefreshFolderCacheAsync(CancellationToken ct)
+    {
         await using AsyncServiceScope scope = _scopeFactory.CreateAsyncScope();
         IDbContextFactory<MediaContext> contextFactory = scope.ServiceProvider.GetRequiredService<
             IDbContextFactory<MediaContext>

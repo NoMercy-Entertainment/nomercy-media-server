@@ -24,6 +24,7 @@
   <PropertyGroup>
     <IsPackable>true</IsPackable>
     <PackageId>NoMercy.Plugins.Abstractions</PackageId>
+    <Version>$(PluginPackageVersion)</Version>
     <Authors>NoMercy Entertainment</Authors>
     <Description>The contract a NoMercy MediaServer plugin is written against.</Description>
     <!-- Not PackageLicenseExpression: NuGet only accepts SPDX identifiers it

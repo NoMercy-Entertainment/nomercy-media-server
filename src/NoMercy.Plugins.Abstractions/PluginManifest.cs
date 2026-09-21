@@ -75,6 +75,14 @@ public sealed record PluginManifest
     [JsonPropertyName("ui")]
     public PluginUiSpec? Ui { get; init; }
 
+    /// <summary>
+    /// The fields the host draws on this plugin's settings page. Declared here
+    /// rather than rendered by the plugin, so the same settings reach a remote
+    /// control and a phone without the author drawing three pages.
+    /// </summary>
+    [JsonPropertyName("settings")]
+    public IReadOnlyList<PluginSettingsField> Settings { get; init; } = [];
+
     [JsonPropertyName("signature")]
     public PluginSignatureBlock? Signature { get; init; }
 }

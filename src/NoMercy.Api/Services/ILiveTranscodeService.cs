@@ -20,7 +20,11 @@ namespace NoMercy.Api.Services;
 /// </summary>
 public interface ILiveTranscodeService
 {
-    IReadOnlyList<LiveSessionDto> ListSessions();
+    /// <summary>
+    /// The caller's own sessions; every session on the server when
+    /// <paramref name="includeAll"/> is set (moderators and the owner).
+    /// </summary>
+    IReadOnlyList<LiveSessionDto> ListSessions(Guid userId, bool includeAll);
 
     Task<LiveResult> StartSessionAsync(
         Guid userId,
@@ -29,33 +33,40 @@ public interface ILiveTranscodeService
         CancellationToken ct
     );
 
-    LiveResult GetMasterPlaylist(string sessionId);
+    LiveResult GetMasterPlaylist(Guid userId, string sessionId);
 
-    LiveResult GetPlaylist(string sessionId);
+    LiveResult GetPlaylist(Guid userId, string sessionId);
 
     Task<LiveResult> GetSegmentAsync(
+        Guid userId,
         string sessionId,
         string epoch,
         int index,
         CancellationToken ct
     );
 
-    LiveResult ReportPosition(string sessionId, ReportPositionRequest request);
+    LiveResult ReportPosition(Guid userId, string sessionId, ReportPositionRequest request);
 
     /// <summary>
     /// REST fallback for reporting client network health (download-buffer
     /// depth + observed downlink) — the SignalR equivalent is
     /// <c>LiveTranscodeHub.ReportBufferHealth</c>.
     /// </summary>
-    LiveResult ReportBufferHealth(string sessionId, ReportBufferHealthRequest request);
+    LiveResult ReportBufferHealth(Guid userId, string sessionId, ReportBufferHealthRequest request);
 
     Task<LiveResult> ChangeQualityAsync(
+        Guid userId,
         string sessionId,
         ChangeQualityRequest request,
         CancellationToken ct
     );
 
-    Task<LiveResult> SeekAsync(string sessionId, SeekRequest request, CancellationToken ct);
+    Task<LiveResult> SeekAsync(
+        Guid userId,
+        string sessionId,
+        SeekRequest request,
+        CancellationToken ct
+    );
 
-    Task EndSessionAsync(string sessionId, CancellationToken ct);
+    Task<LiveResult> EndSessionAsync(Guid userId, string sessionId, CancellationToken ct);
 }

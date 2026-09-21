@@ -81,13 +81,13 @@ public static class Archiving
             {
                 Logger.System(
                     $"Refusing to extract {filePath}: archive missing or empty "
-                             + $"(exists={exists}, size={size}) after {maxAttempts} checks",
+                        + $"(exists={exists}, size={size}) after {maxAttempts} checks",
                     LogEventLevel.Error
                 );
                 throw new FileNotFoundException(
                     $"Cannot extract archive: file missing or empty at {filePath} — "
-                             + "the download did not complete or was removed before extraction. "
-                             + "Will retry the full download on the next provisioning attempt.",
+                        + "the download did not complete or was removed before extraction. "
+                        + "Will retry the full download on the next provisioning attempt.",
                     filePath
                 );
             }
@@ -172,7 +172,7 @@ public static class Archiving
 
             // List entries first so a traversal attempt can be rejected before
             // any file is written — the tar CLI has no per-entry containment guard.
-            Shell.ExecResult listResult = await Shell.ExecAsync("tar", $"tf \"{tarFilePath}\"");
+            Shell.ExecResult listResult = await Shell.ExecAsync("tar", ["tf", tarFilePath]);
 
             if (listResult.ExitCode != 0)
             {
@@ -211,7 +211,7 @@ public static class Archiving
 
             Shell.ExecResult extractResult = await Shell.ExecAsync(
                 "tar",
-                $"xf \"{tarFilePath}\" -C \"{extractToDirectory}\""
+                ["xf", tarFilePath, "-C", extractToDirectory]
             );
 
             if (extractResult.ExitCode != 0)
@@ -260,8 +260,10 @@ public static class Archiving
     /// </summary>
     private static bool IsPathContained(string destinationRoot, string candidatePath)
     {
-        string normalizedRoot = destinationRoot.TrimEnd([Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar]
-        );
+        string normalizedRoot = destinationRoot.TrimEnd([
+            Path.DirectorySeparatorChar,
+            Path.AltDirectorySeparatorChar,
+        ]);
         string fullCandidatePath = Path.GetFullPath(candidatePath);
 
         return fullCandidatePath == normalizedRoot

@@ -25,6 +25,8 @@ using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.Users;
 using NoMercy.Events;
 using NoMercy.Events.Users;
+using NoMercy.Plugins.Guests;
+using NoMercy.Plugins.UserData;
 
 namespace NoMercy.Api.Controllers.V1.Dashboard.Admin;
 
@@ -33,7 +35,12 @@ namespace NoMercy.Api.Controllers.V1.Dashboard.Admin;
 [ApiVersion(1.0)]
 [Authorize]
 [Route("api/v{version:apiVersion}/dashboard/users", Order = 10)]
-public class UsersController(IUserRepository userRepository, IEventBus eventBus) : BaseController
+public class UsersController(
+    IUserRepository userRepository,
+    IEventBus eventBus,
+    PluginGuestInstaller guestInstaller,
+    PluginUserDataExporter pluginUserData
+) : BaseController
 {
     [HttpGet]
     [Authorize(Policy = "Owner")]
@@ -107,7 +114,7 @@ public class UsersController(IUserRepository userRepository, IEventBus eventBus)
 
     [HttpDelete("{id:guid}")]
     [Authorize(Policy = "Owner")]
-    public async Task<IActionResult> Destroy(Guid id)
+    public async Task<IActionResult> Destroy(Guid id, CancellationToken ct)
     {
         User? user = await userRepository.GetByIdWithLibrariesAsync(id);
 
@@ -116,6 +123,16 @@ public class UsersController(IUserRepository userRepository, IEventBus eventBus)
 
         if (user.Owner)
             return UnauthorizedResponse("The owner cannot be deleted");
+
+        // Their plugins and everything those plugins held go with them. A
+        // guest's install was never the server's, so leaving it behind would
+        // keep someone's data on a machine they no longer have an account on.
+        await guestInstaller.PurgeForAsync(id, ct);
+
+        // And what every other plugin on this server kept about them. One
+        // plugin left holding somebody's history is the same failure as all
+        // of them, and the person who left cannot check.
+        pluginUserData.PurgeEverywhere(id);
 
         await userRepository.DeleteAsync(id);
 

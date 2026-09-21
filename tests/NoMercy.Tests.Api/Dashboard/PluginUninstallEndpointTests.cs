@@ -16,6 +16,7 @@ using NoMercy.Api.Controllers.V1.Dashboard.Plugins;
 using NoMercy.Plugins;
 using NoMercy.Plugins.Abstractions;
 using NoMercy.Plugins.Capabilities;
+using NoMercy.Plugins.Sideload;
 using NoMercy.Storage;
 using Xunit;
 
@@ -74,7 +75,8 @@ public class PluginUninstallEndpointTests
             Mock.Of<IPluginConsentService>(),
             Mock.Of<IPluginGrantStore>(),
             Mock.Of<IPluginRestartAdvisor>(),
-            Mock.Of<IStorageDriver>()
+            Mock.Of<IStorageDriver>(),
+            Mock.Of<IPluginDeveloperModeSource>()
         )
         {
             ControllerContext = new() { HttpContext = new DefaultHttpContext() },

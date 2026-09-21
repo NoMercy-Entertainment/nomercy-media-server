@@ -41,4 +41,15 @@ public interface IPluginSecretStore
 
     /// <summary>The keys this plugin has set. Names only — never the values.</summary>
     Task<IReadOnlyList<string>> KeysAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// The caller's own secret. A provider login that every member shares is
+    /// one that cannot be revoked for one of them, so a per-user credential is
+    /// held per user rather than in the server's own slot.
+    /// </summary>
+    Task<string?> GetForUserAsync(string key, CancellationToken ct = default);
+
+    Task SetForUserAsync(string key, string value, CancellationToken ct = default);
+
+    Task DeleteForUserAsync(string key, CancellationToken ct = default);
 }

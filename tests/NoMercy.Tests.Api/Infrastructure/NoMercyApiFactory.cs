@@ -761,6 +761,17 @@ public class NoMercyApiFactory : WebApplicationFactory<Startup>
     {
         services.RemoveAll<IPluginManager>();
         services.AddSingleton(CreateTestPluginManager());
+
+        // Every real server has an owner, and plugin access is answered
+        // against one. A host with none refuses every caller, which would make
+        // these tests measure an installation nobody runs.
+        services.RemoveAll<IPluginOwner>();
+        services.AddSingleton<IPluginOwner>(new TestPluginOwner());
+    }
+
+    private sealed class TestPluginOwner : IPluginOwner
+    {
+        public Guid Id => TestAuthHandler.DefaultUserId;
     }
 
     private static void ReplaceAuth(IServiceCollection services)

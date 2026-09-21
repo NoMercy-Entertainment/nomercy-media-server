@@ -16,14 +16,30 @@ using NoMercy.Plugins.Capabilities;
 
 namespace NoMercy.Plugins.Hub;
 
-public class PluginHubRouter(IPluginManager pluginManager, ILogger<PluginHubRouter> logger)
+public class PluginHubRouter(Func<IPluginManager> pluginManager, ILogger<PluginHubRouter> logger)
     : IPluginHubRouter
 {
+    // The manager is built with the context factory, the context factory
+    // needs the hub context factory, and that needs this router: taking the
+    // manager at construction closes a ring the container cannot resolve.
+    // It is only consulted when a message arrives, so it is looked up then.
+    public PluginHubRouter(IPluginManager pluginManager, ILogger<PluginHubRouter> logger)
+        : this(() => pluginManager, logger) { }
+
     private readonly ConcurrentDictionary<Ulid, IPluginHubHandler> _handlers = new();
 
     public void Register(IPluginHubHandler handler) => _handlers[handler.PluginId] = handler;
 
-    public void Unregister(Ulid pluginId) => _handlers.TryRemove(pluginId, out _);
+    private readonly ConcurrentDictionary<Ulid, PluginDelegateHubHandler> _delegates = new();
+
+    public void Unregister(Ulid pluginId)
+    {
+        _handlers.TryRemove(pluginId, out _);
+        _delegates.TryRemove(pluginId, out _);
+    }
+
+    public PluginDelegateHubHandler DelegateHandlerFor(Ulid pluginId) =>
+        _delegates.GetOrAdd(pluginId, static id => new(id));
 
     public async Task<bool> RouteAsync(
         Ulid pluginId,
@@ -32,10 +48,13 @@ public class PluginHubRouter(IPluginManager pluginManager, ILogger<PluginHubRout
         CancellationToken ct
     )
     {
-        if (!_handlers.TryGetValue(pluginId, out IPluginHubHandler? handler))
+        _handlers.TryGetValue(pluginId, out IPluginHubHandler? handler);
+        _delegates.TryGetValue(pluginId, out PluginDelegateHubHandler? delegateHandler);
+
+        if (handler is null && delegateHandler is null)
             return false;
 
-        PluginInfo? info = pluginManager.GetPluginInfo(pluginId);
+        PluginInfo? info = pluginManager().GetPluginInfo(pluginId);
 
         if (info is null || info.Status != PluginStatus.Active)
             return false;
@@ -45,7 +64,12 @@ public class PluginHubRouter(IPluginManager pluginManager, ILogger<PluginHubRout
 
         try
         {
-            await handler.HandleAsync(message, client, ct);
+            if (handler is not null)
+                await handler.HandleAsync(message, client, ct);
+
+            if (delegateHandler is not null)
+                await delegateHandler.HandleAsync(message, client, ct);
+
             return true;
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)

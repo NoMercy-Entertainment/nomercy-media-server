@@ -18,6 +18,7 @@ using NoMercy.Api.Controllers.V1.Dashboard.Plugins;
 using NoMercy.Plugins;
 using NoMercy.Plugins.Abstractions;
 using NoMercy.Plugins.Capabilities;
+using NoMercy.Plugins.Sideload;
 using NoMercy.Plugins.Verification;
 using NoMercy.Storage;
 using Xunit;
@@ -34,14 +35,20 @@ public class PluginInstallEndpointTests
     private readonly Mock<IPluginManager> _pluginManager = new();
     private readonly Mock<IStorageDriver> _storageDriver = new();
 
-    private PluginController BuildController()
+    private sealed class StubDeveloperMode(bool enabled) : IPluginDeveloperModeSource
+    {
+        public bool Enabled => enabled;
+    }
+
+    private PluginController BuildController(bool developerMode = true)
     {
         PluginController controller = new(
             _pluginManager.Object,
             Mock.Of<IPluginConsentService>(),
             Mock.Of<IPluginGrantStore>(),
             Mock.Of<IPluginRestartAdvisor>(),
-            _storageDriver.Object
+            _storageDriver.Object,
+            new StubDeveloperMode(developerMode)
         )
         {
             ControllerContext = new() { HttpContext = new DefaultHttpContext() },
@@ -58,6 +65,31 @@ public class PluginInstallEndpointTests
         {
             Headers = new HeaderDictionary(),
         };
+    }
+
+    [Fact]
+    public async Task Install_WithDeveloperModeOff_IsRefusedAndNamesTheSwitch()
+    {
+        PluginController controller = BuildController(developerMode: false);
+
+        IActionResult result = await controller.Install(
+            FileNamed("radio.zip", "not really a zip"),
+            CancellationToken.None
+        );
+
+        result.Should().BeOfType<UnprocessableEntityObjectResult>();
+        _pluginManager.Verify(
+            manager =>
+                manager.InstallPluginArchiveAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<bool>(),
+                    It.IsAny<Guid?>()
+                ),
+            Times.Never,
+            "a file the server will not install has no reason to reach the disk first"
+        );
     }
 
     [Fact]

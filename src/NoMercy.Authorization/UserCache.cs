@@ -22,6 +22,7 @@ public class UserCache : IUserCache
 
     private List<User> _users = [];
     private List<Ulid> _folderIds = [];
+    private Dictionary<Ulid, HashSet<Guid>> _folderUsers = [];
 
     public IReadOnlyList<User> Users
     {
@@ -45,6 +46,13 @@ public class UserCache : IUserCache
     {
         lock (_usersLock)
             return _users.FirstOrDefault(u => u.Id == userId);
+    }
+
+    public bool UserMayAccessFolder(Guid userId, Ulid folderId)
+    {
+        lock (_folderIdsLock)
+            return _folderUsers.TryGetValue(folderId, out HashSet<Guid>? users)
+                && users.Contains(userId);
     }
 
     public void AddUser(User user)
@@ -71,22 +79,20 @@ public class UserCache : IUserCache
             _users = [];
 
         lock (_folderIdsLock)
+        {
             _folderIds = [];
+            _folderUsers = [];
+        }
     }
 
     public async Task InitializeAsync(MediaContext context)
     {
         List<User> users = await context.Users.AsNoTracking().ToListAsync();
-        List<Ulid> folderIds = await context
-            .Folders.AsNoTracking()
-            .Select(x => x.Id)
-            .ToListAsync();
 
         lock (_usersLock)
             _users = users;
 
-        lock (_folderIdsLock)
-            _folderIds = folderIds;
+        await RefreshFolderIdsAsync(context);
     }
 
     public async Task RefreshUsersAsync(MediaContext context)
@@ -99,14 +105,31 @@ public class UserCache : IUserCache
 
     public async Task RefreshFolderIdsAsync(MediaContext context)
     {
-        List<Ulid> folderIds = await context
-            .Folders.AsNoTracking()
-            .Select(x => x.Id)
+        List<Ulid> folderIds = await context.Folders.AsNoTracking().Select(x => x.Id).ToListAsync();
+
+        List<FolderGrant> grants = await context
+            .FolderLibrary.AsNoTracking()
+            .Join(
+                context.LibraryUser.AsNoTracking(),
+                folderLibrary => folderLibrary.LibraryId,
+                libraryUser => libraryUser.LibraryId,
+                (folderLibrary, libraryUser) =>
+                    new FolderGrant(folderLibrary.FolderId, libraryUser.UserId)
+            )
             .ToListAsync();
 
+        Dictionary<Ulid, HashSet<Guid>> folderUsers = grants
+            .GroupBy(grant => grant.FolderId)
+            .ToDictionary(group => group.Key, group => group.Select(g => g.UserId).ToHashSet());
+
         lock (_folderIdsLock)
+        {
             _folderIds = folderIds;
+            _folderUsers = folderUsers;
+        }
     }
+
+    private sealed record FolderGrant(Ulid FolderId, Guid UserId);
 
     // Ambient instance bridging the static ClaimsPrincipalExtensions delegators
     // to the same state as the DI-registered singleton during migration.

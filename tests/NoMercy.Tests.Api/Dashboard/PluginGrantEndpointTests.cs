@@ -19,6 +19,7 @@ using NoMercy.Api.DTOs.Dashboard;
 using NoMercy.Plugins;
 using NoMercy.Plugins.Abstractions;
 using NoMercy.Plugins.Capabilities;
+using NoMercy.Plugins.Sideload;
 using NoMercy.Plugins.Verification;
 using NoMercy.Storage;
 using Xunit;
@@ -62,7 +63,8 @@ public class PluginGrantEndpointTests
             Mock.Of<IPluginConsentService>(),
             _grantStore.Object,
             Mock.Of<IPluginRestartAdvisor>(),
-            Mock.Of<IStorageDriver>()
+            Mock.Of<IStorageDriver>(),
+            Mock.Of<IPluginDeveloperModeSource>()
         )
         {
             ControllerContext = new() { HttpContext = new DefaultHttpContext() },

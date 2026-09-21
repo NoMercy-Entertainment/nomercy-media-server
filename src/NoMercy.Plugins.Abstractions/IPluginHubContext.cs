@@ -9,6 +9,8 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Text.Json.Nodes;
+
 namespace NoMercy.Plugins.Abstractions;
 
 /// <summary>
@@ -24,4 +26,18 @@ public interface IPluginHubContext
     Task PushAsync(string type, object? payload);
 
     Task PushToUserAsync(string userId, string type, object? payload);
+
+    /// <summary>
+    /// Answers a client that calls this plugin over the hub.
+    /// <para>
+    /// The handler is told who called, because a hub method reached without a
+    /// caller cannot tell the owner from a guest and every plugin that tried
+    /// ended up trusting whoever connected. This is the registration path
+    /// IPluginHubHandler never had in production.
+    /// </para>
+    /// </summary>
+    void Handle(
+        string method,
+        Func<PluginCaller, JsonNode?, CancellationToken, Task<object?>> handler
+    );
 }

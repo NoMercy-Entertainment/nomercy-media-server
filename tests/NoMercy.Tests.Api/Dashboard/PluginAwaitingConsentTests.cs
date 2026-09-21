@@ -18,6 +18,7 @@ using NoMercy.Api.DTOs.Common;
 using NoMercy.Plugins;
 using NoMercy.Plugins.Abstractions;
 using NoMercy.Plugins.Capabilities;
+using NoMercy.Plugins.Sideload;
 using NoMercy.Storage;
 using Xunit;
 
@@ -81,7 +82,8 @@ public class PluginAwaitingConsentTests
             consentService,
             Mock.Of<IPluginGrantStore>(),
             Mock.Of<IPluginRestartAdvisor>(),
-            Mock.Of<IStorageDriver>()
+            Mock.Of<IStorageDriver>(),
+            Mock.Of<IPluginDeveloperModeSource>()
         )
         {
             ControllerContext = new() { HttpContext = new DefaultHttpContext() },
@@ -161,12 +163,23 @@ public class PluginAwaitingConsentTests
             Ulid pluginId,
             PluginCapabilities? capabilities,
             System.Version manifestVersion
-        ) =>
+        )
+        {
+            // Carries the per-capability answers over, the way the real store
+            // does. Dropping them here would let a test pass on a store that
+            // silently re-approves everything the owner said no to.
+            _granted.TryGetValue(pluginId, out PluginConsentGrant? existing);
+
             _granted[pluginId] = new PluginConsentGrant
             {
                 Capabilities = capabilities,
                 ManifestVersion = manifestVersion.ToString(),
+                ApprovedCapabilities =
+                    existing?.ApprovedCapabilities ?? new(StringComparer.Ordinal),
             };
+        }
+
+        public void Save(Ulid pluginId, PluginConsentGrant grant) => _granted[pluginId] = grant;
 
         public void Remove(Ulid pluginId) => _granted.Remove(pluginId);
     }

@@ -26,10 +26,16 @@ public interface IPluginVerifier
     /// one file on every install path.
     /// </para>
     /// </summary>
+    /// <param name="fromMarketplace">
+    /// Whether a repository offered this, as opposed to the owner dropping the
+    /// file in themselves. Signatures are enforced only for the first: the
+    /// second is the owner's own decision about their own server.
+    /// </param>
     PluginVerificationResult Verify(
         PluginManifest manifest,
         string assemblyPath,
         string? expectedChecksum,
-        string? packagePath = null
+        string? packagePath = null,
+        bool fromMarketplace = false
     );
 }

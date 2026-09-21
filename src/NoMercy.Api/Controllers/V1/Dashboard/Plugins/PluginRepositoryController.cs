@@ -18,6 +18,7 @@ using NoMercy.Api.DTOs.Dashboard;
 using NoMercy.NmSystem.Information;
 using NoMercy.Plugins;
 using NoMercy.Plugins.Abstractions;
+using NoMercy.Plugins.Dependencies;
 using NoMercy.Plugins.Verification;
 using NoMercy.Storage;
 using SemanticVersion = System.Version;
@@ -49,7 +50,8 @@ public class PluginRepositoryController(
     IPluginRepository repository,
     IPluginManager pluginManager,
     IStorageDriver storageDriver,
-    IHttpClientFactory httpClientFactory
+    IHttpClientFactory httpClientFactory,
+    PluginDependencyResolver dependencies
 ) : BaseController
 {
     [HttpGet]
@@ -198,6 +200,18 @@ public class PluginRepositoryController(
         if (target is null)
             return NotFoundResponse("The catalogue does not carry that version");
 
+        // The free dependencies first, so pressing install once leaves a
+        // plugin that runs. A paid one is never in the plan: a purchase made
+        // by pressing install on something else is a purchase nobody made,
+        // and the dependency gate tells the owner what to buy.
+        foreach (Ulid dependency in dependencies.Plan(target.Dependencies))
+        {
+            if (await Install(dependency, version: null, ct) is not OkObjectResult)
+                return UnprocessableEntityResponse(
+                    $"The plugin needs {dependency}, and that did not install. Nothing was changed."
+                );
+        }
+
         string stagingDirectory = storageDriver.CombinePath(
             AppFiles.TempPath,
             $"plugin-fetch-{Ulid.NewUlid():N}"
@@ -226,7 +240,12 @@ public class PluginRepositoryController(
             // copied into the plugins folder. A repository that publishes none
             // installs unverified, and the dashboard says so before you pick it.
             if (isArchive)
-                await pluginManager.InstallPluginArchiveAsync(stagedPath, target.Checksum, ct);
+                await pluginManager.InstallPluginArchiveAsync(
+                    stagedPath,
+                    target.Checksum,
+                    ct,
+                    fromMarketplace: true
+                );
             else
                 await pluginManager.InstallPluginAsync(stagedPath, target.Checksum, ct);
         }

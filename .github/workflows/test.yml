@@ -12,7 +12,7 @@ on:
 jobs:
   # Fast tests that run on every push/PR
   test:
-    runs-on: [self-hosted, Linux, X64, beast-unit]
+    runs-on: ubuntu-latest
     
     steps:
       - uses: actions/checkout@v5
@@ -43,7 +43,7 @@ jobs:
   # release path (push/PR to dev) it never ran and uncategorized regressions
   # sailed straight through. It must block the release path.
   coverage:
-    runs-on: [self-hosted, Linux, X64, beast-unit]
+    runs-on: ubuntu-latest
     # Nothing downstream reads a coverage artifact, so this job is a test gate, not
     # a report. Without a cap it once ran 6 hours before GitHub killed it, holding
     # the whole release chain open the entire time.
@@ -90,10 +90,9 @@ jobs:
             exit 1
           fi
 
-          # The runner is self-hosted and its /tmp survives between jobs, so a
-          # tarball from a previous version can still be sitting here. Two
-          # matches on the glob below turns `tar -xzf a.tar.gz b.tar.gz` into
-          # "extract member b.tar.gz from archive a.tar.gz", which fails.
+          # Start from an empty staging dir. Two matches on the glob below turns
+          # `tar -xzf a.tar.gz b.tar.gz` into "extract member b.tar.gz from
+          # archive a.tar.gz", which fails.
           rm -rf /tmp/nmff
           mkdir -p /tmp/nmff
 
@@ -138,7 +137,7 @@ jobs:
   # branch refs, so these expensive ffmpeg-backed tests run post-merge on dev, not
   # on every PR — but they no longer skip the release path entirely.
   integration_tests:
-    runs-on: [self-hosted, Linux, X64, beast-unit]
+    runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/master' || github.event_name == 'release' || github.event_name == 'workflow_dispatch'
 
     steps:
@@ -178,10 +177,9 @@ jobs:
             exit 1
           fi
 
-          # The runner is self-hosted and its /tmp survives between jobs, so a
-          # tarball from a previous version can still be sitting here. Two
-          # matches on the glob below turns `tar -xzf a.tar.gz b.tar.gz` into
-          # "extract member b.tar.gz from archive a.tar.gz", which fails.
+          # Start from an empty staging dir. Two matches on the glob below turns
+          # `tar -xzf a.tar.gz b.tar.gz` into "extract member b.tar.gz from
+          # archive a.tar.gz", which fails.
           rm -rf /tmp/nmff
           mkdir -p /tmp/nmff
 

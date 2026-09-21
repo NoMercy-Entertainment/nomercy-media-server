@@ -12,7 +12,7 @@ on:
 
 jobs:
   version_management:
-    runs-on: [self-hosted, Linux, X64, beast-unit]
+    runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.calc-version.outputs.new_version }}
       should_deploy: ${{ steps.check-deploy.outputs.should_deploy }}

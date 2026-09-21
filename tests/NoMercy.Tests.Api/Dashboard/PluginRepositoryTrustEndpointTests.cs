@@ -17,6 +17,8 @@ using NoMercy.Api.Controllers.V1.Dashboard.Plugins;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Api.DTOs.Dashboard;
 using NoMercy.Plugins.Abstractions;
+using NoMercy.Plugins.Capabilities;
+using NoMercy.Plugins.Dependencies;
 using NoMercy.Storage;
 using Xunit;
 
@@ -81,7 +83,8 @@ public class PluginRepositoryTrustEndpointTests
             repository,
             Mock.Of<IPluginManager>(),
             Mock.Of<IStorageDriver>(),
-            Mock.Of<IHttpClientFactory>()
+            Mock.Of<IHttpClientFactory>(),
+            new(new PluginRepositoryCatalogue(repository), Mock.Of<IPluginManifestSource>())
         )
         {
             ControllerContext = new() { HttpContext = new DefaultHttpContext() },

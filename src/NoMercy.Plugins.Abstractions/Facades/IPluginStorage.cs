@@ -44,6 +44,12 @@ public interface IPluginStorage
     IPluginStorageScope Derived { get; }
 
     /// <summary>
+    /// The caller's own corner. Anything a plugin holds about a person belongs
+    /// here, so it can be exported and erased as one thing.
+    /// </summary>
+    IPluginUserScope ForUser { get; }
+
+    /// <summary>
     /// A SQLite database inside the private folder, opened and migrated by the
     /// host. The torrent plugin hand-rolled 2300 lines of ADO to get here.
     /// <para>

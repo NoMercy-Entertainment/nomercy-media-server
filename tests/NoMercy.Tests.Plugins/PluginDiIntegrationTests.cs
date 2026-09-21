@@ -314,11 +314,8 @@ public class PluginDiIntegrationTests : IDisposable
     /// </para>
     /// </summary>
     [Theory]
-    [InlineData("Net")]
     [InlineData("Storage")]
-    [InlineData("Process")]
     [InlineData("Server")]
-    [InlineData("Native")]
     public void An_unwired_v3_facade_refuses_and_names_itself(string member)
     {
         ServiceCollection services = new();
@@ -349,6 +346,37 @@ public class PluginDiIntegrationTests : IDisposable
         refused.Refusal.Code.Should().Be(PluginRefusalCodes.ContractVersionMismatch);
         refused.Refusal.What.Should().Contain($"IPluginContext.{member}");
         refused.Refusal.Fix.Should().Contain("context.Server.Version");
+    }
+
+    /// <summary>
+    /// Net, Process and Native left that list as each landed: AddPluginSystem
+    /// wires them, so every host that calls it has working facades rather than
+    /// ones that refuse by name.
+    /// <para>
+    /// Wired is not the same as permitted. Each still refuses on its own terms
+    /// — the capability, the owner's grant list, the bundle signature — which
+    /// is what the facade's own tests cover.
+    /// </para>
+    /// </summary>
+    [Theory]
+    [InlineData("Net")]
+    [InlineData("Process")]
+    [InlineData("Native")]
+    public void A_facade_the_plugin_system_wires_is_reachable(string member)
+    {
+        ServiceCollection services = new();
+        services.AddSingleton<IEventBus, InMemoryEventBus>();
+        services.AddLogging();
+        services.AddSingleton(TestStorageHelper.CreateBackend());
+
+        services.AddPluginSystem(_tempPluginsDir);
+
+        ServiceProvider provider = services.BuildServiceProvider();
+        IPluginContext context = provider
+            .GetRequiredService<IPluginContextFactory>()
+            .Create(Ulid.NewUlid(), _tempPluginsDir, NullLogger.Instance, new PluginCapabilities());
+
+        typeof(IPluginContext).GetProperty(member)!.GetValue(context).Should().NotBeNull();
     }
 
     public interface ITestService

@@ -1,0 +1,13 @@
+{
+  "fields": [
+    {
+      "key": "greeting",
+      "labelKey": "template.settings.greeting",
+      "helpKey": "template.settings.greeting.help",
+      "type": "text",
+      "scope": "server",
+      "writable": false,
+      "default": ""
+    }
+  ]
+}

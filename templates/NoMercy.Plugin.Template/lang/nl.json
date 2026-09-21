@@ -1,0 +1,7 @@
+{
+  "template.nav.title": "Sjabloon",
+  "template.home.heading": "Het werkt",
+  "template.home.body": "Deze pagina wordt door de server getekend op basis van wat de plugin beschrijft, dus hij ziet er hetzelfde uit op het web, op een telefoon en op een televisie.",
+  "template.settings.greeting": "Begroeting",
+  "template.settings.greeting.help": "Wat de startpagina laat zien bij het openen."
+}

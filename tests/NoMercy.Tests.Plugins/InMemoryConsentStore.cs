@@ -23,12 +23,22 @@ internal sealed class InMemoryConsentStore : IPluginConsentStore
     public PluginConsentGrant? Get(Ulid pluginId) =>
         _granted.TryGetValue(pluginId, out PluginConsentGrant? grant) ? grant : null;
 
-    public void Add(Ulid pluginId, PluginCapabilities? capabilities, Version manifestVersion) =>
+    public void Add(Ulid pluginId, PluginCapabilities? capabilities, Version manifestVersion)
+    {
+        // Carries the per-capability answers over, the way the real store does.
+        // Dropping them here would let a test pass on a store that silently
+        // re-approves everything the owner said no to.
+        _granted.TryGetValue(pluginId, out PluginConsentGrant? existing);
+
         _granted[pluginId] = new PluginConsentGrant
         {
             Capabilities = capabilities,
             ManifestVersion = manifestVersion.ToString(),
+            ApprovedCapabilities = existing?.ApprovedCapabilities ?? new(StringComparer.Ordinal),
         };
+    }
+
+    public void Save(Ulid pluginId, PluginConsentGrant grant) => _granted[pluginId] = grant;
 
     public void Remove(Ulid pluginId) => _granted.Remove(pluginId);
 }

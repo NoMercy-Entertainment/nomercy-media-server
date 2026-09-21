@@ -21,6 +21,7 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Extensions.Logging" />
     <PackageReference Include="Moq" />
+    <PackageReference Include="BouncyCastle.Cryptography" />
     <!--
       So the wire assertions can serialize the way the API does. They used
       System.Text.Json, which writes no response in this server, and passed
@@ -36,6 +37,7 @@
     <ProjectReference Include="..\..\src\NoMercy.Plugins\NoMercy.Plugins.csproj" />
     <ProjectReference Include="..\..\src\NoMercy.Events\NoMercy.Events.csproj" />
     <ProjectReference Include="..\..\src\NoMercy.Plugins.Mvc\NoMercy.Plugins.Mvc.csproj" />
+    <ProjectReference Include="..\..\src\NoMercy.Plugins.Testing\NoMercy.Plugins.Testing.csproj" />
     <ProjectReference Include="..\..\src\NoMercy.Storage\NoMercy.Storage.csproj" />
     <!-- Build dependency only — do NOT copy Echo/Failures DLLs to test bin. If they were in
          the default AssemblyLoadContext, PluginLoadContext isolation would break (type

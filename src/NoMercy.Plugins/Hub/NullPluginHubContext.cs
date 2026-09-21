@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Text.Json.Nodes;
 using NoMercy.Plugins.Abstractions;
 
 namespace NoMercy.Plugins.Hub;
@@ -23,4 +24,15 @@ public class NullPluginHubContext : IPluginHubContext
     public Task PushAsync(string type, object? payload) => Task.CompletedTask;
 
     public Task PushToUserAsync(string userId, string type, object? payload) => Task.CompletedTask;
+
+    /// <summary>
+    /// Registering succeeds and nothing will ever call it, for the same reason
+    /// pushing reaches nobody: outside the web host there is no hub to route a
+    /// client's call through, and refusing here would break a plugin that
+    /// registers its handlers in Initialize.
+    /// </summary>
+    public void Handle(
+        string method,
+        Func<PluginCaller, JsonNode?, CancellationToken, Task<object?>> handler
+    ) { }
 }

@@ -22,7 +22,8 @@
   -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
-    <PackageId>NoMercy.Design</PackageId>
+    <PackageId>NoMercy.Plugins.Design</PackageId>
+    <Version>$(PluginPackageVersion)</Version>
     <Authors>NoMercy Entertainment</Authors>
     <Description>The NoMercy design system's component contract, for servers and plugins.</Description>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>

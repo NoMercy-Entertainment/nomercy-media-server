@@ -9,116 +9,23 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Net;
-using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Logging;
-using NoMercy.Api.Services;
-using NoMercy.Authorization;
-using NoMercy.Authorization.LiveIngest;
-using NoMercy.Database.Models.Users;
-using NoMercy.NmSystem.Configuration;
 
 namespace NoMercy.Api.Middleware;
 
-public class TokenParamAuthMiddleware(
-    RequestDelegate next,
-    ILiveIngestKeyStore ingestKeyStore,
-    ILogger<TokenParamAuthMiddleware> logger,
-    IUserCache userCache
-)
+/// <summary>
+/// Promotes a <c>?token=</c> / <c>?access_token=</c> query parameter to a bearer
+/// Authorization header so the JWT handler validates it like any other request.
+/// Runs before authentication; it decides nothing about access. The gate for
+/// library folder paths is <see cref="FolderAccessMiddleware"/>, which runs after
+/// authentication and can see the validated principal.
+/// </summary>
+public class TokenParamAuthMiddleware(RequestDelegate next)
 {
     public async Task InvokeAsync(HttpContext context)
     {
-        if (IsAuthorizedLoopbackIngest(context))
-        {
-            await next(context);
-            return;
-        }
-
         UseQueryTokenAsBearer(context.Request);
-
-        string url = context.Request.Path;
-
-        if (
-            !userCache.FolderIds.Any(x => url.StartsWith("/" + x))
-            || context.Request.Headers.Authorization.ToString().Contains("Bearer")
-        )
-        {
-            await next(context);
-            return;
-        }
-
-        string? claim = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
-
-        if (string.IsNullOrEmpty(claim))
-        {
-            logger.LogInformation("Unauthorized request, no jwt: {Url}", url);
-            await ProblemResponse.WriteAsync(
-                context,
-                statusCode: (int)HttpStatusCode.Unauthorized,
-                type: "https://nomercy.tv/problems/no-token",
-                title: "Authentication required",
-                detail: "No bearer token was provided. Include a valid JWT in the Authorization header or as an access_token query parameter.",
-                authError: "NO_TOKEN"
-            );
-            return;
-        }
-
-        if (!Guid.TryParse(claim, out Guid userId) || userId == Guid.Empty)
-        {
-            logger.LogInformation("Unauthorized request, guid malformed or empty: {Url}", url);
-            await ProblemResponse.WriteAsync(
-                context,
-                statusCode: (int)HttpStatusCode.Forbidden,
-                type: "https://nomercy.tv/problems/invalid-token",
-                title: "Invalid token",
-                detail: "The token subject (sub) is not a valid GUID. The token may be malformed.",
-                authError: "INVALID_TOKEN"
-            );
-            return;
-        }
-
-        User? user = userCache.Users.FirstOrDefault(x => x.Id.Equals(userId));
-
-        if (user is null)
-        {
-            logger.LogInformation("Unauthorized request, user not found: {Url}", url);
-            await ProblemResponse.WriteAsync(
-                context,
-                statusCode: (int)HttpStatusCode.Forbidden,
-                type: "https://nomercy.tv/problems/user-not-found",
-                title: "User not found",
-                detail: "The authenticated user is not registered on this server. Ask the server owner to add your account.",
-                authError: "USER_NOT_FOUND"
-            );
-            return;
-        }
-
         await next(context);
-    }
-
-    // Loopback self-ingest: ffmpeg/ffprobe pull a library source over the
-    // internal serving port with a single-use ingest key scoped to one file,
-    // in place of the viewer's bearer. Honoured only for the exact file the
-    // key was minted for, and only when the request actually arrived on the
-    // loopback-only ingest listener (InternalServerPort + 1). Gating on the
-    // OS-bound local port — not just a loopback source IP — closes the case
-    // where a local relay (Cloudflare Tunnel's cloudflared) forwards external
-    // traffic to the PUBLIC port from 127.0.0.1: that traffic never lands on
-    // the ingest port, so it can never reach this bypass.
-    private bool IsAuthorizedLoopbackIngest(HttpContext context)
-    {
-        if (
-            context.Connection.LocalPort != RuntimeServerSettings.Current.InternalServerPort + 1
-            || context.Connection.RemoteIpAddress is not { } remoteIp
-            || !IPAddress.IsLoopback(remoteIp)
-        )
-            return false;
-
-        string ingestKey = context.Request.Headers["X-NoMercy-Ingest-Key"].ToString();
-        return !string.IsNullOrEmpty(ingestKey)
-            && ingestKeyStore.TryValidate(ingestKey, context.Request.Path.Value ?? string.Empty);
     }
 
     /// <summary>

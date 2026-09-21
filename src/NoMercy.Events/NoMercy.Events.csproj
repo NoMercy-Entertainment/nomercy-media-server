@@ -20,7 +20,8 @@
   -->
   <PropertyGroup>
     <IsPackable>true</IsPackable>
-    <PackageId>NoMercy.Events</PackageId>
+    <PackageId>NoMercy.Plugins.Events</PackageId>
+    <Version>$(PluginPackageVersion)</Version>
     <Authors>NoMercy Entertainment</Authors>
     <Description>The event contract shared between NoMercy MediaServer and its plugins.</Description>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>

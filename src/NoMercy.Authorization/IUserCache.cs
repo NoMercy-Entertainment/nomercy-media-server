@@ -26,6 +26,13 @@ public interface IUserCache
 
     User? GetUser(Guid userId);
 
+    /// <summary>
+    /// Whether <paramref name="userId"/> holds a library grant that covers
+    /// <paramref name="folderId"/>: the same <c>LibraryUsers</c> scope every
+    /// browse repository applies, so serving a file never widens what a user can list.
+    /// </summary>
+    bool UserMayAccessFolder(Guid userId, Ulid folderId);
+
     void AddUser(User user);
     void RemoveUser(User user);
     void UpdateUser(User user);

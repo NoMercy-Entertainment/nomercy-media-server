@@ -28,6 +28,17 @@ public interface IPluginHubRouter
     void Unregister(Ulid pluginId);
 
     /// <summary>
+    /// The delegate-backed handler for this plugin, created on first ask.
+    /// <para>
+    /// Kept apart from <see cref="Register" />'s handler rather than replacing
+    /// it, so a plugin that implements <see cref="IPluginHubHandler" /> and also
+    /// registers delegates keeps both. Keying one dictionary by plugin id would
+    /// have silently dropped whichever arrived first.
+    /// </para>
+    /// </summary>
+    PluginDelegateHubHandler DelegateHandlerFor(Ulid pluginId);
+
+    /// <summary>
     /// Hands the message to the plugin's handler, or drops it. Dropped when no
     /// handler is registered, when the plugin is not active, or when it never
     /// declared the <c>ws</c> capability — a plugin does not get a live channel

@@ -1,0 +1,41 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <IsPackable>true</IsPackable>
+    <PackageId>NoMercy.Plugins.Analyzers</PackageId>
+    <Version>$(PluginPackageVersion)</Version>
+    <Authors>NoMercy Entertainment</Authors>
+    <Description>Editor warnings worded the way the server words its refusals, so a plugin author reads one sentence rather than two.</Description>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    <DevelopmentDependency>true</DevelopmentDependency>
+    <!--
+      An analyzer package ships nothing under lib/ on purpose: the assembly
+      goes to analyzers/dotnet/cs and Roslyn loads it, nothing references it.
+      NU5128 is NuGet pointing at that absence, and as an error it makes the
+      package impossible to produce at all.
+    -->
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+    <!--
+      netstandard2.0 because Roslyn loads analyzers into its own process, which
+      is not the server's runtime. An analyzer built for net10.0 does not load
+      and the rules simply never fire, with nothing said.
+    -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" PrivateAssets="all" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None
+      Include="$(OutputPath)\$(AssemblyName).dll"
+      Pack="true"
+      PackagePath="analyzers/dotnet/cs"
+      Visible="false"
+    />
+  </ItemGroup>
+</Project>

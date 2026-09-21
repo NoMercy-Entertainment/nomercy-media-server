@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Text.Json.Nodes;
 using FluentAssertions;
 using NoMercy.Plugins.Abstractions;
 using NoMercy.Plugins.Player;
@@ -211,6 +212,13 @@ public class PluginPlayerTests
 
         public Task PushToUserAsync(string userId, string type, object? payload) =>
             PushAsync(type, payload);
+
+        public List<string> Registered { get; } = [];
+
+        public void Handle(
+            string method,
+            Func<PluginCaller, JsonNode?, CancellationToken, Task<object?>> handler
+        ) => Registered.Add(method);
     }
 
     private sealed class FakeGrants(string? kind, string? value) : IPluginGrants

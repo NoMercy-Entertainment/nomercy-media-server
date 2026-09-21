@@ -67,13 +67,13 @@ public class LinuxWallpaperService : IWallpaperService
         {
             _previousWallpaper = RunCommand(
                 "gsettings",
-                "get org.gnome.desktop.background picture-uri"
+                ["get", "org.gnome.desktop.background", "picture-uri"]
             )
                 ?.Trim()
                 .Trim('\'');
             _previousColor = RunCommand(
                 "gsettings",
-                "get org.gnome.desktop.background primary-color"
+                ["get", "org.gnome.desktop.background", "primary-color"]
             )
                 ?.Trim()
                 .Trim('\'');
@@ -90,15 +90,20 @@ public class LinuxWallpaperService : IWallpaperService
                 string gnomeStyle = MapStyleToGnome(style);
                 RunCommand(
                     "gsettings",
-                    $"set org.gnome.desktop.background picture-options '{gnomeStyle}'"
+                    ["set", "org.gnome.desktop.background", "picture-options", gnomeStyle]
                 );
                 RunCommand(
                     "gsettings",
-                    $"set org.gnome.desktop.background picture-uri 'file://{imagePath}'"
+                    ["set", "org.gnome.desktop.background", "picture-uri", $"file://{imagePath}"]
                 );
                 RunCommand(
                     "gsettings",
-                    $"set org.gnome.desktop.background picture-uri-dark 'file://{imagePath}'"
+                    [
+                        "set",
+                        "org.gnome.desktop.background",
+                        "picture-uri-dark",
+                        $"file://{imagePath}",
+                    ]
                 );
                 break;
 
@@ -113,19 +118,31 @@ public class LinuxWallpaperService : IWallpaperService
                     + "}";
                 RunCommand(
                     "qdbus",
-                    $"org.kde.plasmashell /PlasmaShell org.kde.PlasmaShell.evaluateScript \"{kdeScript}\""
+                    [
+                        "org.kde.plasmashell",
+                        "/PlasmaShell",
+                        "org.kde.PlasmaShell.evaluateScript",
+                        kdeScript,
+                    ]
                 );
                 break;
 
             case DesktopEnvironment.Xfce:
                 RunCommand(
                     "xfconf-query",
-                    $"-c xfce4-desktop -p /backdrop/screen0/monitor0/workspace0/last-image -s \"{imagePath}\""
+                    [
+                        "-c",
+                        "xfce4-desktop",
+                        "-p",
+                        "/backdrop/screen0/monitor0/workspace0/last-image",
+                        "-s",
+                        imagePath,
+                    ]
                 );
                 break;
 
             case DesktopEnvironment.Fallback:
-                RunCommand("feh", $"--bg-fill \"{imagePath}\"");
+                RunCommand("feh", ["--bg-fill", imagePath]);
                 break;
         }
     }
@@ -136,7 +153,10 @@ public class LinuxWallpaperService : IWallpaperService
 
         if (de == DesktopEnvironment.Gnome)
         {
-            RunCommand("gsettings", $"set org.gnome.desktop.background primary-color '{hexColor}'");
+            RunCommand(
+                "gsettings",
+                ["set", "org.gnome.desktop.background", "primary-color", hexColor]
+            );
         }
     }
 
@@ -173,7 +193,9 @@ public class LinuxWallpaperService : IWallpaperService
         };
     }
 
-    private static string? RunCommand(string command, string arguments)
+    // One argv token per entry: the image path and colour come from the user's
+    // own choice, and a token is never re-parsed, so nothing in it can add a flag.
+    private static string? RunCommand(string command, IReadOnlyList<string> arguments)
     {
         try
         {
@@ -181,12 +203,13 @@ public class LinuxWallpaperService : IWallpaperService
             process.StartInfo = new()
             {
                 FileName = command,
-                Arguments = arguments,
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true,
             };
+            foreach (string argument in arguments)
+                process.StartInfo.ArgumentList.Add(argument);
 
             process.Start();
             string output = process.StandardOutput.ReadToEnd();

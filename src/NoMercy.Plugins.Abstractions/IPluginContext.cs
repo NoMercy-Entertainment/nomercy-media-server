@@ -73,6 +73,19 @@ public interface IPluginContext
     IPluginLibraryWriter? LibraryWriter { get; }
 
     /// <summary>
+    /// Where a finished download or recording is handed over. Refused rather
+    /// than null when this host does not carry it, so a plugin reaching for it
+    /// reads why instead of a NullReferenceException with no name on it.
+    /// </summary>
+    IPluginLibraryImport LibraryImport =>
+        throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(
+                PluginId.ToString(),
+                "IPluginContext.LibraryImport"
+            )
+        );
+
+    /// <summary>
     /// Asking the server to encode a file the plugin has staged.
     /// <para>
     /// Present only when the plugin declared
@@ -184,6 +197,77 @@ public interface IPluginContext
     IPluginBrowser Browser =>
         throw new PluginRefusedException(
             PluginRefusalMessages.FacadeNotOnThisHost(PluginId.ToString(), "IPluginContext.Browser")
+        );
+
+    /// <summary>
+    /// Proxying, transcoding and remuxing a stream the plugin did not author.
+    /// The host mints every playable URL, so a plugin holding a provider
+    /// credential never hands one to a client.
+    /// </summary>
+    IPluginMedia Media =>
+        throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(PluginId.ToString(), "IPluginContext.Media")
+        );
+
+    /// <summary>The caller's own data. Nothing here takes a user id.</summary>
+    IPluginUserData User =>
+        throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(PluginId.ToString(), "IPluginContext.User")
+        );
+
+    /// <summary>Everyone on this server, owner-only.</summary>
+    IPluginUsers Users =>
+        throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(PluginId.ToString(), "IPluginContext.Users")
+        );
+
+    /// <summary>Telling someone something, in keys rather than sentences.</summary>
+    IPluginNotifications Notifications =>
+        throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(
+                PluginId.ToString(),
+                "IPluginContext.Notifications"
+            )
+        );
+
+    /// <summary>Moving the caller's session to a device.</summary>
+    IPluginCast Cast =>
+        throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(PluginId.ToString(), "IPluginContext.Cast")
+        );
+
+    /// <summary>What this install is entitled to, asked of the host rather than
+    /// of nomercy.tv, so a paid feature works on an offline server.</summary>
+    IPluginMarketplace Marketplace =>
+        throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(
+                PluginId.ToString(),
+                "IPluginContext.Marketplace"
+            )
+        );
+
+    /// <summary>
+    /// Named jobs on a schedule, and workers the host supervises. A plugin
+    /// registers its work here rather than awaiting a cycle inside a request.
+    /// </summary>
+    IPluginScheduler Scheduler =>
+        throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(
+                PluginId.ToString(),
+                "IPluginContext.Scheduler"
+            )
+        );
+
+    /// <summary>
+    /// The values behind the settings page the host renders from this plugin's
+    /// schema.
+    /// </summary>
+    IPluginSettings Settings =>
+        throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(
+                PluginId.ToString(),
+                "IPluginContext.Settings"
+            )
         );
 
     /// <summary>Native libraries, gated on the marketplace signature rather than a capability.</summary>

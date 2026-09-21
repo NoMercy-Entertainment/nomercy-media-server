@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using NoMercy.Api.Hubs;
+using NoMercy.Api.Plugins;
 using NoMercy.Api.Security;
 using NoMercy.Api.Services;
 using NoMercy.Api.WebSockets;
@@ -65,6 +66,8 @@ using NoMercy.NmSystem.SystemCalls;
 using NoMercy.NmSystem.Wallpaper;
 using NoMercy.OpticalMedia.Composition;
 using NoMercy.Plugins;
+using NoMercy.Plugins.Abstractions;
+using NoMercy.Plugins.Access;
 using NoMercy.Plugins.Hub;
 using NoMercy.Providers.AniDb.Client;
 using NoMercy.Providers.AniList;
@@ -74,6 +77,7 @@ using NoMercy.Providers.TMDB.Client;
 using NoMercy.Queue.MediaServer;
 using NoMercy.Queue.MediaServer.Repositories;
 using NoMercy.Service.Extensions;
+using NoMercy.Service.Plugins;
 using NoMercy.Service.Seeds;
 using NoMercy.Service.Workers;
 using NoMercy.Setup.Auth;
@@ -613,7 +617,7 @@ public static partial class ServiceConfiguration
         services.AddScoped<HomeService>();
         services.AddScoped<RecommendationService>();
         // Singleton: the ingest-key registry is shared across the scoped
-        // LiveTranscodeService (mint/revoke) and the TokenParamAuthMiddleware
+        // LiveTranscodeService (mint/revoke) and the FolderAccessMiddleware
         // (validate), so its state must outlive any request scope.
         services.AddSingleton<ILiveIngestKeyStore, LiveIngestKeyStore>();
         services.AddScoped<ILiveTranscodeService, LiveTranscodeService>();
@@ -768,7 +772,26 @@ public static partial class ServiceConfiguration
         // subscribers here rather than silently succeeding.
         services.AddSingleton<IPluginHubContextFactory, PluginHubContextFactory>();
 
+        // Before AddPluginSystem for the same reason: the platform asks who
+        // owns this server for the two questions only an owner answers, and
+        // falls back to nobody when a host registers nothing.
+        services.AddSingleton<IPluginOwner, PluginOwner>();
+        services.AddSingleton<IPluginMembership, PluginMembership>();
+
+        // Who is asking, read from the request being served. Without this the
+        // platform's own answer is nobody, and a media link cannot be minted
+        // because there is no account to bind it to.
+        services.AddSingleton<IPluginCallerAccessor, HttpPluginCallerAccessor>();
+
+        // This host maps /pluginHub, so an access answer reaches every device
+        // the person is signed in on rather than nobody.
+        services.AddSingleton<IPluginAccessHub, PluginAccessHubSender>();
+
         services.AddPluginSystem(AppFiles.PluginsPath);
+
+        // One builder for the capability list, so the consent page and the
+        // permissions page cannot give an owner two accounts of one plugin.
+        services.AddSingleton<PluginCapabilityStates>();
 
         // The real library, replacing the platform's null objects. Separate
         // call because NoMercy.Plugins must not reference the database.

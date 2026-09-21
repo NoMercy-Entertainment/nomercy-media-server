@@ -40,9 +40,13 @@ public static class PluginRefusalCodes
     public const string ContractVersionMismatch = "PLUGIN_CONTRACT_VERSION_MISMATCH";
     public const string UserScopeRequired = "PLUGIN_USER_SCOPE_REQUIRED";
     public const string UserDataEgress = "PLUGIN_USER_DATA_EGRESS";
+    public const string UserDataScopeRequired = "PLUGIN_USER_DATA_SCOPE_REQUIRED";
     public const string SettingsFieldReadOnly = "PLUGIN_SETTINGS_FIELD_READ_ONLY";
     public const string SecretFieldInSettings = "PLUGIN_SECRET_FIELD_IN_SETTINGS";
     public const string QuotaDiskExceeded = "PLUGIN_QUOTA_DISK_EXCEEDED";
+    public const string LanCredentialInvalid = "PLUGIN_LAN_CREDENTIAL_INVALID";
+    public const string RouterDeclined = "PLUGIN_ROUTER_DECLINED";
+    public const string NoRouterFound = "PLUGIN_NO_ROUTER_FOUND";
     public const string SchedulerWorkerCrashed = "PLUGIN_SCHEDULER_WORKER_CRASHED";
     public const string LiveLinkFailed = "PLUGIN_LIVE_LINK_FAILED";
     public const string RecordingDiskFull = "PLUGIN_RECORDING_DISK_FULL";
@@ -50,6 +54,23 @@ public static class PluginRefusalCodes
     public const string BrowserNavigationBlocked = "PLUGIN_BROWSER_NAVIGATION_BLOCKED";
     public const string UiInputUndeclared = "PLUGIN_UI_INPUT_UNDECLARED";
     public const string NativeCodeUnsigned = "PLUGIN_NATIVE_CODE_UNSIGNED";
+    public const string HubCallerNotResolved = "PLUGIN_HUB_CALLER_NOT_RESOLVED";
+    public const string SecretHasNoCaller = "PLUGIN_SECRET_HAS_NO_CALLER";
+    public const string Revoked = "PLUGIN_REVOKED";
+    public const string RevocationListStale = "PLUGIN_REVOCATION_LIST_STALE";
+    public const string EntitlementMissing = "PLUGIN_ENTITLEMENT_MISSING";
+    public const string EntitlementDormant = "PLUGIN_ENTITLEMENT_DORMANT";
+    public const string OfflineBundleInvalid = "PLUGIN_OFFLINE_BUNDLE_INVALID";
+    public const string OfflineBundleExpired = "PLUGIN_OFFLINE_BUNDLE_EXPIRED";
+    public const string SideloadDisabled = "PLUGIN_SIDELOAD_DISABLED";
+    public const string SideloadPaidId = "PLUGIN_SIDELOAD_PAID_ID";
+    public const string AccessDenied = "PLUGIN_ACCESS_DENIED";
+    public const string MediaTicketExpired = "PLUGIN_MEDIA_TICKET_EXPIRED";
+    public const string MediaTicketUserMismatch = "PLUGIN_MEDIA_TICKET_USER_MISMATCH";
+    public const string LibraryImportDenied = "PLUGIN_LIBRARY_IMPORT_DENIED";
+    public const string ResourceCeiling = "PLUGIN_RESOURCE_CEILING";
+    public const string DisabledAfterRestarts = "PLUGIN_DISABLED_AFTER_RESTARTS";
+    public const string QuotaUploadExceeded = "PLUGIN_QUOTA_UPLOAD_EXCEEDED";
 
     public static IReadOnlyList<PluginRefusalDescriptor> All { get; } =
     [
@@ -198,6 +219,12 @@ public static class PluginRefusalCodes
             "The plugin sent user data to a host outside the server."
         ),
         new(
+            "PLUGIN_USER_DATA_SCOPE_REQUIRED",
+            PluginRefusalSeverity.Blocked,
+            null,
+            "A capability that reads a person's own data was called with nobody asking."
+        ),
+        new(
             "PLUGIN_SETTINGS_FIELD_READ_ONLY",
             PluginRefusalSeverity.Blocked,
             "settings",
@@ -214,6 +241,24 @@ public static class PluginRefusalCodes
             PluginRefusalSeverity.Blocked,
             "storage.private",
             "The plugin is at its disk quota, so the write has nowhere to go."
+        ),
+        new(
+            "PLUGIN_LAN_CREDENTIAL_INVALID",
+            PluginRefusalSeverity.Blocked,
+            null,
+            "A device on the network used a credential the server does not know, or one the owner revoked."
+        ),
+        new(
+            "PLUGIN_ROUTER_DECLINED",
+            PluginRefusalSeverity.Blocked,
+            "network.listen",
+            "The router refused to forward the port, which no change to the plugin can fix."
+        ),
+        new(
+            "PLUGIN_NO_ROUTER_FOUND",
+            PluginRefusalSeverity.Blocked,
+            "network.listen",
+            "No router on this network answered a port-forwarding request."
         ),
         new(
             "PLUGIN_SCHEDULER_WORKER_CRASHED",
@@ -256,6 +301,108 @@ public static class PluginRefusalCodes
             PluginRefusalSeverity.Blocked,
             "native.code",
             "The native library the plugin loads carries no signature this server trusts."
+        ),
+        new(
+            "PLUGIN_HUB_CALLER_NOT_RESOLVED",
+            PluginRefusalSeverity.Blocked,
+            "hub",
+            "A hub method was reached on a connection the host could not resolve a caller for."
+        ),
+        new(
+            "PLUGIN_SECRET_HAS_NO_CALLER",
+            PluginRefusalSeverity.Blocked,
+            "secrets",
+            "A per-user secret was reached on a call with no resolved caller."
+        ),
+        new(
+            "PLUGIN_REVOKED",
+            PluginRefusalSeverity.Blocked,
+            null,
+            "This exact build was revoked, so it does not run."
+        ),
+        new(
+            "PLUGIN_REVOCATION_LIST_STALE",
+            PluginRefusalSeverity.Blocked,
+            null,
+            "The server has not reached the revocation list in over a week, so it cannot say a plugin is still allowed."
+        ),
+        new(
+            "PLUGIN_ENTITLEMENT_MISSING",
+            PluginRefusalSeverity.Blocked,
+            null,
+            "A paid plugin, and the server owner holds no entitlement for it."
+        ),
+        new(
+            "PLUGIN_ENTITLEMENT_DORMANT",
+            PluginRefusalSeverity.Blocked,
+            null,
+            "The server could not confirm a purchase for over a week, so the plugin is installed and not running."
+        ),
+        new(
+            "PLUGIN_OFFLINE_BUNDLE_INVALID",
+            PluginRefusalSeverity.Blocked,
+            null,
+            "An offline bundle that NoMercy did not sign, or that was edited after signing."
+        ),
+        new(
+            "PLUGIN_OFFLINE_BUNDLE_EXPIRED",
+            PluginRefusalSeverity.Blocked,
+            null,
+            "An offline bundle older than the validity it was issued with."
+        ),
+        new(
+            "PLUGIN_SIDELOAD_DISABLED",
+            PluginRefusalSeverity.Blocked,
+            null,
+            "Installing a plugin from a file is off, because the server cannot check who wrote it."
+        ),
+        new(
+            "PLUGIN_SIDELOAD_PAID_ID",
+            PluginRefusalSeverity.Blocked,
+            null,
+            "The id belongs to a paid plugin and the owner holds no entitlement for it."
+        ),
+        new(
+            "PLUGIN_ACCESS_DENIED",
+            PluginRefusalSeverity.Blocked,
+            null,
+            "The plugin is not shared with the account asking for it on this server."
+        ),
+        new(
+            "PLUGIN_MEDIA_TICKET_EXPIRED",
+            PluginRefusalSeverity.Blocked,
+            "media.proxy",
+            "A media link the server minted has run out, or was never one it minted."
+        ),
+        new(
+            "PLUGIN_MEDIA_TICKET_USER_MISMATCH",
+            PluginRefusalSeverity.Blocked,
+            "media.proxy",
+            "A media link minted for one account was used by another."
+        ),
+        new(
+            "PLUGIN_LIBRARY_IMPORT_DENIED",
+            PluginRefusalSeverity.Blocked,
+            "library.write",
+            "A plugin offered a file to a library it may not write to, or from a path outside one."
+        ),
+        new(
+            "PLUGIN_RESOURCE_CEILING",
+            PluginRefusalSeverity.Degraded,
+            null,
+            "A plugin went past the CPU or memory the owner allowed it, and the server acted."
+        ),
+        new(
+            "PLUGIN_DISABLED_AFTER_RESTARTS",
+            PluginRefusalSeverity.Blocked,
+            null,
+            "A plugin was restarted too many times in an hour, so the server stopped restarting it."
+        ),
+        new(
+            "PLUGIN_QUOTA_UPLOAD_EXCEEDED",
+            PluginRefusalSeverity.Degraded,
+            "media.proxy",
+            "A plugin is sending faster than the share of the uplink the owner allowed it."
         ),
     ];
 

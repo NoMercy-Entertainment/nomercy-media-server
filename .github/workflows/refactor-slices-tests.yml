@@ -19,9 +19,12 @@ on:
   # only when a change can be validated solely in CI.
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   refactor-tests:
-    runs-on: [self-hosted, Linux, X64, beast-unit]
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
         with:

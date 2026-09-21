@@ -1,0 +1,7 @@
+{
+  "template.nav.title": "Template",
+  "template.home.heading": "It works",
+  "template.home.body": "This page is drawn by the host from what the plugin described, so it looks the same on the web, on a phone and on a television.",
+  "template.settings.greeting": "Greeting",
+  "template.settings.greeting.help": "What the home page says when it opens."
+}

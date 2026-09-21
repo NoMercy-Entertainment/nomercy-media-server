@@ -10,11 +10,17 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NoMercy.Events;
 using NoMercy.Plugins.Abstractions;
 using NoMercy.Plugins.Capabilities;
 using NoMercy.Plugins.Hub;
+using NoMercy.Plugins.Library;
+using NoMercy.Plugins.Network;
+using NoMercy.Plugins.Quotas;
+using NoMercy.Plugins.Runtime;
+using NoMercy.Plugins.Storage;
 using NoMercy.Storage;
 
 namespace NoMercy.Plugins;
@@ -37,7 +43,15 @@ public class PluginContextFactory(
     IPluginMusicQuery? musicQuery = null,
     IPluginAudioToolsFactory? audioToolsFactory = null,
     IPluginDerivedAudio? derivedAudio = null,
-    IPluginMusicAnalysisWriterFactory? analysisWriterFactory = null
+    IPluginMusicAnalysisWriterFactory? analysisWriterFactory = null,
+    Func<IPluginMediaFactory?>? mediaFactory = null,
+    IPluginLibraryScanner? libraryScanner = null,
+    string? pluginsRoot = null,
+    IPluginFolderCatalog? folderCatalog = null,
+    IPluginGrantedLocations? grantedLocations = null,
+    IPluginFreeSpaceProbe? freeSpace = null,
+    PluginQuotaMeter? quotas = null,
+    Version? serverVersion = null
 ) : IPluginContextFactory
 {
     public IPluginContext Create(
@@ -115,9 +129,168 @@ public class PluginContextFactory(
             musicQuery,
             audioToolsFacade,
             derivedAudioFacade,
-            analysisWriter
+            analysisWriter,
+            mediaFactory?.Invoke()?.CreateFor(pluginId),
+            // Only when the plugin holds a writer: importing is a write, and
+            // one without the other is a door with no lock on it.
+            writer is null
+            || libraryScanner is null
+                ? null
+                : new PluginLibraryImport(pluginId, writer, libraryScanner, logger),
+            HostStorage(pluginId),
+            ServerInfo(pluginId),
+            Net(pluginId),
+            Spawning(pluginId),
+            NativeCode(pluginId, dataFolderPath)
         );
     }
+
+    /// <summary>
+    /// Sockets, checked against the manifest and the owner's answer on every
+    /// call. Null on a host that wired no broker, where the facade refuses by
+    /// name rather than opening a socket nothing checked.
+    /// <para>
+    /// Resolved here rather than taken as a constructor parameter, for the same
+    /// reason as the media factory: the broker asks what a plugin declared,
+    /// that answer comes from the manager, and the manager is built with this
+    /// factory. Asking for it at registration closes the ring and the process
+    /// goes down before any test can report why.
+    /// </para>
+    /// </summary>
+    private IPluginNet? Net(Ulid pluginId)
+    {
+        IPluginCapabilityBroker? broker = services.GetService<IPluginCapabilityBroker>();
+        IPluginManifestSource? manifestSource = services.GetService<IPluginManifestSource>();
+        IPluginResourceLedger? ledger = services.GetService<IPluginResourceLedger>();
+
+        if (broker is null || manifestSource is null || ledger is null)
+            return null;
+
+        IPluginNetDiscovery? discovery = services.GetService<IPluginServiceDiscoveryClient>()
+            is { } discoveryClient
+            ? new PluginNetDiscovery(pluginId, broker, discoveryClient, ledger)
+            : null;
+
+        IPluginPortMap? portMap = null;
+
+        if (services.GetService<IPluginPortMapClient>() is { } routerClient)
+        {
+            PluginPortMap map = new(
+                pluginId,
+                broker,
+                routerClient,
+                ledger,
+                services.GetService<TimeProvider>() ?? TimeProvider.System
+            );
+
+            // The host renews the leases, because the plugin asking for a
+            // mapping has no reason to know a NAT-PMP lease is minutes long.
+            services.GetService<PluginPortMapRenewalService>()?.Track(pluginId, map);
+            portMap = map;
+        }
+
+        return new PluginNet(pluginId, broker, manifestSource, ledger, discovery, portMap);
+    }
+
+    /// <summary>
+    /// Running one of the binaries the owner approved. Resolved lazily for the
+    /// same reason as the sockets above: the broker's answer comes from the
+    /// manager, and the manager is built with this factory.
+    /// </summary>
+    private IPluginProcess? Spawning(Ulid pluginId)
+    {
+        IPluginCapabilityBroker? broker = services.GetService<IPluginCapabilityBroker>();
+        IPluginProcessStarter? starter = services.GetService<IPluginProcessStarter>();
+        IPluginResourceLedger? ledger = services.GetService<IPluginResourceLedger>();
+
+        return broker is null || starter is null || ledger is null
+            ? null
+            : new PluginProcess(
+                pluginId,
+                broker,
+                services.GetService<IPluginApprovedBinaries>()
+                    ?? new PluginApprovedBinaries(grantStore),
+                starter,
+                ledger
+            );
+    }
+
+    /// <summary>
+    /// Native code from the plugin's own bundle, gated on the marketplace
+    /// signature. A host that wired no signature stage answers that nothing is
+    /// signed, which refuses: not knowing a bundle is safe is not the same as
+    /// knowing it is.
+    /// </summary>
+    private IPluginNative? NativeCode(Ulid pluginId, string pluginDirectory)
+    {
+        INativeLibraryLoader? loader = services.GetService<INativeLibraryLoader>();
+
+        return loader is null
+            ? null
+            : new PluginNative(
+                pluginId,
+                services.GetService<IPluginBundleSignature>() ?? new NothingIsSigned(),
+                loader,
+                pluginDirectory
+            );
+    }
+
+    /// <summary>
+    /// The plugin's own folders, and the owner's folders it was granted. Null
+    /// on a host that wired no folder catalogue, where the facade refuses by
+    /// name rather than opening a path nothing checked.
+    /// </summary>
+    private IPluginStorage? HostStorage(Ulid pluginId) =>
+        pluginsRoot is null || folderCatalog is null
+            ? null
+            : new PluginHostStorage(pluginId, pluginsRoot, folderCatalog, grantStore, quotas);
+
+    /// <summary>
+    /// Refreshed as the context is built rather than read live: a plugin reads
+    /// GrantedPaths in a loop, and a property that queried would turn its loop
+    /// into the server's slowest one.
+    /// </summary>
+    private IPluginServerInfo? ServerInfo(Ulid pluginId)
+    {
+        if (grantedLocations is null || freeSpace is null)
+            return null;
+
+        grantedLocations.RefreshAsync(pluginId).GetAwaiter().GetResult();
+
+        return new PluginServerInfo(
+            pluginId,
+            serverVersion ?? new Version(0, 0),
+            grantedLocations,
+            freeSpace,
+            grantStore
+        );
+    }
+}
+
+/// <summary>
+/// Builds the media facade for one plugin. Separate because the proxy needs an
+/// HTTP client bound to that plugin's allowlist, which only the host can build.
+/// </summary>
+public interface IPluginMediaFactory
+{
+    IPluginMedia CreateFor(Ulid pluginId);
+
+    /// <summary>
+    /// The fetching half, for the route that serves a ticket. Separate from
+    /// the facade a plugin holds: fetching is the host acting on a ticket it
+    /// minted, and nothing a plugin calls.
+    /// </summary>
+    IPluginMediaFetcher FetcherFor(Ulid pluginId);
+}
+
+/// <summary>What the media route calls once a ticket has been checked.</summary>
+public interface IPluginMediaFetcher
+{
+    Task<HttpResponseMessage> FetchAsync(
+        PluginProxyRequest request,
+        string? range,
+        CancellationToken ct
+    );
 }
 
 /// <summary>

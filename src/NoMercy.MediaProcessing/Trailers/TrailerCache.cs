@@ -45,9 +45,17 @@ public partial class TrailerCache(IStorage transcodeStorage, ILogger<TrailerCach
                 return true;
         }
 
-        string arguments =
-            $"-f bestvideo+bestaudio -j https://youtube.com/watch?v={trailerId} --extractor-args \"youtube:player_client=default\" ";
-        Shell.ExecResult result = await Shell.ExecAsync(AppFiles.YtdlpPath, arguments);
+        Shell.ExecResult result = await Shell.ExecAsync(
+            AppFiles.YtdlpPath,
+            [
+                "-f",
+                "bestvideo+bestaudio",
+                "-j",
+                $"https://youtube.com/watch?v={trailerId}",
+                "--extractor-args",
+                "youtube:player_client=default",
+            ]
+        );
 
         if (!result.Success || string.IsNullOrEmpty(result.StandardOutput))
         {

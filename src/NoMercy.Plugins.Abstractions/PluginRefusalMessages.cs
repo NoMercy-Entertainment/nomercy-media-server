@@ -83,6 +83,42 @@ public static class PluginRefusalMessages
     }
 
     /// <summary>
+    /// The router said no to a port forward.
+    /// <para>
+    /// Not the plugin's fault and not fixable in its manifest, so the message
+    /// points at the router rather than at plugin.json. A plugin that treats
+    /// this as fatal is wrong: plenty of owners run without forwarding.
+    /// </para>
+    /// </summary>
+    public static PluginRefusal RouterDeclined(int port, int resultCode)
+    {
+        return new PluginRefusal(
+            PluginRefusalCodes.RouterDeclined,
+            "the router",
+            $"The router refused to forward port {port} (NAT-PMP result {resultCode}).",
+            "Forwarding a port is the router's decision, not the server's.",
+            "Switch on NAT-PMP or port forwarding in the router, or carry on without it: a plugin that cannot forward a port is reachable on the local network and not from outside it. Docs: /nomercy-plugins/capabilities/network-listen",
+            PluginRefusalSeverity.Blocked
+        );
+    }
+
+    /// <summary>
+    /// Nothing on this network answered a forwarding request, which is the
+    /// usual answer from a router with NAT-PMP switched off.
+    /// </summary>
+    public static PluginRefusal NoRouterFound()
+    {
+        return new PluginRefusal(
+            PluginRefusalCodes.NoRouterFound,
+            "the router",
+            "No router on this network answered a port-forwarding request.",
+            "The server asks the default gateway over NAT-PMP, and a router with it switched off answers nothing at all.",
+            "Switch on NAT-PMP in the router, or forward the port by hand: a plugin that cannot forward a port still works on the local network. Docs: /nomercy-plugins/capabilities/network-listen",
+            PluginRefusalSeverity.Blocked
+        );
+    }
+
+    /// <summary>
     /// A plugin reading or writing outside every folder it was granted.
     /// <para>
     /// This fires on an absolute path and on a <c>..</c> segment as well as on
@@ -161,6 +197,182 @@ public static class PluginRefusalMessages
     /// names the server version to update to instead.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// A plugin that put a credential in a URL it built itself.
+    /// <para>
+    /// The radio plugin kept the viewer's bearer token in a mutable static and
+    /// appended it to every stream URL, which put a live credential into the
+    /// server log, the client's history and every link a viewer shared.
+    /// </para>
+    /// </summary>
+    /// <summary>
+    /// A recording that cannot be written because the disk is full.
+    /// </summary>
+    public static PluginRefusal RecordingDiskFull(string plugin, string channelId)
+    {
+        return new PluginRefusal(
+            PluginRefusalCodes.RecordingDiskFull,
+            plugin,
+            $"The recording of {channelId} stopped because the disk it writes to is full.",
+            "A recording writes for as long as the program runs, so the space it needs is not known when it is scheduled. What was captured before the disk filled is kept.",
+            "Free space on the recording library's disk, or lower the retention on this plugin so older recordings are removed sooner. Docs: /nomercy-plugins/capabilities/media-record",
+            PluginRefusalSeverity.Blocked
+        );
+    }
+
+    /// <summary>
+    /// One upstream out of several that stopped answering.
+    /// <para>
+    /// Degraded rather than blocked: the point of an ordered link list is that
+    /// the next one is tried, so one dead mirror is not a reason to end the
+    /// channel. It is still reported, because a provider that always falls
+    /// through to its last mirror is failing quietly.
+    /// </para>
+    /// </summary>
+    public static PluginRefusal LiveLinkFailed(string plugin, string channelId, int linkIndex)
+    {
+        return new PluginRefusal(
+            PluginRefusalCodes.LiveLinkFailed,
+            plugin,
+            $"Link {linkIndex} for channel {channelId} did not answer.",
+            "The host fell through to the next link in the list, so playback continued. A link that keeps failing means the provider changed something or the credential behind it expired.",
+            "Check the upstream this link points at and remove it if the provider retired it. Docs: /nomercy-plugins/capabilities/media-live",
+            PluginRefusalSeverity.Degraded
+        );
+    }
+
+    /// <summary>
+    /// A hub method reached on a connection with no resolved caller.
+    /// </summary>
+    public static PluginRefusal HubCallerNotResolved(string plugin, string method)
+    {
+        return new PluginRefusal(
+            PluginRefusalCodes.HubCallerNotResolved,
+            plugin,
+            $"The hub method {method} was reached on a connection the host could not identify.",
+            "A handler that runs without knowing who asked cannot tell the owner from a guest, and the plugin has no way to find out afterwards, so it ends up trusting whoever connected.",
+            "Nothing to change in the plugin. The connection reached the hub without an identity the server recognises, which means the client connected without signing in. Docs: /nomercy-plugins/tour/callers-and-access",
+            PluginRefusalSeverity.Blocked
+        );
+    }
+
+    /// <summary>
+    /// A worker the host stopped restarting.
+    /// </summary>
+    public static PluginRefusal WorkerCrashed(string plugin, string worker, int restarts)
+    {
+        return new PluginRefusal(
+            PluginRefusalCodes.SchedulerWorkerCrashed,
+            plugin,
+            $"The worker {worker} was disabled after crashing {restarts} times in an hour.",
+            "A worker that crashes three times in an hour is crashing on startup rather than hitting something passing, and restarting it for ever costs more than the worker was doing.",
+            "Fix what the worker throws on, then enable the plugin again to start it. The log line above this one carries the exception. Docs: /nomercy-plugins/capabilities/scheduler",
+            PluginRefusalSeverity.Degraded
+        );
+    }
+
+    /// <summary>
+    /// A password read back from settings rather than from the secret store.
+    /// </summary>
+    public static PluginRefusal SecretFieldInSettings(string plugin, string key)
+    {
+        return new PluginRefusal(
+            PluginRefusalCodes.SecretFieldInSettings,
+            plugin,
+            $"The field {key} is a password and was read from settings.",
+            "Settings are written to a file the owner can open, travel in an export and appear in any log line that dumps them. A password kept there is a password in all three.",
+            "Read it with context.Secrets.GetAsync instead. The host already stored it there when the owner filled the field in. Docs: /nomercy-plugins/capabilities/settings",
+            PluginRefusalSeverity.Blocked
+        );
+    }
+
+    /// <summary>
+    /// A write to a field the plugin's own schema marks read only.
+    /// </summary>
+    public static PluginRefusal SettingsFieldReadOnly(string plugin, string key)
+    {
+        return new PluginRefusal(
+            PluginRefusalCodes.SettingsFieldReadOnly,
+            plugin,
+            $"The plugin wrote to {key}, which its own schema marks read only.",
+            "A field the plugin can overwrite is one the owner cannot keep set: whatever they chose is replaced the next time the plugin runs, and nothing tells them it happened.",
+            "Mark the field writable in the settings schema if the plugin is meant to change it. Docs: /nomercy-plugins/capabilities/settings",
+            PluginRefusalSeverity.Blocked
+        );
+    }
+
+    /// <summary>
+    /// A per-user secret reached where the host resolved nobody.
+    /// </summary>
+    public static PluginRefusal SecretHasNoCaller(string plugin, string key)
+    {
+        return new PluginRefusal(
+            PluginRefusalCodes.SecretHasNoCaller,
+            plugin,
+            $"The per-user secret {key} was reached on a call with no caller.",
+            "Falling back to the server's own slot would put one member's provider login where every member reads it, and the member who set it could never revoke it on their own.",
+            "Reach per-user secrets from a request or a hub call, where the host has resolved who is asking. Background work has no caller, so use context.Secrets.GetAsync for values the server owns. Docs: /nomercy-plugins/capabilities/secrets",
+            PluginRefusalSeverity.Blocked
+        );
+    }
+
+    /// <summary>
+    /// User data held somewhere other than the per-user scope.
+    /// </summary>
+    public static PluginRefusal UserScopeRequired(string plugin, string path)
+    {
+        return new PluginRefusal(
+            PluginRefusalCodes.UserScopeRequired,
+            plugin,
+            $"The plugin wrote user data to {path}, which is not a per-user scope.",
+            "Data about a person mixed into the plugin's own files cannot be handed to that person, and cannot be removed when they leave. Nobody finds out until one of them asks.",
+            "Write it through context.Storage.ForUser instead. The host exports and erases that scope on its own, so the plugin has nothing to remember. Docs: /nomercy-plugins/capabilities/user-scope",
+            PluginRefusalSeverity.Blocked
+        );
+    }
+
+    /// <summary>
+    /// User data sent off the server.
+    /// </summary>
+    public static PluginRefusal UserDataEgress(string plugin, string host)
+    {
+        return new PluginRefusal(
+            PluginRefusalCodes.UserDataEgress,
+            plugin,
+            $"The plugin sent user data to {host}.",
+            "There is no capability for this, and there is not going to be one. Once a person's data is on someone else's server the owner cannot export it, cannot erase it, and cannot tell the person where it went.",
+            "Keep it in context.Storage.ForUser. If the plugin needs to ask an upstream something, send what the question needs and not who asked it. Docs: /nomercy-plugins/capabilities/user-scope",
+            PluginRefusalSeverity.Blocked
+        );
+    }
+
+    /// <summary>
+    /// A route claiming a path the host keeps for itself.
+    /// </summary>
+    public static PluginRefusal RouteReservedPrefix(string plugin, string path)
+    {
+        return new PluginRefusal(
+            PluginRefusalCodes.RouteReservedPrefix,
+            plugin,
+            $"The route {path} starts with an underscore, which the host keeps.",
+            "Paths beginning with an underscore are where the host adds pages to every plugin. A plugin that claims one keeps working until the host adds that page, and then stops for a reason its author had nothing to do with.",
+            "Rename the route without the leading underscore. Every other path is the plugin's. Docs: /nomercy-plugins/tour/routes",
+            PluginRefusalSeverity.Blocked
+        );
+    }
+
+    public static PluginRefusal TokenInUrl(string plugin, string url)
+    {
+        return new PluginRefusal(
+            PluginRefusalCodes.TokenInUrl,
+            plugin,
+            $"The plugin built a media URL carrying a credential: {url}",
+            "A credential in a URL is written to the server log, kept in the client's history and travels with every link a viewer shares. It also outlives the session, because nothing revokes a query string.",
+            "Hand the upstream to context.Media.Proxy.MintAsync and play the URL it returns. The host mints one bound to this user and this session, and keeps the upstream's own credentials on the server. Docs: /nomercy-plugins/capabilities/media-proxy",
+            PluginRefusalSeverity.Blocked
+        );
+    }
+
     public static PluginRefusal FacadeNotOnThisHost(string plugin, string facade)
     {
         return new PluginRefusal(
@@ -191,6 +403,56 @@ public static class PluginRefusalMessages
             what,
             $"The plugin did not declare {capability}, and the owner grants what the manifest asks for rather than what the code turns out to use.",
             $"Declare {capability} in plugin.json and publish the new version. The owner is asked to approve it on update. Docs: {descriptor?.DocsUrl ?? "/nomercy-plugins/capabilities"}",
+            PluginRefusalSeverity.Blocked
+        );
+    }
+
+    /// <summary>
+    /// A capability the manifest declares that the owner has not approved.
+    /// <para>
+    /// Separate from not declaring it, because the fix is not the author's. A
+    /// message telling them to edit plugin.json would have them change a line
+    /// that is already correct and watch nothing happen.
+    /// </para>
+    /// </summary>
+    public static PluginRefusal CapabilityNotConsented(string plugin, string capability)
+    {
+        PluginCapabilityDescriptor? descriptor = PluginCapabilityVocabulary.ByName(capability);
+
+        return new PluginRefusal(
+            PluginRefusalCodes.CapabilityNotConsented,
+            plugin,
+            $"The plugin used {capability}, which the owner has not approved.",
+            "The manifest asks for it and nobody has said yes yet. A plugin runs on what the owner approved, not on what it asked for.",
+            $"Open the plugin's permissions page on this server and approve {capability}. Nothing needs to change in the plugin. Docs: {descriptor?.DocsUrl ?? "/nomercy-plugins/capabilities"}",
+            PluginRefusalSeverity.Blocked
+        );
+    }
+
+    /// <summary>
+    /// A capability the plugin declared, used on something outside what the
+    /// owner granted.
+    /// <para>
+    /// Distinct from not declaring it at all, and the difference matters to the
+    /// reader: one is a line to add to plugin.json, the other is a value the
+    /// owner deliberately did not approve. Reported as one code, an author
+    /// edits the manifest and wonders why nothing changed.
+    /// </para>
+    /// </summary>
+    public static PluginRefusal CapabilityScopeRefused(
+        string plugin,
+        string capability,
+        string scope
+    )
+    {
+        PluginCapabilityDescriptor? descriptor = PluginCapabilityVocabulary.ByName(capability);
+
+        return new PluginRefusal(
+            PluginRefusalCodes.CapabilityScopeRefused,
+            plugin,
+            $"The plugin used {capability} on {scope}, which the owner did not grant.",
+            $"{capability} is declared and granted, but not for {scope}. A capability is granted for the things the manifest named, not for everything of that kind.",
+            $"Add {scope} to the {capability} entry in plugin.json and publish the new version, so the owner is asked about it. Docs: {descriptor?.DocsUrl ?? "/nomercy-plugins/capabilities"}",
             PluginRefusalSeverity.Blocked
         );
     }

@@ -36,7 +36,8 @@ namespace NoMercy.Plugins;
 public class PluginSecretStore(
     Ulid pluginId,
     IDataProtectionProvider protectionProvider,
-    IPluginConfiguration configuration
+    IPluginConfiguration configuration,
+    Func<UserId?>? caller = null
 ) : IPluginSecretStore
 {
     private readonly IDataProtector _protector = protectionProvider.CreateProtector(
@@ -45,11 +46,14 @@ public class PluginSecretStore(
 
     private readonly Lock _gate = new();
 
-    public Task<string?> GetAsync(string key, CancellationToken ct = default)
+    public Task<string?> GetAsync(string key, CancellationToken ct = default) =>
+        GetScopedAsync(Scoped(key));
+
+    private Task<string?> GetScopedAsync(string scopedKey)
     {
         PluginSecretRecord record = Read();
 
-        if (!record.Values.TryGetValue(Scoped(key), out string? protectedValue))
+        if (!record.Values.TryGetValue(scopedKey, out string? protectedValue))
             return Task.FromResult<string?>(null);
 
         try
@@ -70,23 +74,31 @@ public class PluginSecretStore(
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
 
+        return SetScopedAsync(Scoped(key), value);
+    }
+
+    private Task SetScopedAsync(string scopedKey, string value)
+    {
         lock (_gate)
         {
             PluginSecretRecord record = Read();
-            record.Values[Scoped(key)] = _protector.Protect(value);
+            record.Values[scopedKey] = _protector.Protect(value);
             configuration.SaveConfiguration(record);
         }
 
         return Task.CompletedTask;
     }
 
-    public Task DeleteAsync(string key, CancellationToken ct = default)
+    public Task DeleteAsync(string key, CancellationToken ct = default) =>
+        DeleteScopedAsync(Scoped(key));
+
+    private Task DeleteScopedAsync(string scopedKey)
     {
         lock (_gate)
         {
             PluginSecretRecord record = Read();
 
-            if (record.Values.Remove(Scoped(key)))
+            if (record.Values.Remove(scopedKey))
                 configuration.SaveConfiguration(record);
         }
 
@@ -97,9 +109,13 @@ public class PluginSecretStore(
     {
         string prefix = Scoped(string.Empty);
 
+        // Per-user slots are excluded. They live under the same plugin prefix,
+        // and a plugin listing its own keys must not be handed one member's
+        // key names, let alone every member's.
         IReadOnlyList<string> keys = Read()
             .Values.Keys.Where(key => key.StartsWith(prefix, StringComparison.Ordinal))
             .Select(key => key[prefix.Length..])
+            .Where(key => !key.StartsWith("user:", StringComparison.Ordinal))
             .ToList();
 
         return Task.FromResult(keys);
@@ -131,6 +147,31 @@ public class PluginSecretStore(
     }
 
     private string Scoped(string key) => $"{pluginId:D}:{key}";
+
+    /// <summary>
+    /// The caller's own slot. Separate from the server's rather than a prefix
+    /// on the same one, so a provider login one member set cannot be read, or
+    /// revoked, by another.
+    /// </summary>
+    private string ScopedForUser(string key)
+    {
+        UserId? user =
+            caller?.Invoke()
+            ?? throw new PluginRefusedException(
+                PluginRefusalMessages.SecretHasNoCaller(pluginId.ToString(), key)
+            );
+
+        return $"{pluginId:D}:user:{user.Value.Value:D}:{key}";
+    }
+
+    public Task<string?> GetForUserAsync(string key, CancellationToken ct = default) =>
+        GetScopedAsync(ScopedForUser(key));
+
+    public Task SetForUserAsync(string key, string value, CancellationToken ct = default) =>
+        SetScopedAsync(ScopedForUser(key), value);
+
+    public Task DeleteForUserAsync(string key, CancellationToken ct = default) =>
+        DeleteScopedAsync(ScopedForUser(key));
 
     private PluginSecretRecord Read() =>
         configuration.GetConfiguration<PluginSecretRecord>() ?? new();

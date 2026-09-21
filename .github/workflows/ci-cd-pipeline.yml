@@ -113,7 +113,7 @@ jobs:
   promote_docker_images:
     needs: [version_management, build_docker_images, create_release]
     if: needs.version_management.outputs.should_deploy == 'true'
-    runs-on: [self-hosted, Linux, X64, beast-unit]
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       packages: write

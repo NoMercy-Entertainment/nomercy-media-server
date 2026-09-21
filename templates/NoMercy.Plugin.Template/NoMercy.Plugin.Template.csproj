@@ -6,11 +6,20 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="NoMercy.Plugins.Abstractions" Version="*" />
+    <!--
+      The major is pinned and the minor floats. A bare * rebuilds a plugin
+      against a contract it was never tested with, and the first sign of that
+      is a server refusing to load it. Pinning the minor too is the opposite
+      mistake: the contract adds members in a minor, so every additive change
+      would make every plugin in the world re-pin before it could restore.
+    -->
+    <PackageReference Include="NoMercy.Plugins.Abstractions" Version="11.*" />
+    <PackageReference Include="NoMercy.Plugins.Mvc" Version="11.*" />
+    <PackageReference Include="NoMercy.Plugins.Analyzers" Version="11.*" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="plugin.json">
+    <None Update="plugin.json;settings.schema.json;lang\**\*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>

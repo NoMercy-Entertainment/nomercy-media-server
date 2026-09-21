@@ -43,6 +43,69 @@ public class PluginContext : IPluginContext
     /// </summary>
     public IPluginEncoder? Encoder { get; }
 
+    private readonly IPluginMedia? _media;
+    private readonly IPluginLibraryImport? _libraryImport;
+    private readonly IPluginStorage? _hostStorage;
+    private readonly IPluginServerInfo? _server;
+    private readonly IPluginNet? _net;
+    private readonly IPluginProcess? _process;
+    private readonly IPluginNative? _native;
+
+    /// <summary>Running one of the binaries the owner approved.</summary>
+    public IPluginProcess Process =>
+        _process
+        ?? throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(PluginId.ToString(), "IPluginContext.Process")
+        );
+
+    /// <summary>Native code from the plugin's own signed bundle.</summary>
+    public IPluginNative Native =>
+        _native
+        ?? throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(PluginId.ToString(), "IPluginContext.Native")
+        );
+
+    /// <summary>Sockets the owner consented to.</summary>
+    public IPluginNet Net =>
+        _net
+        ?? throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(PluginId.ToString(), "IPluginContext.Net")
+        );
+
+    /// <summary>Every place this plugin may read and write.</summary>
+    public IPluginStorage Storage =>
+        _hostStorage
+        ?? throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(PluginId.ToString(), "IPluginContext.Storage")
+        );
+
+    /// <summary>What this server is, so a plugin branches on a fact.</summary>
+    public IPluginServerInfo Server =>
+        _server
+        ?? throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(PluginId.ToString(), "IPluginContext.Server")
+        );
+
+    public IPluginLibraryImport LibraryImport =>
+        _libraryImport
+        ?? throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(
+                PluginId.ToString(),
+                "IPluginContext.LibraryImport"
+            )
+        );
+
+    /// <summary>
+    /// Refused rather than null when this host carries none of it, so a plugin
+    /// reaching for it reads why instead of a NullReferenceException with no
+    /// name on it.
+    /// </summary>
+    public IPluginMedia Media =>
+        _media
+        ?? throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(PluginId.ToString(), "IPluginContext.Media")
+        );
+
     public IPluginJobs? Jobs { get; }
 
     /// <summary>
@@ -92,9 +155,23 @@ public class PluginContext : IPluginContext
         IPluginMusicQuery? music = null,
         IPluginAudioTools? audioTools = null,
         IPluginDerivedAudio? derivedAudio = null,
-        IPluginMusicAnalysisWriter? musicAnalysisWriter = null
+        IPluginMusicAnalysisWriter? musicAnalysisWriter = null,
+        IPluginMedia? media = null,
+        IPluginLibraryImport? libraryImport = null,
+        IPluginStorage? hostStorage = null,
+        IPluginServerInfo? server = null,
+        IPluginNet? net = null,
+        IPluginProcess? process = null,
+        IPluginNative? native = null
     )
     {
+        _net = net;
+        _process = process;
+        _native = native;
+        _media = media;
+        _hostStorage = hostStorage;
+        _server = server;
+        _libraryImport = libraryImport;
         Encoder = encoder;
         Jobs = jobs;
         AudioTools = audioTools;

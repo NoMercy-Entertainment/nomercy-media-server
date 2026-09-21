@@ -27,6 +27,21 @@ public class PluginInfo
     public bool Trusted { get; init; }
     public PluginCapabilities? Capabilities { get; init; }
 
+    /// <summary>The fields the host draws on this plugin's settings page.</summary>
+    public IReadOnlyList<PluginSettingsField> Settings { get; init; } = [];
+
+    /// <summary>Other plugins this one needs before it can run.</summary>
+    public IReadOnlyList<PluginDependency> Dependencies { get; init; } = [];
+
+    /// <summary>What the marketplace says this costs. Free until it says otherwise.</summary>
+    public PluginTier Tier { get; init; } = PluginTier.Free;
+
+    /// <summary>
+    /// Installed from a file the owner supplied rather than from a repository.
+    /// Owner-only and never verified, because nothing can say who wrote it.
+    /// </summary>
+    public bool Sideloaded { get; init; }
+
     /// <summary>
     /// Whether the assembly carries an <see cref="IPluginServiceRegistrator"/>.
     /// <para>Decided at load rather than guessed from the manifest, because it

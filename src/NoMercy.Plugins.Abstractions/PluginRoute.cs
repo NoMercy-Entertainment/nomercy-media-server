@@ -25,7 +25,20 @@ public class PluginRoute
     /// The path, relative to the plugin, with named parameters:
     /// `/stations/:id`, `/downloads`, `/`.
     /// </summary>
-    public required string Path { get; init; }
+    public required string Path
+    {
+        get;
+        init
+        {
+            if (PluginBasePath.IsReserved(value))
+                throw new ArgumentException(
+                    $"A plugin route cannot start with {PluginBasePath.Prefix}, which is reserved for the server's own pages. Rename it to something under the plugin, such as /overview.",
+                    nameof(Path)
+                );
+
+            field = value;
+        }
+    }
 
     /// <summary>
     /// A stable name the plugin uses to link here, so a link survives the path

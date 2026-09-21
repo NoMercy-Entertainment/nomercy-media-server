@@ -20,6 +20,7 @@ using NoMercy.Api.DTOs.Media.Components;
 using NoMercy.Authorization;
 using NoMercy.Data.Repositories;
 using NoMercy.NmSystem.Extensions;
+using NoMercy.Plugins.Abstractions;
 
 namespace NoMercy.Api.Controllers;
 
@@ -92,6 +93,18 @@ public class BaseController : Controller
             detail: detail,
             statusCode: StatusCodes.Status403Forbidden,
             type: "/docs/errors/forbidden"
+        );
+    }
+
+    /// <summary>
+    /// A refusal as the 403 body, for the same reason the 422 helper exists:
+    /// the caller reads the same three lines the server logs.
+    /// </summary>
+    protected IActionResult ForbiddenResponse(PluginRefusal refusal)
+    {
+        return StatusCode(
+            StatusCodes.Status403Forbidden,
+            new DataResponseDto<PluginRefusal> { Data = refusal }
         );
     }
 
@@ -173,6 +186,16 @@ public class BaseController : Controller
             statusCode: StatusCodes.Status422UnprocessableEntity,
             type: "/docs/errors/unprocessable-entity"
         );
+    }
+
+    /// <summary>
+    /// A refusal as the error body rather than a sentence about it, so the
+    /// owner reads the same three lines the server logs and a client can show
+    /// the fix without knowing what went wrong.
+    /// </summary>
+    protected IActionResult UnprocessableEntityResponse(PluginRefusal refusal)
+    {
+        return UnprocessableEntity(new DataResponseDto<PluginRefusal> { Data = refusal });
     }
 
     protected IActionResult TooManyRequestsResponse(string detail)

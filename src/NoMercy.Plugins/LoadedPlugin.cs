@@ -21,12 +21,20 @@ internal sealed class LoadedPlugin(
     PluginInfo info,
     IPlugin? instance,
     PluginLoadContext? loadContext,
-    string? shadowDirectory = null
+    string? shadowDirectory = null,
+    PluginServiceProvider? serviceProvider = null
 )
 {
     public PluginInfo Info { get; } = info;
     public IPlugin? Instance { get; set; } = instance;
     public PluginLoadContext? LoadContext { get; } = loadContext;
+
+    /// <summary>
+    /// The plugin's own container, or null when it registered no services of
+    /// its own. Disposed when the plugin unloads, before the load context, so
+    /// nothing is finalized on a type whose assembly has gone.
+    /// </summary>
+    public PluginServiceProvider? ServiceProvider { get; } = serviceProvider;
 
     /// <summary>
     /// The per-load copy the assemblies were loaded from (see

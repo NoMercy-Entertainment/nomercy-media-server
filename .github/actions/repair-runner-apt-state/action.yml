@@ -1,7 +1,7 @@
 name: 'Repair runner apt state'
 description: >-
-  Clears the half-configured packages that make every apt call on a self-hosted
-  runner fail, whatever it was asked to install.
+  Clears half-configured packages that make every apt call on the runner fail,
+  whatever it was asked to install. A no-op on an image that has none.
 
 runs:
   using: composite

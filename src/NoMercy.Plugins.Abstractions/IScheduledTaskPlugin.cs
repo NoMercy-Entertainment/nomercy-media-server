@@ -43,11 +43,35 @@ public interface IScheduledTaskPlugin : IPlugin
     Task ExecuteAsync(string jobName, CancellationToken ct = default) => ExecuteAsync(ct);
 }
 
-/// <param name="Name">Unique within the plugin. Becomes <c>plugin:{id}:{name}</c> in the job list.</param>
-/// <param name="CronExpression">Standard cron, same dialect as <see cref="IScheduledTaskPlugin.CronExpression"/>.</param>
-/// <param name="AllowConcurrent">
-/// Whether a tick may start while the previous one is still running. False by
-/// default: an expensive cycle overrunning its interval should skip, not pile
-/// up, and a plugin that wants overlap has to say so.
-/// </param>
-public record PluginScheduledJob(string Name, string CronExpression, bool AllowConcurrent = false);
+/// <summary>
+/// One named job on a schedule.
+/// <para>
+/// Reached two ways, which is why the body is optional. A plugin registering
+/// through <see cref="IPluginScheduler.Register" /> carries its own
+/// <see cref="RunAsync" />; one declaring jobs on
+/// <see cref="IScheduledTaskPlugin.Jobs" /> leaves it null, and its own
+/// <see cref="IScheduledTaskPlugin.ExecuteAsync(string, CancellationToken)" />
+/// is what runs. One type either way, so the job list shows the same thing.
+/// </para>
+/// </summary>
+public sealed record PluginScheduledJob
+{
+    /// <summary>Unique within the plugin. Becomes <c>plugin:{id}:{name}</c> in the job list.</summary>
+    public required string Name { get; init; }
+
+    /// <summary>Standard cron, same dialect as <see cref="IScheduledTaskPlugin.CronExpression"/>.</summary>
+    public required string CronExpression { get; init; }
+
+    /// <summary>
+    /// Whether a tick may start while the previous one is still running. False
+    /// by default: an expensive cycle overrunning its interval should skip, not
+    /// pile up, and a plugin that wants overlap has to say so.
+    /// </summary>
+    public bool AllowConcurrent { get; init; }
+
+    /// <summary>A key, not a sentence: the owner reads this in their language.</summary>
+    public string? LabelKey { get; init; }
+
+    /// <summary>Null when the plugin declared the job rather than registering it.</summary>
+    public Func<IPluginContext, CancellationToken, Task>? RunAsync { get; init; }
+}

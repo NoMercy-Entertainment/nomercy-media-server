@@ -10,7 +10,9 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.Extensions.Logging;
+using NoMercy.Events;
 using NoMercy.Plugins.Abstractions;
+using NoMercy.Plugins.Access;
 
 namespace NoMercy.Plugins.Capabilities;
 
@@ -20,10 +22,19 @@ public interface IPluginConsentStore
     PluginConsentGrant? Get(Ulid pluginId);
     void Add(Ulid pluginId, PluginCapabilities? capabilities, Version manifestVersion);
     void Remove(Ulid pluginId);
+
+    /// <summary>
+    /// Writes a record back whole. Per-capability answers are a read, a change
+    /// and a write, and <see cref="Add"/> can only replace the capability set.
+    /// </summary>
+    void Save(Ulid pluginId, PluginConsentGrant grant);
 }
 
-public class PluginConsentService(IPluginConsentStore store, ILogger? logger = null)
-    : IPluginConsentService
+public class PluginConsentService(
+    IPluginConsentStore store,
+    ILogger? logger = null,
+    IEventBus? events = null
+) : IPluginConsentService
 {
     public bool IsBaseline(PluginCapabilities? capabilities)
     {
@@ -103,5 +114,38 @@ public class PluginConsentService(IPluginConsentStore store, ILogger? logger = n
             parts.Add($"network hosts {string.Join(", ", capabilities.Network.Hosts)}");
 
         return parts.Count > 0 ? string.Join("; ", parts) : "nothing beyond the ordinary set";
+    }
+
+    public void ApproveCapability(Ulid pluginId, string capability, Version manifestVersion)
+    {
+        PluginConsentGrant grant = store.Get(pluginId) ?? new();
+        grant.ApprovedCapabilities[capability] = manifestVersion.ToString();
+        store.Save(pluginId, grant);
+        PluginAccessAnnouncement.Changed(events, pluginId);
+    }
+
+    public void RevokeCapability(Ulid pluginId, string capability)
+    {
+        PluginConsentGrant? grant = store.Get(pluginId);
+
+        if (grant is null || !grant.ApprovedCapabilities.Remove(capability))
+            return;
+
+        store.Save(pluginId, grant);
+        PluginAccessAnnouncement.Changed(events, pluginId);
+    }
+
+    public bool IsApproved(Ulid pluginId, string capability) =>
+        store.Get(pluginId)?.ApprovedCapabilities.ContainsKey(capability) == true;
+
+    public Version? ApprovedAt(Ulid pluginId, string capability)
+    {
+        string? version =
+            store.Get(pluginId) is { } grant
+            && grant.ApprovedCapabilities.TryGetValue(capability, out string? at)
+                ? at
+                : null;
+
+        return version is null ? null : Version.Parse(version);
     }
 }

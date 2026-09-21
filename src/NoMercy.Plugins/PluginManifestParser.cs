@@ -63,7 +63,8 @@ public static class PluginManifestParser
         PluginStatus status,
         string? manifestPath = null,
         bool verified = false,
-        bool trusted = false
+        bool trusted = false,
+        bool sideloaded = false
     )
     {
         ArgumentNullException.ThrowIfNull(manifest);
@@ -85,6 +86,10 @@ public static class PluginManifestParser
             Verified = verified,
             Trusted = trusted,
             Capabilities = manifest.Capabilities,
+            Settings = manifest.Settings,
+            Dependencies = manifest.Dependencies,
+            Tier = manifest.Tier,
+            Sideloaded = sideloaded,
         };
     }
 

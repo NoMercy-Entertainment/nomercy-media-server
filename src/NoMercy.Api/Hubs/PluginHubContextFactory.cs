@@ -15,7 +15,9 @@ using NoMercy.Plugins.Hub;
 
 namespace NoMercy.Api.Hubs;
 
-public class PluginHubContextFactory(IHubContext<PluginHub> hubContext) : IPluginHubContextFactory
+public class PluginHubContextFactory(IHubContext<PluginHub> hubContext, IPluginHubRouter router)
+    : IPluginHubContextFactory
 {
-    public IPluginHubContext For(Ulid pluginId) => new PluginHubBroadcaster(hubContext, pluginId);
+    public IPluginHubContext For(Ulid pluginId) =>
+        new PluginHubBroadcaster(hubContext, pluginId, router);
 }

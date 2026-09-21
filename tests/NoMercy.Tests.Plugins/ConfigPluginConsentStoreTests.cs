@@ -205,4 +205,52 @@ public class ConfigPluginConsentStoreTests : IDisposable
 
         store.Contains(new(preUpgradeId)).Should().BeTrue();
     }
+
+    [Fact]
+    public void Saving_a_record_round_trips_the_per_capability_answers()
+    {
+        ConfigPluginConsentStore store = MakeStore();
+        Ulid pluginId = Ulid.NewUlid();
+
+        store.Save(
+            pluginId,
+            new()
+            {
+                ManifestVersion = "1.0.0",
+                ApprovedCapabilities = { ["network.fetch"] = "1.0.0" },
+            }
+        );
+
+        MakeStore()
+            .Get(pluginId)!
+            .ApprovedCapabilities.Should()
+            .ContainKey(
+                "network.fetch",
+                "an answer that does not survive a restart is not an answer"
+            );
+    }
+
+    [Fact]
+    public void Updating_the_declared_set_keeps_the_answers_the_owner_already_gave()
+    {
+        // What an update does. Replacing the record wholesale here turned an
+        // update into a silent re-approval of everything the owner said no to.
+        ConfigPluginConsentStore store = MakeStore();
+        Ulid pluginId = Ulid.NewUlid();
+        store.Save(
+            pluginId,
+            new()
+            {
+                ManifestVersion = "1.0.0",
+                ApprovedCapabilities = { ["network.fetch"] = "1.0.0" },
+            }
+        );
+
+        store.Add(pluginId, new() { Hooks = ["network.fetch", "process.spawn"] }, new(2, 0, 0));
+
+        PluginConsentGrant grant = MakeStore().Get(pluginId)!;
+        grant.ApprovedCapabilities.Should().ContainKey("network.fetch");
+        grant.ApprovedCapabilities.Should().NotContainKey("process.spawn");
+        grant.ManifestVersion.Should().Be("2.0.0");
+    }
 }

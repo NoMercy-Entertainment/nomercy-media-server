@@ -16,7 +16,9 @@ using Microsoft.Extensions.Logging;
 using NoMercy.Events;
 using NoMercy.Plugins.Abstractions;
 using NoMercy.Plugins.Capabilities;
+using NoMercy.Plugins.Guests;
 using NoMercy.Plugins.Hub;
+using NoMercy.Plugins.Sideload;
 using NoMercy.Plugins.Verification;
 using NoMercy.Storage;
 
@@ -31,6 +33,8 @@ public class PluginManager : IPluginManager, IDisposable
     private readonly IStorage _storage;
     private readonly IStorageDriver _driver;
     private readonly IPluginVerifier _verifier;
+    private readonly PluginSideloadPolicy? _sideloadPolicy;
+    private readonly PluginGuestInstaller? _guestInstaller;
     private readonly IPluginConsentService _consentService;
     private readonly IPluginRegistry _registry;
     private readonly PluginLoader _loader;
@@ -61,7 +65,9 @@ public class PluginManager : IPluginManager, IDisposable
         PluginHostOptions? hostOptions = null,
         IPluginAssemblyTracker? assemblyTracker = null,
         Action<Ulid>? releaseScheduledWork = null,
-        Action<Ulid>? registerScheduledWork = null
+        Action<Ulid>? registerScheduledWork = null,
+        PluginSideloadPolicy? sideloadPolicy = null,
+        PluginGuestInstaller? guestInstaller = null
     )
     {
         _eventBus = eventBus ?? throw new ArgumentNullException(nameof(eventBus));
@@ -72,6 +78,8 @@ public class PluginManager : IPluginManager, IDisposable
         _driver = driver ?? throw new ArgumentNullException(nameof(driver));
         _storage = storage ?? throw new ArgumentNullException(nameof(storage));
         _verifier = verifier ?? new PluginVerifier();
+        _sideloadPolicy = sideloadPolicy;
+        _guestInstaller = guestInstaller;
         _consentService =
             consentService
             ?? new PluginConsentService(
@@ -349,7 +357,9 @@ public class PluginManager : IPluginManager, IDisposable
     public async Task InstallPluginArchiveAsync(
         string archivePath,
         string? expectedChecksum = null,
-        CancellationToken ct = default
+        CancellationToken ct = default,
+        bool fromMarketplace = false,
+        Guid? forUser = null
     )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(archivePath);
@@ -376,6 +386,43 @@ public class PluginManager : IPluginManager, IDisposable
         await using ZipArchive archive = await ZipFile.OpenReadAsync(fullPath, ct);
 
         PluginManifestEntry manifest = FindManifest(archive, fullPath);
+
+        // Before a byte is unpacked, and against the archive rather than
+        // anything extracted from it: the signature covers the file the
+        // publisher signed, and by the time entries are on disk it is too late
+        // to ask who wrote them.
+        PluginVerificationResult signature = _verifier.Verify(
+            manifest.Manifest,
+            _storage.CombinePath(fullPath, manifest.AssemblyFileName),
+            expectedChecksum: null,
+            packagePath: fullPath,
+            fromMarketplace: fromMarketplace
+        );
+
+        if (!signature.Verified)
+        {
+            throw new PluginVerificationException(
+                $"Plugin '{manifest.FolderName}' failed verification: {string.Join("; ", signature.Failures)}"
+            );
+        }
+
+        // A file the owner supplied. The tier is only knowable here, once the
+        // manifest has been read out of the archive.
+        if (!fromMarketplace && _sideloadPolicy?.Check(manifest.Manifest) is { } sideload)
+        {
+            throw new PluginVerificationException($"{sideload.Why} {sideload.Fix}");
+        }
+
+        // Recorded before a byte is unpacked, for the same reason: a guest's
+        // plugin that is refused must never have been on the owner's disk.
+        if (
+            forUser is { } guest
+            && _guestInstaller?.Install(manifest.Manifest, guest) is { } denied
+        )
+        {
+            throw new PluginVerificationException($"{denied.Why} {denied.Fix}");
+        }
+
         string pluginDir = _storage.CombinePath(_pluginsPath, manifest.FolderName);
         string staging = _storage.CombinePath(
             _pluginsPath,
@@ -421,6 +468,14 @@ public class PluginManager : IPluginManager, IDisposable
         }
 
         ApplyStaged(staging, pluginDir);
+
+        // A fact about how this arrived, written beside it rather than taken
+        // from the manifest: anything a plugin says about itself is not
+        // something the server can rely on.
+        if (!fromMarketplace)
+        {
+            PluginSideloadMarker.Mark(pluginDir);
+        }
 
         await LoadPluginFromManifestAsync(_storage.CombinePath(pluginDir, "plugin.json"), ct);
 
@@ -947,7 +1002,8 @@ public class PluginManager : IPluginManager, IDisposable
             prefix,
             parsed.Assembly,
             Path.GetFileNameWithoutExtension(parsed.Assembly),
-            parsed.Id.Value
+            parsed.Id.Value,
+            parsed
         );
     }
 
@@ -1026,7 +1082,8 @@ public class PluginManager : IPluginManager, IDisposable
         string Prefix,
         string AssemblyFileName,
         string FolderName,
-        Ulid Id
+        Ulid Id,
+        PluginManifest Manifest
     );
 
     public Task EnablePluginAsync(Ulid pluginId, CancellationToken ct = default)

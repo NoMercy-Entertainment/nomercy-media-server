@@ -45,4 +45,24 @@ public interface IPluginConsentService
 
     void GrantConsent(Ulid pluginId, PluginCapabilities? capabilities, Version manifestVersion);
     void RevokeConsent(Ulid pluginId);
+
+    /// <summary>
+    /// Records the owner saying yes to one capability, at the version that
+    /// asked for it.
+    /// <para>
+    /// Per capability because the only answers used to be everything or
+    /// nothing, and nothing meant the plugin did not run. An owner who wants a
+    /// radio plugin to reach the internet and not to spawn processes had no way
+    /// to say so.
+    /// </para>
+    /// </summary>
+    void ApproveCapability(Ulid pluginId, string capability, Version manifestVersion);
+
+    /// <summary>Takes one back, leaving the rest as they were.</summary>
+    void RevokeCapability(Ulid pluginId, string capability);
+
+    bool IsApproved(Ulid pluginId, string capability);
+
+    /// <summary>The version that asked, or null when it was never approved.</summary>
+    Version? ApprovedAt(Ulid pluginId, string capability);
 }
