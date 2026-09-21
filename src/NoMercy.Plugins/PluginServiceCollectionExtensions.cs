@@ -36,6 +36,7 @@ using NoMercy.Plugins.Media;
 using NoMercy.Plugins.Offline;
 using NoMercy.Plugins.Quotas;
 using NoMercy.Plugins.Revocation;
+using NoMercy.Plugins.Runtime;
 using NoMercy.Plugins.Sideload;
 using NoMercy.Plugins.Storage;
 using NoMercy.Plugins.Telemetry;
@@ -75,6 +76,10 @@ public static class PluginServiceCollectionExtensions
         // building second copies of them. Read at plugin load, by which time
         // the collection is complete.
         services.TryAddSingleton(new PluginHostServiceCollection(services));
+
+        // What a plugin holds outside the process, so stopping it gives all of
+        // it back. Shared by sockets, router mappings and child processes.
+        services.TryAddSingleton<IPluginResourceLedger, PluginResourceLedger>();
 
         // Built from the container rather than by the parameterless constructor,
         // because one stage asks the repository where a plugin came from and

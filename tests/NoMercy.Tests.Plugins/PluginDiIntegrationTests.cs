@@ -314,7 +314,6 @@ public class PluginDiIntegrationTests : IDisposable
     /// </para>
     /// </summary>
     [Theory]
-    [InlineData("Net")]
     [InlineData("Storage")]
     [InlineData("Process")]
     [InlineData("Server")]
@@ -349,6 +348,29 @@ public class PluginDiIntegrationTests : IDisposable
         refused.Refusal.Code.Should().Be(PluginRefusalCodes.ContractVersionMismatch);
         refused.Refusal.What.Should().Contain($"IPluginContext.{member}");
         refused.Refusal.Fix.Should().Contain("context.Server.Version");
+    }
+
+    /// <summary>
+    /// Net left that list when the sockets landed: AddPluginSystem wires the
+    /// broker, the manifest source and the resource ledger, so every host that
+    /// calls it has a working Net rather than one that refuses by name.
+    /// </summary>
+    [Fact]
+    public void Net_is_wired_by_the_plugin_system_itself()
+    {
+        ServiceCollection services = new();
+        services.AddSingleton<IEventBus, InMemoryEventBus>();
+        services.AddLogging();
+        services.AddSingleton(TestStorageHelper.CreateBackend());
+
+        services.AddPluginSystem(_tempPluginsDir);
+
+        ServiceProvider provider = services.BuildServiceProvider();
+        IPluginContext context = provider
+            .GetRequiredService<IPluginContextFactory>()
+            .Create(Ulid.NewUlid(), _tempPluginsDir, NullLogger.Instance, new PluginCapabilities());
+
+        context.Net.Should().NotBeNull();
     }
 
     public interface ITestService

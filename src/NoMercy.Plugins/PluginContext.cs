@@ -47,6 +47,14 @@ public class PluginContext : IPluginContext
     private readonly IPluginLibraryImport? _libraryImport;
     private readonly IPluginStorage? _hostStorage;
     private readonly IPluginServerInfo? _server;
+    private readonly IPluginNet? _net;
+
+    /// <summary>Sockets the owner consented to.</summary>
+    public IPluginNet Net =>
+        _net
+        ?? throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(PluginId.ToString(), "IPluginContext.Net")
+        );
 
     /// <summary>Every place this plugin may read and write.</summary>
     public IPluginStorage Storage =>
@@ -135,9 +143,11 @@ public class PluginContext : IPluginContext
         IPluginMedia? media = null,
         IPluginLibraryImport? libraryImport = null,
         IPluginStorage? hostStorage = null,
-        IPluginServerInfo? server = null
+        IPluginServerInfo? server = null,
+        IPluginNet? net = null
     )
     {
+        _net = net;
         _media = media;
         _hostStorage = hostStorage;
         _server = server;

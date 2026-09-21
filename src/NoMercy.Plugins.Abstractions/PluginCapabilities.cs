@@ -47,6 +47,18 @@ public class PluginNetworkCapability
 {
     [JsonPropertyName("hosts")]
     public List<string> Hosts { get; init; } = [];
+
+    /// <summary>
+    /// The ports this plugin may listen on, written the way a person writes
+    /// them: <c>6881</c>, <c>6881-6889</c>, or a comma list of either.
+    /// <para>
+    /// Declared rather than asked for at runtime, so the owner reads which
+    /// ports a plugin wants on the permissions page before saying yes. An
+    /// empty list is no port at all, never every port.
+    /// </para>
+    /// </summary>
+    [JsonPropertyName("ports")]
+    public List<string> Ports { get; init; } = [];
 }
 
 public class PluginUiCapability

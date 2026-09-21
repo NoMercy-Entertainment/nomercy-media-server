@@ -81,6 +81,14 @@ public class PluginChildContainerTests
                 host.GetRequiredService<HostFacade>(),
                 "a second copy of a host facade is one nobody else publishes to"
             );
+
+        // And injected, not only asked for by name: a plugin's own service
+        // whose constructor needs a host facade is the case the container has
+        // to answer, and asking the wrapper afterwards never exercises it.
+        OnlyOnePluginHasThis injected = (OnlyOnePluginHasThis)
+            child.GetService(typeof(OnlyOnePluginHasThis))!;
+
+        injected.Facade.Should().BeSameAs(host.GetRequiredService<HostFacade>());
     }
 
     [Fact]

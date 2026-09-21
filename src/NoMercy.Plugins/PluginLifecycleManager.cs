@@ -8,11 +8,13 @@
 //
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NoMercy.Events;
 using NoMercy.Events.Plugins;
 using NoMercy.Plugins.Abstractions;
 using NoMercy.Plugins.Capabilities;
+using NoMercy.Plugins.Runtime;
 using NoMercy.Storage;
 
 namespace NoMercy.Plugins;
@@ -58,6 +60,21 @@ internal sealed class PluginLifecycleManager(
     // REST routes with no cron work happening behind it at all, silently,
     // until the next full server start.
     private readonly Action<Ulid>? _registerScheduledWork = registerScheduledWork;
+
+    /// <summary>
+    /// Gives back everything the plugin holds outside the process: listening
+    /// sockets, router mappings, child processes.
+    /// <para>
+    /// Before the instance is disposed, because a listener whose owning
+    /// instance is already gone has nothing left to close it, and the port
+    /// stays bound until the server is restarted.
+    /// </para>
+    /// </summary>
+    private async Task ReleaseHeldResourcesAsync(Ulid pluginId, CancellationToken ct)
+    {
+        if (_serviceProvider.GetService<IPluginResourceLedger>() is { } ledger)
+            await ledger.ReleaseAsync(pluginId, ct);
+    }
 
     /// <summary>Looks up an installed plugin, or reports it as not installed.</summary>
     private LoadedPlugin RequireLoaded(Ulid pluginId)
@@ -178,6 +195,8 @@ internal sealed class PluginLifecycleManager(
         // the process, and with it the lock on its files.
         _releaseScheduledWork?.Invoke(pluginId);
 
+        await ReleaseHeldResourcesAsync(pluginId, ct);
+
         loaded.Instance?.Dispose();
 
         // Dropped, not kept: a disposed instance is dead by IDisposable's own
@@ -227,11 +246,11 @@ internal sealed class PluginLifecycleManager(
     /// the caller has to wait for them rather than assume.
     /// </para>
     /// </summary>
-    public Task<bool> UnloadForUpdateAsync(Ulid pluginId, CancellationToken ct = default)
+    public async Task<bool> UnloadForUpdateAsync(Ulid pluginId, CancellationToken ct = default)
     {
         if (!_registry.TryGetValue(pluginId, out LoadedPlugin? loaded))
         {
-            return Task.FromResult(false);
+            return false;
         }
 
         // Before the registry removal, not after: PluginCronRegistrar reads
@@ -246,6 +265,8 @@ internal sealed class PluginLifecycleManager(
         _releaseScheduledWork?.Invoke(pluginId);
 
         _registry.TryRemove(pluginId, out _);
+
+        await ReleaseHeldResourcesAsync(pluginId, ct);
 
         loaded.Instance?.Dispose();
 
@@ -264,7 +285,7 @@ internal sealed class PluginLifecycleManager(
             PluginShadowCopy.TryDelete(loaded.ShadowDirectory);
         }
 
-        return Task.FromResult(true);
+        return true;
     }
 
     /// <summary>
@@ -316,6 +337,8 @@ internal sealed class PluginLifecycleManager(
         _releaseScheduledWork?.Invoke(pluginId);
 
         _registry.TryRemove(pluginId, out _);
+
+        await ReleaseHeldResourcesAsync(pluginId, ct);
 
         loaded.Instance?.Dispose();
 

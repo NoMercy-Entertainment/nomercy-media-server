@@ -10,13 +10,16 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NoMercy.Events;
 using NoMercy.Plugins.Abstractions;
 using NoMercy.Plugins.Capabilities;
 using NoMercy.Plugins.Hub;
 using NoMercy.Plugins.Library;
+using NoMercy.Plugins.Network;
 using NoMercy.Plugins.Quotas;
+using NoMercy.Plugins.Runtime;
 using NoMercy.Plugins.Storage;
 using NoMercy.Storage;
 
@@ -135,8 +138,32 @@ public class PluginContextFactory(
                 ? null
                 : new PluginLibraryImport(pluginId, writer, libraryScanner, logger),
             HostStorage(pluginId),
-            ServerInfo(pluginId)
+            ServerInfo(pluginId),
+            Net(pluginId)
         );
+    }
+
+    /// <summary>
+    /// Sockets, checked against the manifest and the owner's answer on every
+    /// call. Null on a host that wired no broker, where the facade refuses by
+    /// name rather than opening a socket nothing checked.
+    /// <para>
+    /// Resolved here rather than taken as a constructor parameter, for the same
+    /// reason as the media factory: the broker asks what a plugin declared,
+    /// that answer comes from the manager, and the manager is built with this
+    /// factory. Asking for it at registration closes the ring and the process
+    /// goes down before any test can report why.
+    /// </para>
+    /// </summary>
+    private IPluginNet? Net(Ulid pluginId)
+    {
+        IPluginCapabilityBroker? broker = services.GetService<IPluginCapabilityBroker>();
+        IPluginManifestSource? manifestSource = services.GetService<IPluginManifestSource>();
+        IPluginResourceLedger? ledger = services.GetService<IPluginResourceLedger>();
+
+        return broker is null || manifestSource is null || ledger is null
+            ? null
+            : new PluginNet(pluginId, broker, manifestSource, ledger);
     }
 
     /// <summary>
