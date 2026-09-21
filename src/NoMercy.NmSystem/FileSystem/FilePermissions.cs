@@ -27,9 +27,9 @@ public class FilePermissions
             IStorageDriver driver = new LocalStorageDriver();
 
             if (driver.FileExists(path))
-                await Shell.ExecAsync("chmod", $"+x \"{path}\"");
+                await Shell.ExecAsync("chmod", ["+x", path]);
             else if (driver.DirectoryExists(path))
-                await Shell.ExecAsync("chmod", $"-R +x \"{path}\"");
+                await Shell.ExecAsync("chmod", ["-R", "+x", path]);
 
             Logger.System($"Set execution permissions for {path}", LogEventLevel.Verbose);
         }

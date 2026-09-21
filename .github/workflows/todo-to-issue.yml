@@ -5,7 +5,13 @@ on:
       MANUAL_COMMIT_REF:
         description: "c62684fa3377a565d789796314397d42bc25b5b1"
         required: true
-  
+
+# INSERT_ISSUE_URLS commits the issue link back into the source, and
+# CLOSE_ISSUES closes issues whose TODO is gone.
+permissions:
+  contents: write
+  issues: write
+
 jobs:
   build:
     runs-on: self-hosted
