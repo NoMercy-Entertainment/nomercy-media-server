@@ -55,6 +55,19 @@ public static class PluginComponentType
     /// </summary>
     public const string Form = "PluginForm";
     public const string WebView = "PluginWebView";
+
+    /// <summary>
+    /// A piece of media the plugin serves, played by the client's own player.
+    ///
+    /// <para>
+    /// The host's, not the plugin's, for the same reason the form is: a card
+    /// that played its own stream got a second, smaller player with no artist,
+    /// no cover and none of the remote and cast handling the real one has.
+    /// What it carries is a <see cref="PluginMediaRef" />, whose url the host
+    /// minted.
+    /// </para>
+    /// </summary>
+    public const string MediaCard = "PluginMediaCard";
     public const string EmptyState = "NMEmptyState";
     public const string Spinner = "NMSpinner";
 
@@ -91,6 +104,7 @@ public static class PluginComponentType
             Button,
             Form,
             WebView,
+            MediaCard,
             EmptyState,
             Spinner,
             Table,
