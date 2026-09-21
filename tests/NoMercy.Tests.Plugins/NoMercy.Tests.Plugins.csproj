@@ -18,6 +18,7 @@
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="FluentAssertions" />
+    <PackageReference Include="Xunit.SkippableFact" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Extensions.Logging" />
     <PackageReference Include="Moq" />
@@ -44,25 +45,11 @@
     <!-- Build dependency only — do NOT copy Echo/Failures DLLs to test bin. If they were in
          the default AssemblyLoadContext, PluginLoadContext isolation would break (type
          identity mismatch). -->
-    <ProjectReference
-      Include="..\NoMercy.Plugin.Samples.Echo\NoMercy.Plugin.Samples.Echo.csproj"
-      ReferenceOutputAssembly="false"
-    />
-    <ProjectReference
-      Include="..\NoMercy.Plugin.Samples.EchoNext\NoMercy.Plugin.Samples.EchoNext.csproj"
-      ReferenceOutputAssembly="false"
-    />
-    <ProjectReference
-      Include="..\NoMercy.Plugin.Samples.Failures\NoMercy.Plugin.Samples.Failures.csproj"
-      ReferenceOutputAssembly="false"
-    />
-    <ProjectReference
-      Include="..\NoMercy.Plugin.Samples.ManifestFailure\NoMercy.Plugin.Samples.ManifestFailure.csproj"
-      ReferenceOutputAssembly="false"
-    />
-    <ProjectReference
-      Include="..\NoMercy.Plugin.Samples.StaleMember\NoMercy.Plugin.Samples.StaleMember.csproj"
-      ReferenceOutputAssembly="false"
-    />
+    <ProjectReference Include="..\NoMercy.Plugin.Samples.Echo\NoMercy.Plugin.Samples.Echo.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\NoMercy.Plugin.Samples.EchoNext\NoMercy.Plugin.Samples.EchoNext.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\NoMercy.Plugin.Samples.Failures\NoMercy.Plugin.Samples.Failures.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\NoMercy.Plugin.Samples.ManifestFailure\NoMercy.Plugin.Samples.ManifestFailure.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\NoMercy.Plugin.Samples.StaleMember\NoMercy.Plugin.Samples.StaleMember.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\..\src\NoMercy.Plugins.Ipc\NoMercy.Plugins.Ipc.csproj" />
   </ItemGroup>
 </Project>

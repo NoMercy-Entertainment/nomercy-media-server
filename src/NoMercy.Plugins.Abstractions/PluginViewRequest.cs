@@ -30,9 +30,21 @@ public class PluginViewRequest
     [JsonPropertyName("caller")]
     public required PluginCaller Caller { get; init; }
 
-    /// <summary>The caller's id, so a plugin that only wants that keeps reading it.</summary>
+    /// <summary>
+    /// The caller's id, so a plugin that only wants that keeps reading it.
+    /// <para>
+    /// A string, because that is what every plugin built against 11.0 reads.
+    /// Typed, it kept its name and changed its signature, which compiles
+    /// everywhere and then throws MissingMethodException on the first view a
+    /// plugin serves. <see cref="CallerId" /> is the same id, typed.
+    /// </para>
+    /// </summary>
     [JsonPropertyName("userId")]
-    public UserId UserId => Caller.Id;
+    public string UserId => Caller.Id.ToString();
+
+    /// <summary>The same id, as the host holds it.</summary>
+    [JsonIgnore]
+    public UserId CallerId => Caller.Id;
 
     /// <summary>
     /// Which kind of screen is asking, from <see cref="PluginSurface" />.

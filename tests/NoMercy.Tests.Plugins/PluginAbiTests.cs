@@ -58,6 +58,29 @@ public class PluginAbiTests
         );
     }
 
+    /// <summary>
+    /// A property that keeps its name and changes its type is a break with no
+    /// compile error anywhere: the plugin's IL still asks for
+    /// <c>get_UserId</c> returning String, and the load fails at the first call.
+    /// </summary>
+    [Theory]
+    [InlineData(typeof(PluginViewRequest), "UserId", typeof(string))]
+    public void PropertiesElevenZeroPluginsRead_KeepTheirType(
+        Type type,
+        string property,
+        Type expected
+    )
+    {
+        PropertyInfo? found = type.GetProperty(property);
+
+        Assert.True(found is not null, $"{type.Name}.{property} is gone.");
+        Assert.True(
+            found!.PropertyType == expected,
+            $"{type.Name}.{property} returns {found.PropertyType.Name}, and every plugin built "
+                + $"against 11.0 reads it as {expected.Name}. The call fails with MissingMethodException."
+        );
+    }
+
     [Fact]
     public void ScheduledJob_BuiltTheWayElevenZeroBuiltIt_CarriesItsValues()
     {
