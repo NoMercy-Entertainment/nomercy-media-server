@@ -32,9 +32,6 @@ on:
       GPG_PRIVATE_KEY:
         description: 'ASCII-armored GPG private key for signing the release manifest'
         required: false
-      NUGET_API_KEY:
-        description: 'nuget.org API key for publishing the plugin contract packages'
-        required: false
 
 jobs:
   create_release:
@@ -137,17 +134,30 @@ jobs:
       # no way to delete a published version, so a build from a branch that
       # never ships must never land there. --skip-duplicate makes a rerun of
       # an already-published version a no-op instead of a failure.
+      # Trusted publishing rather than a stored key: nuget.org exchanges this
+      # run's OIDC token for a key that lives minutes, so there is no long-lived
+      # secret to leak or rotate. It needs `id-token: write`, which the calling
+      # pipeline grants at workflow level, and a trusted publishing policy on
+      # nuget.org naming this repository and this workflow.
+      - name: Exchange this run's identity for a short-lived NuGet key
+        if: ${{ inputs.draft != true }}
+        id: nuget_login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ vars.NUGET_USER }}
+
       - name: Publish plugin contract packages to NuGet.org
         if: ${{ inputs.draft != true }}
-        env:
-          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
         run: |
-          if [ -z "${NUGET_API_KEY:-}" ]; then
-            echo "::warning::NUGET_API_KEY is not set — skipping NuGet.org publish. Plugin authors are still on the local feed."
-            exit 0
+          # Loud rather than skipped. The old step warned and exited zero when
+          # it had no key, so six packages silently never published and every
+          # plugin author stayed stuck on the local feed with a green release.
+          if [ -z "${{ steps.nuget_login.outputs.NUGET_API_KEY }}" ]; then
+            echo "::error::Trusted publishing returned no key. Set the NUGET_USER repository variable to the nuget.org account that owns the trusted publishing policy, and confirm the policy on nuget.org names this repository and this workflow."
+            exit 1
           fi
           dotnet nuget push "./output/*.nupkg" \
-            --api-key "$NUGET_API_KEY" \
+            --api-key "${{ steps.nuget_login.outputs.NUGET_API_KEY }}" \
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate
 
