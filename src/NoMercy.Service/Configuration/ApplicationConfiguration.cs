@@ -35,9 +35,14 @@ namespace NoMercy.Service.Configuration;
 
 public static class ApplicationConfiguration
 {
+    /// <param name="servingPlaintext">
+    /// This host bound HTTP only (setup/auth mode). A certificate may still sit on
+    /// disk, so cert presence alone cannot answer whether TLS is reachable here.
+    /// </param>
     public static void ConfigureApp(
         IApplicationBuilder app,
-        IApiVersionDescriptionProvider provider
+        IApiVersionDescriptionProvider provider,
+        bool servingPlaintext = false
     )
     {
         IWebHostEnvironment env = app.ApplicationServices.GetRequiredService<IWebHostEnvironment>();
@@ -61,7 +66,7 @@ public static class ApplicationConfiguration
             app.ApplicationServices.InitializeSignalREventHandlers();
 
         ConfigureLocalization(app);
-        ConfigureMiddleware(app);
+        ConfigureMiddleware(app, servingPlaintext);
         ConfigureStaticFiles(app);
         ConfigureDynamicStaticFiles(app);
         ConfigureEndpoints(app);
@@ -82,7 +87,7 @@ public static class ApplicationConfiguration
         app.UseRequestLocalization(localizationOptions);
     }
 
-    private static void ConfigureMiddleware(IApplicationBuilder app)
+    private static void ConfigureMiddleware(IApplicationBuilder app, bool servingPlaintext)
     {
         if (Config.IsDev)
         {
@@ -97,7 +102,15 @@ public static class ApplicationConfiguration
         // not serve, which is exactly what a vulnerability scanner asks for.
         app.UseMiddleware<AbuseGuardMiddleware>();
 
-        if (app.ApplicationServices.GetRequiredService<ICertificateService>().HasValidCertificate())
+        // A cert on disk is not the question — whether this host bound a TLS
+        // endpoint is. Setup mode deliberately serves plaintext even with a valid
+        // cert present, and redirecting there has no port to redirect to: Kestrel
+        // answers every request with "Failed to determine the https port".
+        if (
+            !servingPlaintext
+            && app.ApplicationServices.GetRequiredService<ICertificateService>()
+                .HasValidCertificate()
+        )
         {
             app.UseHsts();
             app.UseWhen(

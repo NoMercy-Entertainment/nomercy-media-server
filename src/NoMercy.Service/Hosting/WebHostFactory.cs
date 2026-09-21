@@ -140,7 +140,11 @@ public static class WebHostFactory
                     {
                         if (forceHttp)
                         {
-                            listenOptions.Protocols = HttpProtocols.Http1 | HttpProtocols.Http3;
+                            // No TLS on this listener, and HTTP/3 requires it —
+                            // asking for h3 here only earns a Kestrel warning on
+                            // every setup-mode start, same as the health and IPC
+                            // listeners below.
+                            listenOptions.Protocols = HttpProtocols.Http1;
                         }
                         else
                         {
@@ -224,7 +228,7 @@ public static class WebHostFactory
         // Configure middleware from Startup.Configure
         IApiVersionDescriptionProvider provider =
             app.Services.GetRequiredService<IApiVersionDescriptionProvider>();
-        ApplicationConfiguration.ConfigureApp(app, provider);
+        ApplicationConfiguration.ConfigureApp(app, provider, servingPlaintext: forceHttp);
 
         return app;
     }
