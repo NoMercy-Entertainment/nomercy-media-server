@@ -9,6 +9,8 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Diagnostics.CodeAnalysis;
+
 namespace NoMercy.Plugins.Abstractions;
 
 public interface IScheduledTaskPlugin : IPlugin
@@ -56,6 +58,25 @@ public interface IScheduledTaskPlugin : IPlugin
 /// </summary>
 public sealed record PluginScheduledJob
 {
+    /// <summary>
+    /// The shape this type had when it was positional.
+    /// <para>
+    /// A plugin pins the major, so everything built against 11.0 keeps calling
+    /// <c>new PluginScheduledJob(name, cron, allowConcurrent)</c>. Dropping that
+    /// constructor took both installed plugins off every client at once, with
+    /// only a MissingMethodException in the log to say so.
+    /// </para>
+    /// </summary>
+    [SetsRequiredMembers]
+    public PluginScheduledJob(string name, string cronExpression, bool allowConcurrent = false)
+    {
+        Name = name;
+        CronExpression = cronExpression;
+        AllowConcurrent = allowConcurrent;
+    }
+
+    public PluginScheduledJob() { }
+
     /// <summary>Unique within the plugin. Becomes <c>plugin:{id}:{name}</c> in the job list.</summary>
     public required string Name { get; init; }
 
