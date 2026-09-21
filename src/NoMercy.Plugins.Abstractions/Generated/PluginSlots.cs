@@ -35,14 +35,15 @@ public static class PluginSlots
         new("video", "player-panel", "A panel beside the video player."),
         new("video", "live", "The live channel list."),
         new("video", "guide", "The channel guide."),
+        new("video", "channel-strip", "The strip of channels over a playing live stream."),
         new("library", "nav", "A button in the library navigation."),
         new("library", "home-row", "A row on the library home screen."),
-        new("library", "detail-tab", "A tab on a library item, whatever medium it is."),
-        new("dashboard", "section", "A section in the dashboard."),
+        new("library", "library-card", "A card on a library item, whatever medium it is."),
+        new("dashboard", "nav", "A button in the dashboard navigation."),
         new("dashboard", "card", "A card on the dashboard overview."),
         new("settings", "section", "A section on the plugin's own settings page."),
         new("addon", "nav", "A button in the main navigation, beside the app's own sections."),
-        new("addon", "page", "The addon's own full page."),
+        new("addon", "home", "The addon's own home page."),
     ];
 
     /// <summary>Whether this kind can be placed in this slot.</summary>

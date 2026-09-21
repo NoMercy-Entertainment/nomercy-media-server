@@ -23,16 +23,14 @@ public static class PluginBasePath
 {
     public const string Prefix = "_";
 
-    public static IReadOnlyList<string> Pages { get; } =
-    ["info", "permissions", "settings", "update", "remove", "docs", "license", "health"];
+    public static IReadOnlyList<string> Pages { get; } = PluginBasePathPage.All;
 
     /// <summary>
     /// The pages only the owner sees. The rest are open to anyone the plugin
     /// is shared with: what a plugin is and what it does are not secrets, and
     /// a member who cannot read them cannot ask for it sensibly.
     /// </summary>
-    public static IReadOnlyList<string> OwnerOnly { get; } =
-    ["permissions", "update", "remove", "health"];
+    public static IReadOnlyList<string> OwnerOnly { get; } = PluginBasePathPage.OwnerOnly;
 
     public static bool IsReserved(string path) => path.TrimStart('/').Split('/')[0] == Prefix;
 }

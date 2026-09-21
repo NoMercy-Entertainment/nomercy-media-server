@@ -30,7 +30,15 @@ public class PluginUiContractTests
             .All.Where(slot => slot.Kind == PluginKind.Video)
             .Select(slot => slot.Slot)
             .Should()
-            .BeEquivalentTo(["nav", "home-row", "detail-tab", "player-panel", "live", "guide"]);
+            .BeEquivalentTo([
+                "nav",
+                "home-row",
+                "detail-tab",
+                "player-panel",
+                "live",
+                "guide",
+                "channel-strip",
+            ]);
 
         PluginSlots
             .All.Where(slot => slot.Kind == PluginKind.Settings)
@@ -40,9 +48,9 @@ public class PluginUiContractTests
     }
 
     [Fact]
-    public void The_slot_list_is_nineteen_entries_and_every_kind_is_covered()
+    public void The_slot_list_is_twenty_entries_and_every_kind_is_covered()
     {
-        PluginSlots.All.Should().HaveCount(19);
+        PluginSlots.All.Should().HaveCount(20);
         PluginSlots
             .All.Select(slot => slot.Kind)
             .Distinct()
