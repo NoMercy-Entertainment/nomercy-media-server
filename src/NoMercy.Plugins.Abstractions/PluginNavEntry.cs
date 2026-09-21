@@ -37,6 +37,24 @@ public class PluginNavEntry
     public required string Route { get; init; }
 
     /// <summary>
+    /// Where inside the section this entry draws, from <see cref="PluginSlot" />.
+    ///
+    /// A navigation button is the default because it is the only placement
+    /// every client has always drawn, so an entry that says nothing lands
+    /// where it used to rather than nowhere.
+    /// </summary>
+    [JsonPropertyName("slot")]
+    public string Slot { get; init; } = PluginSlot.Nav;
+
+    /// <summary>
+    /// What a caller needs to open it. An owner entry stays out of a member's
+    /// navigation, because offering a page that will answer 403 is worse than
+    /// not offering it.
+    /// </summary>
+    [JsonPropertyName("access")]
+    public PluginRouteAccess Access { get; init; } = PluginRouteAccess.Shared;
+
+    /// <summary>
     /// The surfaces this entry is offered on, from <see cref="PluginSurface" />.
     ///
     /// Empty means every one: an author who says nothing wants their screen

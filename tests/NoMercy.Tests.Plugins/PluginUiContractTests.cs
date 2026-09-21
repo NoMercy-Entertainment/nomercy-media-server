@@ -90,6 +90,52 @@ public class PluginUiContractTests
     }
 
     [Fact]
+    public void A_nav_entry_that_says_nothing_is_a_shared_navigation_button()
+    {
+        PluginNavEntry entry = new()
+        {
+            Section = PluginUiSection.Music,
+            Label = "stations.title",
+            Route = "/",
+        };
+
+        entry
+            .Slot.Should()
+            .Be(PluginSlot.Nav, "a plugin that says nothing lands where it always did");
+        entry.Access.Should().Be(PluginRouteAccess.Shared);
+    }
+
+    [Fact]
+    public void A_mount_that_says_nothing_is_a_shared_navigation_button()
+    {
+        PluginUiMount mount = new()
+        {
+            Section = PluginUiSection.Dashboard,
+            Label = "settings.title",
+            Route = "/",
+        };
+
+        mount.Slot.Should().Be(PluginSlot.Nav);
+        mount.Access.Should().Be(PluginRouteAccess.Shared);
+    }
+
+    [Fact]
+    public void An_owner_route_is_declared_on_the_entry_rather_than_guessed()
+    {
+        PluginNavEntry entry = new()
+        {
+            Section = PluginUiSection.Music,
+            Label = "stations.manage",
+            Route = "/manage",
+            Slot = PluginSlot.HomeRow,
+            Access = PluginRouteAccess.Owner,
+        };
+
+        entry.Slot.Should().Be("home-row");
+        entry.Access.Should().Be(PluginRouteAccess.Owner);
+    }
+
+    [Fact]
     public void A_route_reference_carries_parameters_rather_than_a_joined_string()
     {
         PluginRouteRef reference = new(

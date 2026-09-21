@@ -105,6 +105,24 @@ public class PluginUiMount
     public string Kind { get; init; } = PluginKind.Dashboard;
 
     /// <summary>
+    /// Where inside the kind this mount draws, from <see cref="PluginSlot" />.
+    ///
+    /// A navigation button is the default because it is the only placement
+    /// every client has always drawn, so a mount that says nothing lands where
+    /// it used to rather than nowhere.
+    /// </summary>
+    [JsonPropertyName("slot")]
+    public string Slot { get; init; } = PluginSlot.Nav;
+
+    /// <summary>
+    /// What a caller needs to open it. An owner mount stays out of a member's
+    /// navigation, because offering a page that will answer 403 is worse than
+    /// not offering it.
+    /// </summary>
+    [JsonPropertyName("access")]
+    public PluginRouteAccess Access { get; init; } = PluginRouteAccess.Shared;
+
+    /// <summary>
     /// Asks for a place in the main navigation beside the app's own sections.
     ///
     /// A request rather than a setting. If every plugin could take a top-level
