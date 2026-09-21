@@ -52,7 +52,7 @@ public class FolderAccessMiddleware(
             return;
         }
 
-        string url = context.Request.Path;
+        string url = ForLog(context.Request.Path);
 
         if (context.User.Identity is not { IsAuthenticated: true })
         {
@@ -133,6 +133,15 @@ public class FolderAccessMiddleware(
         }
 
         await next(context);
+    }
+
+    // Every denial below logs the requested path, and the caller chooses it.
+    // PathString re-encodes control characters today, so this is the belt to
+    // that suspenders: one log line per denial, whatever reaches it.
+    private static string ForLog(string value)
+    {
+        string singleLine = value.Replace("\r", string.Empty).Replace("\n", string.Empty);
+        return singleLine.Length > 512 ? singleLine[..512] : singleLine;
     }
 
     // Loopback self-ingest: ffmpeg/ffprobe pull a library source over the

@@ -90,8 +90,7 @@ public partial class TrailerCache(IStorage transcodeStorage, ILogger<TrailerCach
         if (await transcodeStorage.ExistsAsync(firstSegmentPath, ct))
             return;
 
-        string workingDirectory = Path.Combine(AppFiles.TranscodePath, trailerId);
-        _ = Task.Run(() => Download(trailerId, language, workingDirectory), ct);
+        _ = Task.Run(() => Download(trailerId, language), ct);
 
         using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(FirstSegmentTimeout);
@@ -122,8 +121,19 @@ public partial class TrailerCache(IStorage transcodeStorage, ILogger<TrailerCach
         }
     }
 
-    private void Download(string trailerId, string language, string workingDirectory)
+    private void Download(string trailerId, string language)
     {
+        // The id reaches a shell here. Every controller already checks it, but a
+        // guard next to the sink is the one that cannot be forgotten by a new
+        // caller, and it is what makes the shape of this string provable.
+        if (!IsValidId(trailerId))
+        {
+            logger.LogError("Refused a trailer download for a malformed id");
+            return;
+        }
+
+        string workingDirectory = Path.Combine(AppFiles.TranscodePath, trailerId);
+
         try
         {
             string command = TrailerCommandBuilder.Build(
