@@ -37,6 +37,42 @@ public record PluginInfoPageDto
 
     [JsonProperty("sideloaded")]
     public bool Sideloaded { get; init; }
+
+    [JsonProperty("projectUrl")]
+    public string? ProjectUrl { get; init; }
+}
+
+/// <summary>
+/// Where a plugin's own documentation lives. Open to anyone it is shared with.
+/// <para>
+/// A link rather than the prose: the host does not fetch and render a page a
+/// plugin author controls, because that page would then be running inside the
+/// viewer's session.
+/// </para>
+/// </summary>
+public record PluginDocsPageDto
+{
+    [JsonProperty("url")]
+    public string? Url { get; init; }
+
+    [JsonProperty("projectUrl")]
+    public string? ProjectUrl { get; init; }
+}
+
+/// <summary>
+/// What the owner agreed to when they installed this. Open to anyone it is
+/// shared with: a license nobody can read before installing is not one.
+/// </summary>
+public record PluginLicensePageDto
+{
+    [JsonProperty("license")]
+    public string? License { get; init; }
+
+    [JsonProperty("author")]
+    public string? Author { get; init; }
+
+    [JsonProperty("projectUrl")]
+    public string? ProjectUrl { get; init; }
 }
 
 /// <summary>

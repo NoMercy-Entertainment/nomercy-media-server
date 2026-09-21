@@ -80,6 +80,8 @@ public static class PluginManifestParser
             Status = status,
             Author = manifest.Author,
             ProjectUrl = manifest.ProjectUrl,
+            License = manifest.License,
+            Docs = manifest.Docs,
             AssemblyPath = assemblyPath,
             TargetAbi = manifest.TargetAbi,
             ManifestPath = manifestPath,

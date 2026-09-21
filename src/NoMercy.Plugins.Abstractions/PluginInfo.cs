@@ -20,6 +20,18 @@ public class PluginInfo
     public required PluginStatus Status { get; set; }
     public string? Author { get; init; }
     public string? ProjectUrl { get; init; }
+
+    /// <summary>
+    /// The license the manifest names, drawn on the host-owned license page.
+    ///
+    /// An owner deciding whether to keep a plugin should not have to open a
+    /// repository to read what they agreed to when they installed it.
+    /// </summary>
+    public string? License { get; init; }
+
+    /// <summary>Where the plugin's own documentation lives, if it has any.</summary>
+    public string? Docs { get; init; }
+
     public string? AssemblyPath { get; init; }
     public string? TargetAbi { get; init; }
     public string? ManifestPath { get; init; }
