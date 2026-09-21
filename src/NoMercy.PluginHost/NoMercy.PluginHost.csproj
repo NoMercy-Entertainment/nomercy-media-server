@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>NoMercy.PluginHost</AssemblyName>
+    <RootNamespace>NoMercy.PluginHost</RootNamespace>
+    <InvariantGlobalization>true</InvariantGlobalization>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Grpc.AspNetCore" />
+    <PackageReference Include="protobuf-net.Grpc.AspNetCore" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\NoMercy.Plugins.Ipc\NoMercy.Plugins.Ipc.csproj" />
+    <ProjectReference Include="..\NoMercy.Plugins.Abstractions\NoMercy.Plugins.Abstractions.csproj" />
+    <ProjectReference Include="..\NoMercy.NmSystem\NoMercy.NmSystem.csproj" />
+  </ItemGroup>
+</Project>
