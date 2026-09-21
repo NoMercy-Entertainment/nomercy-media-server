@@ -12,20 +12,25 @@
 namespace NoMercy.Plugins.Sideload;
 
 /// <summary>
-/// Whether the owner has turned on installing from a file.
+/// Reads and writes the owner's answer about developer mode.
 /// <para>
-/// A seam rather than a static read, because a route that answers differently
-/// depending on a file in the server's data folder is a route nothing can
-/// check. Read per call, so turning it off takes effect on the next install.
+/// The refusal for a blocked sideload tells the owner to turn this on in
+/// server settings. Until this existed the only thing that could was a text
+/// editor, so the sentence named a place that was not there.
 /// </para>
 /// </summary>
-public interface IPluginDeveloperModeSource
+public sealed class PluginDeveloperModeStore(string? folder = null)
 {
-    bool Enabled { get; }
-}
+    public PluginDeveloperMode Read()
+    {
+        return PluginDeveloperMode.Load(folder);
+    }
 
-/// <summary>The owner's saved answer, read from disk each time it is asked.</summary>
-public sealed class PluginDeveloperModeFile(string? folder = null) : IPluginDeveloperModeSource
-{
-    public bool Enabled => PluginDeveloperMode.Load(folder).Enabled;
+    public PluginDeveloperMode Write(bool enabled)
+    {
+        PluginDeveloperMode next = new(enabled);
+        next.Save(folder);
+
+        return next;
+    }
 }

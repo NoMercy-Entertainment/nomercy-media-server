@@ -16,6 +16,7 @@ using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Api.DTOs.Dashboard;
+using NoMercy.Api.DTOs.Plugins;
 using NoMercy.NmSystem.Auth;
 using NoMercy.NmSystem.Extensions;
 using NoMercy.NmSystem.Information;
@@ -481,5 +482,27 @@ public class PluginController(
                 Args = [requestDto.Key],
             }
         );
+    }
+
+    /// <summary>
+    /// Whether this server installs a plugin from a file the owner hands it.
+    /// <para>
+    /// The refusal a blocked sideload returns says to turn developer mode on in
+    /// server settings. Nothing but a text editor could, so the sentence named
+    /// a place that did not exist and the owner had no way through.
+    /// </para>
+    /// </summary>
+    [HttpGet("developer-mode")]
+    public IActionResult DeveloperMode()
+    {
+        return Ok(new PluginDeveloperModeDto { Enabled = developerMode.Enabled });
+    }
+
+    [HttpPost("developer-mode")]
+    public IActionResult DeveloperMode([FromBody] PluginDeveloperModeDto request)
+    {
+        PluginDeveloperMode saved = new PluginDeveloperModeStore().Write(request.Enabled);
+
+        return Ok(new PluginDeveloperModeDto { Enabled = saved.Enabled });
     }
 }
