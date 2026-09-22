@@ -144,6 +144,31 @@ public class WindowsJobObjectSandboxTests
         process.Kill(entireProcessTree: true);
     }
 
+    /// <summary>
+    /// The share is a percentage of one processor and Windows counts the cap
+    /// in hundredths of a percent of the WHOLE machine, so a quarter of one
+    /// processor on an eight-core box is 25 percent here and 3.125 percent of
+    /// the machine there.
+    /// </summary>
+    [SkippableFact]
+    [SupportedOSPlatform("windows")]
+    public void TheCpuShare_IsAShareOfOneProcessorAndNotOfTheWholeMachine()
+    {
+        Skip.IfNot(OnWindows, "Job objects are a Windows facility.");
+
+        using WindowsJobObjectSandbox sandbox = new();
+        using Process process = Sleeper();
+
+        sandbox.Confine(process, new PluginQuota(25, 256L * 1024 * 1024, 0, 0)).Should().BeTrue();
+
+        sandbox
+            .CpuRateInKernel()
+            .Should()
+            .Be((uint)(25 * 100 / Math.Max(1, Environment.ProcessorCount)));
+
+        process.Kill(entireProcessTree: true);
+    }
+
     private static PluginQuota Quota(long memoryBytes) => new(25, memoryBytes, 0, 0);
 
     /// <summary>A process that does nothing and waits to be told to stop.</summary>

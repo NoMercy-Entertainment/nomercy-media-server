@@ -22,6 +22,19 @@ namespace NoMercy.Plugins.OutOfProcess;
 /// moment it is made, so the numbers are handed to it as well.
 /// </para>
 /// </summary>
+public static class PluginSandboxLimits
+{
+    /// <summary>
+    /// The plugin's own process plus fifteen children.
+    /// <para>
+    /// A cap rather than none: a plugin that spawns in a loop is the cheapest
+    /// way to take a machine down, and the count is the only thing the kernel
+    /// can refuse before the machine is already unusable.
+    /// </para>
+    /// </summary>
+    public const uint ProcessesPerPlugin = 16;
+}
+
 public interface IPluginSandbox
 {
     /// <summary>Whether this sandbox can do anything on the machine it is running on.</summary>

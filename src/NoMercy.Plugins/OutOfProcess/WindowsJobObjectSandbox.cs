@@ -41,16 +41,6 @@ public sealed class WindowsJobObjectSandbox : IPluginSandbox, IDisposable
     private const uint LimitProcessMemory = 0x00000100;
     private const uint LimitKillOnJobClose = 0x00002000;
 
-    /// <summary>
-    /// The plugin's own process plus fifteen children.
-    /// <para>
-    /// A cap rather than none: a plugin that spawns in a loop is the cheapest
-    /// way to take a machine down, and the count is the only thing the kernel
-    /// can refuse before the machine is already unusable.
-    /// </para>
-    /// </summary>
-    private const uint ProcessesPerPlugin = 16;
-
     private const uint CpuRateControlEnable = 0x1;
     private const uint CpuRateControlHardCap = 0x4;
 
@@ -91,7 +81,7 @@ public sealed class WindowsJobObjectSandbox : IPluginSandbox, IDisposable
                     LimitKillOnJobClose
                     | LimitActiveProcess
                     | (hasCeiling ? LimitProcessMemory : 0),
-                ActiveProcessLimit = ProcessesPerPlugin,
+                ActiveProcessLimit = PluginSandboxLimits.ProcessesPerPlugin,
             },
             ProcessMemoryLimit = hasCeiling ? (nuint)quota.MemoryBytes : 0,
         };
@@ -121,9 +111,12 @@ public sealed class WindowsJobObjectSandbox : IPluginSandbox, IDisposable
         if (quota.CpuPercent <= 0)
             return true;
 
-        // Windows counts the cap in hundredths of a percent of total machine
-        // capacity, and refuses anything outside 1..10000.
-        uint rate = (uint)Math.Clamp(quota.CpuPercent * 100, 1, 10000);
+        // The share is a percentage of one processor. Windows counts the cap
+        // in hundredths of a percent of the WHOLE machine, so a quarter of the
+        // cores on an eight-core box is 25 percent here and 200 percent there
+        // without the division.
+        uint rate = (uint)
+            Math.Clamp(quota.CpuPercent * 100 / Math.Max(1, Environment.ProcessorCount), 1, 10000);
 
         CpuRateControlInformation control = new()
         {
@@ -175,6 +168,40 @@ public sealed class WindowsJobObjectSandbox : IPluginSandbox, IDisposable
         return (limits.Value.BasicLimitInformation.LimitFlags & LimitActiveProcess) == 0
             ? null
             : limits.Value.BasicLimitInformation.ActiveProcessLimit;
+    }
+
+    /// <summary>The CPU cap the kernel holds, in hundredths of a percent of the machine.</summary>
+    public uint? CpuRateInKernel()
+    {
+        if (!Available)
+            return null;
+
+        int size = Marshal.SizeOf<CpuRateControlInformation>();
+        nint buffer = Marshal.AllocHGlobal(size);
+
+        try
+        {
+            if (
+                !QueryInformationJobObject(
+                    _job,
+                    JobObjectCpuRateControlInformation,
+                    buffer,
+                    (uint)size,
+                    out _
+                )
+            )
+                return null;
+
+            CpuRateControlInformation control = Marshal.PtrToStructure<CpuRateControlInformation>(
+                buffer
+            );
+
+            return (control.ControlFlags & CpuRateControlEnable) == 0 ? null : control.CpuRate;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buffer);
+        }
     }
 
     private ExtendedLimitInformation? Limits()
