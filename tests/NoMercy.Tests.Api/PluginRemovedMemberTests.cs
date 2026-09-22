@@ -17,6 +17,7 @@ using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Api.Plugins;
+using NoMercy.PluginSdk.Abstractions;
 using Xunit;
 
 namespace NoMercy.Tests.Api;
@@ -75,7 +76,12 @@ public class PluginRemovedMemberTests
         refusal.Plugin.Should().Be("01ARZ3NDEKTSV4RRFFQ69G5FAV");
         refusal.What.Should().Contain("get_Services", "the author has to know which member");
         refusal.Why.Should().NotBeEmpty();
-        refusal.Fix.Should().Contain("11.0", "the fix names the version to build against");
+        refusal
+            .Fix.Should()
+            .Contain(
+                $"{PluginAbi.Current.Major}.{PluginAbi.Current.Minor}",
+                "the fix names the version to build against, and it has to be the one this server runs"
+            );
         refusal.Severity.Should().Be("blocked");
     }
 

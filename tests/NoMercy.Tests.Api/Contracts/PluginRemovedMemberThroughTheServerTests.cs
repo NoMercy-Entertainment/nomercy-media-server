@@ -61,7 +61,10 @@ public class PluginRemovedMemberThroughTheServerTests
             .Should()
             .Contain("get_Services", "the author has to know which member");
         body["why"]!.Value<string>().Should().NotBeNullOrEmpty();
-        body["fix"]!.Value<string>().Should().Contain("11.0");
+        body["fix"]!
+            .Value<string>()
+            .Should()
+            .Contain($"{PluginAbi.Current.Major}.{PluginAbi.Current.Minor}");
         body["severity"]!.Value<string>().Should().Be("blocked");
     }
 
