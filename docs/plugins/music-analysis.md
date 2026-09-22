@@ -10,11 +10,12 @@ it back through the contracts below. None of this needs the plugin to know
 where a file lives on disk, where ffmpeg is installed, or how to shell out to
 it safely — the host mediates all three.
 
-Every type mentioned here lives in `NoMercy.Plugins.Abstractions` (ABI 10.2 or
-later; see `PluginAbi.Current`; `GetFailedDjAnalysisAsync` and
-`PluginTrackDjFailure` are 12.1). `IPluginMusicAnalysisWriter.RegisterStemsAsync`
-joined 10.2 after the rest, with a default implementation rather than a version
-bump: an implementer written before it keeps compiling, and only the host's own
+Every type mentioned here lives in `NoMercy.PluginSdk.Abstractions` (ABI 12.1
+or later; see `PluginAbi.Current`). The assembly itself was renamed at 12.0;
+`GetFailedDjAnalysisAsync` and `PluginTrackDjFailure` are what 12.1 added on
+top of the rename. `IPluginMusicAnalysisWriter.RegisterStemsAsync` joined 10.2
+after the rest, with a default implementation rather than a version bump: an
+implementer written before it keeps compiling, and only the host's own
 override writes the stems all-or-nothing.
 
 ## Declaring the hooks
@@ -468,50 +469,12 @@ it lives:
 
 `TrackAudioAnalysisCompletedEvent` (`NoMercy.Events.Music`) is published by
 the server's own base-analysis job the moment a `TrackAudioAnalysis` row lands
-— `Ok` or `Failed` — so the plugin can react per track instead of waiting for
-its next sweep tick:
-
-```csharp
-using NoMercy.Events.Music;
-
-_subscription = context.EventBus.Subscribe<TrackAudioAnalysisCompletedEvent>(
-    async (evt, ct) =>
-    {
-        if (evt.State != "Ok")
-        {
-            return; // nothing to build the DJ row from yet
-        }
-
-        await AnalyzeOneTrackAsync(evt.TrackId, ct);
-    }
-);
-```
-
-The event carries `TrackId`, `AnalyzerVersion` (the base analyzer's version
-the row was computed at), `State` (the string `"Ok"` or `"Failed"` — the
-events package carries no reference to the database enum it came from) and
-`LibraryIds`.
-
-`LibraryIds` is every library the track belonged to when the verdict landed,
-read at publish time rather than carried from the moment the job was queued.
-It is a list because a track can belong to several libraries at once, and it
-is empty when the track is in none. Retention — how long a derived file for
-this track is worth keeping — is a per-library decision, so pick the policy
-per id rather than assuming one:
-
-```csharp
-foreach (Ulid libraryId in evt.LibraryIds)
-{
-    ApplyRetentionPolicyFor(libraryId, evt.TrackId);
-}
-```
-
-### The completion topic
-
-`context.EventBus` is gone; a plugin never holds the host bus itself. The
-host still tells a plugin the moment a track's analysis lands — Ok or Failed
-— by publishing `PluginTopics.MusicAnalysisCompleted` on the topic facade a
-plugin already uses for its own events, `IPluginContext.Events.Subscribe`:
+— `Ok` or `Failed`. It stays on the host's own event bus: `IPluginContext` has
+no member that reaches it, so a plugin never sees it directly and never holds
+the host bus itself. What a plugin subscribes to instead is
+`PluginTopics.MusicAnalysisCompleted`, republished on the topic facade a
+plugin already uses for its own events, `IPluginContext.Events.Subscribe`,
+with the payload `PluginMusicAnalysisCompleted`:
 
 ```csharp
 context.Events.Subscribe<PluginMusicAnalysisCompleted>(
@@ -528,10 +491,26 @@ context.Events.Subscribe<PluginMusicAnalysisCompleted>(
 );
 ```
 
-`PluginMusicAnalysisCompleted` carries the same four values as
-`TrackAudioAnalysisCompletedEvent` above — `TrackId`, `AnalyzerVersion`,
-`State` and `LibraryIds` — with `LibraryIds` as the Ulid text form, since a
-topic payload crosses a plugin's own load context and carries no host type.
+`PluginMusicAnalysisCompleted` carries the same four values
+`TrackAudioAnalysisCompletedEvent` does — `TrackId`, `AnalyzerVersion` (the
+base analyzer's version the row was computed at), `State` (the string `"Ok"`
+or `"Failed"` — the payload carries no reference to the database enum it came
+from) and `LibraryIds`, as the Ulid text form, since a topic payload crosses a
+plugin's own load context and carries no host type.
+
+`LibraryIds` is every library the track belonged to when the verdict landed,
+read at publish time rather than carried from the moment the job was queued.
+It is a list because a track can belong to several libraries at once, and it
+is empty when the track is in none. Retention — how long a derived file for
+this track is worth keeping — is a per-library decision, so pick the policy
+per id rather than assuming one:
+
+```csharp
+foreach (string libraryId in completed.LibraryIds)
+{
+    ApplyRetentionPolicyFor(Ulid.Parse(libraryId), completed.TrackId);
+}
+```
 
 ## The dashboard cap setting
 

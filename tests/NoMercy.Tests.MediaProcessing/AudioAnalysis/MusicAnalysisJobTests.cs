@@ -416,6 +416,22 @@ public class MusicAnalysisJobTests : IDisposable
                 ),
             Times.Once
         );
+
+        // The plugin topic is published on the Failed path too: a plugin has
+        // no other way to learn a track's analysis ended in Failed, since it
+        // never sees TrackAudioAnalysisCompletedEvent directly.
+        bus.Verify(
+            b =>
+                b.PublishAsync(
+                    It.Is<PluginMessageEvent>(e =>
+                        e.Name == PluginTopics.MusicAnalysisCompleted
+                        && e.PluginId == Ulid.Empty
+                        && PayloadMatchesTheCompletedEvent(e, "Failed")
+                    ),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Once
+        );
     }
 
     /// <summary>
@@ -451,7 +467,7 @@ public class MusicAnalysisJobTests : IDisposable
                     It.Is<PluginMessageEvent>(e =>
                         e.Name == PluginTopics.MusicAnalysisCompleted
                         && e.PluginId == Ulid.Empty
-                        && PayloadMatchesTheCompletedEvent(e)
+                        && PayloadMatchesTheCompletedEvent(e, "Ok")
                     ),
                     It.IsAny<CancellationToken>()
                 ),
@@ -459,14 +475,14 @@ public class MusicAnalysisJobTests : IDisposable
         );
     }
 
-    private bool PayloadMatchesTheCompletedEvent(PluginMessageEvent published)
+    private bool PayloadMatchesTheCompletedEvent(PluginMessageEvent published, string expectedState)
     {
         PluginMusicAnalysisCompleted? payload = published.PayloadAs<PluginMusicAnalysisCompleted>();
 
         return payload is not null
             && payload.TrackId == _trackId
             && payload.AnalyzerVersion == AnalyzerVersion
-            && payload.State == "Ok"
+            && payload.State == expectedState
             && payload.LibraryIds.Count == 2
             && payload.LibraryIds.Contains(_libraryOneId.ToString())
             && payload.LibraryIds.Contains(_libraryTwoId.ToString());
