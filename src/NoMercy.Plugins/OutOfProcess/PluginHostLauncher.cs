@@ -56,7 +56,7 @@ public sealed class PluginHostLauncher(
     IPluginSandboxFactory sandboxes
 ) : IPluginProcessLauncher
 {
-    public async Task<IPluginProcess> LaunchAsync(Ulid pluginId, CancellationToken ct = default)
+    public async Task<IPluginHostProcess> LaunchAsync(Ulid pluginId, CancellationToken ct = default)
     {
         string? host = executable.Path;
 
@@ -124,7 +124,7 @@ public sealed class PluginHostLauncher(
 
         sandbox.Confine(process, quota);
 
-        return new HostedPluginProcess(pluginId, process, endpoint, sandbox);
+        return new HostedPluginProcess(pluginId, process, endpoint, sandbox, plan.Token);
     }
 }
 
@@ -140,10 +140,13 @@ internal sealed class HostedPluginProcess(
     Ulid pluginId,
     Process process,
     PluginBrokerEndpoint endpoint,
-    IPluginSandbox sandbox
-) : IPluginProcess
+    IPluginSandbox sandbox,
+    string token
+) : IPluginHostProcess
 {
     public Ulid PluginId => pluginId;
+
+    public string Token => token;
 
     public bool IsRunning
     {

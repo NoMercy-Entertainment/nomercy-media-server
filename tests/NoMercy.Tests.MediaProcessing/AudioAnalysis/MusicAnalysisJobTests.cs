@@ -18,8 +18,10 @@ using NoMercy.Database;
 using NoMercy.Database.Models.Music;
 using NoMercy.Events;
 using NoMercy.Events.Music;
+using NoMercy.Events.Plugins;
 using NoMercy.MediaProcessing.AudioAnalysis;
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
+using NoMercy.PluginSdk.Abstractions;
 using NoMercy.Storage;
 
 namespace NoMercy.Tests.MediaProcessing.AudioAnalysis;
@@ -414,6 +416,76 @@ public class MusicAnalysisJobTests : IDisposable
                 ),
             Times.Once
         );
+
+        // The plugin topic is published on the Failed path too: a plugin has
+        // no other way to learn a track's analysis ended in Failed, since it
+        // never sees TrackAudioAnalysisCompletedEvent directly.
+        bus.Verify(
+            b =>
+                b.PublishAsync(
+                    It.Is<PluginMessageEvent>(e =>
+                        e.Name == PluginTopics.MusicAnalysisCompleted
+                        && e.PluginId == Ulid.Empty
+                        && PayloadMatchesTheCompletedEvent(e, "Failed")
+                    ),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Once
+        );
+    }
+
+    /// <summary>
+    /// The plugin topic is a second, independent announcement of the same
+    /// verdict: a plugin subscribing through <c>IPluginContext.Events</c>
+    /// never sees <see cref="TrackAudioAnalysisCompletedEvent" /> directly, so
+    /// the job has to publish both, with the same values, every time.
+    /// </summary>
+    [Fact]
+    public async Task ACompletedAnalysis_PublishesBothTheHostEventAndThePluginTopic()
+    {
+        Mock<IEventBus> bus = new();
+
+        await CreateJob(SampleResult(), eventBus: bus).Handle();
+
+        bus.Verify(
+            b =>
+                b.PublishAsync(
+                    It.Is<TrackAudioAnalysisCompletedEvent>(e =>
+                        e.TrackId == _trackId
+                        && e.State == "Ok"
+                        && e.AnalyzerVersion == AnalyzerVersion
+                        && e.LibraryIds.Count == 2
+                    ),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Once
+        );
+
+        bus.Verify(
+            b =>
+                b.PublishAsync(
+                    It.Is<PluginMessageEvent>(e =>
+                        e.Name == PluginTopics.MusicAnalysisCompleted
+                        && e.PluginId == Ulid.Empty
+                        && PayloadMatchesTheCompletedEvent(e, "Ok")
+                    ),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Once
+        );
+    }
+
+    private bool PayloadMatchesTheCompletedEvent(PluginMessageEvent published, string expectedState)
+    {
+        PluginMusicAnalysisCompleted? payload = published.PayloadAs<PluginMusicAnalysisCompleted>();
+
+        return payload is not null
+            && payload.TrackId == _trackId
+            && payload.AnalyzerVersion == AnalyzerVersion
+            && payload.State == expectedState
+            && payload.LibraryIds.Count == 2
+            && payload.LibraryIds.Contains(_libraryOneId.ToString())
+            && payload.LibraryIds.Contains(_libraryTwoId.ToString());
     }
 
     /// <summary>

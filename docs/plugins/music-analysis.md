@@ -10,10 +10,12 @@ it back through the contracts below. None of this needs the plugin to know
 where a file lives on disk, where ffmpeg is installed, or how to shell out to
 it safely — the host mediates all three.
 
-Every type mentioned here lives in `NoMercy.Plugins.Abstractions` (ABI 10.2 or
-later; see `PluginAbi.Current`). `IPluginMusicAnalysisWriter.RegisterStemsAsync`
-joined 10.2 after the rest, with a default implementation rather than a version
-bump: an implementer written before it keeps compiling, and only the host's own
+Every type mentioned here lives in `NoMercy.PluginSdk.Abstractions` (ABI 12.1
+or later; see `PluginAbi.Current`). The assembly itself was renamed at 12.0;
+`GetFailedDjAnalysisAsync` and `PluginTrackDjFailure` are what 12.1 added on
+top of the rename. `IPluginMusicAnalysisWriter.RegisterStemsAsync` joined 10.2
+after the rest, with a default implementation rather than a version bump: an
+implementer written before it keeps compiling, and only the host's own
 override writes the stems all-or-nothing.
 
 ## Declaring the hooks
@@ -271,7 +273,8 @@ but that have no DJ row, or have one from an older `DjAnalyzerVersion`, or
 have one computed against a `BaseAnalyzerVersion` the base row has since moved
 past, or have one left `Pending`. A `Failed` row at the current versions is
 **not** returned — a version bump or an explicit retry re-queues it, nothing
-else does.
+else does; [the failed rows](#failed-rows-and-how-to-release-them) are a query
+of their own.
 
 `GetTracksMissingStemsAsync(libraryId, producerVersion, policy, skip, take, ct)`
 is the same idea for stems: track ids whose DJ row is `Ok` but whose
@@ -310,6 +313,22 @@ while (true)
     skip += page.Count;
 }
 ```
+
+### Failed rows, and how to release them
+
+`GetFailedDjAnalysisAsync(libraryId, djAnalyzerVersion, skip, take, ct)` (ABI
+12.1) returns one `PluginTrackDjFailure(TrackId, BaseAnalyzerVersion, Reason,
+FailedAt)` per track in the library whose DJ row is `Failed` at that version:
+the rows the needs-query keeps out. `Reason` is what your plugin gave
+`MarkFailedAsync`, `FailedAt` is when it did. Same clamp and same paging as
+the two queries above, except that nothing you do while reading moves the
+rows, so advance `skip` by the page size as usual.
+
+Releasing a track is `DeleteDjAnalysisAsync(trackId, ct)`: with the row gone
+the needs-query returns the track again on its next page, and a run that
+fails again marks it failed again. If you release a whole library, page at
+`skip: 0` until the page comes back empty, because every delete shortens the
+result.
 
 ## Stem retention policy
 
@@ -450,29 +469,34 @@ it lives:
 
 `TrackAudioAnalysisCompletedEvent` (`NoMercy.Events.Music`) is published by
 the server's own base-analysis job the moment a `TrackAudioAnalysis` row lands
-— `Ok` or `Failed` — so the plugin can react per track instead of waiting for
-its next sweep tick:
+— `Ok` or `Failed`. It stays on the host's own event bus: `IPluginContext` has
+no member that reaches it, so a plugin never sees it directly and never holds
+the host bus itself. What a plugin subscribes to instead is
+`PluginTopics.MusicAnalysisCompleted`, republished on the topic facade a
+plugin already uses for its own events, `IPluginContext.Events.Subscribe`,
+with the payload `PluginMusicAnalysisCompleted`:
 
 ```csharp
-using NoMercy.Events.Music;
-
-_subscription = context.EventBus.Subscribe<TrackAudioAnalysisCompletedEvent>(
-    async (evt, ct) =>
+context.Events.Subscribe<PluginMusicAnalysisCompleted>(
+    PluginTopics.MusicAnalysisCompleted,
+    async (completed, ct) =>
     {
-        if (evt.State != "Ok")
+        if (completed.State != "Ok")
         {
             return; // nothing to build the DJ row from yet
         }
 
-        await AnalyzeOneTrackAsync(evt.TrackId, ct);
+        await AnalyzeOneTrackAsync(completed.TrackId, ct);
     }
 );
 ```
 
-The event carries `TrackId`, `AnalyzerVersion` (the base analyzer's version
-the row was computed at), `State` (the string `"Ok"` or `"Failed"` — the
-events package carries no reference to the database enum it came from) and
-`LibraryIds`.
+`PluginMusicAnalysisCompleted` carries the same four values
+`TrackAudioAnalysisCompletedEvent` does — `TrackId`, `AnalyzerVersion` (the
+base analyzer's version the row was computed at), `State` (the string `"Ok"`
+or `"Failed"` — the payload carries no reference to the database enum it came
+from) and `LibraryIds`, as the Ulid text form, since a topic payload crosses a
+plugin's own load context and carries no host type.
 
 `LibraryIds` is every library the track belonged to when the verdict landed,
 read at publish time rather than carried from the moment the job was queued.
@@ -482,9 +506,9 @@ this track is worth keeping — is a per-library decision, so pick the policy
 per id rather than assuming one:
 
 ```csharp
-foreach (Ulid libraryId in evt.LibraryIds)
+foreach (string libraryId in completed.LibraryIds)
 {
-    ApplyRetentionPolicyFor(libraryId, evt.TrackId);
+    ApplyRetentionPolicyFor(Ulid.Parse(libraryId), completed.TrackId);
 }
 ```
 

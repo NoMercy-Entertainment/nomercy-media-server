@@ -118,6 +118,24 @@ public interface IPluginMusicQuery
         int take = 500,
         CancellationToken ct = default
     );
+
+    /// <summary>
+    /// The DJ rows in the named library that a plugin marked failed at
+    /// <paramref name="djAnalyzerVersion" /> — exactly the tracks
+    /// <see cref="GetTracksNeedingDjAnalysisAsync" /> leaves out. Ok and
+    /// Pending rows, and rows at any other version, are not returned. Paged
+    /// and ordered by track id, with <paramref name="take" /> clamped the same
+    /// way <see cref="GetTracksAsync" /> clamps it; a library id that does not
+    /// parse yields an empty result rather than a throw. Releasing a track for
+    /// another attempt is <c>IPluginMusicAnalysisWriter.DeleteDjAnalysisAsync</c>.
+    /// </summary>
+    Task<IReadOnlyList<PluginTrackDjFailure>> GetFailedDjAnalysisAsync(
+        string libraryId,
+        int djAnalyzerVersion,
+        int skip = 0,
+        int take = 500,
+        CancellationToken ct = default
+    );
 }
 
 /// <param name="DurationSeconds">Null when the library never recorded one.</param>

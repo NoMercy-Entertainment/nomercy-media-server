@@ -15,6 +15,7 @@ using NoMercy.Events;
 using NoMercy.Events.Plugins;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Capabilities;
+using NoMercy.PluginSdk.OutOfProcess;
 using NoMercy.PluginSdk.Sideload;
 using NoMercy.PluginSdk.Verification;
 using NoMercy.Storage;
@@ -37,7 +38,8 @@ internal sealed class PluginLoader(
     IPluginVerifier verifier,
     IPluginConsentService consentService,
     IPluginContextFactory contextFactory,
-    PluginHostOptions? hostOptions = null
+    PluginHostOptions? hostOptions = null,
+    IPluginRemoteLoader? remote = null
 )
 {
     private readonly IEventBus _eventBus = eventBus;
@@ -49,6 +51,10 @@ internal sealed class PluginLoader(
     private readonly IPluginVerifier _verifier = verifier;
     private readonly IPluginConsentService _consentService = consentService;
     private readonly IPluginContextFactory _contextFactory = contextFactory;
+
+    // Null on an install that cannot run a plugin elsewhere, and then every
+    // plugin loads here exactly as it did before.
+    private readonly IPluginRemoteLoader? _remote = remote;
 
     // The configured shared-assembly set, or the built-in one. Passing it here
     // is what makes PluginHostOptions.SharedAssemblies mean anything: the type
@@ -64,6 +70,47 @@ internal sealed class PluginLoader(
     /// Null on a host that registered no gate, which is every host outside
     /// the server itself.
     /// </summary>
+    /// <summary>
+    /// Puts a plugin running elsewhere into the registry the rest of the
+    /// server reads.
+    /// <para>
+    /// No load context and no shadow directory: both describe an assembly
+    /// mapped into this process, and the point of this path is that none was.
+    /// Everything above the loader sees the same <see cref="LoadedPlugin" /> it
+    /// always did.
+    /// </para>
+    /// </summary>
+    private async Task RegisterRemoteAsync(
+        IPlugin plugin,
+        PluginManifest manifest,
+        string assemblyPath,
+        string manifestPath,
+        PluginVerificationResult verification,
+        CancellationToken ct
+    )
+    {
+        PluginInfo info = PluginManifestParser.ToPluginInfo(
+            manifest,
+            assemblyPath,
+            PluginStatus.Active,
+            manifestPath,
+            verification.Verified,
+            verification.Trusted
+        );
+
+        _registry[manifest.Id.Value] = new LoadedPlugin(info, plugin, null);
+
+        await _eventBus.PublishAsync(
+            new PluginLoadedEvent
+            {
+                PluginId = manifest.Id.ToString(),
+                PluginName = manifest.Name,
+                Version = manifest.Version,
+            },
+            ct
+        );
+    }
+
     private PluginRefusal? RunRefusal(
         PluginManifest manifest,
         string assemblyPath,
@@ -196,6 +243,42 @@ internal sealed class PluginLoader(
                 );
 
                 return;
+            }
+
+            // The owner's isolation choice, asked before an assembly is mapped
+            // into this process. Asked afterwards it would mean nothing: the
+            // code is already here, and unloading it is the thing a separate
+            // process exists to avoid.
+            //
+            // A null answer is an install that cannot do it yet, and the
+            // plugin loads here rather than not at all. The dashboard is what
+            // tells the owner the choice is not being honored.
+            if (_remote?.IsolationFor(manifest.Id.Value) == PluginIsolation.OutOfProcess)
+            {
+                IPlugin? elsewhere = await _remote.LoadAsync(
+                    new PluginDescription(
+                        manifest.Id.Value,
+                        manifest.Name,
+                        manifest.Description,
+                        Version.TryParse(manifest.Version, out Version? declared)
+                            ? declared
+                            : new Version(0, 0)
+                    ),
+                    ct
+                );
+
+                if (elsewhere is not null)
+                {
+                    await RegisterRemoteAsync(
+                        elsewhere,
+                        manifest,
+                        assemblyPath,
+                        manifestPath,
+                        verification,
+                        ct
+                    );
+                    return;
+                }
             }
 
             // Loaded from a fresh copy, never from the installed folder: the
