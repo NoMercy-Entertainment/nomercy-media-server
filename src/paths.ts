@@ -27,3 +27,11 @@ export const DOCS_CAPABILITY_PAGES: string = resolve(
 );
 
 export const DOCS_INDEX: string = resolve(CONTRACT_DIR, 'docs-index.json');
+
+export const DOCS_PLUGINS: string = resolve(
+  REPO_ROOT, 'docs', 'nomercy-docs', 'src', 'content', 'nomercy-plugins', 'en',
+);
+
+export const DOCS_PLUGIN_NAV: string = resolve(
+  REPO_ROOT, 'docs', 'nomercy-docs', 'src', 'lib', 'nav-structure.plugins.ts',
+);

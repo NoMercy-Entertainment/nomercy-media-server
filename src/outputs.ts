@@ -1,11 +1,14 @@
 import { join } from 'node:path';
 
-import { loadContract } from './contract.js';
+import { loadContract, slugOf } from './contract.js';
 import { emitCapabilityNames, emitCapabilityVocabulary, emitManifestSchema, emitSettingsSchema, emitSlots, emitSlotVocabulary, emitAnalyzerDescriptors, emitRefusalCodes } from './emit-csharp.js';
+import { emitCapabilityIndex } from './emit-capability-index.js';
+import { emitCapabilityNav } from './emit-capability-nav.js';
+import { emitCapabilityPage } from './emit-capability-page.js';
 import { emitDocsIndex } from './emit-docs-index.js';
 import { emitCapabilitiesKotlin } from './emit-kotlin.js';
 import { emitCapabilitiesTypescript } from './emit-typescript.js';
-import { ABSTRACTIONS_GENERATED, ANALYZERS_GENERATED, DOCS_INDEX, KMP_CAPABILITIES, WEB_CAPABILITIES } from './paths.js';
+import { ABSTRACTIONS_GENERATED, ANALYZERS_GENERATED, DOCS_CAPABILITY_PAGES, DOCS_INDEX, DOCS_PLUGIN_NAV, DOCS_PLUGINS, KMP_CAPABILITIES, WEB_CAPABILITIES } from './paths.js';
 
 export interface GeneratedFile { path: string; content: string }
 
@@ -32,5 +35,16 @@ export function generatedFiles(): GeneratedFile[] {
     { path: WEB_CAPABILITIES, content: emitCapabilitiesTypescript(contract.capabilities) },
     { path: KMP_CAPABILITIES, content: emitCapabilitiesKotlin(contract.capabilities, KMP_PACKAGE) },
     { path: DOCS_INDEX, content: emitDocsIndex(contract.capabilities) },
+
+    // One page per capability. A capability added to the contract and left
+    // undocumented is a refusal whose Docs link 404s, and the author reads
+    // that link while already stuck.
+    ...contract.capabilities.map(capability => ({
+      path: join(DOCS_CAPABILITY_PAGES, `${slugOf(capability.name)}.mdx`),
+      content: emitCapabilityPage(capability, contract.refusals, contract.analyzers),
+    })),
+
+    { path: join(DOCS_PLUGINS, 'capabilities.mdx'), content: emitCapabilityIndex(contract.capabilities) },
+    { path: DOCS_PLUGIN_NAV, content: emitCapabilityNav(contract.capabilities) },
   ];
 }
