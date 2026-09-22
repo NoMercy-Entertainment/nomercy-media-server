@@ -53,6 +53,16 @@ public class PluginMusicQueryTests : IDisposable
     private readonly Guid _needsPendingTrackId = Guid.NewGuid();
     private readonly Guid _needsFailedCurrentTrackId = Guid.NewGuid();
 
+    // Two more DJ rows for GetFailedDjAnalysisAsync: a second Failed row at the current
+    // version (so the query has a page to split) and a Failed row at the previous
+    // version (which the query must leave out). Neither has a base analysis row, so
+    // the "needs DJ analysis" fixture above keeps returning exactly what it did.
+    private readonly Guid _failedSecondTrackId = Guid.NewGuid();
+    private readonly Guid _failedOlderVersionTrackId = Guid.NewGuid();
+
+    // Stamped on the failed row a test reads back, so FailedAt can be asserted exactly.
+    private static readonly DateTime FailedAtUtc = new(2026, 9, 18, 12, 0, 0, DateTimeKind.Utc);
+
     private readonly Guid _stemsWindowsMissingTrackId = Guid.NewGuid();
     private readonly Guid _stemsFullMissingFromWindowsTrackId = Guid.NewGuid();
     private readonly Guid _stemsFullPresentTrackId = Guid.NewGuid();
@@ -141,6 +151,7 @@ public class PluginMusicQueryTests : IDisposable
 
         SeedDjAnalysisFixture(context);
         SeedNeedsDjAnalysisFixture(context);
+        SeedFailedDjFixture(context);
         SeedStemsFixture(context);
 
         context.SaveChanges();
@@ -322,6 +333,49 @@ public class PluginMusicQueryTests : IDisposable
                 State = AudioAnalysisState.Failed,
                 FailureReason = "vocal detector produced no regions",
                 AnalyzedAt = DateTime.UtcNow,
+            }
+        );
+    }
+
+    /// <summary>
+    /// Tracks for <c>GetFailedDjAnalysisAsync</c>. Together with the Failed row at the
+    /// current version that <see cref="SeedNeedsDjAnalysisFixture" /> seeds, the library
+    /// holds two rows the query must return and one it must not.
+    /// </summary>
+    private void SeedFailedDjFixture(MediaContext context)
+    {
+        context.Tracks.AddRange(
+            new Track { Id = _failedSecondTrackId, Name = "Failed: second" },
+            new Track { Id = _failedOlderVersionTrackId, Name = "Failed: older version" }
+        );
+
+        context.LibraryTrack.AddRange(
+            new LibraryTrack { LibraryId = _djLibraryId, TrackId = _failedSecondTrackId },
+            new LibraryTrack { LibraryId = _djLibraryId, TrackId = _failedOlderVersionTrackId }
+        );
+
+        context.TrackDjAnalysis.AddRange(
+            new TrackDjAnalysis
+            {
+                TrackId = _failedSecondTrackId,
+                ProducerPluginId = Ulid.NewUlid(),
+                DjAnalyzerVersion = CurrentDjVersion,
+                BaseAnalyzerVersion = 1,
+                State = AudioAnalysisState.Failed,
+                FailureReason = "stems MixIn: the stem model file is missing",
+                AnalyzedAt = FailedAtUtc,
+            },
+            // Failed under the previous analyzer. A version bump already re-queues it
+            // through the needs-query; the failed-rows query is about the current one.
+            new TrackDjAnalysis
+            {
+                TrackId = _failedOlderVersionTrackId,
+                ProducerPluginId = Ulid.NewUlid(),
+                DjAnalyzerVersion = CurrentDjVersion - 1,
+                BaseAnalyzerVersion = 1,
+                State = AudioAnalysisState.Failed,
+                FailureReason = "stems MixOut: refused by an older build",
+                AnalyzedAt = FailedAtUtc,
             }
         );
     }
@@ -781,6 +835,99 @@ public class PluginMusicQueryTests : IDisposable
                 skip: 0,
                 take: 0
             );
+
+        clamped.Should().HaveCount(1);
+    }
+
+    [Fact]
+    public async Task GetFailedDjAnalysisAsync_ReturnsTheFailedRowsAtTheAskedVersionInTheLibrary()
+    {
+        IReadOnlyList<PluginTrackDjFailure> failed = await CreateQuery()
+            .GetFailedDjAnalysisAsync(_djLibraryId.ToString(), CurrentDjVersion, take: 1000);
+
+        failed
+            .Select(failure => failure.TrackId)
+            .Should()
+            .BeEquivalentTo([_needsFailedCurrentTrackId, _failedSecondTrackId]);
+        // Ok and Pending rows at the current version, a Failed row at the previous
+        // version, and a Failed row whose track is in no library at all.
+        failed.Select(failure => failure.TrackId).Should().NotContain(_needsCurrentTrackId);
+        failed.Select(failure => failure.TrackId).Should().NotContain(_needsPendingTrackId);
+        failed.Select(failure => failure.TrackId).Should().NotContain(_failedOlderVersionTrackId);
+        failed.Select(failure => failure.TrackId).Should().NotContain(_djFailedTrackId);
+    }
+
+    /// <summary>
+    /// The row carries what a plugin shows an owner: why it failed, against which base
+    /// analysis, and when. The reason is the column as written; the time is the row's
+    /// own stamp, read back as UTC.
+    /// </summary>
+    [Fact]
+    public async Task GetFailedDjAnalysisAsync_CarriesTheReasonTheBaseVersionAndWhenItFailed()
+    {
+        IReadOnlyList<PluginTrackDjFailure> failed = await CreateQuery()
+            .GetFailedDjAnalysisAsync(_djLibraryId.ToString(), CurrentDjVersion, take: 1000);
+
+        PluginTrackDjFailure second = failed.Single(failure =>
+            failure.TrackId == _failedSecondTrackId
+        );
+
+        second.Reason.Should().Be("stems MixIn: the stem model file is missing");
+        second.BaseAnalyzerVersion.Should().Be(1);
+        second.FailedAt.Should().Be(new DateTimeOffset(FailedAtUtc));
+    }
+
+    [Fact]
+    public async Task GetFailedDjAnalysisAsync_Pages()
+    {
+        PluginMusicQuery query = CreateQuery();
+
+        IReadOnlyList<PluginTrackDjFailure> first = await query.GetFailedDjAnalysisAsync(
+            _djLibraryId.ToString(),
+            CurrentDjVersion,
+            skip: 0,
+            take: 1
+        );
+        IReadOnlyList<PluginTrackDjFailure> second = await query.GetFailedDjAnalysisAsync(
+            _djLibraryId.ToString(),
+            CurrentDjVersion,
+            skip: 1,
+            take: 1
+        );
+
+        first.Should().ContainSingle();
+        second.Should().ContainSingle();
+        first
+            .Select(failure => failure.TrackId)
+            .Concat(second.Select(failure => failure.TrackId))
+            .Should()
+            .BeEquivalentTo([_needsFailedCurrentTrackId, _failedSecondTrackId]);
+    }
+
+    [Fact]
+    public async Task GetFailedDjAnalysisAsync_ReturnsNothingForAnotherLibrary()
+    {
+        IReadOnlyList<PluginTrackDjFailure> failed = await CreateQuery()
+            .GetFailedDjAnalysisAsync(Ulid.NewUlid().ToString(), CurrentDjVersion);
+
+        failed.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetFailedDjAnalysisAsync_BadLibraryIdReturnsEmpty()
+    {
+        IReadOnlyList<PluginTrackDjFailure> failed = await CreateQuery()
+            .GetFailedDjAnalysisAsync("not-a-valid-ulid", CurrentDjVersion);
+
+        failed.Should().BeEmpty();
+    }
+
+    /// <summary>Same clamp as the two worklists: a caller passing 0 still gets one row.</summary>
+    [Fact]
+    public async Task Take_IsClamped_ForGetFailedDjAnalysisAsyncToo()
+    {
+        IReadOnlyList<PluginTrackDjFailure> clamped = await CreateQuery()
+            .GetFailedDjAnalysisAsync(_djLibraryId.ToString(), CurrentDjVersion, skip: 0, take: 0);
 
         clamped.Should().HaveCount(1);
     }

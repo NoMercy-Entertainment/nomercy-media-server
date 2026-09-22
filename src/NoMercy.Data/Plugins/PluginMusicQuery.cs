@@ -292,6 +292,43 @@ public class PluginMusicQuery(
             .ToListAsync(ct);
     }
 
+    public async Task<IReadOnlyList<PluginTrackDjFailure>> GetFailedDjAnalysisAsync(
+        string libraryId,
+        int djAnalyzerVersion,
+        int skip = 0,
+        int take = 500,
+        CancellationToken ct = default
+    )
+    {
+        if (!Ulid.TryParse(libraryId, out Ulid parsedLibraryId))
+        {
+            return [];
+        }
+
+        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+
+        List<DjFailureRow> rows = await DjAnalysisQueries
+            .FailedDjAnalysis(context, parsedLibraryId, djAnalyzerVersion)
+            .Skip(Math.Max(0, skip))
+            .Take(Math.Clamp(take, 1, MaxPageSize))
+            .Select(dj => new DjFailureRow(
+                dj.TrackId,
+                dj.BaseAnalyzerVersion,
+                dj.FailureReason,
+                dj.AnalyzedAt
+            ))
+            .ToListAsync(ct);
+
+        return rows.Select(row => new PluginTrackDjFailure(
+                row.TrackId,
+                row.BaseAnalyzerVersion,
+                row.FailureReason ?? string.Empty,
+                // MarkFailedAsync stamps UtcNow; SQLite hands the value back with no kind.
+                new DateTimeOffset(DateTime.SpecifyKind(row.AnalyzedAt, DateTimeKind.Utc))
+            ))
+            .ToList();
+    }
+
     /// <summary>
     /// Deserializes one of <see cref="TrackDjAnalysis" />'s JSON text columns
     /// via <see cref="DjAnalysisJson.TryDeserialize{T}(string?, out Exception?)" />.
@@ -406,6 +443,17 @@ public class PluginMusicQuery(
         string? BarEnergy,
         string? CuePoints,
         string? Chords
+    );
+
+    /// <summary>
+    /// One failed DJ row before its reason and stamp are shaped into
+    /// <see cref="PluginTrackDjFailure" />.
+    /// </summary>
+    private sealed record DjFailureRow(
+        Guid TrackId,
+        int BaseAnalyzerVersion,
+        string? FailureReason,
+        DateTime AnalyzedAt
     );
 
     /// <summary>
