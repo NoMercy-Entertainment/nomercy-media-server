@@ -276,6 +276,22 @@ public class ConnectivityManager : IConnectivityManager, IHostedService, IDispos
 
         SetState(ConnectivityState.LocalOnly);
         _logger.LogWarning("No remote connectivity strategy succeeded — server is local-only");
+
+        // This guidance used to fire from CloudflareTunnelStrategy on every boot without
+        // a named tunnel, regardless of whether QuickTunnel was about to succeed right
+        // after it — which it does on every real network. It belongs here instead,
+        // where every strategy including QuickTunnel has actually failed.
+        _logger.LogWarning(
+            "To reach this server from outside your network, forward external port {ExternalServerPort} on your router to this machine on port {InternalServerPort}, or have a tunnel assigned to it.",
+            [
+                RuntimeServerSettings.Current.ExternalServerPort,
+                RuntimeServerSettings.Current.InternalServerPort,
+            ]
+        );
+        _logger.LogWarning(
+            "For more information, visit: https://www.noip.com/support/knowledgebase/general-port-forwarding-guide"
+        );
+
         await ReportTransportAsync("local");
     }
 
