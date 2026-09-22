@@ -12,7 +12,7 @@
 using System.Net;
 using System.Net.Sockets;
 
-namespace NoMercy.Plugins.Network;
+namespace NoMercy.Plugins.Abstractions;
 
 /// <summary>
 /// A datagram socket read and written as a stream.
