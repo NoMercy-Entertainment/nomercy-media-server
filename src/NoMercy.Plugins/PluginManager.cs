@@ -53,7 +53,7 @@ public class PluginManager : IPluginManager, IDisposable
     // the next full server start.
     private readonly Action<Ulid>? _registerScheduledWork;
 
-    public PluginManager(
+    internal PluginManager(
         IEventBus eventBus,
         IServiceProvider serviceProvider,
         ILogger<PluginManager> logger,
@@ -68,7 +68,8 @@ public class PluginManager : IPluginManager, IDisposable
         Action<Ulid>? releaseScheduledWork = null,
         Action<Ulid>? registerScheduledWork = null,
         PluginSideloadPolicy? sideloadPolicy = null,
-        PluginGuestInstaller? guestInstaller = null
+        PluginGuestInstaller? guestInstaller = null,
+        IPluginRegistry? registry = null
     )
     {
         _eventBus = eventBus ?? throw new ArgumentNullException(nameof(eventBus));
@@ -92,7 +93,7 @@ public class PluginManager : IPluginManager, IDisposable
                 ),
                 _logger
             );
-        _registry = new PluginRegistry();
+        _registry = registry ?? new PluginRegistry();
         _assemblyTracker = assemblyTracker;
         _registerScheduledWork = registerScheduledWork;
 

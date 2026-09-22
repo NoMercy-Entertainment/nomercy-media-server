@@ -30,10 +30,19 @@ public interface IPluginManifestSource
     IReadOnlyList<PluginInfo> All();
 }
 
-/// <summary>The manager, narrowed.</summary>
-public sealed class PluginManagerManifestSource(IPluginManager plugins) : IPluginManifestSource
+/// <summary>
+/// The manager, narrowed. Takes it lazily: this source is built while
+/// <see cref="NoMercy.PluginSdk.PluginManager"/> itself is still under
+/// construction (its constructor resolves the out-of-process runtime, which
+/// resolves the capability broker, which resolves this source) — an eager
+/// <see cref="IPluginManager"/> parameter here re-enters the manager's own
+/// factory forever, the same cycle the hub router and cron registrar in
+/// PluginServiceCollectionExtensions.AddPluginSystem already avoid this way.
+/// </summary>
+public sealed class PluginManagerManifestSource(Func<IPluginManager> plugins)
+    : IPluginManifestSource
 {
-    public PluginInfo? Find(Ulid pluginId) => plugins.GetPluginInfo(pluginId);
+    public PluginInfo? Find(Ulid pluginId) => plugins().GetPluginInfo(pluginId);
 
-    public IReadOnlyList<PluginInfo> All() => [.. plugins.GetInstalledPlugins()];
+    public IReadOnlyList<PluginInfo> All() => [.. plugins().GetInstalledPlugins()];
 }

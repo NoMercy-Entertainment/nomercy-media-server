@@ -693,16 +693,32 @@ public class NetworkDiscovery : INetworkDiscovery
         }
 
         // 2. Try UPnP device
+        //
+        // Mono.Nat's GetExternalIP() is a synchronous SOAP call with no timeout of its
+        // own. A device that answers SSDP discovery but never replies to the WANIPConnection
+        // request (seen in the wild from a second "router" a LAN's discovery can pick up
+        // that is not actually the gateway) blocks the calling thread forever, and since this
+        // runs inside DiscoverExternalIpAsync's semaphore, every other boot step waiting on
+        // network discovery piles up behind it. Bound it the same way discovery itself is
+        // already bounded elsewhere in this file.
         if (_device is not null)
         {
             try
             {
-                string upnpIp = _device.GetExternalIP().ToString();
-                if (!string.IsNullOrEmpty(upnpIp))
+                Task<string> upnpQuery = Task.Run(() => _device.GetExternalIP().ToString());
+                Task completed = await Task.WhenAny(
+                    upnpQuery,
+                    Task.Delay(TimeSpan.FromSeconds(5))
+                );
+
+                if (completed == upnpQuery && !string.IsNullOrEmpty(upnpQuery.Result))
                 {
-                    CacheExternalIp(upnpIp);
-                    return upnpIp;
+                    CacheExternalIp(upnpQuery.Result);
+                    return upnpQuery.Result;
                 }
+
+                if (completed != upnpQuery)
+                    _logger.LogWarning("UPnP external IP query timed out after 5s");
             }
             catch (Exception e)
             {
