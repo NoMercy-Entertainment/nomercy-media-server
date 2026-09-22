@@ -27,18 +27,21 @@ namespace NoMercy.Plugins.OutOfProcess;
 /// </summary>
 public interface IPluginSandboxFactory
 {
-    IPluginSandbox Create();
+    IPluginSandbox Create(PluginSandboxGrants grants);
 }
 
 public sealed class PluginSandboxFactory : IPluginSandboxFactory
 {
-    public IPluginSandbox Create()
+    public IPluginSandbox Create(PluginSandboxGrants grants)
     {
         if (OperatingSystem.IsWindows())
             return new WindowsJobObjectSandbox();
 
         if (OperatingSystem.IsLinux())
             return new LinuxCgroupSandbox();
+
+        if (OperatingSystem.IsMacOS())
+            return new MacSandboxExecSandbox(grants);
 
         return new NullPluginSandbox();
     }

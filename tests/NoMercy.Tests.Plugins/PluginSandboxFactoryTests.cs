@@ -29,12 +29,14 @@ public class PluginSandboxFactoryTests
     [Fact]
     public void TheMachineGetsTheSandboxItsOwnKernelCanEnforce()
     {
-        IPluginSandbox sandbox = new PluginSandboxFactory().Create();
+        IPluginSandbox sandbox = new PluginSandboxFactory().Create(Grants());
 
         if (OperatingSystem.IsWindows())
             sandbox.Should().BeOfType<WindowsJobObjectSandbox>();
         else if (OperatingSystem.IsLinux())
             sandbox.Should().BeOfType<LinuxCgroupSandbox>();
+        else if (OperatingSystem.IsMacOS())
+            sandbox.Should().BeOfType<MacSandboxExecSandbox>();
         else
             sandbox.Should().BeOfType<NullPluginSandbox>();
 
@@ -51,8 +53,8 @@ public class PluginSandboxFactoryTests
     {
         PluginSandboxFactory factory = new();
 
-        IPluginSandbox first = factory.Create();
-        IPluginSandbox second = factory.Create();
+        IPluginSandbox first = factory.Create(Grants());
+        IPluginSandbox second = factory.Create(Grants());
 
         first.Should().NotBeSameAs(second);
 
@@ -70,4 +72,6 @@ public class PluginSandboxFactoryTests
     {
         new NullPluginSandbox().Available.Should().BeFalse();
     }
+
+    private static PluginSandboxGrants Grants() => new("/tmp/plugin", AllowsSpawn: false);
 }
