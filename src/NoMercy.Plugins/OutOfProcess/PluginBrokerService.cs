@@ -13,6 +13,7 @@ using System.Text.Json;
 using NoMercy.Plugins.Abstractions;
 using NoMercy.Plugins.Capabilities;
 using NoMercy.Plugins.Ipc;
+using NoMercy.Plugins.Runtime;
 using ProtoBuf.Grpc;
 
 namespace NoMercy.Plugins.OutOfProcess;
@@ -38,7 +39,8 @@ namespace NoMercy.Plugins.OutOfProcess;
 public sealed class PluginBrokerService(
     Ulid pluginId,
     IPluginCapabilityBroker capabilities,
-    IPluginSecretStore secrets
+    IPluginSecretStore secrets,
+    IPluginApprovedBinaries approved
 ) : IPluginBrokerService
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -59,6 +61,7 @@ public sealed class PluginBrokerService(
         return request.Facade switch
         {
             "secrets" => await Secrets(request),
+            "process" => Process(request),
             _ => Refuse(
                 PluginRefusalCodes.HostServicesRemoved,
                 $"The plugin asked the server for {request.Facade}.{request.Member}.",
@@ -113,6 +116,47 @@ public sealed class PluginBrokerService(
         }
     }
 
+    /// <summary>
+    /// Answers which file, and starts nothing.
+    /// <para>
+    /// A process the server started would be a child of the server, outside
+    /// the sandbox that holds the plugin. The plugin's own process starts it,
+    /// so the child inherits the job object, the cgroup or the sandbox profile
+    /// that already holds its parent.
+    /// </para>
+    /// </summary>
+    private PluginCallResponse Process(PluginCallRequest request)
+    {
+        if (request.Member != nameof(Abstractions.IPluginProcess.SpawnAsync))
+            return Refuse(
+                PluginRefusalCodes.HostServicesRemoved,
+                $"The plugin asked the server for process.{request.Member}.",
+                "The process facade has no member by that name.",
+                "Use a member the contract declares. Docs: /nomercy-plugins/handbook/runtime-and-isolation"
+            );
+
+        SpawnCall call =
+            JsonSerializer.Deserialize<SpawnCall>(request.PayloadJson, Json) ?? new(null);
+
+        string binary = call.Binary ?? string.Empty;
+
+        // The capability says whether this plugin may start anything, with the
+        // binary as the scope the owner consented to.
+        if (capabilities.Check(pluginId, PluginCapabilityNames.ProcessSpawn, binary) is { } refusal)
+            return PluginCallResponse.Refused(Wire(refusal));
+
+        // The name is only a label; this is the file. A name the owner never
+        // approved resolves to nothing, and nothing is what runs.
+        string? path = approved.PathFor(pluginId, binary);
+
+        if (path is null)
+            return PluginCallResponse.Refused(
+                Wire(PluginRefusalMessages.ProcessSpawnUndeclared(pluginId.ToString(), binary))
+            );
+
+        return Value(new PluginSpawnPermit(path));
+    }
+
     public Task<PluginCallResponse> PublishAsync(
         PluginCallRequest request,
         CallContext context = default
@@ -158,4 +202,6 @@ public sealed class PluginBrokerService(
         );
 
     private sealed record SecretCall(string? Key, string? Value);
+
+    private sealed record SpawnCall(string? Binary);
 }

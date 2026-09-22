@@ -69,6 +69,18 @@ public sealed record PluginCallResponse
         new() { Ok = false, Refusal = refusal };
 }
 
+/// <summary>
+/// The server's answer to one spawn: which file, and nothing else.
+/// <para>
+/// The server never starts the binary. A process it started would be a child
+/// of the server and would sit beside the plugin's sandbox rather than inside
+/// it, so the start happens in the plugin's own process and the new child
+/// inherits the confinement by construction.
+/// </para>
+/// </summary>
+[DataContract]
+public sealed record PluginSpawnPermit([property: DataMember(Order = 1)] string ResolvedPath);
+
 /// <summary>What the health page reports about the process itself.</summary>
 [DataContract]
 public sealed record PluginHealthSnapshot(

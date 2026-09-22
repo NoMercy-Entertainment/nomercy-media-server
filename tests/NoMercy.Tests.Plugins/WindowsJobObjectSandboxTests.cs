@@ -100,6 +100,50 @@ public class WindowsJobObjectSandboxTests
         process.Kill(entireProcessTree: true);
     }
 
+    /// <summary>
+    /// The kill is not part of the memory ceiling. A plugin whose owner turned
+    /// the ceiling off is still one whose children must die with the server,
+    /// and a child left running keeps its port, its files and its memory until
+    /// the machine is rebooted.
+    /// </summary>
+    [SkippableFact]
+    [SupportedOSPlatform("windows")]
+    public void ClosingTheJob_KillsThePluginProcessEvenWithNoMemoryCeiling()
+    {
+        Skip.IfNot(OnWindows, "Job objects are a Windows facility.");
+
+        Process process = Sleeper();
+
+        using (WindowsJobObjectSandbox sandbox = new())
+            sandbox.Confine(process, Quota(memoryBytes: 0)).Should().BeTrue();
+
+        process
+            .WaitForExit(milliseconds: 10_000)
+            .Should()
+            .BeTrue("closing the job kills its processes");
+        process.Dispose();
+    }
+
+    /// <summary>
+    /// A plugin's child process runs inside the plugin's own sandbox, so the
+    /// job has to allow more than the one process the server put in it.
+    /// </summary>
+    [SkippableFact]
+    [SupportedOSPlatform("windows")]
+    public void TheJobAllowsThePluginToSpawnChildrenOfItsOwn()
+    {
+        Skip.IfNot(OnWindows, "Job objects are a Windows facility.");
+
+        using WindowsJobObjectSandbox sandbox = new();
+        using Process process = Sleeper();
+
+        sandbox.Confine(process, Quota(memoryBytes: 256L * 1024 * 1024)).Should().BeTrue();
+
+        sandbox.ActiveProcessLimitInKernel().Should().BeGreaterThan(1);
+
+        process.Kill(entireProcessTree: true);
+    }
+
     private static PluginQuota Quota(long memoryBytes) => new(25, memoryBytes, 0, 0);
 
     /// <summary>A process that does nothing and waits to be told to stop.</summary>

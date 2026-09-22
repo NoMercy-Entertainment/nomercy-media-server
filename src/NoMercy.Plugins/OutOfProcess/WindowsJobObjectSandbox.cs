@@ -37,8 +37,19 @@ public sealed class WindowsJobObjectSandbox : IPluginSandbox, IDisposable
     private const uint JobObjectExtendedLimitInformation = 9;
     private const uint JobObjectCpuRateControlInformation = 15;
 
+    private const uint LimitActiveProcess = 0x00000008;
     private const uint LimitProcessMemory = 0x00000100;
     private const uint LimitKillOnJobClose = 0x00002000;
+
+    /// <summary>
+    /// The plugin's own process plus fifteen children.
+    /// <para>
+    /// A cap rather than none: a plugin that spawns in a loop is the cheapest
+    /// way to take a machine down, and the count is the only thing the kernel
+    /// can refuse before the machine is already unusable.
+    /// </para>
+    /// </summary>
+    private const uint ProcessesPerPlugin = 16;
 
     private const uint CpuRateControlEnable = 0x1;
     private const uint CpuRateControlHardCap = 0x4;
@@ -57,27 +68,32 @@ public sealed class WindowsJobObjectSandbox : IPluginSandbox, IDisposable
         if (!Available)
             return false;
 
-        if (!ApplyMemory(quota) || !ApplyCpu(quota))
+        if (!ApplyBasicLimits(quota) || !ApplyCpu(quota))
             return false;
 
         return AssignProcessToJobObject(_job, process.Handle);
     }
 
-    private bool ApplyMemory(PluginQuota quota)
+    private bool ApplyBasicLimits(PluginQuota quota)
     {
         // Zero means the owner turned the ceiling off deliberately. Passing it
         // to the kernel would be a process allowed no memory at all, which is
-        // a plugin that cannot start rather than one nobody limited.
-        if (quota.MemoryBytes <= 0)
-            return true;
+        // a plugin that cannot start rather than one nobody limited. The kill
+        // and the process cap are applied either way: a plugin with no memory
+        // ceiling is still one whose children must die with the server.
+        bool hasCeiling = quota.MemoryBytes > 0;
 
         ExtendedLimitInformation limits = new()
         {
             BasicLimitInformation = new BasicLimitInformation
             {
-                LimitFlags = LimitProcessMemory | LimitKillOnJobClose,
+                LimitFlags =
+                    LimitKillOnJobClose
+                    | LimitActiveProcess
+                    | (hasCeiling ? LimitProcessMemory : 0),
+                ActiveProcessLimit = ProcessesPerPlugin,
             },
-            ProcessMemoryLimit = (nuint)quota.MemoryBytes,
+            ProcessMemoryLimit = hasCeiling ? (nuint)quota.MemoryBytes : 0,
         };
 
         int size = Marshal.SizeOf(limits);
@@ -138,6 +154,31 @@ public sealed class WindowsJobObjectSandbox : IPluginSandbox, IDisposable
     /// <summary>Reads back what the kernel actually holds, so a test can see it.</summary>
     public long? MemoryLimitInKernel()
     {
+        ExtendedLimitInformation? limits = Limits();
+
+        if (limits is null)
+            return null;
+
+        return (limits.Value.BasicLimitInformation.LimitFlags & LimitProcessMemory) == 0
+            ? null
+            : (long)limits.Value.ProcessMemoryLimit;
+    }
+
+    /// <summary>How many processes the kernel will let this job hold.</summary>
+    public uint? ActiveProcessLimitInKernel()
+    {
+        ExtendedLimitInformation? limits = Limits();
+
+        if (limits is null)
+            return null;
+
+        return (limits.Value.BasicLimitInformation.LimitFlags & LimitActiveProcess) == 0
+            ? null
+            : limits.Value.BasicLimitInformation.ActiveProcessLimit;
+    }
+
+    private ExtendedLimitInformation? Limits()
+    {
         if (!Available)
             return null;
 
@@ -146,24 +187,15 @@ public sealed class WindowsJobObjectSandbox : IPluginSandbox, IDisposable
 
         try
         {
-            if (
-                !QueryInformationJobObject(
-                    _job,
-                    JobObjectExtendedLimitInformation,
-                    buffer,
-                    (uint)size,
-                    out _
-                )
+            return QueryInformationJobObject(
+                _job,
+                JobObjectExtendedLimitInformation,
+                buffer,
+                (uint)size,
+                out _
             )
-                return null;
-
-            ExtendedLimitInformation limits = Marshal.PtrToStructure<ExtendedLimitInformation>(
-                buffer
-            );
-
-            return (limits.BasicLimitInformation.LimitFlags & LimitProcessMemory) == 0
-                ? null
-                : (long)limits.ProcessMemoryLimit;
+                ? Marshal.PtrToStructure<ExtendedLimitInformation>(buffer)
+                : null;
         }
         finally
         {
