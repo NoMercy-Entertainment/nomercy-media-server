@@ -286,6 +286,10 @@ public class PluginUiController(
             // before forms existed behaves exactly as it did.
             Values = input?.Values ?? new Dictionary<string, object?>(),
             Action = input?.Action,
+            // The address this viewer reached, so a plugin minting a link back
+            // to itself uses the hostname that works for this caller rather
+            // than one read from configuration.
+            Origin = $"{Request.Scheme}://{Request.Host}",
         };
 
         try

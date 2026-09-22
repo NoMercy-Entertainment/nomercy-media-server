@@ -47,6 +47,82 @@ public class PluginRepositoryTests : IDisposable
         catch (IOException) { }
     }
 
+    private const string RetiredIndex =
+        "https://raw.githubusercontent.com/NoMercy-Entertainment/nomercy-plugins/master/index.json?v=1";
+
+    private const string MarketplaceIndex = "https://api.nomercy.tv/v1/marketplace/index.json";
+
+    private string WriteRepositoriesFile(params PluginRepositoryInfo[] repositories)
+    {
+        string configDir = Path.Combine(_tempDir, "configurations");
+        Directory.CreateDirectory(configDir);
+        string path = Path.Combine(configDir, "repositories.json");
+        File.WriteAllText(path, JsonSerializer.Serialize(repositories));
+
+        return path;
+    }
+
+    [Fact]
+    public async Task A_server_still_holding_the_retired_index_is_moved_to_the_marketplace()
+    {
+        string path = WriteRepositoriesFile(
+            new PluginRepositoryInfo
+            {
+                Name = "NoMercy Plugins",
+                Url = RetiredIndex,
+                Trusted = true,
+            }
+        );
+
+        PluginRepository repository = new(
+            new(),
+            NullLogger.Instance,
+            _tempDir,
+            TestStorageHelper.CreateStorage(_tempDir)
+        );
+        await repository.LoadRepositoriesFromDiskAsync();
+
+        repository
+            .GetRepositories()
+            .Should()
+            .ContainSingle()
+            .Which.Url.Should()
+            .Be(MarketplaceIndex);
+
+        File.ReadAllText(path)
+            .Should()
+            .Contain(MarketplaceIndex)
+            .And.NotContain("raw.githubusercontent");
+    }
+
+    [Fact]
+    public async Task A_repository_the_owner_added_is_left_alone()
+    {
+        WriteRepositoriesFile(
+            new PluginRepositoryInfo
+            {
+                Name = "Mine",
+                Url = "https://example.test/index.json",
+                Trusted = false,
+            }
+        );
+
+        PluginRepository repository = new(
+            new(),
+            NullLogger.Instance,
+            _tempDir,
+            TestStorageHelper.CreateStorage(_tempDir)
+        );
+        await repository.LoadRepositoriesFromDiskAsync();
+
+        repository
+            .GetRepositories()
+            .Should()
+            .ContainSingle()
+            .Which.Url.Should()
+            .Be("https://example.test/index.json");
+    }
+
     private static PluginRepositoryManifest CreateTestManifest(
         string name = "test-repo",
         int pluginCount = 2
