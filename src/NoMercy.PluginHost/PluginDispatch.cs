@@ -47,6 +47,55 @@ public static class PluginDispatch
                 return JsonSerializer.Serialize(view, Json);
             }
 
+            case nameof(ISearchablePlugin.SearchAsync) when plugin is ISearchablePlugin searchable:
+            {
+                SearchCall call =
+                    JsonSerializer.Deserialize<SearchCall>(payloadJson, Json)
+                    ?? throw new PluginRefusedException(NotUnderstood(member));
+
+                // No caller, no search. A plugin's results can be scoped to who
+                // is asking, and inventing an identity here would hand one
+                // user's results to whoever called without naming themselves.
+                if (call.Caller is null)
+                    throw new PluginRefusedException(NoCaller(member));
+
+                IReadOnlyList<PluginSearchResult> results = await searchable.SearchAsync(
+                    call.Query ?? string.Empty,
+                    call.Caller,
+                    cancellationToken
+                );
+
+                return JsonSerializer.Serialize(results, Json);
+            }
+
+            case nameof(IAuthPlugin.AuthenticateAsync) when plugin is IAuthPlugin auth:
+            {
+                AuthCall call =
+                    JsonSerializer.Deserialize<AuthCall>(payloadJson, Json)
+                    ?? throw new PluginRefusedException(NotUnderstood(member));
+
+                AuthResult result = await auth.AuthenticateAsync(
+                    call.Token ?? string.Empty,
+                    cancellationToken
+                );
+
+                return JsonSerializer.Serialize(result, Json);
+            }
+
+            case nameof(IMediaSourcePlugin.ScanAsync) when plugin is IMediaSourcePlugin source:
+            {
+                ScanCall call =
+                    JsonSerializer.Deserialize<ScanCall>(payloadJson, Json)
+                    ?? throw new PluginRefusedException(NotUnderstood(member));
+
+                IEnumerable<MediaFile> files = await source.ScanAsync(
+                    call.Path ?? string.Empty,
+                    cancellationToken
+                );
+
+                return JsonSerializer.Serialize(files, Json);
+            }
+
             case nameof(IScheduledTaskPlugin.ExecuteAsync) when plugin is IScheduledTaskPlugin job:
             {
                 ScheduledCall call =
@@ -66,6 +115,22 @@ public static class PluginDispatch
     }
 
     private sealed record ScheduledCall(string? JobName);
+
+    private sealed record SearchCall(string? Query, PluginCaller? Caller);
+
+    private sealed record AuthCall(string? Token);
+
+    private sealed record ScanCall(string? Path);
+
+    private static PluginRefusal NoCaller(string member) =>
+        new(
+            PluginRefusalCodes.HostServicesRemoved,
+            "unknown plugin",
+            $"The server asked this plugin for {member} without saying who was asking.",
+            "That entry point can scope its answer to one user, so a call with no caller cannot be served safely.",
+            "This is a server fault rather than a plugin one. Report it with the server log around the call.",
+            PluginRefusalSeverity.Blocked
+        );
 
     private static PluginRefusal NotUnderstood(string member) =>
         new(
