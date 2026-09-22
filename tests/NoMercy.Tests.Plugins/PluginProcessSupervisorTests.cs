@@ -141,10 +141,10 @@ internal sealed class CountingLauncher : IPluginProcessLauncher
 {
     public int Launches { get; private set; }
 
-    public Task<IPluginProcess> LaunchAsync(Ulid pluginId, CancellationToken ct = default)
+    public Task<IPluginHostProcess> LaunchAsync(Ulid pluginId, CancellationToken ct = default)
     {
         Launches++;
-        return Task.FromResult<IPluginProcess>(new FakeProcess(pluginId));
+        return Task.FromResult<IPluginHostProcess>(new FakeProcess(pluginId));
     }
 }
 
@@ -152,13 +152,13 @@ internal sealed class ThrowingLauncher : IPluginProcessLauncher
 {
     public Ulid Broken { get; } = Ulid.NewUlid();
 
-    public Task<IPluginProcess> LaunchAsync(Ulid pluginId, CancellationToken ct = default) =>
+    public Task<IPluginHostProcess> LaunchAsync(Ulid pluginId, CancellationToken ct = default) =>
         pluginId == Broken
             ? throw new InvalidOperationException("the assembly is not there")
-            : Task.FromResult<IPluginProcess>(new FakeProcess(pluginId));
+            : Task.FromResult<IPluginHostProcess>(new FakeProcess(pluginId));
 }
 
-internal sealed class FakeProcess(Ulid pluginId) : IPluginProcess
+internal sealed class FakeProcess(Ulid pluginId) : IPluginHostProcess
 {
     public Ulid PluginId => pluginId;
 

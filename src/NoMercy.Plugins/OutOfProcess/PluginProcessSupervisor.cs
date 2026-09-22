@@ -11,12 +11,27 @@
 
 namespace NoMercy.PluginSdk.OutOfProcess;
 
-/// <summary>One running plugin process, as the supervisor holds it.</summary>
-public interface IPluginProcess
+/// <summary>
+/// One running plugin process, as the supervisor holds it.
+/// <para>
+/// Named apart from <c>IPluginProcess</c> in Abstractions, which is the facade
+/// a plugin uses to start a program of its own. Both namespaces are imported
+/// together all through this folder, and one name for two unrelated things is
+/// a trap that only shows up as an ambiguous-reference error much later.
+/// </para>
+/// </summary>
+public interface IPluginHostProcess
 {
     Ulid PluginId { get; }
 
     bool IsRunning { get; }
+
+    /// <summary>
+    /// What this process was started with, so the server can call back into
+    /// it. Minted per start, so a channel built with a stale one is refused by
+    /// the plugin exactly as a stranger would be.
+    /// </summary>
+    string Token => string.Empty;
 
     Task StopAsync(CancellationToken ct = default);
 }
@@ -24,7 +39,7 @@ public interface IPluginProcess
 /// <summary>Starts one plugin process. Replaced by the sandboxed launcher.</summary>
 public interface IPluginProcessLauncher
 {
-    Task<IPluginProcess> LaunchAsync(Ulid pluginId, CancellationToken ct = default);
+    Task<IPluginHostProcess> LaunchAsync(Ulid pluginId, CancellationToken ct = default);
 }
 
 /// <summary>What the supervisor knows about a plugin right now.</summary>
@@ -58,7 +73,7 @@ public sealed class PluginProcessSupervisor(
 {
     private readonly PluginRestartLedger _ledger = ledger ?? new PluginRestartLedger();
     private readonly TimeProvider _time = time ?? TimeProvider.System;
-    private readonly Dictionary<Ulid, IPluginProcess> _running = new();
+    private readonly Dictionary<Ulid, IPluginHostProcess> _running = new();
     private readonly HashSet<Ulid> _gaveUp = [];
     private readonly Lock _gate = new();
 
@@ -79,7 +94,7 @@ public sealed class PluginProcessSupervisor(
 
     public async Task StopAsync(Ulid pluginId, CancellationToken ct = default)
     {
-        IPluginProcess? process;
+        IPluginHostProcess? process;
 
         lock (_gate)
         {
@@ -117,6 +132,23 @@ public sealed class PluginProcessSupervisor(
         return await LaunchAsync(pluginId, ct);
     }
 
+    /// <summary>
+    /// The launch token of the process running now, for the server's own
+    /// calls back into it.
+    /// <para>
+    /// Deliberately not on <see cref="PluginProcessState" />: that record is
+    /// what the health page renders, and a secret on it would be a secret on
+    /// a screen.
+    /// </para>
+    /// </summary>
+    internal string TokenFor(Ulid pluginId)
+    {
+        lock (_gate)
+            return _running.TryGetValue(pluginId, out IPluginHostProcess? process)
+                ? process.Token
+                : string.Empty;
+    }
+
     public PluginProcessState StateOf(Ulid pluginId)
     {
         lock (_gate)
@@ -146,7 +178,7 @@ public sealed class PluginProcessSupervisor(
     {
         try
         {
-            IPluginProcess process = await launcher.LaunchAsync(pluginId, ct);
+            IPluginHostProcess process = await launcher.LaunchAsync(pluginId, ct);
 
             lock (_gate)
                 _running[pluginId] = process;
