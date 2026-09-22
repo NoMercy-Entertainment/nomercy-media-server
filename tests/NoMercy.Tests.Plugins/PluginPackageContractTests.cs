@@ -58,6 +58,32 @@ public class PluginPackageContractTests
     private static string? Value(XDocument project, string element) =>
         project.Descendants(element).FirstOrDefault()?.Value;
 
+    /// <summary>
+    /// The plugin host has to land beside the server, or an owner who asks for
+    /// a plugin in its own process gets one in the server's and a line in the
+    /// log nobody reads.
+    /// <para>
+    /// A ProjectReference alone carries the assembly and not the apphost, its
+    /// deps.json or its runtimeconfig.json, so the server would find a
+    /// NoMercy.PluginHost.dll it could not start.
+    /// </para>
+    /// </summary>
+    [Fact]
+    public void The_server_ships_the_plugin_host_beside_itself()
+    {
+        string csproj = File.ReadAllText(
+            RepoPaths.At(Path.Combine("src", "NoMercy.Service", "NoMercy.Service.csproj"))
+        );
+
+        csproj.Should().Contain("NoMercy.PluginHost\\NoMercy.PluginHost.csproj");
+        csproj
+            .Should()
+            .Contain(
+                "CopyThePluginHostBesideTheServer",
+                "the reference alone carries the assembly and not the program"
+            );
+    }
+
     [Fact]
     public void Every_plugin_package_is_packable()
     {

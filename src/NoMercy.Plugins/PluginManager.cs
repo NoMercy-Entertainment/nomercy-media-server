@@ -18,6 +18,7 @@ using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Capabilities;
 using NoMercy.PluginSdk.Guests;
 using NoMercy.PluginSdk.Hub;
+using NoMercy.PluginSdk.OutOfProcess;
 using NoMercy.PluginSdk.Sideload;
 using NoMercy.PluginSdk.Verification;
 using NoMercy.Storage;
@@ -124,7 +125,11 @@ public class PluginManager : IPluginManager, IDisposable
             _verifier,
             _consentService,
             factory,
-            hostOptions
+            hostOptions,
+            // Null on a host that registered none, which is every host outside
+            // the server itself, and then every plugin loads in this process
+            // exactly as it always did.
+            _serviceProvider.GetService(typeof(IPluginRemoteLoader)) as IPluginRemoteLoader
         );
         _lifecycle = new(
             _eventBus,

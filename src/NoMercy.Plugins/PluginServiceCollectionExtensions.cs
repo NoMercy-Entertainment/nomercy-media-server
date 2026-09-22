@@ -35,6 +35,7 @@ using NoMercy.PluginSdk.Library;
 using NoMercy.PluginSdk.Media;
 using NoMercy.PluginSdk.Network;
 using NoMercy.PluginSdk.Offline;
+using NoMercy.PluginSdk.OutOfProcess;
 using NoMercy.PluginSdk.Quotas;
 using NoMercy.PluginSdk.Revocation;
 using NoMercy.PluginSdk.Runtime;
@@ -226,6 +227,43 @@ public static class PluginServiceCollectionExtensions
         services.TryAddSingleton<IPluginQuotaSource>(quotas);
         services.TryAddSingleton(quotas);
         services.TryAddSingleton<IPluginResourceCeilingSource>(quotas);
+
+        // Running a plugin in a process of its own. Registered here so the
+        // loader can ask for it; an install with no plugin host beside the
+        // server answers that it cannot, and every plugin loads in process as
+        // before.
+        services.TryAddSingleton<IPluginHostExecutable, InstalledPluginHostExecutable>();
+        services.TryAddSingleton<IPluginSandboxFactory, PluginSandboxFactory>();
+        services.TryAddSingleton<IPluginStorageRootsFactory>(sp => new PluginStorageRootsFactory(
+            sp.GetRequiredService<IPluginGrantStore>()
+        ));
+        services.TryAddSingleton<IPluginCapabilityGrants>(sp => new PluginCapabilityGrants(
+            sp.GetRequiredService<IPluginGrantStore>()
+        ));
+        services.TryAddSingleton<IPluginBrokerFactory>(sp => new PluginBrokerFactory(
+            sp.GetRequiredService<IPluginContextFactory>(),
+            sp.GetRequiredService<IPluginCapabilityBroker>(),
+            sp.GetRequiredService<IPluginApprovedBinaries>(),
+            sp.GetRequiredService<IPluginBundleSignature>(),
+            sp.GetRequiredService<IPluginStorageRootsFactory>(),
+            pluginsPath
+        ));
+        services.TryAddSingleton<IPluginProcessLauncher>(sp => new PluginHostLauncher(
+            sp.GetRequiredService<IPluginBrokerFactory>(),
+            new PluginAssemblyLocation(
+                sp.GetRequiredService<IPluginRegistry>(),
+                sp.GetRequiredService<IPluginCapabilityGrants>(),
+                pluginsPath
+            ),
+            sp.GetRequiredService<IPluginQuotaSource>(),
+            sp.GetRequiredService<IPluginHostExecutable>(),
+            sp.GetRequiredService<IPluginSandboxFactory>()
+        ));
+        services.TryAddSingleton<IPluginRemoteLoader>(sp => new PluginRemoteLoader(
+            new PluginProcessSupervisor(sp.GetRequiredService<IPluginProcessLauncher>()),
+            sp.GetRequiredService<IPluginHostExecutable>(),
+            sp.GetRequiredService<ILoggerFactory>().CreateLogger("plugins.runtime")
+        ));
         // A plugin runs only while what it leans on runs, and a free
         // dependency installs beside it rather than leaving the owner to work
         // out why nothing started.
