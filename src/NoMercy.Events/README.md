@@ -1,19 +1,16 @@
-# NoMercy.Plugins.Events
+# NoMercy.Events
 
 The event contract shared between NoMercy MediaServer and its plugins.
-
 `PluginMessageEvent` is the envelope a plugin publishes and subscribes through.
-It travels with `NoMercy.Plugins.Abstractions` rather than separately: a plugin
-and the server must agree on one type, not two that look alike.
 
-## Install
+## There is no package for this
+
+It ships as an assembly inside `NoMercy.PluginSdk.Abstractions`. A plugin author
+installs that one package and gets this with it:
 
 ```xml
-<PackageReference Include="NoMercy.Plugins.Events" Version="11.*" />
+<PackageReference Include="NoMercy.PluginSdk.Abstractions" Version="12.*" />
 ```
 
-Referencing `NoMercy.Plugins.Abstractions` brings this with it. Add it directly
-only when a project needs the envelope and nothing else.
-
-Docs: https://nomercy.tv/docs/nomercy-plugins
-
+One package rather than three that have to be held on the same version by hand.
+Nothing ever referenced this alone.

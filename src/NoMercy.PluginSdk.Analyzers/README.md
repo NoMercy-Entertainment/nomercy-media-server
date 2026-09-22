@@ -1,4 +1,4 @@
-# NoMercy.Plugins.Analyzers
+# NoMercy.PluginSdk.Analyzers
 
 Editor warnings worded the way the server words its refusals, so a plugin author
 reads one sentence rather than two.
@@ -6,7 +6,7 @@ reads one sentence rather than two.
 ## Install
 
 ```xml
-<PackageReference Include="NoMercy.Plugins.Analyzers" Version="11.*" PrivateAssets="all" />
+<PackageReference Include="NoMercy.PluginSdk.Analyzers" Version="12.*" PrivateAssets="all" />
 ```
 
 `PrivateAssets="all"` keeps the analyzer out of the published plugin. It is a

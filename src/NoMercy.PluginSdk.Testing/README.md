@@ -1,4 +1,4 @@
-# NoMercy.Plugins.Testing
+# NoMercy.PluginSdk.Testing
 
 Drive a NoMercy MediaServer plugin through a fake context, with the owner grants
 a test switches on and off.
@@ -6,13 +6,13 @@ a test switches on and off.
 ## Install
 
 ```xml
-<PackageReference Include="NoMercy.Plugins.Testing" Version="11.*" />
+<PackageReference Include="NoMercy.PluginSdk.Testing" Version="12.*" />
 ```
 
 ## A test
 
 ```csharp
-using NoMercy.Plugins.Testing;
+using NoMercy.PluginSdk.Testing;
 
 [Fact]
 public async Task TheStationListNeedsTheNetworkGrant()

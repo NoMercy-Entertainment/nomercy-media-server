@@ -1,17 +1,17 @@
-# NoMercy.Plugins.Mvc
+# NoMercy.PluginSdk.Mvc
 
 The base class a NoMercy MediaServer plugin's REST controllers inherit.
 
 ## Install
 
 ```xml
-<PackageReference Include="NoMercy.Plugins.Mvc" Version="11.*" />
+<PackageReference Include="NoMercy.PluginSdk.Mvc" Version="12.*" />
 ```
 
 ## A controller
 
 ```csharp
-using NoMercy.Plugins.Mvc;
+using NoMercy.PluginSdk.Mvc;
 
 public class StationsController : PluginController
 {

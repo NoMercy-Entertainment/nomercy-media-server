@@ -1,4 +1,4 @@
-# NoMercy.Plugins.Abstractions
+# NoMercy.PluginSdk.Abstractions
 
 The contract a NoMercy MediaServer plugin is written against: `IPlugin`, the
 entry-point interfaces, the facades on `IPluginContext`, the capability
@@ -7,7 +7,7 @@ vocabulary and the refusal shape.
 ## Install
 
 ```xml
-<PackageReference Include="NoMercy.Plugins.Abstractions" Version="11.*" />
+<PackageReference Include="NoMercy.PluginSdk.Abstractions" Version="12.*" />
 ```
 
 Pin the major, never the minor. The contract adds members in a minor version,
@@ -17,7 +17,7 @@ nothing for it.
 ## A plugin
 
 ```csharp
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
 public class RadioPlugin : IPlugin
 {
