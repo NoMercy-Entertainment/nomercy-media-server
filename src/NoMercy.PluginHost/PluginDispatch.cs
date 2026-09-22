@@ -25,7 +25,7 @@ namespace NoMercy.PluginHost;
 /// </summary>
 public static class PluginDispatch
 {
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions Json = PluginWireJson.Options;
 
     public static async Task<string> InvokeAsync(
         IPlugin plugin,

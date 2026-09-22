@@ -140,7 +140,11 @@ public class StorageBrokerTests
             new RecordingBinaries(),
             new FakeServerInfo(),
             roots,
-            new RecordingLibrary()
+            new RecordingLibrary(),
+            new RecordingServices(),
+            new RecordingServices(),
+            new RecordingServices(),
+            new RecordingServices()
         ).CallAsync(
             new PluginCallRequest(PluginId.ToString(), "storage", member, payloadJson, null)
         );

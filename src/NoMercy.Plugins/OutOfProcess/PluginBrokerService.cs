@@ -43,10 +43,14 @@ public sealed class PluginBrokerService(
     IPluginApprovedBinaries approved,
     IPluginServerInfo server,
     IPluginStorageRoots storage,
-    IPluginLibraryQuery library
+    IPluginLibraryQuery library,
+    IPluginMetadata metadata,
+    IPluginNotifications notifications,
+    IPluginUsers users,
+    IPluginScheduler scheduler
 ) : IPluginBrokerService
 {
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions Json = PluginWireJson.Options;
 
     public async Task<PluginCallResponse> CallAsync(
         PluginCallRequest request,
@@ -84,6 +88,10 @@ public sealed class PluginBrokerService(
             "storage" => await Storage(request),
             "net" => Net(request),
             "library" => await Library(request),
+            "metadata" => await Metadata(request),
+            "notifications" => await Notifications(request),
+            "users" => await Users(request),
+            "scheduler" => await Scheduler(request),
             _ => Refuse(
                 PluginRefusalCodes.HostServicesRemoved,
                 $"The plugin asked the server for {request.Facade}.{request.Member}.",
@@ -360,6 +368,122 @@ public sealed class PluginBrokerService(
         }
     }
 
+    /// <summary>
+    /// Asking the metadata providers the owner already configured, rather than
+    /// the plugin carrying a key of its own that outlives the grant.
+    /// </summary>
+    private async Task<PluginCallResponse> Metadata(PluginCallRequest request)
+    {
+        if (request.Member != nameof(IPluginMetadata.QueryAsync))
+            return NoSuchMember("metadata", request.Member);
+
+        if (capabilities.Check(pluginId, PluginCapabilityNames.MetadataQuery) is { } refusal)
+            return PluginCallResponse.Refused(Wire(refusal));
+
+        PluginMetadataQuery query =
+            JsonSerializer.Deserialize<PluginMetadataQuery>(request.PayloadJson, Json)
+            ?? throw new PluginRefusedException(NotUnderstood("metadata", request.Member));
+
+        return Value(await metadata.QueryAsync(query));
+    }
+
+    /// <summary>
+    /// A notification names the person it is for, and a plugin that could send
+    /// to everyone by leaving that out would be a plugin that can reach the
+    /// whole household from one user's page.
+    /// </summary>
+    private async Task<PluginCallResponse> Notifications(PluginCallRequest request)
+    {
+        if (request.Member != nameof(IPluginNotifications.PushAsync))
+            return NoSuchMember("notifications", request.Member);
+
+        if (capabilities.Check(pluginId, PluginCapabilityNames.NotificationsPush) is { } refusal)
+            return PluginCallResponse.Refused(Wire(refusal));
+
+        PushCall call =
+            JsonSerializer.Deserialize<PushCall>(request.PayloadJson, Json)
+            ?? throw new PluginRefusedException(NotUnderstood("notifications", request.Member));
+
+        if (call.Notification is null)
+            throw new PluginRefusedException(NotUnderstood("notifications", request.Member));
+
+        await notifications.PushAsync(
+            call.User is null ? null : new UserId(Ulid.Parse(call.User)),
+            call.Notification
+        );
+
+        return PluginCallResponse.Value("null");
+    }
+
+    private async Task<PluginCallResponse> Users(PluginCallRequest request)
+    {
+        if (request.Member != nameof(IPluginUsers.ListAsync))
+            return NoSuchMember("users", request.Member);
+
+        if (capabilities.Check(pluginId, PluginCapabilityNames.UsersList) is { } refusal)
+            return PluginCallResponse.Refused(Wire(refusal));
+
+        return Value(await users.ListAsync());
+    }
+
+    /// <summary>
+    /// Work the plugin asks the server to run later.
+    /// <para>
+    /// The queue stays the server's. A plugin holding its own timer would keep
+    /// running after the owner disabled it, and nothing on the jobs page would
+    /// show what was still going.
+    /// </para>
+    /// </summary>
+    private async Task<PluginCallResponse> Scheduler(PluginCallRequest request)
+    {
+        if (capabilities.Check(pluginId, PluginCapabilityNames.Scheduler) is { } refusal)
+            return PluginCallResponse.Refused(Wire(refusal));
+
+        ScheduleCall call =
+            JsonSerializer.Deserialize<ScheduleCall>(request.PayloadJson, Json) ?? new(null, null);
+
+        string name = call.Name ?? string.Empty;
+
+        switch (request.Member)
+        {
+            case nameof(IPluginScheduler.RunNowAsync):
+                return Value(await scheduler.RunNowAsync(name));
+
+            case nameof(IPluginScheduler.RunOnceAsync):
+                return Value(
+                    await scheduler.RunOnceAsync(name, call.When ?? DateTimeOffset.UtcNow)
+                );
+
+            case nameof(IPluginScheduler.StopWorkerAsync):
+                await scheduler.StopWorkerAsync(name);
+                return PluginCallResponse.Value("null");
+
+            case nameof(IPluginScheduler.WorkerStateAsync):
+                return Value(await scheduler.WorkerStateAsync(name));
+
+            default:
+                return NoSuchMember("scheduler", request.Member);
+        }
+    }
+
+    private PluginCallResponse NoSuchMember(string facade, string member) =>
+        Refuse(
+            PluginRefusalCodes.HostServicesRemoved,
+            $"The plugin asked the server for {facade}.{member}.",
+            $"The {facade} facade does not carry that member across the process boundary yet.",
+            "Run this plugin in the server's own process until it is carried across. Docs: /nomercy-plugins/handbook/runtime-and-isolation"
+        );
+
+    private PluginRefusal NotUnderstood(string facade, string member) =>
+        new(
+            PluginRefusalCodes.HostServicesRemoved,
+            pluginId.ToString(),
+            $"The plugin called {facade}.{member} with a payload the server could not read.",
+            "The arguments did not arrive in the shape the contract declares.",
+            "Report this with the server log around the call. Docs: /nomercy-plugins/handbook/runtime-and-isolation",
+            PluginRefusalSeverity.Blocked
+        );
+
     public Task<PluginCallResponse> PublishAsync(
         PluginCallRequest request,
         CallContext context = default
@@ -413,4 +537,8 @@ public sealed class PluginBrokerService(
     private sealed record DialCall(string? Host, int Port);
 
     private sealed record LibraryCall(string? LibraryId, int ShowId);
+
+    private sealed record PushCall(string? User, PluginNotification? Notification);
+
+    private sealed record ScheduleCall(string? Name, DateTimeOffset? When);
 }

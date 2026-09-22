@@ -52,6 +52,10 @@ public sealed class RemotePluginContext : IPluginContext
         Storage = new RemoteStorage(launch.PluginId, call);
         Net = new RemoteNet(launch.PluginId, call);
         Library = new RemoteLibrary(launch.PluginId, call);
+        Metadata = new RemoteMetadata(call);
+        Notifications = new RemoteNotifications(call);
+        Users = new RemoteUsers(call);
+        Scheduler = new RemoteScheduler(launch.PluginId, call);
         Call = call;
     }
 
@@ -85,6 +89,14 @@ public sealed class RemotePluginContext : IPluginContext
     public IPluginNet Net { get; }
 
     public IPluginLibraryQuery Library { get; }
+
+    public IPluginMetadata Metadata { get; }
+
+    public IPluginNotifications Notifications { get; }
+
+    public IPluginUsers Users { get; }
+
+    public IPluginScheduler Scheduler { get; }
 
     public IPluginLibraryWriter? LibraryWriter => null;
 

@@ -128,7 +128,11 @@ public class PluginBrokerServiceTests
             new RecordingBinaries(),
             new FakeServerInfo(),
             new FakeStorageRoots(),
-            new RecordingLibrary()
+            new RecordingLibrary(),
+            new RecordingServices(),
+            new RecordingServices(),
+            new RecordingServices(),
+            new RecordingServices()
         );
 
     private static IPluginCapabilityBroker Allowing() => new FakeCapabilities(null);

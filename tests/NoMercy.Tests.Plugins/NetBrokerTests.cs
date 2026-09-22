@@ -90,7 +90,11 @@ public class NetBrokerTests
             new RecordingBinaries(),
             new FakeServerInfo(),
             new FakeStorageRoots(),
-            new RecordingLibrary()
+            new RecordingLibrary(),
+            new RecordingServices(),
+            new RecordingServices(),
+            new RecordingServices(),
+            new RecordingServices()
         ).CallAsync(new PluginCallRequest(PluginId.ToString(), "net", member, payloadJson, null));
 
     private static PluginRefusal Refusal() =>

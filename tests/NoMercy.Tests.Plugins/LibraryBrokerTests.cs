@@ -121,7 +121,11 @@ public class LibraryBrokerTests
             new RecordingBinaries(),
             new FakeServerInfo(),
             new FakeStorageRoots(),
-            library
+            library,
+            new RecordingServices(),
+            new RecordingServices(),
+            new RecordingServices(),
+            new RecordingServices()
         ).CallAsync(
             new PluginCallRequest(PluginId.ToString(), "library", member, payloadJson, null)
         );
