@@ -26,7 +26,7 @@ namespace NoMercy.PluginHost;
 /// </summary>
 public sealed class RemoteCall(Ulid pluginId, IPluginBrokerService broker)
 {
-    private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
+    private static readonly JsonSerializerOptions Json = PluginWireJson.Options;
 
     public async Task<T?> AskAsync<T>(string facade, string member, object? arguments = null)
     {

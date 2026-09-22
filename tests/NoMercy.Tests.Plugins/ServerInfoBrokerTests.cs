@@ -81,7 +81,15 @@ public class ServerInfoBrokerTests
             new FakeCapabilities(null),
             new RecordingSecrets(),
             new RecordingBinaries(),
-            server
+            server,
+            new FakeStorageRoots(),
+            new RecordingLibrary(),
+            new RecordingServices(),
+            new RecordingServices(),
+            new RecordingServices(),
+            new RecordingServices(),
+            new RecordingSettings(),
+            new RecordingUserData()
         ).CallAsync(
             new PluginCallRequest(PluginId.ToString(), "server", member, payloadJson, null)
         );

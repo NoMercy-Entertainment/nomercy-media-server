@@ -120,7 +120,22 @@ public class PluginBrokerServiceTests
     private static PluginBrokerService Build(
         IPluginCapabilityBroker capabilities,
         IPluginSecretStore secrets
-    ) => new(PluginId, capabilities, secrets, new RecordingBinaries(), new FakeServerInfo());
+    ) =>
+        new(
+            PluginId,
+            capabilities,
+            secrets,
+            new RecordingBinaries(),
+            new FakeServerInfo(),
+            new FakeStorageRoots(),
+            new RecordingLibrary(),
+            new RecordingServices(),
+            new RecordingServices(),
+            new RecordingServices(),
+            new RecordingServices(),
+            new RecordingSettings(),
+            new RecordingUserData()
+        );
 
     private static IPluginCapabilityBroker Allowing() => new FakeCapabilities(null);
 

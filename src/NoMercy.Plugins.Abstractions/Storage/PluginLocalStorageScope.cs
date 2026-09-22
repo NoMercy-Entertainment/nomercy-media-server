@@ -10,9 +10,8 @@
 // -----------------------------------------------------------------------------
 
 using System.Runtime.CompilerServices;
-using NoMercy.Plugins.Abstractions;
 
-namespace NoMercy.Plugins.Storage;
+namespace NoMercy.Plugins.Abstractions;
 
 /// <summary>
 /// One folder the host owns on behalf of a plugin.

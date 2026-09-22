@@ -136,7 +136,22 @@ public class ProcessSpawnBrokerTests
     private static PluginBrokerService Build(
         IPluginCapabilityBroker capabilities,
         IPluginApprovedBinaries binaries
-    ) => new(PluginId, capabilities, new RecordingSecrets(), binaries, new FakeServerInfo());
+    ) =>
+        new(
+            PluginId,
+            capabilities,
+            new RecordingSecrets(),
+            binaries,
+            new FakeServerInfo(),
+            new FakeStorageRoots(),
+            new RecordingLibrary(),
+            new RecordingServices(),
+            new RecordingServices(),
+            new RecordingServices(),
+            new RecordingServices(),
+            new RecordingSettings(),
+            new RecordingUserData()
+        );
 
     private static IPluginCapabilityBroker Allowing() => new FakeCapabilities(null);
 
