@@ -49,6 +49,9 @@ public sealed class RemotePluginContext : IPluginContext
         Configuration = new RemoteConfiguration(call);
         Process = new RemoteProcess(launch.PluginId, call, launch, new LocalProcessStarter());
         Server = new RemoteServerInfo(call);
+        Storage = new RemoteStorage(launch.PluginId, call);
+        Net = new RemoteNet(launch.PluginId, call);
+        Library = new RemoteLibrary(launch.PluginId, call);
         Call = call;
     }
 
@@ -77,13 +80,11 @@ public sealed class RemotePluginContext : IPluginContext
 
     public IPluginServerInfo Server { get; }
 
-    /// <summary>
-    /// Reads of the owner's library cross the boundary in their own task. A
-    /// half-connected facade that answered an empty list would look to a
-    /// plugin exactly like a library with nothing in it.
-    /// </summary>
-    public IPluginLibraryQuery Library =>
-        throw new PluginRefusedException(NotYet(nameof(IPluginContext.Library)));
+    public IPluginStorage Storage { get; }
+
+    public IPluginNet Net { get; }
+
+    public IPluginLibraryQuery Library { get; }
 
     public IPluginLibraryWriter? LibraryWriter => null;
 

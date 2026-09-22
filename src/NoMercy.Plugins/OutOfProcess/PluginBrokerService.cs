@@ -41,7 +41,9 @@ public sealed class PluginBrokerService(
     IPluginCapabilityBroker capabilities,
     IPluginSecretStore secrets,
     IPluginApprovedBinaries approved,
-    IPluginServerInfo server
+    IPluginServerInfo server,
+    IPluginStorageRoots storage,
+    IPluginLibraryQuery library
 ) : IPluginBrokerService
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -79,6 +81,9 @@ public sealed class PluginBrokerService(
             "secrets" => await Secrets(request),
             "process" => Process(request),
             "server" => await Server(request),
+            "storage" => await Storage(request),
+            "net" => Net(request),
+            "library" => await Library(request),
             _ => Refuse(
                 PluginRefusalCodes.HostServicesRemoved,
                 $"The plugin asked the server for {request.Facade}.{request.Member}.",
@@ -212,6 +217,149 @@ public sealed class PluginBrokerService(
         }
     }
 
+    /// <summary>
+    /// Which folder, never the bytes in it.
+    /// <para>
+    /// The plugin's own three folders need no grant: the server made them for
+    /// this plugin and nothing else can reach them. One of the owner's folders
+    /// needs both the capability and a grant naming that folder, so the scope
+    /// is the folder id and the check runs before the path is looked up.
+    /// </para>
+    /// </summary>
+    private async Task<PluginCallResponse> Storage(PluginCallRequest request)
+    {
+        switch (request.Member)
+        {
+            case nameof(IPluginStorage.Private):
+                return Value(storage.PrivateRoot);
+
+            case nameof(IPluginStorage.Temp):
+                return Value(storage.TempRoot);
+
+            case nameof(IPluginStorage.Derived):
+                return Value(storage.DerivedRoot);
+
+            case nameof(IPluginStorage.PathAsync):
+                return await OwnerFolder(request);
+
+            default:
+                return Refuse(
+                    PluginRefusalCodes.HostServicesRemoved,
+                    $"The plugin asked the server for storage.{request.Member}.",
+                    "The storage facade has no member by that name.",
+                    "Use a member the contract declares. Docs: /nomercy-plugins/handbook/runtime-and-isolation"
+                );
+        }
+    }
+
+    private async Task<PluginCallResponse> OwnerFolder(PluginCallRequest request)
+    {
+        FolderCall call =
+            JsonSerializer.Deserialize<FolderCall>(request.PayloadJson, Json) ?? new(null);
+
+        string folderId = call.FolderId ?? string.Empty;
+
+        if (
+            capabilities.Check(pluginId, PluginCapabilityNames.StoragePath, folderId) is { } refusal
+        )
+            return PluginCallResponse.Refused(Wire(refusal));
+
+        string? path = await storage.PathForAsync(folderId);
+
+        if (path is null)
+            return PluginCallResponse.Refused(
+                Wire(PluginRefusalMessages.FileOutsideGrant(pluginId.ToString(), folderId))
+            );
+
+        return Value(path);
+    }
+
+    /// <summary>
+    /// Whether this plugin may reach that host, and nothing more.
+    /// <para>
+    /// The socket is opened in the plugin's own process. A socket proxied
+    /// through the server would copy every byte of a download twice and put
+    /// the server in the middle of a connection it has no reason to read.
+    /// </para>
+    /// <para>
+    /// Asked twice, because the two answers have different fixes. Without the
+    /// scope the question is only whether this plugin may dial at all; with
+    /// it, whether it may dial there.
+    /// </para>
+    /// </summary>
+    private PluginCallResponse Net(PluginCallRequest request)
+    {
+        if (request.Member != nameof(IPluginNet.DialAsync))
+            return Refuse(
+                PluginRefusalCodes.HostServicesRemoved,
+                $"The plugin asked the server for net.{request.Member}.",
+                "The net facade does not carry that member across the process boundary yet.",
+                "Run this plugin in the server's own process until it is carried across. Docs: /nomercy-plugins/handbook/runtime-and-isolation"
+            );
+
+        DialCall call =
+            JsonSerializer.Deserialize<DialCall>(request.PayloadJson, Json) ?? new(null, 0);
+
+        string host = call.Host ?? string.Empty;
+
+        if (capabilities.Check(pluginId, PluginCapabilityNames.NetworkDial) is not null)
+            return PluginCallResponse.Refused(
+                Wire(PluginRefusalMessages.SocketUndeclared(pluginId.ToString(), host, call.Port))
+            );
+
+        if (capabilities.Check(pluginId, PluginCapabilityNames.NetworkDial, host) is not null)
+            return PluginCallResponse.Refused(
+                Wire(PluginRefusalMessages.HostNotAllowed(pluginId.ToString(), host))
+            );
+
+        return PluginCallResponse.Value("true");
+    }
+
+    /// <summary>
+    /// Reads of the owner's library, which is the one facade whose answer is
+    /// the data itself rather than a permit.
+    /// <para>
+    /// A title and an episode count are small and the plugin holds no database
+    /// handle, so there is nothing to hand it a path to. The rows cross, and
+    /// the capability is checked before a single one is read: a query that ran
+    /// and then refused has already told the server's disk what to look for.
+    /// </para>
+    /// </summary>
+    private async Task<PluginCallResponse> Library(PluginCallRequest request)
+    {
+        if (capabilities.Check(pluginId, PluginCapabilityNames.LibraryRead) is { } refusal)
+            return PluginCallResponse.Refused(Wire(refusal));
+
+        LibraryCall call =
+            JsonSerializer.Deserialize<LibraryCall>(request.PayloadJson, Json) ?? new(null, 0);
+
+        switch (request.Member)
+        {
+            case nameof(IPluginLibraryQuery.GetLibrariesAsync):
+                return Value(await library.GetLibrariesAsync());
+
+            case nameof(IPluginLibraryQuery.GetShowsAsync):
+                return Value(await library.GetShowsAsync(call.LibraryId));
+
+            case nameof(IPluginLibraryQuery.GetMoviesAsync):
+                return Value(await library.GetMoviesAsync(call.LibraryId));
+
+            case nameof(IPluginLibraryQuery.GetEpisodesAsync):
+                return Value(await library.GetEpisodesAsync(call.ShowId));
+
+            case nameof(IPluginLibraryQuery.GetShowFilesAsync):
+                return Value(await library.GetShowFilesAsync(call.ShowId));
+
+            default:
+                return Refuse(
+                    PluginRefusalCodes.HostServicesRemoved,
+                    $"The plugin asked the server for library.{request.Member}.",
+                    "The library facade does not carry that member across the process boundary yet.",
+                    "Run this plugin in the server's own process until it is carried across. Docs: /nomercy-plugins/handbook/runtime-and-isolation"
+                );
+        }
+    }
+
     public Task<PluginCallResponse> PublishAsync(
         PluginCallRequest request,
         CallContext context = default
@@ -261,4 +409,8 @@ public sealed class PluginBrokerService(
     private sealed record SpawnCall(string? Binary);
 
     private sealed record FolderCall(string? FolderId);
+
+    private sealed record DialCall(string? Host, int Port);
+
+    private sealed record LibraryCall(string? LibraryId, int ShowId);
 }
