@@ -11,7 +11,8 @@ where a file lives on disk, where ffmpeg is installed, or how to shell out to
 it safely — the host mediates all three.
 
 Every type mentioned here lives in `NoMercy.Plugins.Abstractions` (ABI 10.2 or
-later; see `PluginAbi.Current`). `IPluginMusicAnalysisWriter.RegisterStemsAsync`
+later; see `PluginAbi.Current`; `GetFailedDjAnalysisAsync` and
+`PluginTrackDjFailure` are 12.1). `IPluginMusicAnalysisWriter.RegisterStemsAsync`
 joined 10.2 after the rest, with a default implementation rather than a version
 bump: an implementer written before it keeps compiling, and only the host's own
 override writes the stems all-or-nothing.
@@ -271,7 +272,8 @@ but that have no DJ row, or have one from an older `DjAnalyzerVersion`, or
 have one computed against a `BaseAnalyzerVersion` the base row has since moved
 past, or have one left `Pending`. A `Failed` row at the current versions is
 **not** returned — a version bump or an explicit retry re-queues it, nothing
-else does.
+else does; [the failed rows](#failed-rows-and-how-to-release-them) are a query
+of their own.
 
 `GetTracksMissingStemsAsync(libraryId, producerVersion, policy, skip, take, ct)`
 is the same idea for stems: track ids whose DJ row is `Ok` but whose
@@ -310,6 +312,22 @@ while (true)
     skip += page.Count;
 }
 ```
+
+### Failed rows, and how to release them
+
+`GetFailedDjAnalysisAsync(libraryId, djAnalyzerVersion, skip, take, ct)` (ABI
+12.1) returns one `PluginTrackDjFailure(TrackId, BaseAnalyzerVersion, Reason,
+FailedAt)` per track in the library whose DJ row is `Failed` at that version:
+the rows the needs-query keeps out. `Reason` is what your plugin gave
+`MarkFailedAsync`, `FailedAt` is when it did. Same clamp and same paging as
+the two queries above, except that nothing you do while reading moves the
+rows, so advance `skip` by the page size as usual.
+
+Releasing a track is `DeleteDjAnalysisAsync(trackId, ct)`: with the row gone
+the needs-query returns the track again on its next page, and a run that
+fails again marks it failed again. If you release a whole library, page at
+`skip: 0` until the page comes back empty, because every delete shortens the
+result.
 
 ## Stem retention policy
 
@@ -487,6 +505,33 @@ foreach (Ulid libraryId in evt.LibraryIds)
     ApplyRetentionPolicyFor(libraryId, evt.TrackId);
 }
 ```
+
+### The completion topic
+
+`context.EventBus` is gone; a plugin never holds the host bus itself. The
+host still tells a plugin the moment a track's analysis lands — Ok or Failed
+— by publishing `PluginTopics.MusicAnalysisCompleted` on the topic facade a
+plugin already uses for its own events, `IPluginContext.Events.Subscribe`:
+
+```csharp
+context.Events.Subscribe<PluginMusicAnalysisCompleted>(
+    PluginTopics.MusicAnalysisCompleted,
+    async (completed, ct) =>
+    {
+        if (completed.State != "Ok")
+        {
+            return; // nothing to build the DJ row from yet
+        }
+
+        await AnalyzeOneTrackAsync(completed.TrackId, ct);
+    }
+);
+```
+
+`PluginMusicAnalysisCompleted` carries the same four values as
+`TrackAudioAnalysisCompletedEvent` above — `TrackId`, `AnalyzerVersion`,
+`State` and `LibraryIds` — with `LibraryIds` as the Ulid text form, since a
+topic payload crosses a plugin's own load context and carries no host type.
 
 ## The dashboard cap setting
 

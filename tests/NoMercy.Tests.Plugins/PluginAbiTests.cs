@@ -10,8 +10,8 @@
 // -----------------------------------------------------------------------------
 
 using System.Reflection;
-using NoMercy.PluginSdk.Abstractions;
 using FluentAssertions;
+using NoMercy.PluginSdk.Abstractions;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;
@@ -22,7 +22,8 @@ public class PluginAbiTests
     [InlineData([null, true])]
     [InlineData(["", true])]
     [InlineData(["12.0", true])]
-    [InlineData(["12.1", false])]
+    [InlineData(["12.1", true])]
+    [InlineData(["12.2", false])]
     [InlineData(["11.0", false])]
     [InlineData(["11.9", false])]
     [InlineData(["10.0", false])]
@@ -52,9 +53,9 @@ public class PluginAbiTests
     }
 
     [Fact]
-    public void Current_IsTwelveZero()
+    public void Current_IsTwelveOne()
     {
-        Assert.Equal(new Version(12, 0), PluginAbi.Current);
+        Assert.Equal(new Version(12, 1), PluginAbi.Current);
     }
 
     /// <summary>

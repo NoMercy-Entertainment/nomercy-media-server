@@ -13,7 +13,9 @@ namespace NoMercy.PluginSdk.Abstractions;
 
 public static class PluginAbi
 {
-    public static Version Current { get; } = new(12, 0);
+    // 12.1 added IPluginMusicQuery.GetFailedDjAnalysisAsync, PluginTrackDjFailure and the
+    // PluginTopics.MusicAnalysisCompleted topic. Additive for every plugin already loading.
+    public static Version Current { get; } = new(12, 1);
 
     /// <summary>
     /// The oldest major this server can load at all.

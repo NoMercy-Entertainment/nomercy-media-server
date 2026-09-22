@@ -17,7 +17,9 @@ using NoMercy.Database;
 using NoMercy.Database.Models.Music;
 using NoMercy.Events;
 using NoMercy.Events.Music;
+using NoMercy.Events.Plugins;
 using NoMercy.MediaProcessing.AudioAnalysis;
+using NoMercy.PluginSdk.Abstractions;
 using NoMercy.Storage;
 using NoMercyQueue.Core.Interfaces;
 
@@ -243,6 +245,24 @@ public class MusicAnalysisJob : IShouldQueue
                     State = row.State.ToString(),
                     LibraryIds = libraryIds,
                 }
+            );
+
+            // Sender is Ulid.Empty: this event comes from the host, not from a
+            // plugin, and PluginId.Empty is how the in-process PluginEvents
+            // facade (which matches subscribers on the topic name, not on who
+            // published it) lets a host-raised topic reach a plugin the same
+            // way one plugin's own event reaches another.
+            await _eventBus.PublishAsync(
+                PluginMessageEvent.From(
+                    Ulid.Empty,
+                    PluginTopics.MusicAnalysisCompleted,
+                    new PluginMusicAnalysisCompleted(
+                        TrackId,
+                        row.AnalyzerVersion,
+                        row.State.ToString(),
+                        libraryIds.Select(id => id.ToString()).ToList()
+                    )
+                )
             );
         }
         catch (Exception ex) when (ex is not OperationCanceledException)

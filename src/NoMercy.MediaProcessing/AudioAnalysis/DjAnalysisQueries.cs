@@ -116,4 +116,31 @@ public static class DjAnalysisQueries
             )
             .OrderBy(trackId => trackId);
     }
+
+    /// <summary>
+    /// The DJ rows in the named library that a plugin's run marked
+    /// <see cref="AudioAnalysisState.Failed" /> at <paramref name="djAnalyzerVersion" />,
+    /// which are the rows <see cref="TracksNeedingDjAnalysis" /> leaves out on
+    /// purpose. A plugin reads them to show why tracks failed and to release
+    /// them for another attempt; the worklist alone never offers those tracks
+    /// again while the version stands. Rows at another version, and Ok or
+    /// Pending rows, are not returned.
+    /// </summary>
+    public static IQueryable<TrackDjAnalysis> FailedDjAnalysis(
+        MediaContext context,
+        Ulid libraryId,
+        int djAnalyzerVersion
+    )
+    {
+        return context
+            .TrackDjAnalysis.AsNoTracking()
+            .Where(dj =>
+                dj.State == AudioAnalysisState.Failed
+                && dj.DjAnalyzerVersion == djAnalyzerVersion
+                && context.LibraryTrack.Any(libraryTrack =>
+                    libraryTrack.LibraryId == libraryId && libraryTrack.TrackId == dj.TrackId
+                )
+            )
+            .OrderBy(dj => dj.TrackId);
+    }
 }
