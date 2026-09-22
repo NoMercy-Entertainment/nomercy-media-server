@@ -8,7 +8,7 @@
   </PropertyGroup>
 
   <!--
-    Its own assembly rather than a type in NoMercy.Plugins.Abstractions.
+    Its own assembly rather than a type in NoMercy.PluginSdk.Abstractions.
 
     A plugin inherits PluginControllerBase, so the type must keep one identity
     across the load-context boundary, which means the assembly holding it is in
