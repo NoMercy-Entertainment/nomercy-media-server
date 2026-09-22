@@ -60,6 +60,12 @@
     "summary": "The plugin started a process without process.spawn."
   },
   {
+    "code": "PLUGIN_PROCESS_SPAWN_OUTSIDE_SANDBOX",
+    "severity": "blocked",
+    "capability": "process.spawn",
+    "summary": "The plugin's child process would have run outside the plugin's own sandbox."
+  },
+  {
     "code": "PLUGIN_SOCKET_UNDECLARED",
     "severity": "blocked",
     "capability": "network.dial",
