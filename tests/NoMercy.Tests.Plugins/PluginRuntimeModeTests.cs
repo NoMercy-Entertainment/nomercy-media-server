@@ -99,6 +99,41 @@ public class PluginRuntimeModeTests : IDisposable
         PluginRuntimeMode.Load(_folder).For(moved).Should().Be(PluginIsolation.OutOfProcess);
     }
 
+    /// <summary>
+    /// The dashboard says so out loud when this server cannot yet do what was
+    /// asked. Saved silently, the owner believed a plugin was isolated while
+    /// every call still ran in the server's own process.
+    /// </summary>
+    [Fact]
+    public void AModeThatIsolatesNothingIsNotReportedAsAskingForIt()
+    {
+        PluginRuntimeMode.InProcess.AnyOutOfProcess.Should().BeFalse();
+    }
+
+    [Fact]
+    public void AskingForItEverywhereCountsAsAskingForIt()
+    {
+        new PluginRuntimeMode(PluginIsolation.OutOfProcess).AnyOutOfProcess.Should().BeTrue();
+    }
+
+    /// <summary>
+    /// One plugin moved out is still a server not doing what was asked, and
+    /// the default alone would report nothing.
+    /// </summary>
+    [Fact]
+    public void AskingForItForOnePluginCountsAsAskingForIt()
+    {
+        new PluginRuntimeMode(
+            PluginIsolation.InProcess,
+            new Dictionary<string, PluginIsolation>
+            {
+                [Ulid.NewUlid().ToString()] = PluginIsolation.OutOfProcess,
+            }
+        )
+            .AnyOutOfProcess.Should()
+            .BeTrue();
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_folder))

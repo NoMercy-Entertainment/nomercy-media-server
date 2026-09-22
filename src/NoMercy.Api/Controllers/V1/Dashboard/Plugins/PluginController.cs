@@ -520,13 +520,7 @@ public class PluginController(
     {
         PluginRuntimeMode mode = PluginRuntimeMode.Load();
 
-        return Ok(
-            new PluginRuntimeModeDto
-            {
-                Isolation = mode.Default.ToString(),
-                PerPlugin = mode.PerPlugin ?? new Dictionary<string, PluginIsolation>(),
-            }
-        );
+        return Ok(DescribeRuntime(mode));
     }
 
     [HttpPost("runtime-mode")]
@@ -540,12 +534,25 @@ public class PluginController(
         PluginRuntimeMode mode = new(isolation, request.PerPlugin);
         mode.Save();
 
-        return Ok(
-            new PluginRuntimeModeDto
-            {
-                Isolation = mode.Default.ToString(),
-                PerPlugin = mode.PerPlugin ?? new Dictionary<string, PluginIsolation>(),
-            }
-        );
+        return Ok(DescribeRuntime(mode));
+    }
+
+    /// <summary>
+    /// The mode, and whether this server can actually do it.
+    /// <para>
+    /// The choice is saved either way, because it is the owner's and it is
+    /// what they will get once the runtime lands. Returning a plain OK let
+    /// them believe a plugin was isolated while every call still ran in the
+    /// server's own process.
+    /// </para>
+    /// </summary>
+    private static PluginRuntimeModeDto DescribeRuntime(PluginRuntimeMode mode)
+    {
+        return new PluginRuntimeModeDto
+        {
+            Isolation = mode.Default.ToString(),
+            PerPlugin = mode.PerPlugin ?? new Dictionary<string, PluginIsolation>(),
+            Notice = mode.AnyOutOfProcess ? PluginIsolationLevel.PendingKey : null,
+        };
     }
 }
