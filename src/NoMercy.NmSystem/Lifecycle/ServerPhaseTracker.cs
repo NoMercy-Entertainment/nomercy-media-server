@@ -119,10 +119,24 @@ public sealed class ServerPhaseTracker : IServerPhaseTracker
             tcs = _stageSignals.GetValueOrDefault(stage);
         }
 
-        _logger.LogInformation("Boot stage complete: {Stage}", stage);
+        _logger.LogInformation("Boot stage complete: {Stage}", Describe(stage));
         tcs?.TrySetResult();
         StageCompleted?.Invoke(stage);
     }
+
+    /// <summary>
+    /// A phrase a reader of the live boot log can act on. The bare enum name
+    /// ("Network") reads as "networking is done", but this stage only covers
+    /// external-IP/UPnP discovery — connectivity strategy attempts run
+    /// separately and can still be in progress when this fires, which looked
+    /// like an out-of-order or premature completion in the log.
+    /// </summary>
+    private static string Describe(BootStage stage) =>
+        stage switch
+        {
+            BootStage.Network => "Network discovery (external IP, UPnP)",
+            _ => stage.ToString(),
+        };
 
     public async Task WhenReachedAsync(BootStage stage, CancellationToken ct)
     {
