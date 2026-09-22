@@ -35,10 +35,27 @@ public static class PluginSandboxLimits
     public const uint ProcessesPerPlugin = 16;
 }
 
+/// <summary>What the server is about to run, before a sandbox has its say.</summary>
+public sealed record PluginSandboxLaunch(string FileName, IReadOnlyList<string> Arguments);
+
+/// <summary>What the owner granted, as a sandbox needs to know it.</summary>
+public sealed record PluginSandboxGrants(string DataFolder, bool AllowsSpawn);
+
 public interface IPluginSandbox
 {
     /// <summary>Whether this sandbox can do anything on the machine it is running on.</summary>
     bool Available { get; }
+
+    /// <summary>
+    /// How the process must be started for this sandbox to hold it.
+    /// <para>
+    /// Windows and Linux confine a process that is already running, so they
+    /// hand the launch back unchanged. macOS has no way to confine a running
+    /// process, so its profile has to be in place before the first
+    /// instruction: there, this wraps the command.
+    /// </para>
+    /// </summary>
+    PluginSandboxLaunch Wrap(PluginSandboxLaunch launch) => launch;
 
     /// <summary>
     /// Confines a process that is already running. Returns false when the
