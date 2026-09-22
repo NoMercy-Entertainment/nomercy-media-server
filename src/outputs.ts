@@ -6,9 +6,12 @@ import { emitCapabilityIndex } from './emit-capability-index.js';
 import { emitCapabilityNav } from './emit-capability-nav.js';
 import { emitCapabilityPage } from './emit-capability-page.js';
 import { emitDocsIndex } from './emit-docs-index.js';
+import { emitFixturesKotlin, emitFixturesTypescript } from './emit-fixture-clients.js';
+import { emitFixtures } from './emit-fixtures.js';
+import { emitSinkComponentsTypescript, sinkComponentNames } from './emit-sink-components.js';
 import { emitCapabilitiesKotlin } from './emit-kotlin.js';
 import { emitCapabilitiesTypescript } from './emit-typescript.js';
-import { ABSTRACTIONS_GENERATED, ANALYZERS_GENERATED, DOCS_CAPABILITY_PAGES, DOCS_INDEX, DOCS_PLUGIN_NAV, DOCS_PLUGINS, KMP_CAPABILITIES, WEB_CAPABILITIES } from './paths.js';
+import { ABSTRACTIONS_GENERATED, ANALYZERS_GENERATED, CAST_FIXTURES, DOCS_CAPABILITY_PAGES, DOCS_INDEX, DOCS_PLUGIN_NAV, DOCS_PLUGINS, FIXTURES, KMP_CAPABILITIES, CAST_SINK_COMPONENTS, KMP_FIXTURES, SINK_FIXTURES, WEB_CAPABILITIES, WEB_FIXTURES, WEB_SINK_COMPONENTS } from './paths.js';
 
 export interface GeneratedFile { path: string; content: string }
 
@@ -22,6 +25,8 @@ export const KMP_PACKAGE: string = 'tv.nomercy.app.plugins';
  */
 export function generatedFiles(): GeneratedFile[] {
   const contract = loadContract();
+  const fixtures = emitFixtures(contract.slots);
+  const sinkComponents = emitSinkComponentsTypescript(sinkComponentNames(SINK_FIXTURES));
 
   return [
     { path: join(ABSTRACTIONS_GENERATED, 'PluginCapabilityVocabulary.cs'), content: emitCapabilityVocabulary(contract.capabilities) },
@@ -46,5 +51,19 @@ export function generatedFiles(): GeneratedFile[] {
 
     { path: join(DOCS_PLUGINS, 'capabilities.mdx'), content: emitCapabilityIndex(contract.capabilities) },
     { path: DOCS_PLUGIN_NAV, content: emitCapabilityNav(contract.capabilities) },
+
+    // One placement per declared slot, embedded where each client's test
+    // runner can reach it. A Kotlin common test has no filesystem, so reading
+    // the JSON off disk would leave the one client with the most screens out.
+    { path: FIXTURES, content: fixtures },
+    { path: WEB_FIXTURES, content: emitFixturesTypescript(fixtures) },
+    { path: CAST_FIXTURES, content: emitFixturesTypescript(fixtures) },
+    { path: KMP_FIXTURES, content: emitFixturesKotlin(fixtures, KMP_PACKAGE) },
+
+    // What the kitchen sink really puts on the wire, so each client can be
+    // asked whether it draws all of it rather than agreeing with a list it
+    // wrote itself.
+    { path: WEB_SINK_COMPONENTS, content: sinkComponents },
+    { path: CAST_SINK_COMPONENTS, content: sinkComponents },
   ];
 }
