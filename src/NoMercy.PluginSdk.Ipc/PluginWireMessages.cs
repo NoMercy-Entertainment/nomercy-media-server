@@ -81,6 +81,18 @@ public sealed record PluginCallResponse
 [DataContract]
 public sealed record PluginSpawnPermit([property: DataMember(Order = 1)] string ResolvedPath);
 
+/// <summary>
+/// Which file a native library name resolves to, for the plugin's own process
+/// to load.
+/// <para>
+/// Loaded on the server it would land in the server's load context, where the
+/// plugin's <c>DllImport</c> declarations never look, and its code would run
+/// with the server's rights rather than inside the sandbox.
+/// </para>
+/// </summary>
+[DataContract]
+public sealed record PluginNativePermit([property: DataMember(Order = 1)] string ResolvedPath);
+
 /// <summary>What the health page reports about the process itself.</summary>
 [DataContract]
 public sealed record PluginHealthSnapshot(

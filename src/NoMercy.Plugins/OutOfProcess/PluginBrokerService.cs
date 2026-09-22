@@ -49,7 +49,12 @@ public sealed class PluginBrokerService(
     IPluginUsers users,
     IPluginScheduler scheduler,
     IPluginSettings settings,
-    IPluginUserData user
+    IPluginUserData user,
+    IPluginLibraryWriter? libraryWriter = null,
+    IPluginLibraryImport? libraryImport = null,
+    IPluginBundleSignature? signature = null,
+    string? pluginDirectory = null,
+    IPluginMedia? media = null
 ) : IPluginBrokerService
 {
     private static readonly JsonSerializerOptions Json = PluginWireJson.Options;
@@ -78,6 +83,13 @@ public sealed class PluginBrokerService(
             // channel it would arrive as a server that stopped answering.
             return PluginCallResponse.Refused(Wire(refused.Refusal));
         }
+        catch (JsonException)
+        {
+            // Arguments the server cannot read are a refusal, not a channel
+            // that stopped answering. Thrown here it would reach the child as
+            // the latter, and the plugin author would read nothing at all.
+            return PluginCallResponse.Refused(Wire(NotUnderstood(request.Facade, request.Member)));
+        }
     }
 
     private async Task<PluginCallResponse> Route(PluginCallRequest request)
@@ -96,6 +108,14 @@ public sealed class PluginBrokerService(
             "scheduler" => await Scheduler(request),
             "settings" => await Settings(request),
             "user" => await User(request),
+            "libraryWriter" => await LibraryWriter(request),
+            "libraryImport" => await LibraryImport(request),
+            "native" => Native(request),
+            "media.proxy" => await MediaProxy(request),
+            "media.transcode" => await MediaTranscode(request),
+            "media.remux" => await MediaRemux(request),
+            "media.live" => await MediaLive(request),
+            "media.record" => await MediaRecord(request),
             _ => Refuse(
                 PluginRefusalCodes.HostServicesRemoved,
                 $"The plugin asked the server for {request.Facade}.{request.Member}.",
@@ -558,6 +578,281 @@ public sealed class PluginBrokerService(
             ? PluginCallResponse.Refused(Wire(refusal))
             : await answer();
 
+    private async Task<PluginCallResponse> LibraryWriter(PluginCallRequest request)
+    {
+        if (capabilities.Check(pluginId, PluginCapabilityNames.LibraryWrite) is { } refusal)
+            return PluginCallResponse.Refused(Wire(refusal));
+
+        if (libraryWriter is null)
+            return Absent("IPluginContext.LibraryWriter");
+
+        WriterCall call =
+            JsonSerializer.Deserialize<WriterCall>(request.PayloadJson, Json) ?? new(null, null);
+
+        switch (request.Member)
+        {
+            case nameof(IPluginLibraryWriter.GetWritableLibrariesAsync):
+                return Value(await libraryWriter.GetWritableLibrariesAsync());
+
+            case nameof(IPluginLibraryWriter.RecycleAsync):
+                await libraryWriter.RecycleAsync(call.Path ?? string.Empty);
+                return PluginCallResponse.Value("null");
+
+            case nameof(IPluginLibraryWriter.DeleteAsync):
+                await libraryWriter.DeleteAsync(call.Path ?? string.Empty);
+                return PluginCallResponse.Value("null");
+
+            case nameof(IPluginLibraryWriter.MoveAsync):
+                await libraryWriter.MoveAsync(
+                    call.Path ?? string.Empty,
+                    call.DestinationPath ?? string.Empty
+                );
+                return PluginCallResponse.Value("null");
+
+            case nameof(IPluginLibraryWriter.CanWriteAsync):
+                return Value(await libraryWriter.CanWriteAsync(call.Path ?? string.Empty));
+
+            default:
+                return NoSuchMember("libraryWriter", request.Member);
+        }
+    }
+
+    private async Task<PluginCallResponse> LibraryImport(PluginCallRequest request)
+    {
+        if (capabilities.Check(pluginId, PluginCapabilityNames.LibraryImport) is { } refusal)
+            return PluginCallResponse.Refused(Wire(refusal));
+
+        if (libraryImport is null)
+            return Absent("IPluginContext.LibraryImport");
+
+        ImportCall? call = JsonSerializer.Deserialize<ImportCall>(request.PayloadJson, Json);
+
+        if (call?.Request is null)
+            return PluginCallResponse.Refused(Wire(NotUnderstood("libraryImport", request.Member)));
+
+        return request.Member switch
+        {
+            nameof(IPluginLibraryImport.RegisterAsync) => Value(
+                await libraryImport.RegisterAsync(call.Request)
+            ),
+            nameof(IPluginLibraryImport.StreamAsync) => Value(
+                await libraryImport.StreamAsync(call.Request)
+            ),
+            _ => NoSuchMember("libraryImport", request.Member),
+        };
+    }
+
+    /// <summary>
+    /// Answers which file, and loads nothing.
+    /// <para>
+    /// A native library loaded here would land in the server's own load
+    /// context, where the plugin's <c>DllImport</c> declarations never look and
+    /// where its code would run with the server's rights. The plugin's process
+    /// loads it, so it lands in the load context that asked for it, inside the
+    /// sandbox that already holds that process.
+    /// </para>
+    /// </summary>
+    private PluginCallResponse Native(PluginCallRequest request)
+    {
+        if (request.Member != nameof(IPluginNative.LoadAsync))
+            return NoSuchMember("native", request.Member);
+
+        if (capabilities.Check(pluginId, PluginCapabilityNames.NativeCode) is { } refusal)
+            return PluginCallResponse.Refused(Wire(refusal));
+
+        NativeCall call =
+            JsonSerializer.Deserialize<NativeCall>(request.PayloadJson, Json) ?? new(null);
+
+        string library = call.Library ?? string.Empty;
+
+        // A bare name, never a path. The signature says the marketplace built
+        // the bundle; it says nothing about a file reached from outside it.
+        if (string.IsNullOrWhiteSpace(library) || IsPath(library))
+            return PluginCallResponse.Refused(
+                Wire(PluginRefusalMessages.FileOutsideGrant(pluginId.ToString(), library))
+            );
+
+        if (signature?.IsMarketplaceSigned(pluginId) != true)
+            return PluginCallResponse.Refused(
+                Wire(PluginRefusalMessages.NativeCodeUnsigned(pluginId.ToString(), library))
+            );
+
+        string path = Path.Combine(pluginDirectory ?? string.Empty, NativeFileName(library));
+
+        if (!File.Exists(path))
+            return PluginCallResponse.Refused(
+                Wire(PluginRefusalMessages.FileOutsideGrant(pluginId.ToString(), library))
+            );
+
+        return Value(new PluginNativePermit(path));
+    }
+
+    private static bool IsPath(string library) =>
+        library.Contains('/')
+        || library.Contains('\\')
+        || library.Contains("..")
+        || library.Contains(':');
+
+    private static string NativeFileName(string library)
+    {
+        if (OperatingSystem.IsWindows())
+            return $"{library}.dll";
+
+        return OperatingSystem.IsMacOS() ? $"lib{library}.dylib" : $"lib{library}.so";
+    }
+
+    private async Task<PluginCallResponse> MediaProxy(PluginCallRequest request)
+    {
+        if (capabilities.Check(pluginId, PluginCapabilityNames.MediaProxy) is { } refusal)
+            return PluginCallResponse.Refused(Wire(refusal));
+
+        if (media is null)
+            return Absent("IPluginContext.Media");
+
+        ProxyCall call =
+            JsonSerializer.Deserialize<ProxyCall>(request.PayloadJson, Json) ?? new(null, null);
+
+        switch (request.Member)
+        {
+            case nameof(IPluginMediaProxy.MintAsync):
+                if (call.Request is null)
+                    return PluginCallResponse.Refused(
+                        Wire(NotUnderstood("media.proxy", request.Member))
+                    );
+
+                return Value(await media.Proxy.MintAsync(call.Request));
+
+            case nameof(IPluginMediaProxy.MintImageAsync):
+                if (call.Source is null)
+                    return PluginCallResponse.Refused(
+                        Wire(NotUnderstood("media.proxy", request.Member))
+                    );
+
+                return Value(await media.Proxy.MintImageAsync(call.Source));
+
+            default:
+                return NoSuchMember("media.proxy", request.Member);
+        }
+    }
+
+    private async Task<PluginCallResponse> MediaTranscode(PluginCallRequest request)
+    {
+        if (capabilities.Check(pluginId, PluginCapabilityNames.MediaTranscode) is { } refusal)
+            return PluginCallResponse.Refused(Wire(refusal));
+
+        if (media is null)
+            return Absent("IPluginContext.Media");
+
+        if (request.Member != nameof(IPluginMediaTranscode.StartAsync))
+            return NoSuchMember("media.transcode", request.Member);
+
+        RemuxCall? call = JsonSerializer.Deserialize<RemuxCall>(request.PayloadJson, Json);
+
+        if (call?.Request is null)
+            return PluginCallResponse.Refused(
+                Wire(NotUnderstood("media.transcode", request.Member))
+            );
+
+        return Value(await media.Transcode.StartAsync(call.Request));
+    }
+
+    private async Task<PluginCallResponse> MediaRemux(PluginCallRequest request)
+    {
+        if (capabilities.Check(pluginId, PluginCapabilityNames.MediaRemux) is { } refusal)
+            return PluginCallResponse.Refused(Wire(refusal));
+
+        if (media is null)
+            return Absent("IPluginContext.Media");
+
+        if (request.Member != nameof(IPluginMediaRemux.StartAsync))
+            return NoSuchMember("media.remux", request.Member);
+
+        RemuxCall? call = JsonSerializer.Deserialize<RemuxCall>(request.PayloadJson, Json);
+
+        if (call?.Request is null)
+            return PluginCallResponse.Refused(Wire(NotUnderstood("media.remux", request.Member)));
+
+        return Value(await media.Remux.StartAsync(call.Request));
+    }
+
+    private async Task<PluginCallResponse> MediaLive(PluginCallRequest request)
+    {
+        if (capabilities.Check(pluginId, PluginCapabilityNames.MediaLive) is { } refusal)
+            return PluginCallResponse.Refused(Wire(refusal));
+
+        if (media is null)
+            return Absent("IPluginContext.Media");
+
+        LiveCall call =
+            JsonSerializer.Deserialize<LiveCall>(request.PayloadJson, Json)
+            ?? new(null, null, null);
+
+        switch (request.Member)
+        {
+            case nameof(IPluginMediaLive.PublishAsync):
+                await media.Live.PublishAsync(call.Channels ?? []);
+                return PluginCallResponse.Value("null");
+
+            case nameof(IPluginMediaLive.PublishGuideAsync):
+                await media.Live.PublishGuideAsync(call.Guide ?? []);
+                return PluginCallResponse.Value("null");
+
+            case nameof(IPluginMediaLive.PublishGroupsAsync):
+                await media.Live.PublishGroupsAsync(call.Groups ?? []);
+                return PluginCallResponse.Value("null");
+
+            default:
+                return NoSuchMember("media.live", request.Member);
+        }
+    }
+
+    private async Task<PluginCallResponse> MediaRecord(PluginCallRequest request)
+    {
+        if (capabilities.Check(pluginId, PluginCapabilityNames.MediaRecord) is { } refusal)
+            return PluginCallResponse.Refused(Wire(refusal));
+
+        if (media is null)
+            return Absent("IPluginContext.Media");
+
+        RecordCall call =
+            JsonSerializer.Deserialize<RecordCall>(request.PayloadJson, Json) ?? new(null, null);
+
+        switch (request.Member)
+        {
+            case nameof(IPluginRecorder.ScheduleAsync):
+                if (call.Request is null)
+                    return PluginCallResponse.Refused(
+                        Wire(NotUnderstood("media.record", request.Member))
+                    );
+
+                return Value(await media.Record.ScheduleAsync(call.Request));
+
+            case nameof(IPluginRecorder.CancelAsync):
+                if (call.Recording is null)
+                    return PluginCallResponse.Refused(
+                        Wire(NotUnderstood("media.record", request.Member))
+                    );
+
+                await media.Record.CancelAsync(call.Recording.Value);
+                return PluginCallResponse.Value("null");
+
+            case nameof(IPluginRecorder.ListAsync):
+                return Value(await media.Record.ListAsync());
+
+            default:
+                return NoSuchMember("media.record", request.Member);
+        }
+    }
+
+    /// <summary>
+    /// The capability was granted and the facade is still not here, which is a
+    /// fact about this install rather than about the plugin.
+    /// </summary>
+    private PluginCallResponse Absent(string facade) =>
+        PluginCallResponse.Refused(
+            Wire(PluginRefusalMessages.FacadeNotOnThisHost(pluginId.ToString(), facade))
+        );
+
     /// <summary>A value that is already JSON, passed through rather than wrapped again.</summary>
     private static string Raw(JsonElement? value) =>
         value is null ? "null" : value.Value.GetRawText();
@@ -639,4 +934,22 @@ public sealed class PluginBrokerService(
     private sealed record ScheduleCall(string? Name, DateTimeOffset? When);
 
     private sealed record SettingCall(string? Key, JsonElement? Value);
+
+    private sealed record WriterCall(string? Path, string? DestinationPath);
+
+    private sealed record ImportCall(PluginImportRequest? Request);
+
+    private sealed record NativeCall(string? Library);
+
+    private sealed record ProxyCall(PluginProxyRequest? Request, Uri? Source);
+
+    private sealed record RemuxCall(PluginRemuxRequest? Request);
+
+    private sealed record LiveCall(
+        IReadOnlyList<PluginLiveChannel>? Channels,
+        IReadOnlyList<PluginEpgProgram>? Guide,
+        IReadOnlyList<PluginChannelGroup>? Groups
+    );
+
+    private sealed record RecordCall(PluginRecordingRequest? Request, JobId? Recording);
 }

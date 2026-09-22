@@ -9,6 +9,8 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Text.Json.Serialization;
+
 namespace NoMercy.PluginSdk.Abstractions;
 
 /// <summary>
@@ -18,8 +20,13 @@ namespace NoMercy.PluginSdk.Abstractions;
 /// </summary>
 public sealed record PluginMediaUrl
 {
+    [JsonInclude]
     public Uri Url { get; internal init; } = null!;
+
+    [JsonInclude]
     public DateTimeOffset ExpiresAt { get; internal init; }
+
+    [JsonInclude]
     public MediaId Media { get; internal init; }
 
     /// <summary>
