@@ -35,12 +35,61 @@ export function emitFixturesTypescript(fixturesJson: string): string {
     '\t};',
     '}',
     '',
-    `export const pluginFixtures = ${fixturesJson.trimEnd()} as unknown as {`,
+    `export const pluginFixtures = ${literal(JSON.parse(fixturesJson), 0)} as unknown as {`,
     '\tplugin: string;',
     '\tfixtures: PluginFixture[];',
     '};',
     '',
   ].join('\n');
+}
+
+const IDENTIFIER = /^[A-Za-z_$][\w$]*$/;
+
+/**
+ * The same data as a TypeScript literal, in the style both apps lint for.
+ *
+ * Pasted in as JSON it is double-quoted and space-indented, and the receiver's
+ * lint step failed on the generated file rather than on anything anybody wrote.
+ */
+function literal(value: unknown, depth: number): string {
+  const pad = '\t'.repeat(depth + 1);
+  const close = '\t'.repeat(depth);
+
+  if (value === null) {
+    return 'null';
+  }
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      return '[]';
+    }
+
+    return `[\n${value.map(one => `${pad}${literal(one, depth + 1)},`).join('\n')}\n${close}]`;
+  }
+
+  if (typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>);
+
+    if (entries.length === 0) {
+      return '{}';
+    }
+
+    const rows = entries
+      .map(([name, one]) => `${pad}${key(name)}: ${literal(one, depth + 1)},`)
+      .join('\n');
+
+    return `{\n${rows}\n${close}}`;
+  }
+
+  if (typeof value === 'string') {
+    return `'${value.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n')}'`;
+  }
+
+  return String(value);
+}
+
+function key(name: string): string {
+  return IDENTIFIER.test(name) ? name : `'${name.replace(/'/g, "\\'")}'`;
 }
 
 export function emitFixturesKotlin(fixturesJson: string, packageName: string): string {
