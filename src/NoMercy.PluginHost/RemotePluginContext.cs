@@ -47,6 +47,7 @@ public sealed class RemotePluginContext : IPluginContext
         Grants = new RemoteGrants(call);
         Hub = new RemoteHub(call);
         Configuration = new RemoteConfiguration(call);
+        Process = new RemoteProcess(launch.PluginId, call, launch, new LocalProcessStarter());
         Call = call;
     }
 
@@ -70,6 +71,8 @@ public sealed class RemotePluginContext : IPluginContext
     public IPluginGrants Grants { get; }
 
     public IPluginHubContext Hub { get; }
+
+    public IPluginProcess Process { get; }
 
     /// <summary>
     /// Reads of the owner's library cross the boundary in their own task. A

@@ -26,6 +26,7 @@ public static class PluginRefusalCodes
     public const string TokenInUrl = "PLUGIN_TOKEN_IN_URL";
     public const string FileOutsideGrant = "PLUGIN_FILE_OUTSIDE_GRANT";
     public const string ProcessSpawnUndeclared = "PLUGIN_PROCESS_SPAWN_UNDECLARED";
+    public const string ProcessSpawnOutsideSandbox = "PLUGIN_PROCESS_SPAWN_OUTSIDE_SANDBOX";
     public const string SocketUndeclared = "PLUGIN_SOCKET_UNDECLARED";
     public const string ListenerUndeclared = "PLUGIN_LISTENER_UNDECLARED";
     public const string HostNotAllowed = "PLUGIN_HOST_NOT_ALLOWED";
@@ -133,6 +134,12 @@ public static class PluginRefusalCodes
             PluginRefusalSeverity.Blocked,
             "process.spawn",
             "The plugin started a process without process.spawn."
+        ),
+        new(
+            "PLUGIN_PROCESS_SPAWN_OUTSIDE_SANDBOX",
+            PluginRefusalSeverity.Blocked,
+            "process.spawn",
+            "The plugin's child process would have run outside the plugin's own sandbox."
         ),
         new(
             "PLUGIN_SOCKET_UNDECLARED",

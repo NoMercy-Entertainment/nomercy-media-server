@@ -152,6 +152,23 @@ public static class PluginRefusalMessages
     }
 
     /// <summary>
+    /// A child that would have started beside the plugin's sandbox instead of
+    /// inside it. Distinct from <see cref="ProcessSpawnUndeclared" />: the
+    /// owner granted the binary, and the confinement is what failed.
+    /// </summary>
+    public static PluginRefusal ProcessSpawnOutsideSandbox(string plugin, string binary)
+    {
+        return new PluginRefusal(
+            PluginRefusalCodes.ProcessSpawnOutsideSandbox,
+            plugin,
+            $"The plugin could not start {binary}.",
+            "A plugin's child runs inside the same sandbox as the plugin, and this server could not put it there, so the child would have had rights the plugin itself does not.",
+            "Run the plugin in the server's own process on this platform, or update the server to one whose sandbox covers it. Docs: /nomercy-plugins/capabilities/process-spawn",
+            PluginRefusalSeverity.Blocked
+        );
+    }
+
+    /// <summary>
     /// A plugin reaching a host its granted globs do not cover. Distinct from
     /// <see cref="SocketUndeclared" />: the capability is there and the host is
     /// not, which is a one-line manifest change rather than a redesign.

@@ -23,6 +23,7 @@ using NoMercy.NmSystem.Information;
 using NoMercy.Plugins;
 using NoMercy.Plugins.Abstractions;
 using NoMercy.Plugins.Capabilities;
+using NoMercy.Plugins.OutOfProcess;
 using NoMercy.Plugins.Sideload;
 using NoMercy.Plugins.Verification;
 using NoMercy.Storage;
@@ -504,5 +505,47 @@ public class PluginController(
         PluginDeveloperMode saved = new PluginDeveloperModeStore().Write(request.Enabled);
 
         return Ok(new PluginDeveloperModeDto { Enabled = saved.Enabled });
+    }
+
+    /// <summary>
+    /// Where plugins run on this server.
+    /// <para>
+    /// A setting rather than a file somebody edits: an owner deciding to move
+    /// their plugins out of the server's process is a decision about their own
+    /// machine, and every user-facing choice belongs in the dashboard.
+    /// </para>
+    /// </summary>
+    [HttpGet("runtime-mode")]
+    public IActionResult RuntimeMode()
+    {
+        PluginRuntimeMode mode = PluginRuntimeMode.Load();
+
+        return Ok(
+            new PluginRuntimeModeDto
+            {
+                Isolation = mode.Default.ToString(),
+                PerPlugin = mode.PerPlugin ?? new Dictionary<string, PluginIsolation>(),
+            }
+        );
+    }
+
+    [HttpPost("runtime-mode")]
+    public IActionResult RuntimeMode([FromBody] PluginRuntimeModeDto request)
+    {
+        if (!Enum.TryParse(request.Isolation, ignoreCase: true, out PluginIsolation isolation))
+            return UnprocessableEntityResponse(
+                $"A plugin runs either {nameof(PluginIsolation.InProcess)} or {nameof(PluginIsolation.OutOfProcess)}."
+            );
+
+        PluginRuntimeMode mode = new(isolation, request.PerPlugin);
+        mode.Save();
+
+        return Ok(
+            new PluginRuntimeModeDto
+            {
+                Isolation = mode.Default.ToString(),
+                PerPlugin = mode.PerPlugin ?? new Dictionary<string, PluginIsolation>(),
+            }
+        );
     }
 }
