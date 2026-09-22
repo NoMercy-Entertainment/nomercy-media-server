@@ -41,10 +41,23 @@ public sealed record PluginSandboxLaunch(string FileName, IReadOnlyList<string> 
 /// <summary>What the owner granted, as a sandbox needs to know it.</summary>
 public sealed record PluginSandboxGrants(string DataFolder, bool AllowsSpawn);
 
-public interface IPluginSandbox
+/// <summary>
+/// What holds one plugin's process.
+/// <para>
+/// Disposable because every implementation owns an operating-system handle
+/// that does the holding: the Windows job object kills the tree when its last
+/// handle closes, and the cgroup has to be told to kill and then removed. All
+/// three implemented Dispose while the interface did not declare it, so a
+/// caller holding the interface could not release either.
+/// </para>
+/// </summary>
+public interface IPluginSandbox : IDisposable
 {
     /// <summary>Whether this sandbox can do anything on the machine it is running on.</summary>
     bool Available { get; }
+
+    /// <summary>Nothing to release when nothing was taken.</summary>
+    void IDisposable.Dispose() { }
 
     /// <summary>
     /// How the process must be started for this sandbox to hold it.

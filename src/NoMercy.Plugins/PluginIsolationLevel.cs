@@ -38,4 +38,19 @@ public static class PluginIsolationLevel
     /// </summary>
     public const string EnglishNotice =
         "Runs inside the server: permissions are checked, not isolated.";
+
+    /// <summary>
+    /// Said when the owner asks for out-of-process and this server still runs
+    /// the plugin inside itself.
+    /// <para>
+    /// The choice is saved, because it is the owner's and it is what they will
+    /// get. Returning a plain OK let them believe a plugin was isolated when
+    /// every call was still running in the server's own process, which is a
+    /// worse answer than saying so.
+    /// </para>
+    /// </summary>
+    public const string PendingKey = "plugins.runtime.out_of_process_pending";
+
+    public const string EnglishPending =
+        "Saved. This server still runs every plugin inside itself; the isolated runtime is not finished yet.";
 }

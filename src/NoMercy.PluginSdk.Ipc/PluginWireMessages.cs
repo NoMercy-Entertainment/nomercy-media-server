@@ -29,7 +29,15 @@ public sealed record WireRefusal(
     [property: DataMember(Order = 4)] string Why,
     [property: DataMember(Order = 5)] string Fix,
     [property: DataMember(Order = 6)] string Severity
-);
+)
+{
+    // protobuf-net builds the instance before it has the values. A positional
+    // record has no parameterless constructor, and without this every call
+    // carrying one fails at the far end with a ProtoException naming the type.
+    private WireRefusal()
+        : this(string.Empty, string.Empty, string.Empty, string.Empty, string.Empty, string.Empty)
+    { }
+}
 
 /// <summary>Who is asking, as the plugin process is allowed to know them.</summary>
 [DataContract]
@@ -38,7 +46,11 @@ public sealed record WireCaller(
     [property: DataMember(Order = 2)] string Access,
     [property: DataMember(Order = 3)] string Surface,
     [property: DataMember(Order = 4)] bool IsOwner
-);
+)
+{
+    private WireCaller()
+        : this(string.Empty, string.Empty, string.Empty, false) { }
+}
 
 /// <summary>One call, named by the facade it belongs to rather than by a type.</summary>
 [DataContract]
@@ -48,7 +60,11 @@ public sealed record PluginCallRequest(
     [property: DataMember(Order = 3)] string Member,
     [property: DataMember(Order = 4)] string PayloadJson,
     [property: DataMember(Order = 5)] WireCaller? Caller
-);
+)
+{
+    private PluginCallRequest()
+        : this(string.Empty, string.Empty, string.Empty, string.Empty, null) { }
+}
 
 [DataContract]
 public sealed record PluginCallResponse
@@ -79,7 +95,11 @@ public sealed record PluginCallResponse
 /// </para>
 /// </summary>
 [DataContract]
-public sealed record PluginSpawnPermit([property: DataMember(Order = 1)] string ResolvedPath);
+public sealed record PluginSpawnPermit([property: DataMember(Order = 1)] string ResolvedPath)
+{
+    private PluginSpawnPermit()
+        : this(string.Empty) { }
+}
 
 /// <summary>
 /// Which file a native library name resolves to, for the plugin's own process
@@ -91,7 +111,11 @@ public sealed record PluginSpawnPermit([property: DataMember(Order = 1)] string 
 /// </para>
 /// </summary>
 [DataContract]
-public sealed record PluginNativePermit([property: DataMember(Order = 1)] string ResolvedPath);
+public sealed record PluginNativePermit([property: DataMember(Order = 1)] string ResolvedPath)
+{
+    private PluginNativePermit()
+        : this(string.Empty) { }
+}
 
 /// <summary>What the health page reports about the process itself.</summary>
 [DataContract]
@@ -103,4 +127,8 @@ public sealed record PluginHealthSnapshot(
     [property: DataMember(Order = 5)] long DiskBytes,
     [property: DataMember(Order = 6)] int Restarts,
     [property: DataMember(Order = 7)] string? LastRefusalCode
-);
+)
+{
+    private PluginHealthSnapshot()
+        : this(0, TimeSpan.Zero, 0, 0, 0, 0, null) { }
+}

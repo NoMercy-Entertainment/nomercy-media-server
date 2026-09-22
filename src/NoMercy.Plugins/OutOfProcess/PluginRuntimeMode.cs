@@ -50,6 +50,18 @@ public sealed record PluginRuntimeMode(
         PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
     };
 
+    /// <summary>
+    /// Whether anything here asks for a process of its own.
+    /// <para>
+    /// A fact about the mode rather than about the dashboard, so the health
+    /// page and the settings page cannot come to different answers about
+    /// whether this server is doing what the owner asked.
+    /// </para>
+    /// </summary>
+    public bool AnyOutOfProcess =>
+        Default == PluginIsolation.OutOfProcess
+        || PerPlugin?.Values.Contains(PluginIsolation.OutOfProcess) == true;
+
     public PluginIsolation For(Ulid pluginId) =>
         PerPlugin?.TryGetValue(pluginId.ToString(), out PluginIsolation isolation) == true
             ? isolation

@@ -30,4 +30,12 @@ public record PluginRuntimeModeDto
     [JsonProperty("per_plugin")]
     public IReadOnlyDictionary<string, PluginIsolation> PerPlugin { get; init; } =
         new Dictionary<string, PluginIsolation>();
+
+    /// <summary>
+    /// A key the clients translate, present only when this server cannot yet
+    /// do what was asked. A sentence here would be one the phone and the
+    /// television could not say in the owner's own language.
+    /// </summary>
+    [JsonProperty("notice", NullValueHandling = NullValueHandling.Ignore)]
+    public string? Notice { get; init; }
 }

@@ -57,6 +57,15 @@ builder.WebHost.ConfigureKestrel(options =>
 
 builder.Services.AddCodeFirstGrpc();
 builder.Services.AddSingleton(launch!);
+
+// The only way this process reaches the server. Without it the context is
+// built with no broker and every facade throws on resolution, which reads to
+// the owner as a plugin that would not start rather than a channel nobody
+// dialed.
+builder.Services.AddSingleton<BrokerChannel>();
+builder.Services.AddSingleton<IPluginBrokerService>(provider =>
+    provider.GetRequiredService<BrokerChannel>()
+);
 builder.Services.AddSingleton<RemotePluginContext>();
 builder.Services.AddSingleton<IHostedPlugin>(provider => new HostedPlugin(
     launch!,
