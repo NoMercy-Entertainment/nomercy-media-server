@@ -40,7 +40,8 @@ public sealed class PluginBrokerService(
     Ulid pluginId,
     IPluginCapabilityBroker capabilities,
     IPluginSecretStore secrets,
-    IPluginApprovedBinaries approved
+    IPluginApprovedBinaries approved,
+    IPluginServerInfo server
 ) : IPluginBrokerService
 {
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
@@ -58,10 +59,26 @@ public sealed class PluginBrokerService(
                 "This is a server fault rather than a plugin one. Report it with the server log around the call."
             );
 
+        try
+        {
+            return await Route(request);
+        }
+        catch (PluginRefusedException refused)
+        {
+            // A facade that refused after the broker let the call through
+            // still has to reach the plugin as a refusal. Thrown across the
+            // channel it would arrive as a server that stopped answering.
+            return PluginCallResponse.Refused(Wire(refused.Refusal));
+        }
+    }
+
+    private async Task<PluginCallResponse> Route(PluginCallRequest request)
+    {
         return request.Facade switch
         {
             "secrets" => await Secrets(request),
             "process" => Process(request),
+            "server" => await Server(request),
             _ => Refuse(
                 PluginRefusalCodes.HostServicesRemoved,
                 $"The plugin asked the server for {request.Facade}.{request.Member}.",
@@ -157,6 +174,44 @@ public sealed class PluginBrokerService(
         return Value(new PluginSpawnPermit(path));
     }
 
+    /// <summary>
+    /// What this server is, so a plugin branches on a fact.
+    /// <para>
+    /// No capability gate here: the version and the platform are facts about
+    /// software the owner installed, and the granted paths are filtered by the
+    /// grants already. The free-space probe refuses a folder the owner never
+    /// granted on its own, so the refusal keeps the sentence it always had.
+    /// </para>
+    /// </summary>
+    private async Task<PluginCallResponse> Server(PluginCallRequest request)
+    {
+        switch (request.Member)
+        {
+            case nameof(IPluginServerInfo.Version):
+                return Value(server.Version.ToString());
+
+            case nameof(IPluginServerInfo.Platform):
+                return Value(server.Platform);
+
+            case nameof(IPluginServerInfo.GrantedPaths):
+                return Value(server.GrantedPaths);
+
+            case nameof(IPluginServerInfo.FreeSpaceBytesAsync):
+                FolderCall call =
+                    JsonSerializer.Deserialize<FolderCall>(request.PayloadJson, Json) ?? new(null);
+
+                return Value(await server.FreeSpaceBytesAsync(call.FolderId ?? string.Empty));
+
+            default:
+                return Refuse(
+                    PluginRefusalCodes.HostServicesRemoved,
+                    $"The plugin asked the server for server.{request.Member}.",
+                    "The server facade has no member by that name.",
+                    "Use a member the contract declares. Docs: /nomercy-plugins/handbook/runtime-and-isolation"
+                );
+        }
+    }
+
     public Task<PluginCallResponse> PublishAsync(
         PluginCallRequest request,
         CallContext context = default
@@ -204,4 +259,6 @@ public sealed class PluginBrokerService(
     private sealed record SecretCall(string? Key, string? Value);
 
     private sealed record SpawnCall(string? Binary);
+
+    private sealed record FolderCall(string? FolderId);
 }
