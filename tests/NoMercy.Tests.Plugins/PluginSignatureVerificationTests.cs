@@ -10,8 +10,8 @@
 // -----------------------------------------------------------------------------
 
 using FluentAssertions;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Verification;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Verification;
 using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Crypto.Generators;
 using Org.BouncyCastle.Crypto.Parameters;
@@ -84,7 +84,7 @@ public class PluginSignatureVerificationTests : IDisposable
                 Name = "Sample",
                 Description = "d",
                 Version = "1.0.0",
-                TargetAbi = "11.0",
+                TargetAbi = "12.0",
                 Assembly = "Sample.dll",
             },
             AssemblyPath = "Sample.dll",

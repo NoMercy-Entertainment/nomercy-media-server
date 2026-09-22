@@ -9,9 +9,9 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins.Hub;
+namespace NoMercy.PluginSdk.Hub;
 
 /// <summary>
 /// Builds the push channel a plugin gets, scoped to its own id.

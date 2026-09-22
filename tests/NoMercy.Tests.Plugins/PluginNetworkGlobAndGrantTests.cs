@@ -13,7 +13,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using FluentAssertions;
 using NoMercy.NmSystem.Configuration;
-using NoMercy.Plugins.Network;
+using NoMercy.PluginSdk.Network;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;

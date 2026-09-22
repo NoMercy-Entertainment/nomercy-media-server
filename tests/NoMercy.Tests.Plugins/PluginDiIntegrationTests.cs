@@ -15,8 +15,8 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NoMercy.Events;
-using NoMercy.Plugins;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk;
+using NoMercy.PluginSdk.Abstractions;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;

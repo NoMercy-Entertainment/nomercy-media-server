@@ -11,7 +11,7 @@
 
 using System.Collections.Concurrent;
 
-namespace NoMercy.Plugins.Telemetry;
+namespace NoMercy.PluginSdk.Telemetry;
 
 /// <summary>
 /// Two numbers per plugin, held in memory for the window they cover.

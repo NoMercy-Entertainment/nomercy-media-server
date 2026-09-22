@@ -11,9 +11,9 @@
 
 using System.Collections.Concurrent;
 using System.Text.Json.Nodes;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins.Hub;
+namespace NoMercy.PluginSdk.Hub;
 
 /// <summary>
 /// The handler behind <see cref="IPluginHubContext.Handle" />.

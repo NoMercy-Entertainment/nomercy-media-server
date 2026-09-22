@@ -9,7 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-namespace NoMercy.Plugins.Entitlements;
+namespace NoMercy.PluginSdk.Entitlements;
 
 /// <summary>Everything this server was last told it is entitled to run.</summary>
 public sealed record PluginEntitlementBundle(

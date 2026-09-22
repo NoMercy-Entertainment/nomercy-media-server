@@ -12,7 +12,7 @@
 using NoMercy.Events;
 using NoMercy.Events.Plugins;
 
-namespace NoMercy.Plugins.Telemetry;
+namespace NoMercy.PluginSdk.Telemetry;
 
 /// <summary>
 /// Turns the failure the loader already announces into a number.

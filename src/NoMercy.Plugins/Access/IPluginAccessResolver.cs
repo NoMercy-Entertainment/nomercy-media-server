@@ -9,9 +9,9 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins.Access;
+namespace NoMercy.PluginSdk.Access;
 
 /// <summary>One answer, asked everywhere a plugin could be shown or opened.</summary>
 public interface IPluginAccessResolver

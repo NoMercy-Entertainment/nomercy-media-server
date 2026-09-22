@@ -15,8 +15,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NoMercy.Events;
 using NoMercy.Events.Plugins;
-using NoMercy.Plugins;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk;
+using NoMercy.PluginSdk.Abstractions;
 using NoMercy.Storage;
 using Xunit;
 

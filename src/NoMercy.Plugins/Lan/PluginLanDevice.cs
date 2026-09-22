@@ -9,7 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-namespace NoMercy.Plugins.Lan;
+namespace NoMercy.PluginSdk.Lan;
 
 /// <summary>
 /// One piece of software on the owner's network that a plugin serves.

@@ -11,7 +11,7 @@
 
 using FluentAssertions;
 using Newtonsoft.Json.Linq;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 using NoMercy.Tests.Api.Infrastructure;
 using Xunit;
 
@@ -61,7 +61,10 @@ public class PluginRemovedMemberThroughTheServerTests
             .Should()
             .Contain("get_Services", "the author has to know which member");
         body["why"]!.Value<string>().Should().NotBeNullOrEmpty();
-        body["fix"]!.Value<string>().Should().Contain("11.0");
+        body["fix"]!
+            .Value<string>()
+            .Should()
+            .Contain($"{PluginAbi.Current.Major}.{PluginAbi.Current.Minor}");
         body["severity"]!.Value<string>().Should().Be("blocked");
     }
 
@@ -103,7 +106,7 @@ public class PluginRemovedMemberThroughTheServerTests
 
         public IReadOnlyList<PluginNavEntry> NavEntries =>
             throw new MissingMethodException(
-                "Method not found: 'System.Collections.Generic.IReadOnlyList`1<PluginNavEntry> NoMercy.Plugins.Abstractions.IPluginContext.get_NavEntries()'."
+                "Method not found: 'System.Collections.Generic.IReadOnlyList`1<PluginNavEntry> NoMercy.PluginSdk.Abstractions.IPluginContext.get_NavEntries()'."
             );
 
         public void Initialize(IPluginContext context) { }
@@ -117,7 +120,7 @@ public class PluginRemovedMemberThroughTheServerTests
             // is why the plugin's own try/catch around the call does not catch
             // it: the failure happens at the call site, not inside the body.
             throw new MissingMethodException(
-                "Method not found: 'System.IServiceProvider NoMercy.Plugins.Abstractions.IPluginContext.get_Services()'."
+                "Method not found: 'System.IServiceProvider NoMercy.PluginSdk.Abstractions.IPluginContext.get_Services()'."
             );
         }
     }

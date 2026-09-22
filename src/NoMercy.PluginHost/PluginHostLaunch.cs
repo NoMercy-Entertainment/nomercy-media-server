@@ -9,7 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.Plugins.Ipc;
+using NoMercy.PluginSdk.Ipc;
 
 namespace NoMercy.PluginHost;
 

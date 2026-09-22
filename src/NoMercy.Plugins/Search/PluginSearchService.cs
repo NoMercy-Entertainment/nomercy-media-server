@@ -10,10 +10,10 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.Extensions.Logging;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Access;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Access;
 
-namespace NoMercy.Plugins.Search;
+namespace NoMercy.PluginSdk.Search;
 
 /// <summary>Asks every plugin the caller may use, and waits only so long.</summary>
 public interface IPluginSearchService

@@ -12,8 +12,8 @@
 using System.Text.Json;
 using FluentAssertions;
 using NoMercy.PluginHost;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Ipc;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Ipc;
 using ProtoBuf.Grpc;
 using Xunit;
 

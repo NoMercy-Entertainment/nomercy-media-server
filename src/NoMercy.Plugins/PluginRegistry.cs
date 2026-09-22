@@ -11,7 +11,7 @@
 using System.Collections.Concurrent;
 using System.Diagnostics.CodeAnalysis;
 
-namespace NoMercy.Plugins;
+namespace NoMercy.PluginSdk;
 
 internal sealed class PluginRegistry : IPluginRegistry
 {

@@ -12,7 +12,7 @@
 using System.Reflection;
 using System.Runtime.Loader;
 
-namespace NoMercy.Plugins;
+namespace NoMercy.PluginSdk;
 
 public class PluginLoadContext : AssemblyLoadContext
 {
@@ -42,7 +42,7 @@ public class PluginLoadContext : AssemblyLoadContext
         // used to mean "let the default context's own resolution handle it", but
         // that resolution still matches by full AssemblyName including version —
         // so a plugin built against a newer host release than this one is
-        // running (e.g. its manifest names NoMercy.Plugins.Abstractions 0.1.472
+        // running (e.g. its manifest names NoMercy.PluginSdk.Abstractions 0.1.472
         // while this process loaded 0.1.404) failed to load at all, even though
         // the plugin declared itself ABI-compatible. A shared name is a promise
         // the plugin runs against whatever the host already has loaded, not a

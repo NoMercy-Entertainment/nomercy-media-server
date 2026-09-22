@@ -11,7 +11,7 @@
 
 using FluentAssertions;
 using Microsoft.CodeAnalysis;
-using NoMercy.Plugins.Analyzers;
+using NoMercy.PluginSdk.Analyzers;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins.Analyzers;

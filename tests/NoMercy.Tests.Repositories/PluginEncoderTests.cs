@@ -17,7 +17,7 @@ using NoMercy.Data.Plugins;
 using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.MediaProcessing.Jobs;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 using NoMercyQueue.Core.Interfaces;
 using Xunit;
 

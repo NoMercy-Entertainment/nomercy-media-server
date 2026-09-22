@@ -10,10 +10,10 @@
 // -----------------------------------------------------------------------------
 
 using System.Collections.Concurrent;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Capabilities;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Capabilities;
 
-namespace NoMercy.Plugins.Storage;
+namespace NoMercy.PluginSdk.Storage;
 
 /// <summary>
 /// The granted folders, cached.

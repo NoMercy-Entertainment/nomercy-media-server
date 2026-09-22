@@ -9,7 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-namespace NoMercy.Plugins.Verification;
+namespace NoMercy.PluginSdk.Verification;
 
 /// <summary>
 /// The publisher keys this server will accept a signature from.

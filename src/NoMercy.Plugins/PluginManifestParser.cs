@@ -10,10 +10,10 @@
 // -----------------------------------------------------------------------------
 
 using System.Text.Json;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 using NoMercy.Storage;
 
-namespace NoMercy.Plugins;
+namespace NoMercy.PluginSdk;
 
 public static class PluginManifestParser
 {

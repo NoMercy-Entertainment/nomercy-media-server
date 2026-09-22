@@ -12,7 +12,7 @@
 using Org.BouncyCastle.Crypto.Parameters;
 using Org.BouncyCastle.Crypto.Signers;
 
-namespace NoMercy.Plugins.Verification;
+namespace NoMercy.PluginSdk.Verification;
 
 /// <summary>
 /// Ed25519 verification, and nothing else.

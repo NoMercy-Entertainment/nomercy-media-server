@@ -11,10 +11,10 @@
 
 using System.Text.Json;
 using FluentAssertions;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Access;
-using NoMercy.Plugins.Capabilities;
-using NoMercy.Plugins.Telemetry;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Access;
+using NoMercy.PluginSdk.Capabilities;
+using NoMercy.PluginSdk.Telemetry;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;

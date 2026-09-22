@@ -10,8 +10,8 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.Api.DTOs.Dashboard;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Capabilities;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Capabilities;
 
 namespace NoMercy.Api.Plugins;
 

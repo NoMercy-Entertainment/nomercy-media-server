@@ -9,10 +9,10 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Entitlements;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Entitlements;
 
-namespace NoMercy.Plugins.Access;
+namespace NoMercy.PluginSdk.Access;
 
 /// <summary>
 /// Whether one account may see one plugin on this server, and in what sense.

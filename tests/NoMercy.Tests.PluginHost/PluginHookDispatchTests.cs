@@ -11,7 +11,7 @@
 
 using FluentAssertions;
 using NoMercy.PluginHost;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 using Xunit;
 
 namespace NoMercy.Tests.PluginHost;

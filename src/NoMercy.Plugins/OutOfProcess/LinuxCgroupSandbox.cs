@@ -12,9 +12,9 @@
 using System.Diagnostics;
 using System.Globalization;
 using System.Runtime.Versioning;
-using NoMercy.Plugins.Quotas;
+using NoMercy.PluginSdk.Quotas;
 
-namespace NoMercy.Plugins.OutOfProcess;
+namespace NoMercy.PluginSdk.OutOfProcess;
 
 /// <summary>
 /// A plugin process in its own cgroup v2 slice.

@@ -13,9 +13,9 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Events;
 using NoMercy.Events.Plugins;
-using NoMercy.Plugins;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Capabilities;
+using NoMercy.PluginSdk;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Capabilities;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;
@@ -292,13 +292,13 @@ public class PluginLoaderManifestPathTests : IDisposable
     [Fact]
     public async Task LoadPluginFromManifestAsync_AssemblyHasNoPluginTypes_UnloadsContextWithoutRegisteringAnything()
     {
-        // NoMercy.Plugins.Abstractions.dll is a real, validly-loadable assembly
+        // NoMercy.PluginSdk.Abstractions.dll is a real, validly-loadable assembly
         // with zero concrete IPlugin implementations — a manifest can
         // (incorrectly, but not fatally) point at any real assembly.
         string pluginDir = Path.Combine(_tempPluginsDir, "NoPluginTypes");
         Directory.CreateDirectory(pluginDir);
         string abstractionsSrc = typeof(IPlugin).Assembly.Location;
-        string abstractionsDest = Path.Combine(pluginDir, "NoMercy.Plugins.Abstractions.dll");
+        string abstractionsDest = Path.Combine(pluginDir, "NoMercy.PluginSdk.Abstractions.dll");
         File.Copy(abstractionsSrc, abstractionsDest, overwrite: true);
 
         Ulid manifestId = Ulid.NewUlid();
@@ -308,7 +308,7 @@ public class PluginLoaderManifestPathTests : IDisposable
               "name": "NoPluginTypes",
               "version": "0.1.0",
               "description": "assembly with zero plugin types",
-              "assembly": "NoMercy.Plugins.Abstractions.dll",
+              "assembly": "NoMercy.PluginSdk.Abstractions.dll",
               "autoEnabled": true
             }
             """;

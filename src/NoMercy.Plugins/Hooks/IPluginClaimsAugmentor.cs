@@ -11,7 +11,7 @@
 
 using System.Security.Claims;
 
-namespace NoMercy.Plugins.Hooks;
+namespace NoMercy.PluginSdk.Hooks;
 
 public interface IPluginClaimsAugmentor
 {

@@ -25,8 +25,8 @@ using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.Users;
 using NoMercy.Events;
 using NoMercy.Events.Users;
-using NoMercy.Plugins.Guests;
-using NoMercy.Plugins.UserData;
+using NoMercy.PluginSdk.Guests;
+using NoMercy.PluginSdk.UserData;
 
 namespace NoMercy.Api.Controllers.V1.Dashboard.Admin;
 

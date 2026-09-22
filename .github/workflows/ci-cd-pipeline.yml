@@ -123,18 +123,16 @@ jobs:
           dotnet-version: "10.0.x"
 
       # Third-party plugin authors restore these from nuget.org — there is no
-      # other distribution path. All six are packed together because a version
+      # other distribution path. All four are packed together because a version
       # mismatch across them fails restore with NU1102 naming only the one a
       # caller forgot.
       - name: Pack the plugin contract
         run: |
           for project in \
-            src/NoMercy.Events \
-            src/NoMercy.Design \
-            src/NoMercy.Plugins.Abstractions \
-            src/NoMercy.Plugins.Mvc \
-            src/NoMercy.Plugins.Testing \
-            src/NoMercy.Plugins.Analyzers; do
+            src/NoMercy.PluginSdk.Abstractions \
+            src/NoMercy.PluginSdk.Mvc \
+            src/NoMercy.PluginSdk.Testing \
+            src/NoMercy.PluginSdk.Analyzers; do
             dotnet pack "$project" --configuration Release --output ./output
           done
 
@@ -147,7 +145,7 @@ jobs:
       - name: Publish to NuGet.org
         run: |
           # Loud rather than skipped. The step this replaced warned and exited
-          # zero when it had no key, so six packages silently never published
+          # zero when it had no key, so four packages silently never published
           # and every plugin author stayed on the local feed with a green
           # release.
           if [ -z "${{ steps.nuget_login.outputs.NUGET_API_KEY }}" ]; then

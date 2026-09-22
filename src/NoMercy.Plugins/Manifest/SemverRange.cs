@@ -9,7 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-namespace NoMercy.Plugins.Manifest;
+namespace NoMercy.PluginSdk.Manifest;
 
 /// <summary>
 /// The five range operators the marketplace issues, and nothing else. A range

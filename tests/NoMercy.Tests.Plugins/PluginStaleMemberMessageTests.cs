@@ -9,8 +9,9 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using NoMercy.PluginSdk.Abstractions;
 using FluentAssertions;
-using NoMercy.Plugins;
+using NoMercy.PluginSdk;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;
@@ -36,12 +37,12 @@ public class PluginStaleMemberMessageTests
         string described = PluginStaleMemberLog.Describe(
             Plugin,
             new MissingMethodException(
-                "Method not found: 'NoMercy.Events.IEventBus NoMercy.Plugins.Abstractions.IPluginContext.get_EventBus()'."
+                "Method not found: 'NoMercy.Events.IEventBus NoMercy.PluginSdk.Abstractions.IPluginContext.get_EventBus()'."
             )
         );
 
         described.Should().Contain("get_EventBus", "the author has to know which member");
-        described.Should().Contain("11.0", "and the version to rebuild against");
+        described.Should().Contain(PluginAbi.Current.ToString(), "and the version to rebuild against");
         described.Should().Contain("/nomercy-plugins/migration");
     }
 
@@ -68,7 +69,7 @@ public class PluginStaleMemberMessageTests
         );
 
         described.Should().Contain("get_EventBus");
-        described.Should().Contain("11.0");
+        described.Should().Contain(PluginAbi.Current.ToString());
     }
 
     /// <summary>
@@ -102,6 +103,6 @@ public class PluginStaleMemberMessageTests
         );
 
         described.Should().Be("the tracker refused the announce");
-        described.Should().NotContain("11.0");
+        described.Should().NotContain(PluginAbi.Current.ToString());
     }
 }

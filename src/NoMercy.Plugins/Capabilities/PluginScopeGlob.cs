@@ -11,7 +11,7 @@
 
 using System.Text.RegularExpressions;
 
-namespace NoMercy.Plugins.Capabilities;
+namespace NoMercy.PluginSdk.Capabilities;
 
 /// <summary>
 /// Whether a value falls inside a scope a manifest declared.

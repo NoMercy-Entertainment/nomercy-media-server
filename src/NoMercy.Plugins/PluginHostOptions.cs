@@ -9,7 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-namespace NoMercy.Plugins;
+namespace NoMercy.PluginSdk;
 
 /// <summary>
 /// Host-side options for plugin assembly loading. <see cref="SharedAssemblies"/>
@@ -55,8 +55,8 @@ public record PluginHostOptions
     public static IReadOnlySet<string> DefaultSharedAssemblies { get; } =
         new HashSet<string>
         {
-            "NoMercy.Plugins.Abstractions",
-            "NoMercy.Plugins.Mvc",
+            "NoMercy.PluginSdk.Abstractions",
+            "NoMercy.PluginSdk.Mvc",
             "NoMercy.Events",
             // The design system's contract. A plugin builds its screens from the
             // same component records the host renders, so the two must be the

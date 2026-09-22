@@ -16,8 +16,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Api.DTOs.Dashboard;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Quotas;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Quotas;
 
 namespace NoMercy.Api.Controllers.V1.Dashboard.Plugins;
 

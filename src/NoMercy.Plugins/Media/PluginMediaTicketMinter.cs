@@ -13,9 +13,9 @@ using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins.Media;
+namespace NoMercy.PluginSdk.Media;
 
 /// <summary>
 /// The host mints every media link a plugin hands out.

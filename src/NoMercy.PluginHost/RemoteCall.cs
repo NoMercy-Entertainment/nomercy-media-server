@@ -10,8 +10,8 @@
 // -----------------------------------------------------------------------------
 
 using System.Text.Json;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Ipc;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Ipc;
 
 namespace NoMercy.PluginHost;
 

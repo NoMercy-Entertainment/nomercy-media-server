@@ -10,7 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using System.Net.Sockets;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
 namespace NoMercy.PluginHost;
 

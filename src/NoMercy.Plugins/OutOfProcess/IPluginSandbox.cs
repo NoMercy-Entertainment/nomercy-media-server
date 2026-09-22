@@ -10,9 +10,9 @@
 // -----------------------------------------------------------------------------
 
 using System.Diagnostics;
-using NoMercy.Plugins.Quotas;
+using NoMercy.PluginSdk.Quotas;
 
-namespace NoMercy.Plugins.OutOfProcess;
+namespace NoMercy.PluginSdk.OutOfProcess;
 
 /// <summary>
 /// What the operating system is asked to enforce about a plugin process.

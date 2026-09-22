@@ -31,13 +31,14 @@
     <ProjectReference Include="..\NoMercy.Monitoring\NoMercy.Monitoring.csproj" />
     <ProjectReference Include="..\NoMercy.OpticalMedia\NoMercy.OpticalMedia.csproj" />
     <ProjectReference Include="..\NoMercy.Events\NoMercy.Events.csproj" />
-    <ProjectReference Include="..\NoMercy.Plugins.Abstractions\NoMercy.Plugins.Abstractions.csproj" />
+    <ProjectReference Include="..\NoMercy.Design\NoMercy.Design.csproj" />
+    <ProjectReference Include="..\NoMercy.PluginSdk.Abstractions\NoMercy.PluginSdk.Abstractions.csproj" />
     <!--
       The host has to load this one for a plugin's controller base to keep a
       single type identity across the load-context boundary. It is in the
       shared-assembly set; nothing shares an assembly the host never loaded.
     -->
-    <ProjectReference Include="..\NoMercy.Plugins.Mvc\NoMercy.Plugins.Mvc.csproj" />
+    <ProjectReference Include="..\NoMercy.PluginSdk.Mvc\NoMercy.PluginSdk.Mvc.csproj" />
     <ProjectReference Include="..\NoMercy.Networking\NoMercy.Networking.csproj" />
     <ProjectReference Include="..\NoMercy.Setup\NoMercy.Setup.csproj" />
     <ProjectReference Include="..\NoMercy.NmSystem\NoMercy.NmSystem.csproj" />

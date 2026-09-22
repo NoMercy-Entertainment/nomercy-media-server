@@ -10,8 +10,8 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.Extensions.Logging;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Ipc;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Ipc;
 
 namespace NoMercy.PluginHost;
 
@@ -58,6 +58,10 @@ public sealed class RemotePluginContext : IPluginContext
         Scheduler = new RemoteScheduler(launch.PluginId, call);
         Settings = new RemoteSettings(launch.PluginId, call);
         User = new RemoteUserData(call);
+        LibraryWriter = new RemoteLibraryWriter(call);
+        LibraryImport = new RemoteLibraryImport(launch.PluginId, call);
+        Native = new RemoteNative(launch.PluginId, call, new SystemLocalNativeLoader());
+        Media = new RemoteMedia(call);
         Call = call;
     }
 
@@ -104,7 +108,13 @@ public sealed class RemotePluginContext : IPluginContext
 
     public IPluginUserData User { get; }
 
-    public IPluginLibraryWriter? LibraryWriter => null;
+    public IPluginLibraryWriter? LibraryWriter { get; }
+
+    public IPluginLibraryImport LibraryImport { get; }
+
+    public IPluginNative Native { get; }
+
+    public IPluginMedia Media { get; }
 
     public Task PublishAsync<T>(string name, T payload, CancellationToken ct = default) =>
         _events.PublishAsync(name, payload, ct);

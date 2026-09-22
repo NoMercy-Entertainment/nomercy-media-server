@@ -11,13 +11,13 @@
 
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Capabilities;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Capabilities;
 using MediaFile = NoMercy.NmSystem.Dto.MediaFile;
 using MediaFolderExtend = NoMercy.NmSystem.Dto.MediaFolderExtend;
-using PluginMediaFile = NoMercy.Plugins.Abstractions.MediaFile;
+using PluginMediaFile = NoMercy.PluginSdk.Abstractions.MediaFile;
 
-namespace NoMercy.Plugins.Hooks;
+namespace NoMercy.PluginSdk.Hooks;
 
 /// <summary>
 /// Asks every active <see cref="IMediaSourcePlugin"/> that declares the

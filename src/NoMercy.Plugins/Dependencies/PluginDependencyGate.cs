@@ -9,11 +9,11 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Capabilities;
-using NoMercy.Plugins.Entitlements;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Capabilities;
+using NoMercy.PluginSdk.Entitlements;
 
-namespace NoMercy.Plugins.Dependencies;
+namespace NoMercy.PluginSdk.Dependencies;
 
 /// <summary>
 /// A plugin that leans on another runs only while that other one runs.

@@ -12,8 +12,8 @@
 using System.Text;
 using System.Text.Json;
 using FluentAssertions;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Storage;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Storage;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;

@@ -13,9 +13,9 @@
       mistake: the contract adds members in a minor, so every additive change
       would make every plugin in the world re-pin before it could restore.
     -->
-    <PackageReference Include="NoMercy.Plugins.Abstractions" Version="11.*" />
-    <PackageReference Include="NoMercy.Plugins.Mvc" Version="11.*" />
-    <PackageReference Include="NoMercy.Plugins.Analyzers" Version="11.*" PrivateAssets="all" />
+    <PackageReference Include="NoMercy.PluginSdk.Abstractions" Version="12.*" />
+    <PackageReference Include="NoMercy.PluginSdk.Mvc" Version="12.*" />
+    <PackageReference Include="NoMercy.PluginSdk.Analyzers" Version="12.*" PrivateAssets="all" />
   </ItemGroup>
 
   <ItemGroup>

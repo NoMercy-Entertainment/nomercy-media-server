@@ -15,8 +15,8 @@ using System.Text;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Events;
-using NoMercy.Plugins;
-using NoMercy.Plugins.Verification;
+using NoMercy.PluginSdk;
+using NoMercy.PluginSdk.Verification;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;
@@ -82,7 +82,7 @@ public class PluginArchiveInstallTests : IDisposable
           "name": "Internet Radio Provider",
           "description": "Adds internet radio stations as a music media source.",
           "version": "1.0.0",
-          "targetAbi": "10.0",
+          "targetAbi": "12.0",
           "author": "NoMercy Community",
           "assembly": "NoMercy.Plugin.InternetRadio.dll"
         }

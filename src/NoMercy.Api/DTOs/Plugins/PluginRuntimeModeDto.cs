@@ -10,7 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
-using NoMercy.Plugins.OutOfProcess;
+using NoMercy.PluginSdk.OutOfProcess;
 
 namespace NoMercy.Api.DTOs.Plugins;
 

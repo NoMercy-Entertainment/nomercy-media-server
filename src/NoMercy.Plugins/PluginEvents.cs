@@ -12,9 +12,9 @@
 using System.Text.Json;
 using NoMercy.Events;
 using NoMercy.Events.Plugins;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins;
+namespace NoMercy.PluginSdk;
 
 /// <summary>
 /// The topic facade over the host bus. A plugin names a topic and gets the

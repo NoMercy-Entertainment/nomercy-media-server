@@ -11,7 +11,7 @@
 
 using FluentAssertions;
 using NoMercy.Api.DTOs.Dashboard;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 using Xunit;
 
 namespace NoMercy.Tests.Api.Dtos;

@@ -12,7 +12,7 @@
 using System.Text.Json;
 using NoMercy.NmSystem.Information;
 
-namespace NoMercy.Plugins.OutOfProcess;
+namespace NoMercy.PluginSdk.OutOfProcess;
 
 /// <summary>Where a plugin runs.</summary>
 public enum PluginIsolation

@@ -12,8 +12,8 @@
 using System.Text.Json.Nodes;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Hub;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Hub;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;

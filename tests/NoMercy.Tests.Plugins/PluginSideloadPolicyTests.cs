@@ -10,9 +10,9 @@
 // -----------------------------------------------------------------------------
 
 using FluentAssertions;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Entitlements;
-using NoMercy.Plugins.Sideload;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Entitlements;
+using NoMercy.PluginSdk.Sideload;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;
@@ -36,7 +36,7 @@ public class PluginSideloadPolicyTests
             Name = "Internet Radio",
             Description = "d",
             Version = "1.0.0",
-            TargetAbi = "11.0",
+            TargetAbi = "12.0",
             Assembly = "Sample.dll",
             Tier = tier,
         };

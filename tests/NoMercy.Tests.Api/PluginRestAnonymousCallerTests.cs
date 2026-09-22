@@ -12,7 +12,7 @@
 using System.Net;
 using Microsoft.Extensions.DependencyInjection;
 using NoMercy.Api.Plugins;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 using NoMercy.Tests.Api.Infrastructure;
 using Xunit;
 

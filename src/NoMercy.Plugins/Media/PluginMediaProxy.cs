@@ -12,11 +12,11 @@
 using System.Net;
 using System.Text;
 using Microsoft.Extensions.Logging;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Capabilities;
-using NoMercy.Plugins.Quotas;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Capabilities;
+using NoMercy.PluginSdk.Quotas;
 
-namespace NoMercy.Plugins.Media;
+namespace NoMercy.PluginSdk.Media;
 
 /// <summary>
 /// What a plugin gets when it asks for a media URL: one on this server.

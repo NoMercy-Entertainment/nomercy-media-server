@@ -12,7 +12,7 @@
 using System.Buffers.Binary;
 using System.Text;
 
-namespace NoMercy.Plugins.Network;
+namespace NoMercy.PluginSdk.Network;
 
 /// <summary>One record read off the wire, reduced to what DNS-SD actually uses.</summary>
 public sealed record MulticastDnsRecord(string Name, ushort Type, byte[] Data);

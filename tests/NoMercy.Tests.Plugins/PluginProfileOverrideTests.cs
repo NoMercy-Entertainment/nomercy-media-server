@@ -11,13 +11,13 @@
 
 using FluentAssertions;
 using NoMercy.Encoder.Codecs;
-using NoMercy.Plugins;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk;
+using NoMercy.PluginSdk.Abstractions;
 using Xunit;
 using EncoderMediaInfo = NoMercy.Encoder.Analysis.MediaInfo;
 using EncoderProfile = NoMercy.Encoder.Profiles.EncodingProfile;
-using PluginMediaInfo = NoMercy.Plugins.Abstractions.MediaInfo;
-using PluginProfile = NoMercy.Plugins.Abstractions.EncodingProfile;
+using PluginMediaInfo = NoMercy.PluginSdk.Abstractions.MediaInfo;
+using PluginProfile = NoMercy.PluginSdk.Abstractions.EncodingProfile;
 using VideoStreamInfo = NoMercy.Encoder.Analysis.VideoStreamInfo;
 
 namespace NoMercy.Tests.Plugins;

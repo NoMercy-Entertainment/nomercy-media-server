@@ -12,9 +12,9 @@
 using System.Text.Json;
 using NoMercy.Events;
 using NoMercy.NmSystem.Information;
-using NoMercy.Plugins.Access;
+using NoMercy.PluginSdk.Access;
 
-namespace NoMercy.Plugins.Entitlements;
+namespace NoMercy.PluginSdk.Entitlements;
 
 /// <summary>
 /// The bundle on disk, so a server that starts offline still knows what it was

@@ -9,7 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
 namespace NoMercy.Plugin.Samples.StaleMember;
 
@@ -27,7 +27,7 @@ public sealed class StaleMemberPlugin : IPlugin
     public static readonly Ulid FixedId = Ulid.Parse("01SAMPLE000000000000000006");
 
     public const string RemovedMember =
-        "Method not found: 'NoMercy.Events.IEventBus NoMercy.Plugins.Abstractions.IPluginContext.get_EventBus()'.";
+        "Method not found: 'NoMercy.Events.IEventBus NoMercy.PluginSdk.Abstractions.IPluginContext.get_EventBus()'.";
 
     public string Name => "StaleMember";
     public string Description => "Initialize reaches a member the contract removed";

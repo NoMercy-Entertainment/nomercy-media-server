@@ -13,8 +13,8 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NoMercy.Database;
 using NoMercy.MediaProcessing.DerivedAudio;
-using NoMercy.Plugins;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk;
+using NoMercy.PluginSdk.Abstractions;
 
 namespace NoMercy.Data.Plugins;
 

@@ -10,9 +10,9 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.Extensions.Logging;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins.Watchdog;
+namespace NoMercy.PluginSdk.Watchdog;
 
 /// <summary>
 /// What the watchdog's three verbs mean on this host.

@@ -20,7 +20,7 @@ using NoMercy.Authorization;
 using NoMercy.Networking.Http;
 using NoMercy.NmSystem.Configuration;
 using NoMercy.NmSystem.SystemCalls;
-using NoMercy.Plugins.Hooks;
+using NoMercy.PluginSdk.Hooks;
 using NoMercy.Service.Authorization;
 using NoMercy.Setup.Auth;
 using Serilog.Events;

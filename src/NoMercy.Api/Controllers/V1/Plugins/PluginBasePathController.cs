@@ -18,13 +18,13 @@ using NoMercy.Api.DTOs.Dashboard;
 using NoMercy.Api.DTOs.Plugins;
 using NoMercy.Api.Plugins;
 using NoMercy.Authorization;
-using NoMercy.Plugins;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Access;
-using NoMercy.Plugins.Capabilities;
-using NoMercy.Plugins.Quotas;
-using NoMercy.Plugins.Telemetry;
-using NoMercy.Plugins.Watchdog;
+using NoMercy.PluginSdk;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Access;
+using NoMercy.PluginSdk.Capabilities;
+using NoMercy.PluginSdk.Quotas;
+using NoMercy.PluginSdk.Telemetry;
+using NoMercy.PluginSdk.Watchdog;
 
 namespace NoMercy.Api.Controllers.V1.Plugins;
 

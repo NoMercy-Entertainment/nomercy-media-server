@@ -9,9 +9,9 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins.Capabilities;
+namespace NoMercy.PluginSdk.Capabilities;
 
 /// <summary>
 /// What the owner was told about when they consented: the capability set and

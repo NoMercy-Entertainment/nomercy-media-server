@@ -18,7 +18,7 @@ using NoMercy.NmSystem.Auth;
 using NoMercy.NmSystem.Configuration;
 using NoMercy.NmSystem.Information;
 using NoMercy.NmSystem.SystemCalls;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 using NoMercy.Service.Seeds;
 using NoMercy.Setup.Auth;
 using NoMercy.Setup.Boot;

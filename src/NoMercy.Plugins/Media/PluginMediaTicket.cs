@@ -9,9 +9,9 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins.Media;
+namespace NoMercy.PluginSdk.Media;
 
 /// <summary>What a ticket says once the server has checked it is one of its own.</summary>
 /// <param name="Request">

@@ -13,9 +13,9 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using NoMercy.Events;
 using NoMercy.NmSystem.Information;
-using NoMercy.Plugins.Access;
+using NoMercy.PluginSdk.Access;
 
-namespace NoMercy.Plugins.Revocation;
+namespace NoMercy.PluginSdk.Revocation;
 
 /// <summary>
 /// The list on disk, so a server that starts offline still knows what it was

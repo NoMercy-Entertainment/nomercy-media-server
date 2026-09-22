@@ -18,6 +18,6 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\NoMercy.PluginHost\NoMercy.PluginHost.csproj" />
-    <ProjectReference Include="..\..\src\NoMercy.Plugins.Ipc\NoMercy.Plugins.Ipc.csproj" />
+    <ProjectReference Include="..\..\src\NoMercy.PluginSdk.Ipc\NoMercy.PluginSdk.Ipc.csproj" />
   </ItemGroup>
 </Project>

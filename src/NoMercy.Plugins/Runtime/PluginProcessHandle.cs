@@ -10,9 +10,9 @@
 // -----------------------------------------------------------------------------
 
 using System.Diagnostics;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins.Runtime;
+namespace NoMercy.PluginSdk.Runtime;
 
 /// <summary>
 /// One child process the plugin started.

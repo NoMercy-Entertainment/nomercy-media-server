@@ -11,7 +11,7 @@
 
 using FluentAssertions;
 using NoMercy.Plugin.Cli;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins.Cli;
@@ -50,7 +50,7 @@ public class VerifyCommandTests : IDisposable
           "name": "Internet Radio",
           "description": "Radio.",
           "version": "2.0.0",
-          "targetAbi": "11.0",
+          "targetAbi": "12.0",
           "assembly": "Radio.dll",
           "capabilities": {
             "rest": true,
@@ -100,7 +100,7 @@ public class VerifyCommandTests : IDisposable
     public async Task An_abi_two_majors_behind_is_blocked()
     {
         ScanReport report = await VerifyCommand.RunAsync(
-            Write(Clean.Replace("\"targetAbi\": \"11.0\"", "\"targetAbi\": \"9.0\""))
+            Write(Clean.Replace("\"targetAbi\": \"12.0\"", "\"targetAbi\": \"9.0\""))
         );
 
         report.ExitCode.Should().Be(1);
@@ -109,17 +109,33 @@ public class VerifyCommandTests : IDisposable
             .Contain(refusal => refusal.Code == PluginRefusalCodes.AbiUnsupported);
     }
 
+    /// <summary>
+    /// A major usually only removes members, so the one behind it still loads
+    /// and warning is the honest answer. Twelve renamed the SDK assembly and
+    /// every namespace in it, so an eleven plugin resolves no type at all:
+    /// passing the build here would hand the author a green run and a server
+    /// that refuses to load what it produced.
+    /// </summary>
     [Fact]
-    public async Task An_abi_one_major_behind_warns_rather_than_fails()
+    public async Task An_abi_the_server_will_not_load_fails_rather_than_warns()
     {
         ScanReport report = await VerifyCommand.RunAsync(
-            Write(Clean.Replace("\"targetAbi\": \"11.0\"", "\"targetAbi\": \"10.0\""))
+            Write(
+                Clean.Replace(
+                    "\"targetAbi\": \"12.0\"",
+                    $"\"targetAbi\": \"{PluginAbi.Oldest.Major - 1}.0\""
+                )
+            )
         );
 
+        PluginAbi
+            .IsCompatible($"{PluginAbi.Oldest.Major - 1}.0")
+            .Should()
+            .BeFalse("this test says nothing if the server would load it after all");
+        report.ExitCode.Should().Be(1);
         report
-            .ExitCode.Should()
-            .Be(0, "the server still loads it, so failing the build here would be a lie");
-        report.HasWarnings.Should().BeTrue();
+            .Refusals.Should()
+            .Contain(refusal => refusal.Code == PluginRefusalCodes.AbiUnsupported);
     }
 
     [Fact]
@@ -171,7 +187,7 @@ public class VerifyCommandTests : IDisposable
     public async Task The_json_output_is_what_a_build_step_reads()
     {
         ScanReport report = await VerifyCommand.RunAsync(
-            Write(Clean.Replace("\"targetAbi\": \"11.0\"", "\"targetAbi\": \"9.0\""))
+            Write(Clean.Replace("\"targetAbi\": \"12.0\"", "\"targetAbi\": \"9.0\""))
         );
         StringWriter writer = new();
 

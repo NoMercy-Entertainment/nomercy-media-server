@@ -10,7 +10,7 @@
 // -----------------------------------------------------------------------------
 using System.Diagnostics.CodeAnalysis;
 
-namespace NoMercy.Plugins;
+namespace NoMercy.PluginSdk;
 
 /// <summary>
 /// Owns the set of loaded plugins. Separating this storage concern from

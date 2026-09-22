@@ -10,8 +10,8 @@
 // -----------------------------------------------------------------------------
 
 using FluentAssertions;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Media;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Media;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;

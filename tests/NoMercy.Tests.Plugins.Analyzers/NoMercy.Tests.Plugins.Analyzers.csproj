@@ -20,9 +20,6 @@
   <ItemGroup>
     <!-- Referenced as a library, not as an analyzer: these tests drive it
          directly rather than letting it run over their own compilation. -->
-    <ProjectReference
-      Include="..\..\src\NoMercy.Plugins.Analyzers\NoMercy.Plugins.Analyzers.csproj"
-      ReferenceOutputAssembly="true"
-    />
+    <ProjectReference Include="..\..\src\NoMercy.PluginSdk.Analyzers\NoMercy.PluginSdk.Analyzers.csproj" ReferenceOutputAssembly="true" />
   </ItemGroup>
 </Project>

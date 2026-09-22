@@ -11,7 +11,7 @@
 
 using FluentAssertions;
 using NoMercy.Api.Plugins;
-using NoMercy.Plugins.Ipc;
+using NoMercy.PluginSdk.Ipc;
 using Xunit;
 
 namespace NoMercy.Tests.Api.Plugins;

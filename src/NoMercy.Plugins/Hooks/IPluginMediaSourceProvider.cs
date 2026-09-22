@@ -11,7 +11,7 @@
 
 using NoMercy.NmSystem.Dto;
 
-namespace NoMercy.Plugins.Hooks;
+namespace NoMercy.PluginSdk.Hooks;
 
 /// <summary>
 /// The files plugins contribute to a scan, on top of what the scanner found.

@@ -11,9 +11,9 @@
 
 using System.Text.Json;
 using NoMercy.NmSystem.Information;
-using NoMercy.Plugins.Watchdog;
+using NoMercy.PluginSdk.Watchdog;
 
-namespace NoMercy.Plugins.Quotas;
+namespace NoMercy.PluginSdk.Quotas;
 
 /// <summary>
 /// The allowances the owner set, per plugin, kept on disk.

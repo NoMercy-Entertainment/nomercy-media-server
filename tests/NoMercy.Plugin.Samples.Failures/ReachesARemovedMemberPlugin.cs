@@ -9,7 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
 namespace NoMercy.Plugin.Samples.Failures;
 
@@ -26,7 +26,7 @@ public sealed class ReachesARemovedMemberPlugin : IPlugin
     public static readonly Ulid FixedId = Ulid.Parse("01SAMPLE000000000000000005");
 
     public const string RemovedMember =
-        "Method not found: 'NoMercy.Events.IEventBus NoMercy.Plugins.Abstractions.IPluginContext.get_EventBus()'.";
+        "Method not found: 'NoMercy.Events.IEventBus NoMercy.PluginSdk.Abstractions.IPluginContext.get_EventBus()'.";
 
     public string Name => "ReachesARemovedMember";
     public string Description =>

@@ -13,9 +13,9 @@ using System.Security.Cryptography;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Events;
-using NoMercy.Plugins;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Verification;
+using NoMercy.PluginSdk;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Verification;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;
@@ -133,7 +133,7 @@ public class PluginManagerVerificationTests : IDisposable
             ""description"": ""A test"",
             ""version"": ""1.0.0"",
             ""assembly"": ""AbiMismatchPlugin.dll"",
-            ""targetAbi"": ""12.0""
+            ""targetAbi"": ""10.0""
         }}";
         string manifestPath = Path.Combine(pluginDir, "plugin.json");
         await File.WriteAllTextAsync(manifestPath, manifestJson);

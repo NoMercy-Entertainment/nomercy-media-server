@@ -10,7 +10,8 @@
 // -----------------------------------------------------------------------------
 
 using System.Reflection;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
+using FluentAssertions;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;
@@ -20,23 +21,40 @@ public class PluginAbiTests
     [Theory]
     [InlineData([null, true])]
     [InlineData(["", true])]
-    [InlineData(["10.0", true])]
-    [InlineData(["10.2", true])]
-    [InlineData(["10.9", true])]
-    [InlineData(["11.0", true])]
-    [InlineData(["11.1", false])]
-    [InlineData(["9.5", false])]
-    [InlineData(["12.0", false])]
+    [InlineData(["12.0", true])]
+    [InlineData(["12.1", false])]
+    [InlineData(["11.0", false])]
+    [InlineData(["11.9", false])]
+    [InlineData(["10.0", false])]
+    [InlineData(["13.0", false])]
     [InlineData(["not-a-version", false])]
-    public void IsCompatible_AcceptsThisMajorAndTheWholePrevious(string? targetAbi, bool expected)
+    public void IsCompatible_AcceptsNothingOlderThanTheOldestLoadableMajor(
+        string? targetAbi,
+        bool expected
+    )
     {
         Assert.Equal(expected, PluginAbi.IsCompatible(targetAbi));
     }
 
+    /// <summary>
+    /// Eleven is refused rather than given the usual one-major grace. That
+    /// grace exists because a major normally only removes members, so a plugin
+    /// that never called them keeps working. Twelve renamed the SDK assembly
+    /// and every namespace in it, so an eleven plugin resolves no type at all;
+    /// accepting it would install something that fails at load with a
+    /// missing-type error naming nothing its author recognises.
+    /// </summary>
     [Fact]
-    public void Current_IsElevenZero()
+    public void ThePreviousMajorIsRefusedBecauseItsTypesNoLongerExist()
     {
-        Assert.Equal(new Version(11, 0), PluginAbi.Current);
+        PluginAbi.IsCompatible("11.0").Should().BeFalse();
+        PluginAbi.Oldest.Major.Should().Be(PluginAbi.Current.Major);
+    }
+
+    [Fact]
+    public void Current_IsTwelveZero()
+    {
+        Assert.Equal(new Version(12, 0), PluginAbi.Current);
     }
 
     /// <summary>

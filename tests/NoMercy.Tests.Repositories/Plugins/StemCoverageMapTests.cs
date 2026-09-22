@@ -12,7 +12,7 @@
 using FluentAssertions;
 using NoMercy.Data.Plugins;
 using NoMercy.Database.Models.Music;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
 namespace NoMercy.Tests.Repositories.Plugins;
 

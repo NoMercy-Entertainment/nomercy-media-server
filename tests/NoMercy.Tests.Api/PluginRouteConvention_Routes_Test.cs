@@ -13,7 +13,7 @@ using System.Reflection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ApplicationModels;
 using NoMercy.Api.Plugins;
-using NoMercy.Plugins.Mvc;
+using NoMercy.PluginSdk.Mvc;
 using Xunit;
 
 namespace NoMercy.Tests.Api;

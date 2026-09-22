@@ -16,10 +16,10 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Events;
 using NoMercy.Events.Plugins;
-using NoMercy.Plugins;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Capabilities;
-using NoMercy.Plugins.Verification;
+using NoMercy.PluginSdk;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Capabilities;
+using NoMercy.PluginSdk.Verification;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;
@@ -148,7 +148,7 @@ public class PluginLoaderFailureFixtureTests : IDisposable
         return Path.Combine(pluginDir, "NoMercy.Plugin.Samples.Failures.dll");
     }
 
-    // NoMercy.Plugins.Abstractions.dll is a real, validly-loadable .NET
+    // NoMercy.PluginSdk.Abstractions.dll is a real, validly-loadable .NET
     // assembly that defines zero concrete IPlugin implementations (only
     // interfaces, enums, and DTOs) — a real assembly with no plugin types is
     // exactly the case LoadPluginAssemblyAsync's `pluginTypes.Count == 0` guard
@@ -537,7 +537,7 @@ public class PluginLoaderFailureFixtureTests : IDisposable
         PluginErrorOccurredEvent reported = errors.Should().ContainSingle().Which;
 
         reported.PluginName.Should().Be("NoMercy.Plugin.Corrupt");
-        reported.ErrorMessage.Should().NotContain("11.0");
+        reported.ErrorMessage.Should().NotContain(PluginAbi.Current.ToString());
         reported.ErrorMessage.Should().NotContain("/nomercy-plugins/migration");
         reported.ErrorMessage.Should().NotBeNullOrWhiteSpace();
     }
@@ -585,7 +585,7 @@ public class PluginLoaderFailureFixtureTests : IDisposable
             .ContainSingle(e => e.PluginName == "Corrupt")
             .Which;
 
-        reported.ErrorMessage.Should().NotContain("11.0");
+        reported.ErrorMessage.Should().NotContain(PluginAbi.Current.ToString());
         reported.ErrorMessage.Should().NotBeNullOrWhiteSpace();
     }
 
@@ -649,7 +649,7 @@ public class PluginLoaderFailureFixtureTests : IDisposable
 
         reported.PluginName.Should().Be("StaleMember");
         reported.ErrorMessage.Should().Contain("get_EventBus");
-        reported.ErrorMessage.Should().Contain("11.0");
+        reported.ErrorMessage.Should().Contain(PluginAbi.Current.ToString());
         reported.ErrorMessage.Should().Contain("/nomercy-plugins/migration");
     }
 
@@ -687,7 +687,7 @@ public class PluginLoaderFailureFixtureTests : IDisposable
         reported.ErrorMessage.Should().Contain("get_EventBus", "the author needs the member named");
         reported
             .ErrorMessage.Should()
-            .Contain("11.0", "and the version to rebuild against, which the runtime never says");
+            .Contain(PluginAbi.Current.ToString(), "and the version to rebuild against, which the runtime never says");
         reported.ErrorMessage.Should().Contain("/nomercy-plugins/migration");
 
         // The plugin beside it in the same assembly fails for its own reason and
@@ -700,7 +700,7 @@ public class PluginLoaderFailureFixtureTests : IDisposable
             .Which;
 
         ordinary.ErrorMessage.Should().Contain("initialize boom");
-        ordinary.ErrorMessage.Should().NotContain("11.0");
+        ordinary.ErrorMessage.Should().NotContain(PluginAbi.Current.ToString());
     }
 
     [Fact]

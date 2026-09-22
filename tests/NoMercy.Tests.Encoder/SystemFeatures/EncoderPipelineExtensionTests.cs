@@ -19,11 +19,11 @@ public class EncoderPipelineExtensionTests
     public void IEncoderPipelineExtension_IsDistinctFromPluginsAbstractionsIEncoderPlugin()
     {
         // IEncoderPipelineExtension is an encoder-internal pipeline hook contract.
-        // NoMercy.Plugins.Abstractions.IEncoderPlugin is the public plugin author surface.
+        // NoMercy.PluginSdk.Abstractions.IEncoderPlugin is the public plugin author surface.
         // They must not be the same type.
         Type pipelineExtension = typeof(IEncoderPipelineExtension);
         Type? pluginsAbstractionsEncoderPlugin = Type.GetType(
-            "NoMercy.Plugins.Abstractions.IEncoderPlugin, NoMercy.Plugins.Abstractions"
+            "NoMercy.PluginSdk.Abstractions.IEncoderPlugin, NoMercy.PluginSdk.Abstractions"
         );
 
         // The encoder pipeline extension type must exist.
@@ -32,7 +32,7 @@ public class EncoderPipelineExtensionTests
 
         // The abstractions type may not be loaded in this assembly context but
         // the names are demonstrably different — structural proof of disambiguation.
-        pipelineExtension.FullName.Should().NotBe("NoMercy.Plugins.Abstractions.IEncoderPlugin");
+        pipelineExtension.FullName.Should().NotBe("NoMercy.PluginSdk.Abstractions.IEncoderPlugin");
     }
 
     [Fact]

@@ -10,9 +10,9 @@
 // -----------------------------------------------------------------------------
 
 using System.Runtime.CompilerServices;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Capabilities;
-using NoMercy.Plugins.Network;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Capabilities;
+using NoMercy.PluginSdk.Network;
 
 namespace NoMercy.Tests.Plugins;
 

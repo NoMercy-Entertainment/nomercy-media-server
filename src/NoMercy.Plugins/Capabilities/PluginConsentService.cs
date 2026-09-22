@@ -11,10 +11,10 @@
 
 using Microsoft.Extensions.Logging;
 using NoMercy.Events;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Access;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Access;
 
-namespace NoMercy.Plugins.Capabilities;
+namespace NoMercy.PluginSdk.Capabilities;
 
 public interface IPluginConsentStore
 {

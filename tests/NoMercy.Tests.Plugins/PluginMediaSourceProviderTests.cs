@@ -11,11 +11,11 @@
 
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Hooks;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Hooks;
 using Xunit;
 using MediaFolderExtend = NoMercy.NmSystem.Dto.MediaFolderExtend;
-using PluginMediaFile = NoMercy.Plugins.Abstractions.MediaFile;
+using PluginMediaFile = NoMercy.PluginSdk.Abstractions.MediaFile;
 
 namespace NoMercy.Tests.Plugins;
 

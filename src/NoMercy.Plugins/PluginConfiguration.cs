@@ -12,10 +12,10 @@
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 using NoMercy.Storage;
 
-namespace NoMercy.Plugins;
+namespace NoMercy.PluginSdk;
 
 public class PluginConfiguration : IPluginConfiguration
 {

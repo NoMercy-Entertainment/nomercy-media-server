@@ -15,10 +15,10 @@ using Microsoft.AspNetCore.Mvc;
 using Moq;
 using NoMercy.Api.Controllers.V1.Dashboard.Plugins;
 using NoMercy.Api.DTOs.Common;
-using NoMercy.Plugins;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Capabilities;
-using NoMercy.Plugins.Sideload;
+using NoMercy.PluginSdk;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Capabilities;
+using NoMercy.PluginSdk.Sideload;
 using NoMercy.Storage;
 using Xunit;
 

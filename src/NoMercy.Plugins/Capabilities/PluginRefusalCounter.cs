@@ -10,9 +10,9 @@
 // -----------------------------------------------------------------------------
 
 using System.Collections.Concurrent;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins.Capabilities;
+namespace NoMercy.PluginSdk.Capabilities;
 
 /// <summary>
 /// In memory, per process. A count that survived a restart would be a count

@@ -28,7 +28,7 @@ using NoMercy.NmSystem.Dto;
 using NoMercy.NmSystem.Information;
 using NoMercy.NmSystem.Status;
 using NoMercy.NmSystem.SystemCalls;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 using NoMercy.Queue.MediaServer.Repositories;
 using NoMercy.Setup.Server;
 using NoMercy.Storage;

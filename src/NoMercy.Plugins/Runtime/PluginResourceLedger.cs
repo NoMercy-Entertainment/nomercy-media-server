@@ -11,7 +11,7 @@
 
 using System.Collections.Concurrent;
 
-namespace NoMercy.Plugins.Runtime;
+namespace NoMercy.PluginSdk.Runtime;
 
 public class PluginResourceLedger : IPluginResourceLedger
 {

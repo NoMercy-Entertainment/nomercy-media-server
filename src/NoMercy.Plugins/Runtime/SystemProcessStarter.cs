@@ -10,9 +10,9 @@
 // -----------------------------------------------------------------------------
 
 using System.Diagnostics;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins.Runtime;
+namespace NoMercy.PluginSdk.Runtime;
 
 /// <summary>Starts the child for real.</summary>
 public class SystemProcessStarter : IPluginProcessStarter

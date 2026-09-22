@@ -13,7 +13,7 @@ using System.Collections;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using NoMercy.NmSystem.Information;
 using NoMercy.PluginHost;
-using NoMercy.Plugins.Ipc;
+using NoMercy.PluginSdk.Ipc;
 using ProtoBuf.Grpc.Server;
 
 Dictionary<string, string?> environment = Environment

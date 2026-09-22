@@ -9,7 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-namespace NoMercy.Plugins.Dependencies;
+namespace NoMercy.PluginSdk.Dependencies;
 
 /// <summary>
 /// Whether an installed version satisfies the range a manifest asks for.

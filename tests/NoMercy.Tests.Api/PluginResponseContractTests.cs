@@ -12,7 +12,7 @@
 using FluentAssertions;
 using Newtonsoft.Json;
 using NoMercy.Api.DTOs.Common;
-using NoMercy.Plugins.Mvc;
+using NoMercy.PluginSdk.Mvc;
 using Xunit;
 
 namespace NoMercy.Tests.Api;

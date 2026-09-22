@@ -11,7 +11,7 @@
 
 using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
 namespace NoMercy.Plugin.Samples.Failures;
 

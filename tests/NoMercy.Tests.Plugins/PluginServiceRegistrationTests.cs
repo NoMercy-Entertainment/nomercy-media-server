@@ -11,7 +11,7 @@
 
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
-using NoMercy.Plugins;
+using NoMercy.PluginSdk;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;

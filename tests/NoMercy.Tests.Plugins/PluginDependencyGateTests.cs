@@ -10,10 +10,10 @@
 // -----------------------------------------------------------------------------
 
 using FluentAssertions;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Capabilities;
-using NoMercy.Plugins.Dependencies;
-using NoMercy.Plugins.Entitlements;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Capabilities;
+using NoMercy.PluginSdk.Dependencies;
+using NoMercy.PluginSdk.Entitlements;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;

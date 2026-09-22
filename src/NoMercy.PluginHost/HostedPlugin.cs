@@ -11,7 +11,7 @@
 
 using System.Reflection;
 using System.Runtime.Loader;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
 namespace NoMercy.PluginHost;
 
@@ -90,7 +90,7 @@ public sealed class PluginHostLoadContext(string assemblyPath)
     protected override Assembly? Load(AssemblyName assemblyName)
     {
         if (
-            assemblyName.Name?.StartsWith("NoMercy.Plugins.Abstractions", StringComparison.Ordinal)
+            assemblyName.Name?.StartsWith("NoMercy.PluginSdk.Abstractions", StringComparison.Ordinal)
             == true
         )
             return null;

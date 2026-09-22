@@ -11,7 +11,7 @@
   </PropertyGroup>
 
   <!--
-    Packed alongside NoMercy.Plugins.Abstractions, which depends on it: a
+    Packed alongside NoMercy.PluginSdk.Abstractions, which depends on it: a
     package whose dependency cannot be restored is a package nobody can use.
     It is also half the plugin contract in its own right — PluginMessageEvent
     is the envelope a plugin publishes through, and IEventBus is on the
@@ -19,7 +19,7 @@
     needs this exact assembly rather than a copy of it.
   -->
   <PropertyGroup>
-    <IsPackable>true</IsPackable>
+    <IsPackable>false</IsPackable>
     <PackageId>NoMercy.Plugins.Events</PackageId>
     <Version>$(PluginPackageVersion)</Version>
     <Authors>NoMercy Entertainment</Authors>

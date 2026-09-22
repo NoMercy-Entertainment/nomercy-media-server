@@ -10,9 +10,9 @@
 // -----------------------------------------------------------------------------
 
 using System.Text.Json.Nodes;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins.Hub;
+namespace NoMercy.PluginSdk.Hub;
 
 /// <summary>
 /// Pushing succeeds and reaches nobody, which is the truth where no hub is

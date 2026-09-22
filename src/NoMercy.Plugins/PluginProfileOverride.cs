@@ -13,13 +13,13 @@ using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Encoder.Codecs;
 using NoMercy.Encoder.Pipeline;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 using EncoderMediaInfo = NoMercy.Encoder.Analysis.MediaInfo;
 using EncoderVideoOutput = NoMercy.Encoder.Profiles.VideoOutput;
 using EncodingProfile = NoMercy.Encoder.Profiles.EncodingProfile;
-using PluginProfile = NoMercy.Plugins.Abstractions.EncodingProfile;
+using PluginProfile = NoMercy.PluginSdk.Abstractions.EncodingProfile;
 
-namespace NoMercy.Plugins;
+namespace NoMercy.PluginSdk;
 
 /// <summary>
 /// Wires <see cref="IEncoderPlugin.GetProfile"/> into the encoder's

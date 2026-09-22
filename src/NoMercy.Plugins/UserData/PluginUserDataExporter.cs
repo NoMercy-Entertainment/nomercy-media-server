@@ -12,7 +12,7 @@
 using System.Text.Json;
 using System.Text.Json.Nodes;
 
-namespace NoMercy.Plugins.UserData;
+namespace NoMercy.PluginSdk.UserData;
 
 /// <summary>
 /// Hands a person everything the plugins hold about them, and removes it.

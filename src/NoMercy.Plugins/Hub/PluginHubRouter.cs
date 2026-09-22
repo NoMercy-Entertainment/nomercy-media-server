@@ -11,10 +11,10 @@
 
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Capabilities;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Capabilities;
 
-namespace NoMercy.Plugins.Hub;
+namespace NoMercy.PluginSdk.Hub;
 
 public class PluginHubRouter(Func<IPluginManager> pluginManager, ILogger<PluginHubRouter> logger)
     : IPluginHubRouter

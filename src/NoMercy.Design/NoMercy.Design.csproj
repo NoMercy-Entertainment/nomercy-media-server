@@ -21,7 +21,7 @@
     of the design system was unreachable from the place most of it gets used.
   -->
   <PropertyGroup>
-    <IsPackable>true</IsPackable>
+    <IsPackable>false</IsPackable>
     <PackageId>NoMercy.Plugins.Design</PackageId>
     <Version>$(PluginPackageVersion)</Version>
     <Authors>NoMercy Entertainment</Authors>

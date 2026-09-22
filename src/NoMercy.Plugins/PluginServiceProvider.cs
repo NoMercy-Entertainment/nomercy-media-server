@@ -11,7 +11,7 @@
 
 using Microsoft.Extensions.DependencyInjection;
 
-namespace NoMercy.Plugins;
+namespace NoMercy.PluginSdk;
 
 /// <summary>
 /// One plugin's own container, with the host behind it.

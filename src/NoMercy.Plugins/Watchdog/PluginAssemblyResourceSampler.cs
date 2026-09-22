@@ -9,7 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-namespace NoMercy.Plugins.Watchdog;
+namespace NoMercy.PluginSdk.Watchdog;
 
 /// <summary>
 /// What this stage can honestly measure from inside one process.

@@ -15,7 +15,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Api.DTOs.Dashboard;
-using NoMercy.Plugins.Telemetry;
+using NoMercy.PluginSdk.Telemetry;
 
 namespace NoMercy.Api.Controllers.V1.Dashboard.Plugins;
 

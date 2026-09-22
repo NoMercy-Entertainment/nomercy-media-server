@@ -10,10 +10,10 @@
 // -----------------------------------------------------------------------------
 
 using System.Collections.Concurrent;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Telemetry;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Telemetry;
 
-namespace NoMercy.Plugins.Watchdog;
+namespace NoMercy.PluginSdk.Watchdog;
 
 /// <summary>What one plugin was using when it was last looked at.</summary>
 public sealed record PluginResourceSample(double CpuPercent, long MemoryBytes);

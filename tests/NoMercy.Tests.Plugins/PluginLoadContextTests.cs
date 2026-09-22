@@ -11,7 +11,7 @@
 
 using System.Reflection;
 using FluentAssertions;
-using NoMercy.Plugins;
+using NoMercy.PluginSdk;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;
@@ -59,7 +59,7 @@ public class PluginLoadContextTests
     [Fact]
     public void Load_SharedAssemblyName_ResolvesToTheHostsAlreadyLoadedCopy()
     {
-        // The test host has already loaded NoMercy.Plugins.Abstractions to run
+        // The test host has already loaded NoMercy.PluginSdk.Abstractions to run
         // this very test, so it must come back as that exact loaded instance —
         // not a fresh load, and not null. A version the plugin's own
         // AssemblyName carries (there isn't one here; this call passes a bare
@@ -68,10 +68,10 @@ public class PluginLoadContextTests
         // which build the plugin was compiled against.
         using ExposedPluginLoadContext context = new(GetFailuresPluginDllPath());
 
-        Assembly? resolved = context.InvokeLoad(new AssemblyName("NoMercy.Plugins.Abstractions"));
+        Assembly? resolved = context.InvokeLoad(new AssemblyName("NoMercy.PluginSdk.Abstractions"));
 
         resolved.Should().NotBeNull("a shared assembly resolves to the host's own loaded copy");
-        resolved!.GetName().Name.Should().Be("NoMercy.Plugins.Abstractions");
+        resolved!.GetName().Name.Should().Be("NoMercy.PluginSdk.Abstractions");
     }
 
     [Fact]

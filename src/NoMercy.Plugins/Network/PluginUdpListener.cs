@@ -11,9 +11,9 @@
 
 using System.Net;
 using System.Net.Sockets;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins.Network;
+namespace NoMercy.PluginSdk.Network;
 
 /// <summary>
 /// A bound datagram socket.
