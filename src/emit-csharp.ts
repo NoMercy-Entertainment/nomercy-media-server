@@ -48,7 +48,7 @@ export function emitCapabilityVocabulary(capabilities: Capability[]): string {
 
   return [
     LICENSE_HEADER,
-    'namespace NoMercy.Plugins.Abstractions;',
+    'namespace NoMercy.PluginSdk.Abstractions;',
     '',
     '/// <summary>Every capability a manifest may declare, with its scope, trust floor and facade.</summary>',
     'public static class PluginCapabilityVocabulary',
@@ -74,7 +74,7 @@ export function emitCapabilityNames(capabilities: Capability[]): string {
 
   return [
     LICENSE_HEADER,
-    'namespace NoMercy.Plugins.Abstractions;',
+    'namespace NoMercy.PluginSdk.Abstractions;',
     '',
     '/// <summary>The capability names, so nothing spells one by hand.</summary>',
     'public static class PluginCapabilityNames',
@@ -119,7 +119,7 @@ export function emitRefusalCodes(refusals: Refusal[]): string {
 
   return [
     LICENSE_HEADER,
-    'namespace NoMercy.Plugins.Abstractions;',
+    'namespace NoMercy.PluginSdk.Abstractions;',
     '',
     '/// <summary>Every code a refusal may carry, with its severity and the capability it belongs to.</summary>',
     'public static class PluginRefusalCodes',
@@ -156,7 +156,7 @@ export function emitManifestSchema(schema: unknown, capabilities: Capability[]):
 
   return [
     LICENSE_HEADER,
-    'namespace NoMercy.Plugins.Abstractions;',
+    'namespace NoMercy.PluginSdk.Abstractions;',
     '',
     '/// <summary>The schema a plugin.json is read against, with the capability names the server knows.</summary>',
     'public static class PluginManifestSchema',
@@ -183,7 +183,7 @@ export function emitSettingsSchema(schema: unknown): string {
 
   return [
     LICENSE_HEADER,
-    'namespace NoMercy.Plugins.Abstractions;',
+    'namespace NoMercy.PluginSdk.Abstractions;',
     '',
     '/// <summary>The schema a plugin settings declaration is read against.</summary>',
     'public static class PluginSettingsSchema',
@@ -211,7 +211,7 @@ export function emitSlots(slots: Slot[]): string {
 
   return [
     LICENSE_HEADER,
-    'namespace NoMercy.Plugins.Abstractions;',
+    'namespace NoMercy.PluginSdk.Abstractions;',
     '',
     '/// <summary>Where a plugin may place itself, by kind.</summary>',
     '/// <param name="Kind">One of <see cref="PluginKind.All" />.</param>',
@@ -276,7 +276,7 @@ export function emitSlotVocabulary(slots: Slot[]): string {
 
   return [
     LICENSE_HEADER,
-    'namespace NoMercy.Plugins.Abstractions;',
+    'namespace NoMercy.PluginSdk.Abstractions;',
     '',
     '/// <summary>',
     '/// Where inside a kind a placement lands.',
@@ -332,7 +332,7 @@ export function emitAnalyzerDescriptors(rules: AnalyzerRule[]): string {
     'using System.Collections.Generic;',
     'using System.Linq;',
     '',
-    'namespace NoMercy.Plugins.Analyzers;',
+    'namespace NoMercy.PluginSdk.Analyzers;',
     '',
     '/// <summary>One analyzer rule.</summary>',
     '/// <param name="Id">The diagnostic id, NMP0001 upward.</param>',

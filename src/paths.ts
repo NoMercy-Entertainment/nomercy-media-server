@@ -8,9 +8,9 @@ export const REPO_ROOT: string = resolve(here, '..', '..', '..');
 export const CONTRACT_DIR: string = resolve(here, '..', 'contract');
 
 export const MEDIA_SERVER: string = resolve(REPO_ROOT, 'apps', 'nomercy-media-server');
-export const ABSTRACTIONS: string = resolve(MEDIA_SERVER, 'src', 'NoMercy.Plugins.Abstractions');
+export const ABSTRACTIONS: string = resolve(MEDIA_SERVER, 'src', 'NoMercy.PluginSdk.Abstractions');
 export const ABSTRACTIONS_GENERATED: string = resolve(ABSTRACTIONS, 'Generated');
-export const ANALYZERS: string = resolve(MEDIA_SERVER, 'src', 'NoMercy.Plugins.Analyzers');
+export const ANALYZERS: string = resolve(MEDIA_SERVER, 'src', 'NoMercy.PluginSdk.Analyzers');
 export const ANALYZERS_GENERATED: string = resolve(ANALYZERS, 'Generated');
 
 export const WEB_CAPABILITIES: string = resolve(
