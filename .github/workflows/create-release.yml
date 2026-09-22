@@ -118,12 +118,10 @@ jobs:
           # template asks for that major. Overriding with the server's version
           # would publish packages no manifest claims compatibility with.
           for project in \
-            src/NoMercy.Events \
-            src/NoMercy.Design \
-            src/NoMercy.Plugins.Abstractions \
-            src/NoMercy.Plugins.Mvc \
-            src/NoMercy.Plugins.Testing \
-            src/NoMercy.Plugins.Analyzers; do
+            src/NoMercy.PluginSdk.Abstractions \
+            src/NoMercy.PluginSdk.Mvc \
+            src/NoMercy.PluginSdk.Testing \
+            src/NoMercy.PluginSdk.Analyzers; do
             dotnet pack "$project" --configuration Release --output ./output
           done
 
