@@ -19,5 +19,8 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\NoMercy.PluginHost\NoMercy.PluginHost.csproj" />
     <ProjectReference Include="..\..\src\NoMercy.PluginSdk.Ipc\NoMercy.PluginSdk.Ipc.csproj" />
+    <!-- The endpoint under test is the server half; this suite is the only
+         place both halves meet without a real plugin process. -->
+    <ProjectReference Include="..\..\src\NoMercy.Plugins\NoMercy.Plugins.csproj" />
   </ItemGroup>
 </Project>

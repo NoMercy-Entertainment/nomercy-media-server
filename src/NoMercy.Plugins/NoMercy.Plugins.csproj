@@ -18,6 +18,12 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.Abstractions" />
+    <!--
+      The broker listens on a named pipe or a unix socket, which is Kestrel.
+      The alternative was a separate project for one endpoint class, and the
+      endpoint belongs beside the broker it serves.
+    -->
+    <PackageReference Include="protobuf-net.Grpc.AspNetCore" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
   </ItemGroup>
