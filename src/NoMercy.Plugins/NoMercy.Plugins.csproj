@@ -23,8 +23,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\NoMercy.Plugins.Abstractions\NoMercy.Plugins.Abstractions.csproj" />
-    <ProjectReference Include="..\NoMercy.Plugins.Ipc\NoMercy.Plugins.Ipc.csproj" />
+    <ProjectReference Include="..\NoMercy.PluginSdk.Abstractions\NoMercy.PluginSdk.Abstractions.csproj" />
+    <ProjectReference Include="..\NoMercy.PluginSdk.Ipc\NoMercy.PluginSdk.Ipc.csproj" />
     <ProjectReference Include="..\NoMercy.Encoder\NoMercy.Encoder.csproj" />
     <ProjectReference Include="..\NoMercy.Events\NoMercy.Events.csproj" />
     <ProjectReference Include="..\NoMercy.Storage\NoMercy.Storage.csproj" />

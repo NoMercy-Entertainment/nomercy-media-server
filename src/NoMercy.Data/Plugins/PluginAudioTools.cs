@@ -21,8 +21,8 @@ using NoMercy.Encoder.Startup;
 using NoMercy.MediaProcessing.DerivedAudio;
 using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Information;
-using NoMercy.Plugins;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk;
+using NoMercy.PluginSdk.Abstractions;
 using NoMercy.Storage;
 
 namespace NoMercy.Data.Plugins;

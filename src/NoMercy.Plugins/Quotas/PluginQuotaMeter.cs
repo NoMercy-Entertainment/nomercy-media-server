@@ -10,10 +10,10 @@
 // -----------------------------------------------------------------------------
 
 using System.Collections.Concurrent;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Capabilities;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Capabilities;
 
-namespace NoMercy.Plugins.Quotas;
+namespace NoMercy.PluginSdk.Quotas;
 
 /// <summary>Where one plugin's quota comes from.</summary>
 public interface IPluginQuotaSource

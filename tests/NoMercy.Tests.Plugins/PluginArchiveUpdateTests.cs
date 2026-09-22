@@ -14,7 +14,7 @@ using System.Text;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Events;
-using NoMercy.Plugins;
+using NoMercy.PluginSdk;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;
@@ -100,7 +100,7 @@ public class PluginArchiveUpdateTests : IDisposable
           "name": "Internet Radio",
           "description": "Browse and play internet radio stations in the built-in player.",
           "version": "{{version}}",
-          "targetAbi": "10.0",
+          "targetAbi": "12.0",
           "author": "NoMercy Community",
           "assembly": "{{AssemblyName}}"
         }

@@ -13,13 +13,13 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NoMercy.Events;
 using NoMercy.Events.Plugins;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Capabilities;
-using NoMercy.Plugins.Sideload;
-using NoMercy.Plugins.Verification;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Capabilities;
+using NoMercy.PluginSdk.Sideload;
+using NoMercy.PluginSdk.Verification;
 using NoMercy.Storage;
 
-namespace NoMercy.Plugins;
+namespace NoMercy.PluginSdk;
 
 /// <summary>
 /// Loads plugin assemblies into their own <see cref="PluginLoadContext"/>, creates

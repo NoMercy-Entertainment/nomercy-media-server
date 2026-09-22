@@ -13,7 +13,7 @@ using System.Net.Http.Json;
 using Microsoft.Extensions.Logging;
 using NoMercy.NmSystem.Auth;
 
-namespace NoMercy.Plugins.Telemetry;
+namespace NoMercy.PluginSdk.Telemetry;
 
 /// <summary>
 /// Posts a report to NoMercy and forgets it if the line is down.

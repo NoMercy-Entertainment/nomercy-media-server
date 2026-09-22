@@ -19,7 +19,7 @@
     needs this exact assembly rather than a copy of it.
   -->
   <PropertyGroup>
-    <IsPackable>true</IsPackable>
+    <IsPackable>false</IsPackable>
     <PackageId>NoMercy.Plugins.Events</PackageId>
     <Version>$(PluginPackageVersion)</Version>
     <Authors>NoMercy Entertainment</Authors>

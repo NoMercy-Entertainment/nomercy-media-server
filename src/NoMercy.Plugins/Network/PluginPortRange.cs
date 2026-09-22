@@ -9,7 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-namespace NoMercy.Plugins.Network;
+namespace NoMercy.PluginSdk.Network;
 
 /// <summary>
 /// The port scope as a manifest writes it: one port, a range, or a comma list

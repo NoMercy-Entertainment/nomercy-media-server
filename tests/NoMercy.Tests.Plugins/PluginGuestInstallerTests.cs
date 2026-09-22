@@ -10,9 +10,9 @@
 // -----------------------------------------------------------------------------
 
 using FluentAssertions;
-using NoMercy.Plugins;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Guests;
+using NoMercy.PluginSdk;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Guests;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;
@@ -34,7 +34,7 @@ public class PluginGuestInstallerTests
             Name = "Internet Radio",
             Description = "d",
             Version = "1.0.0",
-            TargetAbi = "11.0",
+            TargetAbi = "12.0",
             Assembly = "Sample.dll",
             Capabilities = new() { Hooks = [.. hooks] },
         };

@@ -12,7 +12,7 @@
 using NoMercy.Events;
 using NoMercy.Events.Plugins;
 
-namespace NoMercy.Plugins.Access;
+namespace NoMercy.PluginSdk.Access;
 
 /// <summary>
 /// How a gate says its answer may be different now.

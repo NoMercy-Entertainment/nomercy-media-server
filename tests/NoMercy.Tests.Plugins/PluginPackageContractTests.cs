@@ -11,7 +11,7 @@
 
 using System.Xml.Linq;
 using FluentAssertions;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 using NoMercy.Tests.Common;
 using Xunit;
 
@@ -31,10 +31,21 @@ public class PluginPackageContractTests
 {
     private static readonly string[] PluginPackages =
     [
-        "src/NoMercy.Plugins.Abstractions/NoMercy.Plugins.Abstractions.csproj",
-        "src/NoMercy.Plugins.Mvc/NoMercy.Plugins.Mvc.csproj",
-        "src/NoMercy.Plugins.Testing/NoMercy.Plugins.Testing.csproj",
-        "src/NoMercy.Plugins.Analyzers/NoMercy.Plugins.Analyzers.csproj",
+        "src/NoMercy.PluginSdk.Abstractions/NoMercy.PluginSdk.Abstractions.csproj",
+        "src/NoMercy.PluginSdk.Mvc/NoMercy.PluginSdk.Mvc.csproj",
+        "src/NoMercy.PluginSdk.Testing/NoMercy.PluginSdk.Testing.csproj",
+        "src/NoMercy.PluginSdk.Analyzers/NoMercy.PluginSdk.Analyzers.csproj",
+    ];
+
+    /// <summary>
+    /// Built here, shipped inside the SDK package rather than beside it.
+    /// <para>
+    /// An author installs one thing, not three that have to be kept on the same
+    /// version by hand, and nothing ever referenced these two alone.
+    /// </para>
+    /// </summary>
+    private static readonly string[] CarriedInsideTheSdk =
+    [
         "src/NoMercy.Design/NoMercy.Design.csproj",
         "src/NoMercy.Events/NoMercy.Events.csproj",
     ];
@@ -54,6 +65,20 @@ public class PluginPackageContractTests
             Value(Project(path), "IsPackable")
                 .Should()
                 .Be("true", $"{path} is one an author outside this repository has to download");
+    }
+
+    /// <summary>
+    /// The two that travel inside the SDK must not also be published on their
+    /// own. A project that is both would put the same assembly in a consumer's
+    /// output twice, from two packages that can drift to different versions.
+    /// </summary>
+    [Fact]
+    public void What_ships_inside_the_sdk_is_not_published_beside_it()
+    {
+        foreach (string path in CarriedInsideTheSdk)
+            Value(Project(path), "IsPackable")
+                .Should()
+                .Be("false", $"{path} ships inside the SDK package rather than as its own");
     }
 
     [Fact]
@@ -92,7 +117,7 @@ public class PluginPackageContractTests
 
         ids.Should()
             .OnlyContain(
-                id => id.StartsWith("NoMercy.Plugins.", StringComparison.Ordinal),
+                id => id.StartsWith("NoMercy.PluginSdk.", StringComparison.Ordinal),
                 "an author searching for the SDK finds one prefix rather than four unrelated names"
             );
     }

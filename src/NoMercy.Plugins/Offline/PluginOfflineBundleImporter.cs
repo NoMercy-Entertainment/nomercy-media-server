@@ -11,12 +11,12 @@
 
 using System.Text;
 using System.Text.Json;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Entitlements;
-using NoMercy.Plugins.Revocation;
-using NoMercy.Plugins.Verification;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Entitlements;
+using NoMercy.PluginSdk.Revocation;
+using NoMercy.PluginSdk.Verification;
 
-namespace NoMercy.Plugins.Offline;
+namespace NoMercy.PluginSdk.Offline;
 
 /// <summary>
 /// Lands one file carried in from a device that is online: the entitlements

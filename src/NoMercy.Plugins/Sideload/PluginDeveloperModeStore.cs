@@ -9,7 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-namespace NoMercy.Plugins.Sideload;
+namespace NoMercy.PluginSdk.Sideload;
 
 /// <summary>
 /// Reads and writes the owner's answer about developer mode.

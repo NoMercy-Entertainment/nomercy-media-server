@@ -11,7 +11,7 @@
 
 using System.Text.Json.Serialization;
 
-namespace NoMercy.Plugins.Telemetry;
+namespace NoMercy.PluginSdk.Telemetry;
 
 /// <summary>
 /// Everything this server says about its plugins, and nothing else.

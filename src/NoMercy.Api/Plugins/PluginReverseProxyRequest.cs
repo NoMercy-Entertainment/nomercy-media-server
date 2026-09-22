@@ -10,7 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using System.Text.Json;
-using NoMercy.Plugins.Ipc;
+using NoMercy.PluginSdk.Ipc;
 
 namespace NoMercy.Api.Plugins;
 

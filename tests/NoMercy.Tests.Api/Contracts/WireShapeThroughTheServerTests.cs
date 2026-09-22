@@ -18,7 +18,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Serialization;
 using NoMercy.NmSystem.Dto;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 using NoMercy.Tests.Api.Infrastructure;
 using Serilog.Events;
 using Xunit;

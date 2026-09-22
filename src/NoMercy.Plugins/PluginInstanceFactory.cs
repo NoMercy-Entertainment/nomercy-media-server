@@ -10,9 +10,9 @@
 // -----------------------------------------------------------------------------
 using System.Reflection;
 using Microsoft.Extensions.DependencyInjection;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins;
+namespace NoMercy.PluginSdk;
 
 /// <summary>
 /// Creates plugin instances through a container rather than

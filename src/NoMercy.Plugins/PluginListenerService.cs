@@ -10,10 +10,10 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.Extensions.Hosting;
-using NoMercy.Plugins.Access;
-using NoMercy.Plugins.Telemetry;
+using NoMercy.PluginSdk.Access;
+using NoMercy.PluginSdk.Telemetry;
 
-namespace NoMercy.Plugins;
+namespace NoMercy.PluginSdk;
 
 /// <summary>
 /// Brings the platform's event listeners into being.

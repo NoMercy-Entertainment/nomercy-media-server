@@ -9,10 +9,10 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Capabilities;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Capabilities;
 
-namespace NoMercy.Plugins.Access;
+namespace NoMercy.PluginSdk.Access;
 
 /// <summary>Where one person is told what they may now open.</summary>
 public interface IPluginAccessHub

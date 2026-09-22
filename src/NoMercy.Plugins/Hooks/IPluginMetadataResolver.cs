@@ -9,9 +9,9 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins.Hooks;
+namespace NoMercy.PluginSdk.Hooks;
 
 /// <summary>
 /// What plugins know about a title that the native provider did not answer.

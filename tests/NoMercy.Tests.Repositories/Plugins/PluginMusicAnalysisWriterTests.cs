@@ -18,7 +18,7 @@ using NoMercy.Data.Plugins;
 using NoMercy.Database;
 using NoMercy.Database.Models.Music;
 using NoMercy.MediaProcessing.DerivedAudio;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 using DerivedAudioRow = NoMercy.Database.Models.Music.DerivedAudio;
 
 namespace NoMercy.Tests.Repositories.Plugins;

@@ -1,5 +1,5 @@
 using NoMercy.Plugin.Samples.Dashboard;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 using Xunit;
 
 namespace NoMercy.Tests.Api.NmComponents;

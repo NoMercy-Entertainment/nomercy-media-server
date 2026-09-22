@@ -10,11 +10,11 @@
 // -----------------------------------------------------------------------------
 
 using System.Runtime.CompilerServices;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Capabilities;
-using NoMercy.Plugins.Runtime;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Capabilities;
+using NoMercy.PluginSdk.Runtime;
 
-namespace NoMercy.Plugins.Network;
+namespace NoMercy.PluginSdk.Network;
 
 /// <summary>
 /// Finding peers and devices on the owner's own network.

@@ -9,9 +9,9 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins.Runtime;
+namespace NoMercy.PluginSdk.Runtime;
 
 /// <summary>What the host decided to run, after every check has passed.</summary>
 public sealed record PluginProcessRequest(

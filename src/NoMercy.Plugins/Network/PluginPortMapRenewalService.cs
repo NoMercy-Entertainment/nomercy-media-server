@@ -13,7 +13,7 @@ using System.Collections.Concurrent;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 
-namespace NoMercy.Plugins.Network;
+namespace NoMercy.PluginSdk.Network;
 
 /// <summary>
 /// Keeps every plugin's router mappings alive.

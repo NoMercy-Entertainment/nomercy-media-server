@@ -9,7 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-namespace NoMercy.Plugins.Guests;
+namespace NoMercy.PluginSdk.Guests;
 
 /// <summary>Which installs belong to one person rather than to the server.</summary>
 public interface IPluginGuestInstallStore

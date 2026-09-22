@@ -10,7 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using FluentAssertions;
-using NoMercy.Plugins;
+using NoMercy.PluginSdk;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;

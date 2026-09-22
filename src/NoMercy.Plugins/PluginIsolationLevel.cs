@@ -9,7 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-namespace NoMercy.Plugins;
+namespace NoMercy.PluginSdk;
 
 /// <summary>
 /// What the owner is told about the boundary they are consenting across.

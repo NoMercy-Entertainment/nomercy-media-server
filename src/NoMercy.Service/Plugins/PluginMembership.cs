@@ -12,7 +12,7 @@
 using System.Text.Json;
 using NoMercy.Authorization;
 using NoMercy.NmSystem.Information;
-using NoMercy.Plugins.Access;
+using NoMercy.PluginSdk.Access;
 
 namespace NoMercy.Service.Plugins;
 

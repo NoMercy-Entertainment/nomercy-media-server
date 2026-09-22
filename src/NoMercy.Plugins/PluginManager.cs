@@ -1,4 +1,4 @@
-// -----------------------------------------------------------------------------
+﻿// -----------------------------------------------------------------------------
 //  Copyright (c) 2024-present NoMercy Entertainment. All rights reserved.
 //
 //  This file is part of NoMercy MediaServer, source-available software (NOT open
@@ -14,15 +14,15 @@ using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Logging;
 using NoMercy.Events;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Capabilities;
-using NoMercy.Plugins.Guests;
-using NoMercy.Plugins.Hub;
-using NoMercy.Plugins.Sideload;
-using NoMercy.Plugins.Verification;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Capabilities;
+using NoMercy.PluginSdk.Guests;
+using NoMercy.PluginSdk.Hub;
+using NoMercy.PluginSdk.Sideload;
+using NoMercy.PluginSdk.Verification;
 using NoMercy.Storage;
 
-namespace NoMercy.Plugins;
+namespace NoMercy.PluginSdk;
 
 public class PluginManager : IPluginManager, IDisposable
 {

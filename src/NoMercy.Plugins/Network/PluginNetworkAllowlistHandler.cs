@@ -10,9 +10,9 @@
 // -----------------------------------------------------------------------------
 
 using System.Text.RegularExpressions;
-using NoMercy.Plugins.Capabilities;
+using NoMercy.PluginSdk.Capabilities;
 
-namespace NoMercy.Plugins.Network;
+namespace NoMercy.PluginSdk.Network;
 
 public class PluginNetworkDeniedException(string host)
     : Exception($"Plugin network access to host '{host}' is not permitted by its capabilities.");

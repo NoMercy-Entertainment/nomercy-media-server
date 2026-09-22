@@ -12,13 +12,13 @@
 using Microsoft.Extensions.Logging;
 using NoMercy.Events;
 using NoMercy.Events.Plugins;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Hub;
-using NoMercy.Plugins.Network;
-using NoMercy.Plugins.Player;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Hub;
+using NoMercy.PluginSdk.Network;
+using NoMercy.PluginSdk.Player;
 using NoMercy.Storage;
 
-namespace NoMercy.Plugins;
+namespace NoMercy.PluginSdk;
 
 public class PluginContext : IPluginContext
 {

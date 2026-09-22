@@ -23,14 +23,14 @@ using NoMercy.MediaProcessing.Jobs.MediaJobs;
 using NoMercy.MediaProcessing.Shows;
 using NoMercy.NmSystem;
 using NoMercy.NmSystem.Extensions;
-using NoMercy.Plugins.Hooks;
+using NoMercy.PluginSdk.Hooks;
 using NoMercy.Providers.TMDB.Client;
 using NoMercy.Providers.TMDB.Models.Movies;
 using NoMercy.Providers.TMDB.Models.Networks;
 using NoMercy.Providers.TMDB.Models.Shared;
 using NoMercy.Storage;
-using PluginMediaMetadata = NoMercy.Plugins.Abstractions.MediaMetadata;
-using PluginMediaType = NoMercy.Plugins.Abstractions.MediaType;
+using PluginMediaMetadata = NoMercy.PluginSdk.Abstractions.MediaMetadata;
+using PluginMediaType = NoMercy.PluginSdk.Abstractions.MediaType;
 
 namespace NoMercy.MediaProcessing.Movies;
 

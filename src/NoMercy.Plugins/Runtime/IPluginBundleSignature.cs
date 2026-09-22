@@ -9,7 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-namespace NoMercy.Plugins.Runtime;
+namespace NoMercy.PluginSdk.Runtime;
 
 /// <summary>
 /// Whether this plugin's bundle came from the marketplace with a signature

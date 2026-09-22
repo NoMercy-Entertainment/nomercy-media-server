@@ -11,8 +11,8 @@
 
 using System.Runtime.Versioning;
 using FluentAssertions;
-using NoMercy.Plugins.OutOfProcess;
-using NoMercy.Plugins.Quotas;
+using NoMercy.PluginSdk.OutOfProcess;
+using NoMercy.PluginSdk.Quotas;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;

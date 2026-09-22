@@ -9,7 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-namespace NoMercy.Plugins.Watchdog;
+namespace NoMercy.PluginSdk.Watchdog;
 
 /// <summary>
 /// The same allowance for every plugin until the owner sets one per plugin,

@@ -9,9 +9,9 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins;
+namespace NoMercy.PluginSdk;
 
 /// <summary>
 /// Answers whether an action on a plugin needs the server restarted.

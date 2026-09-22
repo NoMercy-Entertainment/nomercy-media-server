@@ -12,7 +12,7 @@
 using FluentAssertions;
 using Moq;
 using NoMercy.Data.Plugins;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 using NoMercyQueue.Core.Interfaces;
 using NoMercyQueue.Core.Models;
 using Xunit;

@@ -10,9 +10,9 @@
 // -----------------------------------------------------------------------------
 
 using System.Globalization;
-using NoMercy.Plugins.Quotas;
+using NoMercy.PluginSdk.Quotas;
 
-namespace NoMercy.Plugins.OutOfProcess;
+namespace NoMercy.PluginSdk.OutOfProcess;
 
 /// <summary>
 /// A quota as the three lines cgroup v2 reads.

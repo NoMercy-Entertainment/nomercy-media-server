@@ -10,11 +10,11 @@
 // -----------------------------------------------------------------------------
 
 using System.Net.Sockets;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Capabilities;
-using NoMercy.Plugins.Runtime;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Capabilities;
+using NoMercy.PluginSdk.Runtime;
 
-namespace NoMercy.Plugins.Network;
+namespace NoMercy.PluginSdk.Network;
 
 /// <summary>
 /// Sockets the owner consented to.

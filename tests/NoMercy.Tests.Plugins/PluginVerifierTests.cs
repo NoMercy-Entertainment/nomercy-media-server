@@ -10,8 +10,8 @@
 // -----------------------------------------------------------------------------
 
 using System.Security.Cryptography;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Verification;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Verification;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;
@@ -48,7 +48,7 @@ public class PluginVerifierTests
     {
         string dll = WriteTempDll([1, 2, 3]);
         PluginVerifier verifier = new();
-        PluginVerificationResult result = verifier.Verify(Manifest("12.0"), dll, null);
+        PluginVerificationResult result = verifier.Verify(Manifest("10.0"), dll, null);
         Assert.False(result.Verified);
         Assert.Contains(result.Failures, f => f.Contains("ABI"));
     }
@@ -61,7 +61,7 @@ public class PluginVerifierTests
         string dll = WriteTempDll([1, 1, 1]);
         string sha = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
         PluginVerifier verifier = new();
-        PluginVerificationResult result = verifier.Verify(Manifest("10.0"), dll, sha, package);
+        PluginVerificationResult result = verifier.Verify(Manifest("12.0"), dll, sha, package);
         Assert.True(result.Verified);
         Assert.True(result.Trusted);
     }
@@ -87,7 +87,7 @@ public class PluginVerifierTests
     {
         string dll = WriteTempDll([5, 5]);
         PluginVerifier verifier = new();
-        PluginVerificationResult result = verifier.Verify(Manifest("10.0"), dll, null);
+        PluginVerificationResult result = verifier.Verify(Manifest("12.0"), dll, null);
         Assert.True(result.Verified);
         Assert.False(result.Trusted);
     }
@@ -102,7 +102,7 @@ public class PluginVerifierTests
         string dll = WriteTempDll([1, 2, 3]);
         PluginVerifier verifier = new([new AdvisoryFailingStage()]);
 
-        PluginVerificationResult result = verifier.Verify(Manifest("10.0"), dll, null);
+        PluginVerificationResult result = verifier.Verify(Manifest("12.0"), dll, null);
 
         Assert.True(result.Verified);
         Assert.Empty(result.Failures);

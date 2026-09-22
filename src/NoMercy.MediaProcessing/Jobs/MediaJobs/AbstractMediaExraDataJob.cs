@@ -15,7 +15,7 @@
 
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
-using NoMercy.Plugins.Hooks;
+using NoMercy.PluginSdk.Hooks;
 using NoMercy.Storage;
 using NoMercyQueue.Core.Interfaces;
 

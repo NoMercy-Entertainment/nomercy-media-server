@@ -9,7 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-namespace NoMercy.Plugins.Revocation;
+namespace NoMercy.PluginSdk.Revocation;
 
 /// <summary>Where the list this server last accepted is kept.</summary>
 public interface IPluginRevocationStore

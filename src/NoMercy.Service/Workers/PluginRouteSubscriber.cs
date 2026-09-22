@@ -12,7 +12,7 @@
 using NoMercy.Api.Plugins;
 using NoMercy.Events;
 using NoMercy.Events.Plugins;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
 namespace NoMercy.Service.Workers;
 

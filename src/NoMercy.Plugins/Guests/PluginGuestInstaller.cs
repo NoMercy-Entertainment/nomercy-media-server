@@ -10,10 +10,10 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.Events;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Access;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Access;
 
-namespace NoMercy.Plugins.Guests;
+namespace NoMercy.PluginSdk.Guests;
 
 /// <summary>
 /// A guest brings a plugin onto somebody else's machine.

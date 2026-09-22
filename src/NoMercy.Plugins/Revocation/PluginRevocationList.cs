@@ -9,7 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-namespace NoMercy.Plugins.Revocation;
+namespace NoMercy.PluginSdk.Revocation;
 
 /// <summary>Every build this server knows was revoked, and when it last heard.</summary>
 public sealed record PluginRevocationList(

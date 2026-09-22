@@ -18,7 +18,7 @@ using NoMercy.Data.Plugins;
 using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.Music;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
 namespace NoMercy.Tests.Repositories.Plugins;
 

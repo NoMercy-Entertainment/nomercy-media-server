@@ -12,7 +12,7 @@
 using System.Text;
 using System.Text.Json;
 
-namespace NoMercy.Plugins.Verification;
+namespace NoMercy.PluginSdk.Verification;
 
 /// <summary>
 /// The shape NoMercy signs anything it sends this server: some fields, plus a

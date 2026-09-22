@@ -10,9 +10,9 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.Extensions.DependencyInjection;
-using NoMercy.Plugins;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Hub;
+using NoMercy.PluginSdk;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Hub;
 using NoMercy.Tests.Api.Infrastructure;
 using Xunit;
 

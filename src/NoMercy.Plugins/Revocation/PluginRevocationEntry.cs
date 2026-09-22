@@ -9,7 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-namespace NoMercy.Plugins.Revocation;
+namespace NoMercy.PluginSdk.Revocation;
 
 /// <summary>One build that must not run, and why.</summary>
 /// <param name="Hash">

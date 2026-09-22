@@ -20,12 +20,12 @@ using NoMercy.Api.DTOs.Plugins;
 using NoMercy.NmSystem.Auth;
 using NoMercy.NmSystem.Extensions;
 using NoMercy.NmSystem.Information;
-using NoMercy.Plugins;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Capabilities;
-using NoMercy.Plugins.OutOfProcess;
-using NoMercy.Plugins.Sideload;
-using NoMercy.Plugins.Verification;
+using NoMercy.PluginSdk;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Capabilities;
+using NoMercy.PluginSdk.OutOfProcess;
+using NoMercy.PluginSdk.Sideload;
+using NoMercy.PluginSdk.Verification;
 using NoMercy.Storage;
 
 namespace NoMercy.Api.Controllers.V1.Dashboard.Plugins;

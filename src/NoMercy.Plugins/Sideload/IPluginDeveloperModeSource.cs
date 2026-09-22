@@ -9,7 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-namespace NoMercy.Plugins.Sideload;
+namespace NoMercy.PluginSdk.Sideload;
 
 /// <summary>
 /// Whether the owner has turned on installing from a file.

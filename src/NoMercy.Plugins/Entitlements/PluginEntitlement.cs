@@ -9,9 +9,9 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins.Entitlements;
+namespace NoMercy.PluginSdk.Entitlements;
 
 /// <summary>One person's right to run one paid plugin on this server.</summary>
 /// <param name="Seats">How many members a shared license covers, or null for every member.</param>

@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Product>NoMercy Plugin MVC Abstractions</Product>
+    <Platforms>AnyCPU;x64;x86;ARM32</Platforms>
+    <IsTestProject>false</IsTestProject>
+  </PropertyGroup>
+
+  <!--
+    Its own assembly rather than a type in NoMercy.Plugins.Abstractions.
+
+    A plugin inherits PluginControllerBase, so the type must keep one identity
+    across the load-context boundary, which means the assembly holding it is in
+    the shared set. Putting it in Abstractions would put a FrameworkReference on
+    Microsoft.AspNetCore.App there, and every plugin — including the ones that
+    never serve a request — would then have to target the ASP.NET Core shared
+    framework to reference the contract at all.
+  -->
+  <PropertyGroup>
+    <IsPackable>true</IsPackable>
+    <PackageId>NoMercy.PluginSdk.Mvc</PackageId>
+    <Version>$(PluginPackageVersion)</Version>
+    <Authors>NoMercy Entertainment</Authors>
+    <Description>The base class a NoMercy MediaServer plugin's REST controllers inherit.</Description>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <RepositoryUrl>https://github.com/NoMercy-Entertainment/nomercy-media-server</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageProjectUrl>https://github.com/NoMercy-Entertainment/nomercy-media-server</PackageProjectUrl>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="" Visible="false" />
+    <None Include="README.md" Pack="true" PackagePath="" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NoMercy.PluginSdk.Abstractions\NoMercy.PluginSdk.Abstractions.csproj" />
+  </ItemGroup>
+</Project>

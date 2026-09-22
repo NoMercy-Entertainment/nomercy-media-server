@@ -12,7 +12,7 @@
 using System.Text.Json;
 using NoMercy.NmSystem.Information;
 
-namespace NoMercy.Plugins.Offline;
+namespace NoMercy.PluginSdk.Offline;
 
 /// <summary>
 /// The owner's answer for a server that will never reach NoMercy.

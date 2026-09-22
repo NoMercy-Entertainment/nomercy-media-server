@@ -11,9 +11,9 @@
 
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins.Watchdog;
+namespace NoMercy.PluginSdk.Watchdog;
 
 /// <summary>What a plugin is using right now, as far as this process can tell.</summary>
 public interface IPluginResourceSampler

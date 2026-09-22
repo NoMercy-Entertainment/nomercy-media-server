@@ -10,9 +10,9 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.AspNetCore.DataProtection;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins;
+namespace NoMercy.PluginSdk;
 
 /// <summary>
 /// A plugin's secrets, protected with <see cref="IDataProtector"/> and held in

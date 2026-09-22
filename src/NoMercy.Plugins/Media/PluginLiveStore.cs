@@ -10,9 +10,9 @@
 // -----------------------------------------------------------------------------
 
 using System.Collections.Concurrent;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins.Media;
+namespace NoMercy.PluginSdk.Media;
 
 /// <summary>
 /// The channels, groups and guide one plugin published, held in memory.

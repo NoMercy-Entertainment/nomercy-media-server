@@ -10,10 +10,10 @@
 // -----------------------------------------------------------------------------
 
 using System.Collections.Concurrent;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Capabilities;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Capabilities;
 
-namespace NoMercy.Plugins;
+namespace NoMercy.PluginSdk;
 
 /// <summary>One reason a plugin might not run. The order they are registered in is the order they are asked.</summary>
 public interface IPluginRunCheck

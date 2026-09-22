@@ -10,7 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.Database.Models.Music;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
 namespace NoMercy.Data.Plugins;
 

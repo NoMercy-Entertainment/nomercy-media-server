@@ -21,7 +21,7 @@
     <ProjectReference Include="..\NoMercy.Providers\NoMercy.Providers.csproj" />
     <ProjectReference Include="..\NoMercyQueue\NoMercyQueue.csproj" />
     <ProjectReference Include="..\NoMercy.Storage\NoMercy.Storage.csproj" />
-    <ProjectReference Include="..\NoMercy.Plugins.Abstractions\NoMercy.Plugins.Abstractions.csproj" />
+    <ProjectReference Include="..\NoMercy.PluginSdk.Abstractions\NoMercy.PluginSdk.Abstractions.csproj" />
     <ProjectReference Include="..\NoMercy.Plugins\NoMercy.Plugins.csproj" />
   </ItemGroup>
 

@@ -9,7 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-namespace NoMercy.Plugins.OutOfProcess;
+namespace NoMercy.PluginSdk.OutOfProcess;
 
 /// <summary>
 /// The macOS sandbox profile for one plugin.

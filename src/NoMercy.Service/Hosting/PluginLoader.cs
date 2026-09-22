@@ -10,8 +10,8 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.Api.Plugins;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Hooks;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Hooks;
 
 namespace NoMercy.Service.Hosting;
 

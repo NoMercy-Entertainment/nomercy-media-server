@@ -10,9 +10,9 @@
 // -----------------------------------------------------------------------------
 
 using System.Collections.Concurrent;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins.Runtime;
+namespace NoMercy.PluginSdk.Runtime;
 
 /// <summary>
 /// Native code from the plugin's own bundle.

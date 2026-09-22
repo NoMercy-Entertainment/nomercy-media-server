@@ -11,10 +11,10 @@
 
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Verification;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Verification;
 
-namespace NoMercy.Plugins.Entitlements;
+namespace NoMercy.PluginSdk.Entitlements;
 
 /// <summary>
 /// Brings the bundle in, whether this server asked for it or NoMercy pushed it.

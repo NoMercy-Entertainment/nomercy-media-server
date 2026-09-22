@@ -10,7 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.Authorization;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
 namespace NoMercy.Service.Plugins;
 

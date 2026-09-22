@@ -9,10 +9,10 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Capabilities;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Capabilities;
 
-namespace NoMercy.Plugins.Dependencies;
+namespace NoMercy.PluginSdk.Dependencies;
 
 /// <summary>What the repositories offer, narrowed to what a plan needs to know.</summary>
 public interface IPluginCatalogue

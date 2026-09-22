@@ -10,7 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json.Linq;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
 namespace NoMercy.Plugin.Samples.Failures;
 

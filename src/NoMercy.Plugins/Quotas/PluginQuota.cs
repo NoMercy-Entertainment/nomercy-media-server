@@ -9,7 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-namespace NoMercy.Plugins.Quotas;
+namespace NoMercy.PluginSdk.Quotas;
 
 /// <summary>
 /// What one plugin is allowed on this server.

@@ -15,9 +15,9 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Events;
 using NoMercy.Events.Playback;
 using NoMercy.Events.Plugins;
-using NoMercy.Plugins;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Hub;
+using NoMercy.PluginSdk;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Hub;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;

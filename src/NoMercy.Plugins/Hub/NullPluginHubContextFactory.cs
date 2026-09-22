@@ -9,9 +9,9 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins.Hub;
+namespace NoMercy.PluginSdk.Hub;
 
 /// <summary>
 /// What a plugin gets where no hub is mapped — the CLI, a unit test, any host

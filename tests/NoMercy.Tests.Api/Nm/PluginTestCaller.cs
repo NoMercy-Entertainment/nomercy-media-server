@@ -1,4 +1,4 @@
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
 namespace NoMercy.Tests.Api.NmComponents;
 

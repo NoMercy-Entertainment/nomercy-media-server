@@ -11,10 +11,10 @@
 
 using System.Runtime.CompilerServices;
 using FluentAssertions;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Capabilities;
-using NoMercy.Plugins.Quotas;
-using NoMercy.Plugins.Storage;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Capabilities;
+using NoMercy.PluginSdk.Quotas;
+using NoMercy.PluginSdk.Storage;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;

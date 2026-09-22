@@ -11,10 +11,10 @@
 
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Capabilities;
-using NoMercy.Plugins.Network;
-using NoMercy.Plugins.Runtime;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Capabilities;
+using NoMercy.PluginSdk.Network;
+using NoMercy.PluginSdk.Runtime;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;

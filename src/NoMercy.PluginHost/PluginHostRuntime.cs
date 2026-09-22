@@ -10,7 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using System.Diagnostics;
-using NoMercy.Plugins.Ipc;
+using NoMercy.PluginSdk.Ipc;
 
 namespace NoMercy.PluginHost;
 

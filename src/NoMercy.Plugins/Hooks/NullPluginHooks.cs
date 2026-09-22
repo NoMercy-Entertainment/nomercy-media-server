@@ -10,9 +10,9 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.NmSystem.Dto;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins.Hooks;
+namespace NoMercy.PluginSdk.Hooks;
 
 /// <summary>
 /// A server with no plugin platform at all — which is what a test harness

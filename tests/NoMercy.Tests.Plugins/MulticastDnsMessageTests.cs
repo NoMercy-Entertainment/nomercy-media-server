@@ -11,7 +11,7 @@
 
 using System.Diagnostics;
 using FluentAssertions;
-using NoMercy.Plugins.Network;
+using NoMercy.PluginSdk.Network;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;

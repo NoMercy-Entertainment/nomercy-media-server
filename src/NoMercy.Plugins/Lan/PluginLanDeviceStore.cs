@@ -12,7 +12,7 @@
 using System.Text.Json;
 using NoMercy.NmSystem.Information;
 
-namespace NoMercy.Plugins.Lan;
+namespace NoMercy.PluginSdk.Lan;
 
 /// <summary>Where the device rows live.</summary>
 public interface IPluginLanDeviceStore

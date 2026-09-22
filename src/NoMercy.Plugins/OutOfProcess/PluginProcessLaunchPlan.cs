@@ -10,10 +10,10 @@
 // -----------------------------------------------------------------------------
 
 using System.Security.Cryptography;
-using NoMercy.Plugins.Ipc;
-using NoMercy.Plugins.Quotas;
+using NoMercy.PluginSdk.Ipc;
+using NoMercy.PluginSdk.Quotas;
 
-namespace NoMercy.Plugins.OutOfProcess;
+namespace NoMercy.PluginSdk.OutOfProcess;
 
 /// <summary>
 /// Everything the child process needs to be told, worked out before anything

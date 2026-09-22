@@ -9,9 +9,9 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins.Capabilities;
+namespace NoMercy.PluginSdk.Capabilities;
 
 /// <summary>
 /// Whether a plugin starts running on its own, or waits for the owner.

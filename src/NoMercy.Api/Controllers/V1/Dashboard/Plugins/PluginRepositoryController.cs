@@ -16,10 +16,10 @@ using Microsoft.AspNetCore.Mvc;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Api.DTOs.Dashboard;
 using NoMercy.NmSystem.Information;
-using NoMercy.Plugins;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Dependencies;
-using NoMercy.Plugins.Verification;
+using NoMercy.PluginSdk;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Dependencies;
+using NoMercy.PluginSdk.Verification;
 using NoMercy.Storage;
 using SemanticVersion = System.Version;
 

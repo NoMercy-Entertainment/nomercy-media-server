@@ -9,10 +9,10 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Entitlements;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Entitlements;
 
-namespace NoMercy.Plugins.Sideload;
+namespace NoMercy.PluginSdk.Sideload;
 
 /// <summary>
 /// A plugin installed from a file is the owner's own risk, taken on purpose.

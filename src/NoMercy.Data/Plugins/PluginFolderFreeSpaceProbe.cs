@@ -12,7 +12,7 @@
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
-using NoMercy.Plugins.Storage;
+using NoMercy.PluginSdk.Storage;
 
 namespace NoMercy.Data.Plugins;
 

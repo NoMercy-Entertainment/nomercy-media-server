@@ -13,17 +13,17 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NoMercy.Events;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Capabilities;
-using NoMercy.Plugins.Hub;
-using NoMercy.Plugins.Library;
-using NoMercy.Plugins.Network;
-using NoMercy.Plugins.Quotas;
-using NoMercy.Plugins.Runtime;
-using NoMercy.Plugins.Storage;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Capabilities;
+using NoMercy.PluginSdk.Hub;
+using NoMercy.PluginSdk.Library;
+using NoMercy.PluginSdk.Network;
+using NoMercy.PluginSdk.Quotas;
+using NoMercy.PluginSdk.Runtime;
+using NoMercy.PluginSdk.Storage;
 using NoMercy.Storage;
 
-namespace NoMercy.Plugins;
+namespace NoMercy.PluginSdk;
 
 /// <summary>
 /// Assembles a plugin's context, applying the trust decisions in one place.

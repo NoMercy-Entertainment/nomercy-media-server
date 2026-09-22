@@ -10,9 +10,9 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.Extensions.Logging;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins.Library;
+namespace NoMercy.PluginSdk.Library;
 
 /// <summary>
 /// Where a plugin hands over a finished file.

@@ -11,8 +11,8 @@
 
 using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Api.Plugins;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Hooks;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Hooks;
 using NoMercy.Service.Hosting;
 
 namespace NoMercy.Tests.Service.Hosting;

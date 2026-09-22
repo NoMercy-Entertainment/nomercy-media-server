@@ -10,8 +10,8 @@
 // -----------------------------------------------------------------------------
 
 using FluentAssertions;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Manifest;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Manifest;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;
@@ -30,7 +30,7 @@ public class PluginDependencyTests
             Name = id,
             Description = id,
             Version = "1.0.0",
-            TargetAbi = "11.0",
+            TargetAbi = "12.0",
             Assembly = $"{id}.dll",
             Entry = $"{id}.Plugin",
             Tier = tier,

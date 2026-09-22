@@ -11,7 +11,7 @@
 
 using System.Collections.Concurrent;
 
-namespace NoMercy.Plugins;
+namespace NoMercy.PluginSdk;
 
 /// <summary>
 /// Whether a plugin's files can be replaced yet.

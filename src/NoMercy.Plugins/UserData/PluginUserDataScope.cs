@@ -10,9 +10,9 @@
 // -----------------------------------------------------------------------------
 
 using System.Text.Json;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins.UserData;
+namespace NoMercy.PluginSdk.UserData;
 
 /// <summary>
 /// One person's corner of one plugin's storage.

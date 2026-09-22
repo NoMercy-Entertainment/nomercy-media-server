@@ -11,9 +11,9 @@
 
 using System.Security.Cryptography;
 using System.Text;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins.Lan;
+namespace NoMercy.PluginSdk.Lan;
 
 /// <summary>
 /// A credential for one named device on the owner's network.

@@ -10,7 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using System.Net;
-using NoMercy.Plugins.Network;
+using NoMercy.PluginSdk.Network;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;

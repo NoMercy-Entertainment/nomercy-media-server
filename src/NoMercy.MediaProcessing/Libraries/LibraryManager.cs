@@ -27,7 +27,7 @@ using NoMercy.NmSystem;
 using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Dto;
 using NoMercy.NmSystem.Extensions;
-using NoMercy.Plugins.Hooks;
+using NoMercy.PluginSdk.Hooks;
 using NoMercy.Providers.TMDB.Client;
 using NoMercy.Providers.TMDB.Models.Movies;
 using NoMercy.Providers.TMDB.Models.Shared;

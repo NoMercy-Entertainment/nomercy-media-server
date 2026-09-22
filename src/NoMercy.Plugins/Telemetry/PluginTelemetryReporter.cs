@@ -9,11 +9,11 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Access;
-using NoMercy.Plugins.Capabilities;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Access;
+using NoMercy.PluginSdk.Capabilities;
 
-namespace NoMercy.Plugins.Telemetry;
+namespace NoMercy.PluginSdk.Telemetry;
 
 /// <summary>
 /// What this server tells NoMercy about its plugins.

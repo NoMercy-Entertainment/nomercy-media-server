@@ -23,7 +23,7 @@
       together, because written twice they drift and the half that drifts is
       whichever one nobody is looking at.
     -->
-    <PluginPackageVersion>11.0.0</PluginPackageVersion>
+    <PluginPackageVersion>12.0.0</PluginPackageVersion>
     <AssemblyVersion>$(Version).0</AssemblyVersion>
     <FileVersion>$(Version).0</FileVersion>
   </PropertyGroup>

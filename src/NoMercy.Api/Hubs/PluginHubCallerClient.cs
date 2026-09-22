@@ -10,7 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.AspNetCore.SignalR;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
 namespace NoMercy.Api.Hubs;
 

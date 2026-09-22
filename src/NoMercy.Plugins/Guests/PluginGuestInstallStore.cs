@@ -12,7 +12,7 @@
 using System.Text.Json;
 using NoMercy.NmSystem.Information;
 
-namespace NoMercy.Plugins.Guests;
+namespace NoMercy.PluginSdk.Guests;
 
 /// <summary>
 /// The guest installs on disk, so a restart does not turn one person's plugin

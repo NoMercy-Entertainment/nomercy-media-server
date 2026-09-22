@@ -9,10 +9,10 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Capabilities;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Capabilities;
 
-namespace NoMercy.Plugins.Runtime;
+namespace NoMercy.PluginSdk.Runtime;
 
 /// <summary>
 /// Running one of the binaries the owner approved.

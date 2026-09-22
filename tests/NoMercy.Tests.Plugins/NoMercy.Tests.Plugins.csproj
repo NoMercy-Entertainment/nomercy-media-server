@@ -33,14 +33,14 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\..\src\NoMercy.Plugins.Abstractions\NoMercy.Plugins.Abstractions.csproj" />
+    <ProjectReference Include="..\..\src\NoMercy.PluginSdk.Abstractions\NoMercy.PluginSdk.Abstractions.csproj" />
     <ProjectReference Include="..\NoMercy.Tests.Common\NoMercy.Tests.Common.csproj" />
     <ProjectReference Include="..\..\src\NoMercy.Plugins\NoMercy.Plugins.csproj" />
     <ProjectReference Include="..\..\src\NoMercy.Events\NoMercy.Events.csproj" />
-    <ProjectReference Include="..\..\src\NoMercy.Plugins.Mvc\NoMercy.Plugins.Mvc.csproj" />
+    <ProjectReference Include="..\..\src\NoMercy.PluginSdk.Mvc\NoMercy.PluginSdk.Mvc.csproj" />
     <!-- The Connect frame is an API DTO, and its wire names are what every client reads. -->
     <ProjectReference Include="..\..\src\NoMercy.Api\NoMercy.Api.csproj" />
-    <ProjectReference Include="..\..\src\NoMercy.Plugins.Testing\NoMercy.Plugins.Testing.csproj" />
+    <ProjectReference Include="..\..\src\NoMercy.PluginSdk.Testing\NoMercy.PluginSdk.Testing.csproj" />
     <ProjectReference Include="..\..\src\NoMercy.Storage\NoMercy.Storage.csproj" />
     <!-- Build dependency only — do NOT copy Echo/Failures DLLs to test bin. If they were in
          the default AssemblyLoadContext, PluginLoadContext isolation would break (type
@@ -50,6 +50,6 @@
     <ProjectReference Include="..\NoMercy.Plugin.Samples.Failures\NoMercy.Plugin.Samples.Failures.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\NoMercy.Plugin.Samples.ManifestFailure\NoMercy.Plugin.Samples.ManifestFailure.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\NoMercy.Plugin.Samples.StaleMember\NoMercy.Plugin.Samples.StaleMember.csproj" ReferenceOutputAssembly="false" />
-    <ProjectReference Include="..\..\src\NoMercy.Plugins.Ipc\NoMercy.Plugins.Ipc.csproj" />
+    <ProjectReference Include="..\..\src\NoMercy.PluginSdk.Ipc\NoMercy.PluginSdk.Ipc.csproj" />
   </ItemGroup>
 </Project>

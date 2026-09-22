@@ -1,0 +1,30 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>true</IsPackable>
+    <PackageId>NoMercy.PluginSdk.Testing</PackageId>
+    <Version>$(PluginPackageVersion)</Version>
+    <Authors>NoMercy Entertainment</Authors>
+    <Description>Drive a NoMercy MediaServer plugin through a fake context, with the owner grants a test switches on and off.</Description>
+    <!-- Not PackageLicenseExpression: NuGet only accepts SPDX identifiers it
+         knows, and this licence is not one of them. The file travels instead. -->
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/NoMercy-Entertainment/nomercy-media-server</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/NoMercy-Entertainment/nomercy-media-server</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="" Visible="false" />
+    <None Include="README.md" Pack="true" PackagePath="" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\NoMercy.PluginSdk.Abstractions\NoMercy.PluginSdk.Abstractions.csproj" />
+  </ItemGroup>
+</Project>

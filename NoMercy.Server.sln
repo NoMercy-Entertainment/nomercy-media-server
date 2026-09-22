@@ -49,7 +49,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NoMercy.Events", "src\NoMer
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NoMercy.Tests.Events", "tests\NoMercy.Tests.Events\NoMercy.Tests.Events.csproj", "{7D954187-86C1-4655-BF8C-DAF676F4EFA8}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NoMercy.Plugins.Abstractions", "src\NoMercy.Plugins.Abstractions\NoMercy.Plugins.Abstractions.csproj", "{DB164453-BA4F-4E2D-8939-7CD99BBB8AA5}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NoMercy.PluginSdk.Abstractions", "src\NoMercy.PluginSdk.Abstractions\NoMercy.PluginSdk.Abstractions.csproj", "{DB164453-BA4F-4E2D-8939-7CD99BBB8AA5}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NoMercy.Tests.Plugins", "tests\NoMercy.Tests.Plugins\NoMercy.Tests.Plugins.csproj", "{824479DA-084F-4847-8D12-ED9F87C48032}"
 EndProject
@@ -117,7 +117,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NoMercy.Notifications", "sr
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NoMercy.Tests.Notifications", "tests\NoMercy.Tests.Notifications\NoMercy.Tests.Notifications.csproj", "{691AE216-0575-47CE-8FC0-10548B259655}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NoMercy.Plugins.Mvc", "src\NoMercy.Plugins.Mvc\NoMercy.Plugins.Mvc.csproj", "{0E521ABC-F573-4100-8A1F-78EE471D0EF1}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NoMercy.PluginSdk.Mvc", "src\NoMercy.PluginSdk.Mvc\NoMercy.PluginSdk.Mvc.csproj", "{0E521ABC-F573-4100-8A1F-78EE471D0EF1}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NoMercy.Design", "src\NoMercy.Design\NoMercy.Design.csproj", "{923BA60F-4BC8-4517-B102-1A9E1C97D5F2}"
 EndProject
@@ -125,11 +125,11 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NoMercy.Plugin.Samples.Echo
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NoMercy.Plugin.Samples.StaleMember", "tests\NoMercy.Plugin.Samples.StaleMember\NoMercy.Plugin.Samples.StaleMember.csproj", "{87A2D8F0-422A-4C61-8C79-8CF19EE83CE8}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NoMercy.Plugins.Analyzers", "src\NoMercy.Plugins.Analyzers\NoMercy.Plugins.Analyzers.csproj", "{8A66949A-667F-4466-8A9D-B8D54F6C61DB}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NoMercy.PluginSdk.Analyzers", "src\NoMercy.PluginSdk.Analyzers\NoMercy.PluginSdk.Analyzers.csproj", "{8A66949A-667F-4466-8A9D-B8D54F6C61DB}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NoMercy.Tests.Plugins.Analyzers", "tests\NoMercy.Tests.Plugins.Analyzers\NoMercy.Tests.Plugins.Analyzers.csproj", "{A5D058E2-6F3E-40F1-8549-859C03FECA68}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NoMercy.Plugins.Testing", "src\NoMercy.Plugins.Testing\NoMercy.Plugins.Testing.csproj", "{91D6B6A9-47D8-4FDA-A1E0-9732FDCAF79B}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NoMercy.PluginSdk.Testing", "src\NoMercy.PluginSdk.Testing\NoMercy.PluginSdk.Testing.csproj", "{91D6B6A9-47D8-4FDA-A1E0-9732FDCAF79B}"
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tools", "tools", "{07C2787E-EAC7-C090-1BA3-A61EC2A24D84}"
 EndProject
@@ -139,7 +139,7 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NoMercy.Plugin.Cli", "tools
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NoMercy.Tests.Plugins.Cli", "tests\NoMercy.Tests.Plugins.Cli\NoMercy.Tests.Plugins.Cli.csproj", "{20CA3D37-6DEA-4704-9D75-372AD6F64BA9}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NoMercy.Plugins.Ipc", "src\NoMercy.Plugins.Ipc\NoMercy.Plugins.Ipc.csproj", "{71B5D821-BFA9-4F40-8B01-F16C0406C538}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NoMercy.PluginSdk.Ipc", "src\NoMercy.PluginSdk.Ipc\NoMercy.PluginSdk.Ipc.csproj", "{71B5D821-BFA9-4F40-8B01-F16C0406C538}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NoMercy.PluginHost", "src\NoMercy.PluginHost\NoMercy.PluginHost.csproj", "{EDE31CF7-BCF3-4290-B9AC-770808C47889}"
 EndProject

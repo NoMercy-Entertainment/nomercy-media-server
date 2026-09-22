@@ -10,9 +10,9 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.Extensions.Logging;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins;
+namespace NoMercy.PluginSdk;
 
 /// <summary>
 /// Says which contract member a plugin reached for that is no longer there.

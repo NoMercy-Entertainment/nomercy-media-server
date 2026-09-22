@@ -14,7 +14,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using NoMercy.NmSystem.Configuration;
 
-namespace NoMercy.Plugins.Network;
+namespace NoMercy.PluginSdk.Network;
 
 /// <summary>
 /// Names the plugin behind an outbound request.

@@ -9,9 +9,9 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins.Hub;
+namespace NoMercy.PluginSdk.Hub;
 
 /// <summary>
 /// Which plugin a hub message belongs to, and whether it is allowed to arrive.

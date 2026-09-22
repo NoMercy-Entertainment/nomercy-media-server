@@ -9,7 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-namespace NoMercy.Plugins.Quotas;
+namespace NoMercy.PluginSdk.Quotas;
 
 /// <summary>
 /// Counts every chunk on its way to a client and waits when the plugin is

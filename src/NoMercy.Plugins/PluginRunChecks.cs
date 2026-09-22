@@ -9,13 +9,13 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Capabilities;
-using NoMercy.Plugins.Dependencies;
-using NoMercy.Plugins.Entitlements;
-using NoMercy.Plugins.Revocation;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Capabilities;
+using NoMercy.PluginSdk.Dependencies;
+using NoMercy.PluginSdk.Entitlements;
+using NoMercy.PluginSdk.Revocation;
 
-namespace NoMercy.Plugins;
+namespace NoMercy.PluginSdk;
 
 /// <summary>
 /// Is this exact build still allowed, and has this server heard recently

@@ -9,7 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-namespace NoMercy.Plugins.Hooks;
+namespace NoMercy.PluginSdk.Hooks;
 
 public interface IPluginCronRegistrar
 {

@@ -39,7 +39,7 @@ using NoMercy.Networking.Messaging;
 using NoMercy.NmSystem.Auth;
 using NoMercy.NmSystem.Information;
 using NoMercy.NmSystem.Security;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 using NoMercy.Providers.AcoustId;
 using NoMercy.Providers.TMDB.Client;
 using NoMercy.Service;

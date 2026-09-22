@@ -10,13 +10,13 @@
 // -----------------------------------------------------------------------------
 
 using System.Text.Json;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Capabilities;
-using NoMercy.Plugins.Ipc;
-using NoMercy.Plugins.Runtime;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Capabilities;
+using NoMercy.PluginSdk.Ipc;
+using NoMercy.PluginSdk.Runtime;
 using ProtoBuf.Grpc;
 
-namespace NoMercy.Plugins.OutOfProcess;
+namespace NoMercy.PluginSdk.OutOfProcess;
 
 /// <summary>
 /// The server side of one plugin's channel, and the trust boundary of the
@@ -161,7 +161,7 @@ public sealed class PluginBrokerService(
     /// </summary>
     private PluginCallResponse Process(PluginCallRequest request)
     {
-        if (request.Member != nameof(Abstractions.IPluginProcess.SpawnAsync))
+        if (request.Member != nameof(PluginSdk.Abstractions.IPluginProcess.SpawnAsync))
             return Refuse(
                 PluginRefusalCodes.HostServicesRemoved,
                 $"The plugin asked the server for process.{request.Member}.",

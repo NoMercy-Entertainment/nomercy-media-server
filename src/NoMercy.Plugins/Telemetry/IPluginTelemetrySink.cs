@@ -9,7 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-namespace NoMercy.Plugins.Telemetry;
+namespace NoMercy.PluginSdk.Telemetry;
 
 /// <summary>Where a report goes. The seam that keeps the rules testable without a network.</summary>
 public interface IPluginTelemetrySink

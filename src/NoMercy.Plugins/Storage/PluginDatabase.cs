@@ -11,9 +11,9 @@
 
 using System.Runtime.CompilerServices;
 using Microsoft.Data.Sqlite;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins.Storage;
+namespace NoMercy.PluginSdk.Storage;
 
 /// <summary>
 /// One SQLite file in the plugin's private folder.

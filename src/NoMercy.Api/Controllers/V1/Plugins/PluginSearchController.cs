@@ -16,8 +16,8 @@ using Microsoft.AspNetCore.Mvc;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Api.DTOs.Plugins;
 using NoMercy.Authorization;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Search;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Search;
 
 namespace NoMercy.Api.Controllers.V1.Plugins;
 

@@ -11,8 +11,8 @@
 
 using System.Text.Json.Nodes;
 using FluentAssertions;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Player;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Player;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;

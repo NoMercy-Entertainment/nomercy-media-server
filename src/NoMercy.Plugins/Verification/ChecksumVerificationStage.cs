@@ -9,7 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-namespace NoMercy.Plugins.Verification;
+namespace NoMercy.PluginSdk.Verification;
 
 public class ChecksumVerificationStage : IPluginVerificationStage
 {

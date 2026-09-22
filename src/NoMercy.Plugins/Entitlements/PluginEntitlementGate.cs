@@ -9,9 +9,9 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins.Entitlements;
+namespace NoMercy.PluginSdk.Entitlements;
 
 /// <summary>
 /// Asked before a paid plugin runs: has this server been told it may.

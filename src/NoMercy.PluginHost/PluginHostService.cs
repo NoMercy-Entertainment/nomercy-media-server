@@ -10,7 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Grpc.Core;
-using NoMercy.Plugins.Ipc;
+using NoMercy.PluginSdk.Ipc;
 using ProtoBuf.Grpc;
 
 namespace NoMercy.PluginHost;

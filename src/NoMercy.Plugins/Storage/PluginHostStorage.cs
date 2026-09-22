@@ -9,11 +9,11 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Capabilities;
-using NoMercy.Plugins.Quotas;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Capabilities;
+using NoMercy.PluginSdk.Quotas;
 
-namespace NoMercy.Plugins.Storage;
+namespace NoMercy.PluginSdk.Storage;
 
 /// <summary>
 /// Every place one plugin may read and write.

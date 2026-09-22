@@ -13,7 +13,7 @@ using System.Runtime.CompilerServices;
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 using NoMercy.Storage;
 
 namespace NoMercy.Data.Plugins;

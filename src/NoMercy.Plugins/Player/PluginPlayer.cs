@@ -9,9 +9,9 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins.Player;
+namespace NoMercy.PluginSdk.Player;
 
 /// <summary>
 /// What a plugin asks a player to do, sent to the clients subscribed to it.

@@ -11,7 +11,7 @@
 
 using System.Runtime.InteropServices;
 
-namespace NoMercy.Plugins.Runtime;
+namespace NoMercy.PluginSdk.Runtime;
 
 /// <summary>
 /// Mapping a native library into the process, behind an interface because a

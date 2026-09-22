@@ -9,10 +9,10 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 using NoMercyQueue.Core.Interfaces;
 
-namespace NoMercy.Plugins.Hooks;
+namespace NoMercy.PluginSdk.Hooks;
 
 /// <summary>
 /// Adapts an <see cref="IScheduledTaskPlugin"/> to <see cref="ICronJobExecutor"/>

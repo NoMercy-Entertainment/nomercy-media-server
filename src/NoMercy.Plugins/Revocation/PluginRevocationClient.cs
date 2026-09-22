@@ -11,9 +11,9 @@
 
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using NoMercy.Plugins.Verification;
+using NoMercy.PluginSdk.Verification;
 
-namespace NoMercy.Plugins.Revocation;
+namespace NoMercy.PluginSdk.Revocation;
 
 /// <summary>
 /// Refreshes the list from NoMercy and keeps the old one when anything about

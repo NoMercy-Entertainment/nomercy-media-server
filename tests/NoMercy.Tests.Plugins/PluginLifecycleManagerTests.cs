@@ -14,10 +14,10 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Events;
 using NoMercy.Events.Plugins;
-using NoMercy.Plugins;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Capabilities;
-using NoMercy.Plugins.Verification;
+using NoMercy.PluginSdk;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Capabilities;
+using NoMercy.PluginSdk.Verification;
 using NoMercy.Storage;
 using Xunit;
 
@@ -333,7 +333,7 @@ public class PluginLifecycleManagerTests : IDisposable
         reported.ErrorMessage.Should().Contain("get_EventBus", "the author needs the member named");
         reported
             .ErrorMessage.Should()
-            .Contain("11.0", "and the version to rebuild against, which the runtime never says");
+            .Contain(PluginAbi.Current.ToString(), "and the version to rebuild against, which the runtime never says");
         reported.ErrorMessage.Should().Contain("/nomercy-plugins/migration");
     }
 
@@ -865,7 +865,7 @@ public class PluginLifecycleManagerTests : IDisposable
 
         public void Initialize(IPluginContext context) =>
             throw new MissingMethodException(
-                "Method not found: 'NoMercy.Events.IEventBus NoMercy.Plugins.Abstractions.IPluginContext.get_EventBus()'."
+                "Method not found: 'NoMercy.Events.IEventBus NoMercy.PluginSdk.Abstractions.IPluginContext.get_EventBus()'."
             );
 
         public void Dispose() { }

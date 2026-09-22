@@ -10,9 +10,9 @@
 // -----------------------------------------------------------------------------
 
 using System.Security.Cryptography;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins.Verification;
+namespace NoMercy.PluginSdk.Verification;
 
 /// <summary>
 /// The one subject a published checksum describes: the .zip a plugin is

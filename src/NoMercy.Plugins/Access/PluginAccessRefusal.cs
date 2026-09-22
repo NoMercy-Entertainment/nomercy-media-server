@@ -9,9 +9,9 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 
-namespace NoMercy.Plugins.Access;
+namespace NoMercy.PluginSdk.Access;
 
 /// <summary>
 /// One wording, so a plugin's page and a plugin's own REST route refuse the

@@ -13,7 +13,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.ApplicationModels;
 using Microsoft.AspNetCore.Mvc.Filters;
-using NoMercy.Plugins.Mvc;
+using NoMercy.PluginSdk.Mvc;
 
 namespace NoMercy.Api.Plugins;
 

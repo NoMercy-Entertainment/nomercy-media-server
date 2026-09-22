@@ -10,8 +10,8 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.Extensions.Logging;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Ipc;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Ipc;
 
 namespace NoMercy.PluginHost;
 

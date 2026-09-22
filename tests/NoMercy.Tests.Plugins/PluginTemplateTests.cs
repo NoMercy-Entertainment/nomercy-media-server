@@ -11,7 +11,7 @@
 
 using System.Text.Json;
 using FluentAssertions;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 using NoMercy.Tests.Common;
 using Xunit;
 
@@ -182,7 +182,7 @@ public class PluginTemplateTests
 
         content
             .Should()
-            .Contain("NoMercy.Plugins.Abstractions", "csproj must reference plugin abstractions");
+            .Contain("NoMercy.PluginSdk.Abstractions", "csproj must reference plugin abstractions");
         content.Should().Contain("net10.0", "csproj must target net10.0");
     }
 
@@ -398,7 +398,7 @@ public class PluginTemplateTests
                 "Version=\"*\"",
                 "a floating reference rebuilds against a contract the plugin was never tested with"
             );
-        csproj.Should().Contain("NoMercy.Plugins.Analyzers");
+        csproj.Should().Contain("NoMercy.PluginSdk.Analyzers");
     }
 
     [Fact]

@@ -13,10 +13,10 @@ using System.Text.Json.Nodes;
 using FluentAssertions;
 using NoMercy.Events;
 using NoMercy.Events.Plugins;
-using NoMercy.Plugins;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Capabilities;
-using NoMercy.Plugins.Hooks;
+using NoMercy.PluginSdk;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Capabilities;
+using NoMercy.PluginSdk.Hooks;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;
@@ -331,7 +331,7 @@ public class PluginHostOptionsTests
     public void The_built_in_set_is_present_by_default() =>
         new PluginHostOptions()
             .SharedAssemblies.Should()
-            .Contain("NoMercy.Plugins.Abstractions")
+            .Contain("NoMercy.PluginSdk.Abstractions")
             .And.Contain("NoMercy.Events");
 
     [Fact]
@@ -345,7 +345,7 @@ public class PluginHostOptionsTests
         options
             .SharedAssemblies.Should()
             .Contain("Contoso.Shared")
-            .And.Contain("NoMercy.Plugins.Abstractions");
+            .And.Contain("NoMercy.PluginSdk.Abstractions");
     }
 
     [Fact]

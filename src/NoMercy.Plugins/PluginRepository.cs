@@ -11,10 +11,10 @@
 
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
-using NoMercy.Plugins.Abstractions;
+using NoMercy.PluginSdk.Abstractions;
 using NoMercy.Storage;
 
-namespace NoMercy.Plugins;
+namespace NoMercy.PluginSdk;
 
 public class PluginRepository : IPluginRepository
 {

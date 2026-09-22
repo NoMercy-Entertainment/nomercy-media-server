@@ -11,9 +11,9 @@
 
 using System.Diagnostics;
 using System.Runtime.Versioning;
-using NoMercy.Plugins.Quotas;
+using NoMercy.PluginSdk.Quotas;
 
-namespace NoMercy.Plugins.OutOfProcess;
+namespace NoMercy.PluginSdk.OutOfProcess;
 
 /// <summary>
 /// A plugin process under a macOS sandbox profile.

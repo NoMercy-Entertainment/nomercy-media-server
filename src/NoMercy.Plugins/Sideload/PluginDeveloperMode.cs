@@ -12,7 +12,7 @@
 using System.Text.Json;
 using NoMercy.NmSystem.Information;
 
-namespace NoMercy.Plugins.Sideload;
+namespace NoMercy.PluginSdk.Sideload;
 
 /// <summary>
 /// The switch an owner turns on to install a plugin from a file.
