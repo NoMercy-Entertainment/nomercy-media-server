@@ -24,7 +24,6 @@ public static partial class ServiceConfiguration
         services.AddCronJob<ActivityLogRetentionCronJob>("activity-log-retention");
         services.AddCronJob<TmdbChangesCronJob>("tmdb-changes-sync");
         services.AddCronJob<DeviceDropRuleCronJob>("device-drop-rule-job");
-        services.AddCronJob<ServerUserSyncCronJob>("server-user-sync");
         services.AddCronJob<DatabaseBackupCronJob>("database-backup");
         services.AddCronJob<IpBanExpiryCronJob>("ip-ban-expiry");
         services.AddCronJob<AudioAnalysisSweepCronJob>("audio-analysis-sweep");
