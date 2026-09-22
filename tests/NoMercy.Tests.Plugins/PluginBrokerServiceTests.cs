@@ -132,7 +132,9 @@ public class PluginBrokerServiceTests
             new RecordingServices(),
             new RecordingServices(),
             new RecordingServices(),
-            new RecordingServices()
+            new RecordingServices(),
+            new RecordingSettings(),
+            new RecordingUserData()
         );
 
     private static IPluginCapabilityBroker Allowing() => new FakeCapabilities(null);

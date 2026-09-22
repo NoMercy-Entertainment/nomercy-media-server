@@ -56,6 +56,8 @@ public sealed class RemotePluginContext : IPluginContext
         Notifications = new RemoteNotifications(call);
         Users = new RemoteUsers(call);
         Scheduler = new RemoteScheduler(launch.PluginId, call);
+        Settings = new RemoteSettings(launch.PluginId, call);
+        User = new RemoteUserData(call);
         Call = call;
     }
 
@@ -97,6 +99,10 @@ public sealed class RemotePluginContext : IPluginContext
     public IPluginUsers Users { get; }
 
     public IPluginScheduler Scheduler { get; }
+
+    public IPluginSettings Settings { get; }
+
+    public IPluginUserData User { get; }
 
     public IPluginLibraryWriter? LibraryWriter => null;
 

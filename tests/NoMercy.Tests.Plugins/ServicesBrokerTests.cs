@@ -139,7 +139,9 @@ public class ServicesBrokerTests
             services,
             services,
             services,
-            services
+            services,
+            new RecordingSettings(),
+            new RecordingUserData()
         ).CallAsync(new PluginCallRequest(PluginId.ToString(), facade, member, payloadJson, null));
 
     private static IPluginCapabilityBroker Refusing() =>

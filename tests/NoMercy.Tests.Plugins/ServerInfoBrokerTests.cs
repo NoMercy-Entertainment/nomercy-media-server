@@ -87,7 +87,9 @@ public class ServerInfoBrokerTests
             new RecordingServices(),
             new RecordingServices(),
             new RecordingServices(),
-            new RecordingServices()
+            new RecordingServices(),
+            new RecordingSettings(),
+            new RecordingUserData()
         ).CallAsync(
             new PluginCallRequest(PluginId.ToString(), "server", member, payloadJson, null)
         );

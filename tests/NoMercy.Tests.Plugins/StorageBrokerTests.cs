@@ -144,7 +144,9 @@ public class StorageBrokerTests
             new RecordingServices(),
             new RecordingServices(),
             new RecordingServices(),
-            new RecordingServices()
+            new RecordingServices(),
+            new RecordingSettings(),
+            new RecordingUserData()
         ).CallAsync(
             new PluginCallRequest(PluginId.ToString(), "storage", member, payloadJson, null)
         );

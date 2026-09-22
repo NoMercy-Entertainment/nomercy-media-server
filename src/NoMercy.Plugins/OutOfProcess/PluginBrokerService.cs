@@ -47,7 +47,9 @@ public sealed class PluginBrokerService(
     IPluginMetadata metadata,
     IPluginNotifications notifications,
     IPluginUsers users,
-    IPluginScheduler scheduler
+    IPluginScheduler scheduler,
+    IPluginSettings settings,
+    IPluginUserData user
 ) : IPluginBrokerService
 {
     private static readonly JsonSerializerOptions Json = PluginWireJson.Options;
@@ -92,6 +94,8 @@ public sealed class PluginBrokerService(
             "notifications" => await Notifications(request),
             "users" => await Users(request),
             "scheduler" => await Scheduler(request),
+            "settings" => await Settings(request),
+            "user" => await User(request),
             _ => Refuse(
                 PluginRefusalCodes.HostServicesRemoved,
                 $"The plugin asked the server for {request.Facade}.{request.Member}.",
@@ -466,6 +470,98 @@ public sealed class PluginBrokerService(
         }
     }
 
+    /// <summary>
+    /// The plugin's own settings, as the owner set them.
+    /// <para>
+    /// The value crosses as raw JSON rather than a typed object: the contract
+    /// reads settings generically, and the type a plugin asks for lives only
+    /// in the plugin's own assembly, which the server does not load.
+    /// </para>
+    /// </summary>
+    private async Task<PluginCallResponse> Settings(PluginCallRequest request)
+    {
+        if (capabilities.Check(pluginId, PluginCapabilityNames.Settings) is { } refusal)
+            return PluginCallResponse.Refused(Wire(refusal));
+
+        SettingCall call =
+            JsonSerializer.Deserialize<SettingCall>(request.PayloadJson, Json) ?? new(null, null);
+
+        string key = call.Key ?? string.Empty;
+
+        switch (request.Member)
+        {
+            case nameof(IPluginSettings.Get):
+                return PluginCallResponse.Value(Raw(settings.Get<JsonElement?>(key)));
+
+            case nameof(IPluginSettings.GetForUser):
+                return PluginCallResponse.Value(Raw(settings.GetForUser<JsonElement?>(key)));
+
+            case nameof(IPluginSettings.SetAsync):
+                await settings.SetAsync(key, call.Value);
+                return PluginCallResponse.Value("null");
+
+            case nameof(IPluginSettings.SetForUserAsync):
+                await settings.SetForUserAsync(key, call.Value);
+                return PluginCallResponse.Value("null");
+
+            default:
+                return NoSuchMember("settings", request.Member);
+        }
+    }
+
+    /// <summary>
+    /// What one person has watched, saved and chosen.
+    /// <para>
+    /// Each answer is its own capability rather than one for the lot: a plugin
+    /// that needs a display name has no business reading a watch history, and
+    /// the owner's permissions page says so line by line.
+    /// </para>
+    /// </summary>
+    private async Task<PluginCallResponse> User(PluginCallRequest request)
+    {
+        switch (request.Member)
+        {
+            case nameof(IPluginUserData.IdentityAsync):
+                return await Gated(
+                    PluginCapabilityNames.UserIdentity,
+                    async () => Value(await user.IdentityAsync())
+                );
+
+            case nameof(IPluginUserData.WatchAsync):
+                return await Gated(
+                    PluginCapabilityNames.UserWatch,
+                    async () => Value(await user.WatchAsync())
+                );
+
+            case nameof(IPluginUserData.PlaylistsAsync):
+                return await Gated(
+                    PluginCapabilityNames.UserPlaylists,
+                    async () => Value(await user.PlaylistsAsync())
+                );
+
+            case nameof(IPluginUserData.PreferencesAsync):
+                return await Gated(
+                    PluginCapabilityNames.UserPreferences,
+                    async () => Value(await user.PreferencesAsync())
+                );
+
+            default:
+                return NoSuchMember("user", request.Member);
+        }
+    }
+
+    private async Task<PluginCallResponse> Gated(
+        string capability,
+        Func<Task<PluginCallResponse>> answer
+    ) =>
+        capabilities.Check(pluginId, capability) is { } refusal
+            ? PluginCallResponse.Refused(Wire(refusal))
+            : await answer();
+
+    /// <summary>A value that is already JSON, passed through rather than wrapped again.</summary>
+    private static string Raw(JsonElement? value) =>
+        value is null ? "null" : value.Value.GetRawText();
+
     private PluginCallResponse NoSuchMember(string facade, string member) =>
         Refuse(
             PluginRefusalCodes.HostServicesRemoved,
@@ -541,4 +637,6 @@ public sealed class PluginBrokerService(
     private sealed record PushCall(string? User, PluginNotification? Notification);
 
     private sealed record ScheduleCall(string? Name, DateTimeOffset? When);
+
+    private sealed record SettingCall(string? Key, JsonElement? Value);
 }

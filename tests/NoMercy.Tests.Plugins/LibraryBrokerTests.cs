@@ -125,7 +125,9 @@ public class LibraryBrokerTests
             new RecordingServices(),
             new RecordingServices(),
             new RecordingServices(),
-            new RecordingServices()
+            new RecordingServices(),
+            new RecordingSettings(),
+            new RecordingUserData()
         ).CallAsync(
             new PluginCallRequest(PluginId.ToString(), "library", member, payloadJson, null)
         );

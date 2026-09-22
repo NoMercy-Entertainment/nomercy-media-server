@@ -94,7 +94,9 @@ public class NetBrokerTests
             new RecordingServices(),
             new RecordingServices(),
             new RecordingServices(),
-            new RecordingServices()
+            new RecordingServices(),
+            new RecordingSettings(),
+            new RecordingUserData()
         ).CallAsync(new PluginCallRequest(PluginId.ToString(), "net", member, payloadJson, null));
 
     private static PluginRefusal Refusal() =>
