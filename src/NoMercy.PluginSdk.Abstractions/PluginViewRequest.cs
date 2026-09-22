@@ -81,6 +81,20 @@ public class PluginViewRequest
     public string? Action { get; init; }
 
     /// <summary>
+    /// Scheme and authority the caller actually reached, such as
+    /// <c>https://media.example.com</c>. Null when a view is built outside a
+    /// request.
+    /// <para>
+    /// Per request rather than on <see cref="IPluginContext" />: a plugin loads
+    /// once, and the server answers on a LAN address, a tunnelled hostname and
+    /// a reverse proxy at the same time. The correct one is whichever this
+    /// viewer used, and only the request knows it.
+    /// </para>
+    /// </summary>
+    [JsonPropertyName("origin")]
+    public string? Origin { get; init; }
+
+    /// <summary>
     /// One value, or null when the caller sent nothing for that field. Typed
     /// rather than cast at the call site: a number arrives from JSON as a
     /// JsonElement, and every plugin unwrapping that by hand is every plugin

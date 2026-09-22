@@ -661,10 +661,30 @@ public class CertificateService : ICertificateService
                 }
                 catch (CertificateNotDueException ex)
                 {
-                    // Permanent (for this attempt window): the API rejected the
-                    // renewal request because the cert isn't due yet. Bail out
-                    // without retrying — daily cron will try again tomorrow.
-                    _logger.LogInformation("Skipping renewal: {Message}", ex.Message);
+                    // The API's answer means our locally cached NotAfter disagrees
+                    // with what it actually has on file — the API is the source of
+                    // truth, so pull the current record rather than keep serving a
+                    // cert whose real expiry we're guessing at. This is the same
+                    // "certificate?id=" fetch a first boot uses, just re-run to
+                    // resync instead of to create. A stale local cache otherwise
+                    // repeats this exact "will attempt renewal" / "not due yet"
+                    // round trip on every boot with no way to correct itself.
+                    _logger.LogInformation(
+                        "Renewal not due, pulling the current certificate to resync: {Message}",
+                        ex.Message
+                    );
+                    try
+                    {
+                        await FetchCertificate(client, $"certificate?id={Info.DeviceId}", false);
+                    }
+                    catch (Exception fetchEx)
+                    {
+                        _logger.LogWarning(
+                            "Could not resync certificate after a not-due renewal: {Message}. "
+                                + "Using existing certificate.",
+                            fetchEx.Message
+                        );
+                    }
                     return;
                 }
                 catch (CertificateUnauthorizedException ex)

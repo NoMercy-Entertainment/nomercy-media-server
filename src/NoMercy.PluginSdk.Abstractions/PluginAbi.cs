@@ -15,7 +15,7 @@ public static class PluginAbi
 {
     // 12.1 added IPluginMusicQuery.GetFailedDjAnalysisAsync, PluginTrackDjFailure and the
     // PluginTopics.MusicAnalysisCompleted topic. Additive for every plugin already loading.
-    public static Version Current { get; } = new(12, 1);
+    public static Version Current { get; } = new(12, 2);
 
     /// <summary>
     /// The oldest major this server can load at all.

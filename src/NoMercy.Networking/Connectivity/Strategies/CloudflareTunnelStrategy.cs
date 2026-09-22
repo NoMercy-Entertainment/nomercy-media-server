@@ -154,20 +154,15 @@ public partial class CloudflareTunnelStrategy : IConnectivityStrategy, IDisposab
                     return ConnectivityResult.Failed();
             }
 
-            _logger.LogInformation("No Cloudflare tunnel is set up for this server.");
-
-            // Port forwarding maps an EXTERNAL port to an internal one. The old wording read
-            // "forward port 7626 to 7627", which states the mapping backwards and sends people
-            // to configure their router in the wrong direction.
-            _logger.LogInformation(
-                "To reach this server from outside your network, forward external port {ExternalServerPort} on your router to this machine on port {InternalServerPort}, or have a tunnel assigned to it.",
-                [
-                    RuntimeServerSettings.Current.ExternalServerPort,
-                    RuntimeServerSettings.Current.InternalServerPort,
-                ]
-            );
-            _logger.LogInformation(
-                "For more information, visit: https://www.noip.com/support/knowledgebase/general-port-forwarding-guide"
+            // No named tunnel is the normal case for a free/non-paying server, not a
+            // problem: QuickTunnel is tried next and covers this on every real
+            // network this runs on. Logging port-forward guidance here fired on
+            // every single boot regardless of outcome, right before QuickTunnel's
+            // own success line — read as a real warning when there was nothing to
+            // fix. The guidance now belongs where a failure is actually real: when
+            // no strategy at all works, in ConnectivityManager's local-only branch.
+            _logger.LogDebug(
+                "No Cloudflare tunnel is set up for this server — trying the next strategy."
             );
             return ConnectivityResult.Failed();
         }

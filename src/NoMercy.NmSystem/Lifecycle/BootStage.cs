@@ -35,7 +35,11 @@ public enum BootStage
     /// directly rather than assume this stage covers it.</summary>
     Binaries = 1 << 2,
 
-    /// <summary>External IP discovered, UPnP / port-forward attempted, connectivity confirmed.</summary>
+    /// <summary>External IP discovered and UPnP/port-forward attempted. This is
+    /// discovery only — it says nothing about whether a connectivity strategy
+    /// (port forward, Cloudflare tunnel, quick tunnel) actually succeeded, and
+    /// can complete before, during, or after those are still being tried. Watch
+    /// <c>IConnectivityStatus</c> for the real outcome.</summary>
     Network = 1 << 3,
 
     /// <summary>Hardware probe complete: GPU enumerated, encoder speed index seeded.</summary>

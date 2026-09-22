@@ -383,7 +383,11 @@ public sealed class CertificateServiceValidationTests : IDisposable
 
         await service.RenewSslCertificate("test-token", maxRetries: 5);
 
-        Assert.Equal(1, callCount);
+        // 1 renewal attempt + 1 resync fetch of the current certificate — the
+        // API's "not due" answer means our cached expiry disagrees with its
+        // record, so the service pulls the real one instead of trusting the
+        // stale local cache.
+        Assert.Equal(2, callCount);
     }
 
     [Fact]
@@ -399,7 +403,7 @@ public sealed class CertificateServiceValidationTests : IDisposable
 
         await service.RenewSslCertificate("test-token", maxRetries: 5);
 
-        Assert.Equal(1, callCount);
+        Assert.Equal(2, callCount);
     }
 
     [Fact]
@@ -418,7 +422,7 @@ public sealed class CertificateServiceValidationTests : IDisposable
 
         await service.RenewSslCertificate("test-token", maxRetries: 3);
 
-        Assert.Equal(1, callCount);
+        Assert.Equal(2, callCount);
     }
 
     [Fact]
@@ -434,6 +438,62 @@ public sealed class CertificateServiceValidationTests : IDisposable
 
         await service.RenewSslCertificate("test-token", maxRetries: 2);
 
+        Assert.Equal(2, callCount);
+    }
+
+    [Fact]
+    public async Task RenewSslCertificate_NotDue_ResyncsTheCurrentCertificateInstead()
+    {
+        List<string?> requestedPaths = [];
+        StubHttpClientFactory factory = new(request =>
+        {
+            requestedPaths.Add(request.RequestUri?.AbsolutePath);
+            return new(HttpStatusCode.BadRequest)
+            {
+                Content = new StringContent(
+                    "{\"status\":\"error\",\"message\":\"Certificate is not due for renewal yet\"}"
+                ),
+            };
+        });
+        CertificateService service = BuildService(factory);
+        // Not expired (HasValidCertificate: true) but within the renewal
+        // threshold (ValidateSslCertificate: false), so the first call really
+        // is a renewal attempt rather than the first-boot "create" path.
+        InjectCachedCertificate(service, CreateSelfSignedCert(DateTimeOffset.UtcNow.AddDays(5)));
+
+        await service.RenewSslCertificate("test-token", maxRetries: 5);
+
+        Assert.Equal(2, requestedPaths.Count);
+        Assert.Contains("renew-certificate", requestedPaths[0]);
+        Assert.DoesNotContain("renew-certificate", requestedPaths[1]);
+        Assert.Contains("certificate", requestedPaths[1]);
+    }
+
+    [Fact]
+    public async Task RenewSslCertificate_NotDue_DoesNotThrow_WhenTheResyncAlsoFails()
+    {
+        int callCount = 0;
+        StubHttpClientFactory factory = new(_ =>
+        {
+            callCount++;
+            // Both the renewal attempt and the resync fetch fail the same way —
+            // a not-due renewal must never leave the caller (BootOrchestrator)
+            // with an unhandled exception just because the API is also having a
+            // bad day on the plain fetch.
+            return new(HttpStatusCode.BadRequest)
+            {
+                Content = new StringContent(
+                    "{\"status\":\"error\",\"message\":\"Certificate is not due for renewal yet\"}"
+                ),
+            };
+        });
+        CertificateService service = BuildService(factory);
+
+        Exception? thrown = await Record.ExceptionAsync(() =>
+            service.RenewSslCertificate("test-token", maxRetries: 5)
+        );
+
+        Assert.Null(thrown);
         Assert.Equal(2, callCount);
     }
 

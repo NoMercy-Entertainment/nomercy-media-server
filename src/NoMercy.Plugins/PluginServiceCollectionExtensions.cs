@@ -35,6 +35,7 @@ using NoMercy.PluginSdk.Library;
 using NoMercy.PluginSdk.Media;
 using NoMercy.PluginSdk.Network;
 using NoMercy.PluginSdk.Offline;
+using NoMercy.PluginSdk.OutOfProcess;
 using NoMercy.PluginSdk.Quotas;
 using NoMercy.PluginSdk.Revocation;
 using NoMercy.PluginSdk.Runtime;
@@ -195,7 +196,7 @@ public static class PluginServiceCollectionExtensions
         // factory both ask what a plugin declared, and neither should be able
         // to install or uninstall one to find out.
         services.TryAddSingleton<IPluginManifestSource>(sp => new PluginManagerManifestSource(
-            sp.GetRequiredService<IPluginManager>()
+            () => sp.GetRequiredService<IPluginManager>()
         ));
 
         // The three questions asked before a plugin acts, and the tally of what
@@ -226,6 +227,52 @@ public static class PluginServiceCollectionExtensions
         services.TryAddSingleton<IPluginQuotaSource>(quotas);
         services.TryAddSingleton(quotas);
         services.TryAddSingleton<IPluginResourceCeilingSource>(quotas);
+
+        // Running a plugin in a process of its own. Registered here so the
+        // loader can ask for it; an install with no plugin host beside the
+        // server answers that it cannot, and every plugin loads in process as
+        // before.
+        // The same instance PluginManager itself tracks loaded plugins in — see
+        // the registry parameter on its constructor. Registering a second,
+        // independent PluginRegistry here would compile but never see anything
+        // PluginManager actually loads, so the out-of-process runtime's assembly
+        // lookups would silently always come up empty.
+        services.TryAddSingleton<IPluginRegistry, PluginRegistry>();
+        services.TryAddSingleton<IPluginHostExecutable, InstalledPluginHostExecutable>();
+        services.TryAddSingleton<IPluginSandboxFactory, PluginSandboxFactory>();
+        services.TryAddSingleton<IPluginStorageRootsFactory>(sp => new PluginStorageRootsFactory(
+            sp.GetRequiredService<IPluginGrantStore>()
+        ));
+        services.TryAddSingleton<IPluginCapabilityGrants>(sp => new PluginCapabilityGrants(
+            sp.GetRequiredService<IPluginGrantStore>()
+        ));
+        services.TryAddSingleton<IPluginApprovedBinaries>(sp => new PluginApprovedBinaries(
+            sp.GetRequiredService<IPluginGrantStore>()
+        ));
+        services.TryAddSingleton<IPluginBrokerFactory>(sp => new PluginBrokerFactory(
+            sp.GetRequiredService<IPluginContextFactory>(),
+            sp.GetRequiredService<IPluginCapabilityBroker>(),
+            sp.GetRequiredService<IPluginApprovedBinaries>(),
+            sp.GetRequiredService<IPluginBundleSignature>(),
+            sp.GetRequiredService<IPluginStorageRootsFactory>(),
+            pluginsPath
+        ));
+        services.TryAddSingleton<IPluginProcessLauncher>(sp => new PluginHostLauncher(
+            sp.GetRequiredService<IPluginBrokerFactory>(),
+            new PluginAssemblyLocation(
+                sp.GetRequiredService<IPluginRegistry>(),
+                sp.GetRequiredService<IPluginCapabilityGrants>(),
+                pluginsPath
+            ),
+            sp.GetRequiredService<IPluginQuotaSource>(),
+            sp.GetRequiredService<IPluginHostExecutable>(),
+            sp.GetRequiredService<IPluginSandboxFactory>()
+        ));
+        services.TryAddSingleton<IPluginRemoteLoader>(sp => new PluginRemoteLoader(
+            new PluginProcessSupervisor(sp.GetRequiredService<IPluginProcessLauncher>()),
+            sp.GetRequiredService<IPluginHostExecutable>(),
+            sp.GetRequiredService<ILoggerFactory>().CreateLogger("plugins.runtime")
+        ));
         // A plugin runs only while what it leans on runs, and a free
         // dependency installs beside it rather than leaving the owner to work
         // out why nothing started.
@@ -567,7 +614,8 @@ public static class PluginServiceCollectionExtensions
                 // without going through the boot path that registers it.
                 pluginId => sp.GetService<IPluginCronRegistrar>()?.RegisterPlugin(pluginId),
                 sp.GetRequiredService<PluginSideloadPolicy>(),
-                sp.GetRequiredService<PluginGuestInstaller>()
+                sp.GetRequiredService<PluginGuestInstaller>(),
+                sp.GetRequiredService<IPluginRegistry>()
             );
         });
 

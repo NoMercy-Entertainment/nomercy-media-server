@@ -19,22 +19,41 @@ namespace NoMercy.Tests.Plugins;
 public class PluginAbiTests
 {
     [Theory]
-    [InlineData([null, true])]
-    [InlineData(["", true])]
-    [InlineData(["12.0", true])]
-    [InlineData(["12.1", true])]
-    [InlineData(["12.2", false])]
-    [InlineData(["11.0", false])]
-    [InlineData(["11.9", false])]
-    [InlineData(["10.0", false])]
-    [InlineData(["13.0", false])]
-    [InlineData(["not-a-version", false])]
-    public void IsCompatible_AcceptsNothingOlderThanTheOldestLoadableMajor(
+    [InlineData(null, true)]
+    [InlineData("", true)]
+    [InlineData("not-a-version", false)]
+    public void IsCompatible_HandlesTheNonVersionInputsRegardlessOfWhereCurrentIs(
         string? targetAbi,
         bool expected
     )
     {
         Assert.Equal(expected, PluginAbi.IsCompatible(targetAbi));
+    }
+
+    /// <summary>
+    /// Every case below is derived from <see cref="PluginAbi.Current"/> and
+    /// <see cref="PluginAbi.Oldest"/> rather than a literal version, so a
+    /// routine minor/major bump never requires touching this test — only an
+    /// actual change to the compatibility rule itself would fail it.
+    /// </summary>
+    [Fact]
+    public void IsCompatible_AcceptsNothingOlderThanTheOldestLoadableMajor()
+    {
+        Version current = PluginAbi.Current;
+        Version oldest = PluginAbi.Oldest;
+
+        // The oldest loadable major, and everything up to and including current, load.
+        Assert.True(PluginAbi.IsCompatible($"{oldest.Major}.0"));
+        Assert.True(PluginAbi.IsCompatible($"{current.Major}.{current.Minor}"));
+
+        // A minor newer than current does not load yet.
+        Assert.False(PluginAbi.IsCompatible($"{current.Major}.{current.Minor + 1}"));
+
+        // A major newer than current, and anything older than the oldest
+        // loadable major, do not load.
+        Assert.False(PluginAbi.IsCompatible($"{current.Major + 1}.0"));
+        if (oldest.Major > 0)
+            Assert.False(PluginAbi.IsCompatible($"{oldest.Major - 1}.0"));
     }
 
     /// <summary>
@@ -53,9 +72,15 @@ public class PluginAbiTests
     }
 
     [Fact]
-    public void Current_IsTwelveOne()
+    public void Current_IsNeverOlderThanOldest()
     {
-        Assert.Equal(new Version(12, 1), PluginAbi.Current);
+        Assert.True(
+            PluginAbi.Current.Major > PluginAbi.Oldest.Major
+                || (
+                    PluginAbi.Current.Major == PluginAbi.Oldest.Major
+                    && PluginAbi.Current.Minor >= PluginAbi.Oldest.Minor
+                )
+        );
     }
 
     /// <summary>

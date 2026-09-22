@@ -18,6 +18,7 @@ using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Capabilities;
 using NoMercy.PluginSdk.Guests;
 using NoMercy.PluginSdk.Hub;
+using NoMercy.PluginSdk.OutOfProcess;
 using NoMercy.PluginSdk.Sideload;
 using NoMercy.PluginSdk.Verification;
 using NoMercy.Storage;
@@ -52,7 +53,7 @@ public class PluginManager : IPluginManager, IDisposable
     // the next full server start.
     private readonly Action<Ulid>? _registerScheduledWork;
 
-    public PluginManager(
+    internal PluginManager(
         IEventBus eventBus,
         IServiceProvider serviceProvider,
         ILogger<PluginManager> logger,
@@ -67,7 +68,8 @@ public class PluginManager : IPluginManager, IDisposable
         Action<Ulid>? releaseScheduledWork = null,
         Action<Ulid>? registerScheduledWork = null,
         PluginSideloadPolicy? sideloadPolicy = null,
-        PluginGuestInstaller? guestInstaller = null
+        PluginGuestInstaller? guestInstaller = null,
+        IPluginRegistry? registry = null
     )
     {
         _eventBus = eventBus ?? throw new ArgumentNullException(nameof(eventBus));
@@ -91,7 +93,7 @@ public class PluginManager : IPluginManager, IDisposable
                 ),
                 _logger
             );
-        _registry = new PluginRegistry();
+        _registry = registry ?? new PluginRegistry();
         _assemblyTracker = assemblyTracker;
         _registerScheduledWork = registerScheduledWork;
 
@@ -124,7 +126,11 @@ public class PluginManager : IPluginManager, IDisposable
             _verifier,
             _consentService,
             factory,
-            hostOptions
+            hostOptions,
+            // Null on a host that registered none, which is every host outside
+            // the server itself, and then every plugin loads in this process
+            // exactly as it always did.
+            _serviceProvider.GetService(typeof(IPluginRemoteLoader)) as IPluginRemoteLoader
         );
         _lifecycle = new(
             _eventBus,

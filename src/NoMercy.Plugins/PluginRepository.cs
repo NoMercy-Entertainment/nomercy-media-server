@@ -305,9 +305,8 @@ public class PluginRepository : IPluginRepository
     /// </summary>
     private static readonly PluginRepositoryInfo DefaultRepository = new()
     {
-        Name = "NoMercy Plugins",
-        Url =
-            "https://raw.githubusercontent.com/NoMercy-Entertainment/nomercy-plugins/master/index.json?v=1",
+        Name = "NoMercy Marketplace",
+        Url = "https://api.nomercy.tv/v1/marketplace/index.json",
         // Someone running this server has already decided to trust what we
         // publish. Trust is provenance only: a plugin listed here still waits
         // for the owner's consent before it runs.
@@ -340,6 +339,11 @@ public class PluginRepository : IPluginRepository
             {
                 _repositories.AddRange(repos);
             }
+
+            if (MoveOffTheRetiredIndex())
+            {
+                await SaveRepositoriesToDiskAsync(ct);
+            }
         }
         catch (Exception ex)
         {
@@ -347,6 +351,35 @@ public class PluginRepository : IPluginRepository
                 "Failed to load repositories from {Path}: {Error}",
                 [_repositoriesFilePath, ex.Message]
             );
+        }
+    }
+
+    /// <summary>
+    /// The seeded index moved from a file on GitHub to the marketplace, which
+    /// signs what it lists and publishes revocations. Rewritten in place on a
+    /// server that still carries the old one, so an owner who never touched the
+    /// list keeps reading a store that has releases in it.
+    /// <para>
+    /// Only our own retired address is matched, and only its url changes. An
+    /// owner who removed it stays without it, and a repository they added
+    /// themselves is left alone.
+    /// </para>
+    /// </summary>
+    private bool MoveOffTheRetiredIndex()
+    {
+        const string retired =
+            "https://raw.githubusercontent.com/NoMercy-Entertainment/nomercy-plugins/master/index.json?v=1";
+
+        lock (_lock)
+        {
+            int at = _repositories.FindIndex(repository => repository.Url == retired);
+
+            if (at < 0)
+                return false;
+
+            _repositories[at] = DefaultRepository;
+
+            return true;
         }
     }
 

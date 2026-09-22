@@ -83,6 +83,20 @@
     <ProjectReference Include="..\NoMercy.OpticalMedia\NoMercy.OpticalMedia.csproj" />
     <ProjectReference Include="..\NoMercy.Events\NoMercy.Events.csproj" />
     <ProjectReference Include="..\NoMercy.Plugins\NoMercy.Plugins.csproj" />
+    <!--
+      The host that runs a plugin in a process of its own. Referenced for build
+      order only: nothing here links against it, because the server starts it
+      as a program by path.
+
+      ReferenceOutputAssembly=false keeps its assembly off this one's compile
+      references. Without it both processes would carry the plugin contract,
+      and which copy loaded would depend on which came first.
+    -->
+    <ProjectReference
+      Include="..\NoMercy.PluginHost\NoMercy.PluginHost.csproj"
+      ReferenceOutputAssembly="false"
+      Private="false"
+    />
     <ProjectReference Include="..\NoMercy.Networking\NoMercy.Networking.csproj" />
     <ProjectReference Include="..\NoMercy.Providers\NoMercy.Providers.csproj" />
     <ProjectReference Include="..\NoMercy.Queue.MediaServer\NoMercy.Queue.MediaServer.csproj" />
@@ -113,4 +127,25 @@
   <PropertyGroup>
     <ServerGarbageCollection>true</ServerGarbageCollection>
   </PropertyGroup>
+
+  <!--
+    The plugin host is a program, not a library, so it needs its apphost, its
+    deps.json and its runtimeconfig.json beside it. A ProjectReference carries
+    only the assembly, and the server would find a NoMercy.PluginHost.dll it
+    could not start.
+  -->
+  <Target Name="CopyThePluginHostBesideTheServer" AfterTargets="Build">
+    <ItemGroup>
+      <PluginHostOutput
+        Include="$(MSBuildThisFileDirectory)..\NoMercy.PluginHost\bin\$(Configuration)\$(TargetFramework)\**\*"
+        Exclude="$(MSBuildThisFileDirectory)..\NoMercy.PluginHost\bin\$(Configuration)\$(TargetFramework)\**\*.pdb"
+      />
+    </ItemGroup>
+    <Copy
+      SourceFiles="@(PluginHostOutput)"
+      DestinationFiles="@(PluginHostOutput->'$(OutDir)%(RecursiveDir)%(Filename)%(Extension)')"
+      SkipUnchangedFiles="true"
+      Condition="'@(PluginHostOutput)' != ''"
+    />
+  </Target>
 </Project>
