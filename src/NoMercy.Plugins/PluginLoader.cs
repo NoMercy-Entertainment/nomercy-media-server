@@ -111,6 +111,34 @@ internal sealed class PluginLoader(
         );
     }
 
+    /// <summary>
+    /// Records a plugin whose manifest parsed but whose assembly never mapped
+    /// into the process (a missing dependency behind <see cref="Assembly.GetTypes"/>,
+    /// a corrupt DLL). Without this the plugin had no <see cref="LoadedPlugin"/>
+    /// at all: the dashboard reads <see cref="IPluginRegistry"/>, so a plugin
+    /// whose assembly failed to load simply vanished rather than showing up as
+    /// broken, and the reason computed for the log line and the transient
+    /// <c>PluginErrorOccurredEvent</c> never reached anywhere durable.
+    /// </summary>
+    private void RegisterUnloadableAssembly(
+        PluginManifest manifest,
+        string assemblyPath,
+        string manifestPath,
+        string reason
+    )
+    {
+        PluginInfo info = PluginManifestParser.ToPluginInfo(
+            manifest,
+            assemblyPath,
+            PluginStatus.Malfunctioned,
+            manifestPath
+        );
+
+        info.Malfunction = reason;
+
+        _registry[manifest.Id.Value] = new(info, null, null);
+    }
+
     private PluginRefusal? RunRefusal(
         PluginManifest manifest,
         string assemblyPath,
@@ -228,6 +256,8 @@ internal sealed class PluginLoader(
                     verification.Verified,
                     verification.Trusted
                 );
+
+                malfunctionedInfo.Malfunction = failureMessage;
 
                 _registry[manifest.Id.Value] = new(malfunctionedInfo, null, null);
 
@@ -523,6 +553,8 @@ internal sealed class PluginLoader(
                     [assemblyPath, errorMessage]
                 );
 
+                RegisterUnloadableAssembly(manifest, assemblyPath, manifestPath, errorMessage);
+
                 await _eventBus.PublishAsync(
                     new PluginErrorOccurredEvent
                     {
@@ -544,12 +576,16 @@ internal sealed class PluginLoader(
                     [assemblyPath, ex.Message]
                 );
 
+                string errorMessage = PluginStaleMemberLog.Describe(manifest.Id.Value, ex);
+
+                RegisterUnloadableAssembly(manifest, assemblyPath, manifestPath, errorMessage);
+
                 await _eventBus.PublishAsync(
                     new PluginErrorOccurredEvent
                     {
                         PluginId = manifest.Id.ToString(),
                         PluginName = manifest.Name,
-                        ErrorMessage = PluginStaleMemberLog.Describe(manifest.Id.Value, ex),
+                        ErrorMessage = errorMessage,
                         ExceptionType = ex.GetType().Name,
                     },
                     ct

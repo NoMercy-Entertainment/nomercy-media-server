@@ -146,6 +146,13 @@ public class PluginManagerVerificationTests : IDisposable
         info!.Status.Should().Be(PluginStatus.Malfunctioned);
         info.Verified.Should().BeFalse();
         _manager.GetPluginInstance(pluginId).Should().BeNull();
+
+        // An owner staring at "Failed to load" with no reason cannot fix
+        // anything, and cannot tell one broken plugin from another. The ABI
+        // failure text the verifier already computed has to survive onto the
+        // record the dashboard actually reads.
+        info.Malfunction.Should().NotBeNullOrWhiteSpace();
+        info.Malfunction.Should().Contain("ABI");
     }
 
     private sealed class MinimalServiceProvider : IServiceProvider
