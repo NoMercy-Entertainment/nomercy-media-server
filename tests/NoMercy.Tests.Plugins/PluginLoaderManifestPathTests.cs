@@ -29,9 +29,7 @@ namespace NoMercy.Tests.Plugins;
 /// </summary>
 public class PluginLoaderManifestPathTests : IDisposable
 {
-    private static readonly Ulid ManifestFailurePluginId = Ulid.Parse(
-        "01MAN0FESTFA000RE000000000"
-    );
+    private static readonly Ulid ManifestFailurePluginId = Ulid.Parse("01MAN0FESTFA000RE000000000");
 
     private readonly string _tempPluginsDir;
     private readonly InMemoryEventBus _eventBus;
@@ -173,7 +171,11 @@ public class PluginLoaderManifestPathTests : IDisposable
             """;
         string manifestPath = StageManifestFailurePlugin(manifestJson);
         InMemoryConsentStore consentStore = new();
-        consentStore.Add(ManifestFailurePluginId, new PluginCapabilities { Rest = true }, new Version(0, 1, 0));
+        consentStore.Add(
+            ManifestFailurePluginId,
+            new PluginCapabilities { Rest = true },
+            new Version(0, 1, 0)
+        );
         PluginConsentService consentService = new(consentStore);
         PluginManager manager = BuildManager(consentService);
 
@@ -266,6 +268,70 @@ public class PluginLoaderManifestPathTests : IDisposable
         Func<Task> act = () => manager.LoadPluginFromManifestAsync(manifestPath);
 
         await act.Should().NotThrowAsync();
+
+        manager.Dispose();
+    }
+
+    /// <summary>
+    /// A dependency missing beside the assembly makes <c>Assembly.GetTypes()</c>
+    /// throw <see cref="ReflectionTypeLoadException"/> for the whole module —
+    /// staged deliberately without <c>Newtonsoft.Json.dll</c>, which
+    /// <see cref="TypeSignatureDependsOnMissingAssemblyPlugin"/>'s own field
+    /// signature needs. Before this loader wrote the resulting reason nowhere
+    /// but the log, a plugin like this had no <see cref="LoadedPlugin"/> at
+    /// all — the dashboard reads the registry, so it simply never appeared,
+    /// rather than appearing broken with a reason.
+    /// </summary>
+    [Fact]
+    public async Task LoadPluginFromManifestAsync_AssemblyFailsReflectionLoad_RegistersMalfunctionedWithReason()
+    {
+        string binDir = GetFailuresPluginBinDir();
+        string dllSrc = Path.Combine(binDir, "NoMercy.Plugin.Samples.Failures.dll");
+        if (!File.Exists(dllSrc))
+            throw new FileNotFoundException(
+                $"Failures plugin DLL not found at '{dllSrc}'. Build NoMercy.Plugin.Samples.Failures first."
+            );
+
+        string pluginDir = Path.Combine(_tempPluginsDir, "ReflectionLoadFailure");
+        Directory.CreateDirectory(pluginDir);
+
+        // Every dependency EXCEPT Newtonsoft.Json.dll, so GetTypes() throws.
+        foreach (string file in Directory.EnumerateFiles(binDir, "*.dll"))
+        {
+            if (
+                Path.GetFileName(file)
+                    .Equals("Newtonsoft.Json.dll", StringComparison.OrdinalIgnoreCase)
+            )
+                continue;
+
+            File.Copy(file, Path.Combine(pluginDir, Path.GetFileName(file)), overwrite: true);
+        }
+        foreach (string file in Directory.EnumerateFiles(binDir, "*.deps.json"))
+            File.Copy(file, Path.Combine(pluginDir, Path.GetFileName(file)), overwrite: true);
+
+        Ulid manifestId = Ulid.NewUlid();
+        string manifestJson = $$"""
+            {
+              "id": "{{manifestId}}",
+              "name": "ReflectionLoadFailure",
+              "version": "0.1.0",
+              "description": "assembly missing a dependency its own type signature needs",
+              "assembly": "NoMercy.Plugin.Samples.Failures.dll",
+              "autoEnabled": false
+            }
+            """;
+        string manifestPath = Path.Combine(pluginDir, "plugin.json");
+        File.WriteAllText(manifestPath, manifestJson);
+        PluginManager manager = BuildManager();
+
+        await manager.LoadPluginFromManifestAsync(manifestPath);
+
+        PluginInfo? info = manager.GetInstalledPlugins().FirstOrDefault(p => p.Id == manifestId);
+        info.Should()
+            .NotBeNull("a plugin whose assembly fails to load must still be visible as broken");
+        info!.Status.Should().Be(PluginStatus.Malfunctioned);
+        info.Name.Should().Be("ReflectionLoadFailure");
+        info.Malfunction.Should().NotBeNullOrWhiteSpace();
 
         manager.Dispose();
     }

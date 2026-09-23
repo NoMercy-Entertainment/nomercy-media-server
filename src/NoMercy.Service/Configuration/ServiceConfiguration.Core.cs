@@ -325,8 +325,9 @@ public static partial class ServiceConfiguration
         services.AddSingleton<IStartupManager>(StartupManager.Current);
         services.AddSingleton<IMediaAuthorizationPolicy, MediaAuthorizationPolicy>();
 
-        // Server-users sync (invite/removal reconciliation) — used by the
-        // first-boot UsersSeed and by the recurring ServerUserSyncCronJob.
+        // Server-users sync (invite/removal reconciliation) — used by
+        // first-boot UsersSeed. Ongoing sync is nomercy-tv's PushServerUserJob;
+        // this service is no longer polled on a recurring schedule.
         services.AddSingleton<IServerUserApiClient, ServerUserApiClient>();
         services.AddSingleton<IServerUserSyncService, ServerUserSyncService>();
 

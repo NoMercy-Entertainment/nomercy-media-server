@@ -23,8 +23,8 @@ namespace NoMercy.Tests.Setup.Seeds;
 /// <see cref="UsersSeed"/> is now a thin first-boot wrapper around
 /// <see cref="ServerUserSyncService"/> — these tests confirm boot-time
 /// behavior is unchanged: it still seeds an empty Users table, and still
-/// never re-runs once any user exists (that ongoing job now belongs to
-/// <c>ServerUserSyncCronJob</c>, covered separately).
+/// never re-runs once any user exists. Ongoing sync after first boot is
+/// nomercy-tv's PushServerUserJob, not a recurring poll on this side.
 /// </summary>
 [Trait("Category", "Unit")]
 public class UsersSeedTests : IDisposable

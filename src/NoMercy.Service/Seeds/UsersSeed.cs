@@ -22,10 +22,10 @@ public static class UsersSeed
     /// <summary>
     /// First-boot seed only: populates an empty Users table from the current
     /// server-users list. Ongoing reconciliation (invites accepted after this
-    /// server already has users, revocation of removed/declined users) is the
-    /// job of <see cref="IServerUserSyncService"/> via the recurring
-    /// <c>ServerUserSyncCronJob</c> — this seed intentionally never re-runs once
-    /// any user exists locally.
+    /// server already has users, revocation of removed/declined users) is
+    /// nomercy-tv's PushServerUserJob, notifying this server directly as each
+    /// grant changes — this seed intentionally never re-runs once any user
+    /// exists locally.
     /// </summary>
     public static async Task Init(
         this MediaContext dbContext,
