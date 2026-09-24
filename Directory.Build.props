@@ -11,7 +11,7 @@
     <PackageProjectUrl>https://nomercy.tv</PackageProjectUrl>
     <RepositoryUrl>https://github.com/NoMercy-Entertainment/nomercy-media-server</RepositoryUrl>
 
-    <Version>0.1.528</Version>
+    <Version>0.1.529</Version>
 
     <!--
       The plugin packages version with the contract, not with the server. A

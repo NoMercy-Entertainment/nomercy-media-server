@@ -34,6 +34,8 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Xunit.SkippableFact" />
+    <!-- NoMercy.SMBLibrary comes from nuget.org: a fork of SMBLibrary. The fork exists because stock SMBLibrary hardcodes port 445, so it cannot reach an SMB server on any other port. -->
+    <PackageReference Include="NoMercy.SMBLibrary" />
   </ItemGroup>
 
   <ItemGroup>
@@ -47,23 +49,4 @@
     <ProjectReference Include="..\..\src\NoMercy.Storage\NoMercy.Storage.csproj" />
   </ItemGroup>
 
-  <!-- SMBLibrary: mirrors NoMercy.Storage's own reference so tests can construct
-       SmbSession / SmbReadStream / SmbWriteStream directly against real SMBLibrary
-       types (mocked ISMBFileStore) instead of only through a live SMB server. -->
-  <PropertyGroup>
-    <SmbForkDir>$(MSBuildThisFileDirectory)../../../../packages/nomercy-smblibrary/output/managed</SmbForkDir>
-    <SmbForkDir Condition="!Exists('$(SmbForkDir)/NoMercy.SMBLibrary.dll')"
-      >$(MSBuildThisFileDirectory)../../libs/smb</SmbForkDir
-    >
-  </PropertyGroup>
-  <ItemGroup>
-    <Reference Include="NoMercy.SMBLibrary">
-      <HintPath>$(SmbForkDir)/NoMercy.SMBLibrary.dll</HintPath>
-      <Private>true</Private>
-    </Reference>
-    <Reference Include="NoMercy.SMBLibrary.Utilities">
-      <HintPath>$(SmbForkDir)/NoMercy.SMBLibrary.Utilities.dll</HintPath>
-      <Private>true</Private>
-    </Reference>
-  </ItemGroup>
 </Project>
