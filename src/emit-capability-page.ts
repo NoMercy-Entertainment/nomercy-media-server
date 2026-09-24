@@ -29,7 +29,7 @@ description: ${capability.summary}
 tags: [capability, ${slug}]
 ---
 
-{/* Generated from tools/plugin-contract/contract/capabilities.json. Do not edit. */}
+{/* Generated from server/plugin-contract/contract/capabilities.json. Do not edit. */}
 
 # \`${capability.name}\`
 
