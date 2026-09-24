@@ -1,7 +1,7 @@
-# Vendored from packages/nomercy-disc-format — chapter/identity slice only
+# Vendored from server/media/nomercy-disc-format — chapter/identity slice only
 
 This folder is a narrow, deliberately incomplete vendor of
-`packages/nomercy-disc-format`: only the disc-identity and DVD-identity
+`server/media/nomercy-disc-format`: only the disc-identity and DVD-identity
 seam, plus the abstraction types it depends on. It gives the media server
 **real chapter marks and a real disc-identity hash**, with zero coupling to
 that repo's menu-rendering (`.nmdf`) pipeline.

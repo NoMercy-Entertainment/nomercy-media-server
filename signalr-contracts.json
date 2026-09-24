@@ -1,7 +1,7 @@
 {
   "_comment": "Generated snapshot of SignalR hub contracts. Update this file whenever a hub method is added, removed, or has its signature changed. Clients (web app, Android) must keep their handlers in sync with this file.",
   "_generated": "2026-04-02",
-  "_source": "apps/nomercy-media-server/src/",
+  "_source": "server/nomercy-media-server/src/",
 
   "hubs": {
 

@@ -1,8 +1,8 @@
 $files = @(
-  'C:/Projects/NoMercy/apps/nomercy-media-server/tests/NoMercy.Tests.Networking/NetworkingExternalIpTests.cs',
-  'C:/Projects/NoMercy/apps/nomercy-media-server/src/NoMercy.Setup/DesktopIconCreator.cs',
-  'C:/Projects/NoMercy/apps/nomercy-media-server/src/NoMercy.Setup/OfflineJwksCache.cs',
-  'C:/Projects/NoMercy/apps/nomercy-media-server/src/NoMercy.Setup/ApiInfo.cs'
+  'C:/Projects/NoMercy/server/nomercy-media-server/tests/NoMercy.Tests.Networking/NetworkingExternalIpTests.cs',
+  'C:/Projects/NoMercy/server/nomercy-media-server/src/NoMercy.Setup/DesktopIconCreator.cs',
+  'C:/Projects/NoMercy/server/nomercy-media-server/src/NoMercy.Setup/OfflineJwksCache.cs',
+  'C:/Projects/NoMercy/server/nomercy-media-server/src/NoMercy.Setup/ApiInfo.cs'
 )
 
 foreach ($f in $files) {

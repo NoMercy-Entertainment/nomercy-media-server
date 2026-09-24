@@ -18,7 +18,7 @@ for Windows, Linux, and macOS to support in-process NFS storage access without
 requiring OS-level mounts.
 
 The LGPL-2.1 license text is reproduced in full at
-`packages/nomercy-libnfs/LICENSE`.
+`server/network/nomercy-libnfs/LICENSE`.
 
 Build scripts and Dockerfiles used to produce these binaries are in
-`packages/nomercy-libnfs/`.
+`server/network/nomercy-libnfs/`.
