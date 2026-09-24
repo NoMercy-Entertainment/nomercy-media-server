@@ -168,9 +168,8 @@
     <PackageVersion Include="AWSSDK.S3" Version="4.0.101.6" />
     <!-- WebDAV -->
     <PackageVersion Include="WebDav.Client" Version="2.9.0" />
-    <!-- SMB / CIFS: NoMercy fork of SMBLibrary, referenced directly from        -->
-    <!-- packages/nomercy-smblibrary/output/managed (adds an explicit-port        -->
-    <!-- Connect overload). No NuGet PackageVersion entry needed.                 -->
+    <!-- NoMercy fork of SMBLibrary with a public Connect(address, transport, port); source github.com/NoMercy-Entertainment/nomercy-smblibrary. -->
+    <PackageVersion Include="NoMercy.SMBLibrary" Version="1.5.7-nomercy.1" />
     <!-- Testing -->
     <PackageVersion Include="coverlet.collector" Version="10.0.1" />
     <PackageVersion Include="Testcontainers" Version="4.13.0" />

@@ -31,15 +31,6 @@ namespace NoMercy.Tests.Launcher;
 /// </summary>
 public class BuildInputsStayInRepoTests
 {
-    // Paths still waiting on their published replacement. Each entry names why;
-    // the list shrinks, it never grows.
-    private static readonly string[] KnownExceptions =
-    [
-        // SMBLibrary fork: moves to the NoMercy.SMBLibrary package on nuget.org.
-        "src/NoMercy.Storage/NoMercy.Storage.csproj:SmbForkDir",
-        "tests/NoMercy.Tests.Storage/NoMercy.Tests.Storage.csproj:SmbForkDir",
-    ];
-
     private static readonly string[] NfsBinaries =
     [
         "win-x64/libnfs.dll",
@@ -72,9 +63,7 @@ public class BuildInputsStayInRepoTests
                     if (target.StartsWith(root, StringComparison.OrdinalIgnoreCase))
                         continue;
 
-                    string key = $"{relative}:{element.Name.LocalName}";
-                    if (!KnownExceptions.Contains(key))
-                        escapes.Add($"{key} -> {match.Groups[1].Value}");
+                    escapes.Add($"{relative}:{element.Name.LocalName} -> {match.Groups[1].Value}");
                 }
             }
         }
@@ -113,6 +102,28 @@ public class BuildInputsStayInRepoTests
             .ToList();
 
         guarded.Should().BeEmpty("an Exists guard turns a missing libnfs into a release without NFS");
+    }
+
+    [Fact]
+    public void SmbLibraryComesFromThePublishedPackage()
+    {
+        foreach (string project in new[]
+                 {
+                     RepoPaths.At("src", "NoMercy.Storage", "NoMercy.Storage.csproj"),
+                     RepoPaths.At("tests", "NoMercy.Tests.Storage", "NoMercy.Tests.Storage.csproj"),
+                 })
+        {
+            XDocument document = XDocument.Load(project);
+
+            document.Descendants("PackageReference")
+                .Select(element => (string?)element.Attribute("Include"))
+                .Should().Contain("NoMercy.SMBLibrary", $"{Path.GetFileName(project)} takes the fork from nuget.org");
+            document.Descendants("HintPath")
+                .Select(element => element.Value)
+                .Should().NotContain(value => value.Contains("SMBLibrary"), "a copied DLL is not the published package");
+        }
+
+        Directory.Exists(RepoPaths.At("libs", "smb")).Should().BeFalse("the vendored SMBLibrary copy is replaced by the package");
     }
 
     private static IEnumerable<string> BuildFiles(string root)

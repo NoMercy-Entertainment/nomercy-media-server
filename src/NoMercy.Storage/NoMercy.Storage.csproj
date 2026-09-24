@@ -17,27 +17,8 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
     <PackageReference Include="Ulid" />
-  </ItemGroup>
-
-  <!-- SMBLibrary: NoMercy fork built by packages/nomercy-smblibrary/scripts/build.ps1. -->
-  <!-- Pure managed (netstandard2.0), so one DLL pair runs on every target runtime.    -->
-  <!-- The fork adds a public Connect(addr, transport, port) overload; stock SMBLibrary -->
-  <!-- hardcodes port 445 so it cannot reach an SMB server on any other port.           -->
-  <!-- A fresh fork build in the monorepo wins when present; the vendored copy in       -->
-  <!-- libs/smb keeps CI and standalone clones of this repo building without it.        -->
-  <PropertyGroup>
-    <SmbForkDir>$(MSBuildThisFileDirectory)../../../../packages/nomercy-smblibrary/output/managed</SmbForkDir>
-    <SmbForkDir Condition="!Exists('$(SmbForkDir)/NoMercy.SMBLibrary.dll')">$(MSBuildThisFileDirectory)../../libs/smb</SmbForkDir>
-  </PropertyGroup>
-  <ItemGroup>
-    <Reference Include="NoMercy.SMBLibrary">
-      <HintPath>$(SmbForkDir)/NoMercy.SMBLibrary.dll</HintPath>
-      <Private>true</Private>
-    </Reference>
-    <Reference Include="NoMercy.SMBLibrary.Utilities">
-      <HintPath>$(SmbForkDir)/NoMercy.SMBLibrary.Utilities.dll</HintPath>
-      <Private>true</Private>
-    </Reference>
+    <!-- NoMercy.SMBLibrary comes from nuget.org: a fork of SMBLibrary. The fork exists because stock SMBLibrary hardcodes port 445, so it cannot reach an SMB server on any other port. -->
+    <PackageReference Include="NoMercy.SMBLibrary" />
   </ItemGroup>
 
   <!-- libnfs native binaries — vendored into libs/nfs (checksums in                -->
