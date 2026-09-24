@@ -40,50 +40,44 @@
     </Reference>
   </ItemGroup>
 
-  <!-- libnfs native binaries — built by packages/nomercy-libnfs/scripts/build.sh -->
-  <!-- and vendored into libs/nfs so a standalone clone of THIS repo — including    -->
-  <!-- its release CI, which never checks out the monorepo `packages/` sibling —    -->
-  <!-- still bundles them. Without the vendored fallback the release shipped no      -->
-  <!-- nfs.dll and NFS mounts failed with "Unable to load DLL 'nfs'". A fresh        -->
-  <!-- monorepo package build wins when present; the vendored copy is the fallback.  -->
-  <!-- On Windows, P/Invoke `[DllImport("nfs")]` looks for "nfs.dll" exactly         -->
+  <!-- libnfs native binaries — vendored into libs/nfs (checksums in                -->
+  <!-- libs/nfs/CHECKSUMS.txt), updated by a deliberate commit from a               -->
+  <!-- nomercy-libnfs build. The server never reads a sibling packages/ folder, so  -->
+  <!-- every build — including a standalone clone and its release CI — ships the   -->
+  <!-- same binaries. A missing binary fails the build. (July 2026: a guarded copy -->
+  <!-- shipped a release without nfs.dll.)                                         -->
+  <!-- On Windows, P/Invoke `[DllImport("nfs")]` looks for "nfs.dll" exactly       -->
   <!-- (no lib prefix). Linux/macOS auto-prepend "lib" so libnfs.{so,dylib} works.   -->
   <PropertyGroup>
-    <LibNfsDir>$(MSBuildThisFileDirectory)../../../../packages/nomercy-libnfs/output</LibNfsDir>
-    <LibNfsDir Condition="!Exists('$(LibNfsDir)/win-x64/libnfs.dll')">$(MSBuildThisFileDirectory)../../libs/nfs</LibNfsDir>
+    <LibNfsDir>$(MSBuildThisFileDirectory)../../libs/nfs</LibNfsDir>
   </PropertyGroup>
   <ItemGroup>
     <None
       Include="$(LibNfsDir)/win-x64/libnfs.dll"
-      Condition="Exists('$(LibNfsDir)/win-x64/libnfs.dll')"
       Link="runtimes/win-x64/native/nfs.dll"
     >
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None
       Include="$(LibNfsDir)/linux-x64/libnfs.so"
-      Condition="Exists('$(LibNfsDir)/linux-x64/libnfs.so')"
       Link="runtimes/linux-x64/native/libnfs.so"
     >
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None
       Include="$(LibNfsDir)/linux-arm64/libnfs.so"
-      Condition="Exists('$(LibNfsDir)/linux-arm64/libnfs.so')"
       Link="runtimes/linux-arm64/native/libnfs.so"
     >
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None
       Include="$(LibNfsDir)/osx-x64/libnfs.dylib"
-      Condition="Exists('$(LibNfsDir)/osx-x64/libnfs.dylib')"
       Link="runtimes/osx-x64/native/libnfs.dylib"
     >
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None
       Include="$(LibNfsDir)/osx-arm64/libnfs.dylib"
-      Condition="Exists('$(LibNfsDir)/osx-arm64/libnfs.dylib')"
       Link="runtimes/osx-arm64/native/libnfs.dylib"
     >
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
