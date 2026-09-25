@@ -1,0 +1,338 @@
+[
+  {
+    "code": "PLUGIN_CAPABILITY_NOT_DECLARED",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "A call needed a capability the manifest does not declare."
+  },
+  {
+    "code": "PLUGIN_CAPABILITY_NOT_CONSENTED",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "The manifest declares the capability and the owner has not granted it."
+  },
+  {
+    "code": "PLUGIN_CAPABILITY_SCOPE_REFUSED",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "The call fell outside the scope the owner consented to."
+  },
+  {
+    "code": "PLUGIN_TRUST_TOO_LOW",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "The publisher's trust level is below the capability's floor."
+  },
+  {
+    "code": "PLUGIN_GUEST_CAPABILITY_IRREVERSIBLE",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "A guest brought a plugin holding a capability whose effect does not reverse when the guest leaves."
+  },
+  {
+    "code": "PLUGIN_HOST_SERVICES_REMOVED",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "The plugin asked the host container for a service. The contract has facades instead."
+  },
+  {
+    "code": "PLUGIN_EVENT_BUS_REMOVED",
+    "severity": "blocked",
+    "capability": "events.subscribe",
+    "summary": "The plugin used the raw event bus. The contract has a topic list instead."
+  },
+  {
+    "code": "PLUGIN_TOKEN_IN_URL",
+    "severity": "blocked",
+    "capability": "media.proxy",
+    "summary": "The plugin put a bearer token in a media URL. The host mints every media URL."
+  },
+  {
+    "code": "PLUGIN_FILE_OUTSIDE_GRANT",
+    "severity": "blocked",
+    "capability": "storage.path",
+    "summary": "The plugin read or wrote a folder the owner has not granted."
+  },
+  {
+    "code": "PLUGIN_PROCESS_SPAWN_UNDECLARED",
+    "severity": "blocked",
+    "capability": "process.spawn",
+    "summary": "The plugin started a process without process.spawn."
+  },
+  {
+    "code": "PLUGIN_PROCESS_SPAWN_OUTSIDE_SANDBOX",
+    "severity": "blocked",
+    "capability": "process.spawn",
+    "summary": "The plugin's child process would have run outside the plugin's own sandbox."
+  },
+  {
+    "code": "PLUGIN_SOCKET_UNDECLARED",
+    "severity": "blocked",
+    "capability": "network.dial",
+    "summary": "The plugin opened a raw socket without network.dial."
+  },
+  {
+    "code": "PLUGIN_LISTENER_UNDECLARED",
+    "severity": "blocked",
+    "capability": "network.listen",
+    "summary": "The plugin bound a listening socket without network.listen."
+  },
+  {
+    "code": "PLUGIN_HOST_NOT_ALLOWED",
+    "severity": "blocked",
+    "capability": "network.fetch",
+    "summary": "The request went to a host outside the glob the owner granted."
+  },
+  {
+    "code": "PLUGIN_ROUTE_RESERVED_PREFIX",
+    "severity": "blocked",
+    "capability": "ui.mount",
+    "summary": "The plugin claimed a route under the underscore prefix the host owns."
+  },
+  {
+    "code": "PLUGIN_ROUTE_ACCESS_DENIED",
+    "severity": "blocked",
+    "capability": "rest",
+    "summary": "The caller does not hold the access the route declares."
+  },
+  {
+    "code": "PLUGIN_ABI_UNSUPPORTED",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "The manifest targets an ABI this server does not load."
+  },
+  {
+    "code": "PLUGIN_MANIFEST_INVALID",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "The manifest does not match the schema the server reads."
+  },
+  {
+    "code": "PLUGIN_DEPENDENCY_MISSING",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "The plugin depends on another plugin the server does not have."
+  },
+  {
+    "code": "PLUGIN_DEPENDENCY_PAID_NOT_OWNED",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "The plugin depends on a paid plugin this server does not own."
+  },
+  {
+    "code": "PLUGIN_DEPENDENCY_TIER_MISMATCH",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "A free plugin depends on a paid one, which the marketplace does not allow."
+  },
+  {
+    "code": "PLUGIN_DEPENDENCY_PAUSED",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "The plugin a dependency points at is paused, so the call has nothing to reach."
+  },
+  {
+    "code": "PLUGIN_CONTRACT_VERSION_MISMATCH",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "The cross-plugin contract version the caller asks for is not the one the provider offers."
+  },
+  {
+    "code": "PLUGIN_USER_SCOPE_REQUIRED",
+    "severity": "blocked",
+    "capability": "user.identity",
+    "summary": "The call needs a user scope and ran without one."
+  },
+  {
+    "code": "PLUGIN_USER_DATA_EGRESS",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "The plugin sent user data to a host outside the server."
+  },
+  {
+    "code": "PLUGIN_USER_DATA_SCOPE_REQUIRED",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "A capability that reads a person's own data was called with nobody asking."
+  },
+  {
+    "code": "PLUGIN_SETTINGS_FIELD_READ_ONLY",
+    "severity": "blocked",
+    "capability": "settings",
+    "summary": "The plugin wrote a settings field its schema marks read only."
+  },
+  {
+    "code": "PLUGIN_SECRET_FIELD_IN_SETTINGS",
+    "severity": "blocked",
+    "capability": "secrets",
+    "summary": "A secret was written into settings, where it would be readable. Secrets live in the secret store."
+  },
+  {
+    "code": "PLUGIN_QUOTA_DISK_EXCEEDED",
+    "severity": "blocked",
+    "capability": "storage.private",
+    "summary": "The plugin is at its disk quota, so the write has nowhere to go."
+  },
+  {
+    "code": "PLUGIN_LAN_CREDENTIAL_INVALID",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "A device on the network used a credential the server does not know, or one the owner revoked."
+  },
+  {
+    "code": "PLUGIN_ROUTER_DECLINED",
+    "severity": "blocked",
+    "capability": "network.listen",
+    "summary": "The router refused to forward the port, which no change to the plugin can fix."
+  },
+  {
+    "code": "PLUGIN_NO_ROUTER_FOUND",
+    "severity": "blocked",
+    "capability": "network.listen",
+    "summary": "No router on this network answered a port-forwarding request."
+  },
+  {
+    "code": "PLUGIN_SCHEDULER_WORKER_CRASHED",
+    "severity": "degraded",
+    "capability": "scheduler",
+    "summary": "A supervised worker crashed and the host restarted it."
+  },
+  {
+    "code": "PLUGIN_LIVE_LINK_FAILED",
+    "severity": "degraded",
+    "capability": "media.live",
+    "summary": "The live link the plugin published stopped answering."
+  },
+  {
+    "code": "PLUGIN_RECORDING_DISK_FULL",
+    "severity": "blocked",
+    "capability": "media.record",
+    "summary": "The recording stopped because the disk it writes to is full."
+  },
+  {
+    "code": "PLUGIN_REMUX_UNSUPPORTED_CODEC",
+    "severity": "degraded",
+    "capability": "media.remux",
+    "summary": "The stream carries a codec the remuxer cannot repackage."
+  },
+  {
+    "code": "PLUGIN_BROWSER_NAVIGATION_BLOCKED",
+    "severity": "blocked",
+    "capability": "browser.headless",
+    "summary": "The headless browser navigated to a host outside the granted scope."
+  },
+  {
+    "code": "PLUGIN_UI_INPUT_UNDECLARED",
+    "severity": "blocked",
+    "capability": "ui.input",
+    "summary": "The plugin asked the user for input without ui.input."
+  },
+  {
+    "code": "PLUGIN_NATIVE_CODE_UNSIGNED",
+    "severity": "blocked",
+    "capability": "native.code",
+    "summary": "The native library the plugin loads carries no signature this server trusts."
+  },
+  {
+    "code": "PLUGIN_HUB_CALLER_NOT_RESOLVED",
+    "severity": "blocked",
+    "capability": "hub",
+    "summary": "A hub method was reached on a connection the host could not resolve a caller for."
+  },
+  {
+    "code": "PLUGIN_SECRET_HAS_NO_CALLER",
+    "severity": "blocked",
+    "capability": "secrets",
+    "summary": "A per-user secret was reached on a call with no resolved caller."
+  },
+  {
+    "code": "PLUGIN_REVOKED",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "This exact build was revoked, so it does not run."
+  },
+  {
+    "code": "PLUGIN_REVOCATION_LIST_STALE",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "The server has not reached the revocation list in over a week, so it cannot say a plugin is still allowed."
+  },
+  {
+    "code": "PLUGIN_ENTITLEMENT_MISSING",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "A paid plugin, and the server owner holds no entitlement for it."
+  },
+  {
+    "code": "PLUGIN_ENTITLEMENT_DORMANT",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "The server could not confirm a purchase for over a week, so the plugin is installed and not running."
+  },
+  {
+    "code": "PLUGIN_OFFLINE_BUNDLE_INVALID",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "An offline bundle that NoMercy did not sign, or that was edited after signing."
+  },
+  {
+    "code": "PLUGIN_OFFLINE_BUNDLE_EXPIRED",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "An offline bundle older than the validity it was issued with."
+  },
+  {
+    "code": "PLUGIN_SIDELOAD_DISABLED",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "Installing a plugin from a file is off, because the server cannot check who wrote it."
+  },
+  {
+    "code": "PLUGIN_SIDELOAD_PAID_ID",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "The id belongs to a paid plugin and the owner holds no entitlement for it."
+  },
+  {
+    "code": "PLUGIN_ACCESS_DENIED",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "The plugin is not shared with the account asking for it on this server."
+  },
+  {
+    "code": "PLUGIN_MEDIA_TICKET_EXPIRED",
+    "severity": "blocked",
+    "capability": "media.proxy",
+    "summary": "A media link the server minted has run out, or was never one it minted."
+  },
+  {
+    "code": "PLUGIN_MEDIA_TICKET_USER_MISMATCH",
+    "severity": "blocked",
+    "capability": "media.proxy",
+    "summary": "A media link minted for one account was used by another."
+  },
+  {
+    "code": "PLUGIN_LIBRARY_IMPORT_DENIED",
+    "severity": "blocked",
+    "capability": "library.write",
+    "summary": "A plugin offered a file to a library it may not write to, or from a path outside one."
+  },
+  {
+    "code": "PLUGIN_RESOURCE_CEILING",
+    "severity": "degraded",
+    "capability": null,
+    "summary": "A plugin went past the CPU or memory the owner allowed it, and the server acted."
+  },
+  {
+    "code": "PLUGIN_DISABLED_AFTER_RESTARTS",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "A plugin was restarted too many times in an hour, so the server stopped restarting it."
+  },
+  {
+    "code": "PLUGIN_QUOTA_UPLOAD_EXCEEDED",
+    "severity": "degraded",
+    "capability": "media.proxy",
+    "summary": "A plugin is sending faster than the share of the uplink the owner allowed it."
+  }
+]
