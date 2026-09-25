@@ -1,0 +1,27 @@
+[
+  { "kind": "music", "slot": "nav", "summary": "A button in the music section's own navigation." },
+  { "kind": "music", "slot": "home-row", "summary": "A row on the music home screen." },
+  { "kind": "music", "slot": "artist-tab", "summary": "A tab on an artist page." },
+  { "kind": "music", "slot": "album-tab", "summary": "A tab on an album page." },
+  { "kind": "music", "slot": "player-panel", "summary": "A panel beside the music player." },
+
+  { "kind": "video", "slot": "nav", "summary": "A button in the video section's own navigation." },
+  { "kind": "video", "slot": "home-row", "summary": "A row on the video home screen." },
+  { "kind": "video", "slot": "detail-tab", "summary": "A tab on a film or show page." },
+  { "kind": "video", "slot": "player-panel", "summary": "A panel beside the video player." },
+  { "kind": "video", "slot": "live", "summary": "The live channel list." },
+  { "kind": "video", "slot": "guide", "summary": "The channel guide." },
+  { "kind": "video", "slot": "channel-strip", "summary": "The strip of channels over a playing live stream." },
+
+  { "kind": "library", "slot": "nav", "summary": "A button in the library navigation." },
+  { "kind": "library", "slot": "home-row", "summary": "A row on the library home screen." },
+  { "kind": "library", "slot": "library-card", "summary": "A card on a library item, whatever medium it is." },
+
+  { "kind": "dashboard", "slot": "nav", "summary": "A button in the dashboard navigation." },
+  { "kind": "dashboard", "slot": "card", "summary": "A card on the dashboard overview." },
+
+  { "kind": "settings", "slot": "section", "summary": "A section on the plugin's own settings page." },
+
+  { "kind": "addon", "slot": "nav", "summary": "A button in the main navigation, beside the app's own sections." },
+  { "kind": "addon", "slot": "home", "summary": "The addon's own home page." }
+]

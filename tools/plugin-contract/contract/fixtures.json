@@ -1,0 +1,1285 @@
+{
+  "plugin": "01JBQ0Y1ZQ8W4T7N2M6K5R3H9A",
+  "fixtures": [
+    {
+      "kind": "music",
+      "slot": "nav",
+      "why": "A button in the music section's own navigation.",
+      "entry": {
+        "section": "music",
+        "label": "Music Nav",
+        "icon": "radio",
+        "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/music/nav",
+        "slot": "nav",
+        "access": "shared"
+      },
+      "view": {
+        "layout": "standard",
+        "refreshInterval": 0,
+        "components": [
+          {
+            "id": "music-nav-grid",
+            "component": "NMGrid",
+            "props": {
+              "id": "music-nav-grid",
+              "items": [
+                {
+                  "id": "music-nav-card-1",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "music-nav-card-1",
+                    "data": {
+                      "id": "music-nav-card-1",
+                      "name": "Item 1",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/music/nav/1",
+                      "cover": "https://image.tmdb.org/t/p/w300/sintel.jpg",
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/music/nav/1"
+                    }
+                  }
+                },
+                {
+                  "id": "music-nav-card-2",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "music-nav-card-2",
+                    "data": {
+                      "id": "music-nav-card-2",
+                      "name": "Item 2",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/music/nav/2",
+                      "cover": null,
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/music/nav/2"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "music",
+      "slot": "home-row",
+      "why": "A row on the music home screen.",
+      "entry": {
+        "section": "music",
+        "label": "Music Home-Row",
+        "icon": "radio",
+        "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/music/home-row",
+        "slot": "home-row",
+        "access": "shared"
+      },
+      "view": {
+        "layout": "standard",
+        "refreshInterval": 0,
+        "components": [
+          {
+            "id": "music-home-row-grid",
+            "component": "NMGrid",
+            "props": {
+              "id": "music-home-row-grid",
+              "items": [
+                {
+                  "id": "music-home-row-card-1",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "music-home-row-card-1",
+                    "data": {
+                      "id": "music-home-row-card-1",
+                      "name": "Item 1",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/music/home-row/1",
+                      "cover": "https://image.tmdb.org/t/p/w300/sintel.jpg",
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/music/home-row/1"
+                    }
+                  }
+                },
+                {
+                  "id": "music-home-row-card-2",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "music-home-row-card-2",
+                    "data": {
+                      "id": "music-home-row-card-2",
+                      "name": "Item 2",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/music/home-row/2",
+                      "cover": null,
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/music/home-row/2"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "music",
+      "slot": "artist-tab",
+      "why": "A tab on an artist page.",
+      "entry": {
+        "section": "music",
+        "label": "Music Artist-Tab",
+        "icon": "radio",
+        "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/music/artist-tab",
+        "slot": "artist-tab",
+        "access": "shared"
+      },
+      "view": {
+        "layout": "standard",
+        "refreshInterval": 0,
+        "components": [
+          {
+            "id": "music-artist-tab-grid",
+            "component": "NMGrid",
+            "props": {
+              "id": "music-artist-tab-grid",
+              "items": [
+                {
+                  "id": "music-artist-tab-card-1",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "music-artist-tab-card-1",
+                    "data": {
+                      "id": "music-artist-tab-card-1",
+                      "name": "Item 1",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/music/artist-tab/1",
+                      "cover": "https://image.tmdb.org/t/p/w300/sintel.jpg",
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/music/artist-tab/1"
+                    }
+                  }
+                },
+                {
+                  "id": "music-artist-tab-card-2",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "music-artist-tab-card-2",
+                    "data": {
+                      "id": "music-artist-tab-card-2",
+                      "name": "Item 2",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/music/artist-tab/2",
+                      "cover": null,
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/music/artist-tab/2"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "music",
+      "slot": "album-tab",
+      "why": "A tab on an album page.",
+      "entry": {
+        "section": "music",
+        "label": "Music Album-Tab",
+        "icon": "radio",
+        "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/music/album-tab",
+        "slot": "album-tab",
+        "access": "shared"
+      },
+      "view": {
+        "layout": "standard",
+        "refreshInterval": 0,
+        "components": [
+          {
+            "id": "music-album-tab-grid",
+            "component": "NMGrid",
+            "props": {
+              "id": "music-album-tab-grid",
+              "items": [
+                {
+                  "id": "music-album-tab-card-1",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "music-album-tab-card-1",
+                    "data": {
+                      "id": "music-album-tab-card-1",
+                      "name": "Item 1",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/music/album-tab/1",
+                      "cover": "https://image.tmdb.org/t/p/w300/sintel.jpg",
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/music/album-tab/1"
+                    }
+                  }
+                },
+                {
+                  "id": "music-album-tab-card-2",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "music-album-tab-card-2",
+                    "data": {
+                      "id": "music-album-tab-card-2",
+                      "name": "Item 2",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/music/album-tab/2",
+                      "cover": null,
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/music/album-tab/2"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "music",
+      "slot": "player-panel",
+      "why": "A panel beside the music player.",
+      "entry": {
+        "section": "music",
+        "label": "Music Player-Panel",
+        "icon": "radio",
+        "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/music/player-panel",
+        "slot": "player-panel",
+        "access": "shared"
+      },
+      "view": {
+        "layout": "standard",
+        "refreshInterval": 0,
+        "components": [
+          {
+            "id": "music-player-panel-grid",
+            "component": "NMGrid",
+            "props": {
+              "id": "music-player-panel-grid",
+              "items": [
+                {
+                  "id": "music-player-panel-card-1",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "music-player-panel-card-1",
+                    "data": {
+                      "id": "music-player-panel-card-1",
+                      "name": "Item 1",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/music/player-panel/1",
+                      "cover": "https://image.tmdb.org/t/p/w300/sintel.jpg",
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/music/player-panel/1"
+                    }
+                  }
+                },
+                {
+                  "id": "music-player-panel-card-2",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "music-player-panel-card-2",
+                    "data": {
+                      "id": "music-player-panel-card-2",
+                      "name": "Item 2",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/music/player-panel/2",
+                      "cover": null,
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/music/player-panel/2"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "video",
+      "slot": "nav",
+      "why": "A button in the video section's own navigation.",
+      "entry": {
+        "section": "video",
+        "label": "Video Nav",
+        "icon": "radio",
+        "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/nav",
+        "slot": "nav",
+        "access": "shared"
+      },
+      "view": {
+        "layout": "standard",
+        "refreshInterval": 0,
+        "components": [
+          {
+            "id": "video-nav-grid",
+            "component": "NMGrid",
+            "props": {
+              "id": "video-nav-grid",
+              "items": [
+                {
+                  "id": "video-nav-card-1",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "video-nav-card-1",
+                    "data": {
+                      "id": "video-nav-card-1",
+                      "name": "Item 1",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/nav/1",
+                      "cover": "https://image.tmdb.org/t/p/w300/sintel.jpg",
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/nav/1"
+                    }
+                  }
+                },
+                {
+                  "id": "video-nav-card-2",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "video-nav-card-2",
+                    "data": {
+                      "id": "video-nav-card-2",
+                      "name": "Item 2",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/nav/2",
+                      "cover": null,
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/nav/2"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "video",
+      "slot": "home-row",
+      "why": "A row on the video home screen.",
+      "entry": {
+        "section": "video",
+        "label": "Video Home-Row",
+        "icon": "radio",
+        "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/home-row",
+        "slot": "home-row",
+        "access": "shared"
+      },
+      "view": {
+        "layout": "standard",
+        "refreshInterval": 0,
+        "components": [
+          {
+            "id": "video-home-row-grid",
+            "component": "NMGrid",
+            "props": {
+              "id": "video-home-row-grid",
+              "items": [
+                {
+                  "id": "video-home-row-card-1",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "video-home-row-card-1",
+                    "data": {
+                      "id": "video-home-row-card-1",
+                      "name": "Item 1",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/home-row/1",
+                      "cover": "https://image.tmdb.org/t/p/w300/sintel.jpg",
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/home-row/1"
+                    }
+                  }
+                },
+                {
+                  "id": "video-home-row-card-2",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "video-home-row-card-2",
+                    "data": {
+                      "id": "video-home-row-card-2",
+                      "name": "Item 2",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/home-row/2",
+                      "cover": null,
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/home-row/2"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "video",
+      "slot": "detail-tab",
+      "why": "A tab on a film or show page.",
+      "entry": {
+        "section": "video",
+        "label": "Video Detail-Tab",
+        "icon": "radio",
+        "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/detail-tab",
+        "slot": "detail-tab",
+        "access": "shared"
+      },
+      "view": {
+        "layout": "standard",
+        "refreshInterval": 0,
+        "components": [
+          {
+            "id": "video-detail-tab-grid",
+            "component": "NMGrid",
+            "props": {
+              "id": "video-detail-tab-grid",
+              "items": [
+                {
+                  "id": "video-detail-tab-card-1",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "video-detail-tab-card-1",
+                    "data": {
+                      "id": "video-detail-tab-card-1",
+                      "name": "Item 1",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/detail-tab/1",
+                      "cover": "https://image.tmdb.org/t/p/w300/sintel.jpg",
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/detail-tab/1"
+                    }
+                  }
+                },
+                {
+                  "id": "video-detail-tab-card-2",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "video-detail-tab-card-2",
+                    "data": {
+                      "id": "video-detail-tab-card-2",
+                      "name": "Item 2",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/detail-tab/2",
+                      "cover": null,
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/detail-tab/2"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "video",
+      "slot": "player-panel",
+      "why": "A panel beside the video player.",
+      "entry": {
+        "section": "video",
+        "label": "Video Player-Panel",
+        "icon": "radio",
+        "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/player-panel",
+        "slot": "player-panel",
+        "access": "shared"
+      },
+      "view": {
+        "layout": "standard",
+        "refreshInterval": 0,
+        "components": [
+          {
+            "id": "video-player-panel-grid",
+            "component": "NMGrid",
+            "props": {
+              "id": "video-player-panel-grid",
+              "items": [
+                {
+                  "id": "video-player-panel-card-1",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "video-player-panel-card-1",
+                    "data": {
+                      "id": "video-player-panel-card-1",
+                      "name": "Item 1",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/player-panel/1",
+                      "cover": "https://image.tmdb.org/t/p/w300/sintel.jpg",
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/player-panel/1"
+                    }
+                  }
+                },
+                {
+                  "id": "video-player-panel-card-2",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "video-player-panel-card-2",
+                    "data": {
+                      "id": "video-player-panel-card-2",
+                      "name": "Item 2",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/player-panel/2",
+                      "cover": null,
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/player-panel/2"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "video",
+      "slot": "live",
+      "why": "The live channel list.",
+      "entry": {
+        "section": "video",
+        "label": "Video Live",
+        "icon": "radio",
+        "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/live",
+        "slot": "live",
+        "access": "shared"
+      },
+      "view": {
+        "layout": "standard",
+        "refreshInterval": 0,
+        "components": [
+          {
+            "id": "video-live-grid",
+            "component": "NMGrid",
+            "props": {
+              "id": "video-live-grid",
+              "items": [
+                {
+                  "id": "video-live-card-1",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "video-live-card-1",
+                    "data": {
+                      "id": "video-live-card-1",
+                      "name": "Item 1",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/live/1",
+                      "cover": "https://image.tmdb.org/t/p/w300/sintel.jpg",
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/live/1"
+                    }
+                  }
+                },
+                {
+                  "id": "video-live-card-2",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "video-live-card-2",
+                    "data": {
+                      "id": "video-live-card-2",
+                      "name": "Item 2",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/live/2",
+                      "cover": null,
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/live/2"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "video",
+      "slot": "guide",
+      "why": "The channel guide.",
+      "entry": {
+        "section": "video",
+        "label": "Video Guide",
+        "icon": "radio",
+        "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/guide",
+        "slot": "guide",
+        "access": "shared"
+      },
+      "view": {
+        "layout": "standard",
+        "refreshInterval": 0,
+        "components": [
+          {
+            "id": "video-guide-grid",
+            "component": "NMGrid",
+            "props": {
+              "id": "video-guide-grid",
+              "items": [
+                {
+                  "id": "video-guide-card-1",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "video-guide-card-1",
+                    "data": {
+                      "id": "video-guide-card-1",
+                      "name": "Item 1",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/guide/1",
+                      "cover": "https://image.tmdb.org/t/p/w300/sintel.jpg",
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/guide/1"
+                    }
+                  }
+                },
+                {
+                  "id": "video-guide-card-2",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "video-guide-card-2",
+                    "data": {
+                      "id": "video-guide-card-2",
+                      "name": "Item 2",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/guide/2",
+                      "cover": null,
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/guide/2"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "video",
+      "slot": "channel-strip",
+      "why": "The strip of channels over a playing live stream.",
+      "entry": {
+        "section": "video",
+        "label": "Video Channel-Strip",
+        "icon": "radio",
+        "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/channel-strip",
+        "slot": "channel-strip",
+        "access": "shared"
+      },
+      "view": {
+        "layout": "standard",
+        "refreshInterval": 0,
+        "components": [
+          {
+            "id": "video-channel-strip-grid",
+            "component": "NMGrid",
+            "props": {
+              "id": "video-channel-strip-grid",
+              "items": [
+                {
+                  "id": "video-channel-strip-card-1",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "video-channel-strip-card-1",
+                    "data": {
+                      "id": "video-channel-strip-card-1",
+                      "name": "Item 1",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/channel-strip/1",
+                      "cover": "https://image.tmdb.org/t/p/w300/sintel.jpg",
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/channel-strip/1"
+                    }
+                  }
+                },
+                {
+                  "id": "video-channel-strip-card-2",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "video-channel-strip-card-2",
+                    "data": {
+                      "id": "video-channel-strip-card-2",
+                      "name": "Item 2",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/channel-strip/2",
+                      "cover": null,
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/video/channel-strip/2"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "library",
+      "slot": "nav",
+      "why": "A button in the library navigation.",
+      "entry": {
+        "section": "library",
+        "label": "Library Nav",
+        "icon": "radio",
+        "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/library/nav",
+        "slot": "nav",
+        "access": "shared"
+      },
+      "view": {
+        "layout": "standard",
+        "refreshInterval": 0,
+        "components": [
+          {
+            "id": "library-nav-grid",
+            "component": "NMGrid",
+            "props": {
+              "id": "library-nav-grid",
+              "items": [
+                {
+                  "id": "library-nav-card-1",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "library-nav-card-1",
+                    "data": {
+                      "id": "library-nav-card-1",
+                      "name": "Item 1",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/library/nav/1",
+                      "cover": "https://image.tmdb.org/t/p/w300/sintel.jpg",
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/library/nav/1"
+                    }
+                  }
+                },
+                {
+                  "id": "library-nav-card-2",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "library-nav-card-2",
+                    "data": {
+                      "id": "library-nav-card-2",
+                      "name": "Item 2",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/library/nav/2",
+                      "cover": null,
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/library/nav/2"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "library",
+      "slot": "home-row",
+      "why": "A row on the library home screen.",
+      "entry": {
+        "section": "library",
+        "label": "Library Home-Row",
+        "icon": "radio",
+        "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/library/home-row",
+        "slot": "home-row",
+        "access": "shared"
+      },
+      "view": {
+        "layout": "standard",
+        "refreshInterval": 0,
+        "components": [
+          {
+            "id": "library-home-row-grid",
+            "component": "NMGrid",
+            "props": {
+              "id": "library-home-row-grid",
+              "items": [
+                {
+                  "id": "library-home-row-card-1",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "library-home-row-card-1",
+                    "data": {
+                      "id": "library-home-row-card-1",
+                      "name": "Item 1",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/library/home-row/1",
+                      "cover": "https://image.tmdb.org/t/p/w300/sintel.jpg",
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/library/home-row/1"
+                    }
+                  }
+                },
+                {
+                  "id": "library-home-row-card-2",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "library-home-row-card-2",
+                    "data": {
+                      "id": "library-home-row-card-2",
+                      "name": "Item 2",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/library/home-row/2",
+                      "cover": null,
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/library/home-row/2"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "library",
+      "slot": "library-card",
+      "why": "A card on a library item, whatever medium it is.",
+      "entry": {
+        "section": "library",
+        "label": "Library Library-Card",
+        "icon": "radio",
+        "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/library/library-card",
+        "slot": "library-card",
+        "access": "shared"
+      },
+      "view": {
+        "layout": "standard",
+        "refreshInterval": 0,
+        "components": [
+          {
+            "id": "library-library-card-grid",
+            "component": "NMGrid",
+            "props": {
+              "id": "library-library-card-grid",
+              "items": [
+                {
+                  "id": "library-library-card-card-1",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "library-library-card-card-1",
+                    "data": {
+                      "id": "library-library-card-card-1",
+                      "name": "Item 1",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/library/library-card/1",
+                      "cover": "https://image.tmdb.org/t/p/w300/sintel.jpg",
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/library/library-card/1"
+                    }
+                  }
+                },
+                {
+                  "id": "library-library-card-card-2",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "library-library-card-card-2",
+                    "data": {
+                      "id": "library-library-card-card-2",
+                      "name": "Item 2",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/library/library-card/2",
+                      "cover": null,
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/library/library-card/2"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "dashboard",
+      "slot": "nav",
+      "why": "A button in the dashboard navigation.",
+      "entry": {
+        "section": "dashboard",
+        "label": "Dashboard Nav",
+        "icon": "radio",
+        "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/dashboard/nav",
+        "slot": "nav",
+        "access": "shared"
+      },
+      "view": {
+        "layout": "standard",
+        "refreshInterval": 0,
+        "components": [
+          {
+            "id": "dashboard-nav-grid",
+            "component": "NMGrid",
+            "props": {
+              "id": "dashboard-nav-grid",
+              "items": [
+                {
+                  "id": "dashboard-nav-card-1",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "dashboard-nav-card-1",
+                    "data": {
+                      "id": "dashboard-nav-card-1",
+                      "name": "Item 1",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/dashboard/nav/1",
+                      "cover": "https://image.tmdb.org/t/p/w300/sintel.jpg",
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/dashboard/nav/1"
+                    }
+                  }
+                },
+                {
+                  "id": "dashboard-nav-card-2",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "dashboard-nav-card-2",
+                    "data": {
+                      "id": "dashboard-nav-card-2",
+                      "name": "Item 2",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/dashboard/nav/2",
+                      "cover": null,
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/dashboard/nav/2"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "dashboard",
+      "slot": "card",
+      "why": "A card on the dashboard overview.",
+      "entry": {
+        "section": "dashboard",
+        "label": "Dashboard Card",
+        "icon": "radio",
+        "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/dashboard/card",
+        "slot": "card",
+        "access": "shared"
+      },
+      "view": {
+        "layout": "standard",
+        "refreshInterval": 0,
+        "components": [
+          {
+            "id": "dashboard-card-grid",
+            "component": "NMGrid",
+            "props": {
+              "id": "dashboard-card-grid",
+              "items": [
+                {
+                  "id": "dashboard-card-card-1",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "dashboard-card-card-1",
+                    "data": {
+                      "id": "dashboard-card-card-1",
+                      "name": "Item 1",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/dashboard/card/1",
+                      "cover": "https://image.tmdb.org/t/p/w300/sintel.jpg",
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/dashboard/card/1"
+                    }
+                  }
+                },
+                {
+                  "id": "dashboard-card-card-2",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "dashboard-card-card-2",
+                    "data": {
+                      "id": "dashboard-card-card-2",
+                      "name": "Item 2",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/dashboard/card/2",
+                      "cover": null,
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/dashboard/card/2"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "settings",
+      "slot": "section",
+      "why": "A section on the plugin's own settings page.",
+      "entry": {
+        "section": "settings",
+        "label": "Settings Section",
+        "icon": "radio",
+        "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/settings/section",
+        "slot": "section",
+        "access": "shared"
+      },
+      "view": {
+        "layout": "standard",
+        "refreshInterval": 0,
+        "components": [
+          {
+            "id": "settings-section-grid",
+            "component": "NMGrid",
+            "props": {
+              "id": "settings-section-grid",
+              "items": [
+                {
+                  "id": "settings-section-card-1",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "settings-section-card-1",
+                    "data": {
+                      "id": "settings-section-card-1",
+                      "name": "Item 1",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/settings/section/1",
+                      "cover": "https://image.tmdb.org/t/p/w300/sintel.jpg",
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/settings/section/1"
+                    }
+                  }
+                },
+                {
+                  "id": "settings-section-card-2",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "settings-section-card-2",
+                    "data": {
+                      "id": "settings-section-card-2",
+                      "name": "Item 2",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/settings/section/2",
+                      "cover": null,
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/settings/section/2"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "addon",
+      "slot": "nav",
+      "why": "A button in the main navigation, beside the app's own sections.",
+      "entry": {
+        "section": "addon",
+        "label": "Addon Nav",
+        "icon": "radio",
+        "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/addon/nav",
+        "slot": "nav",
+        "access": "shared"
+      },
+      "view": {
+        "layout": "standard",
+        "refreshInterval": 0,
+        "components": [
+          {
+            "id": "addon-nav-grid",
+            "component": "NMGrid",
+            "props": {
+              "id": "addon-nav-grid",
+              "items": [
+                {
+                  "id": "addon-nav-card-1",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "addon-nav-card-1",
+                    "data": {
+                      "id": "addon-nav-card-1",
+                      "name": "Item 1",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/addon/nav/1",
+                      "cover": "https://image.tmdb.org/t/p/w300/sintel.jpg",
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/addon/nav/1"
+                    }
+                  }
+                },
+                {
+                  "id": "addon-nav-card-2",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "addon-nav-card-2",
+                    "data": {
+                      "id": "addon-nav-card-2",
+                      "name": "Item 2",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/addon/nav/2",
+                      "cover": null,
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/addon/nav/2"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    },
+    {
+      "kind": "addon",
+      "slot": "home",
+      "why": "The addon's own home page.",
+      "entry": {
+        "section": "addon",
+        "label": "Addon Home",
+        "icon": "radio",
+        "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/addon/home",
+        "slot": "home",
+        "access": "shared"
+      },
+      "view": {
+        "layout": "standard",
+        "refreshInterval": 0,
+        "components": [
+          {
+            "id": "addon-home-grid",
+            "component": "NMGrid",
+            "props": {
+              "id": "addon-home-grid",
+              "items": [
+                {
+                  "id": "addon-home-card-1",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "addon-home-card-1",
+                    "data": {
+                      "id": "addon-home-card-1",
+                      "name": "Item 1",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/addon/home/1",
+                      "cover": "https://image.tmdb.org/t/p/w300/sintel.jpg",
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/addon/home/1"
+                    }
+                  }
+                },
+                {
+                  "id": "addon-home-card-2",
+                  "component": "NMCard",
+                  "props": {
+                    "id": "addon-home-card-2",
+                    "data": {
+                      "id": "addon-home-card-2",
+                      "name": "Item 2",
+                      "link": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/addon/home/2",
+                      "cover": null,
+                      "type": "artist"
+                    },
+                    "action": {
+                      "kind": "navigate",
+                      "route": "/addons/01JBQ0Y1ZQ8W4T7N2M6K5R3H9A/addon/home/2"
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}
