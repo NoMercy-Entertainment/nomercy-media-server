@@ -48,7 +48,7 @@ description: Every capability a plugin can ask for, what it opens, and how far i
 tags: [capability, reference]
 ---
 
-{/* Generated from server/plugin-contract/contract/capabilities.json. Do not edit. */}
+{/* Generated from server/nomercy-media-server/tools/plugin-contract/contract/capabilities.json. Do not edit. */}
 
 # Capabilities
 

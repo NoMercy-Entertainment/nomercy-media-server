@@ -3,11 +3,15 @@ import { fileURLToPath } from 'node:url';
 
 const here: string = dirname(fileURLToPath(import.meta.url));
 
-// server/plugin-contract/src → repo root is three levels up.
-export const REPO_ROOT: string = resolve(here, '..', '..', '..');
+// server/nomercy-media-server/tools/plugin-contract/src → the media server
+// this tool checks is three levels up (its own repo root, not a sibling
+// checkout); the workspace root that holds the other client/docs repos this
+// generator also writes into is two levels above that.
+export const MEDIA_SERVER: string = resolve(here, '..', '..', '..');
+export const REPO_ROOT: string = resolve(MEDIA_SERVER, '..', '..');
 export const CONTRACT_DIR: string = resolve(here, '..', 'contract');
 
-export const MEDIA_SERVER: string = resolve(REPO_ROOT, 'server', 'nomercy-media-server');
+
 export const ABSTRACTIONS: string = resolve(MEDIA_SERVER, 'src', 'NoMercy.PluginSdk.Abstractions');
 export const ABSTRACTIONS_GENERATED: string = resolve(ABSTRACTIONS, 'Generated');
 export const ANALYZERS: string = resolve(MEDIA_SERVER, 'src', 'NoMercy.PluginSdk.Analyzers');
