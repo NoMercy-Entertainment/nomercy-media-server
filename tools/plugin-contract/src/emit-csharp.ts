@@ -22,7 +22,7 @@ function trustOf(capability: Capability): string {
 }
 
 function quote(text: string): string {
-  return `"${text.replace(/"/g, '\\"')}"`;
+  return `"${text.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`;
 }
 
 function descriptorOf(capability: Capability): string {

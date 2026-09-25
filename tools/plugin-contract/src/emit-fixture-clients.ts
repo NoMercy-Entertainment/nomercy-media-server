@@ -89,7 +89,9 @@ function literal(value: unknown, depth: number): string {
 }
 
 function key(name: string): string {
-  return IDENTIFIER.test(name) ? name : `'${name.replace(/'/g, "\\'")}'`;
+  return IDENTIFIER.test(name)
+    ? name
+    : `'${name.replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`;
 }
 
 export function emitFixturesKotlin(fixturesJson: string, packageName: string): string {
