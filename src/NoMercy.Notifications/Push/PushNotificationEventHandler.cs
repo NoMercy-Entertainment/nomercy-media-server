@@ -57,6 +57,7 @@ public class PushNotificationEventHandler : EventSubscriber
         _playableMediaProbe = playableMediaProbe;
         Track(eventBus.Subscribe<EncodingStartedEvent>(OnEncodingStarted));
         Track(eventBus.Subscribe<EncodingCompletedEvent>(OnEncodingCompleted));
+        Track(eventBus.Subscribe<EncodingCompletedEvent>(OnEncodingCompletedRecheckPending));
         Track(eventBus.Subscribe<EncodingFailedEvent>(OnEncodingFailed));
         Track(eventBus.Subscribe<MediaAddedEvent>(OnMediaAdded));
         Track(eventBus.Subscribe<MediaFilesScannedEvent>(OnMediaFilesScanned));
@@ -120,13 +121,34 @@ public class PushNotificationEventHandler : EventSubscriber
         return Task.CompletedTask;
     }
 
-    internal async Task OnMediaFilesScanned(MediaFilesScannedEvent @event, CancellationToken ct)
+    internal Task OnMediaFilesScanned(MediaFilesScannedEvent @event, CancellationToken ct) =>
+        RecheckPendingAsync(
+            _pendingMediaAdded.Keys.Where(key => key.MediaId == @event.MediaId),
+            ct
+        );
+
+    // FileRescanJob only runs from an import or a manual rescan — a title
+    // whose files land later via encoding (added, then encoded from a source
+    // with nothing playable yet) never gets a MediaFilesScannedEvent, so it
+    // would stay pending forever. EncodingCompletedEvent carries only JobId
+    // (the movie/episode id the encode ran for) and no MediaType, so it
+    // cannot be matched to a pending key the way MediaFilesScannedEvent can —
+    // every pending entry is rechecked instead. The pending set only holds
+    // titles between import and their first playable file, so it stays small.
+    // VideoEncodeJob always awaits ScanEncodedOutputWithRetryAsync (which
+    // writes the VideoFile row) before publishing this event, on every path
+    // that reaches it (coordinator finalize, inline, and the OCR top-up).
+    internal Task OnEncodingCompletedRecheckPending(
+        EncodingCompletedEvent @event,
+        CancellationToken ct
+    ) => RecheckPendingAsync(_pendingMediaAdded.Keys.ToList(), ct);
+
+    private async Task RecheckPendingAsync(
+        IEnumerable<(string MediaType, int MediaId)> keys,
+        CancellationToken ct
+    )
     {
-        foreach (
-            (string MediaType, int MediaId) key in _pendingMediaAdded.Keys.Where(key =>
-                key.MediaId == @event.MediaId
-            )
-        )
+        foreach ((string MediaType, int MediaId) key in keys.ToList())
         {
             if (!_pendingMediaAdded.TryGetValue(key, out MediaAddedEvent? pending))
                 continue;

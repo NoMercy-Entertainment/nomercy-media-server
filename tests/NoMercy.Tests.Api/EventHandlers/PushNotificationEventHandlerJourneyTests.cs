@@ -340,6 +340,57 @@ public class PushNotificationEventHandlerJourneyTests
         );
     }
 
+    /// <summary>
+    /// FileRescanJob only runs from an import or a manual rescan. A title
+    /// whose source has nothing playable until it is encoded (e.g. a disc rip
+    /// staged before any container exists) never gets a
+    /// MediaFilesScannedEvent and would stay pending forever without this:
+    /// EncodingCompletedEvent is the only other signal a playable file might
+    /// now exist.
+    /// </summary>
+    [Fact]
+    public async Task MediaAdded_ScannedWithNothingPlayable_ThenEncodingCompleted_WithAPlayableVideo_PushesOnce()
+    {
+        Mock<IPlayableMediaProbe> probe = new();
+        probe
+            .SetupSequence(p => p.HasPlayableVideoAsync("movie", 42, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false)
+            .ReturnsAsync(true);
+
+        (
+            InMemoryEventBus bus,
+            Mock<IPushDispatchQueue> queueMock,
+            PushNotificationEventHandler handler
+        ) = BuildChain(playableMediaProbe: probe.Object);
+        using PushNotificationEventHandler _ = handler;
+
+        await bus.PublishAsync(AMovieAdded());
+        await bus.PublishAsync(
+            new MediaFilesScannedEvent { MediaId = 42, LibraryId = Ulid.NewUlid() }
+        );
+        await bus.PublishAsync(
+            new EncodingCompletedEvent
+            {
+                JobId = 42,
+                OutputPath = "/output/movie/Idiocracy.m3u8",
+                Duration = TimeSpan.FromMinutes(90),
+            }
+        );
+
+        queueMock.Verify(
+            queue =>
+                queue.Enqueue(
+                    It.Is<PushDispatchRequest>(request =>
+                        request.Channel == "media-added"
+                        && request.Payload.Title == "New in your library"
+                        && request.Payload.Body == "Idiocracy"
+                        && request.Payload.Route == "/movie/42"
+                    )
+                ),
+            Times.Once
+        );
+    }
+
     [Fact]
     public async Task NoAccessToken_SkipsPushEntirely()
     {
