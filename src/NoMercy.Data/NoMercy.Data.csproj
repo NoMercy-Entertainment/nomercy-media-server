@@ -18,6 +18,7 @@
     <ProjectReference Include="..\NoMercy.Database\NoMercy.Database.csproj" />
     <ProjectReference Include="..\NoMercy.Monitoring\NoMercy.Monitoring.csproj" />
     <ProjectReference Include="..\NoMercy.MediaProcessing\NoMercy.MediaProcessing.csproj" />
+    <ProjectReference Include="..\NoMercy.Notifications\NoMercy.Notifications.csproj" />
     <ProjectReference Include="..\NoMercy.Providers\NoMercy.Providers.csproj" />
     <ProjectReference Include="..\NoMercyQueue\NoMercyQueue.csproj" />
     <ProjectReference Include="..\NoMercy.Storage\NoMercy.Storage.csproj" />
