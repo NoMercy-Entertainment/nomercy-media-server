@@ -1,0 +1,274 @@
+{
+  "capabilities": [
+    {
+      "name": "network.fetch",
+      "slug": "network-fetch",
+      "url": "/nomercy-plugins/capabilities/network-fetch"
+    },
+    {
+      "name": "network.dial",
+      "slug": "network-dial",
+      "url": "/nomercy-plugins/capabilities/network-dial"
+    },
+    {
+      "name": "network.listen",
+      "slug": "network-listen",
+      "url": "/nomercy-plugins/capabilities/network-listen"
+    },
+    {
+      "name": "network.discover",
+      "slug": "network-discover",
+      "url": "/nomercy-plugins/capabilities/network-discover"
+    },
+    {
+      "name": "storage.private",
+      "slug": "storage-private",
+      "url": "/nomercy-plugins/capabilities/storage-private"
+    },
+    {
+      "name": "storage.path",
+      "slug": "storage-path",
+      "url": "/nomercy-plugins/capabilities/storage-path"
+    },
+    {
+      "name": "storage.temp",
+      "slug": "storage-temp",
+      "url": "/nomercy-plugins/capabilities/storage-temp"
+    },
+    {
+      "name": "storage.derived",
+      "slug": "storage-derived",
+      "url": "/nomercy-plugins/capabilities/storage-derived"
+    },
+    {
+      "name": "library.read",
+      "slug": "library-read",
+      "url": "/nomercy-plugins/capabilities/library-read"
+    },
+    {
+      "name": "library.write",
+      "slug": "library-write",
+      "url": "/nomercy-plugins/capabilities/library-write"
+    },
+    {
+      "name": "library.import",
+      "slug": "library-import",
+      "url": "/nomercy-plugins/capabilities/library-import"
+    },
+    {
+      "name": "library.watch",
+      "slug": "library-watch",
+      "url": "/nomercy-plugins/capabilities/library-watch"
+    },
+    {
+      "name": "metadata.query",
+      "slug": "metadata-query",
+      "url": "/nomercy-plugins/capabilities/metadata-query"
+    },
+    {
+      "name": "metadata.provide",
+      "slug": "metadata-provide",
+      "url": "/nomercy-plugins/capabilities/metadata-provide"
+    },
+    {
+      "name": "media.source",
+      "slug": "media-source",
+      "url": "/nomercy-plugins/capabilities/media-source"
+    },
+    {
+      "name": "media.proxy",
+      "slug": "media-proxy",
+      "url": "/nomercy-plugins/capabilities/media-proxy"
+    },
+    {
+      "name": "media.live",
+      "slug": "media-live",
+      "url": "/nomercy-plugins/capabilities/media-live"
+    },
+    {
+      "name": "media.transcode",
+      "slug": "media-transcode",
+      "url": "/nomercy-plugins/capabilities/media-transcode"
+    },
+    {
+      "name": "media.remux",
+      "slug": "media-remux",
+      "url": "/nomercy-plugins/capabilities/media-remux"
+    },
+    {
+      "name": "media.record",
+      "slug": "media-record",
+      "url": "/nomercy-plugins/capabilities/media-record"
+    },
+    {
+      "name": "encoder.profile",
+      "slug": "encoder-profile",
+      "url": "/nomercy-plugins/capabilities/encoder-profile"
+    },
+    {
+      "name": "encoder.dispatch",
+      "slug": "encoder-dispatch",
+      "url": "/nomercy-plugins/capabilities/encoder-dispatch"
+    },
+    {
+      "name": "jobs.dispatch",
+      "slug": "jobs-dispatch",
+      "url": "/nomercy-plugins/capabilities/jobs-dispatch"
+    },
+    {
+      "name": "jobs.status",
+      "slug": "jobs-status",
+      "url": "/nomercy-plugins/capabilities/jobs-status"
+    },
+    {
+      "name": "scheduler",
+      "slug": "scheduler",
+      "url": "/nomercy-plugins/capabilities/scheduler"
+    },
+    {
+      "name": "audio.tools",
+      "slug": "audio-tools",
+      "url": "/nomercy-plugins/capabilities/audio-tools"
+    },
+    {
+      "name": "music.analysis.read",
+      "slug": "music-analysis-read",
+      "url": "/nomercy-plugins/capabilities/music-analysis-read"
+    },
+    {
+      "name": "music.analysis.write",
+      "slug": "music-analysis-write",
+      "url": "/nomercy-plugins/capabilities/music-analysis-write"
+    },
+    {
+      "name": "player.source",
+      "slug": "player-source",
+      "url": "/nomercy-plugins/capabilities/player-source"
+    },
+    {
+      "name": "player.control",
+      "slug": "player-control",
+      "url": "/nomercy-plugins/capabilities/player-control"
+    },
+    {
+      "name": "player.state",
+      "slug": "player-state",
+      "url": "/nomercy-plugins/capabilities/player-state"
+    },
+    {
+      "name": "player.queue",
+      "slug": "player-queue",
+      "url": "/nomercy-plugins/capabilities/player-queue"
+    },
+    {
+      "name": "cast.send",
+      "slug": "cast-send",
+      "url": "/nomercy-plugins/capabilities/cast-send"
+    },
+    {
+      "name": "user.identity",
+      "slug": "user-identity",
+      "url": "/nomercy-plugins/capabilities/user-identity"
+    },
+    {
+      "name": "user.watch",
+      "slug": "user-watch",
+      "url": "/nomercy-plugins/capabilities/user-watch"
+    },
+    {
+      "name": "user.playlists",
+      "slug": "user-playlists",
+      "url": "/nomercy-plugins/capabilities/user-playlists"
+    },
+    {
+      "name": "user.preferences",
+      "slug": "user-preferences",
+      "url": "/nomercy-plugins/capabilities/user-preferences"
+    },
+    {
+      "name": "users.list",
+      "slug": "users-list",
+      "url": "/nomercy-plugins/capabilities/users-list"
+    },
+    {
+      "name": "notifications.push",
+      "slug": "notifications-push",
+      "url": "/nomercy-plugins/capabilities/notifications-push"
+    },
+    {
+      "name": "secrets",
+      "slug": "secrets",
+      "url": "/nomercy-plugins/capabilities/secrets"
+    },
+    {
+      "name": "settings",
+      "slug": "settings",
+      "url": "/nomercy-plugins/capabilities/settings"
+    },
+    {
+      "name": "events.subscribe",
+      "slug": "events-subscribe",
+      "url": "/nomercy-plugins/capabilities/events-subscribe"
+    },
+    {
+      "name": "events.publish",
+      "slug": "events-publish",
+      "url": "/nomercy-plugins/capabilities/events-publish"
+    },
+    {
+      "name": "hub",
+      "slug": "hub",
+      "url": "/nomercy-plugins/capabilities/hub"
+    },
+    {
+      "name": "rest",
+      "slug": "rest",
+      "url": "/nomercy-plugins/capabilities/rest"
+    },
+    {
+      "name": "auth.claims",
+      "slug": "auth-claims",
+      "url": "/nomercy-plugins/capabilities/auth-claims"
+    },
+    {
+      "name": "process.spawn",
+      "slug": "process-spawn",
+      "url": "/nomercy-plugins/capabilities/process-spawn"
+    },
+    {
+      "name": "browser.headless",
+      "slug": "browser-headless",
+      "url": "/nomercy-plugins/capabilities/browser-headless"
+    },
+    {
+      "name": "native.code",
+      "slug": "native-code",
+      "url": "/nomercy-plugins/capabilities/native-code"
+    },
+    {
+      "name": "server.info",
+      "slug": "server-info",
+      "url": "/nomercy-plugins/capabilities/server-info"
+    },
+    {
+      "name": "ui.mount",
+      "slug": "ui-mount",
+      "url": "/nomercy-plugins/capabilities/ui-mount"
+    },
+    {
+      "name": "ui.input",
+      "slug": "ui-input",
+      "url": "/nomercy-plugins/capabilities/ui-input"
+    },
+    {
+      "name": "ui.webview",
+      "slug": "ui-webview",
+      "url": "/nomercy-plugins/capabilities/ui-webview"
+    },
+    {
+      "name": "ui.overlay",
+      "slug": "ui-overlay",
+      "url": "/nomercy-plugins/capabilities/ui-overlay"
+    }
+  ]
+}
