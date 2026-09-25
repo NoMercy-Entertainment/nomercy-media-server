@@ -15,6 +15,7 @@ using NoMercy.Api.Middleware;
 using NoMercy.Api.Services.Music;
 using NoMercy.Authorization;
 using NoMercy.Data.EventHandlers;
+using NoMercy.Data.Notifications;
 using NoMercy.Database;
 using NoMercy.Events;
 using NoMercy.MediaProcessing.EventHandlers;
@@ -136,12 +137,15 @@ public static class EventHandlerExtensions
         services.AddSingleton<NotificationSink>();
         services.AddHostedService<PushDispatchWorker>();
 
+        services.AddSingleton<IPlayableMediaProbe, PlayableMediaProbe>();
+
         services.AddSingleton<PushNotificationEventHandler>(sp =>
         {
             IEventBus eventBus = sp.GetRequiredService<IEventBus>();
             IAuthTokenStore authTokenStore = sp.GetRequiredService<IAuthTokenStore>();
             NotificationSink notificationSink = sp.GetRequiredService<NotificationSink>();
-            return new(eventBus, authTokenStore, notificationSink);
+            IPlayableMediaProbe playableMediaProbe = sp.GetRequiredService<IPlayableMediaProbe>();
+            return new(eventBus, authTokenStore, notificationSink, playableMediaProbe);
         });
 
         services.AddSingleton<DriveMonitorEventHandler>(sp =>

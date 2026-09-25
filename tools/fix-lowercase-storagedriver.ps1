@@ -1,17 +1,17 @@
 $files = @(
-  'C:/Projects/NoMercy/apps/nomercy-media-server/src/NoMercy.MediaProcessing/Jobs/MediaJobs/CollectionExtrasJob.cs',
-  'C:/Projects/NoMercy/apps/nomercy-media-server/src/NoMercy.MediaProcessing/Jobs/MediaJobs/LibraryScanJob.cs',
-  'C:/Projects/NoMercy/apps/nomercy-media-server/src/NoMercy.MediaProcessing/Jobs/MediaJobs/LibraryRescanJob.cs',
-  'C:/Projects/NoMercy/apps/nomercy-media-server/src/NoMercy.MediaProcessing/Jobs/MediaJobs/FileRescanJob.cs',
-  'C:/Projects/NoMercy/apps/nomercy-media-server/src/NoMercy.MediaProcessing/Jobs/MediaJobs/MovieExtrasJob.cs',
-  'C:/Projects/NoMercy/apps/nomercy-media-server/src/NoMercy.MediaProcessing/Jobs/MediaJobs/VideoEncodeJob.cs',
-  'C:/Projects/NoMercy/apps/nomercy-media-server/src/NoMercy.MediaProcessing/Jobs/MediaJobs/ShowExtrasJob.cs',
-  'C:/Projects/NoMercy/apps/nomercy-media-server/src/NoMercy.MediaProcessing/Jobs/MediaJobs/CollectionImportJob.cs',
-  'C:/Projects/NoMercy/apps/nomercy-media-server/src/NoMercy.MediaProcessing/Jobs/MediaJobs/ReleaseImportJob.cs',
-  'C:/Projects/NoMercy/apps/nomercy-media-server/src/NoMercy.MediaProcessing/Jobs/MediaJobs/ShowImportJob.cs',
-  'C:/Projects/NoMercy/apps/nomercy-media-server/src/NoMercy.MediaProcessing/Jobs/MediaJobs/MovieImportJob.cs',
-  'C:/Projects/NoMercy/apps/nomercy-media-server/src/NoMercy.MediaProcessing/Jobs/MediaJobs/MusicEncodeJob.cs',
-  'C:/Projects/NoMercy/apps/nomercy-media-server/src/NoMercy.MediaProcessing/Jobs/MediaJobs/AudioImportJob.cs'
+  'C:/Projects/NoMercy/server/nomercy-media-server/src/NoMercy.MediaProcessing/Jobs/MediaJobs/CollectionExtrasJob.cs',
+  'C:/Projects/NoMercy/server/nomercy-media-server/src/NoMercy.MediaProcessing/Jobs/MediaJobs/LibraryScanJob.cs',
+  'C:/Projects/NoMercy/server/nomercy-media-server/src/NoMercy.MediaProcessing/Jobs/MediaJobs/LibraryRescanJob.cs',
+  'C:/Projects/NoMercy/server/nomercy-media-server/src/NoMercy.MediaProcessing/Jobs/MediaJobs/FileRescanJob.cs',
+  'C:/Projects/NoMercy/server/nomercy-media-server/src/NoMercy.MediaProcessing/Jobs/MediaJobs/MovieExtrasJob.cs',
+  'C:/Projects/NoMercy/server/nomercy-media-server/src/NoMercy.MediaProcessing/Jobs/MediaJobs/VideoEncodeJob.cs',
+  'C:/Projects/NoMercy/server/nomercy-media-server/src/NoMercy.MediaProcessing/Jobs/MediaJobs/ShowExtrasJob.cs',
+  'C:/Projects/NoMercy/server/nomercy-media-server/src/NoMercy.MediaProcessing/Jobs/MediaJobs/CollectionImportJob.cs',
+  'C:/Projects/NoMercy/server/nomercy-media-server/src/NoMercy.MediaProcessing/Jobs/MediaJobs/ReleaseImportJob.cs',
+  'C:/Projects/NoMercy/server/nomercy-media-server/src/NoMercy.MediaProcessing/Jobs/MediaJobs/ShowImportJob.cs',
+  'C:/Projects/NoMercy/server/nomercy-media-server/src/NoMercy.MediaProcessing/Jobs/MediaJobs/MovieImportJob.cs',
+  'C:/Projects/NoMercy/server/nomercy-media-server/src/NoMercy.MediaProcessing/Jobs/MediaJobs/MusicEncodeJob.cs',
+  'C:/Projects/NoMercy/server/nomercy-media-server/src/NoMercy.MediaProcessing/Jobs/MediaJobs/AudioImportJob.cs'
 )
 
 foreach ($f in $files) {

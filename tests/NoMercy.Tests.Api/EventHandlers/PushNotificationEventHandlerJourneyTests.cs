@@ -35,7 +35,10 @@ public class PushNotificationEventHandlerJourneyTests
         InMemoryEventBus bus,
         Mock<IPushDispatchQueue> queueMock,
         PushNotificationEventHandler handler
-    ) BuildChain(string? accessToken = "server-access-token")
+    ) BuildChain(
+        string? accessToken = "server-access-token",
+        IPlayableMediaProbe? playableMediaProbe = null
+    )
     {
         InMemoryEventBus bus = new();
         Mock<IPushDispatchQueue> queueMock = new();
@@ -44,7 +47,12 @@ public class PushNotificationEventHandlerJourneyTests
         authTokenStore.SetAccessToken(accessToken);
 
         NotificationSink sink = new(queueMock.Object);
-        PushNotificationEventHandler handler = new(bus, authTokenStore, sink);
+        PushNotificationEventHandler handler = new(
+            bus,
+            authTokenStore,
+            sink,
+            playableMediaProbe ?? new Mock<IPlayableMediaProbe>().Object
+        );
         return (bus, queueMock, handler);
     }
 
@@ -202,6 +210,187 @@ public class PushNotificationEventHandlerJourneyTests
         queueMock.Verify(queue => queue.Enqueue(It.IsAny<PushDispatchRequest>()), Times.Never);
     }
 
+    private static MediaAddedEvent AMovieAdded(int mediaId = 42) =>
+        new()
+        {
+            MediaId = mediaId,
+            MediaType = "movie",
+            Title = "Idiocracy",
+            LibraryId = Ulid.NewUlid(),
+        };
+
+    private static MediaAddedEvent AShowAdded(int mediaId = 7) =>
+        new()
+        {
+            MediaId = mediaId,
+            MediaType = "tvshow",
+            Title = "No Game No Life",
+            LibraryId = Ulid.NewUlid(),
+        };
+
+    /// <summary>
+    /// MovieImportJob/ShowImportJob publish MediaAddedEvent as soon as TMDB
+    /// metadata lands, before FileRescanJob has matched a single file. Pushing
+    /// then told users "New in your library" for something with nothing to
+    /// play — the reported bug.
+    /// </summary>
+    [Fact]
+    public async Task MediaAdded_Alone_PushesNothing_UntilFilesAreScanned()
+    {
+        (
+            InMemoryEventBus bus,
+            Mock<IPushDispatchQueue> queueMock,
+            PushNotificationEventHandler handler
+        ) = BuildChain();
+        using PushNotificationEventHandler _ = handler;
+
+        await bus.PublishAsync(AMovieAdded());
+
+        queueMock.Verify(queue => queue.Enqueue(It.IsAny<PushDispatchRequest>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task MediaAdded_ThenFilesScanned_WithAPlayableVideo_PushesOnce()
+    {
+        Mock<IPlayableMediaProbe> probe = new();
+        probe
+            .Setup(p => p.HasPlayableVideoAsync("movie", 42, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        (
+            InMemoryEventBus bus,
+            Mock<IPushDispatchQueue> queueMock,
+            PushNotificationEventHandler handler
+        ) = BuildChain(playableMediaProbe: probe.Object);
+        using PushNotificationEventHandler _ = handler;
+
+        await bus.PublishAsync(AMovieAdded());
+        await bus.PublishAsync(
+            new MediaFilesScannedEvent { MediaId = 42, LibraryId = Ulid.NewUlid() }
+        );
+
+        queueMock.Verify(
+            queue =>
+                queue.Enqueue(
+                    It.Is<PushDispatchRequest>(request =>
+                        request.Channel == "media-added"
+                        && request.Payload.Title == "New in your library"
+                        && request.Payload.Body == "Idiocracy"
+                        && request.Payload.Route == "/movie/42"
+                    )
+                ),
+            Times.Once
+        );
+    }
+
+    [Fact]
+    public async Task MediaAdded_ThenFilesScanned_WithNothingPlayable_PushesNothing()
+    {
+        Mock<IPlayableMediaProbe> probe = new();
+        probe
+            .Setup(p => p.HasPlayableVideoAsync("movie", 42, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        (
+            InMemoryEventBus bus,
+            Mock<IPushDispatchQueue> queueMock,
+            PushNotificationEventHandler handler
+        ) = BuildChain(playableMediaProbe: probe.Object);
+        using PushNotificationEventHandler _ = handler;
+
+        await bus.PublishAsync(AMovieAdded());
+        await bus.PublishAsync(
+            new MediaFilesScannedEvent { MediaId = 42, LibraryId = Ulid.NewUlid() }
+        );
+
+        queueMock.Verify(queue => queue.Enqueue(It.IsAny<PushDispatchRequest>()), Times.Never);
+    }
+
+    /// <summary>
+    /// MediaAddedEvent.MediaType is "tvshow" (SignalR/dashboard subscribers
+    /// still key off that literal), but no client has a /tvshow route — the
+    /// web/KMP nav host uses /tv/<id>.
+    /// </summary>
+    [Fact]
+    public async Task ShowAdded_ThenFilesScanned_WithAPlayableVideo_RoutesUnderTv()
+    {
+        Mock<IPlayableMediaProbe> probe = new();
+        probe
+            .Setup(p => p.HasPlayableVideoAsync("tvshow", 7, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        (
+            InMemoryEventBus bus,
+            Mock<IPushDispatchQueue> queueMock,
+            PushNotificationEventHandler handler
+        ) = BuildChain(playableMediaProbe: probe.Object);
+        using PushNotificationEventHandler _ = handler;
+
+        await bus.PublishAsync(AShowAdded());
+        await bus.PublishAsync(
+            new MediaFilesScannedEvent { MediaId = 7, LibraryId = Ulid.NewUlid() }
+        );
+
+        queueMock.Verify(
+            queue =>
+                queue.Enqueue(
+                    It.Is<PushDispatchRequest>(request => request.Payload.Route == "/tv/7")
+                ),
+            Times.Once
+        );
+    }
+
+    /// <summary>
+    /// FileRescanJob only runs from an import or a manual rescan. A title
+    /// whose source has nothing playable until it is encoded (e.g. a disc rip
+    /// staged before any container exists) never gets a
+    /// MediaFilesScannedEvent and would stay pending forever without this:
+    /// EncodingCompletedEvent is the only other signal a playable file might
+    /// now exist.
+    /// </summary>
+    [Fact]
+    public async Task MediaAdded_ScannedWithNothingPlayable_ThenEncodingCompleted_WithAPlayableVideo_PushesOnce()
+    {
+        Mock<IPlayableMediaProbe> probe = new();
+        probe
+            .SetupSequence(p => p.HasPlayableVideoAsync("movie", 42, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false)
+            .ReturnsAsync(true);
+
+        (
+            InMemoryEventBus bus,
+            Mock<IPushDispatchQueue> queueMock,
+            PushNotificationEventHandler handler
+        ) = BuildChain(playableMediaProbe: probe.Object);
+        using PushNotificationEventHandler _ = handler;
+
+        await bus.PublishAsync(AMovieAdded());
+        await bus.PublishAsync(
+            new MediaFilesScannedEvent { MediaId = 42, LibraryId = Ulid.NewUlid() }
+        );
+        await bus.PublishAsync(
+            new EncodingCompletedEvent
+            {
+                JobId = 42,
+                OutputPath = "/output/movie/Idiocracy.m3u8",
+                Duration = TimeSpan.FromMinutes(90),
+            }
+        );
+
+        queueMock.Verify(
+            queue =>
+                queue.Enqueue(
+                    It.Is<PushDispatchRequest>(request =>
+                        request.Channel == "media-added"
+                        && request.Payload.Title == "New in your library"
+                        && request.Payload.Body == "Idiocracy"
+                        && request.Payload.Route == "/movie/42"
+                    )
+                ),
+            Times.Once
+        );
+    }
+
     [Fact]
     public async Task NoAccessToken_SkipsPushEntirely()
     {
@@ -271,7 +460,12 @@ public class PushNotificationEventHandlerJourneyTests
         using CancellationTokenSource cts = new();
         Task drain = queue.DrainAsync(cts.Token);
 
-        using PushNotificationEventHandler _ = new(bus, authTokenStore, new(queue));
+        using PushNotificationEventHandler _ = new(
+            bus,
+            authTokenStore,
+            new(queue),
+            new Mock<IPlayableMediaProbe>().Object
+        );
 
         await bus.PublishAsync(AnEncodeFinishing());
         await entered.Task.WaitAsync(Patience);
@@ -314,7 +508,12 @@ public class PushNotificationEventHandlerJourneyTests
         using CancellationTokenSource cts = new();
         Task drain = queue.DrainAsync(cts.Token);
 
-        using PushNotificationEventHandler pushHandler = new(bus, authTokenStore, new(queue));
+        using PushNotificationEventHandler pushHandler = new(
+            bus,
+            authTokenStore,
+            new(queue),
+            new Mock<IPlayableMediaProbe>().Object
+        );
 
         Mock<NoMercy.Networking.Messaging.IClientMessenger> messengerMock = new(
             MockBehavior.Strict
@@ -453,7 +652,12 @@ public class PushNotificationEventHandlerJourneyTests
         _ = queue.DrainAsync(drain.Token);
 
         NotificationSink sink = new(queue);
-        PushNotificationEventHandler pushHandler = new(bus, authTokenStore, sink);
+        PushNotificationEventHandler pushHandler = new(
+            bus,
+            authTokenStore,
+            sink,
+            new Mock<IPlayableMediaProbe>().Object
+        );
 
         return new()
         {
@@ -633,7 +837,12 @@ public class PushNotificationEventHandlerJourneyTests
         using CancellationTokenSource cts = new();
         _ = queue.DrainAsync(cts.Token);
 
-        using PushNotificationEventHandler handler = new(bus, authTokenStore, new(queue));
+        using PushNotificationEventHandler handler = new(
+            bus,
+            authTokenStore,
+            new(queue),
+            new Mock<IPlayableMediaProbe>().Object
+        );
 
         await bus.PublishAsync(ANotificationFor(userId));
         await entered.Task.WaitAsync(Patience);

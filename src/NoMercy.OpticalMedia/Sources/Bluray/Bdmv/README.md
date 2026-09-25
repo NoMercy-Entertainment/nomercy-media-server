@@ -1,9 +1,9 @@
-# Vendored from packages/nomercy-disc-format
+# Vendored from server/media/nomercy-disc-format
 
 `Mpls.cs`, `MplsParser.cs`, `CodingType.cs`, `CodingTypeInfo.cs`, `CodingKind.cs`,
 `BigEndianReader.cs`, `DiscContentCatalog.cs` are copied
 verbatim (same namespace, `NoMercy.DiscFormat.Disc.Bdmv`) from
-`packages/nomercy-disc-format/src/Infra/Disc/Bdmv/` rather than referenced
+`server/media/nomercy-disc-format/src/Infra/Disc/Bdmv/` rather than referenced
 via `ProjectReference`.
 
 `DiscContentCatalog.cs` was added 2026-08-20 alongside the

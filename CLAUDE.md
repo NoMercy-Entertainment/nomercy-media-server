@@ -83,4 +83,4 @@ Tech stack: C# / .NET 10, ASP.NET Core, EF Core (SQLite), SignalR; solution
 
 GitHub release assets use fixed names (`nomercy-windows-x64.exe`,
 `nomercy-linux-x64`, `nomercy_VERSION_amd64.deb`, …). Renaming them breaks
-`infra/nomercy-packages` and `apps/nomercy-tv` download URLs — update those too.
+`infra/nomercy-packages` and `saas/nomercy-tv` download URLs — update those too.

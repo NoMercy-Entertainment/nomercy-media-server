@@ -18,7 +18,7 @@ namespace NoMercy.Tests.Plugins;
 /// <summary>
 /// The five words every client has to agree with the server on.
 ///
-/// Each of these is read by tools/nm-components and written into TypeScript,
+/// Each of these is read by packages/design/nm-components and written into TypeScript,
 /// Kotlin and Swift. A value that changes here changes on every client; a
 /// value a client spells for itself does not, and that is the whole failure
 /// this vocabulary exists to stop.

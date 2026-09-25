@@ -34,7 +34,7 @@ public class MusicEncodeOutputDirectoryTests
     {
         MusicEncodeJob
             .AlbumOutputDirectory(
-                "C:/Projects/NoMercy/apps/nomercy-media-server/src/NoMercy.Service/bin/Debug/net10.0/Libraries/Music/[Various Artists]/[2009] Radio 538_ Hitzone 50"
+                "C:/Projects/NoMercy/server/nomercy-media-server/src/NoMercy.Service/bin/Debug/net10.0/Libraries/Music/[Various Artists]/[2009] Radio 538_ Hitzone 50"
             )
             .Should()
             .Be(

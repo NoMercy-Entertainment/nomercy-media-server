@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Collections.Concurrent;
 using NoMercy.Events;
 using NoMercy.Events.Encoding;
 using NoMercy.Events.Library;
@@ -31,19 +32,35 @@ public class PushNotificationEventHandler : EventSubscriber
 
     private readonly IAuthTokenStore _authTokenStore;
     private readonly NotificationSink _notificationSink;
+    private readonly IPlayableMediaProbe _playableMediaProbe;
+
+    // MediaImportJobs publish MediaAddedEvent as soon as metadata lands, well
+    // before FileRescanJob has matched a single file on disk. Pushing then
+    // tells the user there is something to watch when there is nothing to
+    // play yet, so the push waits here for MediaFilesScannedEvent to confirm a
+    // playable VideoFile exists. Keyed by (MediaType, MediaId) because a movie
+    // and a show can share the same TMDB id.
+    private readonly ConcurrentDictionary<
+        (string MediaType, int MediaId),
+        MediaAddedEvent
+    > _pendingMediaAdded = new();
 
     public PushNotificationEventHandler(
         IEventBus eventBus,
         IAuthTokenStore authTokenStore,
-        NotificationSink notificationSink
+        NotificationSink notificationSink,
+        IPlayableMediaProbe playableMediaProbe
     )
     {
         _authTokenStore = authTokenStore;
         _notificationSink = notificationSink;
+        _playableMediaProbe = playableMediaProbe;
         Track(eventBus.Subscribe<EncodingStartedEvent>(OnEncodingStarted));
         Track(eventBus.Subscribe<EncodingCompletedEvent>(OnEncodingCompleted));
+        Track(eventBus.Subscribe<EncodingCompletedEvent>(OnEncodingCompletedRecheckPending));
         Track(eventBus.Subscribe<EncodingFailedEvent>(OnEncodingFailed));
         Track(eventBus.Subscribe<MediaAddedEvent>(OnMediaAdded));
+        Track(eventBus.Subscribe<MediaFilesScannedEvent>(OnMediaFilesScanned));
         Track(eventBus.Subscribe<LibraryScanCompletedEvent>(OnLibraryScanCompleted));
         Track(eventBus.Subscribe<PluginErrorOccurredEvent>(OnPluginError));
         Track(eventBus.Subscribe<UserNotifiedEvent>(OnUserNotified));
@@ -94,15 +111,75 @@ public class PushNotificationEventHandler : EventSubscriber
 
     // The one channel here that is about content rather than operations, so it
     // routes to the item itself: "/movie/123" is the shape every client's nav
-    // host already understands.
+    // host already understands. Pushing does not happen here: the item has no
+    // playable file yet at import time, so this only records the pending
+    // notification. OnMediaFilesScanned pushes once a file actually lands,
+    // even if one was already there when this fired.
     internal Task OnMediaAdded(MediaAddedEvent @event, CancellationToken _)
     {
-        Notify(
-            "media-added",
-            new("New in your library", @event.Title, $"/{@event.MediaType}/{@event.MediaId}")
-        );
+        _pendingMediaAdded[(@event.MediaType, @event.MediaId)] = @event;
         return Task.CompletedTask;
     }
+
+    internal Task OnMediaFilesScanned(MediaFilesScannedEvent @event, CancellationToken ct) =>
+        RecheckPendingAsync(
+            _pendingMediaAdded.Keys.Where(key => key.MediaId == @event.MediaId),
+            ct
+        );
+
+    // FileRescanJob only runs from an import or a manual rescan — a title
+    // whose files land later via encoding (added, then encoded from a source
+    // with nothing playable yet) never gets a MediaFilesScannedEvent, so it
+    // would stay pending forever. EncodingCompletedEvent carries only JobId
+    // (the movie/episode id the encode ran for) and no MediaType, so it
+    // cannot be matched to a pending key the way MediaFilesScannedEvent can —
+    // every pending entry is rechecked instead. The pending set only holds
+    // titles between import and their first playable file, so it stays small.
+    // VideoEncodeJob always awaits ScanEncodedOutputWithRetryAsync (which
+    // writes the VideoFile row) before publishing this event, on every path
+    // that reaches it (coordinator finalize, inline, and the OCR top-up).
+    internal Task OnEncodingCompletedRecheckPending(
+        EncodingCompletedEvent @event,
+        CancellationToken ct
+    ) => RecheckPendingAsync(_pendingMediaAdded.Keys.ToList(), ct);
+
+    private async Task RecheckPendingAsync(
+        IEnumerable<(string MediaType, int MediaId)> keys,
+        CancellationToken ct
+    )
+    {
+        foreach ((string MediaType, int MediaId) key in keys.ToList())
+        {
+            if (!_pendingMediaAdded.TryGetValue(key, out MediaAddedEvent? pending))
+                continue;
+
+            bool hasPlayableVideo = await _playableMediaProbe.HasPlayableVideoAsync(
+                key.MediaType,
+                key.MediaId,
+                ct
+            );
+            if (!hasPlayableVideo)
+                continue;
+
+            if (!_pendingMediaAdded.TryRemove(key, out _))
+                continue;
+
+            Notify(
+                "media-added",
+                new("New in your library", pending.Title, BuildMediaRoute(pending))
+            );
+        }
+    }
+
+    // MediaAddedEvent.MediaType is "tvshow" — the value MediaAddedEvent /
+    // SignalR subscribers already key off — but no client route is nested
+    // under /tvshow; the web/KMP nav host uses /tv/<id>.
+    private static string BuildMediaRoute(MediaAddedEvent @event) =>
+        @event.MediaType switch
+        {
+            "tvshow" => $"/tv/{@event.MediaId}",
+            _ => $"/{@event.MediaType}/{@event.MediaId}",
+        };
 
     internal Task OnLibraryScanCompleted(LibraryScanCompletedEvent @event, CancellationToken _)
     {
