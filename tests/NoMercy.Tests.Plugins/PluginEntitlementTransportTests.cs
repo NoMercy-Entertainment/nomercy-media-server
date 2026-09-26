@@ -82,11 +82,15 @@ public class PluginEntitlementTransportTests : IDisposable
     private const string Entitlements =
         """[{"plugin_id":"01J9ZK5V8Y0000000000000002","user_id":"11111111-1111-1111-1111-111111111111","tier":"paid","seats":5,"expires_at":null}]""";
 
-    private string Body(string? signedEntitlements = null, string keyId = "nomercy-1") =>
+    private string Body(
+        string? signedEntitlements = null,
+        string keyId = "nomercy-1",
+        string serverId = ServerId
+    ) =>
         JsonSerializer.Serialize(
             new
             {
-                server_id = ServerId,
+                server_id = serverId,
                 issued_at = IssuedAt,
                 refresh_by = RefreshBy,
                 entitlements = JsonDocument.Parse(Entitlements).RootElement,
@@ -95,7 +99,7 @@ public class PluginEntitlementTransportTests : IDisposable
                     kid = keyId,
                     alg = "ed25519",
                     value = Sign(
-                        $"{ServerId}{IssuedAt}{RefreshBy}{signedEntitlements ?? Entitlements}"
+                        $"{serverId}{IssuedAt}{RefreshBy}{signedEntitlements ?? Entitlements}"
                     ),
                 },
             }
@@ -128,6 +132,59 @@ public class PluginEntitlementTransportTests : IDisposable
         held.Seats.Should().Be(5);
         held.ExpiresAt.Should().BeNull();
         bundle.RefreshBy.Should().Be(new DateTimeOffset(2026, 9, 21, 11, 0, 0, TimeSpan.Zero));
+    }
+
+    [Fact]
+    public void A_bundle_naming_the_server_by_its_uuid_is_read()
+    {
+        // nomercy-tv names a server by the uuid it registered with, not a ulid.
+        const string Uuid = "0b6f1c8e-4a5d-4f3e-9c2b-7d1e8a9f0c11";
+
+        Client(new PluginEntitlementStore(_folder))
+            .TryRead(Body(serverId: Uuid), out PluginEntitlementBundle? bundle)
+            .Should()
+            .BeTrue();
+
+        bundle!.ServerId.Should().Be(new Ulid(Guid.Parse(Uuid)));
+    }
+
+    [Fact]
+    public async Task A_refresh_sends_the_servers_token_when_it_holds_one()
+    {
+        HeaderRecorder recorder = new(Body());
+        PluginEntitlementClient client = new(
+            new HttpClient(recorder),
+            new RecordingStore(),
+            new PluginTrustedKeys(new Dictionary<string, string> { ["nomercy-1"] = _publicKey }),
+            NullLogger<PluginEntitlementClient>.Instance
+        );
+
+        await client.RefreshAsync(
+            new("https://api.nomercy.tv/v1/server/plugins/entitlements?id=x"),
+            "the-token"
+        );
+
+        recorder.Authorization.Should().Be("Bearer the-token");
+    }
+
+    private sealed class HeaderRecorder(string body) : HttpMessageHandler
+    {
+        public string? Authorization { get; private set; }
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken
+        )
+        {
+            Authorization = request.Headers.Authorization?.ToString();
+
+            return Task.FromResult(
+                new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(body),
+                }
+            );
+        }
     }
 
     [Fact]

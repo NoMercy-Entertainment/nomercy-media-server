@@ -27,9 +27,18 @@ namespace NoMercy.PluginSdk.Verification;
 /// plugins folder themselves is their own decision, and refusing it would take
 /// away the one path that works while the marketplace does not exist yet.
 /// </para>
+/// <para>
+/// Under a warn-only <see cref="PluginTrustMode"/> a signature that would
+/// fail is logged and the package is trusted instead, with the same message.
+/// </para>
 /// </summary>
-public class SignatureVerificationStage(IPluginTrustedKeys trustedKeys) : IPluginVerificationStage
+public class SignatureVerificationStage(
+    IPluginTrustedKeys trustedKeys,
+    PluginTrustMode? mode = null
+) : IPluginVerificationStage
 {
+    private readonly PluginTrustMode _mode = mode ?? PluginTrustMode.Enforcing;
+
     public SignatureVerificationStage()
         : this(PluginTrustedKeys.None) { }
 
@@ -38,6 +47,22 @@ public class SignatureVerificationStage(IPluginTrustedKeys trustedKeys) : IPlugi
     public bool Enforced => true;
 
     public (PluginStageOutcome Outcome, string? Message) Evaluate(PluginVerificationContext context)
+    {
+        (PluginStageOutcome outcome, string? message) = Check(context);
+
+        if (outcome != PluginStageOutcome.Fail || _mode.Enforce)
+            return (outcome, message);
+
+        _mode.WouldRefuse(
+            $"{context.Manifest.Name} {context.Manifest.Version}",
+            "signature",
+            message ?? string.Empty
+        );
+
+        return (PluginStageOutcome.Trust, message);
+    }
+
+    private (PluginStageOutcome Outcome, string? Message) Check(PluginVerificationContext context)
     {
         if (!context.FromMarketplace)
             return (PluginStageOutcome.Pass, null);

@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Verification;
 
 namespace NoMercy.PluginSdk.Entitlements;
 
@@ -22,9 +23,21 @@ namespace NoMercy.PluginSdk.Entitlements;
 /// deleting what they bought to make a point about a network is not a thing
 /// this server does.
 /// </para>
+/// <para>
+/// Under a warn-only <see cref="PluginTrustMode"/> the dormant pause is only
+/// logged. A paid plugin nobody bought is still refused: every released
+/// server already refuses it, so softening it would be new, not safer.
+/// </para>
 /// </summary>
-public class PluginEntitlementGate(IPluginEntitlementStore store, TimeProvider clock, Guid ownerId)
+public class PluginEntitlementGate(
+    IPluginEntitlementStore store,
+    TimeProvider clock,
+    Guid ownerId,
+    PluginTrustMode? mode = null
+)
 {
+    private readonly PluginTrustMode _mode = mode ?? PluginTrustMode.Enforcing;
+
     public const int GraceDays = 7;
 
     public PluginRefusal? Check(Ulid pluginId, PluginTier tier)
@@ -44,13 +57,15 @@ public class PluginEntitlementGate(IPluginEntitlementStore store, TimeProvider c
         // clock, and an owner who does not is told they need to buy it. The
         // other way round sends a paying customer to a shop they already used.
         if (entitlement is not null)
-            return new(
-                PluginRefusalCodes.EntitlementDormant,
-                pluginId.ToString(),
-                "The plugin is installed and not running.",
-                $"This server has not refreshed its entitlements for more than {GraceDays} days, so it cannot confirm the purchase.",
-                "Connect the server to the internet. Nothing is deleted while a plugin is dormant, and it starts again on the next successful check.",
-                PluginRefusalSeverity.Blocked
+            return _mode.Apply(
+                new(
+                    PluginRefusalCodes.EntitlementDormant,
+                    pluginId.ToString(),
+                    "The plugin is installed and not running.",
+                    $"This server has not refreshed its entitlements for more than {GraceDays} days, so it cannot confirm the purchase.",
+                    "Connect the server to the internet. Nothing is deleted while a plugin is dormant, and it starts again on the next successful check.",
+                    PluginRefusalSeverity.Blocked
+                )
             );
 
         return new(

@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Verification;
 
 namespace NoMercy.PluginSdk.Revocation;
 
@@ -22,12 +23,25 @@ namespace NoMercy.PluginSdk.Revocation;
 /// answering yes to a question it cannot check is the failure this exists to
 /// prevent. Nothing is uninstalled and nothing the owner approved is lost.
 /// </para>
+/// <para>
+/// Under a warn-only <see cref="PluginTrustMode"/> both refusals are logged
+/// and the plugin runs.
+/// </para>
 /// </summary>
-public class PluginRevocationGate(IPluginRevocationStore store, TimeProvider clock)
+public class PluginRevocationGate(
+    IPluginRevocationStore store,
+    TimeProvider clock,
+    PluginTrustMode? mode = null
+)
 {
     public const int StaleAfterDays = 7;
 
-    public PluginRefusal? Check(Ulid pluginId, string packageHash)
+    private readonly PluginTrustMode _mode = mode ?? PluginTrustMode.Enforcing;
+
+    public PluginRefusal? Check(Ulid pluginId, string packageHash) =>
+        _mode.Apply(Refusal(pluginId, packageHash));
+
+    private PluginRefusal? Refusal(Ulid pluginId, string packageHash)
     {
         PluginRevocationList list = store.Current;
         PluginRevocationEntry? revoked = list.Find(pluginId, packageHash);
