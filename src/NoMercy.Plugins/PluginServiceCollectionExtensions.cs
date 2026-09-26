@@ -105,12 +105,67 @@ public static class PluginServiceCollectionExtensions
         // without a flag day. None configured is not an error: the stage reads
         // that emptiness and records the question as unanswered rather than
         // refusing every marketplace install on a server that trusts nobody.
-        services.AddSingleton<IPluginTrustedKeys>(sp => new PluginTrustedKeys(
-            sp.GetService<IConfiguration>()
-                ?.GetSection("Plugins:TrustedKeys")
-                .Get<Dictionary<string, string>>()
-                ?? []
-        ));
+        // The shipped marketplace keys, then what nomercy.tv publishes, then
+        // the owner's own Plugins:TrustedKeys on top.
+        services.AddSingleton<PluginMarketplaceKeys>(sp =>
+            new(
+                sp.GetService<IConfiguration>()
+                    ?.GetSection("Plugins:TrustedKeys")
+                    .Get<Dictionary<string, string>>()
+                    ?? []
+            )
+        );
+        services.AddSingleton<IPluginTrustedKeys>(sp =>
+            sp.GetRequiredService<PluginMarketplaceKeys>()
+        );
+
+        // Release 1 only warns. Plugins:Trust:Enforce=true brings back the
+        // hard refusals every gate had before.
+        services.AddSingleton<PluginTrustMode>(sp =>
+            new(
+                sp.GetService<IConfiguration>()?.GetValue<bool>("Plugins:Trust:Enforce") ?? false,
+                sp.GetRequiredService<ILoggerFactory>().CreateLogger<PluginTrustMode>()
+            )
+        );
+        services.AddSingleton<PluginTrustAddresses>(sp =>
+            new(
+                new(
+                    sp.GetService<IConfiguration>()?.GetValue<string>("Plugins:Trust:KeysUrl")
+                        is { Length: > 0 } keysUrl
+                        ? keysUrl
+                        : $"{ExternalServicesConfig.Current.ApiBaseUrl}v1/marketplace/keys.json"
+                ),
+                new($"{ExternalServicesConfig.Current.ApiBaseUrl}v1/marketplace/revocations.json"),
+                () =>
+                    new(
+                        $"{ExternalServicesConfig.Current.ApiServerBaseUrl}plugins/entitlements?id={Info.DeviceId}"
+                    )
+            )
+        );
+        services.AddSingleton<PluginMarketplaceKeyClient>(sp =>
+            new(
+                TrustClient(),
+                sp.GetRequiredService<PluginMarketplaceKeys>(),
+                sp.GetRequiredService<ILogger<PluginMarketplaceKeyClient>>()
+            )
+        );
+        services.AddSingleton<PluginRevocationClient>(sp =>
+            new(
+                TrustClient(),
+                sp.GetRequiredService<IPluginRevocationStore>(),
+                sp.GetRequiredService<IPluginTrustedKeys>(),
+                sp.GetRequiredService<ILogger<PluginRevocationClient>>()
+            )
+        );
+        services.AddSingleton<PluginEntitlementClient>(sp =>
+            new(
+                TrustClient(),
+                sp.GetRequiredService<IPluginEntitlementStore>(),
+                sp.GetRequiredService<IPluginTrustedKeys>(),
+                sp.GetRequiredService<ILogger<PluginEntitlementClient>>()
+            )
+        );
+        services.AddHostedService<PluginTrustRefreshService>();
 
         // The two answers a server needs about a plugin before it runs: is
         // this build still allowed, and may this owner run it. Both are kept
@@ -195,8 +250,8 @@ public static class PluginServiceCollectionExtensions
         // Resolved lazily through the manager: the broker and the media
         // factory both ask what a plugin declared, and neither should be able
         // to install or uninstall one to find out.
-        services.TryAddSingleton<IPluginManifestSource>(sp => new PluginManagerManifestSource(
-            () => sp.GetRequiredService<IPluginManager>()
+        services.TryAddSingleton<IPluginManifestSource>(sp => new PluginManagerManifestSource(() =>
+            sp.GetRequiredService<IPluginManager>()
         ));
 
         // The three questions asked before a plugin acts, and the tally of what
@@ -301,7 +356,8 @@ public static class PluginServiceCollectionExtensions
             new(
                 new PluginRevocationGate(
                     sp.GetRequiredService<IPluginRevocationStore>(),
-                    sp.GetRequiredService<TimeProvider>()
+                    sp.GetRequiredService<TimeProvider>(),
+                    sp.GetRequiredService<PluginTrustMode>()
                 ),
                 sp.GetRequiredService<IPluginRevocationStore>()
             )
@@ -311,7 +367,8 @@ public static class PluginServiceCollectionExtensions
                 new PluginEntitlementGate(
                     sp.GetRequiredService<IPluginEntitlementStore>(),
                     sp.GetRequiredService<TimeProvider>(),
-                    sp.GetService<IPluginOwner>()?.Id ?? Guid.Empty
+                    sp.GetService<IPluginOwner>()?.Id ?? Guid.Empty,
+                    sp.GetRequiredService<PluginTrustMode>()
                 )
             )
         );
@@ -464,7 +521,10 @@ public static class PluginServiceCollectionExtensions
             new AbiVerificationStage(),
             new ChecksumVerificationStage(),
             new TrustedRepositoryVerificationStage(() => sp.GetService<IPluginRepository>()),
-            new SignatureVerificationStage(sp.GetRequiredService<IPluginTrustedKeys>()),
+            new SignatureVerificationStage(
+                sp.GetRequiredService<IPluginTrustedKeys>(),
+                sp.GetRequiredService<PluginTrustMode>()
+            ),
         ]));
         PluginAssemblyTracker assemblyTracker = new();
         services.AddSingleton<IPluginAssemblyTracker>(assemblyTracker);
@@ -662,6 +722,12 @@ public static class PluginServiceCollectionExtensions
             BaseAddress = new(ExternalServicesConfig.Current.ApiServerBaseUrl),
             Timeout = TimeSpan.FromSeconds(10),
         };
+
+    /// <summary>
+    /// Keys, revocations and entitlements: small signed documents, so a short
+    /// timeout. A slow answer is retried on the next refresh.
+    /// </summary>
+    private static HttpClient TrustClient() => new() { Timeout = TimeSpan.FromSeconds(20) };
 
     private static IStorage PluginStorage(IServiceProvider sp, string pluginsPath)
     {

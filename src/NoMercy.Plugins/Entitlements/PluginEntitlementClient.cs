@@ -31,11 +31,27 @@ public class PluginEntitlementClient(
     ILogger<PluginEntitlementClient> logger
 )
 {
-    public async Task RefreshAsync(Uri address, CancellationToken ct = default)
+    /// <summary>
+    /// The server endpoint answers only its owner, so the server's own access
+    /// token rides along when it holds one.
+    /// </summary>
+    public async Task RefreshAsync(
+        Uri address,
+        string? bearerToken = null,
+        CancellationToken ct = default
+    )
     {
         try
         {
-            Accept(await http.GetStringAsync(address, ct));
+            using HttpRequestMessage request = new(HttpMethod.Get, address);
+
+            if (bearerToken is { Length: > 0 })
+                request.Headers.Authorization = new("Bearer", bearerToken);
+
+            using HttpResponseMessage response = await http.SendAsync(request, ct);
+            response.EnsureSuccessStatusCode();
+
+            Accept(await response.Content.ReadAsStringAsync(ct));
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -67,6 +83,13 @@ public class PluginEntitlementClient(
         return true;
     }
 
+    /// <summary>
+    /// nomercy.tv names a server by the uuid it registered with. A ulid is
+    /// read too, since that is what an earlier bundle carried.
+    /// </summary>
+    private static Ulid ServerId(string value) =>
+        Guid.TryParse(value, out Guid uuid) ? new(uuid) : Ulid.Parse(value);
+
     public bool TryRead(string body, out PluginEntitlementBundle? bundle)
     {
         bundle = null;
@@ -89,7 +112,7 @@ public class PluginEntitlementClient(
                 return false;
 
             bundle = new(
-                Ulid.Parse(root.GetProperty("server_id").GetString()!),
+                ServerId(root.GetProperty("server_id").GetString()!),
                 root.GetProperty("issued_at").GetDateTimeOffset(),
                 root.GetProperty("refresh_by").GetDateTimeOffset(),
                 [

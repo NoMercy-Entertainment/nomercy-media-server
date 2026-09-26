@@ -12,11 +12,13 @@
 using System.Reflection;
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NoMercy.Events;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Verification;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;
@@ -65,6 +67,32 @@ public class PluginDiIntegrationTests : IDisposable
         manager1.Should().BeOfType<PluginManager>();
 
         (manager1 as IDisposable)?.Dispose();
+    }
+
+    [Fact]
+    public void AddPluginSystem_TrustsTheShippedKeysAndOnlyWarnsByDefault()
+    {
+        ServiceCollection services = new();
+        services.AddSingleton<IEventBus, InMemoryEventBus>();
+        services.AddLogging();
+        services.AddSingleton(TestStorageHelper.CreateBackend());
+
+        services.AddPluginSystem(_tempPluginsDir);
+
+        ServiceProvider provider = services.BuildServiceProvider();
+
+        provider
+            .GetRequiredService<IPluginTrustedKeys>()
+            .Find("mk_2026_09c")
+            .Should()
+            .Be("UbpdyF8xAjmWCWF0YWEOhfXO6OIUBcr39VsNw8jMiKQ=");
+        provider.GetRequiredService<PluginTrustMode>().Enforce.Should().BeFalse();
+        services
+            .Should()
+            .Contain(descriptor =>
+                descriptor.ServiceType == typeof(IHostedService)
+                && descriptor.ImplementationType == typeof(PluginTrustRefreshService)
+            );
     }
 
     [Fact]
