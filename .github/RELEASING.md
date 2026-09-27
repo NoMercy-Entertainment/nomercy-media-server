@@ -1,8 +1,7 @@
 # Releasing the media server
 
-> **Provisional.** The cadence below is the default from the road-to-v1 plan.
-> It waits on decision 4 in NoMercy-Entertainment/.github#11. Installer signing
-> waits on decision 7 (#80).
+The cadence below was decided on 2026-09-27 (decision 4 in
+NoMercy-Entertainment/.github#11). Installer signing waits on decision 7 (#80).
 
 Every build starts as a nightly. A maintainer promotes one nightly to beta,
 and later the same build to stable. Nothing is rebuilt on the way.
