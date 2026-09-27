@@ -121,9 +121,18 @@ public class ShowRepository(MediaContext context) : IShowRepository
         }
     }
 
-    public Task LinkToLibrary(Library library, Tv tv, string? addedBy = null)
+    public async Task LinkToLibrary(Library library, Tv tv, string? addedBy = null)
     {
-        return context
+        // A show belongs to exactly one library - Tv.LibraryId is a single FK,
+        // so the join table must agree. Drop any link to a library other than
+        // the one being linked here before upserting, otherwise re-importing a
+        // show under a different library accumulates a second, stale row
+        // instead of moving the link.
+        await context
+            .LibraryTv.Where(lt => lt.TvId == tv.Id && lt.LibraryId != library.Id)
+            .ExecuteDeleteAsync();
+
+        await context
             .LibraryTv.Upsert(new(library.Id, tv.Id, addedBy))
             .On(v => new { v.LibraryId, v.TvId })
             // A link that already exists keeps the origin it was created with. A
@@ -136,6 +145,20 @@ public class ShowRepository(MediaContext context) : IShowRepository
     public Task<Library?> GetLibraryByTypeAsync(string type)
     {
         return context.Libraries.AsNoTracking().FirstOrDefaultAsync(l => l.Type == type);
+    }
+
+    public Task<Library?> GetLibraryByIdAsync(Ulid id)
+    {
+        return context.Libraries.AsNoTracking().FirstOrDefaultAsync(l => l.Id == id);
+    }
+
+    public Task<Ulid?> GetCurrentLibraryIdAsync(int tvId)
+    {
+        return context
+            .Tvs.AsNoTracking()
+            .Where(t => t.Id == tvId)
+            .Select(t => (Ulid?)t.LibraryId)
+            .FirstOrDefaultAsync();
     }
 
     public async Task<bool> EnsureFiledUnderLibraryTypeAsync(int tvId, string libraryType)

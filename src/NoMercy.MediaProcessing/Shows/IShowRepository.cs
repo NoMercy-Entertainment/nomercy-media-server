@@ -35,6 +35,13 @@ public interface IShowRepository
     Task Remove(int id);
     Task LinkToLibrary(Library library, Tv show, string? addedBy = null);
     Task<Library?> GetLibraryByTypeAsync(string type);
+    Task<Library?> GetLibraryByIdAsync(Ulid id);
+
+    /// <summary>
+    /// The library this show is currently filed under, or null when the show
+    /// does not exist in the database yet.
+    /// </summary>
+    Task<Ulid?> GetCurrentLibraryIdAsync(int tvId);
 
     /// <summary>
     /// Moves a Tv row into the library of the given type when it is not already
