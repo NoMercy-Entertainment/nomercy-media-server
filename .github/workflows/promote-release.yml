@@ -21,6 +21,8 @@ name: Promote Release
 # succeed, when any release asset or Docker image is missing, when the release
 # was retracted, when stable would go backwards, and (for stable) when the
 # build was never a beta.
+#
+# The steps and the stable release checklist: .github/RELEASING.md
 
 on:
   workflow_dispatch:
@@ -66,16 +68,23 @@ jobs:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
-      - name: Check the version format
+      # Only for .github/scripts/promote-gate.sh; nothing is built here.
+      - name: Check out the gate script
+        uses: actions/checkout@v5
+        with:
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+
+      # A gate whose own tests fail cannot be trusted to refuse anything.
+      - name: Test the gate
+        run: bash .github/scripts/promote-gate.test.sh
+
+      - name: Collect the release, its CI runs and the current stable
         run: |
           if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "::error::version must be MAJOR.MINOR.PATCH without a leading v, got '$VERSION'"
             exit 1
           fi
-
-      - name: Check the release exists, is complete and was not retracted
-        id: release
-        run: |
           tag="v${VERSION}"
           if ! gh release view "$tag" --repo "$REPO" --json tagName >/dev/null 2>&1; then
             echo "::error::there is no GitHub release $tag"
@@ -83,103 +92,31 @@ jobs:
           fi
           gh release view "$tag" --repo "$REPO" --json isDraft,isPrerelease,body,assets > /tmp/release.json
 
-          if [ "$(jq -r .isDraft /tmp/release.json)" = "true" ]; then
-            echo "::error::$tag is a draft (a staged branch build), not a nightly"
-            exit 1
-          fi
-          if jq -r .body /tmp/release.json | grep -q 'RETRACTED'; then
-            echo "::error::$tag was retracted and cannot be promoted"
-            exit 1
-          fi
-
-          # What a user installs from, per platform. A release missing any of
-          # these would promote a broken download.
-          required=(
-            manifest.json
-            manifest.json.sig
-            release-info.json
-            nomercy-linux-x64
-            nomercy-windows-x64.exe
-            nomercy-macos-x64
-            nomercy-macos-arm64
-            "NoMercyMediaServer-${VERSION}-windows-x64-setup.exe"
-            "NoMercyMediaServer-${VERSION}-macos-x64-setup.pkg"
-            "nomercy_${VERSION}_amd64.deb"
-            "nomercy-${VERSION}-1.x86_64.rpm"
-            "nomercy-${VERSION}-1-x86_64.pkg.tar.zst"
-          )
-          missing=0
-          for name in "${required[@]}"; do
-            if jq -e --arg n "$name" '.assets | any(.name == $n)' /tmp/release.json >/dev/null; then
-              echo "ok      $name"
+          # The CI run that matters is the one for the exact commit the build
+          # came from, as recorded in the release itself.
+          echo '[]' > /tmp/runs.json
+          if gh release download "$tag" --repo "$REPO" --pattern release-info.json --dir /tmp/info; then
+            short=$(jq -r .commit_sha /tmp/info/release-info.json)
+            if [[ "$short" =~ ^[0-9a-f]{7,40}$ ]]; then
+              sha=$(gh api "repos/${REPO}/commits/${short}" --jq .sha)
+              echo "Build commit: $sha"
+              gh api "repos/${REPO}/actions/workflows/ci-cd-pipeline.yml/runs?head_sha=${sha}&per_page=100" \
+                --jq '[.workflow_runs[] | {id, conclusion, html_url}]' > /tmp/runs.json
+              jq -r '.[] | "\(.conclusion // "running")  \(.html_url)"' /tmp/runs.json
             else
-              echo "::error::$tag is missing the asset $name"
-              missing=1
+              echo "::warning::release-info.json has no usable commit_sha ('$short')"
             fi
-          done
-          [ "$missing" -eq 0 ] || exit 1
-
-          if jq -r .body /tmp/release.json | grep -q '<!-- nomercy-channel: beta -->'; then
-            echo "was_beta=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "was_beta=false" >> "$GITHUB_OUTPUT"
-          fi
-          echo "is_prerelease=$(jq -r .isPrerelease /tmp/release.json)" >> "$GITHUB_OUTPUT"
-
-      # The release gate. A nightly only exists if its pipeline's test job
-      # passed, but a rerun, a manual release or a later failed job can leave
-      # a release behind a run that did not succeed. Require a successful
-      # CI/CD Pipeline run for the exact commit the build came from.
-      - name: Check CI succeeded for the commit this build came from
-        run: |
-          gh release download "v${VERSION}" --repo "$REPO" --pattern release-info.json --dir /tmp/info
-          short=$(jq -r .commit_sha /tmp/info/release-info.json)
-          if ! [[ "$short" =~ ^[0-9a-f]{7,40}$ ]]; then
-            echo "::error::release-info.json has no usable commit_sha ('$short')"
-            exit 1
-          fi
-          sha=$(gh api "repos/${REPO}/commits/${short}" --jq .sha)
-          echo "Build commit: $sha"
-
-          runs=$(gh api "repos/${REPO}/actions/workflows/ci-cd-pipeline.yml/runs?head_sha=${sha}&per_page=100" \
-            --jq '[.workflow_runs[] | {id, conclusion, html_url}]')
-          echo "$runs" | jq -r '.[] | "\(.conclusion // "running")  \(.html_url)"'
-
-          if ! echo "$runs" | jq -e 'any(.conclusion == "success")' >/dev/null; then
-            echo "::error::no successful CI/CD Pipeline run for ${sha}. A build from red CI is never promoted."
-            exit 1
           fi
 
-      - name: Check the channel order
-        env:
-          WAS_BETA: ${{ steps.release.outputs.was_beta }}
-          IS_PRERELEASE: ${{ steps.release.outputs.is_prerelease }}
-        run: |
-          if [ "$CHANNEL" = "beta" ]; then
-            if [ "$IS_PRERELEASE" = "false" ]; then
-              echo "::error::v${VERSION} is already a stable release"
-              exit 1
-            fi
-            exit 0
-          fi
-
-          if [ "$WAS_BETA" != "true" ] && [ "${{ inputs.skip_beta }}" != "true" ]; then
-            echo "::error::v${VERSION} was never a beta. Promote it to beta first, or set skip_beta for a first stable or an urgent fix."
-            exit 1
-          fi
-
-          # Stable never goes backwards: the updaters would see an older
-          # version as "latest" and every server would report no update.
           current=$(gh api "repos/${REPO}/releases/latest" --jq .tag_name 2>/dev/null || echo "")
-          current="${current#v}"
-          echo "Current stable: ${current:-none}"
-          if [ -n "$current" ] && [ "$current" != "$VERSION" ]; then
-            newest=$(printf '%s\n%s\n' "$current" "$VERSION" | sort -V | tail -1)
-            if [ "$newest" != "$VERSION" ]; then
-              echo "::error::v${VERSION} is older than the current stable v${current}"
-              exit 1
-            fi
-          fi
+          echo "CURRENT_STABLE=${current}" >> "$GITHUB_ENV"
+
+      # The release gate. Every refusal lives in the script so it is tested
+      # (.github/scripts/promote-gate.test.sh) rather than trusted.
+      - name: Gate
+        run: |
+          bash .github/scripts/promote-gate.sh /tmp/release.json /tmp/runs.json \
+            "$VERSION" "$CHANNEL" "${{ inputs.skip_beta }}" "$CURRENT_STABLE"
 
       - name: Log in to GHCR
         uses: docker/login-action@v3

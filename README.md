@@ -176,7 +176,7 @@ Every build also keeps a tag with its version, like `1.0.14` or `1.0.14-nvidia`.
 
 The version number doesn't show the channel. A stable version can skip numbers (1.0.0, then 1.0.14), because the nightlies in between were never promoted.
 
-For maintainers: promote a build with the **Promote Release** workflow in Actions. It refuses when CI was not green for that commit, when an asset or image is missing, or when the build was retracted. The next version line (for example `1.0`) is set in `.github/release-line`.
+For maintainers: promote a build with the **Promote Release** workflow in Actions. It refuses when CI was not green for that commit, when an asset or image is missing, or when the build was retracted. The next version line (for example `1.0`) is set in `.github/release-line`. The steps and the stable release checklist are in [`.github/RELEASING.md`](.github/RELEASING.md).
 
 ### Build from Source
 
