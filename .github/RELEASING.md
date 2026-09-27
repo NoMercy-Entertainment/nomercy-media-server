@@ -1,7 +1,8 @@
 # Releasing the media server
 
 The cadence below was decided on 2026-09-27 (decision 4 in
-NoMercy-Entertainment/.github#11). Installer signing waits on decision 7 (#80).
+NoMercy-Entertainment/.github#11). Installer signing is deferred: decision 7 was
+"later" on the same day (#80).
 
 Every build starts as a nightly. A maintainer promotes one nightly to beta,
 and later the same build to stable. Nothing is rebuilt on the way.
@@ -43,7 +44,7 @@ step 3, and the result goes in the release notes.
    the deb, Docker on Linux, macOS on Apple silicon, one NAS.
 5. Outage drill with nomercy.tv blocked: LAN playback, sign-in on a known
    device, music.
-6. Installers signed (Windows Authenticode, macOS notarized). *(Waits on
+6. Installers signed (Windows Authenticode, macOS notarized). *(Deferred,
    decision 7.)* Checksums are already published: every asset has a `.sha256`
    sidecar and `manifest.json` is GPG-signed.
 7. Release notes a user can read, plus a rollback note naming the previous
