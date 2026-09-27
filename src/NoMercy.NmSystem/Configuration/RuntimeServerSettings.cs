@@ -62,6 +62,10 @@ public class RuntimeServerSettings
     // WAN exposure is a setup step, not a default.
     public ConnectivityMode ConnectivityMode { get; set; } = ConnectivityMode.LocalOnly;
 
+    // Stable unless the operator opts in: every existing install followed GitHub's
+    // latest release, which is the stable channel now that nightlies are prereleases.
+    public ReleaseChannel UpdateChannel { get; set; } = ReleaseChannel.Stable;
+
     public bool? AllowAdultContent { get; set; }
 
     // Safe-by-default: adult content is shown only when explicitly enabled.

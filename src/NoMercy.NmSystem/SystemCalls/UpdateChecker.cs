@@ -23,30 +23,39 @@ public interface IUpdateChecker
     Task<bool> IsUpdateAvailableAsync();
 }
 
-public class UpdateChecker(IUpdateStatus updateStatus) : IUpdateChecker
+public class UpdateChecker : IUpdateChecker
 {
-    private static readonly HttpClient HttpClient = new();
-
     private const string GithubReleasesUrl =
         "https://api.github.com/repos/NoMercy-Entertainment/nomercy-media-server/releases/latest";
 
-    static UpdateChecker()
+    private static readonly HttpClient SharedHttpClient = CreateHttpClient();
+
+    private readonly IUpdateStatus _updateStatus;
+    private readonly RuntimeServerSettings _settings;
+    private readonly HttpClient _httpClient;
+
+    public UpdateChecker(IUpdateStatus updateStatus, RuntimeServerSettings settings)
+        : this(updateStatus, settings, SharedHttpClient) { }
+
+    /// <summary>
+    /// Testing constructor, so a test can answer GitHub's API with a fake handler.
+    /// </summary>
+    internal UpdateChecker(
+        IUpdateStatus updateStatus,
+        RuntimeServerSettings settings,
+        HttpClient httpClient
+    )
     {
-        HttpClient.DefaultRequestHeaders.Add(
-            "User-Agent",
-            ExternalServicesConfig.Current.UserAgent
-        );
+        _updateStatus = updateStatus;
+        _settings = settings;
+        _httpClient = httpClient;
     }
 
     public async Task<bool> IsUpdateAvailableAsync()
     {
         try
         {
-            using HttpResponseMessage response = await HttpClient.GetAsync(GithubReleasesUrl);
-            response.EnsureSuccessStatusCode();
-
-            string json = await response.Content.ReadAsStringAsync();
-            LatestReleaseInfo? release = JsonConvert.DeserializeObject<LatestReleaseInfo>(json);
+            LatestReleaseInfo? release = await FetchChannelReleaseAsync();
 
             if (release is null || string.IsNullOrEmpty(release.TagName))
                 return false;
@@ -57,12 +66,12 @@ public class UpdateChecker(IUpdateStatus updateStatus) : IUpdateChecker
 
             string currentVersion = Software.GetReleaseVersion();
 
-            updateStatus.LatestVersion = latestVersion;
+            _updateStatus.LatestVersion = latestVersion;
 
             if (string.Equals(latestVersion, currentVersion, StringComparison.OrdinalIgnoreCase))
             {
-                updateStatus.RestartNeeded = false;
-                updateStatus.UpdateAvailable = false;
+                _updateStatus.RestartNeeded = false;
+                _updateStatus.UpdateAvailable = false;
 
                 return false;
             }
@@ -107,7 +116,7 @@ public class UpdateChecker(IUpdateStatus updateStatus) : IUpdateChecker
                 }
             }
 
-            updateStatus.RestartNeeded =
+            _updateStatus.RestartNeeded =
                 onDiskVersion is not null
                 && string.Equals(latestVersion, onDiskVersion, StringComparison.OrdinalIgnoreCase);
 
@@ -129,7 +138,7 @@ public class UpdateChecker(IUpdateStatus updateStatus) : IUpdateChecker
                 );
             }
 
-            updateStatus.UpdateAvailable = updateAvailable;
+            _updateStatus.UpdateAvailable = updateAvailable;
 
             return updateAvailable;
         }
@@ -141,9 +150,56 @@ public class UpdateChecker(IUpdateStatus updateStatus) : IUpdateChecker
         }
     }
 
+    /// <summary>
+    /// Stable reads GitHub's latest release, exactly as before channels existed.
+    /// Beta and nightly read the release list, because GitHub's latest release
+    /// never includes a prerelease.
+    /// </summary>
+    private async Task<LatestReleaseInfo?> FetchChannelReleaseAsync()
+    {
+        if (_settings.UpdateChannel == ReleaseChannel.Stable)
+            return JsonConvert.DeserializeObject<LatestReleaseInfo>(
+                await GetJsonAsync(GithubReleasesUrl)
+            );
+
+        LatestReleaseInfo[] releases =
+            JsonConvert.DeserializeObject<LatestReleaseInfo[]>(
+                await GetJsonAsync(ReleaseChannelSelector.MediaServerReleaseListUrl)
+            ) ?? [];
+
+        return ReleaseChannelSelector.Select(
+            releases,
+            r => new(r.TagName, r.Draft, r.Prerelease, r.Body),
+            _settings.UpdateChannel
+        );
+    }
+
+    private async Task<string> GetJsonAsync(string url)
+    {
+        using HttpResponseMessage response = await _httpClient.GetAsync(url);
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadAsStringAsync();
+    }
+
+    private static HttpClient CreateHttpClient()
+    {
+        HttpClient client = new();
+        client.DefaultRequestHeaders.Add("User-Agent", ExternalServicesConfig.Current.UserAgent);
+        return client;
+    }
+
     private class LatestReleaseInfo
     {
         [JsonProperty("tag_name")]
         public string TagName { get; set; } = string.Empty;
+
+        [JsonProperty("draft")]
+        public bool Draft { get; set; }
+
+        [JsonProperty("prerelease")]
+        public bool Prerelease { get; set; }
+
+        [JsonProperty("body")]
+        public string Body { get; set; } = string.Empty;
     }
 }

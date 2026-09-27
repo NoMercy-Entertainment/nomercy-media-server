@@ -24,9 +24,6 @@ public class InstallerUpdater(ServerConnection serverConnection)
 {
     private static readonly HttpClient HttpClient = new();
 
-    private const string GithubReleasesApiUrl =
-        "https://api.github.com/repos/NoMercy-Entertainment/nomercy-media-server/releases/latest";
-
     // %LocalAppData%\NoMercy\UpdateCache\
     private static string CacheDir =>
         Path.Combine(
