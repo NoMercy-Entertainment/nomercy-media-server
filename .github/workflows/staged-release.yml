@@ -111,4 +111,6 @@ jobs:
       tag: ${{ needs.prepare.outputs.tag }}
       draft: true
       prerelease: true
+      # A branch build is never offered by the apt/rpm repository.
+      update-package-repository: false
       release-name: "NoMercy MediaServer v${{ needs.prepare.outputs.version }} (${{ needs.prepare.outputs.branch }})"

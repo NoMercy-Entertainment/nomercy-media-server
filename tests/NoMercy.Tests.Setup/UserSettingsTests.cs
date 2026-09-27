@@ -29,6 +29,9 @@ public class UserSettingsTests : IDisposable
     private readonly ConnectivityMode _originalConnectivityMode = RuntimeServerSettings
         .Current
         .ConnectivityMode;
+    private readonly ReleaseChannel _originalUpdateChannel = RuntimeServerSettings
+        .Current
+        .UpdateChannel;
 
     public UserSettingsTests()
     {
@@ -49,6 +52,7 @@ public class UserSettingsTests : IDisposable
         RuntimeServerSettings.Current.InternalServerPort = _originalInternalPort;
         RuntimeServerSettings.Current.ExternalServerPort = _originalExternalPort;
         RuntimeServerSettings.Current.ConnectivityMode = _originalConnectivityMode;
+        RuntimeServerSettings.Current.UpdateChannel = _originalUpdateChannel;
     }
 
     [Fact]
@@ -208,6 +212,30 @@ public class UserSettingsTests : IDisposable
         };
 
         actual.Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("Beta", ReleaseChannel.Beta)]
+    [InlineData("nightly", ReleaseChannel.Nightly)]
+    [InlineData("Stable", ReleaseChannel.Stable)]
+    public void ApplySettings_UpdateChannel_UpdatesRuntimeSetting(
+        string value,
+        ReleaseChannel expected
+    )
+    {
+        UserSettings.ApplySettings(new() { ["updateChannel"] = value }, silent: true);
+
+        RuntimeServerSettings.Current.UpdateChannel.Should().Be(expected);
+    }
+
+    [Fact]
+    public void ApplySettings_UnknownUpdateChannel_KeepsCurrentChannel()
+    {
+        RuntimeServerSettings.Current.UpdateChannel = ReleaseChannel.Beta;
+
+        UserSettings.ApplySettings(new() { ["updateChannel"] = "alpha" }, silent: true);
+
+        RuntimeServerSettings.Current.UpdateChannel.Should().Be(ReleaseChannel.Beta);
     }
 
     [Fact]

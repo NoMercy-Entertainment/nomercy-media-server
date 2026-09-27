@@ -53,6 +53,7 @@ public class Binaries
     private readonly IStorageDriver _driver;
     private readonly IStorage _storage;
     private readonly HttpClient _httpClient;
+    private readonly RuntimeServerSettings _settings;
 
     private const string GithubMediaServerApiUrl =
         "https://api.github.com/repos/NoMercy-Entertainment/nomercy-media-server/releases/latest";
@@ -82,6 +83,7 @@ public class Binaries
     {
         _driver = driver;
         _storage = storage;
+        _settings = RuntimeServerSettings.Current;
         _httpClient = new()
         {
             // Default HttpClient.Timeout is 100s which is fine for API calls
@@ -100,11 +102,17 @@ public class Binaries
     /// Testing constructor — allows injection of a custom <see cref="HttpClient"/> so that
     /// unit tests can supply a fake <see cref="HttpMessageHandler"/> without hitting the network.
     /// </summary>
-    internal Binaries(IStorageDriver driver, IStorage storage, HttpClient httpClient)
+    internal Binaries(
+        IStorageDriver driver,
+        IStorage storage,
+        HttpClient httpClient,
+        RuntimeServerSettings? settings = null
+    )
     {
         _driver = driver;
         _storage = storage;
         _httpClient = httpClient;
+        _settings = settings ?? RuntimeServerSettings.Current;
     }
 
     // -------------------------------------------------------------------------
@@ -636,6 +644,61 @@ public class Binaries
     private bool _memoizeReleaseInfoForThisRun;
     private readonly Dictionary<string, GithubReleaseResponse> _releaseInfoMemo = new();
 
+    /// <summary>
+    /// The media server release this install's update channel offers. The server,
+    /// CLI, app and launcher all come from it, so they stay on one release. Stable
+    /// reads GitHub's latest release, exactly as before channels existed; beta and
+    /// nightly pick from the release list, because GitHub's latest release never
+    /// includes a prerelease.
+    /// </summary>
+    /// <returns>
+    /// The release, or an empty <see cref="GithubReleaseResponse"/> when the list
+    /// cannot be read or offers nothing (callers then keep what is installed).
+    /// </returns>
+    internal async Task<GithubReleaseResponse> GetMediaServerReleaseInfo()
+    {
+        ReleaseChannel channel = _settings.UpdateChannel;
+        if (channel == ReleaseChannel.Stable)
+            return await GetLatestReleaseInfo(GithubMediaServerApiUrl);
+
+        string memoKey = $"{ReleaseChannelSelector.MediaServerReleaseListUrl}#{channel}";
+        if (
+            _memoizeReleaseInfoForThisRun
+            && _releaseInfoMemo.TryGetValue(memoKey, out GithubReleaseResponse? memoized)
+        )
+            return memoized;
+
+        GithubReleaseResponse result;
+        try
+        {
+            using HttpResponseMessage response = await _httpClient.GetAsync(
+                ReleaseChannelSelector.MediaServerReleaseListUrl
+            );
+            response.EnsureSuccessStatusCode();
+            string json = await response.Content.ReadAsStringAsync();
+
+            GithubReleaseResponse[] releases = json.FromJson<GithubReleaseResponse[]>() ?? [];
+            result =
+                ReleaseChannelSelector.Select(
+                    releases,
+                    r => new(r.TagName, r.Draft, r.Prerelease, r.Body),
+                    channel
+                ) ?? new();
+        }
+        catch (Exception e)
+        {
+            Logger.Setup(
+                $"Error fetching the {channel} release list: {e.Message}",
+                LogEventLevel.Warning
+            );
+            return new();
+        }
+
+        if (_memoizeReleaseInfoForThisRun)
+            _releaseInfoMemo[memoKey] = result;
+        return result;
+    }
+
     internal async Task<GithubReleaseResponse> GetLatestReleaseInfo(string apiUrl)
     {
         if (
@@ -949,7 +1012,7 @@ public class Binaries
             return;
         }
 
-        GithubReleaseResponse releaseInfo = await GetLatestReleaseInfo(GithubMediaServerApiUrl);
+        GithubReleaseResponse releaseInfo = await GetMediaServerReleaseInfo();
         if (releaseInfo.Assets.Length == 0)
         {
             Logger.Setup("No assets found for App release.", LogEventLevel.Warning);
@@ -1045,7 +1108,7 @@ public class Binaries
             return;
         }
 
-        GithubReleaseResponse releaseInfo = await GetLatestReleaseInfo(GithubMediaServerApiUrl);
+        GithubReleaseResponse releaseInfo = await GetMediaServerReleaseInfo();
         if (releaseInfo.Assets.Length == 0)
         {
             Logger.Setup("No assets found for Launcher release.", LogEventLevel.Warning);
@@ -1141,7 +1204,7 @@ public class Binaries
             return;
         }
 
-        GithubReleaseResponse releaseInfo = await GetLatestReleaseInfo(GithubMediaServerApiUrl);
+        GithubReleaseResponse releaseInfo = await GetMediaServerReleaseInfo();
         if (releaseInfo.Assets.Length == 0)
         {
             Logger.Setup("No assets found for CLI release.", LogEventLevel.Warning);
@@ -1228,7 +1291,7 @@ public class Binaries
 
     public async Task<ServerUpdateResult> DownloadServerUpdate()
     {
-        GithubReleaseResponse releaseInfo = await GetLatestReleaseInfo(GithubMediaServerApiUrl);
+        GithubReleaseResponse releaseInfo = await GetMediaServerReleaseInfo();
         if (releaseInfo.Assets.Length == 0)
         {
             Logger.Setup("No assets found for Server release.", LogEventLevel.Warning);
