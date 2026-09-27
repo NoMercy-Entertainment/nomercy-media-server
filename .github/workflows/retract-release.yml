@@ -43,6 +43,10 @@ jobs:
       VERSION: ${{ inputs.version }}
       ROLLBACK_TO: ${{ inputs.rollback_to }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # This job has no checkout, so gh has no git remote to infer the
+      # repository from. Named here so a gh failure cannot be read as "no such
+      # release" and skip marking the release retracted.
+      GH_REPO: ${{ github.repository }}
 
     steps:
       - name: Reject retracting to itself
@@ -84,11 +88,12 @@ jobs:
         run: |
           BASE="${REGISTRY}/${IMAGE_NAME}"
           # variant:moving tags it owns
+          # The stable channel's tags, as promote-release.yml moves them.
           set -- \
-            ":latest" \
-            "-nvidia:nvidia latest-nvidia" \
-            "-intel:intel latest-intel" \
-            "-amd:amd latest-amd"
+            ":latest stable" \
+            "-nvidia:nvidia latest-nvidia stable-nvidia" \
+            "-intel:intel latest-intel stable-intel" \
+            "-amd:amd latest-amd stable-amd"
           for entry in "$@"; do
             suffix="${entry%%:*}"
             moving="${entry#*:}"
@@ -115,7 +120,7 @@ jobs:
             echo "::warning::no GitHub release $tag — skipping release notes update"
             exit 0
           fi
-          notice=$(printf '> [!CAUTION]\n> **RETRACTED %s.** %s\n>\n> Roll back to v%s. Moving Docker tags (`latest`, `latest-nvidia`, `latest-intel`, `latest-amd`) now point at v%s.\n\n' \
+          notice=$(printf '> [!CAUTION]\n> **RETRACTED %s.** %s\n>\n> Roll back to v%s. Moving Docker tags (`latest`, `stable` and their `-nvidia`, `-intel`, `-amd` forms) now point at v%s.\n\n' \
             "$tag" "${{ inputs.reason }}" "$ROLLBACK_TO" "$ROLLBACK_TO")
           body=$(gh release view "$tag" --json body --jq .body)
           if [ "${{ inputs.dry_run }}" = "true" ]; then
@@ -124,6 +129,21 @@ jobs:
           else
             printf '%s%s' "$notice" "$body" > /tmp/body.md
             gh release edit "$tag" --prerelease --notes-file /tmp/body.md
+          fi
+
+          # Name the rollback target as GitHub's latest release explicitly, so
+          # the updaters land on it rather than on whatever non-prerelease
+          # happens to be newest. Skipped when the target is itself a
+          # prerelease (a nightly or beta): latest stays the stable it was.
+          rollback_pre=$(gh release view "v${ROLLBACK_TO}" --json isPrerelease --jq .isPrerelease 2>/dev/null || echo "missing")
+          if [ "$rollback_pre" = "false" ]; then
+            if [ "${{ inputs.dry_run }}" = "true" ]; then
+              echo "dry run: would mark v${ROLLBACK_TO} as the latest release"
+            else
+              gh release edit "v${ROLLBACK_TO}" --latest
+            fi
+          else
+            echo "::warning::v${ROLLBACK_TO} is not a stable release (${rollback_pre}); GitHub's latest release was left as it is"
           fi
 
       - name: Summarise

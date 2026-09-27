@@ -162,6 +162,22 @@ docker pull ghcr.io/nomercy-entertainment/nomercymediaserver:amd       # AMD
 > [!IMPORTANT]
 > The server derives a stable identity from the host `machine-id`, which the compose files mount read-only. If you run the image directly with `docker run` instead of compose, pass `-v /etc/machine-id:/etc/machine-id:ro` as well. Without it a recreated container reads an empty id and registers as a brand new server.
 
+### Release Channels
+
+Every build starts as a nightly. The same build can later be promoted to beta, then to stable. It is never rebuilt on the way, so stable runs the exact bytes that were tested as nightly and beta.
+
+| Channel | What it is | Docker tag |
+|---------|------------|------------|
+| **Stable** | Promoted from beta. What the installers, the built-in updater and nomercy.tv offer. | `latest` or `stable` (plus `-nvidia`, `-intel`, `-amd`) |
+| **Beta** | A nightly that was picked for wider testing. | `beta` (plus `-nvidia`, `-intel`, `-amd`) |
+| **Nightly** | Every change on `dev` that passes CI. Marked as a pre-release on GitHub. | `nightly` (plus `-nvidia`, `-intel`, `-amd`) |
+
+Every build also keeps a tag with its version, like `1.0.14` or `1.0.14-nvidia`. Pin one of those if you never want an automatic move.
+
+The version number doesn't show the channel. A stable version can skip numbers (1.0.0, then 1.0.14), because the nightlies in between were never promoted.
+
+For maintainers: promote a build with the **Promote Release** workflow in Actions. It refuses when CI was not green for that commit, when an asset or image is missing, or when the build was retracted. The next version line (for example `1.0`) is set in `.github/release-line`.
+
 ### Build from Source
 
 Requires the [.NET 10.0 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10.0).

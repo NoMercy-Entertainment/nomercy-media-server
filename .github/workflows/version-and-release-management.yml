@@ -34,7 +34,9 @@ jobs:
           # that already has a real GitHub Release + ghcr.io image, and the
           # create-release job's "already exists -> edit/clobber" path then
           # overwrites that historical release.
-          LATEST_TAG=$(git tag -l 'v*' | sed 's/^v//' | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)
+          # Plain vMAJOR.MINOR.PATCH only: a suffixed tag (a staged branch
+          # build) must never be read as the line's newest version.
+          LATEST_TAG=$(git tag -l 'v*' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sed 's/^v//' | sort -t. -k1,1n -k2,2n -k3,3n | tail -1)
           if [ -z "$LATEST_TAG" ]; then
             LATEST_TAG="0.1.201"
           fi
@@ -64,15 +66,13 @@ jobs:
         id: calc-version
         if: steps.check-changes.outputs.has_source_changes == 'true'
         run: |
+          # The patch bumps on every nightly. The release line in
+          # .github/release-line decides MAJOR.MINOR: raising it (0.1 -> 1.0)
+          # makes the next nightly 1.0.0. See next-version.sh.
           LATEST_TAG="${{ steps.get-tag.outputs.tag }}"
-          VERSION_NO_V=${LATEST_TAG#v}
-          MAJOR=$(echo "$VERSION_NO_V" | cut -d. -f1)
-          MINOR=$(echo "$VERSION_NO_V" | cut -d. -f2)
-          PATCH=$(echo "$VERSION_NO_V" | cut -d. -f3)
-          NEW_PATCH=$(($PATCH + 1))
-          NEW_VERSION="$MAJOR.$MINOR.$NEW_PATCH"
-          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          echo "Calculated new version: $NEW_VERSION (from tag $LATEST_TAG)"
+          NEW_VERSION=$(bash .github/scripts/next-version.sh "$LATEST_TAG" "$(cat .github/release-line)")
+          echo "new_version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "Calculated new version: $NEW_VERSION (from tag $LATEST_TAG, release line $(cat .github/release-line))"
 
       - name: Check deployment conditions
         id: check-deploy

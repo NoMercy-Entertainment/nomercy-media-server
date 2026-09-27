@@ -85,8 +85,15 @@ jobs:
       version: ${{ needs.version_management.outputs.version }}
       ref: ${{ github.sha }}
 
-  # Step 6: Create Release and sync dev's tree onto master
-  # Only runs after ALL builds succeed — version bump is atomic with release
+  # Step 6: Create the NIGHTLY release and sync dev's tree onto master.
+  # Only runs after ALL builds succeed — version bump is atomic with release.
+  #
+  # Published as a prerelease on purpose. Every updater (the server's
+  # UpdateChecker, the launcher, nomercy.tv's download page, the README link)
+  # resolves GitHub's /releases/latest, which never returns a prerelease. So a
+  # nightly reaches nobody until promote-release.yml promotes that exact build
+  # to beta and then stable. The apt/rpm repository is updated on stable
+  # promotion only, for the same reason.
   create_release:
     needs: [version_management, build_executables, build_packages, build_docker_images]
     if: needs.version_management.outputs.should_deploy == 'true'
@@ -94,6 +101,9 @@ jobs:
     secrets: inherit
     with:
       version: ${{ needs.version_management.outputs.version }}
+      prerelease: true
+      release-name: "NoMercy MediaServer v${{ needs.version_management.outputs.version }} (nightly)"
+      update-package-repository: false
 
   # Step 6b: Publish the plugin contract packages to nuget.org.
   #
@@ -157,21 +167,23 @@ jobs:
             --source https://api.nuget.org/v3/index.json \
             --skip-duplicate
 
-  # Step 7: Promote Docker images from RC tags to stable floating tags.
-  # Runs ONLY after create_release succeeds so users cannot pull :latest or
-  # :<version> until the GitHub Release (with all file assets) is fully published.
-  # Uses `docker buildx imagetools create` to re-tag the already-pushed RC digest
-  # without rebuilding — the image bytes are identical.
+  # Step 7: Tag the Docker images for the nightly channel.
+  # Runs ONLY after create_release succeeds so nobody can pull a version until
+  # its GitHub Release (with all file assets) is fully published. Re-tags the
+  # already-pushed RC digest without rebuilding — the image bytes are identical.
   #
   # RC tags pushed by build_docker_images:
   #   <version>-rc, <version>-rc-nvidia, <version>-rc-intel, <version>-rc-amd
   #
-  # Stable tags published here (superset of the pre-gating tag set, so no
-  # existing pull reference disappears):
-  #   <version>, latest                        (cpu / default variant)
-  #   <version>-nvidia, nvidia, latest-nvidia  (nvidia variant)
-  #   <version>-intel, intel, latest-intel     (intel variant)
-  #   <version>-amd, amd, latest-amd           (amd variant)
+  # Tags published here:
+  #   <version>, nightly                  (cpu / default variant)
+  #   <version>-nvidia, nightly-nvidia    (nvidia variant)
+  #   <version>-intel, nightly-intel      (intel variant)
+  #   <version>-amd, nightly-amd          (amd variant)
+  #
+  # The moving stable tags (latest, stable, nvidia, latest-nvidia, ...) and the
+  # beta tags move only in promote-release.yml, from the immutable <version>
+  # tags pushed here.
   promote_docker_images:
     needs: [version_management, build_docker_images, create_release]
     if: needs.version_management.outputs.should_deploy == 'true'
@@ -194,41 +206,17 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Promote cpu variant
+      - name: Tag every variant for the nightly channel
         run: |
           BASE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
           VERSION="${{ needs.version_management.outputs.version }}"
           docker buildx imagetools create \
             --tag "${BASE}:${VERSION}" \
-            --tag "${BASE}:latest" \
+            --tag "${BASE}:nightly" \
             "${BASE}:${VERSION}-rc"
-
-      - name: Promote nvidia variant
-        run: |
-          BASE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
-          VERSION="${{ needs.version_management.outputs.version }}"
-          docker buildx imagetools create \
-            --tag "${BASE}:${VERSION}-nvidia" \
-            --tag "${BASE}:nvidia" \
-            --tag "${BASE}:latest-nvidia" \
-            "${BASE}:${VERSION}-rc-nvidia"
-
-      - name: Promote intel variant
-        run: |
-          BASE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
-          VERSION="${{ needs.version_management.outputs.version }}"
-          docker buildx imagetools create \
-            --tag "${BASE}:${VERSION}-intel" \
-            --tag "${BASE}:intel" \
-            --tag "${BASE}:latest-intel" \
-            "${BASE}:${VERSION}-rc-intel"
-
-      - name: Promote amd variant
-        run: |
-          BASE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
-          VERSION="${{ needs.version_management.outputs.version }}"
-          docker buildx imagetools create \
-            --tag "${BASE}:${VERSION}-amd" \
-            --tag "${BASE}:amd" \
-            --tag "${BASE}:latest-amd" \
-            "${BASE}:${VERSION}-rc-amd"
+          for variant in nvidia intel amd; do
+            docker buildx imagetools create \
+              --tag "${BASE}:${VERSION}-${variant}" \
+              --tag "${BASE}:nightly-${variant}" \
+              "${BASE}:${VERSION}-rc-${variant}"
+          done

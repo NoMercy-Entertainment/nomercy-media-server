@@ -1,0 +1,309 @@
+name: Promote Release
+
+# Moves an existing nightly build to the beta or stable channel.
+#
+# Every push to dev that passes CI publishes a nightly: a GitHub prerelease
+# plus ghcr.io tags <version>-* and nightly-*. Nothing that looks for "the
+# latest server" sees it, because they all resolve GitHub's /releases/latest
+# and that never returns a prerelease.
+#
+# This workflow promotes one of those builds. It never rebuilds: the stable
+# bytes are the ones that already ran as nightly and beta.
+#
+#   beta    keeps the release a prerelease, labels it beta, and moves the
+#           beta Docker tags (beta, beta-nvidia, beta-intel, beta-amd).
+#   stable  makes it the GitHub "latest" release, which is what the server's
+#           update checker, the launcher and nomercy.tv read; moves the stable
+#           Docker tags (latest, stable, nvidia, latest-nvidia, ...); and asks
+#           nomercy-packages to publish it to the apt/rpm repository.
+#
+# The gate refuses a promotion when the CI run that built the commit did not
+# succeed, when any release asset or Docker image is missing, when the release
+# was retracted, when stable would go backwards, and (for stable) when the
+# build was never a beta.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Nightly version to promote, without a leading v (e.g. 1.0.14)'
+        required: true
+      channel:
+        description: 'Channel to promote it to'
+        type: choice
+        options: [beta, stable]
+        required: true
+      skip_beta:
+        description: 'Stable only: allow a build that was never a beta (first stable, urgent security fix)'
+        type: boolean
+        default: false
+      dry_run:
+        description: 'Run every check and report what would change, without changing anything'
+        type: boolean
+        default: true
+
+concurrency:
+  group: promote-release
+  cancel-in-progress: false
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    # Add required reviewers to this environment in the repository settings
+    # to make every promotion wait for a human approval.
+    environment: release-promotion
+    permissions:
+      contents: write
+      packages: write
+      actions: read
+    env:
+      REGISTRY: ghcr.io
+      IMAGE_NAME: nomercy-entertainment/nomercymediaserver
+      REPO: ${{ github.repository }}
+      VERSION: ${{ inputs.version }}
+      CHANNEL: ${{ inputs.channel }}
+      DRY_RUN: ${{ inputs.dry_run }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Check the version format
+        run: |
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::version must be MAJOR.MINOR.PATCH without a leading v, got '$VERSION'"
+            exit 1
+          fi
+
+      - name: Check the release exists, is complete and was not retracted
+        id: release
+        run: |
+          tag="v${VERSION}"
+          if ! gh release view "$tag" --repo "$REPO" --json tagName >/dev/null 2>&1; then
+            echo "::error::there is no GitHub release $tag"
+            exit 1
+          fi
+          gh release view "$tag" --repo "$REPO" --json isDraft,isPrerelease,body,assets > /tmp/release.json
+
+          if [ "$(jq -r .isDraft /tmp/release.json)" = "true" ]; then
+            echo "::error::$tag is a draft (a staged branch build), not a nightly"
+            exit 1
+          fi
+          if jq -r .body /tmp/release.json | grep -q 'RETRACTED'; then
+            echo "::error::$tag was retracted and cannot be promoted"
+            exit 1
+          fi
+
+          # What a user installs from, per platform. A release missing any of
+          # these would promote a broken download.
+          required=(
+            manifest.json
+            manifest.json.sig
+            release-info.json
+            nomercy-linux-x64
+            nomercy-windows-x64.exe
+            nomercy-macos-x64
+            nomercy-macos-arm64
+            "NoMercyMediaServer-${VERSION}-windows-x64-setup.exe"
+            "NoMercyMediaServer-${VERSION}-macos-x64-setup.pkg"
+            "nomercy_${VERSION}_amd64.deb"
+            "nomercy-${VERSION}-1.x86_64.rpm"
+            "nomercy-${VERSION}-1-x86_64.pkg.tar.zst"
+          )
+          missing=0
+          for name in "${required[@]}"; do
+            if jq -e --arg n "$name" '.assets | any(.name == $n)' /tmp/release.json >/dev/null; then
+              echo "ok      $name"
+            else
+              echo "::error::$tag is missing the asset $name"
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ] || exit 1
+
+          if jq -r .body /tmp/release.json | grep -q '<!-- nomercy-channel: beta -->'; then
+            echo "was_beta=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "was_beta=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "is_prerelease=$(jq -r .isPrerelease /tmp/release.json)" >> "$GITHUB_OUTPUT"
+
+      # The release gate. A nightly only exists if its pipeline's test job
+      # passed, but a rerun, a manual release or a later failed job can leave
+      # a release behind a run that did not succeed. Require a successful
+      # CI/CD Pipeline run for the exact commit the build came from.
+      - name: Check CI succeeded for the commit this build came from
+        run: |
+          gh release download "v${VERSION}" --repo "$REPO" --pattern release-info.json --dir /tmp/info
+          short=$(jq -r .commit_sha /tmp/info/release-info.json)
+          if ! [[ "$short" =~ ^[0-9a-f]{7,40}$ ]]; then
+            echo "::error::release-info.json has no usable commit_sha ('$short')"
+            exit 1
+          fi
+          sha=$(gh api "repos/${REPO}/commits/${short}" --jq .sha)
+          echo "Build commit: $sha"
+
+          runs=$(gh api "repos/${REPO}/actions/workflows/ci-cd-pipeline.yml/runs?head_sha=${sha}&per_page=100" \
+            --jq '[.workflow_runs[] | {id, conclusion, html_url}]')
+          echo "$runs" | jq -r '.[] | "\(.conclusion // "running")  \(.html_url)"'
+
+          if ! echo "$runs" | jq -e 'any(.conclusion == "success")' >/dev/null; then
+            echo "::error::no successful CI/CD Pipeline run for ${sha}. A build from red CI is never promoted."
+            exit 1
+          fi
+
+      - name: Check the channel order
+        env:
+          WAS_BETA: ${{ steps.release.outputs.was_beta }}
+          IS_PRERELEASE: ${{ steps.release.outputs.is_prerelease }}
+        run: |
+          if [ "$CHANNEL" = "beta" ]; then
+            if [ "$IS_PRERELEASE" = "false" ]; then
+              echo "::error::v${VERSION} is already a stable release"
+              exit 1
+            fi
+            exit 0
+          fi
+
+          if [ "$WAS_BETA" != "true" ] && [ "${{ inputs.skip_beta }}" != "true" ]; then
+            echo "::error::v${VERSION} was never a beta. Promote it to beta first, or set skip_beta for a first stable or an urgent fix."
+            exit 1
+          fi
+
+          # Stable never goes backwards: the updaters would see an older
+          # version as "latest" and every server would report no update.
+          current=$(gh api "repos/${REPO}/releases/latest" --jq .tag_name 2>/dev/null || echo "")
+          current="${current#v}"
+          echo "Current stable: ${current:-none}"
+          if [ -n "$current" ] && [ "$current" != "$VERSION" ]; then
+            newest=$(printf '%s\n%s\n' "$current" "$VERSION" | sort -V | tail -1)
+            if [ "$newest" != "$VERSION" ]; then
+              echo "::error::v${VERSION} is older than the current stable v${current}"
+              exit 1
+            fi
+          fi
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Check every Docker image exists
+        run: |
+          BASE="${REGISTRY}/${IMAGE_NAME}"
+          missing=0
+          for suffix in "" "-nvidia" "-intel" "-amd"; do
+            ref="${BASE}:${VERSION}${suffix}"
+            if docker buildx imagetools inspect "$ref" >/dev/null 2>&1; then
+              echo "ok      $ref"
+            else
+              echo "::error::missing $ref"
+              missing=1
+            fi
+          done
+          exit $missing
+
+      - name: Move the channel's Docker tags
+        run: |
+          BASE="${REGISTRY}/${IMAGE_NAME}"
+          # variant suffix : moving tags for that variant
+          if [ "$CHANNEL" = "stable" ]; then
+            set -- \
+              ":latest stable" \
+              "-nvidia:nvidia latest-nvidia stable-nvidia" \
+              "-intel:intel latest-intel stable-intel" \
+              "-amd:amd latest-amd stable-amd"
+          else
+            set -- \
+              ":beta" \
+              "-nvidia:beta-nvidia" \
+              "-intel:beta-intel" \
+              "-amd:beta-amd"
+          fi
+          for entry in "$@"; do
+            suffix="${entry%%:*}"
+            moving="${entry#*:}"
+            args=()
+            for tag in $moving; do
+              args+=(--tag "${BASE}:${tag}")
+            done
+            src="${BASE}:${VERSION}${suffix}"
+            echo "==> $moving -> ${VERSION}${suffix}"
+            if [ "$DRY_RUN" = "true" ]; then
+              echo "    dry run: docker buildx imagetools create ${args[*]} $src"
+            else
+              docker buildx imagetools create "${args[@]}" "$src"
+            fi
+          done
+
+      # The channel marker is the machine-readable record of how far a build
+      # got. The stable gate above reads the beta marker; a channel-aware
+      # update checker can read the same line.
+      - name: Update the GitHub release
+        run: |
+          tag="v${VERSION}"
+          body=$(jq -r .body /tmp/release.json | sed '/^<!-- nomercy-channel: [a-z]* -->$/d')
+          marker="<!-- nomercy-channel: ${CHANNEL} -->"
+
+          if [ "$CHANNEL" = "stable" ]; then
+            title="NoMercy MediaServer v${VERSION}"
+            flags=(--prerelease=false --latest)
+          else
+            title="NoMercy MediaServer v${VERSION} (beta)"
+            flags=(--prerelease)
+          fi
+
+          printf '%s\n%s' "$marker" "$body" > /tmp/body.md
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "dry run: gh release edit $tag --title \"$title\" ${flags[*]} with marker '$marker'"
+          else
+            gh release edit "$tag" --repo "$REPO" --title "$title" --notes-file /tmp/body.md "${flags[@]}"
+          fi
+
+      - name: Publish to the apt/rpm repository
+        if: inputs.channel == 'stable'
+        env:
+          PAT: ${{ secrets.PAT }}
+        run: |
+          payload=$(jq -nc --arg v "$VERSION" '{event_type: "release_published", client_payload: {version: $v}}')
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "dry run: would dispatch $payload to nomercy-packages"
+            exit 0
+          fi
+          if [ -z "$PAT" ]; then
+            echo "::error::the PAT secret is not available to this workflow; nomercy-packages was not told about v${VERSION}"
+            exit 1
+          fi
+          SUCCESS=false
+          for i in 1 2 3; do
+            if curl -fsSL -X POST \
+              -H "Authorization: Bearer ${PAT}" \
+              -H "Accept: application/vnd.github.v3+json" \
+              "https://api.github.com/repos/NoMercy-Entertainment/nomercy-packages/dispatches" \
+              -d "$payload"; then
+              echo "Triggered nomercy-packages update"
+              SUCCESS=true
+              break
+            fi
+            echo "Dispatch attempt $i/3 failed"
+            sleep $((i * 5))
+          done
+          [ "$SUCCESS" = "true" ] || { echo "::error::failed to trigger nomercy-packages after 3 attempts"; exit 1; }
+
+      - name: Summarise
+        run: |
+          {
+            echo "## v${VERSION} -> ${CHANNEL}"
+            echo
+            echo "- Dry run: ${DRY_RUN}"
+            echo "- Gate: release complete, CI green for its commit, images present"
+            if [ "$CHANNEL" = "stable" ]; then
+              echo "- Now GitHub's latest release, so every server, the launcher and nomercy.tv offer it"
+              echo "- Docker: latest, stable, nvidia, intel, amd (and their latest-/stable- forms)"
+            else
+              echo "- Docker: beta, beta-nvidia, beta-intel, beta-amd"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

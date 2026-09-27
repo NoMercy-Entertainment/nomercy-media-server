@@ -25,6 +25,11 @@ on:
         description: 'Release title (defaults to NoMercy MediaServer v{version})'
         required: false
         type: string
+      update-package-repository:
+        description: 'Tell nomercy-packages to publish this version to the apt/rpm repository'
+        required: false
+        type: boolean
+        default: true
     secrets:
       PAT:
         description: 'PAT for pushing to master'
@@ -185,20 +190,16 @@ jobs:
 
           ## Docker
 
+          This exact version:
+
           \`\`\`bash
-          # CPU only
-          docker pull ghcr.io/nomercy-entertainment/nomercymediaserver:latest
-          docker pull ghcr.io/nomercy-entertainment/nomercymediaserver:${VERSION}
-
-          # NVIDIA GPU
-          docker pull ghcr.io/nomercy-entertainment/nomercymediaserver:nvidia
-
-          # Intel Quick Sync
-          docker pull ghcr.io/nomercy-entertainment/nomercymediaserver:intel
-
-          # AMD GPU
-          docker pull ghcr.io/nomercy-entertainment/nomercymediaserver:amd
+          docker pull ghcr.io/nomercy-entertainment/nomercymediaserver:${VERSION}          # CPU
+          docker pull ghcr.io/nomercy-entertainment/nomercymediaserver:${VERSION}-nvidia   # NVIDIA GPU
+          docker pull ghcr.io/nomercy-entertainment/nomercymediaserver:${VERSION}-intel    # Intel Quick Sync
+          docker pull ghcr.io/nomercy-entertainment/nomercymediaserver:${VERSION}-amd      # AMD GPU
           \`\`\`
+
+          To follow a channel instead, use \`:latest\` (stable), \`:beta\` or \`:nightly\`, with the same \`-nvidia\`, \`-intel\` and \`-amd\` suffixes. See [release channels](${REPO}#release-channels).
 
           Or use Docker Compose — see \`docker-compose.yml\` (and GPU variants) in the repo.
 
@@ -376,7 +377,10 @@ jobs:
 
           echo "All assets uploaded successfully"
 
+      # Nightlies skip this: the apt/rpm repository carries stable only, and
+      # promote-release.yml sends the same dispatch when a build goes stable.
       - name: Trigger package repository update
+        if: inputs.update-package-repository
         env:
           PAT: ${{ secrets.PAT }}
         run: |
