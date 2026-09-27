@@ -78,7 +78,18 @@ if [ "$channel" = "beta" ]; then
   exit 0
 fi
 
-if ! jq -r '.body // ""' "$release" | grep -q '<!-- nomercy-channel: beta -->' && [ "$skip_beta" != "true" ]; then
+# "Update the GitHub release" (the step after this gate) rewrites the
+# channel marker to "stable" and, on success, flips isPrerelease to false.
+# So a promotion that reached that step and then failed later (the Docker
+# tag move, the packages dispatch) leaves no "beta" marker for a retry to
+# find: the release now looks, to this check, like it was never a beta.
+# isPrerelease already false is that retry, not a regression, so it is
+# not asked to prove it was a beta again.
+was_beta="false"
+jq -r '.body // ""' "$release" | grep -q '<!-- nomercy-channel: beta -->' && was_beta="true"
+already_stable="false"
+[ "$(jq -r .isPrerelease "$release")" = "false" ] && already_stable="true"
+if [ "$was_beta" != "true" ] && [ "$already_stable" != "true" ] && [ "$skip_beta" != "true" ]; then
   refuse "v$version was never a beta. Promote it to beta first, or set skip_beta for a first stable or an urgent fix."
 fi
 

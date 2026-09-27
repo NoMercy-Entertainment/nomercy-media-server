@@ -32,6 +32,11 @@ release draft.json '.isDraft = true'
 release retracted.json '.body = "> [!CAUTION]\n> **RETRACTED v1.0.14.** broke playback\n" + .body'
 release no-deb.json '.assets |= map(select(.name != "nomercy_1.0.14_amd64.deb"))'
 release null-body.json '.body = null'
+# A stable promotion whose "Update the GitHub release" step succeeded (marker
+# rewritten to stable, isPrerelease flipped) before a later step (Docker move,
+# packages dispatch) failed. The beta marker this gate used to require is
+# already gone by the time someone retries.
+release retry-stable.json '.isPrerelease = false | .body = "<!-- nomercy-channel: stable -->\n" + .body'
 
 run() {
   bash "$here/promote-gate.sh" "$@" >"$tmp/out" 2>&1
@@ -68,6 +73,7 @@ allowed "nightly to stable with skip_beta (first stable)" "$tmp/nightly.json" "$
 allowed "stable rerun of the current stable" "$tmp/beta.json" "$tmp/green.json" $v stable false v1.0.14
 allowed "numeric, not text, version order" "$tmp/beta.json" "$tmp/green.json" $v stable false 1.0.9
 allowed "release without notes to beta" "$tmp/null-body.json" "$tmp/green.json" $v beta false
+allowed "retry a stable promotion that already flipped" "$tmp/retry-stable.json" "$tmp/green.json" $v stable false 1.0.14
 
 refused "draft" "is a draft" "$tmp/draft.json" "$tmp/green.json" $v beta false
 refused "retracted, to beta" "was retracted" "$tmp/retracted.json" "$tmp/green.json" $v beta false

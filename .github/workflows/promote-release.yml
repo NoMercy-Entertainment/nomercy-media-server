@@ -182,7 +182,7 @@ jobs:
       - name: Update the GitHub release
         run: |
           tag="v${VERSION}"
-          body=$(jq -r .body /tmp/release.json | sed '/^<!-- nomercy-channel: [a-z]* -->$/d')
+          body=$(jq -r '.body // ""' /tmp/release.json | sed '/^<!-- nomercy-channel: [a-z]* -->$/d')
           marker="<!-- nomercy-channel: ${CHANNEL} -->"
 
           if [ "$CHANNEL" = "stable" ]; then

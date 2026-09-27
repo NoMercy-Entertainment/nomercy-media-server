@@ -113,6 +113,11 @@ jobs:
       # Marking it a prerelease takes it out of /releases/latest and out of any
       # installer or doc that resolves "the current version" through that
       # endpoint, without breaking links to the release page or its assets.
+      #
+      # This step's early return only skips the notes update: it must never
+      # skip the next step. The Docker tags were already re-pointed above, so
+      # if this ends the job, /releases/latest is left naming a release that
+      # no longer matches what :latest serves.
       - name: Mark the GitHub release as retracted
         run: |
           tag="v${VERSION}"
@@ -131,10 +136,15 @@ jobs:
             gh release edit "$tag" --prerelease --notes-file /tmp/body.md
           fi
 
-          # Name the rollback target as GitHub's latest release explicitly, so
-          # the updaters land on it rather than on whatever non-prerelease
-          # happens to be newest. Skipped when the target is itself a
-          # prerelease (a nightly or beta): latest stays the stable it was.
+      # A separate step so it still runs when the retracted tag has no
+      # release page (the step above then exits 0, not failed): the Docker
+      # tags already moved, so GitHub's "latest release" must follow them or
+      # every updater keeps resolving the retracted build. A real failure
+      # earlier (verify, re-point) still skips this, same as any other step.
+      - name: Name the rollback target as the latest release
+        run: |
+          # Skipped when the target is itself a prerelease (a nightly or
+          # beta): latest stays the stable it was.
           rollback_pre=$(gh release view "v${ROLLBACK_TO}" --json isPrerelease --jq .isPrerelease 2>/dev/null || echo "missing")
           if [ "$rollback_pre" = "false" ]; then
             if [ "${{ inputs.dry_run }}" = "true" ]; then
