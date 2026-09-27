@@ -219,7 +219,12 @@ jobs:
           Build: \`${SHORT_SHA}\`
           NOTES_END
 
+      # A draft is a staged branch build (staged-release.yml), not a release.
+      # Syncing here used to reset master to dev's tree and stamp the branch's
+      # csproj version on it: master got "release: v0.1.404" from a feature
+      # branch on 2026-09-25, between the real v0.1.529 and v0.1.530.
       - name: Sync dev tree to master and bump version
+        if: ${{ !inputs.draft }}
         env:
           PAT: ${{ secrets.PAT }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -341,7 +346,14 @@ jobs:
             echo "Release $TAG already exists, updating..."
             gh release edit "$TAG" "${FLAGS[@]}"
           else
-            gh release create "$TAG" "${FLAGS[@]}" --target master
+            # A draft never touched master (see the sync step), so it points
+            # at the commit it was built from.
+            if [ "${{ inputs.draft }}" = "true" ]; then
+              TARGET="$GITHUB_SHA"
+            else
+              TARGET=master
+            fi
+            gh release create "$TAG" "${FLAGS[@]}" --target "$TARGET"
           fi
           echo "Release ready: $TAG"
 
