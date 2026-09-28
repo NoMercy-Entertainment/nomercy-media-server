@@ -59,8 +59,13 @@ public class PluginHttpTelemetrySink(
                     response.StatusCode
                 );
         }
-        catch (Exception exception) when (exception is not OperationCanceledException)
+        catch (Exception exception)
+            when (exception is not OperationCanceledException || !ct.IsCancellationRequested)
         {
+            // An HttpClient timeout surfaces as a TaskCanceledException, which IS an
+            // OperationCanceledException. Only the caller's own token asking for
+            // cancellation may escape here — a timeout must not, or it ends the
+            // BackgroundService that reports this telemetry and stops the host.
             logger.LogDebug(exception, "Plugin telemetry to {Path} did not reach NoMercy.", path);
         }
     }

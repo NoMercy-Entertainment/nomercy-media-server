@@ -61,8 +61,13 @@ public class PluginTrustRefreshService(
             if (tokens.AccessToken is { Length: > 0 } token)
                 await entitlements.RefreshAsync(addresses.Entitlements(), token, ct);
         }
-        catch (Exception exception) when (exception is not OperationCanceledException)
+        catch (Exception exception)
+            when (exception is not OperationCanceledException || !ct.IsCancellationRequested)
         {
+            // An HttpClient timeout in any of the three refreshes surfaces as a
+            // TaskCanceledException, which IS an OperationCanceledException. Only
+            // the caller's own token asking for shutdown may escape here — a slow
+            // nomercy.tv call must not, or it ends the BackgroundService loop.
             logger.LogDebug(exception, "Plugin trust: this refresh did not finish.");
         }
     }

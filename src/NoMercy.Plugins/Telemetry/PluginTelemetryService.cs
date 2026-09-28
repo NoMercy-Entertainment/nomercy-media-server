@@ -42,8 +42,13 @@ public class PluginTelemetryService(
             {
                 await reporter.SendAsync(windowStart, stoppingToken);
             }
-            catch (Exception exception) when (exception is not OperationCanceledException)
+            catch (Exception exception)
+                when (exception is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
             {
+                // An HttpClient timeout inside the reporter surfaces as a
+                // TaskCanceledException, which IS an OperationCanceledException. Only
+                // the host's own shutdown may escape this catch — a slow SaaS call
+                // must not, or one timeout stops the whole server.
                 logger.LogDebug(exception, "The plugin telemetry window was not reported.");
             }
 

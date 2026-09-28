@@ -161,6 +161,53 @@ public class WorkerSelfRegistrationServiceTests
             .BeGreaterThan(1, "heartbeat 404 must trigger re-registration");
     }
 
+    [Fact]
+    public async Task ExecuteAsync_WhenRegisterTimesOut_SurvivesAndKeepsHeartbeating()
+    {
+        // An HttpClient timeout surfaces as a TaskCanceledException, which IS an
+        // OperationCanceledException. It must not escape TryRegisterAsync
+        // uncaught — the service's own stoppingToken was never asked to
+        // cancel, so the ExecuteAsync loop must carry on to the heartbeat.
+        TaskCompletionSource heartbeatSeen = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        RecordingHandler handler = new(respond: req =>
+        {
+            if (req.RequestUri!.ToString().Contains("register"))
+                throw new TaskCanceledException("timed out", new TimeoutException());
+
+            if (req.RequestUri.ToString().Contains("heartbeat"))
+                heartbeatSeen.TrySetResult();
+
+            return new(HttpStatusCode.OK);
+        });
+
+        WorkerSelfRegistrationService sut = MakeService(
+            handler,
+            opts =>
+            {
+                opts.DistributedEncodingSigningKey = "key";
+                opts.CoordinatorUrl = "http://coordinator.test";
+                opts.WorkerSelfBaseUrl = "http://worker.test";
+                opts.WorkerId = "tw";
+                opts.WorkerHeartbeatInterval = TimeSpan.FromMilliseconds(30);
+            }
+        );
+
+        using CancellationTokenSource cts = new();
+        await sut.StartAsync(cts.Token);
+
+        // Proves the loop survived the register timeout: it reached the next
+        // heartbeat instead of the ExecuteAsync task faulting.
+        await heartbeatSeen.Task.WaitAsync(TimeSpan.FromSeconds(5));
+
+        await cts.CancelAsync();
+
+        // Before the fix, ExecuteAsync's Task was faulted by the escaped
+        // TaskCanceledException, and BackgroundService.StopAsync awaits (and
+        // rethrows from) that task — this call would throw.
+        Func<Task> stop = () => sut.StopAsync(CancellationToken.None);
+        await stop.Should().NotThrowAsync();
+    }
+
     // ──────────────────────────────────────────────────────────────────────────
     // Helpers
     // ──────────────────────────────────────────────────────────────────────────
