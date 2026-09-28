@@ -49,7 +49,10 @@ public class PluginWatchdogService(
             {
                 Sweep();
             }
-            catch (Exception exception) when (exception is not OperationCanceledException)
+            catch (Exception exception)
+                when (exception is not OperationCanceledException
+                    || !stoppingToken.IsCancellationRequested
+                )
             {
                 // One bad sweep must not take the watchdog down with it: a
                 // watchdog that stopped is a server with no ceilings at all,

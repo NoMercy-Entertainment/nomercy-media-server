@@ -164,7 +164,8 @@ public sealed class HardwareBenchmarkRecalibrationService : BackgroundService
                 .ConfigureAwait(false);
             return result.Changed;
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex)
+            when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             _logger.LogWarning(ex, "Driver fingerprint check failed — treating as unchanged");
             return false;
