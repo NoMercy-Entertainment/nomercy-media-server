@@ -297,8 +297,12 @@ public class WorkerSelfRegistrationService(
             );
             return false;
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
+            // The 10s HttpClient timeout above surfaces as a TaskCanceledException,
+            // which IS an OperationCanceledException. Only the service's own
+            // shutdown token may escape this catch — a slow coordinator must not,
+            // or it ends the ExecuteAsync loop and stops the host.
             logger.LogWarning(ex, "Self-registration request failed");
             return false;
         }
@@ -323,8 +327,11 @@ public class WorkerSelfRegistrationService(
 
             return response.IsSuccessStatusCode;
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
+            // Same reasoning as TryRegisterAsync above: a heartbeat timeout must
+            // not escape as an uncaught OperationCanceledException, or it stops
+            // the host over one slow coordinator response.
             logger.LogDebug(ex, "Heartbeat failed");
             return false;
         }
