@@ -80,54 +80,31 @@ src/
 - Both use SQLite with connection pooling and query splitting
 
 ### SQLite Query Restrictions
-**NEVER** use `g.First()`, `g.Last()`, or element-access patterns inside `GroupBy().Select()` projections in EF Core queries. SQLite does not support the SQL `APPLY` operator that EF Core generates for these patterns, causing `System.InvalidOperationException: Translating this query requires the SQL APPLY operation`.
+**NEVER** use `g.First()`, `g.Last()`, or element-access patterns inside
+`GroupBy().Select()` projections in EF Core queries — SQLite has no `APPLY`
+operator, and EF Core throws `System.InvalidOperationException:
+Translating this query requires the SQL APPLY operation`. Fetch a flat
+projection first, then `GroupBy` client-side in memory. Same for a nested
+`.ToList()` inside `.Select()` — fetch join-table data separately and
+combine client-side.
 
-**Bad** (triggers APPLY):
 ```csharp
-context.Items.GroupBy(r => r.MediaId).Select(g => new Dto
-{
-    Title = g.First().Title,  // APPLY required
-    Count = g.Count()
-});
+// Bad: triggers APPLY
+context.Items.GroupBy(r => r.MediaId).Select(g => new Dto { Title = g.First().Title });
+// Good: flat query, group in memory
+var rows = await context.Items.Select(r => new { r.MediaId, r.Title }).ToListAsync(ct);
+var result = rows.GroupBy(r => r.MediaId).Select(g => new Dto { Title = g.First().Title });
 ```
-
-**Good** (two-step: flat query + client-side grouping):
-```csharp
-// Step 1: Flat projection server-side
-var rows = await context.Items
-    .Select(r => new { r.MediaId, r.Title, r.SourceId })
-    .ToListAsync(ct);
-// Step 2: Group in memory
-var result = rows.GroupBy(r => r.MediaId)
-    .Select(g => new Dto { Title = g.First().Title, Count = g.Count() });
-```
-
-Also avoid projecting nested `.ToList()` inside `.Select()` (e.g. `GenreIds = m.GenreMovies.Select(g => g.GenreId).ToList()`) — fetch join-table data in a separate query and combine client-side.
 
 ### FFmpeg Encoding Pipeline
 Every encode runs six staged steps, each a separately injected interface in
-`src/NoMercy.Encoder/Pipeline/Stages/`:
-
-```
-Analyze → Validate → Plan → Build → Execute → Finalize
-```
-
-- **Analyze** (`IAnalysisStage`) ffprobes the source into `MediaInfo`.
-- **Validate** (`IValidationStage`) rejects profiles that cannot succeed.
-- **Plan** (`IPlanStage`) turns profile + source into an `ExecutionPlan`, choosing
-  the encoder handle, GPU, filter chain, and ladder rungs.
-- **Build** (`IBuildStage`) turns the plan into `FfmpegCommand[]`.
-- **Execute** (`IExecutionStage`) runs ffmpeg and streams progress.
-- **Finalize** (`IFinalizeStage`) writes master playlists, chapters, and sidecars.
-
-`Pipeline/Encoder.cs` drives the sequence. `Orchestration/EncodingOrchestrator.cs`
-sits above it and picks an `IEncodingStrategy` per container family (HLS, DASH,
-MP4, MKV, audio-only) via `StrategyResolver` — plugin strategies register into the
-same DI enumerable and win over built-ins.
-
-Multi-task runs share one output directory, so only the coordinator runs
-Finalize (`EncodingOptions.FinalizeOnly`); per-stream slices stop after Execute
-to avoid racing the master playlist and font manifest.
+`src/NoMercy.Encoder/Pipeline/Stages/`: Analyze → Validate → Plan → Build →
+Execute → Finalize. `Pipeline/Encoder.cs` drives the sequence;
+`Orchestration/EncodingOrchestrator.cs` picks an `IEncodingStrategy` per
+container family (HLS, DASH, MP4, MKV, audio-only). Multi-task runs share
+one output directory, so only the coordinator runs Finalize
+(`EncodingOptions.FinalizeOnly`); per-stream slices stop after Execute to
+avoid racing the master playlist and font manifest.
 
 ### Real-time Communication
 - `VideoHub`: Video playback control, progress tracking, device sync
@@ -142,10 +119,10 @@ to avoid racing the master playlist and font manifest.
 
 ## Formatting
 
-Formatting and naming conventions are in the root `CLAUDE.md` ("The loop", "Naming") —
-not repeated here.
+Formatting and naming conventions are in this repo's own top-level
+`CLAUDE.md` ("The loop", "Naming", "Modern C#") — not repeated here.
 
-## Code Style Rules
+## Code Style Rules (not already in the top-level CLAUDE.md)
 
 ### Class Structure Order
 1. Private constants
@@ -155,135 +132,19 @@ not repeated here.
 5. Public methods
 6. Private helper methods
 
-### Constructor Patterns
-Prefer primary constructors (C# 12+) for new code:
-```csharp
-public class LibrariesController(
-    LibraryRepository libraryRepository,
-    CollectionRepository collectionRepository,
-    HomeRepository homeRepository)
-    : BaseController
-```
-
-Traditional constructor when more initialization logic is needed:
-```csharp
-public HomeService(HomeRepository homeRepository, MediaContext mediaContext)
-{
-    _homeRepository = homeRepository;
-    _mediaContext = mediaContext;
-}
-```
-
-### Async/Await
-- All async methods return `Task<T>` or `Task`
-- Async method names end with `Async` suffix
-- Use `await foreach` for streaming data
-- Use `ToListAsync()` for EF Core queries
-
-### Null Handling
-Use null-coalescing and null-conditional operators:
-```csharp
-string name = genre.Translations.FirstOrDefault()?.Name ?? genre.Name;
-Logo = movie.Images.FirstOrDefault(i => i.Type == "logo")?.FilePath;
-```
-
-Use pattern matching for null checks:
-```csharp
-if (item.Movie is not null) { }
-.Where(image => image is { TvId: not null, Type: "backdrop" })
-```
-
-### Property Patterns
-Nullable properties:
-```csharp
-public string? Overview { get; set; }
-```
-
-Non-nullable with null-forgiving operator:
-```csharp
-public string Title { get; set; } = null!;
-```
-
-Expression-bodied for simple getters:
-```csharp
-public bool IsHdr => VideoIsHdr();
-```
-
-### Collection Initialization
-Use collection expressions (C# 12+):
-```csharp
-List<Movie> movieData = [];
-```
-
-Use target-typed new:
-```csharp
-List<Library> libraries = new();
-Dictionary<string, object?> result = new() { { "id", id } };
-```
-
 ### LINQ Style
-Prefer method syntax:
-```csharp
-List<GenreRowDto> genres = FetchGenres(genreItems).ToList();
-```
-
-Use query syntax with `let` for complex readability:
+Prefer method syntax. Use query syntax with `let` only when it reads more
+clearly for a multi-step projection:
 ```csharp
 return from genre in genreItems
     let name = genre.Translations.FirstOrDefault()?.Name ?? genre.Name
     select new GenreRowDto { Title = name };
 ```
 
-### String Handling
-Always use string interpolation:
-```csharp
-string url = $"/swagger/{groupName}/swagger.json";
-Link = new($"/movie/{Id}", UriKind.Relative);
-```
-
-### Error Handling
-- Early return on null/authorization checks
-- Return HTTP status codes in controllers, not exceptions
-- Log with `Console.WriteLine` in catch blocks
-
 ### Comments
 - Minimal comments; code should be self-documenting
 - When needed, explain "why" not "what"
 - Use XML docs (`///`) for public API methods
-
-### Using Statements
-File-scoped namespaces:
-```csharp
-namespace NoMercy.Api.Controllers;
-
-public class BaseController : Controller
-```
-
-Order: System → Third-party → Project namespaces
-
-### API Controllers
-```csharp
-[ApiController]
-[Tags("Media Search")]
-[ApiVersion(1.0)]
-[Authorize]
-[Route("api/v{version:apiVersion}/search")]
-public class SearchController : BaseController
-```
-
-### JSON Properties
-Use `[JsonProperty]` for serialization:
-```csharp
-[JsonProperty("id")] public dynamic? Id { get; set; }
-[JsonProperty("created_at")] public DateTime CreatedAt { get; set; }
-```
-
-### Service Registration Pattern
-```csharp
-services.AddVideoHubServices();
-services.AddMusicHubServices();
-services.AddCronWorker();
-```
 
 ## External Provider Integrations
 
