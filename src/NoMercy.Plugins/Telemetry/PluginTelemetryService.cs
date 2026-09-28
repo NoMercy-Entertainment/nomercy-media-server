@@ -25,7 +25,12 @@ namespace NoMercy.PluginSdk.Telemetry;
 public class PluginTelemetryService(
     PluginTelemetryReporter reporter,
     TimeProvider clock,
-    ILogger<PluginTelemetryService> logger
+    ILogger<PluginTelemetryService> logger,
+    // Collapses the hourly wait to a short value. Set only by tests, which
+    // otherwise could not exercise more than one tick without sleeping
+    // through the real hour — the same pattern ConnectivityManager uses
+    // for its own supervision wait.
+    TimeSpan? intervalOverride = null
 ) : BackgroundService
 {
     public static TimeSpan Interval { get; } = TimeSpan.FromHours(1);
@@ -34,7 +39,7 @@ public class PluginTelemetryService(
     {
         DateTimeOffset windowStart = clock.GetUtcNow();
 
-        using PeriodicTimer timer = new(Interval);
+        using PeriodicTimer timer = new(intervalOverride ?? Interval);
 
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
