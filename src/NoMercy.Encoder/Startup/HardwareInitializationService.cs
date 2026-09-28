@@ -175,7 +175,8 @@ public class HardwareInitializationService(
             );
             logger.LogInformation("{HardwareSummary}", summary.ToString());
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex)
+            when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             logger.LogError(ex, "Hardware detection failed — software-only fallback");
             Capabilities = new HardwareCapabilities(Gpus: [], CpuCores: Environment.ProcessorCount);
@@ -217,7 +218,8 @@ public class HardwareInitializationService(
                 );
             }
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex)
+            when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             logger.LogWarning(
                 ex,
@@ -259,7 +261,8 @@ public class HardwareInitializationService(
 
             return await hardwareEncoderProbe.ProbeAsync(candidates, ct).ConfigureAwait(false);
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex)
+            when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             logger.LogWarning(
                 ex,
@@ -286,7 +289,8 @@ public class HardwareInitializationService(
             {
                 await ffmpegCapabilities.ProbeAsync(ct).ConfigureAwait(false);
             }
-            catch (Exception ex) when (ex is not OperationCanceledException)
+            catch (Exception ex)
+                when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
             {
                 if (attempt == MaxProbeRetries)
                     throw;
