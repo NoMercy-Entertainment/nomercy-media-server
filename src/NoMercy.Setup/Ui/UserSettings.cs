@@ -317,6 +317,15 @@ public static class UserSettings
                     if (Enum.TryParse(setting.Value, true, out ConnectivityMode connectivityMode))
                         RuntimeServerSettings.Current.ConnectivityMode = connectivityMode;
                     break;
+                case "updateChannel":
+                    if (ReleaseChannelSelector.TryParse(setting.Value, out ReleaseChannel channel))
+                        RuntimeServerSettings.Current.UpdateChannel = channel;
+                    else
+                        Logger.App(
+                            $"UserSettings: skipping unknown 'updateChannel' value '{setting.Value}' — staying on {RuntimeServerSettings.Current.UpdateChannel}",
+                            LogEventLevel.Warning
+                        );
+                    break;
                 case "derivedAudioCapGb":
                     if (!int.TryParse(setting.Value, out int derivedAudioCapGb))
                     {

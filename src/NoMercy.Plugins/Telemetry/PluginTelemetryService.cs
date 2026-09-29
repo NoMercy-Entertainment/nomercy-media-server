@@ -25,7 +25,12 @@ namespace NoMercy.PluginSdk.Telemetry;
 public class PluginTelemetryService(
     PluginTelemetryReporter reporter,
     TimeProvider clock,
-    ILogger<PluginTelemetryService> logger
+    ILogger<PluginTelemetryService> logger,
+    // Collapses the hourly wait to a short value. Set only by tests, which
+    // otherwise could not exercise more than one tick without sleeping
+    // through the real hour — the same pattern ConnectivityManager uses
+    // for its own supervision wait.
+    TimeSpan? intervalOverride = null
 ) : BackgroundService
 {
     public static TimeSpan Interval { get; } = TimeSpan.FromHours(1);
@@ -34,7 +39,7 @@ public class PluginTelemetryService(
     {
         DateTimeOffset windowStart = clock.GetUtcNow();
 
-        using PeriodicTimer timer = new(Interval);
+        using PeriodicTimer timer = new(intervalOverride ?? Interval);
 
         while (await timer.WaitForNextTickAsync(stoppingToken))
         {
@@ -42,8 +47,13 @@ public class PluginTelemetryService(
             {
                 await reporter.SendAsync(windowStart, stoppingToken);
             }
-            catch (Exception exception) when (exception is not OperationCanceledException)
+            catch (Exception exception)
+                when (exception is not OperationCanceledException || !stoppingToken.IsCancellationRequested)
             {
+                // An HttpClient timeout inside the reporter surfaces as a
+                // TaskCanceledException, which IS an OperationCanceledException. Only
+                // the host's own shutdown may escape this catch — a slow SaaS call
+                // must not, or one timeout stops the whole server.
                 logger.LogDebug(exception, "The plugin telemetry window was not reported.");
             }
 

@@ -59,4 +59,10 @@ public class ConfigDtoData
 
     [JsonProperty("derived_audio_cap_gb")]
     public int? DerivedAudioCapGb { get; set; }
+
+    /// <summary>
+    /// Which builds this server is offered as updates: <c>stable</c>, <c>beta</c> or <c>nightly</c>.
+    /// </summary>
+    [JsonProperty("update_channel")]
+    public string? UpdateChannel { get; set; }
 }

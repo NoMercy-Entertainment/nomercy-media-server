@@ -25,6 +25,7 @@ using NoMercy.Database.Activity;
 using NoMercy.Database.Models.Common;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.NmSystem.Configuration;
+using NoMercy.NmSystem.SystemCalls;
 using NoMercyQueue;
 using Configuration = NoMercy.Database.Models.Common.Configuration;
 
@@ -70,6 +71,7 @@ public class ConfigurationController(
                     DerivedAudioCapGb = (int)(
                         runtimeSettings.DerivedAudioCapBytes / (1024L * 1024 * 1024)
                     ),
+                    UpdateChannel = runtimeSettings.UpdateChannel.ToString().ToLowerInvariant(),
                 },
             }
         );
@@ -131,6 +133,14 @@ public class ConfigurationController(
         if (request.DerivedAudioCapGb is < 1)
         {
             return BadRequestResponse("derived_audio_cap_gb must be at least 1");
+        }
+
+        if (
+            request.UpdateChannel is not null
+            && !ReleaseChannelSelector.TryParse(request.UpdateChannel, out _)
+        )
+        {
+            return BadRequestResponse("update_channel must be stable, beta or nightly");
         }
 
         bool restartRequired = await UpdatePortsAsync(request, userId, changes);
@@ -312,6 +322,23 @@ public class ConfigurationController(
                 newCapGb.ToString(),
                 oldCapBytes,
                 newCapBytes,
+                userId,
+                changes
+            );
+        }
+
+        if (
+            request.UpdateChannel is not null
+            && ReleaseChannelSelector.TryParse(request.UpdateChannel, out ReleaseChannel channel)
+        )
+        {
+            ReleaseChannel oldChannel = runtimeSettings.UpdateChannel;
+            runtimeSettings.UpdateChannel = channel;
+            await PersistAsync(
+                "updateChannel",
+                channel.ToString(),
+                oldChannel,
+                channel,
                 userId,
                 changes
             );

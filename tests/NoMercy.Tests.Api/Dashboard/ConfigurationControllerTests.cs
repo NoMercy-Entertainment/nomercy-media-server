@@ -274,6 +274,60 @@ public class ConfigurationControllerTests : IClassFixture<NoMercyApiFactory>
     }
 
     [Fact]
+    public async Task PatchConfiguration_UpdateChannel_PersistsRoundTrip_AndUpdatesRuntimeSettings()
+    {
+        try
+        {
+            HttpResponseMessage patchResponse = await PatchAsync(
+                _authed,
+                "/api/v1/dashboard/configuration",
+                new { update_channel = "beta" }
+            );
+            patchResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+            HttpResponseMessage getResponse = await _authed.GetAsync(
+                "/api/v1/dashboard/configuration"
+            );
+            string body = await getResponse.Content.ReadAsStringAsync();
+            using JsonDocument doc = JsonDocument.Parse(body);
+            doc.RootElement.GetProperty("data")
+                .GetProperty("update_channel")
+                .GetString()
+                .Should()
+                .Be("beta");
+
+            RuntimeServerSettings.Current.UpdateChannel.Should().Be(ReleaseChannel.Beta);
+
+            using IServiceScope scope = _factory.Services.CreateScope();
+            AppDbContext appContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            Configuration? persisted = await appContext.Configuration.FirstOrDefaultAsync(c =>
+                c.Key == "updateChannel"
+            );
+            persisted.Should().NotBeNull();
+            persisted!.Value.Should().Be("Beta");
+        }
+        finally
+        {
+            RuntimeServerSettings.Current.UpdateChannel = ReleaseChannel.Stable;
+        }
+    }
+
+    [Theory]
+    [InlineData("alpha")]
+    [InlineData("2")]
+    public async Task PatchConfiguration_UnknownUpdateChannel_ReturnsBadRequest(string channel)
+    {
+        HttpResponseMessage patchResponse = await PatchAsync(
+            _authed,
+            "/api/v1/dashboard/configuration",
+            new { update_channel = channel }
+        );
+
+        patchResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        RuntimeServerSettings.Current.UpdateChannel.Should().Be(ReleaseChannel.Stable);
+    }
+
+    [Fact]
     public async Task GetLanguages_ReturnsUnauthorized_WhenAnonymous()
     {
         HttpResponseMessage response = await _unauthed.GetAsync(

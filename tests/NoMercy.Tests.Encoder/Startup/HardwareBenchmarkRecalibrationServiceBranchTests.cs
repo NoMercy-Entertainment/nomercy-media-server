@@ -151,11 +151,9 @@ public class HardwareBenchmarkRecalibrationServiceBranchTests
     }
 
     [Fact]
-    public async Task DriverChangeDetector_cancellation_propagates_out()
+    public async Task DriverChangeDetector_timeout_does_not_propagate()
     {
-        // The catch filter explicitly excludes OperationCanceledException —
-        // a cancellation during driver detection should bubble up so the
-        // outer ExecuteAsync loop sees it.
+        // An uncancelled token means this exception is a timeout, not shutdown.
         Mock<ISpeedIndexStore> store = new();
         store.Setup(s => s.LastCalibratedAt).Returns(DateTime.UtcNow.AddDays(-1));
 
@@ -175,6 +173,31 @@ public class HardwareBenchmarkRecalibrationServiceBranchTests
         );
 
         Func<Task> act = () => sut.EvaluateAndRecalibrateAsync(CancellationToken.None);
+        await act.Should().NotThrowAsync();
+        benchmark.Verify(b => b.CalibrateAsync(It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task DriverChangeDetector_shutdown_cancellation_propagates_out()
+    {
+        using CancellationTokenSource stopping = new();
+        Mock<ISpeedIndexStore> store = new();
+        store.Setup(s => s.LastCalibratedAt).Returns(DateTime.UtcNow.AddDays(-1));
+
+        Mock<IDriverChangeDetector> driverDetector = new();
+        driverDetector
+            .Setup(d => d.DetectAndPersistAsync(It.IsAny<CancellationToken>()))
+            .Callback(() => stopping.Cancel())
+            .ThrowsAsync(new OperationCanceledException());
+
+        HardwareBenchmarkRecalibrationService sut = BuildService(
+            new Mock<IHardwareBenchmark>().Object,
+            driverDetector.Object,
+            store.Object,
+            new Mock<IEncoderActivityProbe>().Object
+        );
+
+        Func<Task> act = () => sut.EvaluateAndRecalibrateAsync(stopping.Token);
         await act.Should().ThrowAsync<OperationCanceledException>();
     }
 
