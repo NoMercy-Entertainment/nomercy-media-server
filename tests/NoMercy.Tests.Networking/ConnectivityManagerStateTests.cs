@@ -398,7 +398,7 @@ public sealed class ConnectivityManagerStateTests : IDisposable
     // ── An assigned tunnel is an instruction ────────────────────────────────
 
     [Fact]
-    public async Task EvaluateAsync_WhenATunnelIsAssigned_DirectPathsAreStillTriedFirst()
+    public async Task EvaluateAsync_WhenATunnelIsAssigned_TheTunnelIsTriedFirst()
     {
         List<string> order = [];
         ConnectivityStatus status = new() { CloudflareTunnelToken = "assigned-token" };
@@ -416,14 +416,14 @@ public sealed class ConnectivityManagerStateTests : IDisposable
 
         await manager.EvaluateAsync(CancellationToken.None);
 
-        // A token is a fallback the operator paid for, not an instruction to ignore a
-        // router that forwards. Putting the tunnel first sent every client through the
-        // Cloudflare edge while the port forward answered from outside.
-        Assert.Equal("PortForward", order[0]);
+        // Stoney, 2026-09-29: "the paid tunnel needs to be the address for external access,
+        // the local free one remains". An assigned named tunnel is the paid external address,
+        // so it is tried before any direct path.
+        Assert.Equal("CloudflareTunnel", order[0]);
     }
 
     [Fact]
-    public async Task EvaluateAsync_AVerifiedPortForward_WinsOverAnAssignedTunnel()
+    public async Task EvaluateAsync_AnAssignedTunnel_WinsOverAVerifiedPortForward()
     {
         ConnectivityStatus status = new() { CloudflareTunnelToken = "assigned-token" };
         StubStrategy portForward = new(
@@ -442,8 +442,35 @@ public sealed class ConnectivityManagerStateTests : IDisposable
 
         await manager.EvaluateAsync(CancellationToken.None);
 
+        // Fillz's Beast-Unit, 2026-09-29: a paid tunnel sat inactive because his router
+        // forwarded, so the tunnel hostname answered Cloudflare error 1033.
+        Assert.Equal(ConnectivityState.Tunneled, manager.CurrentState);
+        Assert.False(portForward.WasAttempted);
+        Assert.Equal("tunnel", status.Transport);
+    }
+
+    [Fact]
+    public async Task EvaluateAsync_WhenAnAssignedTunnelFails_AVerifiedPortForwardStillWins()
+    {
+        ConnectivityStatus status = new() { CloudflareTunnelToken = "assigned-token" };
+        StubStrategy tunnel = new(
+            "CloudflareTunnel",
+            3,
+            ConnectivityType.CloudflareTunnel,
+            succeeds: false
+        );
+        StubStrategy portForward = new(
+            "PortForward",
+            1,
+            ConnectivityType.PortForward,
+            succeeds: true
+        );
+        ConnectivityManager manager = BuildManager(null, status, portForward, tunnel);
+
+        await manager.EvaluateAsync(CancellationToken.None);
+
+        Assert.True(tunnel.WasAttempted);
         Assert.Equal(ConnectivityState.DirectAccess, manager.CurrentState);
-        Assert.False(tunnel.WasAttempted);
         Assert.Equal("port_forward", status.Transport);
     }
 

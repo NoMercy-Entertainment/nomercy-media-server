@@ -85,14 +85,19 @@ public class ConnectivityManager : IConnectivityManager, IHostedService, IDispos
     }
 
     /// <summary>
-    /// Attempt order for the current evaluation: plain priority, direct paths first. A
-    /// direct path only wins when it is verified from outside, and an assigned tunnel that
-    /// registers with the edge still beats a port forward nothing could confirm, because an
-    /// unverified result is only ever held as a fallback. Putting the tunnel first whenever
-    /// a token existed sent every client through Cloudflare even when the router forwarded
-    /// perfectly well.
+    /// Attempt order for the current evaluation. An assigned named tunnel is the paid
+    /// external address, so it is tried first; the other strategies follow in priority
+    /// order and remain the fallback when the tunnel cannot come up (Stoney, 2026-09-29:
+    /// "the paid tunnel needs to be the address for external access, the local free one
+    /// remains"). Without a token the order is plain priority, direct paths first, and the
+    /// account-less quick tunnel stays the floor.
     /// </summary>
-    private IEnumerable<IConnectivityStrategy> OrderedStrategies() => _strategies;
+    private IEnumerable<IConnectivityStrategy> OrderedStrategies() =>
+        string.IsNullOrEmpty(_connectivityStatus.CloudflareTunnelToken)
+            ? _strategies
+            : _strategies
+                .OrderBy(s => s.Type is ConnectivityType.CloudflareTunnel ? 0 : 1)
+                .ThenBy(s => s.Priority);
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
