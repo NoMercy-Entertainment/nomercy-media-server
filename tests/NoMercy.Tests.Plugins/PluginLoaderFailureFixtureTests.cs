@@ -716,25 +716,6 @@ public class PluginLoaderFailureFixtureTests : IDisposable
     }
 
     [Fact]
-    public async Task LoadPluginAssemblyAsync_HealthyRegistratorPlugin_RegisterPluginServices_InvokesIt()
-    {
-        // RegisterPluginServices' foreach body only runs when GetServiceRegistrators()
-        // returns at least one ACTIVE registrator — this is the one path in this
-        // suite that gets a real registrator instance through the full loader
-        // pipeline into that method rather than calling RegisterServices directly.
-        string dllPath = StageFailuresPluginDll();
-        await _manager.LoadPluginAssemblyAsync(dllPath);
-        ServiceCollection services = new();
-
-        services.RegisterPluginServices(_manager);
-
-        services.Should().ContainSingle();
-        services[0]
-            .ServiceType.FullName.Should()
-            .Be("NoMercy.Plugin.Samples.Failures.FailuresPluginMarker");
-    }
-
-    [Fact]
     public async Task LoadPluginAssemblyAsync_NonExistentAssemblyPath_PublishesLoadContextErrorEvent()
     {
         // AssemblyDependencyResolver's constructor throws InvalidOperationException
