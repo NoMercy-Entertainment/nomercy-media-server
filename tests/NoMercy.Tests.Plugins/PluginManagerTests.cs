@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.IO.Compression;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -17,6 +18,7 @@ using NoMercy.Events;
 using NoMercy.Events.Plugins;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Verification;
 using NoMercy.Storage;
 using Xunit;
 
@@ -865,6 +867,123 @@ public class PluginManagerTests : IDisposable
                 "the Weather version that landed",
                 "discarding Weather's backup must never touch Weather's assembly"
             );
+    }
+
+    // ── File hashes: an install records one SHA-256 per file, a load checks
+    //    them, and an install from before the record gets one at boot. ────────
+
+    private const string Echo = "NoMercy.Plugin.Samples.Echo";
+
+    private static string EchoManifest() =>
+        $$"""
+        {
+          "id": "{{Ulid.NewUlid()}}",
+          "name": "Echo",
+          "version": "1.2.0",
+          "description": "echoes",
+          "assembly": "{{Echo}}.dll",
+          "autoEnabled": true
+        }
+        """;
+
+    /// <summary>
+    /// A release zip shaped like a published plugin build: the entry DLL, its
+    /// .deps.json and .pdb, the manifest, and a lang folder.
+    /// </summary>
+    private string EchoArchive(bool withBuildOutput)
+    {
+        string dll = CodeScanVerificationStageTests.SampleDllPath(Echo);
+        string path = Path.Combine(_tempPluginsDir, "..", $"echo-{Ulid.NewUlid()}.zip");
+
+        using ZipArchive archive = ZipFile.Open(path, ZipArchiveMode.Create);
+        archive.CreateEntryFromFile(dll, $"Echo/{Echo}.dll");
+        using (StreamWriter manifest = new(archive.CreateEntry("Echo/plugin.json").Open()))
+            manifest.Write(EchoManifest());
+
+        if (!withBuildOutput)
+            return path;
+
+        archive.CreateEntryFromFile(Path.ChangeExtension(dll, ".deps.json"), $"Echo/{Echo}.deps.json");
+        archive.CreateEntryFromFile(Path.ChangeExtension(dll, ".pdb"), $"Echo/{Echo}.pdb");
+        foreach (string lang in new[] { "en", "nl" })
+        {
+            using StreamWriter writer = new(archive.CreateEntry($"Echo/lang/{lang}.json").Open());
+            writer.Write($$"""{"hello":"{{lang}}"}""");
+        }
+
+        return path;
+    }
+
+    private static PluginManifest EchoPluginManifest() =>
+        new()
+        {
+            Id = new PluginId(Ulid.NewUlid()),
+            Name = "Echo",
+            Description = "echoes",
+            Version = "1.2.0",
+            Assembly = $"{Echo}.dll",
+        };
+
+    [Fact]
+    public async Task InstallWritesTheFileManifest()
+    {
+        await _manager.InstallPluginArchiveAsync(EchoArchive(withBuildOutput: false));
+
+        string installed = Path.Combine(_tempPluginsDir, "Echo");
+        string sideFile = Path.Combine(installed, PluginFileManifest.FileName);
+
+        File.Exists(sideFile).Should().BeTrue("the install records what it unpacked");
+        string[] lines = await File.ReadAllLinesAsync(sideFile);
+        lines.Should().HaveCount(2, "every extracted file is listed, and only those");
+        lines.Should().ContainMatch($"*  {Echo}.dll").And.ContainMatch("*  plugin.json");
+        lines.Should().AllSatisfy(line => line[..64].Should().MatchRegex("^[0-9a-f]{64}$"));
+    }
+
+    [Fact]
+    public async Task AnUpgradeWritesMissingFileManifestsOnce()
+    {
+        string pluginDir = Path.Combine(_tempPluginsDir, "Echo");
+        Directory.CreateDirectory(pluginDir);
+        string dll = Path.Combine(pluginDir, $"{Echo}.dll");
+        File.Copy(CodeScanVerificationStageTests.SampleDllPath(Echo), dll);
+        await File.WriteAllTextAsync(Path.Combine(pluginDir, "plugin.json"), EchoManifest());
+        string sideFile = Path.Combine(pluginDir, PluginFileManifest.FileName);
+
+        await _manager.LoadPluginsFromDirectoryAsync();
+
+        File.Exists(sideFile).Should().BeTrue("a plugin installed before this release is recorded at boot");
+        string recorded = await File.ReadAllTextAsync(sideFile);
+
+        await File.AppendAllTextAsync(dll, "x");
+        await _manager.RecordMissingFileManifestsAsync(CancellationToken.None);
+
+        (await File.ReadAllTextAsync(sideFile)).Should().Be(recorded, "the pass never rewrites a record");
+        (PluginStageOutcome outcome, string? message) = new FileManifestVerificationStage().Evaluate(
+            new()
+            {
+                Manifest = EchoPluginManifest(),
+                AssemblyPath = dll,
+            }
+        );
+        outcome.Should().Be(PluginStageOutcome.Fail);
+        message.Should().Contain($"changed: {Echo}.dll");
+    }
+
+    [Fact]
+    public async Task ARadioShapedZipInstallsAndPassesTheFileCheck()
+    {
+        await _manager.InstallPluginArchiveAsync(EchoArchive(withBuildOutput: true));
+
+        string installed = Path.Combine(_tempPluginsDir, "Echo");
+        string dll = Path.Combine(installed, $"{Echo}.dll");
+
+        PluginVerificationResult result = new PluginVerifier().Verify(EchoPluginManifest(), dll, null);
+
+        result.Verified.Should().BeTrue(string.Join("; ", result.Failures));
+        string[] lines = await File.ReadAllLinesAsync(
+            Path.Combine(installed, PluginFileManifest.FileName)
+        );
+        lines.Should().ContainMatch("*  lang/en.json").And.ContainMatch("*  lang/nl.json");
     }
 
     private sealed class MinimalServiceProvider : IServiceProvider
