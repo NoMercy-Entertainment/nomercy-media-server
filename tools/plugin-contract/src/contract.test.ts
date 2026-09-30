@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { loadContract } from './contract.js';
+import { MEDIA_SERVER } from './paths.js';
 
 describe('the capability vocabulary', () => {
   const contract = loadContract();
@@ -68,3 +72,34 @@ describe('the capability vocabulary', () => {
     }
   });
 });
+
+describe('the refusal vocabulary', () => {
+  const contract = loadContract();
+
+  it('names each refusal code once', () => {
+    const codes = contract.refusals.map(refusal => refusal.code);
+    expect(new Set(codes).size).toBe(codes.length);
+  });
+
+  it('holds every code the server source refuses with', () => {
+    const known = new Set(contract.refusals.map(refusal => refusal.code));
+    const literal = /"(PLUGIN_[A-Z0-9_]+)"/g;
+    const missing = new Set<string>();
+
+    for (const file of csharpFilesUnder(join(MEDIA_SERVER, 'src'))) {
+      const text = readFileSync(file, 'utf8');
+      for (const match of text.matchAll(literal)) {
+        if (!known.has(match[1])) missing.add(match[1]);
+      }
+    }
+
+    expect([...missing].sort()).toEqual([]);
+  });
+});
+
+function csharpFilesUnder(root: string): string[] {
+  return readdirSync(root, { withFileTypes: true, recursive: true })
+    .filter(entry => entry.isFile() && entry.name.endsWith('.cs'))
+    .filter(entry => !/[\/](bin|obj)[\/]/.test(entry.parentPath))
+    .map(entry => join(entry.parentPath, entry.name));
+}
