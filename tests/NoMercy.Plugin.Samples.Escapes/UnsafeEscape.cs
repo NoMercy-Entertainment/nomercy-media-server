@@ -16,6 +16,12 @@ public sealed class UnsafeEscape
     public unsafe byte Run()
     {
         byte* p = stackalloc byte[16];
+        return Write(p);
+    }
+
+    // The pointer sits in a signature: a Release build drops the pointer local above.
+    private static unsafe byte Write(byte* p)
+    {
         p[0] = 1;
         return p[0];
     }
