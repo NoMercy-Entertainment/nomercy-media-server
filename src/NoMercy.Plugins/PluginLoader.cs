@@ -160,6 +160,15 @@ internal sealed class PluginLoader(
             );
 
     /// <summary>
+    /// The files a plugin's load context may load: every file of the shadow
+    /// copy, subfolders included, because native code sits under
+    /// runtimes/&lt;rid&gt;/native and is not a .dll off Windows. The scan and
+    /// the hash check narrow this later.
+    /// </summary>
+    internal static string[] AllowedFiles(string shadowDir) =>
+        Directory.GetFiles(shadowDir, "*", SearchOption.AllDirectories);
+
+    /// <summary>
     /// Whether the plugin's own assembly carries an
     /// <see cref="IPluginServiceRegistrator"/>. Only that assembly is examined,
     /// so a plugin is not judged by what its dependencies happen to contain.
@@ -344,7 +353,7 @@ internal sealed class PluginLoader(
             PluginLoadContext loadContext = new(
                 loadPath,
                 _sharedAssemblies,
-                allowedFiles: Directory.GetFiles(shadowDir, "*.dll")
+                allowedFiles: AllowedFiles(shadowDir)
             );
 
             try
@@ -660,11 +669,7 @@ internal sealed class PluginLoader(
             // assembly is skipped and reported, not fatal.
             loadPath = PluginShadowCopy.Create(_pluginsPath, absoluteAssemblyPath);
             shadowDir = Path.GetDirectoryName(loadPath)!;
-            loadContext = new(
-                loadPath,
-                _sharedAssemblies,
-                allowedFiles: Directory.GetFiles(shadowDir, "*.dll")
-            );
+            loadContext = new(loadPath, _sharedAssemblies, allowedFiles: AllowedFiles(shadowDir));
         }
         catch (Exception loadContextEx)
         {

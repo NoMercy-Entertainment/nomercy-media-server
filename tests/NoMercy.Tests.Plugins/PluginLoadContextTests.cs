@@ -196,6 +196,23 @@ public class PluginLoadContextTests
         resolved.Should().BeSameAs(typeof(IPlugin).Assembly);
     }
 
+    [Fact]
+    public void TheLoaderListsNativeLibrariesInRuntimeFolders()
+    {
+        // The resolver finds native code under runtimes/<rid>/native, and on
+        // Linux and macOS it does not end in .dll. The name check is the wall;
+        // the list must not refuse what a plugin loaded before it.
+        using TemporaryPluginFolder folder = new();
+        string native = Path.Combine(folder.Dir, "runtimes", "linux-x64", "native");
+        Directory.CreateDirectory(native);
+        string library = Path.Combine(native, "libhelper.so");
+        File.WriteAllText(library, "");
+
+        string[] allowed = PluginLoader.AllowedFiles(folder.Dir);
+
+        allowed.Should().Contain([folder.PluginDll, library]);
+    }
+
     /// <summary>
     /// A plugin folder built for one test: the Failures sample's entry DLL (with
     /// its deps.json, so the resolver has a manifest to read) plus whatever
