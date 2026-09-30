@@ -18,12 +18,28 @@ namespace NoMercy.Tests.Plugins;
 
 public class PluginVerifierTests
 {
+    // Its own folder: the verifier reads every DLL beside the plugin, and the
+    // raw temp root holds whatever other tests and tools left there.
+    private static string TempFolder()
+    {
+        string folder = Path.Combine(Path.GetTempPath(), $"plugin-{Ulid.NewUlid():N}");
+        Directory.CreateDirectory(folder);
+        return folder;
+    }
+
     private static string WriteTempDll(byte[] bytes)
     {
-        string path = Path.Combine(Path.GetTempPath(), $"plugin-{Ulid.NewUlid():N}.dll");
+        string path = Path.Combine(TempFolder(), "x.dll");
         File.WriteAllBytes(path, bytes);
         return path;
     }
+
+    /// <summary>
+    /// A pass needs a real plugin assembly: the default verifier refuses bytes
+    /// that are not IL.
+    /// </summary>
+    private static string StageCleanDll() =>
+        CodeScanVerificationStageTests.StageAlone(TempFolder(), "NoMercy.Plugin.Samples.Echo");
 
     private static string WriteTempPackage(byte[] bytes)
     {
@@ -58,7 +74,7 @@ public class PluginVerifierTests
     {
         byte[] bytes = [10, 20, 30, 40];
         string package = WriteTempPackage(bytes);
-        string dll = WriteTempDll([1, 1, 1]);
+        string dll = StageCleanDll();
         string sha = Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
         PluginVerifier verifier = new();
         PluginVerificationResult result = verifier.Verify(Manifest("12.0"), dll, sha, package);
@@ -85,7 +101,7 @@ public class PluginVerifierTests
     [Fact]
     public void Verify_NoExpectedChecksum_VerifiedButNotTrusted()
     {
-        string dll = WriteTempDll([5, 5]);
+        string dll = StageCleanDll();
         PluginVerifier verifier = new();
         PluginVerificationResult result = verifier.Verify(Manifest("12.0"), dll, null);
         Assert.True(result.Verified);

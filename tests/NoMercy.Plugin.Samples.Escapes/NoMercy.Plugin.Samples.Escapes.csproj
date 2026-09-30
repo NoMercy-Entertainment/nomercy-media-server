@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+  </PropertyGroup>
+
+  <!-- Opt out of the shared test infrastructure (TestEnvironmentSetup, NmSystem).
+       This is a plugin project — it must not depend on server internals. -->
+  <ItemGroup>
+    <Compile Remove="..\TestEnvironmentSetup.cs" />
+    <Compile Remove="..\SharedTestParallelization.cs" />
+    <ProjectReference Remove="..\..\src\NoMercy.NmSystem\NoMercy.NmSystem.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\NoMercy.PluginSdk.Abstractions\NoMercy.PluginSdk.Abstractions.csproj" />
+    <!-- One class reaches a server type on purpose: the scan must refuse a
+         plugin that bundles or references a server assembly. Private=false so
+         the fixture bin holds only the plugin's own DLL. -->
+    <ProjectReference Include="..\..\src\NoMercy.Plugins\NoMercy.Plugins.csproj" Private="false" />
+  </ItemGroup>
+</Project>

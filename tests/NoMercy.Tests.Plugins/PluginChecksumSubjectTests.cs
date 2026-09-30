@@ -50,6 +50,20 @@ public class PluginChecksumSubjectTests : IDisposable
         return path;
     }
 
+    /// <summary>
+    /// A real plugin assembly under the published name: the verifier reads
+    /// the code, so bytes that are not IL would fail for the wrong reason.
+    /// </summary>
+    private string StageAssembly()
+    {
+        string path = Path.Combine(_tempDir, "NoMercy.Plugin.InternetRadio.dll");
+        File.Copy(
+            CodeScanVerificationStageTests.SampleDllPath("NoMercy.Plugin.Samples.Echo"),
+            path
+        );
+        return path;
+    }
+
     private static string Sha256Of(byte[] bytes) =>
         Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
 
@@ -69,7 +83,7 @@ public class PluginChecksumSubjectTests : IDisposable
     {
         byte[] packageBytes = [10, 20, 30, 40];
         string package = Write("InternetRadio-1.2.0.zip", packageBytes);
-        string assembly = Write("NoMercy.Plugin.InternetRadio.dll", [1, 1, 1]);
+        string assembly = StageAssembly();
 
         PluginVerificationResult result = new PluginVerifier().Verify(
             Manifest(),
@@ -86,7 +100,7 @@ public class PluginChecksumSubjectTests : IDisposable
     public void A_package_that_does_not_hash_to_what_was_published_is_refused()
     {
         string package = Write("InternetRadio-1.2.0.zip", [1, 2, 3]);
-        string assembly = Write("NoMercy.Plugin.InternetRadio.dll", [1, 2, 3]);
+        string assembly = StageAssembly();
 
         PluginVerificationResult result = new PluginVerifier().Verify(
             Manifest(),
@@ -108,13 +122,12 @@ public class PluginChecksumSubjectTests : IDisposable
     [Fact]
     public void A_checksum_published_against_a_bare_assembly_is_refused_with_the_fix()
     {
-        byte[] bytes = [7, 7, 7];
-        string assembly = Write("NoMercy.Plugin.InternetRadio.dll", bytes);
+        string assembly = StageAssembly();
 
         PluginVerificationResult result = new PluginVerifier().Verify(
             Manifest(),
             assembly,
-            Sha256Of(bytes),
+            Sha256Of(File.ReadAllBytes(assembly)),
             assembly
         );
 
@@ -130,7 +143,7 @@ public class PluginChecksumSubjectTests : IDisposable
     [Fact]
     public void A_checksum_with_no_package_to_hash_is_refused()
     {
-        string assembly = Write("NoMercy.Plugin.InternetRadio.dll", [4, 4]);
+        string assembly = StageAssembly();
 
         PluginVerificationResult result = new PluginVerifier().Verify(
             Manifest(),
@@ -145,7 +158,7 @@ public class PluginChecksumSubjectTests : IDisposable
     [Fact]
     public void No_published_checksum_still_installs_unverified()
     {
-        string assembly = Write("NoMercy.Plugin.InternetRadio.dll", [5, 5]);
+        string assembly = StageAssembly();
 
         PluginVerificationResult result = new PluginVerifier().Verify(Manifest(), assembly, null);
 
