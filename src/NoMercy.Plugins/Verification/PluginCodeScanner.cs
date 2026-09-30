@@ -51,10 +51,12 @@ internal static class PluginCodeScanner
         "System.Linq.Expressions.Expression`1::Compile",
     ];
 
-    // Every member of Unsafe and MemoryMarshal is memory-unsafe. The C# compiler
-    // still emits these for safe code (a collection expression into a span, a
-    // call that binds to a params ReadOnlySpan overload), so only they pass,
-    // and only their byref overloads: the pointer overloads are an author's.
+    // Every member of Unsafe and the InteropServices marshal helpers is
+    // memory-unsafe. The C# compiler still emits these for safe code (a
+    // collection expression into a span, a List<T> or ImmutableArray<T>
+    // collection expression with a spread, a call that binds to a params
+    // ReadOnlySpan overload), so only they pass, and only their byref
+    // overloads: the pointer overloads are an author's.
     private static readonly HashSet<string> CompilerEmittedMembers =
     [
         "System.Runtime.CompilerServices.Unsafe::As",
@@ -62,6 +64,19 @@ internal static class PluginCodeScanner
         "System.Runtime.CompilerServices.Unsafe::Add",
         "System.Runtime.InteropServices.MemoryMarshal::CreateSpan",
         "System.Runtime.InteropServices.MemoryMarshal::CreateReadOnlySpan",
+        "System.Runtime.InteropServices.CollectionsMarshal::SetCount",
+        "System.Runtime.InteropServices.CollectionsMarshal::AsSpan",
+        "System.Runtime.InteropServices.ImmutableCollectionsMarshal::AsImmutableArray",
+    ];
+
+    // The InteropServices types whose type reference is allowed so that their
+    // compiler-emitted members can be judged one by one above.
+    private static readonly HashSet<string> UnsafeHelperTypes =
+    [
+        "System.Runtime.CompilerServices.Unsafe",
+        "System.Runtime.InteropServices.MemoryMarshal",
+        "System.Runtime.InteropServices.CollectionsMarshal",
+        "System.Runtime.InteropServices.ImmutableCollectionsMarshal",
     ];
 
     private static readonly Dictionary<short, OpCode> OpCodesByValue = typeof(OpCodes)
@@ -144,8 +159,7 @@ internal static class PluginCodeScanner
             "System.Runtime.InteropServices" => !name.EndsWith(
                 "Attribute",
                 StringComparison.Ordinal
-            )
-                && name != "MemoryMarshal",
+            ) && !UnsafeHelperTypes.Contains($"{ns}.{name}"),
             _ => BannedTypes.Contains($"{ns}.{name}")
                 || BannedNamespaces.Any(b => ns.StartsWith(b, StringComparison.Ordinal)),
         };
@@ -160,10 +174,7 @@ internal static class PluginCodeScanner
                 continue;
 
             string key = $"{parent}::{md.GetString(member.Name)}";
-            bool unsafeHelper =
-                parent
-                    is "System.Runtime.CompilerServices.Unsafe"
-                        or "System.Runtime.InteropServices.MemoryMarshal";
+            bool unsafeHelper = UnsafeHelperTypes.Contains(parent);
             if (BannedMembers.Contains(key) || (unsafeHelper && !IsCompilerEmitted(member, key)))
                 Add(findings, $"calls banned member {key}");
         }
@@ -176,7 +187,10 @@ internal static class PluginCodeScanner
         if (!CompilerEmittedMembers.Contains(key) || member.GetKind() != MemberReferenceKind.Method)
             return false;
 
-        MethodSignature<bool> signature = member.DecodeMethodSignature(PointerFinder.Instance, null);
+        MethodSignature<bool> signature = member.DecodeMethodSignature(
+            PointerFinder.Instance,
+            null
+        );
         return !signature.ParameterTypes.Contains(true)
             && (
                 key != "System.Runtime.CompilerServices.Unsafe::As"
