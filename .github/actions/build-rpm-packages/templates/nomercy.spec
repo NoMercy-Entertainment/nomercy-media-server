@@ -23,6 +23,7 @@ BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root
 %global __requires_exclude ^liblttng-ust\\.so\\.0
 
 Requires: glibc
+Requires: libicu
 Recommends: systemd
 
 %description

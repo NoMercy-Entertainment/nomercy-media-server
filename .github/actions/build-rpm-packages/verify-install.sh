@@ -14,6 +14,8 @@ IMAGE="${2:-fedora:latest}"
 
 docker run --rm -v "${RPM_DIR}:/pkg:ro" "${IMAGE}" bash -c '
   set -euo pipefail
+  # ICU usually arrives through other packages, so the start alone cannot catch a missing declaration.
+  rpm -qp --requires /pkg/*.rpm | grep -qx "libicu" || { echo "the rpm declares no libicu Requires" >&2; exit 1; }
   dnf install -y -q /pkg/*.rpm
   /opt/nomercy/nomercy --help > /dev/null
   echo "nomercy installs and the CLI starts on $(. /etc/os-release && echo "${PRETTY_NAME}")"
