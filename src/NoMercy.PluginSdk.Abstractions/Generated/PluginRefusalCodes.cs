@@ -22,6 +22,8 @@ public static class PluginRefusalCodes
     public const string TrustTooLow = "PLUGIN_TRUST_TOO_LOW";
     public const string GuestCapabilityIrreversible = "PLUGIN_GUEST_CAPABILITY_IRREVERSIBLE";
     public const string HostServicesRemoved = "PLUGIN_HOST_SERVICES_REMOVED";
+    public const string ServerAssemblyFromPlugin = "PLUGIN_SERVER_ASSEMBLY_FROM_PLUGIN";
+    public const string HostUnavailable = "PLUGIN_HOST_UNAVAILABLE";
     public const string EventBusRemoved = "PLUGIN_EVENT_BUS_REMOVED";
     public const string TokenInUrl = "PLUGIN_TOKEN_IN_URL";
     public const string FileOutsideGrant = "PLUGIN_FILE_OUTSIDE_GRANT";
@@ -34,6 +36,11 @@ public static class PluginRefusalCodes
     public const string RouteAccessDenied = "PLUGIN_ROUTE_ACCESS_DENIED";
     public const string AbiUnsupported = "PLUGIN_ABI_UNSUPPORTED";
     public const string ManifestInvalid = "PLUGIN_MANIFEST_INVALID";
+    public const string ChecksumMismatch = "PLUGIN_CHECKSUM_MISMATCH";
+    public const string ChecksumSubjectNotAPackage = "PLUGIN_CHECKSUM_SUBJECT_NOT_A_PACKAGE";
+    public const string ChecksumSubjectMissing = "PLUGIN_CHECKSUM_SUBJECT_MISSING";
+    public const string CodeScan = "PLUGIN_CODE_SCAN";
+    public const string FilesChanged = "PLUGIN_FILES_CHANGED";
     public const string DependencyMissing = "PLUGIN_DEPENDENCY_MISSING";
     public const string DependencyPaidNotOwned = "PLUGIN_DEPENDENCY_PAID_NOT_OWNED";
     public const string DependencyTierMismatch = "PLUGIN_DEPENDENCY_TIER_MISMATCH";
@@ -112,6 +119,18 @@ public static class PluginRefusalCodes
             "The plugin asked the host container for a service. The contract has facades instead."
         ),
         new(
+            "PLUGIN_SERVER_ASSEMBLY_FROM_PLUGIN",
+            PluginRefusalSeverity.Blocked,
+            null,
+            "A plugin asked its load context for a server assembly instead of the SDK."
+        ),
+        new(
+            "PLUGIN_HOST_UNAVAILABLE",
+            PluginRefusalSeverity.Blocked,
+            null,
+            "The plugin process cannot serve: it started without its launch details, or a call reached it without the server's launch token."
+        ),
+        new(
             "PLUGIN_EVENT_BUS_REMOVED",
             PluginRefusalSeverity.Blocked,
             "events.subscribe",
@@ -182,6 +201,36 @@ public static class PluginRefusalCodes
             PluginRefusalSeverity.Blocked,
             null,
             "The manifest does not match the schema the server reads."
+        ),
+        new(
+            "PLUGIN_CHECKSUM_MISMATCH",
+            PluginRefusalSeverity.Blocked,
+            null,
+            "The package arrived, and it is not the one the checksum describes."
+        ),
+        new(
+            "PLUGIN_CHECKSUM_SUBJECT_NOT_A_PACKAGE",
+            PluginRefusalSeverity.Blocked,
+            null,
+            "A checksum was published for something that is not a plugin package."
+        ),
+        new(
+            "PLUGIN_CHECKSUM_SUBJECT_MISSING",
+            PluginRefusalSeverity.Blocked,
+            null,
+            "A checksum was supplied with no package to take it over."
+        ),
+        new(
+            "PLUGIN_CODE_SCAN",
+            PluginRefusalSeverity.Blocked,
+            null,
+            "A plugin DLL is not pure IL, reaches an escape hatch, or references a server assembly."
+        ),
+        new(
+            "PLUGIN_FILES_CHANGED",
+            PluginRefusalSeverity.Blocked,
+            null,
+            "A file in the plugin folder is not the one the install recorded, or the record is missing."
         ),
         new(
             "PLUGIN_DEPENDENCY_MISSING",
