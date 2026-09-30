@@ -30,9 +30,8 @@ public interface IPluginRemoteLoader
     /// <summary>
     /// Starts it elsewhere and hands back the plugin the registry will hold.
     /// <para>
-    /// Null when this install cannot do it, so the loader falls back to its
-    /// own process rather than leaving the owner with no plugin at all. The
-    /// dashboard is what says the choice is not being honored yet.
+    /// Null when this install cannot do it. The loader then refuses the
+    /// plugin; it never runs it in this process.
     /// </para>
     /// </summary>
     Task<IPlugin?> LoadAsync(PluginDescription description, CancellationToken ct = default);
