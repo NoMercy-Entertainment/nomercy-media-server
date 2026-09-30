@@ -66,8 +66,7 @@ public class PluginRemoteLoaderTests
     /// <summary>
     /// An install with no plugin host beside the server cannot start one, and
     /// says so by answering nothing rather than by throwing. The loader's
-    /// answer to nothing is to run the plugin here, which is a working plugin
-    /// rather than none.
+    /// answer to nothing is to refuse the plugin, never to run it here.
     /// </summary>
     [Fact]
     public async Task AnInstallWithNoPluginHostAnswersNothingAndStartsNothing()
