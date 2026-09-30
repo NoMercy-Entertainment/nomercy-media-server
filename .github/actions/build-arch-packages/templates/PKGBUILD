@@ -6,7 +6,7 @@ pkgdesc="NoMercy MediaServer - complete installation"
 arch=('x86_64')
 url="https://nomercy.tv"
 license=('custom')
-depends=('glibc')
+depends=('glibc' 'icu')
 # Prebuilt, already-stripped .NET binaries: no source, no debug symbols. Disable
 # makepkg's debug/strip passes so it doesn't emit gdb-add-index errors on the
 # runtime .so files or build a spurious nomercy-debug package.

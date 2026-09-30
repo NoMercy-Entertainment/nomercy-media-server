@@ -133,6 +133,10 @@ runs:
         echo "Created Arch repository:"
         ls -la "${OUT_DIR}"
 
+    - name: Verify Arch package installs
+      shell: bash
+      run: bash "${{ github.action_path }}/verify-install.sh" packages/arch/pool/x86_64
+
     - name: Upload Arch artifacts
       uses: actions/upload-artifact@v7
       with:
