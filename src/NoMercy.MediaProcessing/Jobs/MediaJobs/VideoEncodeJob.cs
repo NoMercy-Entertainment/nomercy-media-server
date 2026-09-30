@@ -2559,7 +2559,7 @@ public class VideoEncodeJob
         }
     }
 
-    private async Task<FileMetadata> GetFileMetaData(Folder folder, MediaContext context)
+    internal async Task<FileMetadata> GetFileMetaData(Folder folder, MediaContext context)
     {
         Movie? movie = folder.FolderLibraries.Any(x => x.Library.Type == MediaTypes.MovieMediaType)
             ? await context.Movies.IgnoreQueryFilters().FirstOrDefaultAsync(x => x.Id == Id.ToInt())
@@ -2572,7 +2572,16 @@ public class VideoEncodeJob
             : null;
 
         if (movie is null && episode is null)
+        {
+            // Never silent: a selected file that finds no movie or episode row is
+            // dropped here, and this line is the only trace of why.
+            Log.LogWarning(
+                "[VideoEncodeJob] No movie or episode row for id {Id}; nothing to encode for '{InputFile}'",
+                Id,
+                InputFile
+            );
             return new() { Success = false };
+        }
 
         string folderName =
             movie?.CreateFolderName().Replace("/", "")
@@ -2606,7 +2615,7 @@ public class VideoEncodeJob
     /// are mutually exclusive — exactly one is non-null (callers already
     /// verified that before reaching this point).
     /// </summary>
-    private record FileMetadata
+    internal record FileMetadata
     {
         public bool Success { get; set; }
         public string FolderName { get; set; } = string.Empty;
