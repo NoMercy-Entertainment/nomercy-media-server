@@ -84,6 +84,10 @@ runs:
         # Generate repo metadata
         createrepo_c packages/rpm
 
+    - name: Verify RPM installs on Fedora
+      shell: bash
+      run: bash "${{ github.action_path }}/verify-install.sh" packages/rpm/pool/x86_64
+
     - name: Sign RPM repository
       shell: bash
       run: |
