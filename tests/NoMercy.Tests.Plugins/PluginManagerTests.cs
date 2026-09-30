@@ -1115,6 +1115,111 @@ public class PluginManagerTests : IDisposable
         lines.Should().ContainMatch("*  lang/en.json").And.ContainMatch("*  lang/nl.json");
     }
 
+    /// <summary>
+    /// A later start of the server over the same plugins folder: what the
+    /// server remembers about a folder has to survive the process, not just
+    /// the manager instance.
+    /// </summary>
+    private PluginManager SecondBoot(InMemoryEventBus eventBus) =>
+        new(
+            eventBus,
+            new MinimalServiceProvider(),
+            NullLogger<PluginManager>.Instance,
+            _tempPluginsDir,
+            TestStorageHelper.CreateStorage(_tempPluginsDir),
+            TestStorageHelper.CreateBackend()
+        );
+
+    private static List<PluginErrorOccurredEvent> Errors(InMemoryEventBus eventBus)
+    {
+        List<PluginErrorOccurredEvent> errors = [];
+        eventBus.Subscribe<PluginErrorOccurredEvent>(
+            (evt, _) =>
+            {
+                errors.Add(evt);
+                return Task.CompletedTask;
+            }
+        );
+
+        return errors;
+    }
+
+    /// <summary>
+    /// The upgrade pass trusts a folder the first time the server sees it,
+    /// and never again: deleting the record and swapping the DLL must not
+    /// turn the next start into a fresh install of the swapped file.
+    /// </summary>
+    [Fact]
+    public async Task ARecordDeletedAfterTheFirstBootIsRefusedAtTheNext()
+    {
+        string dll = StageEcho(Echo, withManifest: true);
+        string sideFile = Path.Combine(Path.GetDirectoryName(dll)!, PluginFileManifest.FileName);
+        await _manager.LoadPluginsFromDirectoryAsync();
+        File.Exists(sideFile).Should().BeTrue("the first start records the folder");
+        _manager.Dispose();
+
+        File.Delete(sideFile);
+        await File.AppendAllTextAsync(dll, "x");
+        InMemoryEventBus eventBus = new();
+        List<PluginErrorOccurredEvent> errors = Errors(eventBus);
+        using PluginManager second = SecondBoot(eventBus);
+
+        await second.LoadPluginsFromDirectoryAsync();
+
+        errors
+            .Should()
+            .ContainSingle()
+            .Which.ErrorMessage.Should()
+            .Contain(PluginRefusalCode.FilesChanged);
+        File.Exists(sideFile).Should().BeFalse("a folder seen before is never recorded again");
+        second.GetInstalledPlugins().Should().NotContain(p => p.Status == PluginStatus.Active);
+    }
+
+    [Fact]
+    public async Task AFolderDroppedAfterTheFirstBootIsRecordedAndLoads()
+    {
+        await _manager.LoadPluginsFromDirectoryAsync();
+        _manager.Dispose();
+
+        string dll = StageEcho(Echo, withManifest: true);
+        InMemoryEventBus eventBus = new();
+        List<PluginErrorOccurredEvent> errors = Errors(eventBus);
+        using PluginManager second = SecondBoot(eventBus);
+
+        await second.LoadPluginsFromDirectoryAsync();
+
+        errors.Should().BeEmpty();
+        File.Exists(Path.Combine(Path.GetDirectoryName(dll)!, PluginFileManifest.FileName))
+            .Should()
+            .BeTrue("a folder the server has not seen before is recorded, as before this release");
+        second.GetInstalledPlugins().Should().ContainSingle(p => p.Status == PluginStatus.Active);
+    }
+
+    /// <summary>
+    /// An uninstall forgets the folder: a plugin dropped again under the same
+    /// name is a new folder, seen for the first time.
+    /// </summary>
+    [Fact]
+    public async Task AFolderDroppedAgainAfterAnUninstallLoads()
+    {
+        StageEcho(Echo, withManifest: true);
+        await _manager.LoadPluginsFromDirectoryAsync();
+        PluginInfo installed = _manager.GetInstalledPlugins().Should().ContainSingle().Subject;
+        await _manager.UninstallPluginAsync(installed.Id);
+        _manager.Dispose();
+        Directory.Exists(Path.Combine(_tempPluginsDir, Echo)).Should().BeFalse();
+
+        StageEcho(Echo, withManifest: true);
+        InMemoryEventBus eventBus = new();
+        List<PluginErrorOccurredEvent> errors = Errors(eventBus);
+        using PluginManager second = SecondBoot(eventBus);
+
+        await second.LoadPluginsFromDirectoryAsync();
+
+        errors.Should().BeEmpty();
+        second.GetInstalledPlugins().Should().ContainSingle(p => p.Status == PluginStatus.Active);
+    }
+
     private sealed class MinimalServiceProvider : IServiceProvider
     {
         public object? GetService(Type serviceType) => null;
