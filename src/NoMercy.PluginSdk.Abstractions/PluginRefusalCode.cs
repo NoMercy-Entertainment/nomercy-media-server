@@ -39,4 +39,7 @@ public static class PluginRefusalCode
 
     /// <summary>A plugin DLL is not pure IL, reaches an escape hatch, or references a server assembly.</summary>
     public const string CodeScan = "PLUGIN_CODE_SCAN";
+
+    /// <summary>A file in the plugin folder is not the one the install recorded, or the record is missing.</summary>
+    public const string FilesChanged = "PLUGIN_FILES_CHANGED";
 }

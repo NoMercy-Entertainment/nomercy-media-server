@@ -16,6 +16,7 @@ using NoMercy.Events;
 using NoMercy.Events.Plugins;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Verification;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;
@@ -149,6 +150,10 @@ public class PluginHotUpdateTests : IDisposable
             File.Copy(file, Path.Combine(_echoPluginDir, Path.GetFileName(file)), overwrite: true);
 
         File.WriteAllText(Path.Combine(_echoPluginDir, "plugin.json"), Manifest("1.0.0"));
+
+        // Recorded as an install records it: a load of an unrecorded folder is
+        // refused, and these tests are about what happens after the load.
+        PluginFileManifest.WriteAsync(_echoPluginDir).GetAwaiter().GetResult();
     }
 
     /// <summary>
@@ -359,6 +364,11 @@ public class PluginHotUpdateTests : IDisposable
             File.Copy(file, Path.Combine(_echoPluginDir, Path.GetFileName(file)), overwrite: true);
         foreach (string file in Directory.EnumerateFiles(binDir, "*.deps.json"))
             File.Copy(file, Path.Combine(_echoPluginDir, Path.GetFileName(file)), overwrite: true);
+
+        // The dev install (scripts/plugin-dev-install.sh) copies the build and
+        // then records it; a copy without the record is a changed folder, and
+        // the enable refuses it.
+        await PluginFileManifest.WriteAsync(_echoPluginDir);
 
         await _manager.EnablePluginAsync(PluginId);
 

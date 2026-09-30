@@ -32,6 +32,7 @@ public class PluginManager : IPluginManager, IDisposable
     private readonly ILogger<PluginManager> _logger;
     private readonly string _pluginsPath;
     private readonly IStorage _storage;
+    private readonly SemaphoreSlim _recordedFoldersLock = new(1, 1);
     private readonly IStorageDriver _driver;
     private readonly IPluginVerifier _verifier;
     private readonly PluginSideloadPolicy? _sideloadPolicy;
@@ -259,6 +260,7 @@ public class PluginManager : IPluginManager, IDisposable
                 && await TrySwapResidentAssemblyAsync(pluginId, fullPath, destPath, ct)
             )
             {
+                await RecordFilesAsync(pluginDir, ct);
                 await LoadPluginAssemblyAsync(destPath, ct);
                 _registerScheduledWork?.Invoke(pluginId);
                 return;
@@ -286,6 +288,7 @@ public class PluginManager : IPluginManager, IDisposable
             throw new PluginUpdatePendingRestartException(pluginName);
         }
 
+        await RecordFilesAsync(pluginDir, ct);
         await LoadPluginAssemblyAsync(destPath, ct);
     }
 
@@ -451,6 +454,11 @@ public class PluginManager : IPluginManager, IDisposable
         _driver.CreateDirectory(staging);
 
         await ExtractAsync(archive, manifest, staging, ct);
+
+        // The record is of the verified content, taken here before anything
+        // else can touch it; it travels with the folder through every path
+        // that applies the staged copy, now or on the next start.
+        await RecordFilesAsync(staging, ct);
 
         // A resident plugin is unloaded and swapped live: the owner asked for an
         // update, not a server restart, and the assembly lock that used to force
@@ -710,6 +718,15 @@ public class PluginManager : IPluginManager, IDisposable
             _driver.CreateDirectory(pluginDir);
         }
 
+        // A staged archive carries its record and is the whole plugin: the
+        // folder becomes equal to it, leftovers included, or the record would
+        // call them added. A staged single dll has no record and is merged;
+        // the stale record goes, and the next start records the merged folder.
+        bool complete = _driver.FileExists(
+            _storage.CombinePath(staging, PluginFileManifest.FileName)
+        );
+        HashSet<string> staged = new(StringComparer.OrdinalIgnoreCase);
+
         // Through the driver rather than IStorage: a StorageEntry's path is
         // relative to the storage scope, and the two roots here are real paths.
         // Mixing the two produced a destination full of `..` segments that the
@@ -729,6 +746,7 @@ public class PluginManager : IPluginManager, IDisposable
 
             string relative = Path.GetRelativePath(staging, info.Path);
             string destination = _storage.CombinePath(pluginDir, relative);
+            staged.Add(relative);
             string? parent = Path.GetDirectoryName(destination);
 
             if (parent is not null && !_driver.DirectoryExists(parent))
@@ -746,6 +764,33 @@ public class PluginManager : IPluginManager, IDisposable
             else
             {
                 source.CopyTo(target);
+            }
+        }
+
+        // The sideload marker and a single-dll backup are the server's own
+        // notes about the folder, not plugin content, and the record does not
+        // hash them either.
+        foreach (
+            StorageEntryInfo info in _driver
+                .EnumerateEntries(pluginDir, "*", SearchOption.AllDirectories)
+                .ToList()
+        )
+        {
+            if (info.IsDirectory)
+            {
+                continue;
+            }
+
+            string relative = Path.GetRelativePath(pluginDir, info.Path);
+            bool leftover = complete
+                ? !staged.Contains(relative)
+                    && relative != PluginSideloadMarker.FileName
+                    && !relative.EndsWith(RollbackSuffix, StringComparison.Ordinal)
+                : relative == PluginFileManifest.FileName;
+
+            if (leftover)
+            {
+                _driver.DeleteFile(info.Path);
             }
         }
 
@@ -1109,12 +1154,23 @@ public class PluginManager : IPluginManager, IDisposable
 
     public Task UninstallPluginAsync(Ulid pluginId, CancellationToken ct = default)
     {
-        return _lifecycle.UninstallPluginAsync(pluginId, keepData: false, ct);
+        return UninstallPluginAsync(pluginId, keepData: false, ct);
     }
 
-    public Task UninstallPluginAsync(Ulid pluginId, bool keepData, CancellationToken ct = default)
+    public async Task UninstallPluginAsync(
+        Ulid pluginId,
+        bool keepData,
+        CancellationToken ct = default
+    )
     {
-        return _lifecycle.UninstallPluginAsync(pluginId, keepData, ct);
+        // The folder leaves the recorded set with the plugin: a later drop of
+        // the same id is a new folder that is recorded on its first load.
+        string? folder = Path.GetDirectoryName(GetPluginInfo(pluginId)?.AssemblyPath);
+        await _lifecycle.UninstallPluginAsync(pluginId, keepData, ct);
+        if (folder is not null)
+        {
+            await RememberRecordedFolderAsync(Path.GetFileName(folder), recorded: false, ct);
+        }
     }
 
     public async Task LoadPluginsFromDirectoryAsync(CancellationToken ct = default)
@@ -1171,6 +1227,7 @@ public class PluginManager : IPluginManager, IDisposable
                 string manifestPath = _storage.CombinePath(pluginDir, "plugin.json");
                 if (_storage.Exists(manifestPath))
                 {
+                    await RecordFileManifestIfMissingAsync(pluginDir, ct);
                     await LoadPluginFromManifestAsync(manifestPath, ct);
                     continue;
                 }
@@ -1180,6 +1237,11 @@ public class PluginManager : IPluginManager, IDisposable
                     "*.dll",
                     recursive: false
                 );
+                if (dllEntries.Any(dllEntry => !dllEntry.IsDirectory))
+                {
+                    await RecordFileManifestIfMissingAsync(pluginDir, ct);
+                }
+
                 foreach (StorageEntry dllEntry in dllEntries)
                 {
                     if (!dllEntry.IsDirectory)
@@ -1199,6 +1261,98 @@ public class PluginManager : IPluginManager, IDisposable
                     pluginDir
                 );
             }
+        }
+    }
+
+    /// <summary>
+    /// The one-time upgrade for a plugin the server sees for the first time
+    /// (a manual drop, or an install from before file hashes were recorded),
+    /// run at boot before its first load reads the files: the record is
+    /// written from what is present and the folder joins the recorded set.
+    /// A folder in the set whose record is gone is not recorded again: its
+    /// load is refused, because a missing record is a change too.
+    /// </summary>
+    private async Task RecordFileManifestIfMissingAsync(string pluginDir, CancellationToken ct)
+    {
+        // A storage entry is relative to the storage scope; the hashes are
+        // taken from the real folder, the way the loader resolves it.
+        string folder = Path.GetFullPath(Path.Combine(_pluginsPath, pluginDir));
+        if (File.Exists(Path.Combine(folder, PluginFileManifest.FileName)))
+        {
+            return;
+        }
+
+        string name = Path.GetFileName(pluginDir);
+        if ((await ReadRecordedFoldersAsync(ct)).Contains(name))
+        {
+            _logger.LogWarning(
+                "Plugin folder {Folder} was recorded before and its record is missing; refusing it with {Code}.",
+                name,
+                PluginRefusalCode.FilesChanged
+            );
+            return;
+        }
+
+        await RecordFilesAsync(folder, ct);
+        _logger.LogInformation(
+            "Recorded file hashes for {Folder}; changes from now on are refused.",
+            name
+        );
+    }
+
+    /// <summary>
+    /// Writes the folder's file record and adds it to the recorded set. The
+    /// set lives under the platform data folder, outside every plugin folder,
+    /// so deleting a plugin's record cannot make it a new folder again.
+    /// </summary>
+    private async Task RecordFilesAsync(string folder, CancellationToken ct)
+    {
+        await PluginFileManifest.WriteAsync(folder, ct);
+        await RememberRecordedFolderAsync(Path.GetFileName(folder), recorded: true, ct);
+    }
+
+    private string RecordedFoldersPath =>
+        _storage.CombinePath(_pluginsPath, "data", "platform", "recorded-folders.json");
+
+    private async Task<HashSet<string>> ReadRecordedFoldersAsync(CancellationToken ct)
+    {
+        HashSet<string> folders = new(StringComparer.OrdinalIgnoreCase);
+        if (_storage.Exists(RecordedFoldersPath))
+        {
+            string json = await _storage.ReadAllTextAsync(RecordedFoldersPath, ct);
+            folders.UnionWith(JsonSerializer.Deserialize<string[]>(json) ?? []);
+        }
+
+        return folders;
+    }
+
+    private async Task RememberRecordedFolderAsync(
+        string folder,
+        bool recorded,
+        CancellationToken ct
+    )
+    {
+        await _recordedFoldersLock.WaitAsync(ct);
+        try
+        {
+            HashSet<string> folders = await ReadRecordedFoldersAsync(ct);
+            if (recorded ? !folders.Add(folder) : !folders.Remove(folder))
+            {
+                return;
+            }
+
+            string directory = _storage.CombinePath(_pluginsPath, "data", "platform");
+            if (!_storage.Exists(directory))
+            {
+                _storage.CreateDirectory(directory);
+            }
+
+            string json = JsonSerializer.Serialize(folders.Order(StringComparer.OrdinalIgnoreCase));
+            await _storage.WriteAllTextAsync(RecordedFoldersPath, json, ct);
+        }
+        finally
+        {
+            _recordedFoldersLock.Release();
         }
     }
 
@@ -1360,5 +1514,6 @@ public class PluginManager : IPluginManager, IDisposable
         }
 
         _registry.Clear();
+        _recordedFoldersLock.Dispose();
     }
 }

@@ -61,6 +61,8 @@ public class PluginChecksumSubjectTests : IDisposable
             CodeScanVerificationStageTests.SampleDllPath("NoMercy.Plugin.Samples.Echo"),
             path
         );
+        // Recorded as an install records it: the checksum is the subject here.
+        PluginFileManifest.WriteAsync(_tempDir).GetAwaiter().GetResult();
         return path;
     }
 

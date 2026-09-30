@@ -154,6 +154,10 @@ public class PluginLoaderFailureFixtureTests : IDisposable
         foreach (string file in Directory.EnumerateFiles(binDir, "*.deps.json"))
             File.Copy(file, Path.Combine(pluginDir, Path.GetFileName(file)), overwrite: true);
 
+        // Recorded as an install records it, or the load refuses the folder
+        // before it reaches the failure a test stages.
+        PluginFileManifest.WriteAsync(pluginDir).GetAwaiter().GetResult();
+
         return Path.Combine(pluginDir, "NoMercy.Plugin.Samples.Failures.dll");
     }
 
@@ -174,6 +178,7 @@ public class PluginLoaderFailureFixtureTests : IDisposable
             dest,
             overwrite: true
         );
+        PluginFileManifest.WriteAsync(pluginDir).GetAwaiter().GetResult();
         return dest;
     }
 
