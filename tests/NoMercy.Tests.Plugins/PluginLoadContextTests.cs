@@ -12,6 +12,7 @@
 using System.Reflection;
 using FluentAssertions;
 using NoMercy.PluginSdk;
+using NoMercy.PluginSdk.Abstractions;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;
@@ -144,10 +145,114 @@ public class PluginLoadContextTests
         handle.Should().Be(IntPtr.Zero);
     }
 
-    private sealed class ExposedPluginLoadContext(string pluginPath)
-        : PluginLoadContext(pluginPath),
-            IDisposable
+    [Fact]
+    public void AServerAssemblyNextToThePluginIsRefused()
     {
+        // The file's content does not matter: the name is checked before any
+        // load. A refusal must be thrown, not a null: null hands the request
+        // to the default context, which holds the host's real NoMercy.Api.
+        using TemporaryPluginFolder folder = new();
+        string serverDll = folder.CopyNewtonsoftAs("NoMercy.Api.dll");
+        using ExposedPluginLoadContext context = new(
+            folder.PluginDll,
+            allowedFiles: [folder.PluginDll, serverDll]
+        );
+
+        Action load = () => context.InvokeLoad(new AssemblyName("NoMercy.Api"));
+
+        load.Should().Throw<PluginRefusedException>().WithMessage("*server assembly*");
+    }
+
+    [Fact]
+    public void ADllNotOnTheAllowedListIsNotLoaded()
+    {
+        using TemporaryPluginFolder folder = new();
+        folder.CopyNewtonsoftAs("Helper.dll");
+        using ExposedPluginLoadContext context = new(
+            folder.PluginDll,
+            allowedFiles: [folder.PluginDll]
+        );
+
+        Assembly? resolved = context.InvokeLoad(new AssemblyName("Helper"));
+
+        resolved
+            .Should()
+            .BeNull(
+                "a file the loader did not list is not loaded, even from the plugin's own folder"
+            );
+    }
+
+    [Fact]
+    public void ASharedAssemblyStillComesFromTheHost()
+    {
+        using TemporaryPluginFolder folder = new();
+        using ExposedPluginLoadContext context = new(
+            folder.PluginDll,
+            allowedFiles: [folder.PluginDll]
+        );
+
+        Assembly? resolved = context.InvokeLoad(new AssemblyName("NoMercy.PluginSdk.Abstractions"));
+
+        resolved.Should().BeSameAs(typeof(IPlugin).Assembly);
+    }
+
+    /// <summary>
+    /// A plugin folder built for one test: the Failures sample's entry DLL (with
+    /// its deps.json, so the resolver has a manifest to read) plus whatever
+    /// files the test drops next to it.
+    /// </summary>
+    private sealed class TemporaryPluginFolder : IDisposable
+    {
+        public string Dir { get; }
+        public string PluginDll { get; }
+
+        public TemporaryPluginFolder()
+        {
+            Dir = Path.Combine(Path.GetTempPath(), "nomercy-load-context-" + Ulid.NewUlid());
+            Directory.CreateDirectory(Dir);
+
+            string source = GetFailuresPluginDllPath();
+            PluginDll = Path.Combine(Dir, Path.GetFileName(source));
+            File.Copy(source, PluginDll);
+
+            string deps = Path.ChangeExtension(source, ".deps.json");
+            if (File.Exists(deps))
+                File.Copy(deps, Path.Combine(Dir, Path.GetFileName(deps)));
+        }
+
+        public string CopyNewtonsoftAs(string fileName)
+        {
+            string testBinDir = Path.GetDirectoryName(
+                typeof(PluginLoadContextTests).Assembly.Location
+            )!;
+            string target = Path.Combine(Dir, fileName);
+            File.Copy(Path.Combine(testBinDir, "Newtonsoft.Json.dll"), target);
+            return target;
+        }
+
+        public void Dispose()
+        {
+            // Windows keeps a loaded DLL locked until its context is collected.
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
+
+            try
+            {
+                Directory.Delete(Dir, recursive: true);
+            }
+            catch (Exception) { }
+        }
+    }
+
+    private sealed class ExposedPluginLoadContext(
+        string pluginPath,
+        IReadOnlyCollection<string>? allowedFiles = null
+    ) : PluginLoadContext(pluginPath), IDisposable
+    {
+        // Held, not yet forwarded: the base has no allowed-file list before
+        // card 2b-c lands. The green commit forwards it.
+        public IReadOnlyCollection<string>? AllowedFiles { get; } = allowedFiles;
+
         public Assembly? InvokeLoad(AssemblyName assemblyName) => Load(assemblyName);
 
         public IntPtr InvokeLoadUnmanagedDll(string unmanagedDllName) =>
