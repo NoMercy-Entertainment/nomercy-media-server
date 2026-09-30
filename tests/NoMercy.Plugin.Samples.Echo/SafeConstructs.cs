@@ -9,6 +9,8 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Collections.Immutable;
+
 namespace NoMercy.Plugin.Samples.Echo;
 
 /// <summary>
@@ -45,5 +47,17 @@ public sealed class SafeConstructs
     {
         await Task.Yield();
         return _names.Length;
+    }
+
+    // A List<T> collection expression with elements and a spread lowers to
+    // CollectionsMarshal.SetCount and CollectionsMarshal.AsSpan; an
+    // ImmutableArray<T> one lowers to
+    // ImmutableCollectionsMarshal.AsImmutableArray. Fillz's radio plugin was
+    // refused on the first shape without naming either type.
+    public int Merge(int a, int b, int[] rest)
+    {
+        List<int> merged = [a, b, .. rest];
+        ImmutableArray<int> frozen = [.. merged];
+        return merged.Count + frozen.Length;
     }
 }

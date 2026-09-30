@@ -108,7 +108,10 @@ public class CodeScanVerificationStageTests : IDisposable
             TargetAbi = PluginAbi.Current.ToString(),
         };
 
-    private static PluginVerificationContext Context(string assemblyPath, string? packagePath = null) =>
+    private static PluginVerificationContext Context(
+        string assemblyPath,
+        string? packagePath = null
+    ) =>
         new()
         {
             Manifest = Manifest(Path.GetFileNameWithoutExtension(assemblyPath)),
@@ -179,6 +182,73 @@ public class CodeScanVerificationStageTests : IDisposable
         outcome.Should().Be(PluginStageOutcome.Fail);
         message.Should().Contain("helper.dll");
         message.Should().Contain("not pure IL");
+    }
+
+    /// <summary>
+    /// The load context may load any file of the shadow copy, subfolders
+    /// included, so the scan reads subfolders too: a culture folder or a
+    /// deps.json-listed <c>lib/x.dll</c> is not a way around it.
+    /// </summary>
+    [Fact]
+    public void ABannedDllInASubfolderFails()
+    {
+        string dll = StageAlone(_tempDir, Echo);
+        string lib = Path.Combine(Path.GetDirectoryName(dll)!, "lib");
+        Directory.CreateDirectory(lib);
+        File.Copy(SampleDllPath(Escapes), Path.Combine(lib, $"{Escapes}.dll"));
+
+        (PluginStageOutcome outcome, string? message) = new CodeScanVerificationStage().Evaluate(
+            Context(dll)
+        );
+
+        outcome.Should().Be(PluginStageOutcome.Fail);
+        message.Should().Contain(Path.Combine("lib", $"{Escapes}.dll"));
+        message.Should().Contain("System.Runtime.Loader");
+    }
+
+    /// <summary>
+    /// An executable image is scanned whatever its name: <c>.exe</c>, or any
+    /// file that starts with the <c>MZ</c> bytes.
+    /// </summary>
+    [Theory]
+    [InlineData("helper.exe")]
+    [InlineData("helper.bin")]
+    public void AnExecutableImageUnderAnyNameIsScanned(string fileName)
+    {
+        string dll = StageAlone(_tempDir, Echo);
+        File.Copy(SampleDllPath(Escapes), Path.Combine(Path.GetDirectoryName(dll)!, fileName));
+
+        (PluginStageOutcome outcome, string? message) = new CodeScanVerificationStage().Evaluate(
+            Context(dll)
+        );
+
+        outcome.Should().Be(PluginStageOutcome.Fail);
+        message.Should().Contain(fileName);
+        message.Should().Contain("System.Runtime.Loader");
+    }
+
+    /// <summary>
+    /// A shared assembly beside the plugin is skipped because the load context
+    /// serves the host's copy by that name. The skip needs the file name and
+    /// the metadata name to agree: a DLL built as <c>Newtonsoft.Json</c> but
+    /// shipped as <c>evil.dll</c> is a plugin file and is scanned.
+    /// </summary>
+    [Fact]
+    public void ASharedAssemblyNameUnderAnotherFileNameIsScanned()
+    {
+        string dll = StageAlone(_tempDir, Echo);
+        string folder = Path.GetDirectoryName(dll)!;
+        string newtonsoft = typeof(Newtonsoft.Json.JsonConvert).Assembly.Location;
+        CodeScanVerificationStage stage = new();
+
+        File.Copy(newtonsoft, Path.Combine(folder, "Newtonsoft.Json.dll"));
+        stage.Evaluate(Context(dll)).Outcome.Should().Be(PluginStageOutcome.Pass);
+
+        File.Move(Path.Combine(folder, "Newtonsoft.Json.dll"), Path.Combine(folder, "evil.dll"));
+        (PluginStageOutcome outcome, string? message) = stage.Evaluate(Context(dll));
+
+        outcome.Should().Be(PluginStageOutcome.Fail);
+        message.Should().Contain("evil.dll");
     }
 
     [Fact]
@@ -260,7 +330,11 @@ public class CodeScanVerificationStageTests : IDisposable
 
         await loader.LoadPluginAssemblyAsync(dll);
 
-        errors.Should().ContainSingle().Which.ErrorMessage.Should().Contain(PluginRefusalCode.CodeScan);
+        errors
+            .Should()
+            .ContainSingle()
+            .Which.ErrorMessage.Should()
+            .Contain(PluginRefusalCode.CodeScan);
         registry.Values.Should().BeEmpty();
         Directory
             .GetDirectories(_tempDir, "*", SearchOption.AllDirectories)

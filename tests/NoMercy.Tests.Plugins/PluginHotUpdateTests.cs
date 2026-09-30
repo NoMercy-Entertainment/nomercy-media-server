@@ -454,12 +454,14 @@ public class PluginHotUpdateTests : IDisposable
                 StreamWriter writer = new(archive.CreateEntry($"{FolderName}/plugin.json").Open())
             )
                 writer.Write(ManifestFor(pluginId, "2.0.0"));
-            using (
-                StreamWriter writer = new(
-                    archive.CreateEntry($"{FolderName}/{AssemblyName}").Open()
-                )
-            )
-                writer.Write("second release content");
+            // Real, clean IL with no plugin type: the archive is scanned before
+            // the swap begins, and the swap is what this test is about.
+            archive.CreateEntryFromFile(
+                CodeScanVerificationStageTests.SampleDllPath(
+                    "NoMercy.Plugin.Samples.NoPluginTypes"
+                ),
+                $"{FolderName}/{AssemblyName}"
+            );
         }
 
         manager.CopyStreamOverride = (_, _) =>

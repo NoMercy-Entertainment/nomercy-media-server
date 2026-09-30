@@ -157,14 +157,24 @@ public class PluginLoaderFailureFixtureTests : IDisposable
         return Path.Combine(pluginDir, "NoMercy.Plugin.Samples.Failures.dll");
     }
 
-    // NoMercy.PluginSdk.Abstractions.dll is a real, validly-loadable .NET
-    // assembly that defines zero concrete IPlugin implementations (only
-    // interfaces, enums, and DTOs) — a real assembly with no plugin types is
-    // exactly the case LoadPluginAssemblyAsync's `pluginTypes.Count == 0` guard
-    // exists for, with no new fixture needed.
-    private static string GetAbstractionsAssemblyPath()
+    /// <summary>
+    /// A clean IL assembly with no plugin type in it. It passes the code scan,
+    /// so the loader reaches the "nothing to register" branch rather than
+    /// refusing the file before a context exists. It gets its own folder like
+    /// every installed plugin: the shadow copy copies the assembly's folder,
+    /// and copying the plugins root would copy the shadow folder into itself.
+    /// </summary>
+    private string StageNoPluginTypesDll()
     {
-        return typeof(IPlugin).Assembly.Location;
+        string pluginDir = Path.Combine(_tempPluginsDir, "NoPluginTypes");
+        Directory.CreateDirectory(pluginDir);
+        string dest = Path.Combine(pluginDir, "NoMercy.Plugin.Samples.NoPluginTypes.dll");
+        File.Copy(
+            CodeScanVerificationStageTests.SampleDllPath("NoMercy.Plugin.Samples.NoPluginTypes"),
+            dest,
+            overwrite: true
+        );
+        return dest;
     }
 
     [Fact]
@@ -307,12 +317,24 @@ public class PluginLoaderFailureFixtureTests : IDisposable
     [Fact]
     public async Task LoadPluginAssemblyAsync_AssemblyWithNoPluginTypes_RegistersNothingAndDoesNotThrow()
     {
-        string abstractionsPath = GetAbstractionsAssemblyPath();
+        string dllPath = StageNoPluginTypesDll();
+        List<PluginErrorOccurredEvent> errors = [];
+        _eventBus.Subscribe<PluginErrorOccurredEvent>(
+            (evt, _) =>
+            {
+                errors.Add(evt);
+                return Task.CompletedTask;
+            }
+        );
 
-        Func<Task> act = () => _manager.LoadPluginAssemblyAsync(abstractionsPath);
+        Func<Task> act = () => _manager.LoadPluginAssemblyAsync(dllPath);
 
         await act.Should().NotThrowAsync();
         _manager.GetInstalledPlugins().Should().BeEmpty();
+        errors
+            .Select(e => e.ErrorMessage)
+            .Should()
+            .BeEmpty("an assembly with nothing to register is not a refusal");
     }
 
     /// <summary>
@@ -339,8 +361,21 @@ public class PluginLoaderFailureFixtureTests : IDisposable
     [Fact]
     public async Task LoadPluginAssemblyAsync_AssemblyWithNoPluginTypes_LeavesNoLiveLoadContext()
     {
-        string abstractionsPath = GetAbstractionsAssemblyPath();
-        await _manager.LoadPluginAssemblyAsync(abstractionsPath);
+        string dllPath = StageNoPluginTypesDll();
+        List<PluginErrorOccurredEvent> errors = [];
+        _eventBus.Subscribe<PluginErrorOccurredEvent>(
+            (evt, _) =>
+            {
+                errors.Add(evt);
+                return Task.CompletedTask;
+            }
+        );
+
+        await _manager.LoadPluginAssemblyAsync(dllPath);
+        errors
+            .Select(e => e.ErrorMessage)
+            .Should()
+            .BeEmpty("a refused file never builds a context, so it proves nothing here");
 
         // Collection is what ends a collectible context, and it is not
         // immediate: Unload only makes it eligible. Matched on this test's own
