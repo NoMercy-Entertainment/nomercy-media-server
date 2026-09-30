@@ -90,10 +90,26 @@ public sealed class PluginHostLoadContext(string assemblyPath)
     protected override Assembly? Load(AssemblyName assemblyName)
     {
         if (
-            assemblyName.Name?.StartsWith("NoMercy.PluginSdk.Abstractions", StringComparison.Ordinal)
-            == true
+            assemblyName.Name?.StartsWith(
+                "NoMercy.PluginSdk.Abstractions",
+                StringComparison.Ordinal
+            ) == true
         )
             return null;
+
+        // Same wall as the in-process PluginLoadContext: thrown, never null,
+        // so the request never reaches this process's default context.
+        if (assemblyName.Name?.StartsWith("NoMercy.", StringComparison.OrdinalIgnoreCase) == true)
+            throw new PluginRefusedException(
+                new PluginRefusal(
+                    PluginRefusalCode.ServerAssemblyFromPlugin,
+                    Path.GetFileNameWithoutExtension(assemblyPath),
+                    $"Plugin tried to load server assembly '{assemblyName.Name}'. Server assemblies are never loaded from a plugin.",
+                    "A plugin that carries its own copy of a server assembly runs server code outside every guard the host has, and its types are not the host's types.",
+                    "Remove every NoMercy.* assembly from the plugin package; reference only the NoMercy.PluginSdk packages, which the server provides at run time.",
+                    PluginRefusalSeverity.Blocked
+                )
+            );
 
         string? path = _resolver.ResolveAssemblyToPath(assemblyName);
 

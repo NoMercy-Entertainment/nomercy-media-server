@@ -33,4 +33,7 @@ public static class PluginRefusalCode
 
     /// <summary>A caller reached a plugin route with its bearer token in the URL.</summary>
     public const string TokenInUrl = "PLUGIN_TOKEN_IN_URL";
+
+    /// <summary>A plugin asked its load context for a server assembly instead of the SDK.</summary>
+    public const string ServerAssemblyFromPlugin = "PLUGIN_SERVER_ASSEMBLY_FROM_PLUGIN";
 }

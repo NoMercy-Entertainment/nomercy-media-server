@@ -341,7 +341,11 @@ internal sealed class PluginLoader(
             string loadPath = PluginShadowCopy.Create(_pluginsPath, absoluteAssemblyPath);
             string shadowDir = Path.GetDirectoryName(loadPath)!;
 
-            PluginLoadContext loadContext = new(loadPath, _sharedAssemblies);
+            PluginLoadContext loadContext = new(
+                loadPath,
+                _sharedAssemblies,
+                allowedFiles: Directory.GetFiles(shadowDir, "*.dll")
+            );
 
             try
             {
@@ -656,7 +660,11 @@ internal sealed class PluginLoader(
             // assembly is skipped and reported, not fatal.
             loadPath = PluginShadowCopy.Create(_pluginsPath, absoluteAssemblyPath);
             shadowDir = Path.GetDirectoryName(loadPath)!;
-            loadContext = new(loadPath, _sharedAssemblies);
+            loadContext = new(
+                loadPath,
+                _sharedAssemblies,
+                allowedFiles: Directory.GetFiles(shadowDir, "*.dll")
+            );
         }
         catch (Exception loadContextEx)
         {

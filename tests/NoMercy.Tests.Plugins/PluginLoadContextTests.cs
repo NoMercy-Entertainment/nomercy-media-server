@@ -247,12 +247,8 @@ public class PluginLoadContextTests
     private sealed class ExposedPluginLoadContext(
         string pluginPath,
         IReadOnlyCollection<string>? allowedFiles = null
-    ) : PluginLoadContext(pluginPath), IDisposable
+    ) : PluginLoadContext(pluginPath, allowedFiles: allowedFiles), IDisposable
     {
-        // Held, not yet forwarded: the base has no allowed-file list before
-        // card 2b-c lands. The green commit forwards it.
-        public IReadOnlyCollection<string>? AllowedFiles { get; } = allowedFiles;
-
         public Assembly? InvokeLoad(AssemblyName assemblyName) => Load(assemblyName);
 
         public IntPtr InvokeLoadUnmanagedDll(string unmanagedDllName) =>
