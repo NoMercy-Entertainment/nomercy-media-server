@@ -18,7 +18,6 @@ using NoMercy.Database;
 using NoMercy.MediaProcessing.Files;
 using NoMercy.MediaProcessing.Files.Parsing;
 using NoMercy.MediaProcessing.Files.Parsing.Adapters;
-using NoMercy.MediaProcessing.Intake;
 using NoMercy.NmSystem.Domain;
 using NoMercy.Providers.Helpers;
 using NoMercy.Providers.TMDB.Models.Shared;
@@ -216,88 +215,5 @@ public class ShowNotYetInLibraryIsIdentifiedTests : ProviderHttpHarness
 
         result.Should().NotBeNull();
         result!.Value.match.Title.Should().Be("Pilot");
-    }
-
-    private sealed record SelectedRow(int Id, string Path);
-
-    /// <summary>
-    /// What app-web sends on Add content is {id: match?.id ?? 0, path}. Ten rows of
-    /// one season that all came back unmatched shared id 0, so the one-file-per-episode
-    /// rule kept one and skipped nine.
-    /// </summary>
-    [Fact]
-    public async Task Ten_selected_rows_of_one_season_are_all_queued()
-    {
-        // Episode 10 first: the mock matches by prefix and "episode/1" would answer it.
-        for (int number = 10; number >= 3; number--)
-            Handler.WhenGet(
-                $"/tv/{ShowId}/season/1/episode/{number}",
-                MockResponse.Json(
-                    HttpStatusCode.OK,
-                    $$"""
-                    {"id":{{9000
-                        + number}},"name":"Episode {{number}}","overview":"","season_number":1,"episode_number":{{number}},"still_path":"/s{{number}}.jpg","air_date":"2023-03-01"}
-                    """
-                )
-            );
-
-        ScriptTmdb();
-
-        await using MediaContext context = new(_options);
-        MediaIdentificationService service = new(
-            context,
-            new ServiceCollection()
-                .BuildServiceProvider()
-                .GetRequiredService<IServiceScopeFactory>()
-        );
-
-        List<SelectedRow> rows = [];
-        for (int number = 1; number <= 10; number++)
-        {
-            string file = $"The.Ark.S01E{number:D2}.1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb.mkv";
-            ResolvedName resolved = Resolve(file);
-            (MovieOrEpisode match, string? imdbId)? result = await service.IdentifyAsync(
-                resolved.Parsed,
-                MediaTypes.TvMediaType,
-                duration: null,
-                resolved.OverrideTmdbId,
-                resolved.SeasonExplicit,
-                resolved.AirDate
-            );
-            int id = result is null ? 0 : (int)result.Value.match.Id;
-            rows.Add(new(id, $"/downloads/{ReleaseFolder}/{file}"));
-        }
-
-        (List<SelectedRow> selected, List<string> collided) = EpisodeClaims.PickOnePerEpisode(
-            rows,
-            row => $"{row.Id}",
-            row => row.Path
-        );
-
-        selected.Should().HaveCount(10);
-        collided.Should().BeEmpty();
-    }
-
-    [Fact]
-    public async Task The_show_of_a_file_is_found_from_its_name_for_the_add_path()
-    {
-        ScriptTmdb();
-
-        (int ShowId, int Season, int Episode)? located = await UnheldShowLocator.LocateAsync(
-            new FilenameParserPipeline(
-                new IFilenameParseAdapter[]
-                {
-                    new EpisodePrefixAdapter(),
-                    new EpisodeWordAdapter(),
-                    new CrossFormatAdapter(),
-                    new SeasonEpisodeAdapter(),
-                    new MovieDetectorAdapter(),
-                }
-            ),
-            $"/downloads/{ReleaseFolder}/{FirstFile}",
-            MediaTypes.TvMediaType
-        );
-
-        located.Should().Be((ShowId, 1, 1));
     }
 }

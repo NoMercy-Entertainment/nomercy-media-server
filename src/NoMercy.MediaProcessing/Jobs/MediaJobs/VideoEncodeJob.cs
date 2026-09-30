@@ -2559,50 +2559,6 @@ public class VideoEncodeJob
         }
     }
 
-    private async Task<Episode?> ImportShowOfUnheldEpisodeAsync(Folder folder, MediaContext context)
-    {
-        Library? tvLibrary = folder
-            .FolderLibraries.Select(x => x.Library)
-            .FirstOrDefault(library =>
-                library.Type is MediaTypes.TvMediaType or MediaTypes.AnimeMediaType
-            );
-        if (tvLibrary is null || _filenameParser is null || string.IsNullOrEmpty(InputFile))
-            return null;
-
-        (int ShowId, int Season, int Episode)? located = await UnheldShowLocator.LocateAsync(
-            _filenameParser,
-            InputFile,
-            tvLibrary.Type
-        );
-        if (located is null)
-            return null;
-
-        Log.LogInformation(
-            "[VideoEncodeJob] No episode {Id} on the server; importing show {ShowId} for '{File}'",
-            Id,
-            located.Value.ShowId,
-            InputFile
-        );
-
-        ShowImportJob import = new(StorageFactory, StorageDriver, LoggerFactory)
-        {
-            Id = located.Value.ShowId,
-            LibraryId = tvLibrary.Id,
-            AddedBy = LibraryLinkOrigin.Manual,
-        };
-        await import.Handle();
-
-        (int showId, int season, int episodeNumber) = located.Value;
-        return await context
-            .Episodes.Include(x => x.Tv)
-            .FirstOrDefaultAsync(x =>
-                x.Id == Id.ToInt()
-                || (
-                    x.TvId == showId && x.SeasonNumber == season && x.EpisodeNumber == episodeNumber
-                )
-            );
-    }
-
     private async Task<FileMetadata> GetFileMetaData(Folder folder, MediaContext context)
     {
         Movie? movie = folder.FolderLibraries.Any(x => x.Library.Type == MediaTypes.MovieMediaType)
@@ -2614,12 +2570,6 @@ public class VideoEncodeJob
         )
             ? await context.Episodes.Include(x => x.Tv).FirstOrDefaultAsync(x => x.Id == Id.ToInt())
             : null;
-
-        // A file picked in Add content can belong to a show the server does not hold
-        // yet: listing never imports, so the owner's add is where it happens. Import
-        // the show once, here, then look the episode up again.
-        if (movie is null && episode is null)
-            episode = await ImportShowOfUnheldEpisodeAsync(folder, context);
 
         if (movie is null && episode is null)
             return new() { Success = false };
