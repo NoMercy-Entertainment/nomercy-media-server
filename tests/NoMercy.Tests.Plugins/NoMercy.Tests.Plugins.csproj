@@ -50,6 +50,8 @@
     <ProjectReference Include="..\NoMercy.Plugin.Samples.Failures\NoMercy.Plugin.Samples.Failures.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\NoMercy.Plugin.Samples.ManifestFailure\NoMercy.Plugin.Samples.ManifestFailure.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\NoMercy.Plugin.Samples.StaleMember\NoMercy.Plugin.Samples.StaleMember.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\NoMercy.Plugin.Samples.Escapes\NoMercy.Plugin.Samples.Escapes.csproj" ReferenceOutputAssembly="false" />
+    <ProjectReference Include="..\NoMercy.Plugin.Samples.NoPluginTypes\NoMercy.Plugin.Samples.NoPluginTypes.csproj" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\..\src\NoMercy.PluginSdk.Ipc\NoMercy.PluginSdk.Ipc.csproj" />
   </ItemGroup>
 </Project>
