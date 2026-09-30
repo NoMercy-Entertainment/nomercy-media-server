@@ -13,6 +13,15 @@ Source5: README
 BuildArch: x86_64
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root
 
+# rpmbuild adds a Requires for every library a bundled ELF file links. Files that never load on
+# x86_64 Linux must add none, or dnf refuses the install ("nothing provides ..."):
+# - runtimes/<rid>/native for other platforms (NoMercy.Storage.csproj links libnfs for every RID);
+#   the linux-arm64 copy asks for ld-linux-aarch64.so.1.
+# - libcoreclrtraceptprovider.so (.NET LTTng tracing, loaded only when LTTng is installed) asks for
+#   liblttng-ust.so.0, which current Fedora does not ship.
+%global __requires_exclude_from ^/opt/nomercy/runtimes/(linux-arm|linux-musl-|osx-|win-)
+%global __requires_exclude ^liblttng-ust\\.so\\.0
+
 Requires: glibc
 Recommends: systemd
 
