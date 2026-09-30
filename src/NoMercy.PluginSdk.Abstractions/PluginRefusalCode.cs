@@ -36,4 +36,7 @@ public static class PluginRefusalCode
 
     /// <summary>A plugin asked its load context for a server assembly instead of the SDK.</summary>
     public const string ServerAssemblyFromPlugin = "PLUGIN_SERVER_ASSEMBLY_FROM_PLUGIN";
+
+    /// <summary>A plugin DLL is not pure IL, reaches an escape hatch, or references a server assembly.</summary>
+    public const string CodeScan = "PLUGIN_CODE_SCAN";
 }

@@ -139,8 +139,17 @@ public class PluginLoaderFailureFixtureTests : IDisposable
         string pluginDir = Path.Combine(_tempPluginsDir, "Failures");
         Directory.CreateDirectory(pluginDir);
 
+        // Polly is in the folder only for PluginLoadContextTests' resolver
+        // branch; no Failures plugin uses it, and the code scan refuses it
+        // (System.Reflection.MemberInfo, System.Activator). The loader path
+        // stages the plugin without it rather than widen the ban list.
         foreach (string file in Directory.EnumerateFiles(binDir, "*.dll"))
+        {
+            if (Path.GetFileName(file).StartsWith("Polly", StringComparison.Ordinal))
+                continue;
+
             File.Copy(file, Path.Combine(pluginDir, Path.GetFileName(file)), overwrite: true);
+        }
 
         foreach (string file in Directory.EnumerateFiles(binDir, "*.deps.json"))
             File.Copy(file, Path.Combine(pluginDir, Path.GetFileName(file)), overwrite: true);
@@ -687,7 +696,10 @@ public class PluginLoaderFailureFixtureTests : IDisposable
         reported.ErrorMessage.Should().Contain("get_EventBus", "the author needs the member named");
         reported
             .ErrorMessage.Should()
-            .Contain(PluginAbi.Current.ToString(), "and the version to rebuild against, which the runtime never says");
+            .Contain(
+                PluginAbi.Current.ToString(),
+                "and the version to rebuild against, which the runtime never says"
+            );
         reported.ErrorMessage.Should().Contain("/nomercy-plugins/migration");
 
         // The plugin beside it in the same assembly fails for its own reason and

@@ -18,6 +18,10 @@ namespace NoMercy.Plugin.Samples.Echo;
 /// </summary>
 public sealed class SafeConstructs
 {
+    // A delegate's methods carry CodeType Runtime; the scan must not read
+    // them as native code.
+    public delegate int Pick(int index);
+
     private readonly string[] _names = ["a", "b", "c"];
 
     public string this[int index] => _names[index];
