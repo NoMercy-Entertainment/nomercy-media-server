@@ -43,22 +43,28 @@ jobs:
           echo "tag=v$LATEST_TAG" >> "$GITHUB_OUTPUT"
           echo "Global latest tag: v$LATEST_TAG"
 
+      - name: Test the release-change check
+        if: github.ref == 'refs/heads/dev'
+        run: bash .github/scripts/has-release-changes.test.sh
+
       - name: Check for source changes
         id: check-changes
         if: github.ref == 'refs/heads/dev'
         run: |
           if [[ "${{ github.event_name }}" == "release" ]] || [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "has_source_changes=true" >> $GITHUB_OUTPUT
+            echo "has_source_changes=true" >> "$GITHUB_OUTPUT"
             echo "Release or manual trigger - proceeding with full pipeline"
           else
-            # Check for actual source code changes since last tag
+            # src/ or a package action changed since the last tag: a packaging fix alone must release too.
+            # The assignment fails the step when the check itself fails, instead of silently skipping a release.
             LATEST_TAG="${{ steps.get-tag.outputs.tag }}"
-            if git diff --quiet "$LATEST_TAG" HEAD -- src/ 2>/dev/null; then
-              echo "has_source_changes=false" >> $GITHUB_OUTPUT
-              echo "No source code changes detected since $LATEST_TAG"
+            CHANGED="$(bash .github/scripts/has-release-changes.sh "$LATEST_TAG" HEAD)"
+            if [[ "$CHANGED" == "true" ]]; then
+              echo "has_source_changes=true" >> "$GITHUB_OUTPUT"
+              echo "Release changes detected since $LATEST_TAG - proceeding with version bump and full pipeline"
             else
-              echo "has_source_changes=true" >> $GITHUB_OUTPUT
-              echo "Source code changes detected - proceeding with version bump and full pipeline"
+              echo "has_source_changes=false" >> "$GITHUB_OUTPUT"
+              echo "No source or package changes detected since $LATEST_TAG"
             fi
           fi
 
@@ -78,9 +84,9 @@ jobs:
         id: check-deploy
         run: |
           if [[ "${{ github.event_name }}" == "release" ]] || [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            echo "should_deploy=true" >> $GITHUB_OUTPUT
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
           elif [[ "${{ github.ref }}" == "refs/heads/dev" ]] && [[ "${{ steps.check-changes.outputs.has_source_changes }}" == "true" ]]; then
-            echo "should_deploy=true" >> $GITHUB_OUTPUT
+            echo "should_deploy=true" >> "$GITHUB_OUTPUT"
           else
-            echo "should_deploy=false" >> $GITHUB_OUTPUT
+            echo "should_deploy=false" >> "$GITHUB_OUTPUT"
           fi
