@@ -280,9 +280,10 @@ internal sealed class PluginLoader(
             // code is already here, and unloading it is the thing a separate
             // process exists to avoid.
             //
-            // A null answer is an install that cannot do it yet, and the
-            // plugin loads here rather than not at all. The dashboard is what
-            // tells the owner the choice is not being honored.
+            // A null answer is a refusal, never a fallback: the owner chose a
+            // process boundary, and loading the assembly here is the one thing
+            // that choice forbids. The plugin is held as malfunctioned with the
+            // reason so the dashboard can say what to do.
             if (_remote?.IsolationFor(manifest.Id.Value) == PluginIsolation.OutOfProcess)
             {
                 IPlugin? elsewhere = await _remote.LoadAsync(
@@ -309,6 +310,28 @@ internal sealed class PluginLoader(
                     );
                     return;
                 }
+
+                const string reason =
+                    "Out-of-process was chosen for this plugin, but this install cannot run it there. The plugin was not loaded. Choose in-process, or install the plugin host.";
+
+                _logger.LogError(
+                    "Plugin {PluginName} is set to run in its own process and this install cannot do that. The plugin was not loaded.",
+                    [manifest.Name]
+                );
+
+                RegisterUnloadableAssembly(manifest, assemblyPath, manifestPath, reason);
+
+                await _eventBus.PublishAsync(
+                    new PluginErrorOccurredEvent
+                    {
+                        PluginId = manifest.Id.ToString(),
+                        PluginName = manifest.Name,
+                        ErrorMessage = reason,
+                    },
+                    ct
+                );
+
+                return;
             }
 
             // Loaded from a fresh copy, never from the installed folder: the
