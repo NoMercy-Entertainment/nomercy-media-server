@@ -87,15 +87,18 @@ internal static class PluginCodeScanner
     internal static IReadOnlyList<string> Scan(string dllPath, bool entry)
     {
         using FileStream stream = File.OpenRead(dllPath);
-        return Scan(stream, entry);
+        return Scan(stream, Path.GetFileName(dllPath), entry);
     }
 
     /// <summary>
     /// Findings for one assembly; empty means clean. A shared assembly beside
     /// the plugin is never loaded from the folder (the load context serves the
-    /// host's copy), so it is skipped; the entry assembly never is.
+    /// host's copy), so it is skipped; the entry assembly never is. The skip
+    /// needs the file to carry the shared assembly's own name: the resolver
+    /// finds a shared assembly by that file name, so a file under any other
+    /// name is loaded from the folder however its metadata names itself.
     /// </summary>
-    internal static IReadOnlyList<string> Scan(Stream stream, bool entry)
+    internal static IReadOnlyList<string> Scan(Stream stream, string fileName, bool entry)
     {
         List<string> findings = [];
         try
@@ -107,7 +110,7 @@ internal static class PluginCodeScanner
 
             MetadataReader md = pe.GetMetadataReader();
             string assemblyName = md.GetString(md.GetAssemblyDefinition().Name);
-            if (!entry && PluginHostOptions.DefaultSharedAssemblies.Contains(assemblyName))
+            if (!entry && IsSharedAssemblyFile(fileName, assemblyName))
                 return findings;
 
             ScanTypeReferences(md, findings);
@@ -125,6 +128,14 @@ internal static class PluginCodeScanner
 
         return findings;
     }
+
+    private static bool IsSharedAssemblyFile(string fileName, string assemblyName) =>
+        PluginHostOptions.DefaultSharedAssemblies.Contains(assemblyName)
+        && string.Equals(
+            Path.GetFileNameWithoutExtension(fileName),
+            assemblyName,
+            StringComparison.OrdinalIgnoreCase
+        );
 
     private static void ScanTypeReferences(MetadataReader md, List<string> findings)
     {
