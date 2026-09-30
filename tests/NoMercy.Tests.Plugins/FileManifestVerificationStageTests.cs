@@ -83,9 +83,7 @@ public class FileManifestVerificationStageTests : IDisposable
             PackagePath = null,
         };
 
-    private static async Task<string> StageAndRecordAsync(
-        FileManifestVerificationStageTests tests
-    )
+    private static async Task<string> StageAndRecordAsync(FileManifestVerificationStageTests tests)
     {
         string dll = tests.StageEchoPlugin();
         await PluginFileManifest.WriteAsync(Path.GetDirectoryName(dll)!, CancellationToken.None);
@@ -98,9 +96,8 @@ public class FileManifestVerificationStageTests : IDisposable
     {
         string dll = await StageAndRecordAsync(this);
 
-        (PluginStageOutcome outcome, string? message) = new FileManifestVerificationStage().Evaluate(
-            Context(dll)
-        );
+        (PluginStageOutcome outcome, string? message) =
+            new FileManifestVerificationStage().Evaluate(Context(dll));
 
         outcome.Should().Be(PluginStageOutcome.Pass, message);
     }
@@ -111,12 +108,14 @@ public class FileManifestVerificationStageTests : IDisposable
         string dll = await StageAndRecordAsync(this);
         await File.AppendAllTextAsync(dll, "x");
 
-        (PluginStageOutcome outcome, string? message) = new FileManifestVerificationStage().Evaluate(
-            Context(dll)
-        );
+        (PluginStageOutcome outcome, string? message) =
+            new FileManifestVerificationStage().Evaluate(Context(dll));
 
         outcome.Should().Be(PluginStageOutcome.Fail);
-        message.Should().Contain($"changed: {Echo}.dll").And.Contain(PluginRefusalCode.FilesChanged);
+        message
+            .Should()
+            .Contain($"changed: {Echo}.dll")
+            .And.Contain(PluginRefusalCode.FilesChanged);
     }
 
     [Fact]
@@ -125,9 +124,8 @@ public class FileManifestVerificationStageTests : IDisposable
         string dll = await StageAndRecordAsync(this);
         File.Copy(dll, Path.Combine(Path.GetDirectoryName(dll)!, "Extra.dll"));
 
-        (PluginStageOutcome outcome, string? message) = new FileManifestVerificationStage().Evaluate(
-            Context(dll)
-        );
+        (PluginStageOutcome outcome, string? message) =
+            new FileManifestVerificationStage().Evaluate(Context(dll));
 
         outcome.Should().Be(PluginStageOutcome.Fail);
         message.Should().Contain("added: Extra.dll");
@@ -136,11 +134,13 @@ public class FileManifestVerificationStageTests : IDisposable
     [Fact]
     public void AFolderWithNoManifestFails()
     {
+        // A folder that was never installed through the server: copied by
+        // hand, with no record beside it.
         string dll = StageEchoPlugin();
+        File.Delete(Path.Combine(Path.GetDirectoryName(dll)!, PluginFileManifest.FileName));
 
-        (PluginStageOutcome outcome, string? message) = new FileManifestVerificationStage().Evaluate(
-            Context(dll)
-        );
+        (PluginStageOutcome outcome, string? message) =
+            new FileManifestVerificationStage().Evaluate(Context(dll));
 
         outcome.Should().Be(PluginStageOutcome.Fail);
         message.Should().Contain("no file manifest");

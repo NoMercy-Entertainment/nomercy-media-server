@@ -965,7 +965,7 @@ public class PluginManagerTests : IDisposable
         string recorded = await File.ReadAllTextAsync(sideFile);
 
         await File.AppendAllTextAsync(dll, "x");
-        await _manager.RecordMissingFileManifestsAsync(CancellationToken.None);
+        await _manager.LoadPluginsFromDirectoryAsync();
 
         (await File.ReadAllTextAsync(sideFile))
             .Should()

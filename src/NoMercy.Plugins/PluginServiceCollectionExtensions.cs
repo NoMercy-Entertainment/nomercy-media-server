@@ -521,6 +521,7 @@ public static class PluginServiceCollectionExtensions
             new AbiVerificationStage(),
             new CodeScanVerificationStage(),
             new ChecksumVerificationStage(),
+            new FileManifestVerificationStage(),
             new TrustedRepositoryVerificationStage(() => sp.GetService<IPluginRepository>()),
             new SignatureVerificationStage(
                 sp.GetRequiredService<IPluginTrustedKeys>(),

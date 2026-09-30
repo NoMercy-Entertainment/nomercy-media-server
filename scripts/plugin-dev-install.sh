@@ -55,6 +55,18 @@ manifest="$(dirname "$project")/plugin.json"
 lang="$(dirname "$project")/lang"
 [ -d "$lang" ] && cp -r "$lang/." "$target/lang/" 2>/dev/null
 
+# The server checks every file against the record an install writes beside
+# the plugin, and a folder whose files differ from it is refused at the next
+# boot. This copy is the install, so it writes the record: one line per file,
+# `<sha256>  <relative path>`, sorted, the format PluginFileManifest reads.
+(
+  cd "$target" \
+    && find . -type f ! -name .files.sha256 ! -name .sideloaded \
+    | sed 's|^\./||' | LC_ALL=C sort \
+    | xargs -r -d '\n' sha256sum --binary \
+    | sed 's/^\([0-9a-f]\{64\}\) \*/\1  /' > .files.sha256
+) || exit 1
+
 echo "== installed to $target =="
 ls -l "$target"
 

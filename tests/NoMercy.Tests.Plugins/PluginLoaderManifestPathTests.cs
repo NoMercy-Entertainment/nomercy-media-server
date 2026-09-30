@@ -16,6 +16,7 @@ using NoMercy.Events.Plugins;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Capabilities;
+using NoMercy.PluginSdk.Verification;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;
@@ -107,6 +108,9 @@ public class PluginLoaderManifestPathTests : IDisposable
 
         string manifestPath = Path.Combine(pluginDir, "plugin.json");
         File.WriteAllText(manifestPath, manifestJson);
+        // Recorded as an install records it, or the load refuses the folder
+        // before it reaches the failure a test stages.
+        PluginFileManifest.WriteAsync(pluginDir).GetAwaiter().GetResult();
         return manifestPath;
     }
 
@@ -263,6 +267,7 @@ public class PluginLoaderManifestPathTests : IDisposable
             """;
         string manifestPath = Path.Combine(pluginDir, "plugin.json");
         File.WriteAllText(manifestPath, manifestJson);
+        await PluginFileManifest.WriteAsync(pluginDir);
         PluginManager manager = BuildManager();
 
         Func<Task> act = () => manager.LoadPluginFromManifestAsync(manifestPath);
@@ -322,6 +327,7 @@ public class PluginLoaderManifestPathTests : IDisposable
             """;
         string manifestPath = Path.Combine(pluginDir, "plugin.json");
         File.WriteAllText(manifestPath, manifestJson);
+        await PluginFileManifest.WriteAsync(pluginDir);
         PluginManager manager = BuildManager();
 
         await manager.LoadPluginFromManifestAsync(manifestPath);
@@ -384,6 +390,7 @@ public class PluginLoaderManifestPathTests : IDisposable
             """;
         string manifestPath = Path.Combine(pluginDir, "plugin.json");
         File.WriteAllText(manifestPath, manifestJson);
+        await PluginFileManifest.WriteAsync(pluginDir);
         PluginManager manager = BuildManager();
 
         Func<Task> act = () => manager.LoadPluginFromManifestAsync(manifestPath);

@@ -14,6 +14,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Events;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Verification;
 using NoMercy.Tests.Common;
 using Xunit;
 
@@ -123,6 +124,10 @@ public class PluginBootScanTests : IDisposable
         // Copy the plugin manifest.
         if (File.Exists(manifestSrc))
             File.Copy(manifestSrc, Path.Combine(_echoPluginDir, "plugin.json"), overwrite: true);
+
+        // Recorded as an install records it, for the tests that load the
+        // folder without the boot scan, which records an unrecorded folder itself.
+        PluginFileManifest.WriteAsync(_echoPluginDir).GetAwaiter().GetResult();
     }
 
     [Fact]
@@ -279,16 +284,34 @@ public class PluginBootScanTests : IDisposable
         //
         // Loaded directly via LoadPluginAssemblyAsync (not staged under
         // _tempPluginsDir) so the LoadAllAsync call below's own directory
-        // rescan does not reprocess and re-enable it.
-        string echoBinDir = GetEchoPluginBinDir();
-        string echoDllPath = Path.Combine(echoBinDir, "NoMercy.Plugin.Samples.Echo.dll");
-        await _manager.LoadPluginAssemblyAsync(echoDllPath);
-        PluginInfo activeBefore = _manager.GetInstalledPlugins().Should().ContainSingle().Subject;
-        await _manager.DisablePluginAsync(activeBefore.Id);
+        // rescan does not reprocess and re-enable it. Its own recorded folder
+        // rather than the build output: the load checks the folder's record.
+        string aside = Path.Combine(_tempPluginsDir + "-aside", "Echo");
+        try
+        {
+            Directory.CreateDirectory(aside);
+            string echoDllPath = Path.Combine(aside, "NoMercy.Plugin.Samples.Echo.dll");
+            File.Copy(
+                Path.Combine(GetEchoPluginBinDir(), "NoMercy.Plugin.Samples.Echo.dll"),
+                echoDllPath
+            );
+            await PluginFileManifest.WriteAsync(aside);
+            await _manager.LoadPluginAssemblyAsync(echoDllPath);
+            PluginInfo activeBefore = _manager
+                .GetInstalledPlugins()
+                .Should()
+                .ContainSingle()
+                .Subject;
+            await _manager.DisablePluginAsync(activeBefore.Id);
 
-        IReadOnlyList<PluginLoadResult> results = await _manager.LoadAllAsync();
+            IReadOnlyList<PluginLoadResult> results = await _manager.LoadAllAsync();
 
-        results.Should().BeEmpty();
+            results.Should().BeEmpty();
+        }
+        finally
+        {
+            Directory.Delete(_tempPluginsDir + "-aside", recursive: true);
+        }
     }
 
     [Fact]

@@ -670,9 +670,13 @@ internal sealed class PluginLoader(
             loadPath = PluginShadowCopy.Create(_pluginsPath, absoluteAssemblyPath);
             shadowDir = Path.GetDirectoryName(loadPath)!;
 
-            // This path has no manifest and never met the verifier; the scan
-            // runs here so every load reads the code before a context exists.
-            string? refusal = CodeScanVerificationStage.Refuse(loadPath);
+            // This path has no manifest and never met the verifier; the file
+            // check runs here, on the installed folder rather than its copy,
+            // and then the scan, so every load reads the code before a context
+            // exists.
+            string? refusal =
+                FileManifestVerificationStage.Refuse(absoluteAssemblyPath)
+                ?? CodeScanVerificationStage.Refuse(loadPath);
             if (refusal is not null)
             {
                 PluginShadowCopy.TryDelete(shadowDir);
@@ -693,9 +697,10 @@ internal sealed class PluginLoader(
                 {
                     PluginId = Ulid.Empty.ToString(),
                     PluginName = Path.GetFileNameWithoutExtension(assemblyPath),
-                    ErrorMessage = loadContextEx is PluginVerificationException
-                        ? loadContextEx.Message
-                        : $"Failed to initialize plugin load context: {loadContextEx.Message}",
+                    ErrorMessage =
+                        loadContextEx is PluginVerificationException
+                            ? loadContextEx.Message
+                            : $"Failed to initialize plugin load context: {loadContextEx.Message}",
                     ExceptionType = loadContextEx.GetType().Name,
                 },
                 ct

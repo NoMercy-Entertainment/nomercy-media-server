@@ -87,13 +87,18 @@ public class CodeScanVerificationStageTests : IDisposable
         return dllPath;
     }
 
-    /// <summary>Copies one sample DLL, alone, into a fresh folder and returns its path.</summary>
+    /// <summary>
+    /// Copies one sample DLL, alone, into a fresh folder and returns its path.
+    /// The folder is recorded the way an install records it, so a load of it
+    /// fails only for the reason a test stages.
+    /// </summary>
     internal static string StageAlone(string tempDir, string project)
     {
         string folder = Path.Combine(tempDir, project);
         Directory.CreateDirectory(folder);
         string dll = Path.Combine(folder, $"{project}.dll");
         File.Copy(SampleDllPath(project), dll, overwrite: true);
+        PluginFileManifest.WriteAsync(folder).GetAwaiter().GetResult();
         return dll;
     }
 
