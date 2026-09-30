@@ -99,7 +99,7 @@ public sealed class PluginHostLoadContext(string assemblyPath)
 
         // Same wall as the in-process PluginLoadContext: thrown, never null,
         // so the request never reaches this process's default context.
-        if (assemblyName.Name?.StartsWith("NoMercy.", StringComparison.OrdinalIgnoreCase) == true)
+        if (IsServerAssembly(assemblyName.Name))
             throw new PluginRefusedException(
                 new PluginRefusal(
                     PluginRefusalCode.ServerAssemblyFromPlugin,
@@ -115,4 +115,20 @@ public sealed class PluginHostLoadContext(string assemblyPath)
 
         return path is null ? null : LoadFromAssemblyPath(path);
     }
+
+    // The NoMercy.* names the server shares in process
+    // (PluginHostOptions.DefaultSharedAssemblies). A plugin built against the
+    // SDK carries these, so they still load from its folder here. A test keeps
+    // the two lists equal.
+    private static readonly HashSet<string> SdkAssemblies = new(StringComparer.Ordinal)
+    {
+        "NoMercy.PluginSdk.Abstractions",
+        "NoMercy.PluginSdk.Mvc",
+        "NoMercy.Events",
+        "NoMercy.Design",
+    };
+
+    public static bool IsServerAssembly(string? name) =>
+        name?.StartsWith("NoMercy.", StringComparison.OrdinalIgnoreCase) == true
+        && !SdkAssemblies.Contains(name);
 }
