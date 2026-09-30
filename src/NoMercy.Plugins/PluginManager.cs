@@ -32,6 +32,7 @@ public class PluginManager : IPluginManager, IDisposable
     private readonly ILogger<PluginManager> _logger;
     private readonly string _pluginsPath;
     private readonly IStorage _storage;
+    private readonly SemaphoreSlim _recordedFoldersLock = new(1, 1);
     private readonly IStorageDriver _driver;
     private readonly IPluginVerifier _verifier;
     private readonly PluginSideloadPolicy? _sideloadPolicy;
@@ -259,7 +260,7 @@ public class PluginManager : IPluginManager, IDisposable
                 && await TrySwapResidentAssemblyAsync(pluginId, fullPath, destPath, ct)
             )
             {
-                await PluginFileManifest.WriteAsync(pluginDir, ct);
+                await RecordFilesAsync(pluginDir, ct);
                 await LoadPluginAssemblyAsync(destPath, ct);
                 _registerScheduledWork?.Invoke(pluginId);
                 return;
@@ -287,7 +288,7 @@ public class PluginManager : IPluginManager, IDisposable
             throw new PluginUpdatePendingRestartException(pluginName);
         }
 
-        await PluginFileManifest.WriteAsync(pluginDir, ct);
+        await RecordFilesAsync(pluginDir, ct);
         await LoadPluginAssemblyAsync(destPath, ct);
     }
 
@@ -457,7 +458,7 @@ public class PluginManager : IPluginManager, IDisposable
         // The record is of the verified content, taken here before anything
         // else can touch it; it travels with the folder through every path
         // that applies the staged copy, now or on the next start.
-        await PluginFileManifest.WriteAsync(staging, ct);
+        await RecordFilesAsync(staging, ct);
 
         // A resident plugin is unloaded and swapped live: the owner asked for an
         // update, not a server restart, and the assembly lock that used to force
@@ -1153,12 +1154,23 @@ public class PluginManager : IPluginManager, IDisposable
 
     public Task UninstallPluginAsync(Ulid pluginId, CancellationToken ct = default)
     {
-        return _lifecycle.UninstallPluginAsync(pluginId, keepData: false, ct);
+        return UninstallPluginAsync(pluginId, keepData: false, ct);
     }
 
-    public Task UninstallPluginAsync(Ulid pluginId, bool keepData, CancellationToken ct = default)
+    public async Task UninstallPluginAsync(
+        Ulid pluginId,
+        bool keepData,
+        CancellationToken ct = default
+    )
     {
-        return _lifecycle.UninstallPluginAsync(pluginId, keepData, ct);
+        // The folder leaves the recorded set with the plugin: a later drop of
+        // the same id is a new folder that is recorded on its first load.
+        string? folder = Path.GetDirectoryName(GetPluginInfo(pluginId)?.AssemblyPath);
+        await _lifecycle.UninstallPluginAsync(pluginId, keepData, ct);
+        if (folder is not null)
+        {
+            await RememberRecordedFolderAsync(Path.GetFileName(folder), recorded: false, ct);
+        }
     }
 
     public async Task LoadPluginsFromDirectoryAsync(CancellationToken ct = default)
@@ -1253,10 +1265,12 @@ public class PluginManager : IPluginManager, IDisposable
     }
 
     /// <summary>
-    /// The one-time upgrade for a plugin installed before file hashes were
-    /// recorded, run at boot before its first load reads the files: the record
-    /// is written from what is present, once. A folder that has a record is
-    /// never rewritten, so a change after this is refused.
+    /// The one-time upgrade for a plugin the server sees for the first time
+    /// (a manual drop, or an install from before file hashes were recorded),
+    /// run at boot before its first load reads the files: the record is
+    /// written from what is present and the folder joins the recorded set.
+    /// A folder in the set whose record is gone is not recorded again: its
+    /// load is refused, because a missing record is a change too.
     /// </summary>
     private async Task RecordFileManifestIfMissingAsync(string pluginDir, CancellationToken ct)
     {
@@ -1268,11 +1282,78 @@ public class PluginManager : IPluginManager, IDisposable
             return;
         }
 
-        await PluginFileManifest.WriteAsync(folder, ct);
+        string name = Path.GetFileName(pluginDir);
+        if ((await ReadRecordedFoldersAsync(ct)).Contains(name))
+        {
+            _logger.LogWarning(
+                "Plugin folder {Folder} was recorded before and its record is missing; refusing it with {Code}.",
+                name,
+                PluginRefusalCode.FilesChanged
+            );
+            return;
+        }
+
+        await RecordFilesAsync(folder, ct);
         _logger.LogInformation(
             "Recorded file hashes for {Folder}; changes from now on are refused.",
-            Path.GetFileName(pluginDir)
+            name
         );
+    }
+
+    /// <summary>
+    /// Writes the folder's file record and adds it to the recorded set. The
+    /// set lives under the platform data folder, outside every plugin folder,
+    /// so deleting a plugin's record cannot make it a new folder again.
+    /// </summary>
+    private async Task RecordFilesAsync(string folder, CancellationToken ct)
+    {
+        await PluginFileManifest.WriteAsync(folder, ct);
+        await RememberRecordedFolderAsync(Path.GetFileName(folder), recorded: true, ct);
+    }
+
+    private string RecordedFoldersPath =>
+        _storage.CombinePath(_pluginsPath, "data", "platform", "recorded-folders.json");
+
+    private async Task<HashSet<string>> ReadRecordedFoldersAsync(CancellationToken ct)
+    {
+        HashSet<string> folders = new(StringComparer.OrdinalIgnoreCase);
+        if (_storage.Exists(RecordedFoldersPath))
+        {
+            string json = await _storage.ReadAllTextAsync(RecordedFoldersPath, ct);
+            folders.UnionWith(JsonSerializer.Deserialize<string[]>(json) ?? []);
+        }
+
+        return folders;
+    }
+
+    private async Task RememberRecordedFolderAsync(
+        string folder,
+        bool recorded,
+        CancellationToken ct
+    )
+    {
+        await _recordedFoldersLock.WaitAsync(ct);
+        try
+        {
+            HashSet<string> folders = await ReadRecordedFoldersAsync(ct);
+            if (recorded ? !folders.Add(folder) : !folders.Remove(folder))
+            {
+                return;
+            }
+
+            string directory = _storage.CombinePath(_pluginsPath, "data", "platform");
+            if (!_storage.Exists(directory))
+            {
+                _storage.CreateDirectory(directory);
+            }
+
+            string json = JsonSerializer.Serialize(folders.Order(StringComparer.OrdinalIgnoreCase));
+            await _storage.WriteAllTextAsync(RecordedFoldersPath, json, ct);
+        }
+        finally
+        {
+            _recordedFoldersLock.Release();
+        }
     }
 
     public async Task<IReadOnlyList<PluginLoadResult>> LoadAllAsync(CancellationToken ct = default)
@@ -1433,5 +1514,6 @@ public class PluginManager : IPluginManager, IDisposable
         }
 
         _registry.Clear();
+        _recordedFoldersLock.Dispose();
     }
 }
