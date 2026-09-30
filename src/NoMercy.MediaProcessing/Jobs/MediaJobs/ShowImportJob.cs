@@ -24,6 +24,7 @@ using NoMercy.Events.Library;
 using NoMercy.Events.Media;
 using NoMercy.MediaProcessing.Common;
 using NoMercy.MediaProcessing.Episodes;
+using NoMercy.MediaProcessing.Files;
 using NoMercy.MediaProcessing.Seasons;
 using NoMercy.MediaProcessing.Shows;
 using NoMercy.NmSystem;
@@ -61,6 +62,31 @@ public class ShowImportJob : AbstractMediaJob
     /// something the owner asked for.
     /// </summary>
     public string AddedBy { get; set; } = LibraryLinkOrigin.File;
+
+    /// <summary>
+    /// Files picked in Add content for this show, to encode once the import has stored
+    /// its episodes. Empty for every other dispatch, and absent from payloads queued
+    /// before this property existed, which deserialize to empty and run as before.
+    /// </summary>
+    public List<EncodeAfterImportFile> EncodeAfterImport { get; set; } = [];
+
+    /// <summary>Queues one encode per file carried by this import.</summary>
+    internal void DispatchEncodes(IJobDispatcher jobDispatcher)
+    {
+        foreach (EncodeAfterImportFile file in EncodeAfterImport)
+        {
+            VideoEncodeJob job = new()
+            {
+                LibraryId = LibraryId,
+                FolderId = file.FolderId,
+                Id = file.Id,
+                InputFile = file.InputFile,
+                SourceDriverId = file.SourceDriverId,
+                PresetId = file.PresetId,
+            };
+            jobDispatcher.Dispatch(job, job.QueueName, job.Priority);
+        }
+    }
 
     public override async Task Handle()
     {
@@ -163,6 +189,8 @@ public class ShowImportJob : AbstractMediaJob
         await episodeRepository.StoreEpisodes(episodes);
 
         jobDispatcher.DispatchJob<FileRescanJob>(Id, tvLibrary);
+
+        DispatchEncodes(jobDispatcher);
 
         if (EventBusProvider.IsConfigured)
         {
