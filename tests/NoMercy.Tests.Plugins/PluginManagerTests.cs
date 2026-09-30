@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.IO.Compression;
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -17,6 +18,7 @@ using NoMercy.Events;
 using NoMercy.Events.Plugins;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Verification;
 using NoMercy.Storage;
 using Xunit;
 
@@ -54,6 +56,11 @@ public class PluginManagerTests : IDisposable
     {
         _manager.Dispose();
 
+        // The Echo plugin is loaded for real; its shadow copy is only free
+        // once the load context is collected.
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+
         try
         {
             if (Directory.Exists(_tempPluginsDir))
@@ -61,7 +68,7 @@ public class PluginManagerTests : IDisposable
                 Directory.Delete(_tempPluginsDir, recursive: true);
             }
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // Best-effort cleanup
         }
@@ -865,6 +872,352 @@ public class PluginManagerTests : IDisposable
                 "the Weather version that landed",
                 "discarding Weather's backup must never touch Weather's assembly"
             );
+    }
+
+    // ── File hashes: an install records one SHA-256 per file, a load checks
+    //    them, and an install from before the record gets one at boot. ────────
+
+    private const string Echo = "NoMercy.Plugin.Samples.Echo";
+
+    private static string EchoManifest() =>
+        $$"""
+            {
+              "id": "{{Ulid.NewUlid()}}",
+              "name": "Echo",
+              "version": "1.2.0",
+              "description": "echoes",
+              "assembly": "{{Echo}}.dll",
+              "autoEnabled": true
+            }
+            """;
+
+    /// <summary>
+    /// A release zip shaped like a published plugin build: the entry DLL, its
+    /// .deps.json and .pdb, the manifest, and a lang folder.
+    /// </summary>
+    private string EchoArchive(bool withBuildOutput)
+    {
+        string dll = CodeScanVerificationStageTests.SampleDllPath(Echo);
+        string path = Path.Combine(_tempPluginsDir, "..", $"echo-{Ulid.NewUlid()}.zip");
+
+        using ZipArchive archive = ZipFile.Open(path, ZipArchiveMode.Create);
+        archive.CreateEntryFromFile(dll, $"Echo/{Echo}.dll");
+        using (StreamWriter manifest = new(archive.CreateEntry("Echo/plugin.json").Open()))
+            manifest.Write(EchoManifest());
+
+        if (!withBuildOutput)
+            return path;
+
+        archive.CreateEntryFromFile(
+            Path.ChangeExtension(dll, ".deps.json"),
+            $"Echo/{Echo}.deps.json"
+        );
+        archive.CreateEntryFromFile(Path.ChangeExtension(dll, ".pdb"), $"Echo/{Echo}.pdb");
+        foreach (string lang in new[] { "en", "nl" })
+        {
+            using StreamWriter writer = new(archive.CreateEntry($"Echo/lang/{lang}.json").Open());
+            writer.Write($$"""{"hello":"{{lang}}"}""");
+        }
+
+        return path;
+    }
+
+    private static PluginManifest EchoPluginManifest() =>
+        new()
+        {
+            Id = new PluginId(Ulid.NewUlid()),
+            Name = "Echo",
+            Description = "echoes",
+            Version = "1.2.0",
+            Assembly = $"{Echo}.dll",
+        };
+
+    [Fact]
+    public async Task InstallWritesTheFileManifest()
+    {
+        await _manager.InstallPluginArchiveAsync(EchoArchive(withBuildOutput: false));
+
+        string installed = Path.Combine(_tempPluginsDir, Echo);
+        string sideFile = Path.Combine(installed, PluginFileManifest.FileName);
+
+        File.Exists(sideFile).Should().BeTrue("the install records what it unpacked");
+        string[] lines = await File.ReadAllLinesAsync(sideFile);
+        lines.Should().HaveCount(2, "every extracted file is listed, and only those");
+        lines.Should().ContainMatch($"*  {Echo}.dll").And.ContainMatch("*  plugin.json");
+        lines.Should().AllSatisfy(line => line[..64].Should().MatchRegex("^[0-9a-f]{64}$"));
+    }
+
+    [Fact]
+    public async Task AnUpgradeWritesMissingFileManifestsOnce()
+    {
+        string pluginDir = Path.Combine(_tempPluginsDir, Echo);
+        Directory.CreateDirectory(pluginDir);
+        string dll = Path.Combine(pluginDir, $"{Echo}.dll");
+        File.Copy(CodeScanVerificationStageTests.SampleDllPath(Echo), dll);
+        await File.WriteAllTextAsync(Path.Combine(pluginDir, "plugin.json"), EchoManifest());
+        string sideFile = Path.Combine(pluginDir, PluginFileManifest.FileName);
+
+        await _manager.LoadPluginsFromDirectoryAsync();
+
+        File.Exists(sideFile)
+            .Should()
+            .BeTrue("a plugin installed before this release is recorded at boot");
+        string recorded = await File.ReadAllTextAsync(sideFile);
+
+        await File.AppendAllTextAsync(dll, "x");
+        await _manager.LoadPluginsFromDirectoryAsync();
+
+        (await File.ReadAllTextAsync(sideFile))
+            .Should()
+            .Be(recorded, "the pass never rewrites a record");
+        (PluginStageOutcome outcome, string? message) =
+            new FileManifestVerificationStage().Evaluate(
+                new() { Manifest = EchoPluginManifest(), AssemblyPath = dll }
+            );
+        outcome.Should().Be(PluginStageOutcome.Fail);
+        message.Should().Contain($"changed: {Echo}.dll");
+    }
+
+    private List<PluginErrorOccurredEvent> Errors()
+    {
+        List<PluginErrorOccurredEvent> errors = [];
+        _eventBus.Subscribe<PluginErrorOccurredEvent>(
+            (evt, _) =>
+            {
+                errors.Add(evt);
+                return Task.CompletedTask;
+            }
+        );
+
+        return errors;
+    }
+
+    /// <summary>The Echo DLL in its own folder, with or without a manifest beside it.</summary>
+    private string StageEcho(string folder, bool withManifest)
+    {
+        string pluginDir = Path.Combine(_tempPluginsDir, folder);
+        Directory.CreateDirectory(pluginDir);
+        string dll = Path.Combine(pluginDir, $"{Echo}.dll");
+        File.Copy(CodeScanVerificationStageTests.SampleDllPath(Echo), dll);
+        if (withManifest)
+            File.WriteAllText(Path.Combine(pluginDir, "plugin.json"), EchoManifest());
+
+        return dll;
+    }
+
+    [Fact]
+    public async Task ABareDllFolderWithAChangedFileIsRefused()
+    {
+        string dll = StageEcho(Echo, withManifest: false);
+        await PluginFileManifest.WriteAsync(Path.GetDirectoryName(dll)!);
+        await File.AppendAllTextAsync(dll, "x");
+        List<PluginErrorOccurredEvent> errors = Errors();
+
+        await _manager.LoadPluginAssemblyAsync(dll);
+
+        errors.Should().ContainSingle().Which.ErrorMessage.Should().Contain($"changed: {Echo}.dll");
+        _manager
+            .GetInstalledPlugins()
+            .Should()
+            .BeEmpty("a changed file never reaches a load context");
+    }
+
+    [Fact]
+    public async Task ABareDllInstallWritesTheFileManifest()
+    {
+        await _manager.InstallPluginAsync(CodeScanVerificationStageTests.SampleDllPath(Echo));
+
+        string[] lines = await File.ReadAllLinesAsync(
+            Path.Combine(_tempPluginsDir, Echo, PluginFileManifest.FileName)
+        );
+
+        lines.Should().ContainSingle().Which.Should().EndWith($"  {Echo}.dll");
+    }
+
+    [Fact]
+    public async Task AStagedBareDllUpdateIsRecordedAtBoot()
+    {
+        string dll = StageEcho(Echo, withManifest: false);
+        string record = Path.Combine(_tempPluginsDir, Echo, PluginFileManifest.FileName);
+        await File.WriteAllTextAsync(record, $"{new string('0', 64)}  {Echo}.dll\n");
+        string staging = Path.Combine(_tempPluginsDir, ".pending-updates", Echo);
+        Directory.CreateDirectory(staging);
+        File.Copy(
+            CodeScanVerificationStageTests.SampleDllPath(Echo),
+            Path.Combine(staging, $"{Echo}.dll")
+        );
+        List<PluginErrorOccurredEvent> errors = Errors();
+
+        await _manager.LoadPluginsFromDirectoryAsync();
+
+        errors.Should().BeEmpty();
+        (await File.ReadAllLinesAsync(record))
+            .Should()
+            .ContainSingle()
+            .Which.Should()
+            .Be(
+                $"{PluginPackageChecksum.Of(dll)}  {Echo}.dll",
+                "the merged folder is what was recorded"
+            );
+    }
+
+    [Fact]
+    public async Task AStagedUpdateAppliedAtBootRemovesFilesTheUpdateDropped()
+    {
+        string dll = StageEcho(Echo, withManifest: true);
+        string leftover = Path.Combine(Path.GetDirectoryName(dll)!, "dropped-by-the-update.txt");
+        await File.WriteAllTextAsync(leftover, "from the earlier version");
+        await PluginFileManifest.WriteAsync(Path.GetDirectoryName(dll)!);
+
+        string staging = Path.Combine(_tempPluginsDir, ".pending-updates", Echo);
+        Directory.CreateDirectory(staging);
+        File.Copy(
+            CodeScanVerificationStageTests.SampleDllPath(Echo),
+            Path.Combine(staging, $"{Echo}.dll")
+        );
+        await File.WriteAllTextAsync(Path.Combine(staging, "plugin.json"), EchoManifest());
+        await PluginFileManifest.WriteAsync(staging);
+        List<PluginErrorOccurredEvent> errors = Errors();
+
+        await _manager.LoadPluginsFromDirectoryAsync();
+
+        errors.Should().BeEmpty();
+        File.Exists(leftover)
+            .Should()
+            .BeFalse("the plugin folder is the update, not the update plus leftovers");
+        (
+            await File.ReadAllLinesAsync(
+                Path.Combine(Path.GetDirectoryName(dll)!, PluginFileManifest.FileName)
+            )
+        )
+            .Should()
+            .HaveCount(2);
+    }
+
+    [Fact]
+    public async Task ARadioShapedZipInstallsAndPassesTheFileCheck()
+    {
+        await _manager.InstallPluginArchiveAsync(EchoArchive(withBuildOutput: true));
+
+        string installed = Path.Combine(_tempPluginsDir, Echo);
+        string dll = Path.Combine(installed, $"{Echo}.dll");
+
+        PluginVerificationResult result = new PluginVerifier().Verify(
+            EchoPluginManifest(),
+            dll,
+            null
+        );
+
+        result.Verified.Should().BeTrue(string.Join("; ", result.Failures));
+        string[] lines = await File.ReadAllLinesAsync(
+            Path.Combine(installed, PluginFileManifest.FileName)
+        );
+        lines.Should().ContainMatch("*  lang/en.json").And.ContainMatch("*  lang/nl.json");
+    }
+
+    /// <summary>
+    /// A later start of the server over the same plugins folder: what the
+    /// server remembers about a folder has to survive the process, not just
+    /// the manager instance.
+    /// </summary>
+    private PluginManager SecondBoot(InMemoryEventBus eventBus) =>
+        new(
+            eventBus,
+            new MinimalServiceProvider(),
+            NullLogger<PluginManager>.Instance,
+            _tempPluginsDir,
+            TestStorageHelper.CreateStorage(_tempPluginsDir),
+            TestStorageHelper.CreateBackend()
+        );
+
+    private static List<PluginErrorOccurredEvent> Errors(InMemoryEventBus eventBus)
+    {
+        List<PluginErrorOccurredEvent> errors = [];
+        eventBus.Subscribe<PluginErrorOccurredEvent>(
+            (evt, _) =>
+            {
+                errors.Add(evt);
+                return Task.CompletedTask;
+            }
+        );
+
+        return errors;
+    }
+
+    /// <summary>
+    /// The upgrade pass trusts a folder the first time the server sees it,
+    /// and never again: deleting the record and swapping the DLL must not
+    /// turn the next start into a fresh install of the swapped file.
+    /// </summary>
+    [Fact]
+    public async Task ARecordDeletedAfterTheFirstBootIsRefusedAtTheNext()
+    {
+        string dll = StageEcho(Echo, withManifest: true);
+        string sideFile = Path.Combine(Path.GetDirectoryName(dll)!, PluginFileManifest.FileName);
+        await _manager.LoadPluginsFromDirectoryAsync();
+        File.Exists(sideFile).Should().BeTrue("the first start records the folder");
+        _manager.Dispose();
+
+        File.Delete(sideFile);
+        await File.AppendAllTextAsync(dll, "x");
+        InMemoryEventBus eventBus = new();
+        List<PluginErrorOccurredEvent> errors = Errors(eventBus);
+        using PluginManager second = SecondBoot(eventBus);
+
+        await second.LoadPluginsFromDirectoryAsync();
+
+        errors
+            .Should()
+            .ContainSingle()
+            .Which.ErrorMessage.Should()
+            .Contain(PluginRefusalCode.FilesChanged);
+        File.Exists(sideFile).Should().BeFalse("a folder seen before is never recorded again");
+        second.GetInstalledPlugins().Should().NotContain(p => p.Status == PluginStatus.Active);
+    }
+
+    [Fact]
+    public async Task AFolderDroppedAfterTheFirstBootIsRecordedAndLoads()
+    {
+        await _manager.LoadPluginsFromDirectoryAsync();
+        _manager.Dispose();
+
+        string dll = StageEcho(Echo, withManifest: true);
+        InMemoryEventBus eventBus = new();
+        List<PluginErrorOccurredEvent> errors = Errors(eventBus);
+        using PluginManager second = SecondBoot(eventBus);
+
+        await second.LoadPluginsFromDirectoryAsync();
+
+        errors.Should().BeEmpty();
+        File.Exists(Path.Combine(Path.GetDirectoryName(dll)!, PluginFileManifest.FileName))
+            .Should()
+            .BeTrue("a folder the server has not seen before is recorded, as before this release");
+        second.GetInstalledPlugins().Should().ContainSingle(p => p.Status == PluginStatus.Active);
+    }
+
+    /// <summary>
+    /// An uninstall forgets the folder: a plugin dropped again under the same
+    /// name is a new folder, seen for the first time.
+    /// </summary>
+    [Fact]
+    public async Task AFolderDroppedAgainAfterAnUninstallLoads()
+    {
+        StageEcho(Echo, withManifest: true);
+        await _manager.LoadPluginsFromDirectoryAsync();
+        PluginInfo installed = _manager.GetInstalledPlugins().Should().ContainSingle().Subject;
+        await _manager.UninstallPluginAsync(installed.Id);
+        _manager.Dispose();
+        Directory.Exists(Path.Combine(_tempPluginsDir, Echo)).Should().BeFalse();
+
+        StageEcho(Echo, withManifest: true);
+        InMemoryEventBus eventBus = new();
+        List<PluginErrorOccurredEvent> errors = Errors(eventBus);
+        using PluginManager second = SecondBoot(eventBus);
+
+        await second.LoadPluginsFromDirectoryAsync();
+
+        errors.Should().BeEmpty();
+        second.GetInstalledPlugins().Should().ContainSingle(p => p.Status == PluginStatus.Active);
     }
 
     private sealed class MinimalServiceProvider : IServiceProvider

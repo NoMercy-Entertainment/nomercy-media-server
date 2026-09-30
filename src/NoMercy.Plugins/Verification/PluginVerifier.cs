@@ -22,6 +22,7 @@ public class PluginVerifier : IPluginVerifier
             new AbiVerificationStage(),
             new CodeScanVerificationStage(),
             new ChecksumVerificationStage(),
+            new FileManifestVerificationStage(),
             new SignatureVerificationStage(),
         ]) { }
 

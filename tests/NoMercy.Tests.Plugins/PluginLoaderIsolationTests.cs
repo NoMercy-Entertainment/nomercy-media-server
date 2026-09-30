@@ -98,6 +98,10 @@ public class PluginLoaderIsolationTests : IDisposable
             """
         );
 
+        // What an install through PluginManager leaves beside the files; a
+        // folder staged by hand has no record and is refused.
+        PluginFileManifest.WriteAsync(pluginDir).GetAwaiter().GetResult();
+
         return manifestPath;
     }
 
