@@ -5,6 +5,6 @@ Maintainer: NoMercy Entertainment <support@nomercy.tv>
 Description: NoMercy MediaServer - complete installation
  Modern Media Server Solution with server, launcher, and CLI tool.
 Depends: libc6 (>= 2.31), libgcc-s1, libssl3 | libssl1.1
-Recommends: systemd
+Recommends: systemd, libicu78 | libicu76 | libicu74 | libicu72 | libicu70 | libicu67 | libicu66
 Priority: optional
 Section: multimedia
