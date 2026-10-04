@@ -1106,5 +1106,16 @@ public class LiveFfmpegRunnerTests
             Task.FromResult(
                 new ProcessResult(ExitCode: 0, StdOut: "", StdErr: "", Duration: TimeSpan.Zero)
             );
+
+        public Task<ProcessResult> RunAsync(
+            string executable,
+            string[] arguments,
+            TimeSpan timeout,
+            Action<string>? onStdOut = null,
+            Action<string>? onStdErr = null,
+            string? workingDirectory = null,
+            CancellationToken cancellationToken = default,
+            Action<int>? onProcessStarted = null
+        ) => throw new NotImplementedException();
     }
 }
