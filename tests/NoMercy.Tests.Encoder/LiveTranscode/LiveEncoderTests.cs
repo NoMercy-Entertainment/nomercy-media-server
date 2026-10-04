@@ -96,7 +96,8 @@ public class LiveEncoderTests
 
     private LiveEncoder BuildEncoder(
         ISessionManager? sessionManager = null,
-        ILiveQualitySelector? qualitySelector = null
+        ILiveQualitySelector? qualitySelector = null,
+        ILiveStreamingService? streamingService = null
     )
     {
         SpeedIndex speedIndex = MakeSpeedIndex();
@@ -121,11 +122,12 @@ public class LiveEncoderTests
         return new(
             selector,
             manager,
-            new LiveStreamingService(
-                NullLogger<LiveStreamingService>.Instance,
-                storage,
-                segmentInventory
-            ),
+            streamingService
+                ?? new LiveStreamingService(
+                    NullLogger<LiveStreamingService>.Instance,
+                    storage,
+                    segmentInventory
+                ),
             new NoOpLiveFfmpegRunner(),
             segmentInventory,
             encoderOptions,
@@ -227,6 +229,29 @@ public class LiveEncoderTests
         child.Should().NotBeNull();
         child.State.Should().Be(LiveSessionState.Transcoding);
         child.CurrentAudioStreamIndex.Should().Be(2);
+    }
+
+    [Fact]
+    public async Task StartAudioRenditionAsync_StoresDurationForWholePlaylist()
+    {
+        NoMercy.Storage.IStorage storage = TestStorageFactory.CreateLocal();
+        ILiveSegmentInventory inventory = TestStorageFactory.CreateSegmentInventory(storage);
+        await using LiveStreamingService streaming = new(
+            NullLogger<LiveStreamingService>.Instance,
+            storage,
+            inventory
+        );
+        LiveEncoder encoder = BuildEncoder(streamingService: streaming);
+        LiveEncodeRequest request = MakeRequest();
+
+        ILiveSession child = await encoder.StartAudioRenditionAsync(
+            request,
+            CancellationToken.None
+        );
+
+        streaming.TryGetRuntime(child.SessionId, out LiveRuntimeSession runtime).Should().BeTrue();
+        runtime.CachedMediaInfo.Should().BeSameAs(request.CachedInfo);
+        runtime.ClientCapabilities.Should().BeSameAs(request.Client);
     }
 
     [Fact]
