@@ -136,11 +136,10 @@ public class ShowImportJob : AbstractMediaJob
 
         bool wasEmpty = !await context.LibraryTv.AnyAsync(lt => lt.LibraryId == LibraryId);
 
-        TmdbTvShowAppends? show = await showManager.AddShowAsync(
-            Id,
-            tvLibrary,
-            HighPriority,
-            AddedBy
+        TmdbTvShowAppends? show = await ImportAndPublishAsync(
+            context,
+            () => showManager.AddShowAsync(Id, tvLibrary, HighPriority, AddedBy),
+            EventBusProvider.IsConfigured ? EventBusProvider.Current : null
         );
         if (show == null)
         {
@@ -152,19 +151,6 @@ public class ShowImportJob : AbstractMediaJob
                 "TMDB show metadata fetch returned no result after retries."
             );
             return;
-        }
-
-        if (EventBusProvider.IsConfigured)
-        {
-            await EventBusProvider.Current.PublishAsync(
-                new MediaAddedEvent
-                {
-                    MediaId = Id,
-                    MediaType = "tvshow",
-                    Title = show.Name,
-                    LibraryId = LibraryId,
-                }
-            );
         }
 
         IEnumerable<TmdbSeasonAppends> seasons = await seasonManager.StoreSeasonsAsync(
@@ -203,5 +189,29 @@ public class ShowImportJob : AbstractMediaJob
                     new LibraryRefreshedEvent { QueryKey = ["libraries"] }
                 );
         }
+    }
+
+    internal async Task<TmdbTvShowAppends?> ImportAndPublishAsync(
+        MediaContext context,
+        Func<Task<TmdbTvShowAppends?>> add,
+        IEventBus? eventBus
+    )
+    {
+        bool isNewToLibrary =
+            !await context.Tvs.AsNoTracking().AnyAsync(tv => tv.Id == Id && tv.LibraryId != default)
+            && !await context.LibraryTv.AsNoTracking().AnyAsync(link => link.TvId == Id);
+        TmdbTvShowAppends? show = await add();
+        if (isNewToLibrary && show is not null && eventBus is not null)
+            await eventBus.PublishAsync(
+                new MediaAddedEvent
+                {
+                    MediaId = Id,
+                    MediaType = "tvshow",
+                    Title = show.Name,
+                    LibraryId = LibraryId,
+                }
+            );
+
+        return show;
     }
 }
