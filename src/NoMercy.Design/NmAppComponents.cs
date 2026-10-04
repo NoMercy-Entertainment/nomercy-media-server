@@ -45,6 +45,12 @@ public static class NmAppComponents
 
     public const string GenreCard = "NMGenreCard";
 
+    /// <summary>
+    /// A group of titles with no image of its own, drawn from their posters. Sent
+    /// only to an app that lists it; every other app gets <see cref="GenreCard"/>.
+    /// </summary>
+    public const string GroupCard = "NMGroupCard";
+
     public const string MusicCard = "NMMusicCard";
 
     public const string MusicHomeCard = "NMMusicHomeCard";
@@ -69,6 +75,7 @@ public static class NmAppComponents
         Card,
         HomeCard,
         GenreCard,
+        GroupCard,
         MusicCard,
         MusicHomeCard,
         TrackRow,

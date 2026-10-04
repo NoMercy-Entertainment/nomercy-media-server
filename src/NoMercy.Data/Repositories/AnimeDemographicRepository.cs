@@ -107,6 +107,60 @@ public class AnimeDemographicRepository(MediaContext context) : IAnimeDemographi
             .Select(group => new { group.Key, Count = group.Count() })
             .ToDictionaryAsync(x => x.Key, x => x.Count, ct);
 
+        // The card of a group with no image of its own shows the posters of
+        // the titles inside it that the user can play.
+        List<GroupPosterRow> posterRows =
+        [
+            .. await context
+                .AnimeDemographicTv.AsNoTracking()
+                .Where(link =>
+                    ids.Contains(link.AnimeDemographicId)
+                    && link.Tv.Library.LibraryUsers.Any(u => u.UserId == userId)
+                    && link.Tv.Episodes.Any(e => e.VideoFiles.Any(v => v.Folder != null))
+                )
+                .Select(link => new GroupPosterRow(
+                    link.AnimeDemographicId,
+                    link.TvId,
+                    link.Tv.CreatedAt,
+                    link.Tv.TitleSort,
+                    link
+                        .Tv.Images.Where(image =>
+                            image.Type == GroupItemPosters.PosterType && image.Iso6391 == null
+                        )
+                        .OrderByDescending(image => image.VoteAverage)
+                        .ThenBy(image => image.Id)
+                        .Select(image => image.FilePath)
+                        .FirstOrDefault(),
+                    link.Tv.Poster
+                ))
+                .ToListAsync(ct),
+            .. await context
+                .AnimeDemographicMovie.AsNoTracking()
+                .Where(link =>
+                    ids.Contains(link.AnimeDemographicId)
+                    && link.Movie.Library.LibraryUsers.Any(u => u.UserId == userId)
+                    && link.Movie.VideoFiles.Any(v => v.Folder != null)
+                )
+                .Select(link => new GroupPosterRow(
+                    link.AnimeDemographicId,
+                    link.MovieId,
+                    link.Movie.CreatedAt,
+                    link.Movie.TitleSort,
+                    link
+                        .Movie.Images.Where(image =>
+                            image.Type == GroupItemPosters.PosterType && image.Iso6391 == null
+                        )
+                        .OrderByDescending(image => image.VoteAverage)
+                        .ThenBy(image => image.Id)
+                        .Select(image => image.FilePath)
+                        .FirstOrDefault(),
+                    link.Movie.Poster
+                ))
+                .ToListAsync(ct),
+        ];
+
+        Dictionary<int, string[]> posters = GroupItemPosters.Pick(posterRows);
+
         return
         [
             .. demographics.Select(demographic => new AnimeDemographicWithCountsDto
@@ -117,6 +171,7 @@ public class AnimeDemographicRepository(MediaContext context) : IAnimeDemographi
                 TotalTvShows = tvTotals.GetValueOrDefault(demographic.Id),
                 MoviesWithVideo = movieWithVideo.GetValueOrDefault(demographic.Id),
                 TvShowsWithVideo = tvWithVideo.GetValueOrDefault(demographic.Id),
+                ItemPosters = posters.GetValueOrDefault(demographic.Id) ?? [],
             }),
         ];
     }
