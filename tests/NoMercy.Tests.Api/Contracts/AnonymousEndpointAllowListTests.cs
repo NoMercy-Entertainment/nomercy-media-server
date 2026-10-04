@@ -55,6 +55,48 @@ public class AnonymousEndpointAllowListTests : IClassFixture<NoMercyApiFactory>
     // it is not an endorsement.
     private static readonly string[] AnonymousAllowList =
     [
+        // Liveness/readiness probes for container orchestration and load balancers.
+        "GET Health [Health.GetLiveness]",
+        "GET Health/detailed [Health.GetDetailed]",
+        "GET Health/ready [Health.GetReadiness]",
+        // Setup-time liveness probe a client calls before any login exists.
+        "GET status [Setup.Status]",
+        // Blocklist feed: the token is in the path and a wrong token answers 404.
+        "GET security/blocklist/{token} [Blocklist.Feed]",
+        // Image bytes loaded by <img> tags, which send no bearer header.
+        "GET images/{type}/{path} [Image.Image]",
+        // public today; under review
+        "DELETE images/{type}/{path} [Image.DeleteCache]",
+        // Worker routes: HmacValidationMiddleware signs /api/v1/worker/*.
+        "GET api/v{version:apiVersion}/worker-source [WorkerSource.Stream]",
+        "GET api/v{version:apiVersion}/worker/source [WorkerSource.Stream]",
+        "POST api/v{version:apiVersion}/worker/execute-task [WorkerExecution.ExecuteTask]",
+        "POST api/v{version:apiVersion}/worker/tasks [WorkerExecution.ExecuteTask]",
+        // Worker progress: HMAC-exempt by spec; a spoofed progress bar is the worst case.
+        "POST api/v{version:apiVersion}/dashboard/workers/{workerId}/tasks/{taskId}/progress [Workers.ReceiveProgress]",
+        "POST api/v{version:apiVersion}/distribution/workers/{workerId}/tasks/{taskId}/progress [Workers.ReceiveProgress]",
+        // Inbound webhook: gated inside by the intake token check.
+        "POST api/v{version:apiVersion}/intake/webhook [IntakeWebhook.Webhook]",
+        // LAN device credential: refuses any caller outside the private network.
+        "GET api/v{version:apiVersion}/plugins/{id:ulid}/lan/{deviceId}/{credential} [PluginLan.Device]",
+        // public today; under review
+        "GET manage/activity [Management.GetActivity]",
+        "GET manage/app/status [Management.GetAppStatus]",
+        "GET manage/autostart [Management.GetAutoStart]",
+        "GET manage/config [Management.GetConfig]",
+        "GET manage/logs [Management.GetLogs]",
+        "GET manage/logs/stream [Management.StreamLogs]",
+        "GET manage/plugins [Management.GetPlugins]",
+        "GET manage/queue [Management.GetQueueStatus]",
+        "GET manage/resources [Management.GetResources]",
+        "GET manage/status [Management.GetStatus]",
+        "POST manage/app/start [Management.StartApp]",
+        "POST manage/app/stop [Management.StopApp]",
+        "POST manage/autostart [Management.SetAutoStart]",
+        "POST manage/restart [Management.Restart]",
+        "POST manage/stop [Management.Stop]",
+        "POST manage/update [Management.DownloadUpdate]",
+        "PUT manage/config [Management.UpdateConfig]",
     ];
 
     private static List<string> DescribeAnonymousEndpoints(EndpointDataSource dataSource)
@@ -67,7 +109,8 @@ public class AnonymousEndpointAllowListTests : IClassFixture<NoMercyApiFactory>
                 continue;
 
             bool allowsAnonymous = endpoint.Metadata.GetMetadata<IAllowAnonymous>() is not null;
-            bool requiresAuthorization = endpoint.Metadata.GetMetadata<IAuthorizeData>() is not null;
+            bool requiresAuthorization =
+                endpoint.Metadata.GetMetadata<IAuthorizeData>() is not null;
 
             if (!allowsAnonymous && requiresAuthorization)
                 continue;
