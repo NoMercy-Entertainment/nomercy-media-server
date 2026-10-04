@@ -93,10 +93,38 @@ public class AnimeGroupItemPostersTests : IDisposable
         context.LibraryUser.Add(new LibraryUser(UserLibrary, UserId));
 
         context.Episodes.AddRange(
-            new Episode { Id = 11, TvId = 1, SeasonId = 1, EpisodeNumber = 1, SeasonNumber = 1 },
-            new Episode { Id = 13, TvId = 3, SeasonId = 3, EpisodeNumber = 1, SeasonNumber = 1 },
-            new Episode { Id = 14, TvId = 4, SeasonId = 4, EpisodeNumber = 1, SeasonNumber = 1 },
-            new Episode { Id = 15, TvId = 5, SeasonId = 5, EpisodeNumber = 1, SeasonNumber = 1 }
+            new Episode
+            {
+                Id = 11,
+                TvId = 1,
+                SeasonId = 1,
+                EpisodeNumber = 1,
+                SeasonNumber = 1,
+            },
+            new Episode
+            {
+                Id = 13,
+                TvId = 3,
+                SeasonId = 3,
+                EpisodeNumber = 1,
+                SeasonNumber = 1,
+            },
+            new Episode
+            {
+                Id = 14,
+                TvId = 4,
+                SeasonId = 4,
+                EpisodeNumber = 1,
+                SeasonNumber = 1,
+            },
+            new Episode
+            {
+                Id = 15,
+                TvId = 5,
+                SeasonId = 5,
+                EpisodeNumber = 1,
+                SeasonNumber = 1,
+            }
         );
         context.VideoFiles.AddRange(
             Video(episodeId: 11),
@@ -278,6 +306,16 @@ public class AnimeGroupItemPostersTests : IDisposable
         GroupItemPosters
             .Pick(rows)[1]
             .Should()
-            .Equal("/1.jpg", "/3.jpg", "/4.jpg", "/5.jpg", "/6.jpg", "/7.jpg", "/8.jpg", "/9.jpg", "/10.jpg");
+            .Equal(
+                "/1.jpg",
+                "/3.jpg",
+                "/4.jpg",
+                "/5.jpg",
+                "/6.jpg",
+                "/7.jpg",
+                "/8.jpg",
+                "/9.jpg",
+                "/10.jpg"
+            );
     }
 }

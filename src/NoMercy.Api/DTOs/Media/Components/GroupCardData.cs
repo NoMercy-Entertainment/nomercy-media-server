@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
+using NoMercy.Data.Repositories;
 
 namespace NoMercy.Api.DTOs.Media.Components;
 
@@ -54,11 +55,18 @@ public record GroupCardData
 
     public GroupCardData() { }
 
-    /// <summary>
-    /// The group as its genre-shaped card already describes it (title, sort key,
-    /// link, counts), plus the posters of the titles inside.
-    /// </summary>
-    public GroupCardData(GenreCardData group, string[] itemPosters)
+    public GroupCardData(AnimeThemeWithCountsDto dto)
+        : this(new GenreCardData(dto), dto.ItemPosters) { }
+
+    public GroupCardData(AnimeDemographicWithCountsDto dto)
+        : this(new GenreCardData(dto), dto.ItemPosters) { }
+
+    public GroupCardData(AnimeSeasonWithCountsDto dto)
+        : this(new GenreCardData(dto), dto.ItemPosters) { }
+
+    // Title, sort key, link and counts come from the one place that already
+    // derives them for each group type.
+    private GroupCardData(GenreCardData group, string[] itemPosters)
     {
         Id = (int)group.Id!;
         Title = group.Title ?? string.Empty;
