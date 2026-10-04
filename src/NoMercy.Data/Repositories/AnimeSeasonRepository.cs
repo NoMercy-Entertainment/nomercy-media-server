@@ -111,6 +111,60 @@ public class AnimeSeasonRepository(MediaContext context) : IAnimeSeasonRepositor
             .Select(group => new { group.Key, Count = group.Count() })
             .ToDictionaryAsync(x => x.Key, x => x.Count, ct);
 
+        // The card of a group with no image of its own shows the posters of
+        // the titles inside it that the user can play.
+        List<GroupPosterRow> posterRows =
+        [
+            .. await context
+                .AnimeSeasonTv.AsNoTracking()
+                .Where(link =>
+                    ids.Contains(link.AnimeSeasonId)
+                    && link.Tv.Library.LibraryUsers.Any(u => u.UserId == userId)
+                    && link.Tv.Episodes.Any(e => e.VideoFiles.Any(v => v.Folder != null))
+                )
+                .Select(link => new GroupPosterRow(
+                    link.AnimeSeasonId,
+                    link.TvId,
+                    link.Tv.CreatedAt,
+                    link.Tv.TitleSort,
+                    link
+                        .Tv.Images.Where(image =>
+                            image.Type == GroupItemPosters.PosterType && image.Iso6391 == null
+                        )
+                        .OrderByDescending(image => image.VoteAverage)
+                        .ThenBy(image => image.Id)
+                        .Select(image => image.FilePath)
+                        .FirstOrDefault(),
+                    link.Tv.Poster
+                ))
+                .ToListAsync(ct),
+            .. await context
+                .AnimeSeasonMovie.AsNoTracking()
+                .Where(link =>
+                    ids.Contains(link.AnimeSeasonId)
+                    && link.Movie.Library.LibraryUsers.Any(u => u.UserId == userId)
+                    && link.Movie.VideoFiles.Any(v => v.Folder != null)
+                )
+                .Select(link => new GroupPosterRow(
+                    link.AnimeSeasonId,
+                    link.MovieId,
+                    link.Movie.CreatedAt,
+                    link.Movie.TitleSort,
+                    link
+                        .Movie.Images.Where(image =>
+                            image.Type == GroupItemPosters.PosterType && image.Iso6391 == null
+                        )
+                        .OrderByDescending(image => image.VoteAverage)
+                        .ThenBy(image => image.Id)
+                        .Select(image => image.FilePath)
+                        .FirstOrDefault(),
+                    link.Movie.Poster
+                ))
+                .ToListAsync(ct),
+        ];
+
+        Dictionary<int, string[]> posters = GroupItemPosters.Pick(posterRows);
+
         return
         [
             .. seasons.Select(season => new AnimeSeasonWithCountsDto
@@ -122,6 +176,7 @@ public class AnimeSeasonRepository(MediaContext context) : IAnimeSeasonRepositor
                 TotalTvShows = tvTotals.GetValueOrDefault(season.Id),
                 MoviesWithVideo = movieWithVideo.GetValueOrDefault(season.Id),
                 TvShowsWithVideo = tvWithVideo.GetValueOrDefault(season.Id),
+                ItemPosters = posters.GetValueOrDefault(season.Id) ?? [],
             }),
         ];
     }
