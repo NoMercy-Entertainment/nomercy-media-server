@@ -1,659 +1,145 @@
 {
-  "_comment": "Generated snapshot of SignalR hub contracts. Update this file whenever a hub method is added, removed, or has its signature changed. Clients (web app, Android) must keep their handlers in sync with this file.",
-  "_generated": "2026-04-02",
-  "_source": "server/nomercy-media-server/src/",
-
   "hubs": {
-
-    "MusicHub": {
-      "_path": "NoMercy.Api/Hubs/MusicHub.cs",
-      "_base": "ConnectionHub",
-      "_endpoint": "/musicHub",
-      "serverMethods": {
-        "StartPlaybackCommand": {
-          "description": "Start or toggle playback for a playlist item. Handles new playlists, track reorder within an existing playlist, and playlist switches. Returns early (no-op) when any argument is null.",
-          "parameters": [
-            { "name": "type",    "type": "string?", "description": "Playlist type, e.g. 'album', 'artist', 'playlist', 'track'. Null is rejected." },
-            { "name": "listId",  "type": "Guid?",   "description": "ID of the playlist/album/artist. Null is rejected." },
-            { "name": "trackId", "type": "Guid?",   "description": "ID of the track to play. Null is rejected." }
-          ],
-          "returns": "Task"
-        },
-        "GetStateCommand": {
-          "description": "Returns the current MusicPlayerState for the authenticated user, or null if no playback is active.",
-          "parameters": [],
-          "returns": "MusicPlayerState | null"
-        },
-        "PlaybackCommand": {
-          "description": "Send a transport command (play, pause, next, previous, seek, shuffle, repeat, volume, mute).",
-          "parameters": [
-            { "name": "command", "type": "string",  "description": "Command name, e.g. 'play', 'pause', 'next', 'previous', 'seek', 'shuffle', 'repeat', 'volume', 'mute'" },
-            { "name": "data",    "type": "object?", "description": "Optional payload; type depends on command (e.g. seek position as number, volume as number)" }
-          ],
-          "returns": "Task"
-        },
-        "CurrentTimeCommand": {
-          "description": "Report the current playback position from the active client.",
-          "parameters": [
-            { "name": "time", "type": "int", "description": "Current playback time in seconds" }
-          ],
-          "returns": "Task"
-        },
-        "ChangeDeviceCommand": {
-          "description": "Transfer playback to a different connected device.",
-          "parameters": [
-            { "name": "deviceId", "type": "string", "description": "Target device ID" }
-          ],
-          "returns": "Task"
-        },
-        "ChangeVolumeCommand": {
-          "description": "Set the volume on the active device and persist the change.",
-          "parameters": [
-            { "name": "volume", "type": "int", "description": "Volume level 0-100" }
-          ],
-          "returns": "Task"
-        }
-      },
-      "clientMethods": {
-        "MusicPlayerState": {
-          "description": "Broadcast current player state to all devices belonging to the user.",
-          "parameters": [
-            { "name": "state", "type": "MusicPlayerState", "description": "Full player state snapshot" }
-          ]
-        },
-        "ConnectedDevicesState": {
-          "description": "Broadcast updated list of connected devices for this user.",
-          "parameters": [
-            { "name": "devices", "type": "Device[]", "description": "All currently connected devices for this user on this hub" }
-          ]
-        },
-        "ChangeDevice": {
-          "description": "Notify all devices that the active playback device has changed.",
-          "parameters": [
-            { "name": "payload", "type": "EventPayload<BroadcastEventPayload>", "description": "Event payload containing DeviceBroadcastStatus" }
-          ]
-        }
-      }
-    },
-
-    "VideoHub": {
-      "_path": "NoMercy.Api/Hubs/VideoHub.cs",
-      "_base": "ConnectionHub",
-      "_endpoint": "/videoHub",
-      "serverMethods": {
-        "SetTime": {
-          "description": "Persist playback progress (time, audio track, subtitle track) for a video item.",
-          "parameters": [
-            { "name": "request", "type": "VideoProgressRequest", "description": "Progress payload including videoId, tmdbId, playlistType, playlistId, time, audio, subtitle, subtitleType" }
-          ],
-          "returns": "Task"
-        },
-        "RemoveWatched": {
-          "description": "Delete all UserData entries for the specified item, marking it as unwatched.",
-          "parameters": [
-            { "name": "request", "type": "VideoProgressRequest", "description": "Progress payload identifying the item to clear" }
-          ],
-          "returns": "Task"
-        },
-        "StartPlaybackCommand": {
-          "description": "Start playback for a video item. Creates new player state or resumes/switches playlist.",
-          "parameters": [
-            { "name": "type",   "type": "string",   "description": "Playlist type: 'movie', 'tv', 'collection', 'special'" },
-            { "name": "listId", "type": "dynamic",  "description": "Playlist/collection ID (int for movie/tv/collection, Ulid for special)" },
-            { "name": "itemId", "type": "int?",     "description": "Video file ID of the item to start" }
-          ],
-          "returns": "Task"
-        },
-        "GetStateCommand": {
-          "description": "Returns the current VideoPlayerState for the authenticated user, or null if no playback is active.",
-          "parameters": [],
-          "returns": "VideoPlayerState | null"
-        },
-        "PlaybackCommand": {
-          "description": "Send a transport command to the video player.",
-          "parameters": [
-            { "name": "command", "type": "string",  "description": "Command name, e.g. 'play', 'pause', 'next', 'previous', 'seek'" },
-            { "name": "data",    "type": "object?", "description": "Optional command payload" }
-          ],
-          "returns": "Task"
-        },
-        "ChangeDeviceCommand": {
-          "description": "Transfer video playback to a different connected device.",
-          "parameters": [
-            { "name": "deviceId", "type": "string", "description": "Target device ID" }
-          ],
-          "returns": "Task"
-        }
-      },
-      "clientMethods": {
-        "VideoPlayerState": {
-          "description": "Broadcast current video player state to all devices belonging to the user.",
-          "parameters": [
-            { "name": "state", "type": "VideoPlayerState", "description": "Full video player state snapshot" }
-          ]
-        },
-        "ConnectedDevicesState": {
-          "description": "Broadcast updated list of connected devices for this user.",
-          "parameters": [
-            { "name": "devices", "type": "Device[]", "description": "All currently connected devices for this user on this hub" }
-          ]
-        },
-        "ChangeDevice": {
-          "description": "Notify all devices that the active playback device has changed.",
-          "parameters": [
-            { "name": "payload", "type": "EventPayload<BroadcastEventPayload>", "description": "Event payload containing DeviceBroadcastStatus" }
-          ]
-        }
-      }
-    },
-
-    "CastHub": {
-      "_path": "NoMercy.Api/Controllers/Socket/CastHub.cs",
-      "_base": "ConnectionHub",
-      "_endpoint": "/castHub",
-      "_description": "Bridges the web app and Chromecast devices. Server methods relay commands to Chromecast; client methods relay Chromecast state back to all connected clients.",
-      "serverMethods": {
-        "GetChromeCasts": {
-          "description": "Returns the names of discovered Chromecast devices on the local network.",
-          "parameters": [],
-          "returns": "string[]"
-        },
-        "SelectChromecast": {
-          "description": "Connect to a specific Chromecast device by name.",
-          "parameters": [
-            { "name": "name", "type": "string", "description": "Chromecast device name" }
-          ],
-          "returns": "Task"
-        },
-        "Launch": {
-          "description": "Launch the NoMercy receiver application on the connected Chromecast.",
-          "parameters": [],
-          "returns": "Task"
-        },
-        "CastPlaylist": {
-          "description": "Send a playlist JSON string to the connected Chromecast.",
-          "parameters": [
-            { "name": "value", "type": "string", "description": "JSON-serialised playlist" }
-          ],
-          "returns": "Task"
-        },
-        "GetChromecastStatus": {
-          "description": "Returns the current ChromecastStatus object.",
-          "parameters": [],
-          "returns": "ChromecastStatus | null"
-        },
-        "GetMediaStatus": {
-          "description": "Returns the current MediaStatus from the Chromecast.",
-          "parameters": [],
-          "returns": "MediaStatus | null"
-        },
-        "Stop": {
-          "description": "Stop Chromecast playback.",
-          "parameters": [],
-          "returns": "Task"
-        },
-        "Disconnect": {
-          "description": "Disconnect from the Chromecast device.",
-          "parameters": [],
-          "returns": "Task"
-        },
-        "Play":                { "description": "Relay play command to all user clients.", "parameters": [], "returns": "Task" },
-        "Pause":               { "description": "Relay pause command to all user clients.", "parameters": [], "returns": "Task" },
-        "Ended":               { "description": "Relay playback-ended event to all user clients.", "parameters": [], "returns": "Task" },
-        "GetPlayerState":      { "description": "Request the current player state from the cast receiver.", "parameters": [], "returns": "Task" },
-        "SetNext":             { "description": "Relay next-track command to all user clients.", "parameters": [], "returns": "Task" },
-        "SetPrevious":         { "description": "Relay previous-track command to all user clients.", "parameters": [], "returns": "Task" },
-        "SetPlay":             { "description": "Relay play command to all user clients.", "parameters": [], "returns": "Task" },
-        "SetPause":            { "description": "Relay pause command to all user clients.", "parameters": [], "returns": "Task" },
-        "SetStop":             { "description": "Relay stop command to all user clients.", "parameters": [], "returns": "Task" },
-        "Time": {
-          "description": "Relay time update to all user clients.",
-          "parameters": [
-            { "name": "time", "type": "TimeData", "description": "Current playback time data" }
-          ],
-          "returns": "Task"
-        },
-        "Volume": {
-          "description": "Relay volume update to all user clients.",
-          "parameters": [
-            { "name": "volume", "type": "int", "description": "Volume level 0-100" }
-          ],
-          "returns": "Task"
-        },
-        "Muted": {
-          "description": "Relay mute state to all user clients.",
-          "parameters": [
-            { "name": "muted", "type": "bool", "description": "Whether audio is muted" }
-          ],
-          "returns": "Task"
-        },
-        "Item": {
-          "description": "Relay current playlist item update to all user clients.",
-          "parameters": [
-            { "name": "item", "type": "PlaylistItem", "description": "The currently playing item" }
-          ],
-          "returns": "Task"
-        },
-        "Playlist": {
-          "description": "Relay full playlist update to all user clients.",
-          "parameters": [
-            { "name": "item", "type": "PlaylistItem[]", "description": "Updated playlist" }
-          ],
-          "returns": "Task"
-        },
-        "SubtitleTracks": {
-          "description": "Relay available subtitle tracks to all user clients.",
-          "parameters": [
-            { "name": "subtitleTracks", "type": "TextTrack[]", "description": "Available subtitle tracks" }
-          ],
-          "returns": "Task"
-        },
-        "CurrentSubtitleTrack": {
-          "description": "Relay the active subtitle track to all user clients.",
-          "parameters": [
-            { "name": "subtitleTrack", "type": "TextTrack", "description": "Active subtitle track" }
-          ],
-          "returns": "Task"
-        },
-        "AudioTracks": {
-          "description": "Relay available audio tracks to all user clients.",
-          "parameters": [
-            { "name": "audioTrack", "type": "AudioTrack[]", "description": "Available audio tracks" }
-          ],
-          "returns": "Task"
-        },
-        "CurrentAudioTrack": {
-          "description": "Relay the active audio track to all user clients.",
-          "parameters": [
-            { "name": "audioTrack", "type": "AudioTrack", "description": "Active audio track" }
-          ],
-          "returns": "Task"
-        },
-        "PlayerState": {
-          "description": "Relay full cast player state snapshot to all user clients. Broadcasts via 'MusicPlayerState' method name.",
-          "parameters": [
-            { "name": "state", "type": "CastPlayerState", "description": "Full cast player state" }
-          ],
-          "returns": "Task"
-        },
-        "SetAudioTrack": {
-          "description": "Command the cast receiver to switch to the specified audio track.",
-          "parameters": [
-            { "name": "audioTrack", "type": "int", "description": "Audio track index" }
-          ],
-          "returns": "Task"
-        },
-        "SetSubtitleTrack": {
-          "description": "Command the cast receiver to switch to the specified subtitle track.",
-          "parameters": [
-            { "name": "subtitleTrack", "type": "int", "description": "Subtitle track index" }
-          ],
-          "returns": "Task"
-        },
-        "SetPlaylistItem": {
-          "description": "Command the cast receiver to jump to a specific playlist item.",
-          "parameters": [
-            { "name": "item", "type": "int", "description": "Playlist item index" }
-          ],
-          "returns": "Task"
-        },
-        "SetVolume": {
-          "description": "Command the cast receiver to set volume.",
-          "parameters": [
-            { "name": "volume", "type": "int", "description": "Volume level 0-100" }
-          ],
-          "returns": "Task"
-        },
-        "SetMuted": {
-          "description": "Command the cast receiver to set mute state.",
-          "parameters": [
-            { "name": "muted", "type": "bool", "description": "Whether to mute" }
-          ],
-          "returns": "Task"
-        },
-        "SetSeek": {
-          "description": "Command the cast receiver to seek to a position.",
-          "parameters": [
-            { "name": "time", "type": "int", "description": "Seek position in seconds" }
-          ],
-          "returns": "Task"
-        }
-      },
-      "clientMethods": {
-        "Play":                { "description": "Client should start playback.", "parameters": [] },
-        "Pause":               { "description": "Client should pause playback.", "parameters": [] },
-        "Ended":               { "description": "Client notified that playback ended.", "parameters": [] },
-        "GetPlayerState":      { "description": "Client should respond with current player state.", "parameters": [] },
-        "SetNext":             { "description": "Client should skip to the next item.", "parameters": [] },
-        "SetPrevious":         { "description": "Client should skip to the previous item.", "parameters": [] },
-        "SetPlay":             { "description": "Client should resume playback.", "parameters": [] },
-        "SetPause":            { "description": "Client should pause playback.", "parameters": [] },
-        "SetStop":             { "description": "Client should stop playback.", "parameters": [] },
-        "MusicPlayerState": {
-          "description": "Client receives full cast player state (Note: method name is 'MusicPlayerState' even for video; this is the cast hub's naming convention).",
-          "parameters": [
-            { "name": "state", "type": "CastPlayerState" }
-          ]
-        },
-        "Time": {
-          "description": "Client receives playback time update.",
-          "parameters": [
-            { "name": "time", "type": "TimeData" }
-          ]
-        },
-        "Volume": {
-          "description": "Client receives volume update.",
-          "parameters": [
-            { "name": "volume", "type": "int" }
-          ]
-        },
-        "Muted": {
-          "description": "Client receives mute state update.",
-          "parameters": [
-            { "name": "muted", "type": "bool" }
-          ]
-        },
-        "Item": {
-          "description": "Client receives current playlist item.",
-          "parameters": [
-            { "name": "item", "type": "PlaylistItem" }
-          ]
-        },
-        "Playlist": {
-          "description": "Client receives updated playlist.",
-          "parameters": [
-            { "name": "item", "type": "PlaylistItem[]" }
-          ]
-        },
-        "SubtitleTracks": {
-          "description": "Client receives available subtitle tracks.",
-          "parameters": [
-            { "name": "subtitleTracks", "type": "TextTrack[]" }
-          ]
-        },
-        "CurrentSubtitleTrack": {
-          "description": "Client receives the active subtitle track.",
-          "parameters": [
-            { "name": "subtitleTrack", "type": "TextTrack" }
-          ]
-        },
-        "AudioTracks": {
-          "description": "Client receives available audio tracks.",
-          "parameters": [
-            { "name": "audioTrack", "type": "AudioTrack[]" }
-          ]
-        },
-        "CurrentAudioTrack": {
-          "description": "Client receives the active audio track.",
-          "parameters": [
-            { "name": "audioTrack", "type": "AudioTrack" }
-          ]
-        },
-        "SetAudioTrack": {
-          "description": "Client should switch to this audio track.",
-          "parameters": [
-            { "name": "audioTrack", "type": "int" }
-          ]
-        },
-        "SetSubtitleTrack": {
-          "description": "Client should switch to this subtitle track.",
-          "parameters": [
-            { "name": "subtitleTrack", "type": "int" }
-          ]
-        },
-        "SetPlaylistItem": {
-          "description": "Client should jump to this playlist item.",
-          "parameters": [
-            { "name": "item", "type": "int" }
-          ]
-        },
-        "SetVolume": {
-          "description": "Client should set its volume.",
-          "parameters": [
-            { "name": "volume", "type": "int" }
-          ]
-        },
-        "SetMuted": {
-          "description": "Client should set its mute state.",
-          "parameters": [
-            { "name": "muted", "type": "bool" }
-          ]
-        },
-        "SetSeek": {
-          "description": "Client should seek to this position.",
-          "parameters": [
-            { "name": "time", "type": "int" }
-          ]
-        }
-      }
-    },
-
-    "DashboardHub": {
-      "_path": "NoMercy.Api/Controllers/Socket/DashboardHub.cs",
-      "_base": "ConnectionHub",
-      "_endpoint": "/dashboardHub",
-      "_description": "Provides server resource monitoring and log streaming for the admin dashboard.",
-      "serverMethods": {
-        "StartResources": {
-          "description": "Start broadcasting CPU/memory/disk resource metrics to connected dashboard clients.",
-          "parameters": [],
-          "returns": "void"
-        },
-        "StopResources": {
-          "description": "Stop broadcasting resource metrics when no dashboard clients remain connected.",
-          "parameters": [],
-          "returns": "void"
-        }
-      },
-      "clientMethods": {
-        "ConnectedDevicesState": {
-          "description": "Inherited from ConnectionHub — broadcast updated device list to all clients.",
-          "parameters": [
-            { "name": "devices", "type": "Device[]" }
-          ]
-        }
-      }
-    },
-
-    "RipperHub": {
-      "_path": "NoMercy.Api/Controllers/Socket/RipperHub.cs",
-      "_base": "ConnectionHub",
-      "_endpoint": "/ripperHub",
-      "_description": "Provides optical media (Blu-ray/DVD) ripping functionality. Requires moderator role.",
-      "serverMethods": {
-        "GetDriveState": {
-          "description": "Get the current state and metadata of a specific optical drive. Requires moderator role.",
-          "parameters": [
-            { "name": "drivePath", "type": "string", "description": "File system path to the optical drive" }
-          ],
-          "returns": "DriveState | null"
-        }
-      },
-      "clientMethods": {
-        "ConnectedDevicesState": {
-          "description": "Inherited from ConnectionHub — broadcast updated device list to all clients.",
-          "parameters": [
-            { "name": "devices", "type": "Device[]" }
-          ]
-        }
-      }
-    },
-
-    "ConnectionHub": {
-      "_path": "NoMercy.Networking/ConnectionHub.cs",
-      "_description": "Base hub inherited by all other hubs. Handles device registration, activity logging, and ConnectedDevicesState broadcasts.",
-      "_note": "Not exposed directly as an endpoint. All public methods here are available on every hub that inherits from ConnectionHub.",
-      "serverMethods": {},
-      "clientMethods": {
-        "ConnectedDevicesState": {
-          "description": "Sent to ALL connected clients whenever any client connects or disconnects. Lists devices connected to the same hub endpoint for the same user.",
-          "parameters": [
-            { "name": "devices", "type": "Device[]", "description": "List of currently active Device objects for this user" }
-          ]
-        }
-      }
-    }
-  },
-
-  "types": {
-    "MusicPlayerState": {
-      "_source": "NoMercy.Api/Services/Music/MusicPlayerStateManager.cs (inferred from hub usage)",
-      "currentItem":        "PlaylistTrackDto | null",
-      "playlist":           "PlaylistTrackDto[]",
-      "backlog":            "PlaylistTrackDto[]",
-      "playState":          "boolean",
-      "time":               "number (milliseconds)",
-      "duration":           "number (milliseconds)",
-      "deviceId":           "string | null",
-      "volumePercentage":   "number (0-100)",
-      "currentList":        "string (relative URI, e.g. '/music/albums/uuid')",
-      "repeat":             "string ('off' | 'context' | 'track')",
-      "actions":            "PlayerActions",
-      "ignoreCurrentTimeUntil": "string (ISO datetime)"
-    },
-    "VideoPlayerState": {
-      "_source": "NoMercy.Api/Services/Video/VideoPlayerStateManager.cs (inferred from hub usage)",
-      "currentItem":        "VideoPlaylistResponseDto | null",
-      "playlist":           "VideoPlaylistResponseDto[]",
-      "playState":          "boolean",
-      "time":               "number (milliseconds)",
-      "duration":           "number (milliseconds)",
-      "deviceId":           "string | null",
-      "volumePercentage":   "number (0-100)",
-      "currentList":        "string (relative URI, e.g. '/movie/123/watch')",
-      "actions":            "PlayerActions"
-    },
-    "PlayerActions": {
-      "disallows": "ActionDisallows"
-    },
-    "ActionDisallows": {
-      "pausing":               "boolean",
-      "resuming":              "boolean",
-      "previous":              "boolean",
-      "next":                  "boolean",
-      "seeking":               "boolean",
-      "stopping":              "boolean",
-      "muting":                "boolean",
-      "togglingShuffle":       "boolean",
-      "togglingRepeatContext": "boolean",
-      "togglingRepeatTrack":   "boolean"
-    },
-    "Device": {
-      "name":          "string",
-      "ip":            "string",
-      "deviceId":      "string",
-      "browser":       "string",
-      "os":            "string",
-      "model":         "string",
-      "type":          "string",
-      "version":       "string",
-      "id":            "number",
-      "customName":    "string | null",
-      "volumePercent": "number (0-100)"
-    },
-    "VideoProgressRequest": {
-      "videoId":      "Guid",
-      "tmdbId":       "int",
-      "playlistType": "string ('movie' | 'tv' | 'collection' | 'special')",
-      "playlistId":   "string",
-      "specialId":    "Ulid | null",
-      "time":         "number (seconds)",
-      "audio":        "string | null",
-      "subtitle":     "string | null",
-      "subtitleType": "string | null"
-    },
-    "TimeData": {
-      "currentTime":      "number (seconds)",
-      "duration":         "number (seconds)",
-      "percentage":       "number (0-100)",
-      "remaining":        "number (seconds)",
-      "currentTimeHuman": "string",
-      "durationHuman":    "string",
-      "remainingHuman":   "string"
-    },
-    "TextTrack": {
-      "id":       "number",
-      "default":  "boolean",
-      "file":     "string",
-      "kind":     "string",
-      "label":    "string | null",
-      "language": "string | null",
-      "type":     "string | null",
-      "ext":      "string | null"
-    },
-    "AudioTrack": {
-      "id":       "number",
-      "language": "string",
-      "label":    "string"
-    },
-    "PlaylistItem": {
-      "id":                  "string",
-      "uuid":                "string",
-      "seasonName":          "string",
-      "progress":            "ProgressDto",
-      "duration":            "string (HH:MM:SS)",
-      "file":                "string (URL)",
-      "image":               "string (URL)",
-      "title":               "string",
-      "tracks":              "TextTrack[]",
-      "withCredentials":     "boolean",
-      "description":         "string",
-      "season":              "number",
-      "episode":             "number",
-      "show":                "string",
-      "year":                "number",
-      "logo":                "string (URL)",
-      "rating":              "RatingDto"
-    },
-    "CastPlayerState": {
-      "timeData":              "TimeData",
-      "volume":                "number (0-100)",
-      "muted":                 "boolean",
-      "isPlaying":             "boolean",
-      "playlist":              "PlaylistItem[]",
-      "currentPlaylistItem":   "PlaylistItem | null",
-      "subtitles":             "TextTrack[]",
-      "currentSubtitleTrack":  "TextTrack",
-      "audioTracks":           "AudioTrack[]",
-      "currentAudioTrack":     "number (track index)"
-    },
-    "DriveState": {
-      "open":     "boolean",
-      "path":     "string",
-      "label":    "string",
-      "metaData": "MetaData | null"
-    }
-  },
-
-  "connectionQueryParameters": {
-    "_description": "All hubs inherit from ConnectionHub which reads these query parameters on connect to register the device.",
-    "access_token":   "string (JWT bearer token)",
-    "client_id":      "string (stable device identifier)",
-    "custom_name":    "string? (user-assigned device name)",
-    "client_volume":  "string (integer 0-100)",
-    "client_name":    "string (browser/app name)",
-    "client_type":    "string ('web' | 'android' | 'tv' | etc.)",
-    "client_version": "string (app version)",
-    "client_os":      "string (OS name)",
-    "client_browser": "string (browser name)",
-    "client_device":  "string (device model)"
-  },
-
-  "knownIssues": [
-    {
-      "hub": "CastHub",
-      "method": "PlayerState",
-      "issue": "The server sends a 'PlayerState' command but the client method name broadcast is 'MusicPlayerState'. Clients must register a handler for 'MusicPlayerState', not 'PlayerState'."
-    },
-    {
-      "hub": "VideoHub",
-      "method": "StartPlaybackCommand",
-      "issue": "The 'listId' parameter is typed as 'dynamic' in C#. For movie/tv it is an int, for special it is a Ulid string. Clients must handle both numeric and string values."
-    },
-    {
-      "hub": "VideoHub",
-      "method": "SetTime",
-      "issue": "The 'specialId' field on VideoProgressRequest is a Ulid (string format). This is inconsistent with 'tmdbId' which is an int."
-    }
-  ]
+    "CastHub": [
+      "AudioTracks(NoMercy.Api.Hubs.CastHub.AudioTrack[]) -\u003E System.Threading.Tasks.Task",
+      "CastPlaylist(System.String) -\u003E System.Threading.Tasks.Task",
+      "CurrentAudioTrack(NoMercy.Api.Hubs.CastHub.AudioTrack) -\u003E System.Threading.Tasks.Task",
+      "CurrentSubtitleTrack(NoMercy.Api.Hubs.CastHub.TextTrack) -\u003E System.Threading.Tasks.Task",
+      "Devices() -\u003E System.Collections.Generic.List\u003CNoMercy.Database.Models.Users.Device\u003E",
+      "Disconnect() -\u003E System.Threading.Tasks.Task",
+      "Ended() -\u003E System.Threading.Tasks.Task",
+      "GetChromeCasts() -\u003E System.String[]",
+      "GetChromecastStatus() -\u003E Sharpcaster.Models.ChromecastStatus.ChromecastStatus",
+      "GetCountryFromContext() -\u003E System.String",
+      "GetLanguageFromContext() -\u003E System.String",
+      "GetMediaStatus() -\u003E Sharpcaster.Models.Media.MediaStatus",
+      "GetPlayerState() -\u003E System.Threading.Tasks.Task",
+      "Item(NoMercy.Api.Hubs.CastHub.PlaylistItem) -\u003E System.Threading.Tasks.Task",
+      "Launch() -\u003E System.Threading.Tasks.Task",
+      "Muted(System.Boolean) -\u003E System.Threading.Tasks.Task",
+      "OnConnectedAsync() -\u003E System.Threading.Tasks.Task",
+      "OnDisconnectedAsync(System.Exception) -\u003E System.Threading.Tasks.Task",
+      "Pause() -\u003E System.Threading.Tasks.Task",
+      "Play() -\u003E System.Threading.Tasks.Task",
+      "PlayerState(NoMercy.Api.Hubs.CastHub.CastPlayerState) -\u003E System.Threading.Tasks.Task",
+      "Playlist(NoMercy.Api.Hubs.CastHub.PlaylistItem[]) -\u003E System.Threading.Tasks.Task",
+      "SelectChromecast(System.String) -\u003E System.Threading.Tasks.Task",
+      "SetAudioTrack(System.Int32) -\u003E System.Threading.Tasks.Task",
+      "SetMuted(System.Boolean) -\u003E System.Threading.Tasks.Task",
+      "SetNext() -\u003E System.Threading.Tasks.Task",
+      "SetPause() -\u003E System.Threading.Tasks.Task",
+      "SetPlay() -\u003E System.Threading.Tasks.Task",
+      "SetPlaylistItem(System.Int32) -\u003E System.Threading.Tasks.Task",
+      "SetPrevious() -\u003E System.Threading.Tasks.Task",
+      "SetSeek(System.Int32) -\u003E System.Threading.Tasks.Task",
+      "SetStop() -\u003E System.Threading.Tasks.Task",
+      "SetSubtitleTrack(System.Int32) -\u003E System.Threading.Tasks.Task",
+      "SetVolume(System.Int32) -\u003E System.Threading.Tasks.Task",
+      "Stop() -\u003E System.Threading.Tasks.Task",
+      "SubtitleTracks(NoMercy.Api.Hubs.CastHub.TextTrack[]) -\u003E System.Threading.Tasks.Task",
+      "Time(NoMercy.Api.Hubs.CastHub.TimeData) -\u003E System.Threading.Tasks.Task",
+      "Volume(System.Int32) -\u003E System.Threading.Tasks.Task"
+    ],
+    "ContentAnalysisHub": [
+      "Devices() -\u003E System.Collections.Generic.List\u003CNoMercy.Database.Models.Users.Device\u003E",
+      "GetCountryFromContext() -\u003E System.String",
+      "GetLanguageFromContext() -\u003E System.String",
+      "OnConnectedAsync() -\u003E System.Threading.Tasks.Task",
+      "OnDisconnectedAsync(System.Exception) -\u003E System.Threading.Tasks.Task"
+    ],
+    "DashboardHub": [
+      "Devices() -\u003E System.Collections.Generic.List\u003CNoMercy.Database.Models.Users.Device\u003E",
+      "GetCountryFromContext() -\u003E System.String",
+      "GetLanguageFromContext() -\u003E System.String",
+      "OnConnectedAsync() -\u003E System.Threading.Tasks.Task",
+      "OnDisconnectedAsync(System.Exception) -\u003E System.Threading.Tasks.Task",
+      "StartResources() -\u003E System.Void",
+      "StopResources() -\u003E System.Void"
+    ],
+    "DeviceHub": [
+      "DeclareCapabilities(NoMercy.Encoder.Devices.DeviceCapabilities) -\u003E System.Threading.Tasks.Task",
+      "Devices() -\u003E System.Collections.Generic.List\u003CNoMercy.Database.Models.Users.Device\u003E",
+      "GetCountryFromContext() -\u003E System.String",
+      "GetDevices() -\u003E System.Threading.Tasks.Task\u003CSystem.Collections.Generic.List\u003CNoMercy.Networking.Devices.DeviceListItem\u003E\u003E",
+      "GetLanguageFromContext() -\u003E System.String",
+      "OnConnectedAsync() -\u003E System.Threading.Tasks.Task",
+      "OnDisconnectedAsync(System.Exception) -\u003E System.Threading.Tasks.Task",
+      "PendingNotices() -\u003E System.Threading.Tasks.Task\u003CSystem.Collections.Generic.List\u003CNoMercy.Api.Hubs.DeviceDropNoticeDto\u003E\u003E",
+      "WakeForMusic(System.String) -\u003E System.Threading.Tasks.Task\u003CNoMercy.Api.Hubs.WakeResult\u003E",
+      "WakeForVideo(System.String) -\u003E System.Threading.Tasks.Task\u003CNoMercy.Api.Hubs.WakeResult\u003E"
+    ],
+    "DrivesHub": [
+      "Devices() -\u003E System.Collections.Generic.List\u003CNoMercy.Database.Models.Users.Device\u003E",
+      "GetCountryFromContext() -\u003E System.String",
+      "GetLanguageFromContext() -\u003E System.String",
+      "OnConnectedAsync() -\u003E System.Threading.Tasks.Task",
+      "OnDisconnectedAsync(System.Exception) -\u003E System.Threading.Tasks.Task"
+    ],
+    "LiveTranscodeHub": [
+      "Devices() -\u003E System.Collections.Generic.List\u003CNoMercy.Database.Models.Users.Device\u003E",
+      "GetCountryFromContext() -\u003E System.String",
+      "GetLanguageFromContext() -\u003E System.String",
+      "Heartbeat(System.String) -\u003E System.Void",
+      "OnConnectedAsync() -\u003E System.Threading.Tasks.Task",
+      "OnDisconnectedAsync(System.Exception) -\u003E System.Threading.Tasks.Task",
+      "ReportBufferHealth(System.String, System.Double, System.Double) -\u003E System.Void",
+      "ReportPlayhead(System.String, System.Double) -\u003E System.Void",
+      "RequestPause(System.String) -\u003E System.Void",
+      "RequestResume(System.String) -\u003E System.Void",
+      "SubscribeToSession(System.String) -\u003E System.Threading.Tasks.Task",
+      "UnsubscribeFromSession(System.String) -\u003E System.Threading.Tasks.Task"
+    ],
+    "MusicHub": [
+      "ChangeDeviceCommand(System.String) -\u003E System.Threading.Tasks.Task",
+      "ChangeVolumeCommand(System.Nullable\u003CSystem.Int32\u003E) -\u003E System.Threading.Tasks.Task",
+      "CrossfadeCompleteCommand(System.Nullable\u003CSystem.Guid\u003E) -\u003E System.Threading.Tasks.Task",
+      "CrossfadeStartCommand(System.Nullable\u003CSystem.Int32\u003E) -\u003E System.Threading.Tasks.Task",
+      "CurrentTimeCommand(System.Nullable\u003CSystem.Int32\u003E) -\u003E System.Threading.Tasks.Task",
+      "CurrentTimeForItemCommand(System.Nullable\u003CSystem.Double\u003E, System.String) -\u003E System.Threading.Tasks.Task",
+      "Devices() -\u003E System.Collections.Generic.List\u003CNoMercy.Database.Models.Users.Device\u003E",
+      "GetCountryFromContext() -\u003E System.String",
+      "GetLanguageFromContext() -\u003E System.String",
+      "GetServerTime() -\u003E System.Int64",
+      "GetStateCommand() -\u003E NoMercy.Api.Services.Music.MusicPlayerState",
+      "OnConnectedAsync() -\u003E System.Threading.Tasks.Task",
+      "OnDisconnectedAsync(System.Exception) -\u003E System.Threading.Tasks.Task",
+      "PlaybackCommand(System.String, System.Object) -\u003E System.Threading.Tasks.Task",
+      "ReportPositionAtCommand(System.Nullable\u003CSystem.Int32\u003E, System.Nullable\u003CSystem.Int64\u003E) -\u003E System.Threading.Tasks.Task",
+      "ReportPositionCommand(System.Nullable\u003CSystem.Int32\u003E) -\u003E System.Threading.Tasks.Task",
+      "ReportPositionForItemCommand(System.Nullable\u003CSystem.Int64\u003E, System.String) -\u003E System.Threading.Tasks.Task",
+      "SetDeviceVolumeCommand(System.String, System.Nullable\u003CSystem.Int32\u003E) -\u003E System.Threading.Tasks.Task",
+      "StartPlaybackCommand(System.String, System.Nullable\u003CSystem.Guid\u003E, System.Nullable\u003CSystem.Guid\u003E) -\u003E System.Threading.Tasks.Task"
+    ],
+    "PluginHub": [
+      "Devices() -\u003E System.Collections.Generic.List\u003CNoMercy.Database.Models.Users.Device\u003E",
+      "GetCountryFromContext() -\u003E System.String",
+      "GetLanguageFromContext() -\u003E System.String",
+      "OnConnectedAsync() -\u003E System.Threading.Tasks.Task",
+      "OnDisconnectedAsync(System.Exception) -\u003E System.Threading.Tasks.Task",
+      "Send(System.String, System.String, System.Text.Json.Nodes.JsonNode) -\u003E System.Threading.Tasks.Task\u003CSystem.Boolean\u003E",
+      "Subscribe(System.String) -\u003E System.Threading.Tasks.Task",
+      "Unsubscribe(System.String) -\u003E System.Threading.Tasks.Task"
+    ],
+    "RipperHub": [
+      "Devices() -\u003E System.Collections.Generic.List\u003CNoMercy.Database.Models.Users.Device\u003E",
+      "GetCountryFromContext() -\u003E System.String",
+      "GetDriveState(System.String) -\u003E System.Threading.Tasks.Task\u003CSystem.Object\u003E",
+      "GetLanguageFromContext() -\u003E System.String",
+      "OnConnectedAsync() -\u003E System.Threading.Tasks.Task",
+      "OnDisconnectedAsync(System.Exception) -\u003E System.Threading.Tasks.Task"
+    ],
+    "VideoHub": [
+      "ChangeDeviceCommand(System.String) -\u003E System.Threading.Tasks.Task",
+      "Devices() -\u003E System.Collections.Generic.List\u003CNoMercy.Database.Models.Users.Device\u003E",
+      "GetCountryFromContext() -\u003E System.String",
+      "GetLanguageFromContext() -\u003E System.String",
+      "GetStateCommand() -\u003E NoMercy.Api.Services.Video.VideoPlayerState",
+      "OnConnectedAsync() -\u003E System.Threading.Tasks.Task",
+      "OnDisconnectedAsync(System.Exception) -\u003E System.Threading.Tasks.Task",
+      "PlaybackCommand(System.String, System.Object) -\u003E System.Threading.Tasks.Task",
+      "RemoveWatched(NoMercy.Api.Services.Video.VideoProgressRequest) -\u003E System.Threading.Tasks.Task",
+      "SetTime(NoMercy.Api.Services.Video.VideoProgressRequest) -\u003E System.Threading.Tasks.Task",
+      "StartPlaybackCommand(System.String, System.Object, System.Nullable\u003CSystem.Int32\u003E) -\u003E System.Threading.Tasks.Task"
+    ]
+  }
 }
