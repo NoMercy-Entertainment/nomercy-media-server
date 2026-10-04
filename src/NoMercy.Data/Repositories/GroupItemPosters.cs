@@ -8,6 +8,10 @@
 //
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
+using Microsoft.EntityFrameworkCore;
+using NoMercy.Database;
+using NoMercy.Database.Models.Media;
+
 namespace NoMercy.Data.Repositories;
 
 /// <summary>
@@ -32,6 +36,82 @@ public static class GroupItemPosters
     public const int Max = 9;
 
     public const string PosterType = "poster";
+
+    /// <summary>
+    /// Fills <see cref="GroupPosterRow.TextlessPoster"/> for link rows fetched
+    /// without it: one image query per media kind over the distinct titles,
+    /// instead of a correlated subquery per link row (a title sits in many
+    /// groups, so there are far more link rows than titles).
+    /// </summary>
+    public static async Task<List<GroupPosterRow>> WithTextlessPostersAsync(
+        MediaContext context,
+        List<GroupPosterRow> tvRows,
+        List<GroupPosterRow> movieRows,
+        CancellationToken ct
+    )
+    {
+        List<int> tvIds = [.. tvRows.Select(row => row.ItemId).Distinct()];
+        List<int> movieIds = [.. movieRows.Select(row => row.ItemId).Distinct()];
+
+        Dictionary<int, string> tvPosters = BestPerTitle(
+            await TextlessPosters(context)
+                .Where(image => image.TvId != null && tvIds.Contains(image.TvId.Value))
+                .Select(image => new PosterCandidate(
+                    image.TvId!.Value,
+                    image.FilePath,
+                    image.VoteAverage,
+                    image.Id
+                ))
+                .ToListAsync(ct)
+        );
+        Dictionary<int, string> moviePosters = BestPerTitle(
+            await TextlessPosters(context)
+                .Where(image => image.MovieId != null && movieIds.Contains(image.MovieId.Value))
+                .Select(image => new PosterCandidate(
+                    image.MovieId!.Value,
+                    image.FilePath,
+                    image.VoteAverage,
+                    image.Id
+                ))
+                .ToListAsync(ct)
+        );
+
+        return
+        [
+            .. tvRows.Select(row =>
+                row with
+                {
+                    TextlessPoster = tvPosters.GetValueOrDefault(row.ItemId),
+                }
+            ),
+            .. movieRows.Select(row =>
+                row with
+                {
+                    TextlessPoster = moviePosters.GetValueOrDefault(row.ItemId),
+                }
+            ),
+        ];
+    }
+
+    private static IQueryable<Image> TextlessPosters(MediaContext context) =>
+        context
+            .Images.AsNoTracking()
+            .Where(image => image.Type == PosterType && image.Iso6391 == null);
+
+    private static Dictionary<int, string> BestPerTitle(List<PosterCandidate> candidates) =>
+        candidates
+            .GroupBy(candidate => candidate.ItemId)
+            .ToDictionary(
+                group => group.Key,
+                group =>
+                    group
+                        .OrderByDescending(candidate => candidate.VoteAverage)
+                        .ThenBy(candidate => candidate.Id)
+                        .First()
+                        .FilePath
+            );
+
+    private sealed record PosterCandidate(int ItemId, string FilePath, double? VoteAverage, int Id);
 
     /// <summary>
     /// Up to <see cref="Max"/> unique posters per group, first added title

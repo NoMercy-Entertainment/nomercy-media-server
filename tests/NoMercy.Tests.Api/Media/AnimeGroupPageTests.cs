@@ -22,18 +22,43 @@ namespace NoMercy.Tests.Api.Media;
 [Trait("Category", "Unit")]
 public class AnimeGroupPageTests
 {
-    private static (GenreCardData Card, string[] Posters) Theme(int id, string name, params string[] posters) =>
-        (new GenreCardData(new AnimeThemeWithCountsDto { Id = id, Name = name, TvShowsWithVideo = 1 }), posters);
-
-    private static (GenreCardData Card, string[] Posters) Season(int id, int year, string quarter) =>
+    private static (GenreCardData Card, string[] Posters) Theme(
+        int id,
+        string name,
+        params string[] posters
+    ) =>
         (
             new GenreCardData(
-                new AnimeSeasonWithCountsDto { Id = id, Year = year, Quarter = quarter, TvShowsWithVideo = 1 }
+                new AnimeThemeWithCountsDto
+                {
+                    Id = id,
+                    Name = name,
+                    TvShowsWithVideo = 1,
+                }
+            ),
+            posters
+        );
+
+    private static (GenreCardData Card, string[] Posters) Season(
+        int id,
+        int year,
+        string quarter
+    ) =>
+        (
+            new GenreCardData(
+                new AnimeSeasonWithCountsDto
+                {
+                    Id = id,
+                    Year = year,
+                    Quarter = quarter,
+                    TvShowsWithVideo = 1,
+                }
             ),
             []
         );
 
-    private static ContainerProps Props(ComponentEnvelope envelope) => (ContainerProps)envelope.Props;
+    private static ContainerProps Props(ComponentEnvelope envelope) =>
+        (ContainerProps)envelope.Props;
 
     private static List<(GenreCardData, string[])> Themes(int count) =>
         [.. Enumerable.Range(0, count).Select(i => Theme(i, $"{(char)('A' + i % 26)}theme {i}"))];
@@ -91,6 +116,27 @@ public class AnimeGroupPageTests
         Assert.Equal(["/a.jpg", "/b.jpg"], data.ItemPosters);
     }
 
+    // An installed TV app already sends version=lolomo and takes its hero from the first
+    // carousel item as an NMCard; an NMGenreCard there gives a blank hero. So without
+    // the opt-in, lolomo still gets today's grid.
+    [Fact]
+    public void Lolomo_WithoutTheOptIn_IsTodaysGenreCardGrid()
+    {
+        ComponentResponse page = AnimeGroupPage.Build(
+            "anime-themes",
+            Themes(AnimeGroupPage.RowMax + 5),
+            AnimeGroupRows.Letter,
+            lolomo: true,
+            groupCard: false
+        );
+
+        ComponentEnvelope grid = Assert.Single(page.Data);
+        Assert.Equal("NMGrid", grid.Component);
+        Assert.Equal("anime-themes", (string)Props(grid).Id);
+        Assert.Equal(AnimeGroupPage.RowMax + 5, Props(grid).Items.Count());
+        Assert.All(Props(grid).Items, card => Assert.Equal("NMGenreCard", card.Component));
+    }
+
     // A page that fits in one row is one row: splitting a handful of groups only adds empty steps.
     [Fact]
     public void Lolomo_ThatFitsOneRow_IsOneRow()
@@ -117,13 +163,43 @@ public class AnimeGroupPageTests
             Theme(900, "2.5 dimensional"),
         ];
 
-        List<ComponentEnvelope> rows = [.. AnimeGroupPage.Build("anime-themes", themes, AnimeGroupRows.Letter, lolomo: true, groupCard: true).Data];
+        List<ComponentEnvelope> rows =
+        [
+            .. AnimeGroupPage
+                .Build("anime-themes", themes, AnimeGroupRows.Letter, lolomo: true, groupCard: true)
+                .Data,
+        ];
 
         Assert.All(rows, row => Assert.Equal("NMCarousel", row.Component));
-        Assert.Equal(["#", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O", "P", "Q", "R", "S", "T"], rows.Select(row => Props(row).Title));
+        Assert.Equal(
+            [
+                "#",
+                "A",
+                "B",
+                "C",
+                "D",
+                "E",
+                "F",
+                "G",
+                "H",
+                "I",
+                "J",
+                "K",
+                "L",
+                "M",
+                "N",
+                "O",
+                "P",
+                "Q",
+                "R",
+                "S",
+                "T",
+            ],
+            rows.Select(row => Props(row).Title)
+        );
         Assert.Null(Props(rows[0]).PreviousId);
-        Assert.Equal("A", (string)Props(rows[0]).NextId);
-        Assert.Equal("#", (string)Props(rows[1]).PreviousId);
+        Assert.Equal("A", (string?)Props(rows[0]).NextId);
+        Assert.Equal("#", (string?)Props(rows[1]).PreviousId);
         Assert.Null(Props(rows[^1]).NextId);
         Assert.Equal(themes.Count, rows.Sum(row => Props(row).Items.Count()));
     }
@@ -133,19 +209,36 @@ public class AnimeGroupPageTests
     {
         List<(GenreCardData, string[])> seasons =
         [
-            .. Enumerable.Range(0, AnimeGroupPage.RowMax).Select(i => Season(i, 2000 + i / 4, "WINTER")),
+            .. Enumerable
+                .Range(0, AnimeGroupPage.RowMax)
+                .Select(i => Season(i, 2000 + i / 4, "WINTER")),
             Season(100, 2024, "FALL"),
             Season(101, 2024, "WINTER"),
             Season(102, 2024, "SUMMER"),
         ];
 
-        List<ComponentEnvelope> rows = [.. AnimeGroupPage.Build("anime-seasons", seasons, AnimeGroupRows.YearDescending, lolomo: true, groupCard: false).Data];
+        List<ComponentEnvelope> rows =
+        [
+            .. AnimeGroupPage
+                .Build(
+                    "anime-seasons",
+                    seasons,
+                    AnimeGroupRows.YearDescending,
+                    lolomo: true,
+                    groupCard: true
+                )
+                .Data,
+        ];
 
         Assert.Equal("2024", Props(rows[0]).Title);
-        Assert.Equal(["2024", "2004", "2003", "2002", "2001", "2000"], rows.Select(row => Props(row).Title));
+        Assert.Equal(
+            ["2024", "2004", "2003", "2002", "2001", "2000"],
+            rows.Select(row => Props(row).Title)
+        );
         Assert.Equal(
             ["WINTER", "SUMMER", "FALL"],
-            Props(rows[0]).Items.Select(card => ((LeafProps<GenreCardData>)card.Props).Data!.Quarter)
+            Props(rows[0])
+                .Items.Select(card => ((LeafProps<GroupCardData>)card.Props).Data!.Quarter)
         );
     }
 
@@ -154,9 +247,14 @@ public class AnimeGroupPageTests
     [InlineData(typeof(AnimeThemesController), "Themes")]
     [InlineData(typeof(AnimeDemographicsController), "Demographics")]
     [InlineData(typeof(AnimeSeasonsController), "Seasons")]
-    public void ListEndpoint_CacheVariesByVersionAndTheComponentsHeader(Type controller, string action)
+    public void ListEndpoint_CacheVariesByVersionAndTheComponentsHeader(
+        Type controller,
+        string action
+    )
     {
-        ResponseCacheAttribute cache = controller.GetMethod(action)!.GetCustomAttribute<ResponseCacheAttribute>()!;
+        ResponseCacheAttribute cache = controller
+            .GetMethod(action)!
+            .GetCustomAttribute<ResponseCacheAttribute>()!;
 
         Assert.Contains("version", cache.VaryByQueryKeys!);
         Assert.Equal(AnimeGroupPage.ComponentsHeader, cache.VaryByHeader);

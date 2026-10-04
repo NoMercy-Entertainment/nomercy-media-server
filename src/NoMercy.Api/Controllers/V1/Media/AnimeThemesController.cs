@@ -15,8 +15,10 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using NoMercy.Api.DTOs.Media;
 using NoMercy.Api.DTOs.Media.Components;
+using NoMercy.Api.Services;
 using NoMercy.Authorization;
 using NoMercy.Data.Repositories;
+using NoMercy.Design;
 using NoMercy.NmSystem.Extensions;
 
 namespace NoMercy.Api.Controllers.V1.Media;
@@ -29,7 +31,11 @@ namespace NoMercy.Api.Controllers.V1.Media;
 public class AnimeThemesController(IAnimeThemeRepository animeThemeRepository) : BaseController
 {
     [HttpGet]
-    [ResponseCache(Duration = 300, VaryByQueryKeys = ["take", "page"])]
+    [ResponseCache(
+        Duration = 300,
+        VaryByQueryKeys = ["take", "page", "version"],
+        VaryByHeader = AnimeGroupPage.ComponentsHeader
+    )]
     public async Task<IActionResult> Themes(
         [FromQuery] PageRequestDto request,
         CancellationToken ct = default
@@ -47,19 +53,20 @@ public class AnimeThemesController(IAnimeThemeRepository animeThemeRepository) :
                 ct
             );
 
-        List<GenreCardData> themeCards =
-        [
-            .. themeDtos
-                .Where(t => t.TvShowsWithVideo > 0 || t.MoviesWithVideo > 0)
-                .Select(dto => new GenreCardData(dto)),
-        ];
-
-        ComponentEnvelope response = Component
-            .Grid()
-            .WithId("anime-themes")
-            .WithItems(themeCards.Select(card => Component.GenreCard().WithData(card)));
-
-        return Ok(ComponentResponse.From(response));
+        return Ok(
+            AnimeGroupPage.Build(
+                "anime-themes",
+                themeDtos
+                    .Where(t => t.TvShowsWithVideo > 0 || t.MoviesWithVideo > 0)
+                    .Select(dto => (new GenreCardData(dto), dto.ItemPosters)),
+                AnimeGroupRows.Letter,
+                request.Version == "lolomo",
+                AnimeGroupPage.Draws(
+                    Request.Headers[AnimeGroupPage.ComponentsHeader],
+                    NmAppComponents.GroupCard
+                )
+            )
+        );
     }
 
     [HttpGet]
