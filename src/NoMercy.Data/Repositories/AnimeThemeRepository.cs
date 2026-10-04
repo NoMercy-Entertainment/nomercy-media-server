@@ -112,9 +112,9 @@ public class AnimeThemeRepository(MediaContext context) : IAnimeThemeRepository
 
         // The card of a group with no image of its own shows the posters of
         // the titles inside it that the user can play.
-        List<GroupPosterRow> posterRows =
-        [
-            .. await context
+        List<GroupPosterRow> posterRows = await GroupItemPosters.WithTextlessPostersAsync(
+            context,
+            await context
                 .AnimeThemeTv.AsNoTracking()
                 .Where(link =>
                     ids.Contains(link.AnimeThemeId)
@@ -126,18 +126,11 @@ public class AnimeThemeRepository(MediaContext context) : IAnimeThemeRepository
                     link.TvId,
                     link.Tv.CreatedAt,
                     link.Tv.TitleSort,
-                    link
-                        .Tv.Images.Where(image =>
-                            image.Type == GroupItemPosters.PosterType && image.Iso6391 == null
-                        )
-                        .OrderByDescending(image => image.VoteAverage)
-                        .ThenBy(image => image.Id)
-                        .Select(image => image.FilePath)
-                        .FirstOrDefault(),
+                    null,
                     link.Tv.Poster
                 ))
                 .ToListAsync(ct),
-            .. await context
+            await context
                 .AnimeThemeMovie.AsNoTracking()
                 .Where(link =>
                     ids.Contains(link.AnimeThemeId)
@@ -149,18 +142,12 @@ public class AnimeThemeRepository(MediaContext context) : IAnimeThemeRepository
                     link.MovieId,
                     link.Movie.CreatedAt,
                     link.Movie.TitleSort,
-                    link
-                        .Movie.Images.Where(image =>
-                            image.Type == GroupItemPosters.PosterType && image.Iso6391 == null
-                        )
-                        .OrderByDescending(image => image.VoteAverage)
-                        .ThenBy(image => image.Id)
-                        .Select(image => image.FilePath)
-                        .FirstOrDefault(),
+                    null,
                     link.Movie.Poster
                 ))
                 .ToListAsync(ct),
-        ];
+            ct
+        );
 
         Dictionary<int, string[]> posters = GroupItemPosters.Pick(posterRows);
 

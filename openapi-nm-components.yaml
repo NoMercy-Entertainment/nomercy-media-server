@@ -42,6 +42,7 @@ components:
             - NMGenreCard
             - NMMusicCard
             - NMTopResultCard
+            - NMGroupCard
         props:
           oneOf:
             - $ref: '#/components/schemas/NMGridWrapper'
@@ -54,6 +55,7 @@ components:
             - $ref: '#/components/schemas/NMHomeCardWrapper'
             - $ref: '#/components/schemas/NMMusicCardWrapper'
             - $ref: '#/components/schemas/NMTopResultCardWrapper'
+            - $ref: '#/components/schemas/NMGroupCardWrapper'
           discriminator:
             propertyName: component
             mapping:
@@ -68,6 +70,7 @@ components:
               NMGenreCard: '#/components/schemas/NMCardWrapper'
               NMMusicCard: '#/components/schemas/NMMusicCardWrapper'
               NMTopResultCard: '#/components/schemas/NMTopResultCardWrapper'
+              NMGroupCard: '#/components/schemas/NMGroupCardWrapper'
         update:
           $ref: '#/components/schemas/Update'
 
@@ -845,6 +848,95 @@ components:
           default: []
         track:
           $ref: '#/components/schemas/PlaylistItem'
+
+    NMGroupCardWrapper:
+      type: object
+      description: >-
+        Card for a group of titles with no image of its own (an anime theme,
+        demographic or season), drawn from the posters of the titles inside.
+        Sent only to an app that lists NMGroupCard in its NM-Components request
+        header; other apps get NMGenreCard.
+      required:
+        - id
+        - title
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        data:
+          $ref: '#/components/schemas/NMGroupCardProps'
+        next_id:
+          type: string
+          nullable: true
+        previous_id:
+          type: string
+          nullable: true
+        more_link:
+          type: string
+          nullable: true
+        more_link_text:
+          type: string
+          nullable: true
+        watch:
+          type: boolean
+          default: false
+        context_menu_items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ContextMenuItem'
+          default: []
+        url:
+          type: string
+          nullable: true
+        properties:
+          type: object
+          additionalProperties:
+            type: string
+          nullable: true
+
+    NMGroupCardProps:
+      type: object
+      description: Properties for a group card
+      required:
+        - id
+        - title
+        - titleSort
+        - type
+        - link
+        - number_of_items
+        - have_items
+        - item_posters
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        titleSort:
+          type: string
+        type:
+          type: string
+          description: Group type (anime-theme, anime-demographic, anime-season)
+        link:
+          type: string
+        year:
+          type: integer
+          nullable: true
+          description: Season year; the app formats the season label in its own locale
+        quarter:
+          type: string
+          nullable: true
+          description: Season quarter (WINTER, SPRING, SUMMER, FALL)
+        number_of_items:
+          type: integer
+        have_items:
+          type: integer
+        item_posters:
+          type: array
+          items:
+            type: string
+          default: []
+          description: Up to nine posters of the titles inside the group, textless preferred
 
     # ===========================================
     # Supporting Types

@@ -47,7 +47,12 @@ public static class AnimeGroupPage
             .Contains(component, StringComparer.Ordinal);
 
     /// <param name="groups">The groups to show, already limited to those the user can play.</param>
-    /// <param name="groupCard">The app draws NMGroupCard; otherwise it gets NMGenreCard as before.</param>
+    /// <param name="lolomo">
+    /// The app asked for rows. Honored only together with <paramref name="groupCard"/>:
+    /// released TV apps already send it and take their hero from the first carousel
+    /// item as an NMCard, so rows of NMGenreCard would give them a blank hero.
+    /// </param>
+    /// <param name="groupCard">The app draws NMGroupCard; otherwise it gets today's grid of NMGenreCard.</param>
     public static ComponentResponse Build(
         string id,
         IEnumerable<(GenreCardData Card, string[] Posters)> groups,
@@ -58,7 +63,7 @@ public static class AnimeGroupPage
     {
         List<(GenreCardData Card, string[] Posters)> list = [.. groups];
 
-        if (!lolomo)
+        if (!lolomo || !groupCard)
             return ComponentResponse.From(
                 Component.Grid().WithId(id).WithItems(list.Select(Card)).Build()
             );

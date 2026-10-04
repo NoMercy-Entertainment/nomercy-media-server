@@ -15,8 +15,10 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using NoMercy.Api.DTOs.Media;
 using NoMercy.Api.DTOs.Media.Components;
+using NoMercy.Api.Services;
 using NoMercy.Authorization;
 using NoMercy.Data.Repositories;
+using NoMercy.Design;
 using NoMercy.NmSystem.Extensions;
 
 namespace NoMercy.Api.Controllers.V1.Media;
@@ -29,7 +31,11 @@ namespace NoMercy.Api.Controllers.V1.Media;
 public class AnimeSeasonsController(IAnimeSeasonRepository animeSeasonRepository) : BaseController
 {
     [HttpGet]
-    [ResponseCache(Duration = 300, VaryByQueryKeys = ["take", "page"])]
+    [ResponseCache(
+        Duration = 300,
+        VaryByQueryKeys = ["take", "page", "version"],
+        VaryByHeader = AnimeGroupPage.ComponentsHeader
+    )]
     public async Task<IActionResult> Seasons(
         [FromQuery] PageRequestDto request,
         CancellationToken ct = default
@@ -45,19 +51,20 @@ public class AnimeSeasonsController(IAnimeSeasonRepository animeSeasonRepository
                 ct
             );
 
-        List<GenreCardData> seasonCards =
-        [
-            .. seasonDtos
-                .Where(s => s.TvShowsWithVideo > 0 || s.MoviesWithVideo > 0)
-                .Select(dto => new GenreCardData(dto)),
-        ];
-
-        ComponentEnvelope response = Component
-            .Grid()
-            .WithId("anime-seasons")
-            .WithItems(seasonCards.Select(card => Component.GenreCard().WithData(card)));
-
-        return Ok(ComponentResponse.From(response));
+        return Ok(
+            AnimeGroupPage.Build(
+                "anime-seasons",
+                seasonDtos
+                    .Where(s => s.TvShowsWithVideo > 0 || s.MoviesWithVideo > 0)
+                    .Select(dto => (new GenreCardData(dto), dto.ItemPosters)),
+                AnimeGroupRows.YearDescending,
+                request.Version == "lolomo",
+                AnimeGroupPage.Draws(
+                    Request.Headers[AnimeGroupPage.ComponentsHeader],
+                    NmAppComponents.GroupCard
+                )
+            )
+        );
     }
 
     [HttpGet]
