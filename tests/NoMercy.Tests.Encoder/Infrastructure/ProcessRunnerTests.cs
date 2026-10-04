@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Diagnostics;
 using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Encoder.Infrastructure;
 
@@ -231,5 +232,87 @@ public class ProcessRunnerTests
         result.IsSuccess.Should().BeTrue();
         result.StdOut.Should().Contain("hello-world");
         _ = script; // unused — kept for narrative
+    }
+
+    // ── wall-clock timeout ─────────────────────────────────────────────────
+
+    [Fact]
+    public async Task ProcessRunner_Timeout_NotReached_ReturnsResultUnchanged()
+    {
+        // A generous timeout must behave exactly like no timeout: the result
+        // comes back with the real exit code and output.
+        ProcessRunner runner = new(NullLogger<ProcessRunner>.Instance);
+
+        ProcessResult result = await runner.RunAsync(
+            "dotnet",
+            ["--version"],
+            timeout: TimeSpan.FromMinutes(2)
+        );
+
+        result.IsSuccess.Should().BeTrue();
+        result.StdOut.Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
+    public async Task ProcessRunner_Timeout_Elapsed_KillsWholeProcessTree_AndThrows()
+    {
+        // A shell that starts a long-running child: the shell is the child of
+        // the runner, the sleeper is the grandchild. When the wall clock runs
+        // out, both must be gone — an orphaned ffmpeg is the bug this guards.
+        ProcessRunner runner = new(NullLogger<ProcessRunner>.Instance);
+        string marker = Random.Shared.Next(100000, 999999).ToString();
+        bool isWindows = OperatingSystem.IsWindows();
+        string shell = isWindows ? "cmd" : "sh";
+        string[] args = isWindows
+            ? ["/c", $"ping -n 30 -w {marker} 127.0.0.1 >nul & echo done"]
+            : ["-c", $"sleep 30.{marker}; true"];
+        int parentPid = -1;
+
+        Stopwatch clock = Stopwatch.StartNew();
+        Func<Task> act = () =>
+            runner.RunAsync(
+                shell,
+                args,
+                timeout: TimeSpan.FromSeconds(2),
+                onProcessStarted: pid => parentPid = pid
+            );
+
+        await act.Should().ThrowAsync<TimeoutException>();
+        clock.Stop();
+
+        clock.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(20), "the kill must not wait for the sleeper");
+        parentPid.Should().BeGreaterThan(0);
+        Action parentLookup = () => Process.GetProcessById(parentPid);
+        parentLookup.Should().Throw<ArgumentException>("the shell itself must be dead");
+
+        // Give the OS a moment to reap the grandchild, then look it up by its
+        // unique command line.
+        await Task.Delay(500);
+        (await CountProcessesWithCommandLineAsync(marker)).Should().Be(0, "the sleeper is the grandchild and must die with the tree");
+    }
+
+    private static async Task<int> CountProcessesWithCommandLineAsync(string marker)
+    {
+        ProcessStartInfo startInfo = OperatingSystem.IsWindows()
+            ? new ProcessStartInfo("powershell")
+            {
+                ArgumentList =
+                {
+                    "-NoProfile",
+                    "-Command",
+                    $"(Get-CimInstance Win32_Process | Where-Object {{ $_.CommandLine -like '*-w {marker} 127.0.0.1*' }} | Measure-Object).Count",
+                },
+            }
+            : new ProcessStartInfo("sh")
+            {
+                ArgumentList = { "-c", $"pgrep -f 'sleep 30.{marker}' | wc -l" },
+            };
+        startInfo.RedirectStandardOutput = true;
+        startInfo.UseShellExecute = false;
+
+        using Process lookup = Process.Start(startInfo)!;
+        string output = await lookup.StandardOutput.ReadToEndAsync();
+        await lookup.WaitForExitAsync();
+        return int.Parse(output.Trim());
     }
 }
