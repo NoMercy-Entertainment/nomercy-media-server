@@ -269,18 +269,27 @@ public class ProcessRunnerTests
         int parentPid = -1;
 
         Stopwatch clock = Stopwatch.StartNew();
-        Func<Task> act = () =>
-            runner.RunAsync(
-                shell,
-                args,
-                timeout: TimeSpan.FromSeconds(2),
-                onProcessStarted: pid => parentPid = pid
-            );
+        Task<ProcessResult> run = runner.RunAsync(
+            shell,
+            args,
+            timeout: TimeSpan.FromSeconds(8),
+            onProcessStarted: pid => parentPid = pid
+        );
 
+        // Positive control: the lookup must see the sleeper while it lives,
+        // or a count of 0 after the kill would prove nothing.
+        await Task.Delay(1000);
+        (await CountProcessesWithCommandLineAsync(marker))
+            .Should()
+            .Be(1, "the sleeper must be running before the timeout fires");
+
+        Func<Task> act = () => run;
         await act.Should().ThrowAsync<TimeoutException>();
         clock.Stop();
 
-        clock.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(20), "the kill must not wait for the sleeper");
+        clock
+            .Elapsed.Should()
+            .BeLessThan(TimeSpan.FromSeconds(25), "the kill must not wait for the sleeper");
         parentPid.Should().BeGreaterThan(0);
         Action parentLookup = () => Process.GetProcessById(parentPid);
         parentLookup.Should().Throw<ArgumentException>("the shell itself must be dead");
@@ -288,7 +297,9 @@ public class ProcessRunnerTests
         // Give the OS a moment to reap the grandchild, then look it up by its
         // unique command line.
         await Task.Delay(500);
-        (await CountProcessesWithCommandLineAsync(marker)).Should().Be(0, "the sleeper is the grandchild and must die with the tree");
+        (await CountProcessesWithCommandLineAsync(marker))
+            .Should()
+            .Be(0, "the sleeper is the grandchild and must die with the tree");
     }
 
     private static async Task<int> CountProcessesWithCommandLineAsync(string marker)
@@ -300,12 +311,16 @@ public class ProcessRunnerTests
                 {
                     "-NoProfile",
                     "-Command",
-                    $"(Get-CimInstance Win32_Process | Where-Object {{ $_.CommandLine -like '*-w {marker} 127.0.0.1*' }} | Measure-Object).Count",
+                    // Filter on the name too: this PowerShell process carries the
+                    // marker in its own command line and must not count itself.
+                    $"(Get-CimInstance Win32_Process -Filter \"Name='PING.EXE'\" | Where-Object {{ $_.CommandLine -like '*-w {marker} 127.0.0.1*' }} | Measure-Object).Count",
                 },
             }
             : new ProcessStartInfo("sh")
             {
-                ArgumentList = { "-c", $"pgrep -f 'sleep 30.{marker}' | wc -l" },
+                // -x matches the whole command line, so the sh wrapper that
+                // carries the marker in its own arguments does not count.
+                ArgumentList = { "-c", $"pgrep -fx 'sleep 30.{marker}' | wc -l" },
             };
         startInfo.RedirectStandardOutput = true;
         startInfo.UseShellExecute = false;
