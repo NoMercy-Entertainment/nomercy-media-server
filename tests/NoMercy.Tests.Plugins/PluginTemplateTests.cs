@@ -412,6 +412,50 @@ public class PluginTemplateTests
             .BeTrue("Fillz publishes from Forgejo, so a GitHub-only template is one he rewrites");
     }
 
+    // Issue #66: the SDK rename moved NoMercy.Plugins.* to NoMercy.PluginSdk.*
+    // and the template only half followed. Nothing in the repo compiled it, so
+    // the first person to see the error was a plugin author on their first
+    // build. The CI step that scaffolds and builds the template is the real
+    // gate; this test names the stale spots so the failure reads as a list.
+    [Fact]
+    public void Every_template_file_names_the_renamed_sdk_packages()
+    {
+        IEnumerable<string> files = Directory
+            .EnumerateFiles(TemplateRoot, "*.cs", SearchOption.AllDirectories)
+            .Concat(Directory.EnumerateFiles(TemplateRoot, "*.csproj", SearchOption.AllDirectories))
+            .Where(path =>
+                !path.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}")
+            )
+            .Where(path =>
+                !path.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}")
+            );
+
+        foreach (string file in files)
+        {
+            File.ReadAllText(file)
+                .Should()
+                .NotContain(
+                    "NoMercy.Plugins.",
+                    $"{Path.GetRelativePath(TemplateRoot, file)} still names the pre-rename SDK, which no 12.x package provides"
+                );
+        }
+    }
+
+    [Fact]
+    public void The_example_controller_asks_for_an_access_the_attribute_accepts()
+    {
+        string controller = File.ReadAllText(
+            Path.Combine(TemplateRoot, "Controllers", "ExampleController.cs")
+        );
+
+        controller
+            .Should()
+            .Contain(
+                $"[PluginRequires(PluginRouteAccess.{PluginRouteAccess.Shared})]",
+                "PluginRequiresAttribute takes a PluginRouteAccess; a capability name string does not compile"
+            );
+    }
+
     [Fact]
     public void Nothing_user_facing_is_written_in_the_template_source()
     {
