@@ -61,6 +61,9 @@ public class NmCardDto
     [JsonProperty("poster")]
     public string? Poster { get; set; }
 
+    [JsonProperty("item_posters")]
+    public string[] ItemPosters { get; set; } = [];
+
     [JsonProperty("logo")]
     public string? Logo { get; set; }
 
@@ -147,6 +150,16 @@ public class NmCardDto
         Title = title.OrWhenEmpty(collection.Title);
         Overview = overview.OrWhenEmpty(collection.Overview);
         Poster = collection.Poster;
+        ItemPosters =
+        [
+            .. collection
+                .CollectionMovies.Where(item => !string.IsNullOrEmpty(item.Movie.Poster))
+                .OrderBy(item => item.Movie.ReleaseDate is null)
+                .ThenBy(item => item.Movie.ReleaseDate)
+                .ThenBy(item => item.MovieId)
+                .Take(9)
+                .Select(item => item.Movie.Poster!),
+        ];
         Backdrop = collection.Backdrop;
         Logo = collection.Images.FirstOrDefault(i => i.Type == "logo")?.FilePath;
         TitleSort = collection.Title.TitleSort(
@@ -294,6 +307,7 @@ public class NmCardDto
             ? dto.TranslatedOverview
             : dto.Overview;
         Poster = dto.Poster;
+        ItemPosters = dto.ItemPosters;
         Backdrop = dto.Backdrop;
         Logo = dto.Logo;
         TitleSort = dto.TitleSort;

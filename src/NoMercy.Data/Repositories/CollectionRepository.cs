@@ -27,6 +27,7 @@ public class CollectionListDto
     public string? TranslatedOverview { get; set; }
     public string? Overview { get; set; }
     public string? Poster { get; set; }
+    public string[] ItemPosters { get; set; } = [];
     public string? Backdrop { get; set; }
     public ColorPalette ColorPalette { get; set; } = null!;
     public string? Logo { get; set; }
@@ -124,6 +125,16 @@ public class CollectionRepository(IDbContextFactory<MediaContext> contextFactory
                 Overview = collection.Overview,
                 ColorPalette = collection.ColorPalette!,
                 Poster = collection.Poster,
+                ItemPosters = collection
+                    .CollectionMovies.Where(item =>
+                        item.Movie.Poster != null && item.Movie.Poster != ""
+                    )
+                    .OrderBy(item => item.Movie.ReleaseDate == null)
+                    .ThenBy(item => item.Movie.ReleaseDate)
+                    .ThenBy(item => item.MovieId)
+                    .Take(9)
+                    .Select(item => item.Movie.Poster!)
+                    .ToArray(),
                 Backdrop = collection.Backdrop,
                 Logo =
                     collection.Images.FirstOrDefault(i => i.Type == "logo") != null
@@ -155,6 +166,7 @@ public class CollectionRepository(IDbContextFactory<MediaContext> contextFactory
                     .Select(cm => cm.Certification.Iso31661)
                     .FirstOrDefault(),
             })
+            .AsSingleQuery()
             .ToListAsync(ct);
     }
 
@@ -337,6 +349,16 @@ public class CollectionRepository(IDbContextFactory<MediaContext> contextFactory
                 Overview = collection.Overview,
                 ColorPalette = collection.ColorPalette!,
                 Poster = collection.Poster,
+                ItemPosters = collection
+                    .CollectionMovies.Where(item =>
+                        item.Movie.Poster != null && item.Movie.Poster != ""
+                    )
+                    .OrderBy(item => item.Movie.ReleaseDate == null)
+                    .ThenBy(item => item.Movie.ReleaseDate)
+                    .ThenBy(item => item.MovieId)
+                    .Take(9)
+                    .Select(item => item.Movie.Poster!)
+                    .ToArray(),
                 Backdrop = collection.Backdrop,
                 Logo =
                     collection.Images.FirstOrDefault(i => i.Type == "logo") != null
@@ -368,6 +390,7 @@ public class CollectionRepository(IDbContextFactory<MediaContext> contextFactory
                     .Select(cm => cm.Certification.Iso31661)
                     .FirstOrDefault(),
             })
+            .AsSingleQuery()
             .ToListAsync(ct);
     }
 
