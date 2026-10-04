@@ -15,10 +15,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using NoMercy.Api.DTOs.Media;
 using NoMercy.Api.DTOs.Media.Components;
-using NoMercy.Api.Services;
 using NoMercy.Authorization;
 using NoMercy.Data.Repositories;
-using NoMercy.Design;
 using NoMercy.NmSystem.Extensions;
 
 namespace NoMercy.Api.Controllers.V1.Media;
@@ -31,11 +29,7 @@ namespace NoMercy.Api.Controllers.V1.Media;
 public class AnimeThemesController(IAnimeThemeRepository animeThemeRepository) : BaseController
 {
     [HttpGet]
-    [ResponseCache(
-        Duration = 300,
-        VaryByQueryKeys = ["take", "page", "version"],
-        VaryByHeader = AnimeGroupPage.ComponentsHeader
-    )]
+    [ResponseCache(Duration = 300, VaryByQueryKeys = ["take", "page", "version"])]
     public async Task<IActionResult> Themes(
         [FromQuery] PageRequestDto request,
         CancellationToken ct = default
@@ -53,20 +47,53 @@ public class AnimeThemesController(IAnimeThemeRepository animeThemeRepository) :
                 ct
             );
 
-        return Ok(
-            AnimeGroupPage.Build(
-                "anime-themes",
-                themeDtos
-                    .Where(t => t.TvShowsWithVideo > 0 || t.MoviesWithVideo > 0)
-                    .Select(dto => (new GenreCardData(dto), dto.ItemPosters)),
-                AnimeGroupRows.Letter,
-                request.Version == "lolomo",
-                AnimeGroupPage.Draws(
-                    Request.Headers[AnimeGroupPage.ComponentsHeader],
-                    NmAppComponents.GroupCard
-                )
-            )
-        );
+        List<GroupCardData> themeCards =
+        [
+            .. themeDtos
+                .Where(t => t.TvShowsWithVideo > 0 || t.MoviesWithVideo > 0)
+                .Select(dto => new GroupCardData(dto)),
+        ];
+
+        if (request.Version != "lolomo")
+        {
+            ComponentEnvelope response = Component
+                .Grid()
+                .WithId("anime-themes")
+                .WithItems(themeCards.Select(card => Component.GroupCard().WithData(card)));
+
+            return Ok(ComponentResponse.From(response));
+        }
+
+        List<ComponentEnvelope> components = new();
+
+        foreach (string letter in Letters)
+        {
+            int index = Array.IndexOf(Letters, letter);
+
+            List<GroupCardData> carouselItems = themeCards
+                .Where(card => AlphaBucket.Matches(card.TitleSort, letter))
+                .OrderBy(card => card.TitleSort)
+                .ToList();
+
+            if (carouselItems.Count == 0)
+                continue;
+
+            components.Add(
+                Component
+                    .Carousel()
+                    .WithId(letter)
+                    .WithTitle(letter)
+                    .WithNavigation(
+                        index == 0 ? null : Letters.ElementAtOrDefault(index - 1) ?? null,
+                        index == Letters.Length - 1
+                            ? null
+                            : Letters.ElementAtOrDefault(index + 1) ?? null
+                    )
+                    .WithItems(carouselItems.Select(card => Component.GroupCard().WithData(card)))
+            );
+        }
+
+        return Ok(new ComponentResponse { Data = components });
     }
 
     [HttpGet]

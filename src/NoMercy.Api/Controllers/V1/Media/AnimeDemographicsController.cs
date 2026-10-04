@@ -15,10 +15,8 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using NoMercy.Api.DTOs.Media;
 using NoMercy.Api.DTOs.Media.Components;
-using NoMercy.Api.Services;
 using NoMercy.Authorization;
 using NoMercy.Data.Repositories;
-using NoMercy.Design;
 using NoMercy.NmSystem.Extensions;
 
 namespace NoMercy.Api.Controllers.V1.Media;
@@ -32,11 +30,7 @@ public class AnimeDemographicsController(IAnimeDemographicRepository animeDemogr
     : BaseController
 {
     [HttpGet]
-    [ResponseCache(
-        Duration = 300,
-        VaryByQueryKeys = ["take", "page", "version"],
-        VaryByHeader = AnimeGroupPage.ComponentsHeader
-    )]
+    [ResponseCache(Duration = 300, VaryByQueryKeys = ["take", "page", "version"])]
     public async Task<IActionResult> Demographics(
         [FromQuery] PageRequestDto request,
         CancellationToken ct = default
@@ -54,20 +48,53 @@ public class AnimeDemographicsController(IAnimeDemographicRepository animeDemogr
                 ct
             );
 
-        return Ok(
-            AnimeGroupPage.Build(
-                "anime-demographics",
-                demographicDtos
-                    .Where(d => d.TvShowsWithVideo > 0 || d.MoviesWithVideo > 0)
-                    .Select(dto => (new GenreCardData(dto), dto.ItemPosters)),
-                AnimeGroupRows.Letter,
-                request.Version == "lolomo",
-                AnimeGroupPage.Draws(
-                    Request.Headers[AnimeGroupPage.ComponentsHeader],
-                    NmAppComponents.GroupCard
-                )
-            )
-        );
+        List<GroupCardData> demographicCards =
+        [
+            .. demographicDtos
+                .Where(d => d.TvShowsWithVideo > 0 || d.MoviesWithVideo > 0)
+                .Select(dto => new GroupCardData(dto)),
+        ];
+
+        if (request.Version != "lolomo")
+        {
+            ComponentEnvelope response = Component
+                .Grid()
+                .WithId("anime-demographics")
+                .WithItems(demographicCards.Select(card => Component.GroupCard().WithData(card)));
+
+            return Ok(ComponentResponse.From(response));
+        }
+
+        List<ComponentEnvelope> components = new();
+
+        foreach (string letter in Letters)
+        {
+            int index = Array.IndexOf(Letters, letter);
+
+            List<GroupCardData> carouselItems = demographicCards
+                .Where(card => AlphaBucket.Matches(card.TitleSort, letter))
+                .OrderBy(card => card.TitleSort)
+                .ToList();
+
+            if (carouselItems.Count == 0)
+                continue;
+
+            components.Add(
+                Component
+                    .Carousel()
+                    .WithId(letter)
+                    .WithTitle(letter)
+                    .WithNavigation(
+                        index == 0 ? null : Letters.ElementAtOrDefault(index - 1) ?? null,
+                        index == Letters.Length - 1
+                            ? null
+                            : Letters.ElementAtOrDefault(index + 1) ?? null
+                    )
+                    .WithItems(carouselItems.Select(card => Component.GroupCard().WithData(card)))
+            );
+        }
+
+        return Ok(new ComponentResponse { Data = components });
     }
 
     [HttpGet]

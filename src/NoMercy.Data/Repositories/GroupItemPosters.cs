@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Database;
-using NoMercy.Database.Models.Media;
 
 namespace NoMercy.Data.Repositories;
 
@@ -53,28 +52,37 @@ public static class GroupItemPosters
         List<int> tvIds = [.. tvRows.Select(row => row.ItemId).Distinct()];
         List<int> movieIds = [.. movieRows.Select(row => row.ItemId).Distinct()];
 
-        Dictionary<int, string> tvPosters = BestPerTitle(
-            await TextlessPosters(context)
-                .Where(image => image.TvId != null && tvIds.Contains(image.TvId.Value))
-                .Select(image => new PosterCandidate(
-                    image.TvId!.Value,
-                    image.FilePath,
-                    image.VoteAverage,
-                    image.Id
-                ))
-                .ToListAsync(ct)
-        );
-        Dictionary<int, string> moviePosters = BestPerTitle(
-            await TextlessPosters(context)
-                .Where(image => image.MovieId != null && movieIds.Contains(image.MovieId.Value))
-                .Select(image => new PosterCandidate(
-                    image.MovieId!.Value,
-                    image.FilePath,
-                    image.VoteAverage,
-                    image.Id
-                ))
-                .ToListAsync(ct)
-        );
+        // Queried from the title side on purpose: filtering Images by type and
+        // language first makes SQLite scan every textless poster in the library
+        // (89 ms on 460k images); per title it walks the (TvId, Type) index.
+        Dictionary<int, string?> tvPosters = await context
+            .Tvs.AsNoTracking()
+            .Where(tv => tvIds.Contains(tv.Id))
+            .Select(tv => new
+            {
+                tv.Id,
+                Poster = tv
+                    .Images.Where(image => image.Type == PosterType && image.Iso6391 == null)
+                    .OrderByDescending(image => image.VoteAverage)
+                    .ThenBy(image => image.Id)
+                    .Select(image => image.FilePath)
+                    .FirstOrDefault(),
+            })
+            .ToDictionaryAsync(title => title.Id, title => title.Poster, ct);
+        Dictionary<int, string?> moviePosters = await context
+            .Movies.AsNoTracking()
+            .Where(movie => movieIds.Contains(movie.Id))
+            .Select(movie => new
+            {
+                movie.Id,
+                Poster = movie
+                    .Images.Where(image => image.Type == PosterType && image.Iso6391 == null)
+                    .OrderByDescending(image => image.VoteAverage)
+                    .ThenBy(image => image.Id)
+                    .Select(image => image.FilePath)
+                    .FirstOrDefault(),
+            })
+            .ToDictionaryAsync(title => title.Id, title => title.Poster, ct);
 
         return
         [
@@ -92,26 +100,6 @@ public static class GroupItemPosters
             ),
         ];
     }
-
-    private static IQueryable<Image> TextlessPosters(MediaContext context) =>
-        context
-            .Images.AsNoTracking()
-            .Where(image => image.Type == PosterType && image.Iso6391 == null);
-
-    private static Dictionary<int, string> BestPerTitle(List<PosterCandidate> candidates) =>
-        candidates
-            .GroupBy(candidate => candidate.ItemId)
-            .ToDictionary(
-                group => group.Key,
-                group =>
-                    group
-                        .OrderByDescending(candidate => candidate.VoteAverage)
-                        .ThenBy(candidate => candidate.Id)
-                        .First()
-                        .FilePath
-            );
-
-    private sealed record PosterCandidate(int ItemId, string FilePath, double? VoteAverage, int Id);
 
     /// <summary>
     /// Up to <see cref="Max"/> unique posters per group, first added title
