@@ -18,6 +18,9 @@ namespace NoMercy.Data.Repositories;
 /// One title inside a group (an anime theme, demographic or season), as the
 /// group card's poster mosaic needs it.
 /// </summary>
+/// <summary>A group-to-show link, as the link table stores it.</summary>
+public record GroupLink(int GroupId, int TvId);
+
 public record GroupPosterRow(
     int GroupId,
     int ItemId,
@@ -34,12 +37,15 @@ public record GroupPosterRow(
 }
 
 /// <summary>
-/// A poster on a group card, with the palette of that image, so the card takes
-/// its border and band colors from it like every other card.
+/// A poster on a group card: its path, the one color the card draws with
+/// (<see cref="CardColor.Pick"/>), and, for a poster that can be in front,
+/// the palette its loading gradient needs.
 /// </summary>
 public record GroupPoster(
     [property: JsonProperty("src")] string Src,
-    [property: JsonProperty("color_palette")] PaletteColors? ColorPalette
+    [property: JsonProperty("color_palette", NullValueHandling = NullValueHandling.Ignore)]
+        PaletteColors? ColorPalette,
+    [property: JsonProperty("color")] string? Color = null
 );
 
 /// <summary>
@@ -50,7 +56,49 @@ public static class GroupItemPosters
 {
     public const int Max = 9;
 
+    /// <summary>
+    /// How many posters keep their palette: the card puts the first poster
+    /// in front, or the second one in the fan look, and only the front one
+    /// draws a gradient while it loads.
+    /// </summary>
+    public const int FrontPosters = 2;
+
     public const string PosterType = "poster";
+
+    /// <summary>
+    /// The poster rows of the shows in <paramref name="links"/> that have a
+    /// playable episode: one query over the distinct shows, joined to the
+    /// links in memory. Testing playability inside the link query runs it
+    /// once per link row (4,223 rows for 409 shows on the dev library, 66 ms),
+    /// and a link query filtered on both group ids and show ids makes SQLite
+    /// probe the (group, show) index once per pair (115k probes, 30 ms).
+    /// </summary>
+    public static async Task<List<GroupPosterRow>> PlayableTvRowsAsync(
+        MediaContext context,
+        List<GroupLink> links,
+        CancellationToken ct
+    )
+    {
+        List<int> tvIds = [.. links.Select(link => link.TvId).Distinct()];
+        if (tvIds.Count == 0)
+            return [];
+
+        Dictionary<int, GroupPosterRow> playable = await context
+            .Tvs.AsNoTracking()
+            .Where(tv =>
+                tvIds.Contains(tv.Id)
+                && tv.Episodes.Any(e => e.VideoFiles.Any(v => v.Folder != null))
+            )
+            .Select(tv => new GroupPosterRow(0, tv.Id, tv.CreatedAt, tv.TitleSort, null, tv.Poster))
+            .ToDictionaryAsync(row => row.ItemId, ct);
+
+        return
+        [
+            .. links
+                .Where(link => playable.ContainsKey(link.TvId))
+                .Select(link => playable[link.TvId] with { GroupId = link.GroupId }),
+        ];
+    }
 
     /// <summary>
     /// Fills <see cref="GroupPosterRow.TextlessPoster"/> for link rows fetched
@@ -213,13 +261,22 @@ public static class GroupItemPosters
             group => group.Key,
             group =>
                 group
-                    .Value.Select(row => new GroupPoster(
-                        row.Path!,
-                        row.TextlessImageId is { } imageId
-                                ? imagePalettes.GetValueOrDefault(imageId)
-                            : row.IsMovie ? moviePalettes.GetValueOrDefault(row.ItemId)
-                            : tvPalettes.GetValueOrDefault(row.ItemId)
-                    ))
+                    .Value.Select(
+                        (row, index) =>
+                        {
+                            PaletteColors? palette =
+                                row.TextlessImageId is { } imageId
+                                    ? imagePalettes.GetValueOrDefault(imageId)
+                                : row.IsMovie ? moviePalettes.GetValueOrDefault(row.ItemId)
+                                : tvPalettes.GetValueOrDefault(row.ItemId);
+
+                            return new GroupPoster(
+                                row.Path!,
+                                index < FrontPosters ? palette : null,
+                                CardColor.Pick(palette)
+                            );
+                        }
+                    )
                     .ToArray()
         );
     }

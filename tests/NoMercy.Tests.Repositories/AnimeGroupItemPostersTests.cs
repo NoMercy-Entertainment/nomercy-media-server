@@ -145,7 +145,11 @@ public class AnimeGroupItemPostersTests : IDisposable
         };
         first.Images.Add(Poster("/frieren-en.jpg", "en", vote: 9));
         first.Images.Add(
-            Poster("/frieren-clean.jpg", null, palette: """{"image":{"dominant":"#112233"}}""")
+            Poster(
+                "/frieren-clean.jpg",
+                null,
+                palette: """{"image":{"darkVibrant":"#101010","primary":"#505050","dominant":"#112233"}}"""
+            )
         );
 
         Movie second = new()
@@ -168,7 +172,7 @@ public class AnimeGroupItemPostersTests : IDisposable
             Popularity = 90,
             Poster = "/bocchi.jpg",
             LibraryId = UserLibrary,
-            _colorPalette = """{"poster":{"dominant":"#445566"}}""",
+            _colorPalette = """{"poster":{"darkVibrant":"#445566","dominant":"#445566"}}""",
         };
 
         Tv hidden = new()
@@ -217,12 +221,19 @@ public class AnimeGroupItemPostersTests : IDisposable
     // Each poster carries the palette of that exact image, so the card takes its
     // border and band colors from it: a textless image has its own palette, a
     // title's own poster uses the title's poster palette.
-    private static readonly string?[] ExpectedColors = ["#112233", null, "#445566"];
+    // Only the first two posters can be in front, so only they keep the palette;
+    // the third has one in the database and still sends none.
+    private static readonly string?[] ExpectedPalettes = ["#112233", null, null];
+
+    // The card draws with one color per poster: the first poster's darkVibrant
+    // is too dark, so its primary wins; the third's darkVibrant is in range.
+    private static readonly string?[] ExpectedColors = ["#505050", null, "#445566"];
 
     private static void AssertPosters(GroupPoster[] posters)
     {
         posters.Select(poster => poster.Src).Should().Equal(Expected);
-        posters.Select(poster => poster.ColorPalette?.Dominant).Should().Equal(ExpectedColors);
+        posters.Select(poster => poster.ColorPalette?.Dominant).Should().Equal(ExpectedPalettes);
+        posters.Select(poster => poster.Color).Should().Equal(ExpectedColors);
     }
 
     [Fact]

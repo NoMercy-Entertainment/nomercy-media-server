@@ -313,11 +313,35 @@ public class AnimeGroupListTests
                 .Parse(JsonConvert.SerializeObject(ComponentResponse.From(page[0])))
                 .SelectToken("$.data[0].props.items[0].props.data.item_posters[0]")!;
 
-        Assert.Equal(["src", "color_palette"], poster.Properties().Select(p => p.Name));
+        Assert.Equal(["src", "color_palette", "color"], poster.Properties().Select(p => p.Name));
         Assert.Equal(
             ["dominant", "primary", "lightVibrant", "darkVibrant", "lightMuted", "darkMuted"],
             ((JObject)poster["color_palette"]!).Properties().Select(p => p.Name)
         );
+    }
+
+    // A poster behind the front ones has no palette to send; the key is left
+    // out rather than sent as null, so the page of ~1600 posters stays small.
+    [Fact]
+    public async Task GroupPoster_WithoutPalette_SendsSrcAndColorOnly()
+    {
+        List<ComponentEnvelope> page = await Themes([
+            new()
+            {
+                Id = 1,
+                Name = "action",
+                TvShowsWithVideo = 1,
+                ItemPosters = [new("/a.jpg", null, "#404040")],
+            },
+        ]);
+
+        JObject poster = (JObject)
+            JObject
+                .Parse(JsonConvert.SerializeObject(ComponentResponse.From(page[0])))
+                .SelectToken("$.data[0].props.items[0].props.data.item_posters[0]")!;
+
+        Assert.Equal(["src", "color"], poster.Properties().Select(p => p.Name));
+        Assert.Equal("#404040", poster["color"]);
     }
 
     [Fact]

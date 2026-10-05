@@ -78,17 +78,6 @@ public class AnimeThemeRepository(MediaContext context) : IAnimeThemeRepository
             .Select(group => new { group.Key, Count = group.Count() })
             .ToDictionaryAsync(x => x.Key, x => x.Count, ct);
 
-        Dictionary<int, int> movieWithVideo = await context
-            .AnimeThemeMovie.AsNoTracking()
-            .Where(atm =>
-                ids.Contains(atm.AnimeThemeId)
-                && atm.Movie.Library.LibraryUsers.Any(u => u.UserId == userId)
-                && atm.Movie.VideoFiles.Any(v => v.Folder != null)
-            )
-            .GroupBy(atm => atm.AnimeThemeId)
-            .Select(group => new { group.Key, Count = group.Count() })
-            .ToDictionaryAsync(x => x.Key, x => x.Count, ct);
-
         Dictionary<int, int> tvTotals = await context
             .AnimeThemeTv.AsNoTracking()
             .Where(att =>
@@ -99,53 +88,50 @@ public class AnimeThemeRepository(MediaContext context) : IAnimeThemeRepository
             .Select(group => new { group.Key, Count = group.Count() })
             .ToDictionaryAsync(x => x.Key, x => x.Count, ct);
 
-        Dictionary<int, int> tvWithVideo = await context
+        // The playable titles of each group are fetched once, as poster rows:
+        // they give both the "with video" counts and the card's posters. The
+        // card of a group with no image of its own shows those posters.
+        List<GroupLink> tvLinks = await context
             .AnimeThemeTv.AsNoTracking()
-            .Where(att =>
-                ids.Contains(att.AnimeThemeId)
-                && att.Tv.Library.LibraryUsers.Any(u => u.UserId == userId)
-                && att.Tv.Episodes.Any(e => e.VideoFiles.Any(v => v.Folder != null))
+            .Where(link =>
+                ids.Contains(link.AnimeThemeId)
+                && link.Tv.Library.LibraryUsers.Any(u => u.UserId == userId)
             )
-            .GroupBy(att => att.AnimeThemeId)
-            .Select(group => new { group.Key, Count = group.Count() })
-            .ToDictionaryAsync(x => x.Key, x => x.Count, ct);
+            .Select(link => new GroupLink(link.AnimeThemeId, link.TvId))
+            .ToListAsync(ct);
+        List<GroupPosterRow> tvRows = await GroupItemPosters.PlayableTvRowsAsync(
+            context,
+            tvLinks,
+            ct
+        );
+        List<GroupPosterRow> movieRows = await context
+            .AnimeThemeMovie.AsNoTracking()
+            .Where(link =>
+                ids.Contains(link.AnimeThemeId)
+                && link.Movie.Library.LibraryUsers.Any(u => u.UserId == userId)
+                && link.Movie.VideoFiles.Any(v => v.Folder != null)
+            )
+            .Select(link => new GroupPosterRow(
+                link.AnimeThemeId,
+                link.MovieId,
+                link.Movie.CreatedAt,
+                link.Movie.TitleSort,
+                null,
+                link.Movie.Poster
+            ))
+            .ToListAsync(ct);
 
-        // The card of a group with no image of its own shows the posters of
-        // the titles inside it that the user can play.
+        Dictionary<int, int> tvWithVideo = tvRows
+            .GroupBy(row => row.GroupId)
+            .ToDictionary(group => group.Key, group => group.Count());
+        Dictionary<int, int> movieWithVideo = movieRows
+            .GroupBy(row => row.GroupId)
+            .ToDictionary(group => group.Key, group => group.Count());
+
         List<GroupPosterRow> posterRows = await GroupItemPosters.WithTextlessPostersAsync(
             context,
-            await context
-                .AnimeThemeTv.AsNoTracking()
-                .Where(link =>
-                    ids.Contains(link.AnimeThemeId)
-                    && link.Tv.Library.LibraryUsers.Any(u => u.UserId == userId)
-                    && link.Tv.Episodes.Any(e => e.VideoFiles.Any(v => v.Folder != null))
-                )
-                .Select(link => new GroupPosterRow(
-                    link.AnimeThemeId,
-                    link.TvId,
-                    link.Tv.CreatedAt,
-                    link.Tv.TitleSort,
-                    null,
-                    link.Tv.Poster
-                ))
-                .ToListAsync(ct),
-            await context
-                .AnimeThemeMovie.AsNoTracking()
-                .Where(link =>
-                    ids.Contains(link.AnimeThemeId)
-                    && link.Movie.Library.LibraryUsers.Any(u => u.UserId == userId)
-                    && link.Movie.VideoFiles.Any(v => v.Folder != null)
-                )
-                .Select(link => new GroupPosterRow(
-                    link.AnimeThemeId,
-                    link.MovieId,
-                    link.Movie.CreatedAt,
-                    link.Movie.TitleSort,
-                    null,
-                    link.Movie.Poster
-                ))
-                .ToListAsync(ct),
+            tvRows,
+            movieRows,
             ct
         );
 
