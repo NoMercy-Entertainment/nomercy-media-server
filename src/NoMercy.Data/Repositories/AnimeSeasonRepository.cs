@@ -150,7 +150,11 @@ public class AnimeSeasonRepository(MediaContext context) : IAnimeSeasonRepositor
             ct
         );
 
-        Dictionary<int, string[]> posters = GroupItemPosters.Pick(posterRows);
+        Dictionary<int, GroupPoster[]> posters = await GroupItemPosters.PickWithPalettesAsync(
+            context,
+            posterRows,
+            ct
+        );
 
         return
         [

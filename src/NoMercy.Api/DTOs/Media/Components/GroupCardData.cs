@@ -51,7 +51,7 @@ public record GroupCardData
     public int HaveItems { get; set; }
 
     [JsonProperty("item_posters")]
-    public string[] ItemPosters { get; set; } = [];
+    public GroupPoster[] ItemPosters { get; set; } = [];
 
     public GroupCardData() { }
 
@@ -66,7 +66,7 @@ public record GroupCardData
 
     // Title, sort key, link and counts come from the one place that already
     // derives them for each group type.
-    private GroupCardData(GenreCardData group, string[] itemPosters)
+    private GroupCardData(GenreCardData group, GroupPoster[] itemPosters)
     {
         Id = (int)group.Id!;
         Title = group.Title ?? string.Empty;

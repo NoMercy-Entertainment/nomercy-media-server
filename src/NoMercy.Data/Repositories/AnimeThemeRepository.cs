@@ -149,7 +149,11 @@ public class AnimeThemeRepository(MediaContext context) : IAnimeThemeRepository
             ct
         );
 
-        Dictionary<int, string[]> posters = GroupItemPosters.Pick(posterRows);
+        Dictionary<int, GroupPoster[]> posters = await GroupItemPosters.PickWithPalettesAsync(
+            context,
+            posterRows,
+            ct
+        );
 
         return
         [

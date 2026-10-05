@@ -55,7 +55,7 @@ public class AnimeGroupItemPostersTests : IDisposable
 
     private int _imageId;
 
-    private Image Poster(string path, string? language, double vote = 5) =>
+    private Image Poster(string path, string? language, double vote = 5, string? palette = null) =>
         new()
         {
             Id = ++_imageId,
@@ -63,6 +63,7 @@ public class AnimeGroupItemPostersTests : IDisposable
             Iso6391 = language,
             Type = "poster",
             VoteAverage = vote,
+            _colorPalette = palette,
         };
 
     private static DateTime Added(int month) => new(2024, month, 1, 0, 0, 0, DateTimeKind.Utc);
@@ -143,7 +144,9 @@ public class AnimeGroupItemPostersTests : IDisposable
             LibraryId = UserLibrary,
         };
         first.Images.Add(Poster("/frieren-en.jpg", "en", vote: 9));
-        first.Images.Add(Poster("/frieren-clean.jpg", null));
+        first.Images.Add(
+            Poster("/frieren-clean.jpg", null, palette: """{"image":{"dominant":"#112233"}}""")
+        );
 
         Movie second = new()
         {
@@ -165,6 +168,7 @@ public class AnimeGroupItemPostersTests : IDisposable
             Popularity = 90,
             Poster = "/bocchi.jpg",
             LibraryId = UserLibrary,
+            _colorPalette = """{"poster":{"dominant":"#445566"}}""",
         };
 
         Tv hidden = new()
@@ -210,6 +214,17 @@ public class AnimeGroupItemPostersTests : IDisposable
         "/bocchi.jpg",
     ];
 
+    // Each poster carries the palette of that exact image, so the card takes its
+    // border and band colors from it: a textless image has its own palette, a
+    // title's own poster uses the title's poster palette.
+    private static readonly string?[] ExpectedColors = ["#112233", null, "#445566"];
+
+    private static void AssertPosters(GroupPoster[] posters)
+    {
+        posters.Select(poster => poster.Src).Should().Equal(Expected);
+        posters.Select(poster => poster.ColorPalette?.Dominant).Should().Equal(ExpectedColors);
+    }
+
     [Fact]
     public async Task Themes_CarryTheirTitlesPosters_TextlessFirst_FirstAddedFirst_PlayableOnly()
     {
@@ -230,7 +245,7 @@ public class AnimeGroupItemPostersTests : IDisposable
             context
         ).GetThemesWithCountsAsync(UserId, "en", 10, 0);
 
-        themes.Should().ContainSingle().Which.ItemPosters.Should().Equal(Expected);
+        AssertPosters(themes.Should().ContainSingle().Which.ItemPosters);
     }
 
     [Fact]
@@ -255,7 +270,7 @@ public class AnimeGroupItemPostersTests : IDisposable
             context
         ).GetDemographicsWithCountsAsync(UserId, "en", 10, 0);
 
-        demographics.Should().ContainSingle().Which.ItemPosters.Should().Equal(Expected);
+        AssertPosters(demographics.Should().ContainSingle().Which.ItemPosters);
     }
 
     [Fact]
@@ -285,7 +300,7 @@ public class AnimeGroupItemPostersTests : IDisposable
             context
         ).GetSeasonsWithCountsAsync(UserId, 10, 0);
 
-        seasons.Should().ContainSingle().Which.ItemPosters.Should().Equal(Expected);
+        AssertPosters(seasons.Should().ContainSingle().Which.ItemPosters);
     }
 
     [Fact]
@@ -305,6 +320,7 @@ public class AnimeGroupItemPostersTests : IDisposable
 
         GroupItemPosters
             .Pick(rows)[1]
+            .Select(row => row.Path)
             .Should()
             .Equal(
                 "/1.jpg",

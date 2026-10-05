@@ -44,7 +44,7 @@ public class AnimeGroupListTests
             Id = id,
             Name = name,
             TvShowsWithVideo = 1,
-            ItemPosters = posters,
+            ItemPosters = [.. posters.Select(path => new GroupPoster(path, null))],
         };
 
     private static AnimeSeasonWithCountsDto Season(int id, int year, string quarter) =>
@@ -129,7 +129,7 @@ public class AnimeGroupListTests
         Assert.Equal("Action", Data(card).Title);
         Assert.Equal("anime-theme", Data(card).Type);
         Assert.Equal("/anime/themes/7", Data(card).Link.ToString());
-        Assert.Equal(["/a.jpg", "/b.jpg"], Data(card).ItemPosters);
+        Assert.Equal(["/a.jpg", "/b.jpg"], Data(card).ItemPosters.Select(poster => poster.Src));
     }
 
     // Only groups the user can play show (baa4feaca).

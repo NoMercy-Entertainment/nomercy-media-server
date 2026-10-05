@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 using Microsoft.EntityFrameworkCore;
+using Newtonsoft.Json;
 using NoMercy.Database;
 
 namespace NoMercy.Data.Repositories;
@@ -23,7 +24,22 @@ public record GroupPosterRow(
     DateTime AddedAt,
     string TitleSort,
     string? TextlessPoster,
-    string? Poster
+    string? Poster,
+    int? TextlessImageId = null,
+    bool IsMovie = false
+)
+{
+    /// <summary>The poster the card shows for this title.</summary>
+    public string? Path => TextlessPoster ?? Poster;
+}
+
+/// <summary>
+/// A poster on a group card, with the palette of that image, so the card takes
+/// its border and band colors from it like every other card.
+/// </summary>
+public record GroupPoster(
+    [property: JsonProperty("src")] string Src,
+    [property: JsonProperty("color_palette")] PaletteColors? ColorPalette
 );
 
 /// <summary>
@@ -55,61 +71,168 @@ public static class GroupItemPosters
         // Queried from the title side on purpose: filtering Images by type and
         // language first makes SQLite scan every textless poster in the library
         // (89 ms on 460k images); per title it walks the (TvId, Type) index.
-        Dictionary<int, string?> tvPosters = await context
-            .Tvs.AsNoTracking()
-            .Where(tv => tvIds.Contains(tv.Id))
-            .Select(tv => new
-            {
-                tv.Id,
-                Poster = tv
-                    .Images.Where(image => image.Type == PosterType && image.Iso6391 == null)
-                    .OrderByDescending(image => image.VoteAverage)
-                    .ThenBy(image => image.Id)
-                    .Select(image => image.FilePath)
-                    .FirstOrDefault(),
-            })
-            .ToDictionaryAsync(title => title.Id, title => title.Poster, ct);
-        Dictionary<int, string?> moviePosters = await context
-            .Movies.AsNoTracking()
-            .Where(movie => movieIds.Contains(movie.Id))
-            .Select(movie => new
-            {
-                movie.Id,
-                Poster = movie
-                    .Images.Where(image => image.Type == PosterType && image.Iso6391 == null)
-                    .OrderByDescending(image => image.VoteAverage)
-                    .ThenBy(image => image.Id)
-                    .Select(image => image.FilePath)
-                    .FirstOrDefault(),
-            })
-            .ToDictionaryAsync(title => title.Id, title => title.Poster, ct);
+        // Path and id are two scalar subqueries: one subquery returning both
+        // becomes a window-function join that SQLite cannot run on the index.
+        Dictionary<int, (string? Path, int? Id)> tvPosters = (
+            await context
+                .Tvs.AsNoTracking()
+                .Where(tv => tvIds.Contains(tv.Id))
+                .Select(tv => new
+                {
+                    tv.Id,
+                    Poster = tv
+                        .Images.Where(image => image.Type == PosterType && image.Iso6391 == null)
+                        .OrderByDescending(image => image.VoteAverage)
+                        .ThenBy(image => image.Id)
+                        .Select(image => image.FilePath)
+                        .FirstOrDefault(),
+                    ImageId = tv
+                        .Images.Where(image => image.Type == PosterType && image.Iso6391 == null)
+                        .OrderByDescending(image => image.VoteAverage)
+                        .ThenBy(image => image.Id)
+                        .Select(image => (int?)image.Id)
+                        .FirstOrDefault(),
+                })
+                .ToListAsync(ct)
+        ).ToDictionary(title => title.Id, title => (title.Poster, title.ImageId));
+        Dictionary<int, (string? Path, int? Id)> moviePosters = (
+            await context
+                .Movies.AsNoTracking()
+                .Where(movie => movieIds.Contains(movie.Id))
+                .Select(movie => new
+                {
+                    movie.Id,
+                    Poster = movie
+                        .Images.Where(image => image.Type == PosterType && image.Iso6391 == null)
+                        .OrderByDescending(image => image.VoteAverage)
+                        .ThenBy(image => image.Id)
+                        .Select(image => image.FilePath)
+                        .FirstOrDefault(),
+                    ImageId = movie
+                        .Images.Where(image => image.Type == PosterType && image.Iso6391 == null)
+                        .OrderByDescending(image => image.VoteAverage)
+                        .ThenBy(image => image.Id)
+                        .Select(image => (int?)image.Id)
+                        .FirstOrDefault(),
+                })
+                .ToListAsync(ct)
+        ).ToDictionary(title => title.Id, title => (title.Poster, title.ImageId));
 
         return
         [
             .. tvRows.Select(row =>
                 row with
                 {
-                    TextlessPoster = tvPosters.GetValueOrDefault(row.ItemId),
+                    TextlessPoster = tvPosters.GetValueOrDefault(row.ItemId).Path,
+                    TextlessImageId = tvPosters.GetValueOrDefault(row.ItemId).Id,
                 }
             ),
             .. movieRows.Select(row =>
                 row with
                 {
-                    TextlessPoster = moviePosters.GetValueOrDefault(row.ItemId),
+                    TextlessPoster = moviePosters.GetValueOrDefault(row.ItemId).Path,
+                    TextlessImageId = moviePosters.GetValueOrDefault(row.ItemId).Id,
+                    IsMovie = true,
                 }
             ),
         ];
     }
 
     /// <summary>
-    /// Up to <see cref="Max"/> unique posters per group, first added title
-    /// first. A new title only joins while the group has room, so once a group
-    /// holds <see cref="Max"/> titles its posters stop changing. The rows hold
-    /// only titles the user can play. A poster without text (no language) is
-    /// preferred, because the cover tilts and crops it and printed titles turn
-    /// into noise.
+    /// The posters of every group, each with its palette. The palettes are
+    /// loaded after the pick, so only the posters a card shows are read.
     /// </summary>
-    public static Dictionary<int, string[]> Pick(IEnumerable<GroupPosterRow> rows) =>
+    public static async Task<Dictionary<int, GroupPoster[]>> PickWithPalettesAsync(
+        MediaContext context,
+        List<GroupPosterRow> rows,
+        CancellationToken ct
+    )
+    {
+        Dictionary<int, GroupPosterRow[]> picked = Pick(rows);
+        List<GroupPosterRow> shown = [.. picked.Values.SelectMany(group => group)];
+
+        // A textless poster has a palette of its own (key "image"); a title's
+        // own poster uses the title's palette (key "poster").
+        List<int> imageIds = [.. shown.Select(row => row.TextlessImageId).OfType<int>().Distinct()];
+        List<int> tvIds =
+        [
+            .. shown
+                .Where(row => row.TextlessImageId is null && !row.IsMovie)
+                .Select(row => row.ItemId)
+                .Distinct(),
+        ];
+        List<int> movieIds =
+        [
+            .. shown
+                .Where(row => row.TextlessImageId is null && row.IsMovie)
+                .Select(row => row.ItemId)
+                .Distinct(),
+        ];
+
+        Dictionary<int, PaletteColors?> imagePalettes =
+            imageIds.Count == 0
+                ? []
+                : (
+                    await context
+                        .Images.AsNoTracking()
+                        .Where(image => imageIds.Contains(image.Id))
+                        .Select(image => new { image.Id, image._colorPalette })
+                        .ToListAsync(ct)
+                ).ToDictionary(
+                    image => image.Id,
+                    image => ColorPalette.FromJsonOrNull(image._colorPalette)?.Image
+                );
+        Dictionary<int, PaletteColors?> tvPalettes =
+            tvIds.Count == 0
+                ? []
+                : (
+                    await context
+                        .Tvs.AsNoTracking()
+                        .Where(tv => tvIds.Contains(tv.Id))
+                        .Select(tv => new { tv.Id, tv._colorPalette })
+                        .ToListAsync(ct)
+                ).ToDictionary(
+                    tv => tv.Id,
+                    tv => ColorPalette.FromJsonOrNull(tv._colorPalette)?.Poster
+                );
+        Dictionary<int, PaletteColors?> moviePalettes =
+            movieIds.Count == 0
+                ? []
+                : (
+                    await context
+                        .Movies.AsNoTracking()
+                        .Where(movie => movieIds.Contains(movie.Id))
+                        .Select(movie => new { movie.Id, movie._colorPalette })
+                        .ToListAsync(ct)
+                ).ToDictionary(
+                    movie => movie.Id,
+                    movie => ColorPalette.FromJsonOrNull(movie._colorPalette)?.Poster
+                );
+
+        return picked.ToDictionary(
+            group => group.Key,
+            group =>
+                group
+                    .Value.Select(row => new GroupPoster(
+                        row.Path!,
+                        row.TextlessImageId is { } imageId
+                                ? imagePalettes.GetValueOrDefault(imageId)
+                            : row.IsMovie ? moviePalettes.GetValueOrDefault(row.ItemId)
+                            : tvPalettes.GetValueOrDefault(row.ItemId)
+                    ))
+                    .ToArray()
+        );
+    }
+
+    /// <summary>
+    /// Up to <see cref="Max"/> titles with a unique poster per group, first
+    /// added title first. A new title only joins while the group has room, so
+    /// once a group holds <see cref="Max"/> titles its posters stop changing.
+    /// The rows hold only titles the user can play. A poster without text (no
+    /// language) is preferred, because the cover tilts and crops it and
+    /// printed titles turn into noise.
+    /// </summary>
+    public static Dictionary<int, GroupPosterRow[]> Pick(IEnumerable<GroupPosterRow> rows) =>
         rows.GroupBy(row => row.GroupId)
             .ToDictionary(
                 group => group.Key,
@@ -118,10 +241,8 @@ public static class GroupItemPosters
                         .OrderBy(row => row.AddedAt)
                         .ThenBy(row => row.TitleSort, StringComparer.Ordinal)
                         .ThenBy(row => row.ItemId)
-                        .Select(row => row.TextlessPoster ?? row.Poster)
-                        .OfType<string>()
-                        .Where(path => path.Length > 0)
-                        .Distinct()
+                        .Where(row => !string.IsNullOrEmpty(row.Path))
+                        .DistinctBy(row => row.Path)
                         .Take(Max)
                         .ToArray()
             );
