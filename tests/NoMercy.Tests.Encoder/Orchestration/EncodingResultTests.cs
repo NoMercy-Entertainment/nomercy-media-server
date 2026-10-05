@@ -124,12 +124,7 @@ public class EncodingResultTests
             ),
             Artifacts =
             [
-                new(
-                    "/out/a/master.m3u8",
-                    1024L,
-                    "abc123",
-                    "application/vnd.apple.mpegurl"
-                ),
+                new("/out/a/master.m3u8", 1024L, "abc123", "application/vnd.apple.mpegurl"),
             ],
         };
 

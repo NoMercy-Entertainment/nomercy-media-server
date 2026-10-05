@@ -35,7 +35,12 @@ public class VideoPlaybackProgressTests
 
     private static User MakeUser()
     {
-        return new() { Id = Guid.NewGuid(), Name = "tester", Email = "tester@example.com" };
+        return new()
+        {
+            Id = Guid.NewGuid(),
+            Name = "tester",
+            Email = "tester@example.com",
+        };
     }
 
     private static VideoPlayerState MakePlayingState()

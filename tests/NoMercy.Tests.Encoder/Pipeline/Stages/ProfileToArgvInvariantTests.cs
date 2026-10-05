@@ -22,9 +22,9 @@ using NoMercy.Encoder.Pipeline;
 using NoMercy.Encoder.Pipeline.Stages;
 using NoMercy.Storage;
 using NoMercy.Tests.Encoder.Storage;
-using ContainerCompatibility = NoMercy.Encoder.Profiles.ContainerCompatibility;
 using CodecProfile = NoMercy.Encoder.Profiles.CodecProfile;
 using Container = NoMercy.Encoder.Profiles.Container;
+using ContainerCompatibility = NoMercy.Encoder.Profiles.ContainerCompatibility;
 using StreamPolicy = NoMercy.Encoder.Profiles.StreamPolicy;
 using V2RateControlMode = NoMercy.Encoder.Profiles.RateControlMode;
 

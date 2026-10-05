@@ -83,7 +83,9 @@ public class ShowRepositoryLibraryLinkTests : IDisposable
         await repository2.LinkToLibrary(tvLibrary, show);
 
         await using MediaContext readCtx = new(_options);
-        List<LibraryTv> links = await readCtx.LibraryTv.Where(lt => lt.TvId == show.Id).ToListAsync();
+        List<LibraryTv> links = await readCtx
+            .LibraryTv.Where(lt => lt.TvId == show.Id)
+            .ToListAsync();
 
         links.Should().HaveCount(1);
         links[0].LibraryId.Should().Be(tvLibrary.Id);
@@ -123,7 +125,9 @@ public class ShowRepositoryLibraryLinkTests : IDisposable
         await repository2.LinkToLibrary(tvLibrary, show);
 
         await using MediaContext readCtx = new(_options);
-        List<LibraryTv> links = await readCtx.LibraryTv.Where(lt => lt.TvId == show.Id).ToListAsync();
+        List<LibraryTv> links = await readCtx
+            .LibraryTv.Where(lt => lt.TvId == show.Id)
+            .ToListAsync();
 
         links.Should().HaveCount(1);
         links[0].LibraryId.Should().Be(tvLibrary.Id);

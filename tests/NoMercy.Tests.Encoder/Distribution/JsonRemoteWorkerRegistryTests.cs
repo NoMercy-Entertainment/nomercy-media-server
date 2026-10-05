@@ -56,10 +56,7 @@ public class JsonRemoteWorkerRegistryTests : IDisposable
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private static IStorage MakeStorage() =>
-        new LocalStorage(
-            new LocalStorageDriver(),
-            new([], new LocalStorageDriver())
-        );
+        new LocalStorage(new LocalStorageDriver(), new([], new LocalStorageDriver()));
 
     private JsonRemoteWorkerRegistry BuildRegistry() =>
         new(
@@ -79,9 +76,7 @@ public class JsonRemoteWorkerRegistryTests : IDisposable
         Mock<IHttpClientFactory> factory = new();
         factory
             .Setup(f => f.CreateClient(It.IsAny<string>()))
-            .Returns(() =>
-                new(new NoOpHandler()) { BaseAddress = new("http://worker.test/") }
-            );
+            .Returns(() => new(new NoOpHandler()) { BaseAddress = new("http://worker.test/") });
         return factory.Object;
     }
 

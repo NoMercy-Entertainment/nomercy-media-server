@@ -237,11 +237,8 @@ public class PluginAbstractionsTests
             public Task<string?> GetForUserAsync(string key, CancellationToken ct = default) =>
                 GetAsync($"user:{key}", ct);
 
-            public Task SetForUserAsync(
-                string key,
-                string value,
-                CancellationToken ct = default
-            ) => SetAsync($"user:{key}", value, ct);
+            public Task SetForUserAsync(string key, string value, CancellationToken ct = default) =>
+                SetAsync($"user:{key}", value, ct);
 
             public Task DeleteForUserAsync(string key, CancellationToken ct = default) =>
                 DeleteAsync($"user:{key}", ct);

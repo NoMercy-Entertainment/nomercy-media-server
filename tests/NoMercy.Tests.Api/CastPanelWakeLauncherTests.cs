@@ -177,7 +177,8 @@ public class CastPanelWakeLauncherTests
     [Fact]
     public async Task LaunchIfColdAsync_HandsOffToTheRealApp_WhenTheDeviceBusComesOnlineAfterAColdLaunch()
     {
-        (CastPanelWakeLauncher launcher, Mock<IChromeCastService> chromeCast) = MakeFastFollowUpLauncher();
+        (CastPanelWakeLauncher launcher, Mock<IChromeCastService> chromeCast) =
+            MakeFastFollowUpLauncher();
         LaunchCustomData launchData = new() { AccessToken = "token" };
         chromeCast.Setup(c => c.FindReceiverNameByIpAsync(TargetIp)).ReturnsAsync(ReceiverName);
 
@@ -204,7 +205,8 @@ public class CastPanelWakeLauncherTests
     [Fact]
     public async Task LaunchIfColdAsync_StaysOnTheWebReceiver_WhenTheDeviceBusNeverComesOnline()
     {
-        (CastPanelWakeLauncher launcher, Mock<IChromeCastService> chromeCast) = MakeFastFollowUpLauncher();
+        (CastPanelWakeLauncher launcher, Mock<IChromeCastService> chromeCast) =
+            MakeFastFollowUpLauncher();
         LaunchCustomData launchData = new() { AccessToken = "token" };
         chromeCast.Setup(c => c.FindReceiverNameByIpAsync(TargetIp)).ReturnsAsync(ReceiverName);
 
@@ -217,7 +219,8 @@ public class CastPanelWakeLauncherTests
         );
 
         chromeCast.Verify(
-            c => c.LaunchAndroidReceiver(It.IsAny<string?>(), It.IsAny<object?>(), It.IsAny<bool>()),
+            c =>
+                c.LaunchAndroidReceiver(It.IsAny<string?>(), It.IsAny<object?>(), It.IsAny<bool>()),
             Times.Once,
             "a device that never comes back online gets exactly the one safe LAUNCH, no follow-up"
         );
@@ -226,7 +229,8 @@ public class CastPanelWakeLauncherTests
     [Fact]
     public async Task LaunchIfColdAsync_NeverPolls_WhenTheFirstLaunchAlreadyClaimedTheApk()
     {
-        (CastPanelWakeLauncher launcher, Mock<IChromeCastService> chromeCast) = MakeFastFollowUpLauncher();
+        (CastPanelWakeLauncher launcher, Mock<IChromeCastService> chromeCast) =
+            MakeFastFollowUpLauncher();
         LaunchCustomData launchData = new() { AccessToken = "token" };
         chromeCast.Setup(c => c.FindReceiverNameByIpAsync(TargetIp)).ReturnsAsync(ReceiverName);
         bool onlineCheckCalled = false;
@@ -245,9 +249,12 @@ public class CastPanelWakeLauncherTests
 
         onlineCheckCalled
             .Should()
-            .BeFalse("there is nothing to hand off from when the first LAUNCH already claimed the APK");
+            .BeFalse(
+                "there is nothing to hand off from when the first LAUNCH already claimed the APK"
+            );
         chromeCast.Verify(
-            c => c.LaunchAndroidReceiver(It.IsAny<string?>(), It.IsAny<object?>(), It.IsAny<bool>()),
+            c =>
+                c.LaunchAndroidReceiver(It.IsAny<string?>(), It.IsAny<object?>(), It.IsAny<bool>()),
             Times.Once
         );
     }
@@ -268,7 +275,8 @@ public class CastPanelWakeLauncherTests
         );
 
         chromeCast.Verify(
-            c => c.LaunchAndroidReceiver(It.IsAny<string?>(), It.IsAny<object?>(), It.IsAny<bool>()),
+            c =>
+                c.LaunchAndroidReceiver(It.IsAny<string?>(), It.IsAny<object?>(), It.IsAny<bool>()),
             Times.Once
         );
     }

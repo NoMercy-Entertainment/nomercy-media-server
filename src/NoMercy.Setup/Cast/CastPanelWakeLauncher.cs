@@ -41,7 +41,6 @@ public class CastPanelWakeLauncher(
     int followUpPollAttempts = 12
 )
 {
-
     public static bool ShouldFireCastWake(bool targetIsLive) => !targetIsLive;
 
     /// <summary>

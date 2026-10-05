@@ -111,7 +111,7 @@ public class ServerUserSyncService(IServerUserApiClient apiClient) : IServerUser
                     NoTranscoding = serverUser.Enabled,
                     VideoTranscoding = serverUser.Enabled,
                     Owner = serverUser.IsOwner,
-                })
+                }),
         ];
 
         // Self floor check (defense in depth against a 200-with-bad-shape response

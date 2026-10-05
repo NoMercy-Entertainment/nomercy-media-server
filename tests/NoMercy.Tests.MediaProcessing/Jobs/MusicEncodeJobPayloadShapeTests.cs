@@ -82,5 +82,4 @@ public class MusicEncodeJobPayloadShapeTests
         job.FolderMetaData.MusicBrainzRelease.Id.Should().Be(ReleaseId);
         job.FoundTrack.Id.Should().Be(TrackId);
     }
-
 }

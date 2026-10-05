@@ -36,10 +36,7 @@ public class TadbBaseClient : ExternalApiClient
     // The API key travels as a Bearer header (not a URL path segment) so it
     // never lands in cache filenames or access logs.
     protected override void ConfigureClient(HttpClient client) =>
-        client.DefaultRequestHeaders.Authorization = new(
-            "Bearer",
-            ApiKeyStore.Current.TadbKey
-        );
+        client.DefaultRequestHeaders.Authorization = new("Bearer", ApiKeyStore.Current.TadbKey);
 
     protected override void LogRequest(string url) => Logger.AudioDb(url, LogEventLevel.Verbose);
 }
