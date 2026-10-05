@@ -160,7 +160,8 @@ public sealed class MdnsDeviceScannerParsingTests
     {
         MdnsDeviceScanner scanner = new(
             new ThrowingDbContextFactory(),
-            NullLogger<MdnsDeviceScanner>.Instance
+            NullLogger<MdnsDeviceScanner>.Instance,
+            multicast: new NonBindingMulticastTransport()
         );
 
         Exception? ex = Record.Exception(scanner.Dispose);
@@ -173,7 +174,8 @@ public sealed class MdnsDeviceScannerParsingTests
     {
         MdnsDeviceScanner scanner = new(
             new ThrowingDbContextFactory(),
-            NullLogger<MdnsDeviceScanner>.Instance
+            NullLogger<MdnsDeviceScanner>.Instance,
+            multicast: new NonBindingMulticastTransport()
         );
 
         Exception? ex = Record.Exception(() =>

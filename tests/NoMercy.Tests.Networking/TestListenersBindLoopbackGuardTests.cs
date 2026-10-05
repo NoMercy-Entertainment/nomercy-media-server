@@ -9,7 +9,12 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Net.NetworkInformation;
 using System.Text.RegularExpressions;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
+using NoMercy.Database;
+using NoMercy.Networking.Discovery;
 using NoMercy.Tests.Common;
 using Xunit;
 
@@ -71,5 +76,83 @@ public sealed class TestListenersBindLoopbackGuardTests
                 + "or every test run asks the Windows firewall:\n"
                 + string.Join('\n', offenders)
         );
+    }
+
+    // The mDNS scanners join the multicast group on UDP 5353 at 0.0.0.0, which
+    // is a wildcard bind the source scan above cannot see: it happens inside
+    // the Makaretu.Dns package. This fact builds and starts both scanners the
+    // way the scanner tests do and asserts no new 5353 listener appeared.
+    [Fact]
+    public void ConstructingAndStartingTheMdnsScannersInATestOpensNoUdp5353()
+    {
+        int before = CountUdp5353Listeners();
+        using CancellationTokenSource cts = new();
+
+        using MdnsDeviceScanner mdnsScanner = new(
+            new ThrowingDbContextFactory(),
+            NullLogger<MdnsDeviceScanner>.Instance,
+            multicast: new NonBindingMulticastTransport()
+        );
+        using GoogleCastDeviceScanner castScanner = new(
+            NullLogger<GoogleCastDeviceScanner>.Instance,
+            new NonBindingMulticastTransport()
+        );
+        mdnsScanner.Start(cts.Token);
+        castScanner.Start(cts.Token);
+
+        int after = CountUdp5353Listeners();
+        cts.Cancel();
+
+        Assert.True(
+            after == before,
+            $"A test must never bind UDP 5353: listeners went from {before} to {after}. "
+                + "Pass a non-binding multicast transport to the scanner."
+        );
+    }
+
+    // A scanner built without the fake transport joins the 5353 group the
+    // moment Start() runs. This reads every test source that builds one and
+    // requires the fake in the same file.
+    [Fact]
+    public void EveryTestThatBuildsAnMdnsScannerPassesTheNonBindingTransport()
+    {
+        string testsRoot = RepoPaths.At("tests");
+        Regex buildsScanner = new(
+            @"\b(MdnsDeviceScanner|GoogleCastDeviceScanner)\s+\w+\s*=\s*new\b"
+        );
+        List<string> offenders = [];
+
+        foreach (
+            string file in Directory.EnumerateFiles(testsRoot, "*.cs", SearchOption.AllDirectories)
+        )
+        {
+            string relative = Path.GetRelativePath(testsRoot, file).Replace('\\', '/');
+
+            if (relative.Contains("/bin/") || relative.Contains("/obj/"))
+                continue;
+
+            string text = File.ReadAllText(file);
+
+            if (buildsScanner.IsMatch(text) && !text.Contains(nameof(NonBindingMulticastTransport)))
+                offenders.Add(relative);
+        }
+
+        Assert.True(
+            offenders.Count == 0,
+            "A test that builds an mDNS scanner must pass a NonBindingMulticastTransport, "
+                + "or the test run binds UDP 5353 and asks the Windows firewall:\n"
+                + string.Join('\n', offenders)
+        );
+    }
+
+    private static int CountUdp5353Listeners() =>
+        IPGlobalProperties
+            .GetIPGlobalProperties()
+            .GetActiveUdpListeners()
+            .Count(endpoint => endpoint.Port == 5353);
+
+    private sealed class ThrowingDbContextFactory : IDbContextFactory<MediaContext>
+    {
+        public MediaContext CreateDbContext() => throw new NotSupportedException();
     }
 }
