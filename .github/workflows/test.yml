@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 1
           fetch-tags: false
@@ -24,6 +24,14 @@ jobs:
         uses: ./.github/actions/setup-dotnet
         with:
           dotnet-version: ${{ inputs.dotnet-version }}
+
+      - name: Regenerate and check API contract snapshots
+        env:
+          NOMERCY_UPDATE_OPENAPI: '1'
+          NOMERCY_UPDATE_SIGNALR_CONTRACTS: '1'
+        run: |
+          dotnet test tests/NoMercy.Tests.Api/NoMercy.Tests.Api.csproj --no-restore --verbosity minimal --filter "FullyQualifiedName~OpenApiSnapshotTests|FullyQualifiedName~HubContractSnapshotTests"
+          git diff --exit-code -- openapi.json signalr-contracts.json
 
       - name: Run fast tests (Unit + ErrorHandling + Characterization)
         run: >
@@ -34,6 +42,55 @@ jobs:
           --logger trx
           --blame-hang-timeout 5m
           --filter "(Category=Unit|Category=ErrorHandling|Category=Characterization)&Category!=Integration"
+
+      # The plugin template is not in the solution: it references the SDK as
+      # NuGet packages, the way a plugin author does, and the root
+      # Directory.Packages.props would refuse those versions (NU1008). So the
+      # SDK rename once left it uncompilable for a whole ABI and nothing here
+      # noticed (#66). This scaffolds a plugin from the packed template, outside
+      # the checkout, and builds it against the SDK packed from this same
+      # commit: a contract change that breaks the template fails this PR, not
+      # the next author's first build.
+      - name: Scaffold and build the plugin template against this commit's SDK
+        run: |
+          feed="$PWD/output/plugin-sdk"
+          scaffold="${{ runner.temp }}/plugin-from-template"
+          rm -rf "$feed" "$scaffold"
+          mkdir -p "$feed"
+
+          for project in \
+            src/NoMercy.PluginSdk.Abstractions \
+            src/NoMercy.PluginSdk.Mvc \
+            src/NoMercy.PluginSdk.Testing \
+            src/NoMercy.PluginSdk.Analyzers; do
+            dotnet pack "$project" --configuration Release --output "$feed" --verbosity minimal
+          done
+          dotnet pack templates/NoMercy.Plugin.Templates.csproj --configuration Release --output "$feed" --verbosity minimal
+
+          dotnet new install "$feed"/NoMercy.Plugin.Templates.*.nupkg
+          dotnet new nomercy-plugin \
+            --output "$scaffold" \
+            --name Example.Plugin \
+            --pluginId 01JJ3Q5Z1R6S9T2V4W7X8Y0Z1A \
+            --authorName "Template check" \
+            --pluginDescription "Scaffolded by CI to prove the template compiles"
+
+          # The packages packed above come first; nuget.org supplies xunit and
+          # friends. A floating 12.* takes the highest version it finds, so a
+          # contract bumped in this PR wins over the published one.
+          cat > "$scaffold/nuget.config" <<EOF
+          <?xml version="1.0" encoding="utf-8"?>
+          <configuration>
+            <packageSources>
+              <clear />
+              <add key="plugin-sdk-from-this-checkout" value="$feed" />
+              <add key="nuget.org" value="https://api.nuget.org/v3/index.json" />
+            </packageSources>
+          </configuration>
+          EOF
+
+          dotnet build "$scaffold/tests/Plugin.Tests" --configuration Release
+          dotnet test "$scaffold/tests/Plugin.Tests" --no-build --configuration Release --verbosity minimal
 
   # Full-suite coverage job — runs on EVERY invocation of this reusable workflow
   # (every push/PR to dev, plus master and manual dispatch). It is the only job
@@ -50,7 +107,7 @@ jobs:
     timeout-minutes: 30
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 1
           fetch-tags: false
@@ -141,7 +198,7 @@ jobs:
     if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/master' || github.event_name == 'release' || github.event_name == 'workflow_dispatch'
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 1
           fetch-tags: false

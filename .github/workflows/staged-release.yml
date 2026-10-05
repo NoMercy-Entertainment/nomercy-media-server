@@ -24,7 +24,7 @@ jobs:
       branch: ${{ steps.branch.outputs.branch }}
 
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Setup .NET Environment
         uses: ./.github/actions/setup-dotnet

@@ -141,6 +141,10 @@ runs:
         dpkg-scanpackages --multiversion pool/ > dists/stable/main/binary-amd64/Packages
         gzip -k -f dists/stable/main/binary-amd64/Packages
 
+    - name: Verify DEB installs on Ubuntu and Debian
+      shell: bash
+      run: bash "${{ github.action_path }}/verify-install.sh" packages/apt/pool/main/n/nomercy
+
     - name: Upload DEB artifacts
       uses: actions/upload-artifact@v7
       with:

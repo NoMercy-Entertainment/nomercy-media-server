@@ -90,13 +90,45 @@ public sealed class PluginHostLoadContext(string assemblyPath)
     protected override Assembly? Load(AssemblyName assemblyName)
     {
         if (
-            assemblyName.Name?.StartsWith("NoMercy.PluginSdk.Abstractions", StringComparison.Ordinal)
-            == true
+            assemblyName.Name?.StartsWith(
+                "NoMercy.PluginSdk.Abstractions",
+                StringComparison.Ordinal
+            ) == true
         )
             return null;
+
+        // Same wall as the in-process PluginLoadContext: thrown, never null,
+        // so the request never reaches this process's default context.
+        if (IsServerAssembly(assemblyName.Name))
+            throw new PluginRefusedException(
+                new PluginRefusal(
+                    PluginRefusalCode.ServerAssemblyFromPlugin,
+                    Path.GetFileNameWithoutExtension(assemblyPath),
+                    $"Plugin tried to load server assembly '{assemblyName.Name}'. Server assemblies are never loaded from a plugin.",
+                    "A plugin that carries its own copy of a server assembly runs server code outside every guard the host has, and its types are not the host's types.",
+                    "Remove every NoMercy.* assembly from the plugin package; reference only the NoMercy.PluginSdk packages, which the server provides at run time.",
+                    PluginRefusalSeverity.Blocked
+                )
+            );
 
         string? path = _resolver.ResolveAssemblyToPath(assemblyName);
 
         return path is null ? null : LoadFromAssemblyPath(path);
     }
+
+    // The NoMercy.* names the server shares in process
+    // (PluginHostOptions.DefaultSharedAssemblies). A plugin built against the
+    // SDK carries these, so they still load from its folder here. A test keeps
+    // the two lists equal.
+    private static readonly HashSet<string> SdkAssemblies = new(StringComparer.Ordinal)
+    {
+        "NoMercy.PluginSdk.Abstractions",
+        "NoMercy.PluginSdk.Mvc",
+        "NoMercy.Events",
+        "NoMercy.Design",
+    };
+
+    public static bool IsServerAssembly(string? name) =>
+        name?.StartsWith("NoMercy.", StringComparison.OrdinalIgnoreCase) == true
+        && !SdkAssemblies.Contains(name);
 }

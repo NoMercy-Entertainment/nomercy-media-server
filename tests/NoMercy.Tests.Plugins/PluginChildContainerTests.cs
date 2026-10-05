@@ -11,6 +11,8 @@
 
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
 using Xunit;
@@ -27,6 +29,10 @@ public class PluginChildContainerTests
     {
         ServiceCollection services = new();
         services.AddSingleton<HostFacade>();
+        services.AddSingleton<IPluginCallerAccessor>(NoPluginCaller.Instance);
+        services.AddSingleton<IPluginManager, FakePluginManager>();
+        services.AddLogging();
+        services.Configure<HostSecretOptions>(options => options.Secret = "server-secret");
         services.AddSingleton(new PluginHostServiceCollection(services));
 
         return services.BuildServiceProvider();
@@ -65,7 +71,7 @@ public class PluginChildContainerTests
     }
 
     [Fact]
-    public void A_plugin_still_resolves_what_the_host_offers_it()
+    public void A_plugin_still_resolves_what_the_sdk_offers_it()
     {
         ServiceProvider host = Host();
 
@@ -74,21 +80,104 @@ public class PluginChildContainerTests
             typeof(OnePluginsRegistrator).Assembly
         );
 
+        // IPluginCallerAccessor is declared in NoMercy.PluginSdk.Abstractions,
+        // so the fallback may hand the host's own instance to the plugin.
         child!
-            .GetService(typeof(HostFacade))
+            .GetService(typeof(IPluginCallerAccessor))
             .Should()
             .BeSameAs(
-                host.GetRequiredService<HostFacade>(),
-                "a second copy of a host facade is one nobody else publishes to"
+                host.GetRequiredService<IPluginCallerAccessor>(),
+                "a second copy of an SDK facade is one nobody else publishes to"
             );
 
         // And injected, not only asked for by name: a plugin's own service
-        // whose constructor needs a host facade is the case the container has
+        // whose constructor needs an SDK facade is the case the container has
         // to answer, and asking the wrapper afterwards never exercises it.
         OnlyOnePluginHasThis injected = (OnlyOnePluginHasThis)
             child.GetService(typeof(OnlyOnePluginHasThis))!;
 
-        injected.Facade.Should().BeSameAs(host.GetRequiredService<HostFacade>());
+        injected.Caller.Should().BeSameAs(host.GetRequiredService<IPluginCallerAccessor>());
+    }
+
+    [Fact]
+    public void A_host_internal_type_is_not_forwarded_to_a_plugin()
+    {
+        ServiceProvider host = Host();
+
+        using PluginServiceProvider? child = PluginInstanceFactory.ChildContainer(
+            host,
+            typeof(OnePluginsRegistrator).Assembly
+        );
+
+        // HostFacade is declared in this test assembly, not in an SDK
+        // assembly, so it stands in for a host internal a v3 plugin must not
+        // reach through the fallback — only through a facade the SDK grants.
+        child!
+            .GetService(typeof(HostFacade))
+            .Should()
+            .BeNull("a host internal is not an SDK facade");
+    }
+
+    [Fact]
+    public void A_logger_is_not_forwarded_to_a_plugin()
+    {
+        ServiceProvider host = Host();
+
+        using PluginServiceProvider? child = PluginInstanceFactory.ChildContainer(
+            host,
+            typeof(OnePluginsRegistrator).Assembly
+        );
+
+        // ILogger<T> is Microsoft's, not the SDK's, and Logger<T> would need
+        // the host's ILoggerFactory to build — another host internal. A
+        // plugin's own service that needs one gets it from the plugin's own
+        // registrations or not at all; nothing here does that for it.
+        child!
+            .GetService(typeof(ILogger<OnlyOnePluginHasThis>))
+            .Should()
+            .BeNull("logging infrastructure is a host internal, not an SDK facade");
+    }
+
+    [Fact]
+    public void A_host_options_type_is_not_forwarded_to_a_plugin()
+    {
+        ServiceProvider host = Host();
+
+        using PluginServiceProvider? child = PluginInstanceFactory.ChildContainer(
+            host,
+            typeof(OnePluginsRegistrator).Assembly
+        );
+
+        // IOptions<HostSecretOptions> closes over a type this test assembly
+        // declares, standing in for the server's own configuration. Copying
+        // the open IOptions<> registration would have let a plugin ask for
+        // IOptions<AnyHostOptionsType> and read whatever the host configured.
+        child!
+            .GetService(typeof(IOptions<HostSecretOptions>))
+            .Should()
+            .BeNull("the server's own configuration is not an SDK facade");
+    }
+
+    [Fact]
+    public void A_shared_sdk_service_the_broker_never_checks_is_not_forwarded_to_a_plugin()
+    {
+        ServiceProvider host = Host();
+
+        using PluginServiceProvider? child = PluginInstanceFactory.ChildContainer(
+            host,
+            typeof(OnePluginsRegistrator).Assembly
+        );
+
+        // IPluginManager is declared in NoMercy.PluginSdk.Abstractions, so the
+        // old assembly-prefix rule would have forwarded it — but nothing
+        // behind it checks the calling plugin's identity before installing,
+        // enabling or uninstalling ANY plugin. Only IPluginContext runs a
+        // plugin's calls past the broker, so only what that route cannot
+        // already give a plugin belongs in the explicit forwarded set.
+        child!
+            .GetService(typeof(IPluginManager))
+            .Should()
+            .BeNull("a shared host-wide service is not a plugin-scoped SDK facade");
     }
 
     [Fact]
@@ -146,9 +235,42 @@ public class PluginChildContainerTests
         public void Dispose() => Disposed = true;
     }
 
-    internal sealed class OnlyOnePluginHasThis(HostFacade facade) : IDisposable
+    /// <summary>Stands in for the server's own configuration, never a plugin's.</summary>
+    internal sealed class HostSecretOptions
     {
-        public HostFacade Facade { get; } = facade;
+        public string Secret { get; set; } = "";
+    }
+
+    /// <summary>
+    /// A do-nothing stand-in: the test only asks whether the plugin container
+    /// resolves this type, never calls a member on it.
+    /// </summary>
+    internal sealed class FakePluginManager : IPluginManager
+    {
+        public IReadOnlyList<PluginInfo> GetInstalledPlugins() => [];
+
+        public Task InstallPluginAsync(string packageUrl, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task EnablePluginAsync(Ulid pluginId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task DisablePluginAsync(Ulid pluginId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task UninstallPluginAsync(Ulid pluginId, CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public Task<IReadOnlyList<PluginLoadResult>> LoadAllAsync(CancellationToken ct = default) =>
+            throw new NotSupportedException();
+
+        public IEnumerable<T> GetPluginsOfType<T>()
+            where T : IPlugin => [];
+    }
+
+    internal sealed class OnlyOnePluginHasThis(IPluginCallerAccessor caller) : IDisposable
+    {
+        public IPluginCallerAccessor Caller { get; } = caller;
 
         public bool Disposed { get; private set; }
 

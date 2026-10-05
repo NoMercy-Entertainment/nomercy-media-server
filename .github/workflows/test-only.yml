@@ -24,7 +24,7 @@ jobs:
     if: ${{ contains(github.event.head_commit.message, '[test-only]') }}
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 1
           fetch-tags: false
@@ -125,7 +125,7 @@ jobs:
 
       - name: Upload test results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: churn-test-results
           path: ./testresults

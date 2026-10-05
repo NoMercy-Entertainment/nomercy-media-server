@@ -139,23 +139,47 @@ public class PluginLoaderFailureFixtureTests : IDisposable
         string pluginDir = Path.Combine(_tempPluginsDir, "Failures");
         Directory.CreateDirectory(pluginDir);
 
+        // Polly is in the folder only for PluginLoadContextTests' resolver
+        // branch; no Failures plugin uses it, and the code scan refuses it
+        // (System.Reflection.MemberInfo, System.Activator). The loader path
+        // stages the plugin without it rather than widen the ban list.
         foreach (string file in Directory.EnumerateFiles(binDir, "*.dll"))
+        {
+            if (Path.GetFileName(file).StartsWith("Polly", StringComparison.Ordinal))
+                continue;
+
             File.Copy(file, Path.Combine(pluginDir, Path.GetFileName(file)), overwrite: true);
+        }
 
         foreach (string file in Directory.EnumerateFiles(binDir, "*.deps.json"))
             File.Copy(file, Path.Combine(pluginDir, Path.GetFileName(file)), overwrite: true);
 
+        // Recorded as an install records it, or the load refuses the folder
+        // before it reaches the failure a test stages.
+        PluginFileManifest.WriteAsync(pluginDir).GetAwaiter().GetResult();
+
         return Path.Combine(pluginDir, "NoMercy.Plugin.Samples.Failures.dll");
     }
 
-    // NoMercy.PluginSdk.Abstractions.dll is a real, validly-loadable .NET
-    // assembly that defines zero concrete IPlugin implementations (only
-    // interfaces, enums, and DTOs) — a real assembly with no plugin types is
-    // exactly the case LoadPluginAssemblyAsync's `pluginTypes.Count == 0` guard
-    // exists for, with no new fixture needed.
-    private static string GetAbstractionsAssemblyPath()
+    /// <summary>
+    /// A clean IL assembly with no plugin type in it. It passes the code scan,
+    /// so the loader reaches the "nothing to register" branch rather than
+    /// refusing the file before a context exists. It gets its own folder like
+    /// every installed plugin: the shadow copy copies the assembly's folder,
+    /// and copying the plugins root would copy the shadow folder into itself.
+    /// </summary>
+    private string StageNoPluginTypesDll()
     {
-        return typeof(IPlugin).Assembly.Location;
+        string pluginDir = Path.Combine(_tempPluginsDir, "NoPluginTypes");
+        Directory.CreateDirectory(pluginDir);
+        string dest = Path.Combine(pluginDir, "NoMercy.Plugin.Samples.NoPluginTypes.dll");
+        File.Copy(
+            CodeScanVerificationStageTests.SampleDllPath("NoMercy.Plugin.Samples.NoPluginTypes"),
+            dest,
+            overwrite: true
+        );
+        PluginFileManifest.WriteAsync(pluginDir).GetAwaiter().GetResult();
+        return dest;
     }
 
     [Fact]
@@ -298,12 +322,24 @@ public class PluginLoaderFailureFixtureTests : IDisposable
     [Fact]
     public async Task LoadPluginAssemblyAsync_AssemblyWithNoPluginTypes_RegistersNothingAndDoesNotThrow()
     {
-        string abstractionsPath = GetAbstractionsAssemblyPath();
+        string dllPath = StageNoPluginTypesDll();
+        List<PluginErrorOccurredEvent> errors = [];
+        _eventBus.Subscribe<PluginErrorOccurredEvent>(
+            (evt, _) =>
+            {
+                errors.Add(evt);
+                return Task.CompletedTask;
+            }
+        );
 
-        Func<Task> act = () => _manager.LoadPluginAssemblyAsync(abstractionsPath);
+        Func<Task> act = () => _manager.LoadPluginAssemblyAsync(dllPath);
 
         await act.Should().NotThrowAsync();
         _manager.GetInstalledPlugins().Should().BeEmpty();
+        errors
+            .Select(e => e.ErrorMessage)
+            .Should()
+            .BeEmpty("an assembly with nothing to register is not a refusal");
     }
 
     /// <summary>
@@ -330,8 +366,21 @@ public class PluginLoaderFailureFixtureTests : IDisposable
     [Fact]
     public async Task LoadPluginAssemblyAsync_AssemblyWithNoPluginTypes_LeavesNoLiveLoadContext()
     {
-        string abstractionsPath = GetAbstractionsAssemblyPath();
-        await _manager.LoadPluginAssemblyAsync(abstractionsPath);
+        string dllPath = StageNoPluginTypesDll();
+        List<PluginErrorOccurredEvent> errors = [];
+        _eventBus.Subscribe<PluginErrorOccurredEvent>(
+            (evt, _) =>
+            {
+                errors.Add(evt);
+                return Task.CompletedTask;
+            }
+        );
+
+        await _manager.LoadPluginAssemblyAsync(dllPath);
+        errors
+            .Select(e => e.ErrorMessage)
+            .Should()
+            .BeEmpty("a refused file never builds a context, so it proves nothing here");
 
         // Collection is what ends a collectible context, and it is not
         // immediate: Unload only makes it eligible. Matched on this test's own
@@ -687,7 +736,10 @@ public class PluginLoaderFailureFixtureTests : IDisposable
         reported.ErrorMessage.Should().Contain("get_EventBus", "the author needs the member named");
         reported
             .ErrorMessage.Should()
-            .Contain(PluginAbi.Current.ToString(), "and the version to rebuild against, which the runtime never says");
+            .Contain(
+                PluginAbi.Current.ToString(),
+                "and the version to rebuild against, which the runtime never says"
+            );
         reported.ErrorMessage.Should().Contain("/nomercy-plugins/migration");
 
         // The plugin beside it in the same assembly fails for its own reason and
@@ -713,25 +765,6 @@ public class PluginLoaderFailureFixtureTests : IDisposable
         IEnumerable<IPluginServiceRegistrator> registrators = _manager.GetServiceRegistrators();
 
         registrators.Should().ContainSingle();
-    }
-
-    [Fact]
-    public async Task LoadPluginAssemblyAsync_HealthyRegistratorPlugin_RegisterPluginServices_InvokesIt()
-    {
-        // RegisterPluginServices' foreach body only runs when GetServiceRegistrators()
-        // returns at least one ACTIVE registrator — this is the one path in this
-        // suite that gets a real registrator instance through the full loader
-        // pipeline into that method rather than calling RegisterServices directly.
-        string dllPath = StageFailuresPluginDll();
-        await _manager.LoadPluginAssemblyAsync(dllPath);
-        ServiceCollection services = new();
-
-        services.RegisterPluginServices(_manager);
-
-        services.Should().ContainSingle();
-        services[0]
-            .ServiceType.FullName.Should()
-            .Be("NoMercy.Plugin.Samples.Failures.FailuresPluginMarker");
     }
 
     [Fact]

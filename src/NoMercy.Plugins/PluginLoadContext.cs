@@ -11,6 +11,7 @@
 
 using System.Reflection;
 using System.Runtime.Loader;
+using NoMercy.PluginSdk.Abstractions;
 
 namespace NoMercy.PluginSdk;
 
@@ -18,23 +19,40 @@ public class PluginLoadContext : AssemblyLoadContext
 {
     private readonly AssemblyDependencyResolver _resolver;
     private readonly string _pluginDir;
+    private readonly string _pluginName;
     private readonly IReadOnlySet<string> _sharedAssemblies;
+
+    // Full paths this context may load; null (tests only) means no list. The
+    // scan and the hash check decide the list, the context only obeys it.
+    private readonly HashSet<string>? _allowedFiles;
 
     // Named after the assembly it was built for, because a nameless context is
     // unidentifiable: every one of them reads as null in a memory dump and in
     // AssemblyLoadContext.All, so a context that outlives its plugin cannot be
     // told from any other. The path carries the shadow copy's id, so the name
     // is unique per load as well as per plugin.
-    public PluginLoadContext(string pluginPath, IReadOnlySet<string>? sharedAssemblies = null)
+    public PluginLoadContext(
+        string pluginPath,
+        IReadOnlySet<string>? sharedAssemblies = null,
+        IReadOnlyCollection<string>? allowedFiles = null
+    )
         : base(name: pluginPath, isCollectible: true)
     {
         _resolver = new(pluginPath);
         _pluginDir =
             Path.GetDirectoryName(pluginPath)
             ?? throw new InvalidOperationException("Plugin directory could not be determined.");
+        _pluginName = Path.GetFileNameWithoutExtension(pluginPath);
 
         _sharedAssemblies = sharedAssemblies ?? PluginHostOptions.DefaultSharedAssemblies;
+        _allowedFiles = allowedFiles?.Select(Path.GetFullPath).ToHashSet(PathComparer);
     }
+
+    private static StringComparer PathComparer =>
+        OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal;
+
+    private bool IsAllowed(string path) =>
+        _allowedFiles is null || _allowedFiles.Contains(Path.GetFullPath(path));
 
     protected override Assembly? Load(AssemblyName assemblyName)
     {
@@ -78,14 +96,22 @@ public class PluginLoadContext : AssemblyLoadContext
             return null;
         }
 
+        // Thrown, never null: null hands the request to the default context,
+        // which holds the host's real copy. Every NoMercy.* name outside the
+        // shared set counts, so a new server project needs no list entry.
+        if (assemblyName.Name?.StartsWith("NoMercy.", StringComparison.OrdinalIgnoreCase) == true)
+            throw new PluginRefusedException(
+                ServerAssemblyFromPlugin(_pluginName, assemblyName.Name)
+            );
+
         // Resolver first
         string? resolved = _resolver.ResolveAssemblyToPath(assemblyName);
         if (resolved is not null)
-            return LoadFromAssemblyPath(resolved);
+            return IsAllowed(resolved) ? LoadFromAssemblyPath(resolved) : null;
 
         // Fallback: plugin directory
         string candidate = Path.Combine(_pluginDir, assemblyName.Name + ".dll");
-        if (File.Exists(candidate))
+        if (File.Exists(candidate) && IsAllowed(candidate))
             return LoadFromAssemblyPath(candidate);
 
         return null;
@@ -94,11 +120,21 @@ public class PluginLoadContext : AssemblyLoadContext
     protected override IntPtr LoadUnmanagedDll(string unmanagedDllName)
     {
         string? libraryPath = _resolver.ResolveUnmanagedDllToPath(unmanagedDllName);
-        if (libraryPath is not null)
+        if (libraryPath is not null && IsAllowed(libraryPath))
         {
             return LoadUnmanagedDllFromPath(libraryPath);
         }
 
         return IntPtr.Zero;
     }
+
+    internal static PluginRefusal ServerAssemblyFromPlugin(string plugin, string assembly) =>
+        new(
+            PluginRefusalCode.ServerAssemblyFromPlugin,
+            plugin,
+            $"Plugin tried to load server assembly '{assembly}'. Server assemblies are never loaded from a plugin.",
+            "A plugin that carries its own copy of a server assembly runs server code outside every guard the host has, and its types are not the host's types.",
+            "Remove every NoMercy.* assembly from the plugin package; reference only the NoMercy.PluginSdk packages, which the server provides at run time.",
+            PluginRefusalSeverity.Blocked
+        );
 }

@@ -128,6 +128,31 @@ public class ProcessRunner(ILogger<ProcessRunner> logger) : IProcessRunner
         );
     }
 
+    public Task<ProcessResult> RunAsync(
+        string executable,
+        string[] arguments,
+        TimeSpan timeout,
+        Action<string>? onStdOut = null,
+        Action<string>? onStdErr = null,
+        string? workingDirectory = null,
+        CancellationToken cancellationToken = default,
+        Action<int>? onProcessStarted = null
+    )
+    {
+        return RunCoreAsync(
+            executable,
+            arguments,
+            onStdOut,
+            onStdErr,
+            workingDirectory,
+            cancellationToken,
+            killSignal: default,
+            onProcessStarted,
+            extraEnv: null,
+            timeout
+        );
+    }
+
     private async Task<ProcessResult> RunCoreAsync(
         string executable,
         string[] arguments,
@@ -137,7 +162,8 @@ public class ProcessRunner(ILogger<ProcessRunner> logger) : IProcessRunner
         CancellationToken cancellationToken,
         CancellationToken killSignal,
         Action<int>? onProcessStarted = null,
-        IReadOnlyDictionary<string, string>? extraEnv = null
+        IReadOnlyDictionary<string, string>? extraEnv = null,
+        TimeSpan? timeout = null
     )
     {
         Stopwatch stopwatch = Stopwatch.StartNew();
@@ -248,6 +274,34 @@ public class ProcessRunner(ILogger<ProcessRunner> logger) : IProcessRunner
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
+        // Wall-clock timeout: a probe that never exits (a stuck ffprobe on a
+        // broken disc, a tool waiting on a pipe nobody feeds) must not hang
+        // the caller forever. The timer kills the whole tree; the flag is set
+        // only when the kill really happened, so a process that exits on its
+        // own in the same instant is still reported as a normal exit.
+        bool timedOut = false;
+        using CancellationTokenSource? timeoutCts = timeout is { } limit ? new(limit) : null;
+        CancellationTokenRegistration timeoutRegistration = default;
+        if (timeoutCts is not null)
+        {
+            timeoutRegistration = timeoutCts.Token.Register(() =>
+            {
+                try
+                {
+                    if (process.HasExited)
+                        return;
+                    logger.LogWarning(
+                        "Process exceeded its {Timeout} wall-clock timeout — terminating process tree: {Executable}",
+                        timeout,
+                        executable
+                    );
+                    process.Kill(entireProcessTree: true);
+                    timedOut = true;
+                }
+                catch (InvalidOperationException) { }
+            });
+        }
+
         try
         {
             await process.WaitForExitAsync(cancellationToken);
@@ -279,6 +333,7 @@ public class ProcessRunner(ILogger<ProcessRunner> logger) : IProcessRunner
         finally
         {
             await killRegistration.DisposeAsync();
+            await timeoutRegistration.DisposeAsync();
         }
 
         // WaitForExitAsync returns when the process exits but does NOT wait
@@ -291,6 +346,14 @@ public class ProcessRunner(ILogger<ProcessRunner> logger) : IProcessRunner
         process.WaitForExit();
 
         stopwatch.Stop();
+
+        if (timedOut)
+        {
+            throw new TimeoutException(
+                $"Process '{executable}' exceeded its wall-clock timeout of {timeout} "
+                    + $"after {stopwatch.Elapsed.TotalSeconds:F1}s and was killed with its process tree."
+            );
+        }
 
         int exitCode = killedBySignal ? 0 : process.ExitCode;
 

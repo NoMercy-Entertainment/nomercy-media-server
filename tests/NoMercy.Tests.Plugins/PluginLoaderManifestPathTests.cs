@@ -16,6 +16,7 @@ using NoMercy.Events.Plugins;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Capabilities;
+using NoMercy.PluginSdk.Verification;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;
@@ -107,6 +108,9 @@ public class PluginLoaderManifestPathTests : IDisposable
 
         string manifestPath = Path.Combine(pluginDir, "plugin.json");
         File.WriteAllText(manifestPath, manifestJson);
+        // Recorded as an install records it, or the load refuses the folder
+        // before it reaches the failure a test stages.
+        PluginFileManifest.WriteAsync(pluginDir).GetAwaiter().GetResult();
         return manifestPath;
     }
 
@@ -263,6 +267,7 @@ public class PluginLoaderManifestPathTests : IDisposable
             """;
         string manifestPath = Path.Combine(pluginDir, "plugin.json");
         File.WriteAllText(manifestPath, manifestJson);
+        await PluginFileManifest.WriteAsync(pluginDir);
         PluginManager manager = BuildManager();
 
         Func<Task> act = () => manager.LoadPluginFromManifestAsync(manifestPath);
@@ -322,6 +327,7 @@ public class PluginLoaderManifestPathTests : IDisposable
             """;
         string manifestPath = Path.Combine(pluginDir, "plugin.json");
         File.WriteAllText(manifestPath, manifestJson);
+        await PluginFileManifest.WriteAsync(pluginDir);
         PluginManager manager = BuildManager();
 
         await manager.LoadPluginFromManifestAsync(manifestPath);
@@ -358,14 +364,18 @@ public class PluginLoaderManifestPathTests : IDisposable
     [Fact]
     public async Task LoadPluginFromManifestAsync_AssemblyHasNoPluginTypes_UnloadsContextWithoutRegisteringAnything()
     {
-        // NoMercy.PluginSdk.Abstractions.dll is a real, validly-loadable assembly
+        // The NoPluginTypes sample is a real, clean, validly-loadable assembly
         // with zero concrete IPlugin implementations — a manifest can
-        // (incorrectly, but not fatally) point at any real assembly.
+        // (incorrectly, but not fatally) point at any such assembly. It has to
+        // pass the code scan, or the malfunction recorded is the scan's, not
+        // this branch's.
         string pluginDir = Path.Combine(_tempPluginsDir, "NoPluginTypes");
         Directory.CreateDirectory(pluginDir);
-        string abstractionsSrc = typeof(IPlugin).Assembly.Location;
-        string abstractionsDest = Path.Combine(pluginDir, "NoMercy.PluginSdk.Abstractions.dll");
-        File.Copy(abstractionsSrc, abstractionsDest, overwrite: true);
+        File.Copy(
+            CodeScanVerificationStageTests.SampleDllPath("NoMercy.Plugin.Samples.NoPluginTypes"),
+            Path.Combine(pluginDir, "NoMercy.Plugin.Samples.NoPluginTypes.dll"),
+            overwrite: true
+        );
 
         Ulid manifestId = Ulid.NewUlid();
         string manifestJson = $$"""
@@ -374,12 +384,13 @@ public class PluginLoaderManifestPathTests : IDisposable
               "name": "NoPluginTypes",
               "version": "0.1.0",
               "description": "assembly with zero plugin types",
-              "assembly": "NoMercy.PluginSdk.Abstractions.dll",
+              "assembly": "NoMercy.Plugin.Samples.NoPluginTypes.dll",
               "autoEnabled": true
             }
             """;
         string manifestPath = Path.Combine(pluginDir, "plugin.json");
         File.WriteAllText(manifestPath, manifestJson);
+        await PluginFileManifest.WriteAsync(pluginDir);
         PluginManager manager = BuildManager();
 
         Func<Task> act = () => manager.LoadPluginFromManifestAsync(manifestPath);

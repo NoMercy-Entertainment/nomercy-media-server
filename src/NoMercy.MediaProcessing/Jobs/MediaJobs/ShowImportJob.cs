@@ -24,6 +24,7 @@ using NoMercy.Events.Library;
 using NoMercy.Events.Media;
 using NoMercy.MediaProcessing.Common;
 using NoMercy.MediaProcessing.Episodes;
+using NoMercy.MediaProcessing.Files;
 using NoMercy.MediaProcessing.Seasons;
 using NoMercy.MediaProcessing.Shows;
 using NoMercy.NmSystem;
@@ -61,6 +62,31 @@ public class ShowImportJob : AbstractMediaJob
     /// something the owner asked for.
     /// </summary>
     public string AddedBy { get; set; } = LibraryLinkOrigin.File;
+
+    /// <summary>
+    /// Files picked in Add content for this show, to encode once the import has stored
+    /// its episodes. Empty for every other dispatch, and absent from payloads queued
+    /// before this property existed, which deserialize to empty and run as before.
+    /// </summary>
+    public List<EncodeAfterImportFile> EncodeAfterImport { get; set; } = [];
+
+    /// <summary>Queues one encode per file carried by this import.</summary>
+    internal void DispatchEncodes(IJobDispatcher jobDispatcher)
+    {
+        foreach (EncodeAfterImportFile file in EncodeAfterImport)
+        {
+            VideoEncodeJob job = new()
+            {
+                LibraryId = LibraryId,
+                FolderId = file.FolderId,
+                Id = file.Id,
+                InputFile = file.InputFile,
+                SourceDriverId = file.SourceDriverId,
+                PresetId = file.PresetId,
+            };
+            jobDispatcher.Dispatch(job, job.QueueName, job.Priority);
+        }
+    }
 
     public override async Task Handle()
     {
@@ -110,11 +136,10 @@ public class ShowImportJob : AbstractMediaJob
 
         bool wasEmpty = !await context.LibraryTv.AnyAsync(lt => lt.LibraryId == LibraryId);
 
-        TmdbTvShowAppends? show = await showManager.AddShowAsync(
-            Id,
-            tvLibrary,
-            HighPriority,
-            AddedBy
+        TmdbTvShowAppends? show = await ImportAndPublishAsync(
+            context,
+            () => showManager.AddShowAsync(Id, tvLibrary, HighPriority, AddedBy),
+            EventBusProvider.IsConfigured ? EventBusProvider.Current : null
         );
         if (show == null)
         {
@@ -126,19 +151,6 @@ public class ShowImportJob : AbstractMediaJob
                 "TMDB show metadata fetch returned no result after retries."
             );
             return;
-        }
-
-        if (EventBusProvider.IsConfigured)
-        {
-            await EventBusProvider.Current.PublishAsync(
-                new MediaAddedEvent
-                {
-                    MediaId = Id,
-                    MediaType = "tvshow",
-                    Title = show.Name,
-                    LibraryId = LibraryId,
-                }
-            );
         }
 
         IEnumerable<TmdbSeasonAppends> seasons = await seasonManager.StoreSeasonsAsync(
@@ -164,6 +176,8 @@ public class ShowImportJob : AbstractMediaJob
 
         jobDispatcher.DispatchJob<FileRescanJob>(Id, tvLibrary);
 
+        DispatchEncodes(jobDispatcher);
+
         if (EventBusProvider.IsConfigured)
         {
             await EventBusProvider.Current.PublishAsync(
@@ -175,5 +189,29 @@ public class ShowImportJob : AbstractMediaJob
                     new LibraryRefreshedEvent { QueryKey = ["libraries"] }
                 );
         }
+    }
+
+    internal async Task<TmdbTvShowAppends?> ImportAndPublishAsync(
+        MediaContext context,
+        Func<Task<TmdbTvShowAppends?>> add,
+        IEventBus? eventBus
+    )
+    {
+        bool isNewToLibrary =
+            !await context.Tvs.AsNoTracking().AnyAsync(tv => tv.Id == Id && tv.LibraryId != default)
+            && !await context.LibraryTv.AsNoTracking().AnyAsync(link => link.TvId == Id);
+        TmdbTvShowAppends? show = await add();
+        if (isNewToLibrary && show is not null && eventBus is not null)
+            await eventBus.PublishAsync(
+                new MediaAddedEvent
+                {
+                    MediaId = Id,
+                    MediaType = "tvshow",
+                    Title = show.Name,
+                    LibraryId = LibraryId,
+                }
+            );
+
+        return show;
     }
 }

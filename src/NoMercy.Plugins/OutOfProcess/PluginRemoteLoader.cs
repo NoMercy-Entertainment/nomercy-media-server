@@ -39,13 +39,12 @@ public sealed class PluginRemoteLoader(
     )
     {
         // Said once, here, rather than thrown from the launcher. The loader's
-        // answer to "cannot" is to run the plugin in this process, which is a
-        // working plugin rather than none, and the dashboard is what tells the
-        // owner their choice is not being honored.
+        // answer to "cannot" is to refuse the plugin; it is never run in this
+        // process against the owner's choice.
         if (executable.Path is null)
         {
             logger.LogWarning(
-                "Plugin {PluginId} is set to run in its own process and this install has no plugin host beside the server. Running it in the server instead.",
+                "Plugin {PluginId} is set to run in its own process and this install has no plugin host beside the server. The plugin is refused.",
                 [description.Id]
             );
 
@@ -55,7 +54,7 @@ public sealed class PluginRemoteLoader(
         if (!await supervisor.StartAsync(description.Id, ct))
         {
             logger.LogWarning(
-                "Plugin {PluginId} could not be started in its own process. Running it in the server instead.",
+                "Plugin {PluginId} could not be started in its own process. The plugin is refused.",
                 [description.Id]
             );
 

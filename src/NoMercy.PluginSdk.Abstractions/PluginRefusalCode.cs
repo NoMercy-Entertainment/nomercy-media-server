@@ -33,4 +33,13 @@ public static class PluginRefusalCode
 
     /// <summary>A caller reached a plugin route with its bearer token in the URL.</summary>
     public const string TokenInUrl = "PLUGIN_TOKEN_IN_URL";
+
+    /// <summary>A plugin asked its load context for a server assembly instead of the SDK.</summary>
+    public const string ServerAssemblyFromPlugin = "PLUGIN_SERVER_ASSEMBLY_FROM_PLUGIN";
+
+    /// <summary>A plugin DLL is not pure IL, reaches an escape hatch, or references a server assembly.</summary>
+    public const string CodeScan = "PLUGIN_CODE_SCAN";
+
+    /// <summary>A file in the plugin folder is not the one the install recorded, or the record is missing.</summary>
+    public const string FilesChanged = "PLUGIN_FILES_CHANGED";
 }

@@ -88,7 +88,11 @@ public class MovieImportJob : AbstractMediaJob
 
         bool wasEmpty = !await context.LibraryMovie.AnyAsync(lm => lm.LibraryId == LibraryId);
 
-        TmdbMovieAppends? movieAppends = await movieManager.Add(Id, movieLibrary);
+        TmdbMovieAppends? movieAppends = await ImportAndPublishAsync(
+            context,
+            () => movieManager.Add(Id, movieLibrary),
+            EventBusProvider.IsConfigured ? EventBusProvider.Current : null
+        );
         if (movieAppends == null)
         {
             await ImportFailureRecorder.RecordAsync(
@@ -99,19 +103,6 @@ public class MovieImportJob : AbstractMediaJob
                 "TMDB movie metadata fetch returned no result after retries."
             );
             return;
-        }
-
-        if (EventBusProvider.IsConfigured)
-        {
-            await EventBusProvider.Current.PublishAsync(
-                new MediaAddedEvent
-                {
-                    MediaId = Id,
-                    MediaType = "movie",
-                    Title = movieAppends.Title,
-                    LibraryId = LibraryId,
-                }
-            );
         }
 
         if (movieAppends.BelongsToCollection != null)
@@ -138,5 +129,37 @@ public class MovieImportJob : AbstractMediaJob
                     new LibraryRefreshedEvent { QueryKey = ["libraries"] }
                 );
         }
+    }
+
+    internal async Task<TmdbMovieAppends?> ImportAndPublishAsync(
+        MediaContext context,
+        Func<Task<TmdbMovieAppends?>> add,
+        IEventBus? eventBus
+    )
+    {
+        // Membership lives in two stores (Movie.LibraryId and LibraryMovie),
+        // as for shows; older rows may only have Movie.LibraryId.
+        bool isNewToLibrary =
+            !await context
+                .Movies.IgnoreQueryFilters()
+                .AsNoTracking()
+                .AnyAsync(movie => movie.Id == Id && movie.LibraryId != default)
+            && !await context
+                .LibraryMovie.IgnoreQueryFilters()
+                .AsNoTracking()
+                .AnyAsync(link => link.MovieId == Id);
+        TmdbMovieAppends? movieAppends = await add();
+        if (isNewToLibrary && movieAppends is not null && eventBus is not null)
+            await eventBus.PublishAsync(
+                new MediaAddedEvent
+                {
+                    MediaId = Id,
+                    MediaType = "movie",
+                    Title = movieAppends.Title,
+                    LibraryId = LibraryId,
+                }
+            );
+
+        return movieAppends;
     }
 }
