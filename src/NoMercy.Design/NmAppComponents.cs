@@ -46,8 +46,9 @@ public static class NmAppComponents
     public const string GenreCard = "NMGenreCard";
 
     /// <summary>
-    /// A group of titles with no image of its own, drawn from their posters. Sent
-    /// only to an app that lists it; every other app gets <see cref="GenreCard"/>.
+    /// A group of titles with no image of its own, drawn from their posters. The
+    /// anime theme, demographic and season lists send it to every app: a grid by
+    /// default, letter or year rows on version=lolomo.
     /// </summary>
     public const string GroupCard = "NMGroupCard";
 
