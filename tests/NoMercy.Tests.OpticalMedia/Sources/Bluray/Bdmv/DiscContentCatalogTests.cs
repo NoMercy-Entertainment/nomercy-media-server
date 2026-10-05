@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.DiscFormat.Disc.Bdmv;
-using Xunit;
 
 namespace NoMercy.DiscFormat.Tests;
 

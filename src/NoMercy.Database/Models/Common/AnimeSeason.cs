@@ -9,11 +9,8 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.ComponentModel.DataAnnotations.Schema;
 using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
-using NoMercy.Database.Models.Movies;
-using NoMercy.Database.Models.TvShows;
 
 namespace NoMercy.Database.Models.Common;
 

@@ -9,7 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
 using NoMercy.Encoder.PostProcess;
@@ -18,7 +17,6 @@ using NoMercy.Events;
 using NoMercy.MediaProcessing.Files;
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
 using NoMercy.Storage;
-using Xunit;
 
 namespace NoMercy.Tests.MediaProcessing.Jobs;
 

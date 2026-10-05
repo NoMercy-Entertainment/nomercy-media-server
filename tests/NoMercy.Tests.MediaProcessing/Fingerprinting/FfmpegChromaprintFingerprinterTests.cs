@@ -16,7 +16,6 @@ using NoMercy.Encoder.Infrastructure;
 using NoMercy.MediaProcessing.Fingerprinting;
 using NoMercy.Providers.AcoustId;
 using NoMercy.Storage;
-using Xunit;
 
 namespace NoMercy.Tests.MediaProcessing.Fingerprinting;
 

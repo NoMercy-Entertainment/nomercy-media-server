@@ -9,9 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using Newtonsoft.Json;
-using NoMercy.Database.Models.Users;
-
 namespace NoMercy.Api.Services.Video;
 
 public enum VideoEventType

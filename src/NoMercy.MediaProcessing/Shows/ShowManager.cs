@@ -62,8 +62,16 @@ public class ShowManager(
         string baseUrl = BaseUrl(showAppends.Name, showAppends.FirstAirDate);
         string? mediaType = await mediaTypeClassifier.ClassifyAsync(showAppends);
 
+        Ulid? currentLibraryId = await showRepository.GetCurrentLibraryIdAsync(id);
+
         (Library resolvedLibrary, DateTime folderCreatedAt, bool folderDateIsReal) =
-            await ResolveLibraryAndCreatedAtAsync(id, library, baseUrl, mediaType);
+            await ResolveLibraryAndCreatedAtAsync(
+                id,
+                library,
+                baseUrl,
+                mediaType,
+                currentLibraryId
+            );
         library = resolvedLibrary;
 
         Tv show = new()
@@ -144,8 +152,17 @@ public class ShowManager(
     // on-disk trace of the folder at all (e.g. a manually-added show with no
     // file yet) - and even then it may only PROMOTE toward anime, never
     // evict, and only into a library whose own folders can be shown to
-    // contain the same folder. Split out from AddShowAsync (which needs a
-    // live TMDB client) so this decision is unit-testable with mocked
+    // contain the same folder.
+    //
+    // When neither the folder nor the classifier can place the show, the
+    // resolver falls back to the show's CURRENT library (the one the DB
+    // already has it filed under), not the scanned library - a re-import
+    // dispatched against a stale LibraryTv link must never evict a show back
+    // out of the library it actually lives in with no structural evidence at
+    // all. Only a genuinely new show (currentLibraryId null - not in the DB
+    // yet) falls back to the scanned library, since there is nothing else to
+    // fall back to. Split out from AddShowAsync (which needs a live TMDB
+    // client) so this decision is unit-testable with mocked
     // storage/repository alone.
     internal async Task<(
         Library library,
@@ -155,7 +172,8 @@ public class ShowManager(
         int id,
         Library scannedLibrary,
         string baseUrl,
-        string? mediaType
+        string? mediaType,
+        Ulid? currentLibraryId = null
     )
     {
         (bool existsInScannedLibrary, DateTime createdAt) = ResolveFolder(scannedLibrary, baseUrl);
@@ -164,7 +182,7 @@ public class ShowManager(
             return (scannedLibrary, createdAt, true);
 
         if (!ShouldPromoteToAnimeLibrary(scannedLibrary.Type, mediaType))
-            return (scannedLibrary, createdAt, false);
+            return await FallbackLibraryAsync(scannedLibrary, currentLibraryId, createdAt);
 
         Library? animeLibrary = await showRepository.GetLibraryByTypeAsync(
             MediaTypes.AnimeMediaType
@@ -176,19 +194,40 @@ public class ShowManager(
                 "Show {Id}: Classified as anime but no anime library exists; keeping original Library {Title}",
                 [id, scannedLibrary.Title]
             );
-            return (scannedLibrary, createdAt, false);
+            return await FallbackLibraryAsync(scannedLibrary, currentLibraryId, createdAt);
         }
 
         (bool existsInAnimeLibrary, DateTime animeCreatedAt) = ResolveFolder(animeLibrary, baseUrl);
 
         if (!existsInAnimeLibrary)
-            return (scannedLibrary, createdAt, false);
+            return await FallbackLibraryAsync(scannedLibrary, currentLibraryId, createdAt);
 
         logger.LogInformation(
             "Show {Id}: Reclassified as {MediaType}, filing under Library {Title} instead of {OriginalTitle}",
             [id, mediaType, animeLibrary.Title, scannedLibrary.Title]
         );
         return (animeLibrary, animeCreatedAt, true);
+    }
+
+    // No folder evidence anywhere and no anime promotion applies: stay with
+    // the show's current library when it has one and it differs from the
+    // scanned library (a stale LibraryTv link must not steer a re-import into
+    // evicting it), otherwise stay with the scanned library (a genuinely new
+    // show has nowhere else to fall back to).
+    private async Task<(
+        Library library,
+        DateTime createdAt,
+        bool folderDateIsReal
+    )> FallbackLibraryAsync(Library scannedLibrary, Ulid? currentLibraryId, DateTime createdAt)
+    {
+        if (currentLibraryId is null || currentLibraryId == scannedLibrary.Id)
+            return (scannedLibrary, createdAt, false);
+
+        Library? currentLibrary = await showRepository.GetLibraryByIdAsync(currentLibraryId.Value);
+        if (currentLibrary is null)
+            return (scannedLibrary, createdAt, false);
+
+        return (currentLibrary, createdAt, false);
     }
 
     // Pure decision, split out so the "never evict from the scanned library"

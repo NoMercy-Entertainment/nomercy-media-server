@@ -105,7 +105,7 @@ public record CollectionResponseItemDto
         string? overview = collection.Translations.FirstOrDefault()?.Overview;
 
         Id = collection.Id;
-        Title = title.OrWhenEmpty(collection.Title);
+        Title = CollectionTitleFormatter.StripCollectionSuffix(title.OrWhenEmpty(collection.Title));
         Overview = overview.OrWhenEmpty(collection.Overview);
         Backdrop = collection.Backdrop;
         Poster = collection.Poster;

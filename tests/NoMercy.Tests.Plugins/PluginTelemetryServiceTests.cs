@@ -12,7 +12,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Access;
 using NoMercy.PluginSdk.Capabilities;
 using NoMercy.PluginSdk.Telemetry;
@@ -82,7 +81,8 @@ public class PluginTelemetryServiceTests
 
         // Proves the loop survived the first timeout: it reached a second
         // tick instead of ExecuteAsync's task faulting on the first one.
-        SpinWait.SpinUntil(() => Volatile.Read(ref sink.Calls) >= 2, TimeSpan.FromSeconds(5))
+        SpinWait
+            .SpinUntil(() => Volatile.Read(ref sink.Calls) >= 2, TimeSpan.FromSeconds(5))
             .Should()
             .BeTrue("the service must reach a second tick, not die on the first timeout");
 

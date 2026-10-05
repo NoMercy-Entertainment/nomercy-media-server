@@ -12,7 +12,6 @@
 using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using NoMercy.PluginSdk.Abstractions;
-using NoMercy.PluginSdk.Capabilities;
 using NoMercy.PluginSdk.Storage;
 using Xunit;
 

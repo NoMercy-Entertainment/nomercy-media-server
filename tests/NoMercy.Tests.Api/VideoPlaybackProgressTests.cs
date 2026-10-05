@@ -11,7 +11,6 @@
 
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
-using NoMercy.Api.DTOs.Media;
 using NoMercy.Api.Services.Video;
 using NoMercy.Database.Models.Users;
 using NoMercy.Networking.Messaging;
@@ -36,7 +35,12 @@ public class VideoPlaybackProgressTests
 
     private static User MakeUser()
     {
-        return new() { Id = Guid.NewGuid(), Name = "tester", Email = "tester@example.com" };
+        return new()
+        {
+            Id = Guid.NewGuid(),
+            Name = "tester",
+            Email = "tester@example.com",
+        };
     }
 
     private static VideoPlayerState MakePlayingState()

@@ -19,7 +19,6 @@ using NoMercy.Encoder.Hardware;
 using NoMercy.Encoder.Jobs;
 using NoMercy.Storage;
 using NoMercy.Storage.Drivers.Local;
-using NoMercy.Storage.Validation;
 
 namespace NoMercy.Tests.Encoder.Distribution;
 
@@ -248,10 +247,7 @@ public class JsonRemoteWorkerRegistryBranchTests : IDisposable
     // ── Helpers ──────────────────────────────────────────────────────────────
 
     private static IStorage MakeStorage() =>
-        new LocalStorage(
-            new LocalStorageDriver(),
-            new([], new LocalStorageDriver())
-        );
+        new LocalStorage(new LocalStorageDriver(), new([], new LocalStorageDriver()));
 
     private JsonRemoteWorkerRegistry BuildRegistry() =>
         new(
@@ -269,9 +265,7 @@ public class JsonRemoteWorkerRegistryBranchTests : IDisposable
         Mock<IHttpClientFactory> factory = new();
         factory
             .Setup(f => f.CreateClient(It.IsAny<string>()))
-            .Returns(() =>
-                new(new NoOpHandler()) { BaseAddress = new("http://worker.test/") }
-            );
+            .Returns(() => new(new NoOpHandler()) { BaseAddress = new("http://worker.test/") });
         return factory.Object;
     }
 

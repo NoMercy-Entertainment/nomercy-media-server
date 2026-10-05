@@ -22,7 +22,6 @@ using NoMercy.Encoder.Output;
 using NoMercy.Encoder.Pipeline.Optimizer;
 using NoMercy.Encoder.Profiles;
 using NoMercy.Encoder.Subtitles;
-using NoMercyQueue.Core.Resources;
 
 namespace NoMercy.Encoder.Pipeline.Stages;
 

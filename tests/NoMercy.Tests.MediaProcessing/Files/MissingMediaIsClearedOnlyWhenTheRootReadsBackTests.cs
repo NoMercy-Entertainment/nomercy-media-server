@@ -19,7 +19,6 @@ using NoMercy.Encoder.Analysis;
 using NoMercy.MediaProcessing.Files;
 using NoMercy.NmSystem.Domain;
 using NoMercy.Storage;
-using Xunit;
 
 namespace NoMercy.Tests.MediaProcessing.Files;
 

@@ -19,7 +19,6 @@ using NoMercy.Database.Models.TvShows;
 using NoMercy.Database.Models.Users;
 using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Extensions;
-using NoMercy.NmSystem.Information;
 
 namespace NoMercy.Api.DTOs.Media.Components;
 
@@ -150,7 +149,7 @@ public record CardData
             ColorPalette = item.Collection.ColorPalette;
             Poster = item.Collection.Poster;
             Backdrop = item.Collection.Backdrop;
-            Title = item.Collection.Title;
+            Title = CollectionTitleFormatter.StripCollectionSuffix(item.Collection.Title);
             TitleSort = item.Collection.Title.TitleSort();
             Overview = item.Collection.Overview;
             Logo = item.Collection.Images.FirstOrDefault(i => i.Type == "logo")?.FilePath;

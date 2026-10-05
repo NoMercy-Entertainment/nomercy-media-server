@@ -9,7 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using Microsoft.Extensions.Logging;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Ipc;
 

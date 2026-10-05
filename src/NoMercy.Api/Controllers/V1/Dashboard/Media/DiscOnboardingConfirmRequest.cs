@@ -9,18 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using Asp.Versioning;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using NoMercy.Data.Repositories;
-using NoMercy.Database;
-using NoMercy.Database.Models.Libraries;
-using NoMercy.OpticalMedia.Drives;
-using NoMercy.OpticalMedia.Metadata;
-using NoMercy.OpticalMedia.Onboarding;
-
 namespace NoMercy.Api.Controllers.V1.Dashboard.Media;
 
 public record DiscOnboardingConfirmRequest(

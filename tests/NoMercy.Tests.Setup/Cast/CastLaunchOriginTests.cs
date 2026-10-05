@@ -8,9 +8,8 @@
 //
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
-using FluentAssertions;
+
 using NoMercy.Setup.Cast;
-using Xunit;
 
 namespace NoMercy.Tests.Setup.Cast;
 

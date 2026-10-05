@@ -11,7 +11,6 @@
 
 using System.Net;
 using System.Net.Http.Json;
-using FluentAssertions;
 using NoMercy.Tests.Api.Infrastructure;
 using Xunit;
 

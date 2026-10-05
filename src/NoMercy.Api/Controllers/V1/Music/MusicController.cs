@@ -21,7 +21,6 @@ using NoMercy.Api.DTOs.Media.Components;
 using NoMercy.Authorization;
 using NoMercy.Data.Repositories;
 using NoMercy.Data.Services.Music;
-using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Extensions;
 
 namespace NoMercy.Api.Controllers.V1.Music;

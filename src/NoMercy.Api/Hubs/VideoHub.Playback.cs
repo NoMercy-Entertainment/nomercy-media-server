@@ -10,13 +10,11 @@
 // -----------------------------------------------------------------------------
 
 using System.Security.Claims;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NoMercy.Api.DTOs.Media;
 using NoMercy.Api.Hubs.Shared;
 using NoMercy.Api.Services.Video;
 using NoMercy.Authorization;
-using NoMercy.Database;
 using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.Users;
 using NoMercy.Networking.Cast;

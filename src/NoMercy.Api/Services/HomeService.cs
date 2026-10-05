@@ -22,7 +22,6 @@ using NoMercy.Database.Models.TvShows;
 using NoMercy.Database.Models.Users;
 using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Extensions;
-using NoMercy.NmSystem.Information;
 
 namespace NoMercy.Api.Services;
 

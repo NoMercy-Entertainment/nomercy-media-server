@@ -12,7 +12,6 @@
 using FluentAssertions;
 using NoMercy.Data.Repositories;
 using NoMercy.Data.Services.Recommendations;
-using Xunit;
 
 namespace NoMercy.Tests.Repositories.Services.Recommendations;
 

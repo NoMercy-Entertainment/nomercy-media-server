@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using System.Collections.Concurrent;
-using System.Text.RegularExpressions;
 using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -52,7 +51,6 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 using SixLabors.ImageSharp.Processing.Processors.Quantization;
-using Configuration = NoMercy.Database.Models.Common.Configuration;
 using HttpClient = System.Net.Http.HttpClient;
 using IJobDispatcher = NoMercy.MediaProcessing.Jobs.IJobDispatcher;
 using Image = NoMercy.Database.Models.Media.Image;

@@ -11,7 +11,6 @@
 
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Events;
 using NoMercy.Events.Audit;
 using Xunit;

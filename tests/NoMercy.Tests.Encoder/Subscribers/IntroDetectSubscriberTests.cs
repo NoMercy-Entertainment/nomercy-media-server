@@ -14,14 +14,12 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NoMercy.Database;
 using NoMercy.Database.Models.Media;
-using NoMercy.Database.Models.TvShows;
 using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.ContentAnalysis.Fingerprinting;
 using NoMercy.Encoder.Subscribers;
 using NoMercy.Events;
 using NoMercy.Events.Library;
 using NoMercy.Storage;
-using Xunit;
 
 namespace NoMercy.Tests.Encoder.Subscribers;
 

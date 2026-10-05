@@ -115,6 +115,32 @@ public class VideoPlaylistResponseDto
 
     public VideoPlaylistResponseDto() { }
 
+    /// <summary>
+    /// Builds an episode playlist item, or null when the episode has no playable
+    /// video file or no parent show — never a half-built item with unset fields.
+    /// Prefer this over the constructor: it is the only caller-side way to skip
+    /// an unplayable episode instead of raising.
+    /// </summary>
+    public static VideoPlaylistResponseDto? TryCreate(
+        Episode episode,
+        string playlistType,
+        dynamic playlistId,
+        string country,
+        int? index = null
+    )
+    {
+        if (episode.VideoFiles.FirstOrDefault() is null || episode.Tv is null)
+            return null;
+
+        return new VideoPlaylistResponseDto(episode, playlistType, playlistId, country, index);
+    }
+
+    /// <summary>
+    /// Builds an episode playlist item. Throws when the episode has no playable
+    /// video file or no parent show, rather than returning a half-built item with
+    /// unset fields — use <see cref="TryCreate(Episode,string,object,string,int?)"/>
+    /// when the caller needs to skip an unplayable episode instead of raising.
+    /// </summary>
     public VideoPlaylistResponseDto(
         Episode episode,
         string playlistType,
@@ -125,10 +151,12 @@ public class VideoPlaylistResponseDto
     {
         VideoFile? videoFile = episode.VideoFiles.FirstOrDefault();
         if (videoFile is null)
-            return;
+            throw new InvalidOperationException(
+                $"Episode {episode.Id} has no playable video file."
+            );
 
         if (episode.Tv is null)
-            return;
+            throw new InvalidOperationException($"Episode {episode.Id} has no parent show.");
 
         string baseFolder = $"/{videoFile.Share}{videoFile.Folder}".EncodePath();
 
@@ -176,6 +204,40 @@ public class VideoPlaylistResponseDto
             .FirstOrDefault();
     }
 
+    /// <summary>
+    /// Builds a movie playlist item, or null when the movie has no playable video
+    /// file — never a half-built item with unset fields. Prefer this over the
+    /// constructor: it is the only caller-side way to skip an unplayable movie
+    /// instead of raising.
+    /// </summary>
+    public static VideoPlaylistResponseDto? TryCreate(
+        Movie movie,
+        string playlistType,
+        dynamic playlistId,
+        string country,
+        int? index = null,
+        Collection? collection = null
+    )
+    {
+        if (movie.VideoFiles.FirstOrDefault() is null)
+            return null;
+
+        return new VideoPlaylistResponseDto(
+            movie,
+            playlistType,
+            playlistId,
+            country,
+            index,
+            collection
+        );
+    }
+
+    /// <summary>
+    /// Builds a movie playlist item. Throws when the movie has no playable video
+    /// file, rather than returning a half-built item with unset fields — use
+    /// <see cref="TryCreate(Movie,string,object,string,int?,Collection?)"/> when
+    /// the caller needs to skip an unplayable movie instead of raising.
+    /// </summary>
     public VideoPlaylistResponseDto(
         Movie movie,
         string playlistType,
@@ -187,7 +249,7 @@ public class VideoPlaylistResponseDto
     {
         VideoFile? videoFile = movie.VideoFiles.FirstOrDefault();
         if (videoFile is null)
-            return;
+            throw new InvalidOperationException($"Movie {movie.Id} has no playable video file.");
 
         string? logo = movie
             .Images.OrderByDescending(image => image.VoteAverage)

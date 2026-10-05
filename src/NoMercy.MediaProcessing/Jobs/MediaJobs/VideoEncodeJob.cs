@@ -25,7 +25,6 @@ using NoMercy.Encoder.Codecs;
 using NoMercy.Encoder.Decomposition;
 using NoMercy.Encoder.Execution;
 using NoMercy.Encoder.Hardware;
-using NoMercy.Encoder.Metadata;
 using NoMercy.Encoder.Naming;
 using NoMercy.Encoder.Orchestration;
 using NoMercy.Encoder.Output;
@@ -49,7 +48,6 @@ using NoMercyQueue.Core.Interfaces;
 using NoMercyQueue.Core.Resources;
 using Serilog.Events;
 using EncodingProfile = NoMercy.Encoder.Profiles.EncodingProfile;
-using MediaType = NoMercy.Encoder.Naming.MediaType;
 
 namespace NoMercy.MediaProcessing.Jobs.MediaJobs;
 

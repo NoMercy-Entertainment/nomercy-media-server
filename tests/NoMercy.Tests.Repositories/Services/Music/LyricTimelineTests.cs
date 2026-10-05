@@ -11,7 +11,6 @@
 using FluentAssertions;
 using NoMercy.Data.Services.Music;
 using NoMercy.Database.Models.Music;
-using Xunit;
 
 namespace NoMercy.Tests.Repositories.Services.Music;
 

@@ -33,7 +33,6 @@ using NoMercy.Queue.MediaServer.Repositories;
 using NoMercy.Setup.Server;
 using NoMercy.Storage;
 using NoMercyQueue;
-using Configuration = NoMercy.Database.Models.Common.Configuration;
 
 namespace NoMercy.Api.Controllers;
 

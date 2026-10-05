@@ -138,12 +138,12 @@ public class MoviesController(
 
         IEnumerable<VideoPlaylistResponseDto> playlist = (
             await movieRepository.GetMoviePlaylistAsync(userId, id, language, country, ct)
-        ).Select(movie => new VideoPlaylistResponseDto(
-            movie,
-            MediaTypes.MovieMediaType,
-            id,
-            country
-        ));
+        )
+            .Select(movie =>
+                VideoPlaylistResponseDto.TryCreate(movie, MediaTypes.MovieMediaType, id, country)
+            )
+            .Where(dto => dto is not null)
+            .Select(dto => dto!);
 
         if (!playlist.Any())
             return NotFoundResponse("Movie not found");

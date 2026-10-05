@@ -22,7 +22,6 @@ using NoMercy.MediaProcessing.Libraries;
 using NoMercy.NmSystem;
 using NoMercy.NmSystem.Dto;
 using NoMercy.Providers.AcoustId;
-using NoMercy.Queue.MediaServer;
 using NoMercy.Storage;
 
 namespace NoMercy.MediaProcessing.Jobs.MediaJobs;

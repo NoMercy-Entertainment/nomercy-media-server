@@ -20,7 +20,6 @@ using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.Hardware;
 using NoMercy.Encoder.Pipeline;
 using NoMercy.Encoder.Startup;
-using AudioOutput = NoMercy.Encoder.Profiles.AudioOutput;
 using CodecProfile = NoMercy.Encoder.Profiles.CodecProfile;
 using Container = NoMercy.Encoder.Profiles.Container;
 using ContainerCompatibility = NoMercy.Encoder.Profiles.ContainerCompatibility;
@@ -28,14 +27,10 @@ using DownmixConfig = NoMercy.Encoder.Profiles.DownmixConfig;
 using DownmixMode = NoMercy.Encoder.Profiles.DownmixMode;
 using EncodingProfile = NoMercy.Encoder.Profiles.EncodingProfile;
 using HardwarePreference = NoMercy.Encoder.Profiles.HardwarePreference;
-using HlsDerivatives = NoMercy.Encoder.Profiles.HlsDerivatives;
-using LoudnessConfig = NoMercy.Encoder.Profiles.LoudnessConfig;
 using LoudnessMode = NoMercy.Encoder.Profiles.LoudnessMode;
 using RateControlMode = NoMercy.Encoder.Profiles.RateControlMode;
 using StreamPolicy = NoMercy.Encoder.Profiles.StreamPolicy;
-using SubtitleOutput = NoMercy.Encoder.Profiles.SubtitleOutput;
 using SubtitlePolicy = NoMercy.Encoder.Profiles.SubtitlePolicy;
-using VideoOutput = NoMercy.Encoder.Profiles.VideoOutput;
 
 namespace NoMercy.Tests.Encoder.Integration;
 

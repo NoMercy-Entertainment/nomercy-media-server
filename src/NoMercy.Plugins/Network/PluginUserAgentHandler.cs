@@ -9,8 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Net.Http.Headers;
-using System.Text;
 using System.Text.RegularExpressions;
 using NoMercy.NmSystem.Configuration;
 

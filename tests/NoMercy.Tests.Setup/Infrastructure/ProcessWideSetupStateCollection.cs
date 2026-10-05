@@ -9,8 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using Xunit;
-
 namespace NoMercy.Tests.Setup.Infrastructure;
 
 /// <summary>

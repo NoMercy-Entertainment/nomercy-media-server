@@ -14,7 +14,6 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
 using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.Distribution;
 using NoMercy.Encoder.Hardware;

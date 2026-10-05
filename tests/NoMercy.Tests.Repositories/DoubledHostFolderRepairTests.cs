@@ -16,7 +16,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NoMercy.Data.Services;
 using NoMercy.Database;
-using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.Music;
 using NoMercy.MediaProcessing.AudioAnalysis;
 using NoMercy.NmSystem.Domain;

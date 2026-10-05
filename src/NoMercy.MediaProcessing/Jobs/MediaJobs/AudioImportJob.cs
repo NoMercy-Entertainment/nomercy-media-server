@@ -34,7 +34,6 @@ using NoMercy.Providers.AcoustId.Models;
 using NoMercy.Providers.CoverArt.Client;
 using NoMercy.Providers.MusicBrainz.Client;
 using NoMercy.Providers.MusicBrainz.Models;
-using NoMercy.Queue.MediaServer;
 using NoMercy.Storage;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;

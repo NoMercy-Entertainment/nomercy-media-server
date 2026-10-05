@@ -9,13 +9,11 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 using System.Net;
-using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using MovieFileLibrary;
 using NoMercy.Database;
-using NoMercy.Database.Models.TvShows;
 using NoMercy.MediaProcessing.Files;
 using NoMercy.NmSystem.Domain;
 using NoMercy.Providers.Helpers;
@@ -835,7 +833,9 @@ public class AbsoluteEpisodeResolutionOrderTests : ProviderHttpHarness
         await using MediaContext context = new(_options);
         MediaIdentificationService service = BuildService(context);
 
-        MovieFile parsed = new("/downloads/Ah! My Goddess!/Season 1/S01E25 - Ah! Urd's Little Romance.mkv")
+        MovieFile parsed = new(
+            "/downloads/Ah! My Goddess!/Season 1/S01E25 - Ah! Urd's Little Romance.mkv"
+        )
         {
             Title = ShowName,
             Season = 1,
@@ -853,12 +853,16 @@ public class AbsoluteEpisodeResolutionOrderTests : ProviderHttpHarness
         );
 
         result.Should().NotBeNull();
-        result!.Value.match.SeasonNumber.Should().Be(0, "TVDB is asked before TMDB's own groups, not only after they fail");
+        result!
+            .Value.match.SeasonNumber.Should()
+            .Be(0, "TVDB is asked before TMDB's own groups, not only after they fail");
         result.Value.match.EpisodeNumber.Should().Be(2);
-        Handler.Requests.Should().NotContain(
-            r => r.Path.Contains("episode_group"),
-            "the group endpoint must never be hit once TVDB already answered the slot"
-        );
+        Handler
+            .Requests.Should()
+            .NotContain(
+                r => r.Path.Contains("episode_group"),
+                "the group endpoint must never be hit once TVDB already answered the slot"
+            );
     }
 
     /// <summary>
@@ -949,7 +953,9 @@ public class AbsoluteEpisodeResolutionOrderTests : ProviderHttpHarness
         await using MediaContext context = new(_options);
         MediaIdentificationService service = BuildService(context);
 
-        MovieFile parsed = new("/downloads/Ah! My Goddess!/Season 1/S01E25 - Ah! Urd's Little Romance.mkv")
+        MovieFile parsed = new(
+            "/downloads/Ah! My Goddess!/Season 1/S01E25 - Ah! Urd's Little Romance.mkv"
+        )
         {
             Title = ShowName,
             Season = 1,
@@ -967,7 +973,9 @@ public class AbsoluteEpisodeResolutionOrderTests : ProviderHttpHarness
         );
 
         result.Should().NotBeNull();
-        result!.Value.match.SeasonNumber.Should().Be(0, "TMDB files this bonus episode under Specials, not season 1");
+        result!
+            .Value.match.SeasonNumber.Should()
+            .Be(0, "TMDB files this bonus episode under Specials, not season 1");
         result.Value.match.EpisodeNumber.Should().Be(2);
     }
 
@@ -1062,7 +1070,9 @@ public class AbsoluteEpisodeResolutionOrderTests : ProviderHttpHarness
         await using MediaContext context = new(_options);
         MediaIdentificationService service = BuildService(context);
 
-        MovieFile parsed = new("/downloads/Ah! My Goddess!/Season 1/S01E25 - Ah! Urd's Little Romance.mkv")
+        MovieFile parsed = new(
+            "/downloads/Ah! My Goddess!/Season 1/S01E25 - Ah! Urd's Little Romance.mkv"
+        )
         {
             Title = ShowName,
             Season = 1,
@@ -1079,7 +1089,9 @@ public class AbsoluteEpisodeResolutionOrderTests : ProviderHttpHarness
             seasonExplicit: true
         );
 
-        result.Should().NotBeNull("a non-season sub-group sorting first must not make season 1 unresolvable");
+        result
+            .Should()
+            .NotBeNull("a non-season sub-group sorting first must not make season 1 unresolvable");
         result!.Value.match.SeasonNumber.Should().Be(0);
         result.Value.match.EpisodeNumber.Should().Be(2);
     }
@@ -1174,7 +1186,9 @@ public class AbsoluteEpisodeResolutionOrderTests : ProviderHttpHarness
         await using MediaContext context = new(_options);
         MediaIdentificationService service = BuildService(context);
 
-        MovieFile parsed = new("/downloads/Ah! My Goddess!/Season 1/S01E25 - Ah! Urd's Little Romance.mkv")
+        MovieFile parsed = new(
+            "/downloads/Ah! My Goddess!/Season 1/S01E25 - Ah! Urd's Little Romance.mkv"
+        )
         {
             Title = ShowName,
             Season = 1,
@@ -1192,11 +1206,21 @@ public class AbsoluteEpisodeResolutionOrderTests : ProviderHttpHarness
         );
 
         result.Should().NotBeNull();
-        result!.Value.match.SeasonNumber.Should().Be(0, "TVDB is the one that had this bonus episode when TMDB had neither a default nor a group answer");
+        result!
+            .Value.match.SeasonNumber.Should()
+            .Be(
+                0,
+                "TVDB is the one that had this bonus episode when TMDB had neither a default nor a group answer"
+            );
         result.Value.match.EpisodeNumber.Should().Be(2);
     }
 
-    private static string TvdbSeasonRun(int seasonNumber, int firstEpisode, int count, int idBase) =>
+    private static string TvdbSeasonRun(
+        int seasonNumber,
+        int firstEpisode,
+        int count,
+        int idBase
+    ) =>
         string.Join(
             ",",
             Enumerable
@@ -1392,7 +1416,11 @@ public class AbsoluteEpisodeResolutionOrderTests : ProviderHttpHarness
             seasonExplicit: true
         );
 
-        result.Should().NotBeNull("Onee-Sama and Big Sister are the same episode, only translated differently");
+        result
+            .Should()
+            .NotBeNull(
+                "Onee-Sama and Big Sister are the same episode, only translated differently"
+            );
         result!.Value.match.SeasonNumber.Should().Be(1);
         result.Value.match.EpisodeNumber.Should().Be(13);
     }

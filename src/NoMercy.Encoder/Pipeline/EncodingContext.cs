@@ -13,7 +13,6 @@ using NoMercy.Encoder.Analysis;
 using NoMercy.Encoder.Metadata;
 using NoMercy.Encoder.Naming;
 using NoMercy.Storage;
-using NoMercyQueue.Core.Resources;
 
 namespace NoMercy.Encoder.Pipeline;
 

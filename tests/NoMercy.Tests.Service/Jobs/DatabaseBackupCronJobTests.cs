@@ -9,12 +9,10 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Service.Jobs;
 using NoMercy.Service.Seeds;
-using Xunit;
 
 namespace NoMercy.Tests.Service.Jobs;
 

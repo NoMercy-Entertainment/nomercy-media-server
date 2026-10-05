@@ -25,7 +25,6 @@ using NoMercy.Networking.Cast;
 using NoMercy.Networking.Discovery;
 using NoMercy.Networking.Http;
 using NoMercy.Networking.Messaging;
-using NoMercy.NmSystem.Configuration;
 using NoMercy.Setup.Cast;
 
 namespace NoMercy.Api.Hubs;

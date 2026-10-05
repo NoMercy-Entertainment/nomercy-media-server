@@ -8,7 +8,7 @@
 //
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
-using FluentAssertions;
+
 using NoMercy.Api.DTOs.Media;
 using NoMercy.Api.Services;
 using NoMercy.Database.Models.Libraries;

@@ -31,7 +31,6 @@ using NoMercy.Database.Models.TvShows;
 using NoMercy.Events;
 using NoMercy.Events.Library;
 using NoMercy.MediaProcessing.Files;
-using NoMercy.MediaProcessing.Jobs;
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
 using NoMercy.MediaProcessing.Shows;
 using NoMercy.NmSystem.Domain;

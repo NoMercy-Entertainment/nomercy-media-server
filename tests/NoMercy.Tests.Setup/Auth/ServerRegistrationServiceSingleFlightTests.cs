@@ -17,7 +17,6 @@ using NoMercy.NmSystem.Auth;
 using NoMercy.NmSystem.Dto;
 using NoMercy.NmSystem.Status;
 using NoMercy.Setup.Auth;
-using Xunit;
 
 namespace NoMercy.Tests.Setup.Auth;
 
