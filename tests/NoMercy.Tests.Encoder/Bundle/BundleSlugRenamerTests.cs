@@ -14,7 +14,6 @@ using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using NoMercy.Database;
-using NoMercy.Database.Models.Libraries;
 using NoMercy.Encoder.Bundle;
 using NoMercy.Storage;
 

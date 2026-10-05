@@ -26,7 +26,6 @@ using NoMercy.Database;
 using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.Movies;
 using NoMercy.Database.Models.Users;
-using NoMercy.Networking.Cast;
 using NoMercy.Networking.Discovery;
 using NoMercy.Networking.Http;
 using NoMercy.Networking.Messaging;

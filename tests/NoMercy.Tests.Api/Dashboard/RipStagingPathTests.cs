@@ -9,7 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.Api.Controllers.V1.Dashboard.Media;
 using NoMercy.OpticalMedia.Rip;
 using Xunit;
 

@@ -12,7 +12,6 @@
 using System.Globalization;
 using System.Text;
 using NoMercy.Encoder.Analysis;
-using NoMercy.Encoder.BuildingBlocks;
 using NoMercy.Encoder.Commands;
 using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.Execution;

@@ -9,7 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using FluentAssertions;
 using Moq;
 using NoMercy.Encoder.Analysis;
 using NoMercy.Encoder.Commands;
@@ -19,7 +18,6 @@ using NoMercy.Encoder.Progress;
 using NoMercy.Resources;
 using NoMercy.Storage;
 using NoMercy.Storage.Drivers.Local;
-using Xunit;
 
 namespace NoMercy.Tests.Encoder.PostProcess;
 

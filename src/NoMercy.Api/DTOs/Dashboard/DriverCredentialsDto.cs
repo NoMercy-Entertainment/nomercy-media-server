@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 
 namespace NoMercy.Api.DTOs.Dashboard;
 

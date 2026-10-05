@@ -9,7 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Text.RegularExpressions;
 using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -29,9 +28,6 @@ using NoMercy.MediaProcessing.Images;
 using NoMercy.MediaProcessing.Jobs;
 using NoMercy.MediaProcessing.Jobs.PaletteJobs;
 using NoMercy.NmSystem.Extensions;
-using NoMercy.NmSystem.Information;
-using NoMercy.Storage;
-using NoMercyQueue;
 
 namespace NoMercy.Api.Controllers.V1.Music;
 

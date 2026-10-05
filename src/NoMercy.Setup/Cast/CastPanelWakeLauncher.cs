@@ -11,7 +11,6 @@
 
 using Microsoft.Extensions.Logging;
 using NoMercy.Networking.Cast;
-using NoMercy.Setup.Cast;
 
 namespace NoMercy.Setup.Cast;
 

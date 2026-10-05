@@ -19,7 +19,6 @@ using NoMercy.Encoder.Strategies.Hls;
 using NoMercy.Storage.Drivers.Local;
 using NoMercy.Tests.Encoder.Storage;
 using Container = NoMercy.Encoder.Profiles.Container;
-using EncodingProfile = NoMercy.Encoder.Profiles.EncodingProfile;
 
 namespace NoMercy.Tests.Encoder.Strategies;
 

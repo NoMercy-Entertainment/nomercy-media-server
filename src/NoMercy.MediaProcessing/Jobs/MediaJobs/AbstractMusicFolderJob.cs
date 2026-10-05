@@ -16,7 +16,6 @@
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using NoMercy.Providers.AcoustId;
-using NoMercy.Queue.MediaServer;
 using NoMercy.Storage;
 using NoMercyQueue.Core.Interfaces;
 

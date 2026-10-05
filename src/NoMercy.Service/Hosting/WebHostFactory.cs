@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using System.Net;
-using Asp.Versioning;
 using Asp.Versioning.ApiExplorer;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using NoMercy.Networking.Certificate;

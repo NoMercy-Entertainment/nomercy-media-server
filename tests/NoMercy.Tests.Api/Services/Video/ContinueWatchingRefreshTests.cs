@@ -16,7 +16,6 @@ using NoMercy.Database.Models.Users;
 using NoMercy.Events;
 using NoMercy.Events.Library;
 using NoMercy.Networking.Messaging;
-using NoMercy.NmSystem.Domain;
 using Xunit;
 
 namespace NoMercy.Tests.Api.Services.Video;

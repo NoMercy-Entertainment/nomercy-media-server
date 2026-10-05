@@ -15,7 +15,6 @@ using NoMercy.Api.DTOs.Media;
 using NoMercy.Data.DTOs.Specials;
 using NoMercy.Database;
 using NoMercy.Database.Models.Common;
-using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.Movies;
 using NoMercy.Database.Models.People;
 using NoMercy.Database.Models.TvShows;

@@ -23,7 +23,6 @@ using NoMercy.Events.FileWatcher;
 using NoMercy.Events.Inbox;
 using NoMercy.MediaProcessing.EventHandlers;
 using NoMercy.MediaProcessing.Inbox;
-using NoMercy.MediaProcessing.Jobs;
 using NoMercy.MediaProcessing.Shows;
 using NoMercy.NmSystem.Domain;
 using NoMercy.Providers.Helpers;

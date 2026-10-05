@@ -10,11 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
-using NoMercy.Database;
-using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.TvShows;
-using NoMercy.Database.Models.Users;
-using NoMercy.NmSystem.Extensions;
 
 namespace NoMercy.Api.DTOs.Media;
 

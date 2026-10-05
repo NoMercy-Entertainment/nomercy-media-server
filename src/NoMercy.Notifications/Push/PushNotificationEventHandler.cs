@@ -16,7 +16,6 @@ using NoMercy.Events.Library;
 using NoMercy.Events.Media;
 using NoMercy.Events.Plugins;
 using NoMercy.NmSystem.Auth;
-using NoMercy.Notifications.Push;
 
 namespace NoMercy.Notifications.Push;
 

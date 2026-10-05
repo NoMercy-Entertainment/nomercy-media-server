@@ -11,7 +11,6 @@
 
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
-using NoMercy.Api.DTOs.Media;
 using NoMercy.Api.Services.Video;
 using NoMercy.Database.Models.Users;
 using NoMercy.Networking.Messaging;

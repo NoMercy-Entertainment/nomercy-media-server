@@ -9,9 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using FluentAssertions;
 using NoMercy.Providers.AniList;
-using Xunit;
 
 namespace NoMercy.Tests.Providers.AniList;
 

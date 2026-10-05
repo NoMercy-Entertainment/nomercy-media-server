@@ -14,7 +14,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Moq;
 using Newtonsoft.Json;
 using NoMercy.Api.Middleware;
 using NoMercy.Database;

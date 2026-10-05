@@ -12,7 +12,6 @@
 using Microsoft.Extensions.Logging;
 using NoMercy.Events;
 using NoMercy.Events.Playback;
-using NoMercy.Networking.Messaging;
 
 namespace NoMercy.Networking.Messaging.EventHandlers;
 

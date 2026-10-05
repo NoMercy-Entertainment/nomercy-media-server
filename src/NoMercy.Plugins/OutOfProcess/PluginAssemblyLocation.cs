@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.PluginSdk.Abstractions;
-using NoMercy.PluginSdk.Capabilities;
 
 namespace NoMercy.PluginSdk.OutOfProcess;
 

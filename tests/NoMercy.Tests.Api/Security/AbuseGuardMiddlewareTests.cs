@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using System.Net;
-using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using Moq;

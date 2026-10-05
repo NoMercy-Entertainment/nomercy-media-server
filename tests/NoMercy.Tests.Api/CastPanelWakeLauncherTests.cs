@@ -11,7 +11,6 @@
 
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using NoMercy.Api.Services.Music;
 using NoMercy.Networking.Cast;
 using NoMercy.Setup.Cast;
 using Xunit;

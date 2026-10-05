@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.Database.Music;
-using Xunit;
 
 namespace NoMercy.Tests.Database.Music;
 

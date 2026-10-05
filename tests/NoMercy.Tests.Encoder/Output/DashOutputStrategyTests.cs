@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using System.Text;
-using NoMercy.Encoder.Analysis;
 using NoMercy.Encoder.Codecs;
 using NoMercy.Encoder.Commands;
 using NoMercy.Encoder.Output;

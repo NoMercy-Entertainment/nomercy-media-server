@@ -19,7 +19,6 @@ using NoMercy.Encoder.Infrastructure;
 using NoMercy.Encoder.LiveTranscode;
 using NoMercy.Storage;
 using NoMercy.Tests.Encoder.Storage;
-using Xunit;
 
 namespace NoMercy.Tests.Encoder.LiveTranscode;
 

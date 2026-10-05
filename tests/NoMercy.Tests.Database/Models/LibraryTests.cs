@@ -11,7 +11,6 @@
 
 using FluentAssertions;
 using NoMercy.Database.Models.Libraries;
-using Xunit;
 
 namespace NoMercy.Tests.Database.Models;
 

@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.Encoder.Errors;
-using NoMercy.Encoder.Output;
 using NoMercy.Encoder.Pipeline;
 
 namespace NoMercy.Tests.Encoder.Orchestration;

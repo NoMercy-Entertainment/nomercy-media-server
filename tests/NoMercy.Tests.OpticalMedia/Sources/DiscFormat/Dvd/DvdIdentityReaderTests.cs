@@ -12,7 +12,6 @@
 using System.Text;
 using NoMercy.DiscFormat.Abstractions.Disc;
 using NoMercy.DiscFormat.Dvd.Identity;
-using Xunit;
 
 namespace NoMercy.DiscFormat.Tests.Dvd;
 

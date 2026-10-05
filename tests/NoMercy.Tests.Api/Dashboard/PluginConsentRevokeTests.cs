@@ -9,7 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Moq;
 using NoMercy.Api.Controllers.V1.Dashboard.Plugins;

@@ -9,8 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using Newtonsoft.Json;
-
 namespace NoMercy.Api.DTOs.Media.Components;
 
 /// <summary>

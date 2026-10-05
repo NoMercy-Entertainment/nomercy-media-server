@@ -12,7 +12,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Access;
 using NoMercy.PluginSdk.Capabilities;
 using NoMercy.PluginSdk.Telemetry;

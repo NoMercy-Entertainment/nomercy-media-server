@@ -10,12 +10,10 @@
 // -----------------------------------------------------------------------------
 
 using System.Collections.Concurrent;
-using System.Text.RegularExpressions;
 using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
@@ -23,7 +21,6 @@ using NoMercy.Api.DTOs.Common;
 using NoMercy.Api.DTOs.Dashboard;
 using NoMercy.Authorization;
 using NoMercy.Data.Repositories;
-using NoMercy.Database;
 using NoMercy.Database.Activity;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.Users;
@@ -50,7 +47,6 @@ using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 using SixLabors.ImageSharp.Processing;
 using SixLabors.ImageSharp.Processing.Processors.Quantization;
-using Configuration = NoMercy.Database.Models.Common.Configuration;
 using HttpClient = System.Net.Http.HttpClient;
 using IJobDispatcher = NoMercy.MediaProcessing.Jobs.IJobDispatcher;
 using Image = NoMercy.Database.Models.Media.Image;

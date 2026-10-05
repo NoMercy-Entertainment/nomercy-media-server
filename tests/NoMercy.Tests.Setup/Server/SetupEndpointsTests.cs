@@ -16,8 +16,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Primitives;
-using Moq;
 using Newtonsoft.Json;
 using NoMercy.Database;
 using NoMercy.Networking.Certificate;

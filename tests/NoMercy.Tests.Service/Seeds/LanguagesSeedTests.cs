@@ -12,9 +12,7 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Database;
-using NoMercy.Database.Models.Libraries;
 using NoMercy.Service.Seeds;
-using Xunit;
 
 namespace NoMercy.Tests.Service.Seeds;
 

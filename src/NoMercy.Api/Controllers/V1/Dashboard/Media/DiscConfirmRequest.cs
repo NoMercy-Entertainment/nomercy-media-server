@@ -9,33 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using Asp.Versioning;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using NoMercy.Authorization;
-using NoMercy.Database;
-using NoMercy.Database.Models.Libraries;
-using NoMercy.DiscFormat.Abstractions.Disc;
-using NoMercy.DiscFormat.Composition;
-using NoMercy.DiscFormat.Disc.Bdmv;
-using NoMercy.Encoder.Analysis;
-using NoMercy.Encoder.LiveTranscode;
-using NoMercy.Events;
-using NoMercy.Events.FileWatcher;
-using NoMercy.MediaProcessing.Libraries;
-using NoMercy.NmSystem.Dto;
-using NoMercy.NmSystem.Information;
-using NoMercy.NmSystem.SystemCalls;
-using NoMercy.OpticalMedia.Drives;
-using NoMercy.OpticalMedia.Live;
-using NoMercy.OpticalMedia.Metadata;
-using NoMercy.OpticalMedia.Rip;
-using NoMercy.OpticalMedia.Sources;
-using NoMercy.Storage;
-using NoMercyQueue;
-
 namespace NoMercy.Api.Controllers.V1.Dashboard.Media;
 
 public record DiscConfirmRequest(

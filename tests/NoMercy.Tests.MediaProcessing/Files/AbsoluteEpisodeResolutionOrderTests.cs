@@ -9,13 +9,11 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 using System.Net;
-using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using MovieFileLibrary;
 using NoMercy.Database;
-using NoMercy.Database.Models.TvShows;
 using NoMercy.MediaProcessing.Files;
 using NoMercy.NmSystem.Domain;
 using NoMercy.Providers.Helpers;

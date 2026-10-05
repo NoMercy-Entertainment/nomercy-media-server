@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.Extensions.Hosting;
-using NoMercy.Notifications.Push;
 
 namespace NoMercy.Notifications.Push;
 

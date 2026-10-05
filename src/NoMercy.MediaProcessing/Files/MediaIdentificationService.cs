@@ -16,8 +16,6 @@ using MovieFileLibrary;
 using NoMercy.Database;
 using NoMercy.Database.Models.Movies;
 using NoMercy.Database.Models.TvShows;
-using NoMercy.Events;
-using NoMercy.Events.Media;
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
 using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Extensions;

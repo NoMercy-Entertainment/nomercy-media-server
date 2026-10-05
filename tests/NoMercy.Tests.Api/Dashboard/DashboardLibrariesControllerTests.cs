@@ -9,15 +9,11 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Linq;
 using System.Net;
 using System.Text;
 using System.Text.Json;
-using FluentAssertions;
 using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
-using NoMercy.Database.Models.Media;
-using NoMercy.Database.Models.Queue;
 using NoMercy.Database.Models.Storage;
 using NoMercy.Tests.Api.Infrastructure;
 using Xunit;

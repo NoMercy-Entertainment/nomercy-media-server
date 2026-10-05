@@ -9,7 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using FluentAssertions;
 using NoMercy.NmSystem.NewtonSoftConverters;
 using NoMercy.Providers.AcoustId.Client;
 using NoMercy.Providers.AcoustId.Models;

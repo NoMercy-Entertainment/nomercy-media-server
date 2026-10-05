@@ -17,7 +17,6 @@ using NoMercy.Data.Jobs;
 using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.Music;
-using NoMercy.Database.Music;
 using NoMercy.Events;
 using NoMercy.Events.Library;
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
@@ -31,7 +30,6 @@ using NoMercy.Providers.AcoustId.Client;
 using NoMercy.Providers.AcoustId.Models;
 using NoMercy.Providers.MusicBrainz.Client;
 using NoMercy.Providers.MusicBrainz.Models;
-using NoMercy.Queue.MediaServer;
 using NoMercy.Storage;
 using NoMercyQueue;
 

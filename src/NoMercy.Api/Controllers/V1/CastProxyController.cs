@@ -12,11 +12,9 @@
 using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NoMercy.Authorization;
 using NoMercy.Data.Repositories;
-using NoMercy.Database;
 using NoMercy.Database.Models.Users;
 
 namespace NoMercy.Api.Controllers.V1;

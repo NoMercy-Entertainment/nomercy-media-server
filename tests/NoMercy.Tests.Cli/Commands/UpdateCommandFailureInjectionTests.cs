@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using System.CommandLine;
-using FluentAssertions;
 using NoMercy.Cli;
 using NoMercy.Cli.Commands;
 using NoMercy.NmSystem.Information;

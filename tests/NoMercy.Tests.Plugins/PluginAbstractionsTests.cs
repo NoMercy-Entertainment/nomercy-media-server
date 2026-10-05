@@ -13,7 +13,6 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Events;
-using NoMercy.Events.Playback;
 using NoMercy.Events.Plugins;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;

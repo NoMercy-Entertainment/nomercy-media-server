@@ -16,7 +16,6 @@ using Moq;
 using NoMercy.Data.Repositories;
 using NoMercy.Database;
 using NoMercy.Database.Models.Users;
-using Xunit;
 
 namespace NoMercy.Tests.Repositories;
 

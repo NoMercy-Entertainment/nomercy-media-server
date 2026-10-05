@@ -13,7 +13,6 @@ using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Newtonsoft.Json;
 using NoMercy.Encoder.Codecs;
 using NoMercy.Encoder.Execution;
 using NoMercy.Encoder.Hardware;

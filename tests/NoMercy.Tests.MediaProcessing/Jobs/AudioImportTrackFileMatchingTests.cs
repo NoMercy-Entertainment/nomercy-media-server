@@ -13,7 +13,6 @@ using NoMercy.MediaProcessing.Jobs.Dto;
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
 using NoMercy.NmSystem.Dto;
 using NoMercy.Providers.MusicBrainz.Models;
-using Xunit;
 
 namespace NoMercy.Tests.MediaProcessing.Jobs;
 

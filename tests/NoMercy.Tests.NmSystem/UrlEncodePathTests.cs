@@ -9,8 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.NmSystem.Extensions;
-
 namespace NoMercy.Tests.NmSystem;
 
 [Trait("Category", "Unit")]
