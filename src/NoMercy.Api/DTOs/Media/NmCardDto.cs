@@ -18,7 +18,6 @@ using NoMercy.Database.Models.TvShows;
 using NoMercy.Database.Models.Users;
 using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Extensions;
-using NoMercy.NmSystem.Information;
 using NoMercy.Providers.TMDB.Models.Movies;
 
 namespace NoMercy.Api.DTOs.Media;
@@ -144,7 +143,7 @@ public class NmCardDto
         string? overview = collection.Translations.FirstOrDefault()?.Overview;
 
         Id = collection.Id;
-        Title = title.OrWhenEmpty(collection.Title);
+        Title = CollectionTitleFormatter.StripCollectionSuffix(title.OrWhenEmpty(collection.Title));
         Overview = overview.OrWhenEmpty(collection.Overview);
         Poster = collection.Poster;
         Backdrop = collection.Backdrop;
@@ -289,7 +288,9 @@ public class NmCardDto
     public NmCardDto(CollectionListDto dto)
     {
         Id = dto.Id;
-        Title = !string.IsNullOrEmpty(dto.TranslatedTitle) ? dto.TranslatedTitle : dto.Title;
+        Title = CollectionTitleFormatter.StripCollectionSuffix(
+            !string.IsNullOrEmpty(dto.TranslatedTitle) ? dto.TranslatedTitle : dto.Title
+        );
         Overview = !string.IsNullOrEmpty(dto.TranslatedOverview)
             ? dto.TranslatedOverview
             : dto.Overview;
@@ -413,7 +414,7 @@ public class NmCardDto
             ColorPalette = item.Collection.ColorPalette;
             Poster = item.Collection.Poster;
             Backdrop = item.Collection.Backdrop;
-            Title = item.Collection.Title;
+            Title = CollectionTitleFormatter.StripCollectionSuffix(item.Collection.Title);
             TitleSort = item.Collection.Title.TitleSort();
             Overview = item.Collection.Overview;
             Logo = item.Collection.Images.FirstOrDefault(i => i.Type == "logo")?.FilePath;
