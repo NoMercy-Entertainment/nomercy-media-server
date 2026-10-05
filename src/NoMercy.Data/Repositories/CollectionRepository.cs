@@ -58,7 +58,11 @@ public class CollectionRepository(IDbContextFactory<MediaContext> contextFactory
                     cm.Movie.VideoFiles.Any(v => v.Folder != null)
                 )
             )
-            .Include(collection => collection.Translations.Where(t => t.Iso6391 == language))
+            .Include(collection =>
+                collection
+                    .Translations.Where(t => t.Iso6391 == language || t.Iso6391 == "en")
+                    .OrderBy(t => t.Iso6391 == language ? 0 : 1)
+            )
             .Include(collection =>
                 collection
                     .Images.Where(i => i.Type == "logo")
@@ -116,7 +120,9 @@ public class CollectionRepository(IDbContextFactory<MediaContext> contextFactory
                 TranslatedTitle =
                     collection.Translations.FirstOrDefault(t => t.Iso6391 == language) != null
                         ? collection.Translations.First(t => t.Iso6391 == language).Title
-                        : null,
+                    : collection.Translations.FirstOrDefault(t => t.Iso6391 == "en") != null
+                        ? collection.Translations.First(t => t.Iso6391 == "en").Title
+                    : null,
                 TranslatedOverview =
                     collection.Translations.FirstOrDefault(t => t.Iso6391 == language) != null
                         ? collection.Translations.First(t => t.Iso6391 == language).Overview
@@ -329,7 +335,9 @@ public class CollectionRepository(IDbContextFactory<MediaContext> contextFactory
                 TranslatedTitle =
                     collection.Translations.FirstOrDefault(t => t.Iso6391 == language) != null
                         ? collection.Translations.First(t => t.Iso6391 == language).Title
-                        : null,
+                    : collection.Translations.FirstOrDefault(t => t.Iso6391 == "en") != null
+                        ? collection.Translations.First(t => t.Iso6391 == "en").Title
+                    : null,
                 TranslatedOverview =
                     collection.Translations.FirstOrDefault(t => t.Iso6391 == language) != null
                         ? collection.Translations.First(t => t.Iso6391 == language).Overview
@@ -391,7 +399,11 @@ public class CollectionRepository(IDbContextFactory<MediaContext> contextFactory
                 )
             )
             .Include(collection => collection.CollectionUser.Where(x => x.UserId == userId))
-            .Include(collection => collection.Translations.Where(t => t.Iso6391 == language))
+            .Include(collection =>
+                collection
+                    .Translations.Where(t => t.Iso6391 == language || t.Iso6391 == "en")
+                    .OrderBy(t => t.Iso6391 == language ? 0 : 1)
+            )
             .Include(collection =>
                 collection
                     .Images.Where(i => i.Type == "logo")
@@ -473,7 +485,11 @@ public class CollectionRepository(IDbContextFactory<MediaContext> contextFactory
             .AsSplitQuery()
             .Where(collection => collection.Id == id)
             .ForUser(userId)
-            .Include(collection => collection.Translations.Where(t => t.Iso6391 == language))
+            .Include(collection =>
+                collection
+                    .Translations.Where(t => t.Iso6391 == language || t.Iso6391 == "en")
+                    .OrderBy(t => t.Iso6391 == language ? 0 : 1)
+            )
             .Include(collection =>
                 collection
                     .Images.Where(i => i.Type == "logo")
@@ -481,10 +497,18 @@ public class CollectionRepository(IDbContextFactory<MediaContext> contextFactory
                     .ThenBy(i => i.Id)
                     .Take(1)
             )
-            .Include(collection => collection.CollectionMovies)
+            .Include(collection =>
+                collection
+                    .CollectionMovies.OrderBy(cm => cm.Movie.ReleaseDate)
+                    .ThenBy(cm => cm.MovieId)
+            )
                 .ThenInclude(cm => cm.Movie)
                     .ThenInclude(m => m.Translations.Where(t => t.Iso6391 == language))
-            .Include(collection => collection.CollectionMovies)
+            .Include(collection =>
+                collection
+                    .CollectionMovies.OrderBy(cm => cm.Movie.ReleaseDate)
+                    .ThenBy(cm => cm.MovieId)
+            )
                 .ThenInclude(cm => cm.Movie)
                     .ThenInclude(m =>
                         m.Images.Where(i => i.Type == "logo")
@@ -492,20 +516,36 @@ public class CollectionRepository(IDbContextFactory<MediaContext> contextFactory
                             .ThenBy(i => i.Id)
                             .Take(1)
                     )
-            .Include(collection => collection.CollectionMovies)
+            .Include(collection =>
+                collection
+                    .CollectionMovies.OrderBy(cm => cm.Movie.ReleaseDate)
+                    .ThenBy(cm => cm.MovieId)
+            )
                 .ThenInclude(cm => cm.Movie)
                     .ThenInclude(m => m.Media.Where(media => media.Type == "video"))
-            .Include(collection => collection.CollectionMovies)
+            .Include(collection =>
+                collection
+                    .CollectionMovies.OrderBy(cm => cm.Movie.ReleaseDate)
+                    .ThenBy(cm => cm.MovieId)
+            )
                 .ThenInclude(cm => cm.Movie)
                     .ThenInclude(m => m.VideoFiles.Where(v => v.Folder != null))
                         .ThenInclude(v => v.Metadata)
-            .Include(collection => collection.CollectionMovies)
+            .Include(collection =>
+                collection
+                    .CollectionMovies.OrderBy(cm => cm.Movie.ReleaseDate)
+                    .ThenBy(cm => cm.MovieId)
+            )
                 .ThenInclude(cm => cm.Movie)
                     .ThenInclude(m => m.VideoFiles.Where(v => v.Folder != null))
                         .ThenInclude(v =>
                             v.UserData.Where(ud => ud.UserId == userId && ud.Type == "collection")
                         )
-            .Include(collection => collection.CollectionMovies)
+            .Include(collection =>
+                collection
+                    .CollectionMovies.OrderBy(cm => cm.Movie.ReleaseDate)
+                    .ThenBy(cm => cm.MovieId)
+            )
                 .ThenInclude(cm => cm.Movie)
                     .ThenInclude(m =>
                         m.CertificationMovies.Where(cert =>
