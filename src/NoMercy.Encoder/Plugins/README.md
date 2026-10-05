@@ -1,10 +1,14 @@
 # Encoder Building-Block Plugins
 
 The NoMercy encoder exposes a set of swappable building-block interfaces.
-Any host application or plugin assembly can replace the default implementation
-by registering a new binding **after** calling `AddNoMercyEncoder()`.
-Microsoft's DI container returns the last registration for
-`GetRequiredService<T>`, so no special hook or decorator is required.
+The host application can replace the default implementation by registering a
+new binding **after** calling `AddNoMercyEncoder()`. Microsoft's DI container
+returns the last registration for `GetRequiredService<T>`, so no special hook
+or decorator is required.
+
+A plugin never writes into the server's container — `IPluginServiceRegistrator`
+registers into the plugin's own, isolated one, not this one. A plugin-facing
+way to replace a building block would be an SDK capability; none exists yet.
 
 ## Replaceable building blocks
 
@@ -22,16 +26,11 @@ Microsoft's DI container returns the last registration for
 ## Registering a replacement
 
 ```csharp
-// In your plugin's IPluginServiceRegistrator.RegisterServices():
-public void RegisterServices(IServiceCollection services)
-{
-    // Override the default FontExtractor with your own implementation.
-    services.AddTransient<IFontExtractor, MyCustomFontExtractor>();
-}
-```
+services.AddNoMercyEncoder(...);
 
-Call `services.RegisterPluginServices(pluginManager)` after
-`services.AddNoMercyEncoder(...)` so plugin registrations land last and win.
+// Override the default FontExtractor with your own implementation.
+services.AddTransient<IFontExtractor, MyCustomFontExtractor>();
+```
 
 ## Lifetime rules
 

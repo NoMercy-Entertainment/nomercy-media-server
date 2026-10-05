@@ -39,6 +39,9 @@ namespace NoMercy.Setup.Server;
 /// </summary>
 public class SetupEndpoints
 {
+    private const string BrowserLoginNotAllowedMessage =
+        "Browser login is not available on this address. Sign in with the device code shown on the setup page.";
+
     private readonly SetupState _state;
     private readonly AuthManager _authManager;
     private readonly SetupTerminalUi? _terminalUi;
@@ -205,6 +208,7 @@ public class SetupEndpoints
             code_challenge = codeChallenge,
             pkce_state = pkceState,
             is_first_boot = !Start.Certificate!.HasValidCertificate(),
+            browser_login_allowed = TrustedSetupHost.IsTrusted(context.Request.Host),
         };
 
         await WriteJsonResponse(context.Response, response);
@@ -374,6 +378,16 @@ public class SetupEndpoints
             return;
         }
 
+        if (!TrustedSetupHost.IsTrusted(context.Request.Host))
+        {
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            await WriteJsonResponse(
+                context.Response,
+                new { status = "error", message = BrowserLoginNotAllowedMessage }
+            );
+            return;
+        }
+
         string redirectUri =
             $"{context.Request.Scheme}://{context.Request.Host.Value}/setup/silent-sso";
 
@@ -508,6 +522,17 @@ public class SetupEndpoints
                 new { status = "error", message = "Invalid state parameter" }
             );
             _state.SetError("Invalid state parameter during PKCE callback.");
+            return;
+        }
+
+        if (!TrustedSetupHost.IsTrusted(context.Request.Host))
+        {
+            context.Response.StatusCode = StatusCodes.Status400BadRequest;
+            context.Response.ContentType = "application/json";
+            await WriteJsonResponse(
+                context.Response,
+                new { status = "error", message = BrowserLoginNotAllowedMessage }
+            );
             return;
         }
 

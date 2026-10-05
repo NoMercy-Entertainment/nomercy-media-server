@@ -3,6 +3,12 @@
     <TargetFramework>net10.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <!--
+      The test project lives under this one. Without this line the plugin
+      compiles tests/**/*.cs into itself and fails on xunit, which it does not
+      reference. The test project references this one, not the other way round.
+    -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);tests/**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>

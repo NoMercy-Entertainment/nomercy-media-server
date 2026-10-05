@@ -144,7 +144,7 @@ public partial class MediaIdentificationService(
         bool showIsInLibrary = await ctx.Tvs.AsNoTracking().AnyAsync(item => item.Id == show.Id);
 
         if (!showIsInLibrary)
-            return null;
+            return await ResolveEpisodeOfUnheldShowAsync(show, parsed, seasonExplicit, duration);
 
         // Daily/dated episode (yyyy.mm.dd): map the air date to the episode that
         // aired that day, then fall through to the normal season/episode resolution.
@@ -400,6 +400,50 @@ public partial class MediaIdentificationService(
         };
 
         return (match, episode.ImdbId);
+    }
+
+    /// <summary>
+    /// Names the episode a file is for a show the server does not hold yet, which is
+    /// what the Add content dialog lists before the owner has added anything. It asks
+    /// TMDB for the one episode and writes nothing: no show, season or episode row.
+    /// Only a file that states its own season and episode is answered; a dated or
+    /// flat-numbered name needs the show's local episode rows to be read correctly,
+    /// and stays unmatched until the show is added.
+    /// </summary>
+    private static async Task<(
+        MovieOrEpisode match,
+        string? imdbId
+    )?> ResolveEpisodeOfUnheldShowAsync(
+        TmdbTvShow show,
+        MovieFile parsed,
+        bool seasonExplicit,
+        TimeSpan? duration
+    )
+    {
+        if (!seasonExplicit || !parsed.Season.HasValue || !parsed.Episode.HasValue)
+            return null;
+
+        TmdbEpisodeClient episodeClient = new(show.Id, parsed.Season.Value, parsed.Episode.Value);
+        TmdbEpisodeDetails? details = await episodeClient.Details(true);
+        if (details == null)
+            return null;
+
+        if (EmbeddedTitleContradicts(ExtractEmbeddedEpisodeTitle(parsed.Path), details.Name))
+            return null;
+
+        MovieOrEpisode match = new()
+        {
+            Id = details.Id,
+            Title = details.Name.OrEmpty(),
+            ShowName = show.Name,
+            EpisodeNumber = details.EpisodeNumber,
+            SeasonNumber = details.SeasonNumber,
+            Still = details.StillPath,
+            Duration = duration,
+            Overview = details.Overview,
+        };
+
+        return (match, null);
     }
 
     /// <summary>
@@ -926,8 +970,24 @@ public partial class MediaIdentificationService(
             .TrimStart('.', ' ', '-', '_')
             .Trim();
 
+        // A scene release has no episode title: what follows the marker is the
+        // release block, "1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb". Compared against a
+        // real title it overlaps nothing, which ruled out every correct episode.
+        // The title ends where the release vocabulary begins.
+        Match releaseBlock = ReleaseBlockStart().Match(tail);
+        if (releaseBlock.Success)
+            tail = tail[..releaseBlock.Index].TrimEnd('.', ' ', '-', '_');
+
         return string.IsNullOrWhiteSpace(tail) ? null : tail;
     }
+
+    [GeneratedRegex(
+        @"(?<![A-Za-z0-9])(?:[0-9]{3,4}[pi]|[0-9]{3,4}x[0-9]{3,4}|web[\s._-]?(?:dl|rip)|webrip|hdtv|"
+            + @"blu-?ray|bdrip|dvdrip|amzn|nf|dsnp|hmax|atvp|hulu|pcok|x26[45]|h[\s.]?26[45]|hevc|"
+            + @"repack|proper|internal)(?![A-Za-z0-9])",
+        RegexOptions.IgnoreCase
+    )]
+    private static partial Regex ReleaseBlockStart();
 
     /// <summary>
     /// Whether an embedded episode title rules out a number-based match, by token-overlap

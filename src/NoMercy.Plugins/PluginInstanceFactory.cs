@@ -63,21 +63,44 @@ internal static class PluginInstanceFactory
 
         AddHostFallback(own, host);
 
-        return new(own.BuildServiceProvider(), host);
+        return new(own.BuildServiceProvider());
     }
 
     /// <summary>
-    /// Every service type the host offers, answered by asking the host for it.
+    /// The only types a service-registering plugin's own container may pull
+    /// from the host. Every capability a plugin uses goes through
+    /// <see cref="IPluginContext"/>, where the broker checks it against that
+    /// plugin's grants; a type belongs here only when it has no such check to
+    /// bypass. <see cref="IPluginCallerAccessor"/> qualifies because it is a
+    /// read-only view of who is asking, not an action on anyone.
     /// <para>
-    /// A factory rather than a copy of the registration: a plugin resolving the
-    /// event bus must get the server's one, not a second one nobody publishes
-    /// to. Only what the plugin did not register itself, so a plugin may still
-    /// replace a facade for its own use without replacing it for the server.
+    /// Being declared in the SDK does not make a type safe to hand out:
+    /// <c>IPluginManager</c> is SDK-declared and checks no caller before it
+    /// installs or removes a plugin. Adding a type here is a security decision.
+    /// </para>
+    /// </summary>
+    private static readonly HashSet<Type> ForwardedToPlugins = [typeof(IPluginCallerAccessor)];
+
+    /// <summary>
+    /// Every service type in <see cref="ForwardedToPlugins"/>, answered by
+    /// asking the host for it.
+    /// <para>
+    /// A factory rather than a copy of the registration: a plugin resolving a
+    /// forwarded type must get the server's one, not a second one nobody
+    /// publishes to. Only what the plugin did not register itself, so a
+    /// plugin may still replace one for its own use without replacing it for
+    /// the server.
     /// </para>
     /// <para>
-    /// Open generics are the exception. There is no closed type to ask the host
-    /// for, so the registration is copied instead: <c>ILogger&lt;T&gt;</c> and
-    /// the options types, which cost nothing to have twice.
+    /// No open generic is forwarded: <c>IOptions&lt;T&gt;</c> closing over a
+    /// host options type would hand a plugin the server's own configuration,
+    /// and there is no closed type on an open generic to list here anyway.
+    /// </para>
+    /// <para>
+    /// A plugin's own service that needs <c>ILogger&lt;T&gt;</c> gets nothing
+    /// from here: <see cref="IPluginContext.Logger"/> is the sanctioned route,
+    /// and a constructor asking for the Microsoft type instead fails with a
+    /// clear DI error rather than reaching the host's factory.
     /// </para>
     /// </summary>
     private static void AddHostFallback(IServiceCollection own, IServiceProvider host)
@@ -97,11 +120,8 @@ internal static class PluginInstanceFactory
             if (!taken.Add(descriptor.ServiceType))
                 continue;
 
-            if (descriptor.ServiceType.IsGenericTypeDefinition)
-            {
-                own.Add(descriptor);
+            if (!ForwardedToPlugins.Contains(descriptor.ServiceType))
                 continue;
-            }
 
             Type serviceType = descriptor.ServiceType;
             own.AddSingleton(serviceType, _ => host.GetRequiredService(serviceType));

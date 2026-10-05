@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using System.Reflection;
+using System.Text.Json;
 using Microsoft.AspNetCore.SignalR;
 using NoMercy.Api.Hubs;
 using NoMercy.Networking;
@@ -261,5 +262,44 @@ public class HubContractSnapshotTests
             .ToArray();
 
         Assert.Equal(expectedHubTypeNames, actualHubTypeNames);
+    }
+
+    [Fact]
+    public async Task SignalRContracts_MatchCommittedSnapshot()
+    {
+        Type[] hubTypes = typeof(CastHub)
+            .Assembly.GetTypes()
+            .Where(t => t is { IsClass: true, IsPublic: true, IsAbstract: false })
+            .Where(t => typeof(ConnectionHub).IsAssignableFrom(t))
+            .OrderBy(t => t.Name, StringComparer.Ordinal)
+            .ToArray();
+
+        SortedDictionary<string, string[]> contracts = new(StringComparer.Ordinal);
+        foreach (Type hubType in hubTypes)
+            contracts.Add(hubType.Name, ActualHubMethods(hubType));
+
+        string json =
+            JsonSerializer.Serialize(
+                new { hubs = contracts },
+                // LF like the committed file; the default is the OS newline, which fails on Windows.
+                new JsonSerializerOptions { WriteIndented = true, NewLine = "\n" }
+            ) + "\n";
+
+        DirectoryInfo? directory = new(AppContext.BaseDirectory);
+        while (
+            directory is not null
+            && !File.Exists(Path.Combine(directory.FullName, "NoMercy.Server.sln"))
+        )
+            directory = directory.Parent;
+
+        Assert.NotNull(directory);
+        string path = Path.Combine(directory.FullName, "signalr-contracts.json");
+        if (Environment.GetEnvironmentVariable("NOMERCY_UPDATE_SIGNALR_CONTRACTS") == "1")
+        {
+            await File.WriteAllTextAsync(path, json);
+            return;
+        }
+
+        Assert.Equal(await File.ReadAllTextAsync(path), json);
     }
 }

@@ -127,12 +127,14 @@ public sealed class SetupEndpointsTests : IDisposable
         string path,
         string? body = null,
         string? queryString = null,
-        string? accept = null
+        string? accept = null,
+        string host = "localhost:7626"
     )
     {
         DefaultHttpContext context = new();
         context.Request.Method = method;
         context.Request.Path = path;
+        context.Request.Host = HostString.FromUriComponent(host);
         if (queryString is not null)
             context.Request.QueryString = new(queryString);
         if (accept is not null)
@@ -274,6 +276,29 @@ public sealed class SetupEndpointsTests : IDisposable
         Assert.Contains("code_challenge", body);
         Assert.Contains("pkce_state", body);
         Assert.Contains("Unauthenticated", body);
+    }
+
+    [Theory]
+    [InlineData("localhost:7626", true)]
+    [InlineData("127.0.0.1:7626", true)]
+    [InlineData("abc123.nomercy.tv:7626", true)]
+    [InlineData("192.0.2.10:7626", false)]
+    [InlineData("nas:7626", false)]
+    public async Task HandleSetupConfig_TellsThePageWhetherBrowserLoginIsAllowedOnItsHost(
+        string host,
+        bool expected
+    )
+    {
+        SetupEndpoints endpoints = BuildEndpoints();
+        DefaultHttpContext context = BuildContext("GET", "/setup/config", host: host);
+
+        await endpoints.HandleRequestAsync(context);
+
+        Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
+        Assert.Contains(
+            $"\"browser_login_allowed\": {expected.ToString().ToLowerInvariant()}",
+            ReadBody(context)
+        );
     }
 
     [Fact]
@@ -449,6 +474,35 @@ public sealed class SetupEndpointsTests : IDisposable
 
         Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
         Assert.Contains("Invalid state parameter", ReadBody(context));
+    }
+
+    [Fact]
+    public async Task HandleExchange_UntrustedHost_Returns400WithoutCallingKeycloak()
+    {
+        using LoopbackHttpServer server = new();
+        int keycloakCalls = 0;
+        server.Handler = _ =>
+        {
+            keycloakCalls++;
+            return new(200, AuthResponseJson(CreateJwt()));
+        };
+        using ExternalServicesConfigScope scope = new(authBaseUrl: server.BaseUrl);
+
+        SetupEndpoints endpoints = BuildEndpoints();
+        string body = JsonConvert.SerializeObject(new { code = "abc" });
+        DefaultHttpContext context = BuildContext(
+            "POST",
+            "/setup/exchange",
+            body: body,
+            host: "192.0.2.10:7626"
+        );
+
+        await endpoints.HandleRequestAsync(context);
+
+        Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
+        Assert.Contains("device code", ReadBody(context));
+        Assert.Equal(0, keycloakCalls);
+        Assert.Equal(SetupPhase.Unauthenticated, _setupState.CurrentPhase);
     }
 
     [Fact]
@@ -750,6 +804,34 @@ public sealed class SetupEndpointsTests : IDisposable
 
         Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
         Assert.Contains("Authentication Failed", ReadBody(context));
+        Assert.Equal(SetupPhase.Unauthenticated, _setupState.CurrentPhase);
+    }
+
+    [Fact]
+    public async Task HandleSsoCallback_UntrustedHost_RefusesWithoutCallingKeycloak()
+    {
+        using LoopbackHttpServer server = new();
+        int keycloakCalls = 0;
+        server.Handler = _ =>
+        {
+            keycloakCalls++;
+            return new(200, AuthResponseJson(CreateJwt()));
+        };
+        using ExternalServicesConfigScope scope = new(authBaseUrl: server.BaseUrl);
+
+        SetupEndpoints endpoints = BuildEndpoints();
+        DefaultHttpContext context = BuildContext(
+            "GET",
+            "/sso-callback",
+            queryString: "?code=abc",
+            host: "nas:7626"
+        );
+
+        await endpoints.HandleRequestAsync(context);
+
+        Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
+        Assert.Contains("device code", ReadBody(context));
+        Assert.Equal(0, keycloakCalls);
         Assert.Equal(SetupPhase.Unauthenticated, _setupState.CurrentPhase);
     }
 

@@ -160,6 +160,15 @@ internal sealed class PluginLoader(
             );
 
     /// <summary>
+    /// The files a plugin's load context may load: every file of the shadow
+    /// copy, subfolders included, because native code sits under
+    /// runtimes/&lt;rid&gt;/native and is not a .dll off Windows. The scan and
+    /// the hash check narrow this later.
+    /// </summary>
+    internal static string[] AllowedFiles(string shadowDir) =>
+        Directory.GetFiles(shadowDir, "*", SearchOption.AllDirectories);
+
+    /// <summary>
     /// Whether the plugin's own assembly carries an
     /// <see cref="IPluginServiceRegistrator"/>. Only that assembly is examined,
     /// so a plugin is not judged by what its dependencies happen to contain.
@@ -280,9 +289,10 @@ internal sealed class PluginLoader(
             // code is already here, and unloading it is the thing a separate
             // process exists to avoid.
             //
-            // A null answer is an install that cannot do it yet, and the
-            // plugin loads here rather than not at all. The dashboard is what
-            // tells the owner the choice is not being honored.
+            // A null answer is a refusal, never a fallback: the owner chose a
+            // process boundary, and loading the assembly here is the one thing
+            // that choice forbids. The plugin is held as malfunctioned with the
+            // reason so the dashboard can say what to do.
             if (_remote?.IsolationFor(manifest.Id.Value) == PluginIsolation.OutOfProcess)
             {
                 IPlugin? elsewhere = await _remote.LoadAsync(
@@ -309,6 +319,28 @@ internal sealed class PluginLoader(
                     );
                     return;
                 }
+
+                const string reason =
+                    "Out-of-process was chosen for this plugin, but this install cannot run it there. The plugin was not loaded. Choose in-process, or install the plugin host.";
+
+                _logger.LogError(
+                    "Plugin {PluginName} is set to run in its own process and this install cannot do that. The plugin was not loaded.",
+                    [manifest.Name]
+                );
+
+                RegisterUnloadableAssembly(manifest, assemblyPath, manifestPath, reason);
+
+                await _eventBus.PublishAsync(
+                    new PluginErrorOccurredEvent
+                    {
+                        PluginId = manifest.Id.ToString(),
+                        PluginName = manifest.Name,
+                        ErrorMessage = reason,
+                    },
+                    ct
+                );
+
+                return;
             }
 
             // Loaded from a fresh copy, never from the installed folder: the
@@ -318,7 +350,11 @@ internal sealed class PluginLoader(
             string loadPath = PluginShadowCopy.Create(_pluginsPath, absoluteAssemblyPath);
             string shadowDir = Path.GetDirectoryName(loadPath)!;
 
-            PluginLoadContext loadContext = new(loadPath, _sharedAssemblies);
+            PluginLoadContext loadContext = new(
+                loadPath,
+                _sharedAssemblies,
+                allowedFiles: AllowedFiles(shadowDir)
+            );
 
             try
             {
@@ -633,7 +669,21 @@ internal sealed class PluginLoader(
             // assembly is skipped and reported, not fatal.
             loadPath = PluginShadowCopy.Create(_pluginsPath, absoluteAssemblyPath);
             shadowDir = Path.GetDirectoryName(loadPath)!;
-            loadContext = new(loadPath, _sharedAssemblies);
+
+            // This path has no manifest and never met the verifier; the file
+            // check runs here, on the installed folder rather than its copy,
+            // and then the scan, so every load reads the code before a context
+            // exists.
+            string? refusal =
+                FileManifestVerificationStage.Refuse(absoluteAssemblyPath)
+                ?? CodeScanVerificationStage.Refuse(loadPath);
+            if (refusal is not null)
+            {
+                PluginShadowCopy.TryDelete(shadowDir);
+                throw new PluginVerificationException(refusal);
+            }
+
+            loadContext = new(loadPath, _sharedAssemblies, allowedFiles: AllowedFiles(shadowDir));
         }
         catch (Exception loadContextEx)
         {
@@ -648,7 +698,9 @@ internal sealed class PluginLoader(
                     PluginId = Ulid.Empty.ToString(),
                     PluginName = Path.GetFileNameWithoutExtension(assemblyPath),
                     ErrorMessage =
-                        $"Failed to initialize plugin load context: {loadContextEx.Message}",
+                        loadContextEx is PluginVerificationException
+                            ? loadContextEx.Message
+                            : $"Failed to initialize plugin load context: {loadContextEx.Message}",
                     ExceptionType = loadContextEx.GetType().Name,
                 },
                 ct

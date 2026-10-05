@@ -170,6 +170,22 @@ public class SessionManagerTests
     }
 
     [Fact]
+    public void ChildSession_HasOwnerWithoutConsumingViewerSlot_AndPrunesWithRuntime()
+    {
+        SessionManager manager = new(new() { MaxConcurrentSessions = 2, MaxSessionsPerUser = 2 });
+        manager.RegisterSession(MakeSession("video"), "owner");
+        manager.RegisterChildSession("audio", "owner");
+
+        manager.GetOwnerUserId("audio").Should().Be("owner");
+        manager.ActiveSessionCount.Should().Be(1);
+        manager.CanStartSession("owner").Should().BeTrue();
+        manager.GetUserSessionIds("owner").Should().ContainSingle().Which.Should().Be("video");
+
+        manager.PruneDeadSessions(["video"]);
+        manager.GetOwnerUserId("audio").Should().BeNull();
+    }
+
+    [Fact]
     public void ActiveSessions_ReflectsRegisteredSessions()
     {
         SessionManager manager = new(new());

@@ -518,7 +518,9 @@ public static class PluginServiceCollectionExtensions
 
         services.AddSingleton<IPluginVerifier>(sp => new PluginVerifier([
             new AbiVerificationStage(),
+            new CodeScanVerificationStage(),
             new ChecksumVerificationStage(),
+            new FileManifestVerificationStage(),
             new TrustedRepositoryVerificationStage(() => sp.GetService<IPluginRepository>()),
             new SignatureVerificationStage(
                 sp.GetRequiredService<IPluginTrustedKeys>(),
@@ -742,20 +744,6 @@ public static class PluginServiceCollectionExtensions
             Path.Combine(pluginsPath, "data", "platform"),
             PluginStorage(sp, pluginsPath)
         );
-
-    public static void RegisterPluginServices(
-        this IServiceCollection services,
-        PluginManager pluginManager
-    )
-    {
-        ArgumentNullException.ThrowIfNull(services);
-        ArgumentNullException.ThrowIfNull(pluginManager);
-
-        foreach (IPluginServiceRegistrator registrator in pluginManager.GetServiceRegistrators())
-        {
-            registrator.RegisterServices(services);
-        }
-    }
 
     /// <summary>
     /// Records which plugins were present before the request pipeline was

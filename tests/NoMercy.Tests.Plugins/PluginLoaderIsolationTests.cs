@@ -12,6 +12,7 @@
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Events;
+using NoMercy.Events.Plugins;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Capabilities;
@@ -97,6 +98,10 @@ public class PluginLoaderIsolationTests : IDisposable
             """
         );
 
+        // What an install through PluginManager leaves beside the files; a
+        // folder staged by hand has no record and is refused.
+        PluginFileManifest.WriteAsync(pluginDir).GetAwaiter().GetResult();
+
         return manifestPath;
     }
 
@@ -159,12 +164,13 @@ public class PluginLoaderIsolationTests : IDisposable
     }
 
     /// <summary>
-    /// An install that cannot run a plugin elsewhere still runs it. Refusing
-    /// would take a working plugin away from somebody who only changed a
-    /// setting, and the dashboard already says the choice is not honored yet.
+    /// An install that cannot run a plugin elsewhere does not run it here
+    /// instead. The owner chose a process boundary; loading the assembly into
+    /// the server is the one thing that choice forbids. The plugin is held as
+    /// malfunctioned with the reason so the dashboard can say what to do.
     /// </summary>
     [Fact]
-    public async Task AnInstallThatCannotDoItLoadsThePluginHereInstead()
+    public async Task AnInstallThatCannotDoItRefusesThePlugin()
     {
         FakeRemoteLoader remote = new(PluginIsolation.OutOfProcess, answers: false);
 
@@ -172,7 +178,29 @@ public class PluginLoaderIsolationTests : IDisposable
 
         remote.Asked.Should().Be(1);
         _registry.TryGetValue(PluginId, out LoadedPlugin? loaded).Should().BeTrue();
-        loaded!.LoadContext.Should().NotBeNull("the plugin has to run somewhere");
+        loaded!.LoadContext.Should().BeNull("nothing may be mapped into this process");
+        loaded.Info.Status.Should().Be(PluginStatus.Malfunctioned);
+        loaded.Info.Malfunction.Should().Contain("cannot run it there");
+    }
+
+    [Fact]
+    public async Task AnInstallThatCannotDoItPublishesAnError()
+    {
+        List<PluginErrorOccurredEvent> errors = [];
+        _eventBus.Subscribe<PluginErrorOccurredEvent>(
+            (evt, _) =>
+            {
+                errors.Add(evt);
+                return Task.CompletedTask;
+            }
+        );
+
+        await Loader(new FakeRemoteLoader(PluginIsolation.OutOfProcess, answers: false))
+            .LoadPluginFromManifestAsync(StageEchoPlugin());
+
+        errors.Should().ContainSingle();
+        errors[0].PluginId.Should().Be(PluginId.ToString());
+        errors[0].ErrorMessage.Should().Contain("not loaded");
     }
 
     [Fact]

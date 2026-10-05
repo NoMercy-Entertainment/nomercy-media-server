@@ -11,7 +11,7 @@
     <PackageReference Include="xunit" Version="2.*" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.*" />
     <PackageReference Include="FluentAssertions" Version="8.*" />
-    <PackageReference Include="NoMercy.Plugins.Testing" Version="11.0.*" />
+    <PackageReference Include="NoMercy.PluginSdk.Testing" Version="12.*" />
   </ItemGroup>
 
   <ItemGroup>

@@ -58,4 +58,22 @@ public interface IProcessRunner
         string? workingDirectory = null,
         CancellationToken cancellationToken = default
     );
+
+    /// <summary>
+    /// Runs a process under a wall-clock <paramref name="timeout"/>. When the
+    /// clock runs out before the process exits, the whole process tree is
+    /// killed and a <see cref="TimeoutException"/> is thrown. Use this for
+    /// probes and short tools (ffprobe, capability checks) that must never
+    /// hang the caller. Callers that pass no timeout keep today's behaviour.
+    /// </summary>
+    Task<ProcessResult> RunAsync(
+        string executable,
+        string[] arguments,
+        TimeSpan timeout,
+        Action<string>? onStdOut = null,
+        Action<string>? onStdErr = null,
+        string? workingDirectory = null,
+        CancellationToken cancellationToken = default,
+        Action<int>? onProcessStarted = null
+    );
 }

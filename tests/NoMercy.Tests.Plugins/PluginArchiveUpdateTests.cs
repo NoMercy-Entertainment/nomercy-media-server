@@ -32,9 +32,10 @@ namespace NoMercy.Tests.Plugins;
 /// </para>
 /// <para>
 /// What these assert is where the files land and what the installed copy looks
-/// like afterwards. The assemblies written here are not real ones; loading is
-/// expected to fail and everything under test is decided before the loader is
-/// reached.
+/// like afterwards. The assembly shipped at each version is a real, clean IL
+/// assembly with no plugin type (the NoPluginTypes sample), because the code
+/// scan reads it before a byte is unpacked; its PE timestamp carries the
+/// version so the two releases are told apart byte for byte.
 /// </para>
 /// </summary>
 public class PluginArchiveUpdateTests : IDisposable
@@ -75,12 +76,17 @@ public class PluginArchiveUpdateTests : IDisposable
     {
         _manager.Dispose();
 
+        // The installed assembly was loaded (and unloaded) for real; the
+        // shadow copy is only free once its context is collected.
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+
         try
         {
             if (Directory.Exists(_tempDir))
                 Directory.Delete(_tempDir, recursive: true);
         }
-        catch (IOException)
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             // Best-effort cleanup.
         }
@@ -95,21 +101,37 @@ public class PluginArchiveUpdateTests : IDisposable
 
     private static string Manifest(string version) =>
         $$"""
-        {
-          "id": "5KTKRT4Z2Y9P59Y40W5CX4TQKF",
-          "name": "Internet Radio",
-          "description": "Browse and play internet radio stations in the built-in player.",
-          "version": "{{version}}",
-          "targetAbi": "12.0",
-          "author": "NoMercy Community",
-          "assembly": "{{AssemblyName}}"
-        }
-        """;
+            {
+              "id": "5KTKRT4Z2Y9P59Y40W5CX4TQKF",
+              "name": "Internet Radio",
+              "description": "Browse and play internet radio stations in the built-in player.",
+              "version": "{{version}}",
+              "targetAbi": "12.0",
+              "author": "NoMercy Community",
+              "assembly": "{{AssemblyName}}"
+            }
+            """;
 
     private static void Write(ZipArchive archive, string entryName, string content)
     {
         using StreamWriter writer = new(archive.CreateEntry(entryName).Open(), Encoding.UTF8);
         writer.Write(content);
+    }
+
+    /// <summary>
+    /// The NoPluginTypes sample with the version written into the PE header's
+    /// TimeDateStamp (offset 8 of the COFF header, which the runtime and the
+    /// scan never check): the same valid IL, distinct bytes per release.
+    /// </summary>
+    private static byte[] AssemblyBytes(string version)
+    {
+        byte[] bytes = File.ReadAllBytes(
+            CodeScanVerificationStageTests.SampleDllPath("NoMercy.Plugin.Samples.NoPluginTypes")
+        );
+        int coffHeader = BitConverter.ToInt32(bytes, 0x3C) + 4;
+        int stamp = version.Aggregate(17, (hash, c) => hash * 31 + c);
+        BitConverter.TryWriteBytes(bytes.AsSpan(coffHeader + 4, 4), stamp);
+        return bytes;
     }
 
     /// <summary>An archive of the published shape, at a named version.</summary>
@@ -119,23 +141,15 @@ public class PluginArchiveUpdateTests : IDisposable
 
         using ZipArchive archive = ZipFile.Open(path, ZipArchiveMode.Create);
         Write(archive, $"{FolderName}/plugin.json", Manifest(version));
-        Write(archive, $"{FolderName}/{AssemblyName}", $"MZ {version}");
+        using (Stream assembly = archive.CreateEntry($"{FolderName}/{AssemblyName}").Open())
+            assembly.Write(AssemblyBytes(version));
         Write(archive, $"{FolderName}/lang/en.json", $$"""{"version":"{{version}}"}""");
 
         return path;
     }
 
-    private async Task InstallIgnoringLoad(string archivePath)
-    {
-        try
-        {
-            await _manager.InstallPluginArchiveAsync(archivePath, null, CancellationToken.None);
-        }
-        catch (BadImageFormatException)
-        {
-            // Everything under test happened before the loader saw the file.
-        }
-    }
+    private Task Install(string archivePath) =>
+        _manager.InstallPluginArchiveAsync(archivePath, null, CancellationToken.None);
 
     private string Installed(params string[] parts) =>
         Path.Combine([_pluginsDir, FolderName, .. parts]);
@@ -143,10 +157,10 @@ public class PluginArchiveUpdateTests : IDisposable
     [Fact]
     public async Task InstallingOverAnEarlierVersion_ReplacesEveryFile()
     {
-        await InstallIgnoringLoad(Archive("1.0.0"));
-        await InstallIgnoringLoad(Archive("1.2.0"));
+        await Install(Archive("1.0.0"));
+        await Install(Archive("1.2.0"));
 
-        File.ReadAllText(Installed(AssemblyName)).Should().Be("MZ 1.2.0");
+        File.ReadAllBytes(Installed(AssemblyName)).Should().Equal(AssemblyBytes("1.2.0"));
         File.ReadAllText(Installed("plugin.json")).Should().Contain("\"version\": \"1.2.0\"");
         File.ReadAllText(Installed("lang", "en.json"))
             .Should()
@@ -161,7 +175,7 @@ public class PluginArchiveUpdateTests : IDisposable
     [Fact]
     public async Task UnpackingIsNotDoneOverTheInstalledCopy()
     {
-        await InstallIgnoringLoad(Archive("1.0.0"));
+        await Install(Archive("1.0.0"));
 
         string manifestBefore = File.ReadAllText(Installed("plugin.json"));
         string corrupt = Path.Combine(_tempDir, "corrupt.zip");
@@ -175,13 +189,13 @@ public class PluginArchiveUpdateTests : IDisposable
         File.ReadAllText(Installed("plugin.json"))
             .Should()
             .Be(manifestBefore, "a failed install must leave the working one exactly as it was");
-        File.ReadAllText(Installed(AssemblyName)).Should().Be("MZ 1.0.0");
+        File.ReadAllBytes(Installed(AssemblyName)).Should().Equal(AssemblyBytes("1.0.0"));
     }
 
     [Fact]
     public async Task ASuccessfulInstall_LeavesNothingStagedBehind()
     {
-        await InstallIgnoringLoad(Archive("1.0.0"));
+        await Install(Archive("1.0.0"));
 
         Directory
             .Exists(Path.Combine(_pluginsDir, PendingUpdates))
@@ -197,18 +211,14 @@ public class PluginArchiveUpdateTests : IDisposable
     [Fact]
     public async Task AStagedUpdate_IsAppliedOnTheNextStartAndNotLoadedFromStaging()
     {
-        await InstallIgnoringLoad(Archive("1.0.0"));
+        await Install(Archive("1.0.0"));
 
         // What a locked assembly leaves behind, written directly because the
         // lock itself cannot be reproduced without loading a real plugin.
-        string staged = Path.Combine(
-            _pluginsDir,
-            PendingUpdates,
-            FolderName
-        );
+        string staged = Path.Combine(_pluginsDir, PendingUpdates, FolderName);
         Directory.CreateDirectory(Path.Combine(staged, "lang"));
         await File.WriteAllTextAsync(Path.Combine(staged, "plugin.json"), Manifest("1.2.0"));
-        await File.WriteAllTextAsync(Path.Combine(staged, AssemblyName), "MZ 1.2.0");
+        await File.WriteAllBytesAsync(Path.Combine(staged, AssemblyName), AssemblyBytes("1.2.0"));
         await File.WriteAllTextAsync(
             Path.Combine(staged, "lang", "en.json"),
             """{"version":"1.2.0"}"""
@@ -216,14 +226,11 @@ public class PluginArchiveUpdateTests : IDisposable
 
         await _manager.LoadPluginsFromDirectoryAsync(CancellationToken.None);
 
-        File.ReadAllText(Installed(AssemblyName))
+        File.ReadAllBytes(Installed(AssemblyName))
             .Should()
-            .Be("MZ 1.2.0", "the restart is when the files are free to be replaced");
+            .Equal(AssemblyBytes("1.2.0"), "the restart is when the files are free to be replaced");
         File.ReadAllText(Installed("plugin.json")).Should().Contain("1.2.0");
         File.ReadAllText(Installed("lang", "en.json")).Should().Contain("1.2.0");
-        Directory
-            .Exists(staged)
-            .Should()
-            .BeFalse("an update that has landed is no longer pending");
+        Directory.Exists(staged).Should().BeFalse("an update that has landed is no longer pending");
     }
 }

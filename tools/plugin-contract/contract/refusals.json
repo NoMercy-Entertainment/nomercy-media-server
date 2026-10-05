@@ -36,6 +36,18 @@
     "summary": "The plugin asked the host container for a service. The contract has facades instead."
   },
   {
+    "code": "PLUGIN_SERVER_ASSEMBLY_FROM_PLUGIN",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "A plugin asked its load context for a server assembly instead of the SDK."
+  },
+  {
+    "code": "PLUGIN_HOST_UNAVAILABLE",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "The plugin process cannot serve: it started without its launch details, or a call reached it without the server's launch token."
+  },
+  {
     "code": "PLUGIN_EVENT_BUS_REMOVED",
     "severity": "blocked",
     "capability": "events.subscribe",
@@ -106,6 +118,36 @@
     "severity": "blocked",
     "capability": null,
     "summary": "The manifest does not match the schema the server reads."
+  },
+  {
+    "code": "PLUGIN_CHECKSUM_MISMATCH",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "The package arrived, and it is not the one the checksum describes."
+  },
+  {
+    "code": "PLUGIN_CHECKSUM_SUBJECT_NOT_A_PACKAGE",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "A checksum was published for something that is not a plugin package."
+  },
+  {
+    "code": "PLUGIN_CHECKSUM_SUBJECT_MISSING",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "A checksum was supplied with no package to take it over."
+  },
+  {
+    "code": "PLUGIN_CODE_SCAN",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "A plugin DLL is not pure IL, reaches an escape hatch, or references a server assembly."
+  },
+  {
+    "code": "PLUGIN_FILES_CHANGED",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "A file in the plugin folder is not the one the install recorded, or the record is missing."
   },
   {
     "code": "PLUGIN_DEPENDENCY_MISSING",

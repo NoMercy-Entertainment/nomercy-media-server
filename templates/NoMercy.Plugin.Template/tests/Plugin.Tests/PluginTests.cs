@@ -1,6 +1,6 @@
 using FluentAssertions;
-using NoMercy.Plugins.Abstractions;
-using NoMercy.Plugins.Testing;
+using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Testing;
 using Xunit;
 
 namespace NoMercy.Plugin.Template.Tests;

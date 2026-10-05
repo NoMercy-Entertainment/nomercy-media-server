@@ -27,12 +27,14 @@ using NoMercy.Database.Models.Users;
 using NoMercy.Events;
 using NoMercy.Events.Library;
 using NoMercy.MediaProcessing.Files;
+using NoMercy.MediaProcessing.Files.Parsing;
 using NoMercy.MediaProcessing.Intake;
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
 using NoMercy.Monitoring;
 using NoMercy.Networking.Discovery;
 using NoMercy.NmSystem.Auth;
 using NoMercy.NmSystem.Configuration;
+using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Dto;
 using NoMercy.NmSystem.Extensions;
 using NoMercy.NmSystem.Information;
@@ -79,7 +81,8 @@ public partial class ServerController(
     IImageRepository imageRepository,
     IAuthTokenStore authTokenStore,
     IAudioFingerprinter audioFingerprinter,
-    IActivityLogger activityLogger
+    IActivityLogger activityLogger,
+    IFilenameParserPipeline filenameParser
 ) : BaseController
 {
     private IHostApplicationLifetime ApplicationLifetime { get; } = appLifetime;
@@ -262,19 +265,58 @@ public partial class ServerController(
                 file => file.Path
             );
 
-            foreach (AddFile file in selected)
-            {
-                string filePath =
-                    isRemoteDriver || isRemoteSource ? file.Path : Path.GetFullPath(file.Path);
+            List<EncodeAfterImportFile> toEncode =
+            [
+                .. selected.Select(file => new EncodeAfterImportFile
+                {
+                    Id = file.Id,
+                    InputFile =
+                        isRemoteDriver || isRemoteSource ? file.Path : Path.GetFullPath(file.Path),
+                    FolderId = request.FolderId,
+                    SourceDriverId = sourceDriverId,
+                    PresetId = library.EncodePresetId,
+                }),
+            ];
 
+            // A show the server does not hold has no episode rows to encode against.
+            // Import it once per show and let that import queue the selected files.
+            if (library.Type is MediaTypes.TvMediaType or MediaTypes.AnimeMediaType)
+            {
+                await using MediaContext context = new();
+                List<int> ids =
+                [
+                    .. toEncode
+                        .Select(file => int.TryParse(file.Id, out int id) ? id : 0)
+                        .Where(id => id != 0),
+                ];
+                HashSet<int> held =
+                [
+                    .. await context
+                        .Episodes.AsNoTracking()
+                        .Where(episode => ids.Contains(episode.Id))
+                        .Select(episode => episode.Id)
+                        .ToListAsync(),
+                ];
+
+                toEncode = await UnheldShowImports.DispatchAsync(
+                    jobDispatcher,
+                    filenameParser,
+                    library,
+                    toEncode,
+                    held
+                );
+            }
+
+            foreach (EncodeAfterImportFile file in toEncode)
+            {
                 VideoEncodeJob job = new()
                 {
                     LibraryId = library.Id,
-                    FolderId = request.FolderId,
+                    FolderId = file.FolderId,
                     Id = file.Id,
-                    InputFile = filePath,
-                    SourceDriverId = sourceDriverId,
-                    PresetId = library.EncodePresetId,
+                    InputFile = file.InputFile,
+                    SourceDriverId = file.SourceDriverId,
+                    PresetId = file.PresetId,
                 };
                 jobDispatcher.Dispatch(job, job.QueueName, job.Priority);
             }

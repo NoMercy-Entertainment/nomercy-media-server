@@ -126,56 +126,6 @@ public class PluginDiIntegrationTests : IDisposable
     }
 
     [Fact]
-    public void RegisterPluginServices_NullServices_ThrowsArgumentNullException()
-    {
-        IServiceCollection? services = null;
-        InMemoryEventBus bus = new();
-        PluginManager manager = new(
-            bus,
-            new MinimalServiceProvider(),
-            NullLogger<PluginManager>.Instance,
-            _tempPluginsDir,
-            TestStorageHelper.CreateStorage(_tempPluginsDir),
-            TestStorageHelper.CreateBackend()
-        );
-
-        Action act = () => services!.RegisterPluginServices(manager);
-
-        act.Should().Throw<ArgumentNullException>();
-        manager.Dispose();
-    }
-
-    [Fact]
-    public void RegisterPluginServices_NullManager_ThrowsArgumentNullException()
-    {
-        ServiceCollection services = new();
-
-        Action act = () => services.RegisterPluginServices(null!);
-
-        act.Should().Throw<ArgumentNullException>();
-    }
-
-    [Fact]
-    public void RegisterPluginServices_NoPlugins_DoesNothing()
-    {
-        ServiceCollection services = new();
-        InMemoryEventBus bus = new();
-        PluginManager manager = new(
-            bus,
-            new MinimalServiceProvider(),
-            NullLogger<PluginManager>.Instance,
-            _tempPluginsDir,
-            TestStorageHelper.CreateStorage(_tempPluginsDir),
-            TestStorageHelper.CreateBackend()
-        );
-
-        services.RegisterPluginServices(manager);
-
-        services.Should().BeEmpty();
-        manager.Dispose();
-    }
-
-    [Fact]
     public void GetServiceRegistrators_NoPlugins_ReturnsEmpty()
     {
         InMemoryEventBus bus = new();
