@@ -189,15 +189,23 @@ public class SpecialController(
                 .Select(
                     (item, index) =>
                         item.EpisodeId is not null
-                            ? new(item.Episode ?? new Episode(), "specials", id, country, index)
-                            : new VideoPlaylistResponseDto(
+                            ? VideoPlaylistResponseDto.TryCreate(
+                                item.Episode ?? new Episode(),
+                                "specials",
+                                id,
+                                country,
+                                index
+                            )
+                            : VideoPlaylistResponseDto.TryCreate(
                                 item.Movie ?? new Movie(),
                                 "specials",
                                 id,
                                 country,
                                 index
                             )
-                ),
+                )
+                .Where(dto => dto is not null)
+                .Select(dto => dto!),
         ];
 
         if (items.Length == 0)

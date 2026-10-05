@@ -194,17 +194,21 @@ public class CollectionsController(
             return NotFoundResponse("Collection not found");
 
         return Ok(
-            collection.CollectionMovies.Select(
-                (movie, index) =>
-                    new VideoPlaylistResponseDto(
-                        movie.Movie,
-                        "collection",
-                        id,
-                        country,
-                        index + 1,
-                        collection
-                    )
-            )
+            collection
+                .CollectionMovies.Where(movie => movie.Movie.VideoFiles.Any(v => v.Folder != null))
+                .Select(
+                    (movie, index) =>
+                        VideoPlaylistResponseDto.TryCreate(
+                            movie.Movie,
+                            "collection",
+                            id,
+                            country,
+                            index + 1,
+                            collection
+                        )
+                )
+                .Where(dto => dto is not null)
+                .Select(dto => dto!)
         );
     }
 
