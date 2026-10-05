@@ -9,17 +9,21 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-namespace NoMercy.Data.Repositories;
+using Makaretu.Dns;
 
-public class AnimeThemeWithCountsDto
+namespace NoMercy.Networking.Discovery;
+
+/// <summary>
+/// The multicast socket an mDNS scanner listens on. Production joins the
+/// 5353 group when <see cref="Start"/> runs; a test passes a transport that
+/// never binds, so a test run never asks the Windows firewall.
+/// </summary>
+public interface IMdnsMulticastTransport : IDisposable
 {
-    public int Id { get; set; }
-    public string Name { get; set; } = string.Empty;
-    public int TotalMovies { get; set; }
-    public int TotalTvShows { get; set; }
-    public int MoviesWithVideo { get; set; }
-    public int TvShowsWithVideo { get; set; }
+    /// <summary>The service a <see cref="ServiceDiscovery"/> is built on. Not started until <see cref="Start"/>.</summary>
+    MulticastService Service { get; }
 
-    // Posters of the titles inside, for the card of a group with no image of its own.
-    public GroupPoster[] ItemPosters { get; set; } = [];
+    void Start();
+
+    void Stop();
 }

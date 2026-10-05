@@ -82,6 +82,11 @@ public static class Component
         new LeafComponentBuilder<NmGenreCardDto>(ComponentTypes.GenreCard).WithData(data);
 
     /// <summary>
+    /// Creates an NMGroupCard component - a group of titles drawn from their posters.
+    /// </summary>
+    public static LeafComponentBuilder<GroupCardData> GroupCard() => new(ComponentTypes.GroupCard);
+
+    /// <summary>
     /// Creates an NMMusicCard component - music album/artist card.
     /// </summary>
     public static LeafComponentBuilder<MusicCardData> MusicCard() => new(ComponentTypes.MusicCard);

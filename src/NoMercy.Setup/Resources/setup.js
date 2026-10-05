@@ -306,8 +306,23 @@
 
     /* ── Init ────────────────────────────────────────────── */
 
+    // Keycloak only accepts a redirect_uri on *.nomercy.tv, localhost or loopback.
+    // The server decides per request host (browser_login_allowed); on any other
+    // host the page offers only the device code so it never sends a redirect
+    // to an address it does not own.
+    function applyLoginMode() {
+        var browserLoginAllowed = config.browser_login_allowed !== false;
+        el("btn-login").classList.toggle("qr-hidden", !browserLoginAllowed);
+        el("login-divider").classList.toggle("qr-hidden", !browserLoginAllowed);
+        if (browserLoginAllowed) {
+            el("btn-login").href = buildAuthUrl();
+        } else {
+            el("btn-login").removeAttribute("href");
+        }
+    }
+
     function showLoginStep() {
-        el("btn-login").href = buildAuthUrl();
+        applyLoginMode();
         show("step-login");
         startDeviceGrant();
     }
@@ -330,7 +345,7 @@
                 }
 
                 // Unauthenticated: try silent SSO on first boot before showing UI
-                if (data.is_first_boot) {
+                if (data.is_first_boot && data.browser_login_allowed !== false) {
                     trySilentSso().then(function(result) {
                         if (result.success) {
                             show("step-progress");
@@ -379,7 +394,7 @@
                     config = data;
 
                     if (data.phase === "Unauthenticated") {
-                        el("btn-login").href = buildAuthUrl();
+                        applyLoginMode();
                         show("step-login");
                         return;
                     }
@@ -390,7 +405,7 @@
                         .then(function(r) { return r.json(); })
                         .then(function(retryData) {
                             if (retryData.status === "unauthenticated") {
-                                el("btn-login").href = buildAuthUrl();
+                                applyLoginMode();
                                 show("step-login");
                                 return;
                             }

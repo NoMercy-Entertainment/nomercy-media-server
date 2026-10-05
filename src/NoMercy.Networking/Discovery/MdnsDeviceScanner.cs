@@ -26,19 +26,24 @@ public sealed class MdnsDeviceScanner : IDisposable
     private readonly IDbContextFactory<MediaContext> _contextFactory;
     private readonly ILogger<MdnsDeviceScanner> _logger;
     private readonly IDeviceListChangeNotifier? _changeNotifier;
-    private readonly ServiceDiscovery _discovery = new();
-    private readonly MulticastService _multicast = new();
+    private readonly IMdnsMulticastTransport _multicast;
+    private readonly ServiceDiscovery _discovery;
     private int _started;
 
+    // The transport is optional so DI keeps building this singleton without a
+    // registration; a test passes one that never joins the 5353 group.
     public MdnsDeviceScanner(
         IDbContextFactory<MediaContext> contextFactory,
         ILogger<MdnsDeviceScanner> logger,
-        IDeviceListChangeNotifier? changeNotifier = null
+        IDeviceListChangeNotifier? changeNotifier = null,
+        IMdnsMulticastTransport? multicast = null
     )
     {
         _contextFactory = contextFactory;
         _logger = logger;
         _changeNotifier = changeNotifier;
+        _multicast = multicast ?? new MdnsMulticastTransport();
+        _discovery = new(_multicast.Service);
     }
 
     public void Start(CancellationToken stoppingToken)
@@ -47,7 +52,7 @@ public sealed class MdnsDeviceScanner : IDisposable
             return;
 
         _discovery.ServiceInstanceDiscovered += OnInstanceDiscovered;
-        _multicast.NetworkInterfaceDiscovered += (_, _) =>
+        _multicast.Service.NetworkInterfaceDiscovered += (_, _) =>
             _discovery.QueryServiceInstances(ServiceType);
 
         _multicast.Start();

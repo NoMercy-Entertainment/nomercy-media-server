@@ -9,17 +9,21 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-namespace NoMercy.Data.Repositories;
+using Makaretu.Dns;
 
-public class AnimeThemeWithCountsDto
+namespace NoMercy.Networking.Discovery;
+
+/// <summary>
+/// The production transport: one <see cref="MulticastService"/> that joins
+/// the mDNS group on <see cref="Start"/> and leaves it on <see cref="Stop"/>.
+/// </summary>
+public sealed class MdnsMulticastTransport : IMdnsMulticastTransport
 {
-    public int Id { get; set; }
-    public string Name { get; set; } = string.Empty;
-    public int TotalMovies { get; set; }
-    public int TotalTvShows { get; set; }
-    public int MoviesWithVideo { get; set; }
-    public int TvShowsWithVideo { get; set; }
+    public MulticastService Service { get; } = new();
 
-    // Posters of the titles inside, for the card of a group with no image of its own.
-    public GroupPoster[] ItemPosters { get; set; } = [];
+    public void Start() => Service.Start();
+
+    public void Stop() => Service.Stop();
+
+    public void Dispose() => Service.Dispose();
 }

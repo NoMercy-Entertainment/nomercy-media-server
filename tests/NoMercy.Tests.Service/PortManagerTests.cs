@@ -28,8 +28,10 @@ namespace NoMercy.Tests.Service;
 [Trait("Category", "Unit")]
 public class PortManagerTests
 {
+    // Loopback, never the wildcard: a wildcard probe asks the Windows firewall
+    // on every test run.
     private static PortManager BuildManager() =>
-        new(NullLogger<PortManager>.Instance, new StubCertificateService());
+        new(NullLogger<PortManager>.Instance, new StubCertificateService(), IPAddress.Loopback);
 
     private static int GetFreePort()
     {
@@ -38,6 +40,25 @@ public class PortManagerTests
         int port = ((IPEndPoint)probe.LocalEndpoint).Port;
         probe.Stop();
         return port;
+    }
+
+    [Fact]
+    public void IsPortAvailable_ProbesTheAddressItWasGiven()
+    {
+        // A probe on the wildcard address makes Windows ask the firewall on
+        // every test run. Tests probe loopback; production keeps the wildcard.
+        PortManager loopback = new(
+            NullLogger<PortManager>.Instance,
+            new StubCertificateService(),
+            IPAddress.Loopback
+        );
+        PortManager production = new(
+            NullLogger<PortManager>.Instance,
+            new StubCertificateService()
+        );
+
+        Assert.Equal(IPAddress.Loopback, loopback.ProbeAddress);
+        Assert.Equal(IPAddress.Any, production.ProbeAddress);
     }
 
     [Fact]
@@ -54,7 +75,7 @@ public class PortManagerTests
     public void IsPortAvailable_OccupiedPort_ReturnsFalse()
     {
         int port = GetFreePort();
-        TcpListener holder = new(IPAddress.Any, port);
+        TcpListener holder = new(IPAddress.Loopback, port);
         holder.Start();
         try
         {
@@ -85,7 +106,7 @@ public class PortManagerTests
     public void FindNextAvailablePort_StartOccupied_ReturnsHigherFreePort()
     {
         int port = GetFreePort();
-        TcpListener holder = new(IPAddress.Any, port);
+        TcpListener holder = new(IPAddress.Loopback, port);
         holder.Start();
         try
         {

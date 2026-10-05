@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Net;
 using System.Net.Sockets;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Capabilities;
@@ -31,9 +32,17 @@ public class PluginNet(
     IPluginManifestSource manifests,
     IPluginResourceLedger ledger,
     IPluginNetDiscovery? discovery = null,
-    IPluginPortMap? portMap = null
+    IPluginPortMap? portMap = null,
+    IPAddress? bindAddress = null
 ) : IPluginNet
 {
+    /// <summary>
+    /// The address every listener this plugin opens binds. The server leaves it
+    /// at the wildcard so a plugin can serve the LAN; tests pass loopback so a
+    /// test run never asks the Windows firewall.
+    /// </summary>
+    public IPAddress BindAddress { get; } = bindAddress ?? IPAddress.Any;
+
     public async Task<Stream> DialAsync(
         string host,
         int port,
@@ -91,8 +100,8 @@ public class PluginNet(
 
         IPluginListener listener =
             transport == PluginTransport.Udp
-                ? new PluginUdpListener(port)
-                : new PluginTcpListener(port);
+                ? new PluginUdpListener(BindAddress, port)
+                : new PluginTcpListener(BindAddress, port);
 
         if (!PluginPortRange.Contains(declared, listener.Port))
         {
