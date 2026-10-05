@@ -854,8 +854,8 @@ components:
       description: >-
         Card for a group of titles with no image of its own (an anime theme,
         demographic or season), drawn from the posters of the titles inside.
-        Sent only to an app that lists NMGroupCard in its NM-Components request
-        header; other apps get NMGenreCard.
+        The anime theme, demographic and season lists send it to every app: a
+        grid by default, letter or year rows on version=lolomo.
       required:
         - id
         - title
