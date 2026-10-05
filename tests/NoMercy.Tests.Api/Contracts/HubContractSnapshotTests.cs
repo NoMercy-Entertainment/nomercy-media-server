@@ -281,7 +281,8 @@ public class HubContractSnapshotTests
         string json =
             JsonSerializer.Serialize(
                 new { hubs = contracts },
-                new JsonSerializerOptions { WriteIndented = true }
+                // LF like the committed file; the default is the OS newline, which fails on Windows.
+                new JsonSerializerOptions { WriteIndented = true, NewLine = "\n" }
             ) + "\n";
 
         DirectoryInfo? directory = new(AppContext.BaseDirectory);
