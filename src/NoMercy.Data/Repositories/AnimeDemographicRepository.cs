@@ -146,7 +146,11 @@ public class AnimeDemographicRepository(MediaContext context) : IAnimeDemographi
             ct
         );
 
-        Dictionary<int, string[]> posters = GroupItemPosters.Pick(posterRows);
+        Dictionary<int, GroupPoster[]> posters = await GroupItemPosters.PickWithPalettesAsync(
+            context,
+            posterRows,
+            ct
+        );
 
         return
         [

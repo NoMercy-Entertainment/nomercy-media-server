@@ -934,9 +934,23 @@ components:
         item_posters:
           type: array
           items:
-            type: string
+            $ref: '#/components/schemas/GroupPoster'
           default: []
           description: Up to nine posters of the titles inside the group, textless preferred
+
+    GroupPoster:
+      type: object
+      description: A poster on a group card, with the palette of that image for the card border and band colors
+      required:
+        - src
+      properties:
+        src:
+          type: string
+          description: TMDB poster path
+        color_palette:
+          allOf:
+            - $ref: '#/components/schemas/PaletteColors'
+          nullable: true
 
     # ===========================================
     # Supporting Types

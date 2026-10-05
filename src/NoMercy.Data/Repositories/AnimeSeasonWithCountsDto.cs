@@ -22,5 +22,5 @@ public class AnimeSeasonWithCountsDto
     public int TvShowsWithVideo { get; set; }
 
     // Posters of the titles inside, for the card of a group with no image of its own.
-    public string[] ItemPosters { get; set; } = [];
+    public GroupPoster[] ItemPosters { get; set; } = [];
 }
