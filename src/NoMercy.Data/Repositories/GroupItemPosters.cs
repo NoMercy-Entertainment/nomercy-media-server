@@ -119,21 +119,17 @@ public static class GroupItemPosters
         // Queried from the title side on purpose: filtering Images by type and
         // language first makes SQLite scan every textless poster in the library
         // (89 ms on 460k images); per title it walks the (TvId, Type) index.
-        // Path and id are two scalar subqueries: one subquery returning both
-        // becomes a window-function join that SQLite cannot run on the index.
-        Dictionary<int, (string? Path, int? Id)> tvPosters = (
+        // The subquery picks only the image id: a subquery returning id and
+        // path becomes a window-function join that SQLite cannot run on the
+        // index, and a second scalar subquery for the path walks the index
+        // again per title. The paths come from one lookup by primary key.
+        Dictionary<int, int?> tvImageIds = (
             await context
                 .Tvs.AsNoTracking()
                 .Where(tv => tvIds.Contains(tv.Id))
                 .Select(tv => new
                 {
                     tv.Id,
-                    Poster = tv
-                        .Images.Where(image => image.Type == PosterType && image.Iso6391 == null)
-                        .OrderByDescending(image => image.VoteAverage)
-                        .ThenBy(image => image.Id)
-                        .Select(image => image.FilePath)
-                        .FirstOrDefault(),
                     ImageId = tv
                         .Images.Where(image => image.Type == PosterType && image.Iso6391 == null)
                         .OrderByDescending(image => image.VoteAverage)
@@ -142,20 +138,14 @@ public static class GroupItemPosters
                         .FirstOrDefault(),
                 })
                 .ToListAsync(ct)
-        ).ToDictionary(title => title.Id, title => (title.Poster, title.ImageId));
-        Dictionary<int, (string? Path, int? Id)> moviePosters = (
+        ).ToDictionary(title => title.Id, title => title.ImageId);
+        Dictionary<int, int?> movieImageIds = (
             await context
                 .Movies.AsNoTracking()
                 .Where(movie => movieIds.Contains(movie.Id))
                 .Select(movie => new
                 {
                     movie.Id,
-                    Poster = movie
-                        .Images.Where(image => image.Type == PosterType && image.Iso6391 == null)
-                        .OrderByDescending(image => image.VoteAverage)
-                        .ThenBy(image => image.Id)
-                        .Select(image => image.FilePath)
-                        .FirstOrDefault(),
                     ImageId = movie
                         .Images.Where(image => image.Type == PosterType && image.Iso6391 == null)
                         .OrderByDescending(image => image.VoteAverage)
@@ -164,25 +154,25 @@ public static class GroupItemPosters
                         .FirstOrDefault(),
                 })
                 .ToListAsync(ct)
-        ).ToDictionary(title => title.Id, title => (title.Poster, title.ImageId));
+        ).ToDictionary(title => title.Id, title => title.ImageId);
+
+        List<int> imageIds =
+        [
+            .. tvImageIds.Values.Concat(movieImageIds.Values).OfType<int>().Distinct(),
+        ];
+        Dictionary<int, string> imagePaths =
+            imageIds.Count == 0
+                ? []
+                : await context
+                    .Images.AsNoTracking()
+                    .Where(image => imageIds.Contains(image.Id))
+                    .Select(image => new { image.Id, image.FilePath })
+                    .ToDictionaryAsync(image => image.Id, image => image.FilePath, ct);
 
         return
         [
-            .. tvRows.Select(row =>
-                row with
-                {
-                    TextlessPoster = tvPosters.GetValueOrDefault(row.ItemId).Path,
-                    TextlessImageId = tvPosters.GetValueOrDefault(row.ItemId).Id,
-                }
-            ),
-            .. movieRows.Select(row =>
-                row with
-                {
-                    TextlessPoster = moviePosters.GetValueOrDefault(row.ItemId).Path,
-                    TextlessImageId = moviePosters.GetValueOrDefault(row.ItemId).Id,
-                    IsMovie = true,
-                }
-            ),
+            .. tvRows.Select(row => WithTextlessPoster(row, tvImageIds, imagePaths, false)),
+            .. movieRows.Select(row => WithTextlessPoster(row, movieImageIds, imagePaths, true)),
         ];
     }
 
@@ -303,4 +293,20 @@ public static class GroupItemPosters
                         .Take(Max)
                         .ToArray()
             );
+
+    private static GroupPosterRow WithTextlessPoster(
+        GroupPosterRow row,
+        Dictionary<int, int?> imageIds,
+        Dictionary<int, string> imagePaths,
+        bool isMovie
+    )
+    {
+        int? imageId = imageIds.GetValueOrDefault(row.ItemId);
+        return row with
+        {
+            TextlessPoster = imageId is { } id ? imagePaths.GetValueOrDefault(id) : null,
+            TextlessImageId = imageId,
+            IsMovie = row.IsMovie || isMovie,
+        };
+    }
 }
