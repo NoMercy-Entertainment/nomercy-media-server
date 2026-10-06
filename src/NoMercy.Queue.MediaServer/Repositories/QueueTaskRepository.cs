@@ -332,6 +332,25 @@ public class QueueTaskRepository(IDbContextFactory<QueueContext> queueContextFac
             .CountAsync(cancellationToken);
     }
 
+    public async Task<List<QueueJobModel>> GetEncoderQueueJobsAsync(
+        CancellationToken cancellationToken = default
+    )
+    {
+        await using QueueContext context = await queueContextFactory.CreateDbContextAsync(
+            cancellationToken
+        );
+
+        List<QueueJob> jobs = await context
+            .QueueJobs.AsNoTracking()
+            .Where(IsEncoderFamilyJob)
+            .OrderByDescending(job => job.Priority)
+            .ThenBy(job => job.CreatedAt)
+            .ThenBy(job => job.Id)
+            .ToListAsync(cancellationToken);
+
+        return [.. jobs.Select(ToModel)];
+    }
+
     public async Task<int> GetQueueJobCountAsync(CancellationToken cancellationToken = default)
     {
         await using QueueContext context = await queueContextFactory.CreateDbContextAsync(

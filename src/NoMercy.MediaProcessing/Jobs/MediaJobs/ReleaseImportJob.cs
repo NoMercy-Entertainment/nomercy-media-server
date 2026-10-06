@@ -56,7 +56,10 @@ public class ReleaseImportJob : AbstractMusicFolderJob
 
     // private bool _fromFingerprint;
 
-    public override async Task Handle()
+    // Added is the number of albums handed on: this job imports no titles itself.
+    public override Task Handle() => HandleWithFinishEventAsync(Import);
+
+    private async Task<int> Import()
     {
         Log.LogInformation(
             "ReleaseImportJob: {InputFolder} -> library {LibraryId} folder {FolderId} release {ReleaseId}",
@@ -90,13 +93,14 @@ public class ReleaseImportJob : AbstractMusicFolderJob
                     "ReleaseImportJob: no library folder contains {InputFolder}; skipping",
                     InputFolder
                 );
-                return;
+                return 0;
             }
 
             jobDispatcher.DispatchJob<AudioImportJob>(LibraryId, baseFolder.Id, InputFolder);
-            return;
+            return 1;
         }
 
+        int dispatched = 0;
         Parallel.ForEach(
             rootFolders,
             SystemParallelism.Options,
@@ -114,8 +118,11 @@ public class ReleaseImportJob : AbstractMusicFolderJob
                 }
 
                 jobDispatcher.DispatchJob<AudioImportJob>(LibraryId, baseFolder.Id, folder.Path);
+                Interlocked.Increment(ref dispatched);
             }
         );
+
+        return dispatched;
     }
 
     /// <summary>

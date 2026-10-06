@@ -30,3 +30,13 @@ public interface IJobIdReceiver
 {
     void ReceiveJobId(int jobId);
 }
+
+/// <summary>
+/// Optional companion to <see cref="IShouldQueue"/>. The queue worker calls
+/// <see cref="ReceiveAttempt"/> before <see cref="IShouldQueue.Handle"/> so a
+/// job can tell whether a failure will be retried or is final.
+/// </summary>
+public interface IJobAttemptReceiver
+{
+    void ReceiveAttempt(int attempt, int maxAttempts);
+}

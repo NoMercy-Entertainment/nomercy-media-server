@@ -42,7 +42,7 @@ public sealed class PlaybackToolsNotificationTests
             new AuthTokenStore(),
             new NotificationSink(queue.Object),
             Mock.Of<IPlayableMediaProbe>(),
-            users.Object
+            userCache: users.Object
         );
 
         await bus.PublishAsync(
@@ -86,7 +86,7 @@ public sealed class PlaybackToolsNotificationTests
             new AuthTokenStore(),
             new NotificationSink(queue.Object),
             Mock.Of<IPlayableMediaProbe>(),
-            users.Object
+            userCache: users.Object
         );
 
         for (int attempt = 1; attempt <= 2; attempt++)
@@ -135,7 +135,7 @@ public sealed class PlaybackToolsNotificationTests
             new AuthTokenStore(),
             new NotificationSink(queue.Object),
             Mock.Of<IPlayableMediaProbe>(),
-            users.Object
+            userCache: users.Object
         )
         {
             OwnerWaitInterval = TimeSpan.FromMilliseconds(20),
