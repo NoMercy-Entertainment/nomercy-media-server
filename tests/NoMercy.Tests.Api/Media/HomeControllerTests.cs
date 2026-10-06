@@ -21,9 +21,11 @@ public class HomeControllerTests : IClassFixture<NoMercyApiFactory>
 {
     private readonly HttpClient _authed;
     private readonly HttpClient _unauthed;
+    private readonly HttpClient _factoryClient;
 
     public HomeControllerTests(NoMercyApiFactory factory)
     {
+        _factoryClient = factory.CreateClient();
         _authed = factory.CreateClient().AsAuthenticated();
         _unauthed = factory.CreateClient().AsUnauthenticated();
     }
@@ -126,5 +128,24 @@ public class HomeControllerTests : IClassFixture<NoMercyApiFactory>
             );
 
         Assert.False(hasLatestInRow, "Lolomo /home must not include a 'Latest in {library}' row");
+    }
+
+    // The secondary seeded user is a plain member with no libraries, so their Home is empty.
+    // The empty state used to offer "Add library", which the apps route to a dashboard page
+    // a member cannot open, so the button bounced them straight back to Home.
+    [Fact]
+    public async Task Home_EmptyForMember_DoesNotOfferAddLibrary()
+    {
+        HttpClient member = _factoryClient.AsSecondaryUser();
+
+        HttpResponseMessage response = await member.GetAsync("/api/v1/home");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        string body = await response.Content.ReadAsStringAsync();
+
+        Assert.Contains("No libraries yet", body);
+        Assert.DoesNotContain("Add library", body);
+        Assert.DoesNotContain("/dashboard/libraries", body);
     }
 }

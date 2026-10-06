@@ -148,6 +148,10 @@ internal static class PluginCodeScanner
                 string assembly = md.GetString(md.GetAssemblyReference(scope).Name);
                 if (
                     assembly.StartsWith("NoMercy.", StringComparison.Ordinal)
+                    && !assembly.StartsWith(
+                        PluginHostOptions.PluginAssemblyPrefix,
+                        StringComparison.Ordinal
+                    )
                     && !PluginHostOptions.DefaultSharedAssemblies.Contains(assembly)
                 )
                     Add(findings, $"references server assembly {assembly}");
@@ -155,9 +159,31 @@ internal static class PluginCodeScanner
 
             string ns = md.GetString(type.Namespace);
             string name = md.GetString(type.Name);
-            if (IsBannedType(ns, name))
+            if (IsBannedType(ns, name) && !OnlyReadsTheName(md, handle, ns, name))
                 Add(findings, $"references banned type {ns}.{name}");
         }
+    }
+
+    // C# binds Type.Name to MemberInfo.get_Name (ex.GetType().Name in a log
+    // line). A MemberInfo used for that alone reads a name and acts on nothing;
+    // invoking or reading a member needs another member or a derived type,
+    // which stay banned.
+    private static bool OnlyReadsTheName(
+        MetadataReader md,
+        TypeReferenceHandle handle,
+        string ns,
+        string name
+    )
+    {
+        if (ns != "System.Reflection" || name != "MemberInfo")
+            return false;
+
+        List<string> members = md
+            .MemberReferences.Select(md.GetMemberReference)
+            .Where(member => member.Parent == (EntityHandle)handle)
+            .Select(member => md.GetString(member.Name))
+            .ToList();
+        return members.Count > 0 && members.All(member => member == "get_Name");
     }
 
     private static bool IsBannedType(string ns, string name) =>

@@ -164,6 +164,24 @@ public class PluginLoadContextTests
     }
 
     [Fact]
+    public void APluginsOwnAssemblyNextToItLoads()
+    {
+        // Automix ships NoMercy.Plugin.Automix.Analysis beside its entry DLL.
+        // No server assembly carries the NoMercy.Plugin. prefix, so this is
+        // the plugin's own code, and the code scan reads it like any file.
+        using TemporaryPluginFolder folder = new();
+        string ownDll = folder.CopyNewtonsoftAs("NoMercy.Plugin.Automix.Analysis.dll");
+        using ExposedPluginLoadContext context = new(
+            folder.PluginDll,
+            allowedFiles: [folder.PluginDll, ownDll]
+        );
+
+        Assembly? loaded = context.InvokeLoad(new AssemblyName("NoMercy.Plugin.Automix.Analysis"));
+
+        loaded.Should().NotBeNull();
+    }
+
+    [Fact]
     public void ADllNotOnTheAllowedListIsNotLoaded()
     {
         using TemporaryPluginFolder folder = new();

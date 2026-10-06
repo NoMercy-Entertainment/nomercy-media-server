@@ -94,7 +94,7 @@ public class LibrariesController(
             Library library = new()
             {
                 Id = Ulid.NewUlid(),
-                Title = $"Library {libraries}",
+                Title = $"Library {libraries + 1}",
                 AutoRefreshInterval = 30,
                 ChapterImages = true,
                 ExtractChapters = true,
@@ -736,7 +736,7 @@ public class LibrariesController(
             {
                 Status = "ok",
                 Message = "Successfully added folder to {0} library.",
-                Args = [pathAsync.Path],
+                Args = [library.Title],
                 Data = folderLibrary,
             }
         );

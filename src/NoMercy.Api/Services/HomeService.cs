@@ -213,7 +213,8 @@ public class HomeService(
         Guid userId,
         string language,
         string country,
-        string? version = null
+        string? version = null,
+        bool canManageLibraries = false
     )
     {
         HomeParallelData parallelData = await homeRepository.GetHomeParallelDataAsync(
@@ -225,7 +226,13 @@ public class HomeService(
         if (parallelData is { MovieCount: 0, TvCount: 0, AnimeCount: 0 })
             return new()
             {
-                Data = [EmptyHomeState(hasLibraries: parallelData.Libraries.Count > 0)],
+                Data =
+                [
+                    EmptyHomeState(
+                        hasLibraries: parallelData.Libraries.Count > 0,
+                        canManageLibraries
+                    ),
+                ],
             };
 
         (List<GenreSourceData> genreSources, List<int> movieIds, List<int> tvIds) =
@@ -339,7 +346,12 @@ public class HomeService(
         return new() { Data = components };
     }
 
-    private static ComponentEnvelope EmptyHomeState(bool hasLibraries) =>
+    /// <summary>
+    /// Only a manager or the owner can open the library dashboard, so only they are offered the
+    /// "Add library" action; a member is told to ask the owner instead of being sent to a page
+    /// that bounces them back to Home.
+    /// </summary>
+    private static ComponentEnvelope EmptyHomeState(bool hasLibraries, bool canManageLibraries) =>
         hasLibraries
             ? Component
                 .EmptyState(
@@ -358,9 +370,13 @@ public class HomeService(
                     new()
                     {
                         Title = "No libraries yet",
-                        Message = "Create your first library to get started.",
+                        Message = canManageLibraries
+                            ? "Create your first library to get started."
+                            : "Ask the server owner to add a library.",
                         Icon = "library",
-                        Action = new() { Label = "Add library", Route = "/dashboard/libraries" },
+                        Action = canManageLibraries
+                            ? new() { Label = "Add library", Route = "/dashboard/libraries" }
+                            : null,
                     }
                 )
                 .Build();

@@ -1045,14 +1045,13 @@ public class VideoEncodeJob
                 outcomes.Where(o => !o.Success).ToList()
             );
 
-            await new IncompleteEncodeRecorder().RecordAsync(
+            await new IncompleteEncodeRecorder().RecordFailureAsync(
                 context,
                 mediaId: fileMetadata.Id,
                 folderId: FolderId.ToString(),
                 title: fileMetadata.Title,
                 missingKeys: failedDescriptors,
                 lastError: lastError,
-                attemptsMade: 0,
                 ct: CancellationToken.None
             );
 
@@ -1268,14 +1267,13 @@ public class VideoEncodeJob
                         err
                     );
 
-                    await new IncompleteEncodeRecorder().RecordAsync(
+                    await new IncompleteEncodeRecorder().RecordFailureAsync(
                         context,
                         mediaId: fileMetadata.Id,
                         folderId: FolderId.ToString(),
                         title: fileMetadata.Title,
                         missingKeys: ["finalize"],
                         lastError: err,
-                        attemptsMade: 0,
                         ct: CancellationToken.None
                     );
 
