@@ -400,21 +400,15 @@ public class MusicMutationAuthTests : IClassFixture<NoMercyApiFactory>
     }
 
     [Fact]
-    public async Task ArtistsDestroy_Owner_FakeId_ReturnsOkWithNotFoundMessage()
+    public async Task ArtistsDestroy_Owner_FakeId_ReturnsNotFound()
     {
-        // Destroy always responds 200 regardless of whether a row was actually
-        // deleted (ExecuteDeleteAsync affecting 0 rows still returns Ok) — this
-        // locks that today's contract never surfaces a 404 here, only the
-        // message text differs. A fake id proves this without ever touching
-        // the seeded ArtistId1 row every other music test depends on.
+        // A fake id proves the missing-row path without ever touching the
+        // seeded ArtistId1 row every other music test depends on.
         HttpResponseMessage response = await _owner.DeleteAsync(
             $"/api/v1/music/artists/{Guid.NewGuid()}"
         );
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        doc.RootElement.GetProperty("status").GetString().Should().Be("ok");
-        doc.RootElement.GetProperty("data").GetString().Should().Be("Artist not found");
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]
@@ -515,6 +509,16 @@ public class MusicMutationAuthTests : IClassFixture<NoMercyApiFactory>
     }
 
     [Fact]
+    public async Task PlaylistsDestroy_Owner_FakeId_ReturnsNotFound()
+    {
+        HttpResponseMessage response = await _owner.DeleteAsync(
+            $"/api/v1/music/playlists/{Guid.NewGuid()}"
+        );
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+    }
+
+    [Fact]
     public async Task PlaylistsEdit_ReturnsUnauthorized_WhenAnonymous()
     {
         HttpResponseMessage response = await _anonymous.PatchAsync(
@@ -553,18 +557,15 @@ public class MusicMutationAuthTests : IClassFixture<NoMercyApiFactory>
     }
 
     [Fact]
-    public async Task PlaylistsDestroy_SecondaryUser_FakeId_ReturnsOkWithNotFoundMessage()
+    public async Task PlaylistsDestroy_SecondaryUser_FakeId_ReturnsNotFound()
     {
-        // Same always-200 quirk as ArtistsController.Destroy: a delete matching
-        // zero rows (id + ownership scoped) still responds 200, only the
-        // message text says "not found". Locks it for the MediaAccess tier too.
+        // A delete matching zero rows (id + ownership scoped) answers 404 for
+        // the MediaAccess tier too.
         HttpResponseMessage response = await _secondary.DeleteAsync(
             $"/api/v1/music/playlists/{Guid.NewGuid()}"
         );
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        doc.RootElement.GetProperty("data").GetString().Should().Be("Playlist not found");
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
     }
 
     [Fact]
