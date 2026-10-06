@@ -62,7 +62,7 @@ jobs:
         run: |
           SAFE_BRANCH=$(echo "${GITHUB_REF_NAME}" | sed 's/[^a-zA-Z0-9._-]/-/g' | cut -c1-50)
           gh release list --limit 100 --json tagName,isDraft \
-            | jq -r ".[] | select(.isDraft and (.tagName | endswith(\"-${SAFE_BRANCH}\"))) | .tagName" \
+            | jq -r --arg b "$SAFE_BRANCH" '.[] | select(.isDraft and ((.tagName | sub("^v[0-9.]+-"; "")) == $b)) | .tagName' \
             | while read -r tag; do
                 echo "Deleting existing draft release: $tag"
                 gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
