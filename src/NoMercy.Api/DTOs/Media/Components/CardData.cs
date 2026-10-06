@@ -75,6 +75,9 @@ public record CardData
     [JsonProperty("number_of_items")]
     public int? NumberOfItems { get; set; }
 
+    [JsonProperty("percentage", NullValueHandling = NullValueHandling.Ignore)]
+    public double? Percentage { get; set; }
+
     public CardData() { }
 
     public CardData(Movie movie, string country, bool watch = false)
@@ -222,6 +225,9 @@ public record CardData
                 .Select(ct => RatingClass.From(ct.Certification))
                 .FirstOrDefault();
         }
+
+        if (item.Time is > 0 && Duration is > 0)
+            Percentage = Math.Min(item.Time.Value * 100.0 / Duration.Value, 100);
     }
 
     public CardData(Genre genre)
