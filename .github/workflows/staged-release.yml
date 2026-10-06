@@ -20,7 +20,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       version: ${{ steps.version.outputs.version }}
-      tag: ${{ steps.tag.outputs.tag }}
       branch: ${{ steps.branch.outputs.branch }}
 
     steps:
@@ -45,28 +44,9 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "Resolved version: $VERSION"
 
-      - name: Compute tag
-        id: tag
-        run: |
-          BRANCH="${GITHUB_REF_NAME}"
-          SAFE_BRANCH=$(echo "$BRANCH" | sed 's/[^a-zA-Z0-9._-]/-/g' | cut -c1-50)
-          echo "tag=v${{ steps.version.outputs.version }}-${SAFE_BRANCH}" >> $GITHUB_OUTPUT
-
       - name: Set branch output
         id: branch
         run: echo "branch=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
-
-      - name: Delete existing draft release for this branch
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          SAFE_BRANCH=$(echo "${GITHUB_REF_NAME}" | sed 's/[^a-zA-Z0-9._-]/-/g' | cut -c1-50)
-          gh release list --limit 100 --json tagName,isDraft \
-            | jq -r --arg b "$SAFE_BRANCH" '.[] | select(.isDraft and ((.tagName | sub("^v[0-9.]+-"; "")) == $b)) | .tagName' \
-            | while read -r tag; do
-                echo "Deleting existing draft release: $tag"
-                gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
-              done
 
   # Gate the whole staged release on the test suite — build/publish must never run
   # on a red suite (this path previously built and released with no test prerequisite).
@@ -102,15 +82,5 @@ jobs:
       ref: ${{ needs.prepare.outputs.branch }}
       push: false
 
-  create_release:
-    needs: [prepare, build_executables, build_packages, build_docker_images]
-    uses: ./.github/workflows/create-release.yml
-    secrets: inherit
-    with:
-      version: ${{ needs.prepare.outputs.version }}
-      tag: ${{ needs.prepare.outputs.tag }}
-      draft: true
-      prerelease: true
-      # A branch build is never offered by the apt/rpm repository.
-      update-package-repository: false
-      release-name: "NoMercy MediaServer v${{ needs.prepare.outputs.version }} (${{ needs.prepare.outputs.branch }})"
+  # A branch build makes no release and no tag: its files are the run's
+  # workflow artifacts. Only dev (ci-cd-pipeline.yml) publishes releases.
