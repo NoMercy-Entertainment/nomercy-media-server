@@ -109,7 +109,8 @@ public class HomeController : BaseController
             User.UserId(),
             Language(),
             Country(),
-            request.Version
+            request.Version,
+            AuthPolicy.IsModerator(User)
         );
 
         return Ok(result);
