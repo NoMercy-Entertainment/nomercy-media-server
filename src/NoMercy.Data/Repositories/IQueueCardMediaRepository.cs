@@ -38,6 +38,9 @@ public interface IQueueCardMediaRepository
     /// <summary>Video files for a set of host folders, with their episode/movie for maintenance cards.</summary>
     Task<List<VideoFile>> GetVideoFilesByHostFoldersAsync(List<string> hostFolders);
 
+    /// <summary>Source runtimes keyed by the full input path in queued video jobs.</summary>
+    Task<Dictionary<string, double>> GetVideoDurationsByInputPathsAsync(List<string> inputPaths);
+
     /// <summary>
     /// Tracks already encoded per release — the real numerator for an album
     /// card's progress, since the metadata-declared total never moves once set.
