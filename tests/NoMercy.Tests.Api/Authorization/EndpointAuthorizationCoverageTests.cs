@@ -91,13 +91,11 @@ public sealed class EndpointAuthorizationCoverageTests(
         // Plugin LAN device credential check, answered to the local network only;
         // PluginLanController.cs refuses with 403 outside it or on a wrong credential.
         "GET /api/v{version:apiVersion}/plugins/{id:ulid}/lan/{deviceId}/{credential}",
-        // ImageController carries neither [Authorize] nor [AllowAnonymous]. No
-        // fallback policy exists, so UseAuthorization lets it through; only
-        // AccessLogMiddleware (no user GUID and no IAllowAnonymous metadata => 401)
-        // keeps anonymous callers out. Adding [Authorize] changes the 401 path for
-        // old clients, so it is tracked, not changed here. TODO #478
+        // Artwork is public on purpose: clients load it through img tags and CSS
+        // backgrounds, which carry no Authorization header, and the response sets
+        // Access-Control-Allow-Origin: *. AccessLogMiddleware lists /images among
+        // its ignored routes, so nothing gates it. DELETE needs MediaAccess (#478).
         "GET /images/{type}/{path}",
-        "DELETE /images/{type}/{path}",
     };
 
     private enum Protection
