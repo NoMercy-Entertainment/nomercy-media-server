@@ -10,10 +10,12 @@
 // -----------------------------------------------------------------------------
 
 using System.Collections.Concurrent;
+using NoMercy.Authorization;
 using NoMercy.Events;
 using NoMercy.Events.Encoding;
 using NoMercy.Events.Library;
 using NoMercy.Events.Media;
+using NoMercy.Events.Playback;
 using NoMercy.Events.Plugins;
 using NoMercy.NmSystem.Auth;
 
@@ -33,6 +35,21 @@ public class PushNotificationEventHandler : EventSubscriber
     private readonly NotificationSink _notificationSink;
     private readonly IPlayableMediaProbe _playableMediaProbe;
     private readonly TimeProvider _timeProvider;
+    private readonly IUserCache? _userCache;
+    private readonly object _playbackToolsNotificationLock = new();
+    private DateTimeOffset? _lastPlaybackToolsFailureNotification;
+    private bool _playbackToolsRecoveryNotified;
+    private readonly List<(
+        string Channel,
+        PushPayload Payload
+    )> _pendingPlaybackToolsNotifications = [];
+    private bool _waitingForOwners;
+
+    // How often, and for how long, the handler waits for an owner or manager to
+    // appear in the user cache before it gives up. The queued notifications stay
+    // queued: the next playback-tools event delivers them.
+    internal TimeSpan OwnerWaitInterval { get; init; } = TimeSpan.FromSeconds(5);
+    internal TimeSpan OwnerWaitLimit { get; init; } = TimeSpan.FromHours(24);
 
     private static readonly TimeSpan ScanTallyLifetime = TimeSpan.FromHours(24);
 
@@ -59,13 +76,15 @@ public class PushNotificationEventHandler : EventSubscriber
         IAuthTokenStore authTokenStore,
         NotificationSink notificationSink,
         IPlayableMediaProbe playableMediaProbe,
-        TimeProvider? timeProvider = null
+        TimeProvider? timeProvider = null,
+        IUserCache? userCache = null
     )
     {
         _timeProvider = timeProvider ?? TimeProvider.System;
         _authTokenStore = authTokenStore;
         _notificationSink = notificationSink;
         _playableMediaProbe = playableMediaProbe;
+        _userCache = userCache;
         Track(eventBus.Subscribe<EncodingStartedEvent>(OnEncodingStarted));
         Track(eventBus.Subscribe<EncodingCompletedEvent>(OnEncodingCompleted));
         Track(eventBus.Subscribe<EncodingCompletedEvent>(OnEncodingCompletedRecheckPending));
@@ -77,6 +96,8 @@ public class PushNotificationEventHandler : EventSubscriber
         Track(eventBus.Subscribe<LibraryScanCompletedEvent>(OnLibraryScanCompleted));
         Track(eventBus.Subscribe<MediaImportFinishedEvent>(OnMediaImportFinished));
         Track(eventBus.Subscribe<PluginErrorOccurredEvent>(OnPluginError));
+        Track(eventBus.Subscribe<PlaybackToolsDownloadFailedEvent>(OnPlaybackToolsDownloadFailed));
+        Track(eventBus.Subscribe<PlaybackToolsReadyEvent>(OnPlaybackToolsReady));
         Track(eventBus.Subscribe<UserNotifiedEvent>(OnUserNotified));
     }
 
@@ -332,6 +353,142 @@ public class PushNotificationEventHandler : EventSubscriber
             new($"{@event.PluginName} failed", @event.ErrorMessage, "/dashboard/plugins")
         );
         return Task.CompletedTask;
+    }
+
+    internal Task OnPlaybackToolsDownloadFailed(
+        PlaybackToolsDownloadFailedEvent @event,
+        CancellationToken _
+    )
+    {
+        DateTimeOffset now = DateTimeOffset.UtcNow;
+        lock (_playbackToolsNotificationLock)
+        {
+            if (_playbackToolsRecoveryNotified)
+            {
+                _lastPlaybackToolsFailureNotification = null;
+                _playbackToolsRecoveryNotified = false;
+            }
+
+            if (
+                _lastPlaybackToolsFailureNotification is { } last
+                && now - last < TimeSpan.FromMinutes(30)
+            )
+                return Task.CompletedTask;
+
+            _lastPlaybackToolsFailureNotification = now;
+        }
+
+        int minutes = Math.Max(1, (int)Math.Ceiling((@event.NextRetryAtUtc - now).TotalMinutes));
+        string interval = minutes == 1 ? "1 minute" : $"{minutes} minutes";
+        NotifyPlaybackToolsOwners(
+            "playback-tools-download-failed",
+            new(
+                "Playback tools failed to download",
+                $"{@event.ErrorMessage}. Retrying in {interval}.",
+                "/dashboard"
+            )
+        );
+        return Task.CompletedTask;
+    }
+
+    internal Task OnPlaybackToolsReady(PlaybackToolsReadyEvent @event, CancellationToken _)
+    {
+        lock (_playbackToolsNotificationLock)
+        {
+            if (_playbackToolsRecoveryNotified)
+                return Task.CompletedTask;
+
+            _playbackToolsRecoveryNotified = true;
+        }
+
+        NotifyPlaybackToolsOwners(
+            "playback-tools-ready",
+            new(
+                "Playback tools are ready",
+                "Playback tools downloaded successfully. Library scans can continue.",
+                "/dashboard"
+            )
+        );
+        return Task.CompletedTask;
+    }
+
+    private void NotifyPlaybackToolsOwners(string channel, PushPayload payload)
+    {
+        if (_userCache is null)
+            return;
+
+        lock (_playbackToolsNotificationLock)
+        {
+            // A second queued failure is dropped, but the wait for an owner
+            // still restarts below in case an earlier wait gave up.
+            bool failureAlreadyQueued =
+                channel == "playback-tools-download-failed"
+                && _pendingPlaybackToolsNotifications.Any(pending => pending.Channel == channel);
+            if (!failureAlreadyQueued)
+                _pendingPlaybackToolsNotifications.Add((channel, payload));
+            if (TryFlushPlaybackToolsNotifications())
+                return;
+
+            // InitRemaining can publish before SeedAuthData initializes UserCache.
+            // Keep the first failure until the owner is available instead of
+            // consuming the 30-minute throttle window without delivery.
+            if (_waitingForOwners)
+                return;
+
+            _waitingForOwners = true;
+        }
+
+        _ = Task.Run(WaitForOwnersAsync);
+    }
+
+    private async Task WaitForOwnersAsync()
+    {
+        DateTimeOffset giveUpAt = DateTimeOffset.UtcNow + OwnerWaitLimit;
+        while (true)
+        {
+            await Task.Delay(OwnerWaitInterval);
+            lock (_playbackToolsNotificationLock)
+            {
+                // On giving up the notifications stay queued; the next
+                // playback-tools event starts a new wait and flushes them.
+                if (TryFlushPlaybackToolsNotifications() || DateTimeOffset.UtcNow >= giveUpAt)
+                {
+                    _waitingForOwners = false;
+                    return;
+                }
+            }
+        }
+    }
+
+    // Called under _playbackToolsNotificationLock so queued failure and recovery
+    // notifications are delivered in publish order when the user cache appears.
+    private bool TryFlushPlaybackToolsNotifications()
+    {
+        if (_userCache is null)
+            return true;
+
+        List<Guid> userIds = _userCache
+            .Users.Where(user => user.Owner || user.Manage)
+            .Select(user => user.Id)
+            .Distinct()
+            .ToList();
+        if (userIds.Count == 0)
+            return false;
+
+        foreach (
+            (string Channel, PushPayload Payload) pending in _pendingPlaybackToolsNotifications
+        )
+        foreach (Guid userId in userIds)
+            _notificationSink.NotifyUser(
+                userId,
+                "videoHub",
+                pending.Channel,
+                pending.Payload,
+                _authTokenStore.AccessToken ?? string.Empty
+            );
+
+        _pendingPlaybackToolsNotifications.Clear();
+        return true;
     }
 
     // The access token gates push, not the whole notification: an unregistered
