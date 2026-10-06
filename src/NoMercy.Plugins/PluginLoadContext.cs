@@ -98,8 +98,15 @@ public class PluginLoadContext : AssemblyLoadContext
 
         // Thrown, never null: null hands the request to the default context,
         // which holds the host's real copy. Every NoMercy.* name outside the
-        // shared set counts, so a new server project needs no list entry.
-        if (assemblyName.Name?.StartsWith("NoMercy.", StringComparison.OrdinalIgnoreCase) == true)
+        // shared set counts, so a new server project needs no list entry. A
+        // NoMercy.Plugin.* name is the plugin's own code, loaded from its folder.
+        if (
+            assemblyName.Name?.StartsWith("NoMercy.", StringComparison.OrdinalIgnoreCase) == true
+            && !assemblyName.Name.StartsWith(
+                PluginHostOptions.PluginAssemblyPrefix,
+                StringComparison.OrdinalIgnoreCase
+            )
+        )
             throw new PluginRefusedException(
                 ServerAssemblyFromPlugin(_pluginName, assemblyName.Name)
             );

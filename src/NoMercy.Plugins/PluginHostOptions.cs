@@ -51,6 +51,14 @@ public record PluginHostOptions
         init => _sharedAssemblies = value;
     }
 
+    /// <summary>
+    /// The name prefix of a plugin's own assemblies: Automix ships
+    /// NoMercy.Plugin.Automix and NoMercy.Plugin.Automix.Analysis. No server
+    /// assembly carries it (a test keeps it that way), so a name with it is
+    /// plugin code, never a server assembly. The code scan still reads it.
+    /// </summary>
+    public const string PluginAssemblyPrefix = "NoMercy.Plugin.";
+
     /// <summary>The built-in shared-assembly set used when none is configured.</summary>
     public static IReadOnlySet<string> DefaultSharedAssemblies { get; } =
         new HashSet<string>
