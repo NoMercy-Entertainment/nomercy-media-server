@@ -32,6 +32,16 @@ public class PushNotificationEventHandler : EventSubscriber
     private readonly IAuthTokenStore _authTokenStore;
     private readonly NotificationSink _notificationSink;
     private readonly IPlayableMediaProbe _playableMediaProbe;
+    private readonly TimeProvider _timeProvider;
+
+    private static readonly TimeSpan ScanTallyLifetime = TimeSpan.FromHours(24);
+
+    // The scan push says how many titles the scan added, so it waits for the
+    // import jobs the scan queued. Keyed by library: import jobs carry no scan
+    // id, because the queue drops a payload it already holds and a scan id would
+    // make every rescan queue its imports again.
+    private readonly object _scanLock = new();
+    private readonly Dictionary<Ulid, ScanTally> _scans = new();
 
     // MediaImportJobs publish MediaAddedEvent as soon as metadata lands, well
     // before FileRescanJob has matched a single file on disk. Pushing then
@@ -48,9 +58,11 @@ public class PushNotificationEventHandler : EventSubscriber
         IEventBus eventBus,
         IAuthTokenStore authTokenStore,
         NotificationSink notificationSink,
-        IPlayableMediaProbe playableMediaProbe
+        IPlayableMediaProbe playableMediaProbe,
+        TimeProvider? timeProvider = null
     )
     {
+        _timeProvider = timeProvider ?? TimeProvider.System;
         _authTokenStore = authTokenStore;
         _notificationSink = notificationSink;
         _playableMediaProbe = playableMediaProbe;
@@ -60,7 +72,10 @@ public class PushNotificationEventHandler : EventSubscriber
         Track(eventBus.Subscribe<EncodingFailedEvent>(OnEncodingFailed));
         Track(eventBus.Subscribe<MediaAddedEvent>(OnMediaAdded));
         Track(eventBus.Subscribe<MediaFilesScannedEvent>(OnMediaFilesScanned));
+        Track(eventBus.Subscribe<LibraryScanStartedEvent>(OnLibraryScanStarted));
+        Track(eventBus.Subscribe<LibraryImportsQueuedEvent>(OnLibraryImportsQueued));
         Track(eventBus.Subscribe<LibraryScanCompletedEvent>(OnLibraryScanCompleted));
+        Track(eventBus.Subscribe<MediaImportFinishedEvent>(OnMediaImportFinished));
         Track(eventBus.Subscribe<PluginErrorOccurredEvent>(OnPluginError));
         Track(eventBus.Subscribe<UserNotifiedEvent>(OnUserNotified));
     }
@@ -180,17 +195,134 @@ public class PushNotificationEventHandler : EventSubscriber
             _ => $"/{@event.MediaType}/{@event.MediaId}",
         };
 
+    internal Task OnLibraryScanStarted(LibraryScanStartedEvent @event, CancellationToken _)
+    {
+        lock (_scanLock)
+        {
+            Sweep();
+            ScanTally tally = TallyFor(@event.LibraryId, @event.LibraryName);
+            tally.ScanEnded = false;
+        }
+
+        return Task.CompletedTask;
+    }
+
+    internal Task OnLibraryImportsQueued(LibraryImportsQueuedEvent @event, CancellationToken _)
+    {
+        lock (_scanLock)
+        {
+            Sweep();
+            ScanTally tally = TallyFor(@event.LibraryId, @event.LibraryName);
+            tally.Outstanding += @event.Count;
+        }
+
+        return Task.CompletedTask;
+    }
+
     internal Task OnLibraryScanCompleted(LibraryScanCompletedEvent @event, CancellationToken _)
     {
+        lock (_scanLock)
+        {
+            Sweep();
+            if (!_scans.TryGetValue(@event.LibraryId, out ScanTally? tally))
+                return Task.CompletedTask;
+
+            tally.Touch(_timeProvider);
+            tally.ScanEnded = true;
+            NotifyWhenScanSettled(@event.LibraryId, tally);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    // An import that finishes while no scan of its library is open belongs to
+    // nobody this handler is waiting on (queued before an upgrade, or by a
+    // controller), so it is ignored rather than counted against a later scan.
+    internal Task OnMediaImportFinished(MediaImportFinishedEvent @event, CancellationToken _)
+    {
+        lock (_scanLock)
+        {
+            Sweep();
+            if (!_scans.TryGetValue(@event.LibraryId, out ScanTally? tally))
+                return Task.CompletedTask;
+
+            tally.Touch(_timeProvider);
+            tally.Outstanding--;
+            tally.Added += @event.Added;
+            tally.Failed += @event.Failed;
+            NotifyWhenScanSettled(@event.LibraryId, tally);
+        }
+
+        return Task.CompletedTask;
+    }
+
+    internal int PendingScanCount
+    {
+        get
+        {
+            lock (_scanLock)
+            {
+                return _scans.Count;
+            }
+        }
+    }
+
+    private ScanTally TallyFor(Ulid libraryId, string libraryName)
+    {
+        if (!_scans.TryGetValue(libraryId, out ScanTally? tally))
+        {
+            tally = new();
+            _scans[libraryId] = tally;
+        }
+
+        tally.LibraryName = libraryName;
+        tally.Touch(_timeProvider);
+        return tally;
+    }
+
+    // Outstanding goes below zero while the scan is still walking its folders:
+    // a job dispatched early can finish before the queued count is published.
+    private void NotifyWhenScanSettled(Ulid libraryId, ScanTally tally)
+    {
+        if (!tally.ScanEnded || tally.Outstanding > 0)
+            return;
+
+        _scans.Remove(libraryId);
+        string failed = tally.Failed > 0 ? $", {tally.Failed} failed" : string.Empty;
         Notify(
             "library-scan-complete",
             new(
                 "Library scan finished",
-                $"{@event.LibraryName} scanned, {@event.ItemsFound} item(s) found",
+                $"{tally.LibraryName} scanned, {tally.Added} title(s) added{failed}",
                 "/libraries"
             )
         );
-        return Task.CompletedTask;
+    }
+
+    // A scan whose imports never report (a crashed worker, a deleted library)
+    // would otherwise sit here until restart and absorb the next scan's counts.
+    private void Sweep()
+    {
+        DateTimeOffset cutoff = _timeProvider.GetUtcNow() - ScanTallyLifetime;
+        foreach (
+            Ulid libraryId in _scans
+                .Where(scan => scan.Value.LastTouched < cutoff)
+                .Select(scan => scan.Key)
+                .ToList()
+        )
+            _scans.Remove(libraryId);
+    }
+
+    private sealed class ScanTally
+    {
+        public string LibraryName { get; set; } = string.Empty;
+        public int Outstanding { get; set; }
+        public int Added { get; set; }
+        public int Failed { get; set; }
+        public bool ScanEnded { get; set; }
+        public DateTimeOffset LastTouched { get; private set; }
+
+        public void Touch(TimeProvider timeProvider) => LastTouched = timeProvider.GetUtcNow();
     }
 
     internal Task OnPluginError(PluginErrorOccurredEvent @event, CancellationToken _)

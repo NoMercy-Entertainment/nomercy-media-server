@@ -533,6 +533,9 @@ public class QueueWorker(
         if (job is IJobIdReceiver idReceiver)
             idReceiver.ReceiveJobId((int)queueJob.Id);
 
+        if (job is IJobAttemptReceiver attemptReceiver)
+            attemptReceiver.ReceiveAttempt(queueJob.Attempts, queue.MaxAttempts);
+
         try
         {
             for (int attempt = 0; ; attempt++)

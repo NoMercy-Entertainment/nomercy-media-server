@@ -16,6 +16,8 @@
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using NoMercy.Events;
+using NoMercy.Events.Media;
 using NoMercy.PluginSdk.Hooks;
 using NoMercy.Storage;
 using NoMercyQueue;
@@ -27,8 +29,11 @@ namespace NoMercy.MediaProcessing.Jobs.MediaJobs;
 // Code
 // ---------------------------------------------------------------------------------------------------------------------
 [Serializable]
-public abstract class AbstractMediaJob : IShouldQueue, IJobStorageInjector
+public abstract class AbstractMediaJob : IShouldQueue, IJobStorageInjector, IJobAttemptReceiver
 {
+    private int _attempt = 1;
+    private int _maxAttempts = 1;
+
     protected AbstractMediaJob() { }
 
     protected AbstractMediaJob(
@@ -85,6 +90,55 @@ public abstract class AbstractMediaJob : IShouldQueue, IJobStorageInjector
     public abstract int Priority { get; }
 
     public abstract Task Handle();
+
+    public void ReceiveAttempt(int attempt, int maxAttempts)
+    {
+        _attempt = attempt;
+        _maxAttempts = maxAttempts;
+    }
+
+    /// <summary>
+    /// Runs an import and tells whoever follows the scan how it ended: the
+    /// titles it added, or a failure. An exception is reported only when no
+    /// retry follows, so a retried job still counts once. The import returns
+    /// null when it ended without throwing and without a result.
+    /// </summary>
+    protected async Task HandleWithFinishEventAsync(Func<Task<int?>> import)
+    {
+        int? added;
+        try
+        {
+            added = await import();
+        }
+        catch
+        {
+            if (_attempt >= _maxAttempts)
+                await PublishImportFinishedAsync(0, 1);
+            throw;
+        }
+
+        await PublishImportFinishedAsync(added ?? 0, added is null ? 1 : 0);
+    }
+
+    // QueueWorker can run Handle again in the same reservation after a
+    // transient SQLite error, so a job reports its finish once at most.
+    private bool _finishPublished;
+
+    private async Task PublishImportFinishedAsync(int added, int failed)
+    {
+        if (_finishPublished || !EventBusProvider.IsConfigured)
+            return;
+        _finishPublished = true;
+
+        await EventBusProvider.Current.PublishAsync(
+            new MediaImportFinishedEvent
+            {
+                LibraryId = LibraryId,
+                Added = added,
+                Failed = failed,
+            }
+        );
+    }
 
     public void Dispose() { }
 }
