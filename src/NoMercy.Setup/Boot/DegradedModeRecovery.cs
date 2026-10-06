@@ -10,6 +10,8 @@
 // -----------------------------------------------------------------------------
 
 using System.IdentityModel.Tokens.Jwt;
+using NoMercy.Events;
+using NoMercy.Events.Playback;
 using NoMercy.Networking.Discovery;
 using NoMercy.NmSystem.Auth;
 using NoMercy.NmSystem.Information;
@@ -58,6 +60,10 @@ public class DegradedModeRecovery : IDegradedModeRecovery
 
     private readonly IAuthTokenStore _authTokenStore;
     private readonly Func<TimeSpan, Task> _delay;
+    private readonly Func<Task<bool>> _checkConnectivity;
+    private readonly Func<bool>? _binaryExists;
+    private readonly Func<Task>? _downloadBinary;
+    private readonly IEventBus? _eventBus;
 
     public DegradedModeRecovery(
         IAuthTokenStore authTokenStore,
@@ -88,7 +94,11 @@ public class DegradedModeRecovery : IDegradedModeRecovery
         IApiKeyStore apiKeyStore,
         IServerRegistrationService serverRegistrationService,
         INetworkDiscovery? networkDiscovery,
-        Func<TimeSpan, Task>? delay
+        Func<TimeSpan, Task>? delay,
+        IEventBus? eventBus = null,
+        Func<Task<bool>>? checkConnectivity = null,
+        Func<bool>? binaryExists = null,
+        Func<Task>? downloadBinary = null
     )
     {
         _authTokenStore = authTokenStore;
@@ -97,6 +107,10 @@ public class DegradedModeRecovery : IDegradedModeRecovery
         _serverRegistrationService = serverRegistrationService;
         _networkDiscovery = networkDiscovery;
         _delay = delay ?? Task.Delay;
+        _checkConnectivity = checkConnectivity ?? (() => NetworkProbe.CheckConnectivity());
+        _binaryExists = binaryExists;
+        _downloadBinary = downloadBinary;
+        _eventBus = eventBus;
     }
 
     private static readonly TimeSpan[] BackoffSchedule =
@@ -132,10 +146,35 @@ public class DegradedModeRecovery : IDegradedModeRecovery
                 if (completed == cancellation)
                     break;
 
-                bool hasNetwork = await NetworkProbe.CheckConnectivity();
+                bool hasNetwork = await _checkConnectivity();
                 if (!hasNetwork)
                 {
                     attempt++;
+                    if (!tasks.BinariesReady)
+                    {
+                        string reason = "Network unavailable; playback tools cannot be downloaded";
+                        Logger.App(
+                            $"Playback tools download failed: {reason}",
+                            LogEventLevel.Error
+                        );
+                        IEventBus? bus =
+                            _eventBus
+                            ?? (EventBusProvider.IsConfigured ? EventBusProvider.Current : null);
+                        if (bus is not null)
+                            await bus.PublishAsync(
+                                new PlaybackToolsDownloadFailedEvent
+                                {
+                                    ErrorMessage = reason,
+                                    Attempt = attempt + 1,
+                                    NextRetryAtUtc = DateTimeOffset.UtcNow.Add(
+                                        BackoffSchedule[
+                                            Math.Min(attempt, BackoffSchedule.Length - 1)
+                                        ]
+                                    ),
+                                },
+                                ct
+                            );
+                    }
                     Logger.App(
                         $"Network still unavailable. Next retry in {BackoffSchedule[Math.Min(attempt, BackoffSchedule.Length - 1)]}"
                     );
@@ -147,7 +186,16 @@ public class DegradedModeRecovery : IDegradedModeRecovery
 
                 if (!tasks.BinariesReady)
                 {
-                    await TryProvisionBinariesAsync(tasks);
+                    await TryProvisionBinariesAsync(
+                        tasks,
+                        attempt: attempt + 2,
+                        nextRetryAtUtc: DateTimeOffset.UtcNow.Add(
+                            BackoffSchedule[Math.Min(attempt + 1, BackoffSchedule.Length - 1)]
+                        ),
+                        eventBus: _eventBus,
+                        binaryExists: _binaryExists,
+                        download: _downloadBinary
+                    );
                 }
 
                 if (!tasks.ApiKeysLoaded)
@@ -315,18 +363,33 @@ public class DegradedModeRecovery : IDegradedModeRecovery
     /// <remarks>Internal (not private) so <c>NoMercy.Tests.Setup</c> can exercise the
     /// ffmpeg-already-on-disk path directly instead of waiting through the loop's
     /// real backoff delays.</remarks>
-    internal static async Task TryProvisionBinariesAsync(DeferredTasks tasks)
+    internal static async Task TryProvisionBinariesAsync(
+        DeferredTasks tasks,
+        int attempt = 2,
+        DateTimeOffset? nextRetryAtUtc = null,
+        IEventBus? eventBus = null,
+        Func<bool>? binaryExists = null,
+        Func<Task>? download = null
+    )
     {
+        if (tasks.BinariesReady)
+            return;
+
+        IEventBus? bus =
+            eventBus ?? (EventBusProvider.IsConfigured ? EventBusProvider.Current : null);
         try
         {
             IStorageDriver driver = new LocalStorageDriver();
             IStorage storage = new LocalStorage(driver, new([], driver));
+            Func<bool> exists = binaryExists ?? (() => storage.Exists(AppFiles.FfmpegPath));
 
-            if (storage.Exists(AppFiles.FfmpegPath))
+            if (exists())
             {
                 tasks.BinariesReady = true;
                 ServerPhaseTracker.Current?.MarkComplete(BootStage.Binaries);
                 Logger.App("FFmpeg found on disk — Binaries boot stage marked complete");
+                if (bus is not null)
+                    await bus.PublishAsync(new PlaybackToolsReadyEvent { Attempt = attempt });
                 return;
             }
 
@@ -340,23 +403,41 @@ public class DegradedModeRecovery : IDegradedModeRecovery
             // ten dependency repos' releases/latest on each tick turns one transient
             // GitHub rate-limit into a self-inflicted, permanent one. Ffmpeg is the
             // only binary this stage blocks on, so it is the only one retried.
-            await new Binaries(driver, storage).DownloadFfmpeg();
+            if (download is not null)
+                await download();
+            else
+                await new Binaries(driver, storage).DownloadFfmpeg();
 
-            if (storage.Exists(AppFiles.FfmpegPath))
+            if (exists())
             {
                 tasks.BinariesReady = true;
                 ServerPhaseTracker.Current?.MarkComplete(BootStage.Binaries);
                 Logger.App(
                     "Deferred binary provisioning succeeded — Binaries boot stage marked complete"
                 );
+                if (bus is not null)
+                    await bus.PublishAsync(new PlaybackToolsReadyEvent { Attempt = attempt });
             }
+            else
+                throw new InvalidOperationException(
+                    "FFmpeg is still missing after download completed"
+                );
         }
         catch (Exception e)
         {
             Logger.App(
                 $"Deferred binary provisioning failed: {e.Message} — will retry",
-                LogEventLevel.Warning
+                LogEventLevel.Error
             );
+            if (bus is not null)
+                await bus.PublishAsync(
+                    new PlaybackToolsDownloadFailedEvent
+                    {
+                        ErrorMessage = e.Message,
+                        Attempt = attempt,
+                        NextRetryAtUtc = nextRetryAtUtc ?? DateTimeOffset.UtcNow.AddMinutes(1),
+                    }
+                );
         }
     }
 }

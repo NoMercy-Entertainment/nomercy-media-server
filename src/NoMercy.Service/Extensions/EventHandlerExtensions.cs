@@ -144,7 +144,8 @@ public static class EventHandlerExtensions
             IAuthTokenStore authTokenStore = sp.GetRequiredService<IAuthTokenStore>();
             NotificationSink notificationSink = sp.GetRequiredService<NotificationSink>();
             IPlayableMediaProbe playableMediaProbe = sp.GetRequiredService<IPlayableMediaProbe>();
-            return new(eventBus, authTokenStore, notificationSink, playableMediaProbe);
+            IUserCache userCache = sp.GetRequiredService<IUserCache>();
+            return new(eventBus, authTokenStore, notificationSink, playableMediaProbe, userCache);
         });
 
         services.AddSingleton<DriveMonitorEventHandler>(sp =>
