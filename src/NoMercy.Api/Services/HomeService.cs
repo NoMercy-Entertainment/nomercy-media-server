@@ -224,16 +224,7 @@ public class HomeService(
         );
 
         if (parallelData is { MovieCount: 0, TvCount: 0, AnimeCount: 0 })
-            return new()
-            {
-                Data =
-                [
-                    EmptyHomeState(
-                        hasLibraries: parallelData.Libraries.Count > 0,
-                        canManageLibraries
-                    ),
-                ],
-            };
+            return new() { Data = [EmptyHomeState(parallelData.Libraries, canManageLibraries)] };
 
         (List<GenreSourceData> genreSources, List<int> movieIds, List<int> tvIds) =
             PickGenreSources(parallelData.GenreItems);
@@ -347,12 +338,29 @@ public class HomeService(
     }
 
     /// <summary>
-    /// Only a manager or the owner can open the library dashboard, so only they are offered the
-    /// "Add library" action; a member is told to ask the owner instead of being sent to a page
-    /// that bounces them back to Home.
+    /// Music-only libraries direct users to Music without polling for video content. Other
+    /// libraries keep scanning. With no libraries, only a manager or owner gets the dashboard
+    /// action; a member is told to ask the owner.
     /// </summary>
-    private static ComponentEnvelope EmptyHomeState(bool hasLibraries, bool canManageLibraries) =>
-        hasLibraries
+    private static ComponentEnvelope EmptyHomeState(
+        List<Library> libraries,
+        bool canManageLibraries
+    ) =>
+        libraries.Count > 0 && libraries.All(library => library.Type == MediaTypes.MusicMediaType)
+            ? Component
+                .EmptyState(
+                    new()
+                    {
+                        Title = "Your music is in Music",
+                        Message =
+                            "This server has music libraries only. Open Music to start listening.",
+                        Icon = "library",
+                        AutoRefresh = false,
+                        Action = new() { Label = "Open Music", Route = "/music/start" },
+                    }
+                )
+                .Build()
+        : libraries.Count > 0
             ? Component
                 .EmptyState(
                     new()
@@ -365,21 +373,21 @@ public class HomeService(
                     }
                 )
                 .Build()
-            : Component
-                .EmptyState(
-                    new()
-                    {
-                        Title = "No libraries yet",
-                        Message = canManageLibraries
-                            ? "Create your first library to get started."
-                            : "Ask the server owner to add a library.",
-                        Icon = "library",
-                        Action = canManageLibraries
-                            ? new() { Label = "Add library", Route = "/dashboard/libraries" }
-                            : null,
-                    }
-                )
-                .Build();
+        : Component
+            .EmptyState(
+                new()
+                {
+                    Title = "No libraries yet",
+                    Message = canManageLibraries
+                        ? "Create your first library to get started."
+                        : "Ask the server owner to add a library.",
+                    Icon = "library",
+                    Action = canManageLibraries
+                        ? new() { Label = "Add library", Route = "/dashboard/libraries" }
+                        : null,
+                }
+            )
+            .Build();
 
     /// <summary>
     /// A random carousel's worth of titles per genre, and every movie and show id
