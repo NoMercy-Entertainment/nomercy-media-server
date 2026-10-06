@@ -192,14 +192,15 @@ public class PlaylistsController : BaseController
     {
         int result = await _musicRepository.DeletePlaylistAsync(id, User.UserId());
 
+        if (result == 0)
+            return NotFoundResponse("Playlist not found");
+
         await _eventBus.PublishAsync(new LibraryRefreshedEvent { QueryKey = ["music-playlists"] });
 
         return Ok(
             new StatusResponseDto<string>
             {
-                Data = (
-                    result > 0 ? "Playlist deleted successfully" : "Playlist not found"
-                ).Localize(),
+                Data = "Playlist deleted successfully".Localize(),
                 Status = "ok",
             }
         );

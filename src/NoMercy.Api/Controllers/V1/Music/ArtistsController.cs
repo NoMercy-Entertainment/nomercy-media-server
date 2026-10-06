@@ -228,12 +228,15 @@ public class ArtistsController : BaseController
     {
         bool deleted = await _musicRepository.DeleteArtistAsync(id);
 
+        if (!deleted)
+            return NotFoundResponse("Artist not found");
+
         await _eventBus.PublishAsync(new LibraryRefreshedEvent { QueryKey = ["music", "artist"] });
 
         return Ok(
             new StatusResponseDto<string>
             {
-                Data = (deleted ? "Artist deleted successfully" : "Artist not found").Localize(),
+                Data = "Artist deleted successfully".Localize(),
                 Status = "ok",
             }
         );

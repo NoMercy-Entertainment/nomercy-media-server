@@ -9,6 +9,8 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Text.RegularExpressions;
+using NoMercy.NmSystem.Information;
 using NoMercy.Setup.Ui;
 
 namespace NoMercy.Tests.Setup.Ui;
@@ -18,17 +20,10 @@ namespace NoMercy.Tests.Setup.Ui;
 /// stdout is redirected — <see cref="ConsoleMessages.ServerRunning"/> and
 /// <see cref="ConsoleMessages.Logo"/> render the fancy interactive banner only on a
 /// real console and no-op under redirection (piped logs, a service manager capturing
-/// output); <see cref="ConsoleMessages.Welcome"/> is the deliberate inverse — a
-/// plain-text fallback banner that only renders WHEN output is redirected.
+/// output); <see cref="ConsoleMessages.Welcome"/> renders in either mode.
 /// </summary>
 /// <remarks>
-/// Because <c>ServerRunning</c>/<c>Logo</c> and <c>Welcome</c> gate on opposite
-/// polarities of the same <c>Console.IsOutputRedirected</c> check, calling all three
-/// against this test host's actual (uncontrollable) console state guarantees at least
-/// one real early-return branch and at least one real body-execution branch are
-/// exercised, whichever way that ambient state falls — see
-/// <c>SetupTerminalUiTests</c> for the equivalent, environment-dependent situation with
-/// <c>SetupTerminalUi</c>.
+/// The test host captures the welcome output through <c>Console.Out</c>.
 /// </remarks>
 [Trait("Category", "Unit")]
 public class ConsoleMessagesTests
@@ -67,6 +62,26 @@ public class ConsoleMessagesTests
 
         await task;
         Assert.True(task.IsCompletedSuccessfully);
+    }
+
+    [Fact]
+    public async Task Welcome_PrintsTheRunningServerVersion()
+    {
+        TextWriter originalOutput = Console.Out;
+        using StringWriter output = new();
+        try
+        {
+            Console.SetOut(output);
+            await ConsoleMessages.Welcome();
+        }
+        finally
+        {
+            Console.SetOut(originalOutput);
+        }
+
+        // Pastel adds ANSI color codes between the label and the value on a color console.
+        string plain = Regex.Replace(output.ToString(), @"\x1b\[[0-9;]*m", string.Empty);
+        Assert.Contains($"Version:  {Software.GetReleaseVersion()}", plain);
     }
 }
 
