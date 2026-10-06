@@ -128,7 +128,12 @@ public sealed class PluginHostLoadContext(string assemblyPath)
         "NoMercy.Design",
     };
 
+    // A plugin's own assemblies (PluginHostOptions.PluginAssemblyPrefix): no
+    // server assembly carries this prefix, so it is plugin code.
+    private const string PluginAssemblyPrefix = "NoMercy.Plugin.";
+
     public static bool IsServerAssembly(string? name) =>
         name?.StartsWith("NoMercy.", StringComparison.OrdinalIgnoreCase) == true
+        && !name.StartsWith(PluginAssemblyPrefix, StringComparison.OrdinalIgnoreCase)
         && !SdkAssemblies.Contains(name);
 }

@@ -35,8 +35,20 @@ public class PluginHostLoadContextTests
     [InlineData("NoMercy.Api")]
     [InlineData("NoMercy.Database")]
     [InlineData("nomercy.data")]
+    [InlineData("NoMercy.Plugins")]
+    [InlineData("NoMercy.PluginHost")]
     public void AServerAssemblyIsRefusedInTheHost(string name)
     {
         PluginHostLoadContext.IsServerAssembly(name).Should().BeTrue();
+    }
+
+    // A plugin's own second assembly (Automix.Analysis, TorrentDownloader.Core)
+    // is plugin code: no server assembly carries the NoMercy.Plugin. prefix.
+    [Theory]
+    [InlineData("NoMercy.Plugin.Automix.Analysis")]
+    [InlineData("NoMercy.Plugin.TorrentDownloader.Core")]
+    public void APluginsOwnAssemblyIsNotAServerAssembly(string name)
+    {
+        PluginHostLoadContext.IsServerAssembly(name).Should().BeFalse();
     }
 }
