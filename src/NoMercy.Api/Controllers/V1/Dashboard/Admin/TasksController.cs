@@ -35,6 +35,7 @@ using NoMercy.MediaProcessing.AudioAnalysis;
 using NoMercy.MediaProcessing.Jobs;
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
 using NoMercy.MediaProcessing.Jobs.SubtitleJobs;
+using NoMercy.NmSystem.Configuration;
 using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Extensions;
 using NoMercy.NmSystem.NewtonSoftConverters;
@@ -64,7 +65,8 @@ public class TasksController(
     IAudioAnalysisScheduler audioAnalysisScheduler,
     IEventBus eventBus,
     QueueRunner queueRunner,
-    IJobDispatcher jobDispatcher
+    IJobDispatcher jobDispatcher,
+    RuntimeServerSettings runtimeSettings
 ) : BaseController
 {
     [HttpGet]
@@ -1154,10 +1156,10 @@ public class TasksController(
     }
 
     /// <summary>
-    /// Estimated completion time for the current encoder queue. Based on the
-    /// rolling average duration of the most recent 50 successful encodes in
-    /// EncodingHistory × remaining queue size. Returns zero when history is
-    /// empty (no basis to extrapolate).
+    /// Estimated completion time for the current encoder queue. Uses each title's
+    /// source duration and recent encode speed, with a historical per-item fallback,
+    /// then schedules the work across each queue's configured workers. Returns zero
+    /// when history is empty (no basis to extrapolate).
     /// </summary>
     [HttpGet]
     [Route("queue/eta")]
@@ -1168,7 +1170,8 @@ public class TasksController(
             pageIndex: 0
         );
 
-        int queueDepth = await queueTaskRepository.GetEncoderQueueDepthAsync();
+        List<QueueJobModel> jobs = await queueTaskRepository.GetEncoderQueueJobsAsync();
+        int queueDepth = jobs.Count;
 
         if (recent.Count == 0 || queueDepth == 0)
         {
@@ -1184,7 +1187,41 @@ public class TasksController(
         }
 
         double avgSeconds = recent.Average(h => h.DurationSeconds);
-        double etaSeconds = avgSeconds * queueDepth;
+        double[] speeds = [.. recent.Where(h => h.AverageSpeed > 0).Select(h => h.AverageSpeed)];
+        double averageSpeed = speeds.Length > 0 ? speeds.Average() : 0;
+        List<VideoEncodeJob> videoJobs =
+        [
+            .. jobs.Select(job => ReadEncodeJob(job.Payload))
+                .Where(job => job is not null)
+                .Select(job => job!),
+        ];
+        Dictionary<string, double> durations =
+            await queueCardMediaRepository.GetVideoDurationsByInputPathsAsync([
+                .. videoJobs.Select(job => job.InputFile).Distinct(),
+            ]);
+
+        double etaSeconds = 0;
+        foreach (IGrouping<string, QueueJobModel> lane in jobs.GroupBy(job => job.Queue))
+        {
+            int workerCount =
+                lane.Key == QueueNames.EncoderCpu
+                    ? runtimeSettings.CpuEncoderWorkers.Value
+                    : runtimeSettings.EncoderWorkers.Value;
+            List<double> itemSeconds = [];
+            foreach (QueueJobModel row in lane)
+            {
+                VideoEncodeJob? video = ReadEncodeJob(row.Payload);
+                string inputPath = video?.InputFile.Replace('\\', '/') ?? string.Empty;
+                // Unknown title duration (or encode speed) uses the existing per-item average.
+                double? duration = durations.TryGetValue(inputPath, out double titleSeconds)
+                    ? titleSeconds
+                    : null;
+                double seconds = EstimateItemSeconds(duration, averageSpeed, avgSeconds);
+                itemSeconds.Add(seconds);
+            }
+
+            etaSeconds = Math.Max(etaSeconds, EstimateQueueSeconds(itemSeconds, workerCount));
+        }
 
         return Ok(
             new
@@ -1195,6 +1232,27 @@ public class TasksController(
                 basedOnSamples = recent.Count,
             }
         );
+    }
+
+    internal static double EstimateItemSeconds(
+        double? titleSeconds,
+        double averageSpeed,
+        double averageEncodeSeconds
+    ) =>
+        titleSeconds is > 0 && averageSpeed > 0
+            ? titleSeconds.Value / averageSpeed
+            : averageEncodeSeconds;
+
+    internal static double EstimateQueueSeconds(IReadOnlyList<double> itemSeconds, int workerCount)
+    {
+        double[] workerSeconds = new double[Math.Max(1, workerCount)];
+        foreach (double seconds in itemSeconds)
+        {
+            int nextWorker = Array.IndexOf(workerSeconds, workerSeconds.Min());
+            workerSeconds[nextWorker] += seconds;
+        }
+
+        return workerSeconds.Max();
     }
 
     /// <summary>

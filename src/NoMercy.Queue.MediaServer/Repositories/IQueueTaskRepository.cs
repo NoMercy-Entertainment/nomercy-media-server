@@ -97,6 +97,11 @@ public interface IQueueTaskRepository
     /// <summary>Total rows currently on the encoder queue family, pending or running.</summary>
     Task<int> GetEncoderQueueDepthAsync(CancellationToken cancellationToken = default);
 
+    /// <summary>Every encoder-family row for estimating remaining work.</summary>
+    Task<List<QueueJobModel>> GetEncoderQueueJobsAsync(
+        CancellationToken cancellationToken = default
+    );
+
     /// <summary>Total rows on every queue, unfiltered.</summary>
     Task<int> GetQueueJobCountAsync(CancellationToken cancellationToken = default);
 
