@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Mvc;
@@ -55,7 +56,12 @@ public class ImageController(
         Response.Headers["Cache-Control"] = "public, max-age=2592000";
     }
 
+    // Public on purpose: clients load artwork through img tags and CSS
+    // backgrounds, which carry no Authorization header, and the response is
+    // served with Access-Control-Allow-Origin: *. AccessLogMiddleware lists
+    // /images among its ignored routes, so it does not gate this either.
     [HttpGet]
+    [AllowAnonymous]
     public async Task<IActionResult> Image(
         string type,
         string path,
@@ -151,6 +157,7 @@ public class ImageController(
     }
 
     [HttpDelete]
+    [Authorize(Policy = "MediaAccess")]
     public IActionResult DeleteCache(
         string type,
         string path,
