@@ -1030,48 +1030,7 @@ public class Binaries
         Uri? downloadUrl = null;
         string? assetName = null;
 
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            assetName = "NoMercyApp-windows-x64.exe";
-            downloadUrl = releaseInfo
-                .Assets.FirstOrDefault(a =>
-                    a.Name.Equals(assetName, StringComparison.OrdinalIgnoreCase)
-                )
-                ?.BrowserDownloadUrl;
-        }
-        else if (
-            RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
-            && RuntimeInformation.ProcessArchitecture == Architecture.Arm64
-        )
-        {
-            assetName = "NoMercyApp-linux-arm64";
-            downloadUrl = releaseInfo
-                .Assets.FirstOrDefault(a =>
-                    a.Name.Equals(assetName, StringComparison.OrdinalIgnoreCase)
-                )
-                ?.BrowserDownloadUrl;
-        }
-        else if (
-            RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
-            && RuntimeInformation.ProcessArchitecture == Architecture.X64
-        )
-        {
-            assetName = "NoMercyApp-linux-x64";
-            downloadUrl = releaseInfo
-                .Assets.FirstOrDefault(a =>
-                    a.Name.Equals(assetName, StringComparison.OrdinalIgnoreCase)
-                )
-                ?.BrowserDownloadUrl;
-        }
-        else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-        {
-            assetName = "NoMercyApp-macos-x64.dmg";
-            downloadUrl = releaseInfo
-                .Assets.FirstOrDefault(a =>
-                    a.Name.Equals(assetName, StringComparison.OrdinalIgnoreCase)
-                )
-                ?.BrowserDownloadUrl;
-        }
+        downloadUrl = FindPlatformAsset(releaseInfo, "NoMercyApp", out assetName);
 
         if (downloadUrl == null || assetName is null)
         {
@@ -1126,48 +1085,7 @@ public class Binaries
         Uri? downloadUrl = null;
         string? assetName = null;
 
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            assetName = "NoMercyLauncher-windows-x64.exe";
-            downloadUrl = releaseInfo
-                .Assets.FirstOrDefault(a =>
-                    a.Name.Equals(assetName, StringComparison.OrdinalIgnoreCase)
-                )
-                ?.BrowserDownloadUrl;
-        }
-        else if (
-            RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
-            && RuntimeInformation.ProcessArchitecture == Architecture.Arm64
-        )
-        {
-            assetName = "NoMercyLauncher-linux-arm64";
-            downloadUrl = releaseInfo
-                .Assets.FirstOrDefault(a =>
-                    a.Name.Equals(assetName, StringComparison.OrdinalIgnoreCase)
-                )
-                ?.BrowserDownloadUrl;
-        }
-        else if (
-            RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
-            && RuntimeInformation.ProcessArchitecture == Architecture.X64
-        )
-        {
-            assetName = "NoMercyLauncher-linux-x64";
-            downloadUrl = releaseInfo
-                .Assets.FirstOrDefault(a =>
-                    a.Name.Equals(assetName, StringComparison.OrdinalIgnoreCase)
-                )
-                ?.BrowserDownloadUrl;
-        }
-        else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-        {
-            assetName = "NoMercyLauncher-macos-x64";
-            downloadUrl = releaseInfo
-                .Assets.FirstOrDefault(a =>
-                    a.Name.Equals(assetName, StringComparison.OrdinalIgnoreCase)
-                )
-                ?.BrowserDownloadUrl;
-        }
+        downloadUrl = FindPlatformAsset(releaseInfo, "NoMercyLauncher", out assetName);
 
         if (downloadUrl == null || assetName is null)
         {
@@ -1222,48 +1140,7 @@ public class Binaries
         Uri? downloadUrl = null;
         string? assetName = null;
 
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            assetName = "nomercy-windows-x64.exe";
-            downloadUrl = releaseInfo
-                .Assets.FirstOrDefault(a =>
-                    a.Name.Equals(assetName, StringComparison.OrdinalIgnoreCase)
-                )
-                ?.BrowserDownloadUrl;
-        }
-        else if (
-            RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
-            && RuntimeInformation.ProcessArchitecture == Architecture.Arm64
-        )
-        {
-            assetName = "nomercy-linux-arm64";
-            downloadUrl = releaseInfo
-                .Assets.FirstOrDefault(a =>
-                    a.Name.Equals(assetName, StringComparison.OrdinalIgnoreCase)
-                )
-                ?.BrowserDownloadUrl;
-        }
-        else if (
-            RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
-            && RuntimeInformation.ProcessArchitecture == Architecture.X64
-        )
-        {
-            assetName = "nomercy-linux-x64";
-            downloadUrl = releaseInfo
-                .Assets.FirstOrDefault(a =>
-                    a.Name.Equals(assetName, StringComparison.OrdinalIgnoreCase)
-                )
-                ?.BrowserDownloadUrl;
-        }
-        else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-        {
-            assetName = "nomercy-macos-x64";
-            downloadUrl = releaseInfo
-                .Assets.FirstOrDefault(a =>
-                    a.Name.Equals(assetName, StringComparison.OrdinalIgnoreCase)
-                )
-                ?.BrowserDownloadUrl;
-        }
+        downloadUrl = FindPlatformAsset(releaseInfo, "nomercy", out assetName);
 
         if (downloadUrl == null || assetName is null)
         {
@@ -1287,6 +1164,41 @@ public class Binaries
         await FileAttributes.SetCreatedAttribute(path, releaseInfo.PublishedAt);
 
         await FilePermissions.SetExecutionPermissions(path);
+    }
+
+    /// <summary>
+    /// Picks the release asset for this machine's OS and CPU. Logs a clear reason and
+    /// returns null when no build is published for the platform.
+    /// </summary>
+    private static Uri? FindPlatformAsset(
+        GithubReleaseResponse releaseInfo,
+        string product,
+        out string? assetName
+    )
+    {
+        OSPlatform os =
+            RuntimeInformation.IsOSPlatform(OSPlatform.Windows) ? OSPlatform.Windows
+            : RuntimeInformation.IsOSPlatform(OSPlatform.Linux) ? OSPlatform.Linux
+            : RuntimeInformation.IsOSPlatform(OSPlatform.OSX) ? OSPlatform.OSX
+            : OSPlatform.FreeBSD;
+        Architecture architecture = RuntimeInformation.ProcessArchitecture;
+
+        assetName = ReleaseAssetSelector.GetAssetName(product, os, architecture);
+        if (assetName is null)
+        {
+            Logger.Setup(
+                ReleaseAssetSelector.DescribeUnsupported(product, os, architecture),
+                LogEventLevel.Warning
+            );
+            return null;
+        }
+
+        string requestedAsset = assetName;
+        return releaseInfo
+            .Assets.FirstOrDefault(a =>
+                a.Name.Equals(requestedAsset, StringComparison.OrdinalIgnoreCase)
+            )
+            ?.BrowserDownloadUrl;
     }
 
     public async Task<ServerUpdateResult> DownloadServerUpdate()
@@ -1360,48 +1272,7 @@ public class Binaries
         Uri? downloadUrl = null;
         string? assetName = null;
 
-        if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-        {
-            assetName = "NoMercyMediaServer-windows-x64.exe";
-            downloadUrl = releaseInfo
-                .Assets.FirstOrDefault(a =>
-                    a.Name.Equals(assetName, StringComparison.OrdinalIgnoreCase)
-                )
-                ?.BrowserDownloadUrl;
-        }
-        else if (
-            RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
-            && RuntimeInformation.ProcessArchitecture == Architecture.Arm64
-        )
-        {
-            assetName = "NoMercyMediaServer-linux-arm64";
-            downloadUrl = releaseInfo
-                .Assets.FirstOrDefault(a =>
-                    a.Name.Equals(assetName, StringComparison.OrdinalIgnoreCase)
-                )
-                ?.BrowserDownloadUrl;
-        }
-        else if (
-            RuntimeInformation.IsOSPlatform(OSPlatform.Linux)
-            && RuntimeInformation.ProcessArchitecture == Architecture.X64
-        )
-        {
-            assetName = "NoMercyMediaServer-linux-x64";
-            downloadUrl = releaseInfo
-                .Assets.FirstOrDefault(a =>
-                    a.Name.Equals(assetName, StringComparison.OrdinalIgnoreCase)
-                )
-                ?.BrowserDownloadUrl;
-        }
-        else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-        {
-            assetName = "NoMercyMediaServer-macos-x64";
-            downloadUrl = releaseInfo
-                .Assets.FirstOrDefault(a =>
-                    a.Name.Equals(assetName, StringComparison.OrdinalIgnoreCase)
-                )
-                ?.BrowserDownloadUrl;
-        }
+        downloadUrl = FindPlatformAsset(releaseInfo, "NoMercyMediaServer", out assetName);
 
         if (downloadUrl == null || assetName is null)
         {
