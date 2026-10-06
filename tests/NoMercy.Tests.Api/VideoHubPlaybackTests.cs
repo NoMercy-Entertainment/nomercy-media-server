@@ -57,7 +57,8 @@ public class VideoHubPlaybackTests : IClassFixture<NoMercyApiFactory>
     private (VideoHub Hub, Mock<IUserDataRepository> UserDataRepository) CreateHub(
         string connectionId,
         Guid userId,
-        out Mock<IHubCallerClients> clients
+        out Mock<IHubCallerClients> clients,
+        IActivityLogger? activityLogger = null
     )
     {
         IDbContextFactory<MediaContext> contextFactory = _factory.Services.GetRequiredService<
@@ -86,7 +87,7 @@ public class VideoHubPlaybackTests : IClassFixture<NoMercyApiFactory>
             _factory.Services.GetRequiredService<VideoPlayerStateManager>(),
             scope.ServiceProvider.GetRequiredService<VideoPlaylistManager>(),
             _factory.Services.GetRequiredService<VideoPlaybackCommandHandler>(),
-            Mock.Of<IActivityLogger>(),
+            activityLogger ?? Mock.Of<IActivityLogger>(),
             _factory.Services.GetRequiredService<CastSessionTokenService>(),
             _factory.Services.GetRequiredService<DeviceBusRegistry>(),
             _factory.Services.GetRequiredService<CastPanelWakeLauncher>(),
@@ -575,6 +576,48 @@ public class VideoHubPlaybackTests : IClassFixture<NoMercyApiFactory>
     // =========================================================================
     // StartPlaybackCommand
     // =========================================================================
+
+    [Fact]
+    public async Task StartPlaybackCommand_FailureLogIdentifiesTheTitleAndItem()
+    {
+        Guid userId = TestAuthHandler.DefaultUserId;
+        VideoPlayerStateManager stateManager =
+            _factory.Services.GetRequiredService<VideoPlayerStateManager>();
+        Mock<IActivityLogger> activityLogger = new();
+        (VideoHub hub, _) = CreateHub(
+            Guid.NewGuid().ToString(),
+            userId,
+            out _,
+            activityLogger.Object
+        );
+
+        try
+        {
+            stateManager.RemoveState(userId);
+            await hub.StartPlaybackCommand(MediaTypes.MovieMediaType, "129", 129);
+
+            activityLogger.Verify(
+                logger =>
+                    logger.LogFailureAsync(
+                        "failure.playback_start",
+                        userId,
+                        It.IsAny<Ulid>(),
+                        It.IsAny<string>(),
+                        It.Is<string>(message =>
+                            message.Contains("Spirited Away") && message.Contains("129")
+                        ),
+                        It.IsAny<Ulid?>(),
+                        It.IsAny<object?>(),
+                        It.IsAny<CancellationToken>()
+                    ),
+                Times.Once
+            );
+        }
+        finally
+        {
+            stateManager.RemoveState(userId);
+        }
+    }
 
     // The hub used to remember the first device a user started on, in a static map
     // nothing ever cleared, so every later session was created on that device.

@@ -104,6 +104,7 @@ public partial class VideoHub
 
         string language = GetLanguageFromContext();
         string country = GetCountryFromContext();
+        VideoPlaylistResponseDto? playbackItem = null;
 
         try
         {
@@ -115,6 +116,7 @@ public partial class VideoHub
                 language,
                 country
             );
+            playbackItem = playlistResult.Item1;
 
             await HandlePlaybackState(
                 user,
@@ -126,7 +128,12 @@ public partial class VideoHub
         }
         catch (ArgumentException ex)
         {
-            _logger.LogInformation("Invalid playlist type: {Message}", ex.Message);
+            _logger.LogInformation(
+                "Invalid playlist type for {Title} ({ItemId}): {Message}",
+                playbackItem?.Title,
+                playbackItem?.Id ?? itemId,
+                ex.Message
+            );
 
             User? user2 = UserCacheService.GetUser(Context.User.UserId());
             if (user2 is not null)
@@ -140,7 +147,7 @@ public partial class VideoHub
                         user2.Id,
                         deviceId2,
                         errorCode: ex.GetType().Name,
-                        message: ex.Message
+                        message: $"Playback start failed for {playbackItem?.Title ?? "<unknown>"} (item {playbackItem?.Id ?? itemId}): {ex.Message}"
                     );
                 }
                 catch (Exception logEx)
@@ -154,8 +161,12 @@ public partial class VideoHub
         }
         catch (Exception ex)
         {
-            _logger.LogInformation("Error in StartPlaybackCommand");
-            _logger.LogError(ex, ex.Message);
+            _logger.LogError(
+                ex,
+                "Error in StartPlaybackCommand for {Title} ({ItemId})",
+                playbackItem?.Title,
+                playbackItem?.Id ?? itemId
+            );
 
             User? user2 = UserCacheService.GetUser(Context.User.UserId());
             if (user2 is not null)
@@ -169,7 +180,7 @@ public partial class VideoHub
                         user2.Id,
                         deviceId2,
                         errorCode: ex.GetType().Name,
-                        message: ex.Message
+                        message: $"Playback start failed for {playbackItem?.Title ?? "<unknown>"} (item {playbackItem?.Id ?? itemId}): {ex.Message}"
                     );
                 }
                 catch (Exception logEx)
