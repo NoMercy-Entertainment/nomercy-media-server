@@ -378,6 +378,21 @@ public static class PluginRefusalMessages
         );
     }
 
+    /// <summary>
+    /// A route naming a chrome the clients do not draw.
+    /// </summary>
+    public static PluginRefusal RouteChromeUnknown(string plugin, string chrome)
+    {
+        return new PluginRefusal(
+            PluginRefusalCodes.RouteChromeUnknown,
+            plugin,
+            $"The route declares chrome \"{chrome}\", which is not one of {string.Join(", ", PluginChrome.All)}.",
+            "A client can only show the app's navbar or hide it. A value it does not know would be read as one of the two by guesswork, and the page would look different on every device.",
+            "Use \"app\" to keep the app's navbar, or \"none\" to own the whole screen. Leave the field out for \"app\". Docs: /nomercy-plugins/tour/routes",
+            PluginRefusalSeverity.Blocked
+        );
+    }
+
     public static PluginRefusal TokenInUrl(string plugin, string url)
     {
         return new PluginRefusal(

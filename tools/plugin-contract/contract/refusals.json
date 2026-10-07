@@ -102,6 +102,12 @@
     "summary": "The plugin claimed a route under the underscore prefix the host owns."
   },
   {
+    "code": "PLUGIN_ROUTE_CHROME_UNKNOWN",
+    "severity": "blocked",
+    "capability": "ui.mount",
+    "summary": "The plugin declared a route chrome the clients do not draw. Known values are app and none."
+  },
+  {
     "code": "PLUGIN_ROUTE_ACCESS_DENIED",
     "severity": "blocked",
     "capability": "rest",
