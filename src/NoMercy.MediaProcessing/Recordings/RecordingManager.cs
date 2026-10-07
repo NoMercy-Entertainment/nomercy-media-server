@@ -27,6 +27,7 @@ using NoMercy.NmSystem.Extensions;
 using NoMercy.Providers.FanArt.Client;
 using NoMercy.Providers.MusicBrainz.Models;
 using NoMercy.Storage;
+using NoMercy.Storage.Drivers.Local;
 using SixLabors.ImageSharp;
 using SixLabors.ImageSharp.PixelFormats;
 
@@ -409,7 +410,7 @@ public partial class RecordingManager(
     /// so a file lands in the identical folder an encode of it would have used.
     /// A no-op when the file already sits at its target path.
     /// </summary>
-    private async Task RelocateToPicardLayout(
+    internal async Task RelocateToPicardLayout(
         MusicBrainzReleaseAppends releaseAppends,
         MusicBrainzTrack trackAppends,
         MediaFile mediaFile,
@@ -417,15 +418,34 @@ public partial class RecordingManager(
         string libraryRoot
     )
     {
-        if (
-            !StoragePathHelpers.TryGetLibraryRelativeParts(
+        IStorage libraryStorage = storageFactory.For(
+            libraryFolder.Id,
+            libraryFolder.DriverId,
+            string.Empty
+        );
+
+        // A local library hands out absolute host paths (FolderRootPath), so the file's own
+        // path is the real move source even when the file sits outside the library root
+        // (a manual import from a sibling or staging folder). Remote storage works in
+        // library-relative paths only and keeps requiring the file to live under the root.
+        bool localSource = libraryStorage is LocalStorage;
+        bool withinLibrary = StoragePathHelpers.TryGetLibraryRelativeParts(
+            mediaFile.Path,
+            libraryRoot,
+            out string currentRelativeFolder,
+            out string currentFilename
+        );
+
+        if (!withinLibrary && !localSource)
+        {
+            logger.LogError(
+                "Cannot organize {Track}: '{Path}' is outside the library root '{Root}' on a remote storage",
+                trackAppends.Title,
                 mediaFile.Path,
-                libraryRoot,
-                out string currentRelativeFolder,
-                out string currentFilename
-            )
-        )
+                libraryRoot
+            );
             return;
+        }
 
         // TryGetLibraryRelativeParts returns currentFilename with its OWN leading slash
         // (the same shape Track.Filename is stored in, e.g. "/01 Nebraska.mp3") — trimming
@@ -441,22 +461,45 @@ public partial class RecordingManager(
             $"{PicardNaming.BuildDirectory(namingContext)}/{PicardNaming.BuildFileName(namingContext)}{Path.GetExtension(mediaFile.Path)}"
         );
 
-        if (string.Equals(currentRelativePath, targetRelativePath, StringComparison.Ordinal))
+        bool alreadyPlaced = localSource
+            ? string.Equals(
+                mediaFile.Path.Replace('\\', '/'),
+                $"{libraryRoot.Replace('\\', '/').TrimEnd('/')}/{targetRelativePath}",
+                OperatingSystem.IsWindows()
+                    ? StringComparison.OrdinalIgnoreCase
+                    : StringComparison.Ordinal
+            )
+            : string.Equals(currentRelativePath, targetRelativePath, StringComparison.Ordinal);
+        if (alreadyPlaced)
             return;
-
-        IStorage libraryStorage = storageFactory.For(
-            libraryFolder.Id,
-            libraryFolder.DriverId,
-            string.Empty
-        );
 
         // storageFactory.For(...) scopes to the DRIVE root, not the library folder — the
         // same reason ResolveLibraryRoot resolves libraryFolder.Path through it rather than
         // treating the folder itself as the scope. MoveAsync validates its paths against
         // that same drive-rooted scope, so both sides need the folder's own path prefixed
         // back on, or a move lands one directory short of where relativeFolder says it did.
-        string scopedFrom = $"{libraryFolder.Path.Trim('/')}/{currentRelativePath}".Trim('/');
+        // The source of a local move is the file's real absolute path: LocalStorage passes a
+        // rooted path through unchanged and StoragePathGuard still validates it, so a source
+        // outside the allowed root throws StoragePathNotAllowedException instead of moving.
+        string scopedFrom = localSource
+            ? mediaFile.Path
+            : $"{libraryFolder.Path.Trim('/')}/{currentRelativePath}".Trim('/');
         string scopedTo = $"{libraryFolder.Path.Trim('/')}/{targetRelativePath}".Trim('/');
+
+        // Check the source BEFORE displacing an occupant of the target: a missing source
+        // must never push an existing file out of its slot.
+        if (!await libraryStorage.ExistsAsync(scopedFrom, CancellationToken.None))
+        {
+            logger.LogError(
+                "Cannot organize {Track}: the source '{Path}' no longer exists",
+                trackAppends.Title,
+                mediaFile.Path
+            );
+            throw new FileNotFoundException(
+                "The music import source no longer exists.",
+                mediaFile.Path
+            );
+        }
 
         // A repair can be untangling a genuine swap — track A's real file already sits
         // where track B's file needs to land, and vice versa. MoveFile refuses to
@@ -482,7 +525,7 @@ public partial class RecordingManager(
         logger.LogInformation(
             "Organized {Track}: moved '{From}' to '{To}'",
             trackAppends.Title,
-            currentRelativePath,
+            localSource ? mediaFile.Path : currentRelativePath,
             targetRelativePath
         );
 

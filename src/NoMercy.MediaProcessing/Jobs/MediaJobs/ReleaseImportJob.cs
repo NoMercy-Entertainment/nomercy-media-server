@@ -96,7 +96,7 @@ public class ReleaseImportJob : AbstractMusicFolderJob
                 return 0;
             }
 
-            jobDispatcher.DispatchJob<AudioImportJob>(LibraryId, baseFolder.Id, InputFolder);
+            DispatchAudioImport(jobDispatcher, baseFolder, InputFolder);
             return 1;
         }
 
@@ -117,13 +117,25 @@ public class ReleaseImportJob : AbstractMusicFolderJob
                     return;
                 }
 
-                jobDispatcher.DispatchJob<AudioImportJob>(LibraryId, baseFolder.Id, folder.Path);
+                DispatchAudioImport(jobDispatcher, baseFolder, folder.Path);
                 Interlocked.Increment(ref dispatched);
             }
         );
 
         return dispatched;
     }
+
+    /// <summary>
+    /// Hands the album on to <see cref="AudioImportJob"/> with the release the operator
+    /// picked. Dropping <see cref="AbstractMusicFolderJob.ReleaseId"/> here made the
+    /// import re-derive the release from tags or fingerprints, which can pick a
+    /// different pressing than the one that was chosen.
+    /// </summary>
+    internal void DispatchAudioImport(
+        JobDispatcher jobDispatcher,
+        Folder baseFolder,
+        string path
+    ) => jobDispatcher.DispatchJob<AudioImportJob>(LibraryId, baseFolder.Id, ReleaseId, path);
 
     /// <summary>
     /// The configured library folder whose root contains <paramref name="absolutePath"/>,
