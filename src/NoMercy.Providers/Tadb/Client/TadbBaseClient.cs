@@ -31,7 +31,6 @@ public class TadbBaseClient : ExternalApiClient
 
     protected override string HttpClientName => HttpClientNames.Tadb;
     protected override Uri BaseUrl => new("https://www.theaudiodb.com/api/v1/json/");
-    protected override int ConcurrentRequests => 2;
 
     // The API key travels as a Bearer header (not a URL path segment) so it
     // never lands in cache filenames or access logs.

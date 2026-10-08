@@ -43,7 +43,6 @@ public class TmdbBaseClient : ExternalApiClient
 
     protected override string HttpClientName => HttpClientNames.Tmdb;
     protected override Uri BaseUrl => new("https://api.themoviedb.org/3/");
-    protected override int ConcurrentRequests => 50;
 
     protected override void ConfigureClient(HttpClient client) =>
         client.DefaultRequestHeaders.Add(
@@ -99,7 +98,7 @@ public class TmdbBaseClient : ExternalApiClient
                             nameof(TmdbBaseClient),
                             "Cannot access a disposed TMDB client."
                         );
-                    return Client.GetStringAsync(newUrl);
+                    return ProviderHttp.GetStringAsync(Client, newUrl);
                 },
                 newUrl,
                 priority
