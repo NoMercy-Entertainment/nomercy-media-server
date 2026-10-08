@@ -106,7 +106,7 @@ public class RipperHubGetDriveStateTests : IClassFixture<NoMercyApiFactory>
 
         object? result = await hub.GetDriveState("D:\\");
 
-        result.Should().BeNull();
+        ((HubCommandResult)result!).ErrorCode.Should().Be("forbidden");
         // The moderator gate must reject before the drive list is even read.
         driveMonitor.Verify(m => m.GetDrives(), Times.Never);
     }
@@ -125,7 +125,7 @@ public class RipperHubGetDriveStateTests : IClassFixture<NoMercyApiFactory>
 
         object? result = await hub.GetDriveState("Z:\\");
 
-        result.Should().BeNull();
+        ((HubCommandResult)result!).ErrorCode.Should().Be("not_found");
         discSource.Verify(
             s => s.ProbeAsync(It.IsAny<DiscDrive>(), It.IsAny<CancellationToken>()),
             Times.Never
@@ -142,7 +142,7 @@ public class RipperHubGetDriveStateTests : IClassFixture<NoMercyApiFactory>
 
         object? result = await hub.GetDriveState("");
 
-        result.Should().BeNull();
+        ((HubCommandResult)result!).ErrorCode.Should().Be("invalid_input");
     }
 
     [Fact]
@@ -157,7 +157,7 @@ public class RipperHubGetDriveStateTests : IClassFixture<NoMercyApiFactory>
 
         object? result = await hub.GetDriveState("   ");
 
-        result.Should().BeNull();
+        ((HubCommandResult)result!).ErrorCode.Should().Be("invalid_input");
     }
 
     [Fact]
@@ -170,7 +170,7 @@ public class RipperHubGetDriveStateTests : IClassFixture<NoMercyApiFactory>
 
         object? result = await hub.GetDriveState(null!);
 
-        result.Should().BeNull();
+        ((HubCommandResult)result!).ErrorCode.Should().Be("invalid_input");
     }
 
     [Fact]
@@ -190,7 +190,7 @@ public class RipperHubGetDriveStateTests : IClassFixture<NoMercyApiFactory>
 
         object? result = await hub.GetDriveState(null!);
 
-        result.Should().BeNull();
+        ((HubCommandResult)result!).ErrorCode.Should().Be("invalid_input");
     }
 
     [Fact]

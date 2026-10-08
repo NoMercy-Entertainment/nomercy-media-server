@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Globalization;
 using Microsoft.Extensions.Logging;
 using NoMercy.Api.DTOs.Music;
 using NoMercy.Api.Services.Music;
@@ -21,7 +22,31 @@ namespace NoMercy.Api.Hubs;
 
 public partial class MusicHub
 {
-    public async Task StartPlaybackCommand(string? type, Guid? listId, Guid? trackId)
+    public Task<HubCommandResult> StartPlaybackCommand(string? type, Guid? listId, Guid? trackId)
+    {
+        if (
+            string.IsNullOrWhiteSpace(type)
+            || !new[] { "track", "playlist", "album", "artist", "genre" }.Contains(
+                type.Trim(),
+                StringComparer.OrdinalIgnoreCase
+            )
+            || !listId.HasValue
+            || listId.Value == Guid.Empty
+            || !trackId.HasValue
+            || trackId.Value == Guid.Empty
+        )
+            return Task.FromResult(HubCommandResult.Invalid("Playback ids and type are required."));
+
+        if (UserCacheService.GetUser(Context.User.UserId()) is null)
+            return Task.FromResult(HubCommandResult.Forbidden("Caller is not available."));
+
+        return HubCommandResult.ExecuteAsync(
+            () => StartPlaybackCoreAsync(type, listId, trackId),
+            _logger
+        );
+    }
+
+    private async Task StartPlaybackCoreAsync(string? type, Guid? listId, Guid? trackId)
     {
         // Epoch-ms marks (not just deltas) so a live device measurement can line
         // this line up directly against the client's own epoch-stamped tap time —
@@ -138,6 +163,7 @@ public partial class MusicHub
                     logEx.Message
                 );
             }
+            throw;
         }
         catch (Exception ex)
         {
@@ -162,6 +188,7 @@ public partial class MusicHub
                     logEx.Message
                 );
             }
+            throw;
         }
         finally
         {
@@ -475,7 +502,45 @@ public partial class MusicHub
         return playerState;
     }
 
-    public async Task PlaybackCommand(string? command, object? data = null)
+    public Task<HubCommandResult> PlaybackCommand(string? command, object? data = null)
+    {
+        if (
+            string.IsNullOrWhiteSpace(command)
+            || !new[]
+            {
+                "play",
+                "pause",
+                "seek",
+                "next",
+                "previous",
+                "stop",
+                "mute",
+                "shuffle",
+                "repeat",
+            }.Contains(command, StringComparer.OrdinalIgnoreCase)
+        )
+            return Task.FromResult(HubCommandResult.Invalid("Unknown playback command."));
+
+        if (
+            command.Equals("seek", StringComparison.OrdinalIgnoreCase)
+            && (
+                !double.TryParse(
+                    data?.ToString(),
+                    NumberStyles.Float,
+                    CultureInfo.InvariantCulture,
+                    out double seconds
+                )
+                || !double.IsFinite(seconds)
+                || seconds < 0
+                || seconds > int.MaxValue / 1000
+            )
+        )
+            return Task.FromResult(HubCommandResult.Invalid("Seek position is out of range."));
+
+        return HubCommandResult.ExecuteAsync(() => PlaybackCoreAsync(command, data), _logger);
+    }
+
+    private async Task PlaybackCoreAsync(string? command, object? data = null)
     {
         // See the matching epoch-ms marks in StartPlaybackCommand and
         // MusicPlaybackService.DebouncedUpdatePlaybackState — same convention,
@@ -571,15 +636,24 @@ public partial class MusicHub
     // only be trusted as-is. Kept exactly as-is (signature and behavior) for old
     // clients; new clients should prefer CurrentTimeForItemCommand /
     // ReportPositionForItemCommand below, which close that gap.
-    public async Task CurrentTimeCommand(int? time)
+    public Task<HubCommandResult> CurrentTimeCommand(int? time)
     {
-        if (time is null)
-            return;
-        await ReportPositionCommand(time.Value * 1000);
+        if (time is null or < 0 || time > int.MaxValue / 1000)
+            return Task.FromResult(HubCommandResult.Invalid("Time is out of range."));
+        return HubCommandResult.ExecuteAsync(
+            () => ReportPositionCoreAsync(time.Value * 1000, null),
+            _logger
+        );
     }
 
     // See the untagged-vs-tagged note on CurrentTimeCommand above.
-    public Task ReportPositionCommand(int? positionMs) => ReportPositionCoreAsync(positionMs, null);
+    public Task<HubCommandResult> ReportPositionCommand(int? positionMs) =>
+        positionMs is null or < 0
+            ? Task.FromResult(HubCommandResult.Invalid("Position must be non-negative."))
+            : HubCommandResult.ExecuteAsync(
+                () => ReportPositionCoreAsync(positionMs, null),
+                _logger
+            );
 
     private async Task ReportPositionCoreAsync(int? positionMs, long? capturedAtMs)
     {
@@ -646,18 +720,37 @@ public partial class MusicHub
     /// arity is part of its contract, and clients that still call the old one must keep
     /// working exactly as they did.
     /// </summary>
-    public Task ReportPositionAtCommand(int? positionMs, long? capturedAtMs) =>
-        ReportPositionCoreAsync(positionMs, capturedAtMs);
+    public Task<HubCommandResult> ReportPositionAtCommand(int? positionMs, long? capturedAtMs) =>
+        positionMs is null or < 0 || capturedAtMs is < 0
+            ? Task.FromResult(HubCommandResult.Invalid("Position or capture time is out of range."))
+            : HubCommandResult.ExecuteAsync(
+                () => ReportPositionCoreAsync(positionMs, capturedAtMs),
+                _logger
+            );
 
     /// <summary>
     /// Item-tagged twin of <see cref="CurrentTimeCommand"/> — seconds instead of
     /// whole-second int, forwarded through <see cref="ReportPositionForItemCommand"/>.
     /// </summary>
-    public async Task CurrentTimeForItemCommand(double? seconds, string? itemId)
+    public Task<HubCommandResult> CurrentTimeForItemCommand(double? seconds, string? itemId)
     {
-        if (seconds is null)
-            return;
-        await ReportPositionForItemCommand((long)Math.Round(seconds.Value * 1000), itemId);
+        if (
+            seconds is null
+            || !double.IsFinite(seconds.Value)
+            || seconds < 0
+            || seconds > int.MaxValue / 1000
+            || itemId is { Length: > 0 } && string.IsNullOrWhiteSpace(itemId)
+        )
+            return Task.FromResult(HubCommandResult.Invalid("Item time is out of range."));
+
+        HubCommandResult? itemError = ValidateTaggedItem(itemId);
+        if (itemError?.ErrorCode == "forbidden")
+            return Task.FromResult(itemError);
+
+        return ExecuteTaggedReportAsync(
+            () => ReportPositionForItemCoreAsync((long)Math.Round(seconds.Value * 1000), itemId),
+            itemError
+        );
     }
 
     /// <summary>
@@ -673,7 +766,25 @@ public partial class MusicHub
     /// exactly like <see cref="ReportPositionCommand"/> — untagged reports keep
     /// working unchanged; they simply forgo the stale-item check.
     /// </summary>
-    public async Task ReportPositionForItemCommand(long? positionMs, string? itemId)
+    public Task<HubCommandResult> ReportPositionForItemCommand(long? positionMs, string? itemId)
+    {
+        if (
+            positionMs is null or < 0 or > int.MaxValue
+            || itemId is { Length: > 0 } && string.IsNullOrWhiteSpace(itemId)
+        )
+            return Task.FromResult(HubCommandResult.Invalid("Item position is out of range."));
+
+        HubCommandResult? itemError = ValidateTaggedItem(itemId);
+        if (itemError?.ErrorCode == "forbidden")
+            return Task.FromResult(itemError);
+
+        return ExecuteTaggedReportAsync(
+            () => ReportPositionForItemCoreAsync(positionMs, itemId),
+            itemError
+        );
+    }
+
+    private async Task ReportPositionForItemCoreAsync(long? positionMs, string? itemId)
     {
         User? user = UserCacheService.GetUser(Context.User.UserId());
         if (user is null)
@@ -741,7 +852,18 @@ public partial class MusicHub
     /// safety margin on top; if <c>CrossfadeCompleteCommand</c> never arrives within that window
     /// the server force-advances anyway.
     /// </param>
-    public Task CrossfadeStartCommand(int? fadeDurationMs)
+    public Task<HubCommandResult> CrossfadeStartCommand(int? fadeDurationMs)
+    {
+        if (fadeDurationMs is null or <= 0 or > 600000)
+            return Task.FromResult(HubCommandResult.Invalid("Fade duration is out of range."));
+
+        return HubCommandResult.ExecuteAsync(
+            () => CrossfadeStartCoreAsync(fadeDurationMs),
+            _logger
+        );
+    }
+
+    private Task CrossfadeStartCoreAsync(int? fadeDurationMs)
     {
         User? user = UserCacheService.GetUser(Context.User.UserId());
         if (user is null)
@@ -763,7 +885,15 @@ public partial class MusicHub
     /// zero, and broadcasts the updated state to all connected clients.
     /// </summary>
     /// <param name="newTrackId">The <see cref="Guid"/> of the track that is now playing.</param>
-    public async Task CrossfadeCompleteCommand(Guid? newTrackId)
+    public Task<HubCommandResult> CrossfadeCompleteCommand(Guid? newTrackId)
+    {
+        if (newTrackId is null || newTrackId == Guid.Empty)
+            return Task.FromResult(HubCommandResult.Invalid("Track id is required."));
+
+        return HubCommandResult.ExecuteAsync(() => CrossfadeCompleteCoreAsync(newTrackId), _logger);
+    }
+
+    private async Task CrossfadeCompleteCoreAsync(Guid? newTrackId)
     {
         User? user = UserCacheService.GetUser(Context.User.UserId());
         if (user is null)
@@ -782,5 +912,31 @@ public partial class MusicHub
             return;
 
         await _musicPlaybackService.CompleteCrossfade(user, client.DeviceId, newTrackId.Value);
+    }
+
+    private HubCommandResult? ValidateTaggedItem(string? itemId)
+    {
+        if (string.IsNullOrEmpty(itemId))
+            return null;
+
+        User? user = UserCacheService.GetUser(Context.User.UserId());
+        if (user is null)
+            return HubCommandResult.Forbidden("Caller is not available.");
+        if (
+            !_musicPlayerStateManager.TryGetValue(user.Id, out MusicPlayerState? state)
+            || state is null
+            || !MusicPlaybackService.IsReportForCurrentItem(state, itemId)
+        )
+            return HubCommandResult.NotFound("Current item was not found.");
+        return null;
+    }
+
+    private async Task<HubCommandResult> ExecuteTaggedReportAsync(
+        Func<Task> report,
+        HubCommandResult? itemError
+    )
+    {
+        HubCommandResult result = await HubCommandResult.ExecuteAsync(report, _logger);
+        return result.Ok && itemError is not null ? itemError : result;
     }
 }

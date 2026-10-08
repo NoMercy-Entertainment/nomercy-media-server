@@ -71,31 +71,58 @@ public sealed class DeviceHub : ConnectionHub
         return string.IsNullOrEmpty(client.DeviceId) ? null : client.DeviceId;
     }
 
-    public async Task DeclareCapabilities(DeviceCapabilities payload)
+    public async Task<HubCommandResult> DeclareCapabilities(DeviceCapabilities payload)
     {
+        if (
+            payload is null
+            || payload.AudioCodecs is null
+            || payload.VideoCodecs is null
+            || payload.AudioCodecs.Any(string.IsNullOrWhiteSpace)
+            || payload.VideoCodecs.Any(string.IsNullOrWhiteSpace)
+            || payload.MaxAudioChannels is < 1 or > 32
+            || payload.MaxVideoHeight is < 1
+            || payload.PlayerBufferCapMb is < 1
+            || !Enum.IsDefined(payload.RamTier)
+            || !Enum.IsDefined(payload.DolbyVision)
+        )
+            return HubCommandResult.Invalid("Device capabilities are invalid.");
+
         string? deviceId = ResolveDeviceIdFromContext();
         if (deviceId is null)
-            return; // unauthenticated or unknown — silently drop, never throw
+            return HubCommandResult.NotFound("Connected device was not found.");
 
-        if (
-            !await _deviceStateRepository.SetCapabilitiesAsync(
-                deviceId,
-                JsonConvert.SerializeObject(payload)
+        try
+        {
+            if (
+                !await _deviceStateRepository.SetCapabilitiesAsync(
+                    deviceId,
+                    JsonConvert.SerializeObject(payload)
+                )
             )
-        )
-            return;
+                return HubCommandResult.NotFound("Device was not found.");
 
-        _capabilityRegistry.Set(deviceId, payload);
+            _capabilityRegistry.Set(deviceId, payload);
 
-        _logger.LogInformation(
-            "Device {DeviceId} declared capabilities: channels={Channels} codecs=[{Codecs}] ramTier={Tier}",
-            [
-                deviceId,
-                payload.MaxAudioChannels,
-                string.Join(",", payload.AudioCodecs),
-                payload.RamTier,
-            ]
-        );
+            _logger.LogInformation(
+                "Device {DeviceId} declared capabilities: channels={Channels} codecs=[{Codecs}] ramTier={Tier}",
+                [
+                    deviceId,
+                    payload.MaxAudioChannels,
+                    string.Join(",", payload.AudioCodecs),
+                    payload.RamTier,
+                ]
+            );
+            return HubCommandResult.Success();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(
+                exception,
+                "Could not declare capabilities for device {DeviceId}",
+                deviceId
+            );
+            return HubCommandResult.Failed();
+        }
     }
 
     public async Task<List<DeviceListItem>> GetDevices()
@@ -114,22 +141,40 @@ public sealed class DeviceHub : ConnectionHub
         );
     }
 
-    public Task<WakeResult> WakeForMusic(string deviceId) => WakeAsync(deviceId, "wake_for_music");
+    public Task<HubCommandResult> WakeForMusic(string deviceId) =>
+        WakeSafelyAsync(deviceId, "wake_for_music");
 
-    public Task<WakeResult> WakeForVideo(string deviceId) => WakeAsync(deviceId, "wake_for_video");
+    public Task<HubCommandResult> WakeForVideo(string deviceId) =>
+        WakeSafelyAsync(deviceId, "wake_for_video");
 
-    private async Task<WakeResult> WakeAsync(string deviceId, string wakeType)
+    private async Task<HubCommandResult> WakeSafelyAsync(string deviceId, string wakeType)
+    {
+        if (!Ulid.TryParse(deviceId, out Ulid id) || id == Ulid.Empty)
+            return HubCommandResult.FromWakeStatus("invalid_input");
+
+        try
+        {
+            return await WakeAsync(deviceId, wakeType);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Could not wake device {DeviceId}", deviceId);
+            return HubCommandResult.FromWakeStatus("operation_failed");
+        }
+    }
+
+    private async Task<HubCommandResult> WakeAsync(string deviceId, string wakeType)
     {
         User? user = UserCacheService.GetUser(Context.User.UserId());
         if (user is null)
-            return new("not_owned");
+            return HubCommandResult.FromWakeStatus("not_owned");
 
         if (!Ulid.TryParse(deviceId, out Ulid id))
-            return new("not_owned");
+            return HubCommandResult.FromWakeStatus("invalid_input");
 
         Device? device = await _deviceStateRepository.GetOwnedAsync(id, user.Id);
         if (device is null)
-            return new("not_owned");
+            return HubCommandResult.FromWakeStatus("not_owned");
 
         if (_busRegistry.IsOnline(device.Id))
         {
@@ -137,7 +182,7 @@ public sealed class DeviceHub : ConnectionHub
                 device.Id,
                 new { type = wakeType, session_id = Guid.NewGuid().ToString() }
             );
-            return new(sent ? "wake_sent" : "no_route");
+            return HubCommandResult.FromWakeStatus(sent ? "wake_sent" : "no_route");
         }
 
         // Off the bus: the server does the Cast wake itself rather than handing the
@@ -145,7 +190,7 @@ public sealed class DeviceHub : ConnectionHub
         // feature only as reliable as the weakest sender on the network — and left
         // any client without a Cast SDK unable to wake a TV at all.
         bool dispatched = await _castWaker.WakeAsync(device, user.Id, CastIntent.Idle());
-        return new(dispatched ? "wake_sent" : "no_route");
+        return HubCommandResult.FromWakeStatus(dispatched ? "wake_sent" : "no_route");
     }
 
     public async Task<List<DeviceDropNoticeDto>> PendingNotices()

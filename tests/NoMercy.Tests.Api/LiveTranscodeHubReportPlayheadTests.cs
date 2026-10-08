@@ -110,8 +110,9 @@ public class LiveTranscodeHubReportPlayheadTests
 
         LiveTranscodeHub hub = CreateHub(sessionManager.Object, streamingService.Object, ownerId);
 
-        hub.ReportPlayhead(sessionId, 42.5);
+        HubCommandResult result = hub.ReportPlayhead(sessionId, 42.5);
 
+        result.Ok.Should().BeTrue();
         // TranscodedPosition is 60s (from the pushed segment); the reported
         // playhead of 42.5s must be applied authoritatively.
         session.BufferAhead.Should().Be(TimeSpan.FromSeconds(17.5));
@@ -119,7 +120,7 @@ public class LiveTranscodeHubReportPlayheadTests
     }
 
     [Fact]
-    public async Task ReportPlayhead_NegativeSeconds_ClampsToZero()
+    public async Task ReportPlayhead_NegativeSeconds_ReturnsInvalidInput()
     {
         const string sessionId = "sess-clamp";
         const string ownerId = "user-1";
@@ -127,6 +128,7 @@ public class LiveTranscodeHubReportPlayheadTests
         LiveSession session = new(sessionId, MakeQuality());
         await session.SeekAsync(TimeSpan.FromSeconds(10), CancellationToken.None);
         LiveRuntimeSession runtime = new(session, TimeSpan.FromSeconds(6));
+        TimeSpan bufferAheadBeforeCall = session.BufferAhead;
 
         Mock<ISessionManager> sessionManager = new();
         sessionManager.Setup(m => m.GetOwnerUserId(sessionId)).Returns(ownerId);
@@ -136,9 +138,11 @@ public class LiveTranscodeHubReportPlayheadTests
 
         LiveTranscodeHub hub = CreateHub(sessionManager.Object, streamingService.Object, ownerId);
 
-        hub.ReportPlayhead(sessionId, -5);
+        HubCommandResult result = hub.ReportPlayhead(sessionId, -5);
 
-        session.BufferAhead.Should().Be(TimeSpan.FromSeconds(10));
+        result.Ok.Should().BeFalse();
+        result.ErrorCode.Should().Be("invalid_input");
+        session.BufferAhead.Should().Be(bufferAheadBeforeCall);
     }
 
     [Fact]
@@ -162,8 +166,10 @@ public class LiveTranscodeHubReportPlayheadTests
 
         LiveTranscodeHub hub = CreateHub(sessionManager.Object, streamingService.Object, callerId);
 
-        hub.ReportPlayhead(sessionId, 42.5);
+        HubCommandResult result = hub.ReportPlayhead(sessionId, 42.5);
 
+        result.Ok.Should().BeFalse();
+        result.ErrorCode.Should().Be("forbidden");
         session.BufferAhead.Should().Be(bufferAheadBeforeCall);
         runtime.LastAccess.Should().Be(lastAccessBeforeCall);
     }
@@ -178,9 +184,10 @@ public class LiveTranscodeHubReportPlayheadTests
 
         LiveTranscodeHub hub = CreateHub(sessionManager.Object, streamingService.Object, "user-1");
 
-        Action act = () => hub.ReportPlayhead("sess-unknown", 10);
+        HubCommandResult result = hub.ReportPlayhead("sess-unknown", 10);
 
-        act.Should().NotThrow();
+        result.Ok.Should().BeFalse();
+        result.ErrorCode.Should().Be("not_found");
         // Mirrors Heartbeat's order: TryGetRuntime is checked before the owner
         // lookup, so an unknown session never reaches GetOwnerUserId.
         sessionManager.Verify(m => m.GetOwnerUserId(It.IsAny<string>()), Times.Never);
