@@ -19,19 +19,15 @@ using NoMercy.Storage;
 namespace NoMercy.Data.Services;
 
 /// <summary>
-/// Repairs the tracks an older importer run stored with a <c>HostFolder</c>
-/// that holds the album folder twice — on Windows once with forward slashes and
-/// once with backslashes, on Linux the same rooted path simply repeated.
-/// <c>Filename</c> is the bare file name, so every consumer that combines the
-/// two (playback, subtitles, transcodes, the audio analysis job, the plugin
-/// audio tools) builds a path that exists nowhere, and the analysis of such a
-/// track fails on every sweep, for good.
+/// Repairs Track, Album, Artist, VideoFile and Metadata rows whose
+/// <c>HostFolder</c> holds the same rooted folder twice. The older importer
+/// could store the Windows folder once with forward slashes and once with
+/// backslashes, or repeat a rooted Linux path without a second-root marker.
 /// <para>
 /// A row is only rewritten when the two halves are the same folder, the stored
-/// path really addresses nothing, <i>and</i> the file is where the repaired
-/// folder says it is. A guess that moved a row onto a path nobody checked would
-/// be worse than the broken value it replaced. Anything else is counted and left
-/// exactly as it was.
+/// path really addresses nothing, <i>and</i> the repaired path resolves to the
+/// file (or, for Album and Artist, the folder). A guess that moved a row onto
+/// an unchecked path would be worse than the broken value it replaced.
 /// </para>
 /// <para>
 /// A repaired track also has its analysis verdict reset to
@@ -48,8 +44,7 @@ namespace NoMercy.Data.Services;
 /// </para>
 /// <para>
 /// Idempotent: a repaired row is no longer doubled, so a second run does not
-/// rewrite it. A healthy database costs one query, one table scan and no disk
-/// access at all.
+/// rewrite it. Healthy rows require no disk access.
 /// </para>
 /// </summary>
 public class DoubledHostFolderRepair(
