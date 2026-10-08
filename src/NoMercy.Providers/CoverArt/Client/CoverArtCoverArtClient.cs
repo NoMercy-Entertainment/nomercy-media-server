@@ -9,15 +9,14 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Drawing;
+using ImageMagick;
 using NoMercy.NmSystem.Extensions;
 using NoMercy.NmSystem.Information;
 using NoMercy.Providers.CoverArt.Models;
 using NoMercy.Providers.Helpers;
 using NoMercy.Setup.Server;
 using NoMercy.Storage;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats;
-using SixLabors.ImageSharp.PixelFormats;
 using Configuration = AcoustID.Configuration;
 using HttpClient = System.Net.Http.HttpClient;
 
@@ -78,7 +77,7 @@ public class CoverArtCoverArtClient : CoverArtBaseClient
         }
     }
 
-    public static async Task<Image<Rgba32>?> Download(
+    public static async Task<MagickImage?> Download(
         Uri? url,
         bool? download = true,
         Size? maxDecodeSize = null
@@ -91,15 +90,7 @@ public class CoverArtCoverArtClient : CoverArtBaseClient
 
         IStorage storage = Storage;
         if (await storage.ExistsAsync(filePath, CancellationToken.None))
-        {
-            if (maxDecodeSize.HasValue)
-            {
-                DecoderOptions options = new() { TargetSize = maxDecodeSize.Value };
-                return Image.Load<Rgba32>(options, filePath);
-            }
-
-            return Image.Load<Rgba32>(filePath);
-        }
+            return new(filePath, MagickReadSettingsFactory.Create(maxDecodeSize));
 
         HttpClient httpClient = HttpClientProvider.CreateClient(HttpClientNames.CoverArtImage);
 
@@ -147,12 +138,6 @@ public class CoverArtCoverArtClient : CoverArtBaseClient
         if (download is not false && !await storage.ExistsAsync(filePath, CancellationToken.None))
             await storage.WriteAsync(filePath, bytes, CancellationToken.None);
 
-        if (maxDecodeSize.HasValue)
-        {
-            DecoderOptions options = new() { TargetSize = maxDecodeSize.Value };
-            return Image.Load<Rgba32>(options, bytes);
-        }
-
-        return Image.Load<Rgba32>(bytes);
+        return new(bytes, MagickReadSettingsFactory.Create(maxDecodeSize));
     }
 }

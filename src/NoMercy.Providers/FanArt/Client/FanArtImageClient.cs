@@ -9,14 +9,12 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Drawing;
+using ImageMagick;
 using NoMercy.NmSystem.Information;
 using NoMercy.Providers.CoverArt.Models;
 using NoMercy.Providers.Helpers;
 using NoMercy.Storage;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats;
-using SixLabors.ImageSharp.PixelFormats;
-using Image = SixLabors.ImageSharp.Image;
 
 namespace NoMercy.Providers.FanArt.Client;
 
@@ -50,7 +48,7 @@ public class FanArtImageClient : FanArtBaseClient
         return Get<CoverArtCovers>("release/" + Id, queryParams, priority);
     }
 
-    public static async Task<Image<Rgba32>?> Download(
+    public static async Task<MagickImage?> Download(
         Uri url,
         bool? download = true,
         Size? maxDecodeSize = null
@@ -60,15 +58,7 @@ public class FanArtImageClient : FanArtBaseClient
 
         IStorage storage = Storage;
         if (await storage.ExistsAsync(filePath, CancellationToken.None))
-        {
-            if (maxDecodeSize.HasValue)
-            {
-                DecoderOptions options = new() { TargetSize = maxDecodeSize.Value };
-                return Image.Load<Rgba32>(options, filePath);
-            }
-
-            return Image.Load<Rgba32>(filePath);
-        }
+            return new(filePath, MagickReadSettingsFactory.Create(maxDecodeSize));
 
         HttpClient httpClient = HttpClientProvider.CreateClient(HttpClientNames.FanArtImage);
 
@@ -116,12 +106,6 @@ public class FanArtImageClient : FanArtBaseClient
         if (download is not false && !await storage.ExistsAsync(filePath, CancellationToken.None))
             await storage.WriteAsync(filePath, bytes, CancellationToken.None);
 
-        if (maxDecodeSize.HasValue)
-        {
-            DecoderOptions options = new() { TargetSize = maxDecodeSize.Value };
-            return Image.Load<Rgba32>(options, bytes);
-        }
-
-        return Image.Load<Rgba32>(bytes);
+        return new(bytes, MagickReadSettingsFactory.Create(maxDecodeSize));
     }
 }

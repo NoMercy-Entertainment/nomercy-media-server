@@ -28,8 +28,7 @@ using NoMercy.Providers.FanArt.Client;
 using NoMercy.Providers.MusicBrainz.Models;
 using NoMercy.Storage;
 using NoMercy.Storage.Drivers.Local;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
+using ImageMagick;
 
 namespace NoMercy.MediaProcessing.Recordings;
 
@@ -569,7 +568,7 @@ public partial class RecordingManager(
 
                 if (coverPalette is not null)
                 {
-                    using Image<Rgba32>? downloadedImage = await FanArtImageClient.Download(
+                    using MagickImage? downloadedImage = await FanArtImageClient.Download(
                         coverPalette.Url!
                     );
                 }
