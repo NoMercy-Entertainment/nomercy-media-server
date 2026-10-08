@@ -44,8 +44,12 @@ jobs:
           mv Directory.Build.props.audit Directory.Build.props
           # Warnings stay warnings here: with the suppressions gone, the build's
           # TreatWarningsAsErrors turned NU1902/NU1903 into a failed restore
-          # (run 37773174584) and the list step never ran. The list is the judge.
-          dotnet restore NoMercy.Server.sln --verbosity minimal --force -p:TreatWarningsAsErrors=false
+          # (run 37773174584) and the list step never ran. A -p flag on
+          # `dotnet restore` was not enough (run 37783330576): `dotnet list
+          # package` runs its own restore and takes no properties, so the
+          # audit copy of the props file flips the switch. The list is the judge.
+          sed -i 's#<TreatWarningsAsErrors>true</TreatWarningsAsErrors>#<TreatWarningsAsErrors>false</TreatWarningsAsErrors>#' Directory.Build.props
+          grep -q '<TreatWarningsAsErrors>false</TreatWarningsAsErrors>' Directory.Build.props
           dotnet list NoMercy.Server.sln package --vulnerable --include-transitive | tee audit.txt
           if grep -qE '^\s+>' audit.txt; then
             echo "::error::vulnerable packages found; see audit.txt above. Bump the package, or suppress with a dated reason in Directory.Build.props and open the move."
