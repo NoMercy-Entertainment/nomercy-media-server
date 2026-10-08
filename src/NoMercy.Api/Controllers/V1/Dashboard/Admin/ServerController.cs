@@ -47,10 +47,7 @@ using NoMercy.Providers.Helpers;
 using NoMercy.Storage;
 using NoMercyQueue;
 using Serilog.Events;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
-using SixLabors.ImageSharp.Processing.Processors.Quantization;
+using ImageMagick;
 using HttpClient = System.Net.Http.HttpClient;
 using IJobDispatcher = NoMercy.MediaProcessing.Jobs.IJobDispatcher;
 using Image = NoMercy.Database.Models.Media.Image;
@@ -691,20 +688,16 @@ public partial class ServerController(
 
         string color = await Task.Run(() =>
         {
-            using Image<Rgb24> image = SixLabors.ImageSharp.Image.Load<Rgb24>(path);
-            image.Mutate(x =>
-                x.Resize(
-                        new ResizeOptions
-                        {
-                            Sampler = KnownResamplers.NearestNeighbor,
-                            Size = new(100, 0),
-                        }
-                    )
-                    .Quantize(new OctreeQuantizer { Options = { MaxColors = 1 } })
-            );
+            using MagickImage image = new(path);
+            image.FilterType = FilterType.Point;
+            image.Resize(100, 0);
+            image.Quantize(new QuantizeSettings { Colors = 1, DitherMethod = DitherMethod.No });
 
-            Rgb24 dominant = image[0, 0];
-            return dominant.ToHexString();
+            using IPixelCollection<byte> pixels = image.GetPixelsUnsafe();
+            IMagickColor<byte> dominant = pixels.GetPixel(0, 0).ToColor() ?? MagickColors.Black;
+
+            // Same shape as before the Magick.NET move: "RRGGBB" without a '#'.
+            return $"{dominant.R:X2}{dominant.G:X2}{dominant.B:X2}";
         });
 
         DominantColorCache.TryAdd(path, color);
