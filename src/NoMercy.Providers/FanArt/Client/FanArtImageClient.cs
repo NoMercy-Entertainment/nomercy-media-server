@@ -70,6 +70,7 @@ public class FanArtImageClient : FanArtBaseClient
                 .Enqueue(
                     async () =>
                     {
+                        // Owned by Download after the queue returns; disposed here on retry.
                         HttpResponseMessage reply = await httpClient.GetAsync(url);
                         if (
                             reply.StatusCode == System.Net.HttpStatusCode.TooManyRequests

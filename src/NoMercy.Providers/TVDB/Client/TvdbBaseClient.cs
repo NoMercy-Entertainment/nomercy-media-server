@@ -109,6 +109,7 @@ public class TvdbBaseClient : ExternalApiClient
                         );
                         using HttpRequestMessage request = new(HttpMethod.Post, "login");
                         request.Content = content;
+                        // Owned by LoginAsync after the queue returns; disposed here on retry.
                         HttpResponseMessage reply = await loginClient.SendAsync(request);
                         if (
                             reply.StatusCode == HttpStatusCode.TooManyRequests
