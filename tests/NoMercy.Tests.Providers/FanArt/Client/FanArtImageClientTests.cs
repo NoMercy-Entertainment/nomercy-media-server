@@ -11,6 +11,7 @@
 
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using ImageMagick;
 using NoMercy.Providers.FanArt.Client;
 
 namespace NoMercy.Tests.Providers.FanArt.Client;
@@ -126,7 +127,7 @@ public class FanArtImageClientTests
         Assert.False(
             callsReadAsStream,
             "PROV-H10 regression: Download should NOT call ReadAsStreamAsync. "
-                         + "Content must be read once as byte[] to avoid stream-consumed-then-reused bug."
+                + "Content must be read once as byte[] to avoid stream-consumed-then-reused bug."
         );
     }
 
@@ -274,13 +275,22 @@ public class FanArtImageClientTests
 
         for (int i = 0; i < ilBytes.Length; i++)
         {
-            if ((ilBytes[i] == 0x28 || ilBytes[i] == 0x6F) && i + 4 < ilBytes.Length)
+            if (
+                (ilBytes[i] == 0x28 || ilBytes[i] == 0x6F || ilBytes[i] == 0x73)
+                && i + 4 < ilBytes.Length
+            )
             {
                 int token = BitConverter.ToInt32(ilBytes, i + 1);
                 try
                 {
                     MethodBase? calledMethod = module.ResolveMethod(token);
-                    if (calledMethod?.Name == "Load" && calledMethod.GetParameters().Length > 0)
+                    bool isImageLoad =
+                        calledMethod?.Name == "Load"
+                        || (
+                            calledMethod?.IsConstructor == true
+                            && calledMethod.DeclaringType == typeof(MagickImage)
+                        );
+                    if (isImageLoad && calledMethod!.GetParameters().Length > 0)
                     {
                         ParameterInfo firstParam = calledMethod.GetParameters()[0];
                         if (
@@ -302,7 +312,7 @@ public class FanArtImageClientTests
         Assert.True(
             hasImageLoadWithByteArray,
             "PROV-H10: Image.Load should use the byte[] overload, not Stream, "
-                         + "to avoid consuming a stream that might be reused."
+                + "to avoid consuming a stream that might be reused."
         );
     }
 }

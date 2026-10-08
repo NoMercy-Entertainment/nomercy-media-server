@@ -9,7 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using SixLabors.ImageSharp.Formats;
+using ImageMagick;
 
 namespace NoMercy.NmSystem.Images;
 
@@ -23,5 +23,5 @@ public interface IImageService
         int? quality
     );
 
-    IImageFormat Parse(string format);
+    MagickFormat Parse(string format);
 }

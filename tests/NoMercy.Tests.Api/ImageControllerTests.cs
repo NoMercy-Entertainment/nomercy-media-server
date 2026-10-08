@@ -12,8 +12,7 @@
 using System.Net;
 using NoMercy.NmSystem.Information;
 using NoMercy.Tests.Api.Infrastructure;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
+using ImageMagick;
 using Xunit;
 
 namespace NoMercy.Tests.Api;
@@ -44,9 +43,9 @@ public class ImageControllerTests : IClassFixture<NoMercyApiFactory>, IDisposabl
             Directory.CreateDirectory(AppFiles.TempImagesPath);
 
         // Create a real 200x100 PNG test image
-        using (Image<Rgba32> image = new(200, 100, new(255, 0, 0)))
+        using (MagickImage image = new(new MagickColor(255, 0, 0), 200, 100))
         {
-            image.SaveAsPng(Path.Join(_testTypeFolder, _testImageName));
+            image.Write(Path.Join(_testTypeFolder, _testImageName), MagickFormat.Png);
         }
 
         // Create a minimal SVG test file
@@ -115,11 +114,11 @@ public class ImageControllerTests : IClassFixture<NoMercyApiFactory>, IDisposabl
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         byte[] responseBytes = await response.Content.ReadAsByteArrayAsync();
-        using Image<Rgba32> resultImage = Image.Load<Rgba32>(responseBytes);
+        using MagickImage resultImage = new(responseBytes);
 
         // Resized to width=50, aspect ratio preserved (200x100 → 50x25)
-        Assert.Equal(50, resultImage.Width);
-        Assert.Equal(25, resultImage.Height);
+        Assert.Equal(50u, resultImage.Width);
+        Assert.Equal(25u, resultImage.Height);
     }
 
     [Fact]
@@ -148,8 +147,8 @@ public class ImageControllerTests : IClassFixture<NoMercyApiFactory>, IDisposabl
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         byte[] responseBytes = await response.Content.ReadAsByteArrayAsync();
-        using Image<Rgba32> resultImage = Image.Load<Rgba32>(responseBytes);
-        Assert.Equal(100, resultImage.Width);
+        using MagickImage resultImage = new(responseBytes);
+        Assert.Equal(100u, resultImage.Width);
     }
 
     [Fact]
@@ -245,8 +244,8 @@ public class ImageControllerTests : IClassFixture<NoMercyApiFactory>, IDisposabl
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
 
         byte[] responseBytes = await response.Content.ReadAsByteArrayAsync();
-        using Image<Rgba32> resultImage = Image.Load<Rgba32>(responseBytes);
-        Assert.Equal(100, resultImage.Width);
-        Assert.Equal(200, resultImage.Height);
+        using MagickImage resultImage = new(responseBytes);
+        Assert.Equal(100u, resultImage.Width);
+        Assert.Equal(200u, resultImage.Height);
     }
 }
