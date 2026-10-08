@@ -48,6 +48,12 @@ public class FanArtImageClient : FanArtBaseClient
         return Get<CoverArtCovers>("release/" + Id, queryParams, priority);
     }
 
+    public static Task<bool> IsStored(string fileName) =>
+        Storage.ExistsAsync(
+            Path.Combine(AppFiles.MusicImagesPath, fileName),
+            CancellationToken.None
+        );
+
     public static async Task<MagickImage?> Download(
         Uri url,
         bool? download = true,
