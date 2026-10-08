@@ -42,6 +42,11 @@ public class SetupEndpoints
     private const string BrowserLoginNotAllowedMessage =
         "Browser login is not available on this address. Sign in with the device code shown on the setup page.";
 
+    // Shown on the setup page while Init() registers, assigns and polls for the
+    // certificate. The wording names the real ceiling (the 10-minute timeout below).
+    internal const string RegisteringDetail =
+        "Registering server and securing your connection... (this can take up to 10 minutes)";
+
     private readonly SetupState _state;
     private readonly AuthManager _authManager;
     private readonly SetupTerminalUi? _terminalUi;
@@ -877,9 +882,7 @@ public class SetupEndpoints
             // certificate in one call, so a detail set only once it returns
             // describes work that is already done — the user watched "Connecting
             // to NoMercy" for the whole multi-minute poll.
-            _state.SetPhaseDetail(
-                "Registering server and securing your connection... (this can take a couple of minutes)"
-            );
+            _state.SetPhaseDetail(RegisteringDetail);
             _terminalUi?.ShowProgress("Registering", "Connecting your server to NoMercy...");
 
             if (Start.NetworkDiscovery is not null)
