@@ -120,8 +120,10 @@ public sealed partial class SetupPageNeverShowsDeadButtonTests
     {
         string js = LoadResource("setup.js");
 
-        // The existing label table stays in place (lane C swaps it for server text).
-        Assert.Contains("var phases = {", js);
+        // The page keeps no label table: the words come from the server's one
+        // SetupPhaseWords table as data.label / data.detail (issue #438).
+        Assert.DoesNotContain("var phases = {", js);
+        Assert.Contains("data.label", js);
         Assert.Contains("var checklistByPhase = {", js);
         foreach (
             string phase in new[]
@@ -147,14 +149,5 @@ public sealed partial class SetupPageNeverShowsDeadButtonTests
         string js = LoadResource("setup.js");
 
         Assert.Contains("Opening the NoMercy app in ", js);
-    }
-
-    [Fact]
-    public void RegisteringDetail_NamesTheTenMinuteCeiling()
-    {
-        string detail = SetupEndpoints.RegisteringDetail;
-
-        Assert.Contains("10 minutes", detail);
-        Assert.DoesNotContain("couple of minutes", detail);
     }
 }

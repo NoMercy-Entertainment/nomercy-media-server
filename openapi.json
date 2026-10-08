@@ -15234,6 +15234,14 @@
             "type": "string",
             "nullable": true
           },
+          "setup_label": {
+            "type": "string",
+            "nullable": true
+          },
+          "setup_detail": {
+            "type": "string",
+            "nullable": true
+          },
           "internal_address": {
             "type": "string",
             "nullable": true

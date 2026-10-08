@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.NmSystem.SystemCalls;
+using NoMercy.Setup.Server;
 using QRCoder;
 using Serilog.Events;
 
@@ -126,9 +127,11 @@ public sealed class SetupTerminalUi : IDisposable
     }
 
     /// <summary>
-    /// Transition to a progress message (after auth completes).
+    /// Transition to a progress message (after auth completes). The headline is
+    /// the phase label from <see cref="SetupPhaseWords"/>, the same words the
+    /// setup page and the tray show; this class keeps no table of its own.
     /// </summary>
-    public void ShowProgress(string phase, string detail)
+    public void ShowProgress(SetupPhase phase, string detail)
     {
         if (!IsInteractiveTerminal)
             return;
@@ -146,16 +149,7 @@ public sealed class SetupTerminalUi : IDisposable
             return;
         }
 
-        string phaseLabel = phase switch
-        {
-            "Authenticating" => "Signed in successfully!",
-            "Authenticated" => "Signed in successfully!",
-            "Registering" => "Connecting your server to NoMercy...",
-            "Registered" => "Setting up your server address...",
-            "CertificateAcquired" => "Securing your connection...",
-            "Complete" => "All done!",
-            _ => phase,
-        };
+        string phaseLabel = SetupPhaseWords.Label(phase);
 
         Console.WriteLine();
         Console.WriteLine($"  {phaseLabel}");

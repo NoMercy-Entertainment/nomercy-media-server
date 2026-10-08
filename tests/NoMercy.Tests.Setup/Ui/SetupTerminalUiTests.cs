@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using NoMercy.Setup.Server;
 using NoMercy.Setup.Ui;
 
 namespace NoMercy.Tests.Setup.Ui;
@@ -102,7 +103,7 @@ public sealed class SetupTerminalUiTests : IDisposable
         SetupTerminalUi.ForceInteractiveForTests = false;
         using SetupTerminalUi ui = new();
 
-        ui.ShowProgress("Registering", "Connecting your server to NoMercy...");
+        ui.ShowProgress(SetupPhase.Registering, SetupPhaseWords.Detail(SetupPhase.Registering));
     }
 
     [Fact]
@@ -136,7 +137,7 @@ public sealed class SetupTerminalUiTests : IDisposable
         SetupTerminalUi.ForceInteractiveForTests = true;
         using SetupTerminalUi ui = new();
 
-        ui.ShowProgress("Registered", "Setting up your server address...");
+        ui.ShowProgress(SetupPhase.Registered, SetupPhaseWords.Detail(SetupPhase.Registered));
     }
 
     [Fact]

@@ -324,20 +324,13 @@
         }
     }
 
-    var phases = {
-        "Unauthenticated":     ["Waiting for login...",        "Sign in to continue"],
-        "Authenticating":      ["Authenticating...",           "Verifying your credentials"],
-        "Authenticated":       ["Authenticated",               "Registering server..."],
-        "Registering":         ["Registering server...",       "Connecting to NoMercy"],
-        "Registered":          ["Server registered",           "Acquiring SSL certificate..."],
-        "CertificateAcquired": ["Certificate acquired",        "Finalizing setup..."],
-        "Failed":              ["Setup could not finish",      "Something went wrong — you can retry"],
-        "Complete":            ["Setup complete!",             "Your server is ready"]
-    };
+    // The phase words (label + detail) come from the server in the status payload
+    // (one table, SetupPhaseWords); this page keeps no copy. An older server sends
+    // no label, so the raw phase name stands in.
 
-    // Checklist state per server phase, on top of the label table above:
-    // [signin, connect, address, finish]. A phase marks the rows before it done
-    // and its own row running; Failed turns the running row red.
+    // Checklist state per server phase: [signin, connect, address, finish].
+    // A phase marks the rows before it done and its own row running; Failed
+    // turns the running row red.
     var checklistByPhase = {
         "Unauthenticated":     ["running", "waiting", "waiting", "waiting"],
         "Authenticating":      ["running", "waiting", "waiting", "waiting"],
@@ -368,9 +361,8 @@
     }
 
     function updateProgress(data) {
-        var info = phases[data.phase] || ["Processing...", "Please wait"];
-        el("progress-label").textContent = info[0];
-        el("progress-detail").textContent = data.detail || info[1] || "Please wait";
+        el("progress-label").textContent = data.label || data.phase || "Processing...";
+        el("progress-detail").textContent = data.detail || "Please wait";
         updateChecklist(data.phase);
     }
 

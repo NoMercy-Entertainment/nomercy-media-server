@@ -42,11 +42,6 @@ public class SetupEndpoints
     private const string BrowserLoginNotAllowedMessage =
         "Browser login is not available on this address. Sign in with the device code shown on the setup page.";
 
-    // Shown on the setup page while Init() registers, assigns and polls for the
-    // certificate. The wording names the real ceiling (the 10-minute timeout below).
-    internal const string RegisteringDetail =
-        "Registering server and securing your connection... (this can take up to 10 minutes)";
-
     private readonly SetupState _state;
     private readonly AuthManager _authManager;
     private readonly SetupTerminalUi? _terminalUi;
@@ -278,6 +273,9 @@ public class SetupEndpoints
             is_setup_required = _state.IsSetupRequired,
             is_authenticated = _state.IsAuthenticated,
             error = _state.ErrorMessage,
+            // label + detail come from the one SetupPhaseWords table; the page shows
+            // them as-is and keeps no copy. Additive: every older field stays.
+            label = _state.CurrentLabel,
             detail = _state.PhaseDetail,
             server_url = _state.ServerUrl,
             // The server's own origin serves the API (Swagger at /), not the client,
@@ -592,7 +590,7 @@ public class SetupEndpoints
             _state.TransitionTo(SetupPhase.Authenticating);
             _state.TransitionTo(SetupPhase.Authenticated);
 
-            _terminalUi?.ShowProgress("Authenticated", "Signed in via browser");
+            _terminalUi?.ShowProgress(SetupPhase.Authenticated, "Signed in via browser");
             Logger.Setup("OAuth token exchange completed successfully");
 
             responseTitle = "Authentication Successful";
@@ -877,13 +875,11 @@ public class SetupEndpoints
                     LogEventLevel.Warning
                 );
 
+            // TransitionTo sets the Registering detail from the table BEFORE Init()
+            // runs: Init() is register + assign + certificate in one call, so a
+            // detail set only once it returns describes work that is already done.
             _state.TransitionTo(SetupPhase.Registering);
-            // Set BEFORE Init() runs, not after: Init() is register + assign +
-            // certificate in one call, so a detail set only once it returns
-            // describes work that is already done — the user watched "Connecting
-            // to NoMercy" for the whole multi-minute poll.
-            _state.SetPhaseDetail(RegisteringDetail);
-            _terminalUi?.ShowProgress("Registering", "Connecting your server to NoMercy...");
+            _terminalUi?.ShowProgress(SetupPhase.Registering, _state.PhaseDetail);
 
             if (Start.NetworkDiscovery is not null)
                 await Start.NetworkDiscovery.DiscoverExternalIpAsync();
@@ -896,7 +892,7 @@ public class SetupEndpoints
             await _serverRegistrationService.Init().WaitAsync(registrationTimeoutCts.Token);
 
             _state.TransitionTo(SetupPhase.Registered);
-            _terminalUi?.ShowProgress("Registered", "Setting up your server address...");
+            _terminalUi?.ShowProgress(SetupPhase.Registered, _state.PhaseDetail);
 
             if (Start.Certificate!.HasValidCertificate())
             {
@@ -1025,7 +1021,7 @@ public class SetupEndpoints
                     _state.TransitionTo(SetupPhase.Authenticating);
                     _state.TransitionTo(SetupPhase.Authenticated);
 
-                    _terminalUi?.ShowProgress("Authenticated", "Signed in successfully!");
+                    _terminalUi?.ShowProgress(SetupPhase.Authenticated, _state.PhaseDetail);
 
                     await RunPostAuthRegistration();
                     return;

@@ -356,14 +356,11 @@ public class BootOrchestrator
     {
         try
         {
+            // TransitionTo sets the Registering detail from SetupPhaseWords BEFORE
+            // the work starts: Init() below performs registration AND certificate
+            // acquisition in one call, so a detail set only after it returns
+            // describes a step that already finished.
             _setupState.TransitionTo(SetupPhase.Registering);
-            // Set BEFORE the work starts: Init() below performs registration AND
-            // certificate acquisition in one call, so a detail set only after it
-            // returns describes a step that already finished — the user watched
-            // "Registering server..." for the whole multi-minute poll.
-            _setupState.SetPhaseDetail(
-                "Registering server and acquiring SSL certificate... (this can take a couple of minutes)"
-            );
 
             await _serverRegistrationService.Init();
 
