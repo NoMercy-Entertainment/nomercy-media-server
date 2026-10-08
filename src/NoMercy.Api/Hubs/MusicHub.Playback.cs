@@ -11,6 +11,7 @@
 
 using System.Globalization;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json.Linq;
 using NoMercy.Api.DTOs.Music;
 using NoMercy.Api.Services.Music;
 using NoMercy.Authorization;
@@ -521,11 +522,12 @@ public partial class MusicHub
         )
             return Task.FromResult(HubCommandResult.Invalid("Unknown playback command."));
 
-        if (
-            command.Equals("seek", StringComparison.OrdinalIgnoreCase)
-            && (
+        if (command.Equals("seek", StringComparison.OrdinalIgnoreCase))
+        {
+            object? value = data is JValue token ? token.Value : data;
+            if (
                 !double.TryParse(
-                    data?.ToString(),
+                    Convert.ToString(value, CultureInfo.InvariantCulture),
                     NumberStyles.Float,
                     CultureInfo.InvariantCulture,
                     out double seconds
@@ -534,8 +536,10 @@ public partial class MusicHub
                 || seconds < 0
                 || seconds > int.MaxValue / 1000
             )
-        )
-            return Task.FromResult(HubCommandResult.Invalid("Seek position is out of range."));
+                return Task.FromResult(HubCommandResult.Invalid("Seek position is out of range."));
+
+            data = seconds.ToString(CultureInfo.InvariantCulture);
+        }
 
         return HubCommandResult.ExecuteAsync(() => PlaybackCoreAsync(command, data), _logger);
     }

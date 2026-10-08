@@ -9,8 +9,10 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Globalization;
 using System.Security.Claims;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json.Linq;
 using NoMercy.Api.DTOs.Media;
 using NoMercy.Api.Hubs.Shared;
 using NoMercy.Api.Services.Video;
@@ -479,6 +481,20 @@ public partial class VideoHub
         )
             return Task.FromResult(HubCommandResult.Invalid("Unknown playback command."));
 
+        if (command == "seek" && data is JObject seek)
+        {
+            JToken? time = seek["time"];
+            if (
+                time?.Type is not (JTokenType.Integer or JTokenType.Float)
+                || !double.IsFinite(time.Value<double>())
+                || time.Value<double>() < 0
+                || time.Value<double>() > int.MaxValue / 1000
+            )
+                return Task.FromResult(HubCommandResult.Invalid("Playback data is out of range."));
+
+            data = (int)Math.Round(time.Value<double>(), MidpointRounding.AwayFromZero);
+        }
+
         HubCommandResult? dataError = ValidatePlaybackData(command, data);
         if (dataError is not null)
             return Task.FromResult(dataError);
@@ -700,17 +716,19 @@ public partial class VideoHub
         )
             return null;
 
-        string? raw = data?.ToString();
+        object? value = data is JValue token ? token.Value : data;
+        string? raw = Convert.ToString(value, CultureInfo.InvariantCulture);
         if (raw is null && command is "forward" or "backward")
             raw = "10";
-        if (!int.TryParse(raw, out int value))
+        if (!int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int number))
             return HubCommandResult.Invalid("Playback data must be an integer.");
 
         if (
-            command is "volume" && value is < 0 or > 100
-            || command is "seek" or "forward" or "backward" && value is < 0 or > int.MaxValue / 1000
-            || command is "item" && value < 0
-            || command is "audio" or "caption" or "quality" && value < -1
+            command is "volume" && number is < 0 or > 100
+            || command is "seek" or "forward" or "backward"
+                && number is < 0 or > int.MaxValue / 1000
+            || command is "item" && number < 0
+            || command is "audio" or "caption" or "quality" && number < -1
         )
             return HubCommandResult.Invalid("Playback data is out of range.");
         return null;

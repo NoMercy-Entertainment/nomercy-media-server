@@ -16,6 +16,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Newtonsoft.Json.Linq;
 using NoMercy.Api.Hubs;
 using NoMercy.Api.Services.Video;
 using NoMercy.Api.WebSockets;
@@ -52,6 +53,33 @@ public class VideoHubPlaybackTests : IClassFixture<NoMercyApiFactory>
     {
         _factory = factory;
         _factory.CreateClient();
+    }
+
+    [Fact]
+    public async Task PlaybackCommand_SeekObject_RoundsTimeAndUpdatesState()
+    {
+        Guid userId = TestAuthHandler.DefaultUserId;
+        VideoPlayerStateManager stateManager =
+            _factory.Services.GetRequiredService<VideoPlayerStateManager>();
+        VideoPlayerState state = new();
+        stateManager.UpdateState(userId, state);
+
+        try
+        {
+            (VideoHub hub, _) = CreateHub(Guid.NewGuid().ToString(), userId, out _);
+
+            HubCommandResult result = await hub.PlaybackCommand(
+                "seek",
+                new JObject { ["time"] = 12.5 }
+            );
+
+            result.Ok.Should().BeTrue();
+            state.Time.Should().Be(13_000);
+        }
+        finally
+        {
+            stateManager.RemoveState(userId);
+        }
     }
 
     private (VideoHub Hub, Mock<IUserDataRepository> UserDataRepository) CreateHub(
