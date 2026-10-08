@@ -256,9 +256,12 @@ public class BootOrchestrator
             if (!string.IsNullOrEmpty(verificationUri))
             {
                 SetupTerminalUi ui = new();
-                string setupPageUrl =
-                    $"http://localhost:{RuntimeServerSettings.Current.InternalServerPort}/setup";
-                ui.Show(verificationUri, deviceResponse.VerificationUri, userCode, setupPageUrl);
+                ui.Show(
+                    verificationUri,
+                    deviceResponse.VerificationUri,
+                    userCode,
+                    SetupAddress.Current()
+                );
             }
 
             if (string.IsNullOrEmpty(deviceCode))

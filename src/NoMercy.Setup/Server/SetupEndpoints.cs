@@ -724,14 +724,12 @@ public class SetupEndpoints
 
             if (SetupTerminalUi.IsInteractiveTerminal)
             {
-                string setupPageUrl =
-                    $"http://localhost:{RuntimeServerSettings.Current.InternalServerPort}/setup";
                 SetupTerminalUi terminalUi = _terminalUi ?? new SetupTerminalUi();
                 terminalUi.Show(
                     deviceData.VerificationUriComplete,
                     deviceData.VerificationUri,
                     deviceData.UserCode,
-                    setupPageUrl
+                    SetupAddress.Current()
                 );
             }
 

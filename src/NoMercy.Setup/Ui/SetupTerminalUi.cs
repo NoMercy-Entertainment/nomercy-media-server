@@ -32,7 +32,7 @@ public sealed class SetupTerminalUi : IDisposable
     private string? _verificationUriComplete;
     private string? _verificationUri;
     private string? _userCode;
-    private string? _setupPageUrl;
+    private SetupAddress? _setupAddress;
     private string _statusLine = "Waiting for you to sign in...";
 
     private int _lastKnownWidth;
@@ -86,22 +86,23 @@ public sealed class SetupTerminalUi : IDisposable
         string verificationUriComplete,
         string verificationUri,
         string userCode,
-        string setupPageUrl
+        SetupAddress setupAddress
     )
     {
         _verificationUriComplete = verificationUriComplete;
         _verificationUri = verificationUri;
         _userCode = userCode;
-        _setupPageUrl = setupPageUrl;
+        _setupAddress = setupAddress;
 
         if (!IsInteractiveTerminal)
         {
             // Non-interactive: Docker, systemd, Windows service
             // Just log the essential info once — no terminal UI
             Logger.Setup("=== NoMercy Setup Required ===");
-            Logger.Setup($"Open in your browser: {setupPageUrl}");
-            Logger.Setup($"Or visit:             {verificationUriComplete}");
-            Logger.Setup($"Device code:          {userCode}");
+            foreach (string line in setupAddress.Lines)
+                Logger.Setup(line);
+            Logger.Setup($"Or visit:     {verificationUriComplete}");
+            Logger.Setup($"Device code:  {userCode}");
             Logger.Setup("==============================");
             return;
         }
@@ -248,11 +249,12 @@ public sealed class SetupTerminalUi : IDisposable
             Console.WriteLine($"  Visit: {_verificationUri}");
         }
 
-        if (!string.IsNullOrEmpty(_setupPageUrl))
+        if (_setupAddress is not null)
         {
             Console.WriteLine();
             Console.WriteLine("  Or open the setup page in your browser:");
-            Console.WriteLine($"  {_setupPageUrl}");
+            foreach (string line in _setupAddress.Lines)
+                Console.WriteLine($"  {line}");
         }
 
         Console.WriteLine();
