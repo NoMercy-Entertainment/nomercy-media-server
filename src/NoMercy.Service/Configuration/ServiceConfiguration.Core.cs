@@ -387,6 +387,15 @@ public static partial class ServiceConfiguration
         services.AddHostedService<GoogleCastDeviceScannerHostedService>();
 
         services.AddSingleton<StorageMonitor>();
+        services.AddSingleton<IBackupService>(sp => new BackupService(
+            sp.GetRequiredService<IStorageDriver>()
+        )
+        {
+            BackupRoot =
+                configuration["Backup:Root"]
+                ?? Path.Combine(AppFiles.DataPath, "backups", "complete"),
+            RetainCount = configuration.GetValue<int?>("Backup:RetainCount") ?? 5,
+        });
 
         // Optical-disc detection + scanning + ripping (NoMercy.OpticalMedia)
         services.AddNoMercyOpticalMedia();
