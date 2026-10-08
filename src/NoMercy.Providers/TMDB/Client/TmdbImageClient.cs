@@ -9,15 +9,13 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Drawing;
+using ImageMagick;
 using NoMercy.NmSystem.Information;
 using NoMercy.NmSystem.SystemCalls;
 using NoMercy.Providers.Helpers;
 using NoMercy.Storage;
 using Serilog.Events;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats;
-using SixLabors.ImageSharp.PixelFormats;
-using Image = SixLabors.ImageSharp.Image;
 
 namespace NoMercy.Providers.TMDB.Client;
 
@@ -49,7 +47,7 @@ public abstract class TmdbImageClient
             "TmdbImageClient has not been initialized. Call TmdbImageClient.Initialize() at startup."
         );
 
-    public static Task<Image<Rgba32>?>? Download(
+    public static Task<MagickImage?>? Download(
         string? path,
         bool? download = true,
         Size? maxDecodeSize = null
@@ -59,15 +57,7 @@ public abstract class TmdbImageClient
         {
             return ImageQueue.Enqueue(Task, path, true);
         }
-        catch (InvalidImageContentException e)
-        {
-            Logger.MovieDb(
-                $"Image format error downloading image: {path} - {e.Message}",
-                LogEventLevel.Error
-            );
-            return null;
-        }
-        catch (ImageFormatException e)
+        catch (MagickException e)
         {
             Logger.MovieDb(
                 $"Image format error downloading image: {path} - {e.Message}",
@@ -76,7 +66,7 @@ public abstract class TmdbImageClient
             return null;
         }
 
-        async Task<Image<Rgba32>?> Task()
+        async Task<MagickImage?> Task()
         {
             try
             {
@@ -106,16 +96,9 @@ public abstract class TmdbImageClient
 
                     try
                     {
-                        if (maxDecodeSize.HasValue)
-                        {
-                            DecoderOptions options = new() { TargetSize = maxDecodeSize.Value };
-                            return await Image.LoadAsync<Rgba32>(options, filePath);
-                        }
-
-                        return await Image.LoadAsync<Rgba32>(filePath);
+                        return new(filePath, MagickReadSettingsFactory.Create(maxDecodeSize));
                     }
-                    catch (Exception e)
-                        when (e is ImageFormatException or InvalidImageContentException)
+                    catch (MagickException e)
                     {
                         // A poisoned cache entry (a non-image body persisted by an
                         // older build, or a truncated write). Delete it so this run
@@ -144,29 +127,21 @@ public abstract class TmdbImageClient
 
                     await using Stream contentStream = await response.Content.ReadAsStreamAsync();
 
-                    if (maxDecodeSize.HasValue)
-                    {
-                        DecoderOptions options = new() { TargetSize = maxDecodeSize.Value };
-                        return Image.Load<Rgba32>(options, contentStream);
-                    }
-
-                    return Image.Load<Rgba32>(contentStream);
+                    return new(contentStream, MagickReadSettingsFactory.Create(maxDecodeSize));
                 }
 
                 byte[] bytes = await response.Content.ReadAsByteArrayAsync();
 
                 if (isSvg)
                 {
-                    // SVG is not decoded (ImageSharp has no SVG decoder), but it
+                    // SVG is not decoded (no raster decode is wanted for it), but it
                     // is a valid asset — cache it as-is.
                     if (!await storage.ExistsAsync(filePath, CancellationToken.None))
                         await storage.WriteAsync(filePath, bytes, CancellationToken.None);
                     return null;
                 }
 
-                DecoderOptions? decoderOptions = maxDecodeSize.HasValue
-                    ? new() { TargetSize = maxDecodeSize.Value }
-                    : null;
+                MagickReadSettings readSettings = MagickReadSettingsFactory.Create(maxDecodeSize);
 
                 try
                 {
@@ -178,13 +153,9 @@ public abstract class TmdbImageClient
                     // forever. This probe image is disposed immediately; only a
                     // validated download reaches disk, so a transient bad
                     // download can be re-fetched cleanly next time.
-                    if (decoderOptions is not null)
+                    using (MagickImage probe = new(bytes, readSettings))
                     {
-                        using Image<Rgba32> probe = Image.Load<Rgba32>(decoderOptions, bytes);
-                    }
-                    else
-                    {
-                        using Image<Rgba32> probe = Image.Load<Rgba32>(bytes);
+                        // Decoded only to validate the bytes; disposed at once.
                     }
 
                     if (!await storage.ExistsAsync(filePath, CancellationToken.None))
@@ -201,20 +172,9 @@ public abstract class TmdbImageClient
 
                 // Ownership transfers to the caller (who disposes it); load from
                 // the now-validated bytes.
-                if (decoderOptions is not null)
-                    return Image.Load<Rgba32>(decoderOptions, bytes);
-
-                return Image.Load<Rgba32>(bytes);
+                return new(bytes, readSettings);
             }
-            catch (InvalidImageContentException e)
-            {
-                Logger.MovieDb(
-                    $"Image format error downloading image: {path} - {e.Message}",
-                    LogEventLevel.Error
-                );
-                return null;
-            }
-            catch (ImageFormatException e)
+            catch (MagickException e)
             {
                 Logger.MovieDb(
                     $"Image format error downloading image: {path} - {e.Message}",

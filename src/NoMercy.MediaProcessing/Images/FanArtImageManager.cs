@@ -16,8 +16,8 @@ using NoMercy.NmSystem.SystemCalls;
 using NoMercy.Providers.FanArt.Client;
 using NoMercy.Providers.FanArt.Models;
 using Serilog.Events;
-using SixLabors.ImageSharp;
 using Image = NoMercy.Database.Models.Media.Image;
+using Size = System.Drawing.Size;
 
 namespace NoMercy.MediaProcessing.Images;
 
