@@ -158,9 +158,15 @@
 
             <div id="error-box" class="error-box"></div>
 
-            <a id="btn-login" class="btn btn-primary" href="#">Login with NoMercy</a>
+            <!-- The anchor ships hidden: setup.js reveals it only once it has set the
+                 real href. A visible "Login" that points at "#" is a dead button. -->
+            <div id="login-checking" class="login-checking">
+                <div class="qr-loading-spinner"></div>
+                <span>Checking if you're already signed in...</span>
+            </div>
+            <a id="btn-login" class="btn btn-primary qr-hidden" href="#">Login with NoMercy</a>
 
-            <div id="login-divider" class="divider"><span>or scan with your phone</span></div>
+            <div id="login-divider" class="divider qr-hidden"><span>or scan with your phone</span></div>
 
             <div class="qr-section">
                 <div id="qr-loading" class="qr-loading">
@@ -187,6 +193,21 @@
                 <div class="spinner"></div>
                 <div id="progress-label" class="phase-label">Authenticating...</div>
                 <div id="progress-detail" class="phase-detail">Please wait</div>
+                <div id="progress-timer" class="progress-timer">00:00</div>
+                <ul id="checklist" class="checklist">
+                    <li class="check-row" data-step="signin" data-state="waiting">
+                        <span class="check-icon"></span><span class="check-text">Sign in</span>
+                    </li>
+                    <li class="check-row" data-step="connect" data-state="waiting">
+                        <span class="check-icon"></span><span class="check-text">Connect to NoMercy</span>
+                    </li>
+                    <li class="check-row" data-step="address" data-state="waiting">
+                        <span class="check-icon"></span><span class="check-text">Get a secure address</span>
+                    </li>
+                    <li class="check-row" data-step="finish" data-state="waiting">
+                        <span class="check-icon"></span><span class="check-text">Finish</span>
+                    </li>
+                </ul>
             </div>
             <div id="progress-error" class="error-box progress-error-box"></div>
             <button id="btn-retry" type="button" class="btn btn-outline btn-retry-hidden">Try again</button>

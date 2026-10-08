@@ -345,6 +345,49 @@ public sealed class SetupEndpointsTests : IDisposable
     }
 
     [Fact]
+    public async Task HandleSetupStatus_Json_CarriesTheTableLabelAndDetail_ForTheCurrentPhase()
+    {
+        SetupEndpoints endpoints = BuildEndpoints();
+        _setupState.TransitionTo(SetupPhase.Authenticating);
+        DefaultHttpContext context = BuildContext("GET", "/setup/status");
+
+        await endpoints.HandleRequestAsync(context);
+
+        string body = ReadBody(context);
+        Dictionary<string, object?> fields = JsonConvert.DeserializeObject<
+            Dictionary<string, object?>
+        >(body)!;
+
+        // The page, the terminal and the tray read these words; none keeps its own copy.
+        Assert.Equal("Authenticating", fields["phase"]);
+        Assert.Equal(SetupPhaseWords.Label(SetupPhase.Authenticating), fields["label"]);
+        Assert.Equal(SetupPhaseWords.Detail(SetupPhase.Authenticating), fields["detail"]);
+    }
+
+    [Fact]
+    public async Task HandleSetupStatus_Sse_CarriesTheTableLabel()
+    {
+        SetupEndpoints endpoints = BuildEndpoints();
+        DefaultHttpContext context = BuildContext(
+            "GET",
+            "/setup/status",
+            accept: "text/event-stream"
+        );
+        using CancellationTokenSource cts = new();
+        context.RequestAborted = cts.Token;
+
+        Task handling = endpoints.HandleRequestAsync(context);
+
+        await Task.Delay(100);
+        cts.Cancel();
+        await handling.WaitAsync(TimeSpan.FromSeconds(5));
+
+        string body = ReadBody(context);
+        string expected = JsonConvert.ToString(SetupPhaseWords.Label(SetupPhase.Unauthenticated));
+        Assert.Contains($"\"label\":{expected}", body);
+    }
+
+    [Fact]
     public async Task HandleSetupStatus_Post_Returns405()
     {
         SetupEndpoints endpoints = BuildEndpoints();
