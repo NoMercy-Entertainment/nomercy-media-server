@@ -42,7 +42,10 @@ jobs:
           set -o pipefail
           sed '/NuGetAuditSuppress/d' Directory.Build.props > Directory.Build.props.audit
           mv Directory.Build.props.audit Directory.Build.props
-          dotnet restore NoMercy.Server.sln --verbosity minimal --force
+          # Warnings stay warnings here: with the suppressions gone, the build's
+          # TreatWarningsAsErrors turned NU1902/NU1903 into a failed restore
+          # (run 37773174584) and the list step never ran. The list is the judge.
+          dotnet restore NoMercy.Server.sln --verbosity minimal --force -p:TreatWarningsAsErrors=false
           dotnet list NoMercy.Server.sln package --vulnerable --include-transitive | tee audit.txt
           if grep -qE '^\s+>' audit.txt; then
             echo "::error::vulnerable packages found; see audit.txt above. Bump the package, or suppress with a dated reason in Directory.Build.props and open the move."
