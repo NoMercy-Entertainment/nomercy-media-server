@@ -9,6 +9,8 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Collections.Concurrent;
+using System.Reflection;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.SignalR;
@@ -52,6 +54,64 @@ public class VideoHubPlaybackTests : IClassFixture<NoMercyApiFactory>
     {
         _factory = factory;
         _factory.CreateClient();
+    }
+
+    [Fact]
+    public async Task LastVideoConnection_RemovesContinueWatchingRefreshCache()
+    {
+        Guid userId = TestAuthHandler.DefaultUserId;
+        VideoPlaybackService playbackService =
+            _factory.Services.GetRequiredService<VideoPlaybackService>();
+        ConcurrentDictionary<Guid, (string Item, DateTime At)> refreshCache =
+            (ConcurrentDictionary<Guid, (string Item, DateTime At)>)
+                typeof(VideoPlaybackService)
+                    .GetField(
+                        "_lastContinueWatchingRefresh",
+                        BindingFlags.NonPublic | BindingFlags.Instance
+                    )!
+                    .GetValue(playbackService)!;
+        refreshCache[userId] = ("test", DateTime.UtcNow);
+
+        try
+        {
+            (VideoHub hub, _) = CreateHub(Guid.NewGuid().ToString(), userId, out _);
+            await hub.OnDisconnectedAsync(null);
+
+            Assert.False(refreshCache.ContainsKey(userId));
+        }
+        finally
+        {
+            refreshCache.TryRemove(userId, out _);
+        }
+    }
+
+    [Fact]
+    public async Task MissingCachedUser_RemovesContinueWatchingRefreshCache()
+    {
+        Guid userId = Guid.NewGuid();
+        VideoPlaybackService playbackService =
+            _factory.Services.GetRequiredService<VideoPlaybackService>();
+        ConcurrentDictionary<Guid, (string Item, DateTime At)> refreshCache =
+            (ConcurrentDictionary<Guid, (string Item, DateTime At)>)
+                typeof(VideoPlaybackService)
+                    .GetField(
+                        "_lastContinueWatchingRefresh",
+                        BindingFlags.NonPublic | BindingFlags.Instance
+                    )!
+                    .GetValue(playbackService)!;
+        refreshCache[userId] = ("test", DateTime.UtcNow);
+
+        try
+        {
+            (VideoHub hub, _) = CreateHub(Guid.NewGuid().ToString(), userId, out _);
+            await hub.OnDisconnectedAsync(null);
+
+            Assert.False(refreshCache.ContainsKey(userId));
+        }
+        finally
+        {
+            refreshCache.TryRemove(userId, out _);
+        }
     }
 
     private (VideoHub Hub, Mock<IUserDataRepository> UserDataRepository) CreateHub(
