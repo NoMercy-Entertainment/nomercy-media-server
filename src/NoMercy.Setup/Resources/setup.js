@@ -97,10 +97,12 @@
                 + window.location.host + "/setup/silent-sso";
             var authUrl = buildSilentAuthUrl(silentRedirectUri);
 
+            // Three seconds, not ten: a user without a Keycloak session otherwise
+            // stared at a spinner for 10 s before the login button appeared.
             var timeout = setTimeout(function() {
                 cleanup();
                 resolve({ success: false, reason: "timeout" });
-            }, 10000);
+            }, 3000);
 
             window.addEventListener("message", function handler(event) {
                 if (event.origin !== window.location.origin) return;
@@ -195,7 +197,7 @@
                                     clearTimeout(deviceRefreshTimer);
                                     deviceRefreshTimer = null;
                                 }
-                                show("step-progress");
+                                showProgressStep();
                                 startStatusStream();
                             }
                         })
@@ -249,11 +251,44 @@
             .catch(function() { /* network error — keep polling */ });
     }
 
+    /* ── Registration timer ──────────────────────────────── */
+
+    var timerStartedAt = null;
+    var timerHandle = null;
+
+    function pad2(n) { return (n < 10 ? "0" : "") + n; }
+
+    function renderTimer() {
+        var seconds = Math.floor((Date.now() - timerStartedAt) / 1000);
+        el("progress-timer").textContent =
+            pad2(Math.floor(seconds / 60)) + ":" + pad2(seconds % 60);
+    }
+
+    function startTimer() {
+        if (timerHandle) return;
+        timerStartedAt = Date.now();
+        renderTimer();
+        timerHandle = setInterval(renderTimer, 1000);
+    }
+
+    function stopTimer() {
+        if (timerHandle) {
+            clearInterval(timerHandle);
+            timerHandle = null;
+        }
+    }
+
+    function showProgressStep() {
+        show("step-progress");
+        startTimer();
+    }
+
     function handleStatusData(data) {
         updateProgress(data);
 
         if (data.phase === "Complete") {
             stopStatusStream();
+            stopTimer();
             show("step-complete");
 
             // Hand off to the app, never to server_url: the server's own origin
@@ -265,6 +300,8 @@
             }
 
             el("server-url").href = appUrl;
+            // Say it before the jump: a silent redirect after 5 s read as a crash.
+            el("redirect-msg").textContent = "Opening the NoMercy app in 5 s...";
             el("redirect-msg").classList.remove("redirect-msg-hidden");
             setTimeout(function() {
                 window.location.href = appUrl;
@@ -287,21 +324,46 @@
         }
     }
 
-    var phases = {
-        "Unauthenticated":     ["Waiting for login...",        "Sign in to continue"],
-        "Authenticating":      ["Authenticating...",           "Verifying your credentials"],
-        "Authenticated":       ["Authenticated",               "Registering server..."],
-        "Registering":         ["Registering server...",       "Connecting to NoMercy"],
-        "Registered":          ["Server registered",           "Acquiring SSL certificate..."],
-        "CertificateAcquired": ["Certificate acquired",        "Finalizing setup..."],
-        "Failed":              ["Setup could not finish",      "Something went wrong — you can retry"],
-        "Complete":            ["Setup complete!",             "Your server is ready"]
+    // The phase words (label + detail) come from the server in the status payload
+    // (one table, SetupPhaseWords); this page keeps no copy. An older server sends
+    // no label, so the raw phase name stands in.
+
+    // Checklist state per server phase: [signin, connect, address, finish].
+    // A phase marks the rows before it done and its own row running; Failed
+    // turns the running row red.
+    var checklistByPhase = {
+        "Unauthenticated":     ["running", "waiting", "waiting", "waiting"],
+        "Authenticating":      ["running", "waiting", "waiting", "waiting"],
+        "Authenticated":       ["done",    "running", "waiting", "waiting"],
+        "Registering":         ["done",    "running", "waiting", "waiting"],
+        "Registered":          ["done",    "done",    "running", "waiting"],
+        "CertificateAcquired": ["done",    "done",    "done",    "running"],
+        "Failed":              null,
+        "Complete":            ["done",    "done",    "done",    "done"]
     };
 
+    function updateChecklist(phase) {
+        var rows = document.querySelectorAll("#checklist .check-row");
+        var states = checklistByPhase[phase];
+        if (states === null) {
+            // Failed: keep what was reached, mark the row that was running as failed.
+            for (var f = 0; f < rows.length; f++) {
+                if (rows[f].getAttribute("data-state") === "running") {
+                    rows[f].setAttribute("data-state", "failed");
+                }
+            }
+            return;
+        }
+        if (!states) return;
+        for (var i = 0; i < rows.length; i++) {
+            rows[i].setAttribute("data-state", states[i]);
+        }
+    }
+
     function updateProgress(data) {
-        var info = phases[data.phase] || ["Processing...", "Please wait"];
-        el("progress-label").textContent = info[0];
-        el("progress-detail").textContent = data.detail || info[1] || "Please wait";
+        el("progress-label").textContent = data.label || data.phase || "Processing...";
+        el("progress-detail").textContent = data.detail || "Please wait";
+        updateChecklist(data.phase);
     }
 
     /* ── Init ────────────────────────────────────────────── */
@@ -310,14 +372,19 @@
     // The server decides per request host (browser_login_allowed); on any other
     // host the page offers only the device code so it never sends a redirect
     // to an address it does not own.
+    // The button ships hidden with href "#": it is revealed here only, and only
+    // after the real href is set, so the user never sees a button that goes nowhere.
     function applyLoginMode() {
         var browserLoginAllowed = config.browser_login_allowed !== false;
-        el("btn-login").classList.toggle("qr-hidden", !browserLoginAllowed);
-        el("login-divider").classList.toggle("qr-hidden", !browserLoginAllowed);
+        el("login-checking").classList.add("qr-hidden");
         if (browserLoginAllowed) {
             el("btn-login").href = buildAuthUrl();
+            el("btn-login").classList.remove("qr-hidden");
+            el("login-divider").classList.remove("qr-hidden");
         } else {
             el("btn-login").removeAttribute("href");
+            el("btn-login").classList.add("qr-hidden");
+            el("login-divider").classList.add("qr-hidden");
         }
     }
 
@@ -339,7 +406,7 @@
                 }
 
                 if (data.phase !== "Unauthenticated") {
-                    show("step-progress");
+                    showProgressStep();
                     startStatusStream();
                     return;
                 }
@@ -348,7 +415,7 @@
                 if (data.is_first_boot && data.browser_login_allowed !== false) {
                     trySilentSso().then(function(result) {
                         if (result.success) {
-                            show("step-progress");
+                            showProgressStep();
                             startStatusStream();
                         } else {
                             // Re-fetch config to get fresh PKCE params after
@@ -370,7 +437,7 @@
                     if (data.phase === "Authenticating") {
                         el("qr-loading").style.display = "none";
                         el("qr-error").classList.remove("qr-hidden");
-                        show("step-progress");
+                        showProgressStep();
                         startStatusStream();
                     } else {
                         showLoginStep();
@@ -378,6 +445,7 @@
                 }
             })
             .catch(function() {
+                el("login-checking").classList.add("qr-hidden");
                 showError("Failed to load setup configuration");
             });
 
@@ -399,7 +467,7 @@
                         return;
                     }
 
-                    show("step-progress");
+                    showProgressStep();
 
                     fetch("/setup/retry", { method: "POST" })
                         .then(function(r) { return r.json(); })
@@ -416,7 +484,7 @@
                         });
                 })
                 .catch(function() {
-                    show("step-progress");
+                    showProgressStep();
                     startStatusStream();
                 });
         });
