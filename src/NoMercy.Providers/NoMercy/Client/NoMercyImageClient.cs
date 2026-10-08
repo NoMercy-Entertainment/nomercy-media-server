@@ -9,15 +9,13 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Drawing;
+using ImageMagick;
 using NoMercy.NmSystem.Information;
 using NoMercy.NmSystem.SystemCalls;
 using NoMercy.Providers.Helpers;
 using NoMercy.Storage;
 using Serilog.Events;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats;
-using SixLabors.ImageSharp.PixelFormats;
-using Image = SixLabors.ImageSharp.Image;
 
 namespace NoMercy.Providers.NoMercy.Client;
 
@@ -46,7 +44,7 @@ public abstract class NoMercyImageClient
             "NoMercyImageClient has not been initialized. Call NoMercyImageClient.Initialize() at startup."
         );
 
-    public static Task<Image<Rgba32>?> Download(
+    public static Task<MagickImage?> Download(
         string? path,
         bool? download = true,
         Size? maxDecodeSize = null
@@ -54,7 +52,7 @@ public abstract class NoMercyImageClient
     {
         return ImageQueue.Enqueue(Task, $"original{path}", true);
 
-        async Task<Image<Rgba32>?> Task()
+        async Task<MagickImage?> Task()
         {
             if (path is null)
                 return null;
@@ -69,15 +67,7 @@ public abstract class NoMercyImageClient
                 string filePath = Path.Combine(folder, path.Replace("/", "").Replace("\\", ""));
 
                 if (await storage.ExistsAsync(filePath, CancellationToken.None))
-                {
-                    if (maxDecodeSize.HasValue)
-                    {
-                        DecoderOptions options = new() { TargetSize = maxDecodeSize.Value };
-                        return Image.Load<Rgba32>(options, filePath);
-                    }
-
-                    return Image.Load<Rgba32>(filePath);
-                }
+                    return new(filePath, MagickReadSettingsFactory.Create(maxDecodeSize));
 
                 HttpClient httpClient = HttpClientProvider.CreateClient(
                     HttpClientNames.NoMercyImage
@@ -97,13 +87,7 @@ public abstract class NoMercyImageClient
                 )
                     await storage.WriteAsync(filePath, bytes, CancellationToken.None);
 
-                if (maxDecodeSize.HasValue)
-                {
-                    DecoderOptions options = new() { TargetSize = maxDecodeSize.Value };
-                    return Image.Load<Rgba32>(options, bytes);
-                }
-
-                return Image.Load<Rgba32>(bytes);
+                return new(bytes, MagickReadSettingsFactory.Create(maxDecodeSize));
             }
             catch (Exception e)
             {
