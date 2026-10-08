@@ -518,7 +518,6 @@ public static class PluginServiceCollectionExtensions
 
         services.AddSingleton<IPluginVerifier>(sp => new PluginVerifier([
             new AbiVerificationStage(),
-            new CodeScanVerificationStage(),
             new ChecksumVerificationStage(),
             new FileManifestVerificationStage(),
             new TrustedRepositoryVerificationStage(() => sp.GetService<IPluginRepository>()),
