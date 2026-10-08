@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.NmSystem.SystemCalls;
+using NoMercy.Setup.Server;
 using QRCoder;
 using Serilog.Events;
 
@@ -32,7 +33,7 @@ public sealed class SetupTerminalUi : IDisposable
     private string? _verificationUriComplete;
     private string? _verificationUri;
     private string? _userCode;
-    private string? _setupPageUrl;
+    private SetupAddress? _setupAddress;
     private string _statusLine = "Waiting for you to sign in...";
 
     private int _lastKnownWidth;
@@ -86,22 +87,23 @@ public sealed class SetupTerminalUi : IDisposable
         string verificationUriComplete,
         string verificationUri,
         string userCode,
-        string setupPageUrl
+        SetupAddress setupAddress
     )
     {
         _verificationUriComplete = verificationUriComplete;
         _verificationUri = verificationUri;
         _userCode = userCode;
-        _setupPageUrl = setupPageUrl;
+        _setupAddress = setupAddress;
 
         if (!IsInteractiveTerminal)
         {
             // Non-interactive: Docker, systemd, Windows service
             // Just log the essential info once — no terminal UI
             Logger.Setup("=== NoMercy Setup Required ===");
-            Logger.Setup($"Open in your browser: {setupPageUrl}");
-            Logger.Setup($"Or visit:             {verificationUriComplete}");
-            Logger.Setup($"Device code:          {userCode}");
+            foreach (string line in setupAddress.Lines)
+                Logger.Setup(line);
+            Logger.Setup($"Or visit:     {verificationUriComplete}");
+            Logger.Setup($"Device code:  {userCode}");
             Logger.Setup("==============================");
             return;
         }
@@ -125,9 +127,11 @@ public sealed class SetupTerminalUi : IDisposable
     }
 
     /// <summary>
-    /// Transition to a progress message (after auth completes).
+    /// Transition to a progress message (after auth completes). The headline is
+    /// the phase label from <see cref="SetupPhaseWords"/>, the same words the
+    /// setup page and the tray show; this class keeps no table of its own.
     /// </summary>
-    public void ShowProgress(string phase, string detail)
+    public void ShowProgress(SetupPhase phase, string detail)
     {
         if (!IsInteractiveTerminal)
             return;
@@ -145,16 +149,7 @@ public sealed class SetupTerminalUi : IDisposable
             return;
         }
 
-        string phaseLabel = phase switch
-        {
-            "Authenticating" => "Signed in successfully!",
-            "Authenticated" => "Signed in successfully!",
-            "Registering" => "Connecting your server to NoMercy...",
-            "Registered" => "Setting up your server address...",
-            "CertificateAcquired" => "Securing your connection...",
-            "Complete" => "All done!",
-            _ => phase,
-        };
+        string phaseLabel = SetupPhaseWords.Label(phase);
 
         Console.WriteLine();
         Console.WriteLine($"  {phaseLabel}");
@@ -248,11 +243,12 @@ public sealed class SetupTerminalUi : IDisposable
             Console.WriteLine($"  Visit: {_verificationUri}");
         }
 
-        if (!string.IsNullOrEmpty(_setupPageUrl))
+        if (_setupAddress is not null)
         {
             Console.WriteLine();
             Console.WriteLine("  Or open the setup page in your browser:");
-            Console.WriteLine($"  {_setupPageUrl}");
+            foreach (string line in _setupAddress.Lines)
+                Console.WriteLine($"  {line}");
         }
 
         Console.WriteLine();

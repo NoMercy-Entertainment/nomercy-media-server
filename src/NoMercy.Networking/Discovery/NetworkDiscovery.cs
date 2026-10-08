@@ -577,7 +577,7 @@ public class NetworkDiscovery : INetworkDiscovery
         return false;
     }
 
-    internal static bool IsDockerOrWslAddress(IPAddress address)
+    public static bool IsDockerOrWslAddress(IPAddress address)
     {
         byte[] bytes = address.GetAddressBytes();
         if (bytes.Length != 4)
@@ -706,10 +706,7 @@ public class NetworkDiscovery : INetworkDiscovery
             try
             {
                 Task<string> upnpQuery = Task.Run(() => _device.GetExternalIP().ToString());
-                Task completed = await Task.WhenAny(
-                    upnpQuery,
-                    Task.Delay(TimeSpan.FromSeconds(5))
-                );
+                Task completed = await Task.WhenAny(upnpQuery, Task.Delay(TimeSpan.FromSeconds(5)));
 
                 if (completed == upnpQuery && !string.IsNullOrEmpty(upnpQuery.Result))
                 {

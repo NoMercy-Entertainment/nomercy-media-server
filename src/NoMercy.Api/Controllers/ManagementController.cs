@@ -86,6 +86,8 @@ public class ManagementController(
                 RestartNeeded = updateStatus.RestartNeeded,
                 LatestVersion = updateStatus.LatestVersion,
                 SetupPhase = setupState.CurrentPhase.ToString(),
+                SetupLabel = setupState.CurrentLabel,
+                SetupDetail = setupState.PhaseDetail,
                 InternalAddress = networkDiscovery.InternalAddress,
                 ExternalAddress = networkDiscovery.ExternalAddress,
                 // Connectivity was decided every boot and reported to nobody, so a server
