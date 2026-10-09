@@ -116,6 +116,17 @@ public class ContentSegmentsController(IContentSegmentRepository repository) : B
         if (!Ulid.TryParse(id, out Ulid segmentId))
             return BadRequestResponse("Invalid segment id");
 
+        ContentSegment? existing = await repository.GetByIdAsync(segmentId);
+        if (existing is null)
+            return NotFoundResponse("Content segment not found");
+
+        double startSeconds = request.StartSeconds ?? existing.StartSeconds;
+        double endSeconds = request.EndSeconds ?? existing.EndSeconds;
+        if (startSeconds < 0 || endSeconds < 0)
+            return BadRequestResponse("start_seconds and end_seconds must not be negative");
+        if (endSeconds <= startSeconds)
+            return BadRequestResponse("end_seconds must be greater than start_seconds");
+
         ContentSegment? updated = await repository.UpdateAsync(
             segmentId,
             seg =>
