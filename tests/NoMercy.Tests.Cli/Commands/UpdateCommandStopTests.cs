@@ -29,6 +29,52 @@ namespace NoMercy.Tests.Cli.Commands;
 public sealed class UpdateCommandStopTests
 {
     [Fact]
+    public async Task Stop_TimesOut_ExplainsObservedState_AndHowToForceStop()
+    {
+        Directory.CreateDirectory(AppFiles.BinariesPath);
+        File.WriteAllText(AppFiles.ServerTempExePath, "NEW");
+
+        FakeManagementPipeServer server = new();
+        Task<List<string>> requestsTask = server.RunSequenceAsync([
+            stream =>
+                FakeManagementPipeServer.WriteResponseAsync(
+                    stream,
+                    200,
+                    "OK",
+                    """{"status":"ok","message":"Downloaded"}"""
+                ),
+            stream => FakeManagementPipeServer.WriteResponseAsync(stream, 200, "OK", "true"),
+        ]);
+
+        Option<string?> pipeOption = new("--pipe", "-p");
+        RootCommand root = new("test");
+        root.Options.Add(pipeOption);
+        root.Subcommands.Add(
+            UpdateCommand.Create(
+                pipeOption,
+                new CliClientFactory(),
+                awaitExit: (_, _) => Task.FromResult(false)
+            )
+        );
+
+        using ConsoleCapture console = new();
+        int exitCode = await root.Parse(["--pipe", server.PipeName, "update"]).InvokeAsync();
+
+        List<string> requests = await requestsTask;
+        requests.Should().HaveCount(2);
+        exitCode.Should().Be((int)ExitCode.Timeout);
+        console.Error.Should().Contain("management endpoint");
+        console.Error.Should().Contain("shutdown logs");
+        console.Error.Should().Contain("taskkill /F /IM NoMercyMediaServer.exe");
+        console.Error.Should().Contain("systemctl kill -s SIGKILL <unit>");
+        console
+            .Error.Should()
+            .Contain("launchctl kill SIGKILL gui/<uid>/tv.nomercy.mediaserver.service");
+        console.Error.Should().Contain("docker kill <container>");
+        File.ReadAllText(AppFiles.ServerTempExePath).Should().Be("NEW");
+    }
+
+    [Fact]
     public async Task Stop_NotAcknowledged_PrintsError_AndReturnsServerError_WithoutWaiting()
     {
         // The staged binary is verified before the server is stopped, so it has to exist for
