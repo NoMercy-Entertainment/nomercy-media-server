@@ -131,6 +131,30 @@ public class ConfigurationController(
             return BadRequestResponse("derived_audio_cap_gb must be at least 1");
         }
 
+        if (request.InternalServerPort is < 0 or > 65535)
+        {
+            return BadRequestResponse("internal_port must be between 1 and 65535");
+        }
+
+        if (request.ExternalServerPort is < 0 or > 65535)
+        {
+            return BadRequestResponse("external_port must be between 1 and 65535");
+        }
+
+        if (
+            request.LibraryWorkers is < 0
+            || request.ImportWorkers is < 0
+            || request.ExtrasWorkers is < 0
+            || request.EncoderWorkers is < 0
+            || request.CronWorkers is < 0
+            || request.ImageWorkers is < 0
+            || request.FileWorkers is < 0
+            || request.MusicWorkers is < 0
+        )
+        {
+            return BadRequestResponse("worker counts must be at least 0");
+        }
+
         if (
             request.UpdateChannel is not null
             && !ReleaseChannelSelector.TryParse(request.UpdateChannel, out _)
