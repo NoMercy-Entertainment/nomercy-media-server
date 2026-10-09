@@ -150,6 +150,55 @@ public class UserPlaylistsControllerTests : IClassFixture<NoMercyApiFactory>
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task Edit_ReturnsBadRequest_AndPreservesPlaylist_WhenNameIsBlank(string name)
+    {
+        Guid playlistId = await CreatePlaylistAsync("Original Name");
+
+        HttpResponseMessage response = await PatchAsync(
+            _authed,
+            $"{BaseUrl}/{playlistId}",
+            new { name, description = "Should not be saved" }
+        );
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        using JsonDocument error = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        error.RootElement.GetProperty("detail").GetString().Should().Be("Name is required");
+
+        HttpResponseMessage afterEdit = await _authed.GetAsync($"{BaseUrl}/{playlistId}");
+        afterEdit.StatusCode.Should().Be(HttpStatusCode.OK);
+        using JsonDocument playlist = JsonDocument.Parse(
+            await afterEdit.Content.ReadAsStringAsync()
+        );
+        JsonElement data = playlist.RootElement.GetProperty("data");
+        data.GetProperty("name").GetString().Should().Be("Original Name");
+        data.GetProperty("description").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task Edit_UpdatesDescription_WhenNameIsOmitted()
+    {
+        Guid playlistId = await CreatePlaylistAsync("Original Name");
+
+        HttpResponseMessage response = await PatchAsync(
+            _authed,
+            $"{BaseUrl}/{playlistId}",
+            new { description = "Updated description" }
+        );
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        HttpResponseMessage afterEdit = await _authed.GetAsync($"{BaseUrl}/{playlistId}");
+        afterEdit.StatusCode.Should().Be(HttpStatusCode.OK);
+        using JsonDocument playlist = JsonDocument.Parse(
+            await afterEdit.Content.ReadAsStringAsync()
+        );
+        JsonElement data = playlist.RootElement.GetProperty("data");
+        data.GetProperty("name").GetString().Should().Be("Original Name");
+        data.GetProperty("description").GetString().Should().Be("Updated description");
+    }
+
     [Fact]
     public async Task Show_ReturnsNotFound_ForUnknownPlaylist()
     {

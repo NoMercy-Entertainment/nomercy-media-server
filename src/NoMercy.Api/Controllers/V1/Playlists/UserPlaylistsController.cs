@@ -150,6 +150,9 @@ public class UserPlaylistsController(IUserPlaylistRepository userPlaylistReposit
     {
         Guid userId = User.UserId();
 
+        if (request.Name is not null && string.IsNullOrWhiteSpace(request.Name))
+            return BadRequestResponse("Name is required");
+
         bool updated = await userPlaylistRepository.UpdatePlaylistAsync(
             id,
             userId,
