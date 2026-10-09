@@ -12,6 +12,9 @@
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Database;
 using NoMercy.Database.Models.Music;
+using NoMercy.NmSystem.SystemCalls;
+using NoMercy.Storage;
+using Serilog.Events;
 
 namespace NoMercy.MediaProcessing.Artists;
 
@@ -19,6 +22,15 @@ public class ArtistRepository(MediaContext context) : IArtistRepository
 {
     public Task StoreAsync(Artist artist)
     {
+        if (HostFolderPath.ContainsSecondRoot(artist.HostFolder))
+        {
+            Logger.App(
+                $"Skipping artist {artist.Id}: host folder holds a second root: '{artist.HostFolder}'",
+                LogEventLevel.Error
+            );
+            return Task.CompletedTask;
+        }
+
         return context
             .Artists.Upsert(artist)
             .On(e => new { e.Id })
