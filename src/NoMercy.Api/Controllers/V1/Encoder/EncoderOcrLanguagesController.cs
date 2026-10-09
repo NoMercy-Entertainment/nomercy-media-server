@@ -36,12 +36,12 @@ public class EncoderOcrLanguagesController(ITesseractModelManager modelManager) 
     /// </summary>
     [HttpGet("languages")]
     [Authorize(Policy = "Moderator")]
-    public IActionResult GetLanguages()
+    public async Task<IActionResult> GetLanguages(CancellationToken ct)
     {
         return Ok(
             new
             {
-                available = modelManager.GetAvailableLanguages(),
+                available = await modelManager.GetAvailableLanguagesAsync(ct),
                 downloaded = modelManager.GetDownloadedLanguages(),
             }
         );
