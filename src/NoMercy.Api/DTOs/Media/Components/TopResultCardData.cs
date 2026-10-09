@@ -82,8 +82,6 @@ public record TopResultCardData
         Link = $"/music/artists/{artist.Id}";
         Cover = artist.Cover;
         ColorPalette = artist.ColorPalette;
-        Link = $"/music/albums/{artist.Id}";
-        Type = "album";
     }
 
     public TopResultCardData(Album album)
