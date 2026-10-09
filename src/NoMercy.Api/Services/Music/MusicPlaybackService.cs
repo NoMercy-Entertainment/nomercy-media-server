@@ -239,6 +239,20 @@ public class MusicPlaybackService
             timer.Dispose();
     }
 
+    public void RemoveDisconnectedUserState(Guid userId)
+    {
+        RemoveTimer(userId);
+
+        if (_broadcastTimers.TryRemove(userId, out Timer? broadcastTimer))
+            broadcastTimer.Dispose();
+
+        // A command that was already running can still hold this semaphore.
+        // Removing the map entry lets that command finish without disposing it.
+        _stateLocks.TryRemove(userId, out _);
+        _playbackStartsInFlight.TryRemove(userId, out _);
+        _lastBroadcastFingerprints.TryRemove(userId, out _);
+    }
+
     /// <summary>
     /// Marks a <see cref="NoMercy.Api.Hubs.MusicHub.StartPlaybackCommand"/> as in flight for
     /// <paramref name="userId"/> — see <see cref="IsPlaybackStartInFlight"/> for why the

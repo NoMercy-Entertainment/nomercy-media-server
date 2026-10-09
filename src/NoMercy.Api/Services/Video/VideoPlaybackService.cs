@@ -53,6 +53,11 @@ public class VideoPlaybackService
         (string Item, DateTime At)
     > _lastContinueWatchingRefresh = new();
 
+    public void RemoveDisconnectedUserState(Guid userId)
+    {
+        _lastContinueWatchingRefresh.TryRemove(userId, out _);
+    }
+
     /// <summary>
     /// How long the carousel is left alone between progress reports for the same item. Progress
     /// arrives about once a second per playing device and every report reached every connected

@@ -111,9 +111,17 @@ public partial class VideoHub : ConnectionHub
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        User? user = UserCacheService.GetUser(Context.User.UserId());
+        Guid userId = Context.User.UserId();
+        User? user = UserCacheService.GetUser(userId);
         if (user == null)
+        {
+            await base.OnDisconnectedAsync(exception);
+
+            if (ConnectedClients.ConnectionsFor(userId, "videoHub").Count == 0)
+                _videoPlaybackService.RemoveDisconnectedUserState(userId);
+
             return;
+        }
 
         bool stopPlayback = false;
         Ulid stoppedDeviceId = Ulid.Empty;
@@ -179,6 +187,9 @@ public partial class VideoHub : ConnectionHub
         }
 
         await _videoPlaybackService.UpdatePlaybackState(user, playerState);
+
+        if (ConnectedClients.ConnectionsFor(user.Id, "videoHub").Count == 0)
+            _videoPlaybackService.RemoveDisconnectedUserState(user.Id);
 
         if (stopPlayback && stoppedDeviceId != Ulid.Empty)
         {
