@@ -513,10 +513,10 @@ public class FileRepository(MediaContext context, IStorageDriver storageDriver) 
             return (prevMusicBrainzReleaseId, year);
         }
 
-        Guid musicBrainzReleaseId = Guid.Parse(
-            (audioTagModel.Tags?.MusicBrainzReleaseId).OrEmpty()
-        );
-        if (musicBrainzReleaseId == Guid.Empty)
+        if (
+            !Guid.TryParse(audioTagModel.Tags?.MusicBrainzReleaseId, out Guid musicBrainzReleaseId)
+            || musicBrainzReleaseId == Guid.Empty
+        )
             return (prevMusicBrainzReleaseId, year);
         MusicBrainzReleaseAppends? release = await musicBrainzReleaseClient.WithAllAppends(
             musicBrainzReleaseId
