@@ -53,29 +53,41 @@ public class BinaryDownloaderTests : IDisposable
         string destPath = Path.Combine(_tempDir, "stalled.bin");
         GithubReleaseResponse release = BuildRelease("stalled.bin", assetUrl, null);
         FakeHttpHandler handler = new();
-        handler.RegisterStream(
-            assetUrl,
-            new TimedChunkStream(
-                [Encoding.UTF8.GetBytes("first"), Encoding.UTF8.GetBytes("last")],
-                [TimeSpan.Zero, TimeSpan.FromSeconds(5)]
-            )
+        TimedChunkStream stalledBody = new(
+            [Encoding.UTF8.GetBytes("first"), Encoding.UTF8.GetBytes("last")],
+            [TimeSpan.Zero, Timeout.InfiniteTimeSpan]
         );
+        handler.RegisterStream(assetUrl, stalledBody);
         Binaries binaries = BuildBinaries(handler);
         binaries.DownloadIdleTimeout = TimeSpan.FromMilliseconds(150);
 
-        Func<Task> download = () =>
-            binaries.DownloadWithVerificationAsync(
-                "https://api.github.com/test",
-                "stalled asset",
-                new(assetUrl),
-                destPath,
-                release,
-                "stalled.bin",
-                enforceSignedManifest: false
-            );
+        Task<string> transfer = binaries.DownloadWithVerificationAsync(
+            "https://api.github.com/test",
+            "stalled asset",
+            new(assetUrl),
+            destPath,
+            release,
+            "stalled.bin",
+            enforceSignedManifest: false
+        );
+        Func<Task> download = () => transfer.WaitAsync(TimeSpan.FromSeconds(2));
 
-        await download.Should().ThrowAsync<OperationCanceledException>();
+        try
+        {
+            await download.Should().ThrowAsync<OperationCanceledException>();
+        }
+        finally
+        {
+            stalledBody.Release();
+            try
+            {
+                await transfer;
+            }
+            catch (OperationCanceledException) { }
+        }
+
         File.Exists(destPath).Should().BeFalse();
+        File.Exists(destPath + ".tmp").Should().BeFalse();
     }
 
     [Fact]
@@ -963,6 +975,9 @@ internal sealed class FakeHttpHandler : HttpMessageHandler
 internal sealed class TimedChunkStream(byte[][] chunks, TimeSpan[] delays) : Stream
 {
     private int _index;
+    private readonly CancellationTokenSource _release = new();
+
+    public void Release() => _release.Cancel();
 
     public override bool CanRead => true;
     public override bool CanSeek => false;
@@ -982,7 +997,11 @@ internal sealed class TimedChunkStream(byte[][] chunks, TimeSpan[] delays) : Str
         if (_index == chunks.Length)
             return 0;
 
-        await Task.Delay(delays[_index], cancellationToken);
+        using CancellationTokenSource read = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            _release.Token
+        );
+        await Task.Delay(delays[_index], read.Token);
         byte[] chunk = chunks[_index++];
         chunk.CopyTo(buffer);
         return chunk.Length;
