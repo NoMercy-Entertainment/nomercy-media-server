@@ -263,6 +263,63 @@ public class WhisperTranscriberTests
     // ── Path escaping ────────────────────────────────────────────────────────
 
     [Fact]
+    public async Task Filter_paths_with_filtergraph_delimiters_remain_single_values()
+    {
+        const string inputPath = "/media/Hello, it's [World];=1.mkv";
+        const string modelPath = @"C:\models\Bob's, [model];=1.bin";
+        EncoderOptions options = new()
+        {
+            FfmpegPathOverride = FfmpegPath,
+            WhisperModelPath = modelPath,
+        };
+        Mock<IStorage> storage = StorageMock(modelPath);
+        InMemoryStream(storage, "/media/Hello, it's [World];=1.eng.whisper.srt", srtContent: "");
+
+        string[]? capturedArgs = null;
+        Mock<IProcessRunner> processRunner = new();
+        processRunner
+            .Setup(p =>
+                p.RunAsync(
+                    FfmpegPath,
+                    It.IsAny<string[]>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .Callback<string, string[], string?, CancellationToken>(
+                (_, args, _, _) => capturedArgs = args
+            )
+            .ReturnsAsync(
+                new ProcessResult(ExitCode: 0, StdOut: "", StdErr: "", Duration: TimeSpan.Zero)
+            );
+
+        WhisperTranscriber transcriber = new(
+            options,
+            processRunner.Object,
+            storage.Object,
+            NullLogger<WhisperTranscriber>.Instance
+        );
+
+        await transcriber.TranscribeAsync(
+            inputPath,
+            0,
+            "eng",
+            options_: null,
+            progress: null,
+            ct: default
+        );
+
+        int afIndex = Array.IndexOf(capturedArgs!, "-af");
+        capturedArgs!
+            [afIndex + 1]
+            .Should()
+            .Be(
+                "whisper=model='C\\:/models/Bob\\'s, [model];=1.bin':language=eng"
+                    + ":queue=3:destination='/media/Hello, it\\'s [World];=1.eng.whisper.srt':format=srt"
+            );
+    }
+
+    [Fact]
     public async Task Filter_paths_have_backslashes_replaced_with_forward_slashes()
     {
         // EscapeFilterPath normalizes Windows-style backslashes — ffmpeg filter
