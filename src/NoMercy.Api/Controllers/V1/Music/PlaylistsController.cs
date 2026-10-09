@@ -9,13 +9,11 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Text.RegularExpressions;
 using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
-using Newtonsoft.Json;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Api.DTOs.Media.Components;
 using NoMercy.Api.DTOs.Music;
@@ -28,8 +26,6 @@ using NoMercy.MediaProcessing.Images;
 using NoMercy.MediaProcessing.Jobs;
 using NoMercy.MediaProcessing.Jobs.PaletteJobs;
 using NoMercy.NmSystem.Extensions;
-using NoMercy.NmSystem.Information;
-using NoMercyQueue;
 
 namespace NoMercy.Api.Controllers.V1.Music;
 
@@ -196,14 +192,15 @@ public class PlaylistsController : BaseController
     {
         int result = await _musicRepository.DeletePlaylistAsync(id, User.UserId());
 
+        if (result == 0)
+            return NotFoundResponse("Playlist not found");
+
         await _eventBus.PublishAsync(new LibraryRefreshedEvent { QueryKey = ["music-playlists"] });
 
         return Ok(
             new StatusResponseDto<string>
             {
-                Data = (
-                    result > 0 ? "Playlist deleted successfully" : "Playlist not found"
-                ).Localize(),
+                Data = "Playlist deleted successfully".Localize(),
                 Status = "ok",
             }
         );

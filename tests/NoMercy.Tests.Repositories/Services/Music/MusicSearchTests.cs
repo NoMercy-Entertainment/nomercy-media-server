@@ -13,7 +13,6 @@ using FluentAssertions;
 using Moq;
 using NoMercy.Data.Repositories;
 using NoMercy.Data.Services.Music;
-using Xunit;
 
 namespace NoMercy.Tests.Repositories.Services.Music;
 

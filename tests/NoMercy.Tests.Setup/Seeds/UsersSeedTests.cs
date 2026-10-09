@@ -14,7 +14,6 @@ using Microsoft.EntityFrameworkCore;
 using NoMercy.Database;
 using NoMercy.Database.Models.Users;
 using NoMercy.Service.Seeds;
-using NoMercy.Service.Seeds.Dto;
 using NoMercy.Storage;
 
 namespace NoMercy.Tests.Setup.Seeds;

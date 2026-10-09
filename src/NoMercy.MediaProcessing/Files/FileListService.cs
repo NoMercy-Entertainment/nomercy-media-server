@@ -9,13 +9,10 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 using System.Collections.Concurrent;
-using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using MovieFileLibrary;
 using NoMercy.MediaProcessing.Files.Parsing;
 using NoMercy.NmSystem;
-using NoMercy.NmSystem.Domain;
-using NoMercy.NmSystem.Extensions;
 using NoMercy.NmSystem.FFProbe;
 using NoMercy.Providers.TMDB.Models.Shared;
 using NoMercy.Storage;

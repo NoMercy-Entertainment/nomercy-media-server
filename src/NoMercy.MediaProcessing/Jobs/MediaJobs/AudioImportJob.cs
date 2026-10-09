@@ -34,10 +34,8 @@ using NoMercy.Providers.AcoustId.Models;
 using NoMercy.Providers.CoverArt.Client;
 using NoMercy.Providers.MusicBrainz.Client;
 using NoMercy.Providers.MusicBrainz.Models;
-using NoMercy.Queue.MediaServer;
 using NoMercy.Storage;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
+using ImageMagick;
 
 namespace NoMercy.MediaProcessing.Jobs.MediaJobs;
 
@@ -91,6 +89,10 @@ public class AudioImportJob : AbstractMusicFolderJob
     /// </summary>
     private async Task<Guid?> ResolveReleaseIdAsync(MediaFile mediaFile, AudioTagModel audioTag)
     {
+        Guid? explicitReleaseId = ApplyExplicitRelease(ReleaseId, audioTag);
+        if (explicitReleaseId is not null)
+            return explicitReleaseId;
+
         if (
             audioTag.MusicBrainz?.ReleaseId is not null
             && audioTag.MusicBrainz.ReleaseId != Guid.Empty
@@ -104,6 +106,40 @@ public class AudioImportJob : AbstractMusicFolderJob
         audioTag.MusicBrainz ??= new();
         audioTag.MusicBrainz.ReleaseId = discoveredReleaseId.Value;
         return discoveredReleaseId;
+    }
+
+    /// <summary>
+    /// When the caller chose a release (a non-empty <paramref name="releaseId"/>), that
+    /// release wins over whatever the file's tags or fingerprint say: it is written onto
+    /// the tag model and returned. Empty means "no choice made" and returns null so the
+    /// tag / fingerprint resolution runs as before.
+    /// </summary>
+    internal static Guid? ApplyExplicitRelease(Guid releaseId, AudioTagModel audioTag)
+    {
+        if (releaseId == Guid.Empty)
+            return null;
+
+        audioTag.MusicBrainz ??= new();
+        audioTag.MusicBrainz.ReleaseId = releaseId;
+        return releaseId;
+    }
+
+    /// <summary>
+    /// The library folder the album is imported INTO: the folder the caller chose when it
+    /// belongs to <paramref name="library"/>, otherwise the library's first folder.
+    /// </summary>
+    internal static Folder SelectDestinationFolder(Library library, Ulid folderId)
+    {
+        if (folderId != default)
+        {
+            Folder? chosen = library
+                .FolderLibraries.Select(folderLibrary => folderLibrary.Folder)
+                .FirstOrDefault(folder => folder.Id == folderId);
+            if (chosen is not null)
+                return chosen;
+        }
+
+        return library.FolderLibraries.First().Folder;
     }
 
     // Identify a file with no embedded MusicBrainz id by acoustic fingerprint:
@@ -466,7 +502,7 @@ public class AudioImportJob : AbstractMusicFolderJob
             await CoverArtImageManagerManager.Add(release.MusicBrainzReleaseGroup.Id, true);
         if (coverPalette is not null)
         {
-            using Image<Rgba32>? downloadedImage = await CoverArtCoverArtClient.Download(
+            using MagickImage? downloadedImage = await CoverArtCoverArtClient.Download(
                 coverPalette.Url
             );
         }
@@ -751,7 +787,7 @@ public class AudioImportJob : AbstractMusicFolderJob
             .Include(f => f.FolderLibraries)
                 .ThenInclude(f => f.Folder)
             .First();
-        Folder folderLibrary = albumLibrary.FolderLibraries.First().Folder;
+        Folder folderLibrary = SelectDestinationFolder(albumLibrary, FolderId);
         Func<IAsyncEnumerable<(MediaFile MediaFile, AudioTagModel AudioTag)>> audioFilesFactory =
             GetAudioFiles;
 

@@ -15,7 +15,6 @@ using Microsoft.AspNetCore.Authorization.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using NoMercy.Authorization;
 using NoMercy.Database.Models.Users;
-using NoMercy.Service.Authorization;
 using Xunit;
 
 namespace NoMercy.Tests.Api.Authorization;

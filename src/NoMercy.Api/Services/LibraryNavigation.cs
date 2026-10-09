@@ -58,7 +58,7 @@ public static class LibraryNavigation
         Page("MusicArtists", "Artists", "speaker", "/music/artists", "music"),
         Page("MusicAlbums", "Albums", "disk", "/music/albums", "music"),
         Page("MusicGenres", "Genres", "noteClefTreble", "/music/genres", "music"),
-        Page("MusicFavorites", "Songs you like", "heart", "/music/favorites", "music"),
+        Page("MusicFavorites", "Songs you like", "heart", "/music/tracks", "music"),
     ];
 
     public static bool HasVideo(IEnumerable<Library> libraries) =>

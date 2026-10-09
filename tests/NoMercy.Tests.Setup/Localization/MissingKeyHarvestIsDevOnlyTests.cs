@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.NmSystem.Extensions;
-using Xunit;
 
 namespace NoMercy.Tests.Setup.Localization;
 

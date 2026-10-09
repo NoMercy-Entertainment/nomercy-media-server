@@ -9,6 +9,8 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Collections.Concurrent;
+using System.Reflection;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.SignalR;
@@ -67,6 +69,12 @@ namespace NoMercy.Tests.Api;
 public class MusicHubActiveDeviceDisconnectTests : IClassFixture<NoMercyApiFactory>
 {
     private readonly NoMercyApiFactory _factory;
+
+    private static ConcurrentDictionary<Guid, SemaphoreSlim> CommandLocks =>
+        (ConcurrentDictionary<Guid, SemaphoreSlim>)
+            typeof(MusicHub)
+                .GetField("CommandLocks", BindingFlags.NonPublic | BindingFlags.Static)!
+                .GetValue(null)!;
 
     public MusicHubActiveDeviceDisconnectTests(NoMercyApiFactory factory)
     {
@@ -186,6 +194,99 @@ public class MusicHubActiveDeviceDisconnectTests : IClassFixture<NoMercyApiFacto
         };
         UserCache.Current.AddUser(user);
         return user;
+    }
+
+    [Fact]
+    public async Task LastConnectionWithoutPlayerState_RemovesCommandLock()
+    {
+        Guid userId = Guid.NewGuid();
+        User user = SeedTestUser(userId);
+        string connectionId = Guid.NewGuid().ToString();
+        ConnectedClients connectedClients = _factory.GetConnectedClients();
+        Client client = MakeClient(userId, $"phone-{Guid.NewGuid()}");
+        connectedClients.Clients[connectionId] = client;
+        MusicActiveDeviceRegistry activeDeviceRegistry =
+            _factory.Services.GetRequiredService<MusicActiveDeviceRegistry>();
+        activeDeviceRegistry.Set(userId, client);
+        SemaphoreSlim commandLock = new(1, 1);
+        CommandLocks[userId] = commandLock;
+        MusicPlaybackService playbackService =
+            _factory.Services.GetRequiredService<MusicPlaybackService>();
+        await playbackService.WithStateLockAsync(userId, () => Task.CompletedTask);
+        ConcurrentDictionary<Guid, SemaphoreSlim> stateLocks =
+            (ConcurrentDictionary<Guid, SemaphoreSlim>)
+                typeof(MusicPlaybackService)
+                    .GetField("_stateLocks", BindingFlags.NonPublic | BindingFlags.Instance)!
+                    .GetValue(playbackService)!;
+
+        try
+        {
+            MusicHub hub = CreateHub(connectionId, userId);
+            await hub.OnDisconnectedAsync(null);
+
+            Assert.False(CommandLocks.ContainsKey(userId));
+            Assert.False(stateLocks.ContainsKey(userId));
+            Assert.False(activeDeviceRegistry.TryGet(userId, out _));
+        }
+        finally
+        {
+            connectedClients.Clients.TryRemove(connectionId, out _);
+            CommandLocks.TryRemove(userId, out _);
+            commandLock.Dispose();
+            activeDeviceRegistry.Remove(userId);
+            UserCache.Current.RemoveUser(user);
+        }
+    }
+
+    [Fact]
+    public async Task OneOfTwoConnectionsWithoutPlayerState_PreservesCommandLock()
+    {
+        Guid userId = Guid.NewGuid();
+        User user = SeedTestUser(userId);
+        string firstConnectionId = Guid.NewGuid().ToString();
+        string secondConnectionId = Guid.NewGuid().ToString();
+        ConnectedClients connectedClients = _factory.GetConnectedClients();
+        connectedClients.Clients[firstConnectionId] = MakeClient(userId, $"phone-{Guid.NewGuid()}");
+        connectedClients.Clients[secondConnectionId] = MakeClient(userId, $"tv-{Guid.NewGuid()}");
+        SemaphoreSlim commandLock = new(1, 1);
+        CommandLocks[userId] = commandLock;
+
+        try
+        {
+            MusicHub hub = CreateHub(firstConnectionId, userId);
+            await hub.OnDisconnectedAsync(null);
+
+            Assert.True(CommandLocks.ContainsKey(userId));
+        }
+        finally
+        {
+            connectedClients.Clients.TryRemove(firstConnectionId, out _);
+            connectedClients.Clients.TryRemove(secondConnectionId, out _);
+            CommandLocks.TryRemove(userId, out _);
+            commandLock.Dispose();
+            UserCache.Current.RemoveUser(user);
+        }
+    }
+
+    [Fact]
+    public async Task MissingCachedUser_DisconnectsAndRemovesCommandLock()
+    {
+        Guid userId = Guid.NewGuid();
+        SemaphoreSlim commandLock = new(1, 1);
+        CommandLocks[userId] = commandLock;
+
+        try
+        {
+            MusicHub hub = CreateHub(Guid.NewGuid().ToString(), userId);
+            await hub.OnDisconnectedAsync(null);
+
+            Assert.False(CommandLocks.ContainsKey(userId));
+        }
+        finally
+        {
+            CommandLocks.TryRemove(userId, out _);
+            commandLock.Dispose();
+        }
     }
 
     [Fact]

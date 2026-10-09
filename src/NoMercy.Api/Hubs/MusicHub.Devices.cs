@@ -9,12 +9,10 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NoMercy.Api.Hubs.Shared;
 using NoMercy.Api.Services.Music;
 using NoMercy.Authorization;
-using NoMercy.Database;
 using NoMercy.Database.Models.Users;
 using NoMercy.Networking.Cast;
 using NoMercy.Networking.Http;
@@ -150,7 +148,42 @@ public partial class MusicHub
         state.DeviceVolumes = volumes;
     }
 
-    public async Task ChangeDeviceCommand(string? deviceId)
+    public async Task<HubCommandResult> ChangeDeviceCommand(string? deviceId)
+    {
+        if (deviceId is { Length: > 0 } && string.IsNullOrWhiteSpace(deviceId))
+            return HubCommandResult.Invalid("Device id must not be blank.");
+
+        if (string.IsNullOrEmpty(deviceId))
+            return await HubCommandResult.ExecuteAsync(
+                () => ChangeDeviceCoreAsync(deviceId, null),
+                _logger
+            );
+
+        User? user = UserCacheService.GetUser(Context.User.UserId());
+        if (user is null)
+            return HubCommandResult.Forbidden("Caller is not available.");
+
+        try
+        {
+            List<Device> connectedDevices = await MusicDevicesAsync();
+            if (
+                !connectedDevices.Any(device =>
+                    device.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase)
+                )
+            )
+                return HubCommandResult.NotFound("Device was not found for this user.");
+
+            await ChangeDeviceCoreAsync(deviceId, connectedDevices);
+            return HubCommandResult.Success();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Could not change music device");
+            return HubCommandResult.Failed();
+        }
+    }
+
+    private async Task ChangeDeviceCoreAsync(string? deviceId, List<Device>? knownDevices)
     {
         User? user = UserCacheService.GetUser(Context.User.UserId());
         if (user is null)
@@ -162,7 +195,7 @@ public partial class MusicHub
             return;
         }
 
-        List<Device> connectedDevices = await MusicDevicesAsync();
+        List<Device> connectedDevices = knownDevices ?? await MusicDevicesAsync();
 
         Device? targetTv = connectedDevices.FirstOrDefault(d =>
             d.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase) && d.Type == "tv"
@@ -387,12 +420,29 @@ public partial class MusicHub
         await _musicPlaybackService.UpdatePlaybackState(user, playerState);
     }
 
-    public async Task ChangeVolumeCommand(int? volume)
+    public Task<HubCommandResult> ChangeVolumeCommand(int? volume) =>
+        SetDeviceVolumeCommand(null, volume);
+
+    public Task<HubCommandResult> SetDeviceVolumeCommand(string? deviceId, int? volume)
     {
-        await SetDeviceVolumeCommand(null, volume);
+        if (volume is null or < 0 or > 100)
+            return Task.FromResult(HubCommandResult.Invalid("Volume must be between 0 and 100."));
+        if (deviceId is { Length: > 0 } && string.IsNullOrWhiteSpace(deviceId))
+            return Task.FromResult(HubCommandResult.Invalid("Device id must not be blank."));
+
+        User? user = UserCacheService.GetUser(Context.User.UserId());
+        if (user is null)
+            return Task.FromResult(HubCommandResult.Forbidden("Caller is not available."));
+        if (ResolveVolumeTarget(user.Id, deviceId) is null)
+            return Task.FromResult(HubCommandResult.NotFound("Volume target was not found."));
+
+        return HubCommandResult.ExecuteAsync(
+            () => SetDeviceVolumeCoreAsync(deviceId, volume),
+            _logger
+        );
     }
 
-    public async Task SetDeviceVolumeCommand(string? deviceId, int? volume)
+    private async Task SetDeviceVolumeCoreAsync(string? deviceId, int? volume)
     {
         User? user = UserCacheService.GetUser(Context.User.UserId());
         if (user is null)

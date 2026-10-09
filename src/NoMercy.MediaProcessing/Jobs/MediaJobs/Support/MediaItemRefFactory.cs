@@ -13,7 +13,6 @@ using NoMercy.Database.Models.Movies;
 using NoMercy.Database.Models.TvShows;
 using NoMercy.Encoder.Metadata;
 using NoMercy.Encoder.Naming;
-using NoMercy.NmSystem.Extensions;
 
 namespace NoMercy.MediaProcessing.Jobs.MediaJobs.Support;
 

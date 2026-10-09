@@ -34,7 +34,9 @@ public sealed class ListenAddressesTests
     public void CanBindDualStack_AgreesWithTheOperatingSystem()
     {
         // The chooser must never claim dual-stack on a host that cannot bind "::".
-        bool claimed = ListenAddresses.CanBindDualStack();
+        // The test probes "::1": a wildcard bind makes Windows ask the firewall
+        // on every run, and a loopback dual-mode bind fails for the same reasons.
+        bool claimed = ListenAddresses.CanBindDualStack(IPAddress.IPv6Loopback);
 
         if (!Socket.OSSupportsIPv6)
         {
@@ -47,7 +49,7 @@ public sealed class ListenAddressesTests
         bool osBinds;
         try
         {
-            probe.Bind(new IPEndPoint(IPAddress.IPv6Any, 0));
+            probe.Bind(new IPEndPoint(IPAddress.IPv6Loopback, 0));
             osBinds = true;
         }
         catch (SocketException)
@@ -59,34 +61,29 @@ public sealed class ListenAddressesTests
     }
 
     [Fact]
-    public async Task DualModeListener_ServesIPv4AndIPv6LoopbackOnOnePort()
+    public async Task DualModeListener_OnLoopback_ServesIPv6AndMapsIPv4Peers()
     {
-        if (!ListenAddresses.CanBindDualStack())
+        // Decision: the IPv4 half of a dual-mode listener can only be proven on a
+        // wildcard bind, and a wildcard bind asks the Windows firewall on every
+        // test run. So the socket half runs on "::1" and the IPv4-mapped half is
+        // proven on the address math the resolver relies on.
+        if (!ListenAddresses.CanBindDualStack(IPAddress.IPv6Loopback))
             return;
 
-        using TcpListener listener = new(ListenAddresses.Wildcard(), 0);
+        using TcpListener listener = new(IPAddress.IPv6Loopback, 0);
         listener.Server.DualMode = true;
         listener.Start();
         int port = ((IPEndPoint)listener.LocalEndpoint).Port;
 
-        using TcpClient v4 = new(AddressFamily.InterNetwork);
-        await v4.ConnectAsync(IPAddress.Loopback, port);
         using TcpClient v6 = new(AddressFamily.InterNetworkV6);
         await v6.ConnectAsync(IPAddress.IPv6Loopback, port);
-
-        using TcpClient fromV4 = await listener.AcceptTcpClientAsync();
         using TcpClient fromV6 = await listener.AcceptTcpClientAsync();
 
+        Assert.Equal(IPAddress.IPv6Loopback, ((IPEndPoint)fromV6.Client.RemoteEndPoint!).Address);
+
         // Existing IPv4 clients arrive as IPv4-mapped addresses; the resolver maps them back.
-        IPAddress[] peers =
-        [
-            ((IPEndPoint)fromV4.Client.RemoteEndPoint!).Address,
-            ((IPEndPoint)fromV6.Client.RemoteEndPoint!).Address,
-        ];
-        Assert.Contains(
-            peers,
-            p => p.IsIPv4MappedToIPv6 && p.MapToIPv4().Equals(IPAddress.Loopback)
-        );
-        Assert.Contains(peers, p => p.Equals(IPAddress.IPv6Loopback));
+        IPAddress mapped = IPAddress.Loopback.MapToIPv6();
+        Assert.True(mapped.IsIPv4MappedToIPv6);
+        Assert.Equal(IPAddress.Loopback, mapped.MapToIPv4());
     }
 }

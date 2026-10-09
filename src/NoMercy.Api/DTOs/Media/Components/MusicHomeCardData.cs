@@ -10,11 +10,8 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
-using NoMercy.Data.Repositories;
 using NoMercy.Database;
 using NoMercy.Database.Models.Music;
-using NoMercy.NmSystem.Extensions;
-using CarouselResponseItemDtoRepository = NoMercy.Data.DTOs.CarouselResponseItemDto;
 
 namespace NoMercy.Api.DTOs.Media.Components;
 

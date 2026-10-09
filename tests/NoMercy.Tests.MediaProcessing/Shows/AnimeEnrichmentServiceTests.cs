@@ -10,14 +10,12 @@
 // -----------------------------------------------------------------------------
 
 using System.Net;
-using FluentAssertions;
 using Moq;
 using NoMercy.MediaProcessing.Shows;
 using NoMercy.Providers.AniList;
 using NoMercy.Providers.AniList.Models;
 using NoMercy.Providers.Jikan;
 using NoMercy.Providers.Jikan.Models;
-using Xunit;
 
 namespace NoMercy.Tests.MediaProcessing.Shows;
 

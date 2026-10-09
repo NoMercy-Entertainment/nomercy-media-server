@@ -69,7 +69,9 @@ public class PluginNetTests
         );
         PluginResourceLedger ledger = new();
 
-        return (new(Plugin, broker, manifests, ledger), ledger);
+        // Loopback, never the wildcard: a wildcard listener asks the Windows
+        // firewall on every test run.
+        return (new(Plugin, broker, manifests, ledger, bindAddress: IPAddress.Loopback), ledger);
     }
 
     private static async Task<int> EchoServerAsync(CancellationToken ct)
@@ -180,6 +182,16 @@ public class PluginNetTests
     }
 
     [Fact]
+    public void A_listener_binds_the_address_the_host_was_built_with()
+    {
+        // The test host binds loopback so a test run never asks the firewall;
+        // the server keeps the wildcard so a plugin can serve the LAN.
+        (PluginNet net, PluginResourceLedger _) = Net(null, "1024-65535");
+
+        net.BindAddress.Should().Be(IPAddress.Loopback);
+    }
+
+    [Fact]
     public async Task Listening_inside_the_declared_range_reports_the_port_it_got()
     {
         (PluginNet net, PluginResourceLedger _) = Net(null, "1024-65535");
@@ -192,7 +204,7 @@ public class PluginNetTests
         // Read from the socket, not echoed back from the request: a second
         // bind of the same port fails while this listener holds it, which a
         // made-up number would not.
-        TcpListener same = new(IPAddress.Any, listener.Port);
+        TcpListener same = new(IPAddress.Loopback, listener.Port);
         Action rebind = () => same.Start();
 
         rebind

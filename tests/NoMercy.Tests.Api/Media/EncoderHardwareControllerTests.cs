@@ -13,7 +13,6 @@ using Microsoft.AspNetCore.Mvc;
 using Moq;
 using NoMercy.Api.Controllers.V1.Encoder;
 using NoMercy.Encoder.Codecs;
-using NoMercy.Encoder.Errors;
 using NoMercy.Encoder.Execution;
 using NoMercy.Encoder.Hardware;
 using NoMercy.Encoder.Startup;

@@ -15,6 +15,7 @@ using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using NoMercy.Database;
 using NoMercy.Database.Models.Music;
+using NoMercy.MediaProcessing.Images;
 using NoMercy.NmSystem.Extensions;
 using NoMercy.Providers.CoverArt.Client;
 using NoMercy.Providers.CoverArt.Models;
@@ -37,6 +38,9 @@ public class CoverArtImageJob : IShouldQueue, IJobStorageInjector
     {
         LoggerFactory = serviceProvider.GetRequiredService<ILoggerFactory>();
     }
+
+    [JsonIgnore]
+    public MusicCoverFiles CoverFiles { get; set; } = new();
 
     public string QueueName => "image";
     public int Priority => 3;
@@ -94,30 +98,12 @@ public class CoverArtImageJob : IShouldQueue, IJobStorageInjector
             if (ReleaseId == Guid.Empty)
                 return;
 
-            Uri? coverPalette = await FetchCover();
-            if (coverPalette is null)
+            CoverArtCovers? covers = await FetchCovers();
+            if (covers is null)
                 return;
 
             await using MediaContext mediaContext = new();
-            Album? album = await mediaContext
-                .Albums.Include(a => a.AlbumTrack)
-                    .ThenInclude(a => a.Track)
-                .FirstOrDefaultAsync(a => a.Id == ReleaseId);
-            if (album is null)
-                return;
-
-            album.Cover = coverPalette is not null ? "/" + coverPalette.FileName() : album.Cover;
-
-            await mediaContext.SaveChangesAsync();
-
-            foreach (AlbumTrack albumTrack in album.AlbumTrack)
-            {
-                albumTrack.Track.Cover = coverPalette is not null
-                    ? "/" + coverPalette.FileName()
-                    : albumTrack.Track.Cover;
-
-                await mediaContext.SaveChangesAsync();
-            }
+            await StoreCovers(mediaContext, covers);
         }
         catch (Exception e)
         {
@@ -127,28 +113,41 @@ public class CoverArtImageJob : IShouldQueue, IJobStorageInjector
         }
     }
 
-    private async Task<Uri?> FetchCover()
+    public async Task StoreCovers(MediaContext mediaContext, CoverArtCovers covers)
+    {
+        string? cover = await CoverFiles.StoreFirstCoverArtAsync(
+            covers
+                .Images.Where(image => image.Types.Contains("Front"))
+                .Select(image => image.CoverArtThumbnails.Large)
+        );
+        if (cover is null)
+            return;
+
+        Album? album = await mediaContext
+            .Albums.Include(a => a.AlbumTrack)
+                .ThenInclude(a => a.Track)
+            .FirstOrDefaultAsync(a => a.Id == ReleaseId);
+        if (album is null)
+            return;
+
+        album.Cover = cover;
+
+        await mediaContext.SaveChangesAsync();
+
+        foreach (AlbumTrack albumTrack in album.AlbumTrack)
+        {
+            albumTrack.Track.Cover = cover;
+
+            await mediaContext.SaveChangesAsync();
+        }
+    }
+
+    private async Task<CoverArtCovers?> FetchCovers()
     {
         if (!HasFrontCover)
             return null;
 
         CoverArtCoverArtClient coverArtCoverArtClient = new(ReleaseId);
-        CoverArtCovers? covers = await coverArtCoverArtClient.Cover();
-        if (covers is null)
-            return null;
-
-        List<CoverArtImage> coverList = covers
-            .Images.Where(image => image.Types.Contains("Front"))
-            .ToList();
-
-        foreach (CoverArtImage coverItem in coverList)
-        {
-            if (!coverItem.CoverArtThumbnails.Large.HasSuccessStatus("image/*"))
-                continue;
-
-            return coverItem.CoverArtThumbnails.Large;
-        }
-
-        return null;
+        return await coverArtCoverArtClient.Cover();
     }
 }

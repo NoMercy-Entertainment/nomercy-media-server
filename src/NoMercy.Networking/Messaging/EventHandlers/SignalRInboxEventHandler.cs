@@ -12,7 +12,6 @@
 using Microsoft.Extensions.Logging;
 using NoMercy.Events;
 using NoMercy.Events.Inbox;
-using NoMercy.Networking.Messaging;
 
 namespace NoMercy.Networking.Messaging.EventHandlers;
 

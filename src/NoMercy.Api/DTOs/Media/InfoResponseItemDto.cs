@@ -645,7 +645,7 @@ public record InfoResponseItemDto
         string? overview = collection.Translations.FirstOrDefault()?.Overview;
 
         Id = collection.Id;
-        Title = title.OrWhenEmpty(collection.Title);
+        Title = CollectionTitleFormatter.StripCollectionSuffix(title.OrWhenEmpty(collection.Title));
         Overview = overview.OrWhenEmpty(collection.Overview);
         Type = MediaTypes.CollectionMediaType;
         MediaType = MediaTypes.CollectionMediaType;

@@ -9,21 +9,8 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using Asp.Versioning;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
-using NoMercy.Api.DTOs.Common;
-using NoMercy.Api.DTOs.Dashboard;
-using NoMercy.NmSystem.Auth;
-using NoMercy.NmSystem.Extensions;
-using NoMercy.NmSystem.Information;
-using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
-using NoMercy.PluginSdk.Capabilities;
-using NoMercy.PluginSdk.Verification;
-using NoMercy.Storage;
 
 namespace NoMercy.Api.Controllers.V1.Dashboard.Plugins;
 

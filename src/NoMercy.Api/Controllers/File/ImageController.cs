@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Extensions;
 using Microsoft.AspNetCore.Mvc;
@@ -19,8 +20,7 @@ using NoMercy.NmSystem.Information;
 using NoMercy.Providers.Helpers;
 using NoMercy.Providers.TMDB.Client;
 using NoMercy.Storage;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
+using ImageMagick;
 
 namespace NoMercy.Api.Controllers.File;
 
@@ -55,7 +55,25 @@ public class ImageController(
         Response.Headers["Cache-Control"] = "public, max-age=2592000";
     }
 
+    private string RequestedMimeType(ImageConvertArguments request)
+    {
+        return ImageService.MimeType(imageService.Parse(request.Type ?? "png"));
+    }
+
+    // The cache file name keeps the short extension ImageSharp used ("jpg"),
+    // so cache files written before the Magick.NET move are still found.
+    private string RequestedExtension(ImageConvertArguments request)
+    {
+        MagickFormat format = imageService.Parse(request.Type ?? "png");
+        return format == MagickFormat.Jpeg ? "jpg" : format.ToString().ToLowerInvariant();
+    }
+
+    // Public on purpose: clients load artwork through img tags and CSS
+    // backgrounds, which carry no Authorization header, and the response is
+    // served with Access-Control-Allow-Origin: *. AccessLogMiddleware lists
+    // /images among its ignored routes, so it does not gate this either.
     [HttpGet]
+    [AllowAnonymous]
     public async Task<IActionResult> Image(
         string type,
         string path,
@@ -76,7 +94,7 @@ public class ImageController(
             {
                 if (!storage.Exists(filePath) && type == "original")
                 {
-                    using Image<Rgba32>? downloadedImage = await TmdbImageClient.Download(
+                    using MagickImage? downloadedImage = await TmdbImageClient.Download(
                         "/" + safeSegment
                     )!;
                 }
@@ -102,7 +120,7 @@ public class ImageController(
                 || path.Contains(".svg")
                 || (
                     originalFileSize < request.Width
-                    && originalMimeType == imageService.Parse(request.Type ?? "png").DefaultMimeType
+                    && originalMimeType == RequestedMimeType(request)
                 )
             )
                 return PhysicalFile(filePath, originalMimeType);
@@ -110,16 +128,11 @@ public class ImageController(
             string encodedUrl = Request.GetEncodedUrl();
 
             string hashedUrl =
-                CacheController.GenerateFileName(encodedUrl)
-                + "."
-                + imageService.Parse(request.Type ?? "png").FileExtensions.First();
+                CacheController.GenerateFileName(encodedUrl) + "." + RequestedExtension(request);
 
             string cachedImagePath = Path.Join(AppFiles.TempImagesPath, hashedUrl);
             if (storage.Exists(cachedImagePath))
-                return PhysicalFile(
-                    cachedImagePath,
-                    imageService.Parse(request.Type ?? "png").DefaultMimeType
-                );
+                return PhysicalFile(cachedImagePath, RequestedMimeType(request));
 
             try
             {
@@ -151,6 +164,7 @@ public class ImageController(
     }
 
     [HttpDelete]
+    [Authorize(Policy = "MediaAccess")]
     public IActionResult DeleteCache(
         string type,
         string path,
@@ -162,9 +176,7 @@ public class ImageController(
             string encodedUrl = Request.GetEncodedUrl();
 
             string hashedUrl =
-                CacheController.GenerateFileName(encodedUrl)
-                + "."
-                + imageService.Parse(request.Type ?? "png").FileExtensions.First();
+                CacheController.GenerateFileName(encodedUrl) + "." + RequestedExtension(request);
 
             string cachedImagePath = Path.Join(AppFiles.TempImagesPath, hashedUrl);
             if (storage.Exists(cachedImagePath))

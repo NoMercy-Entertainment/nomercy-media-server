@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.MediaProcessing.Files;
-using Xunit;
 
 namespace NoMercy.Tests.MediaProcessing.Files;
 

@@ -9,16 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Logging;
-using NoMercy.Api.Services.Music;
 using NoMercy.Database.Models.Users;
-using NoMercy.Networking;
-using NoMercy.Networking.Cast;
-using NoMercy.Networking.Discovery;
-using NoMercy.NmSystem.Configuration;
-using NoMercy.NmSystem.Information;
-using NoMercy.Setup;
 using NoMercy.Setup.Cast;
 
 namespace NoMercy.Api.Services.Cast;

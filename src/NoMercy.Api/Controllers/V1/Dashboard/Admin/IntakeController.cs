@@ -13,15 +13,11 @@ using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NoMercy.Api.DTOs.Dashboard;
 using NoMercy.Data.Repositories;
-using NoMercy.Database;
-using NoMercy.Database.Models.Libraries;
 using NoMercy.MediaProcessing.Files;
 using NoMercy.MediaProcessing.Intake;
-using NoMercy.NmSystem.Domain;
 
 namespace NoMercy.Api.Controllers.V1.Dashboard.Admin;
 

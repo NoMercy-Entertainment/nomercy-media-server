@@ -9,52 +9,50 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using HeyRed.ImageSharp.Heif.Formats.Avif;
 using ImageMagick;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
-// Fully qualify SixLabors' Configuration: the sibling NoMercy.NmSystem.Configuration
-// namespace shadows the unqualified name from inside NoMercy.NmSystem.Images.
-using ImageSharpConfiguration = SixLabors.ImageSharp.Configuration;
 
 namespace NoMercy.NmSystem.Images;
 
 public class ImageService : IImageService
 {
     private const int DefaultAvifQuality = 75;
+    private const string DefaultMimeType = "image/png";
 
-    public ImageService()
+    // File extensions whose Magick.NET format name is not the extension itself.
+    private static readonly Dictionary<string, MagickFormat> ExtensionAliases = new(
+        StringComparer.OrdinalIgnoreCase
+    )
     {
-        // ImageSharp cannot encode AVIF (HeyRed.ImageSharp.Heif is decode-only);
-        // registering the format lets Parse resolve the "avif" extension and mime,
-        // while ResizeMagickNet routes actual AVIF encoding through Magick.NET.
-        ImageSharpConfiguration.Default.ImageFormatsManager.AddImageFormat(AvifFormat.Instance);
+        ["jpg"] = MagickFormat.Jpeg,
+        ["jpeg"] = MagickFormat.Jpeg,
+        ["tif"] = MagickFormat.Tiff,
+    };
+
+    public MagickFormat Parse(string format)
+    {
+        if (string.IsNullOrWhiteSpace(format))
+            return MagickFormat.Png;
+
+        format = format.Trim().TrimStart('.');
+
+        if (ExtensionAliases.TryGetValue(format, out MagickFormat alias))
+            return alias;
+
+        // Enum.TryParse also accepts numeric strings ("3"); only names are formats.
+        if (
+            !char.IsDigit(format[0])
+            && Enum.TryParse(format, ignoreCase: true, out MagickFormat parsed)
+            && Enum.IsDefined(parsed)
+        )
+            return parsed;
+
+        return MagickFormat.Png;
     }
 
-    public IImageFormat Parse(string format)
+    public static string MimeType(MagickFormat format)
     {
-        IImageFormat imageFormat;
-        ImageSharpConfiguration.Default.ImageFormatsManager.TryFindFormatByFileExtension(
-            "png",
-            out imageFormat!
-        );
-
-        if (string.IsNullOrEmpty(format))
-            return imageFormat;
-
-        format = format.ToLowerInvariant();
-
-        if (
-            ImageSharpConfiguration.Default.ImageFormatsManager.TryFindFormatByFileExtension(
-                format,
-                out IImageFormat? imageFormat2
-            )
-        )
-            return imageFormat2;
-
-        return imageFormat;
+        IMagickFormatInfo? info = MagickFormatInfo.Create(format);
+        return string.IsNullOrEmpty(info?.MimeType) ? DefaultMimeType : info.MimeType;
     }
 
     public (byte[] data, string mimeType) ResizeMagickNet(
@@ -68,44 +66,8 @@ public class ImageService : IImageService
         if (!File.Exists(image))
             throw new("File not found");
 
-        IImageFormat format = Parse(type ?? "png");
+        MagickFormat format = Parse(type ?? "png");
 
-        return format is AvifFormat
-            ? EncodeAvif(image, width, aspectRatio, quality ?? DefaultAvifQuality)
-            : EncodeWithImageSharp(image, width, aspectRatio, format);
-    }
-
-    private static (byte[] data, string mimeType) EncodeWithImageSharp(
-        string image,
-        int? width,
-        double? aspectRatio,
-        IImageFormat format
-    )
-    {
-        using Image<Rgba32> input = Image.Load<Rgba32>(image);
-
-        (int targetWidth, int targetHeight) = TargetSize(
-            input.Width,
-            input.Height,
-            width,
-            aspectRatio
-        );
-
-        input.Mutate(x => x.Resize(targetWidth, targetHeight));
-
-        using MemoryStream memoryStream = new();
-        input.Save(memoryStream, format);
-
-        return (memoryStream.ToArray(), format.MimeTypes.First());
-    }
-
-    private static (byte[] data, string mimeType) EncodeAvif(
-        string image,
-        int? width,
-        double? aspectRatio,
-        int quality
-    )
-    {
         using MagickImage magick = new(image);
 
         (int targetWidth, int targetHeight) = TargetSize(
@@ -121,10 +83,14 @@ public class ImageService : IImageService
         };
         magick.Resize(geometry);
 
-        magick.Format = MagickFormat.Avif;
-        magick.Quality = (uint)Math.Clamp(quality, 1, 100);
+        magick.Format = format;
 
-        return (magick.ToByteArray(), AvifFormat.Instance.DefaultMimeType);
+        int? effectiveQuality =
+            quality ?? (format is MagickFormat.Avif ? DefaultAvifQuality : null);
+        if (effectiveQuality is not null)
+            magick.Quality = (uint)Math.Clamp(effectiveQuality.Value, 1, 100);
+
+        return (magick.ToByteArray(), MimeType(format));
     }
 
     private static (int width, int height) TargetSize(

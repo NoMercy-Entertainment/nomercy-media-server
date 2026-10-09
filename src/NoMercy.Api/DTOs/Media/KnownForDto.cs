@@ -14,7 +14,6 @@ using NoMercy.Database;
 using NoMercy.Database.Models.People;
 using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Extensions;
-using NoMercy.NmSystem.Information;
 using NoMercy.Providers.TMDB.Models.People;
 
 namespace NoMercy.Api.DTOs.Media;

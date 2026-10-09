@@ -11,7 +11,6 @@
 
 using FluentAssertions;
 using NoMercy.PluginSdk.Abstractions;
-using NoMercy.PluginSdk.Capabilities;
 using NoMercy.PluginSdk.Ipc;
 using NoMercy.PluginSdk.OutOfProcess;
 using Xunit;

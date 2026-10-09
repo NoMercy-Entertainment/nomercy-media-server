@@ -40,14 +40,17 @@ public class LiveTranscodeHub(
     /// start receiving server-push events for that session. Validates that the
     /// calling user owns the session before admitting them to the group.
     /// </summary>
-    public async Task SubscribeToSession(string sessionId)
+    public async Task<HubCommandResult> SubscribeToSession(string sessionId)
     {
+        if (string.IsNullOrWhiteSpace(sessionId))
+            return HubCommandResult.Invalid("Session id is required.");
+
         string? ownerId = sessionManager.GetOwnerUserId(sessionId);
 
-        if (ownerId is null)
+        if (string.IsNullOrWhiteSpace(ownerId))
         {
             logger.LogDebug("SubscribeToSession: session {SessionId} not found", sessionId);
-            return;
+            return HubCommandResult.NotFound("Session was not found.");
         }
 
         string callerId = Context.UserIdentifier ?? string.Empty;
@@ -59,26 +62,42 @@ public class LiveTranscodeHub(
                 callerId,
                 sessionId
             );
-            return;
+            return HubCommandResult.Forbidden("Session does not belong to the caller.");
         }
 
-        await Groups.AddToGroupAsync(Context.ConnectionId, GroupName(sessionId));
-        presenceTracker.OnSubscribed(Context.ConnectionId, sessionId);
+        return await HubCommandResult.ExecuteAsync(
+            async () =>
+            {
+                await Groups.AddToGroupAsync(Context.ConnectionId, GroupName(sessionId));
+                presenceTracker.OnSubscribed(Context.ConnectionId, sessionId);
 
-        logger.LogDebug(
-            "Client {ConnectionId} subscribed to live session {SessionId}",
-            Context.ConnectionId,
-            sessionId
+                logger.LogDebug(
+                    "Client {ConnectionId} subscribed to live session {SessionId}",
+                    Context.ConnectionId,
+                    sessionId
+                );
+            },
+            logger
         );
     }
 
     /// <summary>
     /// Client leaves the session group. Counterpart to <see cref="SubscribeToSession"/>.
     /// </summary>
-    public async Task UnsubscribeFromSession(string sessionId)
+    public async Task<HubCommandResult> UnsubscribeFromSession(string sessionId)
     {
-        presenceTracker.OnUnsubscribed(Context.ConnectionId, sessionId);
-        await Groups.RemoveFromGroupAsync(Context.ConnectionId, GroupName(sessionId));
+        HubCommandResult? error = ValidateSession(sessionId);
+        if (error is not null)
+            return error;
+
+        return await HubCommandResult.ExecuteAsync(
+            async () =>
+            {
+                presenceTracker.OnUnsubscribed(Context.ConnectionId, sessionId);
+                await Groups.RemoveFromGroupAsync(Context.ConnectionId, GroupName(sessionId));
+            },
+            logger
+        );
     }
 
     /// <summary>
@@ -96,12 +115,13 @@ public class LiveTranscodeHub(
     /// Client heartbeat — updates the session last-activity timestamp so the
     /// idle reaper does not evict an active session.
     /// </summary>
-    public void Heartbeat(string sessionId)
+    public HubCommandResult Heartbeat(string sessionId)
     {
-        if (!TryGetOwnedRuntime(sessionId, out LiveRuntimeSession runtime))
-            return;
+        HubCommandResult? error = GetRuntimeError(sessionId, out LiveRuntimeSession runtime);
+        if (error is not null)
+            return error;
 
-        runtime.TouchLastAccess();
+        return HubCommandResult.Execute(runtime.TouchLastAccess, logger);
     }
 
     /// <summary>
@@ -112,16 +132,30 @@ public class LiveTranscodeHub(
     /// segment-request-derived estimate — see
     /// <see cref="NoMercy.Api.Services.LiveTranscodeService.GetSegmentAsync"/>.
     /// </summary>
-    public void ReportPlayhead(string sessionId, double currentTimeSeconds)
+    public HubCommandResult ReportPlayhead(string sessionId, double currentTimeSeconds)
     {
-        if (!TryGetOwnedRuntime(sessionId, out LiveRuntimeSession runtime))
-            return;
+        if (
+            !double.IsFinite(currentTimeSeconds)
+            || currentTimeSeconds < 0
+            || currentTimeSeconds > TimeSpan.MaxValue.TotalSeconds
+        )
+            return HubCommandResult.Invalid("Playhead must be a finite non-negative number.");
 
-        runtime.Session.ReportPlaybackPosition(
-            TimeSpan.FromSeconds(Math.Max(0, currentTimeSeconds)),
-            authoritative: true
+        HubCommandResult? error = GetRuntimeError(sessionId, out LiveRuntimeSession runtime);
+        if (error is not null)
+            return error;
+
+        return HubCommandResult.Execute(
+            () =>
+            {
+                runtime.Session.ReportPlaybackPosition(
+                    TimeSpan.FromSeconds(currentTimeSeconds),
+                    authoritative: true
+                );
+                runtime.TouchLastAccess();
+            },
+            logger
         );
-        runtime.TouchLastAccess();
     }
 
     /// <summary>
@@ -135,49 +169,85 @@ public class LiveTranscodeHub(
     /// adaptive behavior — see
     /// <see cref="NoMercy.Encoder.LiveTranscode.BufferAdaptiveService"/>.
     /// </summary>
-    public void ReportBufferHealth(
+    public HubCommandResult ReportBufferHealth(
         string sessionId,
         double bufferedSeconds,
         double observedBandwidthKbps
     )
     {
-        if (!TryGetOwnedRuntime(sessionId, out LiveRuntimeSession runtime))
-            return;
+        if (
+            !double.IsFinite(bufferedSeconds)
+            || bufferedSeconds < 0
+            || bufferedSeconds > TimeSpan.MaxValue.TotalSeconds
+            || !double.IsFinite(observedBandwidthKbps)
+            || observedBandwidthKbps < 0
+            || observedBandwidthKbps > int.MaxValue
+        )
+            return HubCommandResult.Invalid("Buffer health values are out of range.");
 
-        runtime.Session.ReportClientBufferHealth(
-            TimeSpan.FromSeconds(Math.Max(0, bufferedSeconds)),
-            (int)Math.Max(0, observedBandwidthKbps)
+        HubCommandResult? error = GetRuntimeError(sessionId, out LiveRuntimeSession runtime);
+        if (error is not null)
+            return error;
+
+        return HubCommandResult.Execute(
+            () =>
+            {
+                runtime.Session.ReportClientBufferHealth(
+                    TimeSpan.FromSeconds(bufferedSeconds),
+                    (int)observedBandwidthKbps
+                );
+                runtime.TouchLastAccess();
+            },
+            logger
         );
-        runtime.TouchLastAccess();
     }
 
     /// <summary>
     /// Client requests the encoder pause (fill buffer to max, stop producing
     /// new segments). Maps to <see cref="ILiveSession.Suspend"/>.
     /// </summary>
-    public void RequestPause(string sessionId)
+    public HubCommandResult RequestPause(string sessionId)
     {
-        if (!TryGetOwnedRuntime(sessionId, out LiveRuntimeSession runtime))
-            return;
+        HubCommandResult? error = GetRuntimeError(sessionId, out LiveRuntimeSession runtime);
+        if (error is not null)
+            return error;
 
-        runtime.Session.Suspend();
+        return HubCommandResult.Execute(runtime.Session.Suspend, logger);
     }
 
     /// <summary>
     /// Client requests the encoder resume after a pause.
     /// Maps to <see cref="ILiveSession.Resume"/>.
     /// </summary>
-    public void RequestResume(string sessionId)
+    public HubCommandResult RequestResume(string sessionId)
     {
-        if (!TryGetOwnedRuntime(sessionId, out LiveRuntimeSession runtime))
-            return;
+        HubCommandResult? error = GetRuntimeError(sessionId, out LiveRuntimeSession runtime);
+        if (error is not null)
+            return error;
 
-        runtime.Session.Resume();
+        return HubCommandResult.Execute(runtime.Session.Resume, logger);
     }
 
-    /// <summary>The session's runtime, when it exists and belongs to the caller.</summary>
-    private bool TryGetOwnedRuntime(string sessionId, out LiveRuntimeSession runtime) =>
-        streamingService.TryGetRuntime(sessionId, out runtime) && CallerOwnsSession(sessionId);
+    private HubCommandResult? GetRuntimeError(string sessionId, out LiveRuntimeSession runtime)
+    {
+        runtime = null!;
+        if (string.IsNullOrWhiteSpace(sessionId))
+            return HubCommandResult.Invalid("Session id is required.");
+        if (!streamingService.TryGetRuntime(sessionId, out runtime))
+            return HubCommandResult.NotFound("Session was not found.");
+        return ValidateSession(sessionId);
+    }
+
+    private HubCommandResult? ValidateSession(string sessionId)
+    {
+        if (string.IsNullOrWhiteSpace(sessionId))
+            return HubCommandResult.Invalid("Session id is required.");
+        if (string.IsNullOrWhiteSpace(sessionManager.GetOwnerUserId(sessionId)))
+            return HubCommandResult.NotFound("Session was not found.");
+        if (!CallerOwnsSession(sessionId))
+            return HubCommandResult.Forbidden("Session does not belong to the caller.");
+        return null;
+    }
 
     private bool CallerOwnsSession(string sessionId)
     {

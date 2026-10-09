@@ -18,7 +18,6 @@ using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.NmSystem.Dto;
 using NoMercy.Providers.AcoustId;
-using NoMercy.Queue.MediaServer;
 using NoMercy.Storage;
 using NoMercyQueue;
 using NoMercyQueue.Core.Interfaces;

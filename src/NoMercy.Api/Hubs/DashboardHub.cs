@@ -71,30 +71,48 @@ public class DashboardHub : ConnectionHub
         StopResourcesIfLastClient();
     }
 
-    public void StartResources()
+    public HubCommandResult StartResources()
     {
         if (!AuthPolicy.IsModerator(Context.User))
         {
             _logger.LogDebug(
                 "Non-moderator client attempted to start dashboard resource monitoring"
             );
-            return;
+            return HubCommandResult.Forbidden("Moderator access is required.");
         }
 
-        _resourceMonitorService.Start();
+        try
+        {
+            _resourceMonitorService.Start();
+            return HubCommandResult.Success();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Could not start dashboard resources");
+            return HubCommandResult.Failed();
+        }
     }
 
-    public void StopResources()
+    public HubCommandResult StopResources()
     {
         if (!AuthPolicy.IsModerator(Context.User))
         {
             _logger.LogDebug(
                 "Non-moderator client attempted to stop dashboard resource monitoring"
             );
-            return;
+            return HubCommandResult.Forbidden("Moderator access is required.");
         }
 
-        StopResourcesIfLastClient();
+        try
+        {
+            StopResourcesIfLastClient();
+            return HubCommandResult.Success();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Could not stop dashboard resources");
+            return HubCommandResult.Failed();
+        }
     }
 
     private void StopResourcesIfLastClient()

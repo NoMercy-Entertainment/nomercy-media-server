@@ -12,10 +12,8 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Database;
-using NoMercy.Database.Models.Music;
 using NoMercy.MediaProcessing.Images;
 using NoMercy.Providers.FanArt.Models;
-using Xunit;
 using Image = NoMercy.Database.Models.Media.Image;
 
 namespace NoMercy.Tests.MediaProcessing.Images;

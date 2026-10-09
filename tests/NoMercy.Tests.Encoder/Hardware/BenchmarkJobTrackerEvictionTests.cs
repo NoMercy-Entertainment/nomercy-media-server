@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.Encoder.Hardware;
-using Xunit;
 
 namespace NoMercy.Tests.Encoder.Hardware;
 

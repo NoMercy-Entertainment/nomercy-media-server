@@ -21,7 +21,6 @@
 // an unverified platform assumption.
 #pragma warning disable CA1416
 
-using System.Reflection;
 using FluentAssertions;
 using NoMercy.Monitoring;
 using Xunit;

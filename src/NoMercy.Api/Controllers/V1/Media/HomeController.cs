@@ -21,10 +21,8 @@ using NoMercy.Api.Services;
 using NoMercy.Authorization;
 using NoMercy.Database;
 using NoMercy.MediaProcessing.Trailers;
-using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Extensions;
 using NoMercy.NmSystem.Information;
-using NoMercy.NmSystem.NewtonSoftConverters;
 
 namespace NoMercy.Api.Controllers.V1.Media;
 
@@ -111,7 +109,8 @@ public class HomeController : BaseController
             User.UserId(),
             Language(),
             Country(),
-            request.Version
+            request.Version,
+            AuthPolicy.IsModerator(User)
         );
 
         return Ok(result);

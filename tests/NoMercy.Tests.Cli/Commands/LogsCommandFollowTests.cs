@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using System.CommandLine;
-using System.IO.Pipes;
 using System.Text;
 using Moq;
 using NoMercy.Cli;

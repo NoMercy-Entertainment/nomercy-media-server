@@ -79,7 +79,8 @@ public class TmdbChangesCronJob : ICronJobExecutor
         );
 
         _logger.LogInformation(
-            "TMDB changes sync queued refreshes — movies: {Movies}, shows: {Shows}, people: {People}", [movies, shows, people]
+            "TMDB changes sync queued refreshes — movies: {Movies}, shows: {Shows}, people: {People}",
+            [movies, shows, people]
         );
     }
 
@@ -137,9 +138,7 @@ public class TmdbChangesCronJob : ICronJobExecutor
             .Select(tv => new ShowLibraryRef(tv.Id, tv.LibraryId))
             .ToListAsync(cancellationToken);
 
-        List<ShowLibraryRef> matches = shows
-            .Where(show => show.LibraryId != Ulid.Empty)
-            .ToList();
+        List<ShowLibraryRef> matches = shows.Where(show => show.LibraryId != Ulid.Empty).ToList();
 
         foreach (ShowLibraryRef match in matches)
             jobDispatcher.DispatchJob<ShowImportJob>(match.Id, match.LibraryId);

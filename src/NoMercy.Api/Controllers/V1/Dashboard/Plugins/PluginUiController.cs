@@ -81,6 +81,7 @@ public class PluginUiController(
                         route.Name,
                         route.Label,
                         Layout = route.LayoutFor(surface),
+                        route.Chrome,
                         Path = prefix + (route.Path == "/" ? string.Empty : route.Path),
                     }
             )

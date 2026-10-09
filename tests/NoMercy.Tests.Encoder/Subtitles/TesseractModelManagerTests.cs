@@ -13,7 +13,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.Subtitles;
 using NoMercy.Storage.Drivers.Local;
-using NoMercy.Storage.Validation;
 
 namespace NoMercy.Tests.Encoder.Subtitles;
 

@@ -13,7 +13,6 @@ using Microsoft.EntityFrameworkCore;
 using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.Users;
-using NoMercy.NmSystem.Extensions;
 using NoMercy.NmSystem.Information;
 using NoMercy.NmSystem.NewtonSoftConverters;
 using NoMercy.NmSystem.SystemCalls;
@@ -112,7 +111,7 @@ public class ServerUserSyncService(IServerUserApiClient apiClient) : IServerUser
                     NoTranscoding = serverUser.Enabled,
                     VideoTranscoding = serverUser.Enabled,
                     Owner = serverUser.IsOwner,
-                })
+                }),
         ];
 
         // Self floor check (defense in depth against a 200-with-bad-shape response

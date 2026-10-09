@@ -65,7 +65,13 @@ public class ShowManager(
         Ulid? currentLibraryId = await showRepository.GetCurrentLibraryIdAsync(id);
 
         (Library resolvedLibrary, DateTime folderCreatedAt, bool folderDateIsReal) =
-            await ResolveLibraryAndCreatedAtAsync(id, library, baseUrl, mediaType, currentLibraryId);
+            await ResolveLibraryAndCreatedAtAsync(
+                id,
+                library,
+                baseUrl,
+                mediaType,
+                currentLibraryId
+            );
         library = resolvedLibrary;
 
         Tv show = new()
@@ -208,11 +214,11 @@ public class ShowManager(
     // scanned library (a stale LibraryTv link must not steer a re-import into
     // evicting it), otherwise stay with the scanned library (a genuinely new
     // show has nowhere else to fall back to).
-    private async Task<(Library library, DateTime createdAt, bool folderDateIsReal)> FallbackLibraryAsync(
-        Library scannedLibrary,
-        Ulid? currentLibraryId,
-        DateTime createdAt
-    )
+    private async Task<(
+        Library library,
+        DateTime createdAt,
+        bool folderDateIsReal
+    )> FallbackLibraryAsync(Library scannedLibrary, Ulid? currentLibraryId, DateTime createdAt)
     {
         if (currentLibraryId is null || currentLibraryId == scannedLibrary.Id)
             return (scannedLibrary, createdAt, false);

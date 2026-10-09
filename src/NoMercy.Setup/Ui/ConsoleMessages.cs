@@ -165,9 +165,6 @@ public abstract class ConsoleMessages
 
     public static Task Welcome()
     {
-        if (!Console.IsOutputRedirected)
-            return Task.CompletedTask;
-
         Console.WriteLine(("╔" + Repeat("═", 46) + "╗").Pastel("#00a10d"));
         Console.WriteLine(
             $"{_("#00a10d")}".Pastel("#00a10d")
@@ -180,7 +177,7 @@ public abstract class ConsoleMessages
             $"{_("#00a10d")}".Pastel("#00a10d")
                 + @"      "
                 + "Version:".Pastel("#cccccc")
-                + "  1.0.0      ".Pastel("#ffffff")
+                + $"  {Software.GetReleaseVersion()}      ".Pastel("#ffffff")
                 + $"{_("#00a10d")}".Pastel("#00a10d")
         );
         Console.WriteLine(("╚" + Repeat("═", 46) + "╝").Pastel("#00a10d"));

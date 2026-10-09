@@ -16,6 +16,7 @@ using NoMercy.NmSystem.Status;
 using NoMercy.Setup.Auth;
 using NoMercy.Setup.Boot;
 using NoMercy.Setup.Server;
+using NoMercy.Setup.Ui;
 using NoMercyQueue;
 
 namespace NoMercy.Service.Hosting;
@@ -66,12 +67,11 @@ public class ServerRunner : IServerRunner
             return shouldRetry;
         }
 
-        string setupUrl =
-            $"http://localhost:{RuntimeServerSettings.Current.InternalServerPort}/setup";
-        _logger.LogInformation(
-            "Server is in setup mode. Please complete setup at: {SetupUrl}",
-            setupUrl
-        );
+        SetupAddress setupAddress = SetupAddress.Current();
+        string setupUrl = setupAddress.LocalhostUrl;
+        _logger.LogInformation("Server is in setup mode. Please complete setup.");
+        foreach (string line in setupAddress.Lines)
+            _logger.LogInformation("{SetupAddressLine}", line);
 
         // Try to open the browser automatically if running interactively.
         if (!options.RunAsService && AuthManager.IsDesktopEnvironment())

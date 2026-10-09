@@ -9,14 +9,12 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.TvShows;
 using NoMercy.MediaProcessing.Shows;
-using Xunit;
 
 namespace NoMercy.Tests.MediaProcessing.Shows;
 
@@ -85,7 +83,9 @@ public class ShowRepositoryLibraryLinkTests : IDisposable
         await repository2.LinkToLibrary(tvLibrary, show);
 
         await using MediaContext readCtx = new(_options);
-        List<LibraryTv> links = await readCtx.LibraryTv.Where(lt => lt.TvId == show.Id).ToListAsync();
+        List<LibraryTv> links = await readCtx
+            .LibraryTv.Where(lt => lt.TvId == show.Id)
+            .ToListAsync();
 
         links.Should().HaveCount(1);
         links[0].LibraryId.Should().Be(tvLibrary.Id);
@@ -125,7 +125,9 @@ public class ShowRepositoryLibraryLinkTests : IDisposable
         await repository2.LinkToLibrary(tvLibrary, show);
 
         await using MediaContext readCtx = new(_options);
-        List<LibraryTv> links = await readCtx.LibraryTv.Where(lt => lt.TvId == show.Id).ToListAsync();
+        List<LibraryTv> links = await readCtx
+            .LibraryTv.Where(lt => lt.TvId == show.Id)
+            .ToListAsync();
 
         links.Should().HaveCount(1);
         links[0].LibraryId.Should().Be(tvLibrary.Id);

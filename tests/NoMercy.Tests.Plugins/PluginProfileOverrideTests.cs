@@ -18,7 +18,6 @@ using EncoderMediaInfo = NoMercy.Encoder.Analysis.MediaInfo;
 using EncoderProfile = NoMercy.Encoder.Profiles.EncodingProfile;
 using PluginMediaInfo = NoMercy.PluginSdk.Abstractions.MediaInfo;
 using PluginProfile = NoMercy.PluginSdk.Abstractions.EncodingProfile;
-using VideoStreamInfo = NoMercy.Encoder.Analysis.VideoStreamInfo;
 
 namespace NoMercy.Tests.Plugins;
 

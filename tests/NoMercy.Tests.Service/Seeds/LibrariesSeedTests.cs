@@ -15,7 +15,6 @@ using NoMercy.Database;
 using NoMercy.NmSystem.Information;
 using NoMercy.Service.Seeds;
 using NoMercy.Storage;
-using Xunit;
 
 namespace NoMercy.Tests.Service.Seeds;
 

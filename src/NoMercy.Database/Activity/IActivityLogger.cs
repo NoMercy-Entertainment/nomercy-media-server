@@ -9,8 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.Database.Models.Users;
-
 namespace NoMercy.Database.Activity;
 
 public interface IActivityLogger

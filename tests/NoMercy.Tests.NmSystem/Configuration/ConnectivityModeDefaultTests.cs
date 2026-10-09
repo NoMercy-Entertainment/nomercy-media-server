@@ -9,10 +9,8 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using FluentAssertions;
 using NoMercy.NmSystem.Configuration;
 using NoMercy.NmSystem.Dto;
-using Xunit;
 
 namespace NoMercy.Tests.NmSystem.Configuration;
 

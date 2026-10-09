@@ -17,7 +17,6 @@ using NoMercy.Encoder.Codecs;
 using NoMercy.Encoder.ContentAnalysis;
 using NoMercy.Encoder.Hardware;
 using NoMercy.Encoder.Hdr;
-using NoMercy.Encoder.Output;
 using NoMercy.Encoder.Pipeline;
 using NoMercy.Encoder.Pipeline.Stages;
 using CodecProfile = NoMercy.Encoder.Profiles.CodecProfile;
@@ -25,7 +24,6 @@ using Container = NoMercy.Encoder.Profiles.Container;
 using EncodingProfile = NoMercy.Encoder.Profiles.EncodingProfile;
 using StreamPolicy = NoMercy.Encoder.Profiles.StreamPolicy;
 using V2RateControlMode = NoMercy.Encoder.Profiles.RateControlMode;
-using VideoOutput = NoMercy.Encoder.Profiles.VideoOutput;
 
 namespace NoMercy.Tests.Encoder.Pipeline.Stages;
 

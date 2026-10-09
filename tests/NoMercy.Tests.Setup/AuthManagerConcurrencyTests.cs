@@ -16,7 +16,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.Extensions.DependencyInjection;
 using NoMercy.Database;
-using NoMercy.Database.Models.Common;
 using NoMercy.NmSystem.Auth;
 using NoMercy.NmSystem.Security;
 using NoMercy.Setup.Auth;

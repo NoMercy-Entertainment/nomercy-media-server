@@ -11,7 +11,6 @@
 
 using System.Collections.Specialized;
 using System.Web;
-using NoMercy.NmSystem.Configuration;
 using NoMercy.NmSystem.SystemCalls;
 
 namespace NoMercy.Setup.Ui;
@@ -25,7 +24,7 @@ public class ConsoleQrCode
 {
     /// <summary>
     /// Show the QR code and device auth UI in the terminal.
-    /// Builds the setup page URL from the server's port and localhost.
+    /// Builds the setup page addresses from the server's LAN address and port.
     /// </summary>
     public static void Display(
         string verificationUriComplete,
@@ -33,31 +32,30 @@ public class ConsoleQrCode
         string userCode
     )
     {
-        string setupPageUrl =
-            $"http://localhost:{RuntimeServerSettings.Current.InternalServerPort}/setup";
-        Display(verificationUriComplete, verificationUri, userCode, setupPageUrl);
+        Display(verificationUriComplete, verificationUri, userCode, SetupAddress.Current());
     }
 
     /// <summary>
-    /// Show the QR code and device auth UI in the terminal with a specific setup page URL.
+    /// Show the QR code and device auth UI in the terminal with specific setup page addresses.
     /// </summary>
     public static void Display(
         string verificationUriComplete,
         string verificationUri,
         string userCode,
-        string setupPageUrl
+        SetupAddress setupAddress
     )
     {
         if (!SetupTerminalUi.IsInteractiveTerminal)
         {
             Logger.Auth($"Scan QR code or visit: {verificationUriComplete}");
             Logger.Auth($"Code: {userCode}");
-            Logger.Auth($"Setup page: {setupPageUrl}");
+            foreach (string line in setupAddress.Lines)
+                Logger.Auth(line);
             return;
         }
 
         SetupTerminalUi ui = new();
-        ui.Show(verificationUriComplete, verificationUri, userCode, setupPageUrl);
+        ui.Show(verificationUriComplete, verificationUri, userCode, setupAddress);
 
         // Keep the UI alive until the process ends — the terminal UI object
         // is intentionally not disposed here so the resize watcher keeps running.

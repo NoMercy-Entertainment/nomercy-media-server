@@ -25,7 +25,6 @@ using NoMercy.Encoder.Codecs;
 using NoMercy.Encoder.Decomposition;
 using NoMercy.Encoder.Execution;
 using NoMercy.Encoder.Hardware;
-using NoMercy.Encoder.Metadata;
 using NoMercy.Encoder.Naming;
 using NoMercy.Encoder.Orchestration;
 using NoMercy.Encoder.Output;
@@ -49,7 +48,6 @@ using NoMercyQueue.Core.Interfaces;
 using NoMercyQueue.Core.Resources;
 using Serilog.Events;
 using EncodingProfile = NoMercy.Encoder.Profiles.EncodingProfile;
-using MediaType = NoMercy.Encoder.Naming.MediaType;
 
 namespace NoMercy.MediaProcessing.Jobs.MediaJobs;
 
@@ -1047,14 +1045,13 @@ public class VideoEncodeJob
                 outcomes.Where(o => !o.Success).ToList()
             );
 
-            await new IncompleteEncodeRecorder().RecordAsync(
+            await new IncompleteEncodeRecorder().RecordFailureAsync(
                 context,
                 mediaId: fileMetadata.Id,
                 folderId: FolderId.ToString(),
                 title: fileMetadata.Title,
                 missingKeys: failedDescriptors,
                 lastError: lastError,
-                attemptsMade: 0,
                 ct: CancellationToken.None
             );
 
@@ -1270,14 +1267,13 @@ public class VideoEncodeJob
                         err
                     );
 
-                    await new IncompleteEncodeRecorder().RecordAsync(
+                    await new IncompleteEncodeRecorder().RecordFailureAsync(
                         context,
                         mediaId: fileMetadata.Id,
                         folderId: FolderId.ToString(),
                         title: fileMetadata.Title,
                         missingKeys: ["finalize"],
                         lastError: err,
-                        attemptsMade: 0,
                         ct: CancellationToken.None
                     );
 

@@ -29,6 +29,8 @@ public class JobQueue(
 
     private readonly object _writeLock = new();
 
+    public byte MaxAttempts => maxAttempts;
+
     /// <summary>
     /// Signalled once per <see cref="Enqueue"/> call so idle workers wake
     /// immediately instead of waiting out a fixed poll interval.

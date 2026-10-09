@@ -1,0 +1,58 @@
+name: 'NuGet advisory check'
+
+# Incident 2026-10-08: five ImageSharp advisories landed between two dev
+# pushes and turned the next release red (NU1902/NU1903 are errors here). This
+# runs the same audit every morning on dev, so a new advisory is a red run the
+# day it appears, not a blocked release the night it is needed. It also lists
+# every suppressed advisory in Directory.Build.props: a suppression is a debt,
+# and the list keeps it visible until the package move removes it.
+
+on:
+  schedule:
+    - cron: '30 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: dev
+          fetch-depth: 1
+          fetch-tags: false
+
+      - name: Setup .NET Environment
+        uses: ./.github/actions/setup-dotnet
+
+      - name: List suppressed advisories
+        run: |
+          echo "Suppressed advisories in Directory.Build.props:"
+          grep -n 'NuGetAuditSuppress' Directory.Build.props || echo "(none)"
+
+      # The audit with suppressions removed: a suppressed advisory must still
+      # show here, so the debt is counted, and a new one fails the run.
+      - name: Audit every package, transitive included
+        run: |
+          set -o pipefail
+          sed '/NuGetAuditSuppress/d' Directory.Build.props > Directory.Build.props.audit
+          mv Directory.Build.props.audit Directory.Build.props
+          # Warnings stay warnings here: with the suppressions gone, the build's
+          # TreatWarningsAsErrors turned NU1902/NU1903 into a failed restore
+          # (run 37773174584) and the list step never ran. A -p flag on
+          # `dotnet restore` was not enough (run 37783330576): `dotnet list
+          # package` runs its own restore and takes no properties, so the
+          # audit copy of the props file flips the switch. The list is the judge.
+          sed -i 's#<TreatWarningsAsErrors>true</TreatWarningsAsErrors>#<TreatWarningsAsErrors>false</TreatWarningsAsErrors>#' Directory.Build.props
+          grep -q '<TreatWarningsAsErrors>false</TreatWarningsAsErrors>' Directory.Build.props
+          dotnet list NoMercy.Server.sln package --vulnerable --include-transitive | tee audit.txt
+          if grep -qE '^\s+>' audit.txt; then
+            echo "::error::vulnerable packages found; see audit.txt above. Bump the package, or suppress with a dated reason in Directory.Build.props and open the move."
+            exit 1
+          fi
+          echo "OK: no vulnerable packages."

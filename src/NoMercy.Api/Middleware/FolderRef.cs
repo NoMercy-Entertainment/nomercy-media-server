@@ -9,17 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Collections.Concurrent;
-using System.Diagnostics;
-using System.Net;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.Primitives;
-using Microsoft.Net.Http.Headers;
-using MimeMapping;
-using NoMercy.NmSystem.Monitoring;
-using NoMercy.Storage;
-
 namespace NoMercy.Api.Middleware;
 
 /// <summary>

@@ -45,8 +45,9 @@ public sealed class CodeScanVerificationStage : IPluginVerificationStage
 
     /// <summary>
     /// The refusal for the folder around <paramref name="entryDllPath"/>, or
-    /// null when every image in it is clean. The bare-assembly load calls this
-    /// on the shadow copy, right before its load context is built.
+    /// null when every image in it is clean. The server load and install paths
+    /// do not call this. It stays for the marketplace pipeline and the plugin
+    /// author's own check.
     /// </summary>
     internal static string? Refuse(string entryDllPath)
     {

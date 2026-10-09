@@ -178,6 +178,16 @@ body {
 
 .qr-hidden { display: none !important; }
 
+.login-checking {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 12px 20px;
+    color: var(--muted);
+    font-size: 13px;
+}
+
 #qr-container {
     display: inline-block;
     padding: 10px;
@@ -232,6 +242,66 @@ body {
 
 .phase-label { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
 .phase-detail { font-size: 13px; color: var(--muted); line-height: 1.5; }
+
+.progress-timer {
+    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 12px;
+}
+
+.checklist {
+    list-style: none;
+    text-align: left;
+    margin: 20px auto 0;
+    max-width: 280px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.check-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 13px;
+    color: var(--muted);
+}
+
+.check-icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    flex: 0 0 18px;
+    border: 2px solid var(--border);
+    border-radius: 50%;
+    font-size: 11px;
+    line-height: 1;
+}
+
+.check-row[data-state="running"] { color: var(--text); }
+.check-row[data-state="running"] .check-icon {
+    border-top-color: var(--accent);
+    animation: spin 0.75s linear infinite;
+}
+
+.check-row[data-state="done"] { color: var(--text); }
+.check-row[data-state="done"] .check-icon {
+    border-color: var(--accent-hsl);
+    background: var(--accent-hsl);
+    color: #fff;
+}
+.check-row[data-state="done"] .check-icon::before { content: "\2713"; }
+
+.check-row[data-state="failed"] { color: var(--error-text); }
+.check-row[data-state="failed"] .check-icon {
+    border-color: var(--error-border);
+    background: var(--error-bg);
+    color: var(--error-text);
+}
+.check-row[data-state="failed"] .check-icon::before { content: "\00D7"; }
 
 .progress-error-box { margin-top: 20px; }
 .btn-retry-hidden { display: none; margin-top: 16px; }

@@ -8,7 +8,7 @@
 //
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
-using FluentAssertions;
+
 using NoMercy.Api.DTOs.Media;
 using NoMercy.Api.Services;
 using NoMercy.Database.Models.Libraries;
@@ -141,5 +141,15 @@ public class LibraryNavigationBuildTests
             .Should()
             .Equal("folder", "speaker", "disk", "noteClefTreble", "heart");
         music.Should().OnlyContain(entry => entry.Origin == LibraryNavigationOrigin.Page);
+    }
+
+    [Fact]
+    public void SongsYouLike_LinksToTheTracksRouteTheClientsHave()
+    {
+        LibraryNavigationEntryDto songsYouLike = LibraryNavigation
+            .Build([], false, [], [])
+            .Single(entry => entry.Id == "MusicFavorites");
+
+        songsYouLike.Link.Should().Be("/music/tracks");
     }
 }

@@ -12,7 +12,6 @@
 using Newtonsoft.Json.Linq;
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
 using NoMercyQueue;
-using Xunit;
 
 namespace NoMercy.Tests.MediaProcessing.Jobs;
 
@@ -83,5 +82,4 @@ public class MusicEncodeJobPayloadShapeTests
         job.FolderMetaData.MusicBrainzRelease.Id.Should().Be(ReleaseId);
         job.FoundTrack.Id.Should().Be(TrackId);
     }
-
 }

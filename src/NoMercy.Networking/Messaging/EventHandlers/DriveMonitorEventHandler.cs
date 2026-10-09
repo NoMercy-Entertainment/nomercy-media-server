@@ -11,7 +11,6 @@
 
 using NoMercy.Events;
 using NoMercy.Events.DriveMonitor;
-using NoMercy.Networking.Messaging;
 
 namespace NoMercy.Networking.Messaging.EventHandlers;
 

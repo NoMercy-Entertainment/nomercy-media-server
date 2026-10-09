@@ -16,8 +16,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Primitives;
-using Moq;
 using Newtonsoft.Json;
 using NoMercy.Database;
 using NoMercy.Networking.Certificate;
@@ -129,12 +127,14 @@ public sealed class SetupEndpointsTests : IDisposable
         string path,
         string? body = null,
         string? queryString = null,
-        string? accept = null
+        string? accept = null,
+        string host = "localhost:7626"
     )
     {
         DefaultHttpContext context = new();
         context.Request.Method = method;
         context.Request.Path = path;
+        context.Request.Host = HostString.FromUriComponent(host);
         if (queryString is not null)
             context.Request.QueryString = new(queryString);
         if (accept is not null)
@@ -278,6 +278,29 @@ public sealed class SetupEndpointsTests : IDisposable
         Assert.Contains("Unauthenticated", body);
     }
 
+    [Theory]
+    [InlineData("localhost:7626", true)]
+    [InlineData("127.0.0.1:7626", true)]
+    [InlineData("abc123.nomercy.tv:7626", true)]
+    [InlineData("192.0.2.10:7626", false)]
+    [InlineData("nas:7626", false)]
+    public async Task HandleSetupConfig_TellsThePageWhetherBrowserLoginIsAllowedOnItsHost(
+        string host,
+        bool expected
+    )
+    {
+        SetupEndpoints endpoints = BuildEndpoints();
+        DefaultHttpContext context = BuildContext("GET", "/setup/config", host: host);
+
+        await endpoints.HandleRequestAsync(context);
+
+        Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
+        Assert.Contains(
+            $"\"browser_login_allowed\": {expected.ToString().ToLowerInvariant()}",
+            ReadBody(context)
+        );
+    }
+
     [Fact]
     public async Task HandleSetupConfig_Post_Returns405()
     {
@@ -319,6 +342,49 @@ public sealed class SetupEndpointsTests : IDisposable
         // server_url lands the user on Swagger. setup.js redirects to app_url.
         Assert.Contains("app_url", body);
         Assert.Contains(ExternalServicesConfig.Current.AppBaseUrl, body);
+    }
+
+    [Fact]
+    public async Task HandleSetupStatus_Json_CarriesTheTableLabelAndDetail_ForTheCurrentPhase()
+    {
+        SetupEndpoints endpoints = BuildEndpoints();
+        _setupState.TransitionTo(SetupPhase.Authenticating);
+        DefaultHttpContext context = BuildContext("GET", "/setup/status");
+
+        await endpoints.HandleRequestAsync(context);
+
+        string body = ReadBody(context);
+        Dictionary<string, object?> fields = JsonConvert.DeserializeObject<
+            Dictionary<string, object?>
+        >(body)!;
+
+        // The page, the terminal and the tray read these words; none keeps its own copy.
+        Assert.Equal("Authenticating", fields["phase"]);
+        Assert.Equal(SetupPhaseWords.Label(SetupPhase.Authenticating), fields["label"]);
+        Assert.Equal(SetupPhaseWords.Detail(SetupPhase.Authenticating), fields["detail"]);
+    }
+
+    [Fact]
+    public async Task HandleSetupStatus_Sse_CarriesTheTableLabel()
+    {
+        SetupEndpoints endpoints = BuildEndpoints();
+        DefaultHttpContext context = BuildContext(
+            "GET",
+            "/setup/status",
+            accept: "text/event-stream"
+        );
+        using CancellationTokenSource cts = new();
+        context.RequestAborted = cts.Token;
+
+        Task handling = endpoints.HandleRequestAsync(context);
+
+        await Task.Delay(100);
+        cts.Cancel();
+        await handling.WaitAsync(TimeSpan.FromSeconds(5));
+
+        string body = ReadBody(context);
+        string expected = JsonConvert.ToString(SetupPhaseWords.Label(SetupPhase.Unauthenticated));
+        Assert.Contains($"\"label\":{expected}", body);
     }
 
     [Fact]
@@ -451,6 +517,35 @@ public sealed class SetupEndpointsTests : IDisposable
 
         Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
         Assert.Contains("Invalid state parameter", ReadBody(context));
+    }
+
+    [Fact]
+    public async Task HandleExchange_UntrustedHost_Returns400WithoutCallingKeycloak()
+    {
+        using LoopbackHttpServer server = new();
+        int keycloakCalls = 0;
+        server.Handler = _ =>
+        {
+            keycloakCalls++;
+            return new(200, AuthResponseJson(CreateJwt()));
+        };
+        using ExternalServicesConfigScope scope = new(authBaseUrl: server.BaseUrl);
+
+        SetupEndpoints endpoints = BuildEndpoints();
+        string body = JsonConvert.SerializeObject(new { code = "abc" });
+        DefaultHttpContext context = BuildContext(
+            "POST",
+            "/setup/exchange",
+            body: body,
+            host: "192.0.2.10:7626"
+        );
+
+        await endpoints.HandleRequestAsync(context);
+
+        Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
+        Assert.Contains("device code", ReadBody(context));
+        Assert.Equal(0, keycloakCalls);
+        Assert.Equal(SetupPhase.Unauthenticated, _setupState.CurrentPhase);
     }
 
     [Fact]
@@ -752,6 +847,34 @@ public sealed class SetupEndpointsTests : IDisposable
 
         Assert.Equal(StatusCodes.Status200OK, context.Response.StatusCode);
         Assert.Contains("Authentication Failed", ReadBody(context));
+        Assert.Equal(SetupPhase.Unauthenticated, _setupState.CurrentPhase);
+    }
+
+    [Fact]
+    public async Task HandleSsoCallback_UntrustedHost_RefusesWithoutCallingKeycloak()
+    {
+        using LoopbackHttpServer server = new();
+        int keycloakCalls = 0;
+        server.Handler = _ =>
+        {
+            keycloakCalls++;
+            return new(200, AuthResponseJson(CreateJwt()));
+        };
+        using ExternalServicesConfigScope scope = new(authBaseUrl: server.BaseUrl);
+
+        SetupEndpoints endpoints = BuildEndpoints();
+        DefaultHttpContext context = BuildContext(
+            "GET",
+            "/sso-callback",
+            queryString: "?code=abc",
+            host: "nas:7626"
+        );
+
+        await endpoints.HandleRequestAsync(context);
+
+        Assert.Equal(StatusCodes.Status400BadRequest, context.Response.StatusCode);
+        Assert.Contains("device code", ReadBody(context));
+        Assert.Equal(0, keycloakCalls);
         Assert.Equal(SetupPhase.Unauthenticated, _setupState.CurrentPhase);
     }
 

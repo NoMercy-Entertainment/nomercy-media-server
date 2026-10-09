@@ -324,7 +324,9 @@ public class LibraryResponseItemDtoTests
         LibraryResponseItemDto dto = new(collection);
 
         Assert.Equal("100", dto.Id);
-        Assert.Equal("The Original Collection", dto.Title);
+        // The displayed name drops a trailing "Collection" (see CollectionTitleFormatter);
+        // TitleSort keeps the raw stored title since it is a sort key, not a display value.
+        Assert.Equal("The Original", dto.Title);
         Assert.Equal(string.Empty, dto.Overview);
         Assert.Equal("/collection-backdrop.jpg", dto.Backdrop);
         Assert.Equal("/collection-logo.png", dto.Logo);

@@ -49,6 +49,15 @@ public class FileRepository(MediaContext context, IStorageDriver storageDriver) 
 
     public async Task StoreVideoFile(VideoFile videoFile)
     {
+        if (HostFolderPath.ContainsSecondRoot(videoFile.HostFolder))
+        {
+            Logger.App(
+                $"Skipping video file {videoFile.Filename}: host folder holds a second root: '{videoFile.HostFolder}'",
+                LogEventLevel.Error
+            );
+            return;
+        }
+
         VideoFile? existing = await context.VideoFiles.FirstOrDefaultAsync(v =>
             v.Filename == videoFile.Filename && v.HostFolder == videoFile.HostFolder
         );
@@ -85,6 +94,15 @@ public class FileRepository(MediaContext context, IStorageDriver storageDriver) 
 
     public async Task<Ulid> StoreMetadata(Metadata metadata)
     {
+        if (HostFolderPath.ContainsSecondRoot(metadata.HostFolder))
+        {
+            Logger.App(
+                $"Skipping metadata {metadata.Filename}: host folder holds a second root: '{metadata.HostFolder}'",
+                LogEventLevel.Error
+            );
+            return metadata.Id;
+        }
+
         Metadata? existing = await context.Metadata.FirstOrDefaultAsync(m =>
             m.Filename == metadata.Filename && m.HostFolder == metadata.HostFolder
         );

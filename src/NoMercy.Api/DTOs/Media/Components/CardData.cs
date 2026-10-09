@@ -19,7 +19,6 @@ using NoMercy.Database.Models.TvShows;
 using NoMercy.Database.Models.Users;
 using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Extensions;
-using NoMercy.NmSystem.Information;
 
 namespace NoMercy.Api.DTOs.Media.Components;
 
@@ -75,6 +74,9 @@ public record CardData
 
     [JsonProperty("number_of_items")]
     public int? NumberOfItems { get; set; }
+
+    [JsonProperty("percentage", NullValueHandling = NullValueHandling.Ignore)]
+    public double? Percentage { get; set; }
 
     public CardData() { }
 
@@ -150,7 +152,7 @@ public record CardData
             ColorPalette = item.Collection.ColorPalette;
             Poster = item.Collection.Poster;
             Backdrop = item.Collection.Backdrop;
-            Title = item.Collection.Title;
+            Title = CollectionTitleFormatter.StripCollectionSuffix(item.Collection.Title);
             TitleSort = item.Collection.Title.TitleSort();
             Overview = item.Collection.Overview;
             Logo = item.Collection.Images.FirstOrDefault(i => i.Type == "logo")?.FilePath;
@@ -223,6 +225,9 @@ public record CardData
                 .Select(ct => RatingClass.From(ct.Certification))
                 .FirstOrDefault();
         }
+
+        if (item.Time is > 0 && Duration is > 0)
+            Percentage = Math.Min(item.Time.Value * 100.0 / Duration.Value, 100);
     }
 
     public CardData(Genre genre)

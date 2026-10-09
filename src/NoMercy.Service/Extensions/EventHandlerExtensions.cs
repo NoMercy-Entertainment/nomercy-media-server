@@ -20,7 +20,6 @@ using NoMercy.Database;
 using NoMercy.Events;
 using NoMercy.MediaProcessing.EventHandlers;
 using NoMercy.MediaProcessing.Inbox;
-using NoMercy.MediaProcessing.Jobs;
 using NoMercy.MediaProcessing.Shows;
 using NoMercy.Networking.Messaging;
 using NoMercy.Networking.Messaging.EventHandlers;
@@ -145,7 +144,14 @@ public static class EventHandlerExtensions
             IAuthTokenStore authTokenStore = sp.GetRequiredService<IAuthTokenStore>();
             NotificationSink notificationSink = sp.GetRequiredService<NotificationSink>();
             IPlayableMediaProbe playableMediaProbe = sp.GetRequiredService<IPlayableMediaProbe>();
-            return new(eventBus, authTokenStore, notificationSink, playableMediaProbe);
+            IUserCache userCache = sp.GetRequiredService<IUserCache>();
+            return new(
+                eventBus,
+                authTokenStore,
+                notificationSink,
+                playableMediaProbe,
+                userCache: userCache
+            );
         });
 
         services.AddSingleton<DriveMonitorEventHandler>(sp =>
