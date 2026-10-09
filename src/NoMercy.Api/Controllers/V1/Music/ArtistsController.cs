@@ -252,7 +252,7 @@ public class ArtistsController : BaseController
         if (artist is null)
             return NotFoundResponse("Artist not found");
 
-        string slug = artist.Name.ToSlug();
+        string slug = $"artist-{artist.Id}";
         string colorPalette = artist._colorPalette.OrEmpty();
         string cover = artist.Cover.OrEmpty();
 
@@ -299,14 +299,14 @@ public class ArtistsController : BaseController
         if (artist is null)
             return NotFoundResponse("Artist not found");
 
-        string slug = artist.Name.ToSlug();
+        string slug = $"artist-{artist.Id}";
 
         await using (Stream libraryCopy = image.OpenReadStream())
             if (
                 !await _coverStore.SaveToLibraryAsync(
                     artist.LibraryFolder,
                     artist.HostFolder,
-                    slug + ".jpg",
+                    artist.Name.ToSlug() + ".jpg",
                     libraryCopy
                 )
             )
