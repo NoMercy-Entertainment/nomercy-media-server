@@ -833,6 +833,20 @@ public class FileRepository(MediaContext context, IStorageDriver storageDriver) 
         return await context.Metadata.Where(m => m.HostFolder == hostFolder).ExecuteDeleteAsync();
     }
 
+    public async Task<int> DeleteVideoFileByPathAsync(string hostFolder, string filename)
+    {
+        return await context
+            .VideoFiles.Where(vf => vf.HostFolder == hostFolder && vf.Filename == filename)
+            .ExecuteDeleteAsync();
+    }
+
+    public async Task<int> DeleteMetadataByPathAsync(string hostFolder, string filename)
+    {
+        return await context
+            .Metadata.Where(m => m.HostFolder == hostFolder && m.Filename == filename)
+            .ExecuteDeleteAsync();
+    }
+
     public async Task<int> UpdateVideoFilePathsAsync(
         string oldHostFolder,
         string oldFilename,
