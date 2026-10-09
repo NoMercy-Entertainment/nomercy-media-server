@@ -755,6 +755,7 @@ public static partial class ServiceConfiguration
         // service that subscribes on start and unsubscribes on stop.
         services.AddHostedService<Subscribers.AudioAnalysisSubscriber>();
         services.AddHostedService<PaletteBackfillStartupService>();
+        services.AddHostedService<MusicCoverRepairStartupService>();
         services.AddHostedService<AnimeEnrichmentBackfillStartupService>();
         services.AddHostedService<MusicQueryWarmupService>();
         // Singleton, not scoped: the startup service that consumes it is one,

@@ -10,7 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using System.Drawing;
-using SixLabors.ImageSharp.PixelFormats;
+using ImageMagick;
 
 namespace NoMercy.Tests.NmSystem;
 
@@ -38,14 +38,14 @@ public class ColorExtensionsTests
     [InlineData([0, 255, 0, "#00FF00"])]
     [InlineData([0, 0, 255, "#0000FF"])]
     [InlineData([128, 64, 192, "#8040C0"])]
-    public void ToHexString_ConvertsImageSharpRgb24ToHex(
+    public void ToHexString_ConvertsMagickColorToHex(
         byte red,
         byte green,
         byte blue,
         string expected
     )
     {
-        Rgb24 color = new(red, green, blue);
+        MagickColor color = new(red, green, blue);
         string result = color.ToHexString();
         result.Should().Be(expected);
     }

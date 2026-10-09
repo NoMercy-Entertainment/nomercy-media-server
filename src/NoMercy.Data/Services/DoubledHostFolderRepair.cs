@@ -12,25 +12,22 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NoMercy.Database;
+using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.Music;
 using NoMercy.Storage;
 
 namespace NoMercy.Data.Services;
 
 /// <summary>
-/// Repairs the tracks an older importer run stored with a <c>HostFolder</c>
-/// that holds the album folder twice — on Windows once with forward slashes and
-/// once with backslashes, on Linux the same rooted path simply repeated.
-/// <c>Filename</c> is the bare file name, so every consumer that combines the
-/// two (playback, subtitles, transcodes, the audio analysis job, the plugin
-/// audio tools) builds a path that exists nowhere, and the analysis of such a
-/// track fails on every sweep, for good.
+/// Repairs Track, Album, Artist, VideoFile and Metadata rows whose
+/// <c>HostFolder</c> holds the same rooted folder twice. The older importer
+/// could store the Windows folder once with forward slashes and once with
+/// backslashes, or repeat a rooted Linux path without a second-root marker.
 /// <para>
 /// A row is only rewritten when the two halves are the same folder, the stored
-/// path really addresses nothing, <i>and</i> the file is where the repaired
-/// folder says it is. A guess that moved a row onto a path nobody checked would
-/// be worse than the broken value it replaced. Anything else is counted and left
-/// exactly as it was.
+/// path really addresses nothing, <i>and</i> the repaired path resolves to the
+/// file (or, for Album and Artist, the folder). A guess that moved a row onto
+/// an unchecked path would be worse than the broken value it replaced.
 /// </para>
 /// <para>
 /// A repaired track also has its analysis verdict reset to
@@ -47,8 +44,7 @@ namespace NoMercy.Data.Services;
 /// </para>
 /// <para>
 /// Idempotent: a repaired row is no longer doubled, so a second run does not
-/// rewrite it. A healthy database costs one query, one table scan and no disk
-/// access at all.
+/// rewrite it. Healthy rows require no disk access.
 /// </para>
 /// </summary>
 public class DoubledHostFolderRepair(
@@ -177,6 +173,8 @@ public class DoubledHostFolderRepair(
             verdictsReset = await ApplyAsync(mediaContext, repairs);
         }
 
+        int otherRepairs = await RepairOtherTablesAsync(mediaContext, cancellationToken);
+
         if (warningsSuppressed > 0)
             logger.LogWarning(
                 "Doubled host folder sweep: {Count} further rows left alone, not named here",
@@ -206,8 +204,156 @@ public class DoubledHostFolderRepair(
                 ]
             );
 
-        return repairs.Count;
+        return repairs.Count + otherRepairs;
     }
+
+    private async Task<int> RepairOtherTablesAsync(
+        MediaContext mediaContext,
+        CancellationToken cancellationToken
+    )
+    {
+        List<FolderPath<Guid>> albums = await mediaContext
+            .Albums.AsNoTracking()
+            .Where(row => row.HostFolder != null && row.HostFolder != "")
+            .Select(row => new FolderPath<Guid>(row.Id, row.HostFolder, null))
+            .ToListAsync();
+        List<FolderPath<Guid>> artists = await mediaContext
+            .Artists.AsNoTracking()
+            .Where(row => row.HostFolder != null && row.HostFolder != "")
+            .Select(row => new FolderPath<Guid>(row.Id, row.HostFolder, null))
+            .ToListAsync();
+        List<FolderPath<Ulid>> videoFiles = await mediaContext
+            .VideoFiles.AsNoTracking()
+            .Where(row => row.HostFolder != null && row.HostFolder != "")
+            .Select(row => new FolderPath<Ulid>(row.Id, row.HostFolder, row.Filename))
+            .ToListAsync();
+        List<FolderPath<Ulid>> metadata = await mediaContext
+            .Metadata.AsNoTracking()
+            .Where(row => row.HostFolder != null && row.HostFolder != "")
+            .Select(row => new FolderPath<Ulid>(row.Id, row.HostFolder, row.Filename))
+            .ToListAsync();
+
+        Dictionary<Guid, string> albumRepairs = FindRepairs(
+            albums,
+            true,
+            "Album",
+            cancellationToken
+        );
+        Dictionary<Guid, string> artistRepairs = FindRepairs(
+            artists,
+            true,
+            "Artist",
+            cancellationToken
+        );
+        Dictionary<Ulid, string> videoRepairs = FindRepairs(
+            videoFiles,
+            false,
+            "VideoFile",
+            cancellationToken
+        );
+        Dictionary<Ulid, string> metadataRepairs = FindRepairs(
+            metadata,
+            false,
+            "Metadata",
+            cancellationToken
+        );
+
+        if (
+            albumRepairs.Count + artistRepairs.Count + videoRepairs.Count + metadataRepairs.Count
+            == 0
+        )
+            return 0;
+
+        foreach (
+            Album row in await mediaContext
+                .Albums.Where(row => albumRepairs.Keys.Contains(row.Id))
+                .ToListAsync()
+        )
+            row.HostFolder = albumRepairs[row.Id];
+        foreach (
+            Artist row in await mediaContext
+                .Artists.Where(row => artistRepairs.Keys.Contains(row.Id))
+                .ToListAsync()
+        )
+            row.HostFolder = artistRepairs[row.Id];
+        foreach (
+            VideoFile row in await mediaContext
+                .VideoFiles.Where(row => videoRepairs.Keys.Contains(row.Id))
+                .ToListAsync()
+        )
+            row.HostFolder = videoRepairs[row.Id];
+        foreach (
+            Metadata row in await mediaContext
+                .Metadata.Where(row => metadataRepairs.Keys.Contains(row.Id))
+                .ToListAsync()
+        )
+            row.HostFolder = metadataRepairs[row.Id];
+
+        await mediaContext.SaveChangesAsync();
+        int count =
+            albumRepairs.Count + artistRepairs.Count + videoRepairs.Count + metadataRepairs.Count;
+        logger.LogInformation(
+            "Doubled host folder sweep repaired {Albums} albums, {Artists} artists, {VideoFiles} video files and {Metadata} metadata rows",
+            albumRepairs.Count,
+            artistRepairs.Count,
+            videoRepairs.Count,
+            metadataRepairs.Count
+        );
+        return count;
+    }
+
+    private Dictionary<TId, string> FindRepairs<TId>(
+        List<FolderPath<TId>> candidates,
+        bool folderOnly,
+        string table,
+        CancellationToken cancellationToken
+    )
+        where TId : notnull
+    {
+        Dictionary<TId, string> repairs = [];
+        foreach (FolderPath<TId> candidate in candidates)
+        {
+            if (cancellationToken.IsCancellationRequested)
+                break;
+            try
+            {
+                string? singleFolder = HostFolderPath.RepairDoubled(candidate.HostFolder);
+                if (singleFolder is null)
+                    continue;
+                string storedPath = folderOnly
+                    ? candidate.HostFolder
+                    : storageDriver.CombinePath(
+                        candidate.HostFolder,
+                        candidate.Filename ?? string.Empty
+                    );
+                string repairedPath = folderOnly
+                    ? singleFolder
+                    : storageDriver.CombinePath(singleFolder, candidate.Filename ?? string.Empty);
+                bool storedExists = folderOnly
+                    ? storageDriver.DirectoryExists(storedPath)
+                    : storageDriver.FileExists(storedPath);
+                if (storedExists)
+                    continue;
+                bool repairedExists = folderOnly
+                    ? storageDriver.DirectoryExists(repairedPath)
+                    : storageDriver.FileExists(repairedPath);
+                if (repairedExists)
+                    repairs[candidate.Id] = singleFolder;
+            }
+            catch (Exception exception)
+            {
+                logger.LogWarning(
+                    exception,
+                    "{Table} {Id} left alone while checking a doubled host folder",
+                    table,
+                    candidate.Id
+                );
+            }
+        }
+        return repairs;
+    }
+
+    private sealed record FolderPath<TId>(TId Id, string HostFolder, string? Filename);
 
     /// <summary>
     /// Writes the repaired folders and resets the analysis verdict of every
@@ -221,7 +367,6 @@ public class DoubledHostFolderRepair(
         Dictionary<Guid, string> repairs
     )
     {
-
         List<Guid> trackIds = [.. repairs.Keys];
 
         List<Track> tracks = await mediaContext

@@ -244,6 +244,16 @@ public partial class FileLogic(
                 Subtitles = JsonConvert.SerializeObject(subtitles),
             };
 
+            if (HostFolderPath.ContainsSecondRoot(videoFile.HostFolder))
+            {
+                logger.LogError(
+                    "Skipping video file {Filename}: host folder holds a second root: '{HostFolder}'",
+                    videoFile.Filename,
+                    videoFile.HostFolder
+                );
+                return;
+            }
+
             await mediaContext
                 .VideoFiles.Upsert(videoFile)
                 .On(vf => vf.Filename)

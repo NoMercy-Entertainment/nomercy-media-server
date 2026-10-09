@@ -9,12 +9,11 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using ImageMagick;
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Database;
 using NoMercy.Database.Models.Music;
 using NoMercy.NmSystem.Information;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 
 namespace NoMercy.MediaProcessing.Images.Palettes.Sources;
 
@@ -52,7 +51,8 @@ public class ArtistPaletteSource : IPaletteSource
         if (!File.Exists(filePath))
             return PaletteResult.NoImage();
 
-        using Image<Rgba32> image = await Image.LoadAsync<Rgba32>(filePath, ct);
+        using MagickImage image = new();
+        await image.ReadAsync(filePath, ct);
         string json = BaseImageManager.GenerateColorPalette([
             new() { Key = "cover", ImageData = image },
         ]);

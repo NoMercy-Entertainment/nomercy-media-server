@@ -25,10 +25,8 @@ using Xunit;
 
 namespace NoMercy.Tests.Api;
 
-// CastHub's device-control methods (GetChromeCasts/SelectChromecast/Launch/
-// CastPlaylist/GetChromecastStatus/GetMediaStatus/Stop/Disconnect) are thin,
-// unguarded forwards straight to IChromeCastService — no user/moderator check
-// happens in the hub itself. IChromeCastService is fully mocked here, so no
+// CastHub's device-control methods delegate to IChromeCastService after
+// command input validation. IChromeCastService is fully mocked here, so no
 // real Chromecast is ever discovered, connected to, or commanded.
 [Trait("Category", "Unit")]
 public class CastHubChromecastPassthroughTests
@@ -68,9 +66,11 @@ public class CastHubChromecastPassthroughTests
     public async Task SelectChromecast_ForwardsReceiverName_ToChromeCastService()
     {
         CastHub hub = CreateHub(out Mock<IChromeCastService> chromeCast, out _);
+        chromeCast.Setup(c => c.GetChromeCasts()).Returns(["Living Room"]);
 
-        await hub.SelectChromecast("Living Room");
+        HubCommandResult result = await hub.SelectChromecast("Living Room");
 
+        result.Ok.Should().BeTrue();
         chromeCast.Verify(c => c.SelectChromecast("Living Room"), Times.Once);
     }
 

@@ -9,14 +9,12 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Drawing;
+using ImageMagick;
 using NoMercy.NmSystem.Information;
 using NoMercy.Providers.CoverArt.Models;
 using NoMercy.Providers.Helpers;
 using NoMercy.Storage;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.Formats;
-using SixLabors.ImageSharp.PixelFormats;
-using Image = SixLabors.ImageSharp.Image;
 
 namespace NoMercy.Providers.FanArt.Client;
 
@@ -50,7 +48,13 @@ public class FanArtImageClient : FanArtBaseClient
         return Get<CoverArtCovers>("release/" + Id, queryParams, priority);
     }
 
-    public static async Task<Image<Rgba32>?> Download(
+    public static Task<bool> IsStored(string fileName) =>
+        Storage.ExistsAsync(
+            Path.Combine(AppFiles.MusicImagesPath, fileName),
+            CancellationToken.None
+        );
+
+    public static async Task<MagickImage?> Download(
         Uri url,
         bool? download = true,
         Size? maxDecodeSize = null
@@ -60,33 +64,55 @@ public class FanArtImageClient : FanArtBaseClient
 
         IStorage storage = Storage;
         if (await storage.ExistsAsync(filePath, CancellationToken.None))
-        {
-            if (maxDecodeSize.HasValue)
-            {
-                DecoderOptions options = new() { TargetSize = maxDecodeSize.Value };
-                return Image.Load<Rgba32>(options, filePath);
-            }
-
-            return Image.Load<Rgba32>(filePath);
-        }
+            return new(filePath, MagickReadSettingsFactory.Create(maxDecodeSize));
 
         HttpClient httpClient = HttpClientProvider.CreateClient(HttpClientNames.FanArtImage);
 
-        using HttpResponseMessage response = await httpClient.GetAsync(url);
+        HttpResponseMessage queuedResponse;
+        try
+        {
+            queuedResponse = await ProviderQueues
+                .For(HttpClientNames.FanArtImage)
+                .Enqueue(
+                    async () =>
+                    {
+                        // Owned by Download after the queue returns; disposed here on retry.
+                        HttpResponseMessage reply = await httpClient.GetAsync(url);
+                        if (
+                            reply.StatusCode == System.Net.HttpStatusCode.TooManyRequests
+                            || (int)reply.StatusCode >= 500
+                        )
+                        {
+                            try
+                            {
+                                reply.EnsureProviderSuccess();
+                            }
+                            catch
+                            {
+                                reply.Dispose();
+                                throw;
+                            }
+                        }
+                        return reply;
+                    },
+                    url.ToString()
+                );
+        }
+        catch (HttpRequestException ex)
+            when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests
+                || (int?)ex.StatusCode is >= 500 and <= 599
+            )
+        {
+            return null;
+        }
+        using HttpResponseMessage response = queuedResponse;
         if (!response.IsSuccessStatusCode)
             return null;
-
         byte[] bytes = await response.Content.ReadAsByteArrayAsync();
 
         if (download is not false && !await storage.ExistsAsync(filePath, CancellationToken.None))
             await storage.WriteAsync(filePath, bytes, CancellationToken.None);
 
-        if (maxDecodeSize.HasValue)
-        {
-            DecoderOptions options = new() { TargetSize = maxDecodeSize.Value };
-            return Image.Load<Rgba32>(options, bytes);
-        }
-
-        return Image.Load<Rgba32>(bytes);
+        return new(bytes, MagickReadSettingsFactory.Create(maxDecodeSize));
     }
 }

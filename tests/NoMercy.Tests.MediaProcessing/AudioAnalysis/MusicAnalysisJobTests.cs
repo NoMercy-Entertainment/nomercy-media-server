@@ -256,7 +256,7 @@ public class MusicAnalysisJobTests : IDisposable
     }
 
     [Fact]
-    public async Task Handle_RecordsAFailureWhenTheFileIsNotThere()
+    public async Task Handle_KeepsUnavailableFilePendingForRetry()
     {
         Mock<IAudioAnalyzer> analyzer = new();
         analyzer.SetupGet(a => a.Version).Returns(AnalyzerVersion);
@@ -266,7 +266,7 @@ public class MusicAnalysisJobTests : IDisposable
         TrackAudioAnalysis? row = ReadRow();
 
         Assert.NotNull(row);
-        Assert.Equal(AudioAnalysisState.Failed, row.State);
+        Assert.Equal(AudioAnalysisState.Pending, row.State);
         Assert.False(string.IsNullOrWhiteSpace(row.FailureReason));
     }
 

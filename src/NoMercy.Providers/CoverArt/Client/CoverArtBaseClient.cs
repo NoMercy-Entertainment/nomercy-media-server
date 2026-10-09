@@ -1,4 +1,4 @@
-﻿// -----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 //  Copyright (c) 2024-present NoMercy Entertainment. All rights reserved.
 //
 //  This file is part of NoMercy MediaServer, source-available software (NOT open
@@ -25,8 +25,6 @@ public class CoverArtBaseClient : ExternalApiClient
 
     protected override string HttpClientName => HttpClientNames.CoverArt;
     protected override Uri BaseUrl => new("https://coverartarchive.org/");
-    protected override int ConcurrentRequests => 3;
-    protected override int RequestIntervalMs => 1000;
 
     protected override void LogRequest(string url) => Logger.CoverArt(url, LogEventLevel.Verbose);
 }

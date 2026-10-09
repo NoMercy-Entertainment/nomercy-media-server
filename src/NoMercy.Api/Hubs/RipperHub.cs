@@ -66,11 +66,24 @@ public class RipperHub : ConnectionHub
     /// </summary>
     public async Task<object?> GetDriveState(string drivePath)
     {
+        try
+        {
+            return await GetDriveStateCoreAsync(drivePath);
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Could not read drive state");
+            return HubCommandResult.Failed();
+        }
+    }
+
+    private async Task<object?> GetDriveStateCoreAsync(string drivePath)
+    {
         if (!AuthPolicy.IsModerator(Context.User))
-            return null;
+            return HubCommandResult.Forbidden("Moderator access is required.");
 
         if (string.IsNullOrWhiteSpace(drivePath))
-            return null;
+            return HubCommandResult.Invalid("Drive path is required.");
 
         DiscDrive? drive = _driveMonitor
             .GetDrives()
@@ -80,7 +93,7 @@ public class RipperHub : ConnectionHub
             );
 
         if (drive is null)
-            return null;
+            return HubCommandResult.NotFound("Drive was not found.");
 
         if (!drive.HasDisc)
         {

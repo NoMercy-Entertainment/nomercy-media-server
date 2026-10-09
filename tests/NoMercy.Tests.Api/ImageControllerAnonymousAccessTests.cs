@@ -12,8 +12,7 @@
 using System.Net;
 using NoMercy.NmSystem.Information;
 using NoMercy.Tests.Api.Infrastructure;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
+using ImageMagick;
 using Xunit;
 
 namespace NoMercy.Tests.Api;
@@ -36,8 +35,8 @@ public class ImageControllerAnonymousAccessTests(NoMercyApiFactory factory)
         Directory.CreateDirectory(folder);
         name = $"access_{Guid.NewGuid():N}.png";
         string file = Path.Join(folder, name);
-        using Image<Rgba32> image = new(20, 10, new(0, 255, 0));
-        image.SaveAsPng(file);
+        using MagickImage image = new(new MagickColor(0, 255, 0), 20, 10);
+        image.Write(file, MagickFormat.Png);
         return file;
     }
 
