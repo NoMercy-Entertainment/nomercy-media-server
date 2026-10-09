@@ -20,6 +20,8 @@ using NoMercy.Encoder.Output;
 using NoMercy.Encoder.Pipeline;
 using NoMercy.Encoder.Pipeline.Stages;
 using NoMercy.Encoder.Profiles;
+using NoMercy.Storage;
+using NoMercy.Storage.Validation;
 using CodecProfile = NoMercy.Encoder.Profiles.CodecProfile;
 using Container = NoMercy.Encoder.Profiles.Container;
 using EncodingProfile = NoMercy.Encoder.Profiles.EncodingProfile;
@@ -42,6 +44,7 @@ public class PlanStageEmitHdrAndSdrTests
     private readonly Mock<ICodecResolver> _codecResolver = new();
     private readonly Mock<IHardwareCapabilities> _hardware = new();
     private readonly Mock<IFfmpegCapabilities> _ffmpegCapabilities = new();
+    private readonly Mock<IStorage> _storage = new();
     private readonly PlanStage _stage;
 
     public PlanStageEmitHdrAndSdrTests()
@@ -81,7 +84,8 @@ public class PlanStageEmitHdrAndSdrTests
             _ffmpegCapabilities.Object,
             new AbrLadderGenerator(),
             new NoOpCropDetector(),
-            NullLogger<PlanStage>.Instance
+            NullLogger<PlanStage>.Instance,
+            storage: _storage.Object
         );
     }
 
@@ -101,6 +105,22 @@ public class PlanStageEmitHdrAndSdrTests
         sdr.IsHdrOutput.Should().BeFalse("the 8-bit H.264 rung is the SDR copy");
         sdr.TonemapFilterChain.Should().NotBeNullOrEmpty("the SDR copy must be tonemapped");
         sdr.ConvertHdrToSdr.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task HdrSource_WithLut_UsesLutOnSdrOutput()
+    {
+        string lutPath = "C:/luts/film.cube";
+        _storage
+            .Setup(s => s.AcquireLocalPathAsync(lutPath, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new LocalPathLease(lutPath));
+        EncodingProfile profile = EmitHdrAndSdrProfile();
+        profile.HdrOptions = new("hable", 100, lutPath);
+
+        OutputPlan plan = await RunPlan(profile, BuildHdrMedia());
+
+        VideoOutputPlan sdr = plan.VideoOutputs.Single(v => v.EncoderName == "libx264");
+        sdr.TonemapFilterChain.Should().StartWith("lut3d=");
     }
 
     [Fact]
