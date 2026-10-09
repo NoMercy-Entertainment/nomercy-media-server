@@ -233,7 +233,7 @@ public class CollectionsController(
             new StatusResponseDto<string>
             {
                 Status = "ok",
-                Message = "{1}",
+                Message = "{0}",
                 Args = new object[] { request.Value ? "liked" : "unliked" },
             }
         );
