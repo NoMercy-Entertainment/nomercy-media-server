@@ -203,22 +203,10 @@ public class DriversController(
             )
         );
 
-        if (request.Credentials is not null && HasMeaningfulCredentials(request.Credentials))
-        {
-            string credRef = StoreCredentials(id, request.Credentials);
-            logger.LogInformation(
-                "[DriversController] Updated credentials for driver {Id} ({Type}) (accessKey len={Length}, secret len={Length2})",
-                id,
-                driver.Type,
-                request.Credentials.AccessKey.Length,
-                request.Credentials.SecretKey.Length
-            );
-
-            configToStore = WithCredentialsRef(
-                configToStore ?? ParseConfigJson(driver.Config),
-                credRef
-            );
-        }
+        bool hasNewCredentials =
+            request.Credentials is not null && HasMeaningfulCredentials(request.Credentials);
+        if (hasNewCredentials)
+            configToStore ??= ParseConfigJson(driver.Config);
         else if (request.Credentials is not null)
         {
             // The dashboard form re-submits an empty credentials block when
@@ -233,14 +221,29 @@ public class DriversController(
             );
         }
 
-        if (configToStore is not null)
+        if (configToStore is not null || hasNewCredentials)
         {
             string? validationError = DriverTypeMetadata.ValidateConfig(driver.Type, configToStore);
             if (validationError is not null)
                 return BadRequestResponse(validationError);
-
-            driver.Config = JsonConvert.SerializeObject(configToStore);
         }
+
+        if (hasNewCredentials && request.Credentials is not null)
+        {
+            string credRef = StoreCredentials(id, request.Credentials);
+            logger.LogInformation(
+                "[DriversController] Updated credentials for driver {Id} ({Type}) (accessKey len={Length}, secret len={Length2})",
+                id,
+                driver.Type,
+                request.Credentials.AccessKey.Length,
+                request.Credentials.SecretKey.Length
+            );
+
+            configToStore = WithCredentialsRef(configToStore, credRef);
+        }
+
+        if (configToStore is not null)
+            driver.Config = JsonConvert.SerializeObject(configToStore);
 
         driver.UpdatedAt = DateTimeOffset.UtcNow;
 
