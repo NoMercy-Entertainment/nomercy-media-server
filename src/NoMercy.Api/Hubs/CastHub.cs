@@ -223,20 +223,34 @@ public class CastHub : ConnectionHub
         return _chromeCast.GetChromeCasts();
     }
 
-    public async Task SelectChromecast(string name)
+    public async Task<HubCommandResult> SelectChromecast(string name)
     {
-        await _chromeCast.SelectChromecast(name);
+        if (string.IsNullOrWhiteSpace(name))
+            return HubCommandResult.Invalid("Chromecast name is required.");
+        try
+        {
+            if (!_chromeCast.GetChromeCasts().Contains(name, StringComparer.OrdinalIgnoreCase))
+                return HubCommandResult.NotFound("Chromecast was not found.");
+            await _chromeCast.SelectChromecast(name);
+            return HubCommandResult.Success();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Could not select Chromecast");
+            return HubCommandResult.Failed();
+        }
     }
 
-    public async Task Launch()
-    {
-        await _chromeCast.Launch();
-    }
+    public Task<HubCommandResult> Launch() =>
+        HubCommandResult.ExecuteAsync(() => _chromeCast.Launch(), _logger);
 
-    public async Task CastPlaylist(string value)
-    {
-        await _chromeCast.CastPlaylist(value, accessToken: _authTokenStore.AccessToken);
-    }
+    public Task<HubCommandResult> CastPlaylist(string value) =>
+        string.IsNullOrWhiteSpace(value)
+            ? Task.FromResult(HubCommandResult.Invalid("Playlist is required."))
+            : HubCommandResult.ExecuteAsync(
+                () => _chromeCast.CastPlaylist(value, accessToken: _authTokenStore.AccessToken),
+                _logger
+            );
 
     public ChromecastStatus? GetChromecastStatus()
     {
@@ -248,76 +262,127 @@ public class CastHub : ConnectionHub
         return _chromeCast.GetMediaStatus();
     }
 
-    public async Task Stop()
-    {
-        await _chromeCast.Stop();
-    }
+    public Task<HubCommandResult> Stop() =>
+        HubCommandResult.ExecuteAsync(() => _chromeCast.Stop(), _logger);
 
-    public async Task Disconnect()
-    {
-        await _chromeCast.Disconnect();
-    }
+    public Task<HubCommandResult> Disconnect() =>
+        HubCommandResult.ExecuteAsync(() => _chromeCast.Disconnect(), _logger);
 
-    public Task Play() => RelayToCaller("Play");
+    public Task<HubCommandResult> Play() => RelayToCaller("Play");
 
-    public Task Pause() => RelayToCaller("Pause");
+    public Task<HubCommandResult> Pause() => RelayToCaller("Pause");
 
-    public Task Time(TimeData time) => RelayToCaller("Time", time);
+    public Task<HubCommandResult> Time(TimeData time) => RelayToCaller("Time", time);
 
-    public Task Ended() => RelayToCaller("Ended");
+    public Task<HubCommandResult> Ended() => RelayToCaller("Ended");
 
-    public Task Volume(int volume) => RelayToCaller("Volume", volume);
+    public Task<HubCommandResult> Volume(int volume) => RelayToCaller("Volume", volume);
 
-    public Task Muted(bool muted) => RelayToCaller("Muted", muted);
+    public Task<HubCommandResult> Muted(bool muted) => RelayToCaller("Muted", muted);
 
-    public Task Item(PlaylistItem item) => RelayToCaller("Item", item);
+    public Task<HubCommandResult> Item(PlaylistItem item) => RelayToCaller("Item", item);
 
-    public Task Playlist(PlaylistItem[] item) => RelayToCaller("Playlist", item);
+    public Task<HubCommandResult> Playlist(PlaylistItem[] item) => RelayToCaller("Playlist", item);
 
-    public Task SubtitleTracks(TextTrack[] subtitleTracks) =>
+    public Task<HubCommandResult> SubtitleTracks(TextTrack[] subtitleTracks) =>
         RelayToCaller("SubtitleTracks", subtitleTracks);
 
-    public Task CurrentSubtitleTrack(TextTrack subtitleTrack) =>
+    public Task<HubCommandResult> CurrentSubtitleTrack(TextTrack subtitleTrack) =>
         RelayToCaller("CurrentSubtitleTrack", subtitleTrack);
 
-    public Task AudioTracks(AudioTrack[] audioTrack) => RelayToCaller("AudioTracks", audioTrack);
+    public Task<HubCommandResult> AudioTracks(AudioTrack[] audioTrack) =>
+        RelayToCaller("AudioTracks", audioTrack);
 
-    public Task CurrentAudioTrack(AudioTrack audioTrack) =>
+    public Task<HubCommandResult> CurrentAudioTrack(AudioTrack audioTrack) =>
         RelayToCaller("CurrentAudioTrack", audioTrack);
 
-    public Task GetPlayerState() => RelayToCaller("GetPlayerState");
+    public Task<HubCommandResult> GetPlayerState() => RelayToCaller("GetPlayerState");
 
-    public Task PlayerState(CastPlayerState state) => RelayToCaller("MusicPlayerState", state);
+    public Task<HubCommandResult> PlayerState(CastPlayerState state) =>
+        RelayToCaller("MusicPlayerState", state);
 
-    public Task SetAudioTrack(int audioTrack) => RelayToCaller("SetAudioTrack", audioTrack);
+    public Task<HubCommandResult> SetAudioTrack(int audioTrack) =>
+        RelayToCaller("SetAudioTrack", audioTrack);
 
-    public Task SetSubtitleTrack(int subtitleTrack) =>
+    public Task<HubCommandResult> SetSubtitleTrack(int subtitleTrack) =>
         RelayToCaller("SetSubtitleTrack", subtitleTrack);
 
-    public Task SetPlaylistItem(int item) => RelayToCaller("SetPlaylistItem", item);
+    public Task<HubCommandResult> SetPlaylistItem(int item) =>
+        RelayToCaller("SetPlaylistItem", item);
 
-    public Task SetVolume(int volume) => RelayToCaller("SetVolume", volume);
+    public Task<HubCommandResult> SetVolume(int volume) => RelayToCaller("SetVolume", volume);
 
-    public Task SetMuted(bool muted) => RelayToCaller("SetMuted", muted);
+    public Task<HubCommandResult> SetMuted(bool muted) => RelayToCaller("SetMuted", muted);
 
-    public Task SetSeek(int time) => RelayToCaller("SetSeek", time);
+    public Task<HubCommandResult> SetSeek(int time) => RelayToCaller("SetSeek", time);
 
-    public Task SetNext() => RelayToCaller("SetNext");
+    public Task<HubCommandResult> SetNext() => RelayToCaller("SetNext");
 
-    public Task SetPrevious() => RelayToCaller("SetPrevious");
+    public Task<HubCommandResult> SetPrevious() => RelayToCaller("SetPrevious");
 
-    public Task SetPlay() => RelayToCaller("SetPlay");
+    public Task<HubCommandResult> SetPlay() => RelayToCaller("SetPlay");
 
-    public Task SetPause() => RelayToCaller("SetPause");
+    public Task<HubCommandResult> SetPause() => RelayToCaller("SetPause");
 
-    public Task SetStop() => RelayToCaller("SetStop");
+    public Task<HubCommandResult> SetStop() => RelayToCaller("SetStop");
 
     /// <summary>Relays a cast event to the calling user's other castHub connections.</summary>
-    private async Task RelayToCaller(string eventName, object? data = null)
+    private async Task<HubCommandResult> RelayToCaller(string eventName, object? data = null)
     {
+        HubCommandResult? error = ValidateRelay(eventName, data);
+        if (error is not null)
+            return error;
+
         User? user = UserCacheService.GetUser(Context.User.UserId());
         if (user is null)
-            return;
-        await _clientMessenger.SendTo(eventName, "castHub", user.Id, data);
+            return HubCommandResult.Forbidden("Caller is not available.");
+
+        return await HubCommandResult.ExecuteAsync(
+            () => _clientMessenger.SendTo(eventName, "castHub", user.Id, data),
+            _logger
+        );
     }
+
+    private static HubCommandResult? ValidateRelay(string eventName, object? data) =>
+        eventName switch
+        {
+            "Time"
+                when data is not TimeData time
+                    || !double.IsFinite(time.CurrentTime)
+                    || time.CurrentTime < 0
+                    || !double.IsFinite(time.Duration)
+                    || time.Duration < 0
+                    || !double.IsFinite(time.Percentage)
+                    || time.Percentage is < 0 or > 100
+                    || !double.IsFinite(time.Remaining)
+                    || time.Remaining < 0 => HubCommandResult.Invalid("Time is out of range."),
+            "Volume" or "SetVolume" when data is int volume && volume is < 0 or > 100 =>
+                HubCommandResult.Invalid("Volume must be between 0 and 100."),
+            "Item" when data is not PlaylistItem item || string.IsNullOrWhiteSpace(item.Id) =>
+                HubCommandResult.Invalid("Playlist item id is required."),
+            "Playlist"
+                when data is not PlaylistItem[] items
+                    || items.Any(item => item is null || string.IsNullOrWhiteSpace(item.Id)) =>
+                HubCommandResult.Invalid("Playlist items need ids."),
+            "SubtitleTracks" when data is not TextTrack[] => HubCommandResult.Invalid(
+                "Subtitle tracks are required."
+            ),
+            "AudioTracks" when data is not AudioTrack[] => HubCommandResult.Invalid(
+                "Audio tracks are required."
+            ),
+            "CurrentSubtitleTrack" when data is not TextTrack => HubCommandResult.Invalid(
+                "Subtitle track is required."
+            ),
+            "CurrentAudioTrack" when data is not AudioTrack => HubCommandResult.Invalid(
+                "Audio track is required."
+            ),
+            "MusicPlayerState" when data is not CastPlayerState => HubCommandResult.Invalid(
+                "Player state is required."
+            ),
+            "SetAudioTrack" or "SetPlaylistItem" or "SetSeek" when data is int value && value < 0 =>
+                HubCommandResult.Invalid("Value must be non-negative."),
+            "SetSubtitleTrack" when data is int subtitleTrack && subtitleTrack < -1 =>
+                HubCommandResult.Invalid("Subtitle track is out of range."),
+            _ => null,
+        };
 }

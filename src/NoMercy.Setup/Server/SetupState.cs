@@ -75,6 +75,13 @@ public class SetupState
         }
     }
 
+    /// <summary>
+    /// The user-facing name of the current phase, from the one table in
+    /// <see cref="SetupPhaseWords"/>. Sent over the wire so the page, the
+    /// terminal and the launcher tray show the same words.
+    /// </summary>
+    public string CurrentLabel => SetupPhaseWords.Label(CurrentPhase);
+
     public string? ServerUrl
     {
         get
@@ -167,18 +174,7 @@ public class SetupState
             SetupPhase previousPhase = _currentPhase;
             _currentPhase = targetPhase;
             _errorMessage = null;
-            _phaseDetail = targetPhase switch
-            {
-                SetupPhase.Unauthenticated => "Waiting for you to sign in...",
-                SetupPhase.Authenticating => "Verifying your credentials...",
-                SetupPhase.Authenticated => "Signed in successfully",
-                SetupPhase.Registering => "Connecting your server to NoMercy...",
-                SetupPhase.Registered => "Setting up your server address...",
-                SetupPhase.CertificateAcquired => "Connection secured",
-                SetupPhase.Failed => "Setup could not finish — you can retry.",
-                SetupPhase.Complete => "All done — opening NoMercy...",
-                _ => "",
-            };
+            _phaseDetail = SetupPhaseWords.Detail(targetPhase);
 
             Logger.Setup($"Setup phase: {previousPhase} → {targetPhase}");
             NotifyChange();

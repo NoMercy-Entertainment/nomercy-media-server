@@ -72,6 +72,7 @@ public static partial class ServiceConfiguration
 
                 // Add error logging filter for invalid method calls and wrong arguments
                 o.AddFilter<HubErrorLoggingFilter>();
+                o.AddFilter<HubCommandResultFilter>();
             })
             .AddNewtonsoftJsonProtocol(options =>
             {

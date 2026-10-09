@@ -16,8 +16,12 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NoMercy.Data.Services;
 using NoMercy.Database;
+using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.Music;
+using NoMercy.MediaProcessing.Artists;
 using NoMercy.MediaProcessing.AudioAnalysis;
+using NoMercy.MediaProcessing.Files;
+using NoMercy.MediaProcessing.Releases;
 using NoMercy.NmSystem.Domain;
 using NoMercy.Storage;
 
@@ -164,6 +168,157 @@ public class DoubledHostFolderRepairTests : IDisposable
     {
         await using MediaContext ctx = new(_options);
         return (await ctx.Tracks.AsNoTracking().SingleAsync()).HostFolder;
+    }
+
+    [Fact]
+    public async Task Repairs_album_folder_when_only_the_single_folder_exists()
+    {
+        await using (MediaContext ctx = new(_options))
+        {
+            ctx.Albums.Add(
+                new Album
+                {
+                    Id = Guid.NewGuid(),
+                    Name = "Album",
+                    LibraryId = LibraryId,
+                    FolderId = FolderId,
+                    Library = null!,
+                    LibraryFolder = null!,
+                    HostFolder = DoubledAlbumFolder,
+                }
+            );
+            await ctx.SaveChangesAsync();
+        }
+
+        int repaired = await BuildRepair(DriverWithFolder(AlbumFolder))
+            .RunAsync(CancellationToken.None);
+
+        repaired.Should().Be(1);
+        await using MediaContext check = new(_options);
+        (await check.Albums.SingleAsync()).HostFolder.Should().Be(AlbumFolder);
+    }
+
+    [Fact]
+    public async Task Repairs_artist_folder_when_only_the_single_folder_exists()
+    {
+        await using (MediaContext ctx = new(_options))
+        {
+            ctx.Artists.Add(
+                new Artist
+                {
+                    Id = Guid.NewGuid(),
+                    Name = "Artist",
+                    LibraryId = LibraryId,
+                    FolderId = FolderId,
+                    HostFolder = DoubledAlbumFolder,
+                }
+            );
+            await ctx.SaveChangesAsync();
+        }
+
+        int repaired = await BuildRepair(DriverWithFolder(AlbumFolder))
+            .RunAsync(CancellationToken.None);
+
+        repaired.Should().Be(1);
+        await using MediaContext check = new(_options);
+        (await check.Artists.SingleAsync()).HostFolder.Should().Be(AlbumFolder);
+    }
+
+    [Fact]
+    public async Task Repairs_video_file_when_only_the_single_file_exists()
+    {
+        await using (MediaContext ctx = new(_options))
+        {
+            ctx.VideoFiles.Add(
+                new VideoFile { Filename = TrackFile, HostFolder = DoubledAlbumFolder }
+            );
+            await ctx.SaveChangesAsync();
+        }
+
+        int repaired = await BuildRepair(Driver(AlbumFolder + TrackFile))
+            .RunAsync(CancellationToken.None);
+
+        repaired.Should().Be(1);
+        await using MediaContext check = new(_options);
+        (await check.VideoFiles.SingleAsync()).HostFolder.Should().Be(AlbumFolder);
+    }
+
+    [Fact]
+    public async Task Repairs_metadata_when_only_the_single_file_exists()
+    {
+        await using (MediaContext ctx = new(_options))
+        {
+            ctx.Metadata.Add(
+                new Metadata { Filename = TrackFile, HostFolder = DoubledAlbumFolder }
+            );
+            await ctx.SaveChangesAsync();
+        }
+
+        int repaired = await BuildRepair(Driver(AlbumFolder + TrackFile))
+            .RunAsync(CancellationToken.None);
+
+        repaired.Should().Be(1);
+        await using MediaContext check = new(_options);
+        (await check.Metadata.SingleAsync()).HostFolder.Should().Be(AlbumFolder);
+    }
+
+    private static Mock<IStorageDriver> DriverWithFolder(string folder)
+    {
+        Mock<IStorageDriver> driver = Driver();
+        driver
+            .Setup(d => d.DirectoryExists(It.IsAny<string>()))
+            .Returns<string>(path => path == folder);
+        return driver;
+    }
+
+    [Fact]
+    public async Task Album_writer_skips_a_second_root()
+    {
+        await using MediaContext ctx = new(_options);
+        await new ReleaseRepository(ctx).Store(
+            new Album
+            {
+                Id = Guid.NewGuid(),
+                Name = "Album",
+                HostFolder = DoubledAlbumFolder,
+            }
+        );
+        (await ctx.Albums.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Artist_writer_skips_a_second_root()
+    {
+        await using MediaContext ctx = new(_options);
+        await new ArtistRepository(ctx).StoreAsync(
+            new Artist
+            {
+                Id = Guid.NewGuid(),
+                Name = "Artist",
+                HostFolder = DoubledAlbumFolder,
+            }
+        );
+        (await ctx.Artists.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task VideoFile_writer_skips_a_second_root()
+    {
+        await using MediaContext ctx = new(_options);
+        await new FileRepository(ctx, Driver().Object).StoreVideoFile(
+            new VideoFile { Filename = TrackFile, HostFolder = DoubledAlbumFolder }
+        );
+        (await ctx.VideoFiles.CountAsync()).Should().Be(0);
+    }
+
+    [Fact]
+    public async Task Metadata_writer_skips_a_second_root()
+    {
+        await using MediaContext ctx = new(_options);
+        await new FileRepository(ctx, Driver().Object).StoreMetadata(
+            new Metadata { Filename = TrackFile, HostFolder = DoubledAlbumFolder }
+        );
+        (await ctx.Metadata.CountAsync()).Should().Be(0);
     }
 
     private async Task<List<Guid>> TracksNeedingAnalysis()

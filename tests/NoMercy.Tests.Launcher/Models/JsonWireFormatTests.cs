@@ -198,6 +198,8 @@ public sealed class JsonWireFormatTests
                 "restart_needed": true,
                 "latest_version": "2.1.0",
                 "setup_phase": "Registering",
+                "setup_label": "Connecting to NoMercy",
+                "setup_detail": "Registering server and securing your connection... (this can take up to 10 minutes)",
                 "internal_address": "https://192.168.1.10:7626",
                 "external_address": "https://my-server.nomercy.tv",
                 "app_status": { "running": true, "pid": 4242 }
@@ -212,6 +214,8 @@ public sealed class JsonWireFormatTests
         result.RestartNeeded.Should().BeTrue();
         result.LatestVersion.Should().Be("2.1.0");
         result.SetupPhase.Should().Be("Registering");
+        result.SetupLabel.Should().Be("Connecting to NoMercy");
+        result.SetupDetail.Should().Contain("up to 10 minutes");
         result.InternalAddress.Should().Be("https://192.168.1.10:7626");
         result.ExternalAddress.Should().Be("https://my-server.nomercy.tv");
         result.AppStatus.Should().NotBeNull();

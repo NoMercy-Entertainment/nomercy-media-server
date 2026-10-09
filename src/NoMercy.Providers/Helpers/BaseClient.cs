@@ -50,19 +50,7 @@ public class BaseClient : IDisposable
             Client.DefaultRequestHeaders.Add(key, value);
     }
 
-    private static Queue? _queue;
-
-    protected static Queue Queue()
-    {
-        return _queue ??= new(
-            new()
-            {
-                Concurrent = 1,
-                Interval = 1000,
-                Start = true,
-            }
-        );
-    }
+    protected static Queue Queue() => ProviderQueues.For(HttpClientNames.General);
 
     protected virtual async Task<T?> Get<T>(
         string url,
@@ -85,7 +73,7 @@ public class BaseClient : IDisposable
         Logger.Http(newUrl, LogEventLevel.Verbose);
 
         string response = await Queue()
-            .Enqueue(() => Client.GetStringAsync(newUrl), newUrl, priority);
+            .Enqueue(() => ProviderHttp.GetStringAsync(Client, newUrl), newUrl, priority);
 
         await CacheController.Write(newUrl, response);
 

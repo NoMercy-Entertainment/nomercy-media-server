@@ -43,7 +43,7 @@ public sealed class ConsoleQrCodeTests : IDisposable
             "https://auth.nomercy.tv/device?code=ABCD",
             "https://auth.nomercy.tv/device",
             "ABCD-1234",
-            "http://localhost:7626/setup"
+            SetupAddress.Resolve("192.168.2.10", 7626, inContainer: false)
         );
     }
 

@@ -14,7 +14,7 @@ using NoMercy.NmSystem.SystemCalls;
 using NoMercy.Providers.CoverArt.Client;
 using NoMercy.Providers.CoverArt.Models;
 using Serilog.Events;
-using SixLabors.ImageSharp;
+using Size = System.Drawing.Size;
 
 namespace NoMercy.MediaProcessing.Images;
 

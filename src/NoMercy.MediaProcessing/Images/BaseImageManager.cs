@@ -9,22 +9,22 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Drawing;
+using ImageMagick;
 using Newtonsoft.Json;
 using NoMercy.Database;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
 
 namespace NoMercy.MediaProcessing.Images;
 
 public class BaseImageManager : IBaseImageManager, IDisposable
 {
-    public delegate Task<Image<Rgba32>?> DownloadUrl(
+    public delegate Task<MagickImage?> DownloadUrl(
         Uri path,
         bool? download,
         Size? maxDecodeSize = null
     );
 
-    public delegate Task<Image<Rgba32>?>? DownloadPath(
+    public delegate Task<MagickImage?>? DownloadPath(
         string? path,
         bool? download,
         Size? maxDecodeSize = null
@@ -33,7 +33,7 @@ public class BaseImageManager : IBaseImageManager, IDisposable
     public class ColorPaletteArgument
     {
         public required string Key { get; set; }
-        public Image<Rgba32>? ImageData { get; set; }
+        public MagickImage? ImageData { get; set; }
     }
 
     public class MultiUriType(string key, Uri url)
@@ -64,7 +64,7 @@ public class BaseImageManager : IBaseImageManager, IDisposable
         return JsonConvert.SerializeObject(dict);
     }
 
-    public static PaletteColors ColorPaletteFromImage(Image<Rgba32>? image)
+    public static PaletteColors ColorPaletteFromImage(MagickImage? image)
     {
         if (image is null)
             return new()
@@ -90,7 +90,7 @@ public class BaseImageManager : IBaseImageManager, IDisposable
         Size? maxDecodeSize = null
     )
     {
-        Image<Rgba32>? imageData = await client.Invoke(path, download, maxDecodeSize);
+        MagickImage? imageData = await client.Invoke(path, download, maxDecodeSize);
         if (imageData == null)
             return "";
 
@@ -112,7 +112,7 @@ public class BaseImageManager : IBaseImageManager, IDisposable
         List<ColorPaletteArgument> list = [];
         foreach (MultiUriType item in items)
         {
-            Image<Rgba32>? imageData = await client.Invoke(item.Url, download, maxDecodeSize);
+            MagickImage? imageData = await client.Invoke(item.Url, download, maxDecodeSize);
             list.Add(new() { Key = item.Key, ImageData = imageData });
         }
 
@@ -128,7 +128,7 @@ public class BaseImageManager : IBaseImageManager, IDisposable
     )
     {
 #pragma warning disable CS8602 // Dereference of a possibly null reference.
-        Image<Rgba32>? imageData = await client.Invoke(path, download, maxDecodeSize);
+        MagickImage? imageData = await client.Invoke(path, download, maxDecodeSize);
 #pragma warning restore CS8602 // Dereference of a possibly null reference.
 
         return GenerateColorPalette(
@@ -150,7 +150,7 @@ public class BaseImageManager : IBaseImageManager, IDisposable
         foreach (MultiStringType item in items)
         {
 #pragma warning disable CS8602 // Dereference of a possibly null reference.
-            Image<Rgba32>? imageData = await client.Invoke(item.Path, download, maxDecodeSize);
+            MagickImage? imageData = await client.Invoke(item.Path, download, maxDecodeSize);
 #pragma warning restore CS8602 // Dereference of a possibly null reference.
             list.Add(new() { Key = item.Key, ImageData = imageData });
         }
@@ -160,7 +160,7 @@ public class BaseImageManager : IBaseImageManager, IDisposable
 
     public void Dispose() { }
 
-    public static PaletteColors GetColorPaletteColors(Image<Rgba32> image)
+    public static PaletteColors GetColorPaletteColors(MagickImage image)
     {
         return ColorQuantizer.ExtractPalette(image);
     }
