@@ -11,6 +11,7 @@
 
 using System.Reflection;
 using FluentAssertions;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -220,6 +221,7 @@ public class PluginDiIntegrationTests : IDisposable
         services.AddSingleton(Mock.Of<IPluginDerivedAudio>());
         services.AddSingleton(analysisWriterFactory.Object);
 
+        services.AddDataProtection().UseEphemeralDataProtectionProvider();
         services.AddPluginSystem(_tempPluginsDir);
 
         ServiceProvider provider = services.BuildServiceProvider();
@@ -258,6 +260,7 @@ public class PluginDiIntegrationTests : IDisposable
         services.AddLogging();
         services.AddSingleton(TestStorageHelper.CreateBackend());
 
+        services.AddDataProtection().UseEphemeralDataProtectionProvider();
         services.AddPluginSystem(_tempPluginsDir);
 
         ServiceProvider provider = services.BuildServiceProvider();
@@ -301,6 +304,7 @@ public class PluginDiIntegrationTests : IDisposable
         services.AddLogging();
         services.AddSingleton(TestStorageHelper.CreateBackend());
 
+        services.AddDataProtection().UseEphemeralDataProtectionProvider();
         services.AddPluginSystem(_tempPluginsDir);
 
         ServiceProvider provider = services.BuildServiceProvider();
@@ -347,6 +351,7 @@ public class PluginDiIntegrationTests : IDisposable
         services.AddLogging();
         services.AddSingleton(TestStorageHelper.CreateBackend());
 
+        services.AddDataProtection().UseEphemeralDataProtectionProvider();
         services.AddPluginSystem(_tempPluginsDir);
 
         ServiceProvider provider = services.BuildServiceProvider();
