@@ -32,87 +32,87 @@ public class HubContractSnapshotTests
 
     private static readonly string[] CastHubMethods =
     [
-        "AudioTracks(NoMercy.Api.Hubs.CastHub.AudioTrack[]) -> System.Threading.Tasks.Task",
-        "CastPlaylist(System.String) -> System.Threading.Tasks.Task",
-        "CurrentAudioTrack(NoMercy.Api.Hubs.CastHub.AudioTrack) -> System.Threading.Tasks.Task",
-        "CurrentSubtitleTrack(NoMercy.Api.Hubs.CastHub.TextTrack) -> System.Threading.Tasks.Task",
-        "Disconnect() -> System.Threading.Tasks.Task",
-        "Ended() -> System.Threading.Tasks.Task",
+        "AudioTracks(NoMercy.Api.Hubs.CastHub.AudioTrack[]) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "CastPlaylist(System.String) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "CurrentAudioTrack(NoMercy.Api.Hubs.CastHub.AudioTrack) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "CurrentSubtitleTrack(NoMercy.Api.Hubs.CastHub.TextTrack) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "Disconnect() -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "Ended() -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
         "GetChromeCasts() -> System.String[]",
         "GetChromecastStatus() -> Sharpcaster.Models.ChromecastStatus.ChromecastStatus",
         "GetMediaStatus() -> Sharpcaster.Models.Media.MediaStatus",
-        "GetPlayerState() -> System.Threading.Tasks.Task",
-        "Item(NoMercy.Api.Hubs.CastHub.PlaylistItem) -> System.Threading.Tasks.Task",
-        "Launch() -> System.Threading.Tasks.Task",
-        "Muted(System.Boolean) -> System.Threading.Tasks.Task",
-        "Pause() -> System.Threading.Tasks.Task",
-        "Play() -> System.Threading.Tasks.Task",
-        "PlayerState(NoMercy.Api.Hubs.CastHub.CastPlayerState) -> System.Threading.Tasks.Task",
-        "Playlist(NoMercy.Api.Hubs.CastHub.PlaylistItem[]) -> System.Threading.Tasks.Task",
-        "SelectChromecast(System.String) -> System.Threading.Tasks.Task",
-        "SetAudioTrack(System.Int32) -> System.Threading.Tasks.Task",
-        "SetMuted(System.Boolean) -> System.Threading.Tasks.Task",
-        "SetNext() -> System.Threading.Tasks.Task",
-        "SetPause() -> System.Threading.Tasks.Task",
-        "SetPlay() -> System.Threading.Tasks.Task",
-        "SetPlaylistItem(System.Int32) -> System.Threading.Tasks.Task",
-        "SetPrevious() -> System.Threading.Tasks.Task",
-        "SetSeek(System.Int32) -> System.Threading.Tasks.Task",
-        "SetStop() -> System.Threading.Tasks.Task",
-        "SetSubtitleTrack(System.Int32) -> System.Threading.Tasks.Task",
-        "SetVolume(System.Int32) -> System.Threading.Tasks.Task",
-        "Stop() -> System.Threading.Tasks.Task",
-        "SubtitleTracks(NoMercy.Api.Hubs.CastHub.TextTrack[]) -> System.Threading.Tasks.Task",
-        "Time(NoMercy.Api.Hubs.CastHub.TimeData) -> System.Threading.Tasks.Task",
-        "Volume(System.Int32) -> System.Threading.Tasks.Task",
+        "GetPlayerState() -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "Item(NoMercy.Api.Hubs.CastHub.PlaylistItem) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "Launch() -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "Muted(System.Boolean) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "Pause() -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "Play() -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "PlayerState(NoMercy.Api.Hubs.CastHub.CastPlayerState) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "Playlist(NoMercy.Api.Hubs.CastHub.PlaylistItem[]) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "SelectChromecast(System.String) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "SetAudioTrack(System.Int32) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "SetMuted(System.Boolean) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "SetNext() -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "SetPause() -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "SetPlay() -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "SetPlaylistItem(System.Int32) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "SetPrevious() -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "SetSeek(System.Int32) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "SetStop() -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "SetSubtitleTrack(System.Int32) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "SetVolume(System.Int32) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "Stop() -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "SubtitleTracks(NoMercy.Api.Hubs.CastHub.TextTrack[]) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "Time(NoMercy.Api.Hubs.CastHub.TimeData) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "Volume(System.Int32) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
     ];
 
     private static readonly string[] ContentAnalysisHubMethods = [];
 
     private static readonly string[] DashboardHubMethods =
     [
-        "StartResources() -> System.Void",
-        "StopResources() -> System.Void",
+        "StartResources() -> NoMercy.Api.Hubs.HubCommandResult",
+        "StopResources() -> NoMercy.Api.Hubs.HubCommandResult",
     ];
 
     private static readonly string[] DeviceHubMethods =
     [
-        "DeclareCapabilities(NoMercy.Encoder.Devices.DeviceCapabilities) -> System.Threading.Tasks.Task",
+        "DeclareCapabilities(NoMercy.Encoder.Devices.DeviceCapabilities) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
         "GetDevices() -> System.Threading.Tasks.Task<System.Collections.Generic.List<NoMercy.Networking.Devices.DeviceListItem>>",
         "PendingNotices() -> System.Threading.Tasks.Task<System.Collections.Generic.List<NoMercy.Api.Hubs.DeviceDropNoticeDto>>",
-        "WakeForMusic(System.String) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.WakeResult>",
-        "WakeForVideo(System.String) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.WakeResult>",
+        "WakeForMusic(System.String) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "WakeForVideo(System.String) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
     ];
 
     private static readonly string[] DrivesHubMethods = [];
 
     private static readonly string[] LiveTranscodeHubMethods =
     [
-        "Heartbeat(System.String) -> System.Void",
-        "ReportBufferHealth(System.String, System.Double, System.Double) -> System.Void",
-        "ReportPlayhead(System.String, System.Double) -> System.Void",
-        "RequestPause(System.String) -> System.Void",
-        "RequestResume(System.String) -> System.Void",
-        "SubscribeToSession(System.String) -> System.Threading.Tasks.Task",
-        "UnsubscribeFromSession(System.String) -> System.Threading.Tasks.Task",
+        "Heartbeat(System.String) -> NoMercy.Api.Hubs.HubCommandResult",
+        "ReportBufferHealth(System.String, System.Double, System.Double) -> NoMercy.Api.Hubs.HubCommandResult",
+        "ReportPlayhead(System.String, System.Double) -> NoMercy.Api.Hubs.HubCommandResult",
+        "RequestPause(System.String) -> NoMercy.Api.Hubs.HubCommandResult",
+        "RequestResume(System.String) -> NoMercy.Api.Hubs.HubCommandResult",
+        "SubscribeToSession(System.String) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "UnsubscribeFromSession(System.String) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
     ];
 
     private static readonly string[] MusicHubMethods =
     [
-        "ChangeDeviceCommand(System.String) -> System.Threading.Tasks.Task",
-        "ChangeVolumeCommand(System.Nullable<System.Int32>) -> System.Threading.Tasks.Task",
-        "CrossfadeCompleteCommand(System.Nullable<System.Guid>) -> System.Threading.Tasks.Task",
-        "CrossfadeStartCommand(System.Nullable<System.Int32>) -> System.Threading.Tasks.Task",
-        "CurrentTimeCommand(System.Nullable<System.Int32>) -> System.Threading.Tasks.Task",
-        "CurrentTimeForItemCommand(System.Nullable<System.Double>, System.String) -> System.Threading.Tasks.Task",
+        "ChangeDeviceCommand(System.String) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "ChangeVolumeCommand(System.Nullable<System.Int32>) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "CrossfadeCompleteCommand(System.Nullable<System.Guid>) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "CrossfadeStartCommand(System.Nullable<System.Int32>) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "CurrentTimeCommand(System.Nullable<System.Int32>) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "CurrentTimeForItemCommand(System.Nullable<System.Double>, System.String) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
         "GetServerTime() -> System.Int64",
         "GetStateCommand() -> NoMercy.Api.Services.Music.MusicPlayerState",
-        "PlaybackCommand(System.String, System.Object) -> System.Threading.Tasks.Task",
-        "ReportPositionAtCommand(System.Nullable<System.Int32>, System.Nullable<System.Int64>) -> System.Threading.Tasks.Task",
-        "ReportPositionCommand(System.Nullable<System.Int32>) -> System.Threading.Tasks.Task",
-        "ReportPositionForItemCommand(System.Nullable<System.Int64>, System.String) -> System.Threading.Tasks.Task",
-        "SetDeviceVolumeCommand(System.String, System.Nullable<System.Int32>) -> System.Threading.Tasks.Task",
-        "StartPlaybackCommand(System.String, System.Nullable<System.Guid>, System.Nullable<System.Guid>) -> System.Threading.Tasks.Task",
+        "PlaybackCommand(System.String, System.Object) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "ReportPositionAtCommand(System.Nullable<System.Int32>, System.Nullable<System.Int64>) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "ReportPositionCommand(System.Nullable<System.Int32>) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "ReportPositionForItemCommand(System.Nullable<System.Int64>, System.String) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "SetDeviceVolumeCommand(System.String, System.Nullable<System.Int32>) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "StartPlaybackCommand(System.String, System.Nullable<System.Guid>, System.Nullable<System.Guid>) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
     ];
 
     private static readonly string[] RipperHubMethods =
@@ -122,12 +122,12 @@ public class HubContractSnapshotTests
 
     private static readonly string[] VideoHubMethods =
     [
-        "ChangeDeviceCommand(System.String) -> System.Threading.Tasks.Task",
+        "ChangeDeviceCommand(System.String) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
         "GetStateCommand() -> NoMercy.Api.Services.Video.VideoPlayerState",
-        "PlaybackCommand(System.String, System.Object) -> System.Threading.Tasks.Task",
-        "RemoveWatched(NoMercy.Api.Services.Video.VideoProgressRequest) -> System.Threading.Tasks.Task",
-        "SetTime(NoMercy.Api.Services.Video.VideoProgressRequest) -> System.Threading.Tasks.Task",
-        "StartPlaybackCommand(System.String, System.Object, System.Nullable<System.Int32>) -> System.Threading.Tasks.Task",
+        "PlaybackCommand(System.String, System.Object) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "RemoveWatched(NoMercy.Api.Services.Video.VideoProgressRequest) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "SetTime(NoMercy.Api.Services.Video.VideoProgressRequest) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "StartPlaybackCommand(System.String, System.Object, System.Nullable<System.Int32>) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
     ];
 
     /// <summary>
@@ -138,8 +138,8 @@ public class HubContractSnapshotTests
     private static readonly string[] PluginHubMethods =
     [
         "Send(System.String, System.String, System.Text.Json.Nodes.JsonNode) -> System.Threading.Tasks.Task<System.Boolean>",
-        "Subscribe(System.String) -> System.Threading.Tasks.Task",
-        "Unsubscribe(System.String) -> System.Threading.Tasks.Task",
+        "Subscribe(System.String) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
+        "Unsubscribe(System.String) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
     ];
 
     private static readonly string[] KnownHubTypeNames =

@@ -95,7 +95,11 @@ public class CastHubSendToRoutingTests : IClassFixture<NoMercyApiFactory>
         yield return ["Ended", (Func<CastHub, Task>)(h => h.Ended())];
         yield return ["Volume", (Func<CastHub, Task>)(h => h.Volume(50))];
         yield return ["Muted", (Func<CastHub, Task>)(h => h.Muted(true))];
-        yield return ["Item", (Func<CastHub, Task>)(h => h.Item(new CastHub.PlaylistItem()))];
+        yield return
+        [
+            "Item",
+            (Func<CastHub, Task>)(h => h.Item(new CastHub.PlaylistItem { Id = "item-1" })),
+        ];
         yield return ["Playlist", (Func<CastHub, Task>)(h => h.Playlist([]))];
         yield return ["SubtitleTracks", (Func<CastHub, Task>)(h => h.SubtitleTracks([]))];
         yield return

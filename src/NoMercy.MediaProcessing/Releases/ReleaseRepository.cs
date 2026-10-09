@@ -13,6 +13,9 @@ using Microsoft.EntityFrameworkCore;
 using NoMercy.Database;
 using NoMercy.Database.Models.Music;
 using NoMercy.NmSystem.Extensions;
+using NoMercy.NmSystem.SystemCalls;
+using NoMercy.Storage;
+using Serilog.Events;
 
 namespace NoMercy.MediaProcessing.Releases;
 
@@ -20,6 +23,15 @@ public class ReleaseRepository(MediaContext context) : IReleaseRepository
 {
     public Task Store(Album release)
     {
+        if (HostFolderPath.ContainsSecondRoot(release.HostFolder))
+        {
+            Logger.App(
+                $"Skipping album {release.Id}: host folder holds a second root: '{release.HostFolder}'",
+                LogEventLevel.Error
+            );
+            return Task.CompletedTask;
+        }
+
         if (string.IsNullOrEmpty(release.TitleSort))
             release.TitleSort = release.Name.TitleSort();
 

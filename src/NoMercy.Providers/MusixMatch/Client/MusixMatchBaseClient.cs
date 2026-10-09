@@ -27,7 +27,6 @@ public class MusixMatchBaseClient : ExternalApiClient
 
     protected override string HttpClientName => HttpClientNames.MusixMatch;
     protected override Uri BaseUrl => new("https://apic-desktop.musixmatch.com/ws/1.1/");
-    protected override int ConcurrentRequests => 2;
 
     protected override void LogRequest(string url) => Logger.MusixMatch(url, LogEventLevel.Verbose);
 
