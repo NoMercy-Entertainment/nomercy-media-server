@@ -77,16 +77,22 @@ public class MovieExtrasJob : AbstractMediaExraDataJob<TmdbMovieAppends>
             LoggerFactory.CreateLogger<PersonManager>()
         );
 
-        await personManager.Store(Storage);
+        await personManager.Store(Storage).WithTimeout(nameof(PersonManager.Store));
 
-        await movieManager.StoreImages(Storage);
-        await movieManager.StoreSimilar(Storage);
-        await movieManager.StoreRecommendations(Storage);
-        await movieManager.StoreAlternativeTitles(Storage);
-        await movieManager.StoreWatchProviders(Storage);
-        await movieManager.StoreVideos(Storage);
-        await movieManager.StoreCompanies(Storage);
-        await movieManager.StoreKeywords(Storage);
+        await movieManager.StoreImages(Storage).WithTimeout(nameof(MovieManager.StoreImages));
+        await movieManager.StoreSimilar(Storage).WithTimeout(nameof(MovieManager.StoreSimilar));
+        await movieManager
+            .StoreRecommendations(Storage)
+            .WithTimeout(nameof(MovieManager.StoreRecommendations));
+        await movieManager
+            .StoreAlternativeTitles(Storage)
+            .WithTimeout(nameof(MovieManager.StoreAlternativeTitles));
+        await movieManager
+            .StoreWatchProviders(Storage)
+            .WithTimeout(nameof(MovieManager.StoreWatchProviders));
+        await movieManager.StoreVideos(Storage).WithTimeout(nameof(MovieManager.StoreVideos));
+        await movieManager.StoreCompanies(Storage).WithTimeout(nameof(MovieManager.StoreCompanies));
+        await movieManager.StoreKeywords(Storage).WithTimeout(nameof(MovieManager.StoreKeywords));
 
         if (EventBusProvider.IsConfigured)
             await EventBusProvider.Current.PublishAsync(
