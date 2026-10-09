@@ -28,9 +28,9 @@ public class PaletteBackfillJob : IShouldQueue
 
     private const int BatchSize = 200;
 
-    // Bumped whenever a new entity type joins the backfill so the one-shot drain
-    // re-opens for existing libraries. v2 added "track".
-    public const int CurrentVersion = 2;
+    // Bumped to re-open the one-shot drain for existing libraries. v2 added
+    // "track"; v3 repairs GUID rows skipped by offset paging.
+    public const int CurrentVersion = 3;
 
     // Entity types and their PK kind (int vs Guid)
     private static readonly string[] IntTypes =
@@ -78,7 +78,7 @@ public class PaletteBackfillJob : IShouldQueue
 
         foreach (string entityType in GuidTypes)
         {
-            bool dispatched = await ProcessGuidTypeAsync(appDb, db, entityType);
+            bool dispatched = await ProcessGuidTypeAsync(db, entityType);
             if (dispatched)
                 anyDispatched = true;
         }
@@ -135,23 +135,9 @@ public class PaletteBackfillJob : IShouldQueue
         return rows.Count == BatchSize;
     }
 
-    private static async Task<bool> ProcessGuidTypeAsync(
-        AppDbContext appDb,
-        MediaContext db,
-        string entityType
-    )
+    private static async Task<bool> ProcessGuidTypeAsync(MediaContext db, string entityType)
     {
-        long offset = await PaletteBackfillState.GetCursorAsync(
-            appDb,
-            entityType,
-            CancellationToken.None
-        );
-
-        List<(Guid Id, string? Palette)> rows = await GetGuidPendingRowsAsync(
-            db,
-            entityType,
-            (int)offset
-        );
+        List<(Guid Id, string? Palette)> rows = await GetGuidPendingRowsAsync(db, entityType);
         if (rows.Count == 0)
             return false;
 
@@ -165,14 +151,6 @@ public class PaletteBackfillJob : IShouldQueue
                 "palette",
                 PalettePriority.ForBackfill(entityType)
             );
-
-        long newOffset = offset + rows.Count;
-        await PaletteBackfillState.SetCursorAsync(
-            appDb,
-            entityType,
-            newOffset,
-            CancellationToken.None
-        );
 
         return rows.Count == BatchSize;
     }
@@ -261,43 +239,42 @@ public class PaletteBackfillJob : IShouldQueue
 
     private static Task<List<(Guid Id, string? Palette)>> GetGuidPendingRowsAsync(
         MediaContext db,
-        string entityType,
-        int offset
+        string entityType
     ) =>
         entityType switch
         {
             "artist" => db
                 .Artists.Where(a => a._colorPalette == null || a._colorPalette == "")
+                .AsNoTracking()
                 .OrderBy(a => a.Id)
-                .Skip(offset)
                 .Take(BatchSize)
                 .Select(a => new ValueTuple<Guid, string?>(a.Id, a._colorPalette))
                 .ToListAsync(),
             "album" => db
                 .Albums.Where(a => a._colorPalette == null || a._colorPalette == "")
+                .AsNoTracking()
                 .OrderBy(a => a.Id)
-                .Skip(offset)
                 .Take(BatchSize)
                 .Select(a => new ValueTuple<Guid, string?>(a.Id, a._colorPalette))
                 .ToListAsync(),
             "track" => db
                 .Tracks.Where(t => t._colorPalette == null || t._colorPalette == "")
+                .AsNoTracking()
                 .OrderBy(t => t.Id)
-                .Skip(offset)
                 .Take(BatchSize)
                 .Select(t => new ValueTuple<Guid, string?>(t.Id, t._colorPalette))
                 .ToListAsync(),
             "playlist" => db
                 .Playlists.Where(p => p._colorPalette == null || p._colorPalette == "")
+                .AsNoTracking()
                 .OrderBy(p => p.Id)
-                .Skip(offset)
                 .Take(BatchSize)
                 .Select(p => new ValueTuple<Guid, string?>(p.Id, p._colorPalette))
                 .ToListAsync(),
             "releasegroup" => db
                 .ReleaseGroups.Where(r => r._colorPalette == null || r._colorPalette == "")
+                .AsNoTracking()
                 .OrderBy(r => r.Id)
-                .Skip(offset)
                 .Take(BatchSize)
                 .Select(r => new ValueTuple<Guid, string?>(r.Id, r._colorPalette))
                 .ToListAsync(),
