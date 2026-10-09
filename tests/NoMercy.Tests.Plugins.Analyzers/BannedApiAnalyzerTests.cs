@@ -91,6 +91,119 @@ public class BannedApiAnalyzerTests
     }
 
     [Fact]
+    public async Task Starting_a_process_from_a_static_factory_is_flagged_once()
+    {
+        const string source = """
+            using System.Diagnostics;
+
+            public class Tools
+            {
+                public void Run()
+                {
+                    Process.Start("cmd");
+                }
+            }
+            """;
+
+        IReadOnlyList<Diagnostic> diagnostics = await AnalyzerHarness.RunAsync<BannedApiAnalyzer>(
+            source
+        );
+
+        diagnostics.Should().ContainSingle().Which.Id.Should().Be("NMP0004");
+        diagnostics[0].GetMessage().Should().Contain("context.Process.SpawnAsync");
+    }
+
+    [Fact]
+    public async Task Accepting_a_socket_from_a_factory_is_flagged_once()
+    {
+        const string source = """
+            using System.Net.Sockets;
+
+            public class Peer
+            {
+                public void Accept(Socket listener)
+                {
+                    Socket accepted = listener.Accept();
+                }
+            }
+            """;
+
+        IReadOnlyList<Diagnostic> diagnostics = await AnalyzerHarness.RunAsync<BannedApiAnalyzer>(
+            source
+        );
+
+        diagnostics.Should().ContainSingle().Which.Id.Should().Be("NMP0002");
+    }
+
+    [Fact]
+    public async Task Accessing_a_static_member_of_a_banned_type_is_flagged_once()
+    {
+        const string source = """
+            using System.Diagnostics;
+
+            public class Tools
+            {
+                public void Inspect()
+                {
+                    int count = Process.GetProcesses().Length;
+                }
+            }
+            """;
+
+        IReadOnlyList<Diagnostic> diagnostics = await AnalyzerHarness.RunAsync<BannedApiAnalyzer>(
+            source
+        );
+
+        diagnostics.Should().ContainSingle().Which.Id.Should().Be("NMP0004");
+    }
+
+    [Fact]
+    public async Task Accessing_a_static_property_of_a_banned_type_is_flagged_once()
+    {
+        const string source = """
+            using System.Net.Http;
+
+            public class Catalog
+            {
+                public object Proxy() => HttpClient.DefaultProxy;
+            }
+            """;
+
+        IReadOnlyList<Diagnostic> diagnostics = await AnalyzerHarness.RunAsync<BannedApiAnalyzer>(
+            source
+        );
+
+        diagnostics.Should().ContainSingle().Which.Id.Should().Be("NMP0001");
+    }
+
+    [Fact]
+    public async Task Factory_on_an_unbanned_type_returning_a_banned_type_is_flagged_once()
+    {
+        const string source = """
+            using System.Net.Http;
+
+            public static class ClientFactory
+            {
+                public static HttpClient Create() => null!;
+            }
+
+            public class Catalog
+            {
+                public void Fetch()
+                {
+                    HttpClient client = ClientFactory.Create();
+                }
+            }
+            """;
+
+        IReadOnlyList<Diagnostic> diagnostics = await AnalyzerHarness.RunAsync<BannedApiAnalyzer>(
+            source
+        );
+
+        diagnostics.Should().ContainSingle().Which.Id.Should().Be("NMP0001");
+    }
+
+    [Fact]
     public async Task Listening_on_a_port_is_flagged_with_NMP0003()
     {
         const string source = """
