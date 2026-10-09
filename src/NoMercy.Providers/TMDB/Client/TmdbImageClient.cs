@@ -23,16 +23,8 @@ public abstract class TmdbImageClient
 {
     public const string ImageBaseUrl = "https://image.tmdb.org/t/p/";
 
-    // Image downloads hit image.tmdb.org (a separate host from the API) and
-    // are throttled by their own queue rather than the shared API queue.
-    private static readonly Queue ImageQueue = new(
-        new()
-        {
-            Concurrent = 50,
-            Interval = 1000,
-            Start = true,
-        }
-    );
+    // Image downloads use the TMDB family queue, including the API clients.
+    private static Queue ImageQueue => ProviderQueues.For(HttpClientNames.TmdbImage);
 
     private static IStorage? _storage;
 
@@ -55,7 +47,7 @@ public abstract class TmdbImageClient
     {
         try
         {
-            return ImageQueue.Enqueue(Task, path, true);
+            return DownloadQueuedAsync();
         }
         catch (MagickException e)
         {
@@ -64,6 +56,21 @@ public abstract class TmdbImageClient
                 LogEventLevel.Error
             );
             return null;
+        }
+
+        async Task<MagickImage?> DownloadQueuedAsync()
+        {
+            try
+            {
+                return await ImageQueue.Enqueue(Task, path, true);
+            }
+            catch (HttpRequestException ex)
+                when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests
+                    || (int?)ex.StatusCode is >= 500 and <= 599
+                )
+            {
+                return null;
+            }
         }
 
         async Task<MagickImage?> Task()
@@ -118,7 +125,14 @@ public abstract class TmdbImageClient
                 using HttpResponseMessage response = await httpClient.GetAsync(url);
 
                 if (!response.IsSuccessStatusCode)
+                {
+                    if (
+                        response.StatusCode == System.Net.HttpStatusCode.TooManyRequests
+                        || (int)response.StatusCode >= 500
+                    )
+                        response.EnsureProviderSuccess();
                     return null;
+                }
 
                 if (download is false)
                 {

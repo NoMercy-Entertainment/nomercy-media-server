@@ -29,7 +29,6 @@ public class AcoustIdBaseClient : ExternalApiClient
 
     protected override string HttpClientName => HttpClientNames.AcoustId;
     protected override Uri BaseUrl => new("https://api.acoustid.org/v2/");
-    protected override int ConcurrentRequests => 3;
 
     protected override void LogRequest(string url) => Logger.AcoustId(url, LogEventLevel.Verbose);
 
@@ -74,6 +73,13 @@ public class AcoustIdBaseClient : ExternalApiClient
         {
             return null;
         }
+        catch (HttpRequestException ex)
+            when (ex.StatusCode == HttpStatusCode.TooManyRequests
+                || (int?)ex.StatusCode is >= 500 and <= 599
+            )
+        {
+            return null;
+        }
     }
 
     /// <summary>
@@ -93,7 +99,7 @@ public class AcoustIdBaseClient : ExternalApiClient
         );
 
         using HttpResponseMessage response = await Client.PostAsync(url, content);
-        response.EnsureSuccessStatusCode();
+        response.EnsureProviderSuccess();
 
         return await response.Content.ReadAsStringAsync();
     }

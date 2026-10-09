@@ -29,7 +29,6 @@ public class MusicBrainzBaseClient : ExternalApiClient
     protected override Uri BaseUrl => new("https://musicbrainz.org/ws/2/");
 
     // MusicBrainz asks clients to stay at roughly one request per second.
-    protected override int RequestIntervalMs => 1500;
 
     // MusicBrainz answers 403 to anonymous callers, so a request without a
     // User-Agent never returns data. The DI-registered client normally carries one,

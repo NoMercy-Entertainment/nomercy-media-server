@@ -22,14 +22,7 @@ namespace NoMercy.Providers.NoMercy.Client;
 public abstract class NoMercyImageClient
 {
     // Image downloads use their own queue rather than the shared TMDB API queue.
-    private static readonly Queue ImageQueue = new(
-        new()
-        {
-            Concurrent = 50,
-            Interval = 1000,
-            Start = true,
-        }
-    );
+    private static Queue ImageQueue => ProviderQueues.For(HttpClientNames.NoMercyImage);
 
     private static IStorage? _storage;
 
@@ -50,7 +43,7 @@ public abstract class NoMercyImageClient
         Size? maxDecodeSize = null
     )
     {
-        return ImageQueue.Enqueue(Task, $"original{path}", true);
+        return EnqueueDownloadAsync(Task, path);
 
         async Task<MagickImage?> Task()
         {
@@ -77,7 +70,14 @@ public abstract class NoMercyImageClient
 
                 using HttpResponseMessage response = await httpClient.GetAsync(url);
                 if (!response.IsSuccessStatusCode)
+                {
+                    if (
+                        response.StatusCode == System.Net.HttpStatusCode.TooManyRequests
+                        || (int)response.StatusCode >= 500
+                    )
+                        response.EnsureProviderSuccess();
                     return null;
+                }
 
                 byte[] bytes = await response.Content.ReadAsByteArrayAsync();
 
@@ -89,7 +89,7 @@ public abstract class NoMercyImageClient
 
                 return new(bytes, MagickReadSettingsFactory.Create(maxDecodeSize));
             }
-            catch (Exception e)
+            catch (Exception e) when (e is not HttpRequestException)
             {
                 Logger.MovieDb(
                     $"Error downloading image: {path} - {e.Message}",
@@ -97,6 +97,24 @@ public abstract class NoMercyImageClient
                 );
             }
 
+            return null;
+        }
+    }
+
+    private static async Task<MagickImage?> EnqueueDownloadAsync(
+        Func<Task<MagickImage?>> task,
+        string? path
+    )
+    {
+        try
+        {
+            return await ImageQueue.Enqueue(task, $"original{path}", true);
+        }
+        catch (HttpRequestException ex)
+            when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests
+                || (int?)ex.StatusCode is >= 500 and <= 599
+            )
+        {
             return null;
         }
     }

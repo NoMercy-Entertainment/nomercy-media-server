@@ -94,10 +94,46 @@ public class CoverArtCoverArtClient : CoverArtBaseClient
 
         HttpClient httpClient = HttpClientProvider.CreateClient(HttpClientNames.CoverArtImage);
 
-        using HttpResponseMessage response = await httpClient.GetAsync(url);
+        HttpResponseMessage queuedResponse;
+        try
+        {
+            queuedResponse = await ProviderQueues
+                .For(HttpClientNames.CoverArtImage)
+                .Enqueue(
+                    async () =>
+                    {
+                        // Owned by Download after the queue returns; disposed here on retry.
+                        HttpResponseMessage reply = await httpClient.GetAsync(url);
+                        if (
+                            reply.StatusCode == System.Net.HttpStatusCode.TooManyRequests
+                            || (int)reply.StatusCode >= 500
+                        )
+                        {
+                            try
+                            {
+                                reply.EnsureProviderSuccess();
+                            }
+                            catch
+                            {
+                                reply.Dispose();
+                                throw;
+                            }
+                        }
+                        return reply;
+                    },
+                    url?.ToString()
+                );
+        }
+        catch (HttpRequestException ex)
+            when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests
+                || (int?)ex.StatusCode is >= 500 and <= 599
+            )
+        {
+            return null;
+        }
+        using HttpResponseMessage response = queuedResponse;
         if (!response.IsSuccessStatusCode)
             return null;
-
         byte[] bytes = await response.Content.ReadAsByteArrayAsync();
 
         if (download is not false && !await storage.ExistsAsync(filePath, CancellationToken.None))
