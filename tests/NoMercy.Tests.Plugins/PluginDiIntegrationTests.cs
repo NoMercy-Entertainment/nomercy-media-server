@@ -11,6 +11,7 @@
 
 using System.Reflection;
 using FluentAssertions;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -212,6 +213,7 @@ public class PluginDiIntegrationTests : IDisposable
         ServiceCollection services = new();
         services.AddSingleton<IEventBus, InMemoryEventBus>();
         services.AddLogging();
+        services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
         services.AddSingleton(TestStorageHelper.CreateBackend());
         services.AddSingleton(Mock.Of<IPluginEncoder>());
         services.AddSingleton(Mock.Of<IPluginJobs>());
@@ -256,6 +258,7 @@ public class PluginDiIntegrationTests : IDisposable
         ServiceCollection services = new();
         services.AddSingleton<IEventBus, InMemoryEventBus>();
         services.AddLogging();
+        services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
         services.AddSingleton(TestStorageHelper.CreateBackend());
 
         services.AddPluginSystem(_tempPluginsDir);
@@ -299,6 +302,7 @@ public class PluginDiIntegrationTests : IDisposable
         ServiceCollection services = new();
         services.AddSingleton<IEventBus, InMemoryEventBus>();
         services.AddLogging();
+        services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
         services.AddSingleton(TestStorageHelper.CreateBackend());
 
         services.AddPluginSystem(_tempPluginsDir);
@@ -345,6 +349,7 @@ public class PluginDiIntegrationTests : IDisposable
         ServiceCollection services = new();
         services.AddSingleton<IEventBus, InMemoryEventBus>();
         services.AddLogging();
+        services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
         services.AddSingleton(TestStorageHelper.CreateBackend());
 
         services.AddPluginSystem(_tempPluginsDir);
