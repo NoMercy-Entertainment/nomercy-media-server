@@ -997,12 +997,14 @@ public class VideoEncodeJob
                 "[VideoEncodeJob] Finalize: folder {FolderId} not found — aborting post-encode",
                 FolderId
             );
-            return;
+            throw new InvalidOperationException($"Finalize folder {FolderId} no longer exists.");
         }
 
         FileMetadata fileMetadata = await GetFileMetaData(folder, context);
         if (!fileMetadata.Success)
-            return;
+            throw new InvalidOperationException(
+                $"Finalize metadata for folder {FolderId} could not be resolved."
+            );
 
         List<EncodeTaskOutcome> outcomes = await context
             .EncodeTaskOutcomes.AsNoTracking()
@@ -1115,6 +1117,14 @@ public class VideoEncodeJob
                 tempDir,
                 state.GroupTag
             );
+            await ReportFinalizeFailureAsync(
+                context,
+                fileMetadata,
+                FolderId.ToString(),
+                InputFile,
+                "Shared temp folder missing or empty",
+                "FinalizeOutputMissing"
+            );
             return;
         }
 
@@ -1174,7 +1184,17 @@ public class VideoEncodeJob
                 }
 
                 if (resolveFailed)
+                {
+                    await ReportFinalizeFailureAsync(
+                        context,
+                        fileMetadata,
+                        FolderId.ToString(),
+                        InputFile,
+                        "Merged preset could not be resolved",
+                        "FinalizePresetMissing"
+                    );
                     return;
+                }
 
                 OutputPlan? mergedPlan = await orchestrator.PlanMergedAsync(mergeRequests);
                 if (mergedPlan is null)
@@ -1182,6 +1202,14 @@ public class VideoEncodeJob
                     Log.LogError(
                         "[VideoEncodeJob] Finalize: could not rebuild the merged plan for preset set [{PresetIds}] — aborting post-encode",
                         string.Join(", ", presetIds)
+                    );
+                    await ReportFinalizeFailureAsync(
+                        context,
+                        fileMetadata,
+                        FolderId.ToString(),
+                        InputFile,
+                        "Merged finalize plan could not be rebuilt",
+                        "FinalizePlanMissing"
                     );
                     return;
                 }
@@ -1207,6 +1235,14 @@ public class VideoEncodeJob
                         "[VideoEncodeJob] Finalize: cannot resolve preset {PresetId} — {Message}",
                         state.PresetId,
                         ex.Message
+                    );
+                    await ReportFinalizeFailureAsync(
+                        context,
+                        fileMetadata,
+                        FolderId.ToString(),
+                        InputFile,
+                        ex.Message,
+                        "FinalizePresetMissing"
                     );
                     return;
                 }
@@ -1338,6 +1374,36 @@ public class VideoEncodeJob
         Log.LogInformation(
             "[VideoEncodeJob] Finalize complete for GroupTag={GroupTag}",
             state.GroupTag
+        );
+    }
+
+    internal static async Task ReportFinalizeFailureAsync(
+        MediaContext context,
+        FileMetadata fileMetadata,
+        string folderId,
+        string inputFile,
+        string message,
+        string failureType
+    )
+    {
+        await new IncompleteEncodeRecorder().RecordFailureAsync(
+            context,
+            mediaId: fileMetadata.Id,
+            folderId: folderId,
+            title: fileMetadata.Title,
+            missingKeys: ["finalize"],
+            lastError: message,
+            ct: CancellationToken.None
+        );
+
+        await EncoderCardTerminator.PublishFailedAsync(
+            fileMetadata.Id,
+            fileMetadata.Title,
+            inputFile,
+            message,
+            failureType,
+            fileMetadata.PosterPath,
+            fileMetadata.ImgPath
         );
     }
 
