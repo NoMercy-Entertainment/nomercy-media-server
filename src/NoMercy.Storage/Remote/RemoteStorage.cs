@@ -170,16 +170,25 @@ public sealed class RemoteStorage : IStorage
         string tmp = Path.Combine(StoragePaths.TempRoot, $"nomercy-remote-{Guid.NewGuid():N}");
 #pragma warning restore NMS001
 
-        await using Stream src = _driver.OpenReadIsolated(V(path));
-        await using FileStream dst = new(
-            tmp,
-            FileMode.Create,
-            FileAccess.Write,
-            FileShare.None,
-            65536,
-            useAsync: true
-        );
-        await src.CopyToAsync(dst, ct);
+        try
+        {
+            await using Stream src = _driver.OpenReadIsolated(V(path));
+            await using FileStream dst = new(
+                tmp,
+                FileMode.Create,
+                FileAccess.Write,
+                FileShare.None,
+                65536,
+                useAsync: true
+            );
+            await src.CopyToAsync(dst, ct);
+        }
+        catch
+        {
+            if (File.Exists(tmp))
+                File.Delete(tmp);
+            throw;
+        }
 
         return new(
             tmp,
@@ -262,12 +271,7 @@ public sealed class RemoteStorage : IStorage
         )
         {
             entries.Add(
-                new(
-                    info.Path,
-                    info.IsDirectory,
-                    info.Size,
-                    new(info.LastWriteUtc, TimeSpan.Zero)
-                )
+                new(info.Path, info.IsDirectory, info.Size, new(info.LastWriteUtc, TimeSpan.Zero))
             );
         }
         return entries;
@@ -280,9 +284,18 @@ public sealed class RemoteStorage : IStorage
         string tmp = Path.Combine(StoragePaths.TempRoot, $"nomercy-remote-{Guid.NewGuid():N}");
 #pragma warning restore NMS001
 
-        using Stream src = _driver.OpenReadIsolated(V(path));
-        using FileStream dst = new(tmp, FileMode.Create, FileAccess.Write, FileShare.None);
-        src.CopyTo(dst);
+        try
+        {
+            using Stream src = _driver.OpenReadIsolated(V(path));
+            using FileStream dst = new(tmp, FileMode.Create, FileAccess.Write, FileShare.None);
+            src.CopyTo(dst);
+        }
+        catch
+        {
+            if (File.Exists(tmp))
+                File.Delete(tmp);
+            throw;
+        }
 
         return new(
             tmp,
