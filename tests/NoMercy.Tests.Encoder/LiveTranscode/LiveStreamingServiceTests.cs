@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using NoMercy.Encoder.Codecs;
 using NoMercy.Encoder.LiveTranscode;
 using NoMercy.Tests.Encoder.Storage;
@@ -280,6 +281,72 @@ public class LiveStreamingServiceTests
         svc.TryGetRuntime("audio-jpn", out _).Should().BeFalse();
         childA.State.Should().Be(LiveSessionState.Ended);
         childB.State.Should().Be(LiveSessionState.Ended);
+    }
+
+    [Fact]
+    public async Task RemoveAsync_FailingAudioChild_StillDisposesSiblingAndParentAndDeletesScratch()
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), $"live-scratch-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        try
+        {
+            LiveStreamingService svc = NewService();
+            LiveSession parent = MakeSession("parent");
+            Mock<ILiveSession> failingChild = MakeFailingSession("audio-failing");
+            LiveSession sibling = MakeSession("audio-sibling");
+            svc.Register(parent, TimeSpan.FromSeconds(6), tempDir);
+            svc.Register(failingChild.Object, TimeSpan.FromSeconds(6), isAudioRenditionChild: true);
+            svc.Register(sibling, TimeSpan.FromSeconds(6), isAudioRenditionChild: true);
+            svc.StampChildAudioSessions("parent", ["audio-failing", "audio-sibling"]);
+
+            await svc.RemoveAsync("parent");
+
+            failingChild.Verify(s => s.DisposeAsync(), Times.Once);
+            sibling.State.Should().Be(LiveSessionState.Ended);
+            parent.State.Should().Be(LiveSessionState.Ended);
+            svc.ActiveSessionIds.Should().BeEmpty();
+            Directory.Exists(tempDir).Should().BeFalse();
+        }
+        finally
+        {
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task DisposeAsync_FailingSession_StillDisposesRemainingSessions()
+    {
+        LiveStreamingService svc = NewService();
+        Mock<ILiveSession> failing = MakeFailingSession("failing");
+        LiveSession remaining = MakeSession("remaining");
+        svc.Register(failing.Object, TimeSpan.FromSeconds(6));
+        svc.Register(remaining, TimeSpan.FromSeconds(6));
+
+        await svc.DisposeAsync();
+
+        failing.Verify(s => s.DisposeAsync(), Times.Once);
+        remaining.State.Should().Be(LiveSessionState.Ended);
+        svc.ActiveSessionIds.Should().BeEmpty();
+    }
+
+    private static Mock<ILiveSession> MakeFailingSession(string id)
+    {
+        Mock<ILiveSession> session = new();
+        session.SetupGet(s => s.SessionId).Returns(id);
+        session.SetupGet(s => s.Segments).Returns(EmptySegments());
+        session
+            .Setup(s => s.DisposeAsync())
+            .Returns(() =>
+                ValueTask.FromException(new InvalidOperationException("dispose failed"))
+            );
+        return session;
+    }
+
+    private static async IAsyncEnumerable<Segment> EmptySegments()
+    {
+        await Task.CompletedTask;
+        yield break;
     }
 
     private static async Task WaitForBufferAsync(
