@@ -144,9 +144,23 @@ public partial class MusicHub : ConnectionHub
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        User? user = UserCacheService.GetUser(Context.User.UserId());
+        Guid userId = Context.User.UserId();
+        User? user = UserCacheService.GetUser(userId);
         if (user == null)
+        {
+            await base.OnDisconnectedAsync(exception);
+
+            if (ConnectedClients.ConnectionsFor(userId, "musicHub").Count == 0)
+            {
+                if (CommandLocks.TryRemove(userId, out SemaphoreSlim? removedLock))
+                    removedLock.Dispose();
+
+                _activeDeviceRegistry.Remove(userId);
+                _musicPlaybackService.RemoveDisconnectedUserState(userId);
+            }
+
             return;
+        }
 
         bool stopPlayback = false;
         bool wasCurrentDevice = false;
@@ -192,6 +206,16 @@ public partial class MusicHub : ConnectionHub
 
         await base.OnDisconnectedAsync(exception);
 
+        // A command can create its per-user lock without ever creating player
+        // state. Release it when the last music connection leaves either way.
+        if (ConnectedClients.ConnectionsFor(user.Id, "musicHub").Count == 0)
+        {
+            if (CommandLocks.TryRemove(user.Id, out SemaphoreSlim? removedLock))
+                removedLock.Dispose();
+
+            _activeDeviceRegistry.Remove(user.Id);
+        }
+
         if (_musicPlayerStateManager.TryGetValue(user.Id, out MusicPlayerState? playerState))
         {
             List<Device> connectedDevices = await MusicDevicesAsync();
@@ -207,10 +231,6 @@ public partial class MusicHub : ConnectionHub
             if (connectedDevices.Count == 0)
             {
                 _activeDeviceRegistry.Remove(user.Id);
-
-                // Clean up CommandLock and player state — no connections remain for this user
-                if (CommandLocks.TryRemove(user.Id, out SemaphoreSlim? removedLock))
-                    removedLock.Dispose();
 
                 _musicPlayerStateManager.RemoveState(user.Id);
                 playerState = null;
@@ -268,6 +288,9 @@ public partial class MusicHub : ConnectionHub
         }
 
         await _musicPlaybackService.UpdatePlaybackState(user, playerState);
+
+        if (ConnectedClients.ConnectionsFor(user.Id, "musicHub").Count == 0)
+            _musicPlaybackService.RemoveDisconnectedUserState(user.Id);
 
         if (stopPlayback && stoppedDeviceId != Ulid.Empty)
         {
