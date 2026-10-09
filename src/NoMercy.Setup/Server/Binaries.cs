@@ -55,6 +55,8 @@ public class Binaries
     private readonly HttpClient _httpClient;
     private readonly RuntimeServerSettings _settings;
 
+    internal TimeSpan DownloadIdleTimeout { get; set; } = TimeSpan.FromMinutes(1);
+
     private const string GithubMediaServerApiUrl =
         "https://api.github.com/repos/NoMercy-Entertainment/nomercy-media-server/releases/latest";
     private const string GithubFfmpegApiUrl =
@@ -367,19 +369,35 @@ public class Binaries
 
         Logger.Setup($"Downloading {label}", LogEventLevel.Verbose);
 
-        using (
-            HttpResponseMessage response = await _httpClient.GetAsync(
+        try
+        {
+            using HttpResponseMessage response = await _httpClient.GetAsync(
                 downloadUrl,
                 HttpCompletionOption.ResponseHeadersRead
-            )
-        )
-        {
+            );
             response.EnsureSuccessStatusCode();
 
-            await using Stream contentStream = await response.Content.ReadAsStreamAsync();
+            using CancellationTokenSource idle = new(DownloadIdleTimeout);
+            await using Stream contentStream = await response.Content.ReadAsStreamAsync(idle.Token);
             await using Stream fileStream = _driver.OpenWrite(tempPath, overwrite: true);
-            await contentStream.CopyToAsync(fileStream);
+            byte[] buffer = new byte[81920];
+            while (true)
+            {
+                idle.CancelAfter(DownloadIdleTimeout);
+                int read = await contentStream.ReadAsync(buffer, idle.Token);
+                if (read == 0)
+                    break;
+
+                await fileStream.WriteAsync(buffer.AsMemory(0, read));
+            }
+
             await fileStream.FlushAsync();
+        }
+        catch (OperationCanceledException)
+        {
+            if (_driver.FileExists(tempPath))
+                _driver.DeleteFile(tempPath);
+            throw;
         }
 
         if (!_driver.FileExists(tempPath) || _storage.SizeOrZero(tempPath) == 0)
