@@ -11,8 +11,12 @@
 
 using System.Data;
 using System.Data.Common;
+using System.Reflection;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
+using Microsoft.EntityFrameworkCore.Migrations.Operations;
 using NoMercy.Authorization;
 using NoMercy.Database;
 using NoMercy.Database.Maintenance;
@@ -511,16 +515,7 @@ public static class DatabaseSeeder
             }
             catch (Exception ex) when (ex.Message.Contains("already exists"))
             {
-                Logger.Setup(
-                    $"{contextName}: Tables already exist. Syncing migration history...",
-                    LogEventLevel.Verbose
-                );
-                SyncMigrationHistory(
-                    context,
-                    migrationTableExists,
-                    pendingMigrations,
-                    availableMigrations
-                );
+                RecoverExistingMigration(context, pendingMigrations, ex);
             }
             catch (Exception ex) when (ex.Message.Contains("FOREIGN KEY constraint failed"))
             {
@@ -553,8 +548,8 @@ public static class DatabaseSeeder
     /// physical table is missing. Unstamps those rows so the next
     /// <c>Migrate()</c> call sees them as pending and applies them.
     ///
-    /// How this state happens: a prior SyncMigrationHistory call (triggered
-    /// by an "already exists" catch on an unrelated migration) can mark
+    /// How this state happens: older versions' migration-history sync (triggered
+    /// by an "already exists" catch on an unrelated migration) could mark
     /// every pending migration as applied even though only one of them
     /// actually ran. Future runs then short-circuit because history says
     /// "all applied."
@@ -665,51 +660,240 @@ public static class DatabaseSeeder
         return tables;
     }
 
-    private static void SyncMigrationHistory(
+    private static void RecoverExistingMigration(
         DbContext context,
-        bool migrationTableExists,
         List<string> pendingMigrations,
-        List<string> availableMigrations
+        Exception collision
     )
     {
-        string version = context.GetType().Assembly.GetName().Version?.ToString() ?? "1.0.0";
-
-        // Always ensure the table exists — Migrate() may have partially created it before failing,
-        // or it may already exist from a previous installation.
-        if (!migrationTableExists)
+        IMigrationsAssembly assembly = context.GetService<IMigrationsAssembly>();
+        foreach (string migrationId in pendingMigrations)
         {
+            if (context.Database.GetAppliedMigrations().Contains(migrationId))
+                continue;
+
+            if (
+                !assembly.Migrations.TryGetValue(migrationId, out TypeInfo? migrationType)
+                || !MigrationObjectsExist(
+                    context,
+                    assembly.CreateMigration(migrationType, context.Database.ProviderName!)
+                )
+            )
+                throw collision;
+
             context.Database.ExecuteSqlRaw(
-                @"
-                CREATE TABLE IF NOT EXISTS __EFMigrationsHistory (
-                    MigrationId TEXT NOT NULL CONSTRAINT PK___EFMigrationsHistory PRIMARY KEY,
-                    ProductVersion TEXT NOT NULL
-                );"
+                "CREATE TABLE IF NOT EXISTS __EFMigrationsHistory (MigrationId TEXT NOT NULL CONSTRAINT PK___EFMigrationsHistory PRIMARY KEY, ProductVersion TEXT NOT NULL)"
             );
-            Logger.Setup("Migration history table created.", LogEventLevel.Verbose);
-        }
+            string version = context.GetType().Assembly.GetName().Version?.ToString() ?? "1.0.0";
+            context.Database.ExecuteSqlRaw(
+                "INSERT OR IGNORE INTO __EFMigrationsHistory (MigrationId, ProductVersion) VALUES ({0}, {1})",
+                [migrationId, version]
+            );
+            Logger.Setup(
+                $"Verified existing schema for {migrationId}; retrying remaining migrations.",
+                LogEventLevel.Warning
+            );
 
-        // Mark all relevant migrations as applied — use OR IGNORE to skip duplicates.
-        List<string> migrationsToRecord = migrationTableExists
-            ? pendingMigrations
-            : availableMigrations;
-        foreach (string migration in migrationsToRecord)
-        {
             try
             {
-                context.Database.ExecuteSqlRaw(
-                    "INSERT OR IGNORE INTO __EFMigrationsHistory (MigrationId, ProductVersion) VALUES ({0}, {1})",
-                    [migration, version]
-                );
-                Logger.Setup($"Added migration {migration} to history", LogEventLevel.Verbose);
+                context.Database.Migrate();
+                return;
             }
-            catch
+            catch (Exception ex) when (ex.Message.Contains("already exists"))
             {
-                Logger.Setup(
-                    $"Failed to add migration {migration} to history",
-                    LogEventLevel.Fatal
-                );
+                collision = ex;
             }
         }
+
+        throw collision;
+    }
+
+    private static bool MigrationObjectsExist(DbContext context, Migration migration)
+    {
+        DbConnection connection = context.Database.GetDbConnection();
+        if (connection.State != ConnectionState.Open)
+            connection.Open();
+
+        bool verifiedAny = false;
+        foreach (MigrationOperation operation in migration.UpOperations)
+        {
+            bool? exists = OperationObjectExists(connection, operation);
+            if (exists is null)
+            {
+                Logger.Setup(
+                    $"Cannot verify {operation.GetType().Name} against the existing schema; skipping it.",
+                    LogEventLevel.Warning
+                );
+                continue;
+            }
+
+            if (exists is false)
+                return false;
+
+            verifiedAny = true;
+        }
+
+        return verifiedAny;
+    }
+
+    /// <summary>
+    /// Returns whether the object the operation creates exists, or null when the operation
+    /// creates nothing that can be looked up by name. Shapes the check cannot compare
+    /// (constraints, defaults, filters) fall back to the name alone, which is what the old
+    /// blanket stamping assumed.
+    /// </summary>
+    private static bool? OperationObjectExists(
+        DbConnection connection,
+        MigrationOperation operation
+    )
+    {
+        switch (operation)
+        {
+            case CreateTableOperation table:
+                return TableMatches(connection, table);
+            case AddColumnOperation column:
+                return ColumnExists(connection, column.Table, column, HasComparableShape(column));
+            case CreateIndexOperation index when index.Filter is null:
+                return IndexMatches(connection, index);
+            case CreateIndexOperation index:
+                Logger.Setup(
+                    $"Filtered index {index.Name} is verified by name only.",
+                    LogEventLevel.Warning
+                );
+                return ObjectExists(connection, "index", index.Name);
+            default:
+                return null;
+        }
+    }
+
+    private static bool HasComparableShape(AddColumnOperation column)
+    {
+        return column.DefaultValue is null && column.DefaultValueSql is null;
+    }
+
+    private static bool TableMatches(DbConnection connection, CreateTableOperation table)
+    {
+        if (!ObjectExists(connection, "table", table.Name))
+            return false;
+
+        if (
+            table.ForeignKeys.Count > 0
+            || table.UniqueConstraints.Count > 0
+            || table.CheckConstraints.Count > 0
+        )
+        {
+            Logger.Setup(
+                $"Table {table.Name} has constraints and is verified by name and columns only.",
+                LogEventLevel.Warning
+            );
+        }
+
+        foreach (AddColumnOperation column in table.Columns)
+        {
+            if (!ColumnExists(connection, table.Name, column, HasComparableShape(column)))
+                return false;
+        }
+
+        using (DbCommand command = connection.CreateCommand())
+        {
+            command.CommandText = $"PRAGMA table_info(\"{table.Name.Replace("\"", "\"\"")}\")";
+            using DbDataReader reader = command.ExecuteReader();
+            Dictionary<int, string> keyColumns = new();
+            while (reader.Read())
+            {
+                int keyOrder = reader.GetInt32(5);
+                if (keyOrder > 0)
+                    keyColumns.Add(keyOrder, reader.GetString(1));
+            }
+
+            IEnumerable<string> expectedKey = table.PrimaryKey?.Columns ?? [];
+            if (
+                !keyColumns
+                    .OrderBy(entry => entry.Key)
+                    .Select(entry => entry.Value)
+                    .SequenceEqual(expectedKey, StringComparer.OrdinalIgnoreCase)
+            )
+                return false;
+        }
+
+        return true;
+    }
+
+    private static bool ColumnExists(
+        DbConnection connection,
+        string table,
+        AddColumnOperation column,
+        bool matchShape
+    )
+    {
+        using DbCommand command = connection.CreateCommand();
+        command.CommandText = $"PRAGMA table_info(\"{table.Replace("\"", "\"\"")}\")";
+        using DbDataReader reader = command.ExecuteReader();
+        while (reader.Read())
+        {
+            if (
+                reader.GetString(1).Equals(column.Name, StringComparison.OrdinalIgnoreCase)
+                && (
+                    !matchShape
+                    || (
+                        (
+                            column.ColumnType is null
+                            || reader
+                                .GetString(2)
+                                .Equals(column.ColumnType, StringComparison.OrdinalIgnoreCase)
+                        )
+                        && (reader.GetInt32(3) == 0) == column.IsNullable
+                    )
+                )
+            )
+                return true;
+        }
+
+        return false;
+    }
+
+    private static bool IndexMatches(DbConnection connection, CreateIndexOperation index)
+    {
+        if (!ObjectExists(connection, "index", index.Name))
+            return false;
+
+        List<string> columns = [];
+        using (DbCommand command = connection.CreateCommand())
+        {
+            command.CommandText = $"PRAGMA index_info(\"{index.Name.Replace("\"", "\"\"")}\")";
+            using DbDataReader reader = command.ExecuteReader();
+            while (reader.Read())
+                columns.Add(reader.GetString(2));
+        }
+        if (!columns.SequenceEqual(index.Columns, StringComparer.OrdinalIgnoreCase))
+            return false;
+
+        using DbCommand listCommand = connection.CreateCommand();
+        listCommand.CommandText = $"PRAGMA index_list(\"{index.Table.Replace("\"", "\"\"")}\")";
+        using DbDataReader listReader = listCommand.ExecuteReader();
+        while (listReader.Read())
+        {
+            if (listReader.GetString(1).Equals(index.Name, StringComparison.OrdinalIgnoreCase))
+                return (listReader.GetInt32(2) != 0) == index.IsUnique;
+        }
+
+        return false;
+    }
+
+    private static bool ObjectExists(DbConnection connection, string type, string name)
+    {
+        using DbCommand command = connection.CreateCommand();
+        command.CommandText =
+            "SELECT COUNT(*) FROM sqlite_master WHERE type = @type AND name = @name";
+        DbParameter typeParameter = command.CreateParameter();
+        typeParameter.ParameterName = "@type";
+        typeParameter.Value = type;
+        command.Parameters.Add(typeParameter);
+        DbParameter nameParameter = command.CreateParameter();
+        nameParameter.ParameterName = "@name";
+        nameParameter.Value = name;
+        command.Parameters.Add(nameParameter);
+        return Convert.ToInt64(command.ExecuteScalar()) > 0;
     }
 
     private static async Task EnsureDatabaseCreated(DbContext context)

@@ -104,10 +104,13 @@ public class ConfigurationController(
 
     private async Task PersistWorkerCount(string queueName, int count, Guid userId)
     {
+        if (!await queueRunner.SetWorkerCount(queueName, count, userId))
+            throw new InvalidOperationException(
+                $"{queueName} worker count could not be set to {count}"
+            );
+
         string key = $"{queueName}Runners";
         await serverConfiguration.SetValueAsync(key, count.ToString(), userId);
-
-        await queueRunner.SetWorkerCount(queueName, count, userId);
     }
 
     [HttpPost]
@@ -125,6 +128,20 @@ public class ConfigurationController(
     {
         Guid userId = User.UserId();
         List<(string key, object? oldVal, object? newVal)> changes = [];
+
+        int?[] workerCounts =
+        [
+            request.LibraryWorkers,
+            request.ImportWorkers,
+            request.ExtrasWorkers,
+            request.EncoderWorkers,
+            request.CronWorkers,
+            request.ImageWorkers,
+            request.FileWorkers,
+            request.MusicWorkers,
+        ];
+        if (workerCounts.Any(count => count is < 0))
+            return BadRequestResponse("Worker counts must be zero or greater");
 
         if (request.DerivedAudioCapGb is < 1)
         {
@@ -164,7 +181,14 @@ public class ConfigurationController(
         }
 
         bool restartRequired = await UpdatePortsAsync(request, userId, changes);
-        await UpdateWorkerCountsAsync(request, userId, changes);
+        try
+        {
+            await UpdateWorkerCountsAsync(request, userId, changes);
+        }
+        catch (InvalidOperationException exception)
+        {
+            return BadRequestResponse(exception.Message);
+        }
         await UpdateServerOptionsAsync(request, userId, changes);
         await LogChangesAsync(userId, changes);
 
