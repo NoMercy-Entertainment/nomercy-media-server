@@ -21,8 +21,70 @@ namespace NoMercy.Tests.Service.Seeds;
 
 public sealed class DatabaseSeederMigrationTests
 {
+    private const string PlaylistItemMigration = "20260709132315_AddPlaylistItem";
+
     [Fact]
     public async Task ExistingTable_DoesNotStampFollowingColumnMigrationWithoutApplyingIt()
+    {
+        await RunMigrateAfterUnstampingAsync(
+            "20260424203834_AddTrustedPublisherKeys",
+            beforeMigrate: _ => Task.CompletedTask,
+            afterMigrate: async context =>
+            {
+                DbConnection connection = context.Database.GetDbConnection();
+                if (connection.State != System.Data.ConnectionState.Open)
+                    await connection.OpenAsync();
+
+                using DbCommand command = connection.CreateCommand();
+                command.CommandText =
+                    "SELECT name FROM pragma_table_info('Devices') WHERE name = 'Fingerprint'";
+                Assert.Equal("Fingerprint", await command.ExecuteScalarAsync());
+                Assert.Contains(
+                    "20260427025119_AddDevicePresence",
+                    context.Database.GetAppliedMigrations()
+                );
+            }
+        );
+    }
+
+    [Fact]
+    public async Task UnsupportedOperations_StampWhenObjectsExistByName()
+    {
+        await RunMigrateAfterUnstampingAsync(
+            PlaylistItemMigration,
+            beforeMigrate: _ => Task.CompletedTask,
+            afterMigrate: context =>
+            {
+                Assert.Contains(PlaylistItemMigration, context.Database.GetAppliedMigrations());
+                Assert.Empty(context.Database.GetPendingMigrations());
+                return Task.CompletedTask;
+            }
+        );
+    }
+
+    [Fact]
+    public async Task UnsupportedOperations_RethrowWhenAnObjectIsMissing()
+    {
+        Exception exception = await Assert.ThrowsAnyAsync<Exception>(() =>
+            RunMigrateAfterUnstampingAsync(
+                PlaylistItemMigration,
+                beforeMigrate: context =>
+                {
+                    context.Database.ExecuteSqlRaw("DROP INDEX IX_PlaylistItems_MovieId");
+                    return Task.CompletedTask;
+                },
+                afterMigrate: _ => Task.CompletedTask
+            )
+        );
+
+        Assert.Contains("already exists", exception.Message);
+    }
+
+    private static async Task RunMigrateAfterUnstampingAsync(
+        string migrationId,
+        Func<MediaContext, Task> beforeMigrate,
+        Func<MediaContext, Task> afterMigrate
+    )
     {
         string databasePath = Path.Combine(
             AppContext.BaseDirectory,
@@ -40,32 +102,28 @@ public sealed class DatabaseSeederMigrationTests
             builder.UseSqlite($"Data Source={databasePath};Pooling=False");
             await using MediaContext context = new(builder.Options);
             IMigrator migrator = context.GetService<IMigrator>();
-            await migrator.MigrateAsync("20260424203834_AddTrustedPublisherKeys");
+            await migrator.MigrateAsync(migrationId);
 
             context.Database.ExecuteSqlRaw(
                 "DELETE FROM __EFMigrationsHistory WHERE MigrationId = {0}",
-                "20260424203834_AddTrustedPublisherKeys"
+                migrationId
             );
+            await beforeMigrate(context);
 
             MethodInfo method = typeof(DatabaseSeeder).GetMethod(
                 "Migrate",
                 BindingFlags.NonPublic | BindingFlags.Static
             )!;
-            Task migration = (Task)method.Invoke(null, [context])!;
-            await migration;
+            try
+            {
+                await (Task)method.Invoke(null, [context])!;
+            }
+            catch (TargetInvocationException exception) when (exception.InnerException is not null)
+            {
+                throw exception.InnerException;
+            }
 
-            DbConnection connection = context.Database.GetDbConnection();
-            if (connection.State != System.Data.ConnectionState.Open)
-                await connection.OpenAsync();
-
-            using DbCommand command = connection.CreateCommand();
-            command.CommandText =
-                "SELECT name FROM pragma_table_info('Devices') WHERE name = 'Fingerprint'";
-            Assert.Equal("Fingerprint", await command.ExecuteScalarAsync());
-            Assert.Contains(
-                "20260427025119_AddDevicePresence",
-                context.Database.GetAppliedMigrations()
-            );
+            await afterMigrate(context);
         }
         finally
         {

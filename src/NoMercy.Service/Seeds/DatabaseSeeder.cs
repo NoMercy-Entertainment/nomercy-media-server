@@ -714,35 +714,61 @@ public static class DatabaseSeeder
         if (connection.State != ConnectionState.Open)
             connection.Open();
 
-        if (migration.UpOperations.Count == 0)
-            return false;
-
+        bool verifiedAny = false;
         foreach (MigrationOperation operation in migration.UpOperations)
         {
-            switch (operation)
+            bool? exists = OperationObjectExists(connection, operation);
+            if (exists is null)
             {
-                case CreateTableOperation table
-                    when table.ForeignKeys.Count == 0
-                        && table.UniqueConstraints.Count == 0
-                        && table.CheckConstraints.Count == 0:
-                    if (!TableMatches(connection, table))
-                        return false;
-                    break;
-                case AddColumnOperation column
-                    when column.DefaultValue is null && column.DefaultValueSql is null:
-                    if (!ColumnExists(connection, column.Table, column))
-                        return false;
-                    break;
-                case CreateIndexOperation index when index.Filter is null:
-                    if (!IndexMatches(connection, index))
-                        return false;
-                    break;
-                default:
-                    return false;
+                Logger.Setup(
+                    $"Cannot verify {operation.GetType().Name} against the existing schema; skipping it.",
+                    LogEventLevel.Warning
+                );
+                continue;
             }
+
+            if (exists is false)
+                return false;
+
+            verifiedAny = true;
         }
 
-        return true;
+        return verifiedAny;
+    }
+
+    /// <summary>
+    /// Returns whether the object the operation creates exists, or null when the operation
+    /// creates nothing that can be looked up by name. Shapes the check cannot compare
+    /// (constraints, defaults, filters) fall back to the name alone, which is what the old
+    /// blanket stamping assumed.
+    /// </summary>
+    private static bool? OperationObjectExists(
+        DbConnection connection,
+        MigrationOperation operation
+    )
+    {
+        switch (operation)
+        {
+            case CreateTableOperation table:
+                return TableMatches(connection, table);
+            case AddColumnOperation column:
+                return ColumnExists(connection, column.Table, column, HasComparableShape(column));
+            case CreateIndexOperation index when index.Filter is null:
+                return IndexMatches(connection, index);
+            case CreateIndexOperation index:
+                Logger.Setup(
+                    $"Filtered index {index.Name} is verified by name only.",
+                    LogEventLevel.Warning
+                );
+                return ObjectExists(connection, "index", index.Name);
+            default:
+                return null;
+        }
+    }
+
+    private static bool HasComparableShape(AddColumnOperation column)
+    {
+        return column.DefaultValue is null && column.DefaultValueSql is null;
     }
 
     private static bool TableMatches(DbConnection connection, CreateTableOperation table)
@@ -750,13 +776,21 @@ public static class DatabaseSeeder
         if (!ObjectExists(connection, "table", table.Name))
             return false;
 
+        if (
+            table.ForeignKeys.Count > 0
+            || table.UniqueConstraints.Count > 0
+            || table.CheckConstraints.Count > 0
+        )
+        {
+            Logger.Setup(
+                $"Table {table.Name} has constraints and is verified by name and columns only.",
+                LogEventLevel.Warning
+            );
+        }
+
         foreach (AddColumnOperation column in table.Columns)
         {
-            if (
-                column.DefaultValue is not null
-                || column.DefaultValueSql is not null
-                || !ColumnExists(connection, table.Name, column)
-            )
+            if (!ColumnExists(connection, table.Name, column, HasComparableShape(column)))
                 return false;
         }
 
@@ -788,7 +822,8 @@ public static class DatabaseSeeder
     private static bool ColumnExists(
         DbConnection connection,
         string table,
-        AddColumnOperation column
+        AddColumnOperation column,
+        bool matchShape
     )
     {
         using DbCommand command = connection.CreateCommand();
@@ -799,12 +834,17 @@ public static class DatabaseSeeder
             if (
                 reader.GetString(1).Equals(column.Name, StringComparison.OrdinalIgnoreCase)
                 && (
-                    column.ColumnType is null
-                    || reader
-                        .GetString(2)
-                        .Equals(column.ColumnType, StringComparison.OrdinalIgnoreCase)
+                    !matchShape
+                    || (
+                        (
+                            column.ColumnType is null
+                            || reader
+                                .GetString(2)
+                                .Equals(column.ColumnType, StringComparison.OrdinalIgnoreCase)
+                        )
+                        && (reader.GetInt32(3) == 0) == column.IsNullable
+                    )
                 )
-                && (reader.GetInt32(3) == 0) == column.IsNullable
             )
                 return true;
         }
