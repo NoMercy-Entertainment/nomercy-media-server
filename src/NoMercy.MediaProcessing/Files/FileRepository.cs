@@ -281,7 +281,13 @@ public class FileRepository(MediaContext context, IStorageDriver storageDriver) 
             );
 
         releases = await FetchReleaseAppends(lookupReleaseIds, musicBrainzReleaseClient, releases);
-        List<FileItem> files = await GenerateResponse(folder, releases, mediaFiles, year);
+        List<FileItem> files = await GenerateResponse(
+            folder,
+            releases,
+            mediaFiles,
+            year,
+            id => CoverArtImageManagerManager.GetCoverUrl(id, true)
+        );
         return files;
     }
 
@@ -533,17 +539,19 @@ public class FileRepository(MediaContext context, IStorageDriver storageDriver) 
         return (prevMusicBrainzReleaseId, year);
     }
 
-    private static async Task<List<FileItem>> GenerateResponse(
+    internal static async Task<List<FileItem>> GenerateResponse(
         string folder,
         List<MusicBrainzReleaseAppends> releases,
         ConcurrentBag<MediaFile> mediaFiles,
-        string year
+        string year,
+        Func<Guid, Task<Uri?>> getCoverUrl
     )
     {
         if (releases.Count == 0)
             return [];
 
         List<FileItem> files = [];
+        object filesLock = new();
 
         MusicBrainzReleaseAppends? bestResult = await GetBestMatchedRelease(mediaFiles, releases);
         if (bestResult != null)
@@ -553,10 +561,7 @@ public class FileRepository(MediaContext context, IStorageDriver storageDriver) 
                 LogEventLevel.Verbose
             );
 
-            Uri? coverPaletteUrl = await CoverArtImageManagerManager.GetCoverUrl(
-                bestResult.Id,
-                true
-            );
+            Uri? coverPaletteUrl = await getCoverUrl(bestResult.Id);
 
             files.Add(
                 new()
@@ -601,50 +606,49 @@ public class FileRepository(MediaContext context, IStorageDriver storageDriver) 
             SystemParallelism.Options,
             async (release, _) =>
             {
-                if (files.Any(x => x.Match.Id == release.Id))
-                    return;
+                Uri? coverPaletteUrl = await getCoverUrl(release.Id);
 
-                Uri? coverPaletteUrl = await CoverArtImageManagerManager.GetCoverUrl(
-                    release.Id,
-                    true
-                );
-
-                files.Add(
-                    new()
+                FileItem file = new()
+                {
+                    Size = mediaFiles.Sum(x => x.Size),
+                    Mode = 0,
+                    Name = release.Title,
+                    Parent = folder,
+                    Parsed = new(folder)
                     {
-                        Size = mediaFiles.Sum(x => x.Size),
-                        Mode = 0,
-                        Name = release.Title,
-                        Parent = folder,
-                        Parsed = new(folder)
-                        {
-                            Title = release.Title,
-                            Year = release.DateTime?.Year.ToString() ?? year,
-                            IsSeries = false,
-                            IsSuccess = true,
-                        },
-                        Match = new()
-                        {
-                            Id = release.Id,
-                            Title = release.Title,
-                            Still = coverPaletteUrl?.ToString(),
-                        },
-                        Path = folder,
-                        Tracks = release.Media.Sum(m => m.TrackCount),
-                        Streams = new()
-                        {
-                            Audio =
-                            [
-                                new()
-                                {
-                                    Index = 0,
-                                    Language =
-                                        $"Formats: {string.Join(", ", release.Media.Select(m => m.Format))}",
-                                },
-                            ],
-                        },
-                    }
-                );
+                        Title = release.Title,
+                        Year = release.DateTime?.Year.ToString() ?? year,
+                        IsSeries = false,
+                        IsSuccess = true,
+                    },
+                    Match = new()
+                    {
+                        Id = release.Id,
+                        Title = release.Title,
+                        Still = coverPaletteUrl?.ToString(),
+                    },
+                    Path = folder,
+                    Tracks = release.Media.Sum(m => m.TrackCount),
+                    Streams = new()
+                    {
+                        Audio =
+                        [
+                            new()
+                            {
+                                Index = 0,
+                                Language =
+                                    $"Formats: {string.Join(", ", release.Media.Select(m => m.Format))}",
+                            },
+                        ],
+                    },
+                };
+
+                lock (filesLock)
+                {
+                    if (files.Any(x => x.Match.Id == release.Id))
+                        return;
+                    files.Add(file);
+                }
             }
         );
 
