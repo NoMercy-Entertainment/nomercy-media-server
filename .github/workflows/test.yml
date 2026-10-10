@@ -12,7 +12,7 @@ on:
 jobs:
   # Fast tests that run on every push/PR
   test:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","Linux","X64","beast-unit"]') || 'ubuntu-latest' }}
     
     steps:
       - uses: actions/checkout@v7
@@ -100,7 +100,7 @@ jobs:
   # release path (push/PR to dev) it never ran and uncategorized regressions
   # sailed straight through. It must block the release path.
   coverage:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","Linux","X64","beast-unit"]') || 'ubuntu-latest' }}
     # Nothing downstream reads a coverage artifact, so this job is a test gate, not
     # a report. Without a cap it once ran 6 hours before GitHub killed it, holding
     # the whole release chain open the entire time.
@@ -194,7 +194,7 @@ jobs:
   # branch refs, so these expensive ffmpeg-backed tests run post-merge on dev, not
   # on every PR — but they no longer skip the release path entirely.
   integration_tests:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","Linux","X64","beast-unit"]') || 'ubuntu-latest' }}
     if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/master' || github.event_name == 'release' || github.event_name == 'workflow_dispatch'
 
     steps:

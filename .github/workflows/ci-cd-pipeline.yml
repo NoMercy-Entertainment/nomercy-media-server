@@ -120,7 +120,7 @@ jobs:
   publish_plugin_packages:
     needs: [version_management, create_release]
     if: needs.version_management.outputs.should_deploy == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","Linux","X64","beast-unit"]') || 'ubuntu-latest' }}
     permissions:
       contents: read
       id-token: write
@@ -187,7 +187,7 @@ jobs:
   promote_docker_images:
     needs: [version_management, build_docker_images, create_release]
     if: needs.version_management.outputs.should_deploy == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","Linux","X64","beast-unit"]') || 'ubuntu-latest' }}
     permissions:
       contents: read
       packages: write

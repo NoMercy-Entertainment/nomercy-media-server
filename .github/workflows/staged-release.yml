@@ -17,7 +17,7 @@ permissions:
 
 jobs:
   prepare:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","Linux","X64","beast-unit"]') || 'ubuntu-latest' }}
     outputs:
       version: ${{ steps.version.outputs.version }}
       branch: ${{ steps.branch.outputs.branch }}
