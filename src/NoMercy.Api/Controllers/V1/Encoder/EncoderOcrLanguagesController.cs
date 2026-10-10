@@ -36,15 +36,22 @@ public class EncoderOcrLanguagesController(ITesseractModelManager modelManager) 
     /// </summary>
     [HttpGet("languages")]
     [Authorize(Policy = "Moderator")]
-    public IActionResult GetLanguages()
+    public async Task<IActionResult> GetLanguages(CancellationToken ct)
     {
-        return Ok(
-            new
-            {
-                available = modelManager.GetAvailableLanguages(),
-                downloaded = modelManager.GetDownloadedLanguages(),
-            }
-        );
+        IReadOnlyList<string> downloaded = modelManager.GetDownloadedLanguages();
+        IReadOnlyList<string> available;
+        try
+        {
+            available = await modelManager.GetAvailableLanguagesAsync(ct);
+        }
+        catch (Exception) when (!ct.IsCancellationRequested)
+        {
+            // The signed release is unreachable (offline, rate-limited, unverified):
+            // list what is on disk instead of failing the whole request.
+            available = downloaded;
+        }
+
+        return Ok(new { available, downloaded });
     }
 
     /// <summary>
