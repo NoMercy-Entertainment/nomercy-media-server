@@ -12,7 +12,11 @@ on:
 jobs:
   # Fast tests that run on every push/PR
   test:
-    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","Linux","X64","beast-unit"]') || 'ubuntu-latest' }}
+    # TEMP: Eagle because the beast-unit pool was saturated on 2026-10-11 (jobs queued over 1 hour); revert to beast-unit when the pool recovers.
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","Linux","X64","Eagle"]') || 'ubuntu-latest' }}
+    concurrency:
+      group: eagle-test-job
+      cancel-in-progress: false
     timeout-minutes: 120
 
     steps:
