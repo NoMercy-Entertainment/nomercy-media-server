@@ -17,7 +17,7 @@ namespace NoMercy.Tests.Storage.Fakes;
 /// OS-rooted "scope", and the driver deliberately does NOT override any of
 /// the interface's default members (<c>BackendLabel</c>,
 /// <c>DirectorySeparator</c>, <c>CombinePath</c>, <c>EnumerateEntries</c>,
-/// <c>OpenReadIsolated</c>, <c>TryGetPresignedUrlAsync</c>,
+/// <c>TryGetPresignedUrlAsync</c>,
 /// <c>AcquireLocalPathAsync</c>) so tests exercising it through
 /// <see cref="NoMercy.Storage.Remote.RemoteStorage"/> also exercise the
 /// production default-interface-member code paths that real remote drivers
@@ -33,6 +33,8 @@ internal sealed class InMemoryStorageDriver : IStorageDriver
     private readonly Dictionary<string, byte[]> _files = new(StringComparer.Ordinal);
     private readonly HashSet<string> _dirs = new(StringComparer.Ordinal) { string.Empty };
     private readonly Dictionary<string, DateTime> _mtimes = new(StringComparer.Ordinal);
+
+    public Func<Stream>? IsolatedReadStreamFactory { get; set; }
 
     public int MoveDirectoryCallCount { get; private set; }
 
@@ -93,6 +95,9 @@ internal sealed class InMemoryStorageDriver : IStorageDriver
             throw new FileNotFoundException($"no such object: {path}", path);
         return new MemoryStream(bytes, writable: false);
     }
+
+    public Stream OpenReadIsolated(string path) =>
+        IsolatedReadStreamFactory?.Invoke() ?? OpenRead(path);
 
     public Stream OpenWrite(string path, bool overwrite)
     {
