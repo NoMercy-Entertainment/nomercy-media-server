@@ -261,6 +261,55 @@ public class DeleteStaleVideoFilesTests : IDisposable
         (await read.Metadata.AsNoTracking().AnyAsync(m => m.Id == metadata.Id)).Should().BeFalse();
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task DeletingOneWatchedFile_PreservesItsSiblingAndMetadata(bool isMovie)
+    {
+        string hostFolder = "/A/season";
+        Metadata deletedMetadata = new() { Filename = "/first.mkv", HostFolder = hostFolder };
+        Metadata siblingMetadata = new() { Filename = "/second.mkv", HostFolder = hostFolder };
+
+        await using (MediaContext seed = new(_options))
+        {
+            seed.Metadata.AddRange(deletedMetadata, siblingMetadata);
+            seed.VideoFiles.AddRange(
+                new VideoFile
+                {
+                    MovieId = isMovie ? 100 : null,
+                    EpisodeId = isMovie ? null : 1,
+                    HostFolder = hostFolder,
+                    Filename = "/first.mkv",
+                    MetadataId = deletedMetadata.Id,
+                },
+                new VideoFile
+                {
+                    MovieId = isMovie ? 100 : null,
+                    EpisodeId = isMovie ? null : 2,
+                    HostFolder = hostFolder,
+                    Filename = "/second.mkv",
+                    MetadataId = siblingMetadata.Id,
+                }
+            );
+            await seed.SaveChangesAsync();
+        }
+
+        await using (MediaContext context = new(_options))
+        {
+            FileRepository repository = new(context, Driver);
+            (await repository.DeleteVideoFileByPathAsync(hostFolder, "/first.mkv")).Should().Be(1);
+            (await repository.DeleteMetadataByPathAsync(hostFolder, "/first.mkv")).Should().Be(1);
+        }
+
+        await using MediaContext read = new(_options);
+        (await read.VideoFiles.AsNoTracking().Select(vf => vf.Filename).ToListAsync())
+            .Should()
+            .Equal("/second.mkv");
+        (await read.Metadata.AsNoTracking().Select(m => m.Filename).ToListAsync())
+            .Should()
+            .Equal("/second.mkv");
+    }
+
     public void Dispose()
     {
         _connection.Dispose();

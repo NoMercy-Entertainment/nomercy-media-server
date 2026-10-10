@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Reflection;
 using System.Text.RegularExpressions;
 using NoMercy.NmSystem.Information;
 using NoMercy.Setup.Ui;
@@ -28,6 +29,26 @@ namespace NoMercy.Tests.Setup.Ui;
 [Trait("Category", "Unit")]
 public class ConsoleMessagesTests
 {
+    [Theory]
+    [InlineData(2026, 12, 6, false)]
+    [InlineData(2026, 12, 7, true)]
+    [InlineData(2026, 12, 20, true)]
+    [InlineData(2027, 1, 2, true)]
+    [InlineData(2027, 1, 5, true)]
+    [InlineData(2027, 1, 6, false)]
+    [InlineData(2026, 6, 20, false)]
+    public void IsXmasTime_UsesInclusiveHolidayWindow(int year, int month, int day, bool expected)
+    {
+        MethodInfo? method = typeof(ConsoleMessages).GetMethod(
+            "IsXmasTime",
+            BindingFlags.Static | BindingFlags.NonPublic,
+            [typeof(DateTime)]
+        );
+
+        Assert.NotNull(method);
+        Assert.Equal(expected, method.Invoke(null, [new DateTime(year, month, day)]));
+    }
+
     [Fact]
     public async Task ServerRunning_DoesNotThrow()
     {
@@ -84,10 +105,3 @@ public class ConsoleMessagesTests
         Assert.Contains($"Version:  {Software.GetReleaseVersion()}", plain);
     }
 }
-
-// NOTE ON RESIDUAL COVERAGE: ConsoleMessages.Logo()'s letter-by-letter rendering body
-// picks between ConsoleLetters.Colossal and ConsoleLetters.ColossalXmas based on
-// IsXmasTime() (real DateTime.Today, no injectable clock) — only the branch matching
-// today's actual calendar date is reachable in a single run. Both letter tables are
-// independently and fully locked by ConsoleLettersTests regardless of which one Logo()
-// happens to pick, so this is a "which table" selection gap, not an untested-data gap.

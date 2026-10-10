@@ -95,15 +95,9 @@ public abstract class ConsoleMessages
         return string.Join(" ", spacing);
     }
 
-    private static bool IsXmasTime()
+    internal static bool IsXmasTime(DateTime today)
     {
-        DateTime today = DateTime.Today;
-        int currentYear = today.Year;
-
-        long xmasBeginDate = new DateTime(currentYear, 12, 7).Ticks;
-        long xmasEndDate = new DateTime(currentYear + 1, 1, 5).Ticks;
-
-        return today.Ticks > xmasBeginDate && xmasEndDate < today.Ticks;
+        return (today.Month == 12 && today.Day >= 7) || (today.Month == 1 && today.Day <= 5);
     }
 
     public static void Logo()
@@ -117,7 +111,7 @@ public abstract class ConsoleMessages
         string outputString = "║  NoMercy MediaServer  ║";
         int totalWidth = 0;
 
-        bool isXmas = IsXmasTime();
+        bool isXmas = IsXmasTime(DateTime.Today);
 
         Dictionary<string, List<string>> letters = isXmas
             ? ConsoleLetters.ColossalXmas

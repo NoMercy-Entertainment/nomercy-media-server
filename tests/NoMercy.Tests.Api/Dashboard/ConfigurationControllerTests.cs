@@ -269,6 +269,94 @@ public class ConfigurationControllerTests : IClassFixture<NoMercyApiFactory>
         persisted!.Value.Should().Be(newInternalPort.ToString());
     }
 
+    [Theory]
+    [InlineData("internal_port", "internalPort", -5)]
+    [InlineData("internal_port", "internalPort", 70000)]
+    [InlineData("external_port", "externalPort", -5)]
+    [InlineData("external_port", "externalPort", 70000)]
+    public async Task PatchConfiguration_InvalidPort_ReturnsBadRequestWithoutChangingStoredValue(
+        string field,
+        string key,
+        int invalidPort
+    )
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        AppDbContext appContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        string? originalValue = await appContext
+            .Configuration.Where(configuration => configuration.Key == key)
+            .Select(configuration => configuration.Value)
+            .FirstOrDefaultAsync();
+
+        HttpResponseMessage response = await PatchAsync(
+            _authed,
+            "/api/v1/dashboard/configuration",
+            new Dictionary<string, int> { [field] = invalidPort }
+        );
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        // 0 is accepted as "leave unchanged", so the message must say so.
+        (await response.Content.ReadAsStringAsync())
+            .Should()
+            .Contain("between 1 and 65535 (0 leaves it unchanged)");
+        HttpResponseMessage getResponse = await _authed.GetAsync("/api/v1/dashboard/configuration");
+        using JsonDocument document = JsonDocument.Parse(
+            await getResponse.Content.ReadAsStringAsync()
+        );
+        document
+            .RootElement.GetProperty("data")
+            .GetProperty(field)
+            .GetInt32()
+            .Should()
+            .NotBe(invalidPort);
+        appContext.ChangeTracker.Clear();
+        string? storedValue = await appContext
+            .Configuration.Where(configuration => configuration.Key == key)
+            .Select(configuration => configuration.Value)
+            .FirstOrDefaultAsync();
+        storedValue.Should().Be(originalValue);
+    }
+
+    [Theory]
+    [InlineData("library_workers", "libraryRunners")]
+    [InlineData("import_workers", "importRunners")]
+    [InlineData("extras_workers", "extrasRunners")]
+    [InlineData("encoder_workers", "encoderRunners")]
+    [InlineData("cron_workers", "cronRunners")]
+    [InlineData("image_workers", "imageRunners")]
+    [InlineData("file_workers", "fileRunners")]
+    [InlineData("music_workers", "musicRunners")]
+    public async Task PatchConfiguration_NegativeWorkerCount_ReturnsBadRequestWithoutChangingStoredValue(
+        string field,
+        string key
+    )
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        AppDbContext appContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        string? originalValue = await appContext
+            .Configuration.Where(configuration => configuration.Key == key)
+            .Select(configuration => configuration.Value)
+            .FirstOrDefaultAsync();
+
+        HttpResponseMessage response = await PatchAsync(
+            _authed,
+            "/api/v1/dashboard/configuration",
+            new Dictionary<string, int> { [field] = -1 }
+        );
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        HttpResponseMessage getResponse = await _authed.GetAsync("/api/v1/dashboard/configuration");
+        using JsonDocument document = JsonDocument.Parse(
+            await getResponse.Content.ReadAsStringAsync()
+        );
+        document.RootElement.GetProperty("data").GetProperty(field).GetInt32().Should().NotBe(-1);
+        appContext.ChangeTracker.Clear();
+        string? storedValue = await appContext
+            .Configuration.Where(configuration => configuration.Key == key)
+            .Select(configuration => configuration.Value)
+            .FirstOrDefaultAsync();
+        storedValue.Should().Be(originalValue);
+    }
+
     [Fact]
     public async Task PatchConfiguration_DerivedAudioCapGb_PersistsRoundTrip_AndUpdatesRuntimeSettings()
     {

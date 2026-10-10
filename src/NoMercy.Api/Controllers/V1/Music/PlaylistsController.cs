@@ -111,7 +111,7 @@ public class PlaylistsController : BaseController
             UserId = userId,
         };
 
-        string slug = newPlaylist.Name.ToSlug();
+        string slug = $"playlist-{newPlaylist.Id}";
 
         if (request.Cover is not null)
         {
@@ -146,7 +146,7 @@ public class PlaylistsController : BaseController
         if (playlist is null)
             return NotFoundResponse("Playlist not found");
 
-        string slug = playlist.Name.ToSlug();
+        string slug = $"playlist-{playlist.Id}";
         string colorPalette = playlist._colorPalette.OrEmpty();
         string cover = playlist.Cover.OrEmpty();
 
@@ -217,7 +217,7 @@ public class PlaylistsController : BaseController
         if (playlist is null)
             return NotFoundResponse("Playlist not found");
 
-        string slug = playlist.Name.ToSlug();
+        string slug = $"playlist-{playlist.Id}";
 
         await using Stream servedCopy = image.OpenReadStream();
         SavedMusicCover saved = await _coverStore.SaveAsync(slug, servedCopy);

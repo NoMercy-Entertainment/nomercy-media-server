@@ -131,8 +131,14 @@ internal static class UpdateCommand
                     // the file is locked and the move throws, on Linux it succeeds while the old
                     // binary keeps running, so which version comes back is down to timing.
                     await Console.Error.WriteLineAsync(
-                        "The server did not stop within 60s. Nothing was changed — stop it and run "
-                            + "'nomercy update' again."
+                        "The server did not stop within 60s: its management endpoint did not "
+                            + "become unreachable. Nothing was changed. Check shutdown logs, "
+                            + "then force-stop the server using the tool for your deployment:\n"
+                            + "  Windows service: taskkill /F /IM NoMercyMediaServer.exe\n"
+                            + "  systemd: systemctl kill -s SIGKILL <unit>\n"
+                            + "  launchd: launchctl kill SIGKILL gui/<uid>/tv.nomercy.mediaserver.service\n"
+                            + "  container: docker kill <container>\n"
+                            + "Confirm the server has stopped, then run 'nomercy update' again."
                     );
                     return (int)ExitCode.Timeout;
                 }

@@ -306,7 +306,7 @@ public partial class MediaIdentificationService(
         }
 
         // Try alternate search results for absolute-order anime (e.g. TMDB ranks live-action above anime)
-        if (episode == null && shows!.Results.Count > 1)
+        if (episode == null && shows is { Results.Count: > 1 })
         {
             foreach (TmdbTvShow altShow in shows.Results.Skip(1).Take(4))
             {

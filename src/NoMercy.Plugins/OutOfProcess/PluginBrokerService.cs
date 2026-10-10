@@ -431,10 +431,16 @@ public sealed class PluginBrokerService(
         if (call.Notification is null)
             throw new PluginRefusedException(NotUnderstood("notifications", request.Member));
 
-        await notifications.PushAsync(
-            call.User is null ? null : new UserId(Ulid.Parse(call.User)),
-            call.Notification
-        );
+        UserId? userId = null;
+        if (call.User is not null)
+        {
+            if (!Ulid.TryParse(call.User, out Ulid parsedUser))
+                throw new PluginRefusedException(NotUnderstood("notifications", request.Member));
+
+            userId = new UserId(parsedUser);
+        }
+
+        await notifications.PushAsync(userId, call.Notification);
 
         return PluginCallResponse.Value("null");
     }

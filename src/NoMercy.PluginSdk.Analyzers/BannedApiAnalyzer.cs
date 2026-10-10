@@ -54,34 +54,60 @@ public sealed class BannedApiAnalyzer : DiagnosticAnalyzer
     {
         context.ConfigureGeneratedCodeAnalysis(GeneratedCodeAnalysisFlags.None);
         context.EnableConcurrentExecution();
-        // Both creation kinds. `new HttpClient()` is an ObjectCreation and
-        // `HttpClient client = new()` is an ImplicitObjectCreation, and the
-        // second is the one an author actually writes. Registering only the
-        // first left every real plugin unflagged, which is how the tests here
-        // found it.
         context.RegisterSyntaxNodeAction(
             Inspect,
             SyntaxKind.ObjectCreationExpression,
-            SyntaxKind.ImplicitObjectCreationExpression
+            SyntaxKind.ImplicitObjectCreationExpression,
+            SyntaxKind.InvocationExpression,
+            SyntaxKind.SimpleMemberAccessExpression
         );
     }
 
     private static void Inspect(SyntaxNodeAnalysisContext context)
     {
-        ExpressionSyntax creation = (ExpressionSyntax)context.Node;
+        ExpressionSyntax expression = (ExpressionSyntax)context.Node;
 
-        if (context.SemanticModel.GetTypeInfo(creation).Type is not INamedTypeSymbol created)
+        // The invocation owns a method access, so report it at the call site once.
+        if (
+            expression is MemberAccessExpressionSyntax memberAccess
+            && memberAccess.Parent is InvocationExpressionSyntax invocation
+            && invocation.Expression == memberAccess
+        )
             return;
 
-        string name = created
-            .ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
-            .Replace("global::", string.Empty);
+        // A plain member read is not a creation: only creations and calls that hand back a
+        // banned type count by their result type.
+        string? id =
+            expression is MemberAccessExpressionSyntax
+                ? null
+                : RuleFor(context.SemanticModel.GetTypeInfo(expression).Type as INamedTypeSymbol);
 
-        if (!Banned.TryGetValue(name, out string? id))
+        // Static members of a banned type (Process.Start, HttpClient.DefaultProxy) are the
+        // type's own entry points. Instance members of an object the plugin already holds
+        // are left alone: the object was flagged where it was made.
+        if (
+            id is null
+            && expression is InvocationExpressionSyntax or MemberAccessExpressionSyntax
+            && context.SemanticModel.GetSymbolInfo(expression).Symbol is { IsStatic: true } symbol
+        )
+            id = RuleFor(symbol.ContainingType);
+
+        if (id is null)
             return;
 
         context.ReportDiagnostic(
-            Diagnostic.Create(PluginDiagnostics.For(id), creation.GetLocation())
+            Diagnostic.Create(PluginDiagnostics.For(id), expression.GetLocation())
         );
+    }
+
+    private static string? RuleFor(INamedTypeSymbol? type)
+    {
+        if (type is null)
+            return null;
+
+        string name = type.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat)
+            .Replace("global::", string.Empty);
+
+        return Banned.TryGetValue(name, out string? id) ? id : null;
     }
 }

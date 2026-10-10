@@ -25,6 +25,7 @@ using NoMercy.Events.Library;
 using NoMercy.Events.Music;
 using NoMercy.MediaProcessing.Images;
 using NoMercy.MediaProcessing.Jobs;
+using NoMercy.MediaProcessing.Jobs.MediaJobs;
 using NoMercy.MediaProcessing.Jobs.PaletteJobs;
 using NoMercy.NmSystem.Extensions;
 
@@ -192,8 +193,19 @@ public class AlbumsController : BaseController
     [HttpPost]
     [Route("{id:guid}/rescan")]
     [Authorize(Policy = "Moderator")]
-    public IActionResult Rescan(Guid id)
+    public async Task<IActionResult> Rescan(Guid id)
     {
+        Album? album = await _musicRepository.GetAlbumWithLibraryFolderAsync(id);
+        if (album is null)
+            return NotFoundResponse("Album not found");
+
+        _jobDispatcher.DispatchJob<AudioImportJob>(
+            album.LibraryId,
+            album.FolderId,
+            album.Id,
+            album.HostFolder
+        );
+
         return Ok(
             new StatusResponseDto<string>
             {
@@ -214,7 +226,7 @@ public class AlbumsController : BaseController
         if (album is null)
             return NotFoundResponse("Album not found");
 
-        string slug = album.Name.ToSlug();
+        string slug = $"album-{album.Id}";
         string colorPalette = album._colorPalette.OrEmpty();
         string cover = album.Cover.OrEmpty();
 
@@ -261,7 +273,7 @@ public class AlbumsController : BaseController
         if (album is null)
             return NotFoundResponse("Album not found");
 
-        string slug = album.Name.ToSlug();
+        string slug = $"album-{album.Id}";
 
         await using (Stream libraryCopy = image.OpenReadStream())
             if (
