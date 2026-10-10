@@ -64,10 +64,7 @@ public class ServerProcessLauncher
 
         _serverProcess = new() { StartInfo = startInfo, EnableRaisingEvents = true };
 
-        _serverProcess.Exited += (_, _) =>
-        {
-            _serverProcess = null;
-        };
+        _serverProcess.Exited += (sender, _) => OnServerProcessExited(sender);
 
         bool started = _serverProcess.Start();
         return Task.FromResult(started);
@@ -95,10 +92,7 @@ public class ServerProcessLauncher
 
         _appProcess = new() { StartInfo = startInfo, EnableRaisingEvents = true };
 
-        _appProcess.Exited += (_, _) =>
-        {
-            _appProcess = null;
-        };
+        _appProcess.Exited += (sender, _) => OnAppProcessExited(sender);
 
         bool started = _appProcess.Start();
 
@@ -145,6 +139,18 @@ public class ServerProcessLauncher
         }
 
         return !IsServerProcessRunning;
+    }
+
+    private void OnServerProcessExited(object? sender)
+    {
+        if (sender is Process exitedProcess)
+            Interlocked.CompareExchange(ref _serverProcess, null, exitedProcess);
+    }
+
+    private void OnAppProcessExited(object? sender)
+    {
+        if (sender is Process exitedProcess)
+            Interlocked.CompareExchange(ref _appProcess, null, exitedProcess);
     }
 
     public Task ForceKillServerAsync()

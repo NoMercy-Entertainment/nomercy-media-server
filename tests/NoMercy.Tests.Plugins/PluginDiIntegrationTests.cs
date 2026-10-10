@@ -11,6 +11,7 @@
 
 using System.Reflection;
 using FluentAssertions;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -58,7 +59,7 @@ public class PluginDiIntegrationTests : IDisposable
 
         services.AddPluginSystem(_tempPluginsDir);
 
-        ServiceProvider provider = services.BuildServiceProvider();
+        ServiceProvider provider = BuildProvider(services);
         IPluginManager manager1 = provider.GetRequiredService<IPluginManager>();
         IPluginManager manager2 = provider.GetRequiredService<IPluginManager>();
 
@@ -79,7 +80,7 @@ public class PluginDiIntegrationTests : IDisposable
 
         services.AddPluginSystem(_tempPluginsDir);
 
-        ServiceProvider provider = services.BuildServiceProvider();
+        ServiceProvider provider = BuildProvider(services);
 
         provider
             .GetRequiredService<IPluginTrustedKeys>()
@@ -167,7 +168,7 @@ public class PluginDiIntegrationTests : IDisposable
 
         services.AddPluginSystem(_tempPluginsDir);
 
-        ServiceProvider provider = services.BuildServiceProvider();
+        ServiceProvider provider = BuildProvider(services);
         IPluginManager manager = provider.GetRequiredService<IPluginManager>();
 
         manager.Should().NotBeNull();
@@ -185,7 +186,7 @@ public class PluginDiIntegrationTests : IDisposable
         registrator.RegisterServices(services);
 
         services.Should().ContainSingle();
-        ServiceProvider provider = services.BuildServiceProvider();
+        ServiceProvider provider = BuildProvider(services);
         ITestService service = provider.GetRequiredService<ITestService>();
         service.Should().NotBeNull();
         service.Should().BeOfType<TestService>();
@@ -220,9 +221,10 @@ public class PluginDiIntegrationTests : IDisposable
         services.AddSingleton(Mock.Of<IPluginDerivedAudio>());
         services.AddSingleton(analysisWriterFactory.Object);
 
+        services.AddDataProtection().UseEphemeralDataProtectionProvider();
         services.AddPluginSystem(_tempPluginsDir);
 
-        ServiceProvider provider = services.BuildServiceProvider();
+        ServiceProvider provider = BuildProvider(services);
         IPluginContextFactory factory = provider.GetRequiredService<IPluginContextFactory>();
 
         PluginCapabilities capabilities = new()
@@ -258,9 +260,10 @@ public class PluginDiIntegrationTests : IDisposable
         services.AddLogging();
         services.AddSingleton(TestStorageHelper.CreateBackend());
 
+        services.AddDataProtection().UseEphemeralDataProtectionProvider();
         services.AddPluginSystem(_tempPluginsDir);
 
-        ServiceProvider provider = services.BuildServiceProvider();
+        ServiceProvider provider = BuildProvider(services);
         IPluginContextFactory factory = provider.GetRequiredService<IPluginContextFactory>();
 
         PluginCapabilities capabilities = new()
@@ -301,9 +304,10 @@ public class PluginDiIntegrationTests : IDisposable
         services.AddLogging();
         services.AddSingleton(TestStorageHelper.CreateBackend());
 
+        services.AddDataProtection().UseEphemeralDataProtectionProvider();
         services.AddPluginSystem(_tempPluginsDir);
 
-        ServiceProvider provider = services.BuildServiceProvider();
+        ServiceProvider provider = BuildProvider(services);
         IPluginContextFactory factory = provider.GetRequiredService<IPluginContextFactory>();
 
         IPluginContext context = factory.Create(
@@ -347,14 +351,21 @@ public class PluginDiIntegrationTests : IDisposable
         services.AddLogging();
         services.AddSingleton(TestStorageHelper.CreateBackend());
 
+        services.AddDataProtection().UseEphemeralDataProtectionProvider();
         services.AddPluginSystem(_tempPluginsDir);
 
-        ServiceProvider provider = services.BuildServiceProvider();
+        ServiceProvider provider = BuildProvider(services);
         IPluginContext context = provider
             .GetRequiredService<IPluginContextFactory>()
             .Create(Ulid.NewUlid(), _tempPluginsDir, NullLogger.Instance, new PluginCapabilities());
 
         typeof(IPluginContext).GetProperty(member)!.GetValue(context).Should().NotBeNull();
+    }
+
+    private static ServiceProvider BuildProvider(ServiceCollection services)
+    {
+        services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
+        return services.BuildServiceProvider();
     }
 
     public interface ITestService

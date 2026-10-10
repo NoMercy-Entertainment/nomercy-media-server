@@ -107,6 +107,132 @@ public sealed class BinariesDownloadMethodsTests : IDisposable
                 : "sha256:" + Convert.ToHexString(SHA256.HashData(digestOf)).ToLowerInvariant(),
         };
 
+    [Fact]
+    public async Task DownloadApp_FailedAssetDownload_KeepsInstalledBinary()
+    {
+        Directory.CreateDirectory(AppFiles.BinariesPath);
+        await File.WriteAllTextAsync(AppFiles.AppExePath, "working-app");
+        File.SetLastWriteTimeUtc(AppFiles.AppExePath, DateTime.UtcNow.AddDays(-10));
+
+        FakeHttpHandler handler = new();
+        string url = "https://example.com/app-unavailable";
+        handler.RegisterError(url, HttpStatusCode.InternalServerError);
+        handler.RegisterReleaseInfo(
+            "https://api.github.com/repos/NoMercy-Entertainment/nomercy-media-server/releases/latest",
+            ReleaseWithAssets([
+                MakeAsset("NoMercyApp-windows-x64.exe", url),
+                MakeAsset("NoMercyApp-linux-x64", url),
+                MakeAsset("NoMercyApp-linux-arm64", url),
+                MakeAsset("NoMercyApp-macos-x64.dmg", url),
+            ])
+        );
+
+        Binaries binaries = BuildBinaries(handler);
+        await Assert.ThrowsAsync<HttpRequestException>(() => binaries.DownloadApp());
+
+        Assert.Equal("working-app", await File.ReadAllTextAsync(AppFiles.AppExePath));
+    }
+
+    [Fact]
+    public async Task DownloadYtdlp_FailedAssetDownload_KeepsInstalledBinary()
+    {
+        Directory.CreateDirectory(AppFiles.DependenciesPath);
+        await File.WriteAllTextAsync(AppFiles.YtdlpPath, "working-ytdlp");
+        File.SetLastWriteTimeUtc(AppFiles.YtdlpPath, DateTime.UtcNow.AddDays(-40));
+
+        FakeHttpHandler handler = new();
+        string url = "https://example.com/ytdlp-unavailable";
+        handler.RegisterError(url, HttpStatusCode.InternalServerError);
+        handler.RegisterReleaseList(
+            "https://api.github.com/repos/yt-dlp/yt-dlp/releases?per_page=30",
+            [
+                ReleaseWithAssets(
+                    DateTimeOffset.UtcNow.AddDays(-30),
+                    "v1.0.0",
+                    [
+                        MakeAsset("yt-dlp_x86.exe", url),
+                        MakeAsset("yt-dlp_linux", url),
+                        MakeAsset("yt-dlp_linux_aarch64", url),
+                        MakeAsset("yt-dlp_macos", url),
+                    ]
+                ),
+            ]
+        );
+
+        Binaries binaries = BuildBinaries(handler);
+        await Assert.ThrowsAsync<HttpRequestException>(() => binaries.DownloadYtdlp());
+
+        Assert.Equal("working-ytdlp", await File.ReadAllTextAsync(AppFiles.YtdlpPath));
+    }
+
+    [Fact]
+    public async Task DownloadFfmpeg_FailedAssetDownload_KeepsInstalledTools()
+    {
+        Directory.CreateDirectory(AppFiles.FfmpegFolder);
+        foreach (
+            string path in new[] { AppFiles.FfmpegPath, AppFiles.FfProbePath, AppFiles.FfPlayPath }
+        )
+        {
+            await File.WriteAllTextAsync(path, "working-tool");
+            File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddDays(-10));
+        }
+
+        FakeHttpHandler handler = new();
+        string url = "https://example.com/ffmpeg-unavailable";
+        handler.RegisterError(url, HttpStatusCode.InternalServerError);
+        handler.RegisterReleaseInfo(
+            "https://api.github.com/repos/NoMercy-Entertainment/nomercy-ffmpeg/releases/latest",
+            ReleaseWithAssets([
+                MakeAsset("ffmpeg-windows-x86_64.zip", url),
+                MakeAsset("ffmpeg-linux-x86_64.zip", url),
+                MakeAsset("ffmpeg-darwin-x86_64.zip", url),
+            ])
+        );
+
+        Binaries binaries = BuildBinaries(handler);
+        await Assert.ThrowsAsync<HttpRequestException>(() => binaries.DownloadFfmpeg());
+
+        foreach (
+            string path in new[] { AppFiles.FfmpegPath, AppFiles.FfProbePath, AppFiles.FfPlayPath }
+        )
+            Assert.Equal("working-tool", await File.ReadAllTextAsync(path));
+    }
+
+    [Fact]
+    public async Task DownloadFfmpeg_InvalidArchive_KeepsInstalledTools()
+    {
+        Directory.CreateDirectory(AppFiles.FfmpegFolder);
+        foreach (
+            string path in new[] { AppFiles.FfmpegPath, AppFiles.FfProbePath, AppFiles.FfPlayPath }
+        )
+        {
+            await File.WriteAllTextAsync(path, "working-tool");
+            File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddDays(-10));
+        }
+
+        byte[] invalidArchive = [.. "not a zip archive"u8];
+        string url = "https://example.com/ffmpeg-invalid.zip";
+        FakeHttpHandler handler = new();
+        handler.Register(url, invalidArchive);
+        handler.RegisterReleaseInfo(
+            "https://api.github.com/repos/NoMercy-Entertainment/nomercy-ffmpeg/releases/latest",
+            ReleaseWithAssets([
+                MakeAsset("ffmpeg-windows-x86_64.zip", url, invalidArchive),
+                MakeAsset("ffmpeg-linux-x86_64.zip", url, invalidArchive),
+                MakeAsset("ffmpeg-darwin-x86_64.zip", url, invalidArchive),
+            ])
+        );
+
+        Binaries binaries = BuildBinaries(handler);
+        Exception error = await Assert.ThrowsAsync<Exception>(() => binaries.DownloadFfmpeg());
+        Assert.IsType<InvalidDataException>(error.InnerException);
+
+        foreach (
+            string path in new[] { AppFiles.FfmpegPath, AppFiles.FfProbePath, AppFiles.FfPlayPath }
+        )
+            Assert.Equal("working-tool", await File.ReadAllTextAsync(path));
+    }
+
     // -------------------------------------------------------------------------
     // DownloadApp
     // -------------------------------------------------------------------------
@@ -511,9 +637,14 @@ public sealed class BinariesDownloadMethodsTests : IDisposable
 
         Assert.True(File.Exists(AppFiles.FfmpegPath));
         Assert.True(File.Exists(AppFiles.FfProbePath));
+        Assert.Equal(
+            "fake binary content for preset.txt",
+            await File.ReadAllTextAsync(Path.Combine(AppFiles.FfmpegFolder, "preset.txt"))
+        );
     }
 
     /// <summary>Builds a minimal real .zip archive containing the three executables
+    /// and a companion file to check that extraction installs every archive entry.
     /// DownloadFfmpeg expects to find after extraction. ExtractArchive writes the
     /// entries out verbatim and the assertions read AppFiles.Ffmpeg/FfProbePath, so
     /// the entry names have to carry the running platform's executable suffix — the
@@ -530,14 +661,15 @@ public sealed class BinariesDownloadMethodsTests : IDisposable
             )
         )
         {
-            string[] executableNames =
+            string[] entryNames =
             [
                 "ffmpeg" + Info.ExecSuffix,
                 "ffprobe" + Info.ExecSuffix,
                 "ffplay" + Info.ExecSuffix,
+                "preset.txt",
             ];
 
-            foreach (string name in executableNames)
+            foreach (string name in entryNames)
             {
                 System.IO.Compression.ZipArchiveEntry entry = archive.CreateEntry(name);
                 using Stream entryStream = entry.Open();
@@ -1065,6 +1197,43 @@ public sealed class BinariesDownloadMethodsTests : IDisposable
     // -------------------------------------------------------------------------
 
     [Fact]
+    public async Task DownloadAll_AppDownloadFails_StillAttemptsFfmpeg()
+    {
+        const string appUrl = "https://example.com/unavailable-app";
+        const string ffmpegApiUrl =
+            "https://api.github.com/repos/NoMercy-Entertainment/nomercy-ffmpeg/releases/latest";
+        const string ffmpegUrl = "https://example.com/ffmpeg.zip";
+        byte[] ffmpegArchive = BuildFfmpegZip();
+        FakeHttpHandler handler = new();
+        handler.RegisterReleaseInfo(
+            "https://api.github.com/repos/NoMercy-Entertainment/nomercy-media-server/releases/latest",
+            ReleaseWithAssets([
+                MakeAsset("NoMercyApp-windows-x64.exe", appUrl),
+                MakeAsset("NoMercyApp-linux-x64", appUrl),
+                MakeAsset("NoMercyApp-macos-x64", appUrl),
+                MakeAsset("NoMercyApp-macos-arm64", appUrl),
+            ])
+        );
+        handler.Register(ffmpegUrl, ffmpegArchive);
+        handler.RegisterReleaseInfo(
+            ffmpegApiUrl,
+            ReleaseWithAssets([
+                MakeAsset("ffmpeg-windows-x86_64.zip", ffmpegUrl, ffmpegArchive),
+                MakeAsset("ffmpeg-linux-x86_64.zip", ffmpegUrl, ffmpegArchive),
+            ])
+        );
+
+        Binaries binaries = BuildBinaries(handler);
+
+        await Assert.ThrowsAnyAsync<Exception>(() => binaries.DownloadAll());
+
+        Assert.Equal(1, handler.RequestCountFor(appUrl));
+        Assert.Equal(1, handler.RequestCountFor(ffmpegApiUrl));
+        Assert.Equal(1, handler.RequestCountFor(ffmpegUrl));
+        Assert.True(File.Exists(AppFiles.FfmpegPath));
+    }
+
+    [Fact]
     public async Task DownloadAll_EveryReleaseHasNoAssets_CompletesWithoutThrowing()
     {
         // DownloadFfmpeg has a hard-fail branch when its release has no assets AND
@@ -1267,6 +1436,9 @@ public sealed class BinariesDownloadMethodsTests : IDisposable
 internal sealed class FakeHttpHandler : HttpMessageHandler
 {
     private readonly Dictionary<string, byte[]> _responses = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, HttpStatusCode> _errors = new(
+        StringComparer.OrdinalIgnoreCase
+    );
 
     // Per-URL request count — lets a test assert the per-run release-info memo
     // (Binaries.GetLatestReleaseInfo) actually collapses repeated calls to the same
@@ -1274,6 +1446,8 @@ internal sealed class FakeHttpHandler : HttpMessageHandler
     private readonly Dictionary<string, int> _requestCounts = new(StringComparer.OrdinalIgnoreCase);
 
     public void Register(string url, byte[] body) => _responses[url] = body;
+
+    public void RegisterError(string url, HttpStatusCode status) => _errors[url] = status;
 
     public void RegisterReleaseInfo(string apiUrl, GithubReleaseResponse release) =>
         Register(apiUrl, Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(release)));
@@ -1300,6 +1474,9 @@ internal sealed class FakeHttpHandler : HttpMessageHandler
             };
             return Task.FromResult(ok);
         }
+
+        if (_errors.TryGetValue(url, out HttpStatusCode status))
+            return Task.FromResult(new HttpResponseMessage(status));
 
         return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
     }

@@ -46,6 +46,88 @@ public class BinaryDownloaderTests : IDisposable
             Directory.Delete(_tempDir, recursive: true);
     }
 
+    [Fact]
+    public async Task Download_BodyStopsAfterFirstChunk_CancelsOnIdle()
+    {
+        string assetUrl = "https://example.com/stalled.bin";
+        string destPath = Path.Combine(_tempDir, "stalled.bin");
+        GithubReleaseResponse release = BuildRelease("stalled.bin", assetUrl, null);
+        FakeHttpHandler handler = new();
+        TimedChunkStream stalledBody = new(
+            [Encoding.UTF8.GetBytes("first"), Encoding.UTF8.GetBytes("last")],
+            [TimeSpan.Zero, Timeout.InfiniteTimeSpan]
+        );
+        handler.RegisterStream(assetUrl, stalledBody);
+        Binaries binaries = BuildBinaries(handler);
+        binaries.DownloadIdleTimeout = TimeSpan.FromMilliseconds(150);
+
+        Task<string> transfer = binaries.DownloadWithVerificationAsync(
+            "https://api.github.com/test",
+            "stalled asset",
+            new(assetUrl),
+            destPath,
+            release,
+            "stalled.bin",
+            enforceSignedManifest: false
+        );
+        Func<Task> download = () => transfer.WaitAsync(TimeSpan.FromSeconds(2));
+
+        try
+        {
+            await download.Should().ThrowAsync<OperationCanceledException>();
+        }
+        finally
+        {
+            stalledBody.Release();
+            try
+            {
+                await transfer;
+            }
+            catch (OperationCanceledException) { }
+        }
+
+        File.Exists(destPath).Should().BeFalse();
+        File.Exists(destPath + ".tmp").Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Download_SlowLiveBody_ResetsIdleTimeoutPerChunk()
+    {
+        string assetUrl = "https://example.com/slow.bin";
+        string destPath = Path.Combine(_tempDir, "slow.bin");
+        GithubReleaseResponse release = BuildRelease("slow.bin", assetUrl, null);
+        FakeHttpHandler handler = new();
+        handler.RegisterStream(
+            assetUrl,
+            new TimedChunkStream(
+                [
+                    Encoding.UTF8.GetBytes("one"),
+                    Encoding.UTF8.GetBytes("two"),
+                    Encoding.UTF8.GetBytes("three"),
+                ],
+                [
+                    TimeSpan.FromMilliseconds(80),
+                    TimeSpan.FromMilliseconds(80),
+                    TimeSpan.FromMilliseconds(80),
+                ]
+            )
+        );
+        Binaries binaries = BuildBinaries(handler);
+        binaries.DownloadIdleTimeout = TimeSpan.FromMilliseconds(150);
+
+        await binaries.DownloadWithVerificationAsync(
+            "https://api.github.com/test",
+            "slow asset",
+            new(assetUrl),
+            destPath,
+            release,
+            "slow.bin",
+            enforceSignedManifest: false
+        );
+
+        (await File.ReadAllTextAsync(destPath)).Should().Be("onetwothree");
+    }
+
     // -------------------------------------------------------------------------
     // Happy path: no SHA-256 sidecar, no manifest → accepts file as-is
     // -------------------------------------------------------------------------
@@ -850,8 +932,11 @@ public class BinaryDownloaderTests : IDisposable
 internal sealed class FakeHttpHandler : HttpMessageHandler
 {
     private readonly Dictionary<string, byte[]> _responses = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, Stream> _streams = new(StringComparer.OrdinalIgnoreCase);
 
     public void Register(string url, byte[] body) => _responses[url] = body;
+
+    public void RegisterStream(string url, Stream body) => _streams[url] = body;
 
     public void RegisterRelease(GithubReleaseResponse release)
     {
@@ -865,6 +950,15 @@ internal sealed class FakeHttpHandler : HttpMessageHandler
     )
     {
         string url = request.RequestUri?.ToString() ?? string.Empty;
+        if (_streams.TryGetValue(url, out Stream? stream))
+        {
+            HttpResponseMessage response = new(HttpStatusCode.OK)
+            {
+                Content = new StreamContent(stream),
+            };
+            return Task.FromResult(response);
+        }
+
         if (_responses.TryGetValue(url, out byte[]? body))
         {
             HttpResponseMessage ok = new(HttpStatusCode.OK)
@@ -876,4 +970,59 @@ internal sealed class FakeHttpHandler : HttpMessageHandler
 
         return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
     }
+}
+
+internal sealed class TimedChunkStream(byte[][] chunks, TimeSpan[] delays) : Stream
+{
+    private int _index;
+    private readonly CancellationTokenSource _release = new();
+
+    public void Release() => _release.Cancel();
+
+    public override bool CanRead => true;
+    public override bool CanSeek => false;
+    public override bool CanWrite => false;
+    public override long Length => throw new NotSupportedException();
+    public override long Position
+    {
+        get => throw new NotSupportedException();
+        set => throw new NotSupportedException();
+    }
+
+    public override async ValueTask<int> ReadAsync(
+        Memory<byte> buffer,
+        CancellationToken cancellationToken = default
+    )
+    {
+        if (_index == chunks.Length)
+            return 0;
+
+        using CancellationTokenSource read = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            _release.Token
+        );
+        await Task.Delay(delays[_index], read.Token);
+        byte[] chunk = chunks[_index++];
+        chunk.CopyTo(buffer);
+        return chunk.Length;
+    }
+
+    public override Task<int> ReadAsync(
+        byte[] buffer,
+        int offset,
+        int count,
+        CancellationToken cancellationToken
+    ) => ReadAsync(buffer.AsMemory(offset, count), cancellationToken).AsTask();
+
+    public override int Read(byte[] buffer, int offset, int count) =>
+        throw new NotSupportedException();
+
+    public override void Flush() => throw new NotSupportedException();
+
+    public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+    public override void SetLength(long value) => throw new NotSupportedException();
+
+    public override void Write(byte[] buffer, int offset, int count) =>
+        throw new NotSupportedException();
 }

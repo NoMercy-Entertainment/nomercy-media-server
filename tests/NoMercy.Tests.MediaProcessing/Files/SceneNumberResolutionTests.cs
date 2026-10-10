@@ -267,4 +267,53 @@ public class SceneNumberResolutionTests : ProviderHttpHarness
 
         result.Should().BeNull();
     }
+
+    [Theory]
+    [InlineData(MediaTypes.TvMediaType)]
+    [InlineData(MediaTypes.AnimeMediaType)]
+    public async Task An_override_with_no_matching_episode_returns_unidentified(string libraryType)
+    {
+        SeedShow();
+        Handler.When(
+            request =>
+                request.Method == HttpMethod.Get
+                && request.RequestUri?.AbsolutePath.EndsWith(
+                    $"/tv/{ShowId}",
+                    StringComparison.Ordinal
+                ) == true,
+            MockResponse.Json(
+                HttpStatusCode.OK,
+                $$"""{"id":{{ShowId}},"name":"{{ShowName}}","first_air_date":"2020-01-01"}"""
+            )
+        );
+        Handler.WhenGet(
+            $"/tv/{ShowId}/episode_groups",
+            MockResponse.Json(HttpStatusCode.OK, """{"id":1,"results":[]}""")
+        );
+        Handler.WhenGet(
+            $"/tv/{ShowId}/season/1/episode/999",
+            MockResponse.Status(HttpStatusCode.NotFound)
+        );
+
+        await using MediaContext context = new(_options);
+        MediaIdentificationService service = BuildService(context);
+        MovieFile parsed = new($"/downloads/{ShowName}.999.mkv")
+        {
+            Title = ShowName,
+            Episode = 999,
+            IsSeries = true,
+            IsSuccess = true,
+        };
+
+        (MovieOrEpisode match, string? imdbId)? result = await service.IdentifyAsync(
+            parsed,
+            libraryType,
+            duration: null,
+            overrideTmdbId: ShowId,
+            seasonExplicit: false
+        );
+
+        result.Should().BeNull();
+        Handler.RequestCountFor($"/tv/{ShowId}/season/1/episode/999").Should().Be(1);
+    }
 }

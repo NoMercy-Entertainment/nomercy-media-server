@@ -22,6 +22,7 @@ using NoMercy.Encoder.Output;
 using NoMercy.Encoder.Pipeline.Optimizer;
 using NoMercy.Encoder.Profiles;
 using NoMercy.Encoder.Subtitles;
+using NoMercy.Storage;
 
 namespace NoMercy.Encoder.Pipeline.Stages;
 
@@ -49,7 +50,8 @@ public class PlanStage(
     IOutputNamingResolver? outputNamingResolver = null,
     ISubtitleAcquisitionService? subtitleAcquisitionService = null,
     Composition.EncoderOptions? options = null,
-    IEncodeYieldProbe? encodeYieldProbe = null
+    IEncodeYieldProbe? encodeYieldProbe = null,
+    IStorage? storage = null
 ) : IPipelineStage<ValidateInput, ExecutionPlan>, IPlanStage
 {
     public string Name => "Plan";
@@ -850,7 +852,7 @@ public class PlanStage(
         // Per-profile plan: resolves algorithm + nits + optional LUT from HdrOptions.
         // V2 profile has no TonemapAlgorithm shorthand — pass null; HdrOptions takes over.
         TonemapPlan tonemapPlan = await tonemapSelector
-            .BuildAsync(profile.HdrOptions, null, context.DecisionsOrNoOp, cancellationToken: ct)
+            .BuildAsync(profile.HdrOptions, null, context.DecisionsOrNoOp, storage, ct)
             .ConfigureAwait(false);
 
         VideoOutput[] videoOutputs = PlanStageHelpers.EnumerateVideo(profile);

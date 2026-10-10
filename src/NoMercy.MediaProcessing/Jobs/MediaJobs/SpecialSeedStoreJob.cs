@@ -43,7 +43,6 @@ public class SpecialSeedStoreJob : AbstractJob
             await using MediaContext mediaContext = new();
 
             TmdbSearchClient client = new();
-            List<int> tvIds = [];
             List<int> movieIds = [];
             List<SpecialItem> specialItems = [];
 
@@ -56,7 +55,7 @@ public class SpecialSeedStoreJob : AbstractJob
                         break;
                     case MediaTypes.TvMediaType:
                     case MediaTypes.AnimeMediaType:
-                        await AddTvItem(mediaContext, client, item, tvIds, specialItems);
+                        await AddTvItem(mediaContext, client, item, specialItems);
                         break;
                 }
             }
@@ -107,7 +106,6 @@ public class SpecialSeedStoreJob : AbstractJob
         MediaContext context,
         TmdbSearchClient client,
         SpecialSeedItem item,
-        List<int> tvIds,
         List<SpecialItem> specialItems
     )
     {
@@ -122,14 +120,22 @@ public class SpecialSeedStoreJob : AbstractJob
             !r.Name.Contains("making of", StringComparison.InvariantCultureIgnoreCase)
         );
 
-        if (tv is null || tvIds.Contains(tv.Id))
+        if (tv is null)
             return;
 
-        tvIds.Add(tv.Id);
+        await AddTvEpisodes(context, item, tv.Id, specialItems);
+    }
 
+    internal static async Task AddTvEpisodes(
+        MediaContext context,
+        SpecialSeedItem item,
+        int tvId,
+        List<SpecialItem> specialItems
+    )
+    {
         if (item.Episodes.Length == 0)
             item.Episodes = await context
-                .Episodes.Where(x => x.TvId == tv.Id)
+                .Episodes.Where(x => x.TvId == tvId)
                 .Where(x => x.SeasonNumber == item.Seasons.First())
                 .Select(selector: x => x.EpisodeNumber)
                 .ToArrayAsync();
@@ -137,7 +143,7 @@ public class SpecialSeedStoreJob : AbstractJob
         foreach (int episodeNumber in item.Episodes)
         {
             Episode? episode = await context.Episodes.FirstOrDefaultAsync(predicate: x =>
-                x.TvId == tv.Id
+                x.TvId == tvId
                 && x.SeasonNumber == item.Seasons.First()
                 && x.EpisodeNumber == episodeNumber
             );

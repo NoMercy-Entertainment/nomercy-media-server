@@ -185,8 +185,15 @@ public sealed class RemoteStorage : IStorage
         }
         catch
         {
-            if (File.Exists(tmp))
-                File.Delete(tmp);
+            try
+            {
+                if (File.Exists(tmp))
+                    File.Delete(tmp);
+            }
+            catch
+            {
+                // best-effort cleanup
+            }
             throw;
         }
 
@@ -292,8 +299,15 @@ public sealed class RemoteStorage : IStorage
         }
         catch
         {
-            if (File.Exists(tmp))
-                File.Delete(tmp);
+            try
+            {
+                if (File.Exists(tmp))
+                    File.Delete(tmp);
+            }
+            catch
+            {
+                // best-effort cleanup
+            }
             throw;
         }
 

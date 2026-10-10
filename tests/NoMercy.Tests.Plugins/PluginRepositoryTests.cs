@@ -470,6 +470,61 @@ public class PluginRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task RefreshAsync_Offline_KeepsPreviousCatalogueAndTrust()
+    {
+        const string url = "https://example.com/repo.json";
+        PluginRepositoryManifest manifest = CreateTestManifest(pluginCount: 1);
+        ChangingHttpHandler handler = new();
+        handler.Manifests[url] = manifest;
+        PluginRepository repo = MakeRepo(new HttpClient(handler));
+
+        await repo.AddRepositoryAsync("repo", url);
+        await repo.SetRepositoryTrustAsync("repo", true);
+        await repo.RefreshAsync();
+        Ulid pluginId = manifest.Plugins[0].Id;
+        repo.IsFromTrustedRepository(pluginId).Should().BeTrue();
+
+        handler.FailingUrls.Add(url);
+        await repo.RefreshAsync();
+
+        repo.GetAvailablePlugins().Should().ContainSingle().Which.Id.Should().Be(pluginId);
+        repo.FindPlugin(pluginId).Should().NotBeNull();
+        repo.IsFromTrustedRepository(pluginId).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task RefreshAsync_PartialFailure_KeepsOnlyFailedReposPreviousEntries()
+    {
+        const string failedUrl = "https://example.com/failed.json";
+        const string updatedUrl = "https://example.com/updated.json";
+        PluginRepositoryManifest failedManifest = CreateTestManifest(pluginCount: 1);
+        PluginRepositoryManifest originalManifest = CreateTestManifest(pluginCount: 1);
+        PluginRepositoryManifest replacementManifest = CreateTestManifest(pluginCount: 1);
+        ChangingHttpHandler handler = new();
+        handler.Manifests[failedUrl] = failedManifest;
+        handler.Manifests[updatedUrl] = originalManifest;
+        PluginRepository repo = MakeRepo(new HttpClient(handler));
+
+        await repo.AddRepositoryAsync("failed", failedUrl);
+        await repo.AddRepositoryAsync("updated", updatedUrl);
+        await repo.SetRepositoryTrustAsync("failed", true);
+        await repo.SetRepositoryTrustAsync("updated", true);
+        await repo.RefreshAsync();
+
+        handler.FailingUrls.Add(failedUrl);
+        handler.Manifests[updatedUrl] = replacementManifest;
+        await repo.RefreshAsync();
+
+        repo.GetAvailablePlugins()
+            .Select(plugin => plugin.Id)
+            .Should()
+            .BeEquivalentTo([failedManifest.Plugins[0].Id, replacementManifest.Plugins[0].Id]);
+        repo.IsFromTrustedRepository(failedManifest.Plugins[0].Id).Should().BeTrue();
+        repo.IsFromTrustedRepository(replacementManifest.Plugins[0].Id).Should().BeTrue();
+        repo.IsFromTrustedRepository(originalManifest.Plugins[0].Id).Should().BeFalse();
+    }
+
+    [Fact]
     public async Task AddRepositoryAsync_ConfigurationsPathReplacedByAFile_SaveFailsSilently()
     {
         // SaveRepositoriesToDiskAsync's own catch(Exception): WriteAllTextAsync
@@ -852,6 +907,30 @@ public class PluginRepositoryTests : IDisposable
             )
             {
                 Content = new StringContent(isOk ? okJson : string.Empty),
+            };
+            return Task.FromResult(response);
+        }
+    }
+
+    private sealed class ChangingHttpHandler : HttpMessageHandler
+    {
+        public Dictionary<string, PluginRepositoryManifest> Manifests { get; } = [];
+        public HashSet<string> FailingUrls { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken
+        )
+        {
+            string url = request.RequestUri!.ToString();
+            if (FailingUrls.Contains(url))
+            {
+                throw new HttpRequestException("Network unavailable");
+            }
+
+            HttpResponseMessage response = new(HttpStatusCode.OK)
+            {
+                Content = new StringContent(JsonSerializer.Serialize(Manifests[url])),
             };
             return Task.FromResult(response);
         }

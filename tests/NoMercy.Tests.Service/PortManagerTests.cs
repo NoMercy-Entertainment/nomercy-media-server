@@ -150,6 +150,17 @@ public class PortManagerTests
         Assert.Equal(4321, PortManager.ParsePidFromLsof(lsof));
     }
 
+    [Fact]
+    public void ParsePidFromLsof_EstablishedClientBeforeListener_ReturnsListenerPid()
+    {
+        const string lsof =
+            "COMMAND   PID   USER   FD   TYPE   DEVICE   SIZE/OFF   NODE   NAME\n"
+            + "browser   100   user   12u  IPv4   0x1      0t0        TCP    localhost:49152->localhost:7626 (ESTABLISHED)\n"
+            + "NoMercyMe 200   user   10u  IPv4   0x2      0t0        TCP    *:7626 (LISTEN)\n";
+
+        Assert.Equal(200, PortManager.ParsePidFromLsof(lsof));
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("COMMAND   PID   USER   FD   TYPE   DEVICE   SIZE/OFF   NODE   NAME\n")]
