@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using NoMercy.Api.Services;
 using NoMercy.NmSystem.Information;
 using NoMercy.Service.Seeds;
 using NoMercyQueue.Core;
@@ -27,28 +28,46 @@ public class DatabaseBackupCronJob : ICronJobExecutor
 {
     private readonly ILogger<DatabaseBackupCronJob> _logger;
     private readonly string[] _dbPaths;
+    private readonly IBackupService? _completeBackup;
 
     public string CronExpression => new CronExpressionBuilder().Daily(4);
     public string JobName => "Daily Database Backup";
 
-    public DatabaseBackupCronJob(ILogger<DatabaseBackupCronJob> logger, string[]? dbPaths = null)
+    public DatabaseBackupCronJob(ILogger<DatabaseBackupCronJob> logger)
+        : this(logger, [AppFiles.MediaDatabase, AppFiles.QueueDatabase, AppFiles.AppDatabase]) { }
+
+    public DatabaseBackupCronJob(
+        ILogger<DatabaseBackupCronJob> logger,
+        IBackupService completeBackup
+    )
+        : this(logger)
     {
-        _logger = logger;
-        _dbPaths =
-            dbPaths ?? [AppFiles.MediaDatabase, AppFiles.QueueDatabase, AppFiles.AppDatabase];
+        _completeBackup = completeBackup;
     }
 
-    public Task ExecuteAsync(string parameters, CancellationToken cancellationToken = default)
+    public DatabaseBackupCronJob(ILogger<DatabaseBackupCronJob> logger, string[] dbPaths)
     {
+        _logger = logger;
+        _dbPaths = dbPaths;
+    }
+
+    public async Task ExecuteAsync(string parameters, CancellationToken cancellationToken = default)
+    {
+        if (_completeBackup is not null)
+        {
+            string id = await _completeBackup.CreateAsync(cancellationToken);
+            _logger.LogInformation("Daily complete backup created: {BackupId}", id);
+            return;
+        }
+
         int backedUp = 0;
         foreach (string dbPath in _dbPaths)
             if (DatabaseBackupService.BackupNow(dbPath, "daily scheduled backup"))
                 backedUp++;
 
         _logger.LogInformation(
-            "Daily database backup complete: {BackedUp}/{Total} databases backed up", [backedUp, _dbPaths.Length]
+            "Daily database backup complete: {BackedUp}/{Total} databases backed up",
+            [backedUp, _dbPaths.Length]
         );
-
-        return Task.CompletedTask;
     }
 }
