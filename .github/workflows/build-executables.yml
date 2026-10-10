@@ -29,7 +29,7 @@ on:
 
 jobs:
   build_executables:
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","Linux","X64","beast-unit"]') || 'ubuntu-latest' }}
     strategy:
       matrix:
         project: [Service, App, Launcher, Cli]

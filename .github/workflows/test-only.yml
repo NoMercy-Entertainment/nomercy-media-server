@@ -22,7 +22,7 @@ permissions:
 jobs:
   full-test:
     if: ${{ contains(github.event.head_commit.message, '[test-only]') }}
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","Linux","X64","beast-unit"]') || 'ubuntu-latest' }}
     steps:
       - uses: actions/checkout@v7
         with:
