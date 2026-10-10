@@ -214,7 +214,7 @@ public class AlbumsController : BaseController
         if (album is null)
             return NotFoundResponse("Album not found");
 
-        string slug = album.Name.ToSlug();
+        string slug = $"album-{album.Id}";
         string colorPalette = album._colorPalette.OrEmpty();
         string cover = album.Cover.OrEmpty();
 
@@ -261,7 +261,7 @@ public class AlbumsController : BaseController
         if (album is null)
             return NotFoundResponse("Album not found");
 
-        string slug = album.Name.ToSlug();
+        string slug = $"album-{album.Id}";
 
         await using (Stream libraryCopy = image.OpenReadStream())
             if (
