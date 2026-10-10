@@ -29,6 +29,11 @@ namespace NoMercy.Encoder.Subtitles;
 /// </remarks>
 public class NoOpTesseractModelDownloader : ITesseractModelDownloader
 {
+    public Task<IReadOnlyList<string>> GetAvailableLanguagesAsync(CancellationToken ct) =>
+        throw new NotSupportedException(
+            "No ITesseractModelDownloader is configured for this host."
+        );
+
     public Task<Stream> DownloadVerifiedAsync(string language, CancellationToken ct) =>
         throw new NotSupportedException(
             "No ITesseractModelDownloader is configured for this host — the signed "

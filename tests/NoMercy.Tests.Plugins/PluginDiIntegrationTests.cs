@@ -213,6 +213,7 @@ public class PluginDiIntegrationTests : IDisposable
         ServiceCollection services = new();
         services.AddSingleton<IEventBus, InMemoryEventBus>();
         services.AddLogging();
+        services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
         services.AddSingleton(TestStorageHelper.CreateBackend());
         services.AddSingleton(Mock.Of<IPluginEncoder>());
         services.AddSingleton(Mock.Of<IPluginJobs>());
@@ -258,6 +259,7 @@ public class PluginDiIntegrationTests : IDisposable
         ServiceCollection services = new();
         services.AddSingleton<IEventBus, InMemoryEventBus>();
         services.AddLogging();
+        services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
         services.AddSingleton(TestStorageHelper.CreateBackend());
 
         services.AddDataProtection().UseEphemeralDataProtectionProvider();
@@ -302,6 +304,7 @@ public class PluginDiIntegrationTests : IDisposable
         ServiceCollection services = new();
         services.AddSingleton<IEventBus, InMemoryEventBus>();
         services.AddLogging();
+        services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
         services.AddSingleton(TestStorageHelper.CreateBackend());
 
         services.AddDataProtection().UseEphemeralDataProtectionProvider();
@@ -349,6 +352,7 @@ public class PluginDiIntegrationTests : IDisposable
         ServiceCollection services = new();
         services.AddSingleton<IEventBus, InMemoryEventBus>();
         services.AddLogging();
+        services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
         services.AddSingleton(TestStorageHelper.CreateBackend());
 
         services.AddDataProtection().UseEphemeralDataProtectionProvider();

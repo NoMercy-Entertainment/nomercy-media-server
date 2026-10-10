@@ -190,6 +190,7 @@ public class PluginUserDataScopeTests : IDisposable
     [InlineData("../escape")]
     [InlineData("nested/name")]
     [InlineData("back\\slash")]
+    [InlineData("C:x")]
     public async Task A_database_name_that_walks_out_of_the_folder_refuses(string name)
     {
         PluginUserDataScope scope = ScopeFor(new UserId(Ulid.NewUlid()));

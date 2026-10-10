@@ -240,19 +240,16 @@ public class MusicMutationAuthTests : IClassFixture<NoMercyApiFactory>
     }
 
     [Fact]
-    public async Task AlbumsRescan_Owner_PassesModeratorGate_ReturnsOk()
+    public async Task AlbumsRescan_Owner_PassesModeratorGate_ReturnsNotFoundForFakeId()
     {
-        // Rescan never reads the repository for the id at all — it always
-        // returns "Rescan started" regardless — so a fake id is fully safe here.
         HttpResponseMessage response = await _owner.PostAsync(
             $"/api/v1/music/albums/{Guid.NewGuid()}/rescan",
             JsonBody(new { })
         );
 
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
         using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
-        doc.RootElement.GetProperty("status").GetString().Should().Be("ok");
-        doc.RootElement.GetProperty("message").GetString().Should().Be("Rescan started");
+        AssertNotFoundDetail(doc.RootElement, "Album not found");
     }
 
     [Fact]

@@ -254,6 +254,7 @@ public class PluginDatabaseTests : IDisposable
     [InlineData("../../library")]
     [InlineData("..\\library")]
     [InlineData("nested/state")]
+    [InlineData("C:x")]
     public async Task A_name_that_is_a_path_refuses(string name)
     {
         PluginHostStorage storage = Storage();
