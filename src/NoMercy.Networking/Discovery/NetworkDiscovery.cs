@@ -29,6 +29,7 @@ namespace NoMercy.Networking.Discovery;
 public class NetworkDiscovery : INetworkDiscovery
 {
     private readonly IStorageDriver _driver;
+    private readonly bool _hasExternalIpOverride;
     private string? _externalIp;
     private INatDevice? _device;
     private bool _hasFoundDevice;
@@ -50,12 +51,24 @@ public class NetworkDiscovery : INetworkDiscovery
         IConnectivityStatus connectivityStatus,
         NetworkProbeConfig networkProbeConfig
     )
+        : this(logger, driver, authTokenStore, connectivityStatus, networkProbeConfig, null) { }
+
+    public NetworkDiscovery(
+        ILogger<NetworkDiscovery> logger,
+        IStorageDriver driver,
+        IAuthTokenStore authTokenStore,
+        IConnectivityStatus connectivityStatus,
+        NetworkProbeConfig networkProbeConfig,
+        string? externalIpOverride
+    )
     {
         _logger = logger;
         _authTokenStore = authTokenStore;
         _connectivityStatus = connectivityStatus;
         _driver = driver;
         _networkProbeConfig = networkProbeConfig;
+        _hasExternalIpOverride = !string.IsNullOrEmpty(externalIpOverride);
+        _externalIp = externalIpOverride;
     }
 
     /// <summary>
@@ -190,6 +203,8 @@ public class NetworkDiscovery : INetworkDiscovery
                 return;
 
             _discoveryCompleted = false;
+            if (!_hasExternalIpOverride)
+                _externalIp = null;
             _lastRediscovery = DateTime.UtcNow;
         }
         finally
@@ -656,7 +671,7 @@ public class NetworkDiscovery : INetworkDiscovery
     /// <see cref="DiscoverExternalIpAsync"/>, which additionally blocks on a
     /// hardcoded 15s UPnP discovery window that requires real network hardware.
     /// </summary>
-    internal async Task<string> GetExternalIpAsync()
+    internal virtual async Task<string> GetExternalIpAsync()
     {
         _logger.LogInformation("Getting external IP address");
 

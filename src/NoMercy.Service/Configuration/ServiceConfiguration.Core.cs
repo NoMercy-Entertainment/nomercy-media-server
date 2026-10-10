@@ -225,12 +225,11 @@ public static partial class ServiceConfiguration
                 storageDriver,
                 sp.GetRequiredService<IAuthTokenStore>(),
                 sp.GetRequiredService<IConnectivityStatus>(),
-                networkProbeConfig
+                networkProbeConfig,
+                StartupOptions.OverrideExternalIp
             );
             if (!string.IsNullOrEmpty(StartupOptions.OverrideInternalIp))
                 discovery.InternalIp = StartupOptions.OverrideInternalIp;
-            if (!string.IsNullOrEmpty(StartupOptions.OverrideExternalIp))
-                discovery.ExternalIp = StartupOptions.OverrideExternalIp;
             Start.NetworkDiscovery = discovery;
             // Register.Discovery = discovery;
             return discovery;
