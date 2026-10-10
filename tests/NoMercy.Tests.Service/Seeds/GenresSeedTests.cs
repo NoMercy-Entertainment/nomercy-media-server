@@ -27,6 +27,8 @@ public sealed class GenresSeedTests : ProviderHttpHarness
 {
     private readonly SqliteConnection _connection;
     private readonly DbContextOptions<MediaContext> _options;
+    private readonly SqliteConnection _appConnection;
+    private readonly DbContextOptions<AppDbContext> _appOptions;
 
     public GenresSeedTests()
         : base(HttpClientNames.Tmdb)
@@ -42,11 +44,18 @@ public sealed class GenresSeedTests : ProviderHttpHarness
 
         using MediaContext ctx = new(_options);
         ctx.Database.EnsureCreated();
+
+        _appConnection = new("DataSource=:memory:");
+        _appConnection.Open();
+        _appOptions = new DbContextOptionsBuilder<AppDbContext>().UseSqlite(_appConnection).Options;
+        using AppDbContext appCtx = new(_appOptions);
+        appCtx.Database.EnsureCreated();
     }
 
     public override void Dispose()
     {
         _connection.Dispose();
+        _appConnection.Dispose();
         base.Dispose();
     }
 
@@ -75,7 +84,7 @@ public sealed class GenresSeedTests : ProviderHttpHarness
 
         await using MediaContext context = new(_options);
 
-        await GenresSeed.Init(context);
+        await GenresSeed.Init(context, new AppDbContext(_appOptions));
 
         int genreCount = await context.Genres.CountAsync();
         int translationCount = await context.Translations.CountAsync();
@@ -114,12 +123,12 @@ public sealed class GenresSeedTests : ProviderHttpHarness
 
         await using (MediaContext firstContext = new(_options))
         {
-            await GenresSeed.Init(firstContext);
+            await GenresSeed.Init(firstContext, new AppDbContext(_appOptions));
             Assert.Equal(0, await firstContext.Translations.CountAsync(t => t.GenreId != null));
         }
 
         await using MediaContext secondContext = new(_options);
-        await GenresSeed.Init(secondContext);
+        await GenresSeed.Init(secondContext, new AppDbContext(_appOptions));
 
         Translation translation = await secondContext.Translations.SingleAsync(t =>
             t.GenreId == 28
@@ -168,10 +177,40 @@ public sealed class GenresSeedTests : ProviderHttpHarness
         Handler.WhenGet("genre/tv/list", MockResponse.Json(HttpStatusCode.OK, "{\"genres\":[]}"));
 
         await using MediaContext context = new(_options);
-        await GenresSeed.Init(context);
+        await GenresSeed.Init(context, new AppDbContext(_appOptions));
 
         Assert.Equal(2, await context.Translations.CountAsync(t => t.GenreId != null));
         Assert.Equal(2, await context.Genres.CountAsync());
         Assert.Single(Handler.Requests, r => r.Path.Contains("genre/movie/list"));
+    }
+
+    [Fact]
+    public async Task Init_LanguageTmdbNeverTranslates_IsNotRefetchedOnNextBoot()
+    {
+        await using (MediaContext seedContext = new(_options))
+        {
+            seedContext.Genres.Add(new() { Id = 28, Name = "Action" });
+            seedContext.Languages.Add(
+                new()
+                {
+                    Iso6391 = "xx",
+                    EnglishName = "Untranslated",
+                    Name = "Untranslated",
+                }
+            );
+            await seedContext.SaveChangesAsync();
+        }
+
+        Handler.WhenGet("genre/movie/list", MockResponse.Json(HttpStatusCode.OK, "{\"genres\":[]}"));
+        Handler.WhenGet("genre/tv/list", MockResponse.Json(HttpStatusCode.OK, "{\"genres\":[]}"));
+
+        await using (MediaContext firstContext = new(_options))
+            await GenresSeed.Init(firstContext, new AppDbContext(_appOptions));
+
+        await using (MediaContext secondContext = new(_options))
+            await GenresSeed.Init(secondContext, new AppDbContext(_appOptions));
+
+        Assert.Equal(1, Handler.RequestCountFor("genre/movie/list"));
+        Assert.Equal(1, Handler.RequestCountFor("genre/tv/list"));
     }
 }

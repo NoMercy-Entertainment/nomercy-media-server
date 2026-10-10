@@ -25,7 +25,24 @@ namespace NoMercy.Service.Seeds;
 
 public static class GenresSeed
 {
-    public static async Task Init(this MediaContext dbContext)
+    private const string MissKeyPrefix = "genre_translation_miss:";
+
+    public static async Task Init(this MediaContext dbContext, AppDbContext? appDbContext = null)
+    {
+        bool ownsAppDb = appDbContext is null;
+        appDbContext ??= new();
+        try
+        {
+            await Seed(dbContext, appDbContext);
+        }
+        finally
+        {
+            if (ownsAppDb)
+                await appDbContext.DisposeAsync();
+        }
+    }
+
+    private static async Task Seed(MediaContext dbContext, AppDbContext appDbContext)
     {
         bool hasGenres = await dbContext.Genres.AnyAsync();
         List<Language> languages = await dbContext
@@ -45,8 +62,16 @@ public static class GenresSeed
                 Iso6391 = translation.Iso6391,
             })
             .ToListAsync();
+        HashSet<string> knownMisses = (
+            await appDbContext
+                .Configuration.AsNoTracking()
+                .Where(c => c.Key.StartsWith(MissKeyPrefix))
+                .Select(c => c.Key)
+                .ToListAsync()
+        ).ToHashSet();
         List<Language> missingLanguages = hasGenres
             ? languages
+                .Where(language => !knownMisses.Contains(MissKeyPrefix + language.Iso6391))
                 .Where(language =>
                     genreIds.Any(genreId =>
                         !existingTranslations.Any(translation =>
@@ -105,6 +130,7 @@ public static class GenresSeed
             try
             {
                 ConcurrentBag<Translation> translations = [];
+                ConcurrentBag<string> misses = [];
 
                 await Parallel.ForEachAsync(
                     missingLanguages,
@@ -116,6 +142,8 @@ public static class GenresSeed
                             LogEventLevel.Verbose
                         );
 
+                        int added = 0;
+                        bool bothAnswered = true;
                         IEnumerable<Translation>? mg = (
                             await tmdbMovieClient.Genres(language.Iso6391)
                         )
@@ -130,8 +158,13 @@ public static class GenresSeed
                         if (mg != null)
                         {
                             foreach (Translation translation in mg)
+                            {
                                 translations.Add(translation);
+                                added++;
+                            }
                         }
+                        else
+                            bothAnswered = false;
 
                         IEnumerable<Translation>? tg = (await tmdbTvClient.Genres(language.Iso6391))
                             ?.Genres.Where(g => g.Name != null)
@@ -145,10 +178,22 @@ public static class GenresSeed
                         if (tg != null)
                         {
                             foreach (Translation translation in tg)
+                            {
                                 translations.Add(translation);
+                                added++;
+                            }
                         }
+                        else
+                            bothAnswered = false;
+
+                        // TMDB answered both lists and has no translation for this language:
+                        // remember the miss so the next boot does not ask again.
+                        if (bothAnswered && added == 0)
+                            misses.Add(language.Iso6391);
                     }
                 );
+
+                await RememberMisses(appDbContext, misses);
 
                 Logger.Setup(
                     $"Adding {translations.Count} genre translations",
@@ -173,5 +218,18 @@ public static class GenresSeed
                 Logger.Setup($"Genres seed failed: {e.Message}", LogEventLevel.Warning);
             }
         }
+    }
+
+    private static async Task RememberMisses(AppDbContext dbContext, IEnumerable<string> iso)
+    {
+        foreach (string code in iso.Distinct())
+        {
+            string key = MissKeyPrefix + code;
+            if (await dbContext.Configuration.AnyAsync(c => c.Key == key))
+                continue;
+            dbContext.Configuration.Add(new() { Key = key, Value = "1" });
+        }
+
+        await dbContext.SaveChangesAsync();
     }
 }
