@@ -425,7 +425,16 @@ public class Binaries
         if (_driver.FileExists(destPath))
             _driver.MoveFile(destPath, backupPath);
 
-        _driver.MoveFile(tempPath, destPath);
+        try
+        {
+            _driver.MoveFile(tempPath, destPath);
+        }
+        catch
+        {
+            if (_driver.FileExists(backupPath))
+                _driver.MoveFile(backupPath, destPath);
+            throw;
+        }
 
         // Smoke-check: destination must exist and be non-zero after the move.
         if (!_driver.FileExists(destPath) || _storage.SizeOrZero(destPath) == 0)
@@ -1025,8 +1034,6 @@ public class Binaries
             return;
         }
 
-        await Downloader.DeleteSourceDownload(_storage, AppFiles.AppExePath);
-
         Uri? downloadUrl = null;
         string? assetName = null;
 
@@ -1080,8 +1087,6 @@ public class Binaries
             return;
         }
 
-        await Downloader.DeleteSourceDownload(_storage, AppFiles.LauncherExePath);
-
         Uri? downloadUrl = null;
         string? assetName = null;
 
@@ -1134,8 +1139,6 @@ public class Binaries
             _binaryReport.Add($"CLI = {version}");
             return;
         }
-
-        await Downloader.DeleteSourceDownload(_storage, AppFiles.CliExePath);
 
         Uri? downloadUrl = null;
         string? assetName = null;
@@ -1267,8 +1270,6 @@ public class Binaries
 
         Logger.Setup($"Server update available: {currentVersion} -> {latestVersion}");
 
-        await Downloader.DeleteSourceDownload(_storage, AppFiles.ServerTempExePath);
-
         Uri? downloadUrl = null;
         string? assetName = null;
 
@@ -1394,10 +1395,6 @@ public class Binaries
             return;
         }
 
-        await Downloader.DeleteSourceDownload(_storage, AppFiles.FfmpegPath);
-        await Downloader.DeleteSourceDownload(_storage, AppFiles.FfProbePath);
-        await Downloader.DeleteSourceDownload(_storage, AppFiles.FfPlayPath);
-
         Asset? selectedAsset = null;
 
         if (
@@ -1492,14 +1489,88 @@ public class Binaries
             return;
         }
 
-        List<string> files = await Archiving.ExtractArchive(_storage, path, AppFiles.FfmpegFolder);
-        foreach (string file in files)
+        string stagingDirectory = Path.Combine(
+            AppFiles.DependenciesPath,
+            "ffmpeg-extract-" + Guid.NewGuid().ToString("N")
+        );
+        try
         {
-            await FileAttributes.SetCreatedAttribute(file, releaseInfo.PublishedAt);
-            await FilePermissions.SetExecutionPermissions(file);
-        }
+            List<string> files = (await Archiving.ExtractArchive(_storage, path, stagingDirectory))
+                .Where(_driver.FileExists)
+                .ToList();
+            string[] toolNames =
+            [
+                Path.GetFileName(AppFiles.FfmpegPath),
+                Path.GetFileName(AppFiles.FfProbePath),
+                Path.GetFileName(AppFiles.FfPlayPath),
+            ];
+            foreach (string toolName in toolNames)
+            {
+                string stagedPath = Path.Combine(stagingDirectory, toolName);
+                if (!_driver.FileExists(stagedPath) || _storage.SizeOrZero(stagedPath) == 0)
+                    throw new InvalidDataException($"FFmpeg archive is missing {toolName}");
+            }
 
-        await Downloader.DeleteSourceDownload(_storage, path);
+            foreach (string file in files)
+            {
+                await FileAttributes.SetCreatedAttribute(file, releaseInfo.PublishedAt);
+                await FilePermissions.SetExecutionPermissions(file);
+            }
+
+            if (!_driver.DirectoryExists(AppFiles.FfmpegFolder))
+                _storage.CreateDirectory(AppFiles.FfmpegFolder);
+            string[] installedPaths = files
+                .Select(file =>
+                    Path.Combine(
+                        AppFiles.FfmpegFolder,
+                        Path.GetRelativePath(stagingDirectory, file)
+                    )
+                )
+                .ToArray();
+            string[] backupPaths = installedPaths.Select(file => file + ".bak").ToArray();
+            bool[] backedUp = new bool[installedPaths.Length];
+            bool[] installed = new bool[installedPaths.Length];
+            try
+            {
+                for (int i = 0; i < installedPaths.Length; i++)
+                {
+                    string? parentDirectory = Path.GetDirectoryName(installedPaths[i]);
+                    if (parentDirectory is not null && !_driver.DirectoryExists(parentDirectory))
+                        _storage.CreateDirectory(parentDirectory);
+                    if (_driver.FileExists(backupPaths[i]))
+                        _driver.DeleteFile(backupPaths[i]);
+                    if (_driver.FileExists(installedPaths[i]))
+                    {
+                        _driver.MoveFile(installedPaths[i], backupPaths[i]);
+                        backedUp[i] = true;
+                    }
+                    _driver.MoveFile(files[i], installedPaths[i]);
+                    installed[i] = true;
+                }
+            }
+            catch
+            {
+                for (int i = installedPaths.Length - 1; i >= 0; i--)
+                {
+                    if (installed[i])
+                        _driver.DeleteFile(installedPaths[i]);
+                    if (backedUp[i])
+                        _driver.MoveFile(backupPaths[i], installedPaths[i]);
+                }
+                throw;
+            }
+
+            foreach (string backupPath in backupPaths)
+                if (_driver.FileExists(backupPath))
+                    _driver.DeleteFile(backupPath);
+
+            await Downloader.DeleteSourceDownload(_storage, path);
+        }
+        finally
+        {
+            if (_driver.DirectoryExists(stagingDirectory))
+                _storage.DeleteDirectory(stagingDirectory, recursive: true);
+        }
     }
 
     /// <summary>
@@ -1556,8 +1627,6 @@ public class Binaries
             _binaryReport.Add($"Yt-dlp = {version}");
             return;
         }
-
-        await Downloader.DeleteSourceDownload(_storage, AppFiles.YtdlpPath);
 
         string? assetName = null;
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
@@ -1637,8 +1706,6 @@ public class Binaries
             _binaryReport.Add($"shaka-packager = {version}");
             return;
         }
-
-        await Downloader.DeleteSourceDownload(_storage, AppFiles.ShakaPackagerPath);
 
         // shaka-project release asset names per platform.
         string? assetName = null;
@@ -1768,42 +1835,50 @@ public class Binaries
             return;
         }
 
-        string path = await Downloader.DownloadFile(
-            _storage,
+        string downloadPath = needsExtraction
+            ? Path.Combine(AppFiles.DependenciesPath, selectedAsset.Name)
+            : destinationPath;
+        string path = await DownloadWithVerificationAsync(
+            GithubCloudflaredApiUrl,
             "cloudflared",
-            selectedAsset.BrowserDownloadUrl
+            selectedAsset.BrowserDownloadUrl,
+            downloadPath,
+            releaseInfo,
+            selectedAsset.Name,
+            enforceSignedManifest: false
         );
-
-        // cloudflared publishes no checksums, so authenticity rests on the 14-day
-        // release-age gate. We can still reject a corrupt or tampered download by
-        // matching GitHub's own asset digest before we install or extract it.
-        await VerifyAssetDigestOrThrow(path, selectedAsset, "cloudflared");
 
         Logger.Setup($"Downloaded cloudflared to {path}");
 
         if (needsExtraction)
         {
-            List<string> files = await Archiving.ExtractArchive(
-                _storage,
-                path,
-                AppFiles.DependenciesPath
+            string stagingDirectory = Path.Combine(
+                AppFiles.DependenciesPath,
+                "cloudflared-extract-" + Guid.NewGuid().ToString("N")
             );
-            foreach (string file in files)
+            try
             {
-                await FileAttributes.SetCreatedAttribute(file, releaseInfo.PublishedAt);
-                await FilePermissions.SetExecutionPermissions(file);
+                await Archiving.ExtractArchive(_storage, path, stagingDirectory);
+                string stagedPath = Path.Combine(
+                    stagingDirectory,
+                    Path.GetFileName(destinationPath)
+                );
+                if (!_driver.FileExists(stagedPath) || _storage.SizeOrZero(stagedPath) == 0)
+                    throw new InvalidDataException("cloudflared archive has no executable");
+                await FilePermissions.SetExecutionPermissions(stagedPath);
+                ReplaceStagedFile(stagedPath, destinationPath);
+                await FileAttributes.SetCreatedAttribute(destinationPath, releaseInfo.PublishedAt);
+                await Downloader.DeleteSourceDownload(_storage, path);
             }
-            await Downloader.DeleteSourceDownload(_storage, path);
+            finally
+            {
+                if (_driver.DirectoryExists(stagingDirectory))
+                    _storage.DeleteDirectory(stagingDirectory, recursive: true);
+            }
         }
         else
         {
-            if (_storage.Exists(destinationPath))
-                _storage.Delete(destinationPath);
-
-            _storage.Move(path, destinationPath);
-
             await FileAttributes.SetCreatedAttribute(destinationPath, releaseInfo.PublishedAt);
-
             await FilePermissions.SetExecutionPermissions(destinationPath);
         }
     }
@@ -1827,8 +1902,6 @@ public class Binaries
             _binaryReport.Add($"Whisper = {version}");
             return;
         }
-
-        await Downloader.DeleteSourceDownload(_storage, destinationPath);
 
         List<Asset> modelAssets = releaseInfo
             .Assets.Where(a => a.Name.Contains(modelName, StringComparison.OrdinalIgnoreCase))
@@ -1912,10 +1985,7 @@ public class Binaries
         if (!_driver.DirectoryExists(AppFiles.FfmpegFolder))
             _storage.CreateDirectory(AppFiles.FfmpegFolder);
 
-        if (_driver.FileExists(destinationPath))
-            _driver.DeleteFile(destinationPath);
-
-        _driver.MoveFile(sourcePath, destinationPath);
+        ReplaceStagedFile(sourcePath, destinationPath);
 
         await FileAttributes.SetCreatedAttribute(destinationPath, publishedAt);
 
@@ -1948,8 +2018,6 @@ public class Binaries
             _binaryReport.Add($"Stemsplit = {version}");
             return;
         }
-
-        await Downloader.DeleteSourceDownload(_storage, destinationPath);
 
         string assetName = modelName + ".gguf";
         Asset? asset = releaseInfo.Assets.FirstOrDefault(a =>
@@ -1998,19 +2066,55 @@ public class Binaries
         if (!_driver.DirectoryExists(AppFiles.FfmpegFolder))
             _storage.CreateDirectory(AppFiles.FfmpegFolder);
 
-        await using Stream destinationStream = _driver.OpenWrite(destinationPath, overwrite: true);
-
-        // Concatenate the exact local files DownloadWithVerificationAsync already
-        // hash-verified — never re-derive paths from URLs.
-        foreach (string partPath in partPaths)
+        string stagingPath = destinationPath + ".tmp";
+        try
         {
-            await using Stream partStream = _driver.OpenRead(partPath);
-            await partStream.CopyToAsync(destinationStream);
+            await using (Stream destinationStream = _driver.OpenWrite(stagingPath, overwrite: true))
+            {
+                // Concatenate the exact local files DownloadWithVerificationAsync already
+                // hash-verified — never re-derive paths from URLs.
+                foreach (string partPath in partPaths)
+                {
+                    await using Stream partStream = _driver.OpenRead(partPath);
+                    await partStream.CopyToAsync(destinationStream);
+                }
+            }
+            ReplaceStagedFile(stagingPath, destinationPath);
+        }
+        finally
+        {
+            if (_driver.FileExists(stagingPath))
+                _driver.DeleteFile(stagingPath);
         }
 
         Logger.Setup($"Concatenated model parts into {destinationPath}", LogEventLevel.Verbose);
 
         return destinationPath;
+    }
+
+    private void ReplaceStagedFile(string sourcePath, string destinationPath)
+    {
+        string backupPath = destinationPath + ".bak";
+        if (_driver.FileExists(backupPath))
+            _driver.DeleteFile(backupPath);
+
+        bool hadPrevious = _driver.FileExists(destinationPath);
+        if (hadPrevious)
+            _driver.MoveFile(destinationPath, backupPath);
+
+        try
+        {
+            _driver.MoveFile(sourcePath, destinationPath);
+        }
+        catch
+        {
+            if (hadPrevious)
+                _driver.MoveFile(backupPath, destinationPath);
+            throw;
+        }
+
+        if (hadPrevious)
+            _driver.DeleteFile(backupPath);
     }
 
     internal async Task DownloadTesseractData(IEnumerable<string> languages)
@@ -2049,8 +2153,6 @@ public class Binaries
                 _binaryReport.Add($"Tesseract[{lang}] = {version}");
                 continue;
             }
-
-            await Downloader.DeleteSourceDownload(_storage, destinationPath);
 
             string assetName = $"{lang}.traineddata";
             string path = await DownloadWithVerificationAsync(
