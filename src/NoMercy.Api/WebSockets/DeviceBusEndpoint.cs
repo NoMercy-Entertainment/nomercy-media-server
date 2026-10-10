@@ -119,7 +119,7 @@ public sealed class DeviceBusEndpoint(
         finally
         {
             if (device is not null)
-                await ReleaseDevice(device);
+                await ReleaseDevice(device, ws);
         }
     }
 
@@ -138,7 +138,7 @@ public sealed class DeviceBusEndpoint(
     }
 
     /// <summary>Clears the active music claim when MusicHub agrees the device is gone, then unregisters it.</summary>
-    private async Task ReleaseDevice(Device device)
+    private async Task ReleaseDevice(Device device, WebSocket ws)
     {
         if (
             device.OwnerUserId is not null
@@ -183,7 +183,7 @@ public sealed class DeviceBusEndpoint(
                 logger.LogDebug(ex, "device-bus teardown could not broadcast the cleared state");
             }
         }
-        await registry.Unregister(device.Id);
+        await registry.Unregister(device.Id, ws);
     }
 
     /// <summary>
