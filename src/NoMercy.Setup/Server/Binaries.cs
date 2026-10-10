@@ -520,18 +520,38 @@ public class Binaries
             // per-language pulls — memoizing across THAT lifetime would mean a new signed
             // tesseract release never gets picked up again after the first call.
             _memoizeReleaseInfoForThisRun = true;
+            List<Exception> failures = [];
+            async Task AttemptDownload(string name, Func<Task> download)
+            {
+                try
+                {
+                    await download();
+                }
+                catch (Exception ex)
+                {
+                    Logger.Setup($"Failed to download {name}: {ex.Unwrap()}", LogEventLevel.Error);
+                    failures.Add(new InvalidOperationException($"{name} download failed", ex));
+                }
+            }
+
             try
             {
-                await DownloadApp();
-                await DownloadLauncher();
-                await DownloadCli();
-                await DownloadServerUpdate();
-                await DownloadFfmpeg();
-                await DownloadCloudflared();
-                await DownloadYtdlp();
-                await DownloadShakaPackager();
-                await DownloadWhisperModels(AppFiles.WhisperModel);
-                await DownloadStemsplitModel(AppFiles.StemsplitModel);
+                await AttemptDownload("App", DownloadApp);
+                await AttemptDownload("Launcher", DownloadLauncher);
+                await AttemptDownload("CLI", DownloadCli);
+                await AttemptDownload("Server update", async () => await DownloadServerUpdate());
+                await AttemptDownload("FFmpeg", DownloadFfmpeg);
+                await AttemptDownload("cloudflared", DownloadCloudflared);
+                await AttemptDownload("yt-dlp", DownloadYtdlp);
+                await AttemptDownload("shaka-packager", DownloadShakaPackager);
+                await AttemptDownload(
+                    "Whisper models",
+                    () => DownloadWhisperModels(AppFiles.WhisperModel)
+                );
+                await AttemptDownload(
+                    "stemsplit model",
+                    () => DownloadStemsplitModel(AppFiles.StemsplitModel)
+                );
 
                 List<string> tesseractLanguages = ["eng", "jpn"];
                 if (!CultureInfo.CurrentCulture.Equals(CultureInfo.InvariantCulture))
@@ -543,7 +563,10 @@ public class Binaries
                     )
                         tesseractLanguages.Add(currentCulture);
                 }
-                await DownloadTesseractData(tesseractLanguages);
+                await AttemptDownload(
+                    "Tesseract data",
+                    () => DownloadTesseractData(tesseractLanguages)
+                );
             }
             finally
             {
@@ -585,6 +608,9 @@ public class Binaries
 
                 Logger.Setup(report.ToString(), LogEventLevel.Verbose);
             }
+
+            if (failures.Count > 0)
+                throw new AggregateException("Binary downloads failed", failures);
         });
     }
 
@@ -1329,12 +1355,8 @@ public class Binaries
     }
 
     /// <summary>
-    /// Internal (not private) so the degraded-mode recovery loop
-    /// (<see cref="Boot.DegradedModeRecovery.TryProvisionBinariesAsync"/>) can retry
-    /// ffmpeg provisioning alone instead of re-running <see cref="DownloadAll"/> — which
-    /// would re-query all ten dependency repos' <c>releases/latest</c> endpoints on every
-    /// backoff tick and, on a single rate-limited hiccup, keep re-triggering the same
-    /// GitHub 403 for every other binary too.
+    /// Internal (not private) so NoMercy.Tests.Setup can exercise ffmpeg provisioning
+    /// directly without driving the entire <see cref="DownloadAll"/> sequence.
     /// </summary>
     internal async Task DownloadFfmpeg()
     {

@@ -85,7 +85,7 @@ public class Start
                 // CanDefer:true — a transient provisioning failure (GitHub rate limit,
                 // momentarily-empty release feed, network blip) must not permanently wedge
                 // BootStage.Binaries with no recovery path. DegradedModeRecovery retries
-                // provisioning with backoff and marks the stage once ffmpeg is on disk.
+                // provisioning with backoff and marks the stage once the failed downloads recover.
                 CanDefer: true,
                 Phase: 2,
                 DependsOn: ["NetworkProbe"]

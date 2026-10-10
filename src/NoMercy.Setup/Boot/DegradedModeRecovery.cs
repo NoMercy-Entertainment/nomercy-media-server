@@ -194,7 +194,7 @@ public class DegradedModeRecovery : IDegradedModeRecovery
                         ),
                         eventBus: _eventBus,
                         binaryExists: _binaryExists,
-                        download: _downloadBinary
+                        download: _downloadBinary ?? DownloadAllBinariesAsync
                     );
                 }
 
@@ -351,18 +351,24 @@ public class DegradedModeRecovery : IDegradedModeRecovery
         };
     }
 
+    private static Task DownloadAllBinariesAsync()
+    {
+        IStorageDriver driver = new LocalStorageDriver();
+        IStorage storage = new LocalStorage(driver, new([], driver));
+        return new Binaries(driver, storage).DownloadAll();
+    }
+
     /// <summary>
     /// Retries essential-binary provisioning (ffmpeg and friends) with the recovery
     /// loop's backoff schedule. A transient failure on first boot (GitHub rate limit,
     /// network blip, momentarily-empty release feed) must not permanently strand
-    /// <c>BootStage.Binaries</c> — encoding genuinely cannot run without ffmpeg, so this
-    /// keeps retrying rather than letting the encoder queues run without it. The stage
-    /// is marked complete the moment ffmpeg is actually found on disk, whether that is
-    /// because this attempt downloaded it or a previous attempt already had.
+    /// <c>BootStage.Binaries</c>. The recovery loop retries the full download sequence;
+    /// each dependency method skips a binary that is already current.
     /// </summary>
     /// <remarks>Internal (not private) so <c>NoMercy.Tests.Setup</c> can exercise the
     /// ffmpeg-already-on-disk path directly instead of waiting through the loop's
-    /// real backoff delays.</remarks>
+    /// real backoff delays. The production loop supplies a download delegate so other
+    /// failed dependencies are retried even when ffmpeg is present.</remarks>
     internal static async Task TryProvisionBinariesAsync(
         DeferredTasks tasks,
         int attempt = 2,
@@ -383,7 +389,7 @@ public class DegradedModeRecovery : IDegradedModeRecovery
             IStorage storage = new LocalStorage(driver, new([], driver));
             Func<bool> exists = binaryExists ?? (() => storage.Exists(AppFiles.FfmpegPath));
 
-            if (exists())
+            if (exists() && download is null)
             {
                 tasks.BinariesReady = true;
                 ServerPhaseTracker.Current?.MarkComplete(BootStage.Binaries);
@@ -393,20 +399,14 @@ public class DegradedModeRecovery : IDegradedModeRecovery
                 return;
             }
 
-            Logger.App(
-                "FFmpeg still not installed — retrying binary provisioning",
-                LogEventLevel.Warning
-            );
+            Logger.App("Retrying deferred binary provisioning", LogEventLevel.Warning);
 
-            // Retry only ffmpeg here, not the full DownloadAll(). The recovery loop
-            // calls this on every backoff tick (30s/1m/5m/15m/30m) — re-fetching all
-            // ten dependency repos' releases/latest on each tick turns one transient
-            // GitHub rate-limit into a self-inflicted, permanent one. Ffmpeg is the
-            // only binary this stage blocks on, so it is the only one retried.
+            // DownloadAll retries incomplete dependencies after a deferred boot task.
+            // Each download method skips a binary that is already current.
             if (download is not null)
                 await download();
             else
-                await new Binaries(driver, storage).DownloadFfmpeg();
+                await new Binaries(driver, storage).DownloadAll();
 
             if (exists())
             {

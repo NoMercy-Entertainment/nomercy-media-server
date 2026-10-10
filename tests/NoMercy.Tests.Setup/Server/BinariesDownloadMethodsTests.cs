@@ -1197,6 +1197,43 @@ public sealed class BinariesDownloadMethodsTests : IDisposable
     // -------------------------------------------------------------------------
 
     [Fact]
+    public async Task DownloadAll_AppDownloadFails_StillAttemptsFfmpeg()
+    {
+        const string appUrl = "https://example.com/unavailable-app";
+        const string ffmpegApiUrl =
+            "https://api.github.com/repos/NoMercy-Entertainment/nomercy-ffmpeg/releases/latest";
+        const string ffmpegUrl = "https://example.com/ffmpeg.zip";
+        byte[] ffmpegArchive = BuildFfmpegZip();
+        FakeHttpHandler handler = new();
+        handler.RegisterReleaseInfo(
+            "https://api.github.com/repos/NoMercy-Entertainment/nomercy-media-server/releases/latest",
+            ReleaseWithAssets([
+                MakeAsset("NoMercyApp-windows-x64.exe", appUrl),
+                MakeAsset("NoMercyApp-linux-x64", appUrl),
+                MakeAsset("NoMercyApp-macos-x64", appUrl),
+                MakeAsset("NoMercyApp-macos-arm64", appUrl),
+            ])
+        );
+        handler.Register(ffmpegUrl, ffmpegArchive);
+        handler.RegisterReleaseInfo(
+            ffmpegApiUrl,
+            ReleaseWithAssets([
+                MakeAsset("ffmpeg-windows-x86_64.zip", ffmpegUrl, ffmpegArchive),
+                MakeAsset("ffmpeg-linux-x86_64.zip", ffmpegUrl, ffmpegArchive),
+            ])
+        );
+
+        Binaries binaries = BuildBinaries(handler);
+
+        await Assert.ThrowsAnyAsync<Exception>(() => binaries.DownloadAll());
+
+        Assert.Equal(1, handler.RequestCountFor(appUrl));
+        Assert.Equal(1, handler.RequestCountFor(ffmpegApiUrl));
+        Assert.Equal(1, handler.RequestCountFor(ffmpegUrl));
+        Assert.True(File.Exists(AppFiles.FfmpegPath));
+    }
+
+    [Fact]
     public async Task DownloadAll_EveryReleaseHasNoAssets_CompletesWithoutThrowing()
     {
         // DownloadFfmpeg has a hard-fail branch when its release has no assets AND
