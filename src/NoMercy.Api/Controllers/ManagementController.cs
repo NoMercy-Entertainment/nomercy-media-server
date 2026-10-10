@@ -478,6 +478,20 @@ public class ManagementController(
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> UpdateConfig([FromBody] ManagementConfigUpdateDto request)
     {
+        if (
+            request.LibraryWorkers is < 0
+            || request.ImportWorkers is < 0
+            || request.ExtrasWorkers is < 0
+            || request.EncoderWorkers is < 0
+            || request.CronWorkers is < 0
+            || request.ImageWorkers is < 0
+            || request.FileWorkers is < 0
+            || request.MusicWorkers is < 0
+        )
+        {
+            return BadRequestResponse("worker counts must be at least 0");
+        }
+
         runtimeSettings.LibraryWorkers = await UpdateWorkerCountAsync(
             runtimeSettings.LibraryWorkers,
             request.LibraryWorkers

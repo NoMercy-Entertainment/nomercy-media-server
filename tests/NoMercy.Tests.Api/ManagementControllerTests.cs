@@ -204,4 +204,46 @@ public class ManagementControllerTests : IClassFixture<NoMercyApiFactory>
         Assert.NotNull(persisted);
         Assert.Equal("4", persisted!.Value);
     }
+
+    [Theory]
+    [InlineData("library_workers", "libraryRunners")]
+    [InlineData("import_workers", "importRunners")]
+    [InlineData("extras_workers", "extrasRunners")]
+    [InlineData("encoder_workers", "encoderRunners")]
+    [InlineData("cron_workers", "cronRunners")]
+    [InlineData("image_workers", "imageRunners")]
+    [InlineData("file_workers", "fileRunners")]
+    [InlineData("music_workers", "musicRunners")]
+    public async Task ManageConfigUpdate_NegativeWorkerCount_ReturnsBadRequestWithoutChangingStoredValue(
+        string field,
+        string key
+    )
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        AppDbContext appContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        string? originalValue = await appContext
+            .Configuration.Where(configuration => configuration.Key == key)
+            .Select(configuration => configuration.Value)
+            .FirstOrDefaultAsync();
+
+        StringContent body = new(
+            JsonSerializer.Serialize(new Dictionary<string, int> { [field] = -1 }),
+            Encoding.UTF8,
+            "application/json"
+        );
+        HttpResponseMessage response = await _client.PutAsync("/manage/config", body);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        HttpResponseMessage getResponse = await _client.GetAsync("/manage/config");
+        using JsonDocument document = JsonDocument.Parse(
+            await getResponse.Content.ReadAsStringAsync()
+        );
+        Assert.NotEqual(-1, document.RootElement.GetProperty(field).GetInt32());
+        appContext.ChangeTracker.Clear();
+        string? storedValue = await appContext
+            .Configuration.Where(configuration => configuration.Key == key)
+            .Select(configuration => configuration.Value)
+            .FirstOrDefaultAsync();
+        Assert.Equal(originalValue, storedValue);
+    }
 }
