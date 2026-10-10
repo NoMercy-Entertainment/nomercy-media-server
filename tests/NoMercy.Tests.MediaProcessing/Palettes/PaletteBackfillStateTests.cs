@@ -12,6 +12,7 @@
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Database;
 using NoMercy.MediaProcessing.Images.Palettes;
+using NoMercy.MediaProcessing.Jobs.PaletteJobs;
 
 namespace NoMercy.Tests.MediaProcessing.Palettes;
 
@@ -99,5 +100,33 @@ public class PaletteBackfillStateTests : IDisposable
 
         movieCursor.Should().Be(100L);
         tvCursor.Should().Be(200L);
+    }
+
+    [Fact]
+    public async Task Current_version_reopens_completed_v2_backfill_and_resets_guid_cursor()
+    {
+        await PaletteBackfillState.EnsureVersionAsync(
+            _db,
+            2,
+            PaletteBackfillJob.AllTypes,
+            CancellationToken.None
+        );
+        await PaletteBackfillState.SetCursorAsync(_db, "track", 200L, CancellationToken.None);
+        await PaletteBackfillState.SetCompleteAsync(_db, CancellationToken.None);
+
+        bool reopened = await PaletteBackfillState.EnsureVersionAsync(
+            _db,
+            PaletteBackfillJob.CurrentVersion,
+            PaletteBackfillJob.AllTypes,
+            CancellationToken.None
+        );
+
+        reopened.Should().BeTrue();
+        (await PaletteBackfillState.IsCompleteAsync(_db, CancellationToken.None))
+            .Should()
+            .BeFalse();
+        (await PaletteBackfillState.GetCursorAsync(_db, "track", CancellationToken.None))
+            .Should()
+            .Be(0L);
     }
 }
