@@ -42,6 +42,43 @@ public class ConfigurationControllerTests : IClassFixture<NoMercyApiFactory>
     private Task<HttpResponseMessage> PatchAsync(HttpClient client, string url, object body) =>
         client.PatchAsync(url, JsonBody(body));
 
+    [Theory]
+    [InlineData("library_workers", "libraryRunners")]
+    [InlineData("import_workers", "importRunners")]
+    [InlineData("extras_workers", "extrasRunners")]
+    [InlineData("encoder_workers", "encoderRunners")]
+    [InlineData("cron_workers", "cronRunners")]
+    [InlineData("image_workers", "imageRunners")]
+    [InlineData("file_workers", "fileRunners")]
+    [InlineData("music_workers", "musicRunners")]
+    public async Task PatchConfiguration_RejectsNegativeWorkerWithoutPersisting(
+        string field,
+        string key
+    )
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        AppDbContext appContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        string? before = await appContext
+            .Configuration.AsNoTracking()
+            .Where(c => c.Key == key)
+            .Select(c => c.Value)
+            .FirstOrDefaultAsync();
+
+        StringContent body = new($"{{\"{field}\":-1}}", Encoding.UTF8, "application/json");
+        HttpResponseMessage response = await _authed.PatchAsync(
+            "/api/v1/dashboard/configuration",
+            body
+        );
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        string? after = await appContext
+            .Configuration.AsNoTracking()
+            .Where(c => c.Key == key)
+            .Select(c => c.Value)
+            .FirstOrDefaultAsync();
+        Assert.Equal(before, after);
+    }
+
     [Fact]
     public async Task GetConfiguration_ReturnsUnauthorized_WhenAnonymous()
     {
