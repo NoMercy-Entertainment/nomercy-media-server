@@ -133,12 +133,12 @@ public class ConfigurationController(
 
         if (request.InternalServerPort is < 0 or > 65535)
         {
-            return BadRequestResponse("internal_port must be between 1 and 65535");
+            return BadRequestResponse("internal_port must be between 1 and 65535 (0 leaves it unchanged)");
         }
 
         if (request.ExternalServerPort is < 0 or > 65535)
         {
-            return BadRequestResponse("external_port must be between 1 and 65535");
+            return BadRequestResponse("external_port must be between 1 and 65535 (0 leaves it unchanged)");
         }
 
         if (

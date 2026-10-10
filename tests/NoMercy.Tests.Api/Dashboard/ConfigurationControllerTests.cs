@@ -257,6 +257,10 @@ public class ConfigurationControllerTests : IClassFixture<NoMercyApiFactory>
         );
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        // 0 is accepted as "leave unchanged", so the message must say so.
+        (await response.Content.ReadAsStringAsync())
+            .Should()
+            .Contain("between 1 and 65535 (0 leaves it unchanged)");
         HttpResponseMessage getResponse = await _authed.GetAsync("/api/v1/dashboard/configuration");
         using JsonDocument document = JsonDocument.Parse(
             await getResponse.Content.ReadAsStringAsync()
