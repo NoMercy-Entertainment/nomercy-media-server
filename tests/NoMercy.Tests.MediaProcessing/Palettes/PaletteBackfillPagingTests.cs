@@ -80,7 +80,7 @@ public class PaletteBackfillPagingTests
         for (int pass = 0; pass < 3; pass++)
         {
             object?[] arguments =
-                query.GetParameters().Length == 3 ? [db, entityType, offset] : [db, entityType];
+                query.GetParameters().Length == 3 ? [db, entityType, new HashSet<Guid>()] : [db, entityType];
             Task<List<(Guid Id, string? Palette)>> task =
                 (Task<List<(Guid Id, string? Palette)>>)query.Invoke(null, arguments)!;
             List<(Guid Id, string? Palette)> rows = await task;
@@ -95,5 +95,38 @@ public class PaletteBackfillPagingTests
 
         dispatched.Should().HaveCount(401);
         entities.Values.Should().OnlyContain(entity => entity._colorPalette == "painted");
+    }
+
+    [Fact]
+    public async Task Rows_that_stay_without_a_palette_are_not_returned_again_once_attempted()
+    {
+        DbContextOptions<MediaContext> options = new DbContextOptionsBuilder<MediaContext>()
+            .UseInMemoryDatabase(Guid.NewGuid().ToString())
+            .Options;
+        await using MediaContext db = new(options);
+        for (int index = 0; index < 401; index++)
+            db.Add(new Track { Id = Guid.NewGuid(), Name = index.ToString() });
+        await db.SaveChangesAsync();
+
+        MethodInfo query = typeof(PaletteBackfillJob).GetMethod(
+            "GetGuidPendingRowsAsync",
+            BindingFlags.NonPublic | BindingFlags.Static
+        )!;
+        HashSet<Guid> attempted = [];
+        int passes = 0;
+        List<(Guid Id, string? Palette)> rows;
+        do
+        {
+            object?[] arguments =
+                query.GetParameters().Length == 3 ? [db, "track", attempted] : [db, "track"];
+            rows = await (Task<List<(Guid Id, string? Palette)>>)query.Invoke(null, arguments)!;
+            // No image: the palette job leaves the row empty, so it stays pending.
+            foreach ((Guid id, string? _) in rows)
+                attempted.Add(id);
+            passes++;
+        } while (rows.Count > 0 && passes < 10);
+
+        rows.Should().BeEmpty("rows already attempted must not be returned on every pass");
+        attempted.Should().HaveCount(401);
     }
 }

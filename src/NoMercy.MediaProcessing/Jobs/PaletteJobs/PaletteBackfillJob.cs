@@ -28,6 +28,10 @@ public class PaletteBackfillJob : IShouldQueue
 
     private const int BatchSize = 200;
 
+    // GUID rows already dispatched in this process. Bounds the drain: a row that stays
+    // without a palette (no image) is not picked again until the next boot.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, byte> AttemptedGuids = new();
+
     // Bumped to re-open the one-shot drain for existing libraries. v2 added
     // "track"; v3 repairs GUID rows skipped by offset paging.
     public const int CurrentVersion = 3;
@@ -137,7 +141,11 @@ public class PaletteBackfillJob : IShouldQueue
 
     private static async Task<bool> ProcessGuidTypeAsync(MediaContext db, string entityType)
     {
-        List<(Guid Id, string? Palette)> rows = await GetGuidPendingRowsAsync(db, entityType);
+        List<(Guid Id, string? Palette)> rows = await GetGuidPendingRowsAsync(
+            db,
+            entityType,
+            [.. AttemptedGuids.Keys]
+        );
         if (rows.Count == 0)
             return false;
 
@@ -146,11 +154,16 @@ public class PaletteBackfillJob : IShouldQueue
             return false;
 
         foreach ((Guid id, string? _) in rows)
+        {
+            // A row with no image keeps an empty palette after its job ran. Remember the
+            // attempt so the next pass skips it instead of re-dispatching it forever.
+            AttemptedGuids.TryAdd(id, 0);
             dispatcher.Dispatch(
                 new ColorPaletteJob(entityType, id.ToString()),
                 "palette",
                 PalettePriority.ForBackfill(entityType)
             );
+        }
 
         return rows.Count == BatchSize;
     }
@@ -239,13 +252,15 @@ public class PaletteBackfillJob : IShouldQueue
 
     private static Task<List<(Guid Id, string? Palette)>> GetGuidPendingRowsAsync(
         MediaContext db,
-        string entityType
+        string entityType,
+        ICollection<Guid> skip
     ) =>
         entityType switch
         {
             "artist" => db
                 .Artists.Where(a => a._colorPalette == null || a._colorPalette == "")
                 .AsNoTracking()
+                .Where(a => !skip.Contains(a.Id))
                 .OrderBy(a => a.Id)
                 .Take(BatchSize)
                 .Select(a => new ValueTuple<Guid, string?>(a.Id, a._colorPalette))
@@ -253,6 +268,7 @@ public class PaletteBackfillJob : IShouldQueue
             "album" => db
                 .Albums.Where(a => a._colorPalette == null || a._colorPalette == "")
                 .AsNoTracking()
+                .Where(a => !skip.Contains(a.Id))
                 .OrderBy(a => a.Id)
                 .Take(BatchSize)
                 .Select(a => new ValueTuple<Guid, string?>(a.Id, a._colorPalette))
@@ -260,6 +276,7 @@ public class PaletteBackfillJob : IShouldQueue
             "track" => db
                 .Tracks.Where(t => t._colorPalette == null || t._colorPalette == "")
                 .AsNoTracking()
+                .Where(t => !skip.Contains(t.Id))
                 .OrderBy(t => t.Id)
                 .Take(BatchSize)
                 .Select(t => new ValueTuple<Guid, string?>(t.Id, t._colorPalette))
@@ -267,6 +284,7 @@ public class PaletteBackfillJob : IShouldQueue
             "playlist" => db
                 .Playlists.Where(p => p._colorPalette == null || p._colorPalette == "")
                 .AsNoTracking()
+                .Where(p => !skip.Contains(p.Id))
                 .OrderBy(p => p.Id)
                 .Take(BatchSize)
                 .Select(p => new ValueTuple<Guid, string?>(p.Id, p._colorPalette))
@@ -274,6 +292,7 @@ public class PaletteBackfillJob : IShouldQueue
             "releasegroup" => db
                 .ReleaseGroups.Where(r => r._colorPalette == null || r._colorPalette == "")
                 .AsNoTracking()
+                .Where(r => !skip.Contains(r.Id))
                 .OrderBy(r => r.Id)
                 .Take(BatchSize)
                 .Select(r => new ValueTuple<Guid, string?>(r.Id, r._colorPalette))
