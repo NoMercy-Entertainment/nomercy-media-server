@@ -75,12 +75,22 @@ public sealed class BannedApiAnalyzer : DiagnosticAnalyzer
         )
             return;
 
-        INamedTypeSymbol? resultType =
-            context.SemanticModel.GetTypeInfo(expression).Type as INamedTypeSymbol;
-        string? id = RuleFor(resultType);
+        // A plain member read is not a creation: only creations and calls that hand back a
+        // banned type count by their result type.
+        string? id =
+            expression is MemberAccessExpressionSyntax
+                ? null
+                : RuleFor(context.SemanticModel.GetTypeInfo(expression).Type as INamedTypeSymbol);
 
-        if (id is null && expression is InvocationExpressionSyntax or MemberAccessExpressionSyntax)
-            id = RuleFor(context.SemanticModel.GetSymbolInfo(expression).Symbol?.ContainingType);
+        // Static members of a banned type (Process.Start, HttpClient.DefaultProxy) are the
+        // type's own entry points. Instance members of an object the plugin already holds
+        // are left alone: the object was flagged where it was made.
+        if (
+            id is null
+            && expression is InvocationExpressionSyntax or MemberAccessExpressionSyntax
+            && context.SemanticModel.GetSymbolInfo(expression).Symbol is { IsStatic: true } symbol
+        )
+            id = RuleFor(symbol.ContainingType);
 
         if (id is null)
             return;

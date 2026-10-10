@@ -228,6 +228,29 @@ public class BannedApiAnalyzerTests
     }
 
     [Fact]
+    public async Task Using_an_instance_member_of_a_banned_type_is_left_alone()
+    {
+        const string source = """
+            using System.Diagnostics;
+
+            public class Tools
+            {
+                public int Inspect(Process process)
+                {
+                    process.Kill();
+                    return process.Id;
+                }
+            }
+            """;
+
+        IReadOnlyList<Diagnostic> diagnostics = await AnalyzerHarness.RunAsync<BannedApiAnalyzer>(
+            source
+        );
+
+        diagnostics.Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task A_type_that_is_not_banned_is_left_alone()
     {
         const string source = """
