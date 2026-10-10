@@ -14,6 +14,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Data.Repositories;
 using NoMercy.Database;
+using NoMercy.Database.Models.Movies;
 using NoMercy.Tests.Repositories.Infrastructure;
 
 namespace NoMercy.Tests.Repositories;
@@ -627,14 +628,38 @@ public class QueryOutputTests : IDisposable
     [Fact]
     public async Task CollectionRepository_GetCollectionsListAsync_GeneratesProjectionSql()
     {
+        Collection collection = new()
+        {
+            Id = 9001,
+            Title = "Posters",
+            LibraryId = SeedConstants.MovieLibraryId,
+        };
+        _context.Collections.Add(collection);
+        _context.CollectionMovie.AddRange(
+            new CollectionMovie(collection.Id, 129),
+            new CollectionMovie(collection.Id, 680)
+        );
+        _context.Movies.Single(movie => movie.Id == 129).Poster = "/first";
+        _context.Movies.Single(movie => movie.Id == 680).Poster = "/second";
+        await _context.SaveChangesAsync();
+
         CollectionRepository repository = new(_homeFactory);
         _interceptor.Clear();
 
-        await repository.GetCollectionsListAsync(SeedConstants.UserId, "en", "US", 10, 0);
+        List<CollectionListDto> result = await repository.GetCollectionsListAsync(
+            SeedConstants.UserId,
+            "en",
+            "US",
+            10,
+            0
+        );
 
         Assert.NotEmpty(_interceptor.CapturedSql);
+        Assert.Equal(["/second", "/first"], result.Single().ItemPosters);
+        Assert.Single(_interceptor.CapturedSql);
         string sql = string.Join(" ", _interceptor.CapturedSql);
         Assert.Contains("Collections", sql);
+        Assert.Contains("CollectionMovie", sql);
         Assert.Contains("LibraryUser", sql);
         Assert.Contains("ORDER BY", sql);
         Assert.Contains("LIMIT", sql);

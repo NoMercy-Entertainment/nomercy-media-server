@@ -36,6 +36,9 @@ public record CollectionResponseItemDto
     [JsonProperty("poster")]
     public string? Poster { get; set; }
 
+    [JsonProperty("item_posters")]
+    public string[] ItemPosters { get; set; } = [];
+
     [JsonProperty("titleSort")]
     public string? TitleSort { get; set; }
 
@@ -109,6 +112,16 @@ public record CollectionResponseItemDto
         Overview = overview.OrWhenEmpty(collection.Overview);
         Backdrop = collection.Backdrop;
         Poster = collection.Poster;
+        ItemPosters =
+        [
+            .. collection
+                .CollectionMovies.Where(item => !string.IsNullOrEmpty(item.Movie.Poster))
+                .OrderBy(item => item.Movie.ReleaseDate is null)
+                .ThenBy(item => item.Movie.ReleaseDate)
+                .ThenBy(item => item.MovieId)
+                .Take(9)
+                .Select(item => item.Movie.Poster!),
+        ];
         TitleSort = collection.TitleSort;
 
         Type = MediaTypes.CollectionMediaType;
@@ -214,6 +227,16 @@ public record CollectionResponseItemDto
         Overview = overview.OrWhenEmpty(tmdbCollectionAppends.Overview);
         Backdrop = tmdbCollectionAppends.BackdropPath;
         Poster = tmdbCollectionAppends.PosterPath;
+        ItemPosters =
+        [
+            .. tmdbCollectionAppends
+                .Parts.Where(item => !string.IsNullOrEmpty(item.PosterPath))
+                .OrderBy(item => item.ReleaseDate is null)
+                .ThenBy(item => item.ReleaseDate)
+                .ThenBy(item => item.Id)
+                .Take(9)
+                .Select(item => item.PosterPath!),
+        ];
         TitleSort = tmdbCollectionAppends.Name.TitleSort();
         Type = MediaTypes.CollectionMediaType;
         MediaType = MediaTypes.CollectionMediaType;
