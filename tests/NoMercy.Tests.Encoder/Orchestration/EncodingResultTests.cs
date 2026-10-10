@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.Encoder.Errors;
-using NoMercy.Encoder.Output;
 using NoMercy.Encoder.Pipeline;
 
 namespace NoMercy.Tests.Encoder.Orchestration;
@@ -125,12 +124,7 @@ public class EncodingResultTests
             ),
             Artifacts =
             [
-                new(
-                    "/out/a/master.m3u8",
-                    1024L,
-                    "abc123",
-                    "application/vnd.apple.mpegurl"
-                ),
+                new("/out/a/master.m3u8", 1024L, "abc123", "application/vnd.apple.mpegurl"),
             ],
         };
 

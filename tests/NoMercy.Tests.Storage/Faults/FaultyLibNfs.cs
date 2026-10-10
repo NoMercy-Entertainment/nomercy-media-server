@@ -399,39 +399,36 @@ internal sealed class FaultyLibNfs : ILibNfs
         }
 
         string key = Normalise(path);
-        bool isCreate =
-            (
-                flags & 0x40 /* O_CREAT */
-            ) != 0;
-        bool isTrunc =
-            (
-                flags & 0x200 /* O_TRUNC */
-            ) != 0;
-        bool isExcl =
-            (
-                flags & 0x80 /* O_EXCL */
-            ) != 0;
+        int createFlag =
+            OperatingSystem.IsWindows() ? 0x100
+            : OperatingSystem.IsMacOS() ? 0x200
+            : 0x40;
+        int truncateFlag = OperatingSystem.IsMacOS() ? 0x400 : 0x200;
+        int exclusiveFlag =
+            OperatingSystem.IsWindows() ? 0x400
+            : OperatingSystem.IsMacOS() ? 0x800
+            : 0x80;
+        bool isCreate = (flags & createFlag) != 0;
+        bool isTrunc = (flags & truncateFlag) != 0;
+        bool isExcl = (flags & exclusiveFlag) != 0;
 
-        if (isCreate)
+        if (isCreate && isExcl && _files.ContainsKey(key))
         {
-            if (isExcl && _files.ContainsKey(key))
-            {
-                fh = IntPtr.Zero;
-                CurrentError = "EEXIST";
-                return -17;
-            }
-            if (isTrunc || !_files.ContainsKey(key))
-            {
-                _files[key] = [];
-                _mtimes[key] = DateTime.UtcNow;
-                EnsureParentDirsKey(key);
-            }
+            fh = IntPtr.Zero;
+            CurrentError = "EEXIST";
+            return -17;
         }
-        else if (!_files.ContainsKey(key))
+        if (!_files.ContainsKey(key) && !isCreate)
         {
             fh = IntPtr.Zero;
             CurrentError = "NFS4ERR_NOENT";
             return -2;
+        }
+        if (isTrunc || !_files.ContainsKey(key))
+        {
+            _files[key] = [];
+            _mtimes[key] = DateTime.UtcNow;
+            EnsureParentDirsKey(key);
         }
 
         FileHandle handle = new() { Path = key, Mode = flags };

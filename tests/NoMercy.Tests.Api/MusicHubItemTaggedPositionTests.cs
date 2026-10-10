@@ -266,8 +266,12 @@ public class MusicHubItemTaggedPositionTests : IClassFixture<NoMercyApiFactory>
             MusicHub hub = CreateHub(activeConnectionId, userId);
             long originalPositionCapturedAtMs = state.PositionCapturedAtMs;
 
-            await hub.ReportPositionForItemCommand(5_000, Guid.NewGuid().ToString());
+            HubCommandResult result = await hub.ReportPositionForItemCommand(
+                5_000,
+                Guid.NewGuid().ToString()
+            );
 
+            result.ErrorCode.Should().Be("not_found");
             // Untouched — the stale-tagged report never reaches the mutation.
             state.Time.Should().Be(10_000);
             state.PositionCapturedAtMs.Should().Be(originalPositionCapturedAtMs);

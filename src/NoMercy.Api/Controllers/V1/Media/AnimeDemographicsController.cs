@@ -30,7 +30,7 @@ public class AnimeDemographicsController(IAnimeDemographicRepository animeDemogr
     : BaseController
 {
     [HttpGet]
-    [ResponseCache(Duration = 300, VaryByQueryKeys = ["take", "page"])]
+    [ResponseCache(Duration = 300, VaryByQueryKeys = ["take", "page", "version"])]
     public async Task<IActionResult> Demographics(
         [FromQuery] PageRequestDto request,
         CancellationToken ct = default
@@ -48,19 +48,53 @@ public class AnimeDemographicsController(IAnimeDemographicRepository animeDemogr
                 ct
             );
 
-        List<GenreCardData> demographicCards =
+        List<GroupCardData> demographicCards =
         [
             .. demographicDtos
                 .Where(d => d.TvShowsWithVideo > 0 || d.MoviesWithVideo > 0)
-                .Select(dto => new GenreCardData(dto)),
+                .Select(dto => new GroupCardData(dto)),
         ];
 
-        ComponentEnvelope response = Component
-            .Grid()
-            .WithId("anime-demographics")
-            .WithItems(demographicCards.Select(card => Component.GenreCard().WithData(card)));
+        if (request.Version != "lolomo")
+        {
+            ComponentEnvelope response = Component
+                .Grid()
+                .WithId("anime-demographics")
+                .WithItems(demographicCards.Select(card => Component.GroupCard().WithData(card)));
 
-        return Ok(ComponentResponse.From(response));
+            return Ok(ComponentResponse.From(response));
+        }
+
+        List<ComponentEnvelope> components = new();
+
+        foreach (string letter in Letters)
+        {
+            int index = Array.IndexOf(Letters, letter);
+
+            List<GroupCardData> carouselItems = demographicCards
+                .Where(card => AlphaBucket.Matches(card.TitleSort, letter))
+                .OrderBy(card => card.TitleSort)
+                .ToList();
+
+            if (carouselItems.Count == 0)
+                continue;
+
+            components.Add(
+                Component
+                    .Carousel()
+                    .WithId(letter)
+                    .WithTitle(letter)
+                    .WithNavigation(
+                        index == 0 ? null : Letters.ElementAtOrDefault(index - 1) ?? null,
+                        index == Letters.Length - 1
+                            ? null
+                            : Letters.ElementAtOrDefault(index + 1) ?? null
+                    )
+                    .WithItems(carouselItems.Select(card => Component.GroupCard().WithData(card)))
+            );
+        }
+
+        return Ok(new ComponentResponse { Data = components });
     }
 
     [HttpGet]

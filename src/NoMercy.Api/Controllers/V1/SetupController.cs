@@ -20,13 +20,11 @@ using NoMercy.Api.DTOs.Media;
 using NoMercy.Api.Services;
 using NoMercy.Authorization;
 using NoMercy.Data.Repositories;
-using NoMercy.Database.Models.Common;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.Music;
 using NoMercy.NmSystem.Extensions;
 using NoMercy.NmSystem.Information;
 using NoMercy.PluginSdk.Abstractions;
-using NoMercy.PluginSdk.Capabilities;
 
 namespace NoMercy.Api.Controllers.V1;
 

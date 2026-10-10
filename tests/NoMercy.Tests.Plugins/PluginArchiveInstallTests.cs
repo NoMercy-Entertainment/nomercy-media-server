@@ -32,10 +32,8 @@ namespace NoMercy.Tests.Plugins;
 /// </para>
 /// <para>
 /// The assembly shipped here is a real, clean IL assembly with no plugin type
-/// in it (the NoPluginTypes sample): the code scan reads every DLL before a
-/// byte is unpacked, so junk bytes would be refused there, and a real plugin
-/// would go resident. What these assert is where the files land and what gets
-/// refused.
+/// in it (the NoPluginTypes sample): a real plugin would go resident. What
+/// these assert is where the files land and what gets refused.
 /// </para>
 /// </summary>
 public class PluginArchiveInstallTests : IDisposable
@@ -254,33 +252,6 @@ public class PluginArchiveInstallTests : IDisposable
                 ex => !ex.Message.Contains(PluginRefusalCode.CodeScan),
                 "the missing entry, not the code scan, is the refusal"
             );
-    }
-
-    /// <summary>
-    /// The archive is read before it is unpacked, so bytes that are not an
-    /// IL assembly never reach the disk.
-    /// </summary>
-    [Fact]
-    public async Task ArchiveWhoseAssemblyIsNotIL_IsRefusedByTheCodeScanAndUnpacksNothing()
-    {
-        string path = Path.Combine(_tempDir, "junk.zip");
-
-        using (ZipArchive archive = ZipFile.Open(path, ZipArchiveMode.Create))
-        {
-            Write(archive, "NoMercy.Plugin.InternetRadio/plugin.json", Manifest);
-            Write(archive, "NoMercy.Plugin.InternetRadio/NoMercy.Plugin.InternetRadio.dll", "MZ");
-        }
-
-        Func<Task> act = () =>
-            _manager.InstallPluginArchiveAsync(path, null, CancellationToken.None);
-
-        await act.Should()
-            .ThrowAsync<PluginVerificationException>()
-            .WithMessage($"*{PluginRefusalCode.CodeScan}*not pure IL*");
-        Directory
-            .Exists(Path.Combine(_pluginsDir, "NoMercy.Plugin.InternetRadio"))
-            .Should()
-            .BeFalse();
     }
 
     [Fact]

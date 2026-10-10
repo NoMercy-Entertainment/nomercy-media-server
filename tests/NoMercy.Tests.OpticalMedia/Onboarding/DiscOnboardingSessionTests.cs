@@ -9,10 +9,8 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using FluentAssertions;
 using NoMercy.OpticalMedia.Metadata;
 using NoMercy.OpticalMedia.Onboarding;
-using Xunit;
 
 namespace NoMercy.Tests.OpticalMedia.Onboarding;
 

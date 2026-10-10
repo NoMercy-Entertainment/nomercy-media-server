@@ -9,7 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Moq;
@@ -154,8 +153,22 @@ public class DiscOnboardingCompletionEventHandlerTests : IDisposable
                     Order = 1,
                 }
             );
-            seed.Tvs.Add(new Tv { Id = 1399, Title = "Game of Thrones", LibraryId = libraryId });
-            seed.Seasons.Add(new Season { Id = 3624, TvId = 1399, SeasonNumber = 1 });
+            seed.Tvs.Add(
+                new Tv
+                {
+                    Id = 1399,
+                    Title = "Game of Thrones",
+                    LibraryId = libraryId,
+                }
+            );
+            seed.Seasons.Add(
+                new Season
+                {
+                    Id = 3624,
+                    TvId = 1399,
+                    SeasonNumber = 1,
+                }
+            );
             seed.Episodes.Add(
                 new Episode
                 {

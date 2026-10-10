@@ -16,7 +16,6 @@ using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.Music;
 using NoMercy.Tests.Repositories.Infrastructure;
-using Xunit;
 
 namespace NoMercy.Tests.Repositories;
 

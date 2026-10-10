@@ -15,7 +15,6 @@ using NoMercy.Database.Models.Queue;
 using NoMercy.Tests.Queue.TestHelpers;
 using NoMercyQueue;
 using NoMercyQueue.Core.Interfaces;
-using NoMercyQueue.Core.Models;
 using NoMercyQueue.Core.Resources;
 using NoMercyQueue.Workers;
 using Xunit;

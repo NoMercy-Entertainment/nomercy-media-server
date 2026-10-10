@@ -9,7 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Text.Json;
 using FluentAssertions;
 using NoMercy.PluginHost;
 using NoMercy.PluginSdk.Abstractions;

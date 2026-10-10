@@ -11,7 +11,6 @@
 
 using Microsoft.Extensions.Logging;
 using NoMercy.Networking.Cast;
-using NoMercy.Setup.Cast;
 
 namespace NoMercy.Setup.Cast;
 
@@ -42,7 +41,6 @@ public class CastPanelWakeLauncher(
     int followUpPollAttempts = 12
 )
 {
-
     public static bool ShouldFireCastWake(bool targetIsLive) => !targetIsLive;
 
     /// <summary>

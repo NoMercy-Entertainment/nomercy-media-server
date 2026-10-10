@@ -454,6 +454,60 @@ public class WebDavEnumerateContractTests
         return new(statusCode, resources);
     }
 
+    [Theory]
+    [InlineData("a #b.mkv", "a%20%23b.mkv")]
+    [InlineData("a ?b%.mkv", "a%20%3Fb%25.mkv")]
+    public void FileExists_escapes_file_name_in_client_uri(string path, string encoded)
+    {
+        Mock<IWebDavClient> mock = new();
+        string expectedUri = BaseUrl + encoded;
+        mock.Setup(c => c.Propfind(expectedUri, It.IsAny<PropfindParameters>()))
+            .ReturnsAsync(MakePropfindResponse(207, [MakeResource(expectedUri, false)]));
+
+        WebDavStorageDriver driver = BuildDriver(mock);
+
+        driver.GetFullPath(path).Should().Be(expectedUri);
+        driver.FileExists(path).Should().BeTrue();
+        mock.Verify(c => c.Propfind(expectedUri, It.IsAny<PropfindParameters>()), Times.Once);
+    }
+
+    [Fact]
+    public void DirectoryExists_escapes_collection_name_in_client_uri()
+    {
+        Mock<IWebDavClient> mock = new();
+        string expectedUri = BaseUrl + "A%20%23%3F%25/";
+        mock.Setup(c => c.Propfind(expectedUri, It.IsAny<PropfindParameters>()))
+            .ReturnsAsync(MakePropfindResponse(207, [MakeResource(expectedUri, true)]));
+
+        BuildDriver(mock).DirectoryExists("A #?%").Should().BeTrue();
+        mock.Verify(c => c.Propfind(expectedUri, It.IsAny<PropfindParameters>()), Times.Once);
+    }
+
+    [Fact]
+    public void Listed_encoded_name_round_trips_to_same_client_uri()
+    {
+        Mock<IWebDavClient> mock = new();
+        string expectedUri = BaseUrl + "folder/a%20%23b%25.mkv";
+        mock.Setup(c => c.Propfind(BaseUrl, It.IsAny<PropfindParameters>()))
+            .ReturnsAsync(
+                MakePropfindResponse(
+                    207,
+                    [MakeResource(BaseUrl, true), MakeResource(expectedUri, false)]
+                )
+            );
+        mock.Setup(c => c.Propfind(expectedUri, It.IsAny<PropfindParameters>()))
+            .ReturnsAsync(MakePropfindResponse(207, [MakeResource(expectedUri, false)]));
+
+        WebDavStorageDriver driver = BuildDriver(mock);
+        string path = driver
+            .EnumerateFileSystemEntries("", "*", SearchOption.TopDirectoryOnly)
+            .Single();
+
+        path.Should().Be("folder/a #b%.mkv");
+        driver.FileExists(path).Should().BeTrue();
+        mock.Verify(c => c.Propfind(expectedUri, It.IsAny<PropfindParameters>()), Times.Once);
+    }
+
     [Fact]
     public void EnumerateFileSystemEntries_returns_relative_paths_not_absolute_uris()
     {

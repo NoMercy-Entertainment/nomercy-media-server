@@ -10,12 +10,9 @@
 // -----------------------------------------------------------------------------
 
 using System.Net;
-using FluentAssertions;
-using Moq;
 using Moq.Protected;
 using NoMercy.Providers.AniList;
 using NoMercy.Providers.AniList.Models;
-using Xunit;
 
 namespace NoMercy.Tests.Providers.AniList;
 

@@ -21,14 +21,22 @@ internal static class LinuxStartupManager
     {
         try
         {
-            // Check both mechanisms: XDG autostart (desktop) and systemd (headless)
-            return File.Exists(GetXdgAutostartPath()) || File.Exists(GetSystemdUnitPath());
+            bool desktopAutostartAvailable =
+                Screen.IsDesktopEnvironment()
+                && StartupManagerShared.ResolveLauncherPath() is not null
+                && File.Exists(GetXdgAutostartPath());
+            return IsLinuxStartupEnabled(LinuxSystemdService.Current, desktopAutostartAvailable);
         }
         catch
         {
             return false;
         }
     }
+
+    internal static bool IsLinuxStartupEnabled(
+        LinuxSystemdService service,
+        bool desktopAutostartAvailable
+    ) => desktopAutostartAvailable || service.IsEnabled(Environment.UserName);
 
     /// <summary>
     /// Generates a systemd user service unit file for headless Linux.
@@ -114,6 +122,7 @@ internal static class LinuxStartupManager
                     string unitPath = GetSystemdUnitPath();
                     if (File.Exists(unitPath))
                     {
+                        LinuxSystemdService.Current.Disable();
                         File.Delete(unitPath);
                         Logger.App("Removed stale systemd unit (switched to desktop mode).");
                     }
@@ -135,7 +144,8 @@ internal static class LinuxStartupManager
 
             File.WriteAllText(unitPath2, unitContent);
             Logger.App($"systemd user service unit written to {unitPath2}");
-            Logger.App("To enable: systemctl --user enable --now nomercy-mediaserver.service");
+            LinuxSystemdService.Current.Enable(Environment.UserName);
+            Logger.App("systemd user service enabled with lingering.");
 
             // Clean up desktop autostart entry if it exists
             string xdgPath = GetXdgAutostartPath();
@@ -160,6 +170,7 @@ internal static class LinuxStartupManager
             string unitPath = GetSystemdUnitPath();
             if (File.Exists(unitPath))
             {
+                LinuxSystemdService.Current.Disable();
                 File.Delete(unitPath);
                 Logger.App("Linux systemd service unregistration successful.");
             }

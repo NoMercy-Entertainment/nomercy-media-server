@@ -11,7 +11,6 @@
 
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using NoMercy.Api.EventHandlers;
 using NoMercy.Events;
 using NoMercy.Events.Library;
 using NoMercy.Events.Media;

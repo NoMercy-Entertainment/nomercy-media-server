@@ -31,10 +31,12 @@ internal static class UpdateCommand
         ICliClientFactory clientFactory,
         Func<string, bool>? startServer = null,
         Func<ICliClient, CancellationToken, Task<string?>>? awaitVersion = null,
-        Func<ICliClient, CancellationToken, Task<bool>>? awaitExit = null
+        Func<ICliClient, CancellationToken, Task<bool>>? awaitExit = null,
+        Action<string, string>? moveStagedBinary = null
     )
     {
         startServer ??= StartServer;
+        moveStagedBinary ??= File.Move;
         awaitVersion ??= (client, ct) =>
             WaitForServerVersionAsync(client, TimeSpan.FromMinutes(2), ct);
 
@@ -68,6 +70,18 @@ internal static class UpdateCommand
                 }
 
                 Console.WriteLine(downloadResponse.Message);
+
+                if (
+                    downloadResponse.Message.Contains(
+                        "already up to date",
+                        StringComparison.OrdinalIgnoreCase
+                    )
+                    || downloadResponse.Message.Contains(
+                        "restart needed",
+                        StringComparison.OrdinalIgnoreCase
+                    )
+                )
+                    return (int)ExitCode.Success;
 
                 // Deployments where a binary swap is not the update mechanism. Saying so and
                 // stopping is the correct outcome; carrying on would stage a file that can
@@ -117,8 +131,14 @@ internal static class UpdateCommand
                     // the file is locked and the move throws, on Linux it succeeds while the old
                     // binary keeps running, so which version comes back is down to timing.
                     await Console.Error.WriteLineAsync(
-                        "The server did not stop within 60s. Nothing was changed — stop it and run "
-                            + "'nomercy update' again."
+                        "The server did not stop within 60s: its management endpoint did not "
+                            + "become unreachable. Nothing was changed. Check shutdown logs, "
+                            + "then force-stop the server using the tool for your deployment:\n"
+                            + "  Windows service: taskkill /F /IM NoMercyMediaServer.exe\n"
+                            + "  systemd: systemctl kill -s SIGKILL <unit>\n"
+                            + "  launchd: launchctl kill SIGKILL gui/<uid>/tv.nomercy.mediaserver.service\n"
+                            + "  container: docker kill <container>\n"
+                            + "Confirm the server has stopped, then run 'nomercy update' again."
                     );
                     return (int)ExitCode.Timeout;
                 }
@@ -137,13 +157,22 @@ internal static class UpdateCommand
                     if (File.Exists(currentPath))
                         File.Move(currentPath, backupPath);
 
-                    File.Move(tempPath, currentPath);
+                    moveStagedBinary(tempPath, currentPath);
                     await FilePermissions.SetExecutionPermissions(currentPath);
                 }
                 catch (Exception ex)
                 {
                     await Console.Error.WriteLineAsync($"Could not apply the update: {ex.Message}");
                     RestoreBackup(backupPath, currentPath);
+                    if (!startServer(currentPath))
+                    {
+                        await Console.Error.WriteLineAsync(
+                            "Could not restart the previous server after rollback. The server is down."
+                        );
+                        return (int)ExitCode.RollbackFailed;
+                    }
+
+                    Console.WriteLine("Previous version restored and started.");
                     return (int)ExitCode.ServerError;
                 }
 
@@ -155,7 +184,15 @@ internal static class UpdateCommand
                         "The updated server would not start — rolling back to the previous version."
                     );
                     RestoreBackup(backupPath, currentPath);
-                    startServer(currentPath);
+                    if (!startServer(currentPath))
+                    {
+                        await Console.Error.WriteLineAsync(
+                            "Could not restart the previous server after rollback. The server is down."
+                        );
+                        return (int)ExitCode.RollbackFailed;
+                    }
+
+                    Console.WriteLine("Previous version restored and started.");
                     return (int)ExitCode.ServerError;
                 }
 
@@ -169,7 +206,15 @@ internal static class UpdateCommand
                         "The updated server did not come back — rolling back."
                     );
                     RestoreBackup(backupPath, currentPath);
-                    startServer(currentPath);
+                    if (!startServer(currentPath))
+                    {
+                        await Console.Error.WriteLineAsync(
+                            "Could not restart the previous server after rollback. The server is down."
+                        );
+                        return (int)ExitCode.RollbackFailed;
+                    }
+
+                    Console.WriteLine("Previous version restored and started.");
                     return (int)ExitCode.ServerError;
                 }
 

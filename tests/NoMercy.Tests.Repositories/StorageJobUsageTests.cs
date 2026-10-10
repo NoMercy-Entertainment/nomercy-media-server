@@ -13,7 +13,6 @@ using System.Collections.Concurrent;
 using FluentAssertions;
 using NoMercy.Data.Jobs;
 using NoMercy.Database.Models.Media;
-using Xunit;
 
 namespace NoMercy.Tests.Repositories;
 

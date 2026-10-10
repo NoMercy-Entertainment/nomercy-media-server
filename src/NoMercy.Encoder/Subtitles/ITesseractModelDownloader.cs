@@ -25,6 +25,11 @@ namespace NoMercy.Encoder.Subtitles;
 public interface ITesseractModelDownloader
 {
     /// <summary>
+    /// Lists model languages published as assets in the latest signature-verified manifest.
+    /// </summary>
+    Task<IReadOnlyList<string>> GetAvailableLanguagesAsync(CancellationToken ct);
+
+    /// <summary>
     /// Downloads and verifies the <c>{language}.traineddata</c> asset from the latest
     /// signed nomercy-tesseract release.
     /// </summary>

@@ -10,13 +10,11 @@
 // -----------------------------------------------------------------------------
 
 using System.Collections.Concurrent;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NoMercy.Api.DTOs.Music;
 using NoMercy.Api.Hubs.Shared;
 using NoMercy.Data.Repositories;
-using NoMercy.Database;
 using NoMercy.Database.Models.Users;
 using NoMercy.Events;
 using NoMercy.Events.Playback;
@@ -239,6 +237,20 @@ public class MusicPlaybackService
     {
         if (_timers.TryRemove(userId, out Timer? timer))
             timer.Dispose();
+    }
+
+    public void RemoveDisconnectedUserState(Guid userId)
+    {
+        RemoveTimer(userId);
+
+        if (_broadcastTimers.TryRemove(userId, out Timer? broadcastTimer))
+            broadcastTimer.Dispose();
+
+        // A command that was already running can still hold this semaphore.
+        // Removing the map entry lets that command finish without disposing it.
+        _stateLocks.TryRemove(userId, out _);
+        _playbackStartsInFlight.TryRemove(userId, out _);
+        _lastBroadcastFingerprints.TryRemove(userId, out _);
     }
 
     /// <summary>

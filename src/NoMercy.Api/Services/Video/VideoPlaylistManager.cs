@@ -11,7 +11,6 @@
 
 using NoMercy.Api.DTOs.Media;
 using NoMercy.Data.Repositories;
-using NoMercy.Database;
 using NoMercy.Database.Models.Movies;
 using NoMercy.Database.Models.TvShows;
 using NoMercy.NmSystem.Domain;
@@ -96,21 +95,25 @@ public class VideoPlaylistManager
                 .Select(
                     (item, index) =>
                         item.EpisodeId is not null
-                            ? new(
-                                item.Episode ?? new Episode(),
-                                MediaTypes.SpecialMediaType,
-                                listId,
-                                country,
-                                index
-                            )
-                            : new VideoPlaylistResponseDto(
-                                item.Movie ?? new Movie(),
-                                MediaTypes.SpecialMediaType,
-                                listId,
-                                country,
-                                index
-                            )
+                            ? (VideoPlaylistResponseDto?)
+                                VideoPlaylistResponseDto.TryCreate(
+                                    item.Episode ?? new Episode(),
+                                    MediaTypes.SpecialMediaType,
+                                    listId,
+                                    country,
+                                    index
+                                )
+                            : (VideoPlaylistResponseDto?)
+                                VideoPlaylistResponseDto.TryCreate(
+                                    item.Movie ?? new Movie(),
+                                    MediaTypes.SpecialMediaType,
+                                    listId,
+                                    country,
+                                    index
+                                )
                 )
+                .Where(dto => dto is not null)
+                .Select(dto => dto!)
                 .ToList()
             ?? [];
 
@@ -142,17 +145,21 @@ public class VideoPlaylistManager
 
         List<VideoPlaylistResponseDto> playlist =
             collection
-                ?.CollectionMovies.Select(
+                ?.CollectionMovies.Where(movie => movie.Movie.VideoFiles.Any(v => v.Folder != null))
+                .Select(
                     (movie, index) =>
-                        new VideoPlaylistResponseDto(
-                            movie.Movie,
-                            MediaTypes.CollectionMediaType,
-                            listId,
-                            country,
-                            index + 1,
-                            collection
-                        )
+                        (VideoPlaylistResponseDto?)
+                            VideoPlaylistResponseDto.TryCreate(
+                                movie.Movie,
+                                MediaTypes.CollectionMediaType,
+                                listId,
+                                country,
+                                index + 1,
+                                collection
+                            )
                 )
+                .Where(dto => dto is not null)
+                .Select(dto => dto!)
                 .ToList()
             ?? [];
 
@@ -185,24 +192,34 @@ public class VideoPlaylistManager
         VideoPlaylistResponseDto[] episodes =
             tv?.Seasons.Where(season => season.SeasonNumber > 0)
                 .SelectMany(season => season.Episodes)
-                .Select(episode => new VideoPlaylistResponseDto(
-                    episode,
-                    MediaTypes.TvMediaType,
-                    listId,
-                    country
-                ))
+                .Select(episode =>
+                    (VideoPlaylistResponseDto?)
+                        VideoPlaylistResponseDto.TryCreate(
+                            episode,
+                            MediaTypes.TvMediaType,
+                            listId,
+                            country
+                        )
+                )
+                .Where(dto => dto is not null)
+                .Select(dto => dto!)
                 .ToArray()
             ?? [];
 
         VideoPlaylistResponseDto[] extras =
             tv?.Seasons.Where(season => season.SeasonNumber == 0)
                 .SelectMany(season => season.Episodes)
-                .Select(episode => new VideoPlaylistResponseDto(
-                    episode,
-                    MediaTypes.TvMediaType,
-                    listId,
-                    country
-                ))
+                .Select(episode =>
+                    (VideoPlaylistResponseDto?)
+                        VideoPlaylistResponseDto.TryCreate(
+                            episode,
+                            MediaTypes.TvMediaType,
+                            listId,
+                            country
+                        )
+                )
+                .Where(dto => dto is not null)
+                .Select(dto => dto!)
                 .ToArray()
             ?? [];
 
@@ -234,12 +251,17 @@ public class VideoPlaylistManager
             country
         );
         List<VideoPlaylistResponseDto> playlist = movies
-            .Select(movie => new VideoPlaylistResponseDto(
-                movie,
-                MediaTypes.MovieMediaType,
-                int.Parse(listId),
-                country
-            ))
+            .Select(movie =>
+                (VideoPlaylistResponseDto?)
+                    VideoPlaylistResponseDto.TryCreate(
+                        movie,
+                        MediaTypes.MovieMediaType,
+                        int.Parse(listId),
+                        country
+                    )
+            )
+            .Where(dto => dto is not null)
+            .Select(dto => dto!)
             .ToList();
 
         VideoPlaylistResponseDto? item =

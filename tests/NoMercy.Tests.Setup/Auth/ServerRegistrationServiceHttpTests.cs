@@ -11,7 +11,6 @@
 
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
-using Moq;
 using Newtonsoft.Json;
 using NoMercy.Database;
 using NoMercy.Database.Models.Users;

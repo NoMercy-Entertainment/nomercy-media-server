@@ -19,8 +19,10 @@ public class StartupTaskRunner
     private readonly List<StartupTask> _tasks;
     private readonly HashSet<string> _completedTasks = [];
     private readonly List<StartupTask> _deferredTasks = [];
+    private readonly Dictionary<string, string> _deferredReasons = [];
 
     public IReadOnlyList<StartupTask> DeferredTasks => _deferredTasks;
+    public IReadOnlyDictionary<string, string> DeferredReasons => _deferredReasons;
     public IReadOnlySet<string> CompletedTasks => _completedTasks;
 
     public StartupTaskRunner(List<StartupTask> tasks)
@@ -117,6 +119,8 @@ public class StartupTaskRunner
                             $"Startup task '{task.Name}' deferred — will retry in background"
                         );
                         _deferredTasks.Add(task);
+                        _deferredReasons[task.Name] =
+                            $"Dependencies not met: {string.Join(", ", GetUnmetDependencies(task))}";
                         continue;
                     }
 
@@ -137,6 +141,7 @@ public class StartupTaskRunner
                         $"Startup task '{task.Name}' not ready: {ex.Message} — will retry in background"
                     );
                     _deferredTasks.Add(task);
+                    _deferredReasons[task.Name] = ex.Message;
                 }
                 catch (Exception ex) when (!task.CanDefer)
                 {

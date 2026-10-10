@@ -33,7 +33,13 @@ public static class ListenAddresses
     /// (::ffff:a.b.c.d) are what a dual-mode listener hands every existing IPv4 client,
     /// and every IP check in the server already normalizes those back to IPv4.
     /// </summary>
-    internal static bool CanBindDualStack()
+    internal static bool CanBindDualStack() => CanBindDualStack(IPAddress.IPv6Any);
+
+    /// <summary>
+    /// The same probe on a chosen IPv6 address. Tests pass "::1" so a test run
+    /// never binds a wildcard, which on Windows asks the firewall every time.
+    /// </summary>
+    internal static bool CanBindDualStack(IPAddress probeAddress)
     {
         if (!Socket.OSSupportsIPv6)
             return false;
@@ -46,7 +52,7 @@ public static class ListenAddresses
                 ProtocolType.Tcp
             );
             socket.DualMode = true;
-            socket.Bind(new IPEndPoint(IPAddress.IPv6Any, 0));
+            socket.Bind(new IPEndPoint(probeAddress, 0));
             return true;
         }
         catch (SocketException)

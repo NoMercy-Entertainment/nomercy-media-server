@@ -160,14 +160,49 @@ public class VerifyCommandTests : IDisposable
     }
 
     [Fact]
-    public async Task A_mount_naming_a_kind_that_does_not_exist_is_blocked()
+    public void A_mount_naming_a_kind_that_does_not_exist_is_blocked()
     {
-        ScanReport report = await VerifyCommand.RunAsync(
-            Write(Clean.Replace("\"section\": \"music\"", "\"section\": \"backend\""))
+        IReadOnlyList<PluginRefusal> findings = ManifestScan.Run(
+            Write(
+                Clean.Replace(
+                    "\"section\": \"music\"",
+                    "\"section\": \"music\", \"kind\": \"vidoe\""
+                )
+            )
         );
 
-        report.ExitCode.Should().Be(1);
-        report.Refusals.Should().Contain(refusal => refusal.Fix.Contains("music"));
+        findings
+            .Should()
+            .ContainSingle()
+            .Which.Should()
+            .Match<PluginRefusal>(refusal =>
+                refusal.Code == PluginRefusalCodes.ManifestInvalid
+                && refusal.Severity == PluginRefusalSeverity.Blocked
+                && refusal.What.Contains("vidoe")
+            );
+    }
+
+    [Fact]
+    public void An_unknown_mount_section_is_advice_only()
+    {
+        IReadOnlyList<PluginRefusal> findings = ManifestScan.Run(
+            Write(
+                Clean.Replace(
+                    "\"section\": \"music\"",
+                    "\"section\": \"tools\", \"kind\": \"music\""
+                )
+            )
+        );
+
+        findings
+            .Should()
+            .ContainSingle()
+            .Which.Should()
+            .Match<PluginRefusal>(refusal =>
+                refusal.Code == PluginRefusalCodes.ManifestInvalid
+                && refusal.Severity == PluginRefusalSeverity.Degraded
+                && refusal.What.Contains("tools")
+            );
     }
 
     [Fact]

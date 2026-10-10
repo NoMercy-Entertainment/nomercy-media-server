@@ -143,13 +143,30 @@ public class LiveStreamingService(
                 // Cascade to the per-language audio children so switching audio
                 // never outlives the video session it belongs to.
                 foreach (string childId in runtime.ChildAudioSessionIds)
-                    await RemoveAsync(childId).ConfigureAwait(false);
-
-                await runtime.DisposeAsync().ConfigureAwait(false);
-
-                if (!string.IsNullOrWhiteSpace(runtime.ScratchDirectory))
                 {
-                    TryDeleteScratch(runtime.ScratchDirectory, sessionId);
+                    try
+                    {
+                        await RemoveAsync(childId).ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogError(
+                            ex,
+                            "Could not remove audio child {ChildSessionId} of live session {SessionId}",
+                            childId,
+                            sessionId
+                        );
+                    }
+                }
+
+                try
+                {
+                    await runtime.DisposeAsync().ConfigureAwait(false);
+                }
+                finally
+                {
+                    if (!string.IsNullOrWhiteSpace(runtime.ScratchDirectory))
+                        TryDeleteScratch(runtime.ScratchDirectory, sessionId);
                 }
             }
         }
@@ -193,7 +210,20 @@ public class LiveStreamingService(
     {
         // Snapshot the keys — RemoveAsync mutates _runtimes as it goes.
         foreach (string sessionId in _runtimes.Keys.ToList())
-            await RemoveAsync(sessionId).ConfigureAwait(false);
+        {
+            try
+            {
+                await RemoveAsync(sessionId).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(
+                    ex,
+                    "Could not remove live session {SessionId} during shutdown",
+                    sessionId
+                );
+            }
+        }
     }
 
     public bool WasRecentlyRemoved(string sessionId)

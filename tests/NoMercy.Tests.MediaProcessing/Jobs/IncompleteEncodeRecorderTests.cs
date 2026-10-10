@@ -146,4 +146,44 @@ public sealed class IncompleteEncodeRecorderTests : IDisposable
         string[] split = row.MissingRenditions.Split('\n', StringSplitOptions.RemoveEmptyEntries);
         split.Should().BeEquivalentTo(secondKeys);
     }
+
+    [Fact]
+    public async Task RecordFailureAsync_CalledTwice_CountsAttemptsOnOneRow()
+    {
+        await _recorder.RecordFailureAsync(
+            _context,
+            mediaId: 55L,
+            folderId: "folder-attempts",
+            title: "Retry Movie",
+            missingKeys: ["video-1080p"],
+            lastError: "error-1",
+            ct: CancellationToken.None
+        );
+
+        int afterFirst = await _context
+            .IncompleteEncodes.AsNoTracking()
+            .Where(r => r.MediaId == 55L && r.FolderId == "folder-attempts")
+            .Select(r => r.AttemptsMade)
+            .SingleAsync();
+        afterFirst.Should().Be(1);
+
+        await _recorder.RecordFailureAsync(
+            _context,
+            mediaId: 55L,
+            folderId: "folder-attempts",
+            title: "Retry Movie",
+            missingKeys: ["video-720p"],
+            lastError: "error-2",
+            ct: CancellationToken.None
+        );
+
+        List<IncompleteEncode> rows = await _context
+            .IncompleteEncodes.AsNoTracking()
+            .Where(r => r.MediaId == 55L && r.FolderId == "folder-attempts")
+            .ToListAsync();
+
+        rows.Should().ContainSingle();
+        rows[0].AttemptsMade.Should().Be(2);
+        rows[0].LastError.Should().Be("error-2");
+    }
 }

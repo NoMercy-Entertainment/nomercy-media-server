@@ -44,6 +44,7 @@ public class AppComponentNameTests
             ComponentTypes.MusicHomeCard,
             ComponentTypes.TrackRow,
             ComponentTypes.TopResultCard,
+            ComponentTypes.GroupCard,
             ComponentTypes.SeasonCard,
             ComponentTypes.SeasonTitle,
             ComponentTypes.EmptyState,

@@ -13,7 +13,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NoMercy.Database;
 using NoMercy.Database.Models.Movies;
-using NoMercy.Database.Models.TvShows;
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
 using NoMercy.Providers.TMDB.Client;
 using NoMercyQueue.Core;
@@ -80,7 +79,8 @@ public class TmdbChangesCronJob : ICronJobExecutor
         );
 
         _logger.LogInformation(
-            "TMDB changes sync queued refreshes — movies: {Movies}, shows: {Shows}, people: {People}", [movies, shows, people]
+            "TMDB changes sync queued refreshes — movies: {Movies}, shows: {Shows}, people: {People}",
+            [movies, shows, people]
         );
     }
 
@@ -128,15 +128,26 @@ public class TmdbChangesCronJob : ICronJobExecutor
         if (changedIds.Count == 0)
             return 0;
 
-        List<LibraryTv> matches = (await _context.LibraryTv.ToListAsync(cancellationToken))
-            .Where(link => changedIds.Contains(link.TvId))
-            .ToList();
+        // Dispatch once per SHOW, using Tvs.LibraryId - the show's real,
+        // current library - never once per LibraryTv row. A stale LibraryTv
+        // link left behind by an earlier re-file must not steer a re-import
+        // back into the wrong library. A show with no library yet is
+        // skipped: there is nothing to re-import it into.
+        List<ShowLibraryRef> shows = await _context
+            .Tvs.Where(tv => changedIds.Contains(tv.Id))
+            .Select(tv => new ShowLibraryRef(tv.Id, tv.LibraryId))
+            .ToListAsync(cancellationToken);
 
-        foreach (LibraryTv link in matches)
-            jobDispatcher.DispatchJob<ShowImportJob>(link.TvId, link.LibraryId);
+        List<ShowLibraryRef> matches = shows.Where(show => show.LibraryId != Ulid.Empty).ToList();
+
+        foreach (ShowLibraryRef match in matches)
+            jobDispatcher.DispatchJob<ShowImportJob>(match.Id, match.LibraryId);
 
         return matches.Count;
     }
+
+    /// <summary>A changed show and the library it is actually filed under.</summary>
+    private sealed record ShowLibraryRef(int Id, Ulid LibraryId);
 
     private async Task<int> SyncPeople(
         TmdbChangesClient changesClient,

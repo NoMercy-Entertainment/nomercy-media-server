@@ -24,6 +24,7 @@ public class PluginRepository : IPluginRepository
     private readonly IStorage _storage;
     private readonly List<PluginRepositoryInfo> _repositories = [];
     private readonly List<PluginRepositoryEntry> _availablePlugins = [];
+    private readonly Dictionary<string, List<PluginRepositoryEntry>> _pluginsByRepository = [];
 
     /// <summary>
     /// The plugins a trusted repository lists, rebuilt on every refresh.
@@ -135,6 +136,8 @@ public class PluginRepository : IPluginRepository
             {
                 throw new InvalidOperationException($"Repository '{name}' not found.");
             }
+
+            _pluginsByRepository.Remove(name);
         }
 
         await SaveRepositoriesToDiskAsync(ct);
@@ -179,19 +182,15 @@ public class PluginRepository : IPluginRepository
 
         List<PluginRepositoryEntry> allPlugins = [];
         HashSet<Ulid> trusted = [];
+        Dictionary<string, List<PluginRepositoryEntry>> refreshed = [];
 
         foreach (PluginRepositoryInfo repo in repos)
         {
+            List<PluginRepositoryEntry> plugins;
             try
             {
-                List<PluginRepositoryEntry> plugins = await FetchRepositoryPluginsAsync(
-                    repo.Url,
-                    ct
-                );
-                allPlugins.AddRange(plugins);
-
-                if (repo.Trusted)
-                    trusted.UnionWith(plugins.Select(plugin => plugin.Id));
+                plugins = await FetchRepositoryPluginsAsync(repo.Url, ct);
+                refreshed[repo.Name] = plugins;
             }
             catch (Exception ex)
             {
@@ -199,11 +198,26 @@ public class PluginRepository : IPluginRepository
                     "Failed to refresh repository '{Name}' ({Url}): {Error}",
                     [repo.Name, repo.Url, ex.Message]
                 );
+
+                lock (_lock)
+                {
+                    plugins = _pluginsByRepository.GetValueOrDefault(repo.Name) ?? [];
+                }
             }
+
+            allPlugins.AddRange(plugins);
+
+            if (repo.Trusted)
+                trusted.UnionWith(plugins.Select(plugin => plugin.Id));
         }
 
         lock (_lock)
         {
+            foreach (KeyValuePair<string, List<PluginRepositoryEntry>> entry in refreshed)
+            {
+                _pluginsByRepository[entry.Key] = entry.Value;
+            }
+
             _availablePlugins.Clear();
             _availablePlugins.AddRange(allPlugins);
 
@@ -280,6 +294,7 @@ public class PluginRepository : IPluginRepository
 
             lock (_lock)
             {
+                _pluginsByRepository[name] = plugins;
                 _availablePlugins.AddRange(plugins);
             }
         }

@@ -20,7 +20,6 @@ using NoMercy.Encoder.Pipeline;
 using NoMercy.Encoder.Pipeline.Optimizer;
 using NoMercy.Encoder.Pipeline.Stages;
 using NoMercy.Encoder.PostProcess;
-using NoMercy.Encoder.Subtitles;
 using NoMercy.Tests.Encoder.Storage;
 using SubtitlePolicy = NoMercy.Encoder.Profiles.SubtitlePolicy;
 

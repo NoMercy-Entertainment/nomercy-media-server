@@ -131,7 +131,14 @@ public class PluginHostStorage : IPluginStorage
         CancellationToken ct = default
     )
     {
-        if (name.Contains('/') || name.Contains('\\') || name.Contains(".."))
+        if (
+            name != Path.GetFileName(name)
+            || name.Contains('/')
+            || name.Contains('\\')
+            || name.Contains(':')
+            || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
+            || name.Contains("..")
+        )
             throw new PluginRefusedException(
                 PluginRefusalMessages.FileOutsideGrant(_pluginId.ToString(), name)
             );

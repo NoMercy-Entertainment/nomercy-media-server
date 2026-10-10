@@ -135,4 +135,45 @@ public class StoragePathHelpersLibraryRelativeTests
         folder.Should().Be("/U2");
         filename.Should().Be("/x.flac");
     }
+
+    [Fact]
+    public void Rejects_a_sibling_folder_whose_name_only_starts_with_the_root_name()
+    {
+        // Issue #500: an album in "Music Unsorted" matched the root "Music" mid-segment,
+        // so the relative folder became "/ Unsorted/..." and the move source was rebuilt
+        // from it, a path that never existed.
+        bool ok = StoragePathHelpers.TryGetLibraryRelativeParts(
+            "Y:/media/Music Unsorted/batch/01 Track.flac",
+            "Y:/media/Music",
+            out string folder,
+            out string filename
+        );
+
+        ok.Should().BeFalse();
+        folder.Should().BeEmpty();
+        filename.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Rejects_a_folder_that_only_ends_with_the_root_name()
+    {
+        StoragePathHelpers
+            .TryGetLibraryRelativeFolder("/mnt/vault/MusicArchive/U2", "Music", out string folder)
+            .Should()
+            .BeFalse();
+        folder.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Finds_the_whole_segment_root_after_an_earlier_partial_match()
+    {
+        bool ok = StoragePathHelpers.TryGetLibraryRelativeFolder(
+            "Y:/media/Music Unsorted/Music/U2",
+            "Music",
+            out string folder
+        );
+
+        ok.Should().BeTrue();
+        folder.Should().Be("/U2");
+    }
 }

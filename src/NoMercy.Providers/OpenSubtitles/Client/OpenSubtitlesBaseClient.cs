@@ -43,7 +43,22 @@ public class OpenSubtitlesBaseClient : ExternalApiClient
             new Dictionary<string, string?> { { "query", xml } }
         );
 
-        string response = await RequestQueue.Enqueue(() => SendAsync(url, xml), newUrl, priority);
+        string response;
+        try
+        {
+            response = await RequestQueue.Enqueue(() => SendAsync(url, xml), newUrl, priority);
+        }
+        catch (HttpRequestException ex)
+            when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests
+                || (int?)ex.StatusCode is >= 500 and <= 599
+            )
+        {
+            Logger.OpenSubs(
+                $"OpenSubtitles unavailable after retries for {url}",
+                LogEventLevel.Warning
+            );
+            return null;
+        }
 
         await CacheController.Write(newUrl, response);
 
@@ -66,8 +81,7 @@ public class OpenSubtitlesBaseClient : ExternalApiClient
     {
         using StringContent content = new(xml, Encoding.UTF8, "text/xml");
         using HttpResponseMessage response = await Client.PostAsync(url, content);
-        // TODO(subtitle-acquisition): handle HTTP 429 — log WARN, return empty, enforce backoff window
-        response.EnsureSuccessStatusCode();
+        response.EnsureProviderSuccess();
         return await response.Content.ReadAsStringAsync();
     }
 }

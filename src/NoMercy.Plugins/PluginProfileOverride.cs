@@ -15,7 +15,6 @@ using NoMercy.Encoder.Codecs;
 using NoMercy.Encoder.Pipeline;
 using NoMercy.PluginSdk.Abstractions;
 using EncoderMediaInfo = NoMercy.Encoder.Analysis.MediaInfo;
-using EncoderVideoOutput = NoMercy.Encoder.Profiles.VideoOutput;
 using EncodingProfile = NoMercy.Encoder.Profiles.EncodingProfile;
 using PluginProfile = NoMercy.PluginSdk.Abstractions.EncodingProfile;
 

@@ -41,6 +41,8 @@ public interface IFileRepository
     Task<(Movie? movie, Tv? show, string type)> MediaType(int id, Library library);
     Task<int> DeleteVideoFilesByHostFolderAsync(string hostFolder);
     Task<int> DeleteMetadataByHostFolderAsync(string hostFolder);
+    Task<int> DeleteVideoFileByPathAsync(string hostFolder, string filename);
+    Task<int> DeleteMetadataByPathAsync(string hostFolder, string filename);
     Task<int> UpdateVideoFilePathsAsync(
         string oldHostFolder,
         string oldFilename,

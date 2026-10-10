@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
-using NoMercy.Api.DTOs.Common;
 using NoMercy.Database;
 
 namespace NoMercy.Api.DTOs.Media;

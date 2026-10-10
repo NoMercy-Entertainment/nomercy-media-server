@@ -27,6 +27,7 @@ public class AniListMetadataProvider : ExternalApiClient, IAniListMetadataProvid
     public AniListMetadataProvider(int requestIntervalMs = 2000)
     {
         _requestIntervalMs = requestIntervalMs;
+        _ = RequestQueue;
     }
 
     protected override string HttpClientName => HttpClientNames.AniList;
@@ -39,17 +40,11 @@ public class AniListMetadataProvider : ExternalApiClient, IAniListMetadataProvid
     // InternalsVisibleTo) read the configured interval through this instead.
     internal int RequestIntervalMsForTesting => RequestIntervalMs;
 
-    protected override int ConcurrentRequests => 1;
-
     protected override bool ShouldSoftFail(System.Net.HttpStatusCode? status) =>
         status is System.Net.HttpStatusCode.NotFound or System.Net.HttpStatusCode.TooManyRequests;
 
     public async Task<AniListMedia?> SearchAsync(string title, int? year, bool? priority = false)
     {
-        return await RequestQueue.Enqueue(
-            () => AniListClient.SearchAsync(Client, title, year),
-            $"anilist-search-{title}-{year}",
-            priority
-        );
+        return await AniListClient.SearchWithPriorityAsync(Client, title, year, priority);
     }
 }

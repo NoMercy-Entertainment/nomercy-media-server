@@ -10,12 +10,9 @@
 // -----------------------------------------------------------------------------
 
 using System.Net;
-using FluentAssertions;
-using Moq;
 using Moq.Protected;
 using NoMercy.Providers.Jikan;
 using NoMercy.Providers.Jikan.Models;
-using Xunit;
 
 namespace NoMercy.Tests.Providers.Jikan;
 

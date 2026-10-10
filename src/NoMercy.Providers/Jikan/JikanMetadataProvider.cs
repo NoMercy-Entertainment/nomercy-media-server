@@ -26,6 +26,7 @@ public class JikanMetadataProvider : ExternalApiClient, IJikanMetadataProvider
     public JikanMetadataProvider(int requestIntervalMs = 350)
     {
         _requestIntervalMs = requestIntervalMs;
+        _ = RequestQueue;
     }
 
     protected override string HttpClientName => HttpClientNames.Jikan;
@@ -38,26 +39,16 @@ public class JikanMetadataProvider : ExternalApiClient, IJikanMetadataProvider
     // InternalsVisibleTo) read the configured interval through this instead.
     internal int RequestIntervalMsForTesting => RequestIntervalMs;
 
-    protected override int ConcurrentRequests => 1;
-
     protected override bool ShouldSoftFail(System.Net.HttpStatusCode? status) =>
         status is System.Net.HttpStatusCode.NotFound or System.Net.HttpStatusCode.TooManyRequests;
 
     public async Task<JikanAnime?> SearchAsync(string title, int? year, bool? priority = false)
     {
-        return await RequestQueue.Enqueue(
-            () => JikanClient.SearchAsync(Client, title, year),
-            $"jikan-search-{title}-{year}",
-            priority
-        );
+        return await JikanClient.SearchWithPriorityAsync(Client, title, year, priority);
     }
 
     public async Task<JikanAnime?> GetByIdAsync(int malId, bool? priority = false)
     {
-        return await RequestQueue.Enqueue(
-            () => JikanClient.GetByIdAsync(Client, malId),
-            $"jikan-anime-{malId}",
-            priority
-        );
+        return await JikanClient.GetByIdWithPriorityAsync(Client, malId, priority);
     }
 }

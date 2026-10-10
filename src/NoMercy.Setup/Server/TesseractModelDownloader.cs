@@ -89,38 +89,37 @@ public class TesseractModelDownloader(
         ["wel"] = "cym",
     };
 
+    /// <inheritdoc />
+    public async Task<IReadOnlyList<string>> GetAvailableLanguagesAsync(CancellationToken ct)
+    {
+        ct.ThrowIfCancellationRequested();
+        (GithubReleaseResponse releaseInfo, ReleaseManifest manifest) =
+            await GetVerifiedReleaseAsync("language list");
+
+        HashSet<string> releasedAssets = releaseInfo
+            .Assets.Select(asset => asset.Name)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        return
+        [
+            .. manifest
+                .Assets.Where(asset =>
+                    asset.Name.EndsWith(".traineddata", StringComparison.OrdinalIgnoreCase)
+                    && releasedAssets.Contains(asset.Name)
+                )
+                .Select(asset => Path.GetFileNameWithoutExtension(asset.Name))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Order(StringComparer.OrdinalIgnoreCase),
+        ];
+    }
+
     public async Task<Stream> DownloadVerifiedAsync(string language, CancellationToken ct)
     {
         string assetName = $"{language}.traineddata";
+        (GithubReleaseResponse releaseInfo, ReleaseManifest manifest) =
+            await GetVerifiedReleaseAsync(language);
 
-        GithubReleaseResponse releaseInfo = await _binaries.GetLatestReleaseInfo(
-            TesseractReleaseApiUrl
-        );
-        if (releaseInfo.Assets.Length == 0)
-        {
-            throw new InvalidOperationException(
-                $"Could not reach the nomercy-tesseract release — no signed model available for '{language}'."
-            );
-        }
-
-        (ReleaseManifest? manifest, bool sigVerified, bool sigPresent) =
-            await _binaries.GetOrFetchManifestAsync(TesseractReleaseApiUrl, releaseInfo);
-
-        if (manifest is null)
-        {
-            throw new InvalidOperationException(
-                $"No signed release manifest is available for nomercy-tesseract — refusing to "
-                    + $"install an unverified model for '{language}'."
-            );
-        }
-
-        if (!sigPresent || !sigVerified)
-        {
-            throw new InvalidOperationException(
-                $"nomercy-tesseract release manifest signature could not be verified — refusing "
-                    + $"to install an unverified model for '{language}'."
-            );
-        }
+        ct.ThrowIfCancellationRequested();
 
         ManifestAsset? manifestAsset = manifest.Assets.FirstOrDefault(a =>
             a.Name.Equals(assetName, StringComparison.OrdinalIgnoreCase)
@@ -183,5 +182,42 @@ public class TesseractModelDownloader(
 
         payloadStream.Position = 0;
         return payloadStream;
+    }
+
+    private async Task<(
+        GithubReleaseResponse ReleaseInfo,
+        ReleaseManifest Manifest
+    )> GetVerifiedReleaseAsync(string language)
+    {
+        GithubReleaseResponse releaseInfo = await _binaries.GetLatestReleaseInfo(
+            TesseractReleaseApiUrl
+        );
+        if (releaseInfo.Assets.Length == 0)
+        {
+            throw new InvalidOperationException(
+                $"Could not reach the nomercy-tesseract release — no signed model available for '{language}'."
+            );
+        }
+
+        (ReleaseManifest? manifest, bool sigVerified, bool sigPresent) =
+            await _binaries.GetOrFetchManifestAsync(TesseractReleaseApiUrl, releaseInfo);
+
+        if (manifest is null)
+        {
+            throw new InvalidOperationException(
+                $"No signed release manifest is available for nomercy-tesseract — refusing to "
+                    + $"install an unverified model for '{language}'."
+            );
+        }
+
+        if (!sigPresent || !sigVerified)
+        {
+            throw new InvalidOperationException(
+                $"nomercy-tesseract release manifest signature could not be verified — refusing "
+                    + $"to install an unverified model for '{language}'."
+            );
+        }
+
+        return (releaseInfo, manifest);
     }
 }

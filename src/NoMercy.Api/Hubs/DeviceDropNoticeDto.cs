@@ -9,25 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.SignalR;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
-using NoMercy.Api.Services.Cast;
-using NoMercy.Api.WebSockets;
-using NoMercy.Authorization;
-using NoMercy.Database;
-using NoMercy.Database.Activity;
-using NoMercy.Database.Models.Users;
-using NoMercy.Encoder.Devices;
-using NoMercy.Networking;
-using NoMercy.Networking.Devices;
-using NoMercy.Networking.Discovery;
-using NoMercy.Networking.Http;
-using NoMercy.Networking.Messaging;
-using NoMercy.Setup.Cast;
 
 namespace NoMercy.Api.Hubs;
 

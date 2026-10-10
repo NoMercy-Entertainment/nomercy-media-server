@@ -12,7 +12,6 @@
 using System.Net;
 using NoMercy.Providers.Helpers;
 using NoMercy.Providers.TVDB.Client;
-using NoMercy.Providers.TVDB.Models.Auth;
 using NoMercy.Providers.TVDB.Models.Series;
 using NoMercy.Providers.TVDB.Models.Shared;
 using NoMercy.Tests.Common.Providers;

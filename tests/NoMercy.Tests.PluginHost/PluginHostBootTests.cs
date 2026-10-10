@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using FluentAssertions;
+using Grpc.Core;
 using NoMercy.PluginHost;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Ipc;
@@ -102,6 +103,46 @@ public class PluginHostBootTests
 
         response.Ok.Should().BeTrue();
         plugin.Invocations.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task Health_WithoutTheLaunchToken_IsRefused()
+    {
+        PluginHostService service = new(new FakeHostedPlugin(), "right-token");
+
+        RpcException refusal = await Assert.ThrowsAsync<RpcException>(() =>
+            service.HealthAsync(new(Ulid.NewUlid().ToString(), "plugin", "Health", "{}", null))
+        );
+
+        refusal.StatusCode.Should().Be(StatusCode.Unauthenticated);
+    }
+
+    [Fact]
+    public async Task Health_WithTheWrongLaunchToken_IsRefused()
+    {
+        PluginHostService service = new(new FakeHostedPlugin(), "right-token");
+
+        RpcException refusal = await Assert.ThrowsAsync<RpcException>(() =>
+            service.HealthAsync(
+                new(Ulid.NewUlid().ToString(), "plugin", "Health", "{}", null),
+                PluginHostService.ContextWithToken("wrong-token")
+            )
+        );
+
+        refusal.StatusCode.Should().Be(StatusCode.Unauthenticated);
+    }
+
+    [Fact]
+    public async Task Health_WithTheLaunchToken_ReturnsTheSnapshot()
+    {
+        PluginHostService service = new(new FakeHostedPlugin(), "right-token");
+
+        PluginHealthSnapshot snapshot = await service.HealthAsync(
+            new(Ulid.NewUlid().ToString(), "plugin", "Health", "{}", null),
+            PluginHostService.ContextWithToken("right-token")
+        );
+
+        snapshot.Pid.Should().BeGreaterThan(0);
     }
 
     private static Dictionary<string, string?> Complete() =>

@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
-using NoMercy.PluginSdk.Abstractions;
 
 namespace NoMercy.Api.DTOs.Dashboard;
 

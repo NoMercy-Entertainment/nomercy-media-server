@@ -11,7 +11,6 @@
 
 using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
-using NoMercy.Database.Models.Common;
 
 namespace NoMercy.Database.Models.Movies;
 

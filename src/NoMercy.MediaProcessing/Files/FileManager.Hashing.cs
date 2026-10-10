@@ -15,9 +15,8 @@ using NoMercy.Database;
 using NoMercy.Database.Models.Media;
 using NoMercy.Encoder.Subtitles;
 using NoMercy.NmSystem.Extensions;
+using ImageMagick;
 using NoMercy.Storage;
-using SixLabors.ImageSharp;
-using Image = SixLabors.ImageSharp.Image;
 using Logger = NoMercy.NmSystem.SystemCalls.Logger;
 
 namespace NoMercy.MediaProcessing.Files;
@@ -366,9 +365,9 @@ public partial class FileManager
 
     private static (int Width, int Height) GetImageDimensions(string filePath)
     {
-        ImageInfo info = Image.Identify(filePath);
+        MagickImageInfo info = new(filePath);
 
-        return (info.Width, info.Height);
+        return ((int)info.Width, (int)info.Height);
     }
 
     private static (int Width, int Height) GetImageDimensionsFromVtt(

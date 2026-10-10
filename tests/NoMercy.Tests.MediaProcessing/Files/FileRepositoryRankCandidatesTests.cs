@@ -9,7 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using FluentAssertions;
 using NoMercy.MediaProcessing.Files;
 
 namespace NoMercy.Tests.MediaProcessing.Files;

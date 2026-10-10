@@ -10,8 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
-using NoMercy.Database;
-using NoMercy.Database.Models.TvShows;
 
 namespace NoMercy.Api.DTOs.Media.Components;
 

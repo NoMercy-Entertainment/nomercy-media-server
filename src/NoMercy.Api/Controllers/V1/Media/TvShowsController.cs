@@ -138,7 +138,9 @@ public class TvShowsController(
             .. tv
                 .Seasons.Where(season => season.SeasonNumber > 0)
                 .SelectMany(season => season.Episodes)
-                .Select(episode => new VideoPlaylistResponseDto(episode, "tv", id, country)),
+                .Select(episode => VideoPlaylistResponseDto.TryCreate(episode, "tv", id, country))
+                .Where(dto => dto is not null)
+                .Select(dto => dto!),
         ];
 
         VideoPlaylistResponseDto[] extras =
@@ -146,7 +148,9 @@ public class TvShowsController(
             .. tv
                 .Seasons.Where(season => season.SeasonNumber == 0)
                 .SelectMany(season => season.Episodes)
-                .Select(episode => new VideoPlaylistResponseDto(episode, "tv", id, country)),
+                .Select(episode => VideoPlaylistResponseDto.TryCreate(episode, "tv", id, country))
+                .Where(dto => dto is not null)
+                .Select(dto => dto!),
         ];
 
         VideoPlaylistResponseDto[] result =
@@ -178,7 +182,7 @@ public class TvShowsController(
             new StatusResponseDto<string>
             {
                 Status = "ok",
-                Message = "{1}",
+                Message = "{0}",
                 Args = new object[] { request.Value ? "liked" : "unliked" },
             }
         );

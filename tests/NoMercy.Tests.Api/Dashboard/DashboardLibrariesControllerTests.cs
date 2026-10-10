@@ -9,15 +9,13 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Linq;
 using System.Net;
 using System.Text;
 using System.Text.Json;
-using FluentAssertions;
+using Microsoft.Extensions.DependencyInjection;
+using NoMercy.Data.Repositories;
 using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
-using NoMercy.Database.Models.Media;
-using NoMercy.Database.Models.Queue;
 using NoMercy.Database.Models.Storage;
 using NoMercy.Tests.Api.Infrastructure;
 using Xunit;
@@ -29,9 +27,11 @@ public class DashboardLibrariesControllerTests : IClassFixture<NoMercyApiFactory
 {
     private readonly HttpClient _authed;
     private readonly HttpClient _unauthed;
+    private readonly NoMercyApiFactory _factory;
 
     public DashboardLibrariesControllerTests(NoMercyApiFactory factory)
     {
+        _factory = factory;
         _authed = factory.CreateClient().AsAuthenticated();
         _unauthed = factory.CreateClient().AsUnauthenticated();
     }
@@ -150,6 +150,25 @@ public class DashboardLibrariesControllerTests : IClassFixture<NoMercyApiFactory
             .Should()
             .BeTrue("create-library response must return the created library in 'data'");
         data.ValueKind.Should().Be(JsonValueKind.Object);
+    }
+
+    [Fact]
+    public async Task PostLibrary_NamesNewLibraryFromOneBasedCount()
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        ILibraryRepository libraryRepository =
+            scope.ServiceProvider.GetRequiredService<ILibraryRepository>();
+        int countBefore = await libraryRepository.CountAsync();
+
+        HttpResponseMessage response = await _authed.PostAsync("/api/v1/dashboard/libraries", null);
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        doc.RootElement.GetProperty("data")
+            .GetProperty("title")
+            .GetString()
+            .Should()
+            .Be($"Library {countBefore + 1}");
     }
 
     [Fact]
@@ -408,6 +427,30 @@ public class DashboardLibrariesControllerTests : IClassFixture<NoMercyApiFactory
         CountDispatchedLibraryScanJobs(libraryId)
             .Should()
             .Be(1, "a genuinely new folder must trigger exactly one scan of its library");
+    }
+
+    [Fact]
+    public async Task AddFolder_MessageArgumentNamesLibrary()
+    {
+        Ulid libraryId = await SeedIsolatedLibraryAsync();
+        Library library = await LoadLibraryAsync(libraryId);
+        string path = $"/media/message-folder-{Ulid.NewUlid()}";
+
+        HttpResponseMessage response = await PostJsonAsync(
+            _authed,
+            $"/api/v1/dashboard/libraries/{libraryId}/folders",
+            new { path, driver_id = Driver.SystemLocalDriverId.ToString() }
+        );
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        using JsonDocument doc = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+        doc.RootElement.GetProperty("message")
+            .GetString()
+            .Should()
+            .Be("Successfully added folder to {0} library.");
+        JsonElement args = doc.RootElement.GetProperty("args");
+        args.GetArrayLength().Should().Be(1);
+        args[0].GetString().Should().Be(library.Title);
     }
 
     [Fact]

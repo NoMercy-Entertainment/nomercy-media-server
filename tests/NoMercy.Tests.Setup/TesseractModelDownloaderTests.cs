@@ -17,7 +17,6 @@ using NoMercy.NmSystem.Information;
 using NoMercy.Setup.Dto;
 using NoMercy.Setup.Server;
 using NoMercy.Storage.Drivers.Local;
-using NoMercy.Storage.Validation;
 
 namespace NoMercy.Tests.Setup;
 
@@ -62,6 +61,48 @@ public class TesseractModelDownloaderTests
         string path = Path.Combine(AppFiles.CachePath, "releases-cache", fileName);
         if (File.Exists(path))
             File.Delete(path);
+    }
+
+    [Fact]
+    public async Task GetAvailableLanguagesAsync_UnsignedManifest_Throws()
+    {
+        string manifestUrl = "https://example.com/manifest.json";
+        ReleaseManifest manifest = new()
+        {
+            Version = "1.0.1",
+            Assets =
+            [
+                new()
+                {
+                    Name = "eng.traineddata",
+                    Sha256 = new('a', 64),
+                    Size = 10,
+                },
+                new()
+                {
+                    Name = "jpn.traineddata",
+                    Sha256 = new('b', 64),
+                    Size = 10,
+                },
+            ],
+        };
+        GithubReleaseResponse release = BuildRelease(
+            assetUrl: "https://example.com/eng.traineddata",
+            manifestUrl: manifestUrl,
+            manifestSigUrl: null,
+            extraAssetName: "jpn.traineddata",
+            extraAssetUrl: "https://example.com/jpn.traineddata"
+        );
+        CountingFakeHandler handler = new();
+        handler.Register(TesseractApiUrl, JsonBytes(release));
+        handler.Register(manifestUrl, JsonBytes(manifest));
+
+        TesseractModelDownloader downloader = BuildDownloader(handler);
+
+        Func<Task> act = () => downloader.GetAvailableLanguagesAsync(CancellationToken.None);
+        await act.Should()
+            .ThrowAsync<InvalidOperationException>()
+            .WithMessage("*signature could not be verified*");
     }
 
     [Fact]

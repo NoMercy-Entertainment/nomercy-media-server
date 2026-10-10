@@ -156,15 +156,19 @@ public class TonemapSelectorOptionsTests
     }
 
     [Fact]
-    public async Task Build_LutPath_set_but_no_storage_falls_through_to_algorithm()
+    public async Task Build_LutPath_set_but_no_storage_records_rejection()
     {
-        // When IStorage is null the LUT branch is skipped — safe default so
-        // callers that don't have IStorage available still get a usable plan.
         HdrOptions options = new("hable", 100, "C:/luts/film.cube");
 
         TonemapPlan plan = await _selector.BuildAsync(options, null, _decisions, storage: null);
 
         plan.LutFilterChain.Should().BeNull();
         plan.FilterStringFragment.Should().Contain("tonemap=hable");
+        _decisions
+            .Snapshot()
+            .Should()
+            .Contain(d =>
+                d.Key == "plan.tonemap_lut_path_rejected" && d.Message.Contains("no storage")
+            );
     }
 }

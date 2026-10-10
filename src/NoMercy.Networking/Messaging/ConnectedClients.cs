@@ -48,6 +48,7 @@ public class ConnectedClients
     /// other, and each one reads the dictionary before any of them has written to it.
     /// </remarks>
     private readonly ConcurrentDictionary<string, int> _connectionsPerDevice = new();
+    private readonly object _deviceConnectionLock = new();
 
     /// <summary>
     /// Registers one hub connection for a device and reports whether the device has just
@@ -58,7 +59,8 @@ public class ConnectedClients
         if (string.IsNullOrEmpty(deviceId))
             return false;
 
-        return _connectionsPerDevice.AddOrUpdate(deviceId, 1, (_, count) => count + 1) == 1;
+        lock (_deviceConnectionLock)
+            return _connectionsPerDevice.AddOrUpdate(deviceId, 1, (_, count) => count + 1) == 1;
     }
 
     /// <summary>
@@ -70,14 +72,17 @@ public class ConnectedClients
         if (string.IsNullOrEmpty(deviceId))
             return false;
 
-        int remaining = _connectionsPerDevice.AddOrUpdate(deviceId, 0, (_, count) => count - 1);
+        lock (_deviceConnectionLock)
+        {
+            int remaining = _connectionsPerDevice.AddOrUpdate(deviceId, 0, (_, count) => count - 1);
 
-        if (remaining > 0)
-            return false;
+            if (remaining > 0)
+                return false;
 
-        // Nobody left holding it, so stop tracking it. A negative count would mean more
-        // releases than registrations, which is still a departure as far as callers care.
-        _connectionsPerDevice.TryRemove(deviceId, out int _);
-        return true;
+            // Nobody left holding it, so stop tracking it. A negative count would mean more
+            // releases than registrations, which is still a departure as far as callers care.
+            _connectionsPerDevice.TryRemove(deviceId, out int _);
+            return true;
+        }
     }
 }

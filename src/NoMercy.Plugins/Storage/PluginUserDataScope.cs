@@ -62,7 +62,14 @@ public sealed class PluginUserDataScope : IPluginUserScope
     {
         // The same guard the plugin's own database gets. A name that walked
         // out of the folder would be one person's scope reading another's.
-        if (name.Contains('/') || name.Contains('\\') || name.Contains(".."))
+        if (
+            name != Path.GetFileName(name)
+            || name.Contains('/')
+            || name.Contains('\\')
+            || name.Contains(':')
+            || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
+            || name.Contains("..")
+        )
             throw new PluginRefusedException(
                 PluginRefusalMessages.FileOutsideGrant(_pluginId.ToString(), name)
             );

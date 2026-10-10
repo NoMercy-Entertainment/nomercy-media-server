@@ -98,6 +98,23 @@ public class TonemapSelector : ITonemapSelector
 
         // --- LUT path --------------------------------------------------------
         string? lutPath = options?.LutPath;
+        if (lutPath is not null && storage is null)
+        {
+            decisions.Add(
+                new(
+                    "plan",
+                    "plan.tonemap_lut_path_rejected",
+                    $"LUT path '{lutPath}' rejected (no storage) — falling back to algorithm '{algorithm}'",
+                    new
+                    {
+                        lutPath,
+                        reason = "no storage",
+                        fallbackAlgorithm = algorithm,
+                    }
+                )
+            );
+        }
+
         if (lutPath is not null && storage is not null)
         {
             // Validate through IStorage's path guard (sync lease).

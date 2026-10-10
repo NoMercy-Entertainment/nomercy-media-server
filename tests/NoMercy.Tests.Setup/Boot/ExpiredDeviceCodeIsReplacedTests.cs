@@ -10,10 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using System.Reflection;
-using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
-using Moq;
-using NoMercy.Database;
 using NoMercy.Networking.Certificate;
 using NoMercy.NmSystem.Auth;
 using NoMercy.NmSystem.Configuration;
@@ -22,7 +19,6 @@ using NoMercy.Setup.Boot;
 using NoMercy.Setup.Server;
 using NoMercy.Storage.Drivers.Local;
 using NoMercy.Tests.Setup.Infrastructure;
-using Xunit;
 
 namespace NoMercy.Tests.Setup.Boot;
 

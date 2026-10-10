@@ -18,7 +18,6 @@ using NoMercy.Database;
 using NoMercy.Database.Models.Common;
 using NoMercy.NmSystem.Auth;
 using NoMercy.NmSystem.Configuration;
-using NoMercy.NmSystem.Information;
 using NoMercy.NmSystem.Security;
 using NoMercy.Setup.Auth;
 using NoMercy.Setup.Dto;

@@ -70,6 +70,35 @@ public class QueueCardMediaRepository(MediaContext context) : IQueueCardMediaRep
             .ToListAsync();
     }
 
+    public async Task<Dictionary<string, double>> GetVideoDurationsByInputPathsAsync(
+        List<string> inputPaths
+    )
+    {
+        List<string> filenames =
+        [
+            .. inputPaths.Select(path => Path.GetFileName(path)).OfType<string>().Distinct(),
+        ];
+        List<VideoFile> files = await context
+            .VideoFiles.AsNoTracking()
+            .Where(file => filenames.Contains(file.Filename))
+            .ToListAsync();
+
+        HashSet<string> requestedPaths = [.. inputPaths.Select(path => path.Replace('\\', '/'))];
+        Dictionary<string, double> durations = [];
+        foreach (VideoFile file in files)
+        {
+            string path = file.HostFolder.TrimEnd('/') + "/" + file.Filename.TrimStart('/');
+            if (
+                requestedPaths.Contains(path)
+                && TimeSpan.TryParse(file.Duration, out TimeSpan duration)
+                && duration > TimeSpan.Zero
+            )
+                durations[path] = duration.TotalSeconds;
+        }
+
+        return durations;
+    }
+
     public Task<Dictionary<Guid, int>> GetEncodedTrackCountsByReleaseAsync(List<Guid> releaseIds)
     {
         return context

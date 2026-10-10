@@ -12,16 +12,13 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NoMercy.Database.Models.Libraries;
-using NoMercy.Database.Models.Media;
 using NoMercy.Events;
 using NoMercy.Events.DriveMonitor;
 using NoMercy.NmSystem.Dto;
-using NoMercy.OpticalMedia.Drives;
 using NoMercy.OpticalMedia.Metadata;
 using NoMercy.OpticalMedia.Rip;
 using NoMercy.OpticalMedia.Sources;
 using NoMercy.Storage;
-using NoMercyQueue.Core.Interfaces;
 using OpticalMediaType = NoMercy.OpticalMedia.Metadata.MediaType;
 
 namespace NoMercy.Tests.OpticalMedia.Rip;

@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
+using NoMercy.Providers.Helpers;
 using NoMercy.Providers.Jikan.Models;
 
 namespace NoMercy.Providers.Jikan;
@@ -18,6 +19,41 @@ public static class JikanClient
 {
     public static async Task<JikanAnime?> SearchAsync(HttpClient client, string title, int? year)
     {
+        return await SearchWithPriorityAsync(client, title, year, false);
+    }
+
+    internal static async Task<JikanAnime?> SearchWithPriorityAsync(
+        HttpClient client,
+        string title,
+        int? year,
+        bool? priority
+    )
+    {
+        try
+        {
+            return await ProviderQueues
+                .For(HttpClientNames.Jikan)
+                .Enqueue(
+                    () => SearchCoreAsync(client, title, year),
+                    $"jikan-search-{title}-{year}",
+                    priority
+                );
+        }
+        catch (HttpRequestException ex)
+            when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests
+                || (int?)ex.StatusCode is >= 500 and <= 599
+            )
+        {
+            return null;
+        }
+    }
+
+    private static async Task<JikanAnime?> SearchCoreAsync(
+        HttpClient client,
+        string title,
+        int? year
+    )
+    {
         string query = Uri.EscapeDataString(title);
         string url = year is not null
             ? $"anime?q={query}&start_date={year}-01-01&limit=5"
@@ -25,7 +61,14 @@ public static class JikanClient
 
         using HttpResponseMessage response = await client.GetAsync(url);
         if (!response.IsSuccessStatusCode)
+        {
+            if (
+                response.StatusCode == System.Net.HttpStatusCode.TooManyRequests
+                || (int)response.StatusCode >= 500
+            )
+                response.EnsureProviderSuccess();
             return null;
+        }
 
         string body = await response.Content.ReadAsStringAsync();
         JikanSearchResponse? parsed = JsonConvert.DeserializeObject<JikanSearchResponse>(body);
@@ -42,9 +85,42 @@ public static class JikanClient
     // AniList's idMal cross-reference), since it hits a path that actually works.
     public static async Task<JikanAnime?> GetByIdAsync(HttpClient client, int malId)
     {
+        return await GetByIdWithPriorityAsync(client, malId, false);
+    }
+
+    internal static async Task<JikanAnime?> GetByIdWithPriorityAsync(
+        HttpClient client,
+        int malId,
+        bool? priority
+    )
+    {
+        try
+        {
+            return await ProviderQueues
+                .For(HttpClientNames.Jikan)
+                .Enqueue(() => GetByIdCoreAsync(client, malId), $"jikan-anime-{malId}", priority);
+        }
+        catch (HttpRequestException ex)
+            when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests
+                || (int?)ex.StatusCode is >= 500 and <= 599
+            )
+        {
+            return null;
+        }
+    }
+
+    private static async Task<JikanAnime?> GetByIdCoreAsync(HttpClient client, int malId)
+    {
         using HttpResponseMessage response = await client.GetAsync($"anime/{malId}");
         if (!response.IsSuccessStatusCode)
+        {
+            if (
+                response.StatusCode == System.Net.HttpStatusCode.TooManyRequests
+                || (int)response.StatusCode >= 500
+            )
+                response.EnsureProviderSuccess();
             return null;
+        }
 
         string body = await response.Content.ReadAsStringAsync();
         JikanAnimeResponse? parsed = JsonConvert.DeserializeObject<JikanAnimeResponse>(body);

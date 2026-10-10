@@ -13,7 +13,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Encoder.Analysis;
 using NoMercy.Encoder.Codecs;
 using NoMercy.Encoder.Commands;
-using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.Metadata;
 using NoMercy.Encoder.Naming;
 using NoMercy.Encoder.Pipeline;

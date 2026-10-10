@@ -424,7 +424,26 @@ public class VideoPlaylistResponseDtoTests
     }
 
     [Fact]
-    public void Ctor_Movie_NoVideoFile_LeavesDtoAtDefault()
+    public void Ctor_Movie_NoVideoFile_Throws()
+    {
+        // A movie with no playable video file must never produce a half-built
+        // DTO (null Title, zero Id) -- that hollow object is what crashed the
+        // player with a blank, untitled card. The constructor now refuses to
+        // build one; callers that need to skip it use TryCreate instead.
+        Movie movie = new()
+        {
+            Id = 99,
+            Title = "No File",
+            TitleSort = "no file",
+        };
+
+        Action act = () => new VideoPlaylistResponseDto(movie, "movie", 1, "US");
+
+        act.Should().Throw<InvalidOperationException>();
+    }
+
+    [Fact]
+    public void TryCreate_Movie_NoVideoFile_ReturnsNull()
     {
         Movie movie = new()
         {
@@ -433,10 +452,9 @@ public class VideoPlaylistResponseDtoTests
             TitleSort = "no file",
         };
 
-        VideoPlaylistResponseDto dto = new(movie, "movie", 1, "US");
+        VideoPlaylistResponseDto? dto = VideoPlaylistResponseDto.TryCreate(movie, "movie", 1, "US");
 
-        dto.Id.Should().Be(0);
-        dto.Title.Should().BeNull();
+        dto.Should().BeNull();
     }
 
     [Fact]
@@ -502,7 +520,7 @@ public class VideoPlaylistResponseDtoTests
     }
 
     [Fact]
-    public void Ctor_Episode_NoVideoFile_LeavesDtoAtDefault()
+    public void Ctor_Episode_NoVideoFile_Throws()
     {
         Tv tv = new()
         {
@@ -519,14 +537,36 @@ public class VideoPlaylistResponseDtoTests
             EpisodeNumber = 1,
         };
 
-        VideoPlaylistResponseDto dto = new(episode, "tv", 1, "US");
+        Action act = () => new VideoPlaylistResponseDto(episode, "tv", 1, "US");
 
-        dto.Id.Should().Be(0);
-        dto.Title.Should().BeNull();
+        act.Should().Throw<InvalidOperationException>();
     }
 
     [Fact]
-    public void Ctor_Episode_NoTv_LeavesDtoAtDefault()
+    public void TryCreate_Episode_NoVideoFile_ReturnsNull()
+    {
+        Tv tv = new()
+        {
+            Id = 1,
+            Title = "Show",
+            TitleSort = "show",
+        };
+        Episode episode = new()
+        {
+            Id = 5,
+            Tv = tv,
+            TvId = tv.Id,
+            SeasonNumber = 1,
+            EpisodeNumber = 1,
+        };
+
+        VideoPlaylistResponseDto? dto = VideoPlaylistResponseDto.TryCreate(episode, "tv", 1, "US");
+
+        dto.Should().BeNull();
+    }
+
+    [Fact]
+    public void Ctor_Episode_NoTv_Throws()
     {
         Episode episode = new()
         {
@@ -548,9 +588,37 @@ public class VideoPlaylistResponseDtoTests
             }
         );
 
-        VideoPlaylistResponseDto dto = new(episode, "tv", 1, "US");
+        Action act = () => new VideoPlaylistResponseDto(episode, "tv", 1, "US");
 
-        dto.Id.Should().Be(0);
+        act.Should().Throw<InvalidOperationException>();
+    }
+
+    [Fact]
+    public void TryCreate_Episode_NoTv_ReturnsNull()
+    {
+        Episode episode = new()
+        {
+            Id = 6,
+            SeasonNumber = 1,
+            EpisodeNumber = 1,
+        };
+        episode.VideoFiles.Add(
+            new()
+            {
+                Filename = "x.mkv",
+                Folder = "/tv",
+                HostFolder = "/tv",
+                Languages = "[\"en\"]",
+                Quality = "1080p",
+                Share = "tv",
+                EpisodeId = episode.Id,
+                Episode = episode,
+            }
+        );
+
+        VideoPlaylistResponseDto? dto = VideoPlaylistResponseDto.TryCreate(episode, "tv", 1, "US");
+
+        dto.Should().BeNull();
     }
 
     [Fact]

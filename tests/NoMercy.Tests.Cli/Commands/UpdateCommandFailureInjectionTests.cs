@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using System.CommandLine;
-using FluentAssertions;
 using NoMercy.Cli;
 using NoMercy.Cli.Commands;
 using NoMercy.NmSystem.Information;
@@ -65,7 +64,9 @@ public sealed class UpdateCommandFailureInjectionTests : IDisposable
         string downloadBody = DownloadOk,
         bool stopAcknowledged = true,
         bool serverStarts = true,
-        string? versionAfterStart = "9.9.9"
+        string? versionAfterStart = "9.9.9",
+        Func<string, bool>? startServer = null,
+        Action<string, string>? moveStagedBinary = null
     )
     {
         FakeManagementPipeServer server = new();
@@ -90,9 +91,10 @@ public sealed class UpdateCommandFailureInjectionTests : IDisposable
             UpdateCommand.Create(
                 pipeOption,
                 new CliClientFactory(),
-                startServer: _ => serverStarts,
+                startServer: startServer ?? (_ => serverStarts),
                 awaitVersion: (_, _) => Task.FromResult(versionAfterStart),
-                awaitExit: (_, _) => Task.FromResult(true)
+                awaitExit: (_, _) => Task.FromResult(true),
+                moveStagedBinary: moveStagedBinary
             )
         );
 
@@ -216,5 +218,55 @@ public sealed class UpdateCommandFailureInjectionTests : IDisposable
 
         exitCode.Should().NotBe(0);
         File.ReadAllText(_currentExePath).Should().Be("OLD");
+    }
+
+    [Fact]
+    public async Task SwapFailure_RestoresAndRestartsPreviousBinary()
+    {
+        File.WriteAllText(_currentExePath, "OLD");
+        File.WriteAllText(_tempExePath, "NEW");
+        List<string> startedBinaries = [];
+
+        using ConsoleCapture console = new();
+        int exitCode = await RunAsync(
+            startServer: path =>
+            {
+                startedBinaries.Add(File.ReadAllText(path));
+                return true;
+            },
+            moveStagedBinary: (_, _) => throw new IOException("swap failed")
+        );
+
+        exitCode.Should().Be((int)ExitCode.ServerError);
+        File.ReadAllText(_currentExePath).Should().Be("OLD");
+        startedBinaries.Should().ContainSingle().Which.Should().Be("OLD");
+        console.Error.Should().Contain("swap failed");
+        console.Out.Should().Contain("Previous version restored and started");
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task FailedRollbackRestart_HasDistinctExitCodeAndMessage(bool updatedBinaryStarted)
+    {
+        File.WriteAllText(_currentExePath, "OLD");
+        File.WriteAllText(_tempExePath, "NEW");
+        List<string> startedBinaries = [];
+
+        using ConsoleCapture console = new();
+        int exitCode = await RunAsync(
+            versionAfterStart: updatedBinaryStarted ? null : "9.9.9",
+            startServer: path =>
+            {
+                string binary = File.ReadAllText(path);
+                startedBinaries.Add(binary);
+                return binary == "NEW" && updatedBinaryStarted;
+            }
+        );
+
+        exitCode.Should().Be((int)ExitCode.RollbackFailed);
+        File.ReadAllText(_currentExePath).Should().Be("OLD");
+        startedBinaries.Should().Equal("NEW", "OLD");
+        console.Error.Should().Contain("Could not restart the previous server");
     }
 }

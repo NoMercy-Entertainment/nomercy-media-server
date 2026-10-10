@@ -134,7 +134,10 @@ public sealed class GoogleCastDeviceScannerParsingTests
     [Fact]
     public void IsReachable_NullLanIp_ReturnsFalse()
     {
-        GoogleCastDeviceScanner scanner = new(NullLogger<GoogleCastDeviceScanner>.Instance);
+        GoogleCastDeviceScanner scanner = new(
+            NullLogger<GoogleCastDeviceScanner>.Instance,
+            new NonBindingMulticastTransport()
+        );
 
         Assert.False(scanner.IsReachable(null));
 
@@ -144,7 +147,10 @@ public sealed class GoogleCastDeviceScannerParsingTests
     [Fact]
     public void IsReachable_EmptyLanIp_ReturnsFalse()
     {
-        GoogleCastDeviceScanner scanner = new(NullLogger<GoogleCastDeviceScanner>.Instance);
+        GoogleCastDeviceScanner scanner = new(
+            NullLogger<GoogleCastDeviceScanner>.Instance,
+            new NonBindingMulticastTransport()
+        );
 
         Assert.False(scanner.IsReachable(string.Empty));
 
@@ -154,7 +160,10 @@ public sealed class GoogleCastDeviceScannerParsingTests
     [Fact]
     public void IsReachable_NothingSeenYet_ReturnsFalseForAnyIp()
     {
-        GoogleCastDeviceScanner scanner = new(NullLogger<GoogleCastDeviceScanner>.Instance);
+        GoogleCastDeviceScanner scanner = new(
+            NullLogger<GoogleCastDeviceScanner>.Instance,
+            new NonBindingMulticastTransport()
+        );
 
         Assert.False(scanner.IsReachable("192.168.1.42"));
 
@@ -164,7 +173,10 @@ public sealed class GoogleCastDeviceScannerParsingTests
     [Fact]
     public void GetSeen_NothingSeenYet_ReturnsEmpty()
     {
-        GoogleCastDeviceScanner scanner = new(NullLogger<GoogleCastDeviceScanner>.Instance);
+        GoogleCastDeviceScanner scanner = new(
+            NullLogger<GoogleCastDeviceScanner>.Instance,
+            new NonBindingMulticastTransport()
+        );
 
         Assert.Empty(scanner.GetSeen());
 
@@ -174,7 +186,10 @@ public sealed class GoogleCastDeviceScannerParsingTests
     [Fact]
     public void Dispose_WithoutStart_DoesNotThrow()
     {
-        GoogleCastDeviceScanner scanner = new(NullLogger<GoogleCastDeviceScanner>.Instance);
+        GoogleCastDeviceScanner scanner = new(
+            NullLogger<GoogleCastDeviceScanner>.Instance,
+            new NonBindingMulticastTransport()
+        );
 
         Exception? ex = Record.Exception(scanner.Dispose);
 
@@ -184,7 +199,10 @@ public sealed class GoogleCastDeviceScannerParsingTests
     [Fact]
     public void Dispose_CalledTwice_DoesNotThrow()
     {
-        GoogleCastDeviceScanner scanner = new(NullLogger<GoogleCastDeviceScanner>.Instance);
+        GoogleCastDeviceScanner scanner = new(
+            NullLogger<GoogleCastDeviceScanner>.Instance,
+            new NonBindingMulticastTransport()
+        );
 
         Exception? ex = Record.Exception(() =>
         {

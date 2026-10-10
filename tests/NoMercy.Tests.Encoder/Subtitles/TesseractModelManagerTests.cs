@@ -13,7 +13,6 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.Subtitles;
 using NoMercy.Storage.Drivers.Local;
-using NoMercy.Storage.Validation;
 
 namespace NoMercy.Tests.Encoder.Subtitles;
 
@@ -130,6 +129,19 @@ public class TesseractModelManagerTests : IDisposable
     }
 
     [Fact]
+    public async Task GetAvailableLanguages_EmptyFolder_ListsSignedManifestLanguages()
+    {
+        FakeTesseractModelDownloader downloader = new() { AvailableLanguages = ["eng", "jpn"] };
+        TesseractModelManager manager = BuildManager(downloader);
+
+        Assert.Equal(
+            ["eng", "jpn"],
+            await manager.GetAvailableLanguagesAsync(CancellationToken.None)
+        );
+        Assert.Empty(manager.GetDownloadedLanguages());
+    }
+
+    [Fact]
     public void GetDownloadedLanguages_WhenDirectoryMissing_ReturnsEmpty()
     {
         TesseractModelManager manager = BuildManager(new FakeTesseractModelDownloader());
@@ -182,9 +194,13 @@ public class TesseractModelManagerTests : IDisposable
     private sealed class FakeTesseractModelDownloader : ITesseractModelDownloader
     {
         public byte[] Payload { get; init; } = [];
+        public IReadOnlyList<string> AvailableLanguages { get; init; } = [];
         public Exception? FailureToThrow { get; init; }
         public Action? OnDownloadRequested { get; init; }
         public int CallCount { get; private set; }
+
+        public Task<IReadOnlyList<string>> GetAvailableLanguagesAsync(CancellationToken ct) =>
+            Task.FromResult(AvailableLanguages);
 
         public Task<Stream> DownloadVerifiedAsync(string language, CancellationToken ct)
         {

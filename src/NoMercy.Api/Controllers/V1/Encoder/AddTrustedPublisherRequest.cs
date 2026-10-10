@@ -9,17 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using Asp.Versioning;
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
-using NoMercy.Authorization;
-using NoMercy.Database;
-using NoMercy.Database.Models.Media;
-using NoMercy.Encoder.Errors;
-using NoMercy.Encoder.Profiles;
 
 namespace NoMercy.Api.Controllers.V1.Encoder;
 

@@ -16,7 +16,6 @@ using NoMercy.Database;
 using NoMercy.Database.Models.Music;
 using NoMercy.Database.Models.Playlists;
 using NoMercy.Database.Models.TvShows;
-using NoMercy.Database.Models.Users;
 using NoMercy.Tests.Repositories.Infrastructure;
 
 namespace NoMercy.Tests.Repositories;

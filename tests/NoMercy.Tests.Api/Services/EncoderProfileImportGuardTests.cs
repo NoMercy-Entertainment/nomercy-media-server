@@ -14,7 +14,6 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
-using NoMercy.Api.Services;
 using NoMercy.Data.Repositories;
 using NoMercy.Data.Services;
 using NoMercy.Database;

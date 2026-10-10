@@ -18,7 +18,6 @@ using NoMercy.Events;
 using NoMercy.Events.Library;
 using NoMercy.Events.Playback;
 using NoMercy.Networking.Messaging;
-using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Extensions;
 using NoMercy.NmSystem.SystemCalls;
 using Serilog.Events;
@@ -53,6 +52,11 @@ public class VideoPlaybackService
         Guid,
         (string Item, DateTime At)
     > _lastContinueWatchingRefresh = new();
+
+    public void RemoveDisconnectedUserState(Guid userId)
+    {
+        _lastContinueWatchingRefresh.TryRemove(userId, out _);
+    }
 
     /// <summary>
     /// How long the carousel is left alone between progress reports for the same item. Progress

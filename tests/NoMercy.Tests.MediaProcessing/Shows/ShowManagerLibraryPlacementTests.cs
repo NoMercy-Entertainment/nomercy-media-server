@@ -9,14 +9,12 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.MediaProcessing.Jobs;
 using NoMercy.MediaProcessing.Shows;
 using NoMercy.Storage;
-using Xunit;
 
 namespace NoMercy.Tests.MediaProcessing.Shows;
 
@@ -121,11 +119,13 @@ public class ShowManagerLibraryPlacementTests
         folderDateIsReal.Should().BeTrue();
     }
 
-    // Classifier says anime, but the anime library's own folders have no
-    // trace of it either - conservative: stay put rather than move on a
-    // guess with no structural backing.
+    // NEW-show case only (currentLibraryId null - not in the DB yet):
+    // classifier says anime, but the anime library's own folders have no
+    // trace of it either, and there is no current library to fall back to -
+    // conservative: stay in the scanned library rather than move on a guess
+    // with no structural backing.
     [Fact]
-    public async Task ResolveLibraryAndCreatedAtAsync_NoFolderAnywhere_StaysInScannedLibrary()
+    public async Task ResolveLibraryAndCreatedAtAsync_NoFolderAnywhere_NewShow_StaysInScannedLibrary()
     {
         (Library tvLibrary, Mock<IStorageFactory> tvStorageFactory) = BuildLibraryWithStorage(
             "tv",
@@ -149,7 +149,8 @@ public class ShowManagerLibraryPlacementTests
                 id: 3,
                 scannedLibrary: tvLibrary,
                 baseUrl: "/g/Ghost.In.The.Shell.(1995)",
-                mediaType: "anime"
+                mediaType: "anime",
+                currentLibraryId: null
             );
 
         resolved.Should().BeSameAs(tvLibrary);
@@ -159,15 +160,61 @@ public class ShowManagerLibraryPlacementTests
         folderDateIsReal.Should().BeFalse();
     }
 
+    // EXISTING-show case (the reported bug): no folder anywhere, classifier
+    // inconclusive, and the show already has a current library - a stale
+    // LibraryTv row pointing at the scanned (tv) library must not evict the
+    // show out of the library (anime) it is actually filed under with zero
+    // structural evidence for the move.
+    [Fact]
+    public async Task ResolveLibraryAndCreatedAtAsync_NoFolderAnywhere_ExistingShow_StaysInCurrentLibrary()
+    {
+        (Library tvLibrary, Mock<IStorageFactory> tvStorageFactory) = BuildLibraryWithStorage(
+            "tv",
+            folderExists: false
+        );
+        (Library animeLibrary, Mock<IStorageFactory> animeStorageFactory) = BuildLibraryWithStorage(
+            "anime",
+            folderExists: false
+        );
+
+        Mock<IStorageFactory> combinedFactory = MergeStorageFactories(
+            tvLibrary,
+            tvStorageFactory,
+            animeLibrary,
+            animeStorageFactory
+        );
+        ShowManager manager = BuildManager(
+            combinedFactory,
+            animeLibraryLookup: animeLibrary,
+            libraryByIdLookup: animeLibrary
+        );
+
+        (Library resolved, DateTime _, bool folderDateIsReal) =
+            await manager.ResolveLibraryAndCreatedAtAsync(
+                id: 4,
+                scannedLibrary: tvLibrary,
+                baseUrl: "/n/Naruto.Shippuden.(2007)",
+                mediaType: null,
+                currentLibraryId: animeLibrary.Id
+            );
+
+        resolved.Should().BeSameAs(animeLibrary);
+        folderDateIsReal.Should().BeFalse();
+    }
+
     private static ShowManager BuildManager(
         Mock<IStorageFactory> storageFactory,
-        Library? animeLibraryLookup
+        Library? animeLibraryLookup,
+        Library? libraryByIdLookup = null
     )
     {
         Mock<IShowRepository> showRepository = new();
         showRepository
             .Setup(r => r.GetLibraryByTypeAsync("anime"))
             .ReturnsAsync(animeLibraryLookup);
+        showRepository
+            .Setup(r => r.GetLibraryByIdAsync(It.IsAny<Ulid>()))
+            .ReturnsAsync(libraryByIdLookup);
 
         return new ShowManager(
             showRepository.Object,

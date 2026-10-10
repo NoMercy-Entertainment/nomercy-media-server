@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using ImageMagick;
 using NoMercy.Providers.TMDB.Client;
 using NoMercy.Storage;
 
@@ -42,8 +43,7 @@ public class TmdbImageClientDownloadGuardTests
 
         TmdbImageClient.Initialize(storage.Object);
 
-        Task<SixLabors.ImageSharp.Image<SixLabors.ImageSharp.PixelFormats.Rgba32>?>? download =
-            TmdbImageClient.Download(path);
+        Task<MagickImage?>? download = TmdbImageClient.Download(path);
         if (download is not null)
             await download;
 

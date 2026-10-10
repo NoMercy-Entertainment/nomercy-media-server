@@ -73,13 +73,7 @@ public class AppProcessManager
 
             _appProcess = new() { StartInfo = startInfo, EnableRaisingEvents = true };
 
-            _appProcess.Exited += (_, _) =>
-            {
-                lock (_lock)
-                {
-                    _appProcess = null;
-                }
-            };
+            _appProcess.Exited += (sender, _) => OnAppProcessExited(sender);
 
             bool started = _appProcess.Start();
 
@@ -116,6 +110,15 @@ public class AppProcessManager
 
             _appProcess = null;
             return true;
+        }
+    }
+
+    private void OnAppProcessExited(object? sender)
+    {
+        lock (_lock)
+        {
+            if (ReferenceEquals(_appProcess, sender))
+                _appProcess = null;
         }
     }
 

@@ -29,6 +29,7 @@ public static class ComponentTypes
     public const string Card = NmAppComponents.Card;
     public const string HomeCard = NmAppComponents.HomeCard;
     public const string GenreCard = NmAppComponents.GenreCard;
+    public const string GroupCard = NmAppComponents.GroupCard;
     public const string MusicCard = NmAppComponents.MusicCard;
     public const string MusicHomeCard = NmAppComponents.MusicHomeCard;
     public const string TrackRow = NmAppComponents.TrackRow;

@@ -11,12 +11,8 @@
 
 using System.IO.Compression;
 using FluentAssertions;
-using Microsoft.Extensions.Logging.Abstractions;
-using NoMercy.Events;
-using NoMercy.Events.Plugins;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
-using NoMercy.PluginSdk.Capabilities;
 using NoMercy.PluginSdk.Verification;
 using Xunit;
 
@@ -273,17 +269,6 @@ public class CodeScanVerificationStageTests : IDisposable
         message.Should().Contain("references server assembly NoMercy.Plugins");
     }
 
-    [Fact]
-    public void TheDefaultVerifierRunsTheScan()
-    {
-        string dll = StageAlone(_tempDir, Escapes);
-
-        PluginVerificationResult result = new PluginVerifier().Verify(Manifest(Escapes), dll, null);
-
-        result.Verified.Should().BeFalse();
-        result.Failures.Should().Contain(f => f.Contains(PluginRefusalCode.CodeScan));
-    }
-
     /// <summary>
     /// The archive install verifies before a byte is unpacked, with the
     /// assembly path pointing inside the zip; the scan reads the entries.
@@ -301,56 +286,5 @@ public class CodeScanVerificationStageTests : IDisposable
 
         outcome.Should().Be(PluginStageOutcome.Fail);
         message.Should().Contain("System.Runtime.Loader");
-    }
-
-    /// <summary>
-    /// The bare-assembly load (install of a .dll, boot scan, enable, reload)
-    /// never went through the verifier. It must scan too: every load, one line.
-    /// </summary>
-    [Fact]
-    public async Task TheBareAssemblyLoadPathRunsTheScan()
-    {
-        string dll = StageAlone(_tempDir, Escapes);
-        InMemoryEventBus eventBus = new();
-        PluginRegistry registry = new();
-        List<PluginErrorOccurredEvent> errors = [];
-        eventBus.Subscribe<PluginErrorOccurredEvent>(
-            (evt, _) =>
-            {
-                errors.Add(evt);
-                return Task.CompletedTask;
-            }
-        );
-        PluginLoader loader = new(
-            eventBus,
-            new MinimalServiceProvider(),
-            NullLogger.Instance,
-            _tempDir,
-            TestStorageHelper.CreateStorage(_tempDir),
-            registry,
-            new PluginVerifier([]),
-            new PluginConsentService(new InMemoryConsentStore()),
-            TestPluginPlatform.ContextFactory(eventBus, TestStorageHelper.CreateStorage(_tempDir))
-        );
-
-        await loader.LoadPluginAssemblyAsync(dll);
-
-        errors
-            .Should()
-            .ContainSingle()
-            .Which.ErrorMessage.Should()
-            .Contain(PluginRefusalCode.CodeScan);
-        registry.Values.Should().BeEmpty();
-        Directory
-            .GetDirectories(_tempDir, "*", SearchOption.AllDirectories)
-            .Where(d => Path.GetFileName(d) == ".loaded")
-            .SelectMany(d => Directory.GetDirectories(d))
-            .Should()
-            .BeEmpty("a refused shadow copy is removed");
-    }
-
-    private sealed class MinimalServiceProvider : IServiceProvider
-    {
-        public object? GetService(Type serviceType) => null;
     }
 }

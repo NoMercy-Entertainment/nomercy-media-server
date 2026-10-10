@@ -18,8 +18,7 @@ using NoMercy.MediaProcessing.Files;
 using NoMercy.Storage;
 using NoMercy.Storage.Drivers.Local;
 using NoMercy.Storage.Validation;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
+using ImageMagick;
 
 namespace NoMercy.Tests.MediaProcessing.Files;
 
@@ -556,7 +555,7 @@ public sealed class FileManagerAssetHashListTests : IDisposable
 
     private static void WritePng(string path, int width, int height)
     {
-        using Image<Rgba32> image = new(width, height);
-        image.SaveAsPng(path);
+        using MagickImage image = new(MagickColors.Transparent, (uint)width, (uint)height);
+        image.Write(path, MagickFormat.Png);
     }
 }

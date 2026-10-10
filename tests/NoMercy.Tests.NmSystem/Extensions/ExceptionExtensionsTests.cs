@@ -11,7 +11,6 @@
 
 using System.Net.Sockets;
 using System.Security.Authentication;
-using NoMercy.NmSystem.Extensions;
 
 namespace NoMercy.Tests.NmSystem.Extensions;
 

@@ -671,12 +671,10 @@ internal sealed class PluginLoader(
             shadowDir = Path.GetDirectoryName(loadPath)!;
 
             // This path has no manifest and never met the verifier; the file
-            // check runs here, on the installed folder rather than its copy,
-            // and then the scan, so every load reads the code before a context
-            // exists.
-            string? refusal =
-                FileManifestVerificationStage.Refuse(absoluteAssemblyPath)
-                ?? CodeScanVerificationStage.Refuse(loadPath);
+            // check runs here, on the installed folder rather than its copy.
+            // There is no code scan: the owner chose this plugin and it runs
+            // in process, and the marketplace pipeline owns the scan verdict.
+            string? refusal = FileManifestVerificationStage.Refuse(absoluteAssemblyPath);
             if (refusal is not null)
             {
                 PluginShadowCopy.TryDelete(shadowDir);

@@ -9,7 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using Microsoft.AspNetCore.Http;
 using NoMercy.Authorization;
 using NoMercy.PluginSdk.Abstractions;
 

@@ -16,7 +16,6 @@ using NoMercy.Data.Repositories;
 using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.TvShows;
-using Xunit;
 
 namespace NoMercy.Tests.Repositories;
 

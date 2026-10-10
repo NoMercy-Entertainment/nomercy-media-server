@@ -9,7 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Moq;
@@ -23,7 +22,6 @@ using NoMercy.OpticalMedia.Onboarding;
 using NoMercy.OpticalMedia.Rip;
 using NoMercy.OpticalMedia.Sources;
 using NoMercyQueue.Core.Interfaces;
-using Xunit;
 
 namespace NoMercy.Tests.OpticalMedia.Onboarding;
 

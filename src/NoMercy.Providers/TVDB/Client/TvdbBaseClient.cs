@@ -46,7 +46,6 @@ public class TvdbBaseClient : ExternalApiClient
 
     protected override string HttpClientName => HttpClientNames.Tvdb;
     protected override Uri BaseUrl => new("https://api4.thetvdb.com/v4/");
-    protected override int ConcurrentRequests => 50;
 
     protected override void LogRequest(string url) => Logger.Tvdb(url, LogEventLevel.Verbose);
 
@@ -100,13 +99,37 @@ public class TvdbBaseClient : ExternalApiClient
             HttpClient loginClient = HttpClientProvider.CreateClient(HttpClientNames.TvdbLogin);
             loginClient.BaseAddress ??= BaseUrl;
 
-            using JsonContent content = JsonContent.Create(
-                new { apikey = ApiKeyStore.Current.TvdbKey }
-            );
-            using HttpRequestMessage request = new(HttpMethod.Post, "login");
-            request.Content = content;
-
-            using HttpResponseMessage response = await loginClient.SendAsync(request);
+            using HttpResponseMessage response = await ProviderQueues
+                .For(HttpClientNames.TvdbLogin)
+                .Enqueue(
+                    async () =>
+                    {
+                        using JsonContent content = JsonContent.Create(
+                            new { apikey = ApiKeyStore.Current.TvdbKey }
+                        );
+                        using HttpRequestMessage request = new(HttpMethod.Post, "login");
+                        request.Content = content;
+                        // Owned by LoginAsync after the queue returns; disposed here on retry.
+                        HttpResponseMessage reply = await loginClient.SendAsync(request);
+                        if (
+                            reply.StatusCode == HttpStatusCode.TooManyRequests
+                            || (int)reply.StatusCode >= 500
+                        )
+                        {
+                            try
+                            {
+                                reply.EnsureProviderSuccess();
+                            }
+                            catch
+                            {
+                                reply.Dispose();
+                                throw;
+                            }
+                        }
+                        return reply;
+                    },
+                    "login"
+                );
             if (!response.IsSuccessStatusCode)
             {
                 Logger.Tvdb(
@@ -115,7 +138,6 @@ public class TvdbBaseClient : ExternalApiClient
                 );
                 return null;
             }
-
             string body = await response.Content.ReadAsStringAsync();
             TvdbLoginResponse? login = body.FromJson<TvdbLoginResponse>();
             if (login is not null)
@@ -191,6 +213,14 @@ public class TvdbBaseClient : ExternalApiClient
             Logger.Tvdb($"HTTP {ex.StatusCode} for {newUrl}", LogEventLevel.Debug);
             return null;
         }
+        catch (HttpRequestException ex)
+            when (ex.StatusCode == HttpStatusCode.TooManyRequests
+                || (int?)ex.StatusCode is >= 500 and <= 599
+            )
+        {
+            Logger.Tvdb($"TVDB unavailable after retries for {newUrl}", LogEventLevel.Warning);
+            return null;
+        }
     }
 
     private async Task<string> SendAuthorizedAsync(string url)
@@ -208,7 +238,7 @@ public class TvdbBaseClient : ExternalApiClient
             Token = null;
         }
 
-        response.EnsureSuccessStatusCode();
+        response.EnsureProviderSuccess();
         return await response.Content.ReadAsStringAsync();
     }
 

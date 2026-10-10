@@ -33,7 +33,6 @@ using NoMercy.Queue.MediaServer.Repositories;
 using NoMercy.Setup.Server;
 using NoMercy.Storage;
 using NoMercyQueue;
-using Configuration = NoMercy.Database.Models.Common.Configuration;
 
 namespace NoMercy.Api.Controllers;
 
@@ -87,6 +86,8 @@ public class ManagementController(
                 RestartNeeded = updateStatus.RestartNeeded,
                 LatestVersion = updateStatus.LatestVersion,
                 SetupPhase = setupState.CurrentPhase.ToString(),
+                SetupLabel = setupState.CurrentLabel,
+                SetupDetail = setupState.PhaseDetail,
                 InternalAddress = networkDiscovery.InternalAddress,
                 ExternalAddress = networkDiscovery.ExternalAddress,
                 // Connectivity was decided every boot and reported to nobody, so a server
@@ -455,10 +456,13 @@ public class ManagementController(
     /// </summary>
     private async Task PersistWorkerCount(string queueName, int count)
     {
+        if (!await queueRunner.SetWorkerCount(queueName, count, null))
+            throw new InvalidOperationException(
+                $"{queueName} worker count could not be set to {count}"
+            );
+
         string key = $"{queueName}Runners";
         await serverConfiguration.SetValueAsync(key, count.ToString(), null);
-
-        await queueRunner.SetWorkerCount(queueName, count, null);
     }
 
     private async Task<KeyValuePair<string, int>> UpdateWorkerCountAsync(
@@ -477,38 +481,59 @@ public class ManagementController(
     [ProducesResponseType(StatusCodes.Status200OK)]
     public async Task<IActionResult> UpdateConfig([FromBody] ManagementConfigUpdateDto request)
     {
-        runtimeSettings.LibraryWorkers = await UpdateWorkerCountAsync(
-            runtimeSettings.LibraryWorkers,
-            request.LibraryWorkers
-        );
-        runtimeSettings.ImportWorkers = await UpdateWorkerCountAsync(
-            runtimeSettings.ImportWorkers,
-            request.ImportWorkers
-        );
-        runtimeSettings.ExtrasWorkers = await UpdateWorkerCountAsync(
-            runtimeSettings.ExtrasWorkers,
-            request.ExtrasWorkers
-        );
-        runtimeSettings.EncoderWorkers = await UpdateWorkerCountAsync(
-            runtimeSettings.EncoderWorkers,
-            request.EncoderWorkers
-        );
-        runtimeSettings.CronWorkers = await UpdateWorkerCountAsync(
-            runtimeSettings.CronWorkers,
-            request.CronWorkers
-        );
-        runtimeSettings.ImageWorkers = await UpdateWorkerCountAsync(
-            runtimeSettings.ImageWorkers,
-            request.ImageWorkers
-        );
-        runtimeSettings.FileWorkers = await UpdateWorkerCountAsync(
-            runtimeSettings.FileWorkers,
-            request.FileWorkers
-        );
-        runtimeSettings.MusicWorkers = await UpdateWorkerCountAsync(
-            runtimeSettings.MusicWorkers,
-            request.MusicWorkers
-        );
+        int?[] workerCounts =
+        [
+            request.LibraryWorkers,
+            request.ImportWorkers,
+            request.ExtrasWorkers,
+            request.EncoderWorkers,
+            request.CronWorkers,
+            request.ImageWorkers,
+            request.FileWorkers,
+            request.MusicWorkers,
+        ];
+        if (workerCounts.Any(count => count is < 0))
+            return BadRequestResponse("Worker counts must be zero or greater");
+
+        try
+        {
+            runtimeSettings.LibraryWorkers = await UpdateWorkerCountAsync(
+                runtimeSettings.LibraryWorkers,
+                request.LibraryWorkers
+            );
+            runtimeSettings.ImportWorkers = await UpdateWorkerCountAsync(
+                runtimeSettings.ImportWorkers,
+                request.ImportWorkers
+            );
+            runtimeSettings.ExtrasWorkers = await UpdateWorkerCountAsync(
+                runtimeSettings.ExtrasWorkers,
+                request.ExtrasWorkers
+            );
+            runtimeSettings.EncoderWorkers = await UpdateWorkerCountAsync(
+                runtimeSettings.EncoderWorkers,
+                request.EncoderWorkers
+            );
+            runtimeSettings.CronWorkers = await UpdateWorkerCountAsync(
+                runtimeSettings.CronWorkers,
+                request.CronWorkers
+            );
+            runtimeSettings.ImageWorkers = await UpdateWorkerCountAsync(
+                runtimeSettings.ImageWorkers,
+                request.ImageWorkers
+            );
+            runtimeSettings.FileWorkers = await UpdateWorkerCountAsync(
+                runtimeSettings.FileWorkers,
+                request.FileWorkers
+            );
+            runtimeSettings.MusicWorkers = await UpdateWorkerCountAsync(
+                runtimeSettings.MusicWorkers,
+                request.MusicWorkers
+            );
+        }
+        catch (InvalidOperationException exception)
+        {
+            return BadRequestResponse(exception.Message);
+        }
 
         if (request.ServerName is not null)
         {

@@ -11,7 +11,6 @@
 
 using System.Text;
 using Newtonsoft.Json;
-using NoMercy.Encoder.Commands;
 using NoMercy.Encoder.Distribution;
 
 namespace NoMercy.Tests.Encoder.Distribution;

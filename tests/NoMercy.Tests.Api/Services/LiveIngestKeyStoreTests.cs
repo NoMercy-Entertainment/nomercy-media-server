@@ -9,7 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.Api.Services;
 using NoMercy.Authorization.LiveIngest;
 using Xunit;
 

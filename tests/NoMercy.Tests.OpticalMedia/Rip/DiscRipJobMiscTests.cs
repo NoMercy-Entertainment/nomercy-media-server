@@ -24,7 +24,6 @@ using NoMercy.OpticalMedia.Metadata;
 using NoMercy.OpticalMedia.Rip;
 using NoMercy.OpticalMedia.Sources;
 using NoMercy.Storage;
-using NoMercyQueue.Core.Interfaces;
 
 namespace NoMercy.Tests.OpticalMedia.Rip;
 

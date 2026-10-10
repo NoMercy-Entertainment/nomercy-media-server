@@ -75,7 +75,9 @@ public class CollectionExtrasJob : AbstractMediaExraDataJob<TmdbCollectionAppend
             LoggerFactory.CreateLogger<CollectionManager>()
         );
 
-        await collectionManager.StoreImages(Storage);
+        await collectionManager
+            .StoreImages(Storage)
+            .WithTimeout(nameof(CollectionManager.StoreImages));
 
         if (EventBusProvider.IsConfigured)
             await EventBusProvider.Current.PublishAsync(

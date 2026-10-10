@@ -203,22 +203,27 @@ public class TrayIconManager
         string uptimeText = FormatUptime(status.UptimeSeconds);
         string versionText = string.IsNullOrEmpty(status.Version) ? null! : status.Version;
 
-        SetState(state, status.Status, versionText, uptimeText, status.SetupPhase);
+        SetState(
+            state,
+            status.Status,
+            versionText,
+            uptimeText,
+            status.SetupPhase,
+            status.SetupLabel
+        );
     }
 
-    private static string GetSetupPhaseLabel(string? setupPhase)
+    /// <summary>
+    /// The tray keeps no table of setup phase words: the server sends them in
+    /// /manage/status as setup_label (issue #438). An older server sends no
+    /// label, so the raw phase name is shown rather than nothing.
+    /// </summary>
+    internal static string ResolveSetupPhaseLabel(string? setupPhase, string? setupLabel)
     {
-        return setupPhase switch
-        {
-            "Unauthenticated" => "Waiting for login",
-            "Authenticating" => "Logging in",
-            "Authenticated" => "Authenticated",
-            "Registering" => "Registering server",
-            "Registered" => "Downloading binaries",
-            "CertificateAcquired" => "Configuring certificates",
-            "Complete" => "Setup complete",
-            _ => "",
-        };
+        if (!string.IsNullOrEmpty(setupLabel))
+            return setupLabel;
+
+        return setupPhase ?? "";
     }
 
     private void SetState(
@@ -226,7 +231,8 @@ public class TrayIconManager
         string statusText,
         string? version,
         string? uptime,
-        string? setupPhase
+        string? setupPhase,
+        string? setupLabel = null
     )
     {
         if (_trayIcon is null)
@@ -253,7 +259,7 @@ public class TrayIconManager
             && setupPhase != "Complete"
         )
         {
-            phaseDetail = GetSetupPhaseLabel(setupPhase);
+            phaseDetail = ResolveSetupPhaseLabel(setupPhase, setupLabel);
         }
 
         string tooltipText = string.IsNullOrEmpty(phaseDetail)

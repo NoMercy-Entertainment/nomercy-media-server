@@ -37,7 +37,8 @@ public sealed class MdnsDeviceScannerHostedServiceTests
     {
         MdnsDeviceScanner scanner = new(
             new ThrowingDbContextFactory(),
-            NullLogger<MdnsDeviceScanner>.Instance
+            NullLogger<MdnsDeviceScanner>.Instance,
+            multicast: new NonBindingMulticastTransport()
         );
         MdnsDeviceScannerHostedService hostedService = new(
             scanner,
@@ -58,7 +59,8 @@ public sealed class MdnsDeviceScannerHostedServiceTests
     {
         MdnsDeviceScanner scanner = new(
             new ThrowingDbContextFactory(),
-            NullLogger<MdnsDeviceScanner>.Instance
+            NullLogger<MdnsDeviceScanner>.Instance,
+            multicast: new NonBindingMulticastTransport()
         );
         MdnsDeviceScannerHostedService hostedService = new(
             scanner,

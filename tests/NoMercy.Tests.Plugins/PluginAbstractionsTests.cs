@@ -13,7 +13,6 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Events;
-using NoMercy.Events.Playback;
 using NoMercy.Events.Plugins;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
@@ -238,11 +237,8 @@ public class PluginAbstractionsTests
             public Task<string?> GetForUserAsync(string key, CancellationToken ct = default) =>
                 GetAsync($"user:{key}", ct);
 
-            public Task SetForUserAsync(
-                string key,
-                string value,
-                CancellationToken ct = default
-            ) => SetAsync($"user:{key}", value, ct);
+            public Task SetForUserAsync(string key, string value, CancellationToken ct = default) =>
+                SetAsync($"user:{key}", value, ct);
 
             public Task DeleteForUserAsync(string key, CancellationToken ct = default) =>
                 DeleteAsync($"user:{key}", ct);

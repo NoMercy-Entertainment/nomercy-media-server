@@ -25,8 +25,8 @@ namespace NoMercy.Tests.OpticalMedia.Rip;
 /// <summary>
 /// REQUIREMENT: <see cref="DiscRipper"/> must enforce one active rip per
 /// drive (via <see cref="DriveLockRegistry"/>), build the correct ffmpeg
-/// stream-copy command line per disc type (Blu-ray/DVD/CD), only map audio
-/// and subtitle streams the caller opted into, forward BD+ / AACS KEYDB
+/// stream-copy command line per disc type (Blu-ray/DVD/CD), map default audio
+/// when no audio is selected and only selected subtitles, forward BD+ / AACS KEYDB
 /// environment overrides only for <c>bluray:</c> paths, and always release
 /// the drive lock — even when ripping throws.
 /// </summary>
@@ -359,6 +359,49 @@ public class DiscRipperTests
                         && !args.Contains("0:a:1")
                         && args.Contains("0:s:2")
                         && !args.Contains("0:s:3")
+                    ),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Once
+        );
+    }
+
+    [Theory]
+    [InlineData(OpticalDiscType.BluRay, false)]
+    [InlineData(OpticalDiscType.BluRay, true)]
+    [InlineData(OpticalDiscType.Dvd, false)]
+    [InlineData(OpticalDiscType.Dvd, true)]
+    public async Task RipAsync_NoIncludedAudio_MapsDefaultAudioAndSelectedSubtitle(
+        OpticalDiscType discType,
+        bool explicitlyExcluded
+    )
+    {
+        Mock<IProcessRunner> runner = MakeSucceedingRunner();
+        DiscRipper ripper = new(
+            MakeOptions(),
+            runner.Object,
+            MakeStorageMock().Object,
+            new DriveLockRegistry(),
+            NullLogger<DiscRipper>.Instance
+        );
+
+        RipRequest request = MakeVideoRequest(
+            discType: discType,
+            audioTracks: explicitlyExcluded ? [new(StreamIndex: 1, Include: false)] : [],
+            subtitles: [new(StreamIndex: 2, Include: true, Policy: SubtitlePolicy.Copy)]
+        );
+        await ripper.RipAsync(request, "/out", CancellationToken.None);
+
+        runner.Verify(
+            r =>
+                r.RunAsync(
+                    "ffmpeg",
+                    It.Is<string[]>(args =>
+                        args.Contains("0:v:0")
+                        && args.Contains("0:a:0?")
+                        && !args.Contains("0:a:1")
+                        && args.Contains("0:s:2")
                     ),
                     It.IsAny<string?>(),
                     It.IsAny<CancellationToken>()

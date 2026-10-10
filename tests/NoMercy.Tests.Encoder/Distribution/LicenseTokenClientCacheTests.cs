@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.Encoder.Distribution;
-using Xunit;
 
 namespace NoMercy.Tests.Encoder.Distribution;
 

@@ -12,7 +12,6 @@
 using NoMercy.Events;
 using NoMercy.Events.Library;
 using NoMercy.Networking.Dto;
-using NoMercy.Networking.Messaging;
 
 namespace NoMercy.Networking.Messaging.EventHandlers;
 

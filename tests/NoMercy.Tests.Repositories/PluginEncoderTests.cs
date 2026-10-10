@@ -15,11 +15,8 @@ using Microsoft.EntityFrameworkCore;
 using Moq;
 using NoMercy.Data.Plugins;
 using NoMercy.Database;
-using NoMercy.Database.Models.Libraries;
-using NoMercy.MediaProcessing.Jobs;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercyQueue.Core.Interfaces;
-using Xunit;
 
 namespace NoMercy.Tests.Repositories;
 

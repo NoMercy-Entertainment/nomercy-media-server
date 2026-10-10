@@ -29,8 +29,15 @@ public sealed class PluginUdpListener : IPluginListener
     private readonly PluginDatagramStream _stream;
 
     public PluginUdpListener(int port)
+        : this(IPAddress.Any, port) { }
+
+    /// <summary>
+    /// Binds a chosen address. The server passes the wildcard so a plugin can
+    /// serve the LAN; tests pass loopback so a run never asks the firewall.
+    /// </summary>
+    public PluginUdpListener(IPAddress bindAddress, int port)
     {
-        _client = new(new IPEndPoint(IPAddress.Any, port));
+        _client = new(new IPEndPoint(bindAddress, port));
         Port = ((IPEndPoint)_client.Client.LocalEndPoint!).Port;
         _stream = new(_client);
     }

@@ -20,7 +20,6 @@ public class PluginVerifier : IPluginVerifier
     public PluginVerifier()
         : this([
             new AbiVerificationStage(),
-            new CodeScanVerificationStage(),
             new ChecksumVerificationStage(),
             new FileManifestVerificationStage(),
             new SignatureVerificationStage(),

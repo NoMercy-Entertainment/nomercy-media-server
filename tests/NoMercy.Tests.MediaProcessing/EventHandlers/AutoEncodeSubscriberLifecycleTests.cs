@@ -22,7 +22,6 @@ using NoMercy.MediaProcessing.EventHandlers;
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
 using NoMercy.Storage;
 using NoMercy.Storage.Drivers.Local;
-using NoMercy.Storage.Validation;
 using NoMercyQueue.Core.Interfaces;
 
 namespace NoMercy.Tests.MediaProcessing.EventHandlers;

@@ -841,7 +841,8 @@ public sealed class S3StorageDriver : IStorageDriver, IDisposable
     private (List<string> Files, List<string> Dirs, string? Next) ListPageRaw(
         string prefix,
         string? delimiter,
-        string? continuationToken
+        string? continuationToken,
+        bool includeDirectoryMarkers = false
     )
     {
         StringBuilder qs = new();
@@ -891,7 +892,7 @@ public sealed class S3StorageDriver : IStorageDriver, IDisposable
         }
 
         string xml = res.Content.ReadAsStringAsync().GetAwaiter().GetResult();
-        return ParseListXml(xml);
+        return ParseListXml(xml, includeDirectoryMarkers);
     }
 
     /// <summary>
@@ -1006,7 +1007,12 @@ public sealed class S3StorageDriver : IStorageDriver, IDisposable
             return [.. response.S3Objects.Select(o => o.Key)];
         }
 
-        (List<string> files, _, string? next) = ListPageRaw(prefix, delimiter, continuationToken);
+        (List<string> files, _, string? next) = ListPageRaw(
+            prefix,
+            delimiter,
+            continuationToken,
+            includeDirectoryMarkers: true
+        );
         nextContinuationToken = next;
         return files;
     }
@@ -1015,7 +1021,10 @@ public sealed class S3StorageDriver : IStorageDriver, IDisposable
     // XML parsing
     // -----------------------------------------------------------------------
 
-    private static (List<string> Files, List<string> Dirs, string? Next) ParseListXml(string xml)
+    private static (List<string> Files, List<string> Dirs, string? Next) ParseListXml(
+        string xml,
+        bool includeDirectoryMarkers = false
+    )
     {
         XDocument doc = XDocument.Parse(xml);
         XNamespace ns = "http://s3.amazonaws.com/doc/2006-03-01/";
@@ -1024,7 +1033,10 @@ public sealed class S3StorageDriver : IStorageDriver, IDisposable
         [
             .. doc.Descendants(ns + "Contents")
                 .Select(e => e.Element(ns + "Key")?.Value ?? string.Empty)
-                .Where(k => !string.IsNullOrEmpty(k) && !k.EndsWith("/", StringComparison.Ordinal)),
+                .Where(k =>
+                    !string.IsNullOrEmpty(k)
+                    && (includeDirectoryMarkers || !k.EndsWith("/", StringComparison.Ordinal))
+                ),
         ];
 
         List<string> dirs =

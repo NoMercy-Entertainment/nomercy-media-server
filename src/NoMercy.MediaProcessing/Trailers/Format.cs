@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
-using NoMercy.Providers.Helpers;
 
 namespace NoMercy.MediaProcessing.Trailers;
 

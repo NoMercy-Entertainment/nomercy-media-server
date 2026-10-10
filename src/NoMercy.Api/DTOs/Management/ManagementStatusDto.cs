@@ -60,6 +60,17 @@ public record ManagementStatusDto
     [JsonProperty("setup_phase")]
     public string? SetupPhase { get; set; }
 
+    /// <summary>
+    /// User-facing words for setup_phase from the server's one SetupPhaseWords
+    /// table, so the launcher tray shows the same words as the setup page.
+    /// Additive: an older launcher ignores them, an older server omits them.
+    /// </summary>
+    [JsonProperty("setup_label")]
+    public string? SetupLabel { get; set; }
+
+    [JsonProperty("setup_detail")]
+    public string? SetupDetail { get; set; }
+
     [JsonProperty("internal_address")]
     public string? InternalAddress { get; set; }
 

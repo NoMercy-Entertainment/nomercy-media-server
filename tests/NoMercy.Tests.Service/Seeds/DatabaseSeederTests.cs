@@ -14,7 +14,6 @@ using Microsoft.EntityFrameworkCore;
 using NoMercy.Database;
 using NoMercy.Database.Models.Storage;
 using NoMercy.Service.Seeds;
-using Xunit;
 
 namespace NoMercy.Tests.Service.Seeds;
 

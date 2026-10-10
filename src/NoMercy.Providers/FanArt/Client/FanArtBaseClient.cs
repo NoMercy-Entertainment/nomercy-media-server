@@ -1,4 +1,4 @@
-﻿// -----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 //  Copyright (c) 2024-present NoMercy Entertainment. All rights reserved.
 //
 //  This file is part of NoMercy MediaServer, source-available software (NOT open
@@ -24,8 +24,6 @@ public class FanArtBaseClient : ExternalApiClient
 
     protected override string HttpClientName => HttpClientNames.FanArt;
     protected override Uri BaseUrl => new("https://webservice.fanart.tv/v3/");
-    protected override int ConcurrentRequests => 3;
-    protected override int RequestIntervalMs => 1000;
 
     protected override void ConfigureClient(HttpClient client)
     {

@@ -222,10 +222,9 @@ public static class StoragePathHelpers
             return true;
         }
 
-        int rootIndex = normalizedDirectory.IndexOf(
-            normalizedRoot,
-            StringComparison.OrdinalIgnoreCase
-        );
+        // Whole path segments only: "Music" must not match inside the sibling
+        // "Music Unsorted" or "MusicArchive".
+        int rootIndex = FindAnchoredSegment(normalizedDirectory, normalizedRoot);
         if (rootIndex < 0)
             return false;
 

@@ -58,6 +58,15 @@ public class PluginRouteTable
             throw new PluginRefusedException(
                 PluginRefusalMessages.RouteReservedPrefix(reserved.Name, reserved.Path)
             );
+
+        PluginRoute? unknownChrome = _routes.FirstOrDefault(route =>
+            !PluginChrome.IsKnown(route.Chrome)
+        );
+
+        if (unknownChrome is not null)
+            throw new PluginRefusedException(
+                PluginRefusalMessages.RouteChromeUnknown(unknownChrome.Name, unknownChrome.Chrome)
+            );
     }
 
     public IReadOnlyList<PluginRoute> Routes => _routes;

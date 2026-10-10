@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using NoMercy.Setup.Server;
 using NoMercy.Setup.Ui;
 
 namespace NoMercy.Tests.Setup.Ui;
@@ -83,7 +84,7 @@ public sealed class SetupTerminalUiTests : IDisposable
             "https://auth.nomercy.tv/device?code=ABCD",
             "https://auth.nomercy.tv/device",
             "ABCD-1234",
-            "http://localhost:7626/setup"
+            SetupAddress.Resolve("192.168.2.10", 7626, inContainer: false)
         );
     }
 
@@ -102,7 +103,7 @@ public sealed class SetupTerminalUiTests : IDisposable
         SetupTerminalUi.ForceInteractiveForTests = false;
         using SetupTerminalUi ui = new();
 
-        ui.ShowProgress("Registering", "Connecting your server to NoMercy...");
+        ui.ShowProgress(SetupPhase.Registering, SetupPhaseWords.Detail(SetupPhase.Registering));
     }
 
     [Fact]
@@ -136,7 +137,7 @@ public sealed class SetupTerminalUiTests : IDisposable
         SetupTerminalUi.ForceInteractiveForTests = true;
         using SetupTerminalUi ui = new();
 
-        ui.ShowProgress("Registered", "Setting up your server address...");
+        ui.ShowProgress(SetupPhase.Registered, SetupPhaseWords.Detail(SetupPhase.Registered));
     }
 
     [Fact]
@@ -158,7 +159,7 @@ public sealed class SetupTerminalUiTests : IDisposable
             "https://auth.nomercy.tv/device?code=ABCD",
             "https://auth.nomercy.tv/device",
             "ABCD-1234",
-            "http://localhost:7626/setup"
+            SetupAddress.Resolve("192.168.2.10", 7626, inContainer: false)
         );
 
         // Give the resize watcher's background loop at least one 250ms tick, then

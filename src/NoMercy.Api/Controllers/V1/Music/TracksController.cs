@@ -12,10 +12,8 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Newtonsoft.Json;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Api.DTOs.Music;
-using NoMercy.Api.Services.Music;
 using NoMercy.Authorization;
 using NoMercy.Data.Repositories;
 using NoMercy.Data.Services.Music;

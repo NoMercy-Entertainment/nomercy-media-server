@@ -402,6 +402,7 @@ public sealed class LocalStorage : IStorage
     {
         string safeFrom = ValidateScoped(from);
         string safeTo = ValidateScoped(to);
+        EnsureParentDirectory(safeTo);
         _driver.MoveDirectory(safeFrom, safeTo);
         return Task.CompletedTask;
     }
@@ -410,6 +411,7 @@ public sealed class LocalStorage : IStorage
     {
         string safeFrom = ValidateScoped(from);
         string safeTo = ValidateScoped(to);
+        EnsureParentDirectory(safeTo);
         _driver.MoveDirectory(safeFrom, safeTo);
     }
 }

@@ -29,7 +29,10 @@ public sealed class GoogleCastDeviceScannerHostedServiceTests
     [Fact]
     public async Task StartAsync_WithAlreadyCancelledToken_StopsImmediately_WithoutThrowing()
     {
-        GoogleCastDeviceScanner scanner = new(NullLogger<GoogleCastDeviceScanner>.Instance);
+        GoogleCastDeviceScanner scanner = new(
+            NullLogger<GoogleCastDeviceScanner>.Instance,
+            new NonBindingMulticastTransport()
+        );
         GoogleCastDeviceScannerHostedService hostedService = new(
             scanner,
             NullLogger<GoogleCastDeviceScannerHostedService>.Instance
@@ -47,7 +50,10 @@ public sealed class GoogleCastDeviceScannerHostedServiceTests
     [Fact]
     public async Task StartAsync_ThenImmediateStop_DoesNotThrow()
     {
-        GoogleCastDeviceScanner scanner = new(NullLogger<GoogleCastDeviceScanner>.Instance);
+        GoogleCastDeviceScanner scanner = new(
+            NullLogger<GoogleCastDeviceScanner>.Instance,
+            new NonBindingMulticastTransport()
+        );
         GoogleCastDeviceScannerHostedService hostedService = new(
             scanner,
             NullLogger<GoogleCastDeviceScannerHostedService>.Instance

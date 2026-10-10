@@ -17,6 +17,39 @@ namespace NoMercy.MediaProcessing.Jobs.MediaJobs;
 
 public sealed class IncompleteEncodeRecorder
 {
+    /// <summary>
+    /// Records a failed finish and counts it: stores the existing row's AttemptsMade + 1,
+    /// or 1 for a new row. The queue row cannot give this total because the encode job
+    /// resets its attempts on every phase advance. ClearAsync resets the count on success.
+    /// </summary>
+    public async Task RecordFailureAsync(
+        MediaContext context,
+        long mediaId,
+        string folderId,
+        string title,
+        IReadOnlyList<string> missingKeys,
+        string? lastError,
+        CancellationToken ct
+    )
+    {
+        int previousAttempts = await context
+            .IncompleteEncodes.AsNoTracking()
+            .Where(r => r.MediaId == mediaId && r.FolderId == folderId)
+            .Select(r => r.AttemptsMade)
+            .FirstOrDefaultAsync(ct);
+
+        await RecordAsync(
+            context,
+            mediaId,
+            folderId,
+            title,
+            missingKeys,
+            lastError,
+            previousAttempts + 1,
+            ct
+        );
+    }
+
     public async Task RecordAsync(
         MediaContext context,
         long mediaId,

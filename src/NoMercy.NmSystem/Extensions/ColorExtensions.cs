@@ -10,7 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using System.Drawing;
-using SixLabors.ImageSharp.PixelFormats;
+using ImageMagick;
 
 namespace NoMercy.NmSystem.Extensions;
 
@@ -21,7 +21,7 @@ public static class ColorExtensions
         return $"#{color.R:X2}{color.G:X2}{color.B:X2}";
     }
 
-    public static string ToHexString(this Rgb24 color)
+    public static string ToHexString(this IMagickColor<byte> color)
     {
         return $"#{color.R:X2}{color.G:X2}{color.B:X2}";
     }

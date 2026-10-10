@@ -215,6 +215,7 @@ public class LiveTranscodeService(
         else if (rawMultiAudio)
             masterRenditions = await StartAudioChildrenAsync(
                 session.SessionId,
+                userId,
                 liveRequest,
                 mediaInfo.AudioStreams,
                 audioStreamIndex,
@@ -825,6 +826,7 @@ public class LiveTranscodeService(
     // for cascade disposal so they never outlive the video.
     private async Task<List<LiveAudioRendition>> StartAudioChildrenAsync(
         string parentSessionId,
+        Guid userId,
         LiveEncodeRequest baseRequest,
         IReadOnlyList<AudioStreamInfo> audioStreams,
         int defaultAudioIndex,
@@ -854,6 +856,7 @@ public class LiveTranscodeService(
                 continue;
             }
 
+            sessionManager.RegisterChildSession(child.SessionId, userId.ToString());
             childSessionIds.Add(child.SessionId);
             renditions.Add(
                 new LiveAudioRendition(

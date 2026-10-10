@@ -145,7 +145,7 @@ public sealed class DeviceBusRegistryTests : IDisposable
         // The device-bus socket for this device drops — an ordinary,
         // expected event that happens far more often than a genuine
         // multi-hour absence.
-        await registry.Unregister(device.Id);
+        await registry.Unregister(device.Id, Mock.Of<WebSocket>());
 
         await using MediaContext ctx = await _contextFactory.CreateDbContextAsync();
         Device reloaded = await ctx.Devices.SingleAsync(d => d.Id == device.Id);
@@ -157,17 +157,34 @@ public sealed class DeviceBusRegistryTests : IDisposable
     {
         Device device = await SeedOwnedDeviceAsync(DateTime.UtcNow);
         DeviceBusRegistry registry = MakeRegistry();
-        await registry.Register(
-            device.Id,
-            Mock.Of<WebSocket>(ws => ws.State == WebSocketState.Open)
-        );
+        WebSocket ws = Mock.Of<WebSocket>(socket => socket.State == WebSocketState.Open);
+        await registry.Register(device.Id, ws);
         Assert.True(registry.IsOnline(device.Id));
 
-        await registry.Unregister(device.Id);
+        await registry.Unregister(device.Id, ws);
 
         Assert.False(
             registry.IsOnline(device.Id),
             "the live in-memory socket set is a separate concept from the DB's last-seen timestamp — this must still clear"
         );
+    }
+
+    [Fact]
+    public async Task Unregister_OldSocketLeavesReplacementOnlineAndStatusIntact()
+    {
+        Device device = await SeedOwnedDeviceAsync(DateTime.UtcNow);
+        DeviceBusRegistry registry = MakeRegistry();
+        WebSocket oldSocket = Mock.Of<WebSocket>(ws => ws.State == WebSocketState.Open);
+        WebSocket replacementSocket = Mock.Of<WebSocket>(ws => ws.State == WebSocketState.Open);
+
+        await registry.Register(device.Id, oldSocket);
+        await registry.Register(device.Id, replacementSocket);
+        registry.UpdateStatus(device.Id, foreground: true, screenOn: true);
+
+        await registry.Unregister(device.Id, oldSocket);
+
+        Assert.True(registry.IsOnline(device.Id));
+        Assert.Equal((true, true), registry.GetStatus(device.Id));
+        Assert.True(await registry.SendAsync(device.Id, new { type = "ping" }));
     }
 }

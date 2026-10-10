@@ -12,7 +12,6 @@
 using System.Reflection;
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
 using NoMercy.Tests.Common;
-using Xunit;
 
 namespace NoMercy.Tests.MediaProcessing.Jobs;
 

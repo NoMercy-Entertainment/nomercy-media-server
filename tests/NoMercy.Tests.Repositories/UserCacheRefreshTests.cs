@@ -14,7 +14,6 @@ using Microsoft.EntityFrameworkCore;
 using NoMercy.Authorization;
 using NoMercy.Database;
 using NoMercy.Tests.Repositories.Infrastructure;
-using Xunit;
 
 namespace NoMercy.Tests.Repositories;
 

@@ -40,19 +40,45 @@ public class PluginHub(
 {
     public static string GroupFor(Ulid pluginId) => $"plugin:{pluginId}";
 
-    public Task Subscribe(string pluginId) =>
-        Ulid.TryParse(pluginId, out Ulid id)
-            ? Groups.AddToGroupAsync(Context.ConnectionId, GroupFor(id))
-            : Task.CompletedTask;
+    public async Task<HubCommandResult> Subscribe(string pluginId)
+    {
+        if (!Ulid.TryParse(pluginId, out Ulid id) || id == Ulid.Empty)
+            return HubCommandResult.Invalid("Plugin id is invalid.");
 
-    public Task Unsubscribe(string pluginId) =>
-        Ulid.TryParse(pluginId, out Ulid id)
-            ? Groups.RemoveFromGroupAsync(Context.ConnectionId, GroupFor(id))
-            : Task.CompletedTask;
+        try
+        {
+            await Groups.AddToGroupAsync(Context.ConnectionId, GroupFor(id));
+            return HubCommandResult.Success();
+        }
+        catch (Exception)
+        {
+            return HubCommandResult.Failed();
+        }
+    }
+
+    public async Task<HubCommandResult> Unsubscribe(string pluginId)
+    {
+        if (!Ulid.TryParse(pluginId, out Ulid id) || id == Ulid.Empty)
+            return HubCommandResult.Invalid("Plugin id is invalid.");
+
+        try
+        {
+            await Groups.RemoveFromGroupAsync(Context.ConnectionId, GroupFor(id));
+            return HubCommandResult.Success();
+        }
+        catch (Exception)
+        {
+            return HubCommandResult.Failed();
+        }
+    }
 
     public async Task<bool> Send(string pluginId, string method, JsonNode? payload)
     {
-        if (!Ulid.TryParse(pluginId, out Ulid id))
+        if (
+            !Ulid.TryParse(pluginId, out Ulid id)
+            || id == Ulid.Empty
+            || string.IsNullOrWhiteSpace(method)
+        )
             return false;
 
         PluginHubMessage message = new()

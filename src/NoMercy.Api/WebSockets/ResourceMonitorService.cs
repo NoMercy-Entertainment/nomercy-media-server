@@ -30,17 +30,19 @@ public class ResourceMonitorService(
 
     public void Start()
     {
+        CancellationToken token;
         lock (_sync)
         {
             if (_broadcasting)
                 return;
             _broadcasting = true;
+            _cancellationTokenSource?.Cancel();
             _cancellationTokenSource?.Dispose();
             _cancellationTokenSource = new();
+            token = _cancellationTokenSource.Token;
         }
 
         logger.LogInformation("Starting resource monitoring broadcast");
-        CancellationToken token = _cancellationTokenSource.Token;
         _ = Task.Run(async () =>
         {
             try
@@ -56,17 +58,19 @@ public class ResourceMonitorService(
 
     public void Stop()
     {
+        CancellationTokenSource? source;
         lock (_sync)
         {
             if (!_broadcasting)
                 return;
             _broadcasting = false;
+            source = _cancellationTokenSource;
         }
 
         logger.LogInformation("Stopping resource monitoring broadcast");
         try
         {
-            _cancellationTokenSource?.Cancel();
+            source?.Cancel();
         }
         catch (ObjectDisposedException)
         {

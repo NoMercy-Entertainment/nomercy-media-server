@@ -292,11 +292,18 @@ public partial class DiscRipper(
         args.Add("-i");
         args.Add(inputUrl);
 
-        // Map only the audio / subtitle streams the user opted into.
+        // Map the selected streams, or the default audio when none was selected.
         args.Add("-map");
         args.Add("0:v:0");
 
-        foreach (AudioTrackSelection audio in request.AudioTracks.Where(a => a.Include))
+        AudioTrackSelection[] includedAudio = request.AudioTracks.Where(a => a.Include).ToArray();
+        if (includedAudio.Length == 0)
+        {
+            args.Add("-map");
+            args.Add("0:a:0?");
+        }
+
+        foreach (AudioTrackSelection audio in includedAudio)
         {
             args.Add("-map");
             args.Add($"0:a:{audio.StreamIndex}");

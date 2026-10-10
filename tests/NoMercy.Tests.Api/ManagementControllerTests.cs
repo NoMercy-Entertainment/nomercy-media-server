@@ -14,7 +14,9 @@ using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using NoMercy.Data.Repositories;
 using NoMercy.Database;
+using NoMercy.NmSystem.Configuration;
 using NoMercy.Tests.Api.Infrastructure;
 using Xunit;
 using Configuration = NoMercy.Database.Models.Common.Configuration;
@@ -203,5 +205,74 @@ public class ManagementControllerTests : IClassFixture<NoMercyApiFactory>
 
         Assert.NotNull(persisted);
         Assert.Equal("4", persisted!.Value);
+    }
+
+    [Theory]
+    [InlineData("library_workers", "libraryRunners")]
+    [InlineData("import_workers", "importRunners")]
+    [InlineData("extras_workers", "extrasRunners")]
+    [InlineData("encoder_workers", "encoderRunners")]
+    [InlineData("cron_workers", "cronRunners")]
+    [InlineData("image_workers", "imageRunners")]
+    [InlineData("file_workers", "fileRunners")]
+    [InlineData("music_workers", "musicRunners")]
+    public async Task ManageConfigUpdate_RejectsNegativeWorkerWithoutPersisting(
+        string field,
+        string key
+    )
+    {
+        using IServiceScope scope = _factory.Services.CreateScope();
+        AppDbContext appContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        string? before = await appContext
+            .Configuration.AsNoTracking()
+            .Where(c => c.Key == key)
+            .Select(c => c.Value)
+            .FirstOrDefaultAsync();
+        IServerConfigurationRepository serverConfiguration =
+            scope.ServiceProvider.GetRequiredService<IServerConfigurationRepository>();
+        string serverNameBefore = await serverConfiguration.GetServerNameAsync();
+
+        StringContent body = new(
+            $"{{\"{field}\":-1,\"server_name\":\"InvalidName\"}}",
+            Encoding.UTF8,
+            "application/json"
+        );
+        HttpResponseMessage response = await _client.PutAsync("/manage/config", body);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        string? after = await appContext
+            .Configuration.AsNoTracking()
+            .Where(c => c.Key == key)
+            .Select(c => c.Value)
+            .FirstOrDefaultAsync();
+        Assert.Equal(before, after);
+        Assert.Equal(serverNameBefore, await serverConfiguration.GetServerNameAsync());
+    }
+
+    [Fact]
+    public async Task ManageConfigUpdate_RejectsUnknownQueueWithoutPersisting()
+    {
+        RuntimeServerSettings settings =
+            _factory.Services.GetRequiredService<RuntimeServerSettings>();
+        KeyValuePair<string, int> original = settings.LibraryWorkers;
+        settings.LibraryWorkers = new("unknown", original.Value);
+        try
+        {
+            StringContent body = new("{\"library_workers\":3}", Encoding.UTF8, "application/json");
+            HttpResponseMessage response = await _client.PutAsync("/manage/config", body);
+
+            Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+            using IServiceScope scope = _factory.Services.CreateScope();
+            AppDbContext appContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            Assert.False(
+                await appContext
+                    .Configuration.AsNoTracking()
+                    .AnyAsync(c => c.Key == "unknownRunners")
+            );
+        }
+        finally
+        {
+            settings.LibraryWorkers = original;
+        }
     }
 }

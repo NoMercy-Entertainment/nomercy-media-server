@@ -50,6 +50,6 @@ public class PluginComponentReachTests
     public void BothSetsAreReachableFromThePluginContract()
     {
         NmKitchenSink.Components.Should().HaveCount(57);
-        NmAppComponents.All.Should().HaveCount(14);
+        NmAppComponents.All.Should().HaveCount(15);
     }
 }

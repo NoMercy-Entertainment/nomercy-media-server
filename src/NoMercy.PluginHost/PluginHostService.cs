@@ -50,7 +50,17 @@ public sealed class PluginHostService(IHostedPlugin plugin, string token) : IPlu
     public Task<PluginHealthSnapshot> HealthAsync(
         PluginCallRequest request,
         CallContext context = default
-    ) => Task.FromResult(PluginHostHealth.Read());
+    ) =>
+        Authorized(context)
+            ? Task.FromResult(PluginHostHealth.Read())
+            : Task.FromException<PluginHealthSnapshot>(
+                new RpcException(
+                    new Status(
+                        StatusCode.Unauthenticated,
+                        "A call reached the plugin process without the server's launch token."
+                    )
+                )
+            );
 
     public Task<PluginCallResponse> ShutdownAsync(
         PluginCallRequest request,

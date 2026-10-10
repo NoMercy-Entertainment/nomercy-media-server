@@ -216,7 +216,7 @@ public record LibraryResponseItemDto
         ).OrEmpty();
 
         Id = collection.Id.ToString();
-        Title = title;
+        Title = CollectionTitleFormatter.StripCollectionSuffix(title);
         Overview = overview;
         Backdrop = collection.Backdrop;
         Logo = collection.Images.FirstOrDefault(media => media.Type == "logo")?.FilePath;

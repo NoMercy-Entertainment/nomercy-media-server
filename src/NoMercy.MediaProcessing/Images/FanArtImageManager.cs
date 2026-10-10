@@ -16,13 +16,16 @@ using NoMercy.NmSystem.SystemCalls;
 using NoMercy.Providers.FanArt.Client;
 using NoMercy.Providers.FanArt.Models;
 using Serilog.Events;
-using SixLabors.ImageSharp;
 using Image = NoMercy.Database.Models.Media.Image;
+using Size = System.Drawing.Size;
 
 namespace NoMercy.MediaProcessing.Images;
 
-public class FanArtImageManager(ImageRepository imageRepository) : IFanArtImageManager
+public class FanArtImageManager(ImageRepository imageRepository, MusicCoverFiles? coverFiles = null)
+    : IFanArtImageManager
 {
+    private readonly MusicCoverFiles _coverFiles = coverFiles ?? new();
+
     private static readonly Size PaletteDecodeSize = new(
         ColorQuantizer.MaxDimension,
         ColorQuantizer.MaxDimension
@@ -186,13 +189,15 @@ public class FanArtImageManager(ImageRepository imageRepository) : IFanArtImageM
                 .Concat(cdArts)
                 .Where(image => dbRelease.AlbumReleaseGroup.Any(ar => ar.AlbumId == image.AlbumId));
 
-            Image? albumCover = covers.FirstOrDefault();
+            string? albumCover = await _coverFiles.StoreFirstFanArtAsync(
+                fanArt.Albums.Values.SelectMany(album => album.Cover).Select(image => image.Url)
+            );
 
-            dbRelease.Cover = albumCover?.FilePath ?? dbRelease.Cover;
+            dbRelease.Cover = albumCover ?? dbRelease.Cover;
 
             foreach (AlbumReleaseGroup albumRelease in dbRelease.AlbumReleaseGroup)
             {
-                albumRelease.Album.Cover = albumCover?.FilePath ?? albumRelease.Album.Cover;
+                albumRelease.Album.Cover = albumCover ?? albumRelease.Album.Cover;
             }
 
             await imageRepository.CommitReleaseChanges();

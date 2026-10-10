@@ -11,7 +11,6 @@
 
 using System.Text;
 using NoMercy.Encoder.Execution;
-using Xunit;
 
 namespace NoMercy.Tests.Encoder.Execution;
 

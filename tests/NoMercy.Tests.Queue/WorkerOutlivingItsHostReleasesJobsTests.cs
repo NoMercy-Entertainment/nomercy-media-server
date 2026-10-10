@@ -12,7 +12,6 @@
 using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using NoMercy.Database;
-using NoMercy.Database.Models.Queue;
 using NoMercy.Tests.Queue.TestHelpers;
 using NoMercyQueue;
 using NoMercyQueue.Core.Interfaces;

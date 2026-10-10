@@ -83,12 +83,8 @@ public class TesseractModelManager(
         return localPath;
     }
 
-    public IReadOnlyList<string> GetAvailableLanguages()
-    {
-        // The repository list is not exposed — we only know what's in our configured
-        // tessdata directory. Callers can probe EnsureLanguageModelAsync to pull more.
-        return GetDownloadedLanguages();
-    }
+    public Task<IReadOnlyList<string>> GetAvailableLanguagesAsync(CancellationToken ct) =>
+        downloader.GetAvailableLanguagesAsync(ct);
 
     public IReadOnlyList<string> GetDownloadedLanguages()
     {

@@ -295,6 +295,11 @@ public class EncoderContentAnalysisController(
         if (!Ulid.TryParse(segmentId, out Ulid id))
             return BadRequestResponse("Invalid segment id");
 
+        if (body.StartSeconds < 0 || body.EndSeconds < 0)
+            return BadRequestResponse("start_seconds and end_seconds must not be negative");
+        if (body.EndSeconds <= body.StartSeconds)
+            return BadRequestResponse("end_seconds must be greater than start_seconds");
+
         ContentSegment? segment = await contentSegmentRepository.UpdateAsync(
             id,
             s =>

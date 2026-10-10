@@ -12,6 +12,7 @@
 using System.Text;
 using Newtonsoft.Json;
 using NoMercy.Providers.AniList.Models;
+using NoMercy.Providers.Helpers;
 
 namespace NoMercy.Providers.AniList;
 
@@ -37,6 +38,41 @@ public static class AniListClient
 
     public static async Task<AniListMedia?> SearchAsync(HttpClient client, string title, int? year)
     {
+        return await SearchWithPriorityAsync(client, title, year, false);
+    }
+
+    internal static async Task<AniListMedia?> SearchWithPriorityAsync(
+        HttpClient client,
+        string title,
+        int? year,
+        bool? priority
+    )
+    {
+        try
+        {
+            return await ProviderQueues
+                .For(HttpClientNames.AniList)
+                .Enqueue(
+                    () => SearchCoreAsync(client, title, year),
+                    $"anilist-search-{title}-{year}",
+                    priority
+                );
+        }
+        catch (HttpRequestException ex)
+            when (ex.StatusCode == System.Net.HttpStatusCode.TooManyRequests
+                || (int?)ex.StatusCode is >= 500 and <= 599
+            )
+        {
+            return null;
+        }
+    }
+
+    private static async Task<AniListMedia?> SearchCoreAsync(
+        HttpClient client,
+        string title,
+        int? year
+    )
+    {
         object payload = new
         {
             query = SearchQuery,
@@ -54,7 +90,14 @@ public static class AniListClient
 
         using HttpResponseMessage response = await client.SendAsync(request);
         if (!response.IsSuccessStatusCode)
+        {
+            if (
+                response.StatusCode == System.Net.HttpStatusCode.TooManyRequests
+                || (int)response.StatusCode >= 500
+            )
+                response.EnsureProviderSuccess();
             return null;
+        }
 
         string body = await response.Content.ReadAsStringAsync();
         AniListResponse? parsed = JsonConvert.DeserializeObject<AniListResponse>(body);

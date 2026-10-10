@@ -81,8 +81,13 @@ public class BootOrchestratorTests : IDisposable
     [Fact]
     public async Task PostAuth_WaitsForAuthenticated()
     {
-        using CancellationTokenSource cts = new(TimeSpan.FromMilliseconds(200));
-        Task postAuth = _orchestrator.RunPostAuthAsync(cts.Token);
+        using CancellationTokenSource cts = new();
+        Task<bool> postAuth = _orchestrator.RunPostAuthAsync(cts.Token);
+
+        Assert.False(postAuth.IsCompleted);
+        Assert.Equal(SetupPhase.Unauthenticated, _setupState.CurrentPhase);
+
+        cts.Cancel();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => postAuth);
     }
 

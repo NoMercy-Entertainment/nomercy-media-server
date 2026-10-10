@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.Api.Controllers.V1.Dashboard.Admin;
-using NoMercy.Database.Models.Queue;
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
 using NoMercy.MediaProcessing.Jobs.SubtitleJobs;
 using NoMercyQueue;

@@ -25,6 +25,14 @@ jobs:
         with:
           dotnet-version: ${{ inputs.dotnet-version }}
 
+      - name: Regenerate and check API contract snapshots
+        env:
+          NOMERCY_UPDATE_OPENAPI: '1'
+          NOMERCY_UPDATE_SIGNALR_CONTRACTS: '1'
+        run: |
+          dotnet test tests/NoMercy.Tests.Api/NoMercy.Tests.Api.csproj --no-restore --verbosity minimal --filter "FullyQualifiedName~OpenApiSnapshotTests|FullyQualifiedName~HubContractSnapshotTests"
+          git diff --exit-code -- openapi.json signalr-contracts.json
+
       - name: Run fast tests (Unit + ErrorHandling + Characterization)
         run: >
           dotnet test NoMercy.Server.sln

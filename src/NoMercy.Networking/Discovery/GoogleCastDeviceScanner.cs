@@ -44,8 +44,8 @@ public sealed class GoogleCastDeviceScanner : ICastMdnsRegistry, IDisposable
     private static readonly TimeSpan StalenessWindow = TimeSpan.FromMinutes(5);
 
     private readonly ILogger<GoogleCastDeviceScanner> _logger;
-    private readonly ServiceDiscovery _discovery = new();
-    private readonly MulticastService _multicast = new();
+    private readonly IMdnsMulticastTransport _multicast;
+    private readonly ServiceDiscovery _discovery;
 
     // Keyed by Google's own Cast device id (from the `id=` TXT key) rather
     // than IP, since IP is what callers look up BY — this dedupes repeat
@@ -57,9 +57,16 @@ public sealed class GoogleCastDeviceScanner : ICastMdnsRegistry, IDisposable
 
     private int _started;
 
-    public GoogleCastDeviceScanner(ILogger<GoogleCastDeviceScanner> logger)
+    // The transport is optional so DI keeps building this singleton without a
+    // registration; a test passes one that never joins the 5353 group.
+    public GoogleCastDeviceScanner(
+        ILogger<GoogleCastDeviceScanner> logger,
+        IMdnsMulticastTransport? multicast = null
+    )
     {
         _logger = logger;
+        _multicast = multicast ?? new MdnsMulticastTransport();
+        _discovery = new(_multicast.Service);
     }
 
     public void Start(CancellationToken stoppingToken)
@@ -68,7 +75,7 @@ public sealed class GoogleCastDeviceScanner : ICastMdnsRegistry, IDisposable
             return;
 
         _discovery.ServiceInstanceDiscovered += OnInstanceDiscovered;
-        _multicast.NetworkInterfaceDiscovered += (_, _) =>
+        _multicast.Service.NetworkInterfaceDiscovered += (_, _) =>
             _discovery.QueryServiceInstances(ServiceType);
 
         _multicast.Start();

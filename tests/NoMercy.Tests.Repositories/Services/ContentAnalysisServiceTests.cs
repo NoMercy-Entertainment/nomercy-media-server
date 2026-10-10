@@ -13,7 +13,6 @@ using FluentAssertions;
 using NoMercy.Data.Services;
 using NoMercy.Encoder.Codecs;
 using NoMercy.Encoder.ContentAnalysis.Fingerprinting;
-using Xunit;
 
 namespace NoMercy.Tests.Repositories.Services;
 

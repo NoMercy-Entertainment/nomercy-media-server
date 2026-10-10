@@ -88,7 +88,11 @@ public class ShowImportJob : AbstractMediaJob
         }
     }
 
-    public override async Task Handle()
+    private bool _addedToLibrary;
+
+    public override Task Handle() => HandleWithFinishEventAsync(Import);
+
+    private async Task<int?> Import()
     {
         await using MediaContext context = new();
         JobDispatcher jobDispatcher = new();
@@ -150,7 +154,7 @@ public class ShowImportJob : AbstractMediaJob
                 LibraryId,
                 "TMDB show metadata fetch returned no result after retries."
             );
-            return;
+            return null;
         }
 
         IEnumerable<TmdbSeasonAppends> seasons = await seasonManager.StoreSeasonsAsync(
@@ -189,6 +193,8 @@ public class ShowImportJob : AbstractMediaJob
                     new LibraryRefreshedEvent { QueryKey = ["libraries"] }
                 );
         }
+
+        return _addedToLibrary ? 1 : 0;
     }
 
     internal async Task<TmdbTvShowAppends?> ImportAndPublishAsync(
@@ -201,6 +207,7 @@ public class ShowImportJob : AbstractMediaJob
             !await context.Tvs.AsNoTracking().AnyAsync(tv => tv.Id == Id && tv.LibraryId != default)
             && !await context.LibraryTv.AsNoTracking().AnyAsync(link => link.TvId == Id);
         TmdbTvShowAppends? show = await add();
+        _addedToLibrary = isNewToLibrary && show is not null;
         if (isNewToLibrary && show is not null && eventBus is not null)
             await eventBus.PublishAsync(
                 new MediaAddedEvent

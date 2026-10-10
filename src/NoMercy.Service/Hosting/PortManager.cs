@@ -23,10 +23,22 @@ public class PortManager : IPortManager
     private readonly ILogger<PortManager> _logger;
     private readonly ICertificateService _certificateService;
 
-    public PortManager(ILogger<PortManager> logger, ICertificateService certificateService)
+    /// <summary>
+    /// The address the availability probe binds. Production probes the wildcard,
+    /// because that is the address the server will bind. Tests pass loopback so a
+    /// test run never asks the Windows firewall.
+    /// </summary>
+    public IPAddress ProbeAddress { get; }
+
+    public PortManager(
+        ILogger<PortManager> logger,
+        ICertificateService certificateService,
+        IPAddress? probeAddress = null
+    )
     {
         _logger = logger;
         _certificateService = certificateService;
+        ProbeAddress = probeAddress ?? IPAddress.Any;
     }
 
     public async Task EnsurePortAvailable(int port)
@@ -39,7 +51,8 @@ public class PortManager : IPortManager
 
         if (!string.IsNullOrEmpty(processInfo))
             _logger.LogInformation(
-                "Process holding port {Port}:\n{ProcessInfo}", [port, processInfo]
+                "Process holding port {Port}:\n{ProcessInfo}",
+                [port, processInfo]
             );
 
         int blockingPid = ParsePidFromPortInfo(processInfo);
@@ -93,7 +106,8 @@ public class PortManager : IPortManager
             if (isRegistered)
             {
                 _logger.LogError(
-                    "Port {Port} is in use by {BlockingProcessName} (PID {BlockingPid}). NoMercy is registered on this port and cannot use a different one. Free the port and restart.", [port, blockingProcessName, blockingPid]
+                    "Port {Port} is in use by {BlockingProcessName} (PID {BlockingPid}). NoMercy is registered on this port and cannot use a different one. Free the port and restart.",
+                    [port, blockingProcessName, blockingPid]
                 );
                 throw new StartupAbortException(
                     $"Port {port} is in use by {blockingProcessName} (PID {blockingPid}) and NoMercy is registered on this port."
@@ -102,7 +116,8 @@ public class PortManager : IPortManager
 
             int alternativePort = FindNextAvailablePort(port + 1);
             _logger.LogInformation(
-                "Port {Port} is in use by {BlockingProcessName} (PID {BlockingPid}). Server is not yet registered — using port {AlternativePort} instead.", [port, blockingProcessName, blockingPid, alternativePort]
+                "Port {Port} is in use by {BlockingProcessName} (PID {BlockingPid}). Server is not yet registered — using port {AlternativePort} instead.",
+                [port, blockingProcessName, blockingPid, alternativePort]
             );
             RuntimeServerSettings.Current.InternalServerPort = alternativePort;
             return;
@@ -131,7 +146,8 @@ public class PortManager : IPortManager
         }
 
         _logger.LogError(
-            "No available port found in range {StartPort}–{MaxPort}.", [startPort, MaxPort]
+            "No available port found in range {StartPort}–{MaxPort}.",
+            [startPort, MaxPort]
         );
         throw new StartupAbortException($"No available port found in range {startPort}-{MaxPort}.");
     }
@@ -140,7 +156,7 @@ public class PortManager : IPortManager
     {
         try
         {
-            using TcpListener listener = new(IPAddress.Any, port);
+            using TcpListener listener = new(ProbeAddress, port);
             listener.Start();
             listener.Stop();
             return true;
@@ -185,7 +201,8 @@ public class PortManager : IPortManager
             process.Kill();
 
             _logger.LogInformation(
-                "Sent kill signal to PID {Pid}. Waiting for port {Port} to be freed...", [pid, port]
+                "Sent kill signal to PID {Pid}. Waiting for port {Port} to be freed...",
+                [pid, port]
             );
 
             // Wait up to 5 seconds for the port to be freed
@@ -197,7 +214,8 @@ public class PortManager : IPortManager
             }
 
             _logger.LogError(
-                "Timed out waiting for port {Port} to be freed by PID {Pid}.", [port, pid]
+                "Timed out waiting for port {Port} to be freed by PID {Pid}.",
+                [port, pid]
             );
             return false;
         }
@@ -205,7 +223,8 @@ public class PortManager : IPortManager
         {
             _logger.LogError(
                 ex,
-                "Failed to kill process {Pid} or wait for port {Port}.", [pid, port]
+                "Failed to kill process {Pid} or wait for port {Port}.",
+                [pid, port]
             );
             return false;
         }
@@ -241,12 +260,12 @@ public class PortManager : IPortManager
             || RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
         )
         {
-            // Linux/macOS: lsof -i :<port>
+            // Linux/macOS: query only TCP listeners on the local port.
             try
             {
                 using Process process = new();
                 process.StartInfo.FileName = "lsof";
-                process.StartInfo.Arguments = $"-i :{port}";
+                process.StartInfo.Arguments = $"-nP -iTCP:{port} -sTCP:LISTEN";
                 process.StartInfo.RedirectStandardOutput = true;
                 process.StartInfo.UseShellExecute = false;
                 process.StartInfo.CreateNoWindow = true;
@@ -296,17 +315,19 @@ public class PortManager : IPortManager
         return -1;
     }
 
-    // lsof -i output: the second column of the first data row (after the
-    // header line) is the owning PID.
+    // lsof output: the second column of a LISTEN row is the owning PID.
     internal static int ParsePidFromLsof(string processInfo)
     {
         if (string.IsNullOrWhiteSpace(processInfo))
             return -1;
 
         string[] lines = processInfo.Split('\n');
-        if (lines.Length > 1)
+        foreach (string line in lines)
         {
-            string[] parts = lines[1].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (!line.Contains(" (LISTEN)", StringComparison.Ordinal))
+                continue;
+
+            string[] parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length > 1 && int.TryParse(parts[1], out int pid))
                 return pid;
         }

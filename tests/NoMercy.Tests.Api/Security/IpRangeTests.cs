@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using System.Net;
-using FluentAssertions;
 using NoMercy.Api.Security;
 using Xunit;
 

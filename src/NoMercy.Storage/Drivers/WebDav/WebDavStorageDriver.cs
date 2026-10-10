@@ -368,7 +368,7 @@ public sealed class WebDavStorageDriver : IStorageDriver, IDisposable
         string normalized = path.TrimStart('/').TrimStart('\\').Replace('\\', '/');
         if (string.IsNullOrEmpty(normalized))
             return _baseUrl.TrimEnd('/');
-        return _baseUrl.TrimEnd('/') + "/" + Uri.EscapeDataString(normalized).Replace("%2F", "/");
+        return _baseUrl.TrimEnd('/') + "/" + EscapePath(normalized);
     }
 
     public string? ResolveLinkTarget(string path) => null;
@@ -426,7 +426,7 @@ public sealed class WebDavStorageDriver : IStorageDriver, IDisposable
     private string ToUri(string path)
     {
         string normalized = path.TrimStart('/').TrimStart('\\').Replace('\\', '/');
-        return _baseUrl.TrimEnd('/') + "/" + normalized;
+        return _baseUrl.TrimEnd('/') + "/" + EscapePath(normalized);
     }
 
     /// <summary>Builds the full URI for a collection path (trailing slash).</summary>
@@ -435,8 +435,11 @@ public sealed class WebDavStorageDriver : IStorageDriver, IDisposable
         string normalized = path.TrimStart('/').TrimStart('\\').Replace('\\', '/').TrimEnd('/');
         if (string.IsNullOrEmpty(normalized))
             return _baseUrl;
-        return _baseUrl.TrimEnd('/') + "/" + normalized + "/";
+        return _baseUrl.TrimEnd('/') + "/" + EscapePath(normalized) + "/";
     }
+
+    private static string EscapePath(string path) =>
+        string.Join('/', path.Split('/').Select(Uri.EscapeDataString));
 
     /// <summary>PROPFIND Depth:0 and return the single resource, or throw.</summary>
     private WebDavResource PropfindSingle(string path)
@@ -525,20 +528,20 @@ public sealed class WebDavStorageDriver : IStorageDriver, IDisposable
     private string MakeRelative(string absoluteUri)
     {
         if (absoluteUri.StartsWith(_baseUrl, StringComparison.OrdinalIgnoreCase))
-            return absoluteUri.Substring(_baseUrl.Length);
+            return Uri.UnescapeDataString(absoluteUri.Substring(_baseUrl.Length));
 
         // Fall back to stripping the scheme+host prefix.
         Uri parsed = new(absoluteUri, UriKind.RelativeOrAbsolute);
-        return parsed.IsAbsoluteUri
-            ? parsed.PathAndQuery.TrimStart('/')
-            : absoluteUri.TrimStart('/');
+        return Uri.UnescapeDataString(
+            parsed.IsAbsoluteUri ? parsed.AbsolutePath.TrimStart('/') : absoluteUri.TrimStart('/')
+        );
     }
 
     private static string ExtractName(string uri)
     {
         string trimmed = uri.TrimEnd('/');
         int lastSlash = trimmed.LastIndexOf('/');
-        return lastSlash >= 0 ? trimmed.Substring(lastSlash + 1) : trimmed;
+        return Uri.UnescapeDataString(lastSlash >= 0 ? trimmed.Substring(lastSlash + 1) : trimmed);
     }
 
     // -----------------------------------------------------------------------

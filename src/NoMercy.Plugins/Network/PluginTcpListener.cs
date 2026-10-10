@@ -25,8 +25,15 @@ public sealed class PluginTcpListener : IPluginListener
     private readonly TcpListener _listener;
 
     public PluginTcpListener(int port)
+        : this(IPAddress.Any, port) { }
+
+    /// <summary>
+    /// Binds a chosen address. The server passes the wildcard so a plugin can
+    /// serve the LAN; tests pass loopback so a run never asks the firewall.
+    /// </summary>
+    public PluginTcpListener(IPAddress bindAddress, int port)
     {
-        _listener = new(IPAddress.Any, port);
+        _listener = new(bindAddress, port);
         _listener.Start();
 
         Port = ((IPEndPoint)_listener.LocalEndpoint).Port;

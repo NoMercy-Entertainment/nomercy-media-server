@@ -20,7 +20,6 @@ using NoMercy.Api.Hubs;
 using NoMercy.Api.WebSockets;
 using NoMercy.Data.Activity;
 using NoMercy.Database;
-using NoMercy.Networking;
 using NoMercy.Networking.Messaging;
 using NoMercy.Tests.Api.Infrastructure;
 using Xunit;
@@ -106,8 +105,9 @@ public class DashboardHubResourceAuthTests : IClassFixture<NoMercyApiFactory>
             out _
         );
 
-        hub.StartResources();
+        HubCommandResult result = hub.StartResources();
 
+        result.Ok.Should().BeTrue();
         resourceMonitorService.Verify(s => s.Start(), Times.Once);
     }
 
@@ -123,8 +123,9 @@ public class DashboardHubResourceAuthTests : IClassFixture<NoMercyApiFactory>
             out _
         );
 
-        hub.StartResources();
+        HubCommandResult result = hub.StartResources();
 
+        result.ErrorCode.Should().Be("forbidden");
         resourceMonitorService.Verify(s => s.Start(), Times.Never);
     }
 
@@ -137,8 +138,9 @@ public class DashboardHubResourceAuthTests : IClassFixture<NoMercyApiFactory>
             out Mock<ILogBroadcastService> logBroadcastService
         );
 
-        hub.StopResources();
+        HubCommandResult result = hub.StopResources();
 
+        result.Ok.Should().BeTrue();
         resourceMonitorService.Verify(s => s.Stop(), Times.Once);
         logBroadcastService.Verify(s => s.Stop(), Times.Once);
     }
@@ -152,8 +154,9 @@ public class DashboardHubResourceAuthTests : IClassFixture<NoMercyApiFactory>
             out Mock<ILogBroadcastService> logBroadcastService
         );
 
-        hub.StopResources();
+        HubCommandResult result = hub.StopResources();
 
+        result.ErrorCode.Should().Be("forbidden");
         resourceMonitorService.Verify(s => s.Stop(), Times.Never);
         logBroadcastService.Verify(s => s.Stop(), Times.Never);
     }

@@ -9,14 +9,14 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Globalization;
 using System.Security.Claims;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json.Linq;
 using NoMercy.Api.DTOs.Media;
 using NoMercy.Api.Hubs.Shared;
 using NoMercy.Api.Services.Video;
 using NoMercy.Authorization;
-using NoMercy.Database;
 using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.Users;
 using NoMercy.Networking.Cast;
@@ -30,7 +30,31 @@ namespace NoMercy.Api.Hubs;
 
 public partial class VideoHub
 {
-    public async Task SetTime(VideoProgressRequest request)
+    public async Task<HubCommandResult> SetTime(VideoProgressRequest request)
+    {
+        HubCommandResult? error = ValidateProgressRequest(request);
+        if (error is not null)
+            return error;
+        if (request.VideoId == Ulid.Empty)
+            return HubCommandResult.Invalid("Video id is required.");
+        if (UserCacheService.GetUser(Context.User.UserId()) is null)
+            return HubCommandResult.Forbidden("Caller is not available.");
+
+        try
+        {
+            if (!await _videoFileRepository.ExistsAsync(request.VideoId))
+                return HubCommandResult.NotFound("Video was not found.");
+            await SetTimeCoreAsync(request);
+            return HubCommandResult.Success();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Could not set video time");
+            return HubCommandResult.Failed();
+        }
+    }
+
+    private async Task SetTimeCoreAsync(VideoProgressRequest request)
     {
         Guid userId = Context.User.UserId();
 
@@ -59,16 +83,36 @@ public partial class VideoHub
         );
     }
 
-    public async Task RemoveWatched(VideoProgressRequest request)
+    public async Task<HubCommandResult> RemoveWatched(VideoProgressRequest request)
+    {
+        HubCommandResult? error = ValidateProgressRequest(request);
+        if (error is not null)
+            return error;
+
+        try
+        {
+            int removed = await RemoveWatchedCoreAsync(request);
+            return removed > 0
+                ? HubCommandResult.Success()
+                : HubCommandResult.NotFound("Watched item was not found.");
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Could not remove watched item");
+            return HubCommandResult.Failed();
+        }
+    }
+
+    private async Task<int> RemoveWatchedCoreAsync(VideoProgressRequest request)
     {
         string? guid = Context.User?.FindFirstValue(ClaimTypes.NameIdentifier);
         if (!Guid.TryParse(guid, out Guid userId))
-            return;
+            return 0;
 
         User? user = UserCacheService.Users.FirstOrDefault(x => x.Id.Equals(userId));
 
         if (user is null)
-            return;
+            return 0;
 
         // Scope the delete to the single requested item by its typed id. The old
         // predicate OR-ed MovieId/TvId/SpecialId/CollectionId == the request ids;
@@ -84,10 +128,39 @@ public partial class VideoHub
         Ulid? ulidId =
             request.PlaylistType == MediaTypes.SpecialMediaType ? request.SpecialId : null;
 
-        await _userDataRepository.RemoveForItemAsync(user.Id, request.PlaylistType, intId, ulidId);
+        return await _userDataRepository.RemoveForItemAsync(
+            user.Id,
+            request.PlaylistType,
+            intId,
+            ulidId
+        );
     }
 
-    public async Task StartPlaybackCommand(string? type, dynamic? listId, int? itemId)
+    public Task<HubCommandResult> StartPlaybackCommand(string? type, dynamic? listId, int? itemId)
+    {
+        if (
+            string.IsNullOrWhiteSpace(type)
+            || type
+                is not (
+                    MediaTypes.MovieMediaType
+                    or MediaTypes.TvMediaType
+                    or MediaTypes.CollectionMediaType
+                    or MediaTypes.SpecialMediaType
+                )
+            || listId is null
+            || itemId is <= 0
+        )
+            return Task.FromResult(
+                HubCommandResult.Invalid("Playback type or item id is invalid.")
+            );
+
+        return HubCommandResult.ExecuteAsync(
+            () => StartPlaybackCoreAsync(type, listId, itemId),
+            _logger
+        );
+    }
+
+    private async Task StartPlaybackCoreAsync(string? type, dynamic? listId, int? itemId)
     {
         User? user = UserCacheService.GetUser(Context.User.UserId());
         if (user is null)
@@ -106,6 +179,7 @@ public partial class VideoHub
 
         string language = GetLanguageFromContext();
         string country = GetCountryFromContext();
+        VideoPlaylistResponseDto? playbackItem = null;
 
         try
         {
@@ -117,6 +191,7 @@ public partial class VideoHub
                 language,
                 country
             );
+            playbackItem = playlistResult.Item1;
 
             await HandlePlaybackState(
                 user,
@@ -128,7 +203,12 @@ public partial class VideoHub
         }
         catch (ArgumentException ex)
         {
-            _logger.LogInformation("Invalid playlist type: {Message}", ex.Message);
+            _logger.LogInformation(
+                "Invalid playlist type for {Title} ({ItemId}): {Message}",
+                playbackItem?.Title,
+                playbackItem?.Id ?? itemId,
+                ex.Message
+            );
 
             User? user2 = UserCacheService.GetUser(Context.User.UserId());
             if (user2 is not null)
@@ -142,7 +222,7 @@ public partial class VideoHub
                         user2.Id,
                         deviceId2,
                         errorCode: ex.GetType().Name,
-                        message: ex.Message
+                        message: $"Playback start failed for {playbackItem?.Title ?? "<unknown>"} (item {playbackItem?.Id ?? itemId}): {ex.Message}"
                     );
                 }
                 catch (Exception logEx)
@@ -153,11 +233,16 @@ public partial class VideoHub
                     );
                 }
             }
+            throw;
         }
         catch (Exception ex)
         {
-            _logger.LogInformation("Error in StartPlaybackCommand");
-            _logger.LogError(ex, ex.Message);
+            _logger.LogError(
+                ex,
+                "Error in StartPlaybackCommand for {Title} ({ItemId})",
+                playbackItem?.Title,
+                playbackItem?.Id ?? itemId
+            );
 
             User? user2 = UserCacheService.GetUser(Context.User.UserId());
             if (user2 is not null)
@@ -171,7 +256,7 @@ public partial class VideoHub
                         user2.Id,
                         deviceId2,
                         errorCode: ex.GetType().Name,
-                        message: ex.Message
+                        message: $"Playback start failed for {playbackItem?.Title ?? "<unknown>"} (item {playbackItem?.Id ?? itemId}): {ex.Message}"
                     );
                 }
                 catch (Exception logEx)
@@ -182,6 +267,7 @@ public partial class VideoHub
                     );
                 }
             }
+            throw;
         }
     }
 
@@ -366,7 +452,57 @@ public partial class VideoHub
         return playerState;
     }
 
-    public async Task PlaybackCommand(string? command, object? data = null)
+    public Task<HubCommandResult> PlaybackCommand(string? command, object? data = null)
+    {
+        if (
+            string.IsNullOrWhiteSpace(command)
+            || !new[]
+            {
+                "play",
+                "pause",
+                "seek",
+                "item",
+                "episode",
+                "forward",
+                "backward",
+                "next",
+                "previous",
+                "nextChapter",
+                "previousChapter",
+                "stop",
+                "mute",
+                "volume",
+                "audio",
+                "cycleAudio",
+                "caption",
+                "cycleCaption",
+                "quality",
+            }.Contains(command, StringComparer.Ordinal)
+        )
+            return Task.FromResult(HubCommandResult.Invalid("Unknown playback command."));
+
+        if (command == "seek" && data is JObject seek)
+        {
+            JToken? time = seek["time"];
+            if (
+                time?.Type is not (JTokenType.Integer or JTokenType.Float)
+                || !double.IsFinite(time.Value<double>())
+                || time.Value<double>() < 0
+                || time.Value<double>() > int.MaxValue / 1000
+            )
+                return Task.FromResult(HubCommandResult.Invalid("Playback data is out of range."));
+
+            data = (int)Math.Round(time.Value<double>(), MidpointRounding.AwayFromZero);
+        }
+
+        HubCommandResult? dataError = ValidatePlaybackData(command, data);
+        if (dataError is not null)
+            return Task.FromResult(dataError);
+
+        return HubCommandResult.ExecuteAsync(() => PlaybackCoreAsync(command, data), _logger);
+    }
+
+    private async Task PlaybackCoreAsync(string? command, object? data = null)
     {
         User? user = UserCacheService.GetUser(Context.User.UserId());
         if (user is null)
@@ -401,7 +537,39 @@ public partial class VideoHub
         await _videoPlaybackService.UpdatePlaybackState(user, state);
     }
 
-    public async Task ChangeDeviceCommand(string? deviceId)
+    public async Task<HubCommandResult> ChangeDeviceCommand(string? deviceId)
+    {
+        if (string.IsNullOrWhiteSpace(deviceId))
+            return HubCommandResult.Invalid("Device id is required.");
+
+        User? user = UserCacheService.GetUser(Context.User.UserId());
+        if (user is null)
+            return HubCommandResult.Forbidden("Caller is not available.");
+
+        try
+        {
+            (List<Device> connectedDevices, _) = await _busRegistry.WithOwnedTvsAsync(
+                user.Id,
+                Devices()
+            );
+            if (
+                !connectedDevices.Any(device =>
+                    device.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase)
+                )
+            )
+                return HubCommandResult.NotFound("Device was not found for this user.");
+
+            await ChangeDeviceCoreAsync(deviceId, connectedDevices);
+            return HubCommandResult.Success();
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Could not change video device");
+            return HubCommandResult.Failed();
+        }
+    }
+
+    private async Task ChangeDeviceCoreAsync(string? deviceId, List<Device> connectedDevices)
     {
         User? user = UserCacheService.GetUser(Context.User.UserId());
         if (user is null)
@@ -420,11 +588,6 @@ public partial class VideoHub
         // mirrors MusicHub.MusicDevicesAsync. Without this, the picker can't
         // hand video off to a sleeping TV. Live MusicHub clients are merged
         // with registered TV devices (online or not).
-        (List<Device> connectedDevices, _) = await _busRegistry.WithOwnedTvsAsync(
-            user.Id,
-            Devices()
-        );
-
         await _clientMessenger.SendTo(
             "ConnectedDevicesState",
             "videoHub",
@@ -507,5 +670,67 @@ public partial class VideoHub
         };
 
         await _clientMessenger.SendTo("ChangeDevice", "videoHub", user.Id, payload);
+    }
+
+    private static HubCommandResult? ValidateProgressRequest(VideoProgressRequest? request)
+    {
+        if (request is null)
+            return HubCommandResult.Invalid("Progress request is required.");
+        if (
+            request.PlaylistType
+                is not (
+                    MediaTypes.MovieMediaType
+                    or MediaTypes.TvMediaType
+                    or MediaTypes.CollectionMediaType
+                    or MediaTypes.SpecialMediaType
+                )
+            || request.Time < 0
+            || request.Time > int.MaxValue / 1000
+        )
+            return HubCommandResult.Invalid("Progress request is out of range.");
+        if (request.PlaylistType is not MediaTypes.SpecialMediaType && request.TmdbId <= 0)
+            return HubCommandResult.Invalid("Media id is required.");
+        if (
+            request.PlaylistType is MediaTypes.SpecialMediaType
+            && request.SpecialId is null
+            && request.TmdbId <= 0
+        )
+            return HubCommandResult.Invalid("Special id is required.");
+        return null;
+    }
+
+    private static HubCommandResult? ValidatePlaybackData(string command, object? data)
+    {
+        if (
+            command
+            is not (
+                "seek"
+                or "forward"
+                or "backward"
+                or "volume"
+                or "item"
+                or "audio"
+                or "caption"
+                or "quality"
+            )
+        )
+            return null;
+
+        object? value = data is JValue token ? token.Value : data;
+        string? raw = Convert.ToString(value, CultureInfo.InvariantCulture);
+        if (raw is null && command is "forward" or "backward")
+            raw = "10";
+        if (!int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out int number))
+            return HubCommandResult.Invalid("Playback data must be an integer.");
+
+        if (
+            command is "volume" && number is < 0 or > 100
+            || command is "seek" or "forward" or "backward"
+                && number is < 0 or > int.MaxValue / 1000
+            || command is "item" && number < 0
+            || command is "audio" or "caption" or "quality" && number < -1
+        )
+            return HubCommandResult.Invalid("Playback data is out of range.");
+        return null;
     }
 }

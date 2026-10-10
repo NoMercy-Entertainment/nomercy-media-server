@@ -19,6 +19,7 @@ public class SessionManager(LiveSessionLimits limits) : ISessionManager
 
     // Track which user owns each session — null key means anonymous
     private readonly ConcurrentDictionary<string, string> _sessionUserMap = new();
+    private readonly ConcurrentDictionary<string, string> _childSessionUserMap = new();
 
     public IReadOnlyList<ILiveSession> ActiveSessions => [.. _sessions.Values];
 
@@ -47,15 +48,23 @@ public class SessionManager(LiveSessionLimits limits) : ISessionManager
             _sessionUserMap[session.SessionId] = userId;
     }
 
+    public void RegisterChildSession(string sessionId, string userId)
+    {
+        _childSessionUserMap[sessionId] = userId;
+    }
+
     public void RemoveSession(string sessionId)
     {
         _sessions.TryRemove(sessionId, out _);
         _sessionUserMap.TryRemove(sessionId, out _);
+        _childSessionUserMap.TryRemove(sessionId, out _);
     }
 
     public string? GetOwnerUserId(string sessionId)
     {
         _sessionUserMap.TryGetValue(sessionId, out string? userId);
+        if (userId is null)
+            _childSessionUserMap.TryGetValue(sessionId, out userId);
         return userId;
     }
 
@@ -73,7 +82,12 @@ public class SessionManager(LiveSessionLimits limits) : ISessionManager
 
         // Union of both maps' keys — either could hold a ghost id the other has
         // already dropped.
-        foreach (string sessionId in _sessions.Keys.Concat(_sessionUserMap.Keys).Distinct())
+        foreach (
+            string sessionId in _sessions
+                .Keys.Concat(_sessionUserMap.Keys)
+                .Concat(_childSessionUserMap.Keys)
+                .Distinct()
+        )
         {
             if (!alive.Contains(sessionId))
                 RemoveSession(sessionId);

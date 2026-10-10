@@ -41,7 +41,9 @@ public class UserDataFavoritesControllerTests : IClassFixture<NoMercyApiFactory>
     {
         HttpResponseMessage response = await _unauthed.GetAsync("/api/v1/userData/favorites");
 
-        response.StatusCode.Should().BeOneOf([HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden]);
+        response
+            .StatusCode.Should()
+            .BeOneOf([HttpStatusCode.Unauthorized, HttpStatusCode.Forbidden]);
     }
 
     [Fact]
@@ -75,7 +77,10 @@ public class UserDataFavoritesControllerTests : IClassFixture<NoMercyApiFactory>
         using JsonDocument doc = JsonDocument.Parse(body);
         JsonElement data = doc.RootElement.GetProperty("data");
 
-        string[] seeded = ["Breaking Bad", "Spirited Away", "Test Collection", "Test Special"];
+        // The card's displayed name drops a trailing "Collection" word (see
+        // CollectionTitleFormatter) -- the seeded collection's stored title is
+        // "Test Collection", displayed as "Test".
+        string[] seeded = ["Breaking Bad", "Spirited Away", "Test", "Test Special"];
 
         List<string?> titles = data.EnumerateArray()
             .Select(card => card.GetProperty("title").GetString())
@@ -106,7 +111,10 @@ public class UserDataFavoritesControllerTests : IClassFixture<NoMercyApiFactory>
 
         typeByTitle["Spirited Away"].Should().Be("movie");
         typeByTitle["Breaking Bad"].Should().Be("tv");
-        typeByTitle["Test Collection"].Should().Be("collection");
+        // Displayed as "Test" -- the card drops the trailing "Collection" word
+        // (see CollectionTitleFormatter); the seeded collection's stored title
+        // is "Test Collection".
+        typeByTitle["Test"].Should().Be("collection");
         typeByTitle["Test Special"].Should().Be("specials");
     }
 }

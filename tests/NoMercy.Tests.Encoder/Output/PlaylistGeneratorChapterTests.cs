@@ -9,12 +9,9 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -------- -----------------------------------------------------------------------
 
-using System.Globalization;
-using NoMercy.Encoder.Analysis;
 using NoMercy.Encoder.BuildingBlocks;
 using NoMercy.Encoder.Codecs;
 using NoMercy.Encoder.Output;
-using NoMercy.Encoder.Pipeline;
 
 namespace NoMercy.Tests.Encoder.Output;
 
@@ -58,8 +55,18 @@ public class PlaylistGeneratorChapterTests
             VideoOutputs:
             [
                 new(
-                    1920, 1080, "libx264", 23, 8000, "medium", "high", "4.0", false,
-                    "yuv420p", "[v0]", new()
+                    1920,
+                    1080,
+                    "libx264",
+                    23,
+                    8000,
+                    "medium",
+                    "high",
+                    "4.0",
+                    false,
+                    "yuv420p",
+                    "[v0]",
+                    new()
                 ),
             ],
             AudioOutputs: [],
@@ -81,8 +88,18 @@ public class PlaylistGeneratorChapterTests
             VideoOutputs:
             [
                 new(
-                    1920, 1080, "libx264", 23, 8000, "medium", "high", "4.0", false,
-                    "yuv420p", "[v0]", new()
+                    1920,
+                    1080,
+                    "libx264",
+                    23,
+                    8000,
+                    "medium",
+                    "high",
+                    "4.0",
+                    false,
+                    "yuv420p",
+                    "[v0]",
+                    new()
                 ),
             ],
             AudioOutputs: [],
@@ -110,17 +127,24 @@ public class PlaylistGeneratorChapterTests
             VideoOutputs:
             [
                 new(
-                    1920, 1080, "libx264", 23, 8000, "medium", "high", "4.0", false,
-                    "yuv420p", "[v0]", new()
+                    1920,
+                    1080,
+                    "libx264",
+                    23,
+                    8000,
+                    "medium",
+                    "high",
+                    "4.0",
+                    false,
+                    "yuv420p",
+                    "[v0]",
+                    new()
                 ),
             ],
             AudioOutputs: [],
             SubtitleOutputs: [],
             Thumbnails: null,
-            Chapters:
-            [
-                new(TimeSpan.Zero, TimeSpan.FromSeconds(60), "Intro"),
-            ]
+            Chapters: [new(TimeSpan.Zero, TimeSpan.FromSeconds(60), "Intro")]
         );
 
         string master = GenerateWithChapters(plan);
@@ -136,8 +160,18 @@ public class PlaylistGeneratorChapterTests
             VideoOutputs:
             [
                 new(
-                    1920, 1080, "libx264", 23, 8000, "medium", "high", "4.0", false,
-                    "yuv420p", "[v0]", new()
+                    1920,
+                    1080,
+                    "libx264",
+                    23,
+                    8000,
+                    "medium",
+                    "high",
+                    "4.0",
+                    false,
+                    "yuv420p",
+                    "[v0]",
+                    new()
                 ),
             ],
             AudioOutputs: [],
@@ -163,22 +197,30 @@ public class PlaylistGeneratorChapterTests
             VideoOutputs:
             [
                 new(
-                    1920, 1080, "libx264", 23, 8000, "medium", "high", "4.0", false,
-                    "yuv420p", "[v0]", new()
+                    1920,
+                    1080,
+                    "libx264",
+                    23,
+                    8000,
+                    "medium",
+                    "high",
+                    "4.0",
+                    false,
+                    "yuv420p",
+                    "[v0]",
+                    new()
                 ),
             ],
             AudioOutputs: [],
             SubtitleOutputs: [],
             Thumbnails: null,
-            Chapters:
-            [
-                new(TimeSpan.Zero, TimeSpan.FromMinutes(5), "Chapter \"1\" with \"quotes\""),
-            ]
+            Chapters: [new(TimeSpan.Zero, TimeSpan.FromMinutes(5), "Chapter \"1\" with \"quotes\"")]
         );
 
         string master = GenerateWithChapters(plan);
 
-        master.Should()
+        master
+            .Should()
             .Contain("X-COM-NOMERCY-CHAPTER-TITLE=\"Chapter \\\"1\\\" with \\\"quotes\\\"\"");
     }
 
@@ -190,8 +232,18 @@ public class PlaylistGeneratorChapterTests
             VideoOutputs:
             [
                 new(
-                    1920, 1080, "libx264", 23, 8000, "medium", "high", "4.0", false,
-                    "yuv420p", "[v0]", new()
+                    1920,
+                    1080,
+                    "libx264",
+                    23,
+                    8000,
+                    "medium",
+                    "high",
+                    "4.0",
+                    false,
+                    "yuv420p",
+                    "[v0]",
+                    new()
                 ),
             ],
             AudioOutputs: [],
@@ -223,17 +275,24 @@ public class PlaylistGeneratorChapterTests
             VideoOutputs:
             [
                 new(
-                    1920, 1080, "libx264", 23, 8000, "medium", "high", "4.0", false,
-                    "yuv420p", "[v0]", new()
+                    1920,
+                    1080,
+                    "libx264",
+                    23,
+                    8000,
+                    "medium",
+                    "high",
+                    "4.0",
+                    false,
+                    "yuv420p",
+                    "[v0]",
+                    new()
                 ),
             ],
             AudioOutputs: [],
             SubtitleOutputs: [],
             Thumbnails: null,
-            Chapters:
-            [
-                new(TimeSpan.FromSeconds(0), TimeSpan.FromSeconds(60), null),
-            ]
+            Chapters: [new(TimeSpan.FromSeconds(0), TimeSpan.FromSeconds(60), null)]
         );
 
         string master = GenerateWithChapters(plan);
@@ -249,8 +308,18 @@ public class PlaylistGeneratorChapterTests
             VideoOutputs:
             [
                 new(
-                    1920, 1080, "libx264", 23, 8000, "medium", "high", "4.0", false,
-                    "yuv420p", "[v0]", new()
+                    1920,
+                    1080,
+                    "libx264",
+                    23,
+                    8000,
+                    "medium",
+                    "high",
+                    "4.0",
+                    false,
+                    "yuv420p",
+                    "[v0]",
+                    new()
                 ),
             ],
             AudioOutputs: [],
@@ -272,8 +341,18 @@ public class PlaylistGeneratorChapterTests
             VideoOutputs:
             [
                 new(
-                    1920, 1080, "libx264", 23, 8000, "medium", "high", "4.0", false,
-                    "yuv420p", "[v0]", new()
+                    1920,
+                    1080,
+                    "libx264",
+                    23,
+                    8000,
+                    "medium",
+                    "high",
+                    "4.0",
+                    false,
+                    "yuv420p",
+                    "[v0]",
+                    new()
                 ),
             ],
             AudioOutputs: [],

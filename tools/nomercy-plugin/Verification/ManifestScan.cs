@@ -134,15 +134,27 @@ public static class ManifestScan
 
         foreach (PluginUiMount mount in manifest.Capabilities?.Ui?.Mounts ?? [])
         {
-            if (!PluginKind.IsKnown(mount.Section))
+            if (!PluginKind.IsKnown(mount.Kind))
                 findings.Add(
                     new PluginRefusal(
                         PluginRefusalCodes.ManifestInvalid,
                         who,
-                        $"A mount names section '{mount.Section}', which is not a kind.",
+                        $"A mount names kind '{mount.Kind}', which is not one this server places. It will not appear.",
                         "The kind decides where a plugin's screens live on every client, so one nobody recognises is a plugin that is drawn nowhere.",
                         $"Use one of: {string.Join(", ", PluginKind.All)}. Docs: /nomercy-plugins/tour/placement",
                         PluginRefusalSeverity.Blocked
+                    )
+                );
+
+            if (!PluginUiSection.All.Contains(mount.Section))
+                findings.Add(
+                    new PluginRefusal(
+                        PluginRefusalCodes.ManifestInvalid,
+                        who,
+                        $"A mount names section '{mount.Section}', which this client does not know.",
+                        "The mount still loads. Clients that do not know the section show it under add-ons.",
+                        $"Use a known section if that placement is intended: {string.Join(", ", PluginUiSection.All)}. Docs: /nomercy-plugins/tour/placement",
+                        PluginRefusalSeverity.Degraded
                     )
                 );
 

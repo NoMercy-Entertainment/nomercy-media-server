@@ -90,6 +90,27 @@ public class ServicesBrokerTests
         services.LastUser!.Value.Value.Should().Be(user);
     }
 
+    [Theory]
+    [InlineData("not-a-ulid")]
+    [InlineData("")]
+    public async Task ANotificationWithAnUnreadableUserIsRefusedBeforeDelivery(string user)
+    {
+        RecordingServices services = new();
+
+        PluginCallResponse response = await Ask(
+            services,
+            new FakeCapabilities(null),
+            "notifications",
+            nameof(IPluginNotifications.PushAsync),
+            $$$"""{"user":"{{{user}}}","notification":{"titleKey":"plugin.scan.done","bodyKey":"plugin.scan.done.body"}}"""
+        );
+
+        response.Ok.Should().BeFalse();
+        response.Refusal!.Code.Should().Be(PluginRefusalCodes.HostServicesRemoved);
+        response.Refusal.What.Should().Contain("payload the server could not read");
+        services.Touches.Should().Be(0);
+    }
+
     [Fact]
     public async Task AJobTheOwnerAskedForNowReachesTheServersOwnQueue()
     {

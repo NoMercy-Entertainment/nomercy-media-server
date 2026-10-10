@@ -62,6 +62,12 @@ public class PluginRoute
     public string Layout { get; init; } = PluginLayout.Standard;
 
     /// <summary>
+    /// Whether the app's navbar shows on this page, from <see cref="PluginChrome" />.
+    /// A page that says nothing keeps it.
+    /// </summary>
+    public string Chrome { get; init; } = PluginChrome.App;
+
+    /// <summary>
     /// A layout per surface, for the pages where one shell genuinely cannot
     /// serve every device. Falls back to <see cref="Layout" />.
     /// </summary>
@@ -149,6 +155,26 @@ public class PluginRoute
     private static string[] Segments(string path)
     {
         return path.Split('/', StringSplitOptions.RemoveEmptyEntries);
+    }
+}
+
+/// <summary>
+/// Whether the app's navbar shows on a page. Separate from <see cref="PluginLayout" />:
+/// a layout is the shape of the content, and this is whether the page owns the whole screen.
+/// </summary>
+public static class PluginChrome
+{
+    /// <summary>The app's navbar shows.</summary>
+    public const string App = "app";
+
+    /// <summary>No navbar: the page owns the screen.</summary>
+    public const string None = "none";
+
+    public static readonly string[] All = [App, None];
+
+    public static bool IsKnown(string? chrome)
+    {
+        return chrome is not null && Array.IndexOf(All, chrome) >= 0;
     }
 }
 

@@ -9,7 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Collections.Concurrent;
 using System.Net;
 using Microsoft.AspNetCore.WebUtilities;
 using NoMercy.NmSystem.NewtonSoftConverters;
@@ -49,7 +48,6 @@ public abstract class ExternalApiClient : IExternalProvider
     // interval rate limit is preserved — matching the old per-provider
     // 'static Queue' semantics. Keying by concrete type would instead give each
     // sub-client its own queue and multiply the request rate.
-    private static readonly ConcurrentDictionary<string, Queue> Queues = new();
 
     protected Guid Id { get; private set; }
     protected readonly HttpClient Client;
@@ -59,8 +57,9 @@ public abstract class ExternalApiClient : IExternalProvider
 
     protected abstract string HttpClientName { get; }
     protected abstract Uri BaseUrl { get; }
-    protected virtual int ConcurrentRequests => 1;
-    protected virtual int RequestIntervalMs => 1000;
+    protected virtual int ConcurrentRequests =>
+        ProviderQueues.OptionsFor(HttpClientName).Concurrent;
+    protected virtual int RequestIntervalMs => ProviderQueues.OptionsFor(HttpClientName).Interval;
 
     protected ExternalApiClient()
     {
@@ -109,17 +108,9 @@ public abstract class ExternalApiClient : IExternalProvider
     protected virtual void OnSoftFail(HttpStatusCode? status, string url) { }
 
     protected Queue RequestQueue =>
-        Queues.GetOrAdd(
+        ProviderQueues.For(
             HttpClientName,
-            _ =>
-                new(
-                    new()
-                    {
-                        Concurrent = ConcurrentRequests,
-                        Interval = RequestIntervalMs,
-                        Start = true,
-                    }
-                )
+            new() { Concurrent = ConcurrentRequests, Interval = RequestIntervalMs }
         );
 
     protected virtual async Task<T?> Get<T>(
@@ -159,7 +150,7 @@ public abstract class ExternalApiClient : IExternalProvider
         {
             // No retry here: Queue.Enqueue already retries transient failures.
             string response = await RequestQueue.Enqueue(
-                () => Client.GetStringAsync(requestUrl),
+                () => ProviderHttp.GetStringAsync(Client, requestUrl),
                 newUrl,
                 priority
             );
@@ -172,6 +163,14 @@ public abstract class ExternalApiClient : IExternalProvider
         {
             // Provider signalled "not found" — soft-fail to null.
             OnSoftFail(ex.StatusCode, newUrl);
+            return null;
+        }
+        catch (HttpRequestException ex)
+            when (ex.StatusCode == HttpStatusCode.TooManyRequests
+                || (int?)ex.StatusCode is >= 500 and <= 599
+            )
+        {
+            Logger.Http($"Provider unavailable after retries: {newUrl}", LogEventLevel.Warning);
             return null;
         }
     }

@@ -12,7 +12,6 @@
 using System.Data.Common;
 using System.Security.Cryptography;
 using System.Text;
-using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Diagnostics;

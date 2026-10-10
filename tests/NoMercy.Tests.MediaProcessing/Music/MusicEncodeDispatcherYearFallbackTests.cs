@@ -9,12 +9,10 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using FluentAssertions;
 using Newtonsoft.Json;
 using NoMercy.Database.Music;
 using NoMercy.MediaProcessing.Music;
 using NoMercy.Providers.MusicBrainz.Models;
-using Xunit;
 
 namespace NoMercy.Tests.MediaProcessing.Music;
 

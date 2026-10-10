@@ -10,10 +10,8 @@
 // -----------------------------------------------------------------------------
 
 using System.Reflection;
-using FluentAssertions;
 using Newtonsoft.Json;
 using NoMercyQueue.Core.Interfaces;
-using Xunit;
 
 namespace NoMercy.Tests.MediaProcessing.Jobs;
 

@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Globalization;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.SignalR;
@@ -16,6 +17,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Newtonsoft.Json.Linq;
 using NoMercy.Api.DTOs.Music;
 using NoMercy.Api.Hubs;
 using NoMercy.Api.Services.Music;
@@ -56,6 +58,35 @@ public class MusicHubDeviceCommandsTests : IClassFixture<NoMercyApiFactory>
     {
         _factory = factory;
         _factory.CreateClient();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task PlaybackCommand_FractionalSeekUnderDutchCulture_UsesNumericValue(
+        bool jsonToken
+    )
+    {
+        Guid userId = Guid.NewGuid();
+        User user = SeedTestUser(userId);
+        string connectionId = Guid.NewGuid().ToString();
+        CultureInfo originalCulture = CultureInfo.CurrentCulture;
+
+        try
+        {
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("nl-NL");
+            MusicHub hub = CreateHub(connectionId, userId);
+            object data = jsonToken ? new JValue(12.5) : 12.5;
+
+            HubCommandResult result = await hub.PlaybackCommand("seek", data);
+
+            result.Ok.Should().BeTrue();
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = originalCulture;
+            Cleanup(userId, user, connectionId);
+        }
     }
 
     private static PlaylistTrackDto MakeTrack()

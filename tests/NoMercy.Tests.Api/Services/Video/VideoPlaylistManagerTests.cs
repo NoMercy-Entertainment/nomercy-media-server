@@ -13,12 +13,10 @@ using Moq;
 using NoMercy.Api.DTOs.Media;
 using NoMercy.Api.Services.Video;
 using NoMercy.Data.Repositories;
-using NoMercy.Database;
 using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.Movies;
 using NoMercy.Database.Models.TvShows;
 using NoMercy.Database.Models.Users;
-using NoMercy.NmSystem.Domain;
 using Xunit;
 
 namespace NoMercy.Tests.Api.Services.Video;
@@ -424,6 +422,46 @@ public sealed class VideoPlaylistManagerTests
         playlist.Select(p => p.Episode).Should().Equal(1, 2);
         playlist.Select(p => p.TmdbId).Should().AllBeEquivalentTo(500);
         ((object)playlist[0].PlaylistId).Should().Be("500");
+    }
+
+    [Fact]
+    public async Task GetPlaylist_CollectionType_MoviesWithNoVideoFile_AreOmittedAndIndexStaysContiguous()
+    {
+        // Real-world case: "Tom and Jerry: The Golden Era Anthology" has 114
+        // movies, 34 with no video file at all. Those must never reach the
+        // playlist -- not as a hollow, untitled item that fails to play, and
+        // not with a gap in the 1-based index the client relies on.
+        Collection collection = new() { Id = 900, Title = "Franchise" };
+        Movie playableFirst = BuildMovie(1);
+        Movie noFile = new()
+        {
+            Id = 2,
+            Title = "No File",
+            TitleSort = "no file",
+        };
+        Movie playableSecond = BuildMovie(3);
+        collection.CollectionMovies.Add(new() { Collection = collection, Movie = playableFirst });
+        collection.CollectionMovies.Add(new() { Collection = collection, Movie = noFile });
+        collection.CollectionMovies.Add(new() { Collection = collection, Movie = playableSecond });
+
+        _collectionRepository
+            .Setup(r => r.GetCollectionPlaylistAsync(It.IsAny<Guid>(), 900, "en", "US", default))
+            .ReturnsAsync(collection);
+        VideoPlaylistManager manager = CreateManager();
+
+        (_, List<VideoPlaylistResponseDto> playlist) = await manager.GetPlaylist(
+            Guid.NewGuid(),
+            "collection",
+            "900",
+            null,
+            "en",
+            "US"
+        );
+
+        playlist.Should().HaveCount(2);
+        playlist.Select(p => p.Id).Should().Equal(1, 3);
+        playlist.Select(p => p.Episode).Should().Equal(1, 2);
+        playlist.Should().NotContain(p => string.IsNullOrEmpty(p.Title));
     }
 
     [Fact]

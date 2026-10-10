@@ -15,7 +15,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Data.Services;
 using NoMercy.Database;
-using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.Music;
 
 namespace NoMercy.Tests.Repositories;

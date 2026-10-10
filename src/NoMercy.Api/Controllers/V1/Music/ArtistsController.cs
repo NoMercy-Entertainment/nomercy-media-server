@@ -9,7 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Text.RegularExpressions;
 using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -29,9 +28,6 @@ using NoMercy.MediaProcessing.Images;
 using NoMercy.MediaProcessing.Jobs;
 using NoMercy.MediaProcessing.Jobs.PaletteJobs;
 using NoMercy.NmSystem.Extensions;
-using NoMercy.NmSystem.Information;
-using NoMercy.Storage;
-using NoMercyQueue;
 
 namespace NoMercy.Api.Controllers.V1.Music;
 
@@ -232,12 +228,15 @@ public class ArtistsController : BaseController
     {
         bool deleted = await _musicRepository.DeleteArtistAsync(id);
 
+        if (!deleted)
+            return NotFoundResponse("Artist not found");
+
         await _eventBus.PublishAsync(new LibraryRefreshedEvent { QueryKey = ["music", "artist"] });
 
         return Ok(
             new StatusResponseDto<string>
             {
-                Data = (deleted ? "Artist deleted successfully" : "Artist not found").Localize(),
+                Data = "Artist deleted successfully".Localize(),
                 Status = "ok",
             }
         );
@@ -253,7 +252,7 @@ public class ArtistsController : BaseController
         if (artist is null)
             return NotFoundResponse("Artist not found");
 
-        string slug = artist.Name.ToSlug();
+        string slug = $"artist-{artist.Id}";
         string colorPalette = artist._colorPalette.OrEmpty();
         string cover = artist.Cover.OrEmpty();
 
@@ -300,14 +299,14 @@ public class ArtistsController : BaseController
         if (artist is null)
             return NotFoundResponse("Artist not found");
 
-        string slug = artist.Name.ToSlug();
+        string slug = $"artist-{artist.Id}";
 
         await using (Stream libraryCopy = image.OpenReadStream())
             if (
                 !await _coverStore.SaveToLibraryAsync(
                     artist.LibraryFolder,
                     artist.HostFolder,
-                    slug + ".jpg",
+                    artist.Name.ToSlug() + ".jpg",
                     libraryCopy
                 )
             )

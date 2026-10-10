@@ -20,7 +20,6 @@ using NoMercy.NmSystem.Auth;
 using NoMercy.NmSystem.Lifecycle;
 using NoMercy.NmSystem.Security;
 using NoMercy.Service.Hosting;
-using NoMercy.Setup.Auth;
 using NoMercy.Setup.Boot;
 using NoMercy.Setup.Server;
 using NoMercy.Storage.Drivers.Local;

@@ -123,4 +123,28 @@ public sealed class UpdateCommandDownloadTests
         console.Out.Should().Contain("Downloaded 120MB");
         console.Out.Should().Contain("Stopping server...");
     }
+
+    [Theory]
+    [InlineData("Server is already up to date.")]
+    [InlineData("Binary on disk is already the latest version, restart needed to apply.")]
+    public async Task Download_NoStagedUpdateNeeded_ExitsSuccessfullyWithoutStopping(string message)
+    {
+        FakeManagementPipeServer server = new();
+        Task<string> requestTask = server.RunOnceAsync(stream =>
+            FakeManagementPipeServer.WriteResponseAsync(
+                stream,
+                200,
+                "OK",
+                $"{{\"status\":\"ok\",\"message\":\"{message}\"}}"
+            )
+        );
+
+        using ConsoleCapture console = new();
+        int exitCode = await RunAsync(server.PipeName);
+
+        (await requestTask).Should().StartWith("POST /manage/update");
+        exitCode.Should().Be((int)ExitCode.Success);
+        console.Out.Should().Contain(message);
+        console.Out.Should().NotContain("Stopping server...");
+    }
 }

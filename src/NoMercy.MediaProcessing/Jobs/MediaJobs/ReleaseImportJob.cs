@@ -22,7 +22,6 @@ using NoMercy.MediaProcessing.Libraries;
 using NoMercy.NmSystem;
 using NoMercy.NmSystem.Dto;
 using NoMercy.Providers.AcoustId;
-using NoMercy.Queue.MediaServer;
 using NoMercy.Storage;
 
 namespace NoMercy.MediaProcessing.Jobs.MediaJobs;
@@ -57,7 +56,10 @@ public class ReleaseImportJob : AbstractMusicFolderJob
 
     // private bool _fromFingerprint;
 
-    public override async Task Handle()
+    // Added is the number of albums handed on: this job imports no titles itself.
+    public override Task Handle() => HandleWithFinishEventAsync(Import);
+
+    private async Task<int> Import()
     {
         Log.LogInformation(
             "ReleaseImportJob: {InputFolder} -> library {LibraryId} folder {FolderId} release {ReleaseId}",
@@ -91,13 +93,14 @@ public class ReleaseImportJob : AbstractMusicFolderJob
                     "ReleaseImportJob: no library folder contains {InputFolder}; skipping",
                     InputFolder
                 );
-                return;
+                return 0;
             }
 
-            jobDispatcher.DispatchJob<AudioImportJob>(LibraryId, baseFolder.Id, InputFolder);
-            return;
+            DispatchAudioImport(jobDispatcher, baseFolder, InputFolder);
+            return 1;
         }
 
+        int dispatched = 0;
         Parallel.ForEach(
             rootFolders,
             SystemParallelism.Options,
@@ -114,10 +117,25 @@ public class ReleaseImportJob : AbstractMusicFolderJob
                     return;
                 }
 
-                jobDispatcher.DispatchJob<AudioImportJob>(LibraryId, baseFolder.Id, folder.Path);
+                DispatchAudioImport(jobDispatcher, baseFolder, folder.Path);
+                Interlocked.Increment(ref dispatched);
             }
         );
+
+        return dispatched;
     }
+
+    /// <summary>
+    /// Hands the album on to <see cref="AudioImportJob"/> with the release the operator
+    /// picked. Dropping <see cref="AbstractMusicFolderJob.ReleaseId"/> here made the
+    /// import re-derive the release from tags or fingerprints, which can pick a
+    /// different pressing than the one that was chosen.
+    /// </summary>
+    internal void DispatchAudioImport(
+        JobDispatcher jobDispatcher,
+        Folder baseFolder,
+        string path
+    ) => jobDispatcher.DispatchJob<AudioImportJob>(LibraryId, baseFolder.Id, ReleaseId, path);
 
     /// <summary>
     /// The configured library folder whose root contains <paramref name="absolutePath"/>,

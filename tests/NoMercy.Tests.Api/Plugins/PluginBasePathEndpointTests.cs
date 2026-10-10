@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using System.Security.Claims;
-using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Moq;
@@ -18,7 +17,6 @@ using NoMercy.Api.Controllers.V1.Plugins;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Api.DTOs.Plugins;
 using NoMercy.Authorization;
-using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Access;
 using NoMercy.PluginSdk.Capabilities;

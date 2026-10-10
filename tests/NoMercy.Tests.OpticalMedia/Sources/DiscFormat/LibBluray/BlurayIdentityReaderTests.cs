@@ -12,7 +12,6 @@
 using NoMercy.DiscFormat.Abstractions.Disc;
 using NoMercy.DiscFormat.LibBluray;
 using NoMercy.DiscFormat.LibBluray.Identity;
-using Xunit;
 
 namespace NoMercy.DiscFormat.Tests.LibBluray;
 

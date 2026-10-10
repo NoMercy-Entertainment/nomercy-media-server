@@ -14,7 +14,6 @@ using Moq;
 using NoMercy.Encoder.Decomposition;
 using NoMercy.Encoder.Pipeline;
 using NoMercy.Encoder.Progress;
-using NoMercy.Encoder.Strategies;
 using NoMercy.Encoder.Strategies.Hls;
 using NoMercy.Storage.Drivers.Local;
 using NoMercy.Tests.Encoder.Storage;

@@ -17,7 +17,6 @@ using NoMercy.Data.Jobs;
 using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.Music;
-using NoMercy.Database.Music;
 using NoMercy.Events;
 using NoMercy.Events.Library;
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
@@ -31,7 +30,6 @@ using NoMercy.Providers.AcoustId.Client;
 using NoMercy.Providers.AcoustId.Models;
 using NoMercy.Providers.MusicBrainz.Client;
 using NoMercy.Providers.MusicBrainz.Models;
-using NoMercy.Queue.MediaServer;
 using NoMercy.Storage;
 using NoMercyQueue;
 
@@ -577,6 +575,16 @@ public partial class MusicLogic : IAsyncDisposable
             HostFolder = folder.PathName(),
         };
 
+        if (HostFolderPath.ContainsSecondRoot(insert.HostFolder))
+        {
+            _logger.LogError(
+                "Skipping album {Id}: host folder holds a second root: '{HostFolder}'",
+                insert.Id,
+                insert.HostFolder
+            );
+            return null;
+        }
+
         try
         {
             await mediaContext
@@ -662,6 +670,16 @@ public partial class MusicLogic : IAsyncDisposable
             LibraryId = Library.Id,
             FolderId = Folder!.Id,
         };
+
+        if (HostFolderPath.ContainsSecondRoot(insert.HostFolder))
+        {
+            _logger.LogError(
+                "Skipping artist {Id}: host folder holds a second root: '{HostFolder}'",
+                insert.Id,
+                insert.HostFolder
+            );
+            return;
+        }
 
         try
         {

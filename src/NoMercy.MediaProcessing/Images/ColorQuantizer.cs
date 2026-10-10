@@ -9,10 +9,8 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using ImageMagick;
 using NoMercy.Database;
-using SixLabors.ImageSharp;
-using SixLabors.ImageSharp.PixelFormats;
-using SixLabors.ImageSharp.Processing;
 
 namespace NoMercy.MediaProcessing.Images;
 
@@ -32,9 +30,9 @@ internal static class ColorQuantizer
     private const double LuminanceWeight = 6.5;
     private const double PopulationWeight = 0.5;
 
-    public static PaletteColors ExtractPalette(Image<Rgba32> image)
+    public static PaletteColors ExtractPalette(IMagickImage<byte> image)
     {
-        Image<Rgba32> workingImage = DownsampleImage(image);
+        using IMagickImage<byte> workingImage = DownsampleImage(image);
         List<QuantizedColor> pixels = ExtractAndFilterPixels(workingImage);
 
         if (pixels.Count == 0)
@@ -52,55 +50,60 @@ internal static class ColorQuantizer
         return ScoreSwatches(swatches);
     }
 
-    private static Image<Rgba32> DownsampleImage(Image<Rgba32> image)
+    private static IMagickImage<byte> DownsampleImage(IMagickImage<byte> image)
     {
+        IMagickImage<byte> working = image.Clone();
+
         if (image is { Width: <= MaxDimension, Height: <= MaxDimension })
         {
-            return image.Clone();
+            return working;
         }
 
         double scale = Math.Min(
             (double)MaxDimension / image.Width,
             (double)MaxDimension / image.Height
         );
-        int newWidth = Math.Max(1, (int)(image.Width * scale));
-        int newHeight = Math.Max(1, (int)(image.Height * scale));
+        uint newWidth = Math.Max(1, (uint)(image.Width * scale));
+        uint newHeight = Math.Max(1, (uint)(image.Height * scale));
 
-        Image<Rgba32> resized = image.Clone(ctx => ctx.Resize(newWidth, newHeight));
-        return resized;
+        // '!' ignores the aspect ratio so the size matches the computed one exactly.
+        working.Resize(new MagickGeometry(newWidth, newHeight) { IgnoreAspectRatio = true });
+        return working;
     }
 
-    private static List<QuantizedColor> ExtractAndFilterPixels(Image<Rgba32> image)
+    private static List<QuantizedColor> ExtractAndFilterPixels(IMagickImage<byte> image)
     {
         List<QuantizedColor> pixels = [];
 
-        for (int y = 0; y < image.Height; y++)
+        using IPixelCollection<byte> pixelCollection = image.GetPixelsUnsafe();
+        byte[] rgba = pixelCollection.ToByteArray(PixelMapping.RGBA) ?? [];
+
+        for (int offset = 0; offset + 3 < rgba.Length; offset += 4)
         {
-            for (int x = 0; x < image.Width; x++)
+            byte r = rgba[offset];
+            byte g = rgba[offset + 1];
+            byte b = rgba[offset + 2];
+            byte a = rgba[offset + 3];
+
+            if (a < MinAlpha)
             {
-                Rgba32 pixel = image[x, y];
-
-                if (pixel.A < MinAlpha)
-                {
-                    continue;
-                }
-
-                double luminance = GetLuminance(pixel.R, pixel.G, pixel.B);
-
-                if (luminance < MinLuminance || luminance > MaxLuminance)
-                {
-                    continue;
-                }
-
-                byte qr = (byte)(pixel.R & QuantizationMask);
-                byte qg = (byte)(pixel.G & QuantizationMask);
-                byte qb = (byte)(pixel.B & QuantizationMask);
-
-                pixels.Add(new(qr, qg, qb, pixel.R, pixel.G, pixel.B));
+                continue;
             }
+
+            double luminance = GetLuminance(r, g, b);
+
+            if (luminance < MinLuminance || luminance > MaxLuminance)
+            {
+                continue;
+            }
+
+            byte qr = (byte)(r & QuantizationMask);
+            byte qg = (byte)(g & QuantizationMask);
+            byte qb = (byte)(b & QuantizationMask);
+
+            pixels.Add(new(qr, qg, qb, r, g, b));
         }
 
-        image.Dispose();
         return pixels;
     }
 
@@ -235,8 +238,7 @@ internal static class ColorQuantizer
 
     private static string SwatchToHex(ColorSwatch swatch)
     {
-        Rgba32 color = new(swatch.R, swatch.G, swatch.B);
-        return "#" + color.ToHex();
+        return $"#{swatch.R:X2}{swatch.G:X2}{swatch.B:X2}FF";
     }
 
     private static PaletteColors EmptyPalette()

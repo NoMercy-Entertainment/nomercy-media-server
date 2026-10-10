@@ -11,6 +11,7 @@
 
 using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Storage.Drivers.Nfs;
+using NoMercy.Storage.Drivers.Nfs.Interop;
 using NoMercy.Storage.Remote;
 using NoMercy.Tests.Storage.Faults;
 
@@ -52,6 +53,59 @@ public sealed class NfsStorageContractTests : IStorageContractTests
     private FaultyLibNfs _fake = new();
     private NfsStorageDriver? _driver;
     private RemoteStorage? _storage;
+
+    [Fact]
+    public void Open_flags_match_the_native_platform()
+    {
+        int create =
+            OperatingSystem.IsWindows() ? 0x100
+            : OperatingSystem.IsMacOS() ? 0x200
+            : 0x40;
+        int truncate = OperatingSystem.IsMacOS() ? 0x400 : 0x200;
+        int exclusive =
+            OperatingSystem.IsWindows() ? 0x400
+            : OperatingSystem.IsMacOS() ? 0x800
+            : 0x80;
+
+        LibNfs.O_CREAT.Should().Be(create);
+        LibNfs.O_TRUNC.Should().Be(truncate);
+        LibNfs.O_EXCL.Should().Be(exclusive);
+    }
+
+    [Fact]
+    public async Task OpenWrite_overwrite_shorter_truncates_existing_file()
+    {
+        IStorage storage = CreateStorage();
+        try
+        {
+            await storage.WriteAsync("shorter.bin", new byte[100], CancellationToken.None);
+            byte[] replacement = new byte[10];
+            Array.Fill(replacement, (byte)7);
+            await storage.WriteAsync("shorter.bin", replacement, CancellationToken.None);
+
+            byte[] actual = await storage.ReadAsync("shorter.bin", CancellationToken.None);
+            actual.Should().Equal(replacement);
+        }
+        finally
+        {
+            await DisposeStorage();
+        }
+    }
+
+    [Fact]
+    public async Task OpenWrite_creates_new_file_without_creat_fallback()
+    {
+        IStorage storage = CreateStorage();
+        try
+        {
+            await storage.WriteAsync("new.bin", new byte[1], CancellationToken.None);
+            _fake.CallCounts.GetValueOrDefault(nameof(FaultyLibNfs.Creat)).Should().Be(0);
+        }
+        finally
+        {
+            await DisposeStorage();
+        }
+    }
 
     protected override IStorage CreateStorage()
     {

@@ -14,7 +14,6 @@ using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using NoMercy.Data.Services;
 using NoMercy.Database;
 using NoMercy.Database.Models.Media;
 using NoMercy.Tests.Api.Infrastructure;

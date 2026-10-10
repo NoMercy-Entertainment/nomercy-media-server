@@ -202,6 +202,7 @@ public class LiveEncoder(
             outputDirectory,
             isAudioRenditionChild: true
         );
+        streamingService.StampRequestContext(sessionId, request.CachedInfo, request.Client);
 
         async Task SpawnRunner(TimeSpan desiredPosition, CancellationToken runnerCt)
         {

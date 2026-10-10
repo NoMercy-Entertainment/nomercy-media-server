@@ -14,7 +14,6 @@ using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.LiveTranscode;
 using NoMercy.Storage;
 using NoMercy.Storage.Drivers.Local;
-using NoMercy.Storage.Validation;
 
 namespace NoMercy.Tests.Encoder.LiveTranscode;
 
@@ -32,19 +31,12 @@ public class LiveTranscodeOrphanSweeperTests : IDisposable
     }
 
     private static IStorage MakeStorage() =>
-        new LocalStorage(
-            new LocalStorageDriver(),
-            new([], new LocalStorageDriver())
-        );
+        new LocalStorage(new LocalStorageDriver(), new([], new LocalStorageDriver()));
 
     private LiveTranscodeOrphanSweeper BuildSweeper()
     {
         EncoderOptions opts = new() { LiveTranscodeCachePath = _cacheRoot };
-        return new(
-            opts,
-            NullLogger<LiveTranscodeOrphanSweeper>.Instance,
-            MakeStorage()
-        );
+        return new(opts, NullLogger<LiveTranscodeOrphanSweeper>.Instance, MakeStorage());
     }
 
     // ──────────────────────────────────────────────────────────────────────────

@@ -23,6 +23,8 @@ namespace NoMercy.Launcher.Services;
 public class InstallerUpdater(ServerConnection serverConnection)
 {
     private static readonly HttpClient HttpClient = new();
+    private readonly HttpClient _httpClient = HttpClient;
+    private readonly string _cacheDir = CacheDir;
 
     // %LocalAppData%\NoMercy\UpdateCache\
     private static string CacheDir =>
@@ -35,6 +37,23 @@ public class InstallerUpdater(ServerConnection serverConnection)
     static InstallerUpdater()
     {
         HttpClient.DefaultRequestHeaders.Add("User-Agent", "NoMercyLauncher/1.0");
+    }
+
+    internal InstallerUpdater(
+        ServerConnection serverConnection,
+        HttpClient httpClient,
+        string cacheDir
+    )
+        : this(serverConnection)
+    {
+        _httpClient = httpClient;
+        _cacheDir = cacheDir;
+    }
+
+    internal InstallerUpdater(ServerConnection serverConnection, string cacheDir)
+        : this(serverConnection)
+    {
+        _cacheDir = cacheDir;
     }
 
     /// <summary>
@@ -88,23 +107,35 @@ public class InstallerUpdater(ServerConnection serverConnection)
         CancellationToken ct = default
     )
     {
-        Directory.CreateDirectory(CacheDir);
+        Directory.CreateDirectory(_cacheDir);
 
         string fileName = $"NoMercyMediaServer-{version}-windows-x64-setup.exe";
-        string destPath = Path.Combine(CacheDir, fileName);
+        string destPath = Path.Combine(_cacheDir, fileName);
         string sha256Path = destPath + ".sha256";
 
         // Check for valid cached copy first
         if (File.Exists(destPath) && File.Exists(sha256Path))
         {
             LauncherLog.Info($"Installer already cached at {destPath}, verifying SHA-256...");
-            if (await VerifyInstallerAsync(version, ct))
+            bool cacheValid;
+            try
+            {
+                cacheValid = await VerifyInstallerAsync(version, ct);
+            }
+            catch (InvalidDataException)
+            {
+                cacheValid = false;
+            }
+
+            if (cacheValid)
             {
                 LauncherLog.Info("Cached installer SHA-256 matches — skipping download");
                 return true;
             }
 
             LauncherLog.Info("SHA-256 mismatch on cached installer — re-downloading");
+            File.Delete(destPath);
+            File.Delete(sha256Path);
         }
 
         string tag = $"v{version}";
@@ -116,7 +147,7 @@ public class InstallerUpdater(ServerConnection serverConnection)
         // Download SHA-256 sidecar first (best-effort)
         try
         {
-            using HttpResponseMessage sha256Response = await HttpClient.GetAsync(
+            using HttpResponseMessage sha256Response = await _httpClient.GetAsync(
                 sha256Url,
                 HttpCompletionOption.ResponseHeadersRead,
                 ct
@@ -143,7 +174,7 @@ public class InstallerUpdater(ServerConnection serverConnection)
         // Download installer
         LauncherLog.Info($"Downloading installer from {installerUrl}");
 
-        using HttpResponseMessage response = await HttpClient.GetAsync(
+        using HttpResponseMessage response = await _httpClient.GetAsync(
             installerUrl,
             HttpCompletionOption.ResponseHeadersRead,
             ct
@@ -189,7 +220,7 @@ public class InstallerUpdater(ServerConnection serverConnection)
     public async Task<bool> VerifyInstallerAsync(string version, CancellationToken ct = default)
     {
         string fileName = $"NoMercyMediaServer-{version}-windows-x64-setup.exe";
-        string destPath = Path.Combine(CacheDir, fileName);
+        string destPath = Path.Combine(_cacheDir, fileName);
         string sha256Path = destPath + ".sha256";
 
         if (!File.Exists(sha256Path))
@@ -272,7 +303,7 @@ public class InstallerUpdater(ServerConnection serverConnection)
     public Task LaunchInstallerAsync(string version, bool launcherAutoStart)
     {
         string fileName = $"NoMercyMediaServer-{version}-windows-x64-setup.exe";
-        string installerPath = Path.Combine(CacheDir, fileName);
+        string installerPath = Path.Combine(_cacheDir, fileName);
 
         if (!File.Exists(installerPath))
             throw new FileNotFoundException("Installer not found in cache", installerPath);
@@ -306,7 +337,7 @@ public class InstallerUpdater(ServerConnection serverConnection)
         CancellationToken ct = default
     )
     {
-        if (!Directory.Exists(CacheDir))
+        if (!Directory.Exists(_cacheDir))
             return Task.CompletedTask;
 
         HashSet<string> keep =
@@ -321,7 +352,7 @@ public class InstallerUpdater(ServerConnection serverConnection)
             keep.Add($"NoMercyMediaServer-{pendingVersion}-windows-x64-setup.exe.sha256");
         }
 
-        foreach (string file in Directory.EnumerateFiles(CacheDir, "NoMercyMediaServer-*-setup*"))
+        foreach (string file in Directory.EnumerateFiles(_cacheDir, "NoMercyMediaServer-*-setup*"))
         {
             string name = Path.GetFileName(file);
             if (keep.Contains(name))

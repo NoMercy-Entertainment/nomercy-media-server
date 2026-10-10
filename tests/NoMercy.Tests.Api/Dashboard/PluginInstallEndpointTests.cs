@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using System.Text;
-using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Moq;

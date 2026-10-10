@@ -13,7 +13,6 @@ using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Authorization;
-using NoMercy.Database.Models.Users;
 using NoMercy.Service.Authorization;
 using Xunit;
 

@@ -353,8 +353,28 @@ public sealed class ServerBootstrapper
             }
             else
             {
+                await RestorePortRetryStateAsync(retryHost.Services);
                 await retryServerRunner.RunHost(retryHost);
             }
         }
+    }
+
+    internal static async Task RestorePortRetryStateAsync(IServiceProvider services)
+    {
+        // The retry host has fresh per-container auth and setup singletons.
+        // Restore them before RunHost, as on the HTTPS restart path.
+        ICertificateService retryCertificateService =
+            services.GetRequiredService<ICertificateService>();
+        AuthManager retryAuthManager = services.GetRequiredService<AuthManager>();
+        bool hasValidToken = await retryAuthManager.InitializeAsync();
+        services
+            .GetRequiredService<SetupState>()
+            .DetermineInitialPhase(
+                hasValidToken: hasValidToken,
+                isRegistered: retryCertificateService.HasValidCertificate()
+            );
+        retryAuthManager.ScheduleBackgroundRefresh(
+            services.GetRequiredService<IShutdownCoordinator>().Token
+        );
     }
 }

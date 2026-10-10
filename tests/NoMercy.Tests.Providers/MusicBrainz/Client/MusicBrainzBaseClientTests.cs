@@ -132,22 +132,16 @@ public sealed class MusicBrainzBaseClientTests : ProviderHttpHarness
     }
 
     [Fact]
-    public async Task Get_TransientFailureExhaustsRetryBudget_ThrowsRatherThanSoftFailing()
+    public async Task Get_TransientFailureExhaustsRetryBudget_SoftFailsToNull()
     {
-        // Requirement: unlike TMDB/TVDB (which explicitly catch 429/503 and
-        // resolve to null), MusicBrainzBaseClient.ShouldSoftFail only covers
-        // 404. Once the shared Queue's 3-attempt retry budget is exhausted on a
-        // persistent 429, the HttpRequestException propagates uncaught. This
-        // pins that (surprising, cross-provider-inconsistent) contract so a
-        // future "make MusicBrainz soft-fail like the others" change is a
-        // deliberate decision, not an accidental behavior change.
+        // The shared queue retries a persistent 429 before the provider client
+        // returns no result, allowing the importing job to continue.
         string path = Unique("artist");
         Handler.WhenGet(path, MockResponse.Status(HttpStatusCode.TooManyRequests));
 
         using TestableClient client = new();
-        Func<Task<MusicBrainzArtist?>> act = () => client.Get<MusicBrainzArtist>(path);
-
-        await act.Should().ThrowAsync<HttpRequestException>();
+        MusicBrainzArtist? result = await client.Get<MusicBrainzArtist>(path);
+        result.Should().BeNull();
         Handler.RequestCountFor(path).Should().Be(4); // 1 initial attempt + 3 retries
     }
 }

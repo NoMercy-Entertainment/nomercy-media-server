@@ -33,6 +33,7 @@ using NoMercy.Providers.TMDB.Models.Movies;
 using NoMercy.Providers.TMDB.Models.Shared;
 using NoMercy.Providers.TMDB.Models.TV;
 using NoMercy.Storage;
+using NoMercyQueue.Core.Interfaces;
 
 namespace NoMercy.MediaProcessing.Libraries;
 
@@ -50,6 +51,30 @@ public class LibraryManager(
 ) : BaseManager, ILibraryManager
 {
     private Library? _library;
+    private int _importsQueued;
+
+    // Only jobs the queue accepted count: a payload it already holds is dropped,
+    // and a listener waiting for that job's finish would wait for nothing.
+    private async Task PublishImportsQueued(IEventBus? bus)
+    {
+        if (bus is null || _library is null)
+            return;
+
+        await bus.PublishAsync(
+            new LibraryImportsQueuedEvent
+            {
+                LibraryId = _library.Id,
+                LibraryName = _library.Title,
+                Count = Volatile.Read(ref _importsQueued),
+            }
+        );
+    }
+
+    private void DispatchImport(IShouldQueue job)
+    {
+        if (jobDispatcher.DispatchTracked(job) is not null)
+            Interlocked.Increment(ref _importsQueued);
+    }
 
     public async Task ProcessLibrary(Ulid id)
     {
@@ -59,6 +84,7 @@ public class LibraryManager(
 
         Stopwatch stopwatch = Stopwatch.StartNew();
         int itemsFound = 0;
+        _importsQueued = 0;
 
         IEventBus? bus =
             eventBus ?? (EventBusProvider.IsConfigured ? EventBusProvider.Current : null);
@@ -107,6 +133,7 @@ public class LibraryManager(
             }
         );
 
+        await PublishImportsQueued(bus);
         stopwatch.Stop();
 
         if (bus is not null)
@@ -133,6 +160,7 @@ public class LibraryManager(
 
         Stopwatch stopwatch = Stopwatch.StartNew();
         int itemsFound = 0;
+        _importsQueued = 0;
 
         IEventBus? bus =
             eventBus ?? (EventBusProvider.IsConfigured ? EventBusProvider.Current : null);
@@ -184,6 +212,7 @@ public class LibraryManager(
             }
         );
 
+        await PublishImportsQueued(bus);
         stopwatch.Stop();
 
         if (bus is not null)
@@ -468,7 +497,7 @@ public class LibraryManager(
         if (res.Count() is 0)
             return;
 
-        jobDispatcher.DispatchJob<MovieImportJob>(res.First().Id, _library);
+        DispatchImport(new MovieImportJob { Id = res.First().Id, LibraryId = _library.Id });
     }
 
     private async Task ProcessTvFolder(MediaFolderExtend folderExtend)
@@ -492,7 +521,7 @@ public class LibraryManager(
         if (!res.Any())
             return;
 
-        jobDispatcher.DispatchJob<ShowImportJob>(res.First().Id, _library);
+        DispatchImport(new ShowImportJob { Id = res.First().Id, LibraryId = _library.Id });
     }
 
     private void ProcessMusicFolder(MediaFolderExtend baseFolderExtend)
@@ -500,7 +529,9 @@ public class LibraryManager(
         if (_library is null)
             return;
 
-        jobDispatcher.DispatchJob<ReleaseImportJob>(baseFolderExtend.Path, _library.Id);
+        DispatchImport(
+            new ReleaseImportJob { InputFolder = baseFolderExtend.Path, LibraryId = _library.Id }
+        );
     }
 
     private int GetDepth()

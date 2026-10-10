@@ -15,7 +15,6 @@ using NoMercy.Data.Plugins;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercyQueue.Core.Interfaces;
 using NoMercyQueue.Core.Models;
-using Xunit;
 
 namespace NoMercy.Tests.Repositories;
 

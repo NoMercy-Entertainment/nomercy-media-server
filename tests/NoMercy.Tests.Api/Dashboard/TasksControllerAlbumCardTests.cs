@@ -17,7 +17,6 @@ using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.Music;
 using NoMercy.Database.Models.Queue;
 using NoMercy.Database.Models.Storage;
-using NoMercy.NmSystem.Domain;
 using NoMercy.Tests.Api.Infrastructure;
 using Xunit;
 

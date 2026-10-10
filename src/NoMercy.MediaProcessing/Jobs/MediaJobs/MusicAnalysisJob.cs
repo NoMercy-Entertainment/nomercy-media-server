@@ -125,7 +125,9 @@ public class MusicAnalysisJob : IShouldQueue
                 "audio analysis found no file for track {TrackId}: host folder '{HostFolder}', file name '{Filename}'",
                 [TrackId, track.HostFolder, track.Filename]
             );
-            await Persist(mediaContext, existing, null, $"no file at '{path}'");
+            // FileExists also returns false when a mount cannot be reached. Keep
+            // this verdict retryable because absence has not been established.
+            await Persist(mediaContext, existing, null, $"no file at '{path}'", retryable: true);
             return;
         }
 
@@ -181,7 +183,8 @@ public class MusicAnalysisJob : IShouldQueue
         MediaContext mediaContext,
         TrackAudioAnalysis? existing,
         AudioAnalysisResult? result,
-        string? failureReason
+        string? failureReason,
+        bool retryable = false
     )
     {
         TrackAudioAnalysis row = existing ?? new TrackAudioAnalysis { TrackId = TrackId };
@@ -192,7 +195,7 @@ public class MusicAnalysisJob : IShouldQueue
 
         if (result is null)
         {
-            row.State = AudioAnalysisState.Failed;
+            row.State = retryable ? AudioAnalysisState.Pending : AudioAnalysisState.Failed;
         }
         else
         {

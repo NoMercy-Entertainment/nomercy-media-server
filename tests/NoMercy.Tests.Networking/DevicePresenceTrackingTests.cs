@@ -9,7 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using FluentAssertions;
 using NoMercy.Networking.Messaging;
 using Xunit;
 
@@ -144,6 +143,38 @@ public sealed class DevicePresenceTrackingTests
         );
 
         results.Count(left => left).Should().Be(1);
+    }
+
+    [Fact]
+    public void Concurrent_reconnects_keep_arrivals_and_departures_balanced()
+    {
+        ConnectedClients clients = new();
+        const int workerCount = 32;
+        const int reconnectsPerWorker = 5_000;
+        int arrivals = 0;
+        int departures = 0;
+        using Barrier gate = new(workerCount);
+
+        Parallel.For(
+            0,
+            workerCount,
+            _ =>
+            {
+                gate.SignalAndWait();
+                for (int i = 0; i < reconnectsPerWorker; i++)
+                {
+                    if (clients.RegisterDeviceConnection(DeviceId))
+                        Interlocked.Increment(ref arrivals);
+
+                    if (clients.ReleaseDeviceConnection(DeviceId))
+                        Interlocked.Increment(ref departures);
+                }
+            }
+        );
+
+        arrivals.Should().Be(departures);
+        clients.RegisterDeviceConnection(DeviceId).Should().BeTrue();
+        clients.ReleaseDeviceConnection(DeviceId).Should().BeTrue();
     }
 
     [Fact]

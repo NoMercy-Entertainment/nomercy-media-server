@@ -40,6 +40,7 @@ public class GenericHttpClient
         AsyncRetryPolicy<HttpResponseMessage>? retryPolicy = Policy<HttpResponseMessage>
             .Handle<HttpRequestException>()
             .Or<TaskCanceledException>() // often indicates a timeout or network drop
+            .Or<TimeoutRejectedException>()
             .OrResult(r => r != null && IsTransientStatusCode(r.StatusCode))
             .WaitAndRetryAsync(
                 retryCount,

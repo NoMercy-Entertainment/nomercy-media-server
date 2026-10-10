@@ -77,6 +77,18 @@ public class TestAuthHandler(
             userName = SecondaryUserName;
             userEmail = SecondaryUserEmail;
         }
+        else if (
+            userIdHeader.ToString() is { Length: > 0 } rawUserId
+            && Guid.TryParse(rawUserId, out Guid impersonatedUserId)
+        )
+        {
+            // Any other well-formed id is an authenticated identity the server has
+            // never registered — what a valid Keycloak token for a stranger looks
+            // like — so permission-policy tests can prove the deny path.
+            userId = impersonatedUserId;
+            userName = "Unregistered Test User";
+            userEmail = "unregistered@nomercy.tv";
+        }
 
         Claim[] claims =
         [

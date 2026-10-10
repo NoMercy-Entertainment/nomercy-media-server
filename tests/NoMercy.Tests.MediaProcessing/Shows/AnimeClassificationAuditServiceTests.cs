@@ -15,10 +15,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
-using NoMercy.Database.Models.TvShows;
 using NoMercy.MediaProcessing.Shows;
 using NoMercy.Providers.TMDB.Models.TV;
-using Xunit;
 
 namespace NoMercy.Tests.MediaProcessing.Shows;
 

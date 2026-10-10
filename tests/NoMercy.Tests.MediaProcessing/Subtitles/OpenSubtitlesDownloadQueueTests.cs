@@ -12,7 +12,6 @@
 using System.Collections.Concurrent;
 using System.IO.Compression;
 using System.Text;
-using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.MediaProcessing.Subtitles;
 

@@ -11,7 +11,6 @@
 
 using System.Globalization;
 using NoMercy.Database.Models.Users;
-using NoMercy.NmSystem.Extensions;
 
 namespace NoMercy.Api.Services.Music;
 

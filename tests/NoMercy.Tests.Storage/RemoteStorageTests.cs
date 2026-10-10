@@ -316,6 +316,38 @@ public sealed class RemoteStorageTests
         File.Exists(lease.Path).Should().BeFalse("dispose must delete the staged temp file");
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task AcquireLocalPathAsync_removes_partial_file_when_copy_fails(bool cancelled)
+    {
+        Exception failure = cancelled
+            ? new OperationCanceledException("remote read cancelled")
+            : new IOException("remote read failed");
+        Mock<IStorageDriver> driver = new();
+        driver
+            .Setup(d => d.OpenReadIsolated("remote.bin"))
+            .Returns(() => new FailingReadStream(failure));
+        RemoteStorage storage = new(driver.Object);
+        HashSet<string> before = RemoteTempFiles();
+
+        try
+        {
+            Func<Task> act = () =>
+                storage.AcquireLocalPathAsync("remote.bin", CancellationToken.None);
+            if (cancelled)
+                await act.Should().ThrowAsync<OperationCanceledException>();
+            else
+                await act.Should().ThrowAsync<IOException>();
+
+            RemoteTempFiles().Should().BeEquivalentTo(before);
+        }
+        finally
+        {
+            DeleteNewRemoteTempFiles(before);
+        }
+    }
+
     // ------------------------------------------------------------------
     // Sync companions
     // ------------------------------------------------------------------
@@ -494,6 +526,85 @@ public sealed class RemoteStorageTests
         File.Exists(lease.Path)
             .Should()
             .BeFalse("sync AcquireLocalPath must also clean up on dispose");
+    }
+
+    [Fact]
+    public void AcquireLocalPath_removes_partial_file_when_copy_fails()
+    {
+        Mock<IStorageDriver> driver = new();
+        driver
+            .Setup(d => d.OpenReadIsolated("remote.bin"))
+            .Returns(() => new FailingReadStream(new IOException("remote read failed")));
+        RemoteStorage storage = new(driver.Object);
+        HashSet<string> before = RemoteTempFiles();
+
+        try
+        {
+            Action act = () => storage.AcquireLocalPath("remote.bin");
+            act.Should().Throw<IOException>();
+            RemoteTempFiles().Should().BeEquivalentTo(before);
+        }
+        finally
+        {
+            DeleteNewRemoteTempFiles(before);
+        }
+    }
+
+    private static HashSet<string> RemoteTempFiles() =>
+        Directory.Exists(StoragePaths.TempRoot)
+            ? Directory.GetFiles(StoragePaths.TempRoot, "nomercy-remote-*").ToHashSet()
+            : [];
+
+    private static void DeleteNewRemoteTempFiles(HashSet<string> before)
+    {
+        foreach (string path in RemoteTempFiles().Except(before))
+            File.Delete(path);
+    }
+
+    private sealed class FailingReadStream(Exception failure) : Stream
+    {
+        private bool _readOnce;
+
+        public override bool CanRead => true;
+        public override bool CanSeek => false;
+        public override bool CanWrite => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position
+        {
+            get => throw new NotSupportedException();
+            set => throw new NotSupportedException();
+        }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            if (_readOnce)
+                throw failure;
+            _readOnce = true;
+            buffer[offset] = 42;
+            return 1;
+        }
+
+        public override ValueTask<int> ReadAsync(
+            Memory<byte> buffer,
+            CancellationToken cancellationToken = default
+        )
+        {
+            if (_readOnce)
+                return ValueTask.FromException<int>(failure);
+            _readOnce = true;
+            buffer.Span[0] = 42;
+            return ValueTask.FromResult(1);
+        }
+
+        public override void Flush() => throw new NotSupportedException();
+
+        public override long Seek(long offset, SeekOrigin origin) =>
+            throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) =>
+            throw new NotSupportedException();
     }
 
     [Fact]

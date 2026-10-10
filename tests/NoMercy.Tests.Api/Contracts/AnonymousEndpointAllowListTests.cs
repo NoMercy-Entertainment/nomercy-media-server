@@ -65,8 +65,6 @@ public class AnonymousEndpointAllowListTests : IClassFixture<NoMercyApiFactory>
         "GET security/blocklist/{token} [Blocklist.Feed]",
         // Image bytes loaded by <img> tags, which send no bearer header.
         "GET images/{type}/{path} [Image.Image]",
-        // public today; under review
-        "DELETE images/{type}/{path} [Image.DeleteCache]",
         // Worker routes: HmacValidationMiddleware signs /api/v1/worker/*.
         "GET api/v{version:apiVersion}/worker-source [WorkerSource.Stream]",
         "GET api/v{version:apiVersion}/worker/source [WorkerSource.Stream]",

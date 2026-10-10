@@ -920,4 +920,16 @@
     <Key>Device not found.</Key>
     <Value lang="nl">Device not found.</Value>
   </Entry>
+  <Entry>
+    <Key>Collection not found</Key>
+    <Value lang="nl">Collection not found</Value>
+  </Entry>
+  <Entry>
+    <Key>Genres: D</Key>
+    <Value lang="nl">Genres: D</Value>
+  </Entry>
+  <Entry>
+    <Key>Genres: H</Key>
+    <Value lang="nl">Genres: H</Value>
+  </Entry>
 </I18N>

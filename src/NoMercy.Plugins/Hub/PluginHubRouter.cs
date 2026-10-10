@@ -12,7 +12,6 @@
 using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using NoMercy.PluginSdk.Abstractions;
-using NoMercy.PluginSdk.Capabilities;
 
 namespace NoMercy.PluginSdk.Hub;
 

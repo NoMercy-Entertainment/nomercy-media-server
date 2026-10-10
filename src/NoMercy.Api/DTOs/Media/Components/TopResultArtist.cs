@@ -10,9 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
-using NoMercy.Data.Repositories;
-using NoMercy.Database;
-using NoMercy.Database.Models.Music;
 
 namespace NoMercy.Api.DTOs.Media.Components;
 

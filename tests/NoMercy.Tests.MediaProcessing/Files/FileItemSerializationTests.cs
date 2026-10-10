@@ -8,13 +8,11 @@
 //
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
-using FluentAssertions;
-using MovieFileLibrary;
+
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Newtonsoft.Json.Serialization;
 using NoMercy.MediaProcessing.Files;
-using NoMercy.Providers.TMDB.Models.Shared;
 
 namespace NoMercy.Tests.MediaProcessing.Files;
 

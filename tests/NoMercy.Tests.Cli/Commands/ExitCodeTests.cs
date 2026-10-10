@@ -31,5 +31,6 @@ public sealed class ExitCodeTests
         ((int)ExitCode.ConnectionError).Should().Be(2);
         ((int)ExitCode.ServerError).Should().Be(3);
         ((int)ExitCode.Timeout).Should().Be(4);
+        ((int)ExitCode.RollbackFailed).Should().Be(5);
     }
 }

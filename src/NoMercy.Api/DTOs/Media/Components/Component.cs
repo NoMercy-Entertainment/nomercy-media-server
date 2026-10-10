@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.Api.DTOs.Music;
-using NoMercy.NmSystem.Extensions;
 
 namespace NoMercy.Api.DTOs.Media.Components;
 
@@ -80,6 +79,11 @@ public static class Component
     /// </summary>
     public static LeafComponentBuilder<NmGenreCardDto> GenreCard(NmGenreCardDto data) =>
         new LeafComponentBuilder<NmGenreCardDto>(ComponentTypes.GenreCard).WithData(data);
+
+    /// <summary>
+    /// Creates an NMGroupCard component - a group of titles drawn from their posters.
+    /// </summary>
+    public static LeafComponentBuilder<GroupCardData> GroupCard() => new(ComponentTypes.GroupCard);
 
     /// <summary>
     /// Creates an NMMusicCard component - music album/artist card.

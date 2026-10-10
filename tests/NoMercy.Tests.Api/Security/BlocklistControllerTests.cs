@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using System.Net;
-using FluentAssertions;
 using Microsoft.Extensions.DependencyInjection;
 using NoMercy.Api.Security;
 using NoMercy.Tests.Api.Infrastructure;

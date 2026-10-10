@@ -15,7 +15,6 @@ using NoMercy.Data.Repositories;
 using NoMercy.Database;
 using NoMercy.Database.Models.Media;
 using NoMercy.Tests.Repositories.Infrastructure;
-using Xunit;
 
 namespace NoMercy.Tests.Repositories;
 

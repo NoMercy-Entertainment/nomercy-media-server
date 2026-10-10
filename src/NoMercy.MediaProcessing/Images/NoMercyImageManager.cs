@@ -10,7 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.Providers.NoMercy.Client;
-using SixLabors.ImageSharp;
+using Size = System.Drawing.Size;
 
 namespace NoMercy.MediaProcessing.Images;
 

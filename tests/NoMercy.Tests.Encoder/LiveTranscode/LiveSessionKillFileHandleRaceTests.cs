@@ -19,7 +19,6 @@ using NoMercy.Encoder.Infrastructure;
 using NoMercy.Encoder.LiveTranscode;
 using NoMercy.Storage;
 using NoMercy.Tests.Encoder.Storage;
-using Xunit;
 
 namespace NoMercy.Tests.Encoder.LiveTranscode;
 
@@ -76,13 +75,8 @@ public class LiveSessionKillFileHandleRaceTests
         Skip.If(!File.Exists(fixtureVideo), $"Fixture video missing at {fixtureVideo}.");
 
         IStorage storage = TestStorageFactory.CreateLocal();
-        ILiveSegmentInventory segmentInventory = TestStorageFactory.CreateSegmentInventory(
-            storage
-        );
-        string cachePath = Path.Combine(
-            Path.GetTempPath(),
-            $"nomercy-killrace-{Guid.NewGuid():N}"
-        );
+        ILiveSegmentInventory segmentInventory = TestStorageFactory.CreateSegmentInventory(storage);
+        string cachePath = Path.Combine(Path.GetTempPath(), $"nomercy-killrace-{Guid.NewGuid():N}");
 
         EncoderOptions options = new()
         {
@@ -132,7 +126,9 @@ public class LiveSessionKillFileHandleRaceTests
         Mock<IResourceBudget> budgetMock = new();
         ResourceLease lease = new("test", null, 0, 0);
         budgetMock
-            .Setup(b => b.AcquireAsync(It.IsAny<ResourceRequirement>(), It.IsAny<CancellationToken>()))
+            .Setup(b =>
+                b.AcquireAsync(It.IsAny<ResourceRequirement>(), It.IsAny<CancellationToken>())
+            )
             .ReturnsAsync(lease);
         budgetMock.Setup(b => b.Acquire(It.IsAny<ResourceRequirement>())).Returns(lease);
         budgetMock.Setup(b => b.Release(It.IsAny<ResourceLease>()));

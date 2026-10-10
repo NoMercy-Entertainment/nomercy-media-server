@@ -333,15 +333,21 @@ internal static class LibNfs
     }
 
     // -----------------------------------------------------------------------
-    // POSIX flags
+    // Native open flags; libnfs interprets these using its build platform's fcntl.h.
     // -----------------------------------------------------------------------
 
     internal const int O_RDONLY = 0;
     internal const int O_WRONLY = 1;
     internal const int O_RDWR = 2;
-    internal const int O_CREAT = 0x40;
-    internal const int O_TRUNC = 0x200;
-    internal const int O_EXCL = 0x80;
+    internal static readonly int O_CREAT =
+        OperatingSystem.IsWindows() ? 0x100
+        : OperatingSystem.IsMacOS() ? 0x200
+        : 0x40;
+    internal static readonly int O_TRUNC = OperatingSystem.IsMacOS() ? 0x400 : 0x200;
+    internal static readonly int O_EXCL =
+        OperatingSystem.IsWindows() ? 0x400
+        : OperatingSystem.IsMacOS() ? 0x800
+        : 0x80;
 
     internal const int DefaultFileMode = 0x1A4; // 0644
 

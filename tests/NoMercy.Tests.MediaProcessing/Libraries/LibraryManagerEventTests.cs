@@ -23,7 +23,6 @@ using NoMercy.NmSystem.Extensions;
 using NoMercy.Storage;
 using NoMercy.Storage.Drivers.Local;
 using NoMercy.Storage.Factory;
-
 using NoMercy.Tests.MediaProcessing.Files;
 
 namespace NoMercy.Tests.MediaProcessing.Libraries;
@@ -166,6 +165,69 @@ public class LibraryManagerEventTests : IDisposable
         Assert.Equal("Test Movies", completed.LibraryName);
         Assert.Equal(0, completed.ItemsFound);
         Assert.True(completed.Duration >= TimeSpan.Zero);
+    }
+
+    [Fact]
+    public async Task ProcessLibrary_EmptyLibrary_PublishesZeroQueuedBetweenStartAndCompleted()
+    {
+        InMemoryEventBus bus = new();
+        List<IEvent> received = [];
+        bus.Subscribe<LibraryScanStartedEvent>(
+            (e, _) =>
+            {
+                received.Add(e);
+                return Task.CompletedTask;
+            }
+        );
+        bus.Subscribe<LibraryImportsQueuedEvent>(
+            (e, _) =>
+            {
+                received.Add(e);
+                return Task.CompletedTask;
+            }
+        );
+        bus.Subscribe<LibraryScanCompletedEvent>(
+            (e, _) =>
+            {
+                received.Add(e);
+                return Task.CompletedTask;
+            }
+        );
+
+        Ulid libraryId = Ulid.NewUlid();
+        _context.Libraries.Add(
+            new()
+            {
+                Id = libraryId,
+                Title = "Test Movies",
+                Type = "movie",
+            }
+        );
+        await _context.SaveChangesAsync();
+
+        IStorageDriver driver = new LocalStorageDriver();
+        StorageFactory storageFactory = new(driver, NullLogger<StorageFactory>.Instance);
+        LibraryManager manager = new(
+            new LibraryRepository(_context, driver),
+            new JobDispatcher(),
+            _context,
+            driver,
+            storageFactory,
+            MediaAnalyzer,
+            TestFilenameParser.Default,
+            NullLogger<LibraryManager>.Instance,
+            bus
+        );
+
+        await manager.ProcessLibrary(libraryId);
+
+        Assert.Equal(3, received.Count);
+        Assert.IsType<LibraryScanStartedEvent>(received[0]);
+        LibraryImportsQueuedEvent queued = Assert.IsType<LibraryImportsQueuedEvent>(received[1]);
+        Assert.Equal(libraryId, queued.LibraryId);
+        Assert.Equal("Test Movies", queued.LibraryName);
+        Assert.Equal(0, queued.Count);
+        Assert.IsType<LibraryScanCompletedEvent>(received[2]);
     }
 
     [Fact]

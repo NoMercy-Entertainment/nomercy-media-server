@@ -60,6 +60,16 @@ public class ServerStatusResponse
     [JsonProperty("setup_phase")]
     public string? SetupPhase { get; set; }
 
+    /// <summary>
+    /// The server's own words for setup_phase. Null from an older server that
+    /// does not send them yet; the tray then falls back to the phase name.
+    /// </summary>
+    [JsonProperty("setup_label")]
+    public string? SetupLabel { get; set; }
+
+    [JsonProperty("setup_detail")]
+    public string? SetupDetail { get; set; }
+
     [JsonProperty("internal_address")]
     public string? InternalAddress { get; set; }
 

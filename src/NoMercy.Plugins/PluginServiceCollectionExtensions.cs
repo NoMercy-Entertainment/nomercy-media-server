@@ -48,7 +48,6 @@ using NoMercy.PluginSdk.Verification;
 using NoMercy.PluginSdk.Watchdog;
 using NoMercy.Storage;
 using NoMercy.Storage.Drivers.Local;
-using NoMercy.Storage.Validation;
 
 namespace NoMercy.PluginSdk;
 
@@ -519,7 +518,6 @@ public static class PluginServiceCollectionExtensions
 
         services.AddSingleton<IPluginVerifier>(sp => new PluginVerifier([
             new AbiVerificationStage(),
-            new CodeScanVerificationStage(),
             new ChecksumVerificationStage(),
             new FileManifestVerificationStage(),
             new TrustedRepositoryVerificationStage(() => sp.GetService<IPluginRepository>()),

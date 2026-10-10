@@ -17,7 +17,6 @@ using NoMercy.Data.Services.Music;
 using NoMercy.Database.Models.Music;
 using NoMercy.Providers.Abstractions;
 using NoMercy.Providers.Lyrics;
-using Xunit;
 
 namespace NoMercy.Tests.Repositories.Services.Music;
 

@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
-using NoMercy.Encoder.Codecs;
 
 namespace NoMercy.Api.Controllers.V1.Streaming.Dtos;
 

@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using System.Reflection;
-using System.Threading;
 using NoMercy.Encoder.Codecs;
 using NoMercy.Encoder.LiveTranscode;
 

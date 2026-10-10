@@ -23,4 +23,5 @@ internal enum ExitCode
     ConnectionError = 2,
     ServerError = 3,
     Timeout = 4,
+    RollbackFailed = 5,
 }

@@ -33,6 +33,7 @@ public static class PluginRefusalCodes
     public const string ListenerUndeclared = "PLUGIN_LISTENER_UNDECLARED";
     public const string HostNotAllowed = "PLUGIN_HOST_NOT_ALLOWED";
     public const string RouteReservedPrefix = "PLUGIN_ROUTE_RESERVED_PREFIX";
+    public const string RouteChromeUnknown = "PLUGIN_ROUTE_CHROME_UNKNOWN";
     public const string RouteAccessDenied = "PLUGIN_ROUTE_ACCESS_DENIED";
     public const string AbiUnsupported = "PLUGIN_ABI_UNSUPPORTED";
     public const string ManifestInvalid = "PLUGIN_MANIFEST_INVALID";
@@ -183,6 +184,12 @@ public static class PluginRefusalCodes
             PluginRefusalSeverity.Blocked,
             "ui.mount",
             "The plugin claimed a route under the underscore prefix the host owns."
+        ),
+        new(
+            "PLUGIN_ROUTE_CHROME_UNKNOWN",
+            PluginRefusalSeverity.Blocked,
+            "ui.mount",
+            "The plugin declared a route chrome the clients do not draw. Known values are app and none."
         ),
         new(
             "PLUGIN_ROUTE_ACCESS_DENIED",

@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
-using Xunit;
 
 namespace NoMercy.Tests.MediaProcessing.Music;
 

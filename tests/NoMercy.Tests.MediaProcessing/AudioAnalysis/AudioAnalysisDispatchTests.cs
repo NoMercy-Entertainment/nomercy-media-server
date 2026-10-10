@@ -14,7 +14,6 @@ using NoMercy.Database.Models.Libraries;
 using NoMercy.MediaProcessing.AudioAnalysis;
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
 using NoMercyQueue.Core.Interfaces;
-using Xunit;
 
 namespace NoMercy.Tests.MediaProcessing.AudioAnalysis;
 

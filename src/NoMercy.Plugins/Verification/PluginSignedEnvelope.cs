@@ -37,13 +37,20 @@ public static class PluginSignedEnvelope
         params string[] signedProperties
     )
     {
-        if (!root.TryGetProperty("signature", out JsonElement signature))
+        if (
+            root.ValueKind != JsonValueKind.Object
+            || !root.TryGetProperty("signature", out JsonElement signature)
+            || signature.ValueKind != JsonValueKind.Object
+        )
             return false;
 
         if (
             !signature.TryGetProperty("alg", out JsonElement algorithm)
             || !signature.TryGetProperty("kid", out JsonElement keyId)
             || !signature.TryGetProperty("value", out JsonElement value)
+            || algorithm.ValueKind != JsonValueKind.String
+            || keyId.ValueKind != JsonValueKind.String
+            || value.ValueKind != JsonValueKind.String
         )
             return false;
 

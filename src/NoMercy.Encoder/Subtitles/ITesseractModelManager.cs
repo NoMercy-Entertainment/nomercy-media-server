@@ -15,7 +15,7 @@ public interface ITesseractModelManager
 {
     Task<string> EnsureLanguageModelAsync(string language, CancellationToken ct);
 
-    IReadOnlyList<string> GetAvailableLanguages();
+    Task<IReadOnlyList<string>> GetAvailableLanguagesAsync(CancellationToken ct);
 
     IReadOnlyList<string> GetDownloadedLanguages();
 

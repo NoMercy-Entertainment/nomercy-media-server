@@ -19,4 +19,7 @@ public class AnimeDemographicWithCountsDto
     public int TotalTvShows { get; set; }
     public int MoviesWithVideo { get; set; }
     public int TvShowsWithVideo { get; set; }
+
+    // Posters of the titles inside, for the card of a group with no image of its own.
+    public GroupPoster[] ItemPosters { get; set; } = [];
 }

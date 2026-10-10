@@ -25,14 +25,15 @@ public class Queue(QueueOptions options)
     private readonly Dictionary<string, Func<Task>> _priorityTasks = [];
     private readonly Dictionary<string, Func<Task>> _tasks = [];
 
-    private int _lastRan = Environment.TickCount;
     private int _currentlyHandled;
 
     private State _state = State.Idle;
     private QueueOptions Options { get; } = options;
     private SemaphoreSlim Semaphore { get; } = new(options.Concurrent, options.Concurrent);
 
-    private readonly Random _r = new();
+    private readonly object _rateLock = new();
+    private DateTimeOffset _nextAllowed = DateTimeOffset.MinValue;
+    private DateTimeOffset _cooldownUntil = DateTimeOffset.MinValue;
 
     public event EventHandler? Start;
     public event EventHandler? Stop;
@@ -126,16 +127,7 @@ public class Queue(QueueOptions options)
         }
     }
 
-    private Task Dequeue()
-    {
-        int interval = Math.Max(0, Options.Interval - (Environment.TickCount - _lastRan));
-        return Task.Run(async () =>
-        {
-            await Task.Delay(interval);
-            _lastRan = Environment.TickCount;
-            await Execute();
-        });
-    }
+    private Task Dequeue() => Execute();
 
     public async Task<T> Enqueue<T>(Func<Task<T>> task, string? url, bool? priority = false)
     {
@@ -158,31 +150,30 @@ public class Queue(QueueOptions options)
                 {
                     try
                     {
-                        int maxRetries = 3;
+                        int maxRetries = Options.MaxRetries;
                         for (int attempt = 0; attempt <= maxRetries; attempt++)
                         {
                             try
                             {
+                                await WaitForRateSlotAsync();
                                 T result = await task();
                                 tcs.SetResult(result);
                                 return;
                             }
                             catch (HttpRequestException ex)
                                 when (attempt < maxRetries
-                                    && ex.StatusCode
-                                        is HttpStatusCode.BadGateway
-                                            or HttpStatusCode.ServiceUnavailable
-                                            or HttpStatusCode.GatewayTimeout
-                                            or HttpStatusCode.TooManyRequests
-                                            or HttpStatusCode.Forbidden
+                                    && (
+                                        ex.StatusCode == HttpStatusCode.TooManyRequests
+                                        || (int?)ex.StatusCode is >= 500 and <= 599
+                                    )
                                 )
                             {
-                                int delay = (int)Math.Pow(2, attempt + 1) * 1000;
+                                TimeSpan delay = RetryDelay(ex, attempt);
+                                Postpone(delay);
                                 Logger.App(
-                                    $"Rate limited {ex.StatusCode} ({url}), retrying in {delay / 1000}s (attempt {attempt + 1}/{maxRetries})",
+                                    $"Provider {ex.StatusCode} ({url}), retrying in {delay.TotalSeconds:F1}s (attempt {attempt + 1}/{maxRetries})",
                                     LogEventLevel.Debug
                                 );
-                                await Task.Delay(delay);
                             }
                             catch (Exception ex)
                             {
@@ -211,6 +202,55 @@ public class Queue(QueueOptions options)
             StartQueue();
 
         return await tcs.Task;
+    }
+
+    private async Task WaitForRateSlotAsync()
+    {
+        DateTimeOffset slot;
+        lock (_rateLock)
+        {
+            DateTimeOffset now = DateTimeOffset.UtcNow;
+            slot = now > _nextAllowed ? now : _nextAllowed;
+            _nextAllowed = slot.AddMilliseconds(Options.Interval);
+        }
+
+        while (true)
+        {
+            TimeSpan wait = slot - DateTimeOffset.UtcNow;
+            if (wait > TimeSpan.Zero)
+                await Task.Delay(wait);
+
+            lock (_rateLock)
+            {
+                if (DateTimeOffset.UtcNow >= _cooldownUntil)
+                    return;
+
+                slot = _cooldownUntil > _nextAllowed ? _cooldownUntil : _nextAllowed;
+                _nextAllowed = slot.AddMilliseconds(Options.Interval);
+            }
+        }
+    }
+
+    private void Postpone(TimeSpan delay)
+    {
+        lock (_rateLock)
+        {
+            DateTimeOffset until = DateTimeOffset.UtcNow.Add(delay);
+            if (until > _cooldownUntil)
+                _cooldownUntil = until;
+            if (until > _nextAllowed)
+                _nextAllowed = until;
+        }
+    }
+
+    private TimeSpan RetryDelay(HttpRequestException exception, int attempt)
+    {
+        int exponential = Math.Min(30_000, Options.RetryBaseDelayMs * (1 << attempt));
+        int jitter = Random.Shared.Next(0, Math.Max(1, exponential / 5));
+        TimeSpan delay = TimeSpan.FromMilliseconds(exponential + jitter);
+        if (exception.Data["RetryAfter"] is TimeSpan retryAfter && retryAfter > TimeSpan.Zero)
+            delay = retryAfter;
+        return delay;
     }
 
     private void Clear()

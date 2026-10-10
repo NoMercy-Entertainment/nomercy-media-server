@@ -13,21 +13,17 @@ using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
-using NoMercy.Api.Controllers.V1.Music;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Api.DTOs.Dashboard;
 using NoMercy.Authorization;
 using NoMercy.Data.Repositories;
-using NoMercy.Database;
 using NoMercy.Database.Activity;
 using NoMercy.Database.Models.Common;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.NmSystem.Configuration;
 using NoMercy.NmSystem.SystemCalls;
 using NoMercyQueue;
-using Configuration = NoMercy.Database.Models.Common.Configuration;
 
 namespace NoMercy.Api.Controllers.V1.Dashboard.Admin;
 
@@ -108,10 +104,13 @@ public class ConfigurationController(
 
     private async Task PersistWorkerCount(string queueName, int count, Guid userId)
     {
+        if (!await queueRunner.SetWorkerCount(queueName, count, userId))
+            throw new InvalidOperationException(
+                $"{queueName} worker count could not be set to {count}"
+            );
+
         string key = $"{queueName}Runners";
         await serverConfiguration.SetValueAsync(key, count.ToString(), userId);
-
-        await queueRunner.SetWorkerCount(queueName, count, userId);
     }
 
     [HttpPost]
@@ -130,9 +129,47 @@ public class ConfigurationController(
         Guid userId = User.UserId();
         List<(string key, object? oldVal, object? newVal)> changes = [];
 
+        int?[] workerCounts =
+        [
+            request.LibraryWorkers,
+            request.ImportWorkers,
+            request.ExtrasWorkers,
+            request.EncoderWorkers,
+            request.CronWorkers,
+            request.ImageWorkers,
+            request.FileWorkers,
+            request.MusicWorkers,
+        ];
+        if (workerCounts.Any(count => count is < 0))
+            return BadRequestResponse("Worker counts must be zero or greater");
+
         if (request.DerivedAudioCapGb is < 1)
         {
             return BadRequestResponse("derived_audio_cap_gb must be at least 1");
+        }
+
+        if (request.InternalServerPort is < 0 or > 65535)
+        {
+            return BadRequestResponse("internal_port must be between 1 and 65535 (0 leaves it unchanged)");
+        }
+
+        if (request.ExternalServerPort is < 0 or > 65535)
+        {
+            return BadRequestResponse("external_port must be between 1 and 65535 (0 leaves it unchanged)");
+        }
+
+        if (
+            request.LibraryWorkers is < 0
+            || request.ImportWorkers is < 0
+            || request.ExtrasWorkers is < 0
+            || request.EncoderWorkers is < 0
+            || request.CronWorkers is < 0
+            || request.ImageWorkers is < 0
+            || request.FileWorkers is < 0
+            || request.MusicWorkers is < 0
+        )
+        {
+            return BadRequestResponse("worker counts must be at least 0");
         }
 
         if (
@@ -144,7 +181,14 @@ public class ConfigurationController(
         }
 
         bool restartRequired = await UpdatePortsAsync(request, userId, changes);
-        await UpdateWorkerCountsAsync(request, userId, changes);
+        try
+        {
+            await UpdateWorkerCountsAsync(request, userId, changes);
+        }
+        catch (InvalidOperationException exception)
+        {
+            return BadRequestResponse(exception.Message);
+        }
         await UpdateServerOptionsAsync(request, userId, changes);
         await LogChangesAsync(userId, changes);
 

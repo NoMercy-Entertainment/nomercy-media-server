@@ -122,9 +122,27 @@ public interface IStorageDriver
             $"nomercy-probe-{Guid.NewGuid():N}{Path.GetExtension(path)}"
         );
 
-        await using (Stream src = OpenReadIsolated(path))
-        await using (FileStream dst = new(tmp, FileMode.Create, FileAccess.Write, FileShare.None))
-            await src.CopyToAsync(dst, ct);
+        try
+        {
+            await using (Stream src = OpenReadIsolated(path))
+            await using (
+                FileStream dst = new(tmp, FileMode.Create, FileAccess.Write, FileShare.None)
+            )
+                await src.CopyToAsync(dst, ct);
+        }
+        catch
+        {
+            try
+            {
+                if (File.Exists(tmp))
+                    File.Delete(tmp);
+            }
+            catch
+            {
+                // best-effort cleanup
+            }
+            throw;
+        }
 
         return new(
             tmp,

@@ -15,7 +15,6 @@ using Newtonsoft.Json.Converters;
 using NoMercy.Api.Constraints;
 using NoMercy.Api.Hubs.Filters;
 using NoMercy.Api.Middleware;
-using NoMercy.Api.Plugins;
 using NoMercy.NmSystem.Information;
 using NoMercy.NmSystem.NewtonSoftConverters;
 using NoMercy.Service.Configuration.Swagger;
@@ -73,6 +72,7 @@ public static partial class ServiceConfiguration
 
                 // Add error logging filter for invalid method calls and wrong arguments
                 o.AddFilter<HubErrorLoggingFilter>();
+                o.AddFilter<HubCommandResultFilter>();
             })
             .AddNewtonsoftJsonProtocol(options =>
             {

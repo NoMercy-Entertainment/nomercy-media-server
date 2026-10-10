@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.Extensions.Logging;
+using NoMercy.Encoder.BuildingBlocks;
 using NoMercy.Encoder.Codecs;
 using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.Infrastructure;
@@ -79,8 +80,8 @@ public class WhisperTranscriber(
         int translate = options_?.TranslateToEnglish == true ? 1 : 0;
 
         string whisperFilter =
-            $"whisper=model={EscapeFilterPath(modelLease.Path)}:language={language}"
-            + $":queue={queue}:destination={EscapeFilterPath(outputLease.Path)}:format={format}"
+            $"whisper=model={FilterGraphPathEscaper.Escape(modelLease.Path)}:language={language}"
+            + $":queue={queue}:destination={FilterGraphPathEscaper.Escape(outputLease.Path)}:format={format}"
             + (translate == 1 ? ":translate=1" : "");
 
         string[] args =
@@ -151,7 +152,4 @@ public class WhisperTranscriber(
         }
         return count;
     }
-
-    private static string EscapeFilterPath(string path) =>
-        path.Replace('\\', '/').Replace(":", "\\:");
 }

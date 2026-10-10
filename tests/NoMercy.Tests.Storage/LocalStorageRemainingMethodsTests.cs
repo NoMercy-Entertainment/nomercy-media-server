@@ -136,6 +136,24 @@ public sealed class LocalStorageRemainingMethodsTests : IDisposable
     }
 
     [Fact]
+    public async Task MoveDirectoryAsync_creates_missing_destination_parent()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "async-source"));
+        File.WriteAllText(Path.Combine(_root, "async-source", "f.txt"), "x");
+
+        await _storage.MoveDirectoryAsync(
+            "async-source",
+            "new/parent/async-destination",
+            CancellationToken.None
+        );
+
+        Directory.Exists(Path.Combine(_root, "async-source")).Should().BeFalse();
+        File.Exists(Path.Combine(_root, "new", "parent", "async-destination", "f.txt"))
+            .Should()
+            .BeTrue();
+    }
+
+    [Fact]
     public void MoveDirectory_sync_moves_a_real_directory_tree()
     {
         Directory.CreateDirectory(Path.Combine(_root, "olddir2"));
@@ -145,6 +163,20 @@ public sealed class LocalStorageRemainingMethodsTests : IDisposable
 
         Directory.Exists(Path.Combine(_root, "olddir2")).Should().BeFalse();
         File.Exists(Path.Combine(_root, "newdir2", "f.txt")).Should().BeTrue();
+    }
+
+    [Fact]
+    public void MoveDirectory_sync_creates_missing_destination_parent()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "sync-source"));
+        File.WriteAllText(Path.Combine(_root, "sync-source", "f.txt"), "x");
+
+        _storage.MoveDirectory("sync-source", "new/parent/sync-destination");
+
+        Directory.Exists(Path.Combine(_root, "sync-source")).Should().BeFalse();
+        File.Exists(Path.Combine(_root, "new", "parent", "sync-destination", "f.txt"))
+            .Should()
+            .BeTrue();
     }
 
     [Fact]

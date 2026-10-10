@@ -9,6 +9,8 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using NoMercy.Events;
+using NoMercy.Events.Playback;
 using NoMercy.Networking.Cast;
 using NoMercy.Networking.Certificate;
 using NoMercy.Networking.Discovery;
@@ -83,7 +85,7 @@ public class Start
                 // CanDefer:true — a transient provisioning failure (GitHub rate limit,
                 // momentarily-empty release feed, network blip) must not permanently wedge
                 // BootStage.Binaries with no recovery path. DegradedModeRecovery retries
-                // provisioning with backoff and marks the stage once ffmpeg is on disk.
+                // provisioning with backoff and marks the stage once the failed downloads recover.
                 CanDefer: true,
                 Phase: 2,
                 DependsOn: ["NetworkProbe"]
@@ -176,6 +178,20 @@ public class Start
         if (runner.DeferredTasks.Count > 0)
         {
             IsDegradedMode = true;
+            if (runner.DeferredReasons.TryGetValue("Binaries", out string? binaryError))
+            {
+                Logger.Setup($"Playback tools download failed: {binaryError}", LogEventLevel.Error);
+                if (EventBusProvider.IsConfigured)
+                    await EventBusProvider.Current.PublishAsync(
+                        new PlaybackToolsDownloadFailedEvent
+                        {
+                            ErrorMessage = binaryError,
+                            Attempt = 1,
+                            NextRetryAtUtc = DateTimeOffset.UtcNow.AddSeconds(30),
+                        },
+                        ct
+                    );
+            }
             Logger.Setup(
                 "Some startup tasks were deferred — they will be retried in the background"
             );

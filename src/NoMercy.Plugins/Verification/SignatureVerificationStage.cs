@@ -9,8 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.PluginSdk.Abstractions;
-
 namespace NoMercy.PluginSdk.Verification;
 
 /// <summary>

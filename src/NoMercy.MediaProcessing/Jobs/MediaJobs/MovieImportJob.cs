@@ -48,7 +48,11 @@ public class MovieImportJob : AbstractMediaJob
     public override string QueueName => "import";
     public override int Priority => 5;
 
-    public override async Task Handle()
+    private bool _addedToLibrary;
+
+    public override Task Handle() => HandleWithFinishEventAsync(Import);
+
+    private async Task<int?> Import()
     {
         await using MediaContext context = new();
         JobDispatcher jobDispatcher = new();
@@ -83,7 +87,7 @@ public class MovieImportJob : AbstractMediaJob
                 LibraryId,
                 Id
             );
-            return;
+            return 0;
         }
 
         bool wasEmpty = !await context.LibraryMovie.AnyAsync(lm => lm.LibraryId == LibraryId);
@@ -102,7 +106,7 @@ public class MovieImportJob : AbstractMediaJob
                 LibraryId,
                 "TMDB movie metadata fetch returned no result after retries."
             );
-            return;
+            return null;
         }
 
         if (movieAppends.BelongsToCollection != null)
@@ -129,6 +133,8 @@ public class MovieImportJob : AbstractMediaJob
                     new LibraryRefreshedEvent { QueryKey = ["libraries"] }
                 );
         }
+
+        return _addedToLibrary ? 1 : 0;
     }
 
     internal async Task<TmdbMovieAppends?> ImportAndPublishAsync(
@@ -149,6 +155,7 @@ public class MovieImportJob : AbstractMediaJob
                 .AsNoTracking()
                 .AnyAsync(link => link.MovieId == Id);
         TmdbMovieAppends? movieAppends = await add();
+        _addedToLibrary = isNewToLibrary && movieAppends is not null;
         if (isNewToLibrary && movieAppends is not null && eventBus is not null)
             await eventBus.PublishAsync(
                 new MediaAddedEvent
