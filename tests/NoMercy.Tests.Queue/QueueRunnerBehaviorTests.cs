@@ -40,8 +40,19 @@ public class QueueRunnerBehaviorTests
     private sealed class InMemoryConfigurationStore : IConfigurationStore
     {
         private readonly ConcurrentDictionary<string, string> _values = new();
+        private readonly TimeSpan _readDelay;
 
-        public string? GetValue(string key) => _values.GetValueOrDefault(key);
+        public InMemoryConfigurationStore(TimeSpan readDelay = default)
+        {
+            _readDelay = readDelay;
+        }
+
+        public string? GetValue(string key)
+        {
+            if (_readDelay > TimeSpan.Zero)
+                Thread.Sleep(_readDelay);
+            return _values.GetValueOrDefault(key);
+        }
 
         public void SetValue(string key, string value) => _values[key] = value;
 
@@ -178,6 +189,54 @@ public class QueueRunnerBehaviorTests
         context.Jobs.Should().ContainSingle(j => j.ReservedAt == null);
 
         await runner.StopAll();
+    }
+
+    [Fact]
+    public async Task Initialize_PersistedPause_NeverReservesQueuedWorkAcross200Starts()
+    {
+        const string queue = "restore-pause-stress";
+        for (int iteration = 0; iteration < 200; iteration++)
+        {
+            TestQueueContextAdapter context = new();
+            InMemoryConfigurationStore configStore = new(TimeSpan.FromMilliseconds(20));
+            configStore.SetValue($"queue.{queue}.paused", "true");
+            QueueRunner runner = BuildRunner(context, configStore, queue, workerCount: 3);
+            for (int jobIndex = 0; jobIndex < 3; jobIndex++)
+            {
+                runner.Queue.Enqueue(
+                    new QueueJobModel
+                    {
+                        Queue = queue,
+                        Payload = SerializationHelper.Serialize(
+                            new TestJob { Message = $"must not run {jobIndex}" }
+                        ),
+                        AvailableAt = DateTime.UtcNow,
+                    }
+                );
+            }
+
+            try
+            {
+                await runner.Initialize();
+                runner.IsPaused(queue).Should().BeTrue();
+                context
+                    .Jobs.Should()
+                    .HaveCount(
+                        3,
+                        $"persisted pause must retain all queued work on startup {iteration + 1}"
+                    );
+                context
+                    .Jobs.Should()
+                    .OnlyContain(
+                        job => job.ReservedAt == null && job.Attempts == 0,
+                        $"no worker may reserve work on startup {iteration + 1}"
+                    );
+            }
+            finally
+            {
+                await runner.StopAll();
+            }
+        }
     }
 
     [Fact]

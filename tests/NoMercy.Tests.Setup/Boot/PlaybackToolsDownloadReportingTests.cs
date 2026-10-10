@@ -157,4 +157,24 @@ public sealed class PlaybackToolsDownloadReportingTests : IDisposable
         Assert.True(tasks.BinariesReady);
         Assert.Equal(2, Assert.Single(recovered).Attempt);
     }
+
+    [Fact]
+    public async Task RetryWithFfmpegPresent_StillRetriesOtherFailedDownloads()
+    {
+        DeferredTasks tasks = new();
+        int attempts = 0;
+
+        await DegradedModeRecovery.TryProvisionBinariesAsync(
+            tasks,
+            binaryExists: () => true,
+            download: () =>
+            {
+                attempts++;
+                return Task.CompletedTask;
+            }
+        );
+
+        Assert.Equal(1, attempts);
+        Assert.True(tasks.BinariesReady);
+    }
 }

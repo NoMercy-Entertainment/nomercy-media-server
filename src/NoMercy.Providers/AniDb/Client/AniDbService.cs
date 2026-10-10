@@ -23,12 +23,20 @@ namespace NoMercy.Providers.AniDb.Client;
 
 public class AniDbService : IAniDbService
 {
+    private static readonly TimeSpan LogoutTimeout = TimeSpan.FromSeconds(5);
+
     private string _username = "";
     private string _password = "";
     private SecureString? _apiKey;
 
-    private readonly Barrier _disconnectBarrier = new(2);
-    private readonly AniDBClient _client;
+    private readonly AniDBClient? _client;
+    private readonly Func<bool> _isConnected;
+    private readonly Action<Action> _logout;
+    private readonly Action _disconnect;
+    private readonly TimeSpan _logoutTimeout;
+
+    private AniDBClient Client =>
+        _client ?? throw new InvalidOperationException("AniDB client is not available.");
 
     public AniDbService()
     {
@@ -40,6 +48,10 @@ public class AniDbService : IAniDbService
                 LocalPort = (ushort)(RuntimeServerSettings.Current.ExternalServerPort + 1),
             }
         );
+        _isConnected = () => _client.IsConnected;
+        _logout = callback => _client.Logout(_ => callback());
+        _disconnect = _client.Disconnect;
+        _logoutTimeout = LogoutTimeout;
 
         UserPass? userPass = CredentialManager.Credential("AniDb");
         if (userPass == null)
@@ -52,6 +64,19 @@ public class AniDbService : IAniDbService
             return;
 
         _apiKey = CredentialManager.ConvertToSecureString(userPass.ApiKey);
+    }
+
+    internal AniDbService(
+        Func<bool> isConnected,
+        Action<Action> logout,
+        Action disconnect,
+        TimeSpan logoutTimeout
+    )
+    {
+        _isConnected = isConnected;
+        _logout = logout;
+        _disconnect = disconnect;
+        _logoutTimeout = logoutTimeout;
     }
 
     public void SetCredentials(string username, string password, string? apiKey)
@@ -72,8 +97,8 @@ public class AniDbService : IAniDbService
         {
             try
             {
-                _client.Connect();
-                _client.Login(LoginCallback, _username, _password, _apiKey);
+                Client.Connect();
+                Client.Login(LoginCallback, _username, _password, _apiKey);
             }
             catch (Exception e)
             {
@@ -87,7 +112,7 @@ public class AniDbService : IAniDbService
     {
         TaskCompletionSource<AniDBAnimeItem> tcs = new();
 
-        _client.FetchRandomAnime(
+        Client.FetchRandomAnime(
             response =>
             {
                 Logger.AniDb(response.StatusCode.ToString());
@@ -118,25 +143,36 @@ public class AniDbService : IAniDbService
         Logger.AniDb(message, LogEventLevel.Debug);
     }
 
-    private void LogoutCallback(AniDBMessageResponse message)
-    {
-        _client.Disconnect();
-        _disconnectBarrier.SignalAndWait();
-    }
-
     public void Dispose()
     {
-        if (_client.IsConnected)
-            try
-            {
-                _client.Logout(LogoutCallback);
-                _disconnectBarrier.SignalAndWait();
-            }
-            catch (Exception)
-            {
-                _client.Disconnect();
-            }
+        if (_isConnected())
+            LogoutAndDisconnect(_logout, _disconnect, _logoutTimeout);
 
         GC.SuppressFinalize(this);
+    }
+
+    private static void LogoutAndDisconnect(
+        Action<Action> logout,
+        Action disconnect,
+        TimeSpan timeout
+    )
+    {
+        TaskCompletionSource<bool> completed = new(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
+
+        try
+        {
+            logout(() => completed.TrySetResult(true));
+            completed.Task.Wait(timeout);
+        }
+        catch (Exception)
+        {
+            // A failed logout must not prevent shutdown from disconnecting.
+        }
+        finally
+        {
+            disconnect();
+        }
     }
 }

@@ -47,7 +47,7 @@ public class IntroDetectionSubscriber(
     private static readonly TimeSpan IntroScanWindow = TimeSpan.FromMinutes(3);
     private static readonly TimeSpan OutroScanWindow = TimeSpan.FromMinutes(3);
 
-    private readonly ConcurrentDictionary<int, byte> _seasonsInFlight = new();
+    private readonly ConcurrentDictionary<int, SeasonScanState> _seasonScans = new();
     private readonly List<IDisposable> _subscriptions = [];
 
     public Task StartAsync(CancellationToken cancellationToken)
@@ -98,16 +98,46 @@ public class IntroDetectionSubscriber(
             if (episode is null)
                 return; // Not an episode — movies don't have cross-episode intro matching yet.
 
-            if (!_seasonsInFlight.TryAdd(episode.SeasonId, 0))
-                return; // Another encode in the same season is already being processed.
+            SeasonScanState state = _seasonScans.GetOrAdd(episode.SeasonId, _ => new());
+            lock (state.Sync)
+            {
+                if (state.Running)
+                {
+                    state.Dirty = true;
+                    return;
+                }
+
+                state.Running = true;
+            }
 
             try
             {
-                await DetectAndPersistForSeasonAsync(scope.ServiceProvider, episode.SeasonId, ct);
+                while (true)
+                {
+                    await DetectAndPersistForSeasonAsync(
+                        scope.ServiceProvider,
+                        episode.SeasonId,
+                        ct
+                    );
+
+                    lock (state.Sync)
+                    {
+                        if (!state.Dirty)
+                        {
+                            state.Running = false;
+                            return;
+                        }
+
+                        state.Dirty = false;
+                    }
+                }
             }
             finally
             {
-                _seasonsInFlight.TryRemove(episode.SeasonId, out _);
+                lock (state.Sync)
+                {
+                    state.Running = false;
+                }
             }
         }
         catch (OperationCanceledException)
@@ -297,5 +327,12 @@ public class IntroDetectionSubscriber(
             return parsed;
 
         return TimeSpan.Zero;
+    }
+
+    private sealed class SeasonScanState
+    {
+        public object Sync { get; } = new();
+        public bool Running { get; set; }
+        public bool Dirty { get; set; }
     }
 }

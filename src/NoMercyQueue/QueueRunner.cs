@@ -167,8 +167,7 @@ public class QueueRunner
 
             foreach (string queueName in queueNames)
             {
-                string key = $"queue.{queueName}.paused";
-                if (_configurationStore.HasKey(key) && _configurationStore.GetValue(key) == "true")
+                if (IsPersistedPaused(queueName))
                 {
                     await Stop(queueName);
                     _logger.LogInformation(
@@ -240,7 +239,17 @@ public class QueueRunner
             _workers[name].WorkerInstances.Add(queueWorkerInstance);
         }
 
-        queueWorkerInstance.Start();
+        if (!IsPersistedPaused(name))
+            queueWorkerInstance.Start();
+    }
+
+    private bool IsPersistedPaused(string name)
+    {
+        if (_configurationStore is null)
+            return false;
+
+        string key = $"queue.{name}.paused";
+        return _configurationStore.HasKey(key) && _configurationStore.GetValue(key) == "true";
     }
 
     #region MyRegion

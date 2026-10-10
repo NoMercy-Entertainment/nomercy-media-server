@@ -260,12 +260,12 @@ public class PortManager : IPortManager
             || RuntimeInformation.IsOSPlatform(OSPlatform.OSX)
         )
         {
-            // Linux/macOS: lsof -i :<port>
+            // Linux/macOS: query only TCP listeners on the local port.
             try
             {
                 using Process process = new();
                 process.StartInfo.FileName = "lsof";
-                process.StartInfo.Arguments = $"-i :{port}";
+                process.StartInfo.Arguments = $"-nP -iTCP:{port} -sTCP:LISTEN";
                 process.StartInfo.RedirectStandardOutput = true;
                 process.StartInfo.UseShellExecute = false;
                 process.StartInfo.CreateNoWindow = true;
@@ -315,17 +315,19 @@ public class PortManager : IPortManager
         return -1;
     }
 
-    // lsof -i output: the second column of the first data row (after the
-    // header line) is the owning PID.
+    // lsof output: the second column of a LISTEN row is the owning PID.
     internal static int ParsePidFromLsof(string processInfo)
     {
         if (string.IsNullOrWhiteSpace(processInfo))
             return -1;
 
         string[] lines = processInfo.Split('\n');
-        if (lines.Length > 1)
+        foreach (string line in lines)
         {
-            string[] parts = lines[1].Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (!line.Contains(" (LISTEN)", StringComparison.Ordinal))
+                continue;
+
+            string[] parts = line.Split(' ', StringSplitOptions.RemoveEmptyEntries);
             if (parts.Length > 1 && int.TryParse(parts[1], out int pid))
                 return pid;
         }

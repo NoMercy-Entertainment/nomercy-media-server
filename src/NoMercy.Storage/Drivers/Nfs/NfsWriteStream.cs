@@ -101,6 +101,8 @@ internal sealed class NfsWriteStream : Stream
 
                 if (n < 0)
                     throw new IOException($"NFS write failed: {err}");
+                if (n == 0)
+                    throw new IOException("NFS write failed: libnfs wrote zero bytes");
                 written += n;
             }
             finally

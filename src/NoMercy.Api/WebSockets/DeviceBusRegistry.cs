@@ -52,9 +52,11 @@ public sealed class DeviceBusRegistry(
             await BroadcastChange(owner);
     }
 
-    public async Task Unregister(Ulid deviceId)
+    public async Task Unregister(Ulid deviceId, WebSocket ws)
     {
-        _live.TryRemove(deviceId, out _);
+        if (!_live.TryRemove(new KeyValuePair<Ulid, WebSocket>(deviceId, ws)))
+            return;
+
         _status.TryRemove(deviceId, out _);
 
         Guid? owner = await deviceStateRepository.GetOwnerAsync(deviceId);
