@@ -67,6 +67,9 @@ jobs:
           done
           dotnet pack templates/NoMercy.Plugin.Templates.csproj --configuration Release --output "$feed" --verbosity minimal
 
+          # Shared runners keep a previous copy in ~/.templateengine; drop it so the install is repeatable.
+          dotnet new uninstall NoMercy.Plugin.Templates >/dev/null 2>&1 || true
+          rm -f "$HOME"/.templateengine/packages/NoMercy.Plugin.Templates.*.nupkg
           dotnet new install "$feed"/NoMercy.Plugin.Templates.*.nupkg
           dotnet new nomercy-plugin \
             --output "$scaffold" \
