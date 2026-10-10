@@ -1193,12 +1193,13 @@ public class FileRepository(MediaContext context, IStorageDriver storageDriver) 
         if (!storageDriver.DirectoryExists(folder))
             return array;
 
-        IEnumerable<string> directories;
+        List<string> directories;
         try
         {
             directories = storageDriver
                 .EnumerateFileSystemEntries(folder, "*", SearchOption.TopDirectoryOnly)
-                .Where(e => storageDriver.DirectoryExists(e));
+                .Where(e => storageDriver.DirectoryExists(e))
+                .ToList();
         }
         catch (IOException)
         {
