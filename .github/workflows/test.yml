@@ -105,7 +105,11 @@ jobs:
   # release path (push/PR to dev) it never ran and uncategorized regressions
   # sailed straight through. It must block the release path.
   coverage:
-    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","Linux","X64","beast-unit"]') || 'ubuntu-latest' }}
+    # TEMP: Eagle because the beast-unit pool was saturated on 2026-10-11 (this gate queued over 30 minutes); revert to beast-unit when the pool recovers.
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","Linux","X64","Eagle"]') || 'ubuntu-latest' }}
+    concurrency:
+      group: eagle-test-job
+      cancel-in-progress: false
     # Nothing downstream reads a coverage artifact, so this job is a test gate, not
     # a report. Without a cap it once ran 6 hours before GitHub killed it, holding
     # the whole release chain open the entire time.
