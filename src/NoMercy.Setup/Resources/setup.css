@@ -33,6 +33,9 @@
     --nm-red-edge: #ff536184;
     --nm-red-text: #ff9592;
 
+    /* shadow, dark (tokens.css:1674) */
+    --nm-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+
     /* radii (tokens.css:1732-1734) */
     --nm-radius-lg:  0.5rem;
     --nm-radius-xl:  0.75rem;
@@ -47,7 +50,7 @@
     --card-bg:      var(--nm-surface-2);
     --border:       var(--nm-surface-4);
     --accent:       var(--nm-accent-text);
-    --accent-hsl:   var(--nm-accent-solid);
+    --accent-solid:   var(--nm-accent-solid);
     --accent-hover: var(--nm-accent-hover);
     --text:         var(--nm-surface-12);
     --muted:        var(--nm-surface-11);
@@ -64,7 +67,7 @@
 body {
     font-family: var(--nm-font-sans);
     background:
-        radial-gradient(60% 45% at 50% 0%, rgba(193, 80, 255, 0.08), transparent 70%),
+        radial-gradient(60% 45% at 50% 0%, color-mix(in srgb, var(--nm-accent-solid) 8%, transparent), transparent 70%),
         var(--bg);
     background-repeat: no-repeat;
     color: var(--text);
@@ -125,7 +128,7 @@ body {
     border: 1px solid var(--border);
     border-radius: var(--radius-card);
     padding: 28px 24px;
-    box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.25), 0 4px 6px -4px rgba(0, 0, 0, 0.25);
+    box-shadow: var(--nm-shadow-lg);
 }
 
 /* ── Login ──────────────────────────────────────────── */
@@ -170,14 +173,16 @@ body {
 .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; filter: none; }
 
 .btn-primary {
-    background: var(--accent-hsl);
+    background: var(--accent-solid);
     color: #fff;
 }
 
 .btn-primary:hover {
-    background: var(--accent-hover);
-    filter: none;
+    background: var(--accent-solid);
+    filter: brightness(0.92);
 }
+
+.btn-primary:active { filter: brightness(0.94); }
 
 .btn-outline {
     background: var(--nm-surface-3);
@@ -354,8 +359,8 @@ body {
 
 .check-row[data-state="done"] { color: var(--text); }
 .check-row[data-state="done"] .check-icon {
-    border-color: var(--accent-hsl);
-    background: var(--accent-hsl);
+    border-color: var(--accent-solid);
+    background: var(--accent-solid);
     color: #fff;
 }
 .check-row[data-state="done"] .check-icon::before { content: "\2713"; }
