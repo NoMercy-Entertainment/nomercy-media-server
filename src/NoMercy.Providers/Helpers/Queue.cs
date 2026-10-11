@@ -39,44 +39,58 @@ public class Queue(QueueOptions options)
     public event EventHandler? Stop;
     public event EventHandler? End;
 
+    // Every _state change happens under lock (_tasks), the same lock that
+    // guards the task buckets. Running therefore always means a runner that
+    // has not yet passed KeepRunning's exit step, so queued work can never
+    // sit behind a Running state with no runner (live 2026-10-11: the TMDB
+    // queue stranded every call until restart).
     private void StartQueue()
     {
-        if (_state == State.Running || IsEmpty)
-            return;
+        lock (_tasks)
+        {
+            if (_state != State.Idle || IsEmpty)
+                return;
 
-        _state = State.Running;
+            _state = State.Running;
+        }
+
         Start?.Invoke(this, EventArgs.Empty);
         _ = Task.Run(RunTasksAsync, CancellationToken.None);
     }
 
     private void StopQueue()
     {
-        _state = State.Stopped;
+        lock (_tasks)
+            _state = State.Stopped;
+
         Stop?.Invoke(this, EventArgs.Empty);
     }
 
-    private void Finish()
+    // The runner's only exit. A task enqueued before this lock is taken keeps
+    // the runner going; one enqueued after it finds Idle and starts a new one.
+    private bool KeepRunning()
     {
-        _currentlyHandled--;
+        lock (_tasks)
+        {
+            if (_state == State.Stopped)
+                return false;
 
-        if (_currentlyHandled != 0 || !IsEmpty)
-            return;
+            if (!IsEmpty)
+                return true;
 
-        // StopQueue();
-        _state = State.Idle;
+            _state = State.Idle;
+        }
+
         End?.Invoke(this, EventArgs.Empty);
+        return false;
     }
 
     private async Task RunTasksAsync()
     {
-        while (ShouldRun)
+        while (KeepRunning())
             try
             {
                 await Dequeue();
-            }
-            catch (OperationCanceledException)
-            {
-                break;
             }
             catch (Exception ex)
             {
@@ -122,7 +136,7 @@ public class Queue(QueueOptions options)
             }
             finally
             {
-                Finish();
+                _currentlyHandled--;
             }
         }
     }
@@ -198,7 +212,7 @@ public class Queue(QueueOptions options)
             );
         }
 
-        if (Options.Start && _state != State.Stopped)
+        if (Options.Start)
             StartQueue();
 
         return await tcs.Task;
@@ -274,8 +288,6 @@ public class Queue(QueueOptions options)
     }
 
     private bool IsEmpty => Size == 0;
-
-    private bool ShouldRun => !IsEmpty && _state != State.Stopped;
 
     private static bool IsExpectedTransport(Exception ex)
     {

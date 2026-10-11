@@ -337,6 +337,42 @@ public class QueueProcessorTests
         executionOrder.Should().ContainInOrder([1, 2]);
     }
 
+    // Live 2026-10-11: a StartQueue that raced the runner's drain left the
+    // queue Running with no runner, so every later Enqueue waited forever.
+    // Bursts of concurrent Enqueue calls on an idle queue hit that gap.
+    [Fact]
+    public async Task Enqueue_ConcurrentBurstsOnIdleQueue_NeverStrandsATask()
+    {
+        ProviderQueue queue = new(new() { Concurrent = 50, Interval = 0 });
+        Stopwatch budget = Stopwatch.StartNew();
+        int burst = 0;
+
+        while (budget.Elapsed < TimeSpan.FromSeconds(10))
+        {
+            Task<int>[] callers = Enumerable
+                .Range(0, 12)
+                .Select(_ =>
+                    Task.Factory.StartNew(
+                            () => queue.Enqueue(() => Task.FromResult(1), "burst"),
+                            TaskCreationOptions.LongRunning
+                        )
+                        .Unwrap()
+                )
+                .ToArray();
+            Task all = Task.WhenAll(callers);
+
+            Task finished = await Task.WhenAny(all, Task.Delay(TimeSpan.FromSeconds(3)));
+
+            finished
+                .Should()
+                .BeSameAs(
+                    all,
+                    $"burst {burst} stranded {callers.Count(caller => !caller.IsCompleted)} of 12 callers"
+                );
+            burst++;
+        }
+    }
+
     private sealed class StubHandler(Func<HttpResponseMessage> send) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(
