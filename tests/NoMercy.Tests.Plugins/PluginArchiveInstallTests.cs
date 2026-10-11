@@ -14,9 +14,11 @@ using System.Security.Cryptography;
 using System.Text;
 using FluentAssertions;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
 using NoMercy.Events;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Guests;
 using NoMercy.PluginSdk.Verification;
 using Xunit;
 
@@ -44,11 +46,16 @@ public class PluginArchiveInstallTests : IDisposable
     );
     private readonly string _pluginsDir;
     private readonly PluginManager _manager;
+    private readonly PluginGuestInstallStore _guestStore;
+    private readonly PluginRegistry _registry = new();
+    private static readonly Guid Guest = Guid.Parse("44444444-4444-4444-4444-444444444444");
+    private static readonly Ulid RadioId = Ulid.Parse("5KTKRT4Z2Y9P59Y40W5CX4TQKF");
 
     public PluginArchiveInstallTests()
     {
         _pluginsDir = Path.Combine(_tempDir, "plugins");
         Directory.CreateDirectory(_pluginsDir);
+        _guestStore = new(Path.Combine(_tempDir, "guest-store"));
 
         _manager = new(
             new InMemoryEventBus(),
@@ -56,7 +63,12 @@ public class PluginArchiveInstallTests : IDisposable
             NullLogger<PluginManager>.Instance,
             _pluginsDir,
             TestStorageHelper.CreateStorage(_pluginsDir),
-            TestStorageHelper.CreateBackend()
+            TestStorageHelper.CreateBackend(),
+            guestInstaller: new PluginGuestInstaller(
+                _guestStore,
+                new Mock<IPluginDataPurge>().Object
+            ),
+            registry: _registry
         );
     }
 
@@ -129,6 +141,59 @@ public class PluginArchiveInstallTests : IDisposable
 
     private Task Install(string archivePath, string? checksum = null) =>
         _manager.InstallPluginArchiveAsync(archivePath, checksum, CancellationToken.None);
+
+    [Fact]
+    public async Task Failed_guest_extraction_forgets_the_binding()
+    {
+        string path = Path.Combine(_tempDir, "failed-guest.zip");
+        using (ZipArchive archive = ZipFile.Open(path, ZipArchiveMode.Create))
+        {
+            Write(archive, "Example/plugin.json", Manifest);
+            WriteAssembly(archive, "Example/NoMercy.Plugin.InternetRadio.dll");
+            WriteAssembly(archive, "Example/../../escaped.dll");
+        }
+
+        Func<Task> act = () => _manager.InstallPluginArchiveAsync(path, forUser: Guest);
+
+        await act.Should().ThrowAsync<PluginVerificationException>();
+        _guestStore.GuestFor(RadioId).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Uninstalling_a_guest_plugin_forgets_the_binding_even_when_data_is_kept()
+    {
+        string path = PublishedArchive();
+        await _manager.InstallPluginArchiveAsync(path, forUser: Guest);
+        _registry[RadioId] = new(
+            new PluginInfo
+            {
+                Id = RadioId,
+                Name = "Internet Radio Provider",
+                Description = "d",
+                Version = new(1, 0, 0),
+                Status = PluginStatus.Active,
+            },
+            null,
+            null
+        );
+
+        await _manager.UninstallPluginAsync(RadioId, keepData: true);
+        await _manager.InstallPluginArchiveAsync(path);
+
+        _guestStore.GuestFor(RadioId).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Guest_install_cannot_take_over_a_server_install()
+    {
+        string path = PublishedArchive();
+        await Install(path);
+
+        Func<Task> act = () => _manager.InstallPluginArchiveAsync(path, forUser: Guest);
+
+        await act.Should().ThrowAsync<PluginVerificationException>();
+        _guestStore.GuestFor(RadioId).Should().BeNull();
+    }
 
     [Fact]
     public async Task PublishedArchive_UnpacksTheWholeFolderNotJustTheAssembly()

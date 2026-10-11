@@ -58,7 +58,14 @@ public class ContentSegmentRepository(MediaContext context) : IContentSegmentRep
             .ToListAsync();
     }
 
-    public Task<int> GetTotalCountAsync() => context.ContentSegments.CountAsync();
+    public Task<int> GetTotalCountAsync(ContentSegmentType? filterType = null)
+    {
+        IQueryable<ContentSegment> query = context.ContentSegments.AsNoTracking();
+        if (filterType.HasValue)
+            query = query.Where(s => s.SegmentType == filterType.Value);
+
+        return query.CountAsync();
+    }
 
     public Task<List<ContentSegment>> GetForMovieAsync(int movieId) =>
         context

@@ -108,6 +108,68 @@ public class HttpSourceFetcherTests
     }
 
     [Fact]
+    public async Task EnsureLocalAsync_InterruptedDownload_RetryFetchesCompleteSource()
+    {
+        string tempDir = CreateTempDir();
+        try
+        {
+            HttpSourceFetcher sut = MakeFetcher(tempDir, out FakeHandler handler);
+            EncodeTask task = MakeTask("/nonexistent/source.mkv", taskId: "t-interrupted");
+            handler.RespondWithStream(new InterruptedStream());
+
+            Func<Task> interrupted = () => sut.EnsureLocalAsync(task, CancellationToken.None);
+            await interrupted.Should().ThrowAsync<IOException>();
+
+            string cachedPath = Path.Combine(tempDir, "remote-sources", "t-interrupted.mkv");
+            File.Exists(cachedPath).Should().BeFalse("an interrupted source is not reusable");
+            Directory
+                .GetFiles(Path.GetDirectoryName(cachedPath)!, "*.part")
+                .Should()
+                .BeEmpty("failed downloads must remove temporary files");
+
+            byte[] completeSource = Encoding.UTF8.GetBytes("complete-source");
+            handler.RespondWith(HttpStatusCode.OK, completeSource);
+            string local = await sut.EnsureLocalAsync(task, CancellationToken.None);
+
+            local.Should().Be(cachedPath);
+            (await File.ReadAllBytesAsync(local)).Should().BeEquivalentTo(completeSource);
+            handler.Requests.Should().HaveCount(2);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task EnsureLocalAsync_EmptyCachedFile_ReplacesItWithCompleteSource()
+    {
+        string tempDir = CreateTempDir();
+        try
+        {
+            string cachedPath = Path.Combine(tempDir, "remote-sources", "t-empty.mkv");
+            Directory.CreateDirectory(Path.GetDirectoryName(cachedPath)!);
+            await File.WriteAllBytesAsync(cachedPath, []);
+
+            HttpSourceFetcher sut = MakeFetcher(tempDir, out FakeHandler handler);
+            byte[] completeSource = Encoding.UTF8.GetBytes("complete-source");
+            handler.RespondWith(HttpStatusCode.OK, completeSource);
+
+            string local = await sut.EnsureLocalAsync(
+                MakeTask("/nonexistent/source.mkv", taskId: "t-empty"),
+                CancellationToken.None
+            );
+
+            local.Should().Be(cachedPath);
+            (await File.ReadAllBytesAsync(local)).Should().BeEquivalentTo(completeSource);
+        }
+        finally
+        {
+            Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task EnsureLocalAsync_CoordinatorNonSuccess_Throws()
     {
         string tempDir = CreateTempDir();
@@ -219,6 +281,7 @@ public class HttpSourceFetcherTests
     {
         private HttpStatusCode _status = HttpStatusCode.OK;
         private byte[] _body = [];
+        private Stream? _stream;
         private readonly List<RequestSnapshot> _requests = [];
 
         public IReadOnlyList<RequestSnapshot> Requests
@@ -234,6 +297,13 @@ public class HttpSourceFetcherTests
         {
             _status = status;
             _body = body;
+            _stream = null;
+        }
+
+        public void RespondWithStream(Stream stream)
+        {
+            _status = HttpStatusCode.OK;
+            _stream = stream;
         }
 
         protected override Task<HttpResponseMessage> SendAsync(
@@ -246,8 +316,26 @@ public class HttpSourceFetcherTests
                 _requests.Add(new(request.RequestUri!.Query));
 
             return Task.FromResult(
-                new HttpResponseMessage(_status) { Content = new ByteArrayContent(_body) }
+                new HttpResponseMessage(_status)
+                {
+                    Content = _stream is null
+                        ? new ByteArrayContent(_body)
+                        : new StreamContent(_stream),
+                }
             );
+        }
+    }
+
+    private sealed class InterruptedStream : MemoryStream
+    {
+        public override async Task CopyToAsync(
+            Stream destination,
+            int bufferSize,
+            CancellationToken cancellationToken
+        )
+        {
+            await destination.WriteAsync("partial"u8.ToArray(), cancellationToken);
+            throw new IOException("Coordinator connection dropped");
         }
     }
 

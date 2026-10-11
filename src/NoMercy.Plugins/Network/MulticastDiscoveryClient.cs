@@ -35,6 +35,18 @@ public class MulticastDiscoveryClient : IPluginServiceDiscoveryClient, IAsyncDis
     private static readonly TimeSpan Repeat = TimeSpan.FromSeconds(60);
 
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _announcing = new();
+    private readonly Lock _announcementLock = new();
+    private readonly Func<byte[], CancellationToken, Task> _send;
+    private readonly TimeSpan _repeat;
+
+    public MulticastDiscoveryClient()
+        : this(SendMulticastAsync, Repeat) { }
+
+    internal MulticastDiscoveryClient(Func<byte[], CancellationToken, Task> send, TimeSpan repeat)
+    {
+        _send = send;
+        _repeat = repeat;
+    }
 
     public async IAsyncEnumerable<PluginDiscoveredService> BrowseAsync(
         string protocol,
@@ -82,7 +94,19 @@ public class MulticastDiscoveryClient : IPluginServiceDiscoveryClient, IAsyncDis
     )
     {
         CancellationTokenSource repeating = new();
-        _announcing[Key(protocol, instance)] = repeating;
+        CancellationToken repeatToken = repeating.Token;
+        string key = Key(protocol, instance);
+
+        lock (_announcementLock)
+        {
+            if (_announcing.TryGetValue(key, out CancellationTokenSource? previous))
+            {
+                previous.Cancel();
+                previous.Dispose();
+            }
+
+            _announcing[key] = repeating;
+        }
 
         byte[] message = MulticastDnsMessage.Announcement(
             protocol,
@@ -93,24 +117,24 @@ public class MulticastDiscoveryClient : IPluginServiceDiscoveryClient, IAsyncDis
             AnnouncementTtl
         );
 
-        await SendAsync(message, ct);
+        await _send(message, ct);
 
         _ = Task.Run(
             async () =>
             {
                 try
                 {
-                    using PeriodicTimer timer = new(Repeat);
+                    using PeriodicTimer timer = new(_repeat);
 
-                    while (await timer.WaitForNextTickAsync(repeating.Token))
-                        await SendAsync(message, repeating.Token);
+                    while (await timer.WaitForNextTickAsync(repeatToken))
+                        await _send(message, repeatToken);
                 }
                 catch (OperationCanceledException)
                 {
                     // Stopped, which is the normal way this ends.
                 }
             },
-            repeating.Token
+            repeatToken
         );
     }
 
@@ -121,29 +145,41 @@ public class MulticastDiscoveryClient : IPluginServiceDiscoveryClient, IAsyncDis
     /// </summary>
     public async Task StopAsync(string protocol, string instance, CancellationToken ct = default)
     {
-        if (_announcing.TryRemove(Key(protocol, instance), out CancellationTokenSource? repeating))
+        lock (_announcementLock)
         {
-            await repeating.CancelAsync();
-            repeating.Dispose();
+            if (
+                _announcing.TryRemove(
+                    Key(protocol, instance),
+                    out CancellationTokenSource? repeating
+                )
+            )
+            {
+                repeating.Cancel();
+                repeating.Dispose();
+            }
         }
 
-        await SendAsync(
+        await _send(
             MulticastDnsMessage.Announcement(protocol, instance, 0, null, Dns.GetHostName(), 0),
             ct
         );
     }
 
-    public async ValueTask DisposeAsync()
+    public ValueTask DisposeAsync()
     {
-        foreach (CancellationTokenSource repeating in _announcing.Values)
+        lock (_announcementLock)
         {
-            await repeating.CancelAsync();
-            repeating.Dispose();
+            foreach (CancellationTokenSource repeating in _announcing.Values)
+            {
+                repeating.Cancel();
+                repeating.Dispose();
+            }
+
+            _announcing.Clear();
         }
 
-        _announcing.Clear();
-
         GC.SuppressFinalize(this);
+        return ValueTask.CompletedTask;
     }
 
     private static string Key(string protocol, string instance) => $"{protocol}/{instance}";
@@ -162,7 +198,7 @@ public class MulticastDiscoveryClient : IPluginServiceDiscoveryClient, IAsyncDis
         return client;
     }
 
-    private static async Task SendAsync(byte[] message, CancellationToken ct)
+    private static async Task SendMulticastAsync(byte[] message, CancellationToken ct)
     {
         using UdpClient client = new();
         await client.SendAsync(message, new IPEndPoint(Group, Port), ct);

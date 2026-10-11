@@ -30,8 +30,26 @@ public class PluginGuestInstaller(
     IEventBus? events = null
 )
 {
-    public PluginRefusal? Install(PluginManifest manifest, Guid guestId)
+    public PluginRefusal? Install(
+        PluginManifest manifest,
+        Guid guestId,
+        bool alreadyInstalled = false
+    )
     {
+        Guid? existingGuest = store.GuestFor(manifest.Id.Value);
+        if (
+            (alreadyInstalled && existingGuest is null)
+            || (existingGuest is { } bound && bound != guestId)
+        )
+            return new(
+                PluginRefusalCodes.ManifestInvalid,
+                $"{manifest.Name} {manifest.Version}",
+                "The plugin id is already installed for the server or another guest.",
+                "An install cannot change who owns an existing plugin id.",
+                "Uninstall the existing plugin before installing it for this guest.",
+                PluginRefusalSeverity.Blocked
+            );
+
         string? offending = (manifest.Capabilities?.Hooks ?? []).FirstOrDefault(NotReversible);
 
         if (offending is not null)
@@ -50,6 +68,17 @@ public class PluginGuestInstaller(
         return null;
     }
 
+    public Guid? GuestFor(Ulid pluginId) => store.GuestFor(pluginId);
+
+    public void Forget(Ulid pluginId)
+    {
+        if (store.GuestFor(pluginId) is null)
+            return;
+
+        store.Forget(pluginId);
+        PluginAccessAnnouncement.Changed(events, pluginId);
+    }
+
     /// <summary>
     /// Everything that was this guest's, gone with them. The ids come back so
     /// the caller can unload what was running.
@@ -64,8 +93,7 @@ public class PluginGuestInstaller(
         foreach (Ulid pluginId in removed)
         {
             await purge.PurgeAsync(pluginId, ct);
-            store.Forget(pluginId);
-            PluginAccessAnnouncement.Changed(events, pluginId);
+            Forget(pluginId);
         }
 
         return removed;

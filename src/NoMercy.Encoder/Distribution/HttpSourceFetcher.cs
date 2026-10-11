@@ -57,9 +57,7 @@ public class HttpSourceFetcher(
 
         string cachedPath = ResolveCachePath(task);
 
-        // Idempotency: if the file already exists from a previous attempt
-        // and isn't empty, reuse it. Full hash-match check is overkill;
-        // HMAC on the coordinator's response covers integrity.
+        // Only completed downloads are moved into this path.
         if (storage.Exists(cachedPath) && storage.SizeOrZero(cachedPath) > 0)
         {
             logger.LogInformation(
@@ -69,6 +67,9 @@ public class HttpSourceFetcher(
             );
             return cachedPath;
         }
+
+        if (storage.Exists(cachedPath))
+            storage.Delete(cachedPath);
 
         storage.CreateDirectory(Path.GetDirectoryName(cachedPath)!);
 
@@ -112,12 +113,44 @@ public class HttpSourceFetcher(
             );
         }
 
-        await using (
-            Stream source = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false)
-        )
-        await using (Stream target = await storage.OpenWriteAsync(cachedPath, overwrite: true, ct))
+        string tempPath = $"{cachedPath}.{Guid.NewGuid():N}.part";
+        try
         {
-            await source.CopyToAsync(target, ct).ConfigureAwait(false);
+            await using (
+                Stream source = await response.Content.ReadAsStreamAsync(ct).ConfigureAwait(false)
+            )
+            await using (
+                Stream target = await storage.OpenWriteAsync(tempPath, overwrite: true, ct)
+            )
+            {
+                await source.CopyToAsync(target, ct).ConfigureAwait(false);
+            }
+
+            long downloadedBytes = storage.SizeOrZero(tempPath);
+            long? expectedBytes = response.Content.Headers.ContentLength;
+            if (
+                downloadedBytes == 0
+                || (expectedBytes.HasValue && downloadedBytes != expectedBytes)
+            )
+                throw new IOException("Source fetch returned an incomplete response");
+
+            storage.Move(tempPath, cachedPath);
+        }
+        catch
+        {
+            try
+            {
+                storage.Delete(tempPath);
+            }
+            catch (Exception cleanupError)
+            {
+                logger.LogWarning(
+                    cleanupError,
+                    "Failed to remove partial source at {Path}",
+                    tempPath
+                );
+            }
+            throw;
         }
 
         logger.LogInformation(

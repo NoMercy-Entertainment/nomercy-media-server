@@ -62,13 +62,25 @@ public class PluginSearchService(
         IEnumerable<Task<PluginSearchGroup?>> asked = pluginManager
             .GetInstalledPlugins()
             .Where(info => info.Status == PluginStatus.Active)
-            .Where(info =>
-                accessResolver.Resolve(info.Id, caller.Id.Value.ToGuid()) != PluginAccess.None
+            .Select(info =>
+                (info, access: accessResolver.Resolve(info.Id, caller.Id.Value.ToGuid()))
             )
-            .Select(info => (info, plugin: pluginManager.GetPluginInstance(info.Id)))
+            .Where(entry => entry.access != PluginAccess.None)
+            .Select(entry =>
+                (entry.info, entry.access, plugin: pluginManager.GetPluginInstance(entry.info.Id))
+            )
             .Where(pair => pair.plugin is ISearchablePlugin)
             .Select(pair =>
-                AskAsync(pair.info, (ISearchablePlugin)pair.plugin!, query, caller, timer.Token)
+                AskAsync(
+                    pair.info,
+                    (ISearchablePlugin)pair.plugin!,
+                    query,
+                    caller with
+                    {
+                        Access = pair.access,
+                    },
+                    timer.Token
+                )
             );
 
         PluginSearchGroup?[] answers = await Task.WhenAll(asked);
