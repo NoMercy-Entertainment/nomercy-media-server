@@ -90,6 +90,24 @@ public class TonemapSelectorOptionsTests
         snapshot.Should().Contain(d => d.Key == "plan.tonemap_unknown_algorithm_defaulted");
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task Build_bt2390_falls_back_to_hable_with_decision(bool useHdrOptions)
+    {
+        HdrOptions? options = useHdrOptions ? new("bt2390", 100) : null;
+        string? profileAlgorithm = useHdrOptions ? null : "bt2390";
+
+        TonemapPlan plan = await _selector.BuildAsync(options, profileAlgorithm, _decisions);
+
+        plan.Algorithm.Should().Be("hable");
+        plan.FilterStringFragment.Should().Contain("tonemap=tonemap=hable:desat=0");
+        plan.FilterStringFragment.Should().NotContain("bt2390");
+
+        IReadOnlyList<DecisionLog> snapshot = _decisions.Snapshot();
+        snapshot.Should().Contain(d => d.Key == "plan.tonemap_unknown_algorithm_defaulted");
+    }
+
     // -------------------------------------------------------------------------
     // Peak nits
     // -------------------------------------------------------------------------
