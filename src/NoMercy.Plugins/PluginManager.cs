@@ -422,17 +422,28 @@ public class PluginManager : IPluginManager, IDisposable
             throw new PluginVerificationException($"{sideload.Why} {sideload.Fix}");
         }
 
+        string pluginDir = _storage.CombinePath(_pluginsPath, manifest.FolderName);
+        Guid? previousGuest = _guestInstaller?.GuestFor(manifest.Id);
+        if (forUser is null && previousGuest is not null)
+            throw new PluginVerificationException(
+                "This plugin id is installed for a guest. Uninstall it before installing it for the server."
+            );
+
         // Recorded before a byte is unpacked, for the same reason: a guest's
         // plugin that is refused must never have been on the owner's disk.
         if (
             forUser is { } guest
-            && _guestInstaller?.Install(manifest.Manifest, guest) is { } denied
+            && _guestInstaller?.Install(
+                manifest.Manifest,
+                guest,
+                GetPluginInfo(manifest.Id) is not null || _driver.DirectoryExists(pluginDir)
+            )
+                is { } denied
         )
         {
             throw new PluginVerificationException($"{denied.Why} {denied.Fix}");
         }
 
-        string pluginDir = _storage.CombinePath(_pluginsPath, manifest.FolderName);
         string staging = _storage.CombinePath(
             _pluginsPath,
             PendingUpdatesFolder,
@@ -446,54 +457,63 @@ public class PluginManager : IPluginManager, IDisposable
         // version while the assembly actually running is another, and a
         // catalogue comparing versions would call it up to date and never offer
         // the update again.
-        if (_driver.DirectoryExists(staging))
+        try
         {
-            _driver.DeleteDirectory(staging, recursive: true);
-        }
-
-        _driver.CreateDirectory(staging);
-
-        await ExtractAsync(archive, manifest, staging, ct);
-
-        // The record is of the verified content, taken here before anything
-        // else can touch it; it travels with the folder through every path
-        // that applies the staged copy, now or on the next start.
-        await RecordFilesAsync(staging, ct);
-
-        // A resident plugin is unloaded and swapped live: the owner asked for an
-        // update, not a server restart, and the assembly lock that used to force
-        // one only lasts for the moment between Unload() and the GC actually
-        // freeing the file. If that moment runs longer than we are willing to
-        // wait for, the staged copy is left for the next start instead of
-        // failing the request.
-        if (IsResident(manifest.Id))
-        {
-            if (await TrySwapResidentPluginAsync(manifest.Id, staging, pluginDir, ct))
+            if (_driver.DirectoryExists(staging))
             {
-                return;
+                _driver.DeleteDirectory(staging, recursive: true);
             }
 
-            _logger.LogInformation(
-                "Plugin update for {Folder} is staged: its assembly is still loaded, so it is applied on the next start.",
-                manifest.FolderName
-            );
+            _driver.CreateDirectory(staging);
 
-            throw new PluginUpdatePendingRestartException(manifest.FolderName);
+            await ExtractAsync(archive, manifest, staging, ct);
+
+            // The record is of the verified content, taken here before anything
+            // else can touch it; it travels with the folder through every path
+            // that applies the staged copy, now or on the next start.
+            await RecordFilesAsync(staging, ct);
+
+            // A resident plugin is unloaded and swapped live: the owner asked for an
+            // update, not a server restart, and the assembly lock that used to force
+            // one only lasts for the moment between Unload() and the GC actually
+            // freeing the file. If that moment runs longer than we are willing to
+            // wait for, the staged copy is left for the next start instead of
+            // failing the request.
+            if (IsResident(manifest.Id))
+            {
+                if (await TrySwapResidentPluginAsync(manifest.Id, staging, pluginDir, ct))
+                {
+                    return;
+                }
+
+                _logger.LogInformation(
+                    "Plugin update for {Folder} is staged: its assembly is still loaded, so it is applied on the next start.",
+                    manifest.FolderName
+                );
+
+                throw new PluginUpdatePendingRestartException(manifest.FolderName);
+            }
+
+            ApplyStaged(staging, pluginDir);
+
+            // A fact about how this arrived, written beside it rather than taken
+            // from the manifest: anything a plugin says about itself is not
+            // something the server can rely on.
+            if (!fromMarketplace)
+            {
+                PluginSideloadMarker.Mark(pluginDir);
+            }
+
+            await LoadPluginFromManifestAsync(_storage.CombinePath(pluginDir, "plugin.json"), ct);
+
+            _registerScheduledWork?.Invoke(manifest.Id);
         }
-
-        ApplyStaged(staging, pluginDir);
-
-        // A fact about how this arrived, written beside it rather than taken
-        // from the manifest: anything a plugin says about itself is not
-        // something the server can rely on.
-        if (!fromMarketplace)
+        catch
         {
-            PluginSideloadMarker.Mark(pluginDir);
+            if (forUser is not null && previousGuest is null)
+                _guestInstaller?.Forget(manifest.Id);
+            throw;
         }
-
-        await LoadPluginFromManifestAsync(_storage.CombinePath(pluginDir, "plugin.json"), ct);
-
-        _registerScheduledWork?.Invoke(manifest.Id);
     }
 
     /// <summary>
@@ -1167,6 +1187,7 @@ public class PluginManager : IPluginManager, IDisposable
         // the same id is a new folder that is recorded on its first load.
         string? folder = Path.GetDirectoryName(GetPluginInfo(pluginId)?.AssemblyPath);
         await _lifecycle.UninstallPluginAsync(pluginId, keepData, ct);
+        _guestInstaller?.Forget(pluginId);
         if (folder is not null)
         {
             await RememberRecordedFolderAsync(Path.GetFileName(folder), recorded: false, ct);
