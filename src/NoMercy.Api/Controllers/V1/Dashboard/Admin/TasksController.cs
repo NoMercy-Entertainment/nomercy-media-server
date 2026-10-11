@@ -1384,53 +1384,44 @@ public class TasksController(
         if (row is null)
             return NotFoundResponse("Incomplete encode record not found");
 
-        if (Ulid.TryParse(row.FolderId, out Ulid folderUlid))
+        if (!Ulid.TryParse(row.FolderId, out Ulid folderUlid))
+            return ConflictResponse("Incomplete encode folder is invalid");
+
+        FolderLibrary? folderLibrary = await incompleteEncodeRepository.FindFolderLibraryAsync(
+            folderUlid
+        );
+        if (folderLibrary is null)
+            return ConflictResponse("Incomplete encode folder library was not found");
+
+        int mediaId;
+        try
         {
-            // Resolve the library that owns this folder.
-            FolderLibrary? folderLibrary = await incompleteEncodeRepository.FindFolderLibraryAsync(
-                folderUlid
+            mediaId = checked((int)row.MediaId);
+        }
+        catch (OverflowException)
+        {
+            return ConflictResponse("Incomplete encode media ID is out of range");
+        }
+
+        VideoFile? videoFile = await incompleteEncodeRepository.FindVideoFileForMediaAsync(mediaId);
+        if (videoFile is null)
+            return ConflictResponse("Incomplete encode video file was not found");
+
+        string inputFile =
+            videoFile.HostFolder.TrimEnd('/') + "/" + videoFile.Filename.TrimStart('/');
+
+        try
+        {
+            jobDispatcher.DispatchJob<VideoEncodeJob>(
+                folderLibrary.LibraryId,
+                folderLibrary.FolderId,
+                row.MediaId.ToString(),
+                inputFile
             );
-
-            if (folderLibrary is not null)
-            {
-                try
-                {
-                    int mediaId = checked((int)row.MediaId);
-
-                    // Pick the best available video file for this media item (movie or episode).
-                    VideoFile? videoFile =
-                        await incompleteEncodeRepository.FindVideoFileForMediaAsync(mediaId);
-
-                    if (videoFile is not null)
-                    {
-                        string inputFile =
-                            videoFile.HostFolder.TrimEnd('/')
-                            + "/"
-                            + videoFile.Filename.TrimStart('/');
-
-                        try
-                        {
-                            jobDispatcher.DispatchJob<VideoEncodeJob>(
-                                folderLibrary.LibraryId,
-                                folderLibrary.FolderId,
-                                row.MediaId.ToString(),
-                                inputFile
-                            );
-                        }
-                        catch (InvalidOperationException)
-                        {
-                            // Queue not running (e.g. server restart in progress) — the
-                            // quarantine row is removed regardless so the admin can retry
-                            // again once the queue is back up.
-                        }
-                    }
-                }
-                catch (OverflowException)
-                {
-                    // MediaId exceeds int range — cannot safely look up VideoFile.
-                    // Row is still removed so the admin can clear corrupt quarantine entries.
-                }
-            }
+        }
+        catch (InvalidOperationException)
+        {
+            return ConflictResponse("Encode queue is not running");
         }
 
         await incompleteEncodeRepository.RemoveAsync(row);
