@@ -755,6 +755,7 @@ public static partial class ServiceConfiguration
         services.AddHostedService<Subscribers.AudioAnalysisSubscriber>();
         services.AddHostedService<PaletteBackfillStartupService>();
         services.AddHostedService<MusicCoverRepairStartupService>();
+        services.AddHostedService<MusicTrackArtistRepairStartupService>();
         services.AddHostedService<AnimeEnrichmentBackfillStartupService>();
         services.AddHostedService<MusicQueryWarmupService>();
         // Singleton, not scoped: the startup service that consumes it is one,
