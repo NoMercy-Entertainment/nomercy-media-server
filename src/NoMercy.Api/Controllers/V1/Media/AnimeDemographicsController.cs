@@ -94,12 +94,12 @@ public class AnimeDemographicsController(IAnimeDemographicRepository animeDemogr
             );
         }
 
-        return Ok(new ComponentResponse { Data = components });
+        return Ok(ComponentResponse.From(LolomoPage("anime-demographics", components)));
     }
 
     [HttpGet]
     [Route("{demographicId}")]
-    [ResponseCache(Duration = 300, VaryByQueryKeys = ["take", "page"])]
+    [ResponseCache(Duration = 300, VaryByQueryKeys = ["take", "page", "version"])]
     public async Task<IActionResult> Demographic(
         int demographicId,
         [FromQuery] PageRequestDto request,
@@ -128,7 +128,20 @@ public class AnimeDemographicsController(IAnimeDemographicRepository animeDemogr
         if (demographicDetail is null || (movies.Count == 0 && tvShows.Count == 0))
             return NotFoundResponse("Anime demographic not found");
 
-        ComponentEnvelope response = TitleCardGrid("anime-demographic-items", movies, tvShows);
+        ComponentEnvelope response =
+            request.Version == "lolomo"
+                ? LolomoPage(
+                    "anime-demographic-carousels",
+                    [
+                        TitleCardCarousel(
+                            "anime-demographic-carousels",
+                            demographicDetail.TranslatedName ?? demographicDetail.Name,
+                            movies,
+                            tvShows
+                        ),
+                    ]
+                )
+                : TitleCardGrid("anime-demographic-items", movies, tvShows);
 
         return Ok(ComponentResponse.From(response));
     }

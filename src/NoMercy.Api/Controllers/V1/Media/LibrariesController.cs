@@ -16,6 +16,7 @@ using Microsoft.AspNetCore.Mvc;
 using NoMercy.Api.DTOs.Dashboard;
 using NoMercy.Api.DTOs.Media;
 using NoMercy.Api.DTOs.Media.Components;
+using NoMercy.Api.Services;
 using NoMercy.Authorization;
 using NoMercy.Data.DTOs.Specials;
 using NoMercy.Data.Repositories;
@@ -34,7 +35,12 @@ public class LibrariesController(
     ICollectionRepository collectionRepository,
     ISpecialRepository specialRepository,
     IHomeRepository homeRepository,
-    IUserPlaylistRepository userPlaylistRepository
+    IUserPlaylistRepository userPlaylistRepository,
+    IAnimeThemeRepository animeThemeRepository,
+    IAnimeDemographicRepository animeDemographicRepository,
+    IAnimeSeasonRepository animeSeasonRepository,
+    IServerConfigurationRepository serverConfigurationRepository,
+    TimeProvider timeProvider
 ) : BaseController
 {
     [HttpGet]
@@ -90,18 +96,25 @@ public class LibrariesController(
         LibraryOverview overview = overviewTask.Result;
         Dictionary<Ulid, int> itemCounts = countsTask.Result;
 
-        List<NmCarouselDto<NmCardDto>> list =
+        // Mobile carousel ids stay "library_" as they were; only the anime rows have their own.
+        List<CarouselRow> rows =
         [
-            .. overview.Libraries.Select(entry => new NmCarouselDto<NmCardDto>
-            {
-                Title = entry.Library.Title,
-                MoreLink =
-                    itemCounts.GetValueOrDefault(entry.Library.Id) > 500
-                        ? new($"/libraries/{entry.Library.Id}/letter/A", UriKind.Relative)
-                        : new($"/libraries/{entry.Library.Id}", UriKind.Relative),
-                Items = entry.Cards,
-            }),
-            .. SectionCarousels(overview, withIds: false),
+            .. overview.Libraries.Select(entry =>
+                CardRow(
+                    new()
+                    {
+                        Title = entry.Library.Title,
+                        MoreLink =
+                            itemCounts.GetValueOrDefault(entry.Library.Id) > 500
+                                ? new($"/libraries/{entry.Library.Id}/letter/A", UriKind.Relative)
+                                : new($"/libraries/{entry.Library.Id}", UriKind.Relative),
+                        Items = entry.Cards,
+                    },
+                    take: null
+                )
+            ),
+            .. await AnimeCarouselsAsync(userId, language, overview, take: 10, ct),
+            .. SectionCarousels(overview, withIds: false).Select(section => CardRow(section, null)),
         ];
 
         List<NmCardDto> genres = [];
@@ -131,24 +144,7 @@ public class LibrariesController(
             );
         }
 
-        for (int index = 0; index < list.Count; index++)
-        {
-            NmCarouselDto<NmCardDto> carouselData = list[index];
-            components.Add(
-                Component
-                    .Carousel()
-                    .WithId($"library_{carouselData.Id}")
-                    .WithTitle(carouselData.Title)
-                    .WithMoreLink(carouselData.MoreLink)
-                    .WithNavigation(
-                        index == 0 ? "home_card" : $"library_{list[index - 1].Id}",
-                        index == list.Count - 1 ? null : $"library_{list[index + 1].Id}"
-                    )
-                    .WithItems(
-                        carouselData.Items.Select(item => Component.Card().WithData(new(item)))
-                    )
-            );
-        }
+        components.AddRange(Chain(rows));
 
         return Ok(ComponentResponse.From(components));
     }
@@ -157,52 +153,197 @@ public class LibrariesController(
     [Route("tv")]
     public async Task<IActionResult> Tv(CancellationToken ct = default)
     {
+        Guid userId = User.UserId();
+        string language = Language();
+
         LibraryOverview overview = await LoadOverviewAsync(
-            User.UserId(),
-            Language(),
+            userId,
+            language,
             Country(),
             take: 6,
             _ => true,
             ct
         );
 
-        List<NmCarouselDto<NmCardDto>> list =
+        List<CarouselRow> rows =
         [
-            .. overview.Libraries.Select(entry => new NmCarouselDto<NmCardDto>
-            {
-                Id = "library_" + entry.Library.Id,
-                Title = entry.Library.Title,
-                MoreLink = new($"/libraries/{entry.Library.Id}", UriKind.Relative),
-                Items = entry.Cards,
-            }),
-            .. SectionCarousels(overview, withIds: true),
+            .. overview.Libraries.Select(entry =>
+                CardRow(
+                    new()
+                    {
+                        Id = "library_" + entry.Library.Id,
+                        Title = entry.Library.Title,
+                        MoreLink = new($"/libraries/{entry.Library.Id}", UriKind.Relative),
+                        Items = entry.Cards,
+                    },
+                    take: 6
+                )
+            ),
+            .. await AnimeCarouselsAsync(userId, language, overview, take: 6, ct),
+            .. SectionCarousels(overview, withIds: true).Select(section => CardRow(section, 6)),
         ];
 
-        List<ComponentEnvelope> components = [];
+        return Ok(ComponentResponse.From(LolomoPage("libraries", Chain(rows))));
+    }
 
-        for (int index = 0; index < list.Count; index++)
-        {
-            NmCarouselDto<NmCardDto> carouselData = list[index];
-            components.Add(
+    /// <summary>One carousel of the overview: its id, title, show-all link and cards.</summary>
+    private sealed record CarouselRow(
+        string Id,
+        string Title,
+        Uri? MoreLink,
+        IEnumerable<IComponentBuilder> Items
+    );
+
+    /// <param name="take">The most cards the row shows; null shows every card it has.</param>
+    private static CarouselRow CardRow(NmCarouselDto<NmCardDto> carousel, int? take) =>
+        new(
+            carousel.Id ?? "library_",
+            carousel.Title,
+            carousel.MoreLink,
+            (take is { } count ? carousel.Items.Take(count) : carousel.Items).Select(item =>
+                Component.Card().WithData(new(item))
+            )
+        );
+
+    /// <summary>
+    /// The rows as carousels, each linked to the row before and after it, so a TV remote
+    /// moves through them in order. The first row goes back to the home card.
+    /// </summary>
+    private static IEnumerable<ComponentEnvelope> Chain(List<CarouselRow> rows) =>
+        rows.Select(
+            (row, index) =>
                 Component
                     .Carousel()
-                    .WithId(carouselData.Id)
-                    .WithTitle(carouselData.Title)
-                    .WithMoreLink(carouselData.MoreLink)
+                    .WithId(row.Id)
+                    .WithTitle(row.Title)
+                    .WithMoreLink(row.MoreLink)
                     .WithNavigation(
-                        index == 0 ? "home_card" : list[index - 1].Id,
-                        index == list.Count - 1 ? null : list[index + 1].Id
+                        index == 0 ? "home_card" : rows[index - 1].Id,
+                        index == rows.Count - 1 ? null : rows[index + 1].Id
                     )
-                    .WithItems(
-                        carouselData
-                            .Items.Take(6)
-                            .Select(item => Component.Card().WithData(new(item)))
-                    )
-            );
-        }
+                    .WithItems(row.Items)
+                    .Build()
+        );
 
-        return Ok(ComponentResponse.From(components));
+    /// <summary>
+    /// The anime themes, demographics and seasons as rows of group cards, so a phone or TV
+    /// can reach those pages. None when no video library holds a themed title, and a group
+    /// with no title to play is left out. The order of each row is a server setting.
+    /// </summary>
+    private async Task<List<CarouselRow>> AnimeCarouselsAsync(
+        Guid userId,
+        string language,
+        LibraryOverview overview,
+        int take,
+        CancellationToken ct
+    )
+    {
+        if (
+            !LibraryNavigation.HasVideo(overview.Libraries.Select(entry => entry.Library))
+            || !await animeThemeRepository.AnyThemedTitlesAsync(ct)
+        )
+            return [];
+
+        DateOnly today = DateOnly.FromDateTime(timeProvider.GetUtcNow().UtcDateTime);
+
+        // The anime repositories share one scoped context, so the rows load one after another.
+        List<int> themeIds = await animeThemeRepository.GetTopThemeIdsAsync(
+            userId,
+            await OrderAsync(
+                ServerConfigurationKeys.AnimeCarouselOrderThemes,
+                AnimeGroupKind.Theme,
+                ct
+            ),
+            today,
+            take,
+            ct
+        );
+        List<GroupCardData> themes =
+        [
+            .. (
+                await animeThemeRepository.GetThemesWithCountsByIdsAsync(
+                    userId,
+                    language,
+                    themeIds,
+                    ct
+                )
+            )
+                .Where(theme => theme.TvShowsWithVideo > 0 || theme.MoviesWithVideo > 0)
+                .Select(theme => new GroupCardData(theme)),
+        ];
+
+        List<int> demographicIds = await animeDemographicRepository.GetTopDemographicIdsAsync(
+            userId,
+            await OrderAsync(
+                ServerConfigurationKeys.AnimeCarouselOrderDemographics,
+                AnimeGroupKind.Demographic,
+                ct
+            ),
+            today,
+            take,
+            ct
+        );
+        List<GroupCardData> demographics =
+        [
+            .. (
+                await animeDemographicRepository.GetDemographicsWithCountsByIdsAsync(
+                    userId,
+                    language,
+                    demographicIds,
+                    ct
+                )
+            )
+                .Where(demographic =>
+                    demographic.TvShowsWithVideo > 0 || demographic.MoviesWithVideo > 0
+                )
+                .Select(demographic => new GroupCardData(demographic)),
+        ];
+
+        List<int> seasonIds = await animeSeasonRepository.GetTopSeasonIdsAsync(
+            userId,
+            await OrderAsync(
+                ServerConfigurationKeys.AnimeCarouselOrderSeasons,
+                AnimeGroupKind.Season,
+                ct
+            ),
+            today,
+            take,
+            ct
+        );
+        List<GroupCardData> seasons =
+        [
+            .. (await animeSeasonRepository.GetSeasonsWithCountsByIdsAsync(userId, seasonIds, ct))
+                .Where(season => season.TvShowsWithVideo > 0 || season.MoviesWithVideo > 0)
+                .Select(season => new GroupCardData(season)),
+        ];
+
+        return
+        [
+            .. new (string Id, string Title, string Link, List<GroupCardData> Cards)[]
+            {
+                ("anime_themes", "Anime Themes", "/anime/themes", themes),
+                ("anime_demographics", "Anime Demographics", "/anime/demographics", demographics),
+                ("anime_seasons", "Anime Seasons", "/anime/seasons", seasons),
+            }
+                .Where(group => group.Cards.Count > 0)
+                .Select(group => new CarouselRow(
+                    group.Id,
+                    group.Title,
+                    new(group.Link, UriKind.Relative),
+                    group.Cards.Select(card => Component.GroupCard().WithData(card))
+                )),
+        ];
     }
+
+    private async Task<AnimeCarouselOrder> OrderAsync(
+        string key,
+        AnimeGroupKind kind,
+        CancellationToken ct
+    ) =>
+        AnimeCarouselOrderParser.Parse(
+            await serverConfigurationRepository.GetValueAsync(key, ct),
+            kind
+        );
 
     private sealed record LibraryCards(Library Library, List<NmCardDto> Cards);
 
@@ -456,7 +597,7 @@ public class LibrariesController(
             );
         }
 
-        return Ok(new ComponentResponse { Data = components });
+        return Ok(ComponentResponse.From(LolomoPage($"library-{libraryId}", components)));
     }
 
     [HttpGet]

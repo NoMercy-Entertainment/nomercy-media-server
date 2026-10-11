@@ -17,6 +17,7 @@ using NoMercy.Api.DTOs.Media;
 using NoMercy.Api.DTOs.Media.Components;
 using NoMercy.Authorization;
 using NoMercy.Data.Repositories;
+using NoMercy.NmSystem.Extensions;
 
 namespace NoMercy.Api.Controllers.V1.Media;
 
@@ -95,12 +96,12 @@ public class AnimeSeasonsController(IAnimeSeasonRepository animeSeasonRepository
             );
         }
 
-        return Ok(new ComponentResponse { Data = components });
+        return Ok(ComponentResponse.From(LolomoPage("anime-seasons", components)));
     }
 
     [HttpGet]
     [Route("{seasonId}")]
-    [ResponseCache(Duration = 300, VaryByQueryKeys = ["take", "page"])]
+    [ResponseCache(Duration = 300, VaryByQueryKeys = ["take", "page", "version"])]
     public async Task<IActionResult> Season(
         int seasonId,
         [FromQuery] PageRequestDto request,
@@ -129,8 +130,27 @@ public class AnimeSeasonsController(IAnimeSeasonRepository animeSeasonRepository
         if (seasonDetail is null || (movies.Count == 0 && tvShows.Count == 0))
             return NotFoundResponse("Anime season not found");
 
-        ComponentEnvelope response = TitleCardGrid("anime-season-items", movies, tvShows);
+        ComponentEnvelope response =
+            request.Version == "lolomo"
+                ? LolomoPage(
+                    "anime-season-carousels",
+                    [
+                        TitleCardCarousel(
+                            "anime-season-carousels",
+                            $"{QuarterName(seasonDetail.Quarter).Localize()} {seasonDetail.Year}",
+                            movies,
+                            tvShows
+                        ),
+                    ]
+                )
+                : TitleCardGrid("anime-season-items", movies, tvShows);
 
         return Ok(ComponentResponse.From(response));
     }
+
+    // The quarter is stored as "WINTER" or "winter"; the header reads "Winter".
+    private static string QuarterName(string quarter) =>
+        quarter.Length == 0
+            ? quarter
+            : char.ToUpperInvariant(quarter[0]) + quarter[1..].ToLowerInvariant();
 }

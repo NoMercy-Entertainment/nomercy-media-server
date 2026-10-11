@@ -15,4 +15,10 @@ namespace NoMercy.Data.Repositories;
 public static class ServerConfigurationKeys
 {
     public const string ServerName = "serverName";
+
+    // The order of the anime carousels on the library overview: random_daily,
+    // newest, most_titles or most_watched. Unset uses the default of each kind.
+    public const string AnimeCarouselOrderThemes = "anime_carousel_order_themes";
+    public const string AnimeCarouselOrderDemographics = "anime_carousel_order_demographics";
+    public const string AnimeCarouselOrderSeasons = "anime_carousel_order_seasons";
 }

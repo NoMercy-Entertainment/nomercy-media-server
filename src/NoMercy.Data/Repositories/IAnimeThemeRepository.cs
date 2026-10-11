@@ -24,6 +24,23 @@ public interface IAnimeThemeRepository
         CancellationToken ct = default
     );
 
+    /// <summary>The ids of the themes a carousel shows first, in that order.</summary>
+    Task<List<int>> GetTopThemeIdsAsync(
+        Guid userId,
+        AnimeCarouselOrder order,
+        DateOnly today,
+        int take,
+        CancellationToken ct = default
+    );
+
+    /// <summary>The cards of the given themes in the order of the ids; hidden themes are left out.</summary>
+    Task<List<AnimeThemeWithCountsDto>> GetThemesWithCountsByIdsAsync(
+        Guid userId,
+        string language,
+        IReadOnlyList<int> ids,
+        CancellationToken ct = default
+    );
+
     Task<(
         AnimeThemeDetailDto? Theme,
         List<HomeMovieCardDto> Movies,

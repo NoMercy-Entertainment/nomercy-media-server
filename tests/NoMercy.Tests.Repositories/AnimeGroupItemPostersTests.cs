@@ -140,6 +140,7 @@ public class AnimeGroupItemPostersTests : IDisposable
             TitleSort = "frieren",
             Popularity = 10,
             Poster = "/frieren.jpg",
+            Backdrop = "/frieren-backdrop.jpg",
             LibraryId = UserLibrary,
         };
         first.Images.Add(Poster("/frieren-en.jpg", "en", vote: 9));
@@ -158,6 +159,7 @@ public class AnimeGroupItemPostersTests : IDisposable
             TitleSort = "your name",
             Popularity = 50,
             Poster = "/your-name.jpg",
+            Backdrop = "/your-name-backdrop.jpg",
             LibraryId = UserLibrary,
         };
         second.Images.Add(Poster("/your-name-clean-low.jpg", null, vote: 3));
@@ -228,11 +230,21 @@ public class AnimeGroupItemPostersTests : IDisposable
     // is too dark, so its primary wins; the third's darkVibrant is in range.
     private static readonly string?[] ExpectedColors = ["#505050", null, "#445566"];
 
+    // The TV hero slides through the backdrops of the titles in front; a title
+    // without a backdrop sends none.
+    private static readonly string?[] ExpectedBackdrops =
+    [
+        "/frieren-backdrop.jpg",
+        "/your-name-backdrop.jpg",
+        null,
+    ];
+
     private static void AssertPosters(GroupPoster[] posters)
     {
         posters.Select(poster => poster.Src).Should().Equal(Expected);
         posters.Select(poster => poster.ColorPalette?.Dominant).Should().Equal(ExpectedPalettes);
         posters.Select(poster => poster.Color).Should().Equal(ExpectedColors);
+        posters.Select(poster => poster.Backdrop).Should().Equal(ExpectedBackdrops);
     }
 
     [Fact]

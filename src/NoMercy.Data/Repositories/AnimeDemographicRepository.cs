@@ -11,6 +11,7 @@
 
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Database;
+using NoMercy.Database.Models.Common;
 
 namespace NoMercy.Data.Repositories;
 
@@ -35,7 +36,105 @@ public class AnimeDemographicRepository(MediaContext context) : IAnimeDemographi
         // page the demographics first, then aggregate their counts with grouped
         // queries. Do not fold this back into a single projection (SQLite APPLY
         // restriction).
-        var demographics = await context
+        List<DemographicHead> demographics = await VisibleDemographics(userId)
+            .OrderBy(demographic => demographic.Name)
+            .ThenBy(demographic => demographic.Id)
+            .Skip(page * take)
+            .Take(take)
+            .Select(demographic => new DemographicHead(
+                demographic.Id,
+                demographic.Name,
+                demographic
+                    .Translations.Where(t => t.Iso6391 == language)
+                    .Select(t => t.Name)
+                    .FirstOrDefault()
+            ))
+            .ToListAsync(ct);
+
+        return await BuildCardsAsync(userId, demographics, ct);
+    }
+
+    /// <summary>
+    /// The ids of the demographics a carousel shows first. Light on purpose:
+    /// counts and dates only, no posters.
+    /// </summary>
+    public async Task<List<int>> GetTopDemographicIdsAsync(
+        Guid userId,
+        AnimeCarouselOrder order,
+        DateOnly today,
+        int take,
+        CancellationToken ct = default
+    )
+    {
+        List<GroupHead> heads = await VisibleDemographics(userId)
+            .Select(demographic => new GroupHead(demographic.Id, demographic.Name, 0, string.Empty))
+            .ToListAsync(ct);
+
+        List<GroupLink> tvLinks = await context
+            .AnimeDemographicTv.AsNoTracking()
+            .Where(link => link.Tv.Library.LibraryUsers.Any(u => u.UserId == userId))
+            .Select(link => new GroupLink(link.AnimeDemographicId, link.TvId))
+            .ToListAsync(ct);
+        List<GroupMovieLink> movieLinks = await context
+            .AnimeDemographicMovie.AsNoTracking()
+            .Where(link =>
+                link.Movie.Library.LibraryUsers.Any(u => u.UserId == userId)
+                && link.Movie.VideoFiles.Any(v => v.Folder != null)
+            )
+            .Select(link => new GroupMovieLink(
+                link.AnimeDemographicId,
+                link.MovieId,
+                link.Movie.CreatedAt
+            ))
+            .ToListAsync(ct);
+
+        List<GroupRankRow> rows = await AnimeGroupRankingQueries.RankRowsAsync(
+            context,
+            userId,
+            heads,
+            tvLinks,
+            movieLinks,
+            ct
+        );
+
+        return AnimeGroupRanking.TopIds(rows, order, AnimeGroupKind.Demographic, today, take);
+    }
+
+    /// <summary>
+    /// The cards of the given demographics, in the order of
+    /// <paramref name="ids"/>. A demographic the user cannot see is left out.
+    /// </summary>
+    public async Task<List<AnimeDemographicWithCountsDto>> GetDemographicsWithCountsByIdsAsync(
+        Guid userId,
+        string language,
+        IReadOnlyList<int> ids,
+        CancellationToken ct = default
+    )
+    {
+        List<int> wanted = [.. ids];
+        List<DemographicHead> demographics = await VisibleDemographics(userId)
+            .Where(demographic => wanted.Contains(demographic.Id))
+            .Select(demographic => new DemographicHead(
+                demographic.Id,
+                demographic.Name,
+                demographic
+                    .Translations.Where(t => t.Iso6391 == language)
+                    .Select(t => t.Name)
+                    .FirstOrDefault()
+            ))
+            .ToListAsync(ct);
+
+        Dictionary<int, AnimeDemographicWithCountsDto> cards = (
+            await BuildCardsAsync(userId, demographics, ct)
+        ).ToDictionary(card => card.Id);
+
+        return [.. wanted.Where(cards.ContainsKey).Select(id => cards[id])];
+    }
+
+    private sealed record DemographicHead(int Id, string Name, string? TranslatedName);
+
+    private IQueryable<AnimeDemographic> VisibleDemographics(Guid userId) =>
+        context
             .AnimeDemographics.AsNoTracking()
             .Where(demographic =>
                 demographic.AnimeDemographicMovies.Any(d =>
@@ -44,22 +143,14 @@ public class AnimeDemographicRepository(MediaContext context) : IAnimeDemographi
                 || demographic.AnimeDemographicTvShows.Any(d =>
                     d.Tv.Library.LibraryUsers.Any(u => u.UserId == userId)
                 )
-            )
-            .OrderBy(demographic => demographic.Name)
-            .ThenBy(demographic => demographic.Id)
-            .Skip(page * take)
-            .Take(take)
-            .Select(demographic => new
-            {
-                demographic.Id,
-                demographic.Name,
-                TranslatedName = demographic
-                    .Translations.Where(t => t.Iso6391 == language)
-                    .Select(t => t.Name)
-                    .FirstOrDefault(),
-            })
-            .ToListAsync(ct);
+            );
 
+    private async Task<List<AnimeDemographicWithCountsDto>> BuildCardsAsync(
+        Guid userId,
+        List<DemographicHead> demographics,
+        CancellationToken ct
+    )
+    {
         if (demographics.Count == 0)
             return [];
 

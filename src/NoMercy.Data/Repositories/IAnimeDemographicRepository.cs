@@ -21,6 +21,23 @@ public interface IAnimeDemographicRepository
         CancellationToken ct = default
     );
 
+    /// <summary>The ids of the demographics a carousel shows first, in that order.</summary>
+    Task<List<int>> GetTopDemographicIdsAsync(
+        Guid userId,
+        AnimeCarouselOrder order,
+        DateOnly today,
+        int take,
+        CancellationToken ct = default
+    );
+
+    /// <summary>The cards of the given demographics in the order of the ids; hidden ones are left out.</summary>
+    Task<List<AnimeDemographicWithCountsDto>> GetDemographicsWithCountsByIdsAsync(
+        Guid userId,
+        string language,
+        IReadOnlyList<int> ids,
+        CancellationToken ct = default
+    );
+
     Task<(
         AnimeDemographicDetailDto? Demographic,
         List<HomeMovieCardDto> Movies,
