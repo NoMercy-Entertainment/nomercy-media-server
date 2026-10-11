@@ -43,9 +43,9 @@ public class GenresController : BaseController
         Guid userId = User.UserId();
 
         List<MusicGenreCardDto> genreCards = await _genreRepository.GetMusicGenreCardsAsync(userId);
-        IEnumerable<NmGenreCardDto> allGenres = genreCards
-            .Select(genre => new NmGenreCardDto(genre))
-            .DistinctBy(genre => genre.Title);
+        IEnumerable<MusicGenreCardDto> allGenres = genreCards.DistinctBy(genre =>
+            genre.Name.ToTitleCase()
+        );
 
         bool isLolomo = string.Equals(
             request.Version,
@@ -55,18 +55,18 @@ public class GenresController : BaseController
 
         if (isLolomo)
         {
-            List<IGrouping<string, NmGenreCardDto>> groups =
+            List<IGrouping<string, MusicGenreCardDto>> groups =
             [
                 .. allGenres
-                    .GroupBy(g => AlphaBucket.LetterFor(g.Title))
+                    .GroupBy(g => AlphaBucket.LetterFor(g.Name.ToTitleCase()))
                     .OrderBy(g => g.Key == "#" ? "zz" : g.Key),
             ];
 
-            List<ComponentEnvelope> items = [Component.Container()];
+            List<ComponentEnvelope> items = [];
 
             for (int i = 0; i < groups.Count; i++)
             {
-                IGrouping<string, NmGenreCardDto> group = groups[i];
+                IGrouping<string, MusicGenreCardDto> group = groups[i];
                 string id = $"genres-{group.Key.ToLowerInvariant()}";
                 string? prevId = i == 0 ? null : $"genres-{groups[i - 1].Key.ToLowerInvariant()}";
                 string? nextId =
@@ -78,16 +78,16 @@ public class GenresController : BaseController
                         .WithId(id)
                         .WithNavigation(prevId, nextId)
                         .WithTitle($"Genres: {group.Key}".Localize())
-                        .WithItems(group.Select(Component.GenreCard))
+                        .WithItems(group.Select(Component.GroupCard))
                 );
             }
 
-            return Ok(ComponentResponse.From(items));
+            return Ok(ComponentResponse.From(LolomoPage("genres-carousels", items)));
         }
 
         ComponentEnvelope response = Component
             .Grid()
-            .WithItems(allGenres.Select(Component.GenreCard));
+            .WithItems(allGenres.Select(Component.GroupCard));
 
         return Ok(ComponentResponse.From(response));
     }
@@ -108,9 +108,9 @@ public class GenresController : BaseController
                 request.Take,
                 request.Page
             );
-        IEnumerable<NmGenreCardDto> genres = genreCards
-            .Select(genre => new NmGenreCardDto(genre))
-            .DistinctBy(genre => genre.Title);
+        IEnumerable<MusicGenreCardDto> genres = genreCards.DistinctBy(genre =>
+            genre.Name.ToTitleCase()
+        );
 
         string displayLetter = letter == "_" ? "#" : letter.ToUpperInvariant();
 
@@ -124,22 +124,21 @@ public class GenresController : BaseController
         {
             List<ComponentEnvelope> items =
             [
-                Component.Container(),
                 Component
                     .Carousel()
                     .WithId($"genres-{letter}")
                     .WithTitle($"Genres: {displayLetter}".Localize())
-                    .WithItems(genres.Select(Component.GenreCard)),
+                    .WithItems(genres.Select(Component.GroupCard)),
             ];
 
-            return Ok(ComponentResponse.From(items));
+            return Ok(ComponentResponse.From(LolomoPage($"genres-{letter}", items)));
         }
 
         ComponentEnvelope grid = Component
             .Grid()
             .WithId($"genres-{letter}")
             .WithTitle($"Genres: {displayLetter}".Localize())
-            .WithItems(genres.Select(Component.GenreCard));
+            .WithItems(genres.Select(Component.GroupCard));
 
         return Ok(ComponentResponse.From(grid));
     }
@@ -157,6 +156,13 @@ public class GenresController : BaseController
         if (genre is null)
             return NotFoundResponse("Albums not found");
 
-        return Ok(new GenreResponseDto { Data = new(genre, language) });
+        GroupPoster[] covers = await _genreRepository.GetMusicGenreCoversAsync(userId, id);
+
+        return Ok(
+            new GenreResponseDto
+            {
+                Data = new(genre, language) { ItemPosters = MusicCover.Served(covers) },
+            }
+        );
     }
 }

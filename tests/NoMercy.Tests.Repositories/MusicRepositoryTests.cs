@@ -395,6 +395,17 @@ public class MusicRepositoryTests : IDisposable
         Assert.NotNull(tracks);
     }
 
+    // Stoney, 2026-10-06: "albums need their artist in the header".
+    [Fact]
+    public async Task AlbumCards_CarryTheirArtist()
+    {
+        List<AlbumCardDto> cards = await _repository.GetAlbumCardsByIdsAsync([AlbumId1]);
+        MusicStartPageData start = await _repository.GetMusicStartPageAsync(SeedConstants.UserId);
+
+        Assert.Equal("Arctic Monkeys", Assert.Single(cards).ArtistName);
+        Assert.Contains(start.LatestAlbums, album => album.ArtistName == "Arctic Monkeys");
+    }
+
     #endregion
 
     public void Dispose()

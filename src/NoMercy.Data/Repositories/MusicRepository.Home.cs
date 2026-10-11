@@ -275,6 +275,7 @@ public partial class MusicRepository
                     List<PlaylistCardDto> playlists = await GetPlaylistCardsQuery(ctx, userId)
                         .Take(36)
                         .ToListAsync(ct);
+                    await MusicGroupCovers.FillPlaylistsAsync(ctx, playlists, ct);
                     return (artists, albums, playlists);
                 },
                 ct
@@ -291,6 +292,7 @@ public partial class MusicRepository
                     List<MusicGenreCardDto> genres = await GetLatestGenreCardsQuery(ctx)
                         .Take(36)
                         .ToListAsync(ct);
+                    await MusicGroupCovers.FillGenresAsync(ctx, userId, genres, ct);
                     List<AlbumCardDto> albums = await GetLatestAlbumCardsQuery(ctx)
                         .Take(36)
                         .ToListAsync(ct);
@@ -460,6 +462,10 @@ public partial class MusicRepository
                 Folder = albumUser.Album.Folder,
                 Year = albumUser.Album.Year,
                 TrackCount = albumUser.Album.AlbumTrack.Count(),
+                ArtistName = albumUser
+                    .Album.AlbumArtist.OrderBy(link => link.Artist.Name)
+                    .Select(link => link.Artist.Name)
+                    .FirstOrDefault(),
                 Link = new($"/music/albums/{albumUser.Album.Id}", UriKind.Relative),
             });
     }
@@ -544,6 +550,10 @@ public partial class MusicRepository
                 Folder = album.Folder,
                 Year = album.Year,
                 TrackCount = album.AlbumTrack.Count(),
+                ArtistName = album
+                    .AlbumArtist.OrderBy(link => link.Artist.Name)
+                    .Select(link => link.Artist.Name)
+                    .FirstOrDefault(),
                 Link = new($"/music/albums/{album.Id}", UriKind.Relative),
             });
     }

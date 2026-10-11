@@ -152,6 +152,10 @@ public partial class MusicRepository
                 Folder = album.Folder,
                 Year = album.Year,
                 TrackCount = album.AlbumTrack.Count(at => at.Track.Duration != null),
+                ArtistName = album
+                    .AlbumArtist.OrderBy(link => link.Artist.Name)
+                    .Select(link => link.Artist.Name)
+                    .FirstOrDefault(),
                 TranslatedDescription = album
                     .Translations.Where(t => t.Iso31661 == language)
                     .Select(t => t.Description)
@@ -197,6 +201,10 @@ public partial class MusicRepository
                 Folder = album.Folder,
                 Year = album.Year,
                 TrackCount = album.AlbumTrack.Count(at => at.Track.Duration != null),
+                ArtistName = album
+                    .AlbumArtist.OrderBy(link => link.Artist.Name)
+                    .Select(link => link.Artist.Name)
+                    .FirstOrDefault(),
                 TranslatedDescription = album
                     .Translations.Where(t => t.Iso31661 == language)
                     .Select(t => t.Description)
@@ -236,6 +244,10 @@ public partial class MusicRepository
                 Folder = album.Folder,
                 Year = album.Year,
                 TrackCount = album.AlbumTrack.Count(),
+                ArtistName = album
+                    .AlbumArtist.OrderBy(link => link.Artist.Name)
+                    .Select(link => link.Artist.Name)
+                    .FirstOrDefault(),
             })
             .Take(take)
             .ToListAsync(ct);
@@ -265,6 +277,10 @@ public partial class MusicRepository
                 Folder = albumUser.Album.Folder,
                 Year = albumUser.Album.Year,
                 TrackCount = albumUser.Album.AlbumTrack.Count(),
+                ArtistName = albumUser
+                    .Album.AlbumArtist.OrderBy(link => link.Artist.Name)
+                    .Select(link => link.Artist.Name)
+                    .FirstOrDefault(),
             })
             .Take(take)
             .ToListAsync(ct);
@@ -291,6 +307,10 @@ public partial class MusicRepository
                 Folder = album.Folder,
                 Year = album.Year,
                 TrackCount = album.AlbumTrack.Count(),
+                ArtistName = album
+                    .AlbumArtist.OrderBy(link => link.Artist.Name)
+                    .Select(link => link.Artist.Name)
+                    .FirstOrDefault(),
             })
             .ToListAsync(ct);
     }

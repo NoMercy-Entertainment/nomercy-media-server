@@ -376,7 +376,7 @@ public partial class MusicRepository
     )
     {
         await using MediaContext mediaContext = await contextFactory.CreateDbContextAsync(ct);
-        return await mediaContext
+        List<PlaylistCardDto> playlists = await mediaContext
             .Playlists.AsNoTracking()
             .Where(playlist => playlist.UserId == userId)
             .OrderBy(playlist => playlist.Name)
@@ -392,6 +392,7 @@ public partial class MusicRepository
             })
             .Take(take)
             .ToListAsync(ct);
+        return await MusicGroupCovers.FillPlaylistsAsync(mediaContext, playlists, ct);
     }
 
     public async Task<List<PlaylistCardDto>> GetPlaylistCardsByIdsAsync(
@@ -400,7 +401,7 @@ public partial class MusicRepository
     )
     {
         await using MediaContext mediaContext = await contextFactory.CreateDbContextAsync(ct);
-        return await mediaContext
+        List<PlaylistCardDto> playlists = await mediaContext
             .Playlists.AsNoTracking()
             .Where(playlist => playlistIds.Contains(playlist.Id))
             .Select(playlist => new PlaylistCardDto
@@ -413,6 +414,7 @@ public partial class MusicRepository
                 TrackCount = playlist.Tracks.Count(),
             })
             .ToListAsync(ct);
+        return await MusicGroupCovers.FillPlaylistsAsync(mediaContext, playlists, ct);
     }
 
     #endregion

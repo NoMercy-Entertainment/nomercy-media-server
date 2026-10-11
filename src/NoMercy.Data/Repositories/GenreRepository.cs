@@ -491,12 +491,12 @@ public class GenreRepository(MediaContext context) : IGenreRepository
             .ToListAsync(ct);
     }
 
-    public Task<List<MusicGenreCardDto>> GetMusicGenreCardsAsync(
+    public async Task<List<MusicGenreCardDto>> GetMusicGenreCardsAsync(
         Guid userId,
         CancellationToken ct = default
     )
     {
-        return context
+        List<MusicGenreCardDto> genres = await context
             .MusicGenres.AsNoTracking()
             .Where(genre =>
                 genre.AlbumMusicGenres.Any(g =>
@@ -516,6 +516,8 @@ public class GenreRepository(MediaContext context) : IGenreRepository
                 TrackCount = genre.MusicGenreTracks.Count(),
             })
             .ToListAsync(ct);
+
+        return await MusicGroupCovers.FillGenresAsync(context, userId, genres, ct);
     }
 
     public Task<List<MusicGenre>> GetPaginatedMusicGenresAsync(
@@ -550,7 +552,7 @@ public class GenreRepository(MediaContext context) : IGenreRepository
             .ToListAsync(ct);
     }
 
-    public Task<List<MusicGenreCardDto>> GetPaginatedMusicGenreCardsAsync(
+    public async Task<List<MusicGenreCardDto>> GetPaginatedMusicGenreCardsAsync(
         Guid userId,
         string letter,
         int take,
@@ -558,7 +560,7 @@ public class GenreRepository(MediaContext context) : IGenreRepository
         CancellationToken ct = default
     )
     {
-        return context
+        List<MusicGenreCardDto> genres = await context
             .MusicGenres.AsNoTracking()
             .Where(genre =>
                 genre.AlbumMusicGenres.Any(g =>
@@ -585,6 +587,23 @@ public class GenreRepository(MediaContext context) : IGenreRepository
                 TrackCount = genre.MusicGenreTracks.Count(),
             })
             .ToListAsync(ct);
+
+        return await MusicGroupCovers.FillGenresAsync(context, userId, genres, ct);
+    }
+
+    public async Task<GroupPoster[]> GetMusicGenreCoversAsync(
+        Guid userId,
+        Guid genreId,
+        CancellationToken ct = default
+    )
+    {
+        Dictionary<Guid, GroupPoster[]> covers = await MusicGroupCovers.ForGenresAsync(
+            context,
+            userId,
+            [genreId],
+            ct
+        );
+        return covers.GetValueOrDefault(genreId) ?? [];
     }
 
     public Task<MusicGenre?> GetMusicGenreAsync(
