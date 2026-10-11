@@ -5,29 +5,71 @@
 }
 
 /* ── Design tokens ──────────────────────────────────── */
+/* Copied from the web app (clients/nomercy-app-web/src/components/nm/tokens.css,
+   dark scheme, default purple accent) so this page looks like the product the
+   user is about to open. Standalone on purpose: the page has no build step. */
 
 :root {
-    --bg:           #0a0a0f;
-    --card-bg:      #16161e;
-    --border:       #2a2a3a;
-    --accent:       #CBAFFF;
-    --accent-hsl:   hsl(270, 100%, 72%);
-    --accent-hover: hsl(270, 100%, 65%);
-    --text:         #e8e8ed;
-    --muted:        #9898a6;
-    --error-bg:     #1c0a0a;
-    --error-border: #5c2040;
-    --error-text:   #f08080;
-    --radius-card:  12px;
-    --radius-btn:   8px;
-    --radius-sm:    6px;
+    color-scheme: dark;
+
+    /* slate, dark: tokens.css:1501-1512 */
+    --nm-surface-1:  #111113;
+    --nm-surface-2:  #18191b;
+    --nm-surface-3:  #212225;
+    --nm-surface-4:  #272a2d;
+    --nm-surface-6:  #363a3f;
+    --nm-surface-11: #b0b4ba;
+    --nm-surface-12: #edeef0;
+
+    /* purple, dark: the app's default accent (tokens.css:1101-1111) */
+    --nm-accent-solid: #8e4ec6;
+    --nm-accent-hover: #9a5cd0;
+    --nm-accent-text:  #d19dff;
+    --nm-accent-fill:  #c150ff2d;
+    --nm-accent-edge:  #c378fd7a;
+
+    /* red, dark (tokens.css:1011-1015, 1007) */
+    --nm-red-fill: #ff173f2d;
+    --nm-red-edge: #ff536184;
+    --nm-red-text: #ff9592;
+
+    /* shadow, dark (tokens.css:1674) */
+    --nm-shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+
+    /* radii (tokens.css:1732-1734) */
+    --nm-radius-lg:  0.5rem;
+    --nm-radius-xl:  0.75rem;
+    --nm-radius-2xl: 1rem;
+
+    /* fonts (tokens.css:1840, 1844) */
+    --nm-font-sans: 'Inter', system-ui, -apple-system, sans-serif;
+    --nm-font-mono: 'SF Mono', 'Fira Code', ui-monospace, monospace;
+
+    /* names this page already used, now fed by the tokens above */
+    --bg:           var(--nm-surface-1);
+    --card-bg:      var(--nm-surface-2);
+    --border:       var(--nm-surface-4);
+    --accent:       var(--nm-accent-text);
+    --accent-solid:   var(--nm-accent-solid);
+    --accent-hover: var(--nm-accent-hover);
+    --text:         var(--nm-surface-12);
+    --muted:        var(--nm-surface-11);
+    --error-bg:     var(--nm-red-fill);
+    --error-border: var(--nm-red-edge);
+    --error-text:   var(--nm-red-text);
+    --radius-card:  var(--nm-radius-2xl);
+    --radius-btn:   var(--nm-radius-lg);
+    --radius-sm:    var(--nm-radius-lg);
 }
 
 /* ── Base ───────────────────────────────────────────── */
 
 body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-    background: var(--bg);
+    font-family: var(--nm-font-sans);
+    background:
+        radial-gradient(60% 45% at 50% 0%, color-mix(in srgb, var(--nm-accent-solid) 8%, transparent), transparent 70%),
+        var(--bg);
+    background-repeat: no-repeat;
     color: var(--text);
     min-height: 100vh;
     display: flex;
@@ -36,31 +78,36 @@ body {
     -webkit-font-smoothing: antialiased;
 }
 
+:focus-visible {
+    outline: 2px solid var(--nm-accent-solid);
+    outline-offset: 2px;
+}
+
 /* ── Layout ─────────────────────────────────────────── */
 
 .container {
     width: 100%;
     max-width: 440px;
-    padding: 24px;
+    padding: 24px 16px;
 }
 
 /* ── Logo ───────────────────────────────────────────── */
 
 .logo {
     text-align: center;
-    margin-bottom: 40px;
+    margin-bottom: 28px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
 }
 
 .logo svg {
-    --color-logo-front: hsl(270, 50%, 85%);
-    --color-logo-back:  hsl(270, 50%, 40%);
-    --color-logo-text:  hsl(270, 50%, 40%);
-    --color-logo-brand: hsl(270, 50%, 85%);
-    width: 240px;
+    --color-logo-front: var(--nm-accent-text);
+    --color-logo-back:  var(--nm-accent-solid);
+    --color-logo-text:  var(--nm-accent-solid);
+    --color-logo-brand: var(--nm-accent-text);
+    width: 220px;
     height: auto;
     display: block;
 }
@@ -71,22 +118,31 @@ body {
     font-weight: 500;
 }
 
-/* ── Steps ──────────────────────────────────────────── */
+/* ── Steps: each one is a card, like the app's surfaces ── */
 
 .step { display: none; }
-.step.active { display: block; }
+
+.step.active {
+    display: block;
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card);
+    padding: 28px 24px;
+    box-shadow: var(--nm-shadow-lg);
+}
 
 /* ── Login ──────────────────────────────────────────── */
 
 .login-heading {
-    font-size: 17px;
+    font-size: 20px;
     font-weight: 600;
+    line-height: 1.3;
     margin-bottom: 6px;
 }
 
 .login-sub {
     color: var(--muted);
-    font-size: 13px;
+    font-size: 14px;
     line-height: 1.55;
     margin-bottom: 24px;
 }
@@ -98,6 +154,7 @@ body {
     align-items: center;
     justify-content: center;
     width: 100%;
+    min-height: 44px;
     padding: 12px 20px;
     border: none;
     border-radius: var(--radius-btn);
@@ -107,38 +164,40 @@ body {
     cursor: pointer;
     text-align: center;
     text-decoration: none;
-    transition: background-color 0.15s ease, opacity 0.15s ease, transform 0.1s ease;
+    transition: background-color 0.15s ease, filter 0.15s ease, transform 0.1s ease;
     line-height: 1;
 }
 
-.btn:hover { opacity: 0.88; }
-.btn:active { transform: scale(0.98); }
-.btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+.btn:hover { filter: brightness(1.08); }
+.btn:active { transform: scale(0.98); filter: brightness(0.94); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; filter: none; }
 
 .btn-primary {
-    background: var(--accent-hsl);
+    background: var(--accent-solid);
     color: #fff;
 }
 
 .btn-primary:hover {
-    background: var(--accent-hover);
-    opacity: 1;
+    background: var(--accent-solid);
+    filter: brightness(0.92);
 }
+
+.btn-primary:active { filter: brightness(0.94); }
 
 .btn-outline {
-    background: transparent;
+    background: var(--nm-surface-3);
     color: var(--text);
-    border: 1px solid var(--border);
+    border: 1px solid var(--nm-surface-6);
 }
 
-.btn-outline:hover { background: rgba(255, 255, 255, 0.04); }
+.btn-outline:hover { background: var(--nm-surface-4); filter: none; }
 
 /* ── Divider ────────────────────────────────────────── */
 
 .divider {
     display: flex;
     align-items: center;
-    margin: 20px 0;
+    margin: 22px 0;
     color: var(--muted);
     font-size: 12px;
 }
@@ -170,7 +229,7 @@ body {
     display: inline-block;
     width: 20px;
     height: 20px;
-    border: 2px solid var(--border);
+    border: 2px solid var(--nm-surface-6);
     border-top-color: var(--accent);
     border-radius: 50%;
     animation: spin 0.7s linear infinite;
@@ -185,22 +244,22 @@ body {
     gap: 10px;
     padding: 12px 20px;
     color: var(--muted);
-    font-size: 13px;
+    font-size: 14px;
 }
 
 #qr-container {
     display: inline-block;
-    padding: 10px;
+    padding: 12px;
     background: #fff;
-    border-radius: var(--radius-sm);
-    margin-bottom: 14px;
+    border-radius: var(--nm-radius-xl);
+    margin-bottom: 16px;
     line-height: 0;
 }
 
-#qr-container img { display: block; border-radius: 2px; }
+#qr-container img { display: block; border-radius: 4px; }
 
 .device-code-label {
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.08em;
@@ -208,30 +267,37 @@ body {
     margin-bottom: 4px;
 }
 
-#device-link { font-size: 12px; color: var(--muted); margin-bottom: 8px; }
-#device-link a { color: var(--accent); text-decoration: none; }
+#device-link { font-size: 13px; color: var(--muted); margin-bottom: 8px; }
+#device-link a { color: var(--accent); text-decoration: none; border-radius: 4px; }
 #device-link a:hover { text-decoration: underline; }
 
 .device-code {
-    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-family: var(--nm-font-mono);
     font-size: 22px;
     font-weight: 700;
     letter-spacing: 5px;
     color: var(--accent);
-    margin-bottom: 8px;
+    margin-bottom: 4px;
 }
 
-.qr-error { font-size: 13px; color: var(--muted); padding: 12px 0; }
+.qr-error {
+    font-size: 13px;
+    color: var(--muted);
+    padding: 12px 14px;
+    background: var(--nm-surface-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-btn);
+}
 
 /* ── Progress ───────────────────────────────────────── */
 
-.progress-section { text-align: center; padding: 8px 0; }
+.progress-section { text-align: center; padding: 4px 0; }
 
 .spinner {
     display: inline-block;
     width: 36px;
     height: 36px;
-    border: 3px solid var(--border);
+    border: 3px solid var(--nm-surface-6);
     border-top-color: var(--accent);
     border-radius: 50%;
     animation: spin 0.75s linear infinite;
@@ -240,11 +306,12 @@ body {
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
-.phase-label { font-size: 15px; font-weight: 600; margin-bottom: 8px; }
-.phase-detail { font-size: 13px; color: var(--muted); line-height: 1.5; }
+.phase-label { font-size: 18px; font-weight: 600; line-height: 1.3; margin-bottom: 6px; }
+.phase-detail { font-size: 14px; color: var(--muted); line-height: 1.5; }
 
 .progress-timer {
-    font-family: 'SF Mono', 'Fira Code', 'Consolas', monospace;
+    font-family: var(--nm-font-mono);
+    font-variant-numeric: tabular-nums;
     font-size: 12px;
     color: var(--muted);
     margin-top: 12px;
@@ -253,18 +320,21 @@ body {
 .checklist {
     list-style: none;
     text-align: left;
-    margin: 20px auto 0;
-    max-width: 280px;
+    margin: 24px 0 0;
+    padding: 14px 16px;
+    background: var(--nm-surface-1);
+    border: 1px solid var(--border);
+    border-radius: var(--nm-radius-xl);
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 12px;
 }
 
 .check-row {
     display: flex;
     align-items: center;
     gap: 12px;
-    font-size: 13px;
+    font-size: 14px;
     color: var(--muted);
 }
 
@@ -272,12 +342,12 @@ body {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 18px;
-    height: 18px;
-    flex: 0 0 18px;
-    border: 2px solid var(--border);
+    width: 20px;
+    height: 20px;
+    flex: 0 0 20px;
+    border: 2px solid var(--nm-surface-6);
     border-radius: 50%;
-    font-size: 11px;
+    font-size: 12px;
     line-height: 1;
 }
 
@@ -289,8 +359,8 @@ body {
 
 .check-row[data-state="done"] { color: var(--text); }
 .check-row[data-state="done"] .check-icon {
-    border-color: var(--accent-hsl);
-    background: var(--accent-hsl);
+    border-color: var(--accent-solid);
+    background: var(--accent-solid);
     color: #fff;
 }
 .check-row[data-state="done"] .check-icon::before { content: "\2713"; }
@@ -303,7 +373,7 @@ body {
 }
 .check-row[data-state="failed"] .check-icon::before { content: "\00D7"; }
 
-.progress-error-box { margin-top: 20px; }
+.progress-error-box { margin-top: 20px; margin-bottom: 0; }
 .btn-retry-hidden { display: none; margin-top: 16px; }
 
 /* ── Complete ───────────────────────────────────────── */
@@ -312,32 +382,40 @@ body {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 52px;
-    height: 52px;
+    width: 56px;
+    height: 56px;
     border-radius: 50%;
-    background: var(--accent-hsl);
-    font-size: 22px;
+    background: var(--nm-accent-fill);
+    border: 1px solid var(--nm-accent-edge);
+    color: var(--accent);
+    font-size: 24px;
     margin-bottom: 20px;
 }
 
-.complete-heading { font-size: 18px; font-weight: 700; margin-bottom: 8px; }
+.complete-heading { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
 
 .complete-sub {
-    font-size: 13px;
+    font-size: 14px;
     color: var(--muted);
-    margin-bottom: 20px;
+    margin-bottom: 12px;
     line-height: 1.5;
 }
 
 #server-url-display {
-    font-size: 12px;
+    font-size: 13px;
     color: var(--accent);
     word-break: break-all;
     margin-bottom: 20px;
-    font-family: monospace;
+    padding: 10px 14px;
+    background: var(--nm-surface-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-btn);
+    font-family: var(--nm-font-mono);
 }
 
-#redirect-msg { font-size: 12px; color: var(--muted); margin-bottom: 16px; }
+#server-url-display:empty { display: none; }
+
+#redirect-msg { font-size: 13px; color: var(--muted); margin-bottom: 16px; }
 .redirect-msg-hidden { display: none; }
 
 /* ── Errors ─────────────────────────────────────────── */
@@ -345,13 +423,33 @@ body {
 .error-box {
     background: var(--error-bg);
     border: 1px solid var(--error-border);
-    border-radius: var(--radius-sm);
-    padding: 10px 14px;
+    border-radius: var(--radius-btn);
+    padding: 12px 14px;
     margin-bottom: 16px;
-    font-size: 13px;
+    font-size: 14px;
     color: var(--error-text);
     line-height: 1.5;
     display: none;
 }
 
 .error-box.visible { display: block; }
+
+/* ── Small screens ──────────────────────────────────── */
+
+@media (max-width: 480px) {
+    .container { padding: 16px 12px; }
+    .step.active { padding: 24px 18px; }
+    .logo svg { width: 190px; }
+}
+
+/* ── Reduced motion: keep the activity cue, make it calm ── */
+
+@media (prefers-reduced-motion: reduce) {
+    .btn { transition: none; }
+    .btn:active { transform: none; }
+    .qr-loading-spinner,
+    .spinner,
+    .check-row[data-state="running"] .check-icon {
+        animation-duration: 2.4s;
+    }
+}
