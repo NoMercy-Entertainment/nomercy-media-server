@@ -89,9 +89,7 @@ public class SpecialController(
             }),
         ];
 
-        ComponentEnvelope containerResponse = Component.Container().WithItems(carousels);
-
-        return Ok(containerResponse);
+        return Ok(ComponentResponse.From(LolomoPage("specials", carousels)));
     }
 
     [HttpGet]

@@ -24,6 +24,7 @@ public static class ComponentTypes
     public const string List = NmAppComponents.List;
     public const string Carousel = NmAppComponents.Carousel;
     public const string Container = NmAppComponents.Container;
+    public const string Lolomo = NmAppComponents.Lolomo;
 
     // Leaf components - cannot hold children
     public const string Card = NmAppComponents.Card;
@@ -39,7 +40,7 @@ public static class ComponentTypes
     public const string EmptyState = NmAppComponents.EmptyState;
 
     public static bool IsContainer(string componentType) =>
-        componentType is Grid or List or Carousel or Container;
+        componentType is Grid or List or Carousel or Container or Lolomo;
 
     public static bool IsLeaf(string componentType) => !IsContainer(componentType);
 }

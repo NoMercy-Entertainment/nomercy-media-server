@@ -39,6 +39,12 @@ public static class NmAppComponents
 
     public const string Container = "NMContainer";
 
+    /// <summary>
+    /// A whole page of carousel rows for the TV app: only NMCarousel rows, flat,
+    /// in display order, with next and previous ids that point at rows that are sent.
+    /// </summary>
+    public const string Lolomo = "NMLolomo";
+
     public const string Card = "NMCard";
 
     public const string HomeCard = "NMHomeCard";
@@ -73,6 +79,7 @@ public static class NmAppComponents
         List,
         Carousel,
         Container,
+        Lolomo,
         Card,
         HomeCard,
         GenreCard,
@@ -92,5 +99,5 @@ public static class NmAppComponents
     /// to nest is usually a payload that picked the wrong component.
     /// </summary>
     public static bool IsContainer(string component) =>
-        component is Grid or List or Carousel or Container;
+        component is Grid or List or Carousel or Container or Lolomo;
 }
