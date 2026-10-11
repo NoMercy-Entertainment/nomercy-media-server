@@ -259,7 +259,8 @@ public class PluginUiController(
 
         // Before the plugin is asked for anything: a page that renders and
         // then refuses has already told the caller what is installed here.
-        if (AccessTo(id) == PluginAccess.None)
+        PluginAccess access = AccessTo(id);
+        if (access == PluginAccess.None)
             return ForbiddenResponse(PluginAccessRefusal.For(id));
 
         if (pluginManager.GetPluginInstance(id) is not IUiPlugin plugin)
@@ -275,7 +276,7 @@ public class PluginUiController(
                 new UserId(new Ulid(User.UserId())),
                 User.UserName(),
                 User.Role() == "owner" ? PluginRole.Owner : PluginRole.Member,
-                PluginAccess.Owned,
+                access,
                 Request.Headers.AcceptLanguage.ToString() is { Length: > 0 } locale ? locale : "en",
                 PluginSurface.IsKnown(surface) ? surface! : PluginSurface.Web
             ),

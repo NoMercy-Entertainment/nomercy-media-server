@@ -38,6 +38,7 @@ public class PluginSearchTests
     ) : ISearchablePlugin
     {
         public string Query { get; private set; } = string.Empty;
+        public PluginAccess? CallerAccess { get; private set; }
 
         public Ulid Id { get; } = Ulid.NewUlid();
         public string Name => "Fake";
@@ -55,6 +56,7 @@ public class PluginSearchTests
         )
         {
             Query = query;
+            CallerAccess = caller.Access;
 
             if (delay is not null)
             {
@@ -162,6 +164,17 @@ public class PluginSearchTests
 
         groups.Should().BeEmpty();
         radio.Query.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task ASharedPluginReceivesSharedAccess()
+    {
+        FakePlugin radio = new([Result("r1", "NPO 3FM")]);
+
+        await Service([(Info(Ulid.NewUlid(), "Internet Radio"), radio)], PluginAccess.Shared)
+            .SearchAsync("3fm", Caller(Guid.NewGuid()), TimeSpan.FromSeconds(2), default);
+
+        radio.CallerAccess.Should().Be(PluginAccess.Shared);
     }
 
     [Fact]
