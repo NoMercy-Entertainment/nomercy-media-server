@@ -355,6 +355,99 @@ public class BaseController : Controller
                     .Select(card => Component.Card().WithData(card))
             );
 
+    /// <summary>
+    /// The version=lolomo answer for one group (an anime theme, demographic or
+    /// season): every title in one carousel, ordered by title. One group is a
+    /// short list, so a split per letter only scatters it. The carousel carries
+    /// <paramref name="title"/> so the page says which group it shows.
+    /// </summary>
+    protected static ContainerComponentBuilder TitleCardCarousel(
+        string id,
+        string title,
+        IEnumerable<HomeMovieCardDto> movies,
+        IEnumerable<HomeTvCardDto> shows
+    ) =>
+        Component
+            .Container()
+            .WithId(id)
+            .WithItems([
+                Component
+                    .Carousel()
+                    .WithId(id)
+                    .WithTitle(title)
+                    .WithItems(
+                        movies
+                            .Select(movie => new CardData(movie))
+                            .Concat(shows.Select(show => new CardData(show)))
+                            .OrderBy(card => card.TitleSort)
+                            .Select(card => Component.Card().WithData(card))
+                    )
+                    .Build(),
+            ]);
+
+    /// <summary>
+    /// The version=lolomo twin of <see cref="TitleCardGrid"/>: one carousel per
+    /// first letter, in one container. Letters without a title are left out.
+    /// </summary>
+    protected static ContainerComponentBuilder TitleCardLetterCarousels(
+        string id,
+        IEnumerable<HomeMovieCardDto> movies,
+        IEnumerable<HomeTvCardDto> shows
+    )
+    {
+        List<CardData> cards =
+        [
+            .. movies
+                .Select(movie => new CardData(movie))
+                .Concat(shows.Select(show => new CardData(show))),
+        ];
+
+        List<ComponentEnvelope> carousels =
+        [
+            .. Letters
+                .Select(
+                    (letter, index) =>
+                    {
+                        List<CardData> carouselItems =
+                        [
+                            .. cards
+                                .Where(card => AlphaBucket.Matches(card.TitleSort, letter))
+                                .OrderBy(card => card.TitleSort),
+                        ];
+
+                        if (carouselItems.Count == 0)
+                            return null;
+
+                        return Component
+                            .Carousel()
+                            .WithId(letter)
+                            .WithTitle(letter)
+                            .WithNavigation(
+                                index == 0 ? null : Letters.ElementAtOrDefault(index - 1) ?? null,
+                                index == Letters.Length - 1
+                                    ? null
+                                    : Letters.ElementAtOrDefault(index + 1) ?? null
+                            )
+                            .WithItems(
+                                carouselItems.Select(card => Component.Card().WithData(card))
+                            )
+                            .Build();
+                    }
+                )
+                .Where(carousel => carousel != null)
+                .Cast<ComponentEnvelope>(),
+        ];
+
+        return Component.Container().WithId(id).WithItems(carousels);
+    }
+
+    /// <summary>
+    /// The version=lolomo answer: one NMLolomo page. Empty rows are dropped and
+    /// next and previous are relinked over the rows that are sent.
+    /// </summary>
+    protected static ComponentEnvelope LolomoPage(string id, IEnumerable<ComponentEnvelope> rows) =>
+        Component.Lolomo(id).WithItems(rows);
+
     protected string Language()
     {
         return HttpContext

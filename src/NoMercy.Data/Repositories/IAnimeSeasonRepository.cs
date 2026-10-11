@@ -20,6 +20,22 @@ public interface IAnimeSeasonRepository
         CancellationToken ct = default
     );
 
+    /// <summary>The ids of the seasons a carousel shows first, in that order.</summary>
+    Task<List<int>> GetTopSeasonIdsAsync(
+        Guid userId,
+        AnimeCarouselOrder order,
+        DateOnly today,
+        int take,
+        CancellationToken ct = default
+    );
+
+    /// <summary>The cards of the given seasons in the order of the ids; hidden ones are left out.</summary>
+    Task<List<AnimeSeasonWithCountsDto>> GetSeasonsWithCountsByIdsAsync(
+        Guid userId,
+        IReadOnlyList<int> ids,
+        CancellationToken ct = default
+    );
+
     Task<(
         AnimeSeasonDetailDto? Season,
         List<HomeMovieCardDto> Movies,

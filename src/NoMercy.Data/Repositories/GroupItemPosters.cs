@@ -11,6 +11,7 @@
 using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
 using NoMercy.Database;
+using NoMercy.Notifications.Push;
 
 namespace NoMercy.Data.Repositories;
 
@@ -45,8 +46,23 @@ public record GroupPoster(
     [property: JsonProperty("src")] string Src,
     [property: JsonProperty("color_palette", NullValueHandling = NullValueHandling.Ignore)]
         PaletteColors? ColorPalette,
-    [property: JsonProperty("color")] string? Color = null
-);
+    [property: JsonProperty("color")] string? Color = null,
+    [property: JsonProperty("backdrop", NullValueHandling = NullValueHandling.Ignore)]
+        string? Backdrop = null
+)
+{
+    /// <summary>
+    /// The poster as a loadable image URL, so a client needs no image host of
+    /// its own. An image the server stores itself (a music cover) sets its own.
+    /// </summary>
+    [JsonProperty("url")]
+    public string? Url { get; init; } = PushArtworkUrl.Build(Src, GroupItemPosters.UrlWidth);
+
+    /// <summary>The backdrop as a loadable image URL, for the posters that can fill the hero.</summary>
+    [JsonProperty("backdrop_url", NullValueHandling = NullValueHandling.Ignore)]
+    public string? BackdropUrl =>
+        Backdrop is null ? null : PushArtworkUrl.Build(Backdrop, GroupItemPosters.BackdropUrlWidth);
+}
 
 /// <summary>
 /// Picks the posters a group card shows for a group that has no image of its
@@ -56,12 +72,21 @@ public static class GroupItemPosters
 {
     public const int Max = 9;
 
+    // The card draws the poster small, and the client cannot ask for a size.
+    public const int UrlWidth = 400;
+
     /// <summary>
     /// How many posters keep their palette: the card puts the first poster
     /// in front, or the second one in the fan look, and only the front one
     /// draws a gradient while it loads.
     /// </summary>
     public const int FrontPosters = 2;
+
+    // The TV hero slides through the backdrops of this many titles per group.
+    public const int HeroItems = 3;
+
+    // The hero fills the screen width, so it needs a larger size than a poster.
+    public const int BackdropUrlWidth = 1280;
 
     public const string PosterType = "poster";
 
@@ -247,6 +272,34 @@ public static class GroupItemPosters
                     movie => ColorPalette.FromJsonOrNull(movie._colorPalette)?.Poster
                 );
 
+        // Backdrops only for the titles the hero slides through: one query per
+        // media kind, like the palettes.
+        List<GroupPosterRow> hero = [.. picked.Values.SelectMany(group => group.Take(HeroItems))];
+        List<int> heroTvIds =
+        [
+            .. hero.Where(row => !row.IsMovie).Select(row => row.ItemId).Distinct(),
+        ];
+        List<int> heroMovieIds =
+        [
+            .. hero.Where(row => row.IsMovie).Select(row => row.ItemId).Distinct(),
+        ];
+        Dictionary<int, string?> tvBackdrops =
+            heroTvIds.Count == 0
+                ? []
+                : await context
+                    .Tvs.AsNoTracking()
+                    .Where(tv => heroTvIds.Contains(tv.Id))
+                    .Select(tv => new { tv.Id, tv.Backdrop })
+                    .ToDictionaryAsync(tv => tv.Id, tv => tv.Backdrop, ct);
+        Dictionary<int, string?> movieBackdrops =
+            heroMovieIds.Count == 0
+                ? []
+                : await context
+                    .Movies.AsNoTracking()
+                    .Where(movie => heroMovieIds.Contains(movie.Id))
+                    .Select(movie => new { movie.Id, movie.Backdrop })
+                    .ToDictionaryAsync(movie => movie.Id, movie => movie.Backdrop, ct);
+
         return picked.ToDictionary(
             group => group.Key,
             group =>
@@ -260,10 +313,16 @@ public static class GroupItemPosters
                                 : row.IsMovie ? moviePalettes.GetValueOrDefault(row.ItemId)
                                 : tvPalettes.GetValueOrDefault(row.ItemId);
 
+                            string? backdrop =
+                                index >= HeroItems ? null
+                                : row.IsMovie ? movieBackdrops.GetValueOrDefault(row.ItemId)
+                                : tvBackdrops.GetValueOrDefault(row.ItemId);
+
                             return new GroupPoster(
                                 row.Path!,
                                 index < FrontPosters ? palette : null,
-                                CardColor.Pick(palette)
+                                CardColor.Pick(palette),
+                                backdrop
                             );
                         }
                     )

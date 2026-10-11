@@ -112,7 +112,13 @@ public sealed class RecordingManagerRelocateToPicardLayoutTests : IDisposable
         return absolutePath.Replace('\\', '/');
     }
 
-    private static MediaFile MediaFileAt(string path) => new() { Path = path };
+    // The file's own title tag names the track, so the relocate content check lets it move.
+    private static MediaFile MediaFileAt(string path) =>
+        new()
+        {
+            Path = path,
+            FFprobe = new() { Format = new() { Tags = new() { ["title"] = Track().Title } } },
+        };
 
     [Fact]
     public async Task A_source_in_a_sibling_folder_named_like_the_library_is_moved_to_the_picard_target()

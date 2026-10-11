@@ -69,7 +69,7 @@ public class PlaylistsController : BaseController
 
         ComponentEnvelope response = Component
             .Grid()
-            .WithItems(playlistCards.Select(p => Component.MusicCard(new MusicCardData(p))));
+            .WithItems(playlistCards.Select(Component.CoverOrGroupCard));
 
         return Ok(ComponentResponse.From(response));
     }

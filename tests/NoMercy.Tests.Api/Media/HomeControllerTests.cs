@@ -130,6 +130,52 @@ public class HomeControllerTests : IClassFixture<NoMercyApiFactory>
         Assert.False(hasLatestInRow, "Lolomo /home must not include a 'Latest in {library}' row");
     }
 
+    // The hero card keeps its own component; every row of carousels is one NMLolomo.
+    [Fact]
+    public async Task Home_Lolomo_AnswersHomeCardThenOneNmLolomo()
+    {
+        HttpResponseMessage response = await _authed.GetAsync("/api/v1/home?version=lolomo");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        string body = await response.Content.ReadAsStringAsync();
+        using JsonDocument document = JsonDocument.Parse(body);
+        List<string?> names =
+        [
+            .. document
+                .RootElement.GetProperty("data")
+                .EnumerateArray()
+                .Select(component => component.GetProperty("component").GetString()),
+        ];
+
+        Assert.DoesNotContain("NMCarousel", names);
+        Assert.Equal("NMLolomo", Assert.Single(names, name => name == "NMLolomo"));
+        Assert.Equal("NMLolomo", names[^1]);
+    }
+
+    // The TV row pages answer one NMLolomo, like every other row page.
+    [Theory]
+    [InlineData("/api/v1/home/tv")]
+    [InlineData("/api/v1/libraries/tv")]
+    public async Task TvPages_AnswerOneNmLolomo(string url)
+    {
+        HttpResponseMessage response = await _authed.GetAsync(url);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        string body = await response.Content.ReadAsStringAsync();
+        using JsonDocument document = JsonDocument.Parse(body);
+        List<string?> names =
+        [
+            .. document
+                .RootElement.GetProperty("data")
+                .EnumerateArray()
+                .Select(component => component.GetProperty("component").GetString()),
+        ];
+
+        Assert.Equal("NMLolomo", Assert.Single(names));
+    }
+
     // The secondary seeded user is a plain member with no libraries, so their Home is empty.
     // The empty state used to offer "Add library", which the apps route to a dashboard page
     // a member cannot open, so the button bounced them straight back to Home.

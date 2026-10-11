@@ -241,6 +241,30 @@ public class PicardNamingTests
     }
 
     /// <summary>
+    /// Windows drops a trailing dot from a folder name, so "[2001] Melody A.M." landed in a
+    /// new "[2001] Melody A.M" beside the album's real "[2001] Melody A.M_" (2026-10-07).
+    /// Picard writes the last dot as "_": the library holds "M.I.A.M.I_" and
+    /// "On a Day Like This.._".
+    /// </summary>
+    [Theory]
+    [InlineData(
+        "R/Royksopp/[2001] Melody A.M./01 So Easy.mp3",
+        "R/Royksopp/[2001] Melody A.M_/01 So Easy.mp3"
+    )]
+    [InlineData(
+        "M/Meklit Hadero/[2010] On a Day Like This.../01 A.mp3",
+        "M/Meklit Hadero/[2010] On a Day Like This.._/01 A.mp3"
+    )]
+    [InlineData("P/Pitbull/[2004] M.I.A.M.I./01 A.mp3", "P/Pitbull/[2004] M.I.A.M.I_/01 A.mp3")]
+    public void A_trailing_dot_in_a_folder_becomes_an_underscore_like_picard(
+        string path,
+        string expected
+    )
+    {
+        Assert.Equal(expected, PicardNaming.Sanitize(path));
+    }
+
+    /// <summary>
     /// U+2019 reproducibly fails to create a directory on Stoney's NAS — confirmed
     /// identically across raw Win32 CreateDirectoryW, .NET's Directory.CreateDirectory,
     /// and PowerShell's own New-Item, and across both soft and hard NFS mount modes. The

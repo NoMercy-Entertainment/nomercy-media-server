@@ -203,6 +203,7 @@ public static class DatabaseSeeder
             () => LanguagesSeed.Init(mediaDbContext),
             () => CountriesSeed.Init(mediaDbContext),
             () => GenresSeed.Init(mediaDbContext),
+            () => AnimeThemesSeed.Init(mediaDbContext),
             () => CertificationsSeed.Init(mediaDbContext),
         ];
 

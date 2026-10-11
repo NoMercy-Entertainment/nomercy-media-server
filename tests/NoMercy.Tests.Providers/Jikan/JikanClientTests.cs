@@ -138,4 +138,70 @@ public class JikanClientTests
 
         result.Should().BeNull();
     }
+
+    [Fact]
+    public async Task GetGenresAsync_RequestsTheFilterAndReturnsTheList()
+    {
+        Uri? requested = null;
+        Mock<HttpMessageHandler> handler = new();
+        handler
+            .Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>()
+            )
+            .Returns<HttpRequestMessage, CancellationToken>(
+                (request, _) =>
+                {
+                    requested = request.RequestUri;
+                    return Task.FromResult(
+                        new HttpResponseMessage(HttpStatusCode.OK)
+                        {
+                            Content = new StringContent(
+                                """
+                                { "data": [ { "mal_id": 27, "name": "Shounen" }, { "mal_id": 25, "name": "Shoujo" } ] }
+                                """
+                            ),
+                        }
+                    );
+                }
+            );
+
+        HttpClient httpClient = new(handler.Object)
+        {
+            BaseAddress = new("https://api.jikan.moe/v4/"),
+        };
+
+        JikanGenre[]? result = await JikanClient.GetGenresAsync(httpClient, "demographics");
+
+        requested!
+            .ToString()
+            .Should()
+            .Be("https://api.jikan.moe/v4/genres/anime?filter=demographics");
+        result!.Select(genre => genre.Name).Should().Equal("Shounen", "Shoujo");
+    }
+
+    [Fact]
+    public async Task GetGenresAsync_WhenServerFails_ReturnsNull()
+    {
+        Mock<HttpMessageHandler> handler = new();
+        handler
+            .Protected()
+            .Setup<Task<HttpResponseMessage>>(
+                "SendAsync",
+                ItExpr.IsAny<HttpRequestMessage>(),
+                ItExpr.IsAny<CancellationToken>()
+            )
+            .ReturnsAsync(new HttpResponseMessage(HttpStatusCode.GatewayTimeout));
+
+        HttpClient httpClient = new(handler.Object)
+        {
+            BaseAddress = new("https://api.jikan.moe/v4/"),
+        };
+
+        JikanGenre[]? result = await JikanClient.GetGenresAsync(httpClient, "themes");
+
+        result.Should().BeNull();
+    }
 }

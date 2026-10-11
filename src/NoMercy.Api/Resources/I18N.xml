@@ -932,4 +932,116 @@
     <Key>Genres: H</Key>
     <Value lang="nl">Genres: H</Value>
   </Entry>
+  <Entry>
+    <Key>Anime demographic not found</Key>
+    <Value lang="nl">Anime demographic not found</Value>
+  </Entry>
+  <Entry>
+    <Key>Anime season not found</Key>
+    <Value lang="nl">Anime season not found</Value>
+  </Entry>
+  <Entry>
+    <Key>Genres: A</Key>
+    <Value lang="nl">Genres: A</Value>
+  </Entry>
+  <Entry>
+    <Key>Genres: B</Key>
+    <Value lang="nl">Genres: B</Value>
+  </Entry>
+  <Entry>
+    <Key>Genres: C</Key>
+    <Value lang="nl">Genres: C</Value>
+  </Entry>
+  <Entry>
+    <Key>Genres: E</Key>
+    <Value lang="nl">Genres: E</Value>
+  </Entry>
+  <Entry>
+    <Key>Genres: F</Key>
+    <Value lang="nl">Genres: F</Value>
+  </Entry>
+  <Entry>
+    <Key>Genres: G</Key>
+    <Value lang="nl">Genres: G</Value>
+  </Entry>
+  <Entry>
+    <Key>Genres: I</Key>
+    <Value lang="nl">Genres: I</Value>
+  </Entry>
+  <Entry>
+    <Key>Genres: J</Key>
+    <Value lang="nl">Genres: J</Value>
+  </Entry>
+  <Entry>
+    <Key>Genres: K</Key>
+    <Value lang="nl">Genres: K</Value>
+  </Entry>
+  <Entry>
+    <Key>Genres: L</Key>
+    <Value lang="nl">Genres: L</Value>
+  </Entry>
+  <Entry>
+    <Key>Genres: M</Key>
+    <Value lang="nl">Genres: M</Value>
+  </Entry>
+  <Entry>
+    <Key>Genres: N</Key>
+    <Value lang="nl">Genres: N</Value>
+  </Entry>
+  <Entry>
+    <Key>Genres: O</Key>
+    <Value lang="nl">Genres: O</Value>
+  </Entry>
+  <Entry>
+    <Key>Genres: P</Key>
+    <Value lang="nl">Genres: P</Value>
+  </Entry>
+  <Entry>
+    <Key>Genres: Q</Key>
+    <Value lang="nl">Genres: Q</Value>
+  </Entry>
+  <Entry>
+    <Key>Genres: R</Key>
+    <Value lang="nl">Genres: R</Value>
+  </Entry>
+  <Entry>
+    <Key>Genres: S</Key>
+    <Value lang="nl">Genres: S</Value>
+  </Entry>
+  <Entry>
+    <Key>Genres: T</Key>
+    <Value lang="nl">Genres: T</Value>
+  </Entry>
+  <Entry>
+    <Key>Genres: U</Key>
+    <Value lang="nl">Genres: U</Value>
+  </Entry>
+  <Entry>
+    <Key>Genres: V</Key>
+    <Value lang="nl">Genres: V</Value>
+  </Entry>
+  <Entry>
+    <Key>Genres: W</Key>
+    <Value lang="nl">Genres: W</Value>
+  </Entry>
+  <Entry>
+    <Key>Genres: Y</Key>
+    <Value lang="nl">Genres: Y</Value>
+  </Entry>
+  <Entry>
+    <Key>Winter</Key>
+    <Value lang="nl">Winter</Value>
+  </Entry>
+  <Entry>
+    <Key>Spring</Key>
+    <Value lang="nl">Lente</Value>
+  </Entry>
+  <Entry>
+    <Key>Summer</Key>
+    <Value lang="nl">Zomer</Value>
+  </Entry>
+  <Entry>
+    <Key>Fall</Key>
+    <Value lang="nl">Herfst</Value>
+  </Entry>
 </I18N>

@@ -334,6 +334,18 @@ public class HomeService(
             );
         }
 
+        if (version == LolomoVersion)
+        {
+            // The hero card keeps its own component; every row of carousels is one NMLolomo.
+            List<ComponentEnvelope> page = [];
+            if (homeCardItem != null)
+                page.Add(components[0]);
+
+            page.Add(Component.Lolomo("home").WithItems(components.Skip(page.Count)));
+
+            return new() { Data = page };
+        }
+
         return new() { Data = components };
     }
 
@@ -781,7 +793,7 @@ public class HomeService(
             );
         }
 
-        return new() { Data = components };
+        return new() { Data = [Component.Lolomo("home").WithItems(components)] };
     }
 
     public async Task<ComponentResponse> GetHomeContinueContent(

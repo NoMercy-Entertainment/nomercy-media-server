@@ -110,6 +110,8 @@ public class AnimeEnrichmentService(
                     .. await ResolveThemesAsync(
                         aniListMatch,
                         name => showRepository.ResolveAnimeThemeIdAsync(name),
+                        (id, description) =>
+                            showRepository.FillAnimeThemeDescriptionAsync(id, description),
                         animeThemeId => new AnimeThemeTv
                         {
                             AnimeThemeId = animeThemeId,
@@ -247,6 +249,8 @@ public class AnimeEnrichmentService(
                     .. await ResolveThemesAsync(
                         aniListMatch,
                         name => movieRepository.ResolveAnimeThemeIdAsync(name),
+                        (id, description) =>
+                            movieRepository.FillAnimeThemeDescriptionAsync(id, description),
                         animeThemeId => new AnimeThemeMovie
                         {
                             AnimeThemeId = animeThemeId,
@@ -452,20 +456,16 @@ public class AnimeEnrichmentService(
     private static async Task<IEnumerable<TLink>> ResolveThemesAsync<TLink>(
         AniListMedia aniListMatch,
         Func<string, Task<int>> resolveThemeId,
+        Func<int, string, Task> fillThemeDescription,
         Func<int, TLink> toLink
     )
     {
         List<TLink> links = [];
-        foreach (
-            AniListMediaTag tag in aniListMatch.Tags.Where(t =>
-                !string.IsNullOrWhiteSpace(t.Name)
-                && !t.IsAdult
-                && t.Category is not null
-                && (t.Category.StartsWith("Theme") || t.Category.StartsWith("Setting"))
-            )
-        )
+        foreach (AniListMediaTag tag in aniListMatch.Tags.Where(AniListTagFilter.IsTheme))
         {
             int animeThemeId = await resolveThemeId(tag.Name);
+            if (!string.IsNullOrWhiteSpace(tag.Description))
+                await fillThemeDescription(animeThemeId, tag.Description.Trim());
             links.Add(toLink(animeThemeId));
         }
 

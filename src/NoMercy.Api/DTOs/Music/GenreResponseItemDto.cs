@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
+using NoMercy.Data.Repositories;
 using NoMercy.Database.Models.Music;
 using NoMercy.NmSystem.Extensions;
 
@@ -40,6 +41,10 @@ public record GenreResponseItemDto
 
     [JsonProperty("type")]
     public string Type { get; set; }
+
+    /// <summary>The covers the genre's card shows; a genre has no image of its own.</summary>
+    [JsonProperty("item_posters")]
+    public GroupPoster[] ItemPosters { get; set; } = [];
 
     public GenreResponseItemDto(MusicGenre genre, string? country = "US")
     {

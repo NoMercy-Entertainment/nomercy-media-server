@@ -60,6 +60,92 @@ public class AnimeEnrichmentServiceTests
     }
 
     [Fact]
+    public async Task EnrichTvAsync_AniListTagWithDescription_FillsTheThemeDescription()
+    {
+        Mock<IShowRepository> showRepository = new();
+        showRepository.Setup(r => r.ResolveAnimeThemeIdAsync("Isekai")).ReturnsAsync(501);
+        showRepository.Setup(r => r.ResolveAnimeThemeIdAsync("Pirates")).ReturnsAsync(502);
+
+        AnimeEnrichmentService service = BuildService(
+            showRepository.Object,
+            Mock.Of<NoMercy.MediaProcessing.Movies.IMovieRepository>()
+        );
+
+        await service.EnrichTvAsync(42, "One Piece", 1999, ["JP"]);
+
+        showRepository.Verify(
+            r => r.FillAnimeThemeDescriptionAsync(501, "Another world."),
+            Times.Once
+        );
+        showRepository.Verify(
+            r => r.FillAnimeThemeDescriptionAsync(502, It.IsAny<string>()),
+            Times.Never
+        );
+    }
+
+    [Fact]
+    public async Task EnrichMovieAsync_AniListTagWithDescription_FillsTheThemeDescription()
+    {
+        Mock<NoMercy.MediaProcessing.Movies.IMovieRepository> movieRepository = new();
+        movieRepository.Setup(r => r.ResolveAnimeThemeIdAsync("Isekai")).ReturnsAsync(501);
+        movieRepository.Setup(r => r.ResolveAnimeThemeIdAsync("Pirates")).ReturnsAsync(502);
+
+        AnimeEnrichmentService service = BuildService(
+            Mock.Of<IShowRepository>(),
+            movieRepository.Object
+        );
+
+        await service.EnrichMovieAsync(7, "One Piece", 1999, ["JP"]);
+
+        movieRepository.Verify(
+            r => r.FillAnimeThemeDescriptionAsync(501, "Another world."),
+            Times.Once
+        );
+        movieRepository.Verify(
+            r => r.FillAnimeThemeDescriptionAsync(502, It.IsAny<string>()),
+            Times.Never
+        );
+    }
+
+    private static AnimeEnrichmentService BuildService(
+        IShowRepository showRepository,
+        NoMercy.MediaProcessing.Movies.IMovieRepository movieRepository
+    )
+    {
+        Mock<IMediaTypeClassifier> classifier = new();
+        classifier
+            .Setup(c => c.ClassifyAsync("One Piece", 1999, It.IsAny<string[]?>()))
+            .ReturnsAsync("anime");
+        Mock<IAniListMetadataProvider> aniList = new();
+        aniList
+            .Setup(p => p.SearchAsync("One Piece", 1999, It.IsAny<bool?>()))
+            .ReturnsAsync(
+                new AniListMedia
+                {
+                    Title = new() { Romaji = "One Piece" },
+                    Tags =
+                    [
+                        new()
+                        {
+                            Name = "Isekai",
+                            Category = "Theme-Fantasy",
+                            Description = "Another world.",
+                        },
+                        new() { Name = "Pirates", Category = "Setting-Universe" },
+                    ],
+                }
+            );
+
+        return new(
+            classifier.Object,
+            aniList.Object,
+            Mock.Of<IJikanMetadataProvider>(),
+            showRepository,
+            movieRepository
+        );
+    }
+
+    [Fact]
     public async Task EnrichTvAsync_ClassifiedAnime_PersistsThemesFromAniListAndBackfillsFromJikan()
     {
         Mock<IMediaTypeClassifier> classifier = new();
@@ -135,6 +221,93 @@ public class AnimeEnrichmentServiceTests
             Times.Once
         );
         showRepository.Verify(r => r.StoreAnimeSeason(42, 1999, "FALL"), Times.Once);
+    }
+
+    [Fact]
+    public async Task EnrichTvAsync_TagWithDescription_FillsEmptyThemeDescription()
+    {
+        Mock<IShowRepository> showRepository = new();
+        showRepository.Setup(r => r.ResolveAnimeThemeIdAsync("Pirates")).ReturnsAsync(501);
+        showRepository.Setup(r => r.ResolveAnimeThemeIdAsync("Gore")).ReturnsAsync(502);
+
+        AnimeEnrichmentService service = BuildTagService(
+            showRepository.Object,
+            Mock.Of<NoMercy.MediaProcessing.Movies.IMovieRepository>()
+        );
+
+        await service.EnrichTvAsync(42, "One Piece", 1999, ["JP"]);
+
+        showRepository.Verify(
+            r => r.FillAnimeThemeDescriptionAsync(501, "Stories about pirates."),
+            Times.Once
+        );
+        showRepository.Verify(
+            r => r.FillAnimeThemeDescriptionAsync(502, It.IsAny<string>()),
+            Times.Never
+        );
+    }
+
+    [Fact]
+    public async Task EnrichMovieAsync_TagWithDescription_FillsEmptyThemeDescription()
+    {
+        Mock<NoMercy.MediaProcessing.Movies.IMovieRepository> movieRepository = new();
+        movieRepository.Setup(r => r.ResolveAnimeThemeIdAsync("Pirates")).ReturnsAsync(501);
+        movieRepository.Setup(r => r.ResolveAnimeThemeIdAsync("Gore")).ReturnsAsync(502);
+
+        AnimeEnrichmentService service = BuildTagService(
+            Mock.Of<IShowRepository>(),
+            movieRepository.Object
+        );
+
+        await service.EnrichMovieAsync(42, "One Piece", 1999, ["JP"]);
+
+        movieRepository.Verify(
+            r => r.FillAnimeThemeDescriptionAsync(501, "Stories about pirates."),
+            Times.Once
+        );
+        movieRepository.Verify(
+            r => r.FillAnimeThemeDescriptionAsync(502, It.IsAny<string>()),
+            Times.Never
+        );
+    }
+
+    private static AnimeEnrichmentService BuildTagService(
+        IShowRepository showRepository,
+        NoMercy.MediaProcessing.Movies.IMovieRepository movieRepository
+    )
+    {
+        Mock<IMediaTypeClassifier> classifier = new();
+        classifier
+            .Setup(c => c.ClassifyAsync("One Piece", 1999, It.IsAny<string[]?>()))
+            .ReturnsAsync("anime");
+
+        Mock<IAniListMetadataProvider> aniList = new();
+        aniList
+            .Setup(p => p.SearchAsync("One Piece", 1999, It.IsAny<bool?>()))
+            .ReturnsAsync(
+                new AniListMedia
+                {
+                    Title = new() { Romaji = "One Piece" },
+                    Tags =
+                    [
+                        new()
+                        {
+                            Name = "Pirates",
+                            Category = "Setting-Universe",
+                            Description = "Stories about pirates.",
+                        },
+                        new() { Name = "Gore", Category = "Theme-Other" },
+                    ],
+                }
+            );
+
+        return new(
+            classifier.Object,
+            aniList.Object,
+            Mock.Of<IJikanMetadataProvider>(),
+            showRepository,
+            movieRepository
+        );
     }
 
     // S4: AniList tags include non-theme categories (Cast-*, Technical, ...)
