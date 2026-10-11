@@ -23,7 +23,7 @@ public interface IContentSegmentRepository
         ContentSegmentType? filterType = null
     );
 
-    Task<int> GetTotalCountAsync();
+    Task<int> GetTotalCountAsync(ContentSegmentType? filterType = null);
 
     Task<List<ContentSegment>> GetForMovieAsync(int movieId);
 

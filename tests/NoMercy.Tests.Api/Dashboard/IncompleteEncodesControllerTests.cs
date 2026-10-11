@@ -125,26 +125,61 @@ public class IncompleteEncodesControllerTests : IClassFixture<NoMercyApiFactory>
     }
 
     [Fact]
-    public async Task Retry_ExistingRow_RemovesRow()
+    public async Task Retry_MissingVideoFile_KeepsRowAndReportsFailure()
     {
-        // The retry will attempt to look up the VideoFile and enqueue a job.
-        // Because QueueRunner is not started in the test host, the enqueue will
-        // fail. The controller handles that gracefully and still removes the row.
-        // We only assert the row is gone — the 200 vs 500 depends on whether a
-        // real QueueRunner is present. Either outcome removes the quarantine row.
+        await using (MediaContext ctx = new())
+        {
+            IncompleteEncode row = await ctx.IncompleteEncodes.SingleAsync(r => r.Id == _rowId1);
+            row.MediaId = int.MaxValue;
+            await ctx.SaveChangesAsync();
+        }
+
         HttpResponseMessage response = await _authed.PostAsync(
             $"/api/v1/dashboard/tasks/queue/incomplete/{_rowId1}/retry",
             content: null
         );
 
-        // Must be either 200 (enqueue succeeded) or 500 (no QueueRunner in test).
-        // Either way the quarantine row must be deleted.
-        bool rowGone;
-        await using MediaContext ctx = new();
-        rowGone = !await ctx.IncompleteEncodes.AnyAsync(r => r.Id == _rowId1);
-        rowGone
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        string json = await response.Content.ReadAsStringAsync();
+        json.Should().NotContain("Re-queued");
+
+        await using MediaContext verificationContext = new();
+        (await verificationContext.IncompleteEncodes.AnyAsync(r => r.Id == _rowId1))
             .Should()
-            .BeTrue("quarantine row must be removed after retry regardless of queue state");
+            .BeTrue("an undispatched encode must remain available for retry");
+    }
+
+    [Theory]
+    [InlineData("missing-folder")]
+    [InlineData("invalid-folder")]
+    [InlineData("overflow-media-id")]
+    public async Task Retry_UnresolvableSource_KeepsRowAndReportsFailure(string sourceProblem)
+    {
+        await using (MediaContext ctx = new())
+        {
+            IncompleteEncode row = await ctx.IncompleteEncodes.SingleAsync(r => r.Id == _rowId1);
+            if (sourceProblem == "missing-folder")
+                row.FolderId = Ulid.NewUlid().ToString();
+            else if (sourceProblem == "invalid-folder")
+                row.FolderId = "invalid";
+            else
+                row.MediaId = (long)int.MaxValue + 1;
+            await ctx.SaveChangesAsync();
+        }
+
+        HttpResponseMessage response = await _authed.PostAsync(
+            $"/api/v1/dashboard/tasks/queue/incomplete/{_rowId1}/retry",
+            content: null
+        );
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+        string json = await response.Content.ReadAsStringAsync();
+        json.Should().NotContain("Re-queued");
+
+        await using MediaContext verificationContext = new();
+        (await verificationContext.IncompleteEncodes.AnyAsync(r => r.Id == _rowId1))
+            .Should()
+            .BeTrue("a row must remain when its source cannot be resolved");
     }
 
     // ── DELETE /api/v1/dashboard/tasks/queue/incomplete/{id} ──────────────

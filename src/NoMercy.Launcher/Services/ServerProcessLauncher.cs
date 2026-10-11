@@ -62,12 +62,31 @@ public class ServerProcessLauncher
         if (installDir is not null)
             startInfo.Environment["NOMERCY_INSTALL_DIR"] = installDir;
 
-        _serverProcess = new() { StartInfo = startInfo, EnableRaisingEvents = true };
+        return StartServerProcessAsync(startInfo);
+    }
 
-        _serverProcess.Exited += (sender, _) => OnServerProcessExited(sender);
+    internal Task<bool> StartServerProcessAsync(ProcessStartInfo startInfo)
+    {
+        Process process = new() { StartInfo = startInfo, EnableRaisingEvents = true };
+        _serverProcess = process;
 
-        bool started = _serverProcess.Start();
-        return Task.FromResult(started);
+        process.Exited += (sender, _) => OnServerProcessExited(sender);
+
+        try
+        {
+            if (process.Start())
+                return Task.FromResult(true);
+
+            LauncherLog.Error($"Failed to start server process: {startInfo.FileName}");
+        }
+        catch (Exception ex)
+        {
+            LauncherLog.Error($"Failed to start server process: {startInfo.FileName}", ex);
+        }
+
+        _serverProcess = null;
+        process.Dispose();
+        return Task.FromResult(false);
     }
 
     public Task<bool> LaunchAppAsync(string? route = null)
@@ -90,19 +109,31 @@ public class ServerProcessLauncher
             startInfo.ArgumentList.Add(route);
         }
 
-        _appProcess = new() { StartInfo = startInfo, EnableRaisingEvents = true };
+        return StartAppProcessAsync(startInfo);
+    }
 
-        _appProcess.Exited += (sender, _) => OnAppProcessExited(sender);
+    internal Task<bool> StartAppProcessAsync(ProcessStartInfo startInfo)
+    {
+        Process process = new() { StartInfo = startInfo, EnableRaisingEvents = true };
+        _appProcess = process;
 
-        bool started = _appProcess.Start();
+        process.Exited += (sender, _) => OnAppProcessExited(sender);
 
-        if (!started)
+        try
         {
-            _appProcess = null;
-            return Task.FromResult(false);
+            if (process.Start())
+                return Task.FromResult(true);
+
+            LauncherLog.Error($"Failed to start app process: {startInfo.FileName}");
+        }
+        catch (Exception ex)
+        {
+            LauncherLog.Error($"Failed to start app process: {startInfo.FileName}", ex);
         }
 
-        return Task.FromResult(true);
+        _appProcess = null;
+        process.Dispose();
+        return Task.FromResult(false);
     }
 
     public async Task<bool> WaitForServerExitAsync(TimeSpan timeout)

@@ -130,6 +130,18 @@ public class PluginGuestInstallerTests
     }
 
     [Fact]
+    public void A_second_guest_cannot_take_over_an_existing_binding()
+    {
+        (PluginGuestInstaller installer, InMemoryGuestStore store, _) = Build();
+        PluginManifest manifest = Manifest("network.fetch");
+        installer.Install(manifest, Guest);
+
+        installer.Install(manifest, Housemate).Should().NotBeNull();
+
+        store.GuestFor(manifest.Id.Value).Should().Be(Guest);
+    }
+
+    [Fact]
     public async Task When_a_guest_leaves_their_plugins_and_their_data_go()
     {
         (PluginGuestInstaller installer, InMemoryGuestStore store, RecordingPurge purge) = Build();

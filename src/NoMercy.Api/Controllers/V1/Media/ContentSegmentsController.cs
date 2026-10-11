@@ -43,7 +43,7 @@ public class ContentSegmentsController(IContentSegmentRepository repository) : B
             pageIndex = 0;
 
         List<ContentSegment> segments = await repository.ListAsync(pageSize, pageIndex, type);
-        int total = await repository.GetTotalCountAsync();
+        int total = await repository.GetTotalCountAsync(type);
 
         return Ok(
             new

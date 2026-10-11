@@ -312,4 +312,68 @@ public class LiveEncoderGapFillTests
             .HaveCount(1, "a fully-covered seek must not spawn a new run");
         session.State.Should().Be(LiveSessionState.Buffered);
     }
+
+    [Fact]
+    public async Task SeekRespawn_ForClientWithout10BitHevc_KeepsTheH264Transcode()
+    {
+        // Phone: HEVC decode tops out at 8-bit; source is 10-bit HEVC. The start
+        // run decides TranscodeVideo (H.264 out). A seek respawn must build the
+        // same video command, never a stream copy that passes Main10 through.
+        Fixture fixture = BuildFixture();
+        MediaInfo media = MakeMedia(TimeSpan.FromHours(1)) with
+        {
+            Format = "mpegts",
+            VideoStreams =
+            [
+                new(
+                    Index: 0,
+                    Codec: "hevc",
+                    Width: 1920,
+                    Height: 1080,
+                    FrameRate: 24.0,
+                    BitDepth: 10,
+                    PixelFormat: "yuv420p10le",
+                    ColorPrimaries: "bt709",
+                    ColorTransfer: "bt709",
+                    ColorSpace: "bt709",
+                    IsDefault: true,
+                    BitRateKbps: 4000
+                ),
+            ],
+        };
+        ClientCapabilities phone = new(
+            SupportedVideoCodecs: [VideoCodecType.H264, VideoCodecType.H265],
+            SupportedAudioCodecs: [AudioCodecType.Aac],
+            SupportedContainers: ["mp4", "ts"],
+            MaxWidth: 1920,
+            MaxHeight: 1080,
+            SupportsHdr: false,
+            Supports10Bit: false,
+            MaxBitrateKbps: 0
+        );
+
+        LiveEncodeRequest request = new(
+            InputPath: "/media/test.ts",
+            CachedInfo: media,
+            Client: phone,
+            StartPosition: TimeSpan.Zero,
+            PreferredQuality: null
+        );
+
+        ILiveSession session = await fixture.Encoder.StartAsync(request, CancellationToken.None);
+        await WaitForCaptureCountAsync(fixture.Runner, 1, TimeSpan.FromSeconds(5));
+        PlantSegments(fixture, ScratchDirFor(fixture, session.SessionId), 0, 5);
+
+        await session.SeekAsync(TimeSpan.FromSeconds(100 * SegDur), CancellationToken.None);
+        await WaitForCaptureCountAsync(fixture.Runner, 2, TimeSpan.FromSeconds(5));
+
+        fixture.Runner.Captured.Should().HaveCount(2);
+        foreach (LiveRunInput run in fixture.Runner.Captured)
+        {
+            string[] args = LiveFfmpegRunner.BuildArguments(run);
+            int vIdx = Array.IndexOf(args, "-c:v");
+            args[vIdx + 1].Should().Be("libx264");
+            args.Should().Contain("-vf");
+        }
+    }
 }

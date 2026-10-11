@@ -26,7 +26,6 @@ public class TonemapSelector : ITonemapSelector
         "mobius",
         "reinhard",
         "clip",
-        "bt2390",
     };
 
     /// <summary>
