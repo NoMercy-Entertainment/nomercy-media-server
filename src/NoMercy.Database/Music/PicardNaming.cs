@@ -57,6 +57,9 @@ public static partial class PicardNaming
     [GeneratedRegex("[?*:\\\\_\"<>|]+")]
     private static partial Regex UnsafeRun();
 
+    [GeneratedRegex(@"\.(?=/)")]
+    private static partial Regex TrailingFolderDot();
+
     [GeneratedRegex(@"^(the|a|an)\s+", RegexOptions.IgnoreCase)]
     private static partial Regex LeadingArticle();
 
@@ -215,8 +218,14 @@ public static partial class PicardNaming
     /// end, so a separator produced by one rule is not mistaken for an unsafe character
     /// belonging to another.
     /// </summary>
+    /// <remarks>
+    /// Windows drops a folder's trailing dot, so "[2001] Melody A.M." was created as a
+    /// second "[2001] Melody A.M" beside the album's "[2001] Melody A.M_". Picard writes
+    /// that last dot as "_" ("M.I.A.M.I_", "On a Day Like This.._" in the library).
+    /// </remarks>
     public static string Sanitize(string pathAndFileName) =>
-        UnsafeRun().Replace(FoldUnsafeUnicode(pathAndFileName), "_");
+        TrailingFolderDot()
+            .Replace(UnsafeRun().Replace(FoldUnsafeUnicode(pathAndFileName), "_"), "_");
 
     /// <summary>
     /// A deliberate deviation from the byte-exact Picard reproduction: any character
