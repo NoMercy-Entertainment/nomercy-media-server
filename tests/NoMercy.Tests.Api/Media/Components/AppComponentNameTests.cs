@@ -37,6 +37,7 @@ public class AppComponentNameTests
             ComponentTypes.List,
             ComponentTypes.Carousel,
             ComponentTypes.Container,
+            ComponentTypes.Lolomo,
             ComponentTypes.Card,
             ComponentTypes.HomeCard,
             ComponentTypes.GenreCard,

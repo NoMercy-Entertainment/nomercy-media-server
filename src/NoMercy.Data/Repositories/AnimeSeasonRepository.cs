@@ -11,6 +11,7 @@
 
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Database;
+using NoMercy.Database.Models.Common;
 
 namespace NoMercy.Data.Repositories;
 
@@ -35,16 +36,7 @@ public class AnimeSeasonRepository(MediaContext context) : IAnimeSeasonRepositor
         // queries. Do not fold this back into a single projection (SQLite APPLY
         // restriction). AnimeSeason has no Translations, so there is no
         // TranslatedName step here.
-        var seasons = await context
-            .AnimeSeasons.AsNoTracking()
-            .Where(season =>
-                season.AnimeSeasonMovies.Any(s =>
-                    s.Movie.Library.LibraryUsers.Any(u => u.UserId == userId)
-                )
-                || season.AnimeSeasonTvShows.Any(s =>
-                    s.Tv.Library.LibraryUsers.Any(u => u.UserId == userId)
-                )
-            )
+        List<SeasonHead> seasons = await VisibleSeasons(userId)
             .OrderByDescending(season => season.Year)
             .ThenBy(season =>
                 season.Quarter == "WINTER" ? 1
@@ -56,14 +48,106 @@ public class AnimeSeasonRepository(MediaContext context) : IAnimeSeasonRepositor
             .ThenBy(season => season.Id)
             .Skip(page * take)
             .Take(take)
-            .Select(season => new
-            {
-                season.Id,
-                season.Year,
-                season.Quarter,
-            })
+            .Select(season => new SeasonHead(season.Id, season.Year, season.Quarter))
             .ToListAsync(ct);
 
+        return await BuildCardsAsync(userId, seasons, ct);
+    }
+
+    /// <summary>
+    /// The ids of the seasons a carousel shows first. Light on purpose: counts
+    /// and dates only, no posters.
+    /// </summary>
+    public async Task<List<int>> GetTopSeasonIdsAsync(
+        Guid userId,
+        AnimeCarouselOrder order,
+        DateOnly today,
+        int take,
+        CancellationToken ct = default
+    )
+    {
+        List<GroupHead> heads = await VisibleSeasons(userId)
+            .Select(season => new GroupHead(
+                season.Id,
+                season.Year + " " + season.Quarter,
+                season.Year,
+                season.Quarter
+            ))
+            .ToListAsync(ct);
+
+        List<GroupLink> tvLinks = await context
+            .AnimeSeasonTv.AsNoTracking()
+            .Where(link => link.Tv.Library.LibraryUsers.Any(u => u.UserId == userId))
+            .Select(link => new GroupLink(link.AnimeSeasonId, link.TvId))
+            .ToListAsync(ct);
+        List<GroupMovieLink> movieLinks = await context
+            .AnimeSeasonMovie.AsNoTracking()
+            .Where(link =>
+                link.Movie.Library.LibraryUsers.Any(u => u.UserId == userId)
+                && link.Movie.VideoFiles.Any(v => v.Folder != null)
+            )
+            .Select(link => new GroupMovieLink(
+                link.AnimeSeasonId,
+                link.MovieId,
+                link.Movie.CreatedAt
+            ))
+            .ToListAsync(ct);
+
+        List<GroupRankRow> rows = await AnimeGroupRankingQueries.RankRowsAsync(
+            context,
+            userId,
+            heads,
+            tvLinks,
+            movieLinks,
+            ct
+        );
+
+        return AnimeGroupRanking.TopIds(rows, order, AnimeGroupKind.Season, today, take);
+    }
+
+    /// <summary>
+    /// The cards of the given seasons, in the order of <paramref name="ids"/>. A
+    /// season the user cannot see is left out.
+    /// </summary>
+    public async Task<List<AnimeSeasonWithCountsDto>> GetSeasonsWithCountsByIdsAsync(
+        Guid userId,
+        IReadOnlyList<int> ids,
+        CancellationToken ct = default
+    )
+    {
+        List<int> wanted = [.. ids];
+        List<SeasonHead> seasons = await VisibleSeasons(userId)
+            .Where(season => wanted.Contains(season.Id))
+            .Select(season => new SeasonHead(season.Id, season.Year, season.Quarter))
+            .ToListAsync(ct);
+
+        Dictionary<int, AnimeSeasonWithCountsDto> cards = (
+            await BuildCardsAsync(userId, seasons, ct)
+        ).ToDictionary(card => card.Id);
+
+        return [.. wanted.Where(cards.ContainsKey).Select(id => cards[id])];
+    }
+
+    private sealed record SeasonHead(int Id, int Year, string Quarter);
+
+    private IQueryable<AnimeSeason> VisibleSeasons(Guid userId) =>
+        context
+            .AnimeSeasons.AsNoTracking()
+            .Where(season =>
+                season.AnimeSeasonMovies.Any(s =>
+                    s.Movie.Library.LibraryUsers.Any(u => u.UserId == userId)
+                )
+                || season.AnimeSeasonTvShows.Any(s =>
+                    s.Tv.Library.LibraryUsers.Any(u => u.UserId == userId)
+                )
+            );
+
+    private async Task<List<AnimeSeasonWithCountsDto>> BuildCardsAsync(
+        Guid userId,
+        List<SeasonHead> seasons,
+        CancellationToken ct
+    )
+    {
         if (seasons.Count == 0)
             return [];
 

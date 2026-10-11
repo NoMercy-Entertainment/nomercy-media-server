@@ -81,7 +81,7 @@ public class MusicController : BaseController
                 "",
                 "favorite-albums",
                 null,
-                data.FavoriteArtists.Select(item => new MusicCardData(item))
+                data.FavoriteArtists.Select(item => Component.MusicCard(new MusicCardData(item)))
             ),
             MusicCarousel(
                 "favorite-albums",
@@ -89,7 +89,7 @@ public class MusicController : BaseController
                 "favorite-artists",
                 "playlists",
                 null,
-                data.FavoriteAlbums.Select(item => new MusicCardData(item))
+                data.FavoriteAlbums.Select(item => Component.MusicCard(new MusicCardData(item)))
             ),
             MusicCarousel(
                 "playlists",
@@ -97,7 +97,7 @@ public class MusicController : BaseController
                 "favorite-albums",
                 "artists",
                 "/music/playlists",
-                data.Playlists.Select(item => new MusicCardData(item))
+                data.Playlists.Select(Component.CoverOrGroupCard)
             ),
             MusicCarousel(
                 "artists",
@@ -105,7 +105,7 @@ public class MusicController : BaseController
                 "playlists",
                 "albums",
                 "/music/artists/letter/_",
-                data.LatestArtists.Select(item => new MusicCardData(item))
+                data.LatestArtists.Select(item => Component.MusicCard(new MusicCardData(item)))
             ),
             MusicCarousel(
                 "albums",
@@ -113,7 +113,7 @@ public class MusicController : BaseController
                 "artists",
                 "genres",
                 "/music/albums/letter/_",
-                data.LatestAlbums.Select(item => new MusicCardData(item))
+                data.LatestAlbums.Select(item => Component.MusicCard(new MusicCardData(item)))
             ),
             MusicCarousel(
                 "genres",
@@ -121,9 +121,13 @@ public class MusicController : BaseController
                 "albums",
                 null,
                 "/music/genres/letter/_",
-                data.LatestGenres.Select(item => new MusicCardData(item))
+                data.LatestGenres.Select(Component.GroupCard)
             ),
         ];
+
+        // The lolomo clients get the favorites row-less: only the carousels, as one NMLolomo.
+        if (request.Version == "lolomo")
+            return Ok(ComponentResponse.From(LolomoPage("music-carousels", items.Skip(1))));
 
         return Ok(ComponentResponse.From(items));
     }
@@ -149,7 +153,7 @@ public class MusicController : BaseController
         string previousId,
         string? nextId,
         string? moreLink,
-        IEnumerable<MusicCardData> cards
+        IEnumerable<ComponentEnvelope> cards
     ) =>
         Component
             .Carousel()
@@ -157,7 +161,7 @@ public class MusicController : BaseController
             .WithTitle(title)
             .WithMoreLink(moreLink)
             .WithNavigation(previousId, nextId)
-            .WithItems(cards.Select(Component.MusicCard));
+            .WithItems(cards);
 
     [HttpPost]
     [Route("start/favorites")]
@@ -271,9 +275,7 @@ public class MusicController : BaseController
                     .WithMoreLink(new Uri("/music/start/playlists", UriKind.Relative))
                     .WithUpdate("pageLoad", "/music/start/playlists")
                     .WithReplacing(request.ReplaceId)
-                    .WithItems(
-                        playlists.Select(item => Component.MusicCard(new MusicCardData(item)))
-                    )
+                    .WithItems(playlists.Select(Component.CoverOrGroupCard))
             )
         );
     }
@@ -360,9 +362,7 @@ public class MusicController : BaseController
                     .Carousel()
                     .WithId("playlists")
                     .WithTitle("Playlists".Localize())
-                    .WithItems(
-                        playlistCards.Select(item => Component.MusicCard(new MusicCardData(item)))
-                    ),
+                    .WithItems(playlistCards.Select(Component.CoverOrGroupCard)),
             ])
         );
     }

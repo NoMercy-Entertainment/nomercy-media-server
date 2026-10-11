@@ -103,9 +103,7 @@ public class CollectionsController(
             )
             .ToList();
 
-        ComponentEnvelope containerResponse = Component.Container().WithItems(carousels);
-
-        return Ok(containerResponse);
+        return Ok(ComponentResponse.From(LolomoPage("collections", carousels)));
     }
 
     [HttpGet]

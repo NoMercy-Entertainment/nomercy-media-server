@@ -135,13 +135,42 @@ public class MusicTrackRepairJob : AbstractMusicFolderJob
             LoggerFactory.CreateLogger<RecordingManager>()
         );
 
+        // A track stored without its artists shows no artist anywhere (2026-10-07: 14 tracks
+        // this job had re-matched had none), so each one is stored with the artists it credits.
+        MusicBrainzArtistClient musicBrainzArtistClient = new();
+        Dictionary<Guid, MusicBrainzArtistAppends?> artistsById = [];
+
         int repaired = 0;
         foreach (MusicBrainzTrack track in allTracks)
         {
             if (!resolvedFileByTrackId.TryGetValue(track.Id, out MediaFile? mediaFile))
                 continue;
 
-            await recordingManager.Store(release, track, [], mediaFile, folderLibrary, null);
+            List<MusicBrainzArtistAppends> artists = [];
+            foreach (
+                Guid artistId in track
+                    .ArtistCredit.Select(credit => credit.MusicBrainzArtist.Id)
+                    .Distinct()
+            )
+            {
+                if (!artistsById.TryGetValue(artistId, out MusicBrainzArtistAppends? artist))
+                {
+                    artist = await musicBrainzArtistClient.WithAllAppends(artistId);
+                    artistsById[artistId] = artist;
+                }
+
+                if (artist is not null)
+                    artists.Add(artist);
+            }
+
+            await recordingManager.Store(
+                release,
+                track,
+                [.. artists],
+                mediaFile,
+                folderLibrary,
+                null
+            );
             repaired++;
         }
 

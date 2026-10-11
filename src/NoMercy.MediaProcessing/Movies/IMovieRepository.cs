@@ -48,6 +48,7 @@ public interface IMovieRepository
     Task StoreAnimeDemographics(IEnumerable<AnimeDemographicMovie> animeDemographicMovies);
     Task StoreAnimeSeason(int movieId, int year, string quarter);
     Task<int> ResolveAnimeThemeIdAsync(string name);
+    Task FillAnimeThemeDescriptionAsync(int animeThemeId, string description);
     Task<int> ResolveAnimeDemographicIdAsync(string name);
     Task<bool> HasAnimeThemesAsync(int movieId);
     Task<bool> HasAnimeDemographicsAsync(int movieId);

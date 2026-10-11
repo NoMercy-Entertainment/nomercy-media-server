@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.Api.DTOs.Music;
+using NoMercy.Data.Repositories;
 
 namespace NoMercy.Api.DTOs.Media.Components;
 
@@ -42,6 +43,11 @@ public static class Component
     /// </summary>
     public static ContainerComponentBuilder Container() =>
         new(ComponentTypes.Container, new NmContainerProps());
+
+    /// <summary>
+    /// Creates an NMLolomo component - a page of carousel rows for the TV app.
+    /// </summary>
+    public static LolomoComponentBuilder Lolomo(string id) => new(id);
 
     #endregion
 
@@ -84,6 +90,29 @@ public static class Component
     /// Creates an NMGroupCard component - a group of titles drawn from their posters.
     /// </summary>
     public static LeafComponentBuilder<GroupCardData> GroupCard() => new(ComponentTypes.GroupCard);
+
+    /// <summary>
+    /// A music genre has no image of its own: an NMGroupCard of its album covers.
+    /// </summary>
+    public static ComponentEnvelope GroupCard(MusicGenreCardDto genre) =>
+        GroupCard()
+            .WithData(new GroupCardData(new MusicCardData(genre), genre.Id, genre.ItemPosters));
+
+    /// <summary>
+    /// A playlist with a stored cover keeps its NMMusicCard; one without is an
+    /// NMGroupCard of its album covers.
+    /// </summary>
+    public static ComponentEnvelope CoverOrGroupCard(PlaylistCardDto playlist) =>
+        playlist.HasOwnCover
+            ? MusicCard(new MusicCardData(playlist))
+            : GroupCard()
+                .WithData(
+                    new GroupCardData(
+                        new MusicCardData(playlist),
+                        playlist.Id,
+                        playlist.ItemPosters
+                    )
+                );
 
     /// <summary>
     /// Creates an NMMusicCard component - music album/artist card.

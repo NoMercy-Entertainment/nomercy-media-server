@@ -152,6 +152,14 @@ public class AnimeGroupListTests
     private static ContainerProps Props(ComponentEnvelope envelope) =>
         (ContainerProps)envelope.Props;
 
+    // version=lolomo answers one NMLolomo; its items are the rows.
+    private static List<ComponentEnvelope> LolomoRows(List<ComponentEnvelope> page)
+    {
+        ComponentEnvelope lolomo = Assert.Single(page);
+        Assert.Equal("NMLolomo", lolomo.Component);
+        return [.. Assert.IsType<LolomoProps>(lolomo.Props).Items];
+    }
+
     private static GroupCardData Data(ComponentEnvelope card) =>
         ((LeafProps<GroupCardData>)card.Props).Data!;
 
@@ -188,14 +196,16 @@ public class AnimeGroupListTests
     [Fact]
     public async Task Themes_Lolomo_AreLetterRows_WithNeighbors()
     {
-        List<ComponentEnvelope> rows = await Themes(
-            [
-                Theme(1, "comedy"),
-                Theme(2, "action"),
-                Theme(3, "adventure"),
-                Theme(4, "2.5 dimensional"),
-            ],
-            "lolomo"
+        List<ComponentEnvelope> rows = LolomoRows(
+            await Themes(
+                [
+                    Theme(1, "comedy"),
+                    Theme(2, "action"),
+                    Theme(3, "adventure"),
+                    Theme(4, "2.5 dimensional"),
+                ],
+                "lolomo"
+            )
         );
 
         Assert.All(rows, row => Assert.Equal("NMCarousel", row.Component));
@@ -235,19 +245,21 @@ public class AnimeGroupListTests
     [Fact]
     public async Task Demographics_Lolomo_AreLetterRows_WithNeighbors()
     {
-        List<ComponentEnvelope> rows = await Demographics(
-            [Demographic(1, "shounen"), Demographic(2, "josei"), Demographic(3, "seinen")],
-            "lolomo"
+        List<ComponentEnvelope> rows = LolomoRows(
+            await Demographics(
+                [Demographic(1, "shounen"), Demographic(2, "josei"), Demographic(3, "seinen")],
+                "lolomo"
+            )
         );
 
         Assert.All(rows, row => Assert.Equal("NMCarousel", row.Component));
         Assert.Equal(["J", "S"], rows.Select(row => Props(row).Title));
-        // Neighbors are the adjacent letters, present or not, as on the
-        // library and genre routes (LibrariesController.cs:451-456).
-        Assert.Equal("I", (string?)Props(rows[0]).PreviousId);
-        Assert.Equal("K", (string?)Props(rows[0]).NextId);
-        Assert.Equal("R", (string?)Props(rows[1]).PreviousId);
-        Assert.Equal("T", (string?)Props(rows[1]).NextId);
+        // NMLolomo links each row to the rows it really holds, not to the
+        // adjacent letters: J and S are neighbors, with nothing beyond them.
+        Assert.Null(Props(rows[0]).PreviousId);
+        Assert.Equal("S", (string?)Props(rows[0]).NextId);
+        Assert.Equal("J", (string?)Props(rows[1]).PreviousId);
+        Assert.Null(Props(rows[1]).NextId);
         Assert.Equal(["Seinen", "Shounen"], Props(rows[1]).Items.Select(card => Data(card).Title));
         Assert.All(
             rows.SelectMany(row => Props(row).Items),
@@ -284,7 +296,8 @@ public class AnimeGroupListTests
     // walks all six for the band color, and the front poster's gradient takes
     // three (app-web NMGroupCard.vue:75, colorHelper.ts:203-210,
     // useImageStyles.ts:68-71). Anything beyond those six is dead weight on
-    // a themes page of ~1600 posters.
+    // a themes page of ~1600 posters. `url` is the full image address a
+    // generic card shows as-is; `src` stays for older clients.
     [Fact]
     public async Task GroupPoster_SendsOnlyThePaletteKeysTheCardReads()
     {
@@ -312,7 +325,10 @@ public class AnimeGroupListTests
                 .Parse(JsonConvert.SerializeObject(ComponentResponse.From(page[0])))
                 .SelectToken("$.data[0].props.items[0].props.data.item_posters[0]")!;
 
-        Assert.Equal(["src", "color_palette", "color"], poster.Properties().Select(p => p.Name));
+        Assert.Equal(
+            ["src", "color_palette", "color", "url"],
+            poster.Properties().Select(p => p.Name)
+        );
         Assert.Equal(
             ["dominant", "primary", "lightVibrant", "darkVibrant", "lightMuted", "darkMuted"],
             ((JObject)poster["color_palette"]!).Properties().Select(p => p.Name)
@@ -339,21 +355,23 @@ public class AnimeGroupListTests
                 .Parse(JsonConvert.SerializeObject(ComponentResponse.From(page[0])))
                 .SelectToken("$.data[0].props.items[0].props.data.item_posters[0]")!;
 
-        Assert.Equal(["src", "color"], poster.Properties().Select(p => p.Name));
+        Assert.Equal(["src", "color", "url"], poster.Properties().Select(p => p.Name));
         Assert.Equal("#404040", poster["color"]);
     }
 
     [Fact]
     public async Task Seasons_Lolomo_AreYearRows_NewestFirst_QuartersInOrder()
     {
-        List<ComponentEnvelope> rows = await Seasons(
-            [
-                Season(1, 2023, "SPRING"),
-                Season(2, 2024, "FALL"),
-                Season(3, 2024, "WINTER"),
-                Season(4, 2024, "SUMMER"),
-            ],
-            "lolomo"
+        List<ComponentEnvelope> rows = LolomoRows(
+            await Seasons(
+                [
+                    Season(1, 2023, "SPRING"),
+                    Season(2, 2024, "FALL"),
+                    Season(3, 2024, "WINTER"),
+                    Season(4, 2024, "SUMMER"),
+                ],
+                "lolomo"
+            )
         );
 
         Assert.Equal(["2024", "2023"], rows.Select(row => Props(row).Title));

@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.ComponentModel.DataAnnotations;
 using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json;
 
@@ -23,6 +24,10 @@ public class AnimeTheme
 
     [JsonProperty("name")]
     public string Name { get; set; } = string.Empty;
+
+    [MaxLength(4096)]
+    [JsonProperty("description")]
+    public string? Description { get; set; }
 
     public ICollection<AnimeThemeMovie> AnimeThemeMovies { get; set; } = [];
     public ICollection<AnimeThemeTv> AnimeThemeTvShows { get; set; } = [];

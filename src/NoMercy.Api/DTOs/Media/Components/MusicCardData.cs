@@ -68,6 +68,10 @@ public record MusicCardData
     [JsonProperty("year")]
     public int? Year { get; set; }
 
+    /// <summary>An album's artist by name; the header shows whose album it is.</summary>
+    [JsonProperty("artist", NullValueHandling = NullValueHandling.Ignore)]
+    public string? Artist { get; set; }
+
     public MusicCardData() { }
 
     public MusicCardData(Album album)
@@ -164,6 +168,7 @@ public record MusicCardData
         Year = album.Year;
         Tracks = album.TrackCount;
         LibraryId = album.LibraryId.ToString();
+        Artist = album.ArtistName;
     }
 
     public MusicCardData(PlaylistCardDto playlist)

@@ -11,6 +11,7 @@
 
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Database;
+using NoMercy.Database.Models.Common;
 
 namespace NoMercy.Data.Repositories;
 
@@ -38,7 +39,112 @@ public class AnimeThemeRepository(MediaContext context) : IAnimeThemeRepository
         // Two steps on purpose: mirrors GenreRepository.GetGenresWithCountsAsync —
         // page the themes first, then aggregate their counts with grouped queries.
         // Do not fold this back into a single projection (SQLite APPLY restriction).
-        var themes = await context
+        List<ThemeHead> themes = await VisibleThemes(userId)
+            .OrderBy(theme => theme.Name)
+            .ThenBy(theme => theme.Id)
+            .Skip(page * take)
+            .Take(take)
+            .Select(theme => new ThemeHead(
+                theme.Id,
+                theme.Name,
+                theme.Description,
+                theme
+                    .Translations.Where(t => t.Iso6391 == language)
+                    .Select(t => t.Name)
+                    .FirstOrDefault()
+            ))
+            .ToListAsync(ct);
+
+        return await BuildCardsAsync(userId, themes, ct);
+    }
+
+    /// <summary>
+    /// The ids of the themes a carousel shows first. Light on purpose: counts
+    /// and dates only, no posters.
+    /// </summary>
+    public async Task<List<int>> GetTopThemeIdsAsync(
+        Guid userId,
+        AnimeCarouselOrder order,
+        DateOnly today,
+        int take,
+        CancellationToken ct = default
+    )
+    {
+        List<GroupHead> heads = await VisibleThemes(userId)
+            .Select(theme => new GroupHead(theme.Id, theme.Name, 0, string.Empty))
+            .ToListAsync(ct);
+
+        List<GroupLink> tvLinks = await context
+            .AnimeThemeTv.AsNoTracking()
+            .Where(link => link.Tv.Library.LibraryUsers.Any(u => u.UserId == userId))
+            .Select(link => new GroupLink(link.AnimeThemeId, link.TvId))
+            .ToListAsync(ct);
+        List<GroupMovieLink> movieLinks = await context
+            .AnimeThemeMovie.AsNoTracking()
+            .Where(link =>
+                link.Movie.Library.LibraryUsers.Any(u => u.UserId == userId)
+                && link.Movie.VideoFiles.Any(v => v.Folder != null)
+            )
+            .Select(link => new GroupMovieLink(
+                link.AnimeThemeId,
+                link.MovieId,
+                link.Movie.CreatedAt
+            ))
+            .ToListAsync(ct);
+
+        List<GroupRankRow> rows = await AnimeGroupRankingQueries.RankRowsAsync(
+            context,
+            userId,
+            heads,
+            tvLinks,
+            movieLinks,
+            ct
+        );
+
+        return AnimeGroupRanking.TopIds(rows, order, AnimeGroupKind.Theme, today, take);
+    }
+
+    /// <summary>
+    /// The cards of the given themes, in the order of <paramref name="ids"/>. A
+    /// theme the user cannot see is left out.
+    /// </summary>
+    public async Task<List<AnimeThemeWithCountsDto>> GetThemesWithCountsByIdsAsync(
+        Guid userId,
+        string language,
+        IReadOnlyList<int> ids,
+        CancellationToken ct = default
+    )
+    {
+        List<int> wanted = [.. ids];
+        List<ThemeHead> themes = await VisibleThemes(userId)
+            .Where(theme => wanted.Contains(theme.Id))
+            .Select(theme => new ThemeHead(
+                theme.Id,
+                theme.Name,
+                theme.Description,
+                theme
+                    .Translations.Where(t => t.Iso6391 == language)
+                    .Select(t => t.Name)
+                    .FirstOrDefault()
+            ))
+            .ToListAsync(ct);
+
+        Dictionary<int, AnimeThemeWithCountsDto> cards = (
+            await BuildCardsAsync(userId, themes, ct)
+        ).ToDictionary(card => card.Id);
+
+        return [.. wanted.Where(cards.ContainsKey).Select(id => cards[id])];
+    }
+
+    private sealed record ThemeHead(
+        int Id,
+        string Name,
+        string? Description,
+        string? TranslatedName
+    );
+
+    private IQueryable<AnimeTheme> VisibleThemes(Guid userId) =>
+        context
             .AnimeThemes.AsNoTracking()
             .Where(theme =>
                 theme.AnimeThemeMovies.Any(t =>
@@ -47,22 +153,14 @@ public class AnimeThemeRepository(MediaContext context) : IAnimeThemeRepository
                 || theme.AnimeThemeTvShows.Any(t =>
                     t.Tv.Library.LibraryUsers.Any(u => u.UserId == userId)
                 )
-            )
-            .OrderBy(theme => theme.Name)
-            .ThenBy(theme => theme.Id)
-            .Skip(page * take)
-            .Take(take)
-            .Select(theme => new
-            {
-                theme.Id,
-                theme.Name,
-                TranslatedName = theme
-                    .Translations.Where(t => t.Iso6391 == language)
-                    .Select(t => t.Name)
-                    .FirstOrDefault(),
-            })
-            .ToListAsync(ct);
+            );
 
+    private async Task<List<AnimeThemeWithCountsDto>> BuildCardsAsync(
+        Guid userId,
+        List<ThemeHead> themes,
+        CancellationToken ct
+    )
+    {
         if (themes.Count == 0)
             return [];
 
@@ -147,6 +245,7 @@ public class AnimeThemeRepository(MediaContext context) : IAnimeThemeRepository
             {
                 Id = theme.Id,
                 Name = theme.TranslatedName ?? theme.Name,
+                Description = theme.Description,
                 TotalMovies = movieTotals.GetValueOrDefault(theme.Id),
                 TotalTvShows = tvTotals.GetValueOrDefault(theme.Id),
                 MoviesWithVideo = movieWithVideo.GetValueOrDefault(theme.Id),

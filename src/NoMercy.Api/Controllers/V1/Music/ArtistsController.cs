@@ -74,7 +74,7 @@ public class ArtistsController : BaseController
         {
             List<ArtistCardDto> allCards = await _musicRepository.GetAllArtistCardsAsync(userId);
 
-            List<ComponentEnvelope> items = [Component.Container()];
+            List<ComponentEnvelope> items = [];
 
             IOrderedEnumerable<IGrouping<string, ArtistCardDto>> groups = allCards
                 .GroupBy(a => AlphaBucket.LetterFor(a.Name))
@@ -91,7 +91,7 @@ public class ArtistsController : BaseController
                 );
             }
 
-            return Ok(ComponentResponse.From(items));
+            return Ok(ComponentResponse.From(LolomoPage("artists-carousels", items)));
         }
 
         List<ArtistCardDto> artistCards = await _musicRepository.GetArtistCardsAsync(
@@ -105,7 +105,6 @@ public class ArtistsController : BaseController
         {
             List<ComponentEnvelope> items =
             [
-                Component.Container(),
                 Component
                     .Carousel()
                     .WithId($"artists-{letter}")
@@ -113,7 +112,7 @@ public class ArtistsController : BaseController
                     .WithItems(artistCards.Select(a => Component.MusicCard(new MusicCardData(a)))),
             ];
 
-            return Ok(ComponentResponse.From(items));
+            return Ok(ComponentResponse.From(LolomoPage($"artists-{letter}", items)));
         }
 
         ComponentEnvelope grid = Component

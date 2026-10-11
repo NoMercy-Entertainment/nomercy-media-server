@@ -51,4 +51,13 @@ public class JikanMetadataProvider : ExternalApiClient, IJikanMetadataProvider
     {
         return await JikanClient.GetByIdWithPriorityAsync(Client, malId, priority);
     }
+
+    public async Task<JikanGenre[]?> GetGenresAsync(string filter, bool? priority = false)
+    {
+        return await RequestQueue.Enqueue(
+            () => JikanClient.GetGenresAsync(Client, filter),
+            $"jikan-genres-{filter}",
+            priority
+        );
+    }
 }

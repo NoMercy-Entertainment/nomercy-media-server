@@ -108,52 +108,10 @@ public class GenresController : BaseController
         }
 
         // Carousel view organized by first letter
-        List<ComponentEnvelope> carousels =
-        [
-            .. Letters
-                .Select(
-                    (letter, index) =>
-                    {
-                        List<CardData> carouselItems =
-                        [
-                            .. movies
-                                .Select(movie => new CardData(movie))
-                                .Where(card => AlphaBucket.Matches(card.TitleSort, letter))
-                                .Concat(
-                                    tvShows
-                                        .Select(tv => new CardData(tv))
-                                        .Where(card => AlphaBucket.Matches(card.TitleSort, letter))
-                                )
-                                .OrderBy(card => card.TitleSort),
-                        ];
-
-                        if (carouselItems.Count == 0)
-                            return null;
-
-                        return Component
-                            .Carousel()
-                            .WithId(letter)
-                            .WithTitle(letter)
-                            .WithNavigation(
-                                index == 0 ? null : Letters.ElementAtOrDefault(index - 1) ?? null,
-                                index == Letters.Length - 1
-                                    ? null
-                                    : Letters.ElementAtOrDefault(index + 1) ?? null
-                            )
-                            .WithItems(
-                                carouselItems.Select(card => Component.Card().WithData(card))
-                            )
-                            .Build();
-                    }
-                )
-                .Where(c => c != null)
-                .Cast<ComponentEnvelope>(),
-        ];
-
-        ComponentEnvelope containerResponse = Component
-            .Container()
-            .WithId("genre-carousels")
-            .WithItems(carousels);
+        ComponentEnvelope containerResponse = LolomoPage(
+            "genre-carousels",
+            [TitleCardLetterCarousels("genre-carousels", movies, tvShows)]
+        );
 
         return Ok(ComponentResponse.From(containerResponse));
     }

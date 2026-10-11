@@ -93,12 +93,12 @@ public class AnimeThemesController(IAnimeThemeRepository animeThemeRepository) :
             );
         }
 
-        return Ok(new ComponentResponse { Data = components });
+        return Ok(ComponentResponse.From(LolomoPage("anime-themes", components)));
     }
 
     [HttpGet]
     [Route("{themeId}")]
-    [ResponseCache(Duration = 300, VaryByQueryKeys = ["take", "page"])]
+    [ResponseCache(Duration = 300, VaryByQueryKeys = ["take", "page", "version"])]
     public async Task<IActionResult> Theme(
         int themeId,
         [FromQuery] PageRequestDto request,
@@ -127,7 +127,20 @@ public class AnimeThemesController(IAnimeThemeRepository animeThemeRepository) :
         if (themeDetail is null || (movies.Count == 0 && tvShows.Count == 0))
             return NotFoundResponse("Anime theme not found");
 
-        ComponentEnvelope response = TitleCardGrid("anime-theme-items", movies, tvShows);
+        ComponentEnvelope response =
+            request.Version == "lolomo"
+                ? LolomoPage(
+                    "anime-theme-carousels",
+                    [
+                        TitleCardCarousel(
+                            "anime-theme-carousels",
+                            themeDetail.TranslatedName ?? themeDetail.Name,
+                            movies,
+                            tvShows
+                        ),
+                    ]
+                )
+                : TitleCardGrid("anime-theme-items", movies, tvShows);
 
         return Ok(ComponentResponse.From(response));
     }

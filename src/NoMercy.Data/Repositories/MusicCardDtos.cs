@@ -51,6 +51,9 @@ public class AlbumCardDto
     public string? Folder { get; set; }
     public int Year { get; set; }
     public int TrackCount { get; set; }
+
+    /// <summary>The album's artist by name, for the header that names whose album it is.</summary>
+    public string? ArtistName { get; set; }
     public string? TranslatedDescription { get; set; }
     public string? BackgroundImagePath { get; set; }
     public string? BackgroundImageColorPalette { get; set; }
@@ -66,6 +69,15 @@ public class PlaylistCardDto
     public string ColorPalette { get; set; } = string.Empty;
     public int TrackCount { get; set; }
     public Uri Link { get; set; } = null!;
+
+    /// <summary>The covers of the albums in the playlist, for a playlist without its own cover.</summary>
+    public GroupPoster[] ItemPosters { get; set; } = [];
+
+    // The palette is read from the stored cover file, so a cover without one
+    // has no file to serve.
+    public bool HasOwnCover =>
+        !string.IsNullOrEmpty(Cover)
+        && NoMercy.Database.ColorPalette.FromJsonOrNull(ColorPalette) is not null;
 }
 
 public class MusicGenreCardDto
@@ -74,6 +86,9 @@ public class MusicGenreCardDto
     public string Name { get; set; } = null!;
     public int TrackCount { get; set; }
     public Uri Link { get; set; } = null!;
+
+    /// <summary>The covers of the albums in the genre; a genre has no image of its own.</summary>
+    public GroupPoster[] ItemPosters { get; set; } = [];
 }
 
 public class TopMusicItemDto

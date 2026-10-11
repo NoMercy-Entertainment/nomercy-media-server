@@ -64,6 +64,7 @@ public interface IShowRepository
     Task StoreAnimeDemographics(IEnumerable<AnimeDemographicTv> animeDemographicTvs);
     Task StoreAnimeSeason(int tvId, int year, string quarter);
     Task<int> ResolveAnimeThemeIdAsync(string name);
+    Task FillAnimeThemeDescriptionAsync(int animeThemeId, string description);
     Task<int> ResolveAnimeDemographicIdAsync(string name);
     Task<bool> HasAnimeThemesAsync(int tvId);
     Task<bool> HasAnimeDemographicsAsync(int tvId);

@@ -23,6 +23,9 @@ public record AniListResponseData
 {
     [JsonProperty("Page")]
     public AniListPage Page { get; set; } = new();
+
+    [JsonProperty("MediaTagCollection")]
+    public AniListMediaTag[] MediaTagCollection { get; set; } = [];
 }
 
 public record AniListPage

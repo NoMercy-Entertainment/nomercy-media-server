@@ -80,4 +80,11 @@ public interface IGenreRepository
     );
 
     Task<MusicGenre?> GetMusicGenreAsync(Guid userId, Guid genreId, CancellationToken ct = default);
+
+    /// <summary>The covers the genre's card shows, so its page shows the same.</summary>
+    Task<GroupPoster[]> GetMusicGenreCoversAsync(
+        Guid userId,
+        Guid genreId,
+        CancellationToken ct = default
+    );
 }

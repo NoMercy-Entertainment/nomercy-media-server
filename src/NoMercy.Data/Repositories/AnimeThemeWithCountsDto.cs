@@ -15,6 +15,7 @@ public class AnimeThemeWithCountsDto
 {
     public int Id { get; set; }
     public string Name { get; set; } = string.Empty;
+    public string? Description { get; set; }
     public int TotalMovies { get; set; }
     public int TotalTvShows { get; set; }
     public int MoviesWithVideo { get; set; }

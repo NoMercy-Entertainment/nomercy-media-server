@@ -11,6 +11,7 @@
 
 using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
+using ImageMagick;
 using Microsoft.Extensions.Logging;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.Music;
@@ -28,7 +29,6 @@ using NoMercy.Providers.FanArt.Client;
 using NoMercy.Providers.MusicBrainz.Models;
 using NoMercy.Storage;
 using NoMercy.Storage.Drivers.Local;
-using ImageMagick;
 
 namespace NoMercy.MediaProcessing.Recordings;
 
@@ -400,6 +400,41 @@ public partial class RecordingManager(
     [GeneratedRegex("^00:")]
     private static partial Regex HmsRegex();
 
+    [GeneratedRegex(@"[\(\[]\s*(feat|ft)\.?\s[^\)\]]*[\)\]]", RegexOptions.IgnoreCase)]
+    private static partial Regex FeaturingClause();
+
+    private const double LengthToleranceSeconds = 3;
+
+    /// <summary>
+    /// Whether a file's own content says it is this track: its title tag names the same
+    /// song (case, accents, punctuation and a "feat." clause aside), or, with no title tag,
+    /// its length is within 3 s of the track's. No title and no length confirms nothing.
+    /// </summary>
+    internal static bool ContentConfirmsTrack(
+        string? fileTitle,
+        TimeSpan fileDuration,
+        string trackTitle,
+        double trackSeconds
+    )
+    {
+        if (!string.IsNullOrWhiteSpace(fileTitle))
+            return ComparableTitle(fileTitle) == ComparableTitle(trackTitle);
+
+        return fileDuration > TimeSpan.Zero
+            && trackSeconds > 0
+            && Math.Abs(fileDuration.TotalSeconds - trackSeconds) <= LengthToleranceSeconds;
+    }
+
+    [GeneratedRegex("[^a-z0-9]")]
+    private static partial Regex NotLetterOrDigit();
+
+    private static string ComparableTitle(string title) =>
+        NotLetterOrDigit()
+            .Replace(
+                FeaturingClause().Replace(title, "").RemoveDiacritics().ToLowerInvariant(),
+                ""
+            );
+
     /// <summary>
     /// Places the source file itself on Stoney's Picard layout, not just an encoder's
     /// output copy. <see cref="MusicEncodeDispatcher"/> only ever organizes an ENCODED
@@ -471,6 +506,34 @@ public partial class RecordingManager(
             : string.Equals(currentRelativePath, targetRelativePath, StringComparison.Ordinal);
         if (alreadyPlaced)
             return;
+
+        // 2026-10-07: a repair trusted a wrong release match and renamed 24 files to fit
+        // it — the file holding "Heavy" became "1-08 Hocus Pocus.mp3". The match decides
+        // nothing on disk until the file's own content agrees with it.
+        string? fileTitle = mediaFile
+            .FFprobe?.Format.Tags?.FirstOrDefault(tag =>
+                tag.Key.Equals("title", StringComparison.OrdinalIgnoreCase)
+            )
+            .Value;
+        TimeSpan fileDuration = mediaFile.FFprobe?.Format.Duration ?? TimeSpan.Zero;
+        if (
+            !ContentConfirmsTrack(
+                fileTitle,
+                fileDuration,
+                trackAppends.Title,
+                trackAppends.Duration
+            )
+        )
+        {
+            logger.LogWarning(
+                "Not organizing '{Path}' as {Track}: its own title ({FileTitle}) and length ({Duration}) do not confirm that track",
+                currentRelativePath,
+                trackAppends.Title,
+                fileTitle ?? "none",
+                fileDuration
+            );
+            return;
+        }
 
         // storageFactory.For(...) scopes to the DRIVE root, not the library folder — the
         // same reason ResolveLibraryRoot resolves libraryFolder.Path through it rather than

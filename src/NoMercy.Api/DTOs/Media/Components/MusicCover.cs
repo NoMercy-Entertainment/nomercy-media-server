@@ -9,6 +9,8 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using NoMercy.Data.Repositories;
+
 namespace NoMercy.Api.DTOs.Media.Components;
 
 /// <summary>The served URL of a stored music image.</summary>
@@ -20,4 +22,12 @@ public static class MusicCover
 
     /// <summary>Null only when the path is null; an empty path still yields the folder URL.</summary>
     public static string? UrlWhenSet(string? path) => path is null ? null : $"/images/music{path}";
+
+    /// <summary>Album covers as stored, turned into the URLs the server serves them on.</summary>
+    public static GroupPoster[] Served(IEnumerable<GroupPoster> covers) =>
+        [
+            .. covers.Select(cover =>
+                Url(cover.Src) is { } url ? cover with { Src = url, Url = url } : cover
+            ),
+        ];
 }
