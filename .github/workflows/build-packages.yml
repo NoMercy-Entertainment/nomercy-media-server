@@ -27,6 +27,7 @@ on:
 
 jobs:
   build_packages:
+    timeout-minutes: 7200
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
