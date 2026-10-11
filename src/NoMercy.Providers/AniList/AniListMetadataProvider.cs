@@ -47,4 +47,13 @@ public class AniListMetadataProvider : ExternalApiClient, IAniListMetadataProvid
     {
         return await AniListClient.SearchWithPriorityAsync(Client, title, year, priority);
     }
+
+    public async Task<AniListMediaTag[]?> GetTagCollectionAsync(bool? priority = false)
+    {
+        return await RequestQueue.Enqueue(
+            () => AniListClient.GetTagCollectionAsync(Client),
+            "anilist-tag-collection",
+            priority
+        );
+    }
 }

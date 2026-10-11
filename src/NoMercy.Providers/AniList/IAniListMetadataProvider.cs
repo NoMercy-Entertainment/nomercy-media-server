@@ -16,4 +16,6 @@ namespace NoMercy.Providers.AniList;
 public interface IAniListMetadataProvider
 {
     Task<AniListMedia?> SearchAsync(string title, int? year, bool? priority = false);
+
+    Task<AniListMediaTag[]?> GetTagCollectionAsync(bool? priority = false);
 }

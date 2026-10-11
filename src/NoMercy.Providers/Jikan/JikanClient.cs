@@ -127,4 +127,19 @@ public static class JikanClient
 
         return parsed?.Data;
     }
+
+    // filter is "themes" or "demographics".
+    public static async Task<JikanGenre[]?> GetGenresAsync(HttpClient client, string filter)
+    {
+        using HttpResponseMessage response = await client.GetAsync(
+            $"genres/anime?filter={Uri.EscapeDataString(filter)}"
+        );
+        if (!response.IsSuccessStatusCode)
+            return null;
+
+        string body = await response.Content.ReadAsStringAsync();
+        JikanGenreResponse? parsed = JsonConvert.DeserializeObject<JikanGenreResponse>(body);
+
+        return parsed?.Data;
+    }
 }

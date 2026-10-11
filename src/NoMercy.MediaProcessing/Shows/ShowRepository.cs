@@ -401,28 +401,43 @@ public class ShowRepository(MediaContext context) : IShowRepository
 
     public async Task<int> ResolveAnimeThemeIdAsync(string name)
     {
+        string trimmed = name.Trim();
+        string folded = trimmed.ToLower();
         AnimeTheme? existing = await context
             .AnimeThemes.AsNoTracking()
-            .FirstOrDefaultAsync(t => t.Name == name);
+            .OrderBy(t => t.Id)
+            .FirstOrDefaultAsync(t => t.Name.Trim().ToLower() == folded);
         if (existing is not null)
             return existing.Id;
 
-        AnimeTheme created = new() { Name = name };
+        AnimeTheme created = new() { Name = trimmed };
         context.AnimeThemes.Add(created);
         await context.SaveChangesAsync();
 
         return created.Id;
     }
 
+    public Task FillAnimeThemeDescriptionAsync(int animeThemeId, string description)
+    {
+        return context
+            .AnimeThemes.Where(t =>
+                t.Id == animeThemeId && (t.Description == null || t.Description == "")
+            )
+            .ExecuteUpdateAsync(s => s.SetProperty(t => t.Description, description));
+    }
+
     public async Task<int> ResolveAnimeDemographicIdAsync(string name)
     {
+        string trimmed = name.Trim();
+        string folded = trimmed.ToLower();
         AnimeDemographic? existing = await context
             .AnimeDemographics.AsNoTracking()
-            .FirstOrDefaultAsync(d => d.Name == name);
+            .OrderBy(d => d.Id)
+            .FirstOrDefaultAsync(d => d.Name.Trim().ToLower() == folded);
         if (existing is not null)
             return existing.Id;
 
-        AnimeDemographic created = new() { Name = name };
+        AnimeDemographic created = new() { Name = trimmed };
         context.AnimeDemographics.Add(created);
         await context.SaveChangesAsync();
 

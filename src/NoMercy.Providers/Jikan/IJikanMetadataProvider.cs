@@ -20,4 +20,7 @@ public interface IJikanMetadataProvider
     // Bypasses the unreliable /anime search endpoint (see JikanClient.GetByIdAsync)
     // for callers that already have a MAL id, e.g. from AniList's idMal.
     Task<JikanAnime?> GetByIdAsync(int malId, bool? priority = false);
+
+    // filter is "themes" or "demographics".
+    Task<JikanGenre[]?> GetGenresAsync(string filter, bool? priority = false);
 }

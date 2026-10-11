@@ -30,11 +30,38 @@ public static class AniListClient
               seasonYear
               season
               genres
-              tags { name category isAdult }
+              tags { name description category isAdult }
             }
           }
         }
         """;
+
+    private const string TagCollectionQuery = """
+        query { MediaTagCollection { name description category isAdult } }
+        """;
+
+    public static async Task<AniListMediaTag[]?> GetTagCollectionAsync(HttpClient client)
+    {
+        object payload = new { query = TagCollectionQuery };
+
+        using HttpRequestMessage request = new(HttpMethod.Post, client.BaseAddress)
+        {
+            Content = new StringContent(
+                JsonConvert.SerializeObject(payload),
+                Encoding.UTF8,
+                "application/json"
+            ),
+        };
+
+        using HttpResponseMessage response = await client.SendAsync(request);
+        if (!response.IsSuccessStatusCode)
+            return null;
+
+        string body = await response.Content.ReadAsStringAsync();
+        AniListResponse? parsed = JsonConvert.DeserializeObject<AniListResponse>(body);
+
+        return parsed?.Data.MediaTagCollection;
+    }
 
     public static async Task<AniListMedia?> SearchAsync(HttpClient client, string title, int? year)
     {
