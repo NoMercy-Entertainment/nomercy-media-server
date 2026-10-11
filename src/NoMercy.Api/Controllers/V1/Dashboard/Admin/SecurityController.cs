@@ -144,60 +144,17 @@ public class SecurityController(
         CancellationToken ct
     )
     {
-        if (request.Enabled is not null)
-            await abuseGuardSettings.SetAsync(
-                AbuseGuardSettings.EnabledKey,
-                request.Enabled.Value.ToString(),
-                ct
-            );
+        if (request.MaxScore is < 1)
+            return BadRequestResponse("The offence threshold must be at least 1.");
 
-        if (request.MaxScore is not null)
-        {
-            if (request.MaxScore < 1)
-                return BadRequestResponse("The offence threshold must be at least 1.");
+        if (request.WindowMinutes is < 1)
+            return BadRequestResponse("The window must be at least 1 minute.");
 
-            await abuseGuardSettings.SetAsync(
-                AbuseGuardSettings.MaxScoreKey,
-                request.MaxScore.Value.ToString(),
-                ct
-            );
-        }
+        if (request.BanMinutes is < 1)
+            return BadRequestResponse("A ban must last at least 1 minute.");
 
-        if (request.WindowMinutes is not null)
-        {
-            if (request.WindowMinutes < 1)
-                return BadRequestResponse("The window must be at least 1 minute.");
-
-            await abuseGuardSettings.SetAsync(
-                AbuseGuardSettings.WindowMinutesKey,
-                request.WindowMinutes.Value.ToString(),
-                ct
-            );
-        }
-
-        if (request.BanMinutes is not null)
-        {
-            if (request.BanMinutes < 1)
-                return BadRequestResponse("A ban must last at least 1 minute.");
-
-            await abuseGuardSettings.SetAsync(
-                AbuseGuardSettings.BanMinutesKey,
-                request.BanMinutes.Value.ToString(),
-                ct
-            );
-        }
-
-        if (request.MaxBanMinutes is not null)
-        {
-            if (request.MaxBanMinutes < 1)
-                return BadRequestResponse("The longest ban must be at least 1 minute.");
-
-            await abuseGuardSettings.SetAsync(
-                AbuseGuardSettings.MaxBanMinutesKey,
-                request.MaxBanMinutes.Value.ToString(),
-                ct
-            );
-        }
+        if (request.MaxBanMinutes is < 1)
+            return BadRequestResponse("The longest ban must be at least 1 minute.");
 
         if (request.Allowlist is not null)
         {
@@ -206,13 +163,49 @@ public class SecurityController(
             )
                 if (!IpRange.TryParse(entry, out IpRange _))
                     return BadRequestResponse($"Not a valid address or CIDR range: {entry.Trim()}");
+        }
 
+        if (request.Enabled is not null)
+            await abuseGuardSettings.SetAsync(
+                AbuseGuardSettings.EnabledKey,
+                request.Enabled.Value.ToString(),
+                ct
+            );
+
+        if (request.MaxScore is not null)
+            await abuseGuardSettings.SetAsync(
+                AbuseGuardSettings.MaxScoreKey,
+                request.MaxScore.Value.ToString(),
+                ct
+            );
+
+        if (request.WindowMinutes is not null)
+            await abuseGuardSettings.SetAsync(
+                AbuseGuardSettings.WindowMinutesKey,
+                request.WindowMinutes.Value.ToString(),
+                ct
+            );
+
+        if (request.BanMinutes is not null)
+            await abuseGuardSettings.SetAsync(
+                AbuseGuardSettings.BanMinutesKey,
+                request.BanMinutes.Value.ToString(),
+                ct
+            );
+
+        if (request.MaxBanMinutes is not null)
+            await abuseGuardSettings.SetAsync(
+                AbuseGuardSettings.MaxBanMinutesKey,
+                request.MaxBanMinutes.Value.ToString(),
+                ct
+            );
+
+        if (request.Allowlist is not null)
             await abuseGuardSettings.SetAsync(
                 AbuseGuardSettings.AllowlistKey,
                 request.Allowlist,
                 ct
             );
-        }
 
         return Settings();
     }
