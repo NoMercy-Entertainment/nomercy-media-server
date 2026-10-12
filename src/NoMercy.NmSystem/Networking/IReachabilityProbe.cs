@@ -9,16 +9,29 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Net.Sockets;
+
 namespace NoMercy.NmSystem.Networking;
 
 /// <summary>
-/// Asks something outside this network whether an address the server is about to
-/// advertise actually answers. A probe from inside the LAN cannot tell a router that
-/// refuses to hairpin from a port that is closed; a probe from the cloud can.
+/// Asks something outside this network whether the server's port answers. A probe from
+/// inside the LAN cannot tell a router that refuses to hairpin from a port that is closed,
+/// and an address on the server's own network card never leaves the machine; a call from
+/// the cloud can tell.
 /// </summary>
 public interface IReachabilityProbe
 {
-    Task<ReachabilityVerdict> ProbeAsync(string url, CancellationToken ct);
+    /// <summary>
+    /// Asks the NoMercy API to call this server back over plain http on <paramref name="port"/>
+    /// at the public address this request leaves from, forced onto <paramref name="family"/>,
+    /// and to expect <paramref name="code"/> as the answer.
+    /// </summary>
+    Task<ReachabilityVerdict> ProbeBackAsync(
+        AddressFamily family,
+        int port,
+        string code,
+        CancellationToken ct
+    );
 }
 
 /// <summary>

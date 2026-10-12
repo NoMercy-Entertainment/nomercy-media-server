@@ -13,6 +13,7 @@ using System.Buffers;
 using System.Text;
 using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
+using NoMercy.NmSystem.Networking;
 
 namespace NoMercy.Networking.Certificate;
 
@@ -82,15 +83,20 @@ internal static class PlaintextToHttpsRedirector
         string? host = ParseHostHeader(buffer);
         string path = ParseRequestPath(buffer);
         input.AdvanceTo(buffer.Start, buffer.End);
-        string location = $"https://{host ?? "localhost"}:{httpsPort}{path}";
 
-        byte[] response = Encoding.ASCII.GetBytes(
-            "HTTP/1.1 301 Moved Permanently\r\n"
-                + $"Location: {location}\r\n"
-                + "Connection: close\r\n"
-                + "Content-Length: 0\r\n"
-                + "\r\n"
-        );
+        // The NoMercy API checks reachability over plain http, because the same check must
+        // work before a certificate exists. A redirect would read as "unreachable".
+        string? reachCode = ReachCodes.Shared.Match(path);
+
+        byte[] response = reachCode is not null
+            ? ReachCodes.HttpAnswer(reachCode)
+            : Encoding.ASCII.GetBytes(
+                "HTTP/1.1 301 Moved Permanently\r\n"
+                    + $"Location: https://{host ?? "localhost"}:{httpsPort}{path}\r\n"
+                    + "Connection: close\r\n"
+                    + "Content-Length: 0\r\n"
+                    + "\r\n"
+            );
 
         await connectionContext.Transport.Output.WriteAsync(
             response,

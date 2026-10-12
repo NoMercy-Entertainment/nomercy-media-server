@@ -15,6 +15,7 @@ using System.Text;
 using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Http.Features;
 using NoMercy.Networking.Certificate;
+using NoMercy.NmSystem.Networking;
 using Xunit;
 
 namespace NoMercy.Tests.Networking;
@@ -137,6 +138,58 @@ public sealed class PlaintextToHttpsRedirectorTests
         Assert.False(reachedNext, "a plaintext request never belongs in the TLS adapter");
         Assert.Contains("301 Moved Permanently", response);
         Assert.Contains("Location: https://10.0.1.1:7626/dashboard", response);
+    }
+
+    /// <summary>
+    /// The API checks reachability over plain http, because it must work before a
+    /// certificate exists. Once the port serves TLS, the same plain http call lands here,
+    /// and a redirect would read as "unreachable".
+    /// </summary>
+    [Fact]
+    public async Task APlaintextReachabilityCall_WithALiveCode_IsAnsweredWithTheCode()
+    {
+        string code = ReachCodes.Shared.Issue();
+        try
+        {
+            FakeConnection connection = new();
+            await connection.ClientWritesAsync(
+                Encoding.ASCII.GetBytes(
+                    $"GET {ReachCodes.PathPrefix}{code} HTTP/1.1\r\nHost: 192.0.2.10:7626\r\n\r\n"
+                )
+            );
+
+            await PlaintextToHttpsRedirector
+                .HandleAsync(connection, _ => Task.CompletedTask, 7626)
+                .WaitAsync(TestTimeout.Token);
+
+            string response = await connection.ClientReadsAsync(TestTimeout.Token);
+
+            Assert.StartsWith("HTTP/1.1 200 OK", response);
+            Assert.EndsWith("\r\n\r\n" + code, response);
+        }
+        finally
+        {
+            ReachCodes.Shared.Revoke(code);
+        }
+    }
+
+    [Fact]
+    public async Task APlaintextReachabilityCall_WithAnUnknownCode_IsRedirectedLikeAnyOtherPath()
+    {
+        FakeConnection connection = new();
+        await connection.ClientWritesAsync(
+            Encoding.ASCII.GetBytes(
+                $"GET {ReachCodes.PathPrefix}unknown HTTP/1.1\r\nHost: 192.0.2.10:7626\r\n\r\n"
+            )
+        );
+
+        await PlaintextToHttpsRedirector
+            .HandleAsync(connection, _ => Task.CompletedTask, 7626)
+            .WaitAsync(TestTimeout.Token);
+
+        string response = await connection.ClientReadsAsync(TestTimeout.Token);
+
+        Assert.Contains("301 Moved Permanently", response);
     }
 
     /// <summary>
