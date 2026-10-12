@@ -53,6 +53,14 @@ public class MediaContext : DbContext
                 }
             );
 
+        // EF Core 10 sends each item of a list.Contains(x) as its own parameter, and SQLite
+        // allows 32766 per statement: a large library passed that in the recommendation
+        // queries. One JSON parameter (json_each) has no such limit. Set here so every
+        // MediaContext gets it, including the DI and factory contexts configured elsewhere.
+        options.UseSqlite(o =>
+            o.UseParameterizedCollectionMode(ParameterTranslationMode.Parameter)
+        );
+
         if (Config.IsDev)
             options.EnableSensitiveDataLogging();
 
