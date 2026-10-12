@@ -273,16 +273,21 @@ public static partial class ServiceConfiguration
 
         // Connectivity strategies (ordered by priority)
         // The outside-in check that turns a port forward from a claim into a fact: the API
-        // connects to the server's public address from the cloud, which a probe from inside
-        // the LAN cannot do on a router that refuses to hairpin.
+        // calls the server back over plain http with a one-time code, which a probe from
+        // inside the LAN cannot do on a router that refuses to hairpin. Plain http, so it
+        // also runs before the host starts and before a certificate exists.
         services.AddSingleton<IReachabilityProbe>(sp => new CloudReachabilityProbe(
             sp.GetRequiredService<IAuthTokenStore>()
+        ));
+        services.AddSingleton<IReachabilityChecker>(sp => new ReachabilityChecker(
+            sp.GetRequiredService<IReachabilityProbe>(),
+            sp.GetRequiredService<ILogger<ReachabilityChecker>>()
         ));
         services.AddSingleton<IConnectivityStrategy>(sp => new PortForwardStrategy(
             (NetworkDiscovery)sp.GetRequiredService<INetworkDiscovery>(),
             sp.GetRequiredService<IConnectivityStatus>(),
             sp.GetRequiredService<ILogger<PortForwardStrategy>>(),
-            sp.GetRequiredService<IReachabilityProbe>()
+            sp.GetRequiredService<IReachabilityChecker>()
         ));
         services.AddSingleton<IConnectivityStrategy>(sp => new CloudflareTunnelStrategy(
             sp.GetRequiredService<ILogger<CloudflareTunnelStrategy>>(),

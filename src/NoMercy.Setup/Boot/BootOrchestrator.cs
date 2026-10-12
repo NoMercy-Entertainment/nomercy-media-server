@@ -11,6 +11,7 @@
 
 using Newtonsoft.Json;
 using NoMercy.Networking.Certificate;
+using NoMercy.Networking.Connectivity;
 using NoMercy.NmSystem.Auth;
 using NoMercy.NmSystem.Configuration;
 using NoMercy.NmSystem.Extensions;
@@ -36,6 +37,13 @@ public class BootOrchestrator
     private readonly IAuthTokenStore _authTokenStore;
     private readonly ICertificateService _certificateService;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IReachabilityChecker? _reachabilityChecker;
+
+    /// <summary>
+    /// How long boot waits for the reachability call-back. Typical is well under a second;
+    /// past this the server starts anyway and decides once it is up.
+    /// </summary>
+    internal static readonly TimeSpan BootReachabilityBudget = TimeSpan.FromSeconds(6);
 
     public BootOrchestrator(
         SetupState setupState,
@@ -45,9 +53,11 @@ public class BootOrchestrator
         IServerRegistrationService serverRegistrationService,
         IAuthTokenStore authTokenStore,
         ICertificateService certificateService,
-        IHttpClientFactory httpClientFactory
+        IHttpClientFactory httpClientFactory,
+        IReachabilityChecker? reachabilityChecker = null
     )
     {
+        _reachabilityChecker = reachabilityChecker;
         _authTokenStore = authTokenStore;
         _certificateService = certificateService;
         _setupState = setupState;
@@ -122,6 +132,10 @@ public class BootOrchestrator
                 // Phase 3: Registration (blocking on first boot)
                 await RunRegistrationAsync(ct);
             }
+
+            // Phase 3b: Reachability, before Kestrel owns the port, so the first transport
+            // the server picks once it is up is the right one.
+            await CheckReachabilityBeforeHostStartsAsync(ct);
 
             // Phase 4: Background tasks (non-blocking)
             _authManager.ScheduleBackgroundRefresh(ct);
@@ -337,6 +351,36 @@ public class BootOrchestrator
     /// address reaches the API. Failure is not fatal: the server is registered and
     /// serving, and the next boot tries again.
     /// </summary>
+    /// <summary>
+    /// Asks the NoMercy API to call this server back while a short-lived listener holds the
+    /// port. The connectivity manager uses the answer on its first evaluation. Never fails
+    /// boot: a check that cannot finish leaves the decision to the server once it is up.
+    /// </summary>
+    internal async Task CheckReachabilityBeforeHostStartsAsync(CancellationToken ct)
+    {
+        if (_reachabilityChecker is null)
+            return;
+
+        using CancellationTokenSource budget = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        budget.CancelAfter(BootReachabilityBudget);
+
+        try
+        {
+            await _reachabilityChecker.CheckBeforeHostStartsAsync(budget.Token);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            Logger.Setup(
+                "Reachability check did not finish before start — deciding once the server is up",
+                LogEventLevel.Warning
+            );
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            Logger.Setup($"Reachability check failed: {ex.Message}", LogEventLevel.Warning);
+        }
+    }
+
     private async Task RefreshRegistrationAsync(CancellationToken ct)
     {
         try
