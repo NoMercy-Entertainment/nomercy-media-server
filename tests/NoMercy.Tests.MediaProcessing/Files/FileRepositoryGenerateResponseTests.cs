@@ -47,10 +47,13 @@ public class FileRepositoryGenerateResponseTests
 
         async Task<Uri?> GetCoverUrl(Guid _)
         {
-            if (Interlocked.Increment(ref waiting) <= parallelCandidates)
+            // Only the caller whose own increment reached the count opens the barrier. A second read of
+            // the counter let two callers both see the count and complete the barrier twice.
+            int arrived = Interlocked.Increment(ref waiting);
+            if (arrived <= parallelCandidates)
             {
-                if (Volatile.Read(ref waiting) == parallelCandidates)
-                    barrier.SetResult();
+                if (arrived == parallelCandidates)
+                    barrier.TrySetResult();
                 await barrier.Task.WaitAsync(TimeSpan.FromSeconds(10));
             }
 
