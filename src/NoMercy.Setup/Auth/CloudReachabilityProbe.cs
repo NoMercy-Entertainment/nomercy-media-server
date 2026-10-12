@@ -9,6 +9,10 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Globalization;
+using System.Net;
+using System.Net.Http.Headers;
+using System.Net.Sockets;
 using Newtonsoft.Json;
 using NoMercy.NmSystem.Auth;
 using NoMercy.NmSystem.Configuration;
@@ -22,12 +26,18 @@ using Serilog.Events;
 namespace NoMercy.Setup.Auth;
 
 /// <summary>
-/// Asks the NoMercy API to connect to one of this server's public addresses from the
-/// cloud. The API only ever fetches /status on a name that belongs to this server.
+/// Asks the NoMercy API to call this server back. The API calls the address this request
+/// arrives from, never an address the server names, so the call goes out once over IPv4
+/// and once over IPv6 to learn each family's answer.
 /// </summary>
 public class CloudReachabilityProbe(IAuthTokenStore authTokenStore) : IReachabilityProbe
 {
-    public async Task<ReachabilityVerdict> ProbeAsync(string url, CancellationToken ct)
+    public async Task<ReachabilityVerdict> ProbeBackAsync(
+        AddressFamily family,
+        int port,
+        string code,
+        CancellationToken ct
+    )
     {
         string? token = authTokenStore.AccessToken;
         if (string.IsNullOrEmpty(token))
@@ -35,41 +45,129 @@ public class CloudReachabilityProbe(IAuthTokenStore authTokenStore) : IReachabil
 
         try
         {
-            GenericHttpClient client = new(ExternalServicesConfig.Current.ApiServerBaseUrl);
-            client.SetDefaultHeaders(ExternalServicesConfig.Current.UserAgent, token);
-
-            string response = await client.SendAndReadAsync(
+            using HttpClient client = CreateClient(family);
+            using HttpRequestMessage request = new(
                 HttpMethod.Post,
-                "probe",
-                new FormUrlEncodedContent([
-                    new KeyValuePair<string, string>("id", Info.DeviceId.ToString()),
-                    new KeyValuePair<string, string>("urls[]", url),
-                ])
+                new Uri(new Uri(ExternalServicesConfig.Current.ApiServerBaseUrl), "probe")
             );
+            request.Headers.Authorization = new("Bearer", token);
+            request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+            request.Headers.TryAddWithoutValidation(
+                "User-Agent",
+                ExternalServicesConfig.Current.UserAgent
+            );
+            request.Content = new FormUrlEncodedContent([
+                new KeyValuePair<string, string>("id", Info.DeviceId.ToString()),
+                new KeyValuePair<string, string>("code", code),
+                new KeyValuePair<string, string>(
+                    "port",
+                    port.ToString(CultureInfo.InvariantCulture)
+                ),
+            ]);
 
-            ProbeResponse? data = response.FromJson<ProbeResponse>();
-            ProbeResult? result = data?.Data?.Results?.FirstOrDefault();
+            using HttpResponseMessage response = await client.SendAsync(request, ct);
 
-            if (data?.Status != "ok" || result is null)
+            // An API from before the call-back existed refuses the request (it wants urls).
+            // That is a check that did not run, not a closed port.
+            if (!response.IsSuccessStatusCode)
                 return ReachabilityVerdict.Unknown;
 
-            // The API answers "unknown" when it cannot judge — it sits behind the same router
-            // as this server, or the name was not one of ours. That is not a closed port.
-            return result.Verdict switch
-            {
-                "reachable" => ReachabilityVerdict.Reachable,
-                "unreachable" => ReachabilityVerdict.Unreachable,
-                _ => ReachabilityVerdict.Unknown,
-            };
+            return ParseVerdict(await response.Content.ReadAsStringAsync(ct));
+        }
+        catch (Exception ex) when (IsMissingFamily(ex))
+        {
+            // This host has no route for the family (no IPv6 at home is common). Nothing
+            // was asked, so nothing is known.
+            return ReachabilityVerdict.Unknown;
         }
         catch (Exception ex)
         {
             Logger.Register(
-                $"Reachability probe could not run: {ex.Unwrap()}",
+                $"Reachability call-back over {family} could not run: {ex.Unwrap()}",
                 LogEventLevel.Warning
             );
             return ReachabilityVerdict.Unknown;
         }
+    }
+
+    internal static ReachabilityVerdict ParseVerdict(string json)
+    {
+        ProbeResponse? data = json.FromJson<ProbeResponse>();
+        ProbeResult? result = data?.Data?.Results?.FirstOrDefault();
+
+        if (data?.Status != "ok" || result is null)
+            return ReachabilityVerdict.Unknown;
+
+        // The API answers "unknown" when it cannot judge — it sits behind the same router
+        // as this server, or it cannot make calls on this family itself. That is not a
+        // closed port.
+        return result.Verdict switch
+        {
+            "reachable" => ReachabilityVerdict.Reachable,
+            "unreachable" => ReachabilityVerdict.Unreachable,
+            _ => ReachabilityVerdict.Unknown,
+        };
+    }
+
+    /// <summary>
+    /// A client whose connections only ever use <paramref name="family"/>, so the API sees
+    /// the server's public address for exactly that family.
+    /// </summary>
+    internal static HttpClient CreateClient(AddressFamily family) =>
+        new(
+            new SocketsHttpHandler
+            {
+                ConnectTimeout = TimeSpan.FromSeconds(5),
+                ConnectCallback = async (context, token) =>
+                {
+                    IPAddress[] addresses = await Dns.GetHostAddressesAsync(
+                        context.DnsEndPoint.Host,
+                        family,
+                        token
+                    );
+                    if (addresses.Length == 0)
+                        throw new SocketException((int)SocketError.AddressFamilyNotSupported);
+
+                    Socket socket = new(family, SocketType.Stream, ProtocolType.Tcp)
+                    {
+                        NoDelay = true,
+                    };
+                    try
+                    {
+                        await socket.ConnectAsync(addresses, context.DnsEndPoint.Port, token);
+                        return new NetworkStream(socket, ownsSocket: true);
+                    }
+                    catch
+                    {
+                        socket.Dispose();
+                        throw;
+                    }
+                },
+            }
+        )
+        {
+            Timeout = TimeSpan.FromSeconds(15),
+        };
+
+    private static bool IsMissingFamily(Exception ex)
+    {
+        for (Exception? e = ex; e is not null; e = e.InnerException)
+        {
+            if (
+                e is SocketException
+                {
+                    SocketErrorCode: SocketError.AddressFamilyNotSupported
+                        or SocketError.NetworkUnreachable
+                        or SocketError.HostUnreachable
+                        or SocketError.HostNotFound
+                        or SocketError.NoData
+                        or SocketError.AddressNotAvailable
+                }
+            )
+                return true;
+        }
+
+        return false;
     }
 
     private sealed class ProbeResponse
@@ -89,13 +187,7 @@ public class CloudReachabilityProbe(IAuthTokenStore authTokenStore) : IReachabil
 
     private sealed class ProbeResult
     {
-        [JsonProperty("url")]
-        public string? Url { get; set; }
-
         [JsonProperty("verdict")]
         public string? Verdict { get; set; }
-
-        [JsonProperty("reachable")]
-        public bool Reachable { get; set; }
     }
 }

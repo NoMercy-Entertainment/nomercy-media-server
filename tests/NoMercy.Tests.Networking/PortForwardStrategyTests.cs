@@ -54,15 +54,29 @@ public sealed class PortForwardStrategyTests
         public Task RemovePortMappingsAsync() => Task.CompletedTask;
     }
 
-    private sealed class FakeProbe(ReachabilityVerdict verdict) : IReachabilityProbe
+    private sealed class FakeChecker(
+        ReachabilityVerdict ipv4,
+        ReachabilityVerdict ipv6 = ReachabilityVerdict.Unknown,
+        ReachabilityReport? bootReport = null
+    ) : IReachabilityChecker
     {
-        public string? ProbedUrl { get; private set; }
+        public int Checks { get; private set; }
 
-        public Task<ReachabilityVerdict> ProbeAsync(string url, CancellationToken ct)
+        public ReachabilityReport? TakeBootReport()
         {
-            ProbedUrl = url;
-            return Task.FromResult(verdict);
+            ReachabilityReport? report = bootReport;
+            bootReport = null;
+            return report;
         }
+
+        public Task<ReachabilityReport> CheckAsync(CancellationToken ct)
+        {
+            Checks++;
+            return Task.FromResult(new ReachabilityReport(ipv4, ipv6, DateTime.UtcNow));
+        }
+
+        public Task<ReachabilityReport> CheckBeforeHostStartsAsync(CancellationToken ct) =>
+            CheckAsync(ct);
     }
 
     private static PortForwardStrategy BuildStrategy(
@@ -78,16 +92,18 @@ public sealed class PortForwardStrategyTests
     }
 
     [Fact]
-    public async Task TryEstablishAsync_WhenTheProbeConnects_IsVerified()
+    public async Task TryEstablishAsync_WhenOnlyTheSelfCheckConnects_IsOnlyAssumed()
     {
         ConnectivityStatus status = new() { NatStatus = NatStatus.None };
         PortForwardStrategy strategy = BuildStrategy(status, portOpen: true);
 
         ConnectivityResult result = await strategy.TryEstablishAsync(CancellationToken.None);
 
+        // No call from our side ran, so a connect to the server's own address is a claim:
+        // good enough as a fallback, never good enough to outrank a tunnel that proves itself.
         Assert.True(result.Established);
-        Assert.Equal(ConnectivityConfidence.Verified, result.Confidence);
-        Assert.Equal(NatStatus.Open, status.NatStatus);
+        Assert.Equal(ConnectivityConfidence.Assumed, result.Confidence);
+        Assert.Equal(NatStatus.None, status.NatStatus);
     }
 
     [Fact]
@@ -240,18 +256,18 @@ public sealed class PortForwardStrategyTests
     // ── Verified from outside ───────────────────────────────────────────────
     //
     // Most routers refuse to hairpin, so the in-LAN probe fails on a port that is open to
-    // the world. The cloud probe is the only check that can tell that apart from closed.
+    // the world. Only the API calling the server back can tell that apart from closed.
 
     [Fact]
-    public async Task TryEstablishAsync_WhenTheCloudReachesTheServer_IsVerified()
+    public async Task TryEstablishAsync_WhenTheApiReachesTheServerOverIpv4_IsVerified()
     {
         ConnectivityStatus status = new() { NatStatus = NatStatus.Filtered };
-        FakeProbe probe = new(ReachabilityVerdict.Reachable);
+        FakeChecker checker = new(ReachabilityVerdict.Reachable);
         PortForwardStrategy strategy = new(
             new StubNetworkDiscovery(portOpen: false),
             status,
             NullLogger<PortForwardStrategy>.Instance,
-            probe
+            checker
         );
 
         ConnectivityResult result = await strategy.TryEstablishAsync(CancellationToken.None);
@@ -259,18 +275,47 @@ public sealed class PortForwardStrategyTests
         Assert.Equal(ConnectivityConfidence.Verified, result.Confidence);
         Assert.Equal(NatStatus.Open, status.NatStatus);
         Assert.True(status.PortForwarded);
-        Assert.Equal("https://1-2-3-4.stub:7626", probe.ProbedUrl);
+        Assert.Equal(1, checker.Checks);
     }
 
     [Fact]
-    public async Task TryEstablishAsync_WhenTheCloudCannotReachTheServer_FailsEvenWithAUpnpMapping()
+    public async Task TryEstablishAsync_UsesTheAnswerFromBeforeTheServerStarted_Once()
+    {
+        // The boot check ran on a listener before Kestrel owned the port. Asking again on
+        // the first evaluation would only repeat it; later evaluations must ask anew.
+        ConnectivityStatus status = new() { NatStatus = NatStatus.None };
+        FakeChecker checker = new(
+            ReachabilityVerdict.Unreachable,
+            bootReport: new(
+                ReachabilityVerdict.Reachable,
+                ReachabilityVerdict.Unknown,
+                DateTime.UtcNow
+            )
+        );
+        PortForwardStrategy strategy = new(
+            new StubNetworkDiscovery(portOpen: false),
+            status,
+            NullLogger<PortForwardStrategy>.Instance,
+            checker
+        );
+
+        ConnectivityResult first = await strategy.TryEstablishAsync(CancellationToken.None);
+        ConnectivityResult second = await strategy.TryEstablishAsync(CancellationToken.None);
+
+        Assert.Equal(ConnectivityConfidence.Verified, first.Confidence);
+        Assert.False(second.Established);
+        Assert.Equal(1, checker.Checks);
+    }
+
+    [Fact]
+    public async Task TryEstablishAsync_WhenTheApiCannotReachTheServer_FailsEvenWithAUpnpMapping()
     {
         ConnectivityStatus status = new() { NatStatus = NatStatus.Filtered };
         PortForwardStrategy strategy = new(
             new StubNetworkDiscovery(portOpen: false),
             status,
             NullLogger<PortForwardStrategy>.Instance,
-            new FakeProbe(ReachabilityVerdict.Unreachable)
+            new FakeChecker(ReachabilityVerdict.Unreachable)
         );
 
         ConnectivityResult result = await strategy.TryEstablishAsync(CancellationToken.None);
@@ -282,14 +327,14 @@ public sealed class PortForwardStrategyTests
     }
 
     [Fact]
-    public async Task TryEstablishAsync_WhenTheCloudCheckCouldNotRun_FallsBackToTheUpnpClaim()
+    public async Task TryEstablishAsync_WhenTheApiCheckCouldNotRun_FallsBackToTheUpnpClaim()
     {
         ConnectivityStatus status = new() { NatStatus = NatStatus.Filtered };
         PortForwardStrategy strategy = new(
             new StubNetworkDiscovery(portOpen: false),
             status,
             NullLogger<PortForwardStrategy>.Instance,
-            new FakeProbe(ReachabilityVerdict.Unknown)
+            new FakeChecker(ReachabilityVerdict.Unknown)
         );
 
         ConnectivityResult result = await strategy.TryEstablishAsync(CancellationToken.None);
@@ -300,40 +345,70 @@ public sealed class PortForwardStrategyTests
     }
 
     [Fact]
-    public async Task TryEstablishAsync_WhenTheHairpinProbeAlreadyConnected_DoesNotAskTheCloud()
+    public async Task TryEstablishAsync_WhenTheSelfCheckConnects_TheApiStillDecides()
     {
+        // The self-check connects to the server's own public address. Most routers refuse
+        // to hairpin, and an address on the server's own network card never leaves the
+        // machine, so the connect proves nothing. Only a call from our side does.
         ConnectivityStatus status = new() { NatStatus = NatStatus.None };
-        FakeProbe probe = new(ReachabilityVerdict.Unreachable);
+        FakeChecker checker = new(ReachabilityVerdict.Unreachable);
         PortForwardStrategy strategy = new(
             new StubNetworkDiscovery(portOpen: true),
             status,
             NullLogger<PortForwardStrategy>.Instance,
-            probe
+            checker
         );
 
         ConnectivityResult result = await strategy.TryEstablishAsync(CancellationToken.None);
 
-        Assert.Equal(ConnectivityConfidence.Verified, result.Confidence);
-        Assert.Null(probe.ProbedUrl);
+        Assert.Equal(1, checker.Checks);
+        Assert.False(result.Established);
+        Assert.False(status.PortForwarded);
+    }
+
+    [Theory]
+    [InlineData(ReachabilityVerdict.Reachable)]
+    [InlineData(ReachabilityVerdict.Unknown)]
+    public async Task TryEstablishAsync_WhenTheAdvertisedAddressIsIpv6_LeavesItToTheTunnel(
+        ReachabilityVerdict ipv4
+    )
+    {
+        // An IPv6 server (no NAT) has its public address on its own network card, so the
+        // self-check always connects. Trusting it marked a firewalled server as
+        // port-forwarded and the quick tunnel never started (2026-10-12). And the name
+        // clients get is built from that IPv6 address, which every IPv4-only client
+        // cannot reach, whatever the IPv4 call-back said.
+        ConnectivityStatus status = new() { NatStatus = NatStatus.None };
+        PortForwardStrategy strategy = new(
+            new StubNetworkDiscovery(portOpen: true) { ExternalIp = "2001:db8:1:2:3:4:5:6" },
+            status,
+            NullLogger<PortForwardStrategy>.Instance,
+            new FakeChecker(ipv4, ReachabilityVerdict.Reachable)
+        );
+
+        ConnectivityResult result = await strategy.TryEstablishAsync(CancellationToken.None);
+
+        Assert.False(result.Established);
+        Assert.False(status.PortForwarded);
     }
 
     [Fact]
-    public async Task TryEstablishAsync_WithNoPublicAddressYet_DoesNotAskTheCloud()
+    public async Task TryEstablishAsync_WithNoPublicAddressYet_DoesNotAskTheApi()
     {
         ConnectivityStatus status = new() { NatStatus = NatStatus.Filtered };
-        FakeProbe probe = new(ReachabilityVerdict.Reachable);
+        FakeChecker checker = new(ReachabilityVerdict.Reachable);
         StubNetworkDiscovery discovery = new(portOpen: false) { ExternalIp = "0.0.0.0" };
         PortForwardStrategy strategy = new(
             discovery,
             status,
             NullLogger<PortForwardStrategy>.Instance,
-            probe
+            checker
         );
 
         ConnectivityResult result = await strategy.TryEstablishAsync(CancellationToken.None);
 
-        // Probing 0-0-0-0 asks the API to reach nothing; the honest answer is "unknown".
-        Assert.Null(probe.ProbedUrl);
+        // The advertised name would be 0-0-0-0, which reaches nothing; a pass proves nothing.
+        Assert.Equal(0, checker.Checks);
         Assert.Equal(ConnectivityConfidence.Assumed, result.Confidence);
     }
 }

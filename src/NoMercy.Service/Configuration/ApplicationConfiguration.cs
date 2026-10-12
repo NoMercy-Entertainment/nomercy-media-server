@@ -20,8 +20,10 @@ using NoMercy.Authorization;
 using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.Networking.Certificate;
+using NoMercy.Networking.Connectivity;
 using NoMercy.NmSystem.Configuration;
 using NoMercy.NmSystem.Information;
+using NoMercy.NmSystem.Networking;
 using NoMercy.Providers.CoverArt.Client;
 using NoMercy.Providers.FanArt.Client;
 using NoMercy.Providers.Helpers;
@@ -89,6 +91,10 @@ public static class ApplicationConfiguration
 
     private static void ConfigureMiddleware(IApplicationBuilder app, bool servingPlaintext)
     {
+        // First, ahead of setup mode's 503 and every auth check: the NoMercy API's
+        // reachability call-back runs exactly while a new server has no certificate yet.
+        app.Use((context, next) => ReachCodeMiddleware.HandleAsync(context, next, ReachCodes.Shared));
+
         if (Config.IsDev)
         {
             app.UseDeveloperExceptionPage();
