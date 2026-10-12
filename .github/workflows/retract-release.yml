@@ -33,7 +33,8 @@ concurrency:
 
 jobs:
   retract:
-    runs-on: ubuntu-latest
+    timeout-minutes: 7200
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","Linux","X64","beast-unit"]') || 'ubuntu-latest' }}
     permissions:
       contents: write
       packages: write
