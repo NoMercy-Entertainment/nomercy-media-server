@@ -131,7 +131,10 @@ public class AudioAnalysisQueryPlanTests : IDisposable
     {
         string plan = ExplainSweepQuery();
 
-        Assert.DoesNotContain("SCAN l", plan);
+        // The library ids arrive as one JSON parameter: SQLite scans that short list as a
+        // virtual table (l0). The library join itself (l) must stay an index search.
+        Assert.Contains("SEARCH l USING COVERING INDEX sqlite_autoindex_LibraryTrack_1", plan);
+        Assert.DoesNotMatch(@"SCAN l(?!\d+ VIRTUAL TABLE)", plan);
     }
 
     /// <summary>

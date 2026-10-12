@@ -12,6 +12,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.Reflection;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using NoMercy.Database.Models.Encoder;
 using NoMercy.Database.Models.Security;
@@ -57,9 +58,12 @@ public class MediaContext : DbContext
         // allows 32766 per statement: a large library passed that in the recommendation
         // queries. One JSON parameter (json_each) has no such limit. Set here so every
         // MediaContext gets it, including the DI and factory contexts configured elsewhere.
-        options.UseSqlite(o =>
-            o.UseParameterizedCollectionMode(ParameterTranslationMode.Parameter)
-        );
+        // Only on a context that is already relational: calling UseSqlite on one configured
+        // for another provider (the InMemory test contexts) registers a second provider.
+        if (options.Options.Extensions.OfType<RelationalOptionsExtension>().Any())
+            options.UseSqlite(o =>
+                o.UseParameterizedCollectionMode(ParameterTranslationMode.Parameter)
+            );
 
         if (Config.IsDev)
             options.EnableSensitiveDataLogging();
