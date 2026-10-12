@@ -118,9 +118,10 @@ jobs:
   # OIDC token for a key that lives minutes, so there is no long-lived secret
   # to leak or rotate.
   publish_plugin_packages:
+    timeout-minutes: 7200
     needs: [version_management, create_release]
     if: needs.version_management.outputs.should_deploy == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","Linux","X64","beast-unit"]') || 'ubuntu-latest' }}
     permissions:
       contents: read
       id-token: write
@@ -185,9 +186,10 @@ jobs:
   # beta tags move only in promote-release.yml, from the immutable <version>
   # tags pushed here.
   promote_docker_images:
+    timeout-minutes: 7200
     needs: [version_management, build_docker_images, create_release]
     if: needs.version_management.outputs.should_deploy == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","Linux","X64","beast-unit"]') || 'ubuntu-latest' }}
     permissions:
       contents: read
       packages: write

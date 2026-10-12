@@ -306,7 +306,9 @@ public class LyricsAggregatorTests : IDisposable
         // Generous bound: proves the 30s hang was abandoned, not a tight perf
         // assertion. The shared per-provider Queue rate limiter (1 req/s) may
         // add a little real queueing delay from other tests in this process.
-        stopwatch.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(10));
+        // The bound stays under the 30s hang and above the worst loaded-runner delay
+        // seen on the shared self-hosted pool (14s).
+        stopwatch.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(25));
         result.IsTransientError.Should().BeTrue();
         result.Lines.Should().BeNull();
     }

@@ -12,8 +12,12 @@ on:
 jobs:
   # Fast tests that run on every push/PR
   test:
-    runs-on: ubuntu-latest
-    
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","Linux","X64","beast-unit"]') || 'ubuntu-latest' }}
+    concurrency:
+      group: beast-unit-test-job
+      cancel-in-progress: false
+    timeout-minutes: 7200
+
     steps:
       - uses: actions/checkout@v7
         with:
@@ -67,6 +71,9 @@ jobs:
           done
           dotnet pack templates/NoMercy.Plugin.Templates.csproj --configuration Release --output "$feed" --verbosity minimal
 
+          # Shared runners keep a previous copy in ~/.templateengine; drop it so the install is repeatable.
+          dotnet new uninstall NoMercy.Plugin.Templates >/dev/null 2>&1 || true
+          rm -f "$HOME"/.templateengine/packages/NoMercy.Plugin.Templates.*.nupkg
           dotnet new install "$feed"/NoMercy.Plugin.Templates.*.nupkg
           dotnet new nomercy-plugin \
             --output "$scaffold" \
@@ -100,11 +107,12 @@ jobs:
   # release path (push/PR to dev) it never ran and uncategorized regressions
   # sailed straight through. It must block the release path.
   coverage:
-    runs-on: ubuntu-latest
-    # Nothing downstream reads a coverage artifact, so this job is a test gate, not
-    # a report. Without a cap it once ran 6 hours before GitHub killed it, holding
-    # the whole release chain open the entire time.
-    timeout-minutes: 30
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","Linux","X64","beast-unit"]') || 'ubuntu-latest' }}
+    concurrency:
+      group: beast-unit-test-job
+      cancel-in-progress: false
+    # Self-hosted jobs may use the full five-day GitHub allowance.
+    timeout-minutes: 7200
 
     steps:
       - uses: actions/checkout@v7
@@ -194,7 +202,8 @@ jobs:
   # branch refs, so these expensive ffmpeg-backed tests run post-merge on dev, not
   # on every PR — but they no longer skip the release path entirely.
   integration_tests:
-    runs-on: ubuntu-latest
+    timeout-minutes: 7200
+    runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","Linux","X64","beast-unit"]') || 'ubuntu-latest' }}
     if: github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/master' || github.event_name == 'release' || github.event_name == 'workflow_dispatch'
 
     steps:
