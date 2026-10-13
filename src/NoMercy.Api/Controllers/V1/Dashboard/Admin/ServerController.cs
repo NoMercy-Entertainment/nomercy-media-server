@@ -11,6 +11,7 @@
 
 using System.Collections.Concurrent;
 using Asp.Versioning;
+using ImageMagick;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -47,7 +48,6 @@ using NoMercy.Providers.Helpers;
 using NoMercy.Storage;
 using NoMercyQueue;
 using Serilog.Events;
-using ImageMagick;
 using HttpClient = System.Net.Http.HttpClient;
 using IJobDispatcher = NoMercy.MediaProcessing.Jobs.IJobDispatcher;
 using Image = NoMercy.Database.Models.Media.Image;
@@ -200,6 +200,11 @@ public partial class ServerController(
     [Authorize(Policy = "Moderator")]
     public async Task<IActionResult> AddFiles([FromBody] AddFilesRequest request)
     {
+        if (request.Files is not { Length: > 0 })
+            return BadRequestResponse("Select at least one file or album to import.");
+        if (request.Files.Any(file => file is null || string.IsNullOrWhiteSpace(file.Path)))
+            return BadRequestResponse("Every selected file or album must have a source path.");
+
         Library? library = await libraryRepository.GetLibraryByIdLiteAsync(request.LibraryId);
 
         if (library == null)
@@ -233,19 +238,26 @@ public partial class ServerController(
             if (library.Type == "music")
             {
                 logger.LogTrace("Adding music files to library");
-                string directoryPath =
-                    isRemoteDriver || isRemoteSource
-                        ? request.Files[0].Path
-                        : Path.GetFullPath(request.Files[0].Path);
+                // Resolve every source before dispatch, so an invalid later path
+                // cannot leave only part of the selection queued.
+                var albums = request
+                    .Files.Select(file => new
+                    {
+                        ReleaseId = file.Id.ToGuid(),
+                        Path = isRemoteDriver || isRemoteSource
+                            ? file.Path
+                            : Path.GetFullPath(file.Path),
+                    })
+                    .ToArray();
+                foreach (var album in albums)
+                    jobDispatcher.DispatchJob<ReleaseImportJob>(
+                        library.Id,
+                        request.FolderId,
+                        album.ReleaseId,
+                        album.Path
+                    );
 
-                jobDispatcher.DispatchJob<ReleaseImportJob>(
-                    library.Id,
-                    request.FolderId,
-                    request.Files[0].Id.ToGuid(),
-                    directoryPath
-                );
-
-                return Ok(request);
+                return Ok(new AddFilesResponse(request));
             }
 
             // Manual "add files" is a deliberate operator action to import and
@@ -341,7 +353,7 @@ public partial class ServerController(
                 metadata: new { library = library.Title, files = request.Files.Count() }
             );
 
-            return Ok(request);
+            return Ok(new AddFilesResponse(request));
         }
         catch (Exception e)
         {
