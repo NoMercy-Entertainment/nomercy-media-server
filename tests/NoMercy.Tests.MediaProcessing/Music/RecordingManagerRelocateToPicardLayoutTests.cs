@@ -12,6 +12,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NoMercy.Database.Models.Libraries;
+using NoMercy.Database.Models.Music;
 using NoMercy.Database.Music;
 using NoMercy.MediaProcessing.Artists;
 using NoMercy.MediaProcessing.Music;
@@ -39,6 +40,7 @@ public sealed class RecordingManagerRelocateToPicardLayoutTests : IDisposable
     private readonly string _outsideRoot;
     private readonly IStorage _storage;
     private readonly RecordingManager _manager;
+    private readonly Mock<IRecordingRepository> _recordings = new(MockBehavior.Strict);
     private readonly Folder _libraryFolder;
     private readonly string _libraryRoot;
 
@@ -60,6 +62,10 @@ public sealed class RecordingManagerRelocateToPicardLayoutTests : IDisposable
             Path = "Music",
         };
         _libraryRoot = _storage.GetFullPath("Music").Replace('\\', '/');
+        Library library = new() { Id = Ulid.NewUlid() };
+        _libraryFolder.FolderLibraries.Add(
+            new(_libraryFolder.Id, library.Id) { Library = library, Folder = _libraryFolder }
+        );
 
         Mock<IStorageFactory> factory = new();
         factory
@@ -67,7 +73,7 @@ public sealed class RecordingManagerRelocateToPicardLayoutTests : IDisposable
             .Returns(_storage);
 
         _manager = new(
-            Mock.Of<IRecordingRepository>(),
+            _recordings.Object,
             Mock.Of<IMusicGenreRepository>(),
             Mock.Of<IArtistRepository>(),
             driver,
@@ -119,6 +125,53 @@ public sealed class RecordingManagerRelocateToPicardLayoutTests : IDisposable
             Path = path,
             FFprobe = new() { Format = new() { Tags = new() { ["title"] = Track().Title } } },
         };
+
+    [Fact]
+    public async Task A_refused_external_recording_cannot_return_as_stored_and_trigger_track_links()
+    {
+        string source = WriteFile(
+            Path.Combine(_driveRoot, "Music Unsorted", "different.mp3"),
+            "preserved"
+        );
+        MediaFile file = MediaFileAt(source);
+        file.FFprobe!.Format.Tags!["title"] = "Another Song";
+
+        Func<Task> store = () => _manager.Store(Release(), Track(), [], file, _libraryFolder, null);
+
+        await store.Should().ThrowAsync<InvalidOperationException>().WithMessage("*not placed*");
+        File.ReadAllText(source).Should().Be("preserved");
+        _recordings.VerifyNoOtherCalls();
+    }
+
+    [Fact]
+    public async Task Missing_duration_metadata_can_be_registered_without_dereferencing_missing_tags()
+    {
+        string source = WriteFile(Path.Combine(_driveRoot, "Music", "existing.mp3"), "existing");
+        Track? stored = null;
+        _recordings
+            .Setup(repository => repository.Store(It.IsAny<Track>(), false))
+            .Callback<Track, bool>((track, _) => stored = track)
+            .Returns(Task.CompletedTask);
+        _recordings
+            .Setup(repository => repository.LinkToRelease(It.IsAny<AlbumTrack>()))
+            .Returns(Task.CompletedTask);
+        _recordings
+            .Setup(repository => repository.LinkToLibrary(It.IsAny<LibraryTrack>()))
+            .Returns(Task.CompletedTask);
+
+        await _manager.Store(
+            Release(),
+            Track(),
+            [],
+            new MediaFile { Path = source },
+            _libraryFolder,
+            null
+        );
+
+        stored.Should().NotBeNull();
+        stored!.Duration.Should().Be("00:00");
+        File.ReadAllText(source).Should().Be("existing");
+    }
 
     [Fact]
     public async Task A_source_in_a_sibling_folder_named_like_the_library_is_moved_to_the_picard_target()
