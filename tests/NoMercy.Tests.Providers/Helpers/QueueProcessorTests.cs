@@ -99,7 +99,16 @@ public class QueueProcessorTests
     [Fact]
     public async Task Queue_RespectsRetryAfterOn429()
     {
-        ProviderQueue queue = new(new() { Concurrent = 1, Interval = 1 });
+        // A 10 s default backoff keeps the two outcomes far apart: honoring the 50 ms
+        // Retry-After finishes well under 5 s even on a slow CI runner; ignoring it cannot.
+        ProviderQueue queue = new(
+            new()
+            {
+                Concurrent = 1,
+                Interval = 1,
+                RetryBaseDelayMs = 10_000,
+            }
+        );
         int attempts = 0;
         Stopwatch watch = Stopwatch.StartNew();
         string result = await queue.Enqueue(
@@ -123,7 +132,7 @@ public class QueueProcessorTests
         result.Should().Be("ok");
         attempts.Should().Be(2);
         watch.Elapsed.Should().BeGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(45));
-        watch.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(1));
+        watch.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(5));
     }
 
     [Fact]
