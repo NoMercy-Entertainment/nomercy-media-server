@@ -138,7 +138,7 @@ public class LiveStreamingService(
         {
             if (_runtimes.TryRemove(sessionId, out LiveRuntimeSession? runtime))
             {
-                logger.LogDebug("Removing live session {SessionId}", sessionId);
+                logger.LogInformation("Live session {SessionId} ended", sessionId);
 
                 // Cascade to the per-language audio children so switching audio
                 // never outlives the video session it belongs to.
@@ -166,7 +166,7 @@ public class LiveStreamingService(
                 finally
                 {
                     if (!string.IsNullOrWhiteSpace(runtime.ScratchDirectory))
-                        TryDeleteScratch(runtime.ScratchDirectory, sessionId);
+                        await TryDeleteScratchAsync(runtime.ScratchDirectory, sessionId).ConfigureAwait(false);
                 }
             }
         }
@@ -253,31 +253,54 @@ public class LiveStreamingService(
         }
     }
 
-    private void TryDeleteScratch(string scratchDirectory, string sessionId)
+    // Windows keeps an exited FFmpeg's segment handle open for a moment, so one
+    // try left the folder behind. Retry for about two seconds before giving up.
+    private static readonly TimeSpan[] ScratchDeleteRetryDelays =
+    [
+        TimeSpan.FromMilliseconds(100),
+        TimeSpan.FromMilliseconds(250),
+        TimeSpan.FromMilliseconds(500),
+        TimeSpan.FromMilliseconds(1000),
+    ];
+
+    private async Task TryDeleteScratchAsync(string scratchDirectory, string sessionId)
     {
-        try
+        for (int attempt = 0; ; attempt++)
         {
-            if (storage.Exists(scratchDirectory))
+            try
             {
-                storage.DeleteDirectory(scratchDirectory, recursive: true);
+                if (storage.Exists(scratchDirectory))
+                {
+                    storage.DeleteDirectory(scratchDirectory, recursive: true);
+                    logger.LogDebug(
+                        "Deleted live session scratch {Dir} for {SessionId}",
+                        scratchDirectory,
+                        sessionId
+                    );
+                }
+                return;
+            }
+            catch (Exception ex) when (attempt < ScratchDeleteRetryDelays.Length)
+            {
                 logger.LogDebug(
-                    "Deleted live session scratch {Dir} for {SessionId}",
+                    ex,
+                    "Scratch {Dir} for live session {SessionId} still in use, retrying",
                     scratchDirectory,
                     sessionId
                 );
+                await Task.Delay(ScratchDeleteRetryDelays[attempt]).ConfigureAwait(false);
             }
-        }
-        catch (Exception ex)
-        {
-            // Best-effort: a segment might still be held open by Windows until
-            // the FFmpeg handle fully releases. The temp dir will be cleaned
-            // up on the next server start or by the OS temp sweep.
-            logger.LogWarning(
-                ex,
-                "Could not delete scratch {Dir} for live session {SessionId}",
-                scratchDirectory,
-                sessionId
-            );
+            catch (Exception ex)
+            {
+                // The orphan sweeper removes it on the next server start.
+                logger.LogWarning(
+                    ex,
+                    "Could not delete scratch {Dir} for live session {SessionId}",
+                    scratchDirectory,
+                    sessionId
+                );
+                return;
+            }
         }
     }
 

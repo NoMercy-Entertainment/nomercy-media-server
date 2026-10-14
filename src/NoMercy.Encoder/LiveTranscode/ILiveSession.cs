@@ -66,9 +66,10 @@ public interface ILiveSession : IAsyncDisposable
 
     /// <summary>
     /// Stamps <see cref="LastTranscodeStart"/> with the current UTC time. Called
-    /// at every point a new runner is dispatched.
+    /// at every point a new runner is dispatched. <paramref name="from"/> is the
+    /// media position the new runner encodes from, when the caller knows it.
     /// </summary>
-    void MarkTranscodeStart();
+    void MarkTranscodeStart(TimeSpan? from = null);
 
     /// <summary>
     /// Attaches the factory that <see cref="SeekAsync"/> uses to spawn a
