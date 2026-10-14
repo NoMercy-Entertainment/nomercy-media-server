@@ -405,45 +405,26 @@ public partial class FileManager
         return chapters.Count == 0 ? null : chapters;
     }
 
-    // Chapter files are WEBVTT (see ChapterWriter): a WEBVTT header, then
-    // blank-line-separated cue blocks of an optional id line, a
-    // `HH:MM:SS.mmm --> HH:MM:SS.mmm` timing line, and a title payload. The
-    // general subtitle parser cannot read this shape and degrades to one
-    // garbage entry per line, so chapters are parsed here directly.
+    // Chapter files are WEBVTT (see ChapterWriter): a WEBVTT header, then cues
+    // of an optional id line, a `HH:MM:SS.mmm --> HH:MM:SS.mmm` timing line,
+    // and a title payload. The general subtitle parser cannot read this shape
+    // and degrades to one garbage entry per line, so chapters are parsed here
+    // directly. Cues are found by their timing lines, not by blank lines: older
+    // files run their cues together with no blank line between them, and split
+    // on blank lines a whole episode read as its first cue.
     internal static List<IChapter> ParseChaptersVtt(string text)
     {
         List<IChapter> chapters = [];
         if (string.IsNullOrWhiteSpace(text))
             return chapters;
 
-        string normalized = text.Replace("\r\n", "\n").Replace("\r", "\n");
-        string[] blocks = normalized.Split(["\n\n"], StringSplitOptions.None);
+        string[] lines = text.Replace("\r\n", "\n").Replace("\r", "\n").Split('\n');
 
         int index = 0;
-        foreach (string rawBlock in blocks)
+        for (int lineIndex = 0; lineIndex < lines.Length; lineIndex++)
         {
-            string block = rawBlock.Trim();
-            if (block.Length == 0 || block == "WEBVTT" || block.StartsWith("WEBVTT"))
-                continue;
-            if (block.StartsWith("NOTE") || block.StartsWith("STYLE") || block.StartsWith("REGION"))
-                continue;
-
-            string[] lines = block.Split('\n');
-
-            int timingLineIndex = -1;
-            Match? timing = null;
-            for (int lineIndex = 0; lineIndex < Math.Min(2, lines.Length); lineIndex++)
-            {
-                Match candidate = ChapterTimingRegex().Match(lines[lineIndex].Trim());
-                if (candidate.Success)
-                {
-                    timingLineIndex = lineIndex;
-                    timing = candidate;
-                    break;
-                }
-            }
-
-            if (timing is null)
+            Match timing = ChapterTimingRegex().Match(lines[lineIndex].Trim());
+            if (!timing.Success)
                 continue;
 
             int start = ParseVttTimestampMs(timing.Groups[1].Value);
@@ -451,10 +432,8 @@ public partial class FileManager
             if (start < 0 || end < 0)
                 continue;
 
-            string title =
-                lines.Length > timingLineIndex + 1
-                    ? lines[timingLineIndex + 1].Trim()
-                    : string.Empty;
+            string next = lineIndex + 1 < lines.Length ? lines[lineIndex + 1].Trim() : string.Empty;
+            string title = ChapterTimingRegex().IsMatch(next) ? string.Empty : next;
 
             chapters.Add(
                 new()

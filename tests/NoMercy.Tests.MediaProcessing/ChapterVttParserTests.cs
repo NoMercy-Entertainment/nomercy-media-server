@@ -169,6 +169,26 @@ public class ChapterVttParserTests
     }
 
     [Fact]
+    public void Reads_older_files_whose_cues_run_together_without_blank_lines()
+    {
+        // Older chapter files have one blank line, after the header. Split on blank
+        // lines they read as one cue, so an episode was stored with a lone 47-second
+        // "Intro" and the apps took the rest of the episode for the intro.
+        const string runTogether =
+            "WEBVTT\n\n"
+            + "Chapter 1\n00:00:00 --> 00:00:47\nIntro\n"
+            + "Chapter 2\n00:00:47 --> 00:02:16\nOP\n"
+            + "Chapter 3\n00:02:16 --> 00:22:42\nPart A\n"
+            + "Chapter 4\n00:22:42 --> 00:24:28\nED\n";
+
+        List<IChapter> chapters = FileManager.ParseChaptersVtt(runTogether);
+
+        chapters.Select(chapter => chapter.Title).Should().Equal("Intro", "OP", "Part A", "ED");
+        chapters.Select(chapter => chapter.StartTime).Should().Equal(0, 47000, 136000, 1362000);
+        chapters.Select(chapter => chapter.EndTime).Should().Equal(47000, 136000, 1362000, 1468000);
+    }
+
+    [Fact]
     public void Does_not_prepend_when_the_first_chapter_already_starts_at_zero()
     {
         // RealChaptersVtt's first cue starts at 00:00:00.000, so the timeline is
