@@ -36,7 +36,7 @@ refuse() {
 [[ "$channel" == "beta" || "$channel" == "stable" ]] || refuse "channel must be beta or stable, got '$channel'"
 
 [ "$(jq -r .isDraft "$release")" = "true" ] && refuse "v$version is a draft (a staged branch build), not a nightly"
-jq -r '.body // ""' "$release" | grep -q 'RETRACTED' && refuse "v$version was retracted and cannot be promoted"
+jq -r '.body // ""' "$release" | grep 'RETRACTED' > /dev/null && refuse "v$version was retracted and cannot be promoted"
 
 # What a user installs from, per platform. A release missing any of these
 # would promote a broken download.
@@ -86,7 +86,7 @@ fi
 # isPrerelease already false is that retry, not a regression, so it is
 # not asked to prove it was a beta again.
 was_beta="false"
-jq -r '.body // ""' "$release" | grep -q '<!-- nomercy-channel: beta -->' && was_beta="true"
+jq -r '.body // ""' "$release" | grep '<!-- nomercy-channel: beta -->' > /dev/null && was_beta="true"
 already_stable="false"
 [ "$(jq -r .isPrerelease "$release")" = "false" ] && already_stable="true"
 if [ "$was_beta" != "true" ] && [ "$already_stable" != "true" ] && [ "$skip_beta" != "true" ]; then

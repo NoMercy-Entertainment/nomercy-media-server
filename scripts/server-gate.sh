@@ -38,7 +38,7 @@ step() {
 
 # The server holds its own DLLs open, so a build against a running instance
 # fails on a file lock that reads as an unrelated compiler error.
-if tasklist //FI "IMAGENAME eq NoMercyMediaServer.exe" 2>/dev/null | grep -q NoMercyMediaServer; then
+if tasklist //FI "IMAGENAME eq NoMercyMediaServer.exe" 2>/dev/null | grep NoMercyMediaServer > /dev/null; then
   echo "== stopping the running server =="
   taskkill //IM NoMercyMediaServer.exe //F >/dev/null 2>&1
 fi

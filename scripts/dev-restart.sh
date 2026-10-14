@@ -25,7 +25,7 @@ nohup ./NoMercyMediaServer.exe --dev --loglevel=verbose > "dev-run-$(date +%s).l
 disown
 
 for i in $(seq 1 15); do
-  if nomercy status 2>&1 | grep -q "running"; then
+  if nomercy status 2>&1 | grep "running" > /dev/null; then
     echo "up"
     nomercy status
     exit 0
