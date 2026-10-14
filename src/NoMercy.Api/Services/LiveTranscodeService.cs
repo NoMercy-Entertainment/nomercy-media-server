@@ -102,10 +102,25 @@ public class LiveTranscodeService(
         if (!await ReserveSessionSlotAsync(userId))
             return LiveResult.ServiceUnavailable("Maximum concurrent live sessions reached");
 
+        ClientCapabilities clientCaps = await ResolveClientCapsAsync(request, deviceId, ct);
+
+        // A NoMercy HLS master names every variant's codec, range, resolution and
+        // bandwidth, so the same engine that judges a probed file can judge the
+        // playlist text, without an ffprobe pass that takes seconds on slow storage.
+        // Anything the text cannot settle (no readable master, a variant without
+        // CODECS, any variant that needs work) falls through to the probe below.
+        if (await CanDirectPlayFromHlsMasterAsync(resolved.File, clientCaps, videoFileId, ct))
+            return DirectPlayResult(
+                videoFileId,
+                resolved.File,
+                "HLS master codecs are compatible with client capabilities"
+            );
+
         // The source codec is what drives the direct-play-vs-transcode decision, and
         // NoMercy's own HLS output is frequently HEVC 10-bit — the exact thing a
-        // browser without HEVC needs transcoded — so the file MUST be probed, an
-        // ".m3u8" name proves nothing about compatibility. A probe failure (backend
+        // browser without HEVC needs transcoded — so unless the master playlist
+        // states the codecs (above), the file MUST be probed: an ".m3u8" name
+        // proves nothing about compatibility. A probe failure (backend
         // unreachable, transient NFS/S3 error, corrupt header) must NOT 500 the whole
         // playback: fall back to handing the client the file's own static URL. If it
         // is browser-playable it just plays; if not, the client surfaces a normal
@@ -132,8 +147,6 @@ public class LiveTranscodeService(
                 "Source could not be analyzed; serving the original file"
             );
         }
-
-        ClientCapabilities clientCaps = await ResolveClientCapsAsync(request, deviceId, ct);
 
         PlaybackDecision playbackDecision = Decide(mediaInfo, clientCaps, videoFileId);
 
@@ -279,6 +292,47 @@ public class LiveTranscodeService(
             );
 
         return clientCaps;
+    }
+
+    private async Task<bool> CanDirectPlayFromHlsMasterAsync(
+        VideoFile file,
+        ClientCapabilities clientCaps,
+        Ulid videoFileId,
+        CancellationToken ct
+    )
+    {
+        if (!file.Filename.EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        string? masterPath = storage.CombinePath(file.HostFolder, file.Filename);
+        if (string.IsNullOrEmpty(masterPath))
+            return false;
+
+        string? masterText;
+        try
+        {
+            masterText = await storage.ReadAllTextAsync(masterPath, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogDebug(
+                ex,
+                "HLS master for {VideoFileId} could not be read; probing the source",
+                videoFileId
+            );
+            return false;
+        }
+
+        IReadOnlyList<EncoderMediaInfo>? variants = HlsMasterMediaInfoReader.TryRead(
+            masterText,
+            masterPath
+        );
+        if (variants is null)
+            return false;
+
+        return variants.All(variant =>
+            Decide(variant, clientCaps, videoFileId).Action == PlaybackAction.DirectPlay
+        );
     }
 
     private PlaybackDecision Decide(

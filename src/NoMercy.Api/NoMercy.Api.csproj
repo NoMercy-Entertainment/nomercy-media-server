@@ -22,7 +22,6 @@
     <PackageReference Include="Newtonsoft.Json" />
 
     <PackageReference Include="Ulid" />
-    <PackageReference Include="Microsoft.AspNetCore.SignalR" />
   </ItemGroup>
 
   <ItemGroup>
