@@ -147,7 +147,7 @@ public class LiveEncoder(
 
         session.AttachRunnerFactory(SpawnRunner);
 
-        session.MarkTranscodeStart();
+        session.MarkTranscodeStart(request.StartPosition);
         session.TrackRunnerTask(
             Task.Run(
                 () => SpawnRunner(request.StartPosition, session.RunnerCancellation),
@@ -263,7 +263,7 @@ public class LiveEncoder(
         }
 
         session.AttachRunnerFactory(SpawnRunner);
-        session.MarkTranscodeStart();
+        session.MarkTranscodeStart(request.StartPosition);
         session.TrackRunnerTask(
             Task.Run(
                 () => SpawnRunner(request.StartPosition, session.RunnerCancellation),

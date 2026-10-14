@@ -18,7 +18,7 @@ for image in "${IMAGES[@]}"; do
     # The pool also holds nomercy_latest_amd64.deb, a link to the same package.
     deb="$(find /pkg -maxdepth 1 -name "*.deb" ! -name "*_latest_*" | head -n 1)"
     [ -n "${deb}" ] || { echo "no deb in the folder" >&2; exit 1; }
-    dpkg-deb -f "${deb}" Depends Recommends | grep -q libicu || { echo "the deb declares no ICU package" >&2; exit 1; }
+    dpkg-deb -f "${deb}" Depends Recommends | grep libicu > /dev/null || { echo "the deb declares no ICU package" >&2; exit 1; }
     apt-get update -qq
     apt-get install -y -qq "${deb}" > /dev/null
     /opt/nomercy/nomercy --help > /dev/null

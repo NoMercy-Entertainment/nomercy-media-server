@@ -16,7 +16,7 @@ docker run --rm -v "${PKG_DIR}:/pkg:ro" "${IMAGE}" bash -c '
   pacman-key --init > /dev/null 2>&1
   pacman -Sy --noconfirm > /dev/null
   pacman -U --noconfirm /pkg/*.pkg.tar.zst > /dev/null
-  pacman -Qi nomercy | grep "^Depends On" | grep -qw icu || { echo "the package declares no icu dependency" >&2; exit 1; }
+  pacman -Qi nomercy | grep "^Depends On" | grep -w icu > /dev/null || { echo "the package declares no icu dependency" >&2; exit 1; }
   /opt/nomercy/nomercy --help > /dev/null
   echo "nomercy installs and the CLI starts on $(. /etc/os-release && echo "${PRETTY_NAME}")"
 '

@@ -64,6 +64,9 @@ public class LiveSession : ILiveSession
     // "warming up". Stamped on every real (re)spawn via MarkTranscodeStart.
     private long _lastTranscodeStartTicks = DateTime.MinValue.Ticks;
 
+    // The media position the current runner encodes from; -1 when unknown.
+    private long _runnerFromTicks = -1;
+
     // Injected by LiveEncoder after construction via AttachRunnerFactory.
     private Func<TimeSpan, CancellationToken, Task>? _runnerFactory;
 
@@ -73,7 +76,7 @@ public class LiveSession : ILiveSession
     // synchronous WaitForExit() that releases its file handles happen inside
     // that task. DisposeAsync must await it, or scratch-directory cleanup
     // races the still-exiting process and fails with "used by another
-    // process" (see LiveStreamingService.TryDeleteScratch).
+    // process" (see LiveStreamingService.TryDeleteScratchAsync).
     private Task? _currentRunnerTask;
 
     internal void TrackRunnerTask(Task task) => Volatile.Write(ref _currentRunnerTask, task);
@@ -207,6 +210,16 @@ public class LiveSession : ILiveSession
         await _seekLock.WaitAsync(ct).ConfigureAwait(false);
         try
         {
+            // The running FFmpeg already reaches this spot soon (the app seeks to
+            // its resume point right after the session starts): keep it, so its
+            // warm-up is not thrown away. Only the playhead moves.
+            if (RunnerWillReach(position))
+            {
+                Interlocked.Exchange(ref _playbackPositionTicks, position.Ticks);
+                Interlocked.Exchange(ref _lastAuthoritativePlayheadUtcTicks, DateTime.UtcNow.Ticks);
+                return;
+            }
+
             SetState(LiveSessionState.Seeking);
 
             // Tear down existing runner
@@ -248,7 +261,7 @@ public class LiveSession : ILiveSession
             if (_runnerFactory is not null)
             {
                 SetState(LiveSessionState.Transcoding);
-                MarkTranscodeStart();
+                MarkTranscodeStart(position);
 
                 TrackRunnerTask(
                     Task.Run(
@@ -305,7 +318,7 @@ public class LiveSession : ILiveSession
 
                 // Keep same playback position — quality change doesn't rewind
                 TimeSpan resumePosition = new(Interlocked.Read(ref _playbackPositionTicks));
-                MarkTranscodeStart();
+                MarkTranscodeStart(resumePosition);
                 TrackRunnerTask(
                     Task.Run(
                         () => _runnerFactory(resumePosition, _runnerCts.Token),
@@ -381,8 +394,8 @@ public class LiveSession : ILiveSession
 
             if (_runnerFactory is not null)
             {
-                MarkTranscodeStart();
                 TimeSpan resumePosition = new(Interlocked.Read(ref _playbackPositionTicks));
+                MarkTranscodeStart(resumePosition);
                 TrackRunnerTask(
                     Task.Run(
                         () => _runnerFactory(resumePosition, _runnerCts.Token),
@@ -426,8 +439,28 @@ public class LiveSession : ILiveSession
     public DateTime LastTranscodeStart =>
         new(Interlocked.Read(ref _lastTranscodeStartTicks), DateTimeKind.Utc);
 
-    public void MarkTranscodeStart() =>
+    // How far past the encoded frontier a seek may land and still wait for the
+    // current runner instead of respawning it.
+    internal static readonly TimeSpan SeekReuseLead = TimeSpan.FromSeconds(10);
+
+    private bool RunnerWillReach(TimeSpan target)
+    {
+        long fromTicks = Interlocked.Read(ref _runnerFromTicks);
+        if (fromTicks < 0 || _runnerFactory is null || _runnerCts.IsCancellationRequested)
+            return false;
+        LiveSessionState state = State;
+        if (state is not (LiveSessionState.Starting or LiveSessionState.Transcoding))
+            return false;
+        TimeSpan from = new(fromTicks);
+        TimeSpan frontier = _transcodedPosition > from ? _transcodedPosition : from;
+        return target >= from && target <= frontier + SeekReuseLead;
+    }
+
+    public void MarkTranscodeStart(TimeSpan? from = null)
+    {
         Interlocked.Exchange(ref _lastTranscodeStartTicks, DateTime.UtcNow.Ticks);
+        Interlocked.Exchange(ref _runnerFromTicks, from?.Ticks ?? -1);
+    }
 
     public TimeSpan ClientBufferedAhead => new(Interlocked.Read(ref _clientBufferedAheadTicks));
 
@@ -473,7 +506,7 @@ public class LiveSession : ILiveSession
         // actual process kill + WaitForExit() that releases ffmpeg's file
         // handles run inside the tracked task. Waiting for it here (bounded,
         // since ProcessRunner already caps its own graceful-kill grace period
-        // at 5s) is what lets LiveStreamingService.TryDeleteScratch delete the
+        // at 5s) is what lets LiveStreamingService.TryDeleteScratchAsync delete the
         // scratch directory without racing a still-exiting process.
         Task? runnerTask = Volatile.Read(ref _currentRunnerTask);
         if (runnerTask is not null)

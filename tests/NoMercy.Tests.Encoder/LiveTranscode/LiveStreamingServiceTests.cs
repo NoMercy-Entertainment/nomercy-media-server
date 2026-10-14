@@ -171,6 +171,39 @@ public class LiveStreamingServiceTests
         }
     }
 
+    // Windows keeps an exited FFmpeg's segment handle open for a moment; the
+    // delete used to try once and leave the folder behind (2026-10-14).
+    [Fact]
+    public async Task RemoveAsync_ScratchFileBrieflyHeldOpen_StillDeletesScratch()
+    {
+        string tempDir = Path.Combine(Path.GetTempPath(), $"live-scratch-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempDir);
+        FileStream held = new(
+            Path.Combine(tempDir, "seg_00000.ts"),
+            FileMode.Create,
+            FileAccess.Write,
+            FileShare.None
+        );
+
+        try
+        {
+            LiveStreamingService svc = NewService();
+            LiveSession session = MakeSession();
+            svc.Register(session, TimeSpan.FromSeconds(6), tempDir);
+            _ = Task.Delay(300).ContinueWith(_ => held.Dispose());
+
+            await svc.RemoveAsync(session.SessionId);
+
+            Directory.Exists(tempDir).Should().BeFalse();
+        }
+        finally
+        {
+            await held.DisposeAsync();
+            if (Directory.Exists(tempDir))
+                Directory.Delete(tempDir, recursive: true);
+        }
+    }
+
     [Fact]
     public async Task RemoveAsync_MissingScratchDirectory_SwallowsError()
     {
