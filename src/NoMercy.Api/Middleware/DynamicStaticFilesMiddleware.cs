@@ -372,8 +372,10 @@ public class DynamicStaticFilesMiddleware(
     /// false when the range cannot be satisfied.
     /// </summary>
     /// <remarks>
-    /// An open-ended <c>bytes=0-</c> on streamable media gets only the first 1 MB, so a
-    /// browser can parse the moov atom without waiting on the whole file. Any other
+    /// An open-ended <c>bytes=0-</c> on streamable media gets only the first 16 MB, so a
+    /// browser can parse the moov atom without waiting on the whole file. Front moov
+    /// atoms in the library reach 8.7 MB; a 1 MB cap cut them off and ffprobe failed
+    /// with "error reading header". Any other
     /// open-ended range (start &gt; 0) is served to EOF: ExoPlayer's DefaultExtractorInput
     /// reads sequentially via Mp4Extractor.readFully, and capping at 1 MiB makes its read
     /// return -1 mid-atom and throws EOFException (web's &lt;video&gt; reopens the
@@ -389,7 +391,7 @@ public class DynamicStaticFilesMiddleware(
         out long end
     )
     {
-        const long initialProbeChunkSize = 1024 * 1024;
+        const long initialProbeChunkSize = 16 * 1024 * 1024;
 
         string[] ranges = rangeHeader.Replace("bytes=", "").Split('-');
         end = fileLength - 1;

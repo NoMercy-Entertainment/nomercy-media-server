@@ -331,7 +331,7 @@ public sealed class DynamicStaticFilesMiddlewareTests
     public async Task InvokeAsync_OpenEndedRangeFromZero_StillServesProbeChunk()
     {
         using RegisteredFolder folder = new();
-        byte[] content = new byte[2 * 1024 * 1024];
+        byte[] content = new byte[32 * 1024 * 1024];
         Mock<IStorage> storage = CreateStorage(size: content.Length, content: content);
         (
             DynamicStaticFilesMiddleware middleware,
@@ -344,10 +344,11 @@ public sealed class DynamicStaticFilesMiddlewareTests
         await middleware.InvokeAsync(context, storageFactory.Object, activityMonitor);
 
         // Browsers open media with `bytes=0-`, so the fast start survives where it
-        // was actually meant to apply.
+        // was actually meant to apply. 16 MiB holds the front moov of every
+        // sampled library MP4 (largest seen: 8.7 MB), so the first answer can be parsed.
         context.Response.StatusCode.Should().Be(206);
-        context.Response.ContentLength.Should().Be(1024 * 1024);
-        context.Response.Headers.ContentRange.ToString().Should().StartWith("bytes 0-1048575/");
+        context.Response.ContentLength.Should().Be(16 * 1024 * 1024);
+        context.Response.Headers.ContentRange.ToString().Should().StartWith("bytes 0-16777215/");
     }
 
     [Fact]
@@ -400,10 +401,12 @@ public sealed class DynamicStaticFilesMiddlewareTests
     }
 
     [Fact]
-    public async Task InvokeAsync_RangeOpenEndedAtZeroOnStreamableMedia_ServesProbeChunk()
+    public async Task InvokeAsync_RangeOpenEndedAtZeroWithAFiveMegabyteMoov_ServesTheWholeMoov()
     {
         using RegisteredFolder folder = new();
-        byte[] content = new byte[2 * 1024 * 1024];
+        // A real library MP4 keeps a 5.6 MB moov at the front; the old 1 MiB answer
+        // cut it, and ffprobe failed with "error reading header".
+        byte[] content = new byte[8 * 1024 * 1024];
         Mock<IStorage> storage = CreateStorage(size: content.Length, content: content);
         (
             DynamicStaticFilesMiddleware middleware,
@@ -416,8 +419,8 @@ public sealed class DynamicStaticFilesMiddlewareTests
         await middleware.InvokeAsync(context, storageFactory.Object, activityMonitor);
 
         context.Response.StatusCode.Should().Be(206);
-        context.Response.ContentLength.Should().Be(1024 * 1024);
-        context.Response.Headers.ContentRange.ToString().Should().StartWith("bytes 0-1048575/");
+        context.Response.ContentLength.Should().Be(8 * 1024 * 1024);
+        context.Response.Headers.ContentRange.ToString().Should().Be("bytes 0-8388607/8388608");
     }
 
     [Fact]
@@ -825,7 +828,7 @@ public sealed class DynamicStaticFilesMiddlewareTests
     }
 
     [Theory]
-    [InlineData("bytes=0-", true, 0, 1024 * 1024 - 1)]
+    [InlineData("bytes=0-", true, 0, 9_999_999)]
     [InlineData("bytes=0-", false, 0, 9_999_999)]
     [InlineData("bytes=5000-", true, 5000, 9_999_999)]
     [InlineData("bytes=100-199", true, 100, 199)]

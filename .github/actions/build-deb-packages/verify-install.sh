@@ -15,8 +15,9 @@ if [ "$#" -gt 0 ]; then IMAGES=("$@"); else IMAGES=(ubuntu:24.04 debian:12); fi
 for image in "${IMAGES[@]}"; do
   docker run --rm -e DEBIAN_FRONTEND=noninteractive -e TZ=Etc/UTC -v "${DEB_DIR}:/pkg:ro" "${image}" bash -c '
     set -euo pipefail
-    # The pool also holds nomercy_latest_amd64.deb, a link to the same package.
-    deb="$(find /pkg -maxdepth 1 -name "*.deb" ! -name "*_latest_*" | head -n 1)"
+    # The pool also holds nomercy_latest_amd64.deb, a link to the same package. A self-hosted
+    # runner can keep an older build in the pool, so test the newest version only.
+    deb="$(find /pkg -maxdepth 1 -name "*.deb" ! -name "*_latest_*" | sort -V | tail -n 1)"
     [ -n "${deb}" ] || { echo "no deb in the folder" >&2; exit 1; }
     dpkg-deb -f "${deb}" Depends Recommends | grep libicu > /dev/null || { echo "the deb declares no ICU package" >&2; exit 1; }
     apt-get update -qq
