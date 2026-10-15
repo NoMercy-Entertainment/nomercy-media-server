@@ -29,6 +29,13 @@ namespace NoMercy.PluginSdk.Network;
 /// trust model. It makes well-behaved traffic identifiable; it does not
 /// constrain traffic that is not.
 /// </para>
+/// <para>
+/// One exception: a media fetch the server's own media proxy makes for one
+/// viewer's player, when the plugin's link names the user agent that player
+/// would have sent (<see cref="ViewerUserAgent" />). Such a request keeps
+/// that user agent, and the owner's identity and the plugin's attribution
+/// travel in <see cref="AttributionHeader" /> instead.
+/// </para>
 /// </summary>
 public partial class PluginUserAgentHandler(
     Ulid pluginId,
@@ -36,6 +43,18 @@ public partial class PluginUserAgentHandler(
     Version? pluginVersion
 ) : DelegatingHandler
 {
+    /// <summary>Where the owner's identity and the plugin's attribution go when the user agent is the viewer's.</summary>
+    public const string AttributionHeader = "X-NoMercy-Attribution";
+
+    /// <summary>
+    /// Set by the media proxy on a fetch made for one viewer's player whose link
+    /// names a user agent. Internal, so only the server's media proxy can set
+    /// it: a plugin's own requests never carry it.
+    /// </summary>
+    internal static readonly HttpRequestOptionsKey<bool> ViewerUserAgent = new(
+        "NoMercy.Plugins.ViewerUserAgent"
+    );
+
     /// <summary>Everything outside an RFC 9110 token, which is most punctuation.</summary>
     [GeneratedRegex("[^A-Za-z0-9!#$%&'*+.^_`|~-]+")]
     private static partial Regex NonTokenCharacters();
@@ -69,7 +88,27 @@ public partial class PluginUserAgentHandler(
         CancellationToken cancellationToken
     )
     {
-        // Always, and replacing whatever the plugin set.
+        // A proxied media fetch stands in for one viewer's player, and the
+        // user agent it asks for is the one that player would have sent had
+        // it fetched the stream itself. IPTV providers allow-list on it, often
+        // a player or set-top-box name, and answer 403 to anything else. The
+        // owner's identity still goes with the request, in a header of its own.
+        if (
+            request.Options.TryGetValue(ViewerUserAgent, out bool viewer)
+            && viewer
+            && request.Headers.Contains("User-Agent")
+        )
+        {
+            request.Headers.Remove(AttributionHeader);
+            request.Headers.TryAddWithoutValidation(
+                AttributionHeader,
+                $"{ExternalServicesConfig.Current.UserAgent} {_product}"
+            );
+
+            return base.SendAsync(request, cancellationToken);
+        }
+
+        // Otherwise always, and replacing whatever the plugin set.
         //
         // This used to defer to a plugin's own user agent, on the reasoning that
         // a private tracker bans on a string it does not expect and an indexer

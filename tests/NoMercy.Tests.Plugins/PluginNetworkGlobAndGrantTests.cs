@@ -181,6 +181,46 @@ public class PluginUserAgentHandlerTests
         sent.Should().Contain("NoMercyPlugin-Torrent-Downloader/1.2.3");
     }
 
+    /// <summary>
+    /// A fetch the media proxy makes for one viewer's player stands in for
+    /// that player. IPTV providers allow-list on the player's user agent, so
+    /// it is kept, and the owner's identity goes in a header of its own.
+    /// </summary>
+    [Fact]
+    public async Task A_media_fetch_for_a_viewer_keeps_its_user_agent_and_carries_the_attribution_beside_it()
+    {
+        HttpClient client = new(
+            new PluginUserAgentHandler(PluginId, "Live TV", new Version(1, 2, 3))
+            {
+                InnerHandler = new EchoingHeadersHandler(),
+            }
+        );
+        HttpRequestMessage request = new(HttpMethod.Get, "https://example.com/live.m3u8");
+        request.Headers.TryAddWithoutValidation("User-Agent", "VLC/3.0.18 LibVLC/3.0.18");
+        request.Options.Set(PluginUserAgentHandler.ViewerUserAgent, true);
+
+        HttpResponseMessage response = await client.SendAsync(request);
+
+        string[] sent = (await response.Content.ReadAsStringAsync()).Split('\n');
+        sent[0].Should().Be("VLC/3.0.18 LibVLC/3.0.18");
+        sent[1].Should().Contain(ExternalServicesConfig.Current.UserAgent);
+        sent[1].Should().Contain("NoMercyPlugin-Live-TV/1.2.3");
+    }
+
+    /// <summary>The option alone, with no user agent to keep, changes nothing.</summary>
+    [Fact]
+    public async Task A_media_fetch_that_names_no_user_agent_carries_the_servers_own()
+    {
+        HttpRequestMessage request = new(HttpMethod.Get, "https://example.com/x");
+        request.Options.Set(PluginUserAgentHandler.ViewerUserAgent, true);
+
+        HttpResponseMessage response = await ClientFor("Live TV").SendAsync(request);
+
+        string sent = await response.Content.ReadAsStringAsync();
+        sent.Should().Contain(ExternalServicesConfig.Current.UserAgent);
+        sent.Should().Contain("NoMercyPlugin-Live-TV/1.2.3");
+    }
+
     [Theory]
     // A plugin name is author-supplied text, and a product token is a narrow
     // grammar. Anything outside it has to go or the header is malformed.
@@ -219,6 +259,33 @@ public class PluginUserAgentHandlerTests
         string sent = await response.Content.ReadAsStringAsync();
         sent.Should().NotContain("\r").And.NotContain("\n").And.NotContain(":");
         sent.Should().Contain("NoMercyPlugin-evil-X-Injected-yes/");
+    }
+
+    /// <summary>Answers with the raw user agent, then the attribution header.</summary>
+    private sealed class EchoingHeadersHandler : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken
+        )
+        {
+            string agent = request.Headers.TryGetValues("User-Agent", out IEnumerable<string>? a)
+                ? string.Join(" ", a)
+                : string.Empty;
+            string attribution = request.Headers.TryGetValues(
+                PluginUserAgentHandler.AttributionHeader,
+                out IEnumerable<string>? b
+            )
+                ? string.Join(" ", b)
+                : string.Empty;
+
+            return Task.FromResult(
+                new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent($"{agent}\n{attribution}"),
+                }
+            );
+        }
     }
 
     private sealed class EchoingUserAgentHandler : HttpMessageHandler

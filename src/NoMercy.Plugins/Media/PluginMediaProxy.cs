@@ -14,6 +14,7 @@ using System.Text;
 using Microsoft.Extensions.Logging;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Capabilities;
+using NoMercy.PluginSdk.Network;
 using NoMercy.PluginSdk.Quotas;
 
 namespace NoMercy.PluginSdk.Media;
@@ -36,6 +37,32 @@ public class PluginMediaProxy(
     PluginQuotaMeter? quotas = null
 ) : IPluginMediaProxy, IPluginMediaFetcher
 {
+    // Enough for a byte order mark, a little whitespace and "#EXTM3U".
+    private const int SniffLength = 64;
+
+    private const string RewrittenPlaylistType = "application/vnd.apple.mpegurl";
+
+    private static readonly string[] PlaylistTypes =
+    [
+        "application/vnd.apple.mpegurl",
+        "application/x-mpegurl",
+        "audio/mpegurl",
+        "audio/x-mpegurl",
+    ];
+
+    // IPTV panels and CDNs serve playlists under these as often as under the
+    // right type. An answer under one of them, or under none, is looked at
+    // rather than trusted.
+    private static readonly string[] SniffedTypes =
+    [
+        "application/octet-stream",
+        "binary/octet-stream",
+        "text/plain",
+        "video/mp2t",
+    ];
+
+    private static readonly byte[] PlaylistMarker = "#EXTM3U"u8.ToArray();
+
     public static TimeSpan TicketLifetime { get; } = TimeSpan.FromMinutes(15);
 
     public Task<PluginMediaUrl> MintAsync(
@@ -157,8 +184,14 @@ public class PluginMediaProxy(
         if (link.Referer is not null)
             message.Headers.TryAddWithoutValidation("Referer", link.Referer);
 
-        if (link.UserAgent is not null)
-            message.Headers.TryAddWithoutValidation("User-Agent", link.UserAgent);
+        // The user agent this viewer's player would have sent. The handler
+        // keeps it only because this option says the request is a media fetch
+        // for a viewer; a plugin's own requests cannot set it.
+        if (link.UserAgent is { Length: > 0 } agent && !agent.Any(char.IsControl))
+        {
+            message.Headers.TryAddWithoutValidation("User-Agent", agent);
+            message.Options.Set(PluginUserAgentHandler.ViewerUserAgent, true);
+        }
 
         // Owned by whoever asked: the body is a stream the viewer reads, so it
         // outlives this method and the caller disposes it.
@@ -168,11 +201,102 @@ public class PluginMediaProxy(
             ct
         );
 
-        if (!request.RewriteHlsPlaylists || !IsPlaylist(response))
+        if (!request.RewriteHlsPlaylists)
             return response;
 
-        return await RewritePlaylistAsync(request, address, response, ct);
+        string? type = response.Content.Headers.ContentType?.MediaType;
+
+        if (IsOneOf(type, PlaylistTypes))
+            return RewritePlaylist(
+                request,
+                link,
+                address,
+                response,
+                await response.Content.ReadAsStringAsync(ct),
+                type!
+            );
+
+        if (!response.IsSuccessStatusCode || !(type is null || IsOneOf(type, SniffedTypes)))
+            return response;
+
+        return await SniffAsync(request, link, address, response, ct);
     }
+
+    /// <summary>
+    /// Looks at the first bytes of an answer whose type says nothing useful.
+    /// A playlist is rewritten like any other. Anything else is handed on
+    /// whole, the bytes already read put back in front of the rest.
+    /// </summary>
+    private async Task<HttpResponseMessage> SniffAsync(
+        PluginProxyRequest request,
+        PluginProxyLink link,
+        Uri address,
+        HttpResponseMessage response,
+        CancellationToken ct
+    )
+    {
+        Stream body = await response.Content.ReadAsStreamAsync(ct);
+        byte[] head = new byte[SniffLength];
+        int read = await ReadAtMostAsync(body, head, ct);
+
+        if (StartsLikeAPlaylist(head.AsSpan(0, read)))
+        {
+            MemoryStream whole = new();
+            await whole.WriteAsync(head.AsMemory(0, read), ct);
+            await body.CopyToAsync(whole, ct);
+            await body.DisposeAsync();
+            whole.Position = 0;
+
+            using StreamReader reader = new(whole, Encoding.UTF8);
+            string text = await reader.ReadToEndAsync(ct);
+
+            return RewritePlaylist(request, link, address, response, text, RewrittenPlaylistType);
+        }
+
+        StreamContent replayed = new(new PrefixedStream(head, read, body));
+
+        foreach (KeyValuePair<string, IEnumerable<string>> header in response.Content.Headers)
+            replayed.Headers.TryAddWithoutValidation(header.Key, header.Value);
+
+        response.Content = replayed;
+
+        return response;
+    }
+
+    /// <summary>Fills the buffer, or reads to the end of a shorter answer.</summary>
+    private static async Task<int> ReadAtMostAsync(Stream body, byte[] buffer, CancellationToken ct)
+    {
+        int total = 0;
+
+        while (total < buffer.Length)
+        {
+            int read = await body.ReadAsync(buffer.AsMemory(total), ct);
+
+            if (read == 0)
+                break;
+
+            total += read;
+        }
+
+        return total;
+    }
+
+    /// <summary>"#EXTM3U", after an optional byte order mark and whitespace.</summary>
+    private static bool StartsLikeAPlaylist(ReadOnlySpan<byte> head)
+    {
+        if (head.StartsWith((ReadOnlySpan<byte>)[0xEF, 0xBB, 0xBF]))
+            head = head[3..];
+
+        int start = 0;
+        // Space, tab, carriage return, line feed.
+        while (start < head.Length && head[start] is 0x20 or 0x09 or 0x0D or 0x0A)
+            start++;
+
+        return head[start..].StartsWith(PlaylistMarker);
+    }
+
+    private static bool IsOneOf(string? type, string[] types) =>
+        type is not null && types.Contains(type, StringComparer.OrdinalIgnoreCase);
 
     private PluginMediaUrl Minted(PluginProxyRequest request)
     {
@@ -210,25 +334,25 @@ public class PluginMediaProxy(
         );
     }
 
-    private static bool IsPlaylist(HttpResponseMessage response) =>
-        response.Content.Headers.ContentType?.MediaType
-            is "application/vnd.apple.mpegurl"
-                or "application/x-mpegurl"
-                or "audio/mpegurl";
-
     /// <summary>
     /// Every child address in a playlist becomes another ticket on this
     /// server. One that did not would send the client straight to the provider
     /// for the segments, which is the client holding the upstream after all.
+    /// <para>
+    /// The children carry the headers of the link that answered, not of the
+    /// first link. A channel whose first link is dead plays from its second,
+    /// and the segments have to be asked for the way the playlist was.
+    /// </para>
     /// </summary>
-    private async Task<HttpResponseMessage> RewritePlaylistAsync(
+    private HttpResponseMessage RewritePlaylist(
         PluginProxyRequest request,
+        PluginProxyLink answered,
         Uri address,
         HttpResponseMessage response,
-        CancellationToken ct
+        string body,
+        string mediaType
     )
     {
-        string body = await response.Content.ReadAsStringAsync(ct);
         Uri baseUri = response.RequestMessage?.RequestUri ?? address;
 
         IEnumerable<string> rewritten = body.Split('\n')
@@ -246,8 +370,8 @@ public class PluginMediaProxy(
                         new()
                         {
                             Url = new(baseUri, trimmed),
-                            Referer = request.Links[0].Referer,
-                            UserAgent = request.Links[0].UserAgent,
+                            Referer = answered.Referer,
+                            UserAgent = answered.UserAgent,
                         },
                     ],
                 };
@@ -255,13 +379,12 @@ public class PluginMediaProxy(
                 return $"/api/v1/plugins/{pluginId}/media/{minter.Mint(pluginId, Asking(), child, TicketLifetime)}";
             });
 
-        return new(response.StatusCode)
-        {
-            Content = new StringContent(
-                string.Join('\n', rewritten),
-                Encoding.UTF8,
-                response.Content.Headers.ContentType?.MediaType ?? "application/vnd.apple.mpegurl"
-            ),
-        };
+        string text = string.Join('\n', rewritten);
+        HttpStatusCode status = response.StatusCode;
+
+        // The upstream's answer is read and done with; what goes out is new.
+        response.Dispose();
+
+        return new(status) { Content = new StringContent(text, Encoding.UTF8, mediaType) };
     }
 }

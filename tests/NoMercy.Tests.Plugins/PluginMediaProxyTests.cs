@@ -16,6 +16,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Capabilities;
 using NoMercy.PluginSdk.Media;
+using NoMercy.PluginSdk.Network;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;
@@ -46,6 +47,31 @@ public class PluginMediaProxyTests
             ),
             NullLogger.Instance
         );
+
+    private static PluginMediaTicketMinter Minter() =>
+        new(TimeProvider.System, "a-server-key-that-is-long-enough-for-hmac"u8.ToArray());
+
+    private static PluginMediaProxy Proxy(
+        PluginMediaTicketMinter minter,
+        HttpMessageHandler handler
+    ) =>
+        new(
+            Radio,
+            new StubCaller(Listener),
+            new StubBroker(null),
+            minter,
+            new HttpClient(handler),
+            NullLogger.Instance
+        );
+
+    private static HttpResponseMessage Answer(byte[] body, string? contentType)
+    {
+        ByteArrayContent content = new(body);
+        if (contentType is not null)
+            content.Headers.ContentType = new(contentType);
+
+        return new(HttpStatusCode.OK) { Content = content };
+    }
 
     private static PluginProxyRequest Request(params string[] urls) =>
         new() { Links = [.. urls.Select(url => new PluginProxyLink { Url = new(url) })] };
@@ -430,6 +456,256 @@ public class PluginMediaProxyTests
             );
 
         response.StatusCode.Should().Be(HttpStatusCode.ServiceUnavailable);
+    }
+
+    /// <summary>
+    /// A playlist under a type that says nothing about it is still a playlist.
+    /// IPTV panels and CDNs serve HLS under these as often as under the right
+    /// type, and one left alone sends the player to the provider.
+    /// </summary>
+    [Theory]
+    [InlineData("application/octet-stream")]
+    [InlineData("binary/octet-stream")]
+    [InlineData("text/plain")]
+    [InlineData("video/mp2t")]
+    [InlineData(null)]
+    public async Task A_playlist_under_a_type_that_says_nothing_is_still_rewritten(
+        string? contentType
+    )
+    {
+        HttpResponseMessage response = await Proxy(upstream: _ =>
+                Answer(
+                    Encoding.UTF8.GetBytes(
+                        "#EXTM3U\n#EXTINF:6,\nhttps://cdn.example.com/seg1.ts\n"
+                    ),
+                    contentType
+                )
+            )
+            .FetchAsync(Request("https://stream.example.com/live"), null, default);
+
+        string body = await response.Content.ReadAsStringAsync();
+        body.Should().NotContain("cdn.example.com");
+        body.Should().Contain($"/api/v1/plugins/{Radio}/media/");
+        response
+            .Content.Headers.ContentType!.MediaType.Should()
+            .Be("application/vnd.apple.mpegurl", "the player is told what it now holds");
+    }
+
+    [Fact]
+    public async Task A_playlist_after_a_byte_order_mark_and_whitespace_is_still_rewritten()
+    {
+        byte[] body =
+        [
+            0xEF,
+            0xBB,
+            0xBF,
+            .. Encoding.UTF8.GetBytes("\r\n  #EXTM3U\nhttps://cdn.example.com/seg1.ts\n"),
+        ];
+
+        HttpResponseMessage response = await Proxy(upstream: _ =>
+                Answer(body, "application/octet-stream")
+            )
+            .FetchAsync(Request("https://stream.example.com/live"), null, default);
+
+        (await response.Content.ReadAsStringAsync()).Should().NotContain("cdn.example.com");
+    }
+
+    [Theory]
+    [InlineData("Application/X-MPEGURL")]
+    [InlineData("audio/x-mpegurl")]
+    public async Task A_playlist_type_is_recognised_in_any_case_and_spelling(string contentType)
+    {
+        HttpResponseMessage response = await Proxy(upstream: _ =>
+                Answer(
+                    Encoding.UTF8.GetBytes("#EXTM3U\nhttps://cdn.example.com/seg1.ts\n"),
+                    contentType
+                )
+            )
+            .FetchAsync(Request("https://stream.example.com/live.m3u8"), null, default);
+
+        (await response.Content.ReadAsStringAsync()).Should().NotContain("cdn.example.com");
+    }
+
+    /// <summary>
+    /// Looking at the first bytes must not cost the viewer any of them. A
+    /// stream is handed on byte for byte, longer and shorter than the look.
+    /// </summary>
+    [Theory]
+    [InlineData(10)]
+    [InlineData(64)]
+    [InlineData(5_000)]
+    public async Task A_stream_under_a_vague_type_is_passed_on_byte_for_byte(int length)
+    {
+        byte[] stream = [.. Enumerable.Range(0, length).Select(i => (byte)(0x47 + i))];
+
+        HttpResponseMessage response = await Proxy(upstream: _ => Answer(stream, "video/mp2t"))
+            .FetchAsync(Request("https://stream.example.com/live.ts"), null, default);
+
+        (await response.Content.ReadAsByteArrayAsync()).Should().Equal(stream);
+        response.Content.Headers.ContentType!.MediaType.Should().Be("video/mp2t");
+    }
+
+    [Fact]
+    public async Task An_answer_under_a_specific_media_type_is_not_looked_into()
+    {
+        byte[] body = Encoding.UTF8.GetBytes("#EXTM3U\nhttps://cdn.example.com/seg1.ts\n");
+
+        HttpResponseMessage response = await Proxy(upstream: _ => Answer(body, "video/mp4"))
+            .FetchAsync(Request("https://stream.example.com/a.mp4"), null, default);
+
+        (await response.Content.ReadAsByteArrayAsync()).Should().Equal(body);
+    }
+
+    /// <summary>
+    /// A channel whose first link is dead plays from its second. Its segments
+    /// have to be asked for the way its playlist was, with the second link's
+    /// headers, or the provider refuses them.
+    /// </summary>
+    [Fact]
+    public async Task The_children_of_a_playlist_carry_the_headers_of_the_link_that_answered()
+    {
+        PluginMediaTicketMinter minter = Minter();
+        PluginProxyRequest request = new()
+        {
+            Links =
+            [
+                new()
+                {
+                    Url = new("https://dead.example.com/live.m3u8"),
+                    Referer = "https://first.example.com/",
+                    UserAgent = "First/1.0",
+                },
+                new()
+                {
+                    Url = new("https://live.example.com/live.m3u8"),
+                    Referer = "https://second.example.com/",
+                    UserAgent = "Second/1.0",
+                },
+            ],
+        };
+
+        HttpResponseMessage response = await Proxy(
+                minter,
+                new StubHandler(message =>
+                    message.RequestUri!.Host == "dead.example.com"
+                        ? new(HttpStatusCode.NotFound)
+                        : Answer(
+                            Encoding.UTF8.GetBytes("#EXTM3U\nseg1.ts\n"),
+                            "application/vnd.apple.mpegurl"
+                        )
+                )
+            )
+            .FetchAsync(request, null, default);
+
+        string child = (await response.Content.ReadAsStringAsync())
+            .Split('\n')
+            .Single(line => line.StartsWith('/'))
+            .Split('/')[^1];
+        PluginProxyLink link = minter.Read(child)!.Request.Links.Single();
+
+        link.Url.Should().Be(new Uri("https://live.example.com/seg1.ts"));
+        link.Referer.Should().Be("https://second.example.com/");
+        link.UserAgent.Should().Be("Second/1.0");
+    }
+
+    /// <summary>
+    /// The user agent a link names reaches the provider through the same
+    /// handler that stamps the server's identity on every other request.
+    /// Before, that handler replaced it, so the field did nothing.
+    /// </summary>
+    [Fact]
+    public async Task The_user_agent_a_link_names_survives_the_servers_user_agent_handler()
+    {
+        string? agent = null;
+        string? attribution = null;
+
+        PluginUserAgentHandler handler = new(Radio, "Live TV", new Version(1, 0, 0))
+        {
+            InnerHandler = new StubHandler(message =>
+            {
+                agent = message.Headers.TryGetValues("User-Agent", out IEnumerable<string>? a)
+                    ? string.Join(" ", a)
+                    : null;
+                attribution = message.Headers.TryGetValues(
+                    PluginUserAgentHandler.AttributionHeader,
+                    out IEnumerable<string>? b
+                )
+                    ? string.Join(" ", b)
+                    : null;
+
+                return new(HttpStatusCode.OK) { Content = new ByteArrayContent([]) };
+            }),
+        };
+
+        await Proxy(Minter(), handler)
+            .FetchAsync(
+                new()
+                {
+                    Links =
+                    [
+                        new()
+                        {
+                            Url = new("https://iptv.example.com/1.ts"),
+                            UserAgent = "VLC/3.0.18",
+                        },
+                    ],
+                },
+                null,
+                default
+            );
+
+        agent.Should().Be("VLC/3.0.18");
+        attribution.Should().Contain("NoMercyPlugin-Live-TV/1.0.0");
+    }
+
+    [Fact]
+    public async Task A_link_without_a_user_agent_is_fetched_with_the_servers_own()
+    {
+        HttpRequestMessage? sent = null;
+
+        await Proxy(upstream: message =>
+            {
+                sent = message;
+
+                return new(HttpStatusCode.OK) { Content = new ByteArrayContent([]) };
+            })
+            .FetchAsync(Request("https://iptv.example.com/1.ts"), null, default);
+
+        sent!.Options.TryGetValue(PluginUserAgentHandler.ViewerUserAgent, out bool viewer);
+        viewer.Should().BeFalse();
+    }
+
+    /// <summary>A user agent with a line break in it is a header injection, not a user agent.</summary>
+    [Fact]
+    public async Task A_user_agent_with_control_characters_is_not_sent()
+    {
+        HttpRequestMessage? sent = null;
+
+        await Proxy(upstream: message =>
+            {
+                sent = message;
+
+                return new(HttpStatusCode.OK) { Content = new ByteArrayContent([]) };
+            })
+            .FetchAsync(
+                new()
+                {
+                    Links =
+                    [
+                        new()
+                        {
+                            Url = new("https://iptv.example.com/1.ts"),
+                            UserAgent = "VLC\r\nX-Injected: yes",
+                        },
+                    ],
+                },
+                null,
+                default
+            );
+
+        sent!.Headers.Contains("User-Agent").Should().BeFalse();
+        sent.Options.TryGetValue(PluginUserAgentHandler.ViewerUserAgent, out bool viewer);
+        viewer.Should().BeFalse();
     }
 
     private sealed class StubCaller(Guid userId) : IPluginCallerAccessor
