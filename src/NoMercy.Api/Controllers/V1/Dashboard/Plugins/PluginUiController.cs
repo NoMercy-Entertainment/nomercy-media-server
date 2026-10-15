@@ -272,13 +272,11 @@ public class PluginUiController(
             Query = Request
                 .Query.Where(entry => entry.Key != "route" && entry.Key != "surface")
                 .ToDictionary(entry => entry.Key, entry => entry.Value.ToString()),
-            Caller = new PluginCaller(
-                new UserId(new Ulid(User.UserId())),
-                User.UserName(),
-                User.Role() == "owner" ? PluginRole.Owner : PluginRole.Member,
+            Caller = PluginCallers.For(
+                User,
                 access,
-                Request.Headers.AcceptLanguage.ToString() is { Length: > 0 } locale ? locale : "en",
-                PluginSurface.IsKnown(surface) ? surface! : PluginSurface.Web
+                Request.Headers.AcceptLanguage.ToString(),
+                surface
             ),
             // An unknown surface falls back rather than being passed through. A
             // plugin branching on it would hit its own default and serve the

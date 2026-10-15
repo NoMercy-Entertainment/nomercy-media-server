@@ -11,12 +11,16 @@
 
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using NoMercy.Api.Plugins;
+using NoMercy.Authorization;
 using NoMercy.Database;
 using NoMercy.Database.Activity;
 using NoMercy.Networking;
 using NoMercy.Networking.Messaging;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Access;
 using NoMercy.PluginSdk.Hub;
 
 namespace NoMercy.Api.Hubs;
@@ -35,7 +39,8 @@ public class PluginHub(
     IDbContextFactory<MediaContext> contextFactory,
     ConnectedClients connectedClients,
     IActivityLogger activityLogger,
-    IPluginHubRouter router
+    IPluginHubRouter router,
+    IPluginAccessResolver access
 ) : ConnectionHub(httpContextAccessor, contextFactory, connectedClients, activityLogger)
 {
     public static string GroupFor(Ulid pluginId) => $"plugin:{pluginId}";
@@ -72,6 +77,16 @@ public class PluginHub(
         }
     }
 
+    /// <summary>
+    /// Hands one message to a plugin, with the caller the host resolved.
+    /// <para>
+    /// The caller is resolved here, the same way the plugin's pages and
+    /// routes resolve it. A handler registered with <c>Handle</c> refuses a
+    /// message without one, so without this every such handler was refused.
+    /// Someone with no access to the plugin gets false and the plugin hears
+    /// nothing.
+    /// </para>
+    /// </summary>
     public async Task<bool> Send(string pluginId, string method, JsonNode? payload)
     {
         if (
@@ -81,12 +96,22 @@ public class PluginHub(
         )
             return false;
 
+        PluginAccess granted = access.Resolve(id, Context.User.UserId());
+        if (granted == PluginAccess.None)
+            return false;
+
         PluginHubMessage message = new()
         {
             Method = method,
             Payload = payload,
             ConnectionId = Context.ConnectionId,
             UserId = Context.UserIdentifier,
+            Caller = PluginCallers.For(
+                Context.User,
+                granted,
+                Context.GetHttpContext()?.Request.Headers.AcceptLanguage.ToString(),
+                PluginSurface.Web
+            ),
         };
 
         return await router.RouteAsync(
