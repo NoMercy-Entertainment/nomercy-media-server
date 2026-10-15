@@ -14,6 +14,7 @@ using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Capabilities;
 using NoMercy.PluginSdk.Network;
 using NoMercy.PluginSdk.Quotas;
+using NoMercy.Storage;
 
 namespace NoMercy.PluginSdk.Media;
 
@@ -34,7 +35,9 @@ public class PluginMediaFactory(
     IPluginCallerAccessor caller,
     IPluginLiveStore live,
     ILoggerFactory loggers,
-    PluginQuotaMeter? quotas = null
+    PluginQuotaMeter? quotas = null,
+    string? pluginsRoot = null,
+    IStorage? files = null
 ) : IPluginMediaFactory
 {
     public IPluginMedia CreateFor(Ulid pluginId) =>
@@ -63,7 +66,13 @@ public class PluginMediaFactory(
             minter,
             http,
             loggers.CreateLogger($"NoMercy.Plugins.Media.{pluginId}"),
-            quotas
+            quotas,
+            // The plugin's own folder, where MintFileAsync serves from. The
+            // same folder as context.Storage.Private and DataFolderPath.
+            pluginsRoot is null
+                ? null
+                : Path.Combine(pluginsRoot, "data", pluginId.ToString()),
+            files
         );
     }
 }

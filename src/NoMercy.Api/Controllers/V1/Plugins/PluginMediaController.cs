@@ -13,6 +13,7 @@ using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.StaticFiles;
 using NoMercy.Authorization;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
@@ -39,6 +40,8 @@ public class PluginMediaController(
     IPluginMediaFactory media
 ) : BaseController
 {
+    private static readonly FileExtensionContentTypeProvider ContentTypes = Types();
+
     private static readonly string[] Forwarded =
     [
         "Content-Type",
@@ -68,6 +71,9 @@ public class PluginMediaController(
         // Cleared to play. A live player asks for the same playlist every few
         // seconds, and each ask keeps its ticket good for the next one.
         minter.Played(ticket);
+
+        if (read.FilePath is { } file)
+            return ServeFile(id, file);
 
         // Owned by this request from here on: it is handed out as a stream the
         // client reads until it stops watching, so it cannot be disposed at the
@@ -99,5 +105,45 @@ public class PluginMediaController(
         {
             EnableRangeProcessing = false,
         };
+    }
+
+    /// <summary>
+    /// A file from the plugin's own folder, served by this server with
+    /// seeking. Opened through the folder's guard again: a file that was
+    /// swapped for a link since the ticket was minted is refused, and one
+    /// that is gone is a 404.
+    /// </summary>
+    private IActionResult ServeFile(Ulid id, string file)
+    {
+        Stream? stream;
+
+        try
+        {
+            stream = media.FetcherFor(id).OpenFile(file);
+        }
+        catch (PluginRefusedException refused)
+        {
+            return ForbiddenResponse(refused.Refusal);
+        }
+
+        if (stream is null)
+            return NotFoundResponse("The file this link was minted for is no longer there.");
+
+        return new FileStreamResult(stream, ContentTypeOf(file)) { EnableRangeProcessing = true };
+    }
+
+    private static string ContentTypeOf(string file) =>
+        ContentTypes.TryGetContentType(file, out string? type) ? type : "application/octet-stream";
+
+    /// <summary>
+    /// The framework's table, with the one entry a recording needs corrected:
+    /// it maps .ts to a DLNA type no browser player knows.
+    /// </summary>
+    private static FileExtensionContentTypeProvider Types()
+    {
+        FileExtensionContentTypeProvider types = new();
+        types.Mappings[".ts"] = "video/mp2t";
+
+        return types;
     }
 }

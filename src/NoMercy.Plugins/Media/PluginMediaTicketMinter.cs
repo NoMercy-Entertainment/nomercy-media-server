@@ -38,6 +38,8 @@ namespace NoMercy.PluginSdk.Media;
 /// </summary>
 public class PluginMediaTicketMinter(TimeProvider clock, byte[] serverKey)
 {
+    private static readonly Uri FileTicketAddress = new("file:///plugin-data");
+
     private readonly ConcurrentDictionary<string, Held> _upstreams = new();
 
     /// <summary>
@@ -62,7 +64,38 @@ public class PluginMediaTicketMinter(TimeProvider clock, byte[] serverKey)
             lifetime
         );
 
-    public string Mint(Ulid pluginId, Guid userId, PluginProxyRequest request, TimeSpan lifetime)
+    public string Mint(Ulid pluginId, Guid userId, PluginProxyRequest request, TimeSpan lifetime) =>
+        Mint(pluginId, userId, request, null, lifetime);
+
+    /// <summary>
+    /// A file in the plugin's own folder, by its path relative to that folder.
+    /// The path is what is kept, not where it resolved to: it goes through the
+    /// folder's guard again on every request, so a file swapped for a link
+    /// after minting is still refused.
+    /// </summary>
+    public string MintFile(Ulid pluginId, Guid userId, string relativePath, TimeSpan lifetime) =>
+        Mint(
+            pluginId,
+            userId,
+            new PluginProxyRequest
+            {
+                // Never fetched: a file ticket is served from the folder by its
+                // path. A fixed address keeps any file name, "#" and "%" included,
+                // from having to make a valid URI.
+                Links = [new() { Url = FileTicketAddress }],
+                RewriteHlsPlaylists = false,
+            },
+            relativePath,
+            lifetime
+        );
+
+    private string Mint(
+        Ulid pluginId,
+        Guid userId,
+        PluginProxyRequest request,
+        string? file,
+        TimeSpan lifetime
+    )
     {
         DateTimeOffset now = clock.GetUtcNow();
         DateTimeOffset expiresAt = now.Add(lifetime);
@@ -76,6 +109,7 @@ public class PluginMediaTicketMinter(TimeProvider clock, byte[] serverKey)
         Forget();
         _upstreams[digest] = new(
             request,
+            file,
             expiresAt,
             hardStop > expiresAt ? hardStop : expiresAt,
             null
@@ -149,7 +183,10 @@ public class PluginMediaTicketMinter(TimeProvider clock, byte[] serverKey)
                     Guid.Parse(root.GetProperty("u").GetString()!),
                     held.Request,
                     DateTimeOffset.FromUnixTimeSeconds(root.GetProperty("e").GetInt64())
-                ),
+                )
+                {
+                    FilePath = held.File,
+                },
                 digest,
                 held
             );
@@ -223,11 +260,13 @@ public class PluginMediaTicketMinter(TimeProvider clock, byte[] serverKey)
     }
 
     /// <summary>What the server keeps for one ticket.</summary>
+    /// <param name="File">For a file ticket, the path relative to the plugin's folder.</param>
     /// <param name="StartBy">The deadline the ticket was minted with: play it by then.</param>
     /// <param name="HardStop">The end, however much it is played.</param>
     /// <param name="LastPlayed">The last request it served, or null before the first.</param>
     private sealed record Held(
         PluginProxyRequest Request,
+        string? File,
         DateTimeOffset StartBy,
         DateTimeOffset HardStop,
         DateTimeOffset? LastPlayed

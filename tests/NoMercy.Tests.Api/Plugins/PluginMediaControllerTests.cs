@@ -102,6 +102,97 @@ public class PluginMediaControllerTests
             .BeOfType<ObjectResult>("nobody it was minted for ever played it");
     }
 
+    /// <summary>
+    /// A recording is served by this server itself, with seeking, as the
+    /// type a player understands.
+    /// </summary>
+    [Fact]
+    public async Task A_file_ticket_is_served_from_the_plugins_folder_with_seeking()
+    {
+        PluginMediaTicketMinter minter = Minter(TimeProvider.System);
+        string ticket = minter.MintFile(
+            LiveTv,
+            Viewer,
+            "recordings/news.ts",
+            PluginMediaProxy.TicketLifetime
+        );
+        FileMedia media = new(new MemoryStream([0x47, 1, 2, 3]));
+
+        IActionResult result = await Controller(minter, media: media)
+            .Media(LiveTv, ticket, default);
+
+        FileStreamResult served = result.Should().BeOfType<FileStreamResult>().Subject;
+        served.EnableRangeProcessing.Should().BeTrue();
+        served.ContentType.Should().Be("video/mp2t");
+        media.Opened.Should().Be("recordings/news.ts");
+    }
+
+    [Fact]
+    public async Task A_file_ticket_whose_file_is_gone_is_a_404()
+    {
+        PluginMediaTicketMinter minter = Minter(TimeProvider.System);
+        string ticket = minter.MintFile(
+            LiveTv,
+            Viewer,
+            "recordings/gone.ts",
+            PluginMediaProxy.TicketLifetime
+        );
+
+        IActionResult result = await Controller(minter, media: new FileMedia(null))
+            .Media(LiveTv, ticket, default);
+
+        result
+            .Should()
+            .BeAssignableTo<ObjectResult>()
+            .Which.StatusCode.Should()
+            .Be(StatusCodes.Status404NotFound);
+    }
+
+    /// <summary>A file swapped for a link since minting is refused when it is opened.</summary>
+    [Fact]
+    public async Task A_file_ticket_the_folder_guard_refuses_now_is_refused()
+    {
+        PluginMediaTicketMinter minter = Minter(TimeProvider.System);
+        string ticket = minter.MintFile(
+            LiveTv,
+            Viewer,
+            "recordings/news.ts",
+            PluginMediaProxy.TicketLifetime
+        );
+
+        IActionResult result = await Controller(minter, media: new FileMedia(null, refuse: true))
+            .Media(LiveTv, ticket, default);
+
+        result
+            .Should()
+            .BeOfType<ObjectResult>()
+            .Which.StatusCode.Should()
+            .Be(StatusCodes.Status403Forbidden);
+    }
+
+    [Fact]
+    public async Task A_file_ticket_is_still_bound_to_the_account_it_was_minted_for()
+    {
+        PluginMediaTicketMinter minter = Minter(TimeProvider.System);
+        string ticket = minter.MintFile(
+            LiveTv,
+            Viewer,
+            "recordings/news.ts",
+            PluginMediaProxy.TicketLifetime
+        );
+        FileMedia media = new(new MemoryStream([1]));
+
+        IActionResult result = await Controller(minter, Guid.NewGuid(), media)
+            .Media(LiveTv, ticket, default);
+
+        result
+            .Should()
+            .BeOfType<ObjectResult>()
+            .Which.StatusCode.Should()
+            .Be(StatusCodes.Status403Forbidden);
+        media.Opened.Should().BeNull();
+    }
+
     private static PluginMediaTicketMinter Minter(TimeProvider clock) =>
         new(clock, "a-server-key-that-is-long-enough-for-hmac"u8.ToArray());
 
@@ -115,9 +206,10 @@ public class PluginMediaControllerTests
 
     private static PluginMediaController Controller(
         PluginMediaTicketMinter minter,
-        Guid? asking = null
+        Guid? asking = null,
+        IPluginMediaFactory? media = null
     ) =>
-        new(minter, new EveryoneHasAccess(), new PlaylistMedia())
+        new(minter, new EveryoneHasAccess(), media ?? new PlaylistMedia())
         {
             ControllerContext = new ControllerContext
             {
@@ -144,6 +236,8 @@ public class PluginMediaControllerTests
 
         public IPluginMediaFetcher FetcherFor(Ulid pluginId) => this;
 
+        public Stream? OpenFile(string relativePath) => throw new NotSupportedException();
+
         public Task<HttpResponseMessage> FetchAsync(
             PluginProxyRequest request,
             string? range,
@@ -159,6 +253,34 @@ public class PluginMediaControllerTests
                     ),
                 }
             );
+    }
+
+    private sealed class FileMedia(Stream? file, bool refuse = false)
+        : IPluginMediaFactory,
+            IPluginMediaFetcher
+    {
+        public string? Opened { get; private set; }
+
+        public IPluginMedia CreateFor(Ulid pluginId) => throw new NotSupportedException();
+
+        public IPluginMediaFetcher FetcherFor(Ulid pluginId) => this;
+
+        public Task<HttpResponseMessage> FetchAsync(
+            PluginProxyRequest request,
+            string? range,
+            CancellationToken ct
+        ) => throw new InvalidOperationException("A file ticket must never be fetched upstream.");
+
+        public Stream? OpenFile(string relativePath)
+        {
+            if (refuse)
+                throw new PluginRefusedException(
+                    PluginRefusalMessages.FileOutsideGrant(LiveTv.ToString(), relativePath)
+                );
+
+            Opened = relativePath;
+            return file;
+        }
     }
 
     private sealed class MovableClock(DateTimeOffset now) : TimeProvider

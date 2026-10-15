@@ -53,6 +53,13 @@ public sealed class RemoteMediaProxy(RemoteCall call) : IPluginMediaProxy
             new { source }
         )
         ?? throw new InvalidOperationException("media.proxy.MintImageAsync answered with no url.");
+
+    public async Task<PluginMediaUrl> MintFileAsync(string path, CancellationToken ct = default) =>
+        await call.AskAsync<PluginMediaUrl>(
+            "media.proxy",
+            nameof(IPluginMediaProxy.MintFileAsync),
+            new { path }
+        ) ?? throw new InvalidOperationException("media.proxy.MintFileAsync answered with no url.");
 }
 
 public sealed class RemoteMediaTranscode(RemoteCall call) : IPluginMediaTranscode

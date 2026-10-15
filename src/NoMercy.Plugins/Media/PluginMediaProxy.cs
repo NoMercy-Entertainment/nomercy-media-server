@@ -16,6 +16,7 @@ using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Capabilities;
 using NoMercy.PluginSdk.Network;
 using NoMercy.PluginSdk.Quotas;
+using NoMercy.Storage;
 
 namespace NoMercy.PluginSdk.Media;
 
@@ -34,7 +35,9 @@ public class PluginMediaProxy(
     PluginMediaTicketMinter minter,
     HttpClient http,
     ILogger logger,
-    PluginQuotaMeter? quotas = null
+    PluginQuotaMeter? quotas = null,
+    string? dataFolder = null,
+    IStorage? files = null
 ) : IPluginMediaProxy, IPluginMediaFetcher
 {
     // Enough for a byte order mark, a little whitespace and "#EXTM3U".
@@ -99,6 +102,58 @@ public class PluginMediaProxy(
 
     public Task<PluginMediaUrl> MintImageAsync(Uri source, CancellationToken ct = default) =>
         MintAsync(new() { Links = [new() { Url = source }], PassRange = false }, ct);
+
+    /// <summary>
+    /// A file the plugin wrote into its own folder. Checked through the
+    /// folder's guard now and again on every request, so the ticket never
+    /// holds a path that was only safe once.
+    /// </summary>
+    public Task<PluginMediaUrl> MintFileAsync(string path, CancellationToken ct = default)
+    {
+        if (broker.Check(pluginId, PluginCapabilityNames.MediaProxy) is { } refusal)
+            throw new PluginRefusedException(refusal);
+
+        PluginDataFolder folder = Folder();
+
+        if (!folder.Holds(path))
+            throw new PluginRefusedException(
+                new(
+                    PluginRefusalCodes.CapabilityScopeRefused,
+                    pluginId.ToString(),
+                    "The server did not mint a media link.",
+                    $"There is no file at {path} in the plugin's own folder.",
+                    "Mint the link for a file that exists, with its path relative to context.Storage.Private.",
+                    PluginRefusalSeverity.Blocked
+                )
+            );
+
+        DateTimeOffset expiresAt = DateTimeOffset.UtcNow.Add(TicketLifetime);
+        string ticket = minter.MintFile(pluginId, Asking(), path, TicketLifetime);
+
+        return Task.FromResult(
+            PluginMediaUrl.Minted(
+                new($"/api/v1/plugins/{pluginId}/media/{ticket}", UriKind.Relative),
+                expiresAt,
+                default
+            )
+        );
+    }
+
+    public Stream? OpenFile(string relativePath) => Folder().OpenRead(relativePath);
+
+    /// <summary>
+    /// The plugin's own folder. A host that wired no file access refuses by
+    /// name, the way every facade it does not carry does.
+    /// </summary>
+    private PluginDataFolder Folder() =>
+        dataFolder is not null && files is not null
+            ? new(pluginId, dataFolder, files)
+            : throw new PluginRefusedException(
+                PluginRefusalMessages.FacadeNotOnThisHost(
+                    pluginId.ToString(),
+                    "IPluginContext.Media.Proxy.MintFileAsync"
+                )
+            );
 
     /// <summary>
     /// Fetches what a ticket points at, trying each link in turn. A provider

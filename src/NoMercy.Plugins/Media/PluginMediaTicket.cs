@@ -28,4 +28,12 @@ public sealed record PluginMediaTicket(
 {
     /// <summary>The first address to try, which is the only one a single-link ticket has.</summary>
     public string Upstream => Request.Links[0].Url.ToString();
+
+    /// <summary>
+    /// Set when the ticket is for a file in the plugin's own folder rather than
+    /// an upstream: its path relative to that folder. Only
+    /// <see cref="PluginMediaTicketMinter.MintFile" /> sets it, so no link a
+    /// plugin hands over can make the server serve a file.
+    /// </summary>
+    public string? FilePath { get; init; }
 }

@@ -319,6 +319,12 @@ public interface IPluginMediaFetcher
         string? range,
         CancellationToken ct
     );
+
+    /// <summary>
+    /// A file ticket's file, opened for reading, through the plugin folder's
+    /// guard again. Null when the file is no longer there.
+    /// </summary>
+    Stream? OpenFile(string relativePath);
 }
 
 /// <summary>
