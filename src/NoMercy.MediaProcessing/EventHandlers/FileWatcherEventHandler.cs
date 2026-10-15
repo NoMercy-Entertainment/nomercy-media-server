@@ -207,9 +207,9 @@ public class FileWatcherEventHandler : IDisposable
                 [@event.OldFullPath, @event.NewFullPath]
             );
 
-            string oldHostFolder = Path.GetDirectoryName(@event.OldFullPath).OrEmpty();
+            string oldHostFolder = HostFolderOf(@event.OldFullPath);
             string oldFilename = "/" + Path.GetFileName(@event.OldFullPath);
-            string newHostFolder = Path.GetDirectoryName(@event.NewFullPath).OrEmpty();
+            string newHostFolder = HostFolderOf(@event.NewFullPath);
             string newFilename = "/" + Path.GetFileName(@event.NewFullPath);
 
             await using MediaContext mediaContext = new();
