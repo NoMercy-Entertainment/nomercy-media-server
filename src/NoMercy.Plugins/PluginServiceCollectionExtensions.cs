@@ -322,12 +322,13 @@ public static class PluginServiceCollectionExtensions
             sp.GetRequiredService<IPluginQuotaSource>(),
             sp.GetRequiredService<IPluginHostExecutable>(),
             sp.GetRequiredService<IPluginSandboxFactory>(),
-            sp.GetRequiredService<ILoggerFactory>()
+            sp.GetRequiredService<IPluginLoggers>()
         ));
         services.TryAddSingleton<IPluginRemoteLoader>(sp => new PluginRemoteLoader(
             new PluginProcessSupervisor(sp.GetRequiredService<IPluginProcessLauncher>()),
             sp.GetRequiredService<IPluginHostExecutable>(),
-            sp.GetRequiredService<ILoggerFactory>().CreateLogger("plugins.runtime")
+            sp.GetRequiredService<ILoggerFactory>().CreateLogger("plugins.runtime"),
+            pluginLoggers: sp.GetRequiredService<IPluginLoggers>()
         ));
         // A plugin runs only while what it leans on runs, and a free
         // dependency installs beside it rather than leaving the owner to work

@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.Extensions.Logging;
+using NoMercy.PluginSdk.Ipc;
 
 namespace NoMercy.PluginSdk.OutOfProcess;
 
@@ -23,11 +24,13 @@ namespace NoMercy.PluginSdk.OutOfProcess;
 /// the end before the other leaves the other free to fill.
 /// </para>
 /// <para>
-/// A stdout line is the plugin talking. A stderr line is the host or the
-/// runtime saying something went wrong, so it is logged as an error.
+/// The logger is the plugin's own, so every line carries the plugin's name.
+/// A <see cref="PluginHostLogLine" /> is logged at its own level, with its
+/// exception. Any other line is text: on stdout the plugin talking, on
+/// stderr the host or the runtime saying something went wrong, so an error.
 /// </para>
 /// </summary>
-public sealed class PluginHostOutputPump(Ulid pluginId, ILogger logger)
+public sealed class PluginHostOutputPump(ILogger logger)
 {
     public Task DrainAsync(TextReader stdout, TextReader stderr) =>
         Task.WhenAll(
@@ -35,7 +38,7 @@ public sealed class PluginHostOutputPump(Ulid pluginId, ILogger logger)
             Task.Run(() => DrainAsync(stderr, LogLevel.Error))
         );
 
-    private async Task DrainAsync(TextReader reader, LogLevel level)
+    private async Task DrainAsync(TextReader reader, LogLevel textLevel)
     {
         try
         {
@@ -44,7 +47,10 @@ public sealed class PluginHostOutputPump(Ulid pluginId, ILogger logger)
                 if (string.IsNullOrWhiteSpace(line))
                     continue;
 
-                logger.Log(level, "Plugin {PluginId}: {Line}", [pluginId, line]);
+                if (PluginHostLogLine.TryParse(line, out PluginHostLogLine? entry))
+                    Log(entry);
+                else
+                    logger.Log(textLevel, "{Line}", [line]);
             }
         }
         catch (Exception exception) when (exception is IOException or ObjectDisposedException)
@@ -52,5 +58,14 @@ public sealed class PluginHostOutputPump(Ulid pluginId, ILogger logger)
             // The process went away mid-line. What it wrote before that is
             // already logged, and there is nothing left to read.
         }
+    }
+
+    private void Log(PluginHostLogLine entry)
+    {
+        PluginHostException? exception = entry.Exception is null
+            ? null
+            : new PluginHostException(entry.Exception);
+
+        logger.Log(entry.Level, exception, "{Message}", [entry.Message]);
     }
 }

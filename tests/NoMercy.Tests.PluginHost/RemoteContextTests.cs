@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using FluentAssertions;
+using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.PluginHost;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Ipc;
@@ -121,7 +122,8 @@ public class RemoteContextTests
                 "host",
                 "token"
             ),
-            broker
+            broker,
+            NullLoggerFactory.Instance
         );
 }
 

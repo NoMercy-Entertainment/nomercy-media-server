@@ -10,8 +10,10 @@
 // -----------------------------------------------------------------------------
 
 using FluentAssertions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Logging;
 using NoMercy.PluginSdk.OutOfProcess;
 using Xunit;
 
@@ -35,13 +37,15 @@ public class PluginRemoteLoaderTests
     private static PluginRemoteLoader Loader(
         IPluginProcessLauncher launcher,
         string? hostPath,
-        PluginRuntimeMode? mode = null
+        PluginRuntimeMode? mode = null,
+        IPluginLoggers? pluginLoggers = null
     ) =>
         new(
             new PluginProcessSupervisor(launcher),
             new FakeHostExecutable(hostPath),
             NullLogger.Instance,
-            () => mode ?? new PluginRuntimeMode(PluginIsolation.OutOfProcess)
+            () => mode ?? new PluginRuntimeMode(PluginIsolation.OutOfProcess),
+            pluginLoggers
         );
 
     [Fact]
@@ -97,6 +101,44 @@ public class PluginRemoteLoaderTests
         plugin.Should().BeOfType<RemotePlugin>();
         plugin!.Name.Should().Be("Echo");
         launcher.Launches.Should().Be(1);
+    }
+
+    /// <summary>
+    /// The host's first line, often the one saying why it could not start,
+    /// must already carry the plugin's name. So the name is registered from
+    /// the manifest before the process starts, not after.
+    /// </summary>
+    [Fact]
+    public async Task APluginIsNamedInTheLogBeforeItsHostStarts()
+    {
+        RecordingLoggers loggers = new();
+        OrderedLauncher launcher = new(loggers);
+
+        await Loader(launcher, "host.exe", pluginLoggers: loggers).LoadAsync(Described());
+
+        loggers.Registered.Should().Equal((PluginId, "Echo"));
+        launcher.NamesSeenAtLaunch.Should().Be(1);
+    }
+
+    private sealed class RecordingLoggers : IPluginLoggers
+    {
+        public List<(Ulid Id, string Name)> Registered { get; } = [];
+
+        public void Register(Ulid pluginId, string displayName) =>
+            Registered.Add((pluginId, displayName));
+
+        public ILogger For(Ulid pluginId) => NullLogger.Instance;
+    }
+
+    private sealed class OrderedLauncher(RecordingLoggers loggers) : IPluginProcessLauncher
+    {
+        public int NamesSeenAtLaunch { get; private set; } = -1;
+
+        public Task<IPluginHostProcess> LaunchAsync(Ulid pluginId, CancellationToken ct = default)
+        {
+            NamesSeenAtLaunch = loggers.Registered.Count;
+            return Task.FromResult<IPluginHostProcess>(new FakeProcess(pluginId));
+        }
     }
 
     private sealed class FakeHostExecutable(string? path) : IPluginHostExecutable

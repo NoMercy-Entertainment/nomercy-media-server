@@ -25,9 +25,10 @@ namespace NoMercy.PluginHost;
 /// <para>
 /// Three members stay local. The id and the data folder are fixed for the life
 /// of the process, so a round trip for either would make every plugin pay for
-/// the boundary on its first line. The logger writes to stdout, which the
-/// supervisor drains into the server log — a log line is the one thing that
-/// must still arrive when the channel is the thing that broke.
+/// the boundary on its first line. The logger writes to stdout through
+/// <see cref="PluginHostLoggerProvider" />, which the server reads into its
+/// log under the plugin's name — a log line is the one thing that must still
+/// arrive when the channel is the thing that broke.
 /// </para>
 /// </summary>
 public sealed class RemotePluginContext : IPluginContext
@@ -35,9 +36,14 @@ public sealed class RemotePluginContext : IPluginContext
     private readonly PluginHostLaunch _launch;
     private readonly RemoteEvents _events;
 
-    public RemotePluginContext(PluginHostLaunch launch, IPluginBrokerService broker)
+    public RemotePluginContext(
+        PluginHostLaunch launch,
+        IPluginBrokerService broker,
+        ILoggerFactory loggers
+    )
     {
         _launch = launch;
+        Logger = loggers.CreateLogger("plugin");
 
         RemoteCall call = new(launch.PluginId, broker);
 
@@ -72,8 +78,7 @@ public sealed class RemotePluginContext : IPluginContext
 
     public HttpClient HttpClient { get; } = new();
 
-    public ILogger Logger { get; } =
-        LoggerFactory.Create(builder => builder.AddSimpleConsole()).CreateLogger("plugin");
+    public ILogger Logger { get; }
 
     public IPluginEvents Events => _events;
 

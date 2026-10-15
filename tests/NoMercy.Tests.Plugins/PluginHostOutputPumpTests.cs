@@ -11,6 +11,7 @@
 
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
+using NoMercy.PluginSdk.Ipc;
 using NoMercy.PluginSdk.OutOfProcess;
 using Xunit;
 
@@ -23,24 +24,19 @@ namespace NoMercy.Tests.Plugins;
 [Trait("Category", "Unit")]
 public class PluginHostOutputPumpTests
 {
-    private static readonly Ulid Plugin = Ulid.NewUlid();
-
     [Fact]
-    public async Task EveryStdoutLine_ReachesTheServerLog_AsInformation()
+    public async Task EveryPlainStdoutLine_ReachesTheServerLog_AsInformation()
     {
         ListLogger logger = new();
 
-        await new PluginHostOutputPump(Plugin, logger).DrainAsync(
+        await new PluginHostOutputPump(logger).DrainAsync(
             new StringReader("first\nsecond\n"),
             new StringReader(string.Empty)
         );
 
         logger
             .Entries.Should()
-            .Equal(
-                (LogLevel.Information, $"Plugin {Plugin}: first"),
-                (LogLevel.Information, $"Plugin {Plugin}: second")
-            );
+            .Equal((LogLevel.Information, "first"), (LogLevel.Information, "second"));
     }
 
     /// <summary>
@@ -48,20 +44,73 @@ public class PluginHostOutputPumpTests
     /// runtime reporting a crash, which is the line an owner needs to find.
     /// </summary>
     [Fact]
-    public async Task AStderrLine_IsLoggedAsAnError()
+    public async Task APlainStderrLine_IsLoggedAsAnError()
     {
         ListLogger logger = new();
 
-        await new PluginHostOutputPump(Plugin, logger).DrainAsync(
+        await new PluginHostOutputPump(logger).DrainAsync(
             new StringReader(string.Empty),
             new StringReader("Unhandled exception. System.Exception: boom")
         );
 
         logger
             .Entries.Should()
-            .Equal(
-                (LogLevel.Error, $"Plugin {Plugin}: Unhandled exception. System.Exception: boom")
-            );
+            .Equal((LogLevel.Error, "Unhandled exception. System.Exception: boom"));
+    }
+
+    [Fact]
+    public async Task AnEntry_IsLoggedAtItsOwnLevel_WithItsMessageWhole()
+    {
+        ListLogger logger = new();
+        string stdout = new PluginHostLogLine(
+            LogLevel.Warning,
+            "Tracker unreachable\nretrying in 30 s",
+            null
+        ).Format();
+
+        await new PluginHostOutputPump(logger).DrainAsync(
+            new StringReader(stdout),
+            new StringReader(string.Empty)
+        );
+
+        logger.Entries.Should().Equal((LogLevel.Warning, "Tracker unreachable\nretrying in 30 s"));
+    }
+
+    /// <summary>
+    /// The exception object stayed in the plugin's process. Its text arrives
+    /// as the exception of the line, stack trace and all.
+    /// </summary>
+    [Fact]
+    public async Task AnEntryWithAnException_CarriesTheExceptionsText()
+    {
+        CapturingLogger logger = new();
+        string remote =
+            "System.InvalidOperationException: no peers\n   at Torrent.Swarm.Join() in Swarm.cs:line 12";
+        string stdout = new PluginHostLogLine(LogLevel.Error, "Join failed", remote).Format();
+
+        await new PluginHostOutputPump(logger).DrainAsync(
+            new StringReader(stdout),
+            new StringReader(string.Empty)
+        );
+
+        logger.Exception.Should().BeOfType<PluginHostException>();
+        logger.Exception!.ToString().Should().Be(remote);
+        logger.Exception.Message.Should().Be("System.InvalidOperationException: no peers");
+    }
+
+    /// <summary>A line that claims to be an entry and is not is still not dropped.</summary>
+    [Fact]
+    public async Task AMarkedLineThatIsNotAnEntry_IsLoggedAsText()
+    {
+        ListLogger logger = new();
+        string broken = PluginHostLogLine.Marker + "{not json";
+
+        await new PluginHostOutputPump(logger).DrainAsync(
+            new StringReader(broken),
+            new StringReader(string.Empty)
+        );
+
+        logger.Entries.Should().Equal((LogLevel.Information, broken));
     }
 
     [Fact]
@@ -69,12 +118,12 @@ public class PluginHostOutputPumpTests
     {
         ListLogger logger = new();
 
-        await new PluginHostOutputPump(Plugin, logger).DrainAsync(
+        await new PluginHostOutputPump(logger).DrainAsync(
             new StringReader("\n   \nkept\n\n"),
             new StringReader("\n")
         );
 
-        logger.Entries.Should().Equal((LogLevel.Information, $"Plugin {Plugin}: kept"));
+        logger.Entries.Should().Equal((LogLevel.Information, "kept"));
     }
 
     /// <summary>
@@ -88,7 +137,7 @@ public class PluginHostOutputPumpTests
         string stdout = string.Join('\n', Enumerable.Range(0, 5_000).Select(i => $"out {i}"));
         string stderr = string.Join('\n', Enumerable.Range(0, 5_000).Select(i => $"err {i}"));
 
-        await new PluginHostOutputPump(Plugin, logger).DrainAsync(
+        await new PluginHostOutputPump(logger).DrainAsync(
             new StringReader(stdout),
             new StringReader(stderr)
         );
@@ -107,13 +156,13 @@ public class PluginHostOutputPumpTests
         ListLogger logger = new();
 
         Func<Task> drain = () =>
-            new PluginHostOutputPump(Plugin, logger).DrainAsync(
+            new PluginHostOutputPump(logger).DrainAsync(
                 new BreakingReader("before the break"),
                 new StringReader(string.Empty)
             );
 
         await drain.Should().NotThrowAsync();
-        logger.Entries.Should().Equal((LogLevel.Information, $"Plugin {Plugin}: before the break"));
+        logger.Entries.Should().Equal((LogLevel.Information, "before the break"));
     }
 
     private sealed class BreakingReader(string firstLine) : TextReader
@@ -128,5 +177,23 @@ public class PluginHostOutputPumpTests
             _served = true;
             return Task.FromResult<string?>(firstLine);
         }
+    }
+
+    private sealed class CapturingLogger : ILogger
+    {
+        public Exception? Exception { get; private set; }
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter
+        ) => Exception = exception;
     }
 }

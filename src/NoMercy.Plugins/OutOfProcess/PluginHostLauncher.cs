@@ -10,10 +10,10 @@
 // -----------------------------------------------------------------------------
 
 using System.Diagnostics;
-using Microsoft.Extensions.Logging;
 using NoMercy.NmSystem.Information;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Ipc;
+using NoMercy.PluginSdk.Logging;
 using NoMercy.PluginSdk.Quotas;
 
 namespace NoMercy.PluginSdk.OutOfProcess;
@@ -55,11 +55,9 @@ public sealed class PluginHostLauncher(
     IPluginQuotaSource quotas,
     IPluginHostExecutable executable,
     IPluginSandboxFactory sandboxes,
-    ILoggerFactory loggers
+    IPluginLoggers pluginLoggers
 ) : IPluginProcessLauncher
 {
-    private readonly ILogger _output = loggers.CreateLogger("plugins.runtime");
-
     public async Task<IPluginHostProcess> LaunchAsync(Ulid pluginId, CancellationToken ct = default)
     {
         string? host = executable.Path;
@@ -126,7 +124,7 @@ public sealed class PluginHostLauncher(
                 )
             );
 
-        Task output = new PluginHostOutputPump(pluginId, _output).DrainAsync(
+        Task output = new PluginHostOutputPump(pluginLoggers.For(pluginId)).DrainAsync(
             process.StandardOutput,
             process.StandardError
         );
