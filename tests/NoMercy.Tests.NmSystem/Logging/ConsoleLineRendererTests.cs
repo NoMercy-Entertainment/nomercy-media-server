@@ -42,6 +42,41 @@ public class ConsoleLineRendererTests
         line.Should().Be("14:23:07       TheMovieDB   Fetching \"Inception\"");
     }
 
+    /// <summary>
+    /// A plugin can be called anything. A name wider than the column is cut,
+    /// so the rule and the message stay where every other line has them.
+    /// </summary>
+    [Fact]
+    public void Render_ANameWiderThanTheColumn_IsCutAndKeepsTheColumnsInLine()
+    {
+        LogCategory longName = LogCategories.RegisterPlugin(
+            Ulid.NewUlid(),
+            "A Plugin With A Very Long Name"
+        );
+
+        string line = ConsoleLineRenderer.Render(
+            At,
+            LogLevel.Information,
+            longName,
+            "x",
+            null,
+            NoMercyConsoleTheme.Dark,
+            color: false
+        );
+        string reference = ConsoleLineRenderer.Render(
+            At,
+            LogLevel.Information,
+            LogCategories.Resolve("moviedb"),
+            "x",
+            null,
+            NoMercyConsoleTheme.Dark,
+            color: false
+        );
+
+        line.Should().Be("14:23:07   A Plugin With…   x");
+        line.Length.Should().Be(reference.Length);
+    }
+
     [Fact]
     public void Render_Warning_KeepsCategoryColumnAligned()
     {

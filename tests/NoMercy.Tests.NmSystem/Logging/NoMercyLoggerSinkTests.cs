@@ -57,6 +57,44 @@ public class NoMercyLoggerSinkTests
         }
     }
 
+    /// <summary>
+    /// A plugin logs through a logger named after its category key. Its lines
+    /// carry its name on the console and its key and group in the run file,
+    /// which is what the dashboard filters on.
+    /// </summary>
+    [Fact]
+    public void APluginLogger_WritesThePluginsNameKeyAndGroup()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), $"nm-logdir-{Guid.NewGuid():N}");
+        try
+        {
+            Ulid plugin = Ulid.NewUlid();
+            LogCategories.RegisterPlugin(plugin, "Echo");
+            StringWriter console = new();
+
+            NoMercyLoggerOptions options = new() { Color = false, LogDirectory = dir };
+            using (NoMercyLoggerProvider provider = new(options, console))
+            {
+                ILogger logger = provider.CreateLogger(LogCategories.PluginKey(plugin));
+                logger.LogInformation("Echoed {Count} lines", 3);
+            }
+
+            console.ToString().Should().Contain("Echo   Echoed 3 lines");
+
+            string line = File.ReadAllLines(Directory.GetFiles(dir, "run-*.jsonl").Single())
+                .Single();
+            line.Should().Contain($"\"Type\":\"plugin:{plugin}\"");
+            line.Should().Contain("\"Category\":\"Echo\"");
+            line.Should().Contain("\"Group\":\"Plugins\"");
+            line.Should().Contain($"\"Color\":\"{LogCategories.PluginDarkHex}\"");
+        }
+        finally
+        {
+            if (Directory.Exists(dir))
+                Directory.Delete(dir, true);
+        }
+    }
+
     [Fact]
     public void Write_AfterDispose_DegradesToConsoleInsteadOfThrowing()
     {
