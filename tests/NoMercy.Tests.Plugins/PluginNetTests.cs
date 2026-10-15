@@ -35,7 +35,9 @@ public class PluginNetTests
     private static (PluginNet Net, PluginResourceLedger Ledger) Net(
         string? dialHost,
         string? listenPorts,
-        bool declareListen = true
+        bool declareListen = true,
+        Func<TcpClient>? tcp = null,
+        Func<UdpClient>? udp = null
     )
     {
         List<string> hooks = [];
@@ -71,7 +73,13 @@ public class PluginNetTests
 
         // Loopback, never the wildcard: a wildcard listener asks the Windows
         // firewall on every test run.
-        return (new(Plugin, broker, manifests, ledger, bindAddress: IPAddress.Loopback), ledger);
+        PluginNet net = new(Plugin, broker, manifests, ledger, bindAddress: IPAddress.Loopback)
+        {
+            NewTcpClient = tcp ?? (() => new TcpClient()),
+            NewUdpClient = udp ?? (() => new UdpClient()),
+        };
+
+        return (net, ledger);
     }
 
     private static async Task<int> EchoServerAsync(CancellationToken ct)
@@ -404,6 +412,68 @@ public class PluginNetTests
     public void The_declared_ports_are_listed_in_order_each_once(string[] declared, int[] expected)
     {
         PluginPortRange.Ports(declared).Should().Equal(expected);
+    }
+
+    /// <summary>
+    /// A connect that fails gives its socket back at once. Left to the
+    /// finalizer, a plugin retrying a closed port in a loop held one socket
+    /// per attempt.
+    /// </summary>
+    [Fact]
+    public async Task A_tcp_dial_that_fails_disposes_its_client()
+    {
+        TcpListener closed = new(IPAddress.Loopback, 0);
+        closed.Start();
+        int port = ((IPEndPoint)closed.LocalEndpoint).Port;
+        closed.Stop();
+
+        TrackedTcpClient client = new();
+        (PluginNet tracked, PluginResourceLedger _) = Net("127.0.0.1", null, tcp: () => client);
+
+        await Assert.ThrowsAnyAsync<SocketException>(() =>
+            tracked.DialAsync("127.0.0.1", port, PluginTransport.Tcp)
+        );
+
+        client.Disposed.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task A_udp_dial_that_fails_disposes_its_client()
+    {
+        TrackedUdpClient client = new();
+        (PluginNet tracked, PluginResourceLedger _) = Net(
+            "nowhere.invalid",
+            null,
+            udp: () => client
+        );
+
+        await Assert.ThrowsAnyAsync<SocketException>(() =>
+            tracked.DialAsync("nowhere.invalid", 9, PluginTransport.Udp)
+        );
+
+        client.Disposed.Should().BeTrue();
+    }
+
+    private sealed class TrackedTcpClient : TcpClient
+    {
+        public bool Disposed { get; private set; }
+
+        protected override void Dispose(bool disposing)
+        {
+            Disposed = true;
+            base.Dispose(disposing);
+        }
+    }
+
+    private sealed class TrackedUdpClient : UdpClient
+    {
+        public bool Disposed { get; private set; }
+
+        protected override void Dispose(bool disposing)
+        {
+            Disposed = true;
+            base.Dispose(disposing);
+        }
     }
 
     private sealed class RecordingResource : IAsyncDisposable

@@ -43,6 +43,12 @@ public class PluginNet(
     /// </summary>
     public IPAddress BindAddress { get; } = bindAddress ?? IPAddress.Any;
 
+    /// <summary>How a TCP client is made, so a test can see it disposed.</summary>
+    internal Func<TcpClient> NewTcpClient { get; init; } = () => new TcpClient();
+
+    /// <summary>How a UDP client is made, so a test can see it disposed.</summary>
+    internal Func<UdpClient> NewUdpClient { get; init; } = () => new UdpClient();
+
     public async Task<Stream> DialAsync(
         string host,
         int port,
@@ -63,18 +69,39 @@ public class PluginNet(
                 PluginRefusalMessages.HostNotAllowed(pluginId.ToString(), host)
             );
 
+        // Disposed on any failure before the stream is handed over. A refused,
+        // unreachable or cancelled connect otherwise kept its socket until the
+        // finalizer ran, and a plugin retrying in a loop held one per attempt.
         if (transport == PluginTransport.Udp)
         {
-            UdpClient client = new();
-            client.Connect(host, port);
+            UdpClient client = NewUdpClient();
 
-            return new PluginDatagramStream(client);
+            try
+            {
+                client.Connect(host, port);
+
+                return new PluginDatagramStream(client);
+            }
+            catch
+            {
+                client.Dispose();
+                throw;
+            }
         }
 
-        TcpClient tcp = new();
-        await tcp.ConnectAsync(host, port, ct);
+        TcpClient tcp = NewTcpClient();
 
-        return tcp.GetStream();
+        try
+        {
+            await tcp.ConnectAsync(host, port, ct);
+
+            return tcp.GetStream();
+        }
+        catch
+        {
+            tcp.Dispose();
+            throw;
+        }
     }
 
     public Task<IPluginListener> ListenAsync(
