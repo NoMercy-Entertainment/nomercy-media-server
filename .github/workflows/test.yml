@@ -13,9 +13,12 @@ jobs:
   # Fast tests that run on every push/PR
   test:
     runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","Linux","X64","beast-unit"]') || 'ubuntu-latest' }}
-    concurrency:
-      group: beast-unit-test-job
-      cancel-in-progress: false
+    # No concurrency group on the self-hosted test jobs. The runner label is
+    # the queue: each beast-unit runner takes one job at a time. A shared
+    # group holds one running and one waiting job, and GitHub cancels the
+    # waiting one when another joins, cancel-in-progress or not. That
+    # cancelled coverage on dev and skipped the release (#611). The group
+    # came from the single Eagle runner of 2026-10-11 and outlived it.
     timeout-minutes: 7200
 
     steps:
@@ -108,9 +111,7 @@ jobs:
   # sailed straight through. It must block the release path.
   coverage:
     runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","Linux","X64","beast-unit"]') || 'ubuntu-latest' }}
-    concurrency:
-      group: beast-unit-test-job
-      cancel-in-progress: false
+    # No concurrency group: see the test job (#611).
     # Self-hosted jobs may use the full five-day GitHub allowance.
     timeout-minutes: 7200
 
