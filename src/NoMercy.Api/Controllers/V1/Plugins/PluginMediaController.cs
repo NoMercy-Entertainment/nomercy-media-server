@@ -65,6 +65,10 @@ public class PluginMediaController(
         if (read.PluginId != id)
             return ForbiddenResponse(PluginAccessRefusal.For(id));
 
+        // Cleared to play. A live player asks for the same playlist every few
+        // seconds, and each ask keeps its ticket good for the next one.
+        minter.Played(ticket);
+
         // Owned by this request from here on: it is handed out as a stream the
         // client reads until it stops watching, so it cannot be disposed at the
         // end of this method.

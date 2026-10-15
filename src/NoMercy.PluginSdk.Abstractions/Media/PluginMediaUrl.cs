@@ -23,6 +23,12 @@ public sealed record PluginMediaUrl
     [JsonInclude]
     public Uri Url { get; internal init; } = null!;
 
+    /// <summary>
+    /// Start playback before this moment. Once the link is playing it keeps
+    /// working while the player keeps asking for it, which is what a live
+    /// HLS playlist does, up to a day after it was minted. A link nobody
+    /// plays still stops working here.
+    /// </summary>
     [JsonInclude]
     public DateTimeOffset ExpiresAt { get; internal init; }
 
