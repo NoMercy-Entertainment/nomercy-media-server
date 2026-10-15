@@ -52,12 +52,15 @@ public class PluginLibraryQuery(IDbContextFactory<MediaContext> contextFactory)
         CancellationToken ct = default
     )
     {
+        if (!PluginLibraryFilter.TryRead(libraryId, out Ulid? library))
+            return [];
+
         await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
 
         IQueryable<Tv> shows = context.Tvs.AsNoTracking();
 
-        if (!string.IsNullOrWhiteSpace(libraryId) && Ulid.TryParse(libraryId, out Ulid parsed))
-            shows = shows.Where(show => show.LibraryId == parsed);
+        if (library is { } only)
+            shows = shows.Where(show => show.LibraryId == only);
 
         return await shows
             .Select(show => new PluginLibraryShow(
@@ -77,12 +80,15 @@ public class PluginLibraryQuery(IDbContextFactory<MediaContext> contextFactory)
         CancellationToken ct = default
     )
     {
+        if (!PluginLibraryFilter.TryRead(libraryId, out Ulid? library))
+            return [];
+
         await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
 
         IQueryable<Movie> movies = context.Movies.AsNoTracking();
 
-        if (!string.IsNullOrWhiteSpace(libraryId) && Ulid.TryParse(libraryId, out Ulid parsed))
-            movies = movies.Where(movie => movie.LibraryId == parsed);
+        if (library is { } only)
+            movies = movies.Where(movie => movie.LibraryId == only);
 
         return await movies
             .Select(movie => new PluginLibraryMovie(
