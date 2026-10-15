@@ -11,6 +11,7 @@
 
 using System.Net;
 using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Capabilities;
@@ -28,7 +29,7 @@ namespace NoMercy.PluginSdk.Media;
 /// link that is checked, short-lived and bound to the one account that asked.
 /// </para>
 /// </summary>
-public class PluginMediaProxy(
+public partial class PluginMediaProxy(
     Ulid pluginId,
     IPluginCallerAccessor caller,
     IPluginCapabilityBroker broker,
@@ -67,6 +68,13 @@ public class PluginMediaProxy(
     private static readonly byte[] PlaylistMarker = "#EXTM3U"u8.ToArray();
 
     public static TimeSpan TicketLifetime { get; } = TimeSpan.FromMinutes(15);
+
+    /// <summary>
+    /// A URI attribute in a tag line: EXT-X-KEY, EXT-X-MAP, EXT-X-MEDIA,
+    /// EXT-X-I-FRAME-STREAM-INF and the rest all name their address this way.
+    /// </summary>
+    [GeneratedRegex("URI=\"([^\"]*)\"")]
+    private static partial Regex UriAttribute();
 
     public Task<PluginMediaUrl> MintAsync(
         PluginProxyRequest request,
@@ -394,6 +402,14 @@ public class PluginMediaProxy(
     /// server. One that did not would send the client straight to the provider
     /// for the segments, which is the client holding the upstream after all.
     /// <para>
+    /// That includes the addresses inside tag lines: an encryption key
+    /// (EXT-X-KEY), an init segment (EXT-X-MAP) and an alternate audio or
+    /// subtitle rendition (EXT-X-MEDIA) name theirs in a URI attribute. Left
+    /// alone, the player fetches those from the provider, which the browser's
+    /// content policy refuses and the provider usually does too without the
+    /// headers the server sends.
+    /// </para>
+    /// <para>
     /// The children carry the headers of the link that answered, not of the
     /// first link. A channel whose first link is dead plays from its second,
     /// and the segments have to be asked for the way the playlist was.
@@ -415,23 +431,18 @@ public class PluginMediaProxy(
             {
                 string trimmed = line.Trim();
 
-                if (trimmed.Length == 0 || trimmed.StartsWith('#'))
+                if (trimmed.Length == 0)
                     return line;
 
-                PluginProxyRequest child = request with
-                {
-                    Links =
-                    [
-                        new()
-                        {
-                            Url = new(baseUri, trimmed),
-                            Referer = answered.Referer,
-                            UserAgent = answered.UserAgent,
-                        },
-                    ],
-                };
+                if (trimmed.StartsWith('#'))
+                    return UriAttribute()
+                        .Replace(
+                            line,
+                            match =>
+                                $"URI=\"{ChildTicket(request, answered, baseUri, match.Groups[1].Value) ?? match.Groups[1].Value}\""
+                        );
 
-                return $"/api/v1/plugins/{pluginId}/media/{minter.Mint(pluginId, Asking(), child, TicketLifetime)}";
+                return ChildTicket(request, answered, baseUri, trimmed) ?? line;
             });
 
         string text = string.Join('\n', rewritten);
@@ -441,5 +452,40 @@ public class PluginMediaProxy(
         response.Dispose();
 
         return new(status) { Content = new StringContent(text, Encoding.UTF8, mediaType) };
+    }
+
+    /// <summary>
+    /// A ticket on this server for one address in a playlist, resolved
+    /// against the playlist's own address. Null for anything that is not an
+    /// http or https address, such as a FairPlay skd:// key or a data: URI,
+    /// which the server has nothing to fetch for and leaves as it is.
+    /// </summary>
+    private string? ChildTicket(
+        PluginProxyRequest request,
+        PluginProxyLink answered,
+        Uri baseUri,
+        string reference
+    )
+    {
+        if (!Uri.TryCreate(baseUri, reference, out Uri? resolved))
+            return null;
+
+        if (resolved.Scheme != Uri.UriSchemeHttp && resolved.Scheme != Uri.UriSchemeHttps)
+            return null;
+
+        PluginProxyRequest child = request with
+        {
+            Links =
+            [
+                new()
+                {
+                    Url = resolved,
+                    Referer = answered.Referer,
+                    UserAgent = answered.UserAgent,
+                },
+            ],
+        };
+
+        return $"/api/v1/plugins/{pluginId}/media/{minter.Mint(pluginId, Asking(), child, TicketLifetime)}";
     }
 }

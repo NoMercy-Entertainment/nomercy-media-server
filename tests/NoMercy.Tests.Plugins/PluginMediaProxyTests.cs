@@ -708,6 +708,115 @@ public class PluginMediaProxyTests
         viewer.Should().BeFalse();
     }
 
+    /// <summary>
+    /// A key, an init segment and an alternate audio rendition name their
+    /// address in a URI attribute of a tag line. Each becomes a ticket here,
+    /// like a segment line, or the player fetches it from the provider.
+    /// </summary>
+    [Fact]
+    public async Task The_addresses_inside_tag_lines_become_tickets_here_too()
+    {
+        PluginMediaTicketMinter minter = Minter();
+        string playlist = string.Join(
+            '\n',
+            "#EXTM3U",
+            "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"aud\",NAME=\"English\",URI=\"audio/en.m3u8\"",
+            "#EXT-X-MAP:URI=\"init.mp4\"",
+            "#EXT-X-KEY:METHOD=AES-128,URI=\"https://keys.example.com/k?id=7\",IV=0x1234",
+            "#EXTINF:6,",
+            "seg1.m4s"
+        );
+
+        HttpResponseMessage response = await Proxy(
+                minter,
+                new StubHandler(_ =>
+                    Answer(Encoding.UTF8.GetBytes(playlist), "application/vnd.apple.mpegurl")
+                )
+            )
+            .FetchAsync(
+                new()
+                {
+                    Links =
+                    [
+                        new()
+                        {
+                            Url = new("https://cdn.example.com/live/index.m3u8"),
+                            Referer = "https://portal.example.com/",
+                            UserAgent = "VLC/3.0.18",
+                        },
+                    ],
+                },
+                null,
+                default
+            );
+
+        string body = await response.Content.ReadAsStringAsync();
+        body.Should().NotContain("example.com");
+
+        string[] lines = body.Split('\n');
+        Upstream(minter, lines[1])
+            .Should()
+            .Be(new Uri("https://cdn.example.com/live/audio/en.m3u8"));
+        Upstream(minter, lines[2]).Should().Be(new Uri("https://cdn.example.com/live/init.mp4"));
+        Upstream(minter, lines[3]).Should().Be(new Uri("https://keys.example.com/k?id=7"));
+
+        PluginProxyLink key = Link(minter, lines[3]);
+        key.Referer.Should().Be("https://portal.example.com/");
+        key.UserAgent.Should().Be("VLC/3.0.18");
+    }
+
+    [Fact]
+    public async Task The_rest_of_a_tag_line_is_left_as_it_was()
+    {
+        string playlist =
+            "#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI=\"key.bin\",IV=0x1234,KEYFORMAT=\"identity\"\n";
+
+        HttpResponseMessage response = await Proxy(upstream: _ =>
+                Answer(Encoding.UTF8.GetBytes(playlist), "application/vnd.apple.mpegurl")
+            )
+            .FetchAsync(Request("https://cdn.example.com/live/index.m3u8"), null, default);
+
+        string key = (await response.Content.ReadAsStringAsync()).Split('\n')[1];
+        key.Should().StartWith("#EXT-X-KEY:METHOD=AES-128,URI=\"/api/v1/plugins/");
+        key.Should().EndWith("\",IV=0x1234,KEYFORMAT=\"identity\"");
+    }
+
+    /// <summary>
+    /// A FairPlay key and an inline key are not addresses the server can
+    /// fetch. They stay exactly as the provider wrote them.
+    /// </summary>
+    [Theory]
+    [InlineData(
+        "#EXT-X-KEY:METHOD=SAMPLE-AES,URI=\"skd://key-id-42\",KEYFORMAT=\"com.apple.streamingkeydelivery\""
+    )]
+    [InlineData(
+        "#EXT-X-KEY:METHOD=AES-128,URI=\"data:text/plain;base64,AAECAwQFBgcICQoLDA0ODw==\""
+    )]
+    [InlineData("#EXT-X-KEY:METHOD=NONE")]
+    public async Task A_uri_the_server_cannot_fetch_is_left_alone(string tag)
+    {
+        HttpResponseMessage response = await Proxy(upstream: _ =>
+                Answer(Encoding.UTF8.GetBytes($"#EXTM3U\n{tag}\n"), "application/vnd.apple.mpegurl")
+            )
+            .FetchAsync(Request("https://cdn.example.com/live/index.m3u8"), null, default);
+
+        (await response.Content.ReadAsStringAsync()).Split('\n')[1].Should().Be(tag);
+    }
+
+    private static string TicketIn(string line)
+    {
+        int start = line.IndexOf("/media/", StringComparison.Ordinal) + "/media/".Length;
+        int end = line.IndexOf('"', start);
+
+        return end < 0 ? line[start..] : line[start..end];
+    }
+
+    private static PluginProxyLink Link(PluginMediaTicketMinter minter, string line) =>
+        minter.Read(TicketIn(line))!.Request.Links.Single();
+
+    private static Uri Upstream(PluginMediaTicketMinter minter, string line) =>
+        Link(minter, line).Url;
+
     private sealed class StubCaller(Guid userId) : IPluginCallerAccessor
     {
         public Guid CurrentUserId => userId;
