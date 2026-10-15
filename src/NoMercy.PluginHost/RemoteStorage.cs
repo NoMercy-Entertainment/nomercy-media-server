@@ -80,6 +80,14 @@ public sealed class RemoteStorage(
         throw new PluginRefusedException(NotYet(nameof(IPluginStorage.OpenDatabaseAsync)));
 
     /// <summary>
+    /// In this process, on the plugin's own file, like the scopes: nothing
+    /// crosses the channel, and the sandbox this process runs in still
+    /// decides which files it can reach.
+    /// </summary>
+    public Task<bool> MarkSparseAsync(string localPath, CancellationToken ct = default) =>
+        Task.FromResult(markSparse?.Invoke(localPath) ?? false);
+
+    /// <summary>
     /// The plugin's own three folders never change for the life of the
     /// process, so each is asked for once. Asking again would make every read
     /// pay for the boundary for an answer that cannot have moved.

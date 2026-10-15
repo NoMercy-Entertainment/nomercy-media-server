@@ -72,6 +72,38 @@ public sealed class SparseFileTests : IDisposable
         SparseFile.TryMark(path).Should().BeFalse();
     }
 
+    /// <summary>
+    /// Only an existing file at a full local path is marked. Anything else
+    /// answers false on every platform, before any native call.
+    /// </summary>
+    [Theory]
+    [InlineData("")]
+    [InlineData("relative/download.bin")]
+    [InlineData(@"\\nas\downloads\download.bin")]
+    [InlineData(@"\\?\C:\download.bin")]
+    [InlineData("//nas/downloads/download.bin")]
+    public void A_path_that_is_not_a_full_local_path_is_not_marked(string path)
+    {
+        SparseFile.IsLocalFile(path).Should().BeFalse();
+        SparseFile.TryMark(path).Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_folder_is_not_a_file_to_mark()
+    {
+        SparseFile.IsLocalFile(_root).Should().BeFalse();
+        SparseFile.TryMark(_root).Should().BeFalse();
+    }
+
+    [Fact]
+    public void An_existing_file_at_a_full_local_path_qualifies()
+    {
+        string path = Path.Combine(_root, "download.bin");
+        File.WriteAllBytes(path, []);
+
+        SparseFile.IsLocalFile(path).Should().BeTrue();
+    }
+
     [SkippableFact]
     public void Local_storage_marks_a_file_inside_its_root()
     {

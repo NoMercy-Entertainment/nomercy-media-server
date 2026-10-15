@@ -31,6 +31,7 @@ public class PluginHostStorage : IPluginStorage
     private readonly IPluginGrantStore _grants;
     private readonly string _databaseRoot;
     private readonly UserId? _userId;
+    private readonly Func<string, bool>? _markSparse;
 
     public PluginHostStorage(
         Ulid pluginId,
@@ -46,6 +47,7 @@ public class PluginHostStorage : IPluginStorage
         _catalog = catalog;
         _grants = grants;
         _userId = userId;
+        _markSparse = markSparse;
         _databaseRoot = Path.Combine(pluginsRoot, "data", pluginId.ToString());
 
         PluginLocalStorageScope privateScope = new(
@@ -88,6 +90,15 @@ public class PluginHostStorage : IPluginStorage
     public IPluginStorageScope Temp { get; }
 
     public IPluginStorageScope Derived { get; }
+
+    /// <summary>
+    /// A file outside every scope, at a full local path. Not guarded to a
+    /// folder: in this process the plugin already writes that file itself,
+    /// and marking it sparse lets it do nothing it could not before. The
+    /// native call answers false for anything but an existing local file.
+    /// </summary>
+    public Task<bool> MarkSparseAsync(string localPath, CancellationToken ct = default) =>
+        Task.FromResult(_markSparse?.Invoke(localPath) ?? false);
 
     public async Task<IPluginStorageScope> PathAsync(
         string folderId,

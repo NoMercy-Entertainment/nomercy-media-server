@@ -178,6 +178,107 @@ public sealed class PluginStorageSparseTests : IDisposable
             .HaveFlag(FileAttributes.SparseFile);
     }
 
+    /// <summary>
+    /// A torrent client's incomplete downloads live in a folder the owner set
+    /// in the plugin's settings, which is no scope. The plugin's storage marks
+    /// a file there by its full local path.
+    /// </summary>
+    [Fact]
+    public async Task A_file_at_a_local_path_outside_every_scope_reaches_the_host()
+    {
+        List<string> marked = [];
+        PluginHostStorage storage = Storage(path =>
+        {
+            marked.Add(path);
+            return true;
+        });
+        string incomplete = Path.Combine(_root, "elsewhere", "incomplete", "movie.mkv");
+
+        (await storage.MarkSparseAsync(incomplete)).Should().BeTrue();
+
+        marked.Should().Equal(incomplete);
+    }
+
+    [Fact]
+    public async Task A_storage_built_without_the_hosts_native_call_answers_false()
+    {
+        (await Storage(null).MarkSparseAsync(Path.Combine(_root, "movie.mkv"))).Should().BeFalse();
+    }
+
+    /// <summary>A storage written before 12.4 gets the default: nothing done, nothing thrown.</summary>
+    [Fact]
+    public async Task A_storage_that_does_not_implement_it_answers_false()
+    {
+        IPluginStorage storage = new OlderStorage();
+
+        (await storage.MarkSparseAsync("/downloads/movie.mkv")).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// End to end on Windows: a file the plugin is writing, in a folder that
+    /// is no scope, comes out sparse through the same native call the scopes
+    /// use, while the writer still holds it open.
+    /// </summary>
+    [SkippableFact]
+    public async Task On_windows_a_download_outside_every_scope_comes_out_sparse()
+    {
+        Skip.IfNot(OperatingSystem.IsWindows(), "Only NTFS needs the flag set.");
+        string folder = Path.Combine(_root, "incomplete");
+        Directory.CreateDirectory(folder);
+        string download = Path.Combine(folder, "movie.mkv");
+        PluginHostStorage storage = Storage(new LocalStorageDriver().TryMarkSparse);
+
+        await using FileStream writer = new(
+            download,
+            FileMode.CreateNew,
+            FileAccess.ReadWrite,
+            FileShare.Read
+        );
+
+        (await storage.MarkSparseAsync(download)).Should().BeTrue();
+        File.GetAttributes(download).Should().HaveFlag(FileAttributes.SparseFile);
+    }
+
+    [SkippableFact]
+    public async Task On_windows_a_relative_path_is_not_marked()
+    {
+        Skip.IfNot(OperatingSystem.IsWindows(), "Only NTFS needs the flag set.");
+
+        (await Storage(new LocalStorageDriver().TryMarkSparse).MarkSparseAsync("movie.mkv"))
+            .Should()
+            .BeFalse();
+    }
+
+    private PluginHostStorage Storage(Func<string, bool>? markSparse) =>
+        new(
+            Plugin,
+            _root,
+            new NoFolders(),
+            new PluginHostStorageTests.StubGrants(Plugin),
+            markSparse: markSparse
+        );
+
+    private sealed class OlderStorage : IPluginStorage
+    {
+        public IPluginStorageScope Private => throw new NotSupportedException();
+
+        public IPluginStorageScope Temp => throw new NotSupportedException();
+
+        public IPluginStorageScope Derived => throw new NotSupportedException();
+
+        public IPluginUserScope ForUser => throw new NotSupportedException();
+
+        public Task<IPluginStorageScope> PathAsync(
+            string folderId,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+
+        public Task<IPluginDatabase> OpenDatabaseAsync(
+            string name,
+            CancellationToken ct = default
+        ) => throw new NotSupportedException();
+    }
+
     private sealed class Unlimited : IPluginQuotaSource
     {
         public PluginQuota For(Ulid pluginId) =>

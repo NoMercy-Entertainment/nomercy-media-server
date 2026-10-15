@@ -270,7 +270,10 @@ public class PluginContextFactory(
                 folderCatalog,
                 grantStore,
                 quotas,
-                markSparse: storage.TryMarkSparse
+                // The driver itself, not the storage scoped to the plugins
+                // folder: a plugin's own scopes guard their paths before they
+                // call it, and a file at a local path is outside that folder.
+                markSparse: storage.Driver.TryMarkSparse
             );
 
     /// <summary>

@@ -185,6 +185,33 @@ public class RemoteStorageTests : IDisposable
         broker.Calls.Should().Be(asked);
     }
 
+    /// <summary>
+    /// A file at a local path outside every scope, such as an incomplete
+    /// download, is marked in the plugin's own process too, and nothing about
+    /// it crosses to the server.
+    /// </summary>
+    [Fact]
+    public async Task AFileAtALocalPathIsMarkedInThePluginsOwnProcessWithoutAskingTheServer()
+    {
+        CountingBroker broker = Answering(_root);
+        List<string> marked = [];
+        RemoteStorage storage = new(
+            PluginId,
+            new RemoteCall(PluginId, broker),
+            path =>
+            {
+                marked.Add(path);
+                return true;
+            }
+        );
+        string incomplete = Path.Combine(_root, "incomplete", "movie.mkv");
+
+        (await storage.MarkSparseAsync(incomplete)).Should().BeTrue();
+
+        marked.Should().Equal(incomplete);
+        broker.Calls.Should().Be(0);
+    }
+
     [Fact]
     public async Task MarkingAFileOutsideTheFolderIsRefusedInThePluginsOwnProcess()
     {

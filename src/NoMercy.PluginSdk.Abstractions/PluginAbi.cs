@@ -19,7 +19,8 @@ public static class PluginAbi
     // 12.3 added IPluginStorageScope.MarkSparseAsync and IPluginMediaProxy.MintFileAsync.
     // Additive: both are default members, so a plugin or test double that implements
     // either interface itself keeps compiling.
-    public static Version Current { get; } = new(12, 3);
+    // 12.4 added IPluginStorage.MarkSparseAsync(localPath), a default member too.
+    public static Version Current { get; } = new(12, 4);
 
     /// <summary>
     /// The oldest major this server can load at all.

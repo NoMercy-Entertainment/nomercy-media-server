@@ -29,6 +29,11 @@ namespace NoMercy.Storage.Drivers.Local;
 /// Windows this does nothing. A file system that refuses the call, such as
 /// FAT32 on a USB disk, answers false and the file stays as it was.
 /// </para>
+/// <para>
+/// Only an existing file at a full local path is marked. A relative path
+/// would resolve against whatever the working directory is, and a network
+/// path is another machine's disk; both answer false rather than guess.
+/// </para>
 /// </summary>
 internal static class SparseFile
 {
@@ -43,11 +48,20 @@ internal static class SparseFile
 
     public static bool TryMark(string fullPath)
     {
-        if (!OperatingSystem.IsWindows())
+        if (!OperatingSystem.IsWindows() || !IsLocalFile(fullPath))
             return false;
 
         return TryMarkOnWindows(fullPath);
     }
+
+    /// <summary>A full path on this machine that names a file, not a folder.</summary>
+    internal static bool IsLocalFile(string path) =>
+        !string.IsNullOrWhiteSpace(path)
+        && Path.IsPathFullyQualified(path)
+        // UNC and device paths: \\server\share, \\?\ and \\.\ all start this way.
+        && !path.StartsWith(@"\\", StringComparison.Ordinal)
+        && !path.StartsWith("//", StringComparison.Ordinal)
+        && File.Exists(path);
 
     [SupportedOSPlatform("windows")]
     private static bool TryMarkOnWindows(string fullPath)
