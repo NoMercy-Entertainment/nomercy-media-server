@@ -94,6 +94,17 @@ public sealed class FakePortMapClient : IPluginPortMapClient
 
         return Task.CompletedTask;
     }
+
+    public PluginPortReachability ProbeAnswer { get; set; } = PluginPortReachability.Open;
+
+    public List<int> Probed { get; } = [];
+
+    public Task<PluginPortReachability> ProbeAsync(int externalPort, CancellationToken ct = default)
+    {
+        Probed.Add(externalPort);
+
+        return Task.FromResult(ProbeAnswer);
+    }
 }
 
 /// <summary>

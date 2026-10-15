@@ -201,7 +201,8 @@ public class PluginContextFactory(
                 broker,
                 routerClient,
                 ledger,
-                services.GetService<TimeProvider>() ?? TimeProvider.System
+                services.GetService<TimeProvider>() ?? TimeProvider.System,
+                manifestSource
             );
 
             // The host renews the leases, because the plugin asking for a

@@ -20,7 +20,8 @@ public static class PluginAbi
     // Additive: both are default members, so a plugin or test double that implements
     // either interface itself keeps compiling.
     // 12.4 added IPluginStorage.MarkSparseAsync(localPath), a default member too.
-    public static Version Current { get; } = new(12, 4);
+    // 12.5 added IPluginPortMap.ProbeAsync and PluginPortReachability. Default member.
+    public static Version Current { get; } = new(12, 5);
 
     /// <summary>
     /// The oldest major this server can load at all.
