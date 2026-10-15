@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
-using static NoMercy.Database.Models.Media.VideoFileExtensions;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Data.DTOs.Specials;
 using NoMercy.Database;
@@ -19,6 +18,7 @@ using NoMercy.Database.Models.Movies;
 using NoMercy.Database.Models.TvShows;
 using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Extensions;
+using static NoMercy.Database.Models.Media.VideoFileExtensions;
 
 namespace NoMercy.Api.DTOs.Media;
 

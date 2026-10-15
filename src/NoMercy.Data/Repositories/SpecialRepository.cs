@@ -988,9 +988,7 @@ public class SpecialRepository(MediaContext context, IDbContextFactory<MediaCont
             {
                 VideoFile? videoFile =
                     firstItemWithVideo.Movie?.VideoFiles.Newest(vf => vf.Folder != null)
-                    ?? firstItemWithVideo.Episode?.VideoFiles.Newest(vf =>
-                        vf.Folder != null
-                    );
+                    ?? firstItemWithVideo.Episode?.VideoFiles.Newest(vf => vf.Folder != null);
 
                 if (videoFile is not null)
                 {

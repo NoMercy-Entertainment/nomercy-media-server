@@ -1156,7 +1156,10 @@ public class FileRepository(MediaContext context, IStorageDriver storageDriver) 
             ))
             .ToListAsync();
 
-        HashSet<(string, string)> storedFolders = [.. storedKeys.Select(k => (k.Share, k.HostFolder))];
+        HashSet<(string, string)> storedFolders =
+        [
+            .. storedKeys.Select(k => (k.Share, k.HostFolder)),
+        ];
         List<Ulid> superseded =
         [
             .. candidates
