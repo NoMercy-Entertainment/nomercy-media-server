@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
+using static NoMercy.Database.Models.Media.VideoFileExtensions;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Database;
 using NoMercy.Database.Models.TvShows;
@@ -140,12 +141,12 @@ public record SpecialsResponseItemDto
 
         int[] movies = special
             .Items.Where(item => item.MovieId is not null)
-            .Select(item => item.Movie?.VideoFiles.FirstOrDefault()?.Duration?.ToSeconds() ?? 0)
+            .Select(item => item.Movie?.VideoFiles.Newest()?.Duration?.ToSeconds() ?? 0)
             .ToArray();
 
         int[] episodes = special
             .Items.Where(item => item.EpisodeId is not null)
-            .Select(item => item.Episode?.VideoFiles.FirstOrDefault()?.Duration?.ToSeconds() ?? 0)
+            .Select(item => item.Episode?.VideoFiles.Newest()?.Duration?.ToSeconds() ?? 0)
             .ToArray();
 
         TotalDuration = movies.Sum() + episodes.Sum();

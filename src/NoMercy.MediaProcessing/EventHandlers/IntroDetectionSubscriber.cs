@@ -194,7 +194,7 @@ public class IntroDetectionSubscriber(
                     ct
                 );
 
-                TimeSpan sourceDuration = ParseDuration(episode.VideoFiles.FirstOrDefault());
+                TimeSpan sourceDuration = ParseDuration(episode.VideoFiles.Newest());
                 TimeSpan outroStart =
                     sourceDuration > OutroScanWindow
                         ? sourceDuration - OutroScanWindow

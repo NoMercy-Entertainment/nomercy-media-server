@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
+using static NoMercy.Database.Models.Media.VideoFileExtensions;
 using NoMercy.Database;
 using NoMercy.Database.Models.Movies;
 using NoMercy.Database.Models.Playlists;
@@ -111,7 +112,7 @@ public record PlaylistItemCardDto
             ColorPalette = movie.ColorPalette,
             Year = movie.ReleaseDate.ParseYear(),
             Duration = movie
-                .VideoFiles.FirstOrDefault(v => v.Folder != null)
+                .VideoFiles.Newest(v => v.Folder != null)
                 ?.Duration?.ToSeconds(),
             Link = new($"/movie/{movie.Id}", UriKind.Relative),
             PlayLink = playable ? new($"/movie/{movie.Id}/watch", UriKind.Relative) : null,
@@ -165,7 +166,7 @@ public record PlaylistItemCardDto
             ColorPalette = episode.ColorPalette,
             Year = episode.AirDate.ParseYear(),
             Duration = episode
-                .VideoFiles.FirstOrDefault(v => v.Folder != null)
+                .VideoFiles.Newest(v => v.Folder != null)
                 ?.Duration?.ToSeconds(),
             Link = new($"/tv/{episode.TvId}", UriKind.Relative),
             PlayLink = playable

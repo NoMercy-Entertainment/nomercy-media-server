@@ -810,7 +810,7 @@ public class HomeService(
         );
 
         IEnumerable<UserData> filtered = continueWatching.Where(item =>
-            item.Tv?.Episodes.LastOrDefault()?.VideoFiles.FirstOrDefault()?.Id != item.VideoFileId
+            item.Tv?.Episodes.LastOrDefault()?.VideoFiles.Newest()?.Id != item.VideoFileId
             || item.Time < (item.VideoFile.Duration?.ToSeconds() ?? 0) * 0.8
         );
 

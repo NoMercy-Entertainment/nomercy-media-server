@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
+using static NoMercy.Database.Models.Media.VideoFileExtensions;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Data.DTOs.Specials;
 using NoMercy.Database;
@@ -198,7 +199,7 @@ public record SpecialItemsDto
         Duration = tv.Duration * have * 60 ?? 0;
 
         TotalDuration = tv.Episodes.Sum(item =>
-            item.VideoFiles.FirstOrDefault()?.Duration?.ToSeconds() ?? 0
+            item.VideoFiles.Newest()?.Duration?.ToSeconds() ?? 0
         );
 
         VideoId = tv.Trailer;

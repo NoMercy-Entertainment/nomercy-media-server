@@ -93,6 +93,15 @@ public interface IFileRepository
         HashSet<RecordedVideoFileLocation> storedKeys
     );
 
+    /// <summary>
+    /// Removes rows a fresh encode replaced: same media, share and host folder, other file name.
+    /// </summary>
+    Task<int> DeleteSupersededVideoFilesAsync(
+        int mediaId,
+        bool isMovie,
+        HashSet<RecordedVideoFileLocation> storedKeys
+    );
+
     /// <inheritdoc cref="DeleteStaleVideoFilesAndMetadataByMovieIdAsync"/>
     Task DeleteStaleVideoFilesAndMetadataByTvIdAsync(
         int tvId,

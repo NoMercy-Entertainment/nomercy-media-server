@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
+using static NoMercy.Database.Models.Media.VideoFileExtensions;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Database;
 using NoMercy.Database.Models.Movies;
@@ -132,7 +133,7 @@ public record CollectionResponseItemDto
         Duration = (int)
             collection
                 .CollectionMovies.Select(movie =>
-                    movie.Movie.VideoFiles.FirstOrDefault()?.Duration?.ToSeconds()
+                    movie.Movie.VideoFiles.Newest()?.Duration?.ToSeconds()
                     ?? movie.Movie.Runtime * 60
                     ?? 0
                 )

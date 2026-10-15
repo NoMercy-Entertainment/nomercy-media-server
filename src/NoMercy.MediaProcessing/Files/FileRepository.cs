@@ -839,6 +839,8 @@ public class FileRepository(MediaContext context, IStorageDriver storageDriver) 
 
     public async Task<int> DeleteVideoFileByPathAsync(string hostFolder, string filename)
     {
+        hostFolder = hostFolder.Replace('\\', '/');
+        filename = filename.Replace('\\', '/');
         return await context
             .VideoFiles.Where(vf => vf.HostFolder == hostFolder && vf.Filename == filename)
             .ExecuteDeleteAsync();
@@ -846,6 +848,8 @@ public class FileRepository(MediaContext context, IStorageDriver storageDriver) 
 
     public async Task<int> DeleteMetadataByPathAsync(string hostFolder, string filename)
     {
+        hostFolder = hostFolder.Replace('\\', '/');
+        filename = filename.Replace('\\', '/');
         return await context
             .Metadata.Where(m => m.HostFolder == hostFolder && m.Filename == filename)
             .ExecuteDeleteAsync();
@@ -1130,6 +1134,41 @@ public class FileRepository(MediaContext context, IStorageDriver storageDriver) 
             .ToListAsync();
 
         await DeleteVideoFilesAndTheirMetadataAsync(candidates, StaleIds(candidates, storedKeys));
+    }
+
+    public async Task<int> DeleteSupersededVideoFilesAsync(
+        int mediaId,
+        bool isMovie,
+        HashSet<RecordedVideoFileLocation> storedKeys
+    )
+    {
+        if (storedKeys.Count == 0)
+            return 0;
+
+        List<StaleVideoFileCandidate> candidates = await context
+            .VideoFiles.Where(vf => isMovie ? vf.MovieId == mediaId : vf.EpisodeId == mediaId)
+            .Select(vf => new StaleVideoFileCandidate(
+                vf.Id,
+                vf.Share,
+                vf.HostFolder,
+                vf.Filename,
+                vf.MetadataId
+            ))
+            .ToListAsync();
+
+        HashSet<(string, string)> storedFolders = [.. storedKeys.Select(k => (k.Share, k.HostFolder))];
+        List<Ulid> superseded =
+        [
+            .. candidates
+                .Where(c =>
+                    storedFolders.Contains((c.Share, c.HostFolder))
+                    && !storedKeys.Contains(new(c.Share, c.HostFolder, c.Filename))
+                )
+                .Select(c => c.Id),
+        ];
+
+        await DeleteVideoFilesAndTheirMetadataAsync(candidates, superseded);
+        return superseded.Count;
     }
 
     /// <inheritdoc />

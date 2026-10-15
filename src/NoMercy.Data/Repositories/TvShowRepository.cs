@@ -416,7 +416,7 @@ public class TvShowRepository(
 
             if (season1Episode1 is not null && season1Episode1.VideoFiles.Any())
             {
-                VideoFile videoFile = season1Episode1.VideoFiles.First();
+                VideoFile videoFile = season1Episode1.VideoFiles.Newest()!;
 
                 // Check if userdata already exists for this video file
                 UserData? existingUserData = await context.UserData.FirstOrDefaultAsync(
