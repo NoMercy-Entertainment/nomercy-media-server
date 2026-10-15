@@ -9,7 +9,9 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using FluentAssertions;
 using Microsoft.AspNetCore.DataProtection;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NoMercy.Events;
@@ -17,6 +19,7 @@ using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Capabilities;
 using NoMercy.PluginSdk.Hub;
+using NoMercy.PluginSdk.Logging;
 using NoMercy.Storage;
 using Xunit;
 
@@ -58,7 +61,7 @@ public class PluginContextFactoryTests
             .Returns(Mock.Of<IPluginHubContext>());
     }
 
-    private PluginContextFactory BuildFactory() =>
+    private PluginContextFactory BuildFactory(IPluginLoggers? pluginLoggers = null) =>
         new(
             _eventBus.Object,
             _services.Object,
@@ -71,7 +74,8 @@ public class PluginContextFactoryTests
             _hubContextFactory.Object,
             audioToolsFactory: _audioToolsFactory.Object,
             derivedAudio: _derivedAudio.Object,
-            analysisWriterFactory: _analysisWriterFactory.Object
+            analysisWriterFactory: _analysisWriterFactory.Object,
+            pluginLoggers: pluginLoggers
         );
 
     private IPluginContext Create(PluginCapabilities capabilities) =>
@@ -127,5 +131,55 @@ public class PluginContextFactoryTests
         Assert.Null(context.DerivedAudio);
         Assert.Null(context.MusicAnalysisWriter);
         _analysisWriterFactory.Verify(f => f.CreateFor(It.IsAny<Ulid>()), Times.Never);
+    }
+
+    /// <summary>
+    /// A plugin that is loading has a name, and it logs under that name, so
+    /// an owner can tell which plugin wrote a line.
+    /// </summary>
+    [Fact]
+    public void Create_ForANamedPlugin_RegistersItAndHandsItItsOwnLogger()
+    {
+        ILogger own = Mock.Of<ILogger>();
+        Mock<IPluginLoggers> pluginLoggers = new();
+        pluginLoggers.Setup(l => l.For(PluginId)).Returns(own);
+
+        IPluginContext context = BuildFactory(pluginLoggers.Object)
+            .Create(PluginId, "data", NullLogger.Instance, null, "Echo");
+
+        context.Logger.Should().BeSameAs(own);
+        pluginLoggers.Verify(l => l.Register(PluginId, "Echo"), Times.Once);
+    }
+
+    /// <summary>
+    /// The broker builds a context with no name to answer an out-of-process
+    /// plugin's calls. That one keeps the logger it was given, and must not
+    /// rename the plugin to nothing.
+    /// </summary>
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("  ")]
+    public void Create_WithNoName_KeepsTheGivenLoggerAndRegistersNothing(string? name)
+    {
+        ILogger given = Mock.Of<ILogger>();
+        Mock<IPluginLoggers> pluginLoggers = new();
+
+        IPluginContext context = BuildFactory(pluginLoggers.Object)
+            .Create(PluginId, "data", given, null, name);
+
+        context.Logger.Should().BeSameAs(given);
+        pluginLoggers.Verify(l => l.Register(It.IsAny<Ulid>(), It.IsAny<string>()), Times.Never);
+        pluginLoggers.Verify(l => l.For(It.IsAny<Ulid>()), Times.Never);
+    }
+
+    [Fact]
+    public void Create_OnAHostWithoutPluginLoggers_KeepsTheGivenLogger()
+    {
+        ILogger given = Mock.Of<ILogger>();
+
+        IPluginContext context = BuildFactory().Create(PluginId, "data", given, null, "Echo");
+
+        context.Logger.Should().BeSameAs(given);
     }
 }

@@ -14,9 +14,11 @@ using FluentAssertions;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NoMercy.Events;
+using NoMercy.NmSystem.Logging;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Verification;
@@ -288,6 +290,42 @@ public class PluginDiIntegrationTests : IDisposable
     }
 
     /// <summary>
+    /// The whole chain as the server builds it: a plugin that loads logs
+    /// through a logger named after its key, and that key carries its name.
+    /// Before this, every plugin logged through the plugin manager's logger
+    /// and its lines read as "App".
+    /// </summary>
+    [Fact]
+    public void DiBuiltFactory_GivesALoadingPluginALoggerUnderItsOwnName()
+    {
+        CapturingLoggerProvider logs = new();
+        ServiceCollection services = new();
+        services.AddSingleton<IEventBus, InMemoryEventBus>();
+        services.AddLogging(builder => builder.AddProvider(logs));
+        services.AddSingleton<IDataProtectionProvider>(new EphemeralDataProtectionProvider());
+        services.AddSingleton(TestStorageHelper.CreateBackend());
+
+        services.AddDataProtection().UseEphemeralDataProtectionProvider();
+        services.AddPluginSystem(_tempPluginsDir);
+
+        ServiceProvider provider = BuildProvider(services);
+        IPluginContextFactory factory = provider.GetRequiredService<IPluginContextFactory>();
+        Ulid plugin = Ulid.NewUlid();
+
+        IPluginContext context = factory.Create(
+            plugin,
+            _tempPluginsDir,
+            NullLogger.Instance,
+            new PluginCapabilities(),
+            "Echo"
+        );
+        context.Logger.LogInformation("Echo plugin initialized");
+
+        logs.Lines.Should().Contain(($"plugin:{plugin}", "Echo plugin initialized"));
+        LogCategories.ResolveSource($"plugin:{plugin}").DisplayName.Should().Be("Echo");
+    }
+
+    /// <summary>
     /// A facade this server build does not wire yet refuses and names itself,
     /// rather than answering null.
     /// <para>
@@ -364,6 +402,38 @@ public class PluginDiIntegrationTests : IDisposable
             .Create(Ulid.NewUlid(), _tempPluginsDir, NullLogger.Instance, new PluginCapabilities());
 
         typeof(IPluginContext).GetProperty(member)!.GetValue(context).Should().NotBeNull();
+    }
+
+    private sealed class CapturingLoggerProvider : ILoggerProvider
+    {
+        public List<(string Category, string Message)> Lines { get; } = [];
+
+        public ILogger CreateLogger(string categoryName) => new Capturing(categoryName, Lines);
+
+        public void Dispose() { }
+
+        private sealed class Capturing(
+            string category,
+            List<(string Category, string Message)> lines
+        ) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state)
+                where TState : notnull => null;
+
+            public bool IsEnabled(LogLevel logLevel) => true;
+
+            public void Log<TState>(
+                LogLevel logLevel,
+                EventId eventId,
+                TState state,
+                Exception? exception,
+                Func<TState, Exception?, string> formatter
+            )
+            {
+                lock (lines)
+                    lines.Add((category, formatter(state, exception)));
+            }
+        }
     }
 
     private static ServiceProvider BuildProvider(ServiceCollection services)
