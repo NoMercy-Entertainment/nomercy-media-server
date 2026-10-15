@@ -56,6 +56,22 @@ public class CastIntent
     [JsonProperty("audio_language", NullValueHandling = NullValueHandling.Ignore)]
     public string? AudioLanguage { get; set; }
 
+    /// <summary>
+    /// The subtitle the handing-off device showed, as an ISO code. The television
+    /// keeps its own caption pick, so without this a cast from a phone showing
+    /// English started with no subtitle.
+    /// </summary>
+    [JsonProperty("subtitle_language", NullValueHandling = NullValueHandling.Ignore)]
+    public string? SubtitleLanguage { get; set; }
+
+    /// <summary>The subtitle variant (full, sdh, forced) — English SDH is a different track than English full.</summary>
+    [JsonProperty("subtitle_type", NullValueHandling = NullValueHandling.Ignore)]
+    public string? SubtitleType { get; set; }
+
+    /// <summary>The subtitle format (ass, vtt) — the .ass carries the show's own styling.</summary>
+    [JsonProperty("subtitle_codec", NullValueHandling = NullValueHandling.Ignore)]
+    public string? SubtitleCodec { get; set; }
+
     /// <summary>Vue Router target — only set when <see cref="Type"/> = "navigate".</summary>
     [JsonProperty("route", NullValueHandling = NullValueHandling.Ignore)]
     public string? Route { get; set; }
@@ -66,7 +82,10 @@ public class CastIntent
         string mediaType,
         string mediaId,
         int? resumeAt = null,
-        string? audioLanguage = null
+        string? audioLanguage = null,
+        string? subtitleLanguage = null,
+        string? subtitleType = null,
+        string? subtitleCodec = null
     ) =>
         new()
         {
@@ -75,6 +94,9 @@ public class CastIntent
             MediaId = mediaId,
             ResumeAt = resumeAt,
             AudioLanguage = audioLanguage,
+            SubtitleLanguage = subtitleLanguage,
+            SubtitleType = subtitleLanguage is null ? null : subtitleType,
+            SubtitleCodec = subtitleLanguage is null ? null : subtitleCodec,
         };
 
     public static CastIntent PlayMusic(
