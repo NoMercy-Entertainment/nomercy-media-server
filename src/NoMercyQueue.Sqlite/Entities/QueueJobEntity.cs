@@ -18,6 +18,7 @@ namespace NoMercyQueue.Sqlite.Entities;
 
 [PrimaryKey(nameof(Id))]
 [Index(nameof(PayloadHash))]
+[Index(nameof(OriginalPayloadHash))]
 internal class QueueJobEntity
 {
     [DatabaseGenerated(DatabaseGeneratedOption.Identity)]
@@ -35,6 +36,13 @@ internal class QueueJobEntity
     /// </summary>
     [MaxLength(QueuePayloadHash.Length)]
     public string PayloadHash { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Hash of the payload at first enqueue. Set once, never rewritten, so the id
+    /// a plugin was handed at dispatch still finds this job after a re-enqueue.
+    /// </summary>
+    [MaxLength(QueuePayloadHash.Length)]
+    public string OriginalPayloadHash { get; set; } = string.Empty;
 
     public byte Attempts { get; set; }
     public byte Interruptions { get; set; }

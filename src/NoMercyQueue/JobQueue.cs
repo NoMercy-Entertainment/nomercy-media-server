@@ -530,6 +530,7 @@ public class JobQueue(
                     {
                         Queue = failedJob.Queue,
                         Payload = failedJob.Payload,
+                        OriginalPayloadHash = failedJob.OriginalPayloadHash,
                         AvailableAt = DateTime.UtcNow,
                         Attempts = 0,
                     }
@@ -574,6 +575,7 @@ public class JobQueue(
                     {
                         Queue = failedJob.Queue,
                         Payload = failedJob.Payload,
+                        OriginalPayloadHash = failedJob.OriginalPayloadHash,
                         AvailableAt = DateTime.UtcNow,
                         Attempts = 0,
                     }

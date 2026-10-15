@@ -25,7 +25,38 @@ public static class SqliteQueueContextFactory
 
         QueueDbContext dbContext = new(options);
         dbContext.Database.EnsureCreated();
+        AddOriginalPayloadHashColumns(dbContext);
 
         return new SqliteQueueContext(dbContext);
+    }
+
+    // EnsureCreated never alters an existing file, so a database made before the
+    // column existed gets it here, with current hashes as the backfill.
+    private static void AddOriginalPayloadHashColumns(QueueDbContext dbContext)
+    {
+        bool jobsHave = dbContext
+            .Database.SqlQuery<string>($"SELECT name AS Value FROM pragma_table_info('QueueJobs')")
+            .ToList()
+            .Contains("OriginalPayloadHash");
+        if (!jobsHave)
+        {
+            dbContext.Database.ExecuteSql(
+                $"ALTER TABLE QueueJobs ADD COLUMN OriginalPayloadHash TEXT NOT NULL DEFAULT ''"
+            );
+            dbContext.Database.ExecuteSql(
+                $"UPDATE QueueJobs SET OriginalPayloadHash = PayloadHash"
+            );
+        }
+
+        bool failedHave = dbContext
+            .Database.SqlQuery<string>($"SELECT name AS Value FROM pragma_table_info('FailedJobs')")
+            .ToList()
+            .Contains("OriginalPayloadHash");
+        if (!failedHave)
+        {
+            dbContext.Database.ExecuteSql(
+                $"ALTER TABLE FailedJobs ADD COLUMN OriginalPayloadHash TEXT NOT NULL DEFAULT ''"
+            );
+        }
     }
 }

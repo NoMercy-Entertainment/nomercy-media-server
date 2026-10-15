@@ -18,6 +18,9 @@ public class FailedJobModel
     public string Connection { get; set; } = "default";
     public required string Queue { get; set; }
     public required string Payload { get; set; }
+
+    /// <summary>Carried over from the job that failed. Empty on older rows.</summary>
+    public string OriginalPayloadHash { get; set; } = string.Empty;
     public required string Exception { get; set; }
     public DateTime FailedAt { get; set; } = DateTime.UtcNow;
 

@@ -34,4 +34,10 @@ public static class QueuePayloadHash
         byte[] digest = SHA256.HashData(Encoding.UTF8.GetBytes(payload));
         return Convert.ToHexStringLower(digest);
     }
+
+    /// <summary>The original hash when set, else the hash of the payload.</summary>
+    public static string Original(string original, string payload)
+    {
+        return string.IsNullOrEmpty(original) ? For(payload) : original;
+    }
 }

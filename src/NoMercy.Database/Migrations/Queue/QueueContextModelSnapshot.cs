@@ -90,6 +90,11 @@ namespace NoMercy.Database.Migrations.Queue
                     b.Property<DateTime>("FailedAt")
                         .HasColumnType("TEXT");
 
+                    b.Property<string>("OriginalPayloadHash")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
                     b.Property<int?>("ParentJobId")
                         .HasColumnType("INTEGER");
 
@@ -135,6 +140,11 @@ namespace NoMercy.Database.Migrations.Queue
                     b.Property<byte>("Interruptions")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("OriginalPayloadHash")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
                     b.Property<int?>("ParentJobId")
                         .HasColumnType("INTEGER");
 
@@ -164,6 +174,8 @@ namespace NoMercy.Database.Migrations.Queue
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("OriginalPayloadHash");
 
                     b.HasIndex("PayloadHash");
 
