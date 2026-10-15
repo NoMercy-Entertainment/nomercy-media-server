@@ -615,12 +615,25 @@ public partial class RecordingManager(
             libraryRoot
         );
 
-        StoragePathHelpers.TryGetLibraryRelativeParts(
-            mediaFile.Path,
-            libraryRoot,
-            out string artistRelativeFolder,
-            out _
-        );
+        if (
+            !StoragePathHelpers.TryGetLibraryRelativeParts(
+                mediaFile.Path,
+                libraryRoot,
+                out string relativeFolder,
+                out string filename
+            )
+        )
+            throw new InvalidOperationException(
+                $"Recording '{trackAppends.Title}' was not placed in the selected music library. The source '{mediaFile.Path}' is preserved; check its title and duration match before retrying."
+            );
+
+        string path =
+            StoragePathHelpers.GetParent(mediaFile.Path.Replace('\\', '/')) ?? string.Empty;
+        string trackHostFolder = path.PathName();
+        if (HostFolderPath.TrySplitAtSecondRoot(trackHostFolder, out _, out _))
+            throw new InvalidOperationException(
+                $"Recording '{trackAppends.Title}' has an ambiguous source path and cannot be registered."
+            );
 
         foreach (MusicBrainzArtistAppends artist in artistAppends)
         {
@@ -649,7 +662,7 @@ public partial class RecordingManager(
                     Year = artist.LifeSpan?.BeginDate?.Year,
 
                     FolderId = libraryFolder.Id,
-                    Folder = artistRelativeFolder,
+                    Folder = relativeFolder,
                     HostFolder = (
                         StoragePathHelpers.GetParent(mediaFile.Path.Replace('\\', '/'))
                         ?? string.Empty
@@ -665,39 +678,6 @@ public partial class RecordingManager(
             {
                 logger.LogError(e, "Failed to store recording artist metadata");
             }
-        }
-
-        if (
-            !StoragePathHelpers.TryGetLibraryRelativeParts(
-                mediaFile.Path,
-                libraryRoot,
-                out string relativeFolder,
-                out string filename
-            )
-        )
-        {
-            logger.LogWarning(
-                "Skipping recording {Title}: '{Path}' does not resolve under library folder '{Root}'",
-                [trackAppends.Title, mediaFile.Path, libraryFolder.Path]
-            );
-            return;
-        }
-
-        string path =
-            StoragePathHelpers.GetParent(mediaFile.Path.Replace('\\', '/')) ?? string.Empty;
-
-        string trackHostFolder = path.PathName();
-
-        // See the same guard on the release path above: a host folder holding
-        // two rooted paths addresses no file at all, so the row fails loudly
-        // instead of being stored with a value nothing can resolve.
-        if (HostFolderPath.TrySplitAtSecondRoot(trackHostFolder, out string head, out string tail))
-        {
-            logger.LogError(
-                "Skipping recording {Title}: its host folder holds two rooted paths, '{First}' followed by '{Second}'",
-                [trackAppends.Title, head, tail]
-            );
-            return;
         }
 
         Track insert = new()
@@ -724,7 +704,9 @@ public partial class RecordingManager(
             Duration = HmsRegex()
                 .Replace(
                     (
-                        mediaFile.FFprobe?.Duration ?? mediaFile.TagFile!.Properties!.Duration
+                        mediaFile.FFprobe?.Duration
+                        ?? mediaFile.TagFile?.Properties?.Duration
+                        ?? TimeSpan.Zero
                     ).ToString(@"hh\:mm\:ss"),
                     ""
                 ),
