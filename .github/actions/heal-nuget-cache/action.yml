@@ -1,5 +1,5 @@
 name: 'Heal NuGet cache'
-description: 'Removes package folders whose metadata was left corrupt by an interrupted run, so restore does not fail on a self-hosted runner that keeps its cache between jobs'
+description: 'Removes package folders left broken by an interrupted run (corrupt metadata, or a runtime pack with files missing), so restore and build do not fail on a self-hosted runner that keeps its cache between jobs'
 
 runs:
   using: 'composite'
@@ -16,6 +16,35 @@ runs:
           if [ ! -s "$f" ] || [ "$(head -c1 "$f" | od -An -tx1 | tr -d ' ')" = "00" ]; then
             d=$(dirname "$f")
             echo "Removing corrupt package folder: $d"
+            rm -rf "$d"
+          fi
+        done
+
+    - name: Drop runtime packs with missing files
+      shell: bash
+      run: |
+        # A runtime pack can be extracted only in part: its metadata says it is
+        # complete, and a native file such as libcoreclr.so is not there. The
+        # build then fails with MSB3030 "could not copy ... because it was not
+        # found", and a rerun lands on the same folder (#62). Each pack lists
+        # its own files in data/RuntimeList.xml, so a missing one is certain.
+        #
+        # Only folders that have .nupkg.metadata, which NuGet writes last. A
+        # folder without it may be another job extracting right now, on a
+        # cache several runners share.
+        cache="${NUGET_PACKAGES:-$HOME/.nuget/packages}"
+        [ -d "$cache" ] || exit 0
+        for list in "$cache"/microsoft.*.app.runtime.*/*/data/RuntimeList.xml; do
+          [ -f "$list" ] || continue
+          d=$(dirname "$(dirname "$list")")
+          [ -f "$d/.nupkg.metadata" ] || continue
+          # Every line is read, never cut short: this runs under pipefail, and
+          # a pipe closed early would fail the step on a SIGPIPE.
+          missing=$({ grep -o 'Path="[^"]*"' "$list" || true; } \
+            | sed 's/^Path="//; s/"$//' \
+            | while IFS= read -r p; do [ -e "$d/$p" ] || echo "$p"; done)
+          if [ -n "$missing" ]; then
+            echo "Removing incomplete runtime pack: $d (missing ${missing%%$'\n'*})"
             rm -rf "$d"
           fi
         done
