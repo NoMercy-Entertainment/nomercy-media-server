@@ -11,6 +11,7 @@
 
 using Microsoft.Extensions.Logging;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Logging;
 
 namespace NoMercy.PluginSdk.OutOfProcess;
 
@@ -26,7 +27,8 @@ public sealed class PluginRemoteLoader(
     PluginProcessSupervisor supervisor,
     IPluginHostExecutable executable,
     ILogger logger,
-    Func<PluginRuntimeMode>? mode = null
+    Func<PluginRuntimeMode>? mode = null,
+    IPluginLoggers? pluginLoggers = null
 ) : IPluginRemoteLoader
 {
     private readonly Func<PluginRuntimeMode> _mode = mode ?? (() => PluginRuntimeMode.Load());
@@ -50,6 +52,10 @@ public sealed class PluginRemoteLoader(
 
             return null;
         }
+
+        // Named before it starts, from its manifest, so the first line the
+        // host writes already carries the plugin's name.
+        pluginLoggers?.Register(description.Id, description.Name);
 
         if (!await supervisor.StartAsync(description.Id, ct))
         {

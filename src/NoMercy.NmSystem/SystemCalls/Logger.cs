@@ -83,7 +83,19 @@ public static class Logger
         }
     }
 
-    public static readonly Dictionary<string, LogType> LogTypes = new()
+    private const string SpacerType = "spacer";
+
+    private static readonly Lock LogTypesGate = new();
+
+    /// <summary>
+    /// Every log type the dashboard can filter on, in the order it shows them.
+    /// A spacer entry opens each group.
+    /// </summary>
+    public static IReadOnlyDictionary<string, LogType> LogTypes => _logTypes;
+
+    // Copy-on-write, see AddLogType. A Dictionary that is only ever added to
+    // enumerates in insertion order, which is the dashboard's group order.
+    private static volatile Dictionary<string, LogType> _logTypes = new()
     {
         // System category
         { "_", new("_", "System", Color.DimGray, "spacer") },
@@ -138,6 +150,37 @@ public static class Logger
         { "whatsapp", new("whatsapp", "Whatsapp", Color.Green, "Notifications") },
         { "telegram", new("telegram", "Telegram", Color.Green, "Notifications") },
     };
+
+    /// <summary>
+    /// Adds a log type at runtime, or replaces the one with the same name in
+    /// place. For types that only exist once something registers them, such as
+    /// a plugin. A type whose group has no spacer yet gets one first, so the
+    /// dashboard shows the new group as a group of its own.
+    /// <para>
+    /// Readers never lock. Each change builds a new dictionary and swaps it in,
+    /// so a reader enumerating the old one is never disturbed.
+    /// </para>
+    /// </summary>
+    public static void AddLogType(LogType logType)
+    {
+        lock (LogTypesGate)
+        {
+            Dictionary<string, LogType> next = new(_logTypes);
+
+            bool groupHasSpacer = next.Values.Any(type =>
+                type.Type == SpacerType && type.DisplayName == logType.Type
+            );
+            if (!groupHasSpacer)
+            {
+                int spacers = next.Values.Count(type => type.Type == SpacerType);
+                string spacerName = new('_', spacers + 1);
+                next[spacerName] = new(spacerName, logType.Type, Color.DimGray, SpacerType);
+            }
+
+            next[logType.Name] = logType;
+            _logTypes = next;
+        }
+    }
 
     static Logger()
     {

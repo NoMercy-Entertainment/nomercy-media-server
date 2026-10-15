@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Collections.Concurrent;
 using System.Globalization;
 
 namespace NoMercy.NmSystem.Logging;
@@ -20,9 +21,33 @@ namespace NoMercy.NmSystem.Logging;
 /// provider (TheMovieDB, MusicBrainz, TheTVDB, ...) is visually distinct.
 /// <see cref="ResolveSource"/> maps a logger's source context (namespace/type) to a
 /// category so call sites never pass a category by hand.
+/// <para>
+/// Plugins are the one group registered at runtime: a plugin only exists once it
+/// loads. Each plugin gets its own category, named after it, and the whole group
+/// shares one colour.
+/// </para>
 /// </summary>
 public static class LogCategories
 {
+    /// <summary>
+    /// The start of every plugin's category key, which is also the name of the
+    /// logger a plugin logs through: <c>plugin:{id}</c>.
+    /// </summary>
+    public const string PluginKeyPrefix = "plugin:";
+
+    public const string PluginGroup = "Plugins";
+
+    // One colour for the whole group. The useful signal is "this line came from
+    // code that is not ours", and the name already says which plugin. A hue per
+    // plugin would land on top of the provider ramp below. Lime sits in the gap
+    // the curated groups leave between yellow and green.
+    public const string PluginDarkHex = "#d1e467";
+    public const string PluginLightHex = "#718500";
+
+    // The category for a plugin line whose plugin is not registered in this
+    // process: an old log read after a restart, or by the CLI.
+    private const string UnregisteredPluginKey = "plugin";
+
     private static readonly string[] ProviderKeys =
     {
         "youtube",
@@ -91,7 +116,11 @@ public static class LogCategories
         ("configuration", "configuration"),
     };
 
-    private static readonly Dictionary<string, LogCategory> Map = Build();
+    // Concurrent: plugins register while other threads resolve categories.
+    private static readonly ConcurrentDictionary<string, LogCategory> Map = new(
+        Build(),
+        StringComparer.OrdinalIgnoreCase
+    );
 
     /// <summary>The fallback category used when nothing else matches.</summary>
     public static LogCategory Default => Map["app"];
@@ -99,11 +128,12 @@ public static class LogCategories
     /// <summary>Resolves a category by its key, falling back to <see cref="Default"/>.</summary>
     public static LogCategory Resolve(string? key)
     {
-        if (
-            !string.IsNullOrEmpty(key)
-            && Map.TryGetValue(key.ToLowerInvariant(), out LogCategory? category)
-        )
+        if (string.IsNullOrEmpty(key))
+            return Default;
+        if (Map.TryGetValue(key, out LogCategory? category))
             return category;
+        if (IsPluginKey(key))
+            return Map[UnregisteredPluginKey];
         return Default;
     }
 
@@ -116,6 +146,12 @@ public static class LogCategories
         if (string.IsNullOrEmpty(sourceContext))
             return Default;
 
+        // Before the fragment scan: a plugin id is random letters and digits,
+        // and one that happens to contain "http" or "tvdb" must still read as
+        // the plugin.
+        if (IsPluginKey(sourceContext))
+            return Resolve(sourceContext);
+
         string haystack = sourceContext.ToLowerInvariant();
         foreach ((string fragment, string key) in SourceFragments)
         {
@@ -125,6 +161,27 @@ public static class LogCategories
 
         return Default;
     }
+
+    /// <summary>The category key, and logger name, of one plugin.</summary>
+    public static string PluginKey(Ulid pluginId) => PluginKeyPrefix + pluginId;
+
+    /// <summary>
+    /// Registers the category a plugin logs under, named after the plugin, in the
+    /// shared plugin colour. Registering again replaces the name, so a plugin that
+    /// was renamed by an update logs under its new name from then on.
+    /// </summary>
+    public static LogCategory RegisterPlugin(Ulid pluginId, string? displayName)
+    {
+        string key = PluginKey(pluginId);
+        string name = string.IsNullOrWhiteSpace(displayName) ? "Plugin" : displayName.Trim();
+
+        LogCategory category = new(key, name, PluginGroup, PluginDarkHex, PluginLightHex);
+        Map[key] = category;
+        return category;
+    }
+
+    private static bool IsPluginKey(string key) =>
+        key.StartsWith(PluginKeyPrefix, StringComparison.OrdinalIgnoreCase);
 
     private static Dictionary<string, LogCategory> Build()
     {
@@ -172,6 +229,9 @@ public static class LogCategories
             string light = Hsl(hue, 0.42, 0.68);
             Add(ProviderKeys[i], ProviderDisplayNames[ProviderKeys[i]], "Providers", dark, light);
         }
+
+        // Plugins (each registers its own category when it loads)
+        Add(UnregisteredPluginKey, "Plugin", PluginGroup, PluginDarkHex, PluginLightHex);
 
         return map;
     }

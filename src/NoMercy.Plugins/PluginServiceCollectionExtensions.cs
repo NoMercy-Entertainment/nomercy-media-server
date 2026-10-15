@@ -32,6 +32,7 @@ using NoMercy.PluginSdk.Hooks;
 using NoMercy.PluginSdk.Hub;
 using NoMercy.PluginSdk.Lan;
 using NoMercy.PluginSdk.Library;
+using NoMercy.PluginSdk.Logging;
 using NoMercy.PluginSdk.Media;
 using NoMercy.PluginSdk.Network;
 using NoMercy.PluginSdk.Offline;
@@ -320,12 +321,14 @@ public static class PluginServiceCollectionExtensions
             ),
             sp.GetRequiredService<IPluginQuotaSource>(),
             sp.GetRequiredService<IPluginHostExecutable>(),
-            sp.GetRequiredService<IPluginSandboxFactory>()
+            sp.GetRequiredService<IPluginSandboxFactory>(),
+            sp.GetRequiredService<IPluginLoggers>()
         ));
         services.TryAddSingleton<IPluginRemoteLoader>(sp => new PluginRemoteLoader(
             new PluginProcessSupervisor(sp.GetRequiredService<IPluginProcessLauncher>()),
             sp.GetRequiredService<IPluginHostExecutable>(),
-            sp.GetRequiredService<ILoggerFactory>().CreateLogger("plugins.runtime")
+            sp.GetRequiredService<ILoggerFactory>().CreateLogger("plugins.runtime"),
+            pluginLoggers: sp.GetRequiredService<IPluginLoggers>()
         ));
         // A plugin runs only while what it leans on runs, and a free
         // dependency installs beside it rather than leaving the owner to work
@@ -604,6 +607,11 @@ public static class PluginServiceCollectionExtensions
         // other host still gets a plugin platform that loads.
         services.TryAddSingleton<IPluginHubContextFactory, NullPluginHubContextFactory>();
 
+        // Each plugin logs under its own name in the shared Plugins group.
+        services.TryAddSingleton<IPluginLoggers>(sp => new PluginLoggers(
+            sp.GetRequiredService<ILoggerFactory>()
+        ));
+
         services.AddSingleton<IPluginContextFactory>(sp => new PluginContextFactory(
             sp.GetRequiredService<IEventBus>(),
             sp,
@@ -643,7 +651,8 @@ public static class PluginServiceCollectionExtensions
             grantedLocations: sp.GetService<IPluginGrantedLocations>(),
             freeSpace: sp.GetService<IPluginFreeSpaceProbe>(),
             quotas: sp.GetRequiredService<PluginQuotaMeter>(),
-            serverVersion: Assembly.GetEntryAssembly()?.GetName().Version
+            serverVersion: Assembly.GetEntryAssembly()?.GetName().Version,
+            pluginLoggers: sp.GetRequiredService<IPluginLoggers>()
         ));
 
         services.AddSingleton<IPluginManager>(sp =>

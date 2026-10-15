@@ -17,6 +17,7 @@ using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Capabilities;
 using NoMercy.PluginSdk.Hub;
 using NoMercy.PluginSdk.Library;
+using NoMercy.PluginSdk.Logging;
 using NoMercy.PluginSdk.Network;
 using NoMercy.PluginSdk.Quotas;
 using NoMercy.PluginSdk.Runtime;
@@ -51,7 +52,8 @@ public class PluginContextFactory(
     IPluginGrantedLocations? grantedLocations = null,
     IPluginFreeSpaceProbe? freeSpace = null,
     PluginQuotaMeter? quotas = null,
-    Version? serverVersion = null
+    Version? serverVersion = null,
+    IPluginLoggers? pluginLoggers = null
 ) : IPluginContextFactory
 {
     public IPluginContext Create(
@@ -112,7 +114,7 @@ public class PluginContextFactory(
             pluginId,
             eventBus,
             services,
-            logger,
+            PluginLogger(pluginId, pluginName, logger),
             dataFolderPath,
             storage,
             secrets,
@@ -143,6 +145,25 @@ public class PluginContextFactory(
             Spawning(pluginId),
             NativeCode(pluginId, dataFolderPath)
         );
+    }
+
+    /// <summary>
+    /// The logger the plugin holds: its own, named after it, so its lines say
+    /// which plugin wrote them.
+    /// <para>
+    /// Only for a context made for a plugin that is loading, which is the one
+    /// that has a name. The broker builds a nameless context to answer an
+    /// out-of-process plugin's calls, and that one keeps the logger it was
+    /// given: the plugin's own lines come from its host process instead.
+    /// </para>
+    /// </summary>
+    private ILogger PluginLogger(Ulid pluginId, string? pluginName, ILogger fallback)
+    {
+        if (pluginLoggers is null || string.IsNullOrWhiteSpace(pluginName))
+            return fallback;
+
+        pluginLoggers.Register(pluginId, pluginName);
+        return pluginLoggers.For(pluginId);
     }
 
     /// <summary>

@@ -85,4 +85,111 @@ public class LogCategoriesTests
         hex.IsMatch(category.DarkHex).Should().BeTrue();
         hex.IsMatch(category.LightHex).Should().BeTrue();
     }
+
+    [Fact]
+    public void RegisterPlugin_GivesThePluginItsOwnNameInThePluginGroup()
+    {
+        Ulid plugin = Ulid.NewUlid();
+
+        LogCategories.RegisterPlugin(plugin, "Torrent Downloader");
+
+        LogCategory category = LogCategories.Resolve(LogCategories.PluginKey(plugin));
+        category.Key.Should().Be($"plugin:{plugin}");
+        category.DisplayName.Should().Be("Torrent Downloader");
+        category.Group.Should().Be(LogCategories.PluginGroup);
+    }
+
+    /// <summary>One colour for the group: the name says which plugin it is.</summary>
+    [Fact]
+    public void EveryPlugin_SharesThePluginColour()
+    {
+        Ulid first = Ulid.NewUlid();
+        Ulid second = Ulid.NewUlid();
+
+        LogCategory one = LogCategories.RegisterPlugin(first, "One");
+        LogCategory two = LogCategories.RegisterPlugin(second, "Two");
+
+        one.DarkHex.Should().Be(LogCategories.PluginDarkHex).And.Be(two.DarkHex);
+        one.LightHex.Should().Be(LogCategories.PluginLightHex).And.Be(two.LightHex);
+    }
+
+    [Theory]
+    [InlineData("moviedb")]
+    [InlineData("app")]
+    [InlineData("http")]
+    [InlineData("queue")]
+    [InlineData("warning")]
+    public void ThePluginColour_IsNotABuiltInCategoryColour(string key)
+    {
+        LogCategory builtIn = LogCategories.Resolve(key);
+
+        builtIn.DarkHex.Should().NotBe(LogCategories.PluginDarkHex);
+        builtIn.LightHex.Should().NotBe(LogCategories.PluginLightHex);
+    }
+
+    [Fact]
+    public void RegisteringAgain_ReplacesTheName()
+    {
+        Ulid plugin = Ulid.NewUlid();
+
+        LogCategories.RegisterPlugin(plugin, "Old Name");
+        LogCategories.RegisterPlugin(plugin, "New Name");
+
+        LogCategories.Resolve(LogCategories.PluginKey(plugin)).DisplayName.Should().Be("New Name");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void APluginWithNoName_IsCalledPlugin(string? name)
+    {
+        LogCategories.RegisterPlugin(Ulid.NewUlid(), name).DisplayName.Should().Be("Plugin");
+    }
+
+    [Fact]
+    public void ResolveSource_OfAPluginLogger_IsThatPlugin()
+    {
+        Ulid plugin = Ulid.NewUlid();
+        LogCategories.RegisterPlugin(plugin, "Echo");
+
+        LogCategories
+            .ResolveSource(LogCategories.PluginKey(plugin))
+            .DisplayName.Should()
+            .Be("Echo");
+    }
+
+    /// <summary>
+    /// A plugin id is random letters and digits. One that happens to spell a
+    /// subsystem name must not be logged as that subsystem.
+    /// </summary>
+    [Fact]
+    public void ResolveSource_OfAPluginIdThatSpellsASubsystem_IsStillThePlugin()
+    {
+        Ulid plugin = Ulid.Parse("01HTTPTVDB0000000000000000");
+        LogCategories.RegisterPlugin(plugin, "Lookalike");
+
+        LogCategories
+            .ResolveSource(LogCategories.PluginKey(plugin))
+            .DisplayName.Should()
+            .Be("Lookalike");
+    }
+
+    /// <summary>
+    /// A log written before a restart, or read by another process, names a
+    /// plugin this process never registered. It is still a plugin line, not
+    /// an App line.
+    /// </summary>
+    [Fact]
+    public void AnUnregisteredPluginKey_ResolvesToThePluginGroup()
+    {
+        string key = LogCategories.PluginKey(Ulid.NewUlid());
+
+        LogCategory category = LogCategories.Resolve(key);
+
+        category.Should().NotBe(LogCategories.Default);
+        category.Group.Should().Be(LogCategories.PluginGroup);
+        category.DisplayName.Should().Be("Plugin");
+        LogCategories.ResolveSource(key).Should().Be(category);
+    }
 }

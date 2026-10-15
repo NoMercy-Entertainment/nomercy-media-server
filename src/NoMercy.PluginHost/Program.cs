@@ -36,6 +36,18 @@ SelfLimits.Apply(environment);
 
 WebApplicationBuilder builder = WebApplication.CreateSlimBuilder();
 
+// Every log line of this process goes to stdout as one structured entry,
+// which the server reads into its log under the plugin's name. The default
+// console logger wrote several plain lines per entry, with no level the
+// server could read back. The framework's routine chatter stays out; its
+// warnings and errors are about this plugin's process and come through.
+builder.Logging.ClearProviders();
+builder.Logging.AddProvider(new PluginHostLoggerProvider(Console.Out));
+builder.Logging.AddFilter("Microsoft", LogLevel.Warning);
+builder.Logging.AddFilter("System", LogLevel.Warning);
+builder.Logging.AddFilter("Grpc", LogLevel.Warning);
+builder.Logging.AddFilter("ProtoBuf", LogLevel.Warning);
+
 builder.WebHost.ConfigureKestrel(options =>
 {
     // Local only, both ways. A TCP port would be reachable from the network

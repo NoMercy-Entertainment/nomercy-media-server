@@ -46,7 +46,12 @@ public static class ConsoleLineRenderer
         string categoryHex = ConsoleThemeColors.Category(category, theme);
 
         string time = timestamp.ToString("HH:mm:ss", CultureInfo.InvariantCulture);
-        string label = DisplayWidth.PadLeft(category.DisplayName, CategoryWidth);
+        // Cut before padding: a name wider than the column (a plugin can be called
+        // anything) would otherwise push the rule and the message out of line.
+        string label = DisplayWidth.PadLeft(
+            DisplayWidth.Truncate(category.DisplayName, CategoryWidth),
+            CategoryWidth
+        );
 
         StringBuilder head = new();
         head.Append(Paint(time, dim, color)).Append(' ');
