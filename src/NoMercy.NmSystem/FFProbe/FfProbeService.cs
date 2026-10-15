@@ -12,6 +12,7 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
+using System.Text;
 using System.Text.RegularExpressions;
 using Newtonsoft.Json;
 using NoMercy.NmSystem.Extensions;
@@ -456,6 +457,22 @@ public class FfProbeService : IFfProbeService
                 || ex.Message.Contains("not enough memory", StringComparison.OrdinalIgnoreCase);
     }
 
+    internal static ProcessStartInfo CreateStartInfo(string arguments) =>
+        new()
+        {
+            WindowStyle = ProcessWindowStyle.Hidden,
+            FileName = AppFiles.FfProbePath,
+            Arguments = arguments,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            // ffprobe emits UTF-8 JSON independently of the Windows console code page.
+            StandardOutputEncoding = Encoding.UTF8,
+            StandardErrorEncoding = Encoding.UTF8,
+            RedirectStandardInput = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+
     private async Task<string> RunFfprobe(string file, CancellationToken ct)
     {
         bool acquired = await FfProbeThrottle.WaitAsync(TimeSpan.FromSeconds(60), ct);
@@ -470,18 +487,9 @@ public class FfProbeService : IFfProbeService
                 CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
 
             process = new();
-            process.StartInfo = new()
-            {
-                WindowStyle = ProcessWindowStyle.Hidden,
-                FileName = AppFiles.FfProbePath,
-                Arguments =
-                    $"-hide_banner -v quiet -show_format -show_streams -print_format json \"{file}\"",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-                RedirectStandardInput = true,
-            };
+            process.StartInfo = CreateStartInfo(
+                $"-hide_banner -v quiet -show_format -show_streams -print_format json \"{file}\""
+            );
 
             // Every child is tied to the server's job object, so a shutdown takes the
             // whole tree with it. Killing the process on the way out only covers the
@@ -610,24 +618,10 @@ public class FfProbeService : IFfProbeService
                 CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
 
             process = new();
-            process.StartInfo = new()
-            {
-                WindowStyle = ProcessWindowStyle.Hidden,
-                FileName = AppFiles.FfProbePath,
-                Arguments =
-                    // Cap probe budget: stdin can't seek, so without a hard limit
-                    // ffprobe reads to EOF when it can't find duration in the
-                    // header. 5 MB / 5 s is plenty for any container's format
-                    // and stream metadata; missing scan-derived stats are
-                    // acceptable for filelist (we only need codecs/resolution/
-                    // duration-from-header).
-                    "-hide_banner -v quiet -probesize 5M -analyzeduration 5M -show_format -show_streams -print_format json -i pipe:0",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                RedirectStandardInput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
+            // The byte-capped, non-seekable pipe needs a bounded probe budget.
+            process.StartInfo = CreateStartInfo(
+                "-hide_banner -v quiet -probesize 5M -analyzeduration 5M -show_format -show_streams -print_format json -i pipe:0"
+            );
 
             // Every child is tied to the server's job object, so a shutdown takes the
             // whole tree with it. Killing the process on the way out only covers the
