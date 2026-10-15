@@ -26,6 +26,13 @@ namespace NoMercy.PluginSdk.Offline;
 /// import cannot leave the server holding half of an answer and calling it
 /// current.
 /// </para>
+/// <para>
+/// Never backwards. A bundle older than what the server already holds is
+/// refused, whether the newer one came from an earlier import or from an
+/// online fetch. Otherwise an old bundle, still inside its validity, would
+/// replace a revocation list that names a withdrawn plugin with one from
+/// before the withdrawal, and the plugin would load again.
+/// </para>
 /// </summary>
 public class PluginOfflineBundleImporter(
     IPluginEntitlementStore entitlements,
@@ -94,6 +101,12 @@ public class PluginOfflineBundleImporter(
             if (held is null || withdrawn is null)
                 return NotSigned();
 
+            if (
+                withdrawn.IssuedAt < revocations.Current.IssuedAt
+                || held.IssuedAt < entitlements.Current.IssuedAt
+            )
+                return OlderThanHeld();
+
             // Read both before writing either. A bundle that parses halfway
             // would otherwise leave the entitlements replaced and the
             // revocation list untouched, which is a server running on two
@@ -113,6 +126,16 @@ public class PluginOfflineBundleImporter(
             document?.Dispose();
         }
     }
+
+    private static PluginRefusal OlderThanHeld() =>
+        new(
+            PluginRefusalCodes.OfflineBundleExpired,
+            "offline bundle",
+            "The server did not accept the bundle.",
+            "The bundle is older than the entitlements and revocation list this server already holds. Importing it would undo a newer answer, such as a plugin that was withdrawn since.",
+            "Download a new bundle from nomercy.tv on a device that is online, and import that one instead.",
+            PluginRefusalSeverity.Blocked
+        );
 
     private static PluginRefusal NotSigned() =>
         new(
