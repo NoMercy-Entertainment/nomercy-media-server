@@ -63,16 +63,28 @@ public class PluginCgroupLimitsTests
     }
 
     /// <summary>
-    /// A plugin's child runs inside the plugin's own slice, so the cap has to
-    /// allow more than the one process the server put in it, and still refuse
-    /// a plugin that spawns in a loop.
+    /// pids.max counts every thread, not only every process. Sixteen there,
+    /// the number the Windows job object uses for processes, left a .NET
+    /// plugin host unable to start its own threads.
     /// </summary>
     [Fact]
-    public void TheProcessCapIsTheSameNumberEveryPlatformUses()
+    public void TheTaskCapCountsThreadsSoItIsNotTheProcessCap()
     {
-        Value(new PluginQuota(25, 1, 0, 0), "pids.max")
-            .Should()
-            .Be(PluginSandboxLimits.ProcessesPerPlugin.ToString());
+        string written = Value(new PluginQuota(25, 1, 0, 0), "pids.max");
+
+        written.Should().Be(PluginSandboxLimits.TasksPerPlugin.ToString());
+        written.Should().NotBe(PluginSandboxLimits.ProcessesPerPlugin.ToString());
+    }
+
+    /// <summary>
+    /// Room for the runtime's own threads and fifteen children of about a
+    /// hundred threads each, and still a ceiling a spawn loop hits quickly.
+    /// </summary>
+    [Fact]
+    public void TheTaskCapLeavesRoomForAHostAndItsChildren()
+    {
+        PluginSandboxLimits.TasksPerPlugin.Should().BeGreaterThanOrEqualTo(64 + 15 * 100);
+        PluginSandboxLimits.TasksPerPlugin.Should().BeLessThanOrEqualTo(32_768);
     }
 
     /// <summary>

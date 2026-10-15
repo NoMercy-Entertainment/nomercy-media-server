@@ -201,7 +201,8 @@ public class PluginContextFactory(
                 broker,
                 routerClient,
                 ledger,
-                services.GetService<TimeProvider>() ?? TimeProvider.System
+                services.GetService<TimeProvider>() ?? TimeProvider.System,
+                manifestSource
             );
 
             // The host renews the leases, because the plugin asking for a
@@ -264,7 +265,17 @@ public class PluginContextFactory(
     private IPluginStorage? HostStorage(Ulid pluginId) =>
         pluginsRoot is null || folderCatalog is null
             ? null
-            : new PluginHostStorage(pluginId, pluginsRoot, folderCatalog, grantStore, quotas);
+            : new PluginHostStorage(
+                pluginId,
+                pluginsRoot,
+                folderCatalog,
+                grantStore,
+                quotas,
+                // The driver itself, not the storage scoped to the plugins
+                // folder: a plugin's own scopes guard their paths before they
+                // call it, and a file at a local path is outside that folder.
+                markSparse: storage.Driver.TryMarkSparse
+            );
 
     /// <summary>
     /// Refreshed as the context is built rather than read live: a plugin reads
@@ -312,6 +323,12 @@ public interface IPluginMediaFetcher
         string? range,
         CancellationToken ct
     );
+
+    /// <summary>
+    /// A file ticket's file, opened for reading, through the plugin folder's
+    /// guard again. Null when the file is no longer there.
+    /// </summary>
+    Stream? OpenFile(string relativePath);
 }
 
 /// <summary>

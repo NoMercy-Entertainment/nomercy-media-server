@@ -20,6 +20,13 @@ public class QueueJobModel
     public byte Attempts { get; set; }
 
     /// <summary>
+    /// Hash of the payload this job was first enqueued with. Set once and never
+    /// rewritten, so a handle given out at dispatch stays valid after the payload
+    /// changes. Empty on rows from before the column existed.
+    /// </summary>
+    public string OriginalPayloadHash { get; set; } = string.Empty;
+
+    /// <summary>
     /// How many times this job lost its worker to the process going away rather
     /// than to anything the job did. Counted separately from
     /// <see cref="Attempts"/> so a restart never retires a healthy job, while a

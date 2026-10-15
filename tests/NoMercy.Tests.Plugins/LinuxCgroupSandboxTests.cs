@@ -95,7 +95,7 @@ public class LinuxCgroupSandboxTests
 
         sandbox.Confine(process, Quota(memoryBytes: 256L * 1024 * 1024)).Should().BeTrue();
 
-        sandbox.ProcessLimitInKernel().Should().Be(PluginSandboxLimits.ProcessesPerPlugin);
+        sandbox.ProcessLimitInKernel().Should().Be(PluginSandboxLimits.TasksPerPlugin);
 
         process.Kill(entireProcessTree: true);
     }

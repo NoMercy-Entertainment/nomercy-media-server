@@ -65,6 +65,7 @@ public class SqliteQueueContext : IQueueContext
             Queue = job.Queue,
             Payload = job.Payload,
             PayloadHash = QueuePayloadHash.For(job.Payload),
+            OriginalPayloadHash = QueuePayloadHash.Original(job.OriginalPayloadHash, job.Payload),
             SharedInputKey = job.SharedInputKey,
             Attempts = job.Attempts,
             Interruptions = job.Interruptions,
@@ -132,22 +133,30 @@ public class SqliteQueueContext : IQueueContext
 
     public QueueJobModel? FindJobByPayloadHash(string payloadHash)
     {
-        QueueJobEntity? job = _context
-            .QueueJobs.AsNoTracking()
-            .FirstOrDefault(entity => entity.PayloadHash == payloadHash);
+        QueueJobEntity? job =
+            _context
+                .QueueJobs.AsNoTracking()
+                .FirstOrDefault(entity => entity.OriginalPayloadHash == payloadHash)
+            ?? _context
+                .QueueJobs.AsNoTracking()
+                .FirstOrDefault(entity => entity.PayloadHash == payloadHash);
 
         return job == null ? null : ToModel(job);
     }
 
     public FailedJobModel? FindFailedJobByPayloadHash(string payloadHash)
     {
-        // The failed table keeps the payload but not its hash, so the match is
-        // made here rather than in SQL. A server's failed table is small - it is
-        // the jobs that went wrong, not the jobs that ran.
-        FailedJobEntity? failed = _context
-            .FailedJobs.AsNoTracking()
-            .AsEnumerable()
-            .FirstOrDefault(entity => QueuePayloadHash.For(entity.Payload) == payloadHash);
+        // Failed rows from before the column existed have it empty and are
+        // matched on their payload. The failed table is small.
+        FailedJobEntity? failed =
+            _context
+                .FailedJobs.AsNoTracking()
+                .FirstOrDefault(entity => entity.OriginalPayloadHash == payloadHash)
+            ?? _context
+                .FailedJobs.AsNoTracking()
+                .Where(entity => entity.OriginalPayloadHash == string.Empty)
+                .AsEnumerable()
+                .FirstOrDefault(entity => QueuePayloadHash.For(entity.Payload) == payloadHash);
 
         return failed == null ? null : ToFailedModel(failed);
     }
@@ -257,6 +266,7 @@ public class SqliteQueueContext : IQueueContext
             Exception = failedJob.Exception,
             FailedAt = failedJob.FailedAt,
             ParentJobId = failedJob.ParentJobId,
+            OriginalPayloadHash = failedJob.OriginalPayloadHash,
         };
         _context.FailedJobs.Add(entity);
     }
@@ -281,6 +291,12 @@ public class SqliteQueueContext : IQueueContext
             Exception = failedJob.Exception,
             FailedAt = failedJob.FailedAt,
             ParentJobId = failedJob.ParentJobId,
+            OriginalPayloadHash = QueuePayloadHash.Original(
+                string.IsNullOrEmpty(failedJob.OriginalPayloadHash)
+                    ? job.OriginalPayloadHash
+                    : failedJob.OriginalPayloadHash,
+                failedJob.Payload
+            ),
         };
         _context.FailedJobs.Add(failedEntity);
 
@@ -324,6 +340,7 @@ public class SqliteQueueContext : IQueueContext
                 Exception = j.Exception,
                 FailedAt = j.FailedAt,
                 ParentJobId = j.ParentJobId,
+                OriginalPayloadHash = j.OriginalPayloadHash,
             })
             .ToList();
     }
@@ -418,6 +435,7 @@ public class SqliteQueueContext : IQueueContext
             Priority = entity.Priority,
             Queue = entity.Queue,
             Payload = entity.Payload,
+            OriginalPayloadHash = entity.OriginalPayloadHash,
             SharedInputKey = entity.SharedInputKey,
             Attempts = entity.Attempts,
             Interruptions = entity.Interruptions,
@@ -441,6 +459,7 @@ public class SqliteQueueContext : IQueueContext
             Exception = entity.Exception,
             FailedAt = entity.FailedAt,
             ParentJobId = entity.ParentJobId,
+            OriginalPayloadHash = entity.OriginalPayloadHash,
         };
     }
 

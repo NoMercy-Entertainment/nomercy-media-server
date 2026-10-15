@@ -205,6 +205,162 @@ public class PluginMediaTicketTests
             .BeNull("a month of playbacks would otherwise hold every address a plugin handed over");
     }
 
+    /// <summary>
+    /// A live HLS player asks for the same playlist every few seconds for as
+    /// long as the viewer watches. While it keeps asking, the ticket keeps
+    /// playing, well past the deadline it was minted with.
+    /// </summary>
+    [Fact]
+    public void A_ticket_that_keeps_being_played_plays_past_its_deadline()
+    {
+        (PluginMediaTicketMinter minter, MovableClock clock) = Build();
+        string ticket = minter.Mint(Radio, Listener, Upstream, TimeSpan.FromMinutes(15));
+
+        for (
+            TimeSpan at = TimeSpan.Zero;
+            at <= TimeSpan.FromHours(2);
+            at += TimeSpan.FromSeconds(6)
+        )
+        {
+            clock.Now = Now + at;
+
+            minter.Refuse(ticket, Listener).Should().BeNull($"the player is still asking at {at}");
+            minter.Played(ticket);
+        }
+    }
+
+    [Fact]
+    public void A_played_ticket_that_falls_silent_after_its_deadline_runs_out()
+    {
+        (PluginMediaTicketMinter minter, MovableClock clock) = Build();
+        string ticket = minter.Mint(Radio, Listener, Upstream, TimeSpan.FromMinutes(15));
+
+        clock.Now = Now.AddMinutes(14);
+        minter.Played(ticket);
+
+        clock.Now =
+            Now.AddMinutes(14) + PluginMediaTicketMinter.IdleTimeout - TimeSpan.FromSeconds(1);
+        minter.Refuse(ticket, Listener).Should().BeNull();
+
+        clock.Now = Now.AddMinutes(14) + PluginMediaTicketMinter.IdleTimeout;
+        minter
+            .Refuse(ticket, Listener)!
+            .Code.Should()
+            .Be(PluginRefusalCodes.MediaTicketExpired, "the viewer stopped watching");
+    }
+
+    /// <summary>
+    /// Being played earns more time only after the deadline. Before it, a
+    /// pause of any length inside the window plays as it always did.
+    /// </summary>
+    [Fact]
+    public void A_ticket_played_early_and_paused_still_plays_until_its_deadline()
+    {
+        (PluginMediaTicketMinter minter, MovableClock clock) = Build();
+        string ticket = minter.Mint(Radio, Listener, Upstream, TimeSpan.FromMinutes(15));
+
+        clock.Now = Now.AddMinutes(1);
+        minter.Played(ticket);
+
+        clock.Now = Now.AddMinutes(14);
+        minter.Refuse(ticket, Listener).Should().BeNull();
+    }
+
+    [Fact]
+    public void A_ticket_that_is_never_played_still_runs_out_at_its_deadline()
+    {
+        (PluginMediaTicketMinter minter, MovableClock clock) = Build();
+        string ticket = minter.Mint(Radio, Listener, Upstream, TimeSpan.FromMinutes(15));
+
+        clock.Now = Now.AddMinutes(15);
+
+        minter.Refuse(ticket, Listener)!.Code.Should().Be(PluginRefusalCodes.MediaTicketExpired);
+    }
+
+    /// <summary>A link that leaked stops working within a day, even while it is used.</summary>
+    [Fact]
+    public void No_ticket_outlives_the_hard_limit_however_much_it_is_played()
+    {
+        (PluginMediaTicketMinter minter, MovableClock clock) = Build();
+        string ticket = minter.Mint(Radio, Listener, Upstream, TimeSpan.FromMinutes(15));
+
+        for (
+            TimeSpan at = TimeSpan.Zero;
+            at < PluginMediaTicketMinter.MaxLifetime;
+            at += TimeSpan.FromMinutes(1)
+        )
+        {
+            clock.Now = Now + at;
+            minter.Played(ticket);
+        }
+
+        clock.Now = Now + PluginMediaTicketMinter.MaxLifetime;
+
+        minter.Refuse(ticket, Listener)!.Code.Should().Be(PluginRefusalCodes.MediaTicketExpired);
+    }
+
+    /// <summary>Playing it does not change who it is for.</summary>
+    [Fact]
+    public void A_played_ticket_is_still_refused_to_somebody_else()
+    {
+        (PluginMediaTicketMinter minter, MovableClock clock) = Build();
+        string ticket = minter.Mint(Radio, Listener, Upstream, TimeSpan.FromMinutes(15));
+
+        clock.Now = Now.AddMinutes(14);
+        minter.Played(ticket);
+        clock.Now = Now.AddMinutes(15).AddSeconds(30);
+
+        minter
+            .Refuse(ticket, Housemate)!
+            .Code.Should()
+            .Be(PluginRefusalCodes.MediaTicketUserMismatch);
+    }
+
+    [Fact]
+    public void Playing_something_that_is_not_a_ticket_does_nothing()
+    {
+        (PluginMediaTicketMinter minter, _) = Build();
+
+        Action play = () =>
+        {
+            minter.Played("not-a-ticket");
+            minter.Played("still.not.a.ticket");
+        };
+
+        play.Should().NotThrow();
+    }
+
+    /// <summary>The sweep keeps the address of a ticket that is still being watched.</summary>
+    [Fact]
+    public void The_address_behind_a_ticket_still_being_played_is_kept()
+    {
+        (PluginMediaTicketMinter minter, MovableClock clock) = Build();
+        string ticket = minter.Mint(Radio, Listener, Upstream, TimeSpan.FromMinutes(15));
+
+        clock.Now = Now.AddMinutes(14);
+        minter.Played(ticket);
+        clock.Now = Now.AddMinutes(15).AddSeconds(30);
+        minter.Mint(Radio, Housemate, "https://other.example.com/x.aac", TimeSpan.FromMinutes(5));
+
+        minter.Read(ticket)!.Upstream.Should().Be(Upstream);
+    }
+
+    /// <summary>
+    /// A ticket that ran out stays out. Playing it is not a way back, or a
+    /// link found in a log would be one request away from working again.
+    /// </summary>
+    [Fact]
+    public void Playing_a_ticket_that_already_ran_out_does_not_bring_it_back()
+    {
+        (PluginMediaTicketMinter minter, MovableClock clock) = Build();
+        string ticket = minter.Mint(Radio, Listener, Upstream, TimeSpan.FromMinutes(15));
+
+        clock.Now = Now.AddMinutes(16);
+        minter.Played(ticket);
+
+        minter.Refuse(ticket, Listener)!.Code.Should().Be(PluginRefusalCodes.MediaTicketExpired);
+    }
+
     private sealed class MovableClock(DateTimeOffset now) : TimeProvider
     {
         public DateTimeOffset Now { get; set; } = now;

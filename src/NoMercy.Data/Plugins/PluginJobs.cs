@@ -19,11 +19,8 @@ namespace NoMercy.Data.Plugins;
 /// The server side of <see cref="IPluginJobs" />.
 ///
 /// <para>
-/// The id a plugin holds is the job's payload hash, not the queue's row id, and
-/// that is the whole reason this can answer at all. A row id does not survive:
-/// a job that succeeds is deleted from the queue, and a job that fails is
-/// deleted and rewritten into the failed table under a new identity. The payload
-/// is what both rows have in common.
+/// The id a plugin holds is the hash of the job's first payload. It is stored on
+/// the queue row and the failed row and survives payload rewrites.
 /// </para>
 ///
 /// <para>

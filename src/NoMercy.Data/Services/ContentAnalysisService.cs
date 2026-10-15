@@ -18,6 +18,7 @@ using NoMercy.Encoder.ContentAnalysis.Fingerprinting;
 using NoMercy.Encoder.Progress;
 using NoMercy.Encoder.Subtitles;
 using NoMercy.Storage;
+using static NoMercy.Database.Models.Media.VideoFileExtensions;
 using ContentSegment = NoMercy.Database.Models.Media.ContentSegment;
 using ContentSegmentType = NoMercy.Database.Models.Media.ContentSegmentType;
 using VideoFile = NoMercy.Database.Models.Media.VideoFile;
@@ -129,7 +130,7 @@ public class ContentAnalysisService(
         foreach (Episode episode in episodes)
         {
             ct.ThrowIfCancellationRequested();
-            VideoFile? source = episode.VideoFiles.FirstOrDefault();
+            VideoFile? source = episode.VideoFiles.Newest();
             if (source is null)
                 continue;
 

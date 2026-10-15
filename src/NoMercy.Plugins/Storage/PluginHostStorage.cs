@@ -31,6 +31,7 @@ public class PluginHostStorage : IPluginStorage
     private readonly IPluginGrantStore _grants;
     private readonly string _databaseRoot;
     private readonly UserId? _userId;
+    private readonly Func<string, bool>? _markSparse;
 
     public PluginHostStorage(
         Ulid pluginId,
@@ -38,26 +39,31 @@ public class PluginHostStorage : IPluginStorage
         IPluginFolderCatalog catalog,
         IPluginGrantStore grants,
         PluginQuotaMeter? quotas = null,
-        UserId? userId = null
+        UserId? userId = null,
+        Func<string, bool>? markSparse = null
     )
     {
         _pluginId = pluginId;
         _catalog = catalog;
         _grants = grants;
         _userId = userId;
+        _markSparse = markSparse;
         _databaseRoot = Path.Combine(pluginsRoot, "data", pluginId.ToString());
 
         PluginLocalStorageScope privateScope = new(
             pluginId,
-            Path.Combine(pluginsRoot, "data", pluginId.ToString())
+            Path.Combine(pluginsRoot, "data", pluginId.ToString()),
+            markSparse
         );
         PluginLocalStorageScope temporary = new(
             pluginId,
-            Path.Combine(pluginsRoot, "temp", pluginId.ToString())
+            Path.Combine(pluginsRoot, "temp", pluginId.ToString()),
+            markSparse
         );
         PluginLocalStorageScope derived = new(
             pluginId,
-            Path.Combine(pluginsRoot, "derived", pluginId.ToString())
+            Path.Combine(pluginsRoot, "derived", pluginId.ToString()),
+            markSparse
         );
 
         privateScope.EnsureExists();
@@ -84,6 +90,15 @@ public class PluginHostStorage : IPluginStorage
     public IPluginStorageScope Temp { get; }
 
     public IPluginStorageScope Derived { get; }
+
+    /// <summary>
+    /// A file outside every scope, at a full local path. Not guarded to a
+    /// folder: in this process the plugin already writes that file itself,
+    /// and marking it sparse lets it do nothing it could not before. The
+    /// native call answers false for anything but an existing local file.
+    /// </summary>
+    public Task<bool> MarkSparseAsync(string localPath, CancellationToken ct = default) =>
+        Task.FromResult(_markSparse?.Invoke(localPath) ?? false);
 
     public async Task<IPluginStorageScope> PathAsync(
         string folderId,

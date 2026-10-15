@@ -15,7 +15,13 @@ public static class PluginAbi
 {
     // 12.1 added IPluginMusicQuery.GetFailedDjAnalysisAsync, PluginTrackDjFailure and the
     // PluginTopics.MusicAnalysisCompleted topic. Additive for every plugin already loading.
-    public static Version Current { get; } = new(12, 2);
+    // 12.2 added PluginViewRequest.Origin.
+    // 12.3 added IPluginStorageScope.MarkSparseAsync and IPluginMediaProxy.MintFileAsync.
+    // Additive: both are default members, so a plugin or test double that implements
+    // either interface itself keeps compiling.
+    // 12.4 added IPluginStorage.MarkSparseAsync(localPath), a default member too.
+    // 12.5 added IPluginPortMap.ProbeAsync and PluginPortReachability. Default member.
+    public static Version Current { get; } = new(12, 5);
 
     /// <summary>
     /// The oldest major this server can load at all.

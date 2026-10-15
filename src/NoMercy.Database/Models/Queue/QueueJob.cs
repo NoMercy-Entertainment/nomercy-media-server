@@ -30,6 +30,7 @@ namespace NoMercy.Database.Models.Queue;
 // one index. The lookup still confirms against the real payload, so dedup decides
 // on the same equality it always did.
 [Index(nameof(PayloadHash))]
+[Index(nameof(OriginalPayloadHash))]
 // Serves the sweep that reclaims shared input no queued job still reads.
 [Index(nameof(SharedInputKey))]
 // Every worker poll reserves via (Queue, ReservedAt IS NULL, Attempts, AvailableAt)
@@ -61,6 +62,13 @@ public class QueueJob
     /// </summary>
     [MaxLength(QueuePayloadHash.Length)]
     public string PayloadHash { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Hash of the payload at first enqueue. Set once, never rewritten, so the id
+    /// a plugin was handed at dispatch still finds this job after a re-enqueue.
+    /// </summary>
+    [MaxLength(QueuePayloadHash.Length)]
+    public string OriginalPayloadHash { get; set; } = string.Empty;
 
     public byte Attempts { get; set; } = 0;
 

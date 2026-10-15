@@ -129,7 +129,7 @@ public class VideoPlaylistResponseDto
         int? index = null
     )
     {
-        if (episode.VideoFiles.FirstOrDefault() is null || episode.Tv is null)
+        if (episode.VideoFiles.Newest() is null || episode.Tv is null)
             return null;
 
         return new VideoPlaylistResponseDto(episode, playlistType, playlistId, country, index);
@@ -149,7 +149,7 @@ public class VideoPlaylistResponseDto
         int? index = null
     )
     {
-        VideoFile? videoFile = episode.VideoFiles.FirstOrDefault();
+        VideoFile? videoFile = episode.VideoFiles.Newest();
         if (videoFile is null)
             throw new InvalidOperationException(
                 $"Episode {episode.Id} has no playable video file."
@@ -219,7 +219,7 @@ public class VideoPlaylistResponseDto
         Collection? collection = null
     )
     {
-        if (movie.VideoFiles.FirstOrDefault() is null)
+        if (movie.VideoFiles.Newest() is null)
             return null;
 
         return new VideoPlaylistResponseDto(
@@ -247,7 +247,7 @@ public class VideoPlaylistResponseDto
         Collection? collection = null
     )
     {
-        VideoFile? videoFile = movie.VideoFiles.FirstOrDefault();
+        VideoFile? videoFile = movie.VideoFiles.Newest();
         if (videoFile is null)
             throw new InvalidOperationException($"Movie {movie.Id} has no playable video file.");
 

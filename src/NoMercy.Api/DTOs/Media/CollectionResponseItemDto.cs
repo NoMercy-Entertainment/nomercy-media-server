@@ -16,6 +16,7 @@ using NoMercy.Database.Models.Movies;
 using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Extensions;
 using NoMercy.Providers.TMDB.Models.Collections;
+using static NoMercy.Database.Models.Media.VideoFileExtensions;
 
 namespace NoMercy.Api.DTOs.Media;
 
@@ -132,7 +133,7 @@ public record CollectionResponseItemDto
         Duration = (int)
             collection
                 .CollectionMovies.Select(movie =>
-                    movie.Movie.VideoFiles.FirstOrDefault()?.Duration?.ToSeconds()
+                    movie.Movie.VideoFiles.Newest()?.Duration?.ToSeconds()
                     ?? movie.Movie.Runtime * 60
                     ?? 0
                 )

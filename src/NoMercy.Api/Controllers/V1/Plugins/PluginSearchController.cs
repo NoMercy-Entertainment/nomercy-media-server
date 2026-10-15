@@ -15,7 +15,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Api.DTOs.Plugins;
-using NoMercy.Authorization;
+using NoMercy.Api.Plugins;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Search;
 
@@ -48,12 +48,10 @@ public class PluginSearchController(IPluginSearchService search) : BaseControlle
     {
         string asking = PluginSurface.IsKnown(surface) ? surface! : PluginSurface.Web;
 
-        PluginCaller caller = new(
-            new UserId(new Ulid(User.UserId())),
-            User.UserName(),
-            User.Role() == "owner" ? PluginRole.Owner : PluginRole.Member,
+        PluginCaller caller = PluginCallers.For(
+            User,
             PluginAccess.Owned,
-            Request.Headers.AcceptLanguage.ToString() is { Length: > 0 } locale ? locale : "en",
+            Request.Headers.AcceptLanguage.ToString(),
             asking
         );
 

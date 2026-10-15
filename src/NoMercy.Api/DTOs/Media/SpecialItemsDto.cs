@@ -18,6 +18,7 @@ using NoMercy.Database.Models.Movies;
 using NoMercy.Database.Models.TvShows;
 using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Extensions;
+using static NoMercy.Database.Models.Media.VideoFileExtensions;
 
 namespace NoMercy.Api.DTOs.Media;
 
@@ -198,7 +199,7 @@ public record SpecialItemsDto
         Duration = tv.Duration * have * 60 ?? 0;
 
         TotalDuration = tv.Episodes.Sum(item =>
-            item.VideoFiles.FirstOrDefault()?.Duration?.ToSeconds() ?? 0
+            item.VideoFiles.Newest()?.Duration?.ToSeconds() ?? 0
         );
 
         VideoId = tv.Trailer;

@@ -32,4 +32,12 @@ public interface IPluginPortMapClient
     );
 
     Task UnmapAsync(PluginPortMapping mapping, CancellationToken ct = default);
+
+    /// <summary>
+    /// Whether a TCP port answers on the router's public address. Unknown
+    /// when this client cannot tell; the facade has already decided the
+    /// plugin may ask about this port.
+    /// </summary>
+    Task<PluginPortReachability> ProbeAsync(int externalPort, CancellationToken ct = default) =>
+        Task.FromResult(PluginPortReachability.Unknown);
 }

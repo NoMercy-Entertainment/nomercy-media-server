@@ -482,7 +482,9 @@ public static class PluginServiceCollectionExtensions
             sp.GetRequiredService<IPluginCallerAccessor>(),
             sp.GetRequiredService<IPluginLiveStore>(),
             sp.GetRequiredService<ILoggerFactory>(),
-            sp.GetRequiredService<PluginQuotaMeter>()
+            sp.GetRequiredService<PluginQuotaMeter>(),
+            pluginsPath,
+            PluginStorage(sp, pluginsPath)
         ));
 
         services.AddSingleton<PluginMediaTicketMinter>(sp =>

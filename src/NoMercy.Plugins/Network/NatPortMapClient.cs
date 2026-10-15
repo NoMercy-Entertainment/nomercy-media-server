@@ -30,10 +30,13 @@ public class NatPortMapClient : IPluginPortMapClient
 {
     private const int NatPmpPort = 5351;
     private const byte Version = 0;
+    private const byte OpcodeExternalAddress = 0;
     private const byte OpcodeMapUdp = 1;
     private const byte OpcodeMapTcp = 2;
 
     private static readonly TimeSpan Answer = TimeSpan.FromSeconds(3);
+
+    private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(3);
 
     public async Task<int> MapAsync(
         int internalPort,
@@ -57,6 +60,90 @@ public class NatPortMapClient : IPluginPortMapClient
     }
 
     /// <summary>
+    /// The router's public address, then a connection to it on the port. A
+    /// router that does not say its address is a question this cannot
+    /// answer, which is Unknown rather than Closed.
+    /// </summary>
+    public async Task<PluginPortReachability> ProbeAsync(
+        int externalPort,
+        CancellationToken ct = default
+    )
+    {
+        IPAddress? external = await ExternalAddressAsync(ct);
+
+        return external is null
+            ? PluginPortReachability.Unknown
+            : await ConnectAsync(external, externalPort, ProbeTimeout, ct);
+    }
+
+    /// <summary>
+    /// Whether a TCP connection to the address and port is accepted within
+    /// the timeout. Refused, unreachable and silent all read as closed: from
+    /// the outside, each is a port nobody can reach.
+    /// </summary>
+    internal static async Task<PluginPortReachability> ConnectAsync(
+        IPAddress address,
+        int port,
+        TimeSpan timeout,
+        CancellationToken ct
+    )
+    {
+        using TcpClient client = new(address.AddressFamily);
+        using CancellationTokenSource giveUp = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        giveUp.CancelAfter(timeout);
+
+        try
+        {
+            await client.ConnectAsync(address, port, giveUp.Token);
+
+            return PluginPortReachability.Open;
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return PluginPortReachability.Closed;
+        }
+        catch (SocketException)
+        {
+            return PluginPortReachability.Closed;
+        }
+    }
+
+    /// <summary>
+    /// NAT-PMP opcode 0: the router's public IPv4 address. Null when there is
+    /// no router, it does not answer, or it answers with an error.
+    /// </summary>
+    private static async Task<IPAddress?> ExternalAddressAsync(CancellationToken ct)
+    {
+        try
+        {
+            byte[] answer = await SendAsync([Version, OpcodeExternalAddress], ct);
+
+            return ParseExternalAddress(answer);
+        }
+        catch (PluginRefusedException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The address from an opcode-0 answer: version, opcode 128, a result of
+    /// zero, the epoch, then four address bytes. Anything else is null.
+    /// </summary>
+    internal static IPAddress? ParseExternalAddress(byte[] answer)
+    {
+        if (answer.Length < 12 || answer[1] != 128 + OpcodeExternalAddress)
+            return null;
+
+        if (BinaryPrimitives.ReadUInt16BigEndian(answer.AsSpan(2, 2)) != 0)
+            return null;
+
+        IPAddress address = new(answer.AsSpan(8, 4));
+
+        return address.Equals(IPAddress.Any) ? null : address;
+    }
+
+    /// <summary>
     /// A lease of zero is how NAT-PMP says "remove this", so unmapping is the
     /// same request with the clock set to nothing.
     /// </summary>
@@ -73,10 +160,6 @@ public class NatPortMapClient : IPluginPortMapClient
         CancellationToken ct
     )
     {
-        IPAddress gateway =
-            DefaultGateway()
-            ?? throw new PluginRefusedException(PluginRefusalMessages.NoRouterFound());
-
         byte[] request = new byte[12];
         request[0] = Version;
         request[1] = transport == PluginTransport.Udp ? OpcodeMapUdp : OpcodeMapTcp;
@@ -86,6 +169,16 @@ public class NatPortMapClient : IPluginPortMapClient
             request.AsSpan(8, 4),
             (uint)Math.Max(0, lease.TotalSeconds)
         );
+
+        return await SendAsync(request, ct);
+    }
+
+    /// <summary>One NAT-PMP request to the default gateway, and its answer.</summary>
+    private static async Task<byte[]> SendAsync(byte[] request, CancellationToken ct)
+    {
+        IPAddress gateway =
+            DefaultGateway()
+            ?? throw new PluginRefusedException(PluginRefusalMessages.NoRouterFound());
 
         using UdpClient client = new();
         client.Connect(new IPEndPoint(gateway, NatPmpPort));

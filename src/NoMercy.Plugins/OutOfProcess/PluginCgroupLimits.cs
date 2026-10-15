@@ -34,7 +34,8 @@ public static class PluginCgroupLimits
         [
             ("memory.max", Memory(quota)),
             ("cpu.max", Cpu(quota)),
-            ("pids.max", Text(PluginSandboxLimits.ProcessesPerPlugin)),
+            // Tasks, not processes: pids.max counts threads too.
+            ("pids.max", Text(PluginSandboxLimits.TasksPerPlugin)),
         ];
 
     /// <summary>

@@ -231,6 +231,43 @@ public class NativeMediaBrokerTests : IDisposable
         response.Refusal!.What.Should().Contain("Media");
     }
 
+    /// <summary>
+    /// A plugin in its own process hands the player a recording by its path
+    /// in the plugin's folder. The path crosses; the file is the server's to
+    /// check and serve.
+    /// </summary>
+    [Fact]
+    public async Task A_file_path_reaches_the_proxy_branch_and_a_link_comes_back()
+    {
+        RecordingMedia media = new();
+
+        PluginCallResponse response = await Ask(
+            new FakeCapabilities(null),
+            "media.proxy",
+            nameof(IPluginMediaProxy.MintFileAsync),
+            """{"path":"recordings/news.ts"}""",
+            media: media
+        );
+
+        response.Ok.Should().BeTrue();
+        response.PayloadJson.Should().Contain("minted.test");
+        media.MintedFile.Should().Be("recordings/news.ts");
+    }
+
+    [Fact]
+    public async Task A_file_mint_with_no_path_is_refused_as_not_understood()
+    {
+        PluginCallResponse response = await Ask(
+            new FakeCapabilities(null),
+            "media.proxy",
+            nameof(IPluginMediaProxy.MintFileAsync),
+            "{}",
+            media: new RecordingMedia()
+        );
+
+        response.Ok.Should().BeFalse();
+    }
+
     private const string RemuxPayload =
         """{"request":{"source":"https://example.test/one.ts","container":"Hls"}}""";
 
@@ -300,6 +337,8 @@ internal sealed class RecordingMedia : IPluginMedia
     public PluginRemuxRequest? Transcoded => _branches.Transcoded;
 
     public IReadOnlyList<PluginLiveChannel> Channels => _branches.Channels;
+
+    public string? MintedFile => _branches.MintedFile;
 }
 
 internal sealed class RecordingBranches
@@ -333,6 +372,14 @@ internal sealed class RecordingBranches
 
     public Task<PluginMediaUrl> MintImageAsync(Uri source, CancellationToken ct = default) =>
         Task.FromResult(Url);
+
+    public string? MintedFile { get; private set; }
+
+    public Task<PluginMediaUrl> MintFileAsync(string path, CancellationToken ct = default)
+    {
+        MintedFile = path;
+        return Task.FromResult(Url);
+    }
 
     Task<PluginMediaUrl> IPluginMediaTranscode.StartAsync(
         PluginRemuxRequest request,

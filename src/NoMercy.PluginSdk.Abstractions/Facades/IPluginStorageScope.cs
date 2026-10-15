@@ -42,6 +42,27 @@ public interface IPluginStorageScope
         bool recursive = false,
         CancellationToken ct = default
     );
+
+    /// <summary>
+    /// Marks a file in this scope sparse, so the disk holds only the parts
+    /// written to it. On NTFS a file that is not sparse has its whole length
+    /// reserved the moment the length is set, and every write past the data
+    /// written so far zero-fills the gap first: a download written in the
+    /// order its pieces arrive then takes about twice as long.
+    /// <para>
+    /// Call it on a file that exists, right after creating it and before
+    /// setting its length. The writer may still hold it open.
+    /// </para>
+    /// <para>
+    /// Best effort, and never a reason to stop: true when the flag was set,
+    /// false when nothing was done. That is every platform but Windows,
+    /// where files are sparse already, a folder that is not a local disk,
+    /// and a file system that refuses, such as FAT32 on a USB disk. Added in
+    /// ABI 12.3.
+    /// </para>
+    /// </summary>
+    Task<bool> MarkSparseAsync(string path, CancellationToken ct = default) =>
+        Task.FromResult(false);
 }
 
 /// <param name="Path">Relative to the scope, forward slashes, safe to pass back to this scope.</param>

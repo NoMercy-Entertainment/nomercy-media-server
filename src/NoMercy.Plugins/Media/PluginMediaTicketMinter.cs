@@ -26,13 +26,34 @@ namespace NoMercy.PluginSdk.Media;
 /// keeps the address. A link a viewer can read is a link a viewer can share,
 /// and an upstream that carries a credential would then be shared with it.
 /// </para>
+/// <para>
+/// The deadline is for starting playback, not for continuing it. A live HLS
+/// player fetches the same playlist every few seconds for as long as the
+/// viewer watches, so a deadline checked on every request ended every live
+/// channel at the same minute. A ticket that is played stays good while it
+/// keeps being played (<see cref="IdleTimeout" />), up to
+/// <see cref="MaxLifetime" />. One that nobody plays still runs out at its
+/// deadline.
+/// </para>
 /// </summary>
 public class PluginMediaTicketMinter(TimeProvider clock, byte[] serverKey)
 {
-    private readonly ConcurrentDictionary<
-        string,
-        (PluginProxyRequest Request, DateTimeOffset Until)
-    > _upstreams = new();
+    private static readonly Uri FileTicketAddress = new("file:///plugin-data");
+
+    private readonly ConcurrentDictionary<string, Held> _upstreams = new();
+
+    /// <summary>
+    /// How long a ticket that has been played stays good after its last
+    /// request. A live player asks every 2 to 10 seconds, so a minute or two
+    /// of silence means the viewer stopped.
+    /// </summary>
+    public static TimeSpan IdleTimeout { get; } = TimeSpan.FromMinutes(2);
+
+    /// <summary>
+    /// The most any ticket lives from when it was minted, however busy. A
+    /// link that leaked stops working within a day even if it is being used.
+    /// </summary>
+    public static TimeSpan MaxLifetime { get; } = TimeSpan.FromHours(24);
 
     /// <summary>One address, which is what most plugins hand over.</summary>
     public string Mint(Ulid pluginId, Guid userId, string upstream, TimeSpan lifetime) =>
@@ -43,9 +64,42 @@ public class PluginMediaTicketMinter(TimeProvider clock, byte[] serverKey)
             lifetime
         );
 
-    public string Mint(Ulid pluginId, Guid userId, PluginProxyRequest request, TimeSpan lifetime)
+    public string Mint(Ulid pluginId, Guid userId, PluginProxyRequest request, TimeSpan lifetime) =>
+        Mint(pluginId, userId, request, null, lifetime);
+
+    /// <summary>
+    /// A file in the plugin's own folder, by its path relative to that folder.
+    /// The path is what is kept, not where it resolved to: it goes through the
+    /// folder's guard again on every request, so a file swapped for a link
+    /// after minting is still refused.
+    /// </summary>
+    public string MintFile(Ulid pluginId, Guid userId, string relativePath, TimeSpan lifetime) =>
+        Mint(
+            pluginId,
+            userId,
+            new PluginProxyRequest
+            {
+                // Never fetched: a file ticket is served from the folder by its
+                // path. A fixed address keeps any file name, "#" and "%" included,
+                // from having to make a valid URI.
+                Links = [new() { Url = FileTicketAddress }],
+                RewriteHlsPlaylists = false,
+            },
+            relativePath,
+            lifetime
+        );
+
+    private string Mint(
+        Ulid pluginId,
+        Guid userId,
+        PluginProxyRequest request,
+        string? file,
+        TimeSpan lifetime
+    )
     {
-        DateTimeOffset expiresAt = clock.GetUtcNow().Add(lifetime);
+        DateTimeOffset now = clock.GetUtcNow();
+        DateTimeOffset expiresAt = now.Add(lifetime);
+        DateTimeOffset hardStop = now.Add(MaxLifetime);
 
         // A fresh handle per ticket rather than a hash of the address. Two
         // viewers opening the same stream get their own ticket, and one
@@ -53,7 +107,13 @@ public class PluginMediaTicketMinter(TimeProvider clock, byte[] serverKey)
         string digest = Ulid.NewUlid().ToString();
 
         Forget();
-        _upstreams[digest] = (request, expiresAt);
+        _upstreams[digest] = new(
+            request,
+            file,
+            expiresAt,
+            hardStop > expiresAt ? hardStop : expiresAt,
+            null
+        );
 
         string payload = JsonSerializer.Serialize(
             new
@@ -70,7 +130,28 @@ public class PluginMediaTicketMinter(TimeProvider clock, byte[] serverKey)
         return $"{body}.{Base64Url(Signature(body))}";
     }
 
-    public PluginMediaTicket? Read(string ticket)
+    public PluginMediaTicket? Read(string ticket) => Open(ticket)?.Ticket;
+
+    /// <summary>
+    /// Records that a ticket was just played, which keeps it good for
+    /// <see cref="IdleTimeout" /> more. Called once a request is cleared to
+    /// play, and never for one that was refused.
+    /// </summary>
+    public void Played(string ticket)
+    {
+        DateTimeOffset now = clock.GetUtcNow();
+
+        // A ticket that already ran out stays out. Playing it is not a way
+        // back, or a link found in a log would be one request from working.
+        if (Open(ticket) is not { } opened || !opened.Held.IsLive(now))
+            return;
+
+        // Compare-and-swap: if the entry changed or was forgotten in the
+        // meantime, the newer state wins rather than being written over.
+        _upstreams.TryUpdate(opened.Digest, opened.Held with { LastPlayed = now }, opened.Held);
+    }
+
+    private (PluginMediaTicket Ticket, string Digest, Held Held)? Open(string ticket)
     {
         string[] parts = ticket.Split('.');
 
@@ -91,20 +172,23 @@ public class PluginMediaTicketMinter(TimeProvider clock, byte[] serverKey)
 
             using JsonDocument document = JsonDocument.Parse(FromBase64Url(parts[0]));
             JsonElement root = document.RootElement;
+            string digest = root.GetProperty("s").GetString() ?? string.Empty;
 
-            if (
-                !_upstreams.TryGetValue(
-                    root.GetProperty("s").GetString() ?? string.Empty,
-                    out (PluginProxyRequest Request, DateTimeOffset Until) held
-                )
-            )
+            if (!_upstreams.TryGetValue(digest, out Held? held))
                 return null;
 
-            return new(
-                Ulid.Parse(root.GetProperty("p").GetString()!),
-                Guid.Parse(root.GetProperty("u").GetString()!),
-                held.Request,
-                DateTimeOffset.FromUnixTimeSeconds(root.GetProperty("e").GetInt64())
+            return (
+                new(
+                    Ulid.Parse(root.GetProperty("p").GetString()!),
+                    Guid.Parse(root.GetProperty("u").GetString()!),
+                    held.Request,
+                    DateTimeOffset.FromUnixTimeSeconds(root.GetProperty("e").GetInt64())
+                )
+                {
+                    FilePath = held.File,
+                },
+                digest,
+                held
             );
         }
         catch (Exception exception)
@@ -121,22 +205,22 @@ public class PluginMediaTicketMinter(TimeProvider clock, byte[] serverKey)
     /// </summary>
     public PluginRefusal? Refuse(string ticket, Guid? asking = null)
     {
-        PluginMediaTicket? read = Read(ticket);
+        (PluginMediaTicket Ticket, string Digest, Held Held)? opened = Open(ticket);
 
-        if (read is null || read.ExpiresAt <= clock.GetUtcNow())
+        if (opened is not { } open || !open.Held.IsLive(clock.GetUtcNow()))
             return new(
                 PluginRefusalCodes.MediaTicketExpired,
-                read?.PluginId.ToString() ?? "unknown",
+                opened?.Ticket.PluginId.ToString() ?? "unknown",
                 "The media link did not play.",
                 "The link has run out. This server mints a new one for every playback, so they are short-lived by design.",
                 "Open the item again from the plugin's page.",
                 PluginRefusalSeverity.Blocked
             );
 
-        if (asking is { } user && user != read.UserId)
+        if (asking is { } user && user != open.Ticket.UserId)
             return new(
                 PluginRefusalCodes.MediaTicketUserMismatch,
-                read.PluginId.ToString(),
+                open.Ticket.PluginId.ToString(),
                 "The media link did not play.",
                 "The link was minted for a different account on this server.",
                 "Open the item from your own account.",
@@ -155,14 +239,9 @@ public class PluginMediaTicketMinter(TimeProvider clock, byte[] serverKey)
     {
         DateTimeOffset now = clock.GetUtcNow();
 
-        foreach (
-            KeyValuePair<
-                string,
-                (PluginProxyRequest Request, DateTimeOffset Until)
-            > held in _upstreams
-        )
+        foreach (KeyValuePair<string, Held> held in _upstreams)
         {
-            if (held.Value.Until <= now)
+            if (!held.Value.IsLive(now))
                 _upstreams.TryRemove(held.Key, out _);
         }
     }
@@ -178,5 +257,23 @@ public class PluginMediaTicketMinter(TimeProvider clock, byte[] serverKey)
         string padded = value.Replace('-', '+').Replace('_', '/');
 
         return Convert.FromBase64String(padded.PadRight((padded.Length + 3) / 4 * 4, '='));
+    }
+
+    /// <summary>What the server keeps for one ticket.</summary>
+    /// <param name="File">For a file ticket, the path relative to the plugin's folder.</param>
+    /// <param name="StartBy">The deadline the ticket was minted with: play it by then.</param>
+    /// <param name="HardStop">The end, however much it is played.</param>
+    /// <param name="LastPlayed">The last request it served, or null before the first.</param>
+    private sealed record Held(
+        PluginProxyRequest Request,
+        string? File,
+        DateTimeOffset StartBy,
+        DateTimeOffset HardStop,
+        DateTimeOffset? LastPlayed
+    )
+    {
+        public bool IsLive(DateTimeOffset now) =>
+            now < HardStop
+            && (now < StartBy || (LastPlayed is { } played && now - played < IdleTimeout));
     }
 }

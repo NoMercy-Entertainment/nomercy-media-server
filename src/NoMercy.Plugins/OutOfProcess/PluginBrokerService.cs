@@ -736,6 +736,14 @@ public sealed class PluginBrokerService(
 
                 return Value(await media.Proxy.MintImageAsync(call.Source));
 
+            case nameof(IPluginMediaProxy.MintFileAsync):
+                if (call.Path is null)
+                    return PluginCallResponse.Refused(
+                        Wire(NotUnderstood("media.proxy", request.Member))
+                    );
+
+                return Value(await media.Proxy.MintFileAsync(call.Path));
+
             default:
                 return NoSuchMember("media.proxy", request.Member);
         }
@@ -947,7 +955,7 @@ public sealed class PluginBrokerService(
 
     private sealed record NativeCall(string? Library);
 
-    private sealed record ProxyCall(PluginProxyRequest? Request, Uri? Source);
+    private sealed record ProxyCall(PluginProxyRequest? Request, Uri? Source, string? Path = null);
 
     private sealed record RemuxCall(PluginRemuxRequest? Request);
 

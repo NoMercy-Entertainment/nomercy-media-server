@@ -175,6 +175,8 @@ public sealed class LocalStorageDriver : IStorageDriver
 
     public string GetFullPath(string path) => Path.GetFullPath(path);
 
+    public bool TryMarkSparse(string path) => SparseFile.TryMark(path);
+
     public string? ResolveLinkTarget(string path)
     {
         try

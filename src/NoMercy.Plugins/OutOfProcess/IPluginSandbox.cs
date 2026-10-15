@@ -25,7 +25,8 @@ namespace NoMercy.PluginSdk.OutOfProcess;
 public static class PluginSandboxLimits
 {
     /// <summary>
-    /// The plugin's own process plus fifteen children.
+    /// The plugin's own process plus fifteen children, where the kernel counts
+    /// processes: the Windows job object.
     /// <para>
     /// A cap rather than none: a plugin that spawns in a loop is the cheapest
     /// way to take a machine down, and the count is the only thing the kernel
@@ -33,6 +34,19 @@ public static class PluginSandboxLimits
     /// </para>
     /// </summary>
     public const uint ProcessesPerPlugin = 16;
+
+    /// <summary>
+    /// The same cap where the kernel counts tasks: Linux cgroup v2
+    /// <c>pids.max</c>, which counts every thread as well as every process.
+    /// <para>
+    /// Sixteen there was a plugin host that could not start: the .NET runtime,
+    /// Kestrel and gRPC alone run more threads than that. A spawned ffmpeg runs
+    /// about a hundred on a machine with many cores, and a plugin may run
+    /// fifteen children. 4096 leaves room for that and still stops a plugin
+    /// that spawns in a loop long before the machine runs out of tasks.
+    /// </para>
+    /// </summary>
+    public const uint TasksPerPlugin = 4096;
 }
 
 /// <summary>What the server is about to run, before a sandbox has its say.</summary>

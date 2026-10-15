@@ -355,6 +355,12 @@ public partial class FileManager(
 
         if (Filter is null && hasCandidates)
             await ReconcileStaleVideoFilesAsync(library);
+        else if (Filter is not null && DispatchedMediaId is { } dispatchedId)
+            await fileRepository.DeleteSupersededVideoFilesAsync(
+                dispatchedId,
+                library.Type == MediaTypes.MovieMediaType,
+                _storedVideoFileKeys
+            );
 
         // Publish refresh events only after successful commit
         switch (library.Type)

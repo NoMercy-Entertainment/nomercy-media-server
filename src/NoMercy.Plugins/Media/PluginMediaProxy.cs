@@ -11,10 +11,13 @@
 
 using System.Net;
 using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Capabilities;
+using NoMercy.PluginSdk.Network;
 using NoMercy.PluginSdk.Quotas;
+using NoMercy.Storage;
 
 namespace NoMercy.PluginSdk.Media;
 
@@ -26,17 +29,52 @@ namespace NoMercy.PluginSdk.Media;
 /// link that is checked, short-lived and bound to the one account that asked.
 /// </para>
 /// </summary>
-public class PluginMediaProxy(
+public partial class PluginMediaProxy(
     Ulid pluginId,
     IPluginCallerAccessor caller,
     IPluginCapabilityBroker broker,
     PluginMediaTicketMinter minter,
     HttpClient http,
     ILogger logger,
-    PluginQuotaMeter? quotas = null
+    PluginQuotaMeter? quotas = null,
+    string? dataFolder = null,
+    IStorage? files = null
 ) : IPluginMediaProxy, IPluginMediaFetcher
 {
+    // Enough for a byte order mark, a little whitespace and "#EXTM3U".
+    private const int SniffLength = 64;
+
+    private const string RewrittenPlaylistType = "application/vnd.apple.mpegurl";
+
+    private static readonly string[] PlaylistTypes =
+    [
+        "application/vnd.apple.mpegurl",
+        "application/x-mpegurl",
+        "audio/mpegurl",
+        "audio/x-mpegurl",
+    ];
+
+    // IPTV panels and CDNs serve playlists under these as often as under the
+    // right type. An answer under one of them, or under none, is looked at
+    // rather than trusted.
+    private static readonly string[] SniffedTypes =
+    [
+        "application/octet-stream",
+        "binary/octet-stream",
+        "text/plain",
+        "video/mp2t",
+    ];
+
+    private static readonly byte[] PlaylistMarker = "#EXTM3U"u8.ToArray();
+
     public static TimeSpan TicketLifetime { get; } = TimeSpan.FromMinutes(15);
+
+    /// <summary>
+    /// A URI attribute in a tag line: EXT-X-KEY, EXT-X-MAP, EXT-X-MEDIA,
+    /// EXT-X-I-FRAME-STREAM-INF and the rest all name their address this way.
+    /// </summary>
+    [GeneratedRegex("URI=\"([^\"]*)\"")]
+    private static partial Regex UriAttribute();
 
     public Task<PluginMediaUrl> MintAsync(
         PluginProxyRequest request,
@@ -72,6 +110,58 @@ public class PluginMediaProxy(
 
     public Task<PluginMediaUrl> MintImageAsync(Uri source, CancellationToken ct = default) =>
         MintAsync(new() { Links = [new() { Url = source }], PassRange = false }, ct);
+
+    /// <summary>
+    /// A file the plugin wrote into its own folder. Checked through the
+    /// folder's guard now and again on every request, so the ticket never
+    /// holds a path that was only safe once.
+    /// </summary>
+    public Task<PluginMediaUrl> MintFileAsync(string path, CancellationToken ct = default)
+    {
+        if (broker.Check(pluginId, PluginCapabilityNames.MediaProxy) is { } refusal)
+            throw new PluginRefusedException(refusal);
+
+        PluginDataFolder folder = Folder();
+
+        if (!folder.Holds(path))
+            throw new PluginRefusedException(
+                new(
+                    PluginRefusalCodes.CapabilityScopeRefused,
+                    pluginId.ToString(),
+                    "The server did not mint a media link.",
+                    $"There is no file at {path} in the plugin's own folder.",
+                    "Mint the link for a file that exists, with its path relative to context.Storage.Private.",
+                    PluginRefusalSeverity.Blocked
+                )
+            );
+
+        DateTimeOffset expiresAt = DateTimeOffset.UtcNow.Add(TicketLifetime);
+        string ticket = minter.MintFile(pluginId, Asking(), path, TicketLifetime);
+
+        return Task.FromResult(
+            PluginMediaUrl.Minted(
+                new($"/api/v1/plugins/{pluginId}/media/{ticket}", UriKind.Relative),
+                expiresAt,
+                default
+            )
+        );
+    }
+
+    public Stream? OpenFile(string relativePath) => Folder().OpenRead(relativePath);
+
+    /// <summary>
+    /// The plugin's own folder. A host that wired no file access refuses by
+    /// name, the way every facade it does not carry does.
+    /// </summary>
+    private PluginDataFolder Folder() =>
+        dataFolder is not null && files is not null
+            ? new(pluginId, dataFolder, files)
+            : throw new PluginRefusedException(
+                PluginRefusalMessages.FacadeNotOnThisHost(
+                    pluginId.ToString(),
+                    "IPluginContext.Media.Proxy.MintFileAsync"
+                )
+            );
 
     /// <summary>
     /// Fetches what a ticket points at, trying each link in turn. A provider
@@ -157,8 +247,14 @@ public class PluginMediaProxy(
         if (link.Referer is not null)
             message.Headers.TryAddWithoutValidation("Referer", link.Referer);
 
-        if (link.UserAgent is not null)
-            message.Headers.TryAddWithoutValidation("User-Agent", link.UserAgent);
+        // The user agent this viewer's player would have sent. The handler
+        // keeps it only because this option says the request is a media fetch
+        // for a viewer; a plugin's own requests cannot set it.
+        if (link.UserAgent is { Length: > 0 } agent && !agent.Any(char.IsControl))
+        {
+            message.Headers.TryAddWithoutValidation("User-Agent", agent);
+            message.Options.Set(PluginUserAgentHandler.ViewerUserAgent, true);
+        }
 
         // Owned by whoever asked: the body is a stream the viewer reads, so it
         // outlives this method and the caller disposes it.
@@ -168,11 +264,102 @@ public class PluginMediaProxy(
             ct
         );
 
-        if (!request.RewriteHlsPlaylists || !IsPlaylist(response))
+        if (!request.RewriteHlsPlaylists)
             return response;
 
-        return await RewritePlaylistAsync(request, address, response, ct);
+        string? type = response.Content.Headers.ContentType?.MediaType;
+
+        if (IsOneOf(type, PlaylistTypes))
+            return RewritePlaylist(
+                request,
+                link,
+                address,
+                response,
+                await response.Content.ReadAsStringAsync(ct),
+                type!
+            );
+
+        if (!response.IsSuccessStatusCode || !(type is null || IsOneOf(type, SniffedTypes)))
+            return response;
+
+        return await SniffAsync(request, link, address, response, ct);
     }
+
+    /// <summary>
+    /// Looks at the first bytes of an answer whose type says nothing useful.
+    /// A playlist is rewritten like any other. Anything else is handed on
+    /// whole, the bytes already read put back in front of the rest.
+    /// </summary>
+    private async Task<HttpResponseMessage> SniffAsync(
+        PluginProxyRequest request,
+        PluginProxyLink link,
+        Uri address,
+        HttpResponseMessage response,
+        CancellationToken ct
+    )
+    {
+        Stream body = await response.Content.ReadAsStreamAsync(ct);
+        byte[] head = new byte[SniffLength];
+        int read = await ReadAtMostAsync(body, head, ct);
+
+        if (StartsLikeAPlaylist(head.AsSpan(0, read)))
+        {
+            MemoryStream whole = new();
+            await whole.WriteAsync(head.AsMemory(0, read), ct);
+            await body.CopyToAsync(whole, ct);
+            await body.DisposeAsync();
+            whole.Position = 0;
+
+            using StreamReader reader = new(whole, Encoding.UTF8);
+            string text = await reader.ReadToEndAsync(ct);
+
+            return RewritePlaylist(request, link, address, response, text, RewrittenPlaylistType);
+        }
+
+        StreamContent replayed = new(new PrefixedStream(head, read, body));
+
+        foreach (KeyValuePair<string, IEnumerable<string>> header in response.Content.Headers)
+            replayed.Headers.TryAddWithoutValidation(header.Key, header.Value);
+
+        response.Content = replayed;
+
+        return response;
+    }
+
+    /// <summary>Fills the buffer, or reads to the end of a shorter answer.</summary>
+    private static async Task<int> ReadAtMostAsync(Stream body, byte[] buffer, CancellationToken ct)
+    {
+        int total = 0;
+
+        while (total < buffer.Length)
+        {
+            int read = await body.ReadAsync(buffer.AsMemory(total), ct);
+
+            if (read == 0)
+                break;
+
+            total += read;
+        }
+
+        return total;
+    }
+
+    /// <summary>"#EXTM3U", after an optional byte order mark and whitespace.</summary>
+    private static bool StartsLikeAPlaylist(ReadOnlySpan<byte> head)
+    {
+        if (head.StartsWith((ReadOnlySpan<byte>)[0xEF, 0xBB, 0xBF]))
+            head = head[3..];
+
+        int start = 0;
+        // Space, tab, carriage return, line feed.
+        while (start < head.Length && head[start] is 0x20 or 0x09 or 0x0D or 0x0A)
+            start++;
+
+        return head[start..].StartsWith(PlaylistMarker);
+    }
+
+    private static bool IsOneOf(string? type, string[] types) =>
+        type is not null && types.Contains(type, StringComparer.OrdinalIgnoreCase);
 
     private PluginMediaUrl Minted(PluginProxyRequest request)
     {
@@ -210,25 +397,33 @@ public class PluginMediaProxy(
         );
     }
 
-    private static bool IsPlaylist(HttpResponseMessage response) =>
-        response.Content.Headers.ContentType?.MediaType
-            is "application/vnd.apple.mpegurl"
-                or "application/x-mpegurl"
-                or "audio/mpegurl";
-
     /// <summary>
     /// Every child address in a playlist becomes another ticket on this
     /// server. One that did not would send the client straight to the provider
     /// for the segments, which is the client holding the upstream after all.
+    /// <para>
+    /// That includes the addresses inside tag lines: an encryption key
+    /// (EXT-X-KEY), an init segment (EXT-X-MAP) and an alternate audio or
+    /// subtitle rendition (EXT-X-MEDIA) name theirs in a URI attribute. Left
+    /// alone, the player fetches those from the provider, which the browser's
+    /// content policy refuses and the provider usually does too without the
+    /// headers the server sends.
+    /// </para>
+    /// <para>
+    /// The children carry the headers of the link that answered, not of the
+    /// first link. A channel whose first link is dead plays from its second,
+    /// and the segments have to be asked for the way the playlist was.
+    /// </para>
     /// </summary>
-    private async Task<HttpResponseMessage> RewritePlaylistAsync(
+    private HttpResponseMessage RewritePlaylist(
         PluginProxyRequest request,
+        PluginProxyLink answered,
         Uri address,
         HttpResponseMessage response,
-        CancellationToken ct
+        string body,
+        string mediaType
     )
     {
-        string body = await response.Content.ReadAsStringAsync(ct);
         Uri baseUri = response.RequestMessage?.RequestUri ?? address;
 
         IEnumerable<string> rewritten = body.Split('\n')
@@ -236,32 +431,61 @@ public class PluginMediaProxy(
             {
                 string trimmed = line.Trim();
 
-                if (trimmed.Length == 0 || trimmed.StartsWith('#'))
+                if (trimmed.Length == 0)
                     return line;
 
-                PluginProxyRequest child = request with
-                {
-                    Links =
-                    [
-                        new()
-                        {
-                            Url = new(baseUri, trimmed),
-                            Referer = request.Links[0].Referer,
-                            UserAgent = request.Links[0].UserAgent,
-                        },
-                    ],
-                };
+                if (trimmed.StartsWith('#'))
+                    return UriAttribute()
+                        .Replace(
+                            line,
+                            match =>
+                                $"URI=\"{ChildTicket(request, answered, baseUri, match.Groups[1].Value) ?? match.Groups[1].Value}\""
+                        );
 
-                return $"/api/v1/plugins/{pluginId}/media/{minter.Mint(pluginId, Asking(), child, TicketLifetime)}";
+                return ChildTicket(request, answered, baseUri, trimmed) ?? line;
             });
 
-        return new(response.StatusCode)
+        string text = string.Join('\n', rewritten);
+        HttpStatusCode status = response.StatusCode;
+
+        // The upstream's answer is read and done with; what goes out is new.
+        response.Dispose();
+
+        return new(status) { Content = new StringContent(text, Encoding.UTF8, mediaType) };
+    }
+
+    /// <summary>
+    /// A ticket on this server for one address in a playlist, resolved
+    /// against the playlist's own address. Null for anything that is not an
+    /// http or https address, such as a FairPlay skd:// key or a data: URI,
+    /// which the server has nothing to fetch for and leaves as it is.
+    /// </summary>
+    private string? ChildTicket(
+        PluginProxyRequest request,
+        PluginProxyLink answered,
+        Uri baseUri,
+        string reference
+    )
+    {
+        if (!Uri.TryCreate(baseUri, reference, out Uri? resolved))
+            return null;
+
+        if (resolved.Scheme != Uri.UriSchemeHttp && resolved.Scheme != Uri.UriSchemeHttps)
+            return null;
+
+        PluginProxyRequest child = request with
         {
-            Content = new StringContent(
-                string.Join('\n', rewritten),
-                Encoding.UTF8,
-                response.Content.Headers.ContentType?.MediaType ?? "application/vnd.apple.mpegurl"
-            ),
+            Links =
+            [
+                new()
+                {
+                    Url = resolved,
+                    Referer = answered.Referer,
+                    UserAgent = answered.UserAgent,
+                },
+            ],
         };
+
+        return $"/api/v1/plugins/{pluginId}/media/{minter.Mint(pluginId, Asking(), child, TicketLifetime)}";
     }
 }

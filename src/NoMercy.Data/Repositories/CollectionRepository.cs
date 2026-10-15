@@ -12,6 +12,7 @@
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Data.Extensions;
 using NoMercy.Database;
+using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.Movies;
 using NoMercy.Database.Models.Users;
 using NoMercy.NmSystem.Domain;
@@ -628,7 +629,7 @@ public class CollectionRepository(IDbContextFactory<MediaContext> contextFactory
                 .FirstOrDefaultAsync(ct);
 
             if (
-                firstMovieWithVideo?.Movie.VideoFiles.FirstOrDefault(vf => vf.Folder != null) is
+                firstMovieWithVideo?.Movie.VideoFiles.Newest(vf => vf.Folder != null) is
                 { } videoFile
             )
             {

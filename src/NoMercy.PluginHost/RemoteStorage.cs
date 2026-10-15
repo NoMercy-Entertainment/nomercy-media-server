@@ -28,8 +28,17 @@ namespace NoMercy.PluginHost;
 /// and a <c>..</c> segment are the two ways out of a scope, and a security
 /// guard maintained twice is one that will be fixed once.
 /// </para>
+/// <para>
+/// Marking a file sparse happens here too, in this process, on the file the
+/// plugin just made: <paramref name="markSparse" /> is the host's own native
+/// call, so the plugin never carries one.
+/// </para>
 /// </summary>
-public sealed class RemoteStorage(Ulid pluginId, RemoteCall call) : IPluginStorage
+public sealed class RemoteStorage(
+    Ulid pluginId,
+    RemoteCall call,
+    Func<string, bool>? markSparse = null
+) : IPluginStorage
 {
     private readonly Dictionary<string, IPluginStorageScope> _scopes = [];
     private readonly Lock _gate = new();
@@ -55,7 +64,7 @@ public sealed class RemoteStorage(Ulid pluginId, RemoteCall call) : IPluginStora
                 PluginRefusalMessages.FileOutsideGrant(pluginId.ToString(), folderId)
             );
 
-        return new PluginLocalStorageScope(pluginId, root);
+        return new PluginLocalStorageScope(pluginId, root, markSparse);
     }
 
     /// <summary>
@@ -71,6 +80,14 @@ public sealed class RemoteStorage(Ulid pluginId, RemoteCall call) : IPluginStora
         throw new PluginRefusedException(NotYet(nameof(IPluginStorage.OpenDatabaseAsync)));
 
     /// <summary>
+    /// In this process, on the plugin's own file, like the scopes: nothing
+    /// crosses the channel, and the sandbox this process runs in still
+    /// decides which files it can reach.
+    /// </summary>
+    public Task<bool> MarkSparseAsync(string localPath, CancellationToken ct = default) =>
+        Task.FromResult(markSparse?.Invoke(localPath) ?? false);
+
+    /// <summary>
     /// The plugin's own three folders never change for the life of the
     /// process, so each is asked for once. Asking again would make every read
     /// pay for the boundary for an answer that cannot have moved.
@@ -84,7 +101,7 @@ public sealed class RemoteStorage(Ulid pluginId, RemoteCall call) : IPluginStora
 
             string root = call.Ask<string>("storage", member) ?? string.Empty;
 
-            IPluginStorageScope made = new PluginLocalStorageScope(pluginId, root);
+            IPluginStorageScope made = new PluginLocalStorageScope(pluginId, root, markSparse);
             _scopes[member] = made;
 
             return made;

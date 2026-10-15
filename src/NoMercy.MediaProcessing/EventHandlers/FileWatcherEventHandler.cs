@@ -113,6 +113,9 @@ public class FileWatcherEventHandler : IDisposable
         }
     }
 
+    internal static string HostFolderOf(string fullPath) =>
+        Path.GetDirectoryName(fullPath).OrEmpty().Replace('\\', '/');
+
     internal async Task OnFileDeleted(FileDeletedEvent @event, CancellationToken ct)
     {
         try
@@ -122,7 +125,7 @@ public class FileWatcherEventHandler : IDisposable
                 @event.FullPath
             );
 
-            string hostFolder = Path.GetDirectoryName(@event.FullPath).OrEmpty();
+            string hostFolder = HostFolderOf(@event.FullPath);
             string filename = "/" + Path.GetFileName(@event.FullPath);
 
             await using MediaContext mediaContext = new();
@@ -204,9 +207,9 @@ public class FileWatcherEventHandler : IDisposable
                 [@event.OldFullPath, @event.NewFullPath]
             );
 
-            string oldHostFolder = Path.GetDirectoryName(@event.OldFullPath).OrEmpty();
+            string oldHostFolder = HostFolderOf(@event.OldFullPath);
             string oldFilename = "/" + Path.GetFileName(@event.OldFullPath);
-            string newHostFolder = Path.GetDirectoryName(@event.NewFullPath).OrEmpty();
+            string newHostFolder = HostFolderOf(@event.NewFullPath);
             string newFilename = "/" + Path.GetFileName(@event.NewFullPath);
 
             await using MediaContext mediaContext = new();

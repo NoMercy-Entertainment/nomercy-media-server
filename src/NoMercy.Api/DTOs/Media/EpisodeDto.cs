@@ -65,7 +65,7 @@ public class EpisodeDto
         string? title = episode.Translations.FirstOrDefault()?.Title;
         string? overview = episode.Translations.FirstOrDefault()?.Overview;
 
-        VideoFile? videoFile = episode.VideoFiles.FirstOrDefault();
+        VideoFile? videoFile = episode.VideoFiles.Newest();
         UserData? userData = videoFile?.UserData.FirstOrDefault();
 
         TvId = episode.TvId;

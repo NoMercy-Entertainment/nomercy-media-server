@@ -12,6 +12,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.ComponentModel.DataAnnotations.Schema;
 using Microsoft.EntityFrameworkCore;
+using NoMercyQueue.Core;
 
 namespace NoMercy.Database.Models.Queue;
 
@@ -35,4 +36,8 @@ public class FailedJob
     public DateTime FailedAt { get; set; } = DateTime.UtcNow;
 
     public int? ParentJobId { get; set; }
+
+    /// <summary>Carried from the queue row that failed. Empty on older rows.</summary>
+    [MaxLength(QueuePayloadHash.Length)]
+    public string OriginalPayloadHash { get; set; } = string.Empty;
 }

@@ -59,4 +59,26 @@ public interface IPluginStorage
     /// </para>
     /// </summary>
     Task<IPluginDatabase> OpenDatabaseAsync(string name, CancellationToken ct = default);
+
+    /// <summary>
+    /// Marks a file at a full local path sparse, for a file that is not in a
+    /// scope: a torrent client's incomplete downloads, for instance, which it
+    /// writes a piece at a time through handles it keeps open, in a folder
+    /// the owner picked in the plugin's own settings.
+    /// <para>
+    /// The same call as <see cref="IPluginStorageScope.MarkSparseAsync" />:
+    /// on a file that exists, right after creating it and before setting its
+    /// length, while the writer may still hold it open. It marks nothing the
+    /// plugin could not already write itself.
+    /// </para>
+    /// <para>
+    /// Best effort, and never a reason to stop: true when the flag was set,
+    /// false when nothing was done. That is every platform but Windows, a
+    /// path that is not a full local path to an existing file (a relative
+    /// or a network path included), and a file system that refuses. Added
+    /// in ABI 12.4.
+    /// </para>
+    /// </summary>
+    Task<bool> MarkSparseAsync(string localPath, CancellationToken ct = default) =>
+        Task.FromResult(false);
 }

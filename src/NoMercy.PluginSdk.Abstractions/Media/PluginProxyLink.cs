@@ -20,6 +20,15 @@ public sealed record PluginProxyLink
 {
     public required Uri Url { get; init; }
     public string? Referer { get; init; }
+
+    /// <summary>
+    /// The user agent to fetch this link with, as the viewer's player would
+    /// have sent it. Providers that allow-list on a player or set-top-box name
+    /// need it. It applies to media fetches only: the server still sends its
+    /// own identity and the plugin's name, in the <c>X-NoMercy-Attribution</c>
+    /// header. A value with control characters is ignored. Children of a
+    /// rewritten playlist carry the user agent of the link that answered.
+    /// </summary>
     public string? UserAgent { get; init; }
 
     /// <summary>

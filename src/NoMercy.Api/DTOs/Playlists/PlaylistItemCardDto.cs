@@ -15,6 +15,7 @@ using NoMercy.Database.Models.Movies;
 using NoMercy.Database.Models.Playlists;
 using NoMercy.Database.Models.TvShows;
 using NoMercy.NmSystem.Extensions;
+using static NoMercy.Database.Models.Media.VideoFileExtensions;
 
 namespace NoMercy.Api.DTOs.Playlists;
 
@@ -110,9 +111,7 @@ public record PlaylistItemCardDto
             Backdrop = movie.Backdrop,
             ColorPalette = movie.ColorPalette,
             Year = movie.ReleaseDate.ParseYear(),
-            Duration = movie
-                .VideoFiles.FirstOrDefault(v => v.Folder != null)
-                ?.Duration?.ToSeconds(),
+            Duration = movie.VideoFiles.Newest(v => v.Folder != null)?.Duration?.ToSeconds(),
             Link = new($"/movie/{movie.Id}", UriKind.Relative),
             PlayLink = playable ? new($"/movie/{movie.Id}/watch", UriKind.Relative) : null,
         };
@@ -164,9 +163,7 @@ public record PlaylistItemCardDto
             Backdrop = episode.Still,
             ColorPalette = episode.ColorPalette,
             Year = episode.AirDate.ParseYear(),
-            Duration = episode
-                .VideoFiles.FirstOrDefault(v => v.Folder != null)
-                ?.Duration?.ToSeconds(),
+            Duration = episode.VideoFiles.Newest(v => v.Folder != null)?.Duration?.ToSeconds(),
             Link = new($"/tv/{episode.TvId}", UriKind.Relative),
             PlayLink = playable
                 ? new(

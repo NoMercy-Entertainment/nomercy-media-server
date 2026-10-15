@@ -33,7 +33,8 @@ public class PluginPortMap(
     IPluginCapabilityBroker broker,
     IPluginPortMapClient client,
     IPluginResourceLedger ledger,
-    TimeProvider clock
+    TimeProvider clock,
+    IPluginManifestSource? manifests = null
 ) : IPluginPortMap
 {
     private readonly List<Held> _held = [];
@@ -76,6 +77,35 @@ public class PluginPortMap(
     public Task UnmapAsync(PluginPortMapping mapping, CancellationToken ct = default) =>
         DropAsync(Find(mapping), ct);
 
+    /// <summary>
+    /// A port this plugin may listen on or holds a mapping for, and nothing
+    /// else: probing any port would let a plugin map the owner's router from
+    /// the outside.
+    /// </summary>
+    public async Task<PluginPortReachability> ProbeAsync(
+        int externalPort,
+        PluginTransport transport,
+        CancellationToken ct = default
+    )
+    {
+        if (broker.Check(pluginId, PluginCapabilityNames.NetworkListen) is not null)
+            throw new PluginRefusedException(
+                PluginRefusalMessages.ListenerUndeclared(pluginId.ToString(), externalPort)
+            );
+
+        if (!MayProbe(externalPort))
+            throw new PluginRefusedException(
+                PluginRefusalMessages.ListenerUndeclared(pluginId.ToString(), externalPort)
+            );
+
+        // A connection tests TCP only. A UDP port answers nothing unless the
+        // program behind it chooses to, so silence would prove nothing.
+        if (transport == PluginTransport.Udp)
+            return PluginPortReachability.Unknown;
+
+        return await client.ProbeAsync(externalPort, ct);
+    }
+
     public Task<IReadOnlyList<PluginPortMapping>> ListAsync(CancellationToken ct = default)
     {
         lock (_gate)
@@ -115,6 +145,18 @@ public class PluginPortMap(
                 ExpiresAt = clock.GetUtcNow().Add(entry.Lease),
             };
         }
+    }
+
+    private bool MayProbe(int externalPort)
+    {
+        IReadOnlyList<string> declared =
+            manifests?.Find(pluginId)?.Capabilities?.Network?.Ports ?? [];
+
+        if (PluginPortRange.Contains(declared, externalPort))
+            return true;
+
+        lock (_gate)
+            return _held.Any(entry => entry.Mapping.ExternalPort == externalPort);
     }
 
     private Held? Find(PluginPortMapping mapping)
