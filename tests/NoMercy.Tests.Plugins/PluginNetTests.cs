@@ -349,6 +349,63 @@ public class PluginNetTests
         PluginPortRange.Contains(scope, port).Should().Be(expected);
     }
 
+    /// <summary>
+    /// Port zero asks the host to pick, inside the declared range. The system
+    /// picks from its ephemeral ports, which a narrow range below them never
+    /// contains, so the host has to find one in the range itself.
+    /// </summary>
+    [Theory]
+    [InlineData(PluginTransport.Tcp)]
+    [InlineData(PluginTransport.Udp)]
+    public async Task Port_zero_gets_a_free_port_inside_a_narrow_declared_range(
+        PluginTransport transport
+    )
+    {
+        (PluginNet net, PluginResourceLedger _) = Net(null, "20100-20120");
+
+        await using IPluginListener listener = await net.ListenAsync(0, transport);
+
+        listener.Port.Should().BeInRange(20100, 20120);
+    }
+
+    /// <summary>Two asks get two different ports, both in the range.</summary>
+    [Fact]
+    public async Task Port_zero_skips_a_port_that_is_already_taken()
+    {
+        (PluginNet net, PluginResourceLedger _) = Net(null, "20130-20140");
+
+        await using IPluginListener first = await net.ListenAsync(0, PluginTransport.Tcp);
+        await using IPluginListener second = await net.ListenAsync(0, PluginTransport.Tcp);
+
+        second.Port.Should().NotBe(first.Port);
+        second.Port.Should().BeInRange(20130, 20140);
+    }
+
+    [Fact]
+    public async Task Port_zero_with_every_declared_port_taken_says_so()
+    {
+        (PluginNet net, PluginResourceLedger _) = Net(null, "20150-20151");
+        await using IPluginListener a = await net.ListenAsync(0, PluginTransport.Tcp);
+        await using IPluginListener b = await net.ListenAsync(0, PluginTransport.Tcp);
+
+        PluginRefusedException refused = await Assert.ThrowsAsync<PluginRefusedException>(() =>
+            net.ListenAsync(0, PluginTransport.Tcp)
+        );
+
+        refused.Refusal.Code.Should().Be(PluginRefusalCodes.ListenerUndeclared);
+        refused.Refusal.Why.Should().Contain("20150-20151").And.Contain("already in use");
+    }
+
+    [Theory]
+    [InlineData(new[] { "6881-6883,6885" }, new[] { 6881, 6882, 6883, 6885 })]
+    [InlineData(new[] { "6881", "6881-6882" }, new[] { 6881, 6882 })]
+    [InlineData(new[] { "nonsense", "", "70000" }, new int[0])]
+    [InlineData(new[] { "65534-70000" }, new[] { 65534, 65535 })]
+    public void The_declared_ports_are_listed_in_order_each_once(string[] declared, int[] expected)
+    {
+        PluginPortRange.Ports(declared).Should().Equal(expected);
+    }
+
     private sealed class RecordingResource : IAsyncDisposable
     {
         public bool Disposed { get; private set; }

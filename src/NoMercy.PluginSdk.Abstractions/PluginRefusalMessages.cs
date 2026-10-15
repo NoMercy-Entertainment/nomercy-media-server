@@ -83,6 +83,22 @@ public static class PluginRefusalMessages
     }
 
     /// <summary>
+    /// A plugin asked the host to pick a port, and every port in the range it
+    /// declared is already taken.
+    /// </summary>
+    public static PluginRefusal NoFreePortInRange(string plugin, string declared)
+    {
+        return new PluginRefusal(
+            PluginRefusalCodes.ListenerUndeclared,
+            plugin,
+            "The plugin asked for a free port to listen on, and none was free.",
+            $"Every port in the range the plugin declared ({declared}) is already in use on this server.",
+            "Stop whatever holds those ports, or widen the network.listen range in plugin.json. Docs: /nomercy-plugins/capabilities/network-listen",
+            PluginRefusalSeverity.Blocked
+        );
+    }
+
+    /// <summary>
     /// The router said no to a port forward.
     /// <para>
     /// Not the plugin's fault and not fixable in its manifest, so the message

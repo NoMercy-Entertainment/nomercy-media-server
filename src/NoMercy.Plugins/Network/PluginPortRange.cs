@@ -45,4 +45,43 @@ public static class PluginPortRange
     /// <summary>Every declaration the manifest carries, read as one scope.</summary>
     public static bool Contains(IReadOnlyList<string>? declared, int port) =>
         declared is not null && declared.Any(scope => Contains(scope, port));
+
+    /// <summary>
+    /// Every port the declarations name, in the order they name them, each
+    /// once. Read the same way as <see cref="Contains(string?, int)" />, so a
+    /// port listed here is one that check accepts.
+    /// </summary>
+    public static IEnumerable<int> Ports(IReadOnlyList<string>? declared)
+    {
+        HashSet<int> seen = [];
+
+        foreach (string scope in declared ?? [])
+        {
+            if (string.IsNullOrWhiteSpace(scope))
+                continue;
+
+            foreach (string part in scope.Split(',', StringSplitOptions.TrimEntries))
+            {
+                string[] ends = part.Split('-', StringSplitOptions.TrimEntries);
+
+                if (ends.Length == 1 && int.TryParse(ends[0], out int single))
+                {
+                    if (single is > 0 and <= 65535 && seen.Add(single))
+                        yield return single;
+                }
+                else if (
+                    ends.Length == 2
+                    && int.TryParse(ends[0], out int low)
+                    && int.TryParse(ends[1], out int high)
+                )
+                {
+                    for (int port = Math.Max(1, low); port <= Math.Min(65535, high); port++)
+                    {
+                        if (seen.Add(port))
+                            yield return port;
+                    }
+                }
+            }
+        }
+    }
 }
