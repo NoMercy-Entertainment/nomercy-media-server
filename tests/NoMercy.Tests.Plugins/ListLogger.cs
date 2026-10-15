@@ -29,5 +29,10 @@ public sealed class ListLogger : ILogger
         TState state,
         Exception? exception,
         Func<TState, Exception?, string> formatter
-    ) => Entries.Add((logLevel, formatter(state, exception)));
+    )
+    {
+        // Locked: a pump writes from one thread per stream.
+        lock (Entries)
+            Entries.Add((logLevel, formatter(state, exception)));
+    }
 }

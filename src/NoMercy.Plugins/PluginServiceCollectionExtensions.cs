@@ -320,7 +320,8 @@ public static class PluginServiceCollectionExtensions
             ),
             sp.GetRequiredService<IPluginQuotaSource>(),
             sp.GetRequiredService<IPluginHostExecutable>(),
-            sp.GetRequiredService<IPluginSandboxFactory>()
+            sp.GetRequiredService<IPluginSandboxFactory>(),
+            sp.GetRequiredService<ILoggerFactory>()
         ));
         services.TryAddSingleton<IPluginRemoteLoader>(sp => new PluginRemoteLoader(
             new PluginProcessSupervisor(sp.GetRequiredService<IPluginProcessLauncher>()),

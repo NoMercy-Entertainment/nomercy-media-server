@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using System.Diagnostics;
+using Microsoft.Extensions.Logging;
 using NoMercy.NmSystem.Information;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Ipc;
@@ -53,9 +54,12 @@ public sealed class PluginHostLauncher(
     IPluginAssemblyLocation assemblies,
     IPluginQuotaSource quotas,
     IPluginHostExecutable executable,
-    IPluginSandboxFactory sandboxes
+    IPluginSandboxFactory sandboxes,
+    ILoggerFactory loggers
 ) : IPluginProcessLauncher
 {
+    private readonly ILogger _output = loggers.CreateLogger("plugins.runtime");
+
     public async Task<IPluginHostProcess> LaunchAsync(Ulid pluginId, CancellationToken ct = default)
     {
         string? host = executable.Path;
@@ -122,9 +126,14 @@ public sealed class PluginHostLauncher(
                 )
             );
 
+        Task output = new PluginHostOutputPump(pluginId, _output).DrainAsync(
+            process.StandardOutput,
+            process.StandardError
+        );
+
         sandbox.Confine(process, quota);
 
-        return new HostedPluginProcess(pluginId, process, endpoint, sandbox, plan.Token);
+        return new HostedPluginProcess(pluginId, process, output, endpoint, sandbox, plan.Token);
     }
 }
 
@@ -135,15 +144,23 @@ public sealed class PluginHostLauncher(
 /// shutting down cleanly makes its last calls into a socket that is already
 /// gone and reports refusals on its way out.
 /// </para>
+/// <para>
+/// The output is read to its end before the process is disposed. Disposed
+/// first, the last lines the plugin wrote on its way out, which are the ones
+/// that say why it stopped, are cut off.
+/// </para>
 /// </summary>
 internal sealed class HostedPluginProcess(
     Ulid pluginId,
     Process process,
+    Task output,
     PluginBrokerEndpoint endpoint,
     IPluginSandbox sandbox,
     string token
 ) : IPluginHostProcess
 {
+    private static readonly TimeSpan OutputDrainTimeout = TimeSpan.FromSeconds(2);
+
     public Ulid PluginId => pluginId;
 
     public string Token => token;
@@ -179,9 +196,27 @@ internal sealed class HostedPluginProcess(
         }
         finally
         {
+            await DrainOutputAsync();
             process.Dispose();
             sandbox.Dispose();
             await endpoint.DisposeAsync();
+        }
+    }
+
+    /// <summary>
+    /// Bounded, because a child the plugin started can hold the pipes open
+    /// after the host itself is gone. Stopping the plugin must not wait on it.
+    /// </summary>
+    private async Task DrainOutputAsync()
+    {
+        try
+        {
+            await output.WaitAsync(OutputDrainTimeout);
+        }
+        catch (Exception)
+        {
+            // Best effort. What was read is logged, the rest goes with the
+            // process, and a failure here must not keep it from being disposed.
         }
     }
 }
