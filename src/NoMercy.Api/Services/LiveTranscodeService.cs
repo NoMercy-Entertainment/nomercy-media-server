@@ -22,6 +22,7 @@ using NoMercy.Encoder.LiveTranscode;
 using NoMercy.Encoder.LiveTranscode.Protocol;
 using NoMercy.NmSystem.Configuration;
 using NoMercy.NmSystem.Extensions;
+using NoMercy.NmSystem.Information;
 using NoMercy.Storage;
 using NoMercyQueue.Core.Resources;
 using EncoderMediaInfo = NoMercy.Encoder.Analysis.MediaInfo;
@@ -53,6 +54,11 @@ public class LiveTranscodeService(
     // requested (on-demand) segment before giving up, and how often it rechecks.
     private static readonly TimeSpan SegmentWaitTimeout = TimeSpan.FromSeconds(20);
     private static readonly TimeSpan SegmentPollInterval = TimeSpan.FromMilliseconds(200);
+
+    private readonly StoredMediaAnalysis storedAnalysis = new(
+        mediaAnalyzer,
+        Path.Combine(AppFiles.CachePath, "analysis")
+    );
 
     public IReadOnlyList<LiveSessionDto> ListSessions(Guid userId, bool includeAll)
     {
@@ -128,7 +134,9 @@ public class LiveTranscodeService(
         EncoderMediaInfo mediaInfo;
         try
         {
-            mediaInfo = await mediaAnalyzer.AnalyzeAsync(
+            mediaInfo = await storedAnalysis.GetOrAnalyzeAsync(
+                videoFileId,
+                resolved.File.UpdatedAt,
                 resolved.InputPath,
                 resolved.ExtraInputArgs,
                 ct
