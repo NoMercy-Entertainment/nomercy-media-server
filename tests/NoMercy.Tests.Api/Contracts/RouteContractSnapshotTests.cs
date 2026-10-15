@@ -30,6 +30,9 @@ public class RouteContractSnapshotTests : IClassFixture<NoMercyApiFactory>
 
     private static readonly string[] ExpectedRoutes =
     [
+        "GET api/v{version:apiVersion}/dashboard/backups [Backups.List]",
+        "POST api/v{version:apiVersion}/dashboard/backups [Backups.Create]",
+        "POST api/v{version:apiVersion}/dashboard/backups/{backupId}/restore [Backups.Restore]",
         "(any) /castHub [(hub/other)]",
         "(any) /castHub/negotiate [(hub/other)]",
         "(any) /contentAnalysisHub [(hub/other)]",

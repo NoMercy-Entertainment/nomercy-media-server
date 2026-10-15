@@ -10,9 +10,13 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Moq;
+using NoMercy.Api.Services;
 using NoMercy.Service.Jobs;
 using NoMercy.Service.Seeds;
+using NoMercy.Storage.Drivers.Local;
 
 namespace NoMercy.Tests.Service.Jobs;
 
@@ -125,5 +129,57 @@ public sealed class DatabaseBackupCronJobTests : IDisposable
         // asserting only that construction with no dbPaths argument doesn't throw,
         // since AppFiles.* points at this test run's actual data directory.
         job.JobName.Should().Be("Daily Database Backup");
+    }
+
+    [Fact]
+    public async Task ExecuteAsync_CompleteBackupKeepsLastNCompleteSets()
+    {
+        string mediaDb = CreateFakeDb("media.db");
+        string queueDb = CreateFakeDb("queue.db");
+        string appDb = CreateFakeDb("app.db");
+        string config = Path.Combine(_tempDir, "config");
+        Directory.CreateDirectory(config);
+        File.WriteAllText(Path.Combine(config, "settings.json"), "{}");
+        BackupService backups = new(new LocalStorageDriver())
+        {
+            BackupRoot = Path.Combine(_backupDir, "complete"),
+            ConfigRoot = config,
+            DatabasePaths = [mediaDb, queueDb, appDb],
+            RetainCount = 2,
+        };
+        DatabaseBackupCronJob job = new(NullLogger<DatabaseBackupCronJob>.Instance, backups);
+
+        for (int index = 0; index < 3; index++)
+            await job.ExecuteAsync(string.Empty);
+
+        IReadOnlyList<string> ids = await backups.ListAsync();
+        ids.Should().HaveCount(2);
+        foreach (string id in ids)
+        {
+            Directory.GetFiles(Path.Combine(backups.BackupRoot, id), "*.db").Should().HaveCount(3);
+            File.Exists(Path.Combine(backups.BackupRoot, id, "manifest.json")).Should().BeTrue();
+            File.Exists(Path.Combine(backups.BackupRoot, id, "config", "settings.json"))
+                .Should()
+                .BeTrue();
+        }
+    }
+
+    [Fact]
+    public async Task DependencyInjection_UsesCompleteBackupConstructor()
+    {
+        Mock<IBackupService> backups = new();
+        backups
+            .Setup(service => service.CreateAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync("id");
+        ServiceCollection services = new();
+        services.AddLogging();
+        services.AddSingleton(backups.Object);
+        services.AddTransient<DatabaseBackupCronJob>();
+        using ServiceProvider provider = services.BuildServiceProvider();
+
+        DatabaseBackupCronJob job = provider.GetRequiredService<DatabaseBackupCronJob>();
+        await job.ExecuteAsync(string.Empty);
+
+        backups.Verify(service => service.CreateAsync(It.IsAny<CancellationToken>()), Times.Once);
     }
 }
