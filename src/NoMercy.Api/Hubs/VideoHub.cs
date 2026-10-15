@@ -18,6 +18,7 @@ using NoMercy.Authorization;
 using NoMercy.Data.Activity;
 using NoMercy.Data.Repositories;
 using NoMercy.Database;
+using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.Users;
 using NoMercy.Networking;
 using NoMercy.Networking.Discovery;
@@ -106,7 +107,17 @@ public partial class VideoHub : ConnectionHub
         // its own session and would otherwise start the episode over in whatever
         // the file declares.
         string? audioLanguage = state.CurrentAudio?.Language;
-        return CastIntent.PlayVideo(mediaType, mediaId, resumeAt, audioLanguage);
+        // The caption travels the same way: the television keeps its own pick.
+        ISubtitle? caption = state.CurrentCaption;
+        return CastIntent.PlayVideo(
+            mediaType,
+            mediaId,
+            resumeAt,
+            audioLanguage,
+            caption?.Language,
+            caption?.Type,
+            caption?.Codec
+        );
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)

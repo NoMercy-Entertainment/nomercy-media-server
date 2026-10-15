@@ -52,6 +52,36 @@ public class CastIntentTests
     }
 
     [Fact]
+    public void PlayVideo_CarriesTheSubtitleTheHandingOffDeviceShowed()
+    {
+        CastIntent intent = CastIntent.PlayVideo(
+            "tv",
+            "1399",
+            subtitleLanguage: "eng",
+            subtitleType: "full",
+            subtitleCodec: "ass"
+        );
+
+        Assert.Equal("eng", intent.SubtitleLanguage);
+        Assert.Equal("full", intent.SubtitleType);
+        Assert.Equal("ass", intent.SubtitleCodec);
+        string json = Newtonsoft.Json.JsonConvert.SerializeObject(intent);
+        Assert.Contains("\"subtitle_language\":\"eng\"", json);
+        Assert.Contains("\"subtitle_type\":\"full\"", json);
+        Assert.Contains("\"subtitle_codec\":\"ass\"", json);
+    }
+
+    [Fact]
+    public void PlayVideo_WithoutSubtitle_SendsNoSubtitleFields()
+    {
+        string json = Newtonsoft.Json.JsonConvert.SerializeObject(
+            CastIntent.PlayVideo("movie", "603")
+        );
+
+        Assert.DoesNotContain("subtitle_", json);
+    }
+
+    [Fact]
     public void PlayVideo_WithResumeAt_SetsResumePosition()
     {
         CastIntent intent = CastIntent.PlayVideo("tv", "1399", resumeAt: 842);
