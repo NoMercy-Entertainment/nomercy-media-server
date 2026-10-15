@@ -21,10 +21,20 @@ namespace NoMercy.PluginSdk.Abstractions;
 /// that resolves somewhere else is a plugin reading the server's own files
 /// while every line of it looks like ordinary storage code.
 /// </para>
+/// <para>
+/// Marking a file sparse is native code, so the host hands it in rather than
+/// the plugin carrying it: a plugin that calls the operating system itself
+/// is refused by the marketplace scan. Without it, <see cref="MarkSparseAsync" />
+/// answers false.
+/// </para>
 /// </summary>
-public class PluginLocalStorageScope(Ulid pluginId, string root) : IPluginStorageScope
+public class PluginLocalStorageScope(Ulid pluginId, string root, Func<string, bool>? markSparse)
+    : IPluginStorageScope
 {
     private readonly string _root = Path.GetFullPath(root);
+
+    public PluginLocalStorageScope(Ulid pluginId, string root)
+        : this(pluginId, root, null) { }
 
     /// <summary>Null: this is not one of the owner's folders, it is one the server made.</summary>
     public PluginStorageLocation? Location => null;
@@ -103,6 +113,17 @@ public class PluginLocalStorageScope(Ulid pluginId, string root) : IPluginStorag
         }
 
         await Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// Through the same guard as every other path, so a plugin cannot mark a
+    /// file outside its scope.
+    /// </summary>
+    public Task<bool> MarkSparseAsync(string path, CancellationToken ct = default)
+    {
+        string full = Resolve(path);
+
+        return Task.FromResult(markSparse is not null && File.Exists(full) && markSparse(full));
     }
 
     /// <summary>Empties the folder without removing it.</summary>

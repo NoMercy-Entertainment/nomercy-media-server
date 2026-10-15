@@ -264,7 +264,14 @@ public class PluginContextFactory(
     private IPluginStorage? HostStorage(Ulid pluginId) =>
         pluginsRoot is null || folderCatalog is null
             ? null
-            : new PluginHostStorage(pluginId, pluginsRoot, folderCatalog, grantStore, quotas);
+            : new PluginHostStorage(
+                pluginId,
+                pluginsRoot,
+                folderCatalog,
+                grantStore,
+                quotas,
+                markSparse: storage.TryMarkSparse
+            );
 
     /// <summary>
     /// Refreshed as the context is built rather than read live: a plugin reads

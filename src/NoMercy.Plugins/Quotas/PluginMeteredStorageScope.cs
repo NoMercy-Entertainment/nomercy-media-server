@@ -69,6 +69,9 @@ public class PluginMeteredStorageScope(
         CancellationToken ct = default
     ) => inner.ListAsync(path, recursive, ct);
 
+    public Task<bool> MarkSparseAsync(string path, CancellationToken ct = default) =>
+        inner.MarkSparseAsync(path, ct);
+
     /// <summary>
     /// What one path is holding right now, a folder included. Read from the
     /// listing rather than remembered, because a plugin's folder survives a

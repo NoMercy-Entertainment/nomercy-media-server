@@ -38,7 +38,8 @@ public class PluginHostStorage : IPluginStorage
         IPluginFolderCatalog catalog,
         IPluginGrantStore grants,
         PluginQuotaMeter? quotas = null,
-        UserId? userId = null
+        UserId? userId = null,
+        Func<string, bool>? markSparse = null
     )
     {
         _pluginId = pluginId;
@@ -49,15 +50,18 @@ public class PluginHostStorage : IPluginStorage
 
         PluginLocalStorageScope privateScope = new(
             pluginId,
-            Path.Combine(pluginsRoot, "data", pluginId.ToString())
+            Path.Combine(pluginsRoot, "data", pluginId.ToString()),
+            markSparse
         );
         PluginLocalStorageScope temporary = new(
             pluginId,
-            Path.Combine(pluginsRoot, "temp", pluginId.ToString())
+            Path.Combine(pluginsRoot, "temp", pluginId.ToString()),
+            markSparse
         );
         PluginLocalStorageScope derived = new(
             pluginId,
-            Path.Combine(pluginsRoot, "derived", pluginId.ToString())
+            Path.Combine(pluginsRoot, "derived", pluginId.ToString()),
+            markSparse
         );
 
         privateScope.EnsureExists();

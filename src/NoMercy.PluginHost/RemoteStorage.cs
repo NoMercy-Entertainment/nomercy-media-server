@@ -28,8 +28,17 @@ namespace NoMercy.PluginHost;
 /// and a <c>..</c> segment are the two ways out of a scope, and a security
 /// guard maintained twice is one that will be fixed once.
 /// </para>
+/// <para>
+/// Marking a file sparse happens here too, in this process, on the file the
+/// plugin just made: <paramref name="markSparse" /> is the host's own native
+/// call, so the plugin never carries one.
+/// </para>
 /// </summary>
-public sealed class RemoteStorage(Ulid pluginId, RemoteCall call) : IPluginStorage
+public sealed class RemoteStorage(
+    Ulid pluginId,
+    RemoteCall call,
+    Func<string, bool>? markSparse = null
+) : IPluginStorage
 {
     private readonly Dictionary<string, IPluginStorageScope> _scopes = [];
     private readonly Lock _gate = new();
@@ -55,7 +64,7 @@ public sealed class RemoteStorage(Ulid pluginId, RemoteCall call) : IPluginStora
                 PluginRefusalMessages.FileOutsideGrant(pluginId.ToString(), folderId)
             );
 
-        return new PluginLocalStorageScope(pluginId, root);
+        return new PluginLocalStorageScope(pluginId, root, markSparse);
     }
 
     /// <summary>
@@ -84,7 +93,7 @@ public sealed class RemoteStorage(Ulid pluginId, RemoteCall call) : IPluginStora
 
             string root = call.Ask<string>("storage", member) ?? string.Empty;
 
-            IPluginStorageScope made = new PluginLocalStorageScope(pluginId, root);
+            IPluginStorageScope made = new PluginLocalStorageScope(pluginId, root, markSparse);
             _scopes[member] = made;
 
             return made;

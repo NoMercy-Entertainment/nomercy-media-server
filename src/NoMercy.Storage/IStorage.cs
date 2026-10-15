@@ -219,6 +219,13 @@ public interface IStorage
     Task<Uri?> TryGetPresignedUrlAsync(string path, TimeSpan ttl, CancellationToken ct) =>
         Driver.TryGetPresignedUrlAsync(path, ttl, ct);
 
+    /// <summary>
+    /// Marks an existing file sparse. Best effort: false for every backend
+    /// but a local disk, and for a file system that refuses. See
+    /// <see cref="IStorageDriver.TryMarkSparse"/>.
+    /// </summary>
+    bool TryMarkSparse(string path) => false;
+
     /// <summary>Driver's path separator. Convenience pass-through.</summary>
     char DirectorySeparator => Driver.DirectorySeparator;
 

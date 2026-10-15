@@ -303,6 +303,10 @@ public sealed class LocalStorage : IStorage
 
     string IStorage.GetFullPath(string path) => ValidateScoped(path);
 
+    // Validated like every other path here: a file outside the scope is
+    // refused, not marked.
+    bool IStorage.TryMarkSparse(string path) => _driver.TryMarkSparse(ValidateScoped(path));
+
     private void EnsureParentDirectory(string path)
     {
         string? parent = Path.GetDirectoryName(path);

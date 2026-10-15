@@ -11,6 +11,7 @@
 
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Ipc;
+using NoMercy.Storage.Drivers.Local;
 
 namespace NoMercy.PluginHost;
 
@@ -54,7 +55,7 @@ public sealed class RemotePluginContext : IPluginContext
         Configuration = new RemoteConfiguration(call);
         Process = new RemoteProcess(launch.PluginId, call, launch, new LocalProcessStarter());
         Server = new RemoteServerInfo(call);
-        Storage = new RemoteStorage(launch.PluginId, call);
+        Storage = new RemoteStorage(launch.PluginId, call, new LocalStorageDriver().TryMarkSparse);
         Net = new RemoteNet(launch.PluginId, call);
         Library = new RemoteLibrary(launch.PluginId, call);
         Metadata = new RemoteMetadata(call);

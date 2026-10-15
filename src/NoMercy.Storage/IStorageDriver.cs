@@ -173,6 +173,15 @@ public interface IStorageDriver
         Task.FromResult<Uri?>(null);
 
     /// <summary>
+    /// Marks an existing file sparse, so the file system reserves space only
+    /// for the parts that are written. Best effort: true when the flag was
+    /// set, false when this backend has nothing to set or the file system
+    /// refused. Only the local driver on Windows does anything; elsewhere
+    /// files are sparse already or the backend is not a local disk.
+    /// </summary>
+    bool TryMarkSparse(string path) => false;
+
+    /// <summary>
     /// Path separator the driver speaks. Local on Windows is '\\'; remote
     /// drivers (NFS / S3 / R2 / WebDAV) all use '/' regardless of host OS.
     /// Callers building paths for storage operations should use this instead

@@ -119,6 +119,11 @@ internal class PluginStorageScope(PluginStorageLocation location, IStorage stora
         return storage.DeleteAsync(path, ct);
     }
 
+    public Task<bool> MarkSparseAsync(string path, CancellationToken ct = default)
+    {
+        return Task.FromResult(storage.Exists(path) && storage.TryMarkSparse(path));
+    }
+
     public async IAsyncEnumerable<PluginStorageEntry> ListAsync(
         string path,
         bool recursive = false,

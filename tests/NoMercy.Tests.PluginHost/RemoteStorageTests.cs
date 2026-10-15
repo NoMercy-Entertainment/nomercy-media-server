@@ -156,6 +156,49 @@ public class RemoteStorageTests : IDisposable
         Assert.Throws<PluginRefusedException>(() => storage.ForUser);
     }
 
+    /// <summary>
+    /// A plugin in its own process marks a file sparse in that process, on
+    /// the file it just made, through the host's native call. Nothing about
+    /// it crosses to the server.
+    /// </summary>
+    [Fact]
+    public async Task AFileIsMarkedSparseInThePluginsOwnProcessWithoutAskingTheServer()
+    {
+        CountingBroker broker = Answering(_root);
+        List<string> marked = [];
+        RemoteStorage storage = new(
+            PluginId,
+            new RemoteCall(PluginId, broker),
+            path =>
+            {
+                marked.Add(path);
+                return true;
+            }
+        );
+        IPluginStorageScope scope = storage.Private;
+        int asked = broker.Calls;
+        await File.WriteAllBytesAsync(Path.Combine(_root, "piece.bin"), []);
+
+        (await scope.MarkSparseAsync("piece.bin")).Should().BeTrue();
+
+        marked.Should().Equal(Path.Combine(_root, "piece.bin"));
+        broker.Calls.Should().Be(asked);
+    }
+
+    [Fact]
+    public async Task MarkingAFileOutsideTheFolderIsRefusedInThePluginsOwnProcess()
+    {
+        RemoteStorage storage = new(
+            PluginId,
+            new RemoteCall(PluginId, Answering(_root)),
+            _ => true
+        );
+
+        await Assert.ThrowsAsync<PluginRefusedException>(() =>
+            storage.Private.MarkSparseAsync("../../elsewhere.bin")
+        );
+    }
+
     private static CountingBroker Answering(string root) =>
         new(PluginCallResponse.Value(JsonSerializer.Serialize(root)));
 }
