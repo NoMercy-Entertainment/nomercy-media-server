@@ -48,9 +48,10 @@ public class StablePluginJobHandleTests : IDisposable
 
     private IQueueContext Make(string kind)
     {
-        _ctx = kind == "sqlite"
-            ? SqliteQueueContextFactory.Create(_dbPath)
-            : new EfQueueContextAdapter(TestQueueContextFactory.CreateInMemoryContext());
+        _ctx =
+            kind == "sqlite"
+                ? SqliteQueueContextFactory.Create(_dbPath)
+                : new EfQueueContextAdapter(TestQueueContextFactory.CreateInMemoryContext());
         return _ctx;
     }
 

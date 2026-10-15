@@ -171,7 +171,10 @@ public class EfQueueContextAdapter : IQueueContext
                 Queue = job.Queue,
                 Payload = job.Payload,
                 PayloadHash = QueuePayloadHash.For(job.Payload),
-                OriginalPayloadHash = QueuePayloadHash.Original(job.OriginalPayloadHash, job.Payload),
+                OriginalPayloadHash = QueuePayloadHash.Original(
+                    job.OriginalPayloadHash,
+                    job.Payload
+                ),
                 SharedInputKey = job.SharedInputKey,
                 Attempts = job.Attempts,
                 Interruptions = job.Interruptions,
