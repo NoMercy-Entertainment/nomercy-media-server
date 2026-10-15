@@ -154,7 +154,15 @@ public class QueueProcessorTests
         {
             BaseAddress = new("https://example.test/"),
         };
-        ProviderQueue queue = new(new() { Concurrent = 1, Interval = 1 });
+        // The fallback exceeds the assertion bound, so the test still proves Retry-After won.
+        ProviderQueue queue = new(
+            new()
+            {
+                Concurrent = 1,
+                Interval = 1,
+                RetryBaseDelayMs = 5000,
+            }
+        );
         Stopwatch watch = Stopwatch.StartNew();
 
         string result = await queue.Enqueue(
@@ -165,7 +173,7 @@ public class QueueProcessorTests
         result.Should().Be("ok");
         attempts.Should().Be(2);
         watch.Elapsed.Should().BeGreaterThanOrEqualTo(TimeSpan.FromMilliseconds(45));
-        watch.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(1));
+        watch.Elapsed.Should().BeLessThan(TimeSpan.FromSeconds(4));
     }
 
     [Fact]

@@ -372,7 +372,7 @@ public class PluginDiIntegrationTests : IDisposable
     }
 
     /// <summary>
-    /// Net, Process and Native left that list as each landed: AddPluginSystem
+    /// Net, Process, Native and Browser left that list as each landed: AddPluginSystem
     /// wires them, so every host that calls it has working facades rather than
     /// ones that refuse by name.
     /// <para>
@@ -385,6 +385,7 @@ public class PluginDiIntegrationTests : IDisposable
     [InlineData("Net")]
     [InlineData("Process")]
     [InlineData("Native")]
+    [InlineData("Browser")]
     public void A_facade_the_plugin_system_wires_is_reachable(string member)
     {
         ServiceCollection services = new();

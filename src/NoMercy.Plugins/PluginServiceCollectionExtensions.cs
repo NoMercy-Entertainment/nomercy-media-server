@@ -24,6 +24,7 @@ using NoMercy.NmSystem.Configuration;
 using NoMercy.NmSystem.Information;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Access;
+using NoMercy.PluginSdk.Browser;
 using NoMercy.PluginSdk.Capabilities;
 using NoMercy.PluginSdk.Dependencies;
 using NoMercy.PluginSdk.Entitlements;
@@ -83,6 +84,7 @@ public static class PluginServiceCollectionExtensions
         // What a plugin holds outside the process, so stopping it gives all of
         // it back. Shared by sockets, router mappings and child processes.
         services.TryAddSingleton<IPluginResourceLedger, PluginResourceLedger>();
+        services.TryAddSingleton<PluginBrowserRegistry>();
 
         // The two halves of being findable on the owner's own network. Both
         // are TryAdd so a host that speaks to its network some other way can
