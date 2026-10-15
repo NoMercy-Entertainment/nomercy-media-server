@@ -120,6 +120,12 @@ public class PluginPortMap(
     /// Driven by a clock rather than a timer inside the facade, so a lease
     /// that lapses in production lapses in a test in one line.
     /// </para>
+    /// <para>
+    /// Each mapping on its own: one the router keeps refusing must not leave
+    /// the plugin's other mappings to lapse. The failures are thrown together
+    /// at the end, after every due mapping had its turn, so the renewal
+    /// service still logs them.
+    /// </para>
     /// </summary>
     public async Task RenewDueAsync(CancellationToken ct = default)
     {
@@ -129,22 +135,41 @@ public class PluginPortMap(
         lock (_gate)
             due = [.. _held.Where(entry => now >= entry.Mapping.ExpiresAt - (entry.Lease / 2))];
 
+        List<Exception> failures = [];
+
         foreach (Held entry in due)
         {
-            int granted = await client.MapAsync(
-                entry.Mapping.InternalPort,
-                entry.Mapping.ExternalPort,
-                entry.Mapping.Transport,
-                entry.Lease,
-                ct
-            );
-
-            entry.Mapping = entry.Mapping with
+            try
             {
-                ExternalPort = granted,
-                ExpiresAt = clock.GetUtcNow().Add(entry.Lease),
-            };
+                int granted = await client.MapAsync(
+                    entry.Mapping.InternalPort,
+                    entry.Mapping.ExternalPort,
+                    entry.Mapping.Transport,
+                    entry.Lease,
+                    ct
+                );
+
+                entry.Mapping = entry.Mapping with
+                {
+                    ExternalPort = granted,
+                    ExpiresAt = clock.GetUtcNow().Add(entry.Lease),
+                };
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
+            }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+            }
         }
+
+        if (failures.Count > 0)
+            throw new AggregateException(
+                $"{failures.Count} of {due.Length} router mappings could not be renewed.",
+                failures
+            );
     }
 
     private bool MayProbe(int externalPort)

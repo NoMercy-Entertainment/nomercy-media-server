@@ -74,6 +74,9 @@ public sealed class FakePortMapClient : IPluginPortMapClient
     public List<PluginPortMapping> Mapped { get; } = [];
     public List<PluginPortMapping> Unmapped { get; } = [];
 
+    /// <summary>Internal ports the router refuses from now on, as a router that stopped answering does.</summary>
+    public HashSet<int> Refusing { get; } = [];
+
     public Task<int> MapAsync(
         int internalPort,
         int externalPort,
@@ -82,6 +85,9 @@ public sealed class FakePortMapClient : IPluginPortMapClient
         CancellationToken ct = default
     )
     {
+        if (Refusing.Contains(internalPort))
+            throw new PluginRefusedException(PluginRefusalMessages.RouterDeclined(externalPort, 2));
+
         int granted = GrantExternalPort ?? externalPort;
         Mapped.Add(new(internalPort, granted, transport, DateTimeOffset.UtcNow.Add(lease)));
 

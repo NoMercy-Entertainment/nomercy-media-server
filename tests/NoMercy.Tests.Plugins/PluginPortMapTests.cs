@@ -138,6 +138,34 @@ public class PluginPortMapTests
         (await map.ListAsync())[0].ExpiresAt.Should().Be(Noon.AddMinutes(46));
     }
 
+    /// <summary>
+    /// One mapping the router keeps refusing must not leave the plugin's other
+    /// mappings to lapse: each is renewed on its own, and the failure is still
+    /// reported for the renewal service to log.
+    /// </summary>
+    [Fact]
+    public async Task A_mapping_the_router_refuses_does_not_stop_the_next_from_being_renewed()
+    {
+        (PluginPortMap map, FakePortMapClient client, _, MovableClock clock) = Map(declared: true);
+        await map.MapAsync(6881, 6881, PluginTransport.Tcp, TimeSpan.FromMinutes(30));
+        await map.MapAsync(6882, 6882, PluginTransport.Tcp, TimeSpan.FromMinutes(30));
+        client.Refusing.Add(6881);
+
+        clock.Advance(TimeSpan.FromMinutes(16));
+        AggregateException failed = await Assert.ThrowsAsync<AggregateException>(() =>
+            map.RenewDueAsync()
+        );
+
+        failed.InnerExceptions.Should().ContainSingle();
+        IReadOnlyList<PluginPortMapping> held = await map.ListAsync();
+        held.Single(mapping => mapping.InternalPort == 6882)
+            .ExpiresAt.Should()
+            .Be(Noon.AddMinutes(46), "the second mapping is renewed despite the first");
+        held.Single(mapping => mapping.InternalPort == 6881)
+            .ExpiresAt.Should()
+            .Be(Noon.AddMinutes(30), "the refused one keeps the lease it had");
+    }
+
     [Fact]
     public async Task A_fresh_lease_is_not_renewed()
     {
