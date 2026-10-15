@@ -17,9 +17,13 @@ docker run --rm -v "${RPM_DIR}:/pkg:ro" "${IMAGE}" bash -c '
   # ICU usually arrives through other packages, so the start alone cannot catch a missing declaration.
   # Capture the list first: under pipefail, grep -q exits at the first match and rpm then dies of
   # SIGPIPE (exit 141), which failed this check on an rpm that does declare libicu (2026-10-14).
-  requires="$(rpm -qp --requires /pkg/*.rpm)"
+  # A self-hosted runner can keep an older build in the folder (0.1.579 next to 0.1.580 made
+  # dnf refuse both, 2026-10-15), so test the newest version only.
+  rpm_file="$(find /pkg -maxdepth 1 -name "*.rpm" | sort -V | tail -n 1)"
+  [ -n "${rpm_file}" ] || { echo "no rpm in the folder" >&2; exit 1; }
+  requires="$(rpm -qp --requires "${rpm_file}")"
   grep -qx "libicu" <<< "${requires}" || { echo "the rpm declares no libicu Requires" >&2; exit 1; }
-  dnf install -y -q /pkg/*.rpm
+  dnf install -y -q "${rpm_file}"
   /opt/nomercy/nomercy --help > /dev/null
   echo "nomercy installs and the CLI starts on $(. /etc/os-release && echo "${PRETTY_NAME}")"
 '
