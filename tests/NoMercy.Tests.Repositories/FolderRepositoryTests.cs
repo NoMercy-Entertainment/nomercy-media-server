@@ -260,20 +260,19 @@ public class FolderRepositoryTests : IDisposable
         Ulid folder1Id = Ulid.NewUlid();
         Ulid folder2Id = Ulid.NewUlid();
         _context.Folders.AddRange([
-                new Folder
-                {
-                    Id = folder1Id,
-                    Path = "/test1",
-                    DriverId = Driver.SystemLocalDriverId,
-                },
-                new Folder
-                {
-                    Id = folder2Id,
-                    Path = "/test2",
-                    DriverId = Driver.SystemLocalDriverId,
-                }
-            ]
-        );
+            new Folder
+            {
+                Id = folder1Id,
+                Path = "/test1",
+                DriverId = Driver.SystemLocalDriverId,
+            },
+            new Folder
+            {
+                Id = folder2Id,
+                Path = "/test2",
+                DriverId = Driver.SystemLocalDriverId,
+            },
+        ]);
         await _context.SaveChangesAsync();
 
         FolderLibrary[] fls = new[]
@@ -394,33 +393,64 @@ public class FolderRepositoryTests : IDisposable
         result.Should().Contain(f => f.Path == "/media/movies");
     }
 
+    // #414: a folder shared by two libraries. Saving the TV library used to
+    // delete the folder's links of every library, so the movie library lost
+    // the folder.
     [Fact]
-    public async Task SyncFolderLibraryAsync_DeletesOldAndInsertsNew()
+    public async Task SyncFolderLibraryAsync_KeepsTheLinksOfOtherLibraries()
     {
-        Ulid folderId = Ulid.NewUlid();
+        Folder folder = await AddFolderAsync("/sync/shared", SeedConstants.MovieLibraryId);
+
+        FolderLibrary[] newFls = [new(folder.Id, SeedConstants.TvLibraryId)];
+        await _repository.SyncFolderLibraryAsync(newFls, [folder]);
+
+        (await LinkedAsync(folder.Id, SeedConstants.MovieLibraryId))
+            .Should()
+            .BeTrue("the movie library was not the one edited");
+        (await LinkedAsync(folder.Id, SeedConstants.TvLibraryId)).Should().BeTrue();
+    }
+
+    // #415: the delete and the insert are one step. An insert that fails
+    // leaves the library's links as they were.
+    [Fact]
+    public async Task SyncFolderLibraryAsync_KeepsTheOldLinks_WhenTheInsertFails()
+    {
+        Folder folder = await AddFolderAsync("/sync/kept", SeedConstants.TvLibraryId);
+
+        FolderLibrary[] newFls =
+        [
+            new(folder.Id, SeedConstants.TvLibraryId),
+            new(Ulid.NewUlid(), SeedConstants.TvLibraryId),
+        ];
+        Func<Task> sync = () => _repository.SyncFolderLibraryAsync(newFls, [folder]);
+
+        await sync.Should()
+            .ThrowAsync<Exception>("the second link names a folder that is not there");
+        (await LinkedAsync(folder.Id, SeedConstants.TvLibraryId))
+            .Should()
+            .BeTrue("a failed save must not leave the library without its folder");
+    }
+
+    private async Task<Folder> AddFolderAsync(string path, Ulid libraryId)
+    {
         Folder folder = new()
         {
-            Id = folderId,
-            Path = "/sync/test",
+            Id = Ulid.NewUlid(),
+            Path = path,
             DriverId = Driver.SystemLocalDriverId,
         };
         _context.Folders.Add(folder);
-        _context.FolderLibrary.Add(new(folderId, SeedConstants.MovieLibraryId));
+        _context.FolderLibrary.Add(new(folder.Id, libraryId));
         await _context.SaveChangesAsync();
+        _context.ChangeTracker.Clear();
 
-        FolderLibrary[] newFls = new[] { new FolderLibrary(folderId, SeedConstants.TvLibraryId) };
-        await _repository.SyncFolderLibraryAsync(newFls, new() { folder });
-
-        FolderLibrary? oldMapping = await _context.FolderLibrary.FirstOrDefaultAsync(x =>
-            x.FolderId == folderId && x.LibraryId == SeedConstants.MovieLibraryId
-        );
-        FolderLibrary? newMapping = await _context.FolderLibrary.FirstOrDefaultAsync(x =>
-            x.FolderId == folderId && x.LibraryId == SeedConstants.TvLibraryId
-        );
-
-        oldMapping.Should().BeNull();
-        newMapping.Should().NotBeNull();
+        return folder;
     }
+
+    private Task<bool> LinkedAsync(Ulid folderId, Ulid libraryId) =>
+        _context
+            .FolderLibrary.AsNoTracking()
+            .AnyAsync(link => link.FolderId == folderId && link.LibraryId == libraryId);
 
     public void Dispose()
     {

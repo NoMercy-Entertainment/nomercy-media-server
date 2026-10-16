@@ -92,7 +92,8 @@ public static class EventHandlerExtensions
                 sp.GetRequiredService<ILogger<FileWatcherEventHandler>>(),
                 eventBus,
                 storageDriver,
-                storageFactory
+                storageFactory,
+                sp.GetRequiredService<IDbContextFactory<MediaContext>>()
             );
         });
 

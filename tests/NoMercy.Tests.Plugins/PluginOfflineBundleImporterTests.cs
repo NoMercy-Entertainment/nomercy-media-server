@@ -156,6 +156,92 @@ public class PluginOfflineBundleImporterTests
             .Be(new DateTimeOffset(2026, 9, 20, 11, 0, 0, TimeSpan.Zero));
     }
 
+    /// <summary>
+    /// The case from the audit: a newer bundle withdraws a plugin, then an
+    /// older one, still inside its validity, is imported. The withdrawal must
+    /// stay.
+    /// </summary>
+    [Fact]
+    public void An_older_bundle_after_a_newer_one_is_refused_and_the_withdrawal_stays()
+    {
+        RecordingEntitlementStore entitlements = new();
+        RecordingRevocationStore revocations = new();
+        PluginOfflineBundleImporter importer = Importer(entitlements, revocations);
+
+        string newer = Body(
+            entitlements: Entitlements("2026-09-19T12:00:00+00:00"),
+            revocations: Revocations("2026-09-19T12:00:00+00:00", withdrawn: true)
+        );
+        string older = Body(
+            entitlements: Entitlements("2026-09-10T12:00:00+00:00"),
+            revocations: Revocations("2026-09-10T12:00:00+00:00", withdrawn: false)
+        );
+
+        importer.Import(newer).Should().BeNull();
+        PluginRefusal? refusal = importer.Import(older);
+
+        refusal!.Code.Should().Be(PluginRefusalCodes.OfflineBundleExpired);
+        refusal.Why.Should().Contain("older than");
+        revocations
+            .Saved!.Entries.Should()
+            .ContainSingle("the plugin withdrawn by the newer bundle stays withdrawn");
+        revocations
+            .Saved.IssuedAt.Should()
+            .Be(new DateTimeOffset(2026, 9, 19, 12, 0, 0, TimeSpan.Zero));
+    }
+
+    /// <summary>Either half older is enough: the two halves never come from two different days.</summary>
+    [Fact]
+    public void A_bundle_whose_entitlements_are_older_is_refused_and_nothing_is_saved()
+    {
+        RecordingEntitlementStore entitlements = new();
+        RecordingRevocationStore revocations = new();
+        PluginOfflineBundleImporter importer = Importer(entitlements, revocations);
+
+        importer
+            .Import(
+                Body(
+                    entitlements: Entitlements("2026-09-19T12:00:00+00:00"),
+                    revocations: Revocations("2026-09-10T12:00:00+00:00", withdrawn: false)
+                )
+            )
+            .Should()
+            .BeNull();
+
+        importer
+            .Import(
+                Body(
+                    entitlements: Entitlements("2026-09-15T12:00:00+00:00"),
+                    revocations: Revocations("2026-09-19T12:00:00+00:00", withdrawn: true)
+                )
+            )!
+            .Code.Should()
+            .Be(PluginRefusalCodes.OfflineBundleExpired);
+
+        revocations.Saved!.Entries.Should().BeEmpty("a refused bundle saves neither half");
+    }
+
+    /// <summary>Importing the same bundle twice is not going backwards.</summary>
+    [Fact]
+    public void The_same_bundle_imported_again_still_lands()
+    {
+        RecordingEntitlementStore entitlements = new();
+        RecordingRevocationStore revocations = new();
+        PluginOfflineBundleImporter importer = Importer(entitlements, revocations);
+        string bundle = Body();
+
+        importer.Import(bundle).Should().BeNull();
+        importer.Import(bundle).Should().BeNull();
+    }
+
+    private static string Entitlements(string issuedAt) =>
+        $$"""{"server_id":"01J9ZK5V8Y000000000000000Z","issued_at":"{{issuedAt}}","refresh_by":"2026-10-20T11:00:00+00:00","entitlements":[]}""";
+
+    private static string Revocations(string issuedAt, bool withdrawn) =>
+        withdrawn
+            ? $$"""{"issued_at":"{{issuedAt}}","entries":[{"plugin_id":"01J9ZK5V8Y0000000000000099","hash":"abc","reason":"malware"}]}"""
+            : $$"""{"issued_at":"{{issuedAt}}","entries":[]}""";
+
     [Fact]
     public void A_bundle_nobody_signed_is_refused_and_nothing_is_saved()
     {
@@ -291,7 +377,7 @@ public class PluginOfflineBundleImporterTests
     {
         public PluginEntitlementBundle? Saved { get; private set; }
 
-        public PluginEntitlementBundle Current => PluginEntitlementBundle.None;
+        public PluginEntitlementBundle Current => Saved ?? PluginEntitlementBundle.None;
 
         public void Save(PluginEntitlementBundle replacement) => Saved = replacement;
     }
@@ -300,7 +386,7 @@ public class PluginOfflineBundleImporterTests
     {
         public PluginRevocationList? Saved { get; private set; }
 
-        public PluginRevocationList Current => PluginRevocationList.None;
+        public PluginRevocationList Current => Saved ?? PluginRevocationList.None;
 
         public void Save(PluginRevocationList replacement) => Saved = replacement;
     }

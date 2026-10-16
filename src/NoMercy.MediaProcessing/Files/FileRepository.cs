@@ -859,11 +859,10 @@ public class FileRepository(MediaContext context, IStorageDriver storageDriver) 
         string oldHostFolder,
         string oldFilename,
         string newHostFolder,
-        string newFilename
+        string newFilename,
+        string newFolder
     )
     {
-        string newFolder = "/" + StoragePathHelpers.GetName(newHostFolder);
-
         return await context
             .VideoFiles.Where(vf => vf.HostFolder == oldHostFolder && vf.Filename == oldFilename)
             .ExecuteUpdateAsync(setters =>

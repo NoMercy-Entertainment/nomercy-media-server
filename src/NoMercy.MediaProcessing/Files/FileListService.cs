@@ -32,6 +32,9 @@ public class FileListService(
     ILogger<FileListService> logger
 ) : IFileListService
 {
+    private static readonly string[] VideoExtensions = [".mkv", ".mp4", ".avi", ".webm", ".flv"];
+    private static readonly string[] AudioExtensions = [".mp3", ".flac", ".wav", ".m4a"];
+
     private readonly FilenameResolver resolver = new(filenameParser);
 
     // Everything below the folder you point at, not just its top level. A show
@@ -45,11 +48,7 @@ public class FileListService(
             .. storageDriver
                 .EnumerateFileSystemEntries(directoryPath, "*", SearchOption.AllDirectories)
                 .Where(p => !storageDriver.DirectoryExists(p))
-                .Where(p =>
-                {
-                    string ext = Path.GetExtension(p);
-                    return ext is ".mkv" or ".mp4" or ".avi" or ".webm" or ".flv";
-                })
+                .Where(p => HasExtension(p, VideoExtensions))
                 .Select(p => new FileInfo(p)),
         ];
     }
@@ -61,17 +60,18 @@ public class FileListService(
             .. storageDriver
                 .EnumerateFileSystemEntries(directoryPath, "*", SearchOption.AllDirectories)
                 .Where(p => !storageDriver.DirectoryExists(p))
-                .Where(p =>
-                {
-                    string ext = Path.GetExtension(p);
-                    return ext is ".mp3" or ".flac" or ".wav" or ".m4a";
-                })
+                .Where(p => HasExtension(p, AudioExtensions))
                 .Select(p => new FileInfo(p)),
         ];
     }
 
-    private static readonly string[] VideoExtensions = [".mkv", ".mp4", ".avi", ".webm", ".flv"];
-    private static readonly string[] AudioExtensions = [".mp3", ".flac", ".wav", ".m4a"];
+    /// <summary>
+    /// In any case. Files copied from Windows, a camera or a ripper are often
+    /// named Movie.MKV or Track.MP3, and a case-sensitive check skipped them
+    /// without a word, so a library simply looked incomplete.
+    /// </summary>
+    private static bool HasExtension(string path, string[] extensions) =>
+        extensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
 
     public async Task<List<FileItem>> GetFilesInDirectory(string directoryPath, string libraryType)
     {
@@ -165,24 +165,12 @@ public class FileListService(
 
         StorageEntry[] videoEntries =
         [
-            .. allEntries.Where(e =>
-                !e.IsDirectory
-                && VideoExtensions.Contains(
-                    Path.GetExtension(e.Path),
-                    StringComparer.OrdinalIgnoreCase
-                )
-            ),
+            .. allEntries.Where(e => !e.IsDirectory && HasExtension(e.Path, VideoExtensions)),
         ];
 
         StorageEntry[] audioEntries =
         [
-            .. allEntries.Where(e =>
-                !e.IsDirectory
-                && AudioExtensions.Contains(
-                    Path.GetExtension(e.Path),
-                    StringComparer.OrdinalIgnoreCase
-                )
-            ),
+            .. allEntries.Where(e => !e.IsDirectory && HasExtension(e.Path, AudioExtensions)),
         ];
 
         ConcurrentBag<FileItem> fileList = [];

@@ -22,15 +22,20 @@ using NoMercy.NmSystem.Extensions;
 using NoMercy.Providers.TMDB.Client;
 using NoMercy.Providers.TMDB.Models.Collections;
 using NoMercy.Providers.TMDB.Models.Movies;
+
 namespace NoMercy.MediaProcessing.Collections;
 
 public class CollectionManager(
     ICollectionRepository collectionRepository,
     MovieManager movieManager,
     JobDispatcher jobDispatcher,
-    ILogger<CollectionManager> logger
+    ILogger<CollectionManager> logger,
+    Func<int, ITmdbMovieClient>? movieClientFactory = null
 ) : BaseManager, ICollectionManager
 {
+    private readonly Func<int, ITmdbMovieClient> _movieClientFactory =
+        movieClientFactory ?? (movieId => new TmdbMovieClient(movieId));
+
     public async Task<TmdbCollectionAppends?> Add(int id, Library library)
     {
         TmdbCollectionClient collectionClient = new(id);
@@ -63,7 +68,10 @@ public class CollectionManager(
         jobDispatcher.DispatchColorPaletteJob("collection", collection.Id.ToString());
         jobDispatcher.DispatchJob<CollectionExtrasJob, TmdbCollectionAppends>(collectionAppends);
 
-        logger.LogDebug("Collection: {Name}: Added to Library {Title}", [collectionAppends.Name, library.Title]);
+        logger.LogDebug(
+            "Collection: {Name}: Added to Library {Title}",
+            [collectionAppends.Name, library.Title]
+        );
 
         return collectionAppends;
     }
@@ -163,21 +171,7 @@ public class CollectionManager(
 
     public async Task AddCollectionMovies(TmdbCollectionAppends collectionAppends, Library library)
     {
-        List<TmdbMovieAppends> movies = [];
-
-        await Parallel.ForEachAsync(
-            collectionAppends.Parts,
-            SystemParallelism.Options,
-            async (movie, _) =>
-            {
-                TmdbMovieClient movieClient = new(movie.Id);
-                TmdbMovieAppends? movieAppends = await movieClient.WithAllAppends();
-                if (movieAppends is null)
-                    return;
-
-                movies.Add(movieAppends);
-            }
-        );
+        List<TmdbMovieAppends> movies = await FetchPartsAsync(collectionAppends);
 
         foreach (TmdbMovieAppends movie in movies)
             await movieManager.Add(movie.Id, library);
@@ -185,5 +179,42 @@ public class CollectionManager(
         await collectionRepository.LinkToMovies(collectionAppends);
 
         logger.LogDebug("Collection: {Name}: Movies added", collectionAppends.Name);
+    }
+
+    /// <summary>
+    /// Fetches every part of the collection in parallel and returns the ones
+    /// TMDB knows, in the order of the collection.
+    /// <para>
+    /// Each part writes only its own slot of the array, so the parallel
+    /// fetches share nothing. A plain List here lost parts, or threw, when two
+    /// fetches finished at once (#366).
+    /// </para>
+    /// </summary>
+    internal async Task<List<TmdbMovieAppends>> FetchPartsAsync(
+        TmdbCollectionAppends collectionAppends
+    )
+    {
+        TmdbMovieAppends?[] fetched = new TmdbMovieAppends?[collectionAppends.Parts.Length];
+
+        await Parallel.ForEachAsync(
+            Enumerable.Range(0, fetched.Length),
+            SystemParallelism.Options,
+            async (index, _) =>
+            {
+                ITmdbMovieClient movieClient = _movieClientFactory(
+                    collectionAppends.Parts[index].Id
+                );
+                try
+                {
+                    fetched[index] = await movieClient.WithAllAppends(false);
+                }
+                finally
+                {
+                    (movieClient as IDisposable)?.Dispose();
+                }
+            }
+        );
+
+        return [.. fetched.OfType<TmdbMovieAppends>()];
     }
 }

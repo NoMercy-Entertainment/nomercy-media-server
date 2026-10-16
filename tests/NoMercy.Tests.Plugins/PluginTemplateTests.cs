@@ -412,6 +412,46 @@ public class PluginTemplateTests
             .BeTrue("Fillz publishes from Forgejo, so a GitHub-only template is one he rewrites");
     }
 
+    /// <summary>
+    /// The release step creates a release, so the job asks for the right to.
+    /// A repository whose default token is read-only otherwise ends every tag
+    /// build red with nothing published (#434).
+    /// </summary>
+    [Theory]
+    [InlineData(".github")]
+    [InlineData(".forgejo")]
+    public void The_build_job_may_publish_its_release(string forge)
+    {
+        string workflow = File.ReadAllText(
+            Path.Combine(TemplateRoot, forge, "workflows", "build.yml")
+        );
+
+        workflow.Should().Contain("permissions:").And.Contain("contents: write");
+    }
+
+    /// <summary>
+    /// The download address in repository.json points at the host that
+    /// serves the release. A fixed github.com sent every server that installs
+    /// from a Forgejo-hosted plugin to a 404 (#433).
+    /// </summary>
+    [Theory]
+    [InlineData(".github")]
+    [InlineData(".forgejo")]
+    public void The_download_address_names_the_host_that_serves_the_release(string forge)
+    {
+        string workflow = File.ReadAllText(
+            Path.Combine(TemplateRoot, forge, "workflows", "build.yml")
+        );
+
+        workflow.Should().Contain("GITHUB_SERVER_URL");
+        workflow
+            .Should()
+            .NotContain(
+                "f\"https://github.com/",
+                "a fixed host is wrong for every plugin not hosted there"
+            );
+    }
+
     // Issue #66: the SDK rename moved NoMercy.Plugins.* to NoMercy.PluginSdk.*
     // and the template only half followed. Nothing in the repo compiled it, so
     // the first person to see the error was a plugin author on their first

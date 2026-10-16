@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using NoMercy.Data.DTOs;
 using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
@@ -137,15 +138,40 @@ public class FolderRepository(MediaContext context) : IFolderRepository
         return context.Folders.AsNoTracking().ToListAsync(ct);
     }
 
+    /// <summary>
+    /// Replaces the edited library's links to <paramref name="folders"/>.
+    /// <para>
+    /// Only the libraries named in <paramref name="folderLibraries"/> lose
+    /// their links: a folder can belong to several libraries, and editing one
+    /// must not take the folder away from the others (#414).
+    /// </para>
+    /// <para>
+    /// The delete and the insert run in one transaction, so an insert that
+    /// fails leaves the links as they were instead of leaving the library
+    /// with no folders (#415).
+    /// </para>
+    /// </summary>
     public async Task<int> SyncFolderLibraryAsync(
         FolderLibrary[] folderLibraries,
         List<Folder> folders
     )
     {
+        List<Ulid> libraryIds = [.. folderLibraries.Select(link => link.LibraryId).Distinct()];
+        List<Ulid> folderIds = [.. folders.Select(folder => folder.Id)];
+
+        await using IDbContextTransaction transaction =
+            await context.Database.BeginTransactionAsync();
+
         await context
-            .FolderLibrary.Where(epf => folders.Select(f => f.Id).Contains(epf.FolderId))
+            .FolderLibrary.Where(link =>
+                libraryIds.Contains(link.LibraryId) && folderIds.Contains(link.FolderId)
+            )
             .ExecuteDeleteAsync();
 
-        return await AddFolderLibraryAsync(folderLibraries);
+        int added = await AddFolderLibraryAsync(folderLibraries);
+
+        await transaction.CommitAsync();
+
+        return added;
     }
 }

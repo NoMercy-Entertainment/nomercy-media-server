@@ -118,6 +118,15 @@ public class EncodeReconciler : IEncodeReconciler
     {
         string trimmedRoot = mediaRootPath.TrimEnd('/');
 
+        // Nothing on disk yet for this media (first-ever encode): an empty
+        // snapshot is the right read. Asked of the storage, not guessed from
+        // an exception: every backend answers ExistsAsync the same way, while
+        // a listing can fail on output that is there. Read as empty, that
+        // failure re-encoded the whole title (#359), so it now fails the
+        // job, which is retried, and the output is left alone.
+        if (!await destinationStorage.ExistsAsync(trimmedRoot, ct))
+            return ExistingOutputSnapshot.Empty;
+
         List<ExistingOutputEntry> files = [];
         try
         {
@@ -135,13 +144,10 @@ public class EncodeReconciler : IEncodeReconciler
                 files.Add(new(rel, entry.SizeBytes));
             }
         }
-        catch (Exception)
+        catch (DirectoryNotFoundException)
         {
-            // Nothing on disk yet for this media (first-ever encode) — an
-            // empty snapshot is the correct read, not a failure. Different
-            // storage backends signal "directory doesn't exist" differently
-            // (DirectoryNotFoundException locally, a provider-specific
-            // exception remotely), so this is intentionally broad.
+            // Removed between the check and the listing: still nothing there.
+            return ExistingOutputSnapshot.Empty;
         }
 
         int ocrCount = CountOcredBitmapSidecars(files);
