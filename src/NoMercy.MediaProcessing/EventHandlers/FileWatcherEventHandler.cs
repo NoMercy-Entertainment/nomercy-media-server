@@ -37,6 +37,7 @@ public class FileWatcherEventHandler : IDisposable
     private readonly SemaphoreSlim _semaphore = new(2);
     private readonly IStorageDriver _storageDriver;
     private readonly IStorageFactory _storageFactory;
+    private readonly IDbContextFactory<MediaContext>? _contextFactory;
 
     private readonly ILogger<FileWatcherEventHandler> _logger;
 
@@ -44,12 +45,14 @@ public class FileWatcherEventHandler : IDisposable
         ILogger<FileWatcherEventHandler> logger,
         IEventBus eventBus,
         IStorageDriver storageDriver,
-        IStorageFactory storageFactory
+        IStorageFactory storageFactory,
+        IDbContextFactory<MediaContext>? contextFactory = null
     )
     {
         _logger = logger;
         _storageDriver = storageDriver;
         _storageFactory = storageFactory;
+        _contextFactory = contextFactory;
         _subscriptions.Add(eventBus.Subscribe<FileCreatedEvent>(OnFileCreated));
         _subscriptions.Add(eventBus.Subscribe<FileDeletedEvent>(OnFileDeleted));
         _subscriptions.Add(eventBus.Subscribe<FileRenamedEvent>(OnFileRenamed));
@@ -116,6 +119,48 @@ public class FileWatcherEventHandler : IDisposable
     internal static string HostFolderOf(string fullPath) =>
         Path.GetDirectoryName(fullPath).OrEmpty().Replace('\\', '/');
 
+    /// <summary>
+    /// The library folder a directory on disk lives under. The longest match
+    /// wins, so a folder nested inside another library folder is its own root.
+    /// </summary>
+    internal static Folder? LibraryFolderOf(string directory, IEnumerable<Folder> folders) =>
+        folders
+            .Where(folder =>
+                StoragePathHelpers.TryGetLibraryRelativeFolder(directory, folder.Path, out _)
+            )
+            .MaxBy(folder => folder.Path.Length);
+
+    /// <summary>
+    /// Every form in which a row can hold this directory as its HostFolder.
+    /// <para>
+    /// The scanner stores it rebased onto the library folder
+    /// (<see cref="StoragePathHelpers.RebaseToFolderRoot"/>), which drops the
+    /// leading slash of a Linux path. Rows stored before that still hold the
+    /// directory as it is on disk. The watcher reports the path on disk, so
+    /// comparing it as-is matched only the old rows (#367).
+    /// </para>
+    /// </summary>
+    internal static List<string> StoredHostFoldersOf(string directory, Folder? libraryFolder)
+    {
+        List<string> forms = [];
+        if (libraryFolder is not null)
+            forms.Add(StoragePathHelpers.RebaseToFolderRoot(directory, libraryFolder.Path));
+        forms.Add(directory);
+
+        return [.. forms.Distinct()];
+    }
+
+    private static Task<List<Folder>> LibraryFoldersAsync(
+        MediaContext mediaContext,
+        Ulid libraryId,
+        CancellationToken ct
+    ) =>
+        mediaContext
+            .FolderLibrary.AsNoTracking()
+            .Where(link => link.LibraryId == libraryId)
+            .Select(link => link.Folder)
+            .ToListAsync(ct);
+
     internal async Task OnFileDeleted(FileDeletedEvent @event, CancellationToken ct)
     {
         try
@@ -125,22 +170,36 @@ public class FileWatcherEventHandler : IDisposable
                 @event.FullPath
             );
 
-            string hostFolder = HostFolderOf(@event.FullPath);
+            string directory = HostFolderOf(@event.FullPath);
             string filename = "/" + Path.GetFileName(@event.FullPath);
 
-            await using MediaContext mediaContext = new();
+            await using MediaContext mediaContext = await OpenContextAsync(ct);
             FileRepository fileRepository = new(mediaContext, _storageDriver);
+
+            List<Folder> libraryFolders = await LibraryFoldersAsync(
+                mediaContext,
+                @event.LibraryId,
+                ct
+            );
+            List<string> hostFolders = StoredHostFoldersOf(
+                directory,
+                LibraryFolderOf(directory, libraryFolders)
+            );
 
             List<int> affectedMovieIds = await mediaContext
                 .VideoFiles.Where(vf =>
-                    vf.HostFolder == hostFolder && vf.Filename == filename && vf.MovieId != null
+                    hostFolders.Contains(vf.HostFolder)
+                    && vf.Filename == filename
+                    && vf.MovieId != null
                 )
                 .Select(vf => vf.MovieId!.Value)
                 .Distinct()
                 .ToListAsync(ct);
             List<int> affectedTvIds = await mediaContext
                 .VideoFiles.Where(vf =>
-                    vf.HostFolder == hostFolder && vf.Filename == filename && vf.EpisodeId != null
+                    hostFolders.Contains(vf.HostFolder)
+                    && vf.Filename == filename
+                    && vf.EpisodeId != null
                 )
                 .Join(
                     mediaContext.Episodes,
@@ -151,18 +210,23 @@ public class FileWatcherEventHandler : IDisposable
                 .Distinct()
                 .ToListAsync(ct);
 
-            int videoFilesDeleted = await fileRepository.DeleteVideoFileByPathAsync(
-                hostFolder,
-                filename
-            );
-            int metadataDeleted = await fileRepository.DeleteMetadataByPathAsync(
-                hostFolder,
-                filename
-            );
+            int videoFilesDeleted = 0;
+            int metadataDeleted = 0;
+            foreach (string hostFolder in hostFolders)
+            {
+                videoFilesDeleted += await fileRepository.DeleteVideoFileByPathAsync(
+                    hostFolder,
+                    filename
+                );
+                metadataDeleted += await fileRepository.DeleteMetadataByPathAsync(
+                    hostFolder,
+                    filename
+                );
+            }
 
             _logger.LogInformation(
                 "FileWatcher: Deleted {VideoFilesDeleted} video file(s) and {MetadataDeleted} metadata record(s) for {HostFolder}",
-                [videoFilesDeleted, metadataDeleted, hostFolder]
+                [videoFilesDeleted, metadataDeleted, directory]
             );
 
             if (videoFilesDeleted > 0 && EventBusProvider.IsConfigured)
@@ -207,26 +271,59 @@ public class FileWatcherEventHandler : IDisposable
                 [@event.OldFullPath, @event.NewFullPath]
             );
 
-            string oldHostFolder = HostFolderOf(@event.OldFullPath);
+            string oldDirectory = HostFolderOf(@event.OldFullPath);
             string oldFilename = "/" + Path.GetFileName(@event.OldFullPath);
-            string newHostFolder = HostFolderOf(@event.NewFullPath);
+            string newDirectory = HostFolderOf(@event.NewFullPath);
             string newFilename = "/" + Path.GetFileName(@event.NewFullPath);
 
-            await using MediaContext mediaContext = new();
+            await using MediaContext mediaContext = await OpenContextAsync(ct);
             FileRepository fileRepository = new(mediaContext, _storageDriver);
 
-            int updated = await fileRepository.UpdateVideoFilePathsAsync(
-                oldHostFolder,
-                oldFilename,
-                newHostFolder,
-                newFilename
+            List<Folder> libraryFolders = await LibraryFoldersAsync(
+                mediaContext,
+                @event.LibraryId,
+                ct
             );
+            Folder? newLibraryFolder = LibraryFolderOf(newDirectory, libraryFolders);
+
+            // Stored the way the scanner stores it: HostFolder rebased onto the
+            // library folder, Folder measured from that folder's root. A file
+            // moved out of every library folder has no such form, and is left
+            // to the new-content path below.
+            int updated = 0;
+            if (
+                newLibraryFolder is not null
+                && StoragePathHelpers.TryGetLibraryRelativeFolder(
+                    newDirectory,
+                    newLibraryFolder.Path,
+                    out string newFolder
+                )
+            )
+            {
+                string newHostFolder = StoragePathHelpers.RebaseToFolderRoot(
+                    newDirectory,
+                    newLibraryFolder.Path
+                );
+                List<string> oldHostFolders = StoredHostFoldersOf(
+                    oldDirectory,
+                    LibraryFolderOf(oldDirectory, libraryFolders)
+                );
+
+                foreach (string oldHostFolder in oldHostFolders)
+                    updated += await fileRepository.UpdateVideoFilePathsAsync(
+                        oldHostFolder,
+                        oldFilename,
+                        newHostFolder,
+                        newFilename,
+                        newFolder
+                    );
+            }
 
             if (updated > 0)
             {
                 _logger.LogInformation(
                     "FileWatcher: Updated {Updated} video file path(s) from {OldHostFolder} to {NewHostFolder}",
-                    [updated, oldHostFolder, newHostFolder]
+                    [updated, oldDirectory, newDirectory]
                 );
 
                 if (EventBusProvider.IsConfigured)
@@ -244,7 +341,7 @@ public class FileWatcherEventHandler : IDisposable
                 await OnFileCreated(
                     new()
                     {
-                        FolderPath = newHostFolder,
+                        FolderPath = newDirectory,
                         LibraryId = @event.LibraryId,
                         LibraryType = @event.LibraryType,
                     },
@@ -260,6 +357,9 @@ public class FileWatcherEventHandler : IDisposable
             );
         }
     }
+
+    private async Task<MediaContext> OpenContextAsync(CancellationToken ct) =>
+        _contextFactory is null ? new() : await _contextFactory.CreateDbContextAsync(ct);
 
     private async Task HandleMovieFolder(FileCreatedEvent @event, MediaFolderExtend mediaFolder)
     {

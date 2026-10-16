@@ -43,11 +43,17 @@ public interface IFileRepository
     Task<int> DeleteMetadataByHostFolderAsync(string hostFolder);
     Task<int> DeleteVideoFileByPathAsync(string hostFolder, string filename);
     Task<int> DeleteMetadataByPathAsync(string hostFolder, string filename);
+
+    /// <param name="newFolder">
+    /// The new Folder value, measured from the library root (<c>"/Show/Season 1"</c>)
+    /// as the scanner stores it: the file is served as /{Share}{Folder}{Filename}.
+    /// </param>
     Task<int> UpdateVideoFilePathsAsync(
         string oldHostFolder,
         string oldFilename,
         string newHostFolder,
-        string newFilename
+        string newFilename,
+        string newFolder
     );
     Task<int> UpdateVideoFileSubtitlesAsync(
         Ulid videoFileId,
