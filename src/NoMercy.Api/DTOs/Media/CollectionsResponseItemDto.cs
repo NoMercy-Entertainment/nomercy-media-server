@@ -56,6 +56,9 @@ public record CollectionsResponseItemDto
     [JsonProperty("poster")]
     public string? Poster { get; set; }
 
+    [JsonProperty("item_posters")]
+    public string[] ItemPosters { get; set; } = [];
+
     [JsonProperty("title")]
     public string Title { get; set; }
 
@@ -125,6 +128,16 @@ public record CollectionsResponseItemDto
 
         ColorPalette = collection.ColorPalette;
         Poster = collection.Poster;
+        ItemPosters =
+        [
+            .. collection
+                .CollectionMovies.Where(item => !string.IsNullOrEmpty(item.Movie.Poster))
+                .OrderBy(item => item.Movie.ReleaseDate is null)
+                .ThenBy(item => item.Movie.ReleaseDate)
+                .ThenBy(item => item.MovieId)
+                .Take(9)
+                .Select(item => item.Movie.Poster!),
+        ];
         TitleSort = collection.Title.TitleSort(
             collection
                 .CollectionMovies.MinBy(collectionMovie => collectionMovie.Movie.ReleaseDate)
