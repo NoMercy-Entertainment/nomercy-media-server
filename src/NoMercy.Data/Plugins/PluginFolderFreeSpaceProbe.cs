@@ -50,7 +50,7 @@ public class PluginFolderFreeSpaceProbe(IDbContextFactory<MediaContext> contextF
 
         try
         {
-            return new DriveInfo(Path.GetPathRoot(folder.Path) ?? folder.Path).AvailableFreeSpace;
+            return new DriveInfo(MeasuredPath(folder.Path, Directory.Exists)).AvailableFreeSpace;
         }
         catch (Exception exception)
             when (exception is ArgumentException or IOException or UnauthorizedAccessException)
@@ -59,5 +59,29 @@ public class PluginFolderFreeSpaceProbe(IDbContextFactory<MediaContext> contextF
             // Either way the honest answer is that it cannot be measured.
             return NotMeasurable;
         }
+    }
+
+    /// <summary>
+    /// The path whose file system holds the folder.
+    /// <para>
+    /// On Windows the drive root says which volume it is. On Linux and macOS
+    /// the path root is always "/", so measuring it reported the root file
+    /// system for a folder on a disk of its own, such as /mnt/media or a
+    /// Docker volume. There the folder itself is measured, or its nearest
+    /// parent that exists, because a path that does not exist cannot be
+    /// asked about.
+    /// </para>
+    /// </summary>
+    internal static string MeasuredPath(string folderPath, Func<string, bool> exists)
+    {
+        if (OperatingSystem.IsWindows())
+            return Path.GetPathRoot(folderPath) ?? folderPath;
+
+        string? current = folderPath;
+
+        while (!string.IsNullOrEmpty(current) && !exists(current))
+            current = Path.GetDirectoryName(current);
+
+        return string.IsNullOrEmpty(current) ? "/" : current;
     }
 }
