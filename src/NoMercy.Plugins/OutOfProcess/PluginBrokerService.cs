@@ -274,6 +274,25 @@ public sealed class PluginBrokerService(
             case nameof(IPluginStorage.PathAsync):
                 return await OwnerFolder(request);
 
+            case nameof(IPluginStorage.OpenDatabaseAsync):
+                DatabaseCall database =
+                    JsonSerializer.Deserialize<DatabaseCall>(request.PayloadJson, Json)
+                    ?? new(null);
+                string name = database.Name ?? string.Empty;
+                if (
+                    string.IsNullOrWhiteSpace(name)
+                    || name != Path.GetFileName(name)
+                    || name.Contains('/')
+                    || name.Contains('\\')
+                    || name.Contains(':')
+                    || name.Contains("..")
+                    || name.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
+                )
+                    return PluginCallResponse.Refused(
+                        Wire(PluginRefusalMessages.FileOutsideGrant(pluginId.ToString(), name))
+                    );
+                return Value(Path.Combine(storage.PrivateRoot, name + ".sqlite"));
+
             default:
                 return Refuse(
                     PluginRefusalCodes.HostServicesRemoved,
@@ -283,6 +302,8 @@ public sealed class PluginBrokerService(
                 );
         }
     }
+
+    private sealed record DatabaseCall(string? Name);
 
     private async Task<PluginCallResponse> OwnerFolder(PluginCallRequest request)
     {

@@ -143,8 +143,30 @@ public class RemoteStorageTests : IDisposable
         refused.Refusal.Code.Should().Be(PluginRefusalCodes.FileOutsideGrant);
     }
 
+    [Fact]
+    public async Task ADatabaseOpenedThroughTheFacadePersistsRowsInThePluginHost()
+    {
+        string path = Path.Combine(_root, "state.sqlite");
+        CountingBroker broker = Answering(path);
+        RemoteStorage storage = new(PluginId, new RemoteCall(PluginId, broker));
+
+        await using (IPluginDatabase database = await storage.OpenDatabaseAsync("state"))
+        {
+            await database.MigrateAsync(["CREATE TABLE entries (value TEXT NOT NULL)"]);
+            await database.ExecuteAsync(
+                "INSERT INTO entries (value) VALUES ($value)",
+                new Dictionary<string, object?> { ["$value"] = "kept" }
+            );
+        }
+
+        await using (IPluginDatabase reopened = await storage.OpenDatabaseAsync("state"))
+            (await reopened.ScalarAsync("SELECT value FROM entries LIMIT 1")).Should().Be("kept");
+
+        broker.Calls.Should().Be(2);
+    }
+
     /// <summary>
-    /// Per-user storage and the plugin's database do not cross yet, and a
+    /// Per-user storage does not cross yet, and a
     /// facade that answered an empty scope would look to a plugin exactly like
     /// a user who had never saved anything.
     /// </summary>

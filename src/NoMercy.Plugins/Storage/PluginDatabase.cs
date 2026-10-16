@@ -46,6 +46,7 @@ public class PluginDatabase : IPluginDatabase
             {
                 DataSource = path,
                 Mode = SqliteOpenMode.ReadWriteCreate,
+                Pooling = false,
             }.ToString()
         );
 

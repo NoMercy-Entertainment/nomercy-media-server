@@ -17,11 +17,40 @@ using Xunit;
 namespace NoMercy.Tests.Plugins;
 
 /// <summary>
-/// The headless browser the platform ships, and the shape that keeps it from
+/// The windowed browser the platform ships, and the shape that keeps it from
 /// becoming process spawn under another name.
 /// </summary>
 public class PluginBrowserContractTests
 {
+    [Fact]
+    public void A_solver_can_check_availability_and_read_a_navigating_page()
+    {
+        typeof(IPluginBrowser).GetProperty("IsAvailable")!.PropertyType.Should().Be(typeof(bool));
+        typeof(IPluginBrowser)
+            .GetProperty("UnavailableReason")!
+            .PropertyType.Should()
+            .Be(typeof(string));
+
+        Type page = typeof(IPluginBrowserPage);
+        page.GetMethod("ReloadAsync").Should().NotBeNull();
+        page.GetMethod("ContentTypeAsync")!.ReturnType.Should().Be(typeof(Task<string>));
+        page.GetMethod("IsReadableAsync")!.ReturnType.Should().Be(typeof(Task<bool>));
+        page.GetMethod("FetchTextAsync")!.ReturnType.Should().Be(typeof(Task<string>));
+        page.GetMethod("UserAgentAsync")!.ReturnType.Should().Be(typeof(Task<string>));
+    }
+
+    [Fact]
+    public void The_in_process_context_overrides_the_refusing_browser_default()
+    {
+        typeof(NoMercy.PluginSdk.PluginContext)
+            .GetProperty(
+                "Browser",
+                BindingFlags.Instance | BindingFlags.Public | BindingFlags.DeclaredOnly
+            )
+            .Should()
+            .NotBeNull();
+    }
+
     [Fact]
     public void The_context_offers_a_browser()
     {

@@ -13,6 +13,7 @@ using Microsoft.Extensions.Logging;
 using NoMercy.Events;
 using NoMercy.Events.Plugins;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Browser;
 using NoMercy.PluginSdk.Capabilities;
 using NoMercy.PluginSdk.Runtime;
 using NoMercy.Storage;
@@ -74,6 +75,8 @@ internal sealed class PluginLifecycleManager(
     {
         if (_serviceProvider.GetService<IPluginResourceLedger>() is { } ledger)
             await ledger.ReleaseAsync(pluginId, ct);
+        if (_serviceProvider.GetService<PluginBrowserRegistry>() is { } browsers)
+            await browsers.ReleaseAsync(pluginId);
     }
 
     /// <summary>Looks up an installed plugin, or reports it as not installed.</summary>

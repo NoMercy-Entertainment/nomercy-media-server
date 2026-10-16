@@ -50,6 +50,13 @@ public class PluginContext : IPluginContext
     private readonly IPluginNet? _net;
     private readonly IPluginProcess? _process;
     private readonly IPluginNative? _native;
+    private readonly IPluginBrowser? _browser;
+
+    public IPluginBrowser Browser =>
+        _browser
+        ?? throw new PluginRefusedException(
+            PluginRefusalMessages.FacadeNotOnThisHost(PluginId.ToString(), "IPluginContext.Browser")
+        );
 
     /// <summary>Running one of the binaries the owner approved.</summary>
     public IPluginProcess Process =>
@@ -162,12 +169,14 @@ public class PluginContext : IPluginContext
         IPluginServerInfo? server = null,
         IPluginNet? net = null,
         IPluginProcess? process = null,
-        IPluginNative? native = null
+        IPluginNative? native = null,
+        IPluginBrowser? browser = null
     )
     {
         _net = net;
         _process = process;
         _native = native;
+        _browser = browser;
         _media = media;
         _hostStorage = hostStorage;
         _server = server;

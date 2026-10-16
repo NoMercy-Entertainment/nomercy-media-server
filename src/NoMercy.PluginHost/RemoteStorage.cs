@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Storage;
 
 namespace NoMercy.PluginHost;
 
@@ -68,16 +69,26 @@ public sealed class RemoteStorage(
     }
 
     /// <summary>
-    /// Per-user storage and the plugin's own database cross the boundary in
-    /// their own task. A half-connected facade that answered an empty scope
+    /// Per-user storage crosses the boundary in its own task. A half-connected facade that answered an empty scope
     /// would look to a plugin exactly like a user who had never saved
     /// anything.
     /// </summary>
     public IPluginUserScope ForUser =>
         throw new PluginRefusedException(NotYet(nameof(IPluginStorage.ForUser)));
 
-    public Task<IPluginDatabase> OpenDatabaseAsync(string name, CancellationToken ct = default) =>
-        throw new PluginRefusedException(NotYet(nameof(IPluginStorage.OpenDatabaseAsync)));
+    public async Task<IPluginDatabase> OpenDatabaseAsync(
+        string name,
+        CancellationToken ct = default
+    )
+    {
+        string path =
+            await call.AskAsync<string>(
+                "storage",
+                nameof(IPluginStorage.OpenDatabaseAsync),
+                new { name }
+            ) ?? throw new InvalidOperationException("The server did not return a database path.");
+        return await PluginDatabase.OpenAsync(path, ct);
+    }
 
     /// <summary>
     /// In this process, on the plugin's own file, like the scopes: nothing
