@@ -271,6 +271,56 @@ public class MovieManagerTests
         );
     }
 
+    // Regression for #378: translations, genres and content ratings were
+    // stored inside one Task.WhenAll on the same scoped context, so an import
+    // failed now and then with "A second operation was started on this
+    // context". The repository never sees two of them at once.
+    [Fact]
+    public async Task AddMovieAsync_StoresTranslationsGenresAndRatings_OneAtATime()
+    {
+        int inFlight = 0;
+        int mostAtOnce = 0;
+
+        async Task Occupy()
+        {
+            int now = Interlocked.Increment(ref inFlight);
+            InterlockedMax(ref mostAtOnce, now);
+            await Task.Delay(20);
+            Interlocked.Decrement(ref inFlight);
+        }
+
+        _movieRepositoryMock
+            .Setup(repo => repo.StoreTranslations(It.IsAny<IEnumerable<Translation>>()))
+            .Returns(Occupy);
+        _movieRepositoryMock
+            .Setup(repo => repo.StoreGenres(It.IsAny<IEnumerable<GenreMovie>>()))
+            .Returns(Occupy);
+        _movieRepositoryMock
+            .Setup(repo => repo.StoreContentRatings(It.IsAny<IEnumerable<CertificationMovie>>()))
+            .Returns(Occupy);
+        _movieClientMock.Setup(client => client.WithAllAppends(false)).ReturnsAsync(_movieAppends);
+
+        await _movieManager.Add(_movieId, _library);
+
+        mostAtOnce.Should().Be(1, "the three stores share one database context");
+        _movieRepositoryMock.Verify(
+            repo => repo.StoreContentRatings(It.IsAny<IEnumerable<CertificationMovie>>()),
+            Times.Once
+        );
+    }
+
+    private static void InterlockedMax(ref int target, int value)
+    {
+        int seen = Volatile.Read(ref target);
+        while (value > seen)
+        {
+            int was = Interlocked.CompareExchange(ref target, value, seen);
+            if (was == seen)
+                return;
+            seen = was;
+        }
+    }
+
     // Regression for Q3: EnrichMovieAsync used to run inside the same
     // Task.WhenAll as StoreGenres/StoreTranslations/StoreContentRatings, all
     // sharing one scoped MovieRepository.context — concurrent SaveChanges on

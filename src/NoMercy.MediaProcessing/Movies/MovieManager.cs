@@ -134,17 +134,15 @@ public class MovieManager(
         await movieRepository.LinkToLibrary(library, movie);
         logger.LogDebug("Movie: {Title}: Linked to Library {Title2}", [movie.Title, library.Title]);
 
-        await Task.WhenAll([
-            StoreTranslations(movieAppends),
-            StoreGenres(movieAppends),
-            StoreContentRatings(movieAppends),
-        ]);
+        // One after the other on purpose, mirroring ShowManager.AddShowAsync:
+        // every step below works on the same scoped MovieRepository.context,
+        // and an EF context takes one operation at a time. Started together,
+        // an import failed now and then with "A second operation was started
+        // on this context" (#378).
+        await StoreTranslations(movieAppends);
+        await StoreGenres(movieAppends);
+        await StoreContentRatings(movieAppends);
 
-        // Sequential and awaited on purpose, mirroring ShowManager.AddShowAsync:
-        // EnrichMovieAsync ends up doing EF work on the same scoped
-        // MovieRepository.context as the calls above, so it cannot run inside
-        // the same Task.WhenAll without a "second operation on this context"
-        // exception.
         await animeEnrichmentService.EnrichMovieAsync(
             movie.Id,
             movieAppends.Title,
