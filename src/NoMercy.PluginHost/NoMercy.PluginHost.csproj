@@ -10,7 +10,11 @@
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Grpc.AspNetCore" />
+    <PackageReference Include="Microsoft.Data.Sqlite" />
     <PackageReference Include="protobuf-net.Grpc.AspNetCore" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\NoMercy.Plugins\Storage\PluginDatabase.cs" Link="Storage\PluginDatabase.cs" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\NoMercy.PluginSdk.Ipc\NoMercy.PluginSdk.Ipc.csproj" />

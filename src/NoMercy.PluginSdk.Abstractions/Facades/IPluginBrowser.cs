@@ -12,7 +12,7 @@
 namespace NoMercy.PluginSdk.Abstractions;
 
 /// <summary>
-/// A headless browser the platform ships and sandboxes.
+/// A windowed browser the platform ships and keeps out of view.
 /// <para>
 /// The plugin names a page and reads it. It never downloads a browser, never
 /// starts Xvfb and never gets a command line, because all three are process
@@ -28,6 +28,12 @@ namespace NoMercy.PluginSdk.Abstractions;
 /// </summary>
 public interface IPluginBrowser
 {
+    /// <summary>Whether this host can provide a hidden real window.</summary>
+    bool IsAvailable { get; }
+
+    /// <summary>The reason a hidden window cannot be provided, or an empty string.</summary>
+    string UnavailableReason { get; }
+
     Task<IPluginBrowserPage> OpenAsync(
         Uri url,
         PluginBrowserOptions options,

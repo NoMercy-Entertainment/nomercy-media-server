@@ -138,6 +138,7 @@ public sealed class LogsCommandFollowTests
     public async Task Follow_OperatorCancelsWhileStreaming_ReturnsSuccess()
     {
         FakeManagementPipeServer server = new();
+        TaskCompletionSource responseSent = new(TaskCreationOptions.RunContinuationsAsynchronously);
         Task<string> serverTask = server.RunOnceAsync(async stream =>
         {
             await FakeManagementPipeServer.WriteResponseAsync(
@@ -147,6 +148,7 @@ public sealed class LogsCommandFollowTests
                 body: string.Empty,
                 contentType: "text/event-stream"
             );
+            responseSent.SetResult();
 
             // Keep the connection open without sending a terminator so the
             // client is blocked in ReadLineAsync when the token cancels below.
@@ -154,10 +156,11 @@ public sealed class LogsCommandFollowTests
         });
 
         using CancellationTokenSource cts = new();
-        cts.CancelAfter(TimeSpan.FromMilliseconds(150));
-
         using ConsoleCapture console = new();
-        int exitCode = await RunAsync(EmptyBatchFactory().Object, server.PipeName, cts.Token);
+        Task<int> runTask = RunAsync(EmptyBatchFactory().Object, server.PipeName, cts.Token);
+        await responseSent.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        cts.CancelAfter(TimeSpan.FromMilliseconds(150));
+        int exitCode = await runTask;
 
         await serverTask;
         exitCode.Should().Be((int)ExitCode.Success);

@@ -114,6 +114,30 @@ public class StorageBrokerTests
         response.PayloadJson.Should().Be("\"/media/movies\"");
     }
 
+    [Theory]
+    [InlineData("state", true)]
+    [InlineData("../server", false)]
+    [InlineData("nested/state", false)]
+    [InlineData("", false)]
+    public async Task OutOfProcessDatabaseResolvesOnlyAFileInThePrivateFolder(
+        string name,
+        bool allowed
+    )
+    {
+        PluginCallResponse response = await Ask(
+            Refusing(),
+            new FakeStorageRoots(),
+            nameof(IPluginStorage.OpenDatabaseAsync),
+            System.Text.Json.JsonSerializer.Serialize(new { name })
+        );
+
+        response.Ok.Should().Be(allowed);
+        if (allowed)
+            response.PayloadJson.Should().Contain("private-root").And.Contain("state.sqlite");
+        else
+            response.Refusal!.Code.Should().Be(PluginRefusalCodes.FileOutsideGrant);
+    }
+
     [Fact]
     public async Task AStorageMemberTheFacadeDoesNotHave_IsRefusedByName()
     {

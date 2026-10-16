@@ -553,6 +553,28 @@ public class PluginMusicQueryTests : IDisposable
         return new PluginMusicQuery(factory.Object, NullLogger<PluginMusicQuery>.Instance);
     }
 
+    /// <summary>
+    /// An id that is not a library id answers nothing, the way the DJ and stem
+    /// queries beside it already do, rather than up to a page of every
+    /// library's tracks.
+    /// </summary>
+    [Theory]
+    [InlineData("not-a-library")]
+    [InlineData("12345")]
+    public async Task GetTracksAsync_WithAnIdThatIsNotALibraryId_ReturnsNothing(string libraryId)
+    {
+        (await CreateQuery().GetTracksAsync(libraryId)).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetTracksAsync_WithNoId_ReturnsTracksFromEveryLibrary()
+    {
+        IReadOnlyList<PluginTrack> every = await CreateQuery().GetTracksAsync(null);
+        IReadOnlyList<PluginTrack> one = await CreateQuery().GetTracksAsync(_libraryId.ToString());
+
+        every.Count.Should().BeGreaterThan(one.Count);
+    }
+
     [Fact]
     public async Task GetTracksAsync_ReturnsTheLibrarysTracks()
     {

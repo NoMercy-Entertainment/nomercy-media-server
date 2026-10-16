@@ -14,6 +14,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NoMercy.Events;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Browser;
 using NoMercy.PluginSdk.Capabilities;
 using NoMercy.PluginSdk.Hub;
 using NoMercy.PluginSdk.Library;
@@ -143,7 +144,8 @@ public class PluginContextFactory(
             ServerInfo(pluginId),
             Net(pluginId),
             Spawning(pluginId),
-            NativeCode(pluginId, dataFolderPath)
+            NativeCode(pluginId, dataFolderPath),
+            Browser(pluginId, capabilities)
         );
     }
 
@@ -254,6 +256,22 @@ public class PluginContextFactory(
                 services.GetService<IPluginBundleSignature>() ?? new NothingIsSigned(),
                 loader,
                 pluginDirectory
+            );
+    }
+
+    private IPluginBrowser? Browser(Ulid pluginId, PluginCapabilities? capabilities)
+    {
+        PluginBrowserRegistry? registry = services.GetService<PluginBrowserRegistry>();
+        IPluginCapabilityBroker? broker = services.GetService<IPluginCapabilityBroker>();
+        IPluginResourceLedger? ledger = services.GetService<IPluginResourceLedger>();
+        return registry is null || broker is null || ledger is null
+            ? null
+            : registry.For(
+                pluginId,
+                broker,
+                capabilities,
+                () => grantStore.Granted(pluginId, PluginGrantKind.NetworkHost),
+                ledger
             );
     }
 

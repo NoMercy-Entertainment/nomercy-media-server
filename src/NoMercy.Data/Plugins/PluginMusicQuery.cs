@@ -48,13 +48,16 @@ public class PluginMusicQuery(
         CancellationToken ct = default
     )
     {
+        if (!PluginLibraryFilter.TryRead(libraryId, out Ulid? library))
+            return [];
+
         await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
 
         IQueryable<LibraryTrack> libraryTracks = context.LibraryTrack.AsNoTracking();
 
-        if (!string.IsNullOrWhiteSpace(libraryId) && Ulid.TryParse(libraryId, out Ulid parsed))
+        if (library is { } only)
         {
-            libraryTracks = libraryTracks.Where(libraryTrack => libraryTrack.LibraryId == parsed);
+            libraryTracks = libraryTracks.Where(libraryTrack => libraryTrack.LibraryId == only);
         }
 
         List<TrackRow> rows = await libraryTracks

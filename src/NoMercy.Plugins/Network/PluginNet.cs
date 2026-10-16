@@ -43,6 +43,12 @@ public class PluginNet(
     /// </summary>
     public IPAddress BindAddress { get; } = bindAddress ?? IPAddress.Any;
 
+    /// <summary>How a TCP client is made, so a test can see it disposed.</summary>
+    internal Func<TcpClient> NewTcpClient { get; init; } = () => new TcpClient();
+
+    /// <summary>How a UDP client is made, so a test can see it disposed.</summary>
+    internal Func<UdpClient> NewUdpClient { get; init; } = () => new UdpClient();
+
     public async Task<Stream> DialAsync(
         string host,
         int port,
@@ -63,18 +69,39 @@ public class PluginNet(
                 PluginRefusalMessages.HostNotAllowed(pluginId.ToString(), host)
             );
 
+        // Disposed on any failure before the stream is handed over. A refused,
+        // unreachable or cancelled connect otherwise kept its socket until the
+        // finalizer ran, and a plugin retrying in a loop held one per attempt.
         if (transport == PluginTransport.Udp)
         {
-            UdpClient client = new();
-            client.Connect(host, port);
+            UdpClient client = NewUdpClient();
 
-            return new PluginDatagramStream(client);
+            try
+            {
+                client.Connect(host, port);
+
+                return new PluginDatagramStream(client);
+            }
+            catch
+            {
+                client.Dispose();
+                throw;
+            }
         }
 
-        TcpClient tcp = new();
-        await tcp.ConnectAsync(host, port, ct);
+        TcpClient tcp = NewTcpClient();
 
-        return tcp.GetStream();
+        try
+        {
+            await tcp.ConnectAsync(host, port, ct);
+
+            return tcp.GetStream();
+        }
+        catch
+        {
+            tcp.Dispose();
+            throw;
+        }
     }
 
     public Task<IPluginListener> ListenAsync(
@@ -91,18 +118,17 @@ public class PluginNet(
         IReadOnlyList<string> declared =
             manifests.Find(pluginId)?.Capabilities?.Network?.Ports ?? [];
 
-        // Port zero is the plugin asking the host to pick, so there is nothing
-        // to check yet. What it got is checked below, against the same list.
+        // Port zero is the plugin asking the host to pick one inside its range.
         if (port != 0 && !PluginPortRange.Contains(declared, port))
             throw new PluginRefusedException(
                 PluginRefusalMessages.ListenerUndeclared(pluginId.ToString(), port)
             );
 
         IPluginListener listener =
-            transport == PluginTransport.Udp
-                ? new PluginUdpListener(BindAddress, port)
-                : new PluginTcpListener(BindAddress, port);
+            port == 0 ? BindInRange(declared, transport) : Bind(transport, port);
 
+        // Said again for every listener, however it was picked: the range is
+        // the owner's grant, and a port outside it is never handed back.
         if (!PluginPortRange.Contains(declared, listener.Port))
         {
             listener.DisposeAsync().AsTask().GetAwaiter().GetResult();
@@ -118,6 +144,47 @@ public class PluginNet(
         ledger.Track(pluginId, listener);
 
         return Task.FromResult(listener);
+    }
+
+    private IPluginListener Bind(PluginTransport transport, int port) =>
+        transport == PluginTransport.Udp
+            ? new PluginUdpListener(BindAddress, port)
+            : new PluginTcpListener(BindAddress, port);
+
+    /// <summary>
+    /// A free port inside the declared range. The operating system's own pick
+    /// first, which inside a wide range is all it takes; then each declared
+    /// port in turn. The system picks from its ephemeral ports, which a narrow
+    /// range such as 6881-6889 almost never contains, so leaving the pick to
+    /// it alone refused every such plugin.
+    /// </summary>
+    private IPluginListener BindInRange(IReadOnlyList<string> declared, PluginTransport transport)
+    {
+        IPluginListener picked = Bind(transport, 0);
+
+        if (PluginPortRange.Contains(declared, picked.Port))
+            return picked;
+
+        picked.DisposeAsync().AsTask().GetAwaiter().GetResult();
+
+        foreach (int candidate in PluginPortRange.Ports(declared))
+        {
+            try
+            {
+                return Bind(transport, candidate);
+            }
+            catch (SocketException)
+            {
+                // Taken. The next one may not be.
+            }
+        }
+
+        throw new PluginRefusedException(
+            PluginRefusalMessages.NoFreePortInRange(
+                pluginId.ToString(),
+                string.Join(", ", declared)
+            )
+        );
     }
 
     /// <summary>
