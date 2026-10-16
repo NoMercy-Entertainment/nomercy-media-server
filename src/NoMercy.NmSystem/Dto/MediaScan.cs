@@ -365,10 +365,18 @@ public class MediaScan : IDisposable, IAsyncDisposable
                         if (!epMatch.Success)
                             epMatch = StringExtensions.MatchSeasonEpisode().Match(cleanedFileName);
 
-                        if (epMatch is { Success: true, Groups.Count: >= 3 })
+                        // TryParse, not Parse: the patterns take any number of
+                        // digits, and a name like Show.S01E20240101123000 does
+                        // not fit an int. Thrown here, it ended the scan of the
+                        // whole folder and its other files went missing (#243).
+                        if (
+                            epMatch is { Success: true, Groups.Count: >= 3 }
+                            && int.TryParse(epMatch.Groups[1].Value, out int season)
+                            && int.TryParse(epMatch.Groups[2].Value, out int episode)
+                        )
                         {
-                            movieFile.Season = int.Parse(epMatch.Groups[1].Value);
-                            movieFile.Episode = int.Parse(epMatch.Groups[2].Value);
+                            movieFile.Season = season;
+                            movieFile.Episode = episode;
                             movieFile.IsSeries = true;
                             movieFile.IsSuccess = true;
                         }
@@ -377,9 +385,12 @@ public class MediaScan : IDisposable, IAsyncDisposable
                             Match wordMatch = StringExtensions
                                 .MatchEpisodeWord()
                                 .Match(cleanedFileName);
-                            if (wordMatch.Success)
+                            if (
+                                wordMatch.Success
+                                && int.TryParse(wordMatch.Groups[1].Value, out int wordEpisode)
+                            )
                             {
-                                movieFile.Episode = int.Parse(wordMatch.Groups[1].Value);
+                                movieFile.Episode = wordEpisode;
                                 movieFile.IsSeries = true;
                                 movieFile.IsSuccess = true;
                             }
