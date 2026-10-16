@@ -8,6 +8,11 @@ on:
 
 jobs:
   build:
+    # The release step creates a release and uploads to it. A repository or
+    # organisation whose default token is read-only otherwise refuses it, and
+    # the tag build ends red with nothing published.
+    permissions:
+      contents: write
     runs-on: docker
     steps:
       - uses: actions/checkout@v4
@@ -40,11 +45,14 @@ jobs:
           python3 - <<'PY'
           import json, os, hashlib
           version = os.environ['GITHUB_REF_NAME'].lstrip('v')
+          # The host that serves the release: github.com on GitHub, the
+          # instance's own address on Forgejo, which sets the same variable.
+          server = os.environ.get('GITHUB_SERVER_URL', 'https://github.com').rstrip('/')
           digest = hashlib.sha256(open('plugin.zip', 'rb').read()).hexdigest()
           repository = json.load(open('repository.json'))
           repository['plugins'][0]['versions'].insert(0, {
               'version': version,
-              'url': f"https://github.com/{os.environ['GITHUB_REPOSITORY']}/releases/download/v{version}/plugin.zip",
+              'url': f"{server}/{os.environ['GITHUB_REPOSITORY']}/releases/download/v{version}/plugin.zip",
               'sha256': digest,
           })
           json.dump(repository, open('repository.json', 'w'), indent=2)
