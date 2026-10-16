@@ -36,6 +36,9 @@ internal sealed class TestStorage : IStorage
     /// <summary>Every path currently seeded/written, for assertion.</summary>
     public IReadOnlyList<string> AllPaths() => [.. _files.Keys];
 
+    /// <summary>When set, <see cref="List"/> throws it, as a storage that fails mid-listing does.</summary>
+    public Exception? ListFailure { get; set; }
+
     // -----------------------------------------------------------------------
     // IStorage — the members exercised by the Bundle test suites
     // -----------------------------------------------------------------------
@@ -93,6 +96,9 @@ internal sealed class TestStorage : IStorage
 
     public IReadOnlyList<StorageEntry> List(string path, string? pattern, bool recursive)
     {
+        if (ListFailure is not null)
+            throw ListFailure;
+
         string prefix = string.IsNullOrEmpty(path) ? string.Empty : path.TrimEnd('/') + "/";
         DateTimeOffset now = DateTimeOffset.UtcNow;
         List<StorageEntry> entries = [];

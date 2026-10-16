@@ -154,6 +154,43 @@ public class EncodeReconcilerInspectAsyncTests
         snapshot.ProfileFingerprint.Should().BeNull();
     }
 
+    // #359: a listing that fails on output that is there is not "nothing
+    // encoded yet". Read as empty, Decide returned Full and the whole title
+    // was encoded again. It fails instead, so the job is retried and the
+    // output is left alone.
+    [Fact]
+    public async Task InspectAsync_Throws_WhenListingExistingOutputFails()
+    {
+        TestStorage storage = new() { ListFailure = new IOException("share went away") };
+        const string root = "Show/Show S01E01";
+        storage.Seed($"{root}/web-1080p_master.m3u8", [0x01, 0x02]);
+
+        Func<Task> inspect = () =>
+            _reconciler.InspectAsync(root, "preset-id", storage, CancellationToken.None);
+
+        await inspect.Should().ThrowAsync<IOException>();
+    }
+
+    [Fact]
+    public async Task InspectAsync_ReturnsAnEmptySnapshot_WhenTheFolderVanishesWhileListing()
+    {
+        TestStorage storage = new()
+        {
+            ListFailure = new DirectoryNotFoundException("removed between check and listing"),
+        };
+        const string root = "Show/Show S01E01";
+        storage.Seed($"{root}/web-1080p_master.m3u8", [0x01, 0x02]);
+
+        ExistingOutputSnapshot snapshot = await _reconciler.InspectAsync(
+            root,
+            "preset-id",
+            storage,
+            CancellationToken.None
+        );
+
+        snapshot.BundleFiles.Should().BeEmpty();
+    }
+
     // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
