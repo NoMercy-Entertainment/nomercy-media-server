@@ -51,6 +51,10 @@ public class FfProbeService : IFfProbeService
 
             return BuildFfProbeData(file, raw);
         }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
+        }
         catch (Exception ex)
         {
             Logger.App($"FfProbe failed for: {file}: {ex.Message}", LogEventLevel.Warning);
@@ -96,6 +100,10 @@ public class FfProbeService : IFfProbeService
                 return await CreateFromStagedCopyAsync(driver, file, ct);
 
             return BuildFfProbeData(file, raw);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -245,6 +253,10 @@ public class FfProbeService : IFfProbeService
                 PrimaryVideoStream = videoStream,
                 PrimaryAudioStream = audioStream,
             };
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw;
         }
         catch (Exception ex)
         {
@@ -418,6 +430,10 @@ public class FfProbeService : IFfProbeService
             try
             {
                 return await RunFfprobe(file, ct);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;
             }
             catch (OperationCanceledException)
             {

@@ -24,6 +24,14 @@ public class FfProbeData
     public List<FfProbeSubtitleStream> SubtitleStreams { get; set; } = [];
     public List<FfProbeImageStream> ImageStreams { get; set; } = [];
     public IReadOnlyList<string> ErrorData { get; set; } = new List<string>();
+
+    /// <summary>
+    /// True when the probe did not produce a result: ffprobe timed out, could
+    /// not run, or its output could not be read. The rest of the object is
+    /// then empty, which on its own looks the same as a file with no streams
+    /// and no duration (#320).
+    /// </summary>
+    public bool Failed => ErrorData.Count > 0;
     public string FilePath { get; set; } = string.Empty;
 }
 
