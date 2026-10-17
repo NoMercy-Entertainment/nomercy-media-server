@@ -12,18 +12,18 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Database;
+using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.Users;
+using NoMercy.NmSystem.Information;
 using NoMercy.Service.Seeds;
 using NoMercy.Storage;
 
 namespace NoMercy.Tests.Setup.Seeds;
 
 /// <summary>
-/// <see cref="UsersSeed"/> is now a thin first-boot wrapper around
-/// <see cref="ServerUserSyncService"/> — these tests confirm boot-time
-/// behavior is unchanged: it still seeds an empty Users table, and still
-/// never re-runs once any user exists. Ongoing sync after first boot is
-/// nomercy-tv's PushServerUserJob, not a recurring poll on this side.
+/// <see cref="UsersSeed"/> syncs users on first boot and repairs missing
+/// default-library grants on later boots. Ongoing user sync after first boot
+/// is nomercy-tv's PushServerUserJob, not a recurring poll on this side.
 /// </summary>
 [Trait("Category", "Unit")]
 public class UsersSeedTests : IDisposable
@@ -95,7 +95,7 @@ public class UsersSeedTests : IDisposable
         await using MediaContext ctx = CreateContext();
         await ctx.Init(NoLibrariesStorage.Object, "valid-token", realSyncService);
 
-        // The one-shot seed must stay gated — ongoing sync is the cron job's job.
+        // The one-shot user sync stays gated; the library repair does not call it.
         Assert.False(api.WasCalled);
     }
 
@@ -109,5 +109,138 @@ public class UsersSeedTests : IDisposable
         );
 
         Assert.Null(exception);
+    }
+
+    [Fact]
+    public async Task Init_RepairsLibraryAccessBeyondFirstHundredUsers()
+    {
+        Ulid libraryId = Ulid.NewUlid();
+        await using (MediaContext seedCtx = CreateContext())
+        {
+            seedCtx.Libraries.Add(
+                new()
+                {
+                    Id = libraryId,
+                    Title = "Movies",
+                    Type = "movie",
+                }
+            );
+            for (int index = 1; index <= 150; index++)
+            {
+                Guid userId = Guid.Parse($"00000000-0000-4000-8000-{index:000000000000}");
+                seedCtx.Users.Add(
+                    new()
+                    {
+                        Id = userId,
+                        Email = $"user{index}@example.test",
+                        Name = $"User {index}",
+                        Allowed = true,
+                    }
+                );
+                if (index <= 100)
+                    seedCtx.LibraryUser.Add(new(libraryId, userId));
+            }
+            await seedCtx.SaveChangesAsync();
+        }
+
+        Mock<IStorage> storage = new();
+        storage.Setup(s => s.Exists(AppFiles.LibrariesSeedFile)).Returns(true);
+        storage
+            .Setup(s =>
+                s.ReadAllTextAsync(AppFiles.LibrariesSeedFile, It.IsAny<CancellationToken>())
+            )
+            .ReturnsAsync($"[{{\"id\":\"{libraryId}\"}}]");
+
+        FakeServerUserApiClient api = new([]);
+        ServerUserSyncService syncService = new(api);
+        await using MediaContext runCtx = CreateContext();
+        await runCtx.Init(storage.Object, "valid-token", syncService);
+
+        await using MediaContext verifyCtx = CreateContext();
+        Assert.Equal(150, await verifyCtx.LibraryUser.CountAsync(lu => lu.LibraryId == libraryId));
+        Assert.False(api.WasCalled);
+    }
+
+    [Fact]
+    public async Task Init_RepairAddsMissingRowsAndPreservesExistingAssignments()
+    {
+        Ulid movieLibraryId = Ulid.NewUlid();
+        Ulid musicLibraryId = Ulid.NewUlid();
+        Guid missingUserId = Guid.Parse("00000000-0000-4000-8000-000000000151");
+        Guid scopedUserId = Guid.Parse("00000000-0000-4000-8000-000000000152");
+        Guid blockedUserId = Guid.Parse("00000000-0000-4000-8000-000000000153");
+        await using (MediaContext seedCtx = CreateContext())
+        {
+            seedCtx.Libraries.AddRange(
+                new Library
+                {
+                    Id = movieLibraryId,
+                    Title = "Movies",
+                    Type = "movie",
+                },
+                new Library
+                {
+                    Id = musicLibraryId,
+                    Title = "Music",
+                    Type = "music",
+                }
+            );
+            seedCtx.Users.AddRange(
+                new User
+                {
+                    Id = missingUserId,
+                    Email = "missing@example.test",
+                    Allowed = true,
+                },
+                new User
+                {
+                    Id = scopedUserId,
+                    Email = "scoped@example.test",
+                    Allowed = true,
+                },
+                new User
+                {
+                    Id = blockedUserId,
+                    Email = "blocked@example.test",
+                    Allowed = false,
+                }
+            );
+            seedCtx.LibraryUser.Add(new(movieLibraryId, scopedUserId));
+            await seedCtx.SaveChangesAsync();
+        }
+
+        Mock<IStorage> storage = new();
+        storage.Setup(s => s.Exists(AppFiles.LibrariesSeedFile)).Returns(true);
+        storage
+            .Setup(s =>
+                s.ReadAllTextAsync(AppFiles.LibrariesSeedFile, It.IsAny<CancellationToken>())
+            )
+            .ReturnsAsync($"[{{\"id\":\"{movieLibraryId}\"}},{{\"id\":\"{musicLibraryId}\"}}]");
+        FakeServerUserApiClient api = new([]);
+        ServerUserSyncService syncService = new(api);
+
+        await using (MediaContext firstRun = CreateContext())
+            await firstRun.Init(storage.Object, "valid-token", syncService);
+        await using (MediaContext secondRun = CreateContext())
+            await secondRun.Init(storage.Object, "valid-token", syncService);
+
+        await using MediaContext verifyCtx = CreateContext();
+        List<LibraryUser> rows = await verifyCtx.LibraryUser.AsNoTracking().ToListAsync();
+        Assert.Equal(3, rows.Count);
+        Assert.Contains(
+            rows,
+            row => row.LibraryId == movieLibraryId && row.UserId == missingUserId
+        );
+        Assert.Contains(
+            rows,
+            row => row.LibraryId == musicLibraryId && row.UserId == missingUserId
+        );
+        Assert.Contains(rows, row => row.LibraryId == movieLibraryId && row.UserId == scopedUserId);
+        Assert.DoesNotContain(
+            rows,
+            row => row.LibraryId == musicLibraryId && row.UserId == scopedUserId
+        );
+        Assert.DoesNotContain(rows, row => row.UserId == blockedUserId);
+        Assert.False(api.WasCalled);
     }
 }

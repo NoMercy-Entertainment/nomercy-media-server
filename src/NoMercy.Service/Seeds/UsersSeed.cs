@@ -11,6 +11,9 @@
 
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Database;
+using NoMercy.Database.Models.Libraries;
+using NoMercy.NmSystem.Information;
+using NoMercy.NmSystem.NewtonSoftConverters;
 using NoMercy.NmSystem.SystemCalls;
 using NoMercy.Storage;
 using Serilog.Events;
@@ -20,12 +23,9 @@ namespace NoMercy.Service.Seeds;
 public static class UsersSeed
 {
     /// <summary>
-    /// First-boot seed only: populates an empty Users table from the current
-    /// server-users list. Ongoing reconciliation (invites accepted after this
-    /// server already has users, revocation of removed/declined users) is
-    /// nomercy-tv's PushServerUserJob, notifying this server directly as each
-    /// grant changes — this seed intentionally never re-runs once any user
-    /// exists locally.
+    /// Seeds users on first boot and repairs missing default-library grants on
+    /// later boots. Ongoing user reconciliation is handled by nomercy-tv's
+    /// PushServerUserJob.
     /// </summary>
     public static async Task Init(
         this MediaContext dbContext,
@@ -38,7 +38,10 @@ public static class UsersSeed
         {
             bool hasUsers = await dbContext.Users.AnyAsync();
             if (hasUsers)
+            {
+                await RepairMissingLibraryAccessAsync(dbContext, storage);
                 return;
+            }
 
             Logger.Setup("Adding Users", LogEventLevel.Verbose);
 
@@ -51,5 +54,48 @@ public static class UsersSeed
         {
             Logger.Setup($"Users seed failed: {e.Message}", LogEventLevel.Warning);
         }
+    }
+
+    private static async Task RepairMissingLibraryAccessAsync(
+        MediaContext dbContext,
+        IStorage storage
+    )
+    {
+        if (!storage.Exists(AppFiles.LibrariesSeedFile))
+            return;
+
+        string librariesJson = await storage.ReadAllTextAsync(
+            AppFiles.LibrariesSeedFile,
+            CancellationToken.None
+        );
+        Library[] seededLibraries = librariesJson.FromJson<Library[]>() ?? [];
+        if (seededLibraries.Length == 0)
+            return;
+
+        HashSet<Ulid> seededLibraryIds = seededLibraries.Select(library => library.Id).ToHashSet();
+        List<Ulid> libraryIds = await dbContext
+            .Libraries.AsNoTracking()
+            .Select(library => library.Id)
+            .ToListAsync();
+        libraryIds = libraryIds.Where(seededLibraryIds.Contains).ToList();
+        if (libraryIds.Count == 0)
+            return;
+
+        List<Guid> userIds = await dbContext
+            .Users.AsNoTracking()
+            .Where(user => (user.Allowed || user.Owner) && !user.LibraryUser.Any())
+            .Select(user => user.Id)
+            .ToListAsync();
+        if (userIds.Count == 0)
+            return;
+
+        foreach (Guid userId in userIds)
+        {
+            foreach (Ulid libraryId in libraryIds)
+                dbContext.LibraryUser.Add(new(libraryId, userId));
+        }
+
+        await dbContext.SaveChangesAsync();
+        Logger.Setup($"Repaired default library access for {userIds.Count} user(s)");
     }
 }
