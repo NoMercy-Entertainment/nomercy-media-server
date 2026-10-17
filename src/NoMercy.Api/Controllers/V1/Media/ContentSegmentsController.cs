@@ -61,7 +61,7 @@ public class ContentSegmentsController(IContentSegmentRepository repository) : B
     }
 
     [HttpGet("episode/{episodeId:int}")]
-    [ResponseCache(Duration = 60)]
+    [ResponseCache(NoStore = true)]
     [Authorize(Policy = "MediaAccess")]
     public async Task<IActionResult> GetByEpisode(int episodeId)
     {
@@ -70,7 +70,7 @@ public class ContentSegmentsController(IContentSegmentRepository repository) : B
     }
 
     [HttpGet("movie/{movieId:int}")]
-    [ResponseCache(Duration = 60)]
+    [ResponseCache(NoStore = true)]
     [Authorize(Policy = "MediaAccess")]
     public async Task<IActionResult> GetByMovie(int movieId)
     {

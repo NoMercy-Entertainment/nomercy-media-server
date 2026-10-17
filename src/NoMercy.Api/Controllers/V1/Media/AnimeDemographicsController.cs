@@ -30,7 +30,7 @@ public class AnimeDemographicsController(IAnimeDemographicRepository animeDemogr
     : BaseController
 {
     [HttpGet]
-    [ResponseCache(Duration = 300, VaryByQueryKeys = ["take", "page", "version"])]
+    [ResponseCache(NoStore = true)]
     public async Task<IActionResult> Demographics(
         [FromQuery] PageRequestDto request,
         CancellationToken ct = default
@@ -99,7 +99,7 @@ public class AnimeDemographicsController(IAnimeDemographicRepository animeDemogr
 
     [HttpGet]
     [Route("{demographicId}")]
-    [ResponseCache(Duration = 300, VaryByQueryKeys = ["take", "page", "version"])]
+    [ResponseCache(NoStore = true)]
     public async Task<IActionResult> Demographic(
         int demographicId,
         [FromQuery] PageRequestDto request,

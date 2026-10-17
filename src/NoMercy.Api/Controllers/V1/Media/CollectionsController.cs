@@ -45,7 +45,7 @@ public class CollectionsController(
 {
     [HttpGet]
     [Route("/api/v{version:apiVersion}/collection")]
-    [ResponseCache(Duration = 300, VaryByQueryKeys = ["take", "page", "version"])]
+    [ResponseCache(NoStore = true)]
     public async Task<IActionResult> Collections(
         [FromQuery] PageRequestDto request,
         CancellationToken ct = default
@@ -107,7 +107,7 @@ public class CollectionsController(
     }
 
     [HttpGet]
-    [ResponseCache(Duration = 300)]
+    [ResponseCache(NoStore = true)]
     public async Task<IActionResult> Collection(int id, CancellationToken ct = default)
     {
         Guid userId = User.UserId();

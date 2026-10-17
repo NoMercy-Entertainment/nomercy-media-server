@@ -29,7 +29,7 @@ namespace NoMercy.Api.Controllers.V1.Media;
 public class AnimeThemesController(IAnimeThemeRepository animeThemeRepository) : BaseController
 {
     [HttpGet]
-    [ResponseCache(Duration = 300, VaryByQueryKeys = ["take", "page", "version"])]
+    [ResponseCache(NoStore = true)]
     public async Task<IActionResult> Themes(
         [FromQuery] PageRequestDto request,
         CancellationToken ct = default
@@ -98,7 +98,7 @@ public class AnimeThemesController(IAnimeThemeRepository animeThemeRepository) :
 
     [HttpGet]
     [Route("{themeId}")]
-    [ResponseCache(Duration = 300, VaryByQueryKeys = ["take", "page", "version"])]
+    [ResponseCache(NoStore = true)]
     public async Task<IActionResult> Theme(
         int themeId,
         [FromQuery] PageRequestDto request,
