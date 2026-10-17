@@ -29,7 +29,7 @@ namespace NoMercy.Api.Controllers.V1.Media;
 public class AnimeSeasonsController(IAnimeSeasonRepository animeSeasonRepository) : BaseController
 {
     [HttpGet]
-    [ResponseCache(Duration = 300, VaryByQueryKeys = ["take", "page", "version"])]
+    [ResponseCache(NoStore = true)]
     public async Task<IActionResult> Seasons(
         [FromQuery] PageRequestDto request,
         CancellationToken ct = default
@@ -101,7 +101,7 @@ public class AnimeSeasonsController(IAnimeSeasonRepository animeSeasonRepository
 
     [HttpGet]
     [Route("{seasonId}")]
-    [ResponseCache(Duration = 300, VaryByQueryKeys = ["take", "page", "version"])]
+    [ResponseCache(NoStore = true)]
     public async Task<IActionResult> Season(
         int seasonId,
         [FromQuery] PageRequestDto request,

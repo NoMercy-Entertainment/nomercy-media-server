@@ -44,7 +44,7 @@ public class LibrariesController(
 ) : BaseController
 {
     [HttpGet]
-    [ResponseCache(Duration = 300)]
+    [ResponseCache(NoStore = true)]
     public async Task<IActionResult> Libraries(CancellationToken ct = default)
     {
         Guid userId = User.UserId();

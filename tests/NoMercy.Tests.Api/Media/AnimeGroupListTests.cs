@@ -394,7 +394,8 @@ public class AnimeGroupListTests
             .GetMethod(action)!
             .GetCustomAttribute<ResponseCacheAttribute>()!;
 
-        Assert.Contains("version", cache.VaryByQueryKeys!);
+        // Never stored is the strongest form: nothing cached can cross shapes.
+        Assert.True(cache.NoStore || cache.VaryByQueryKeys?.Contains("version") == true);
         Assert.True(string.IsNullOrEmpty(cache.VaryByHeader));
     }
 }

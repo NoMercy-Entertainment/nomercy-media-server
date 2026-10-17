@@ -36,7 +36,7 @@ public class GenresController : BaseController
     }
 
     [HttpGet]
-    [ResponseCache(Duration = 300, VaryByQueryKeys = ["take", "page"])]
+    [ResponseCache(NoStore = true)]
     public async Task<IActionResult> Genres(
         [FromQuery] PageRequestDto request,
         CancellationToken ct = default
@@ -73,7 +73,7 @@ public class GenresController : BaseController
 
     [HttpGet]
     [Route("{genreId}")]
-    [ResponseCache(Duration = 300, VaryByQueryKeys = ["take", "page", "version"])]
+    [ResponseCache(NoStore = true)]
     public async Task<IActionResult> Genre(
         int genreId,
         [FromQuery] PageRequestDto request,

@@ -47,7 +47,7 @@ public class MoviesController(
 ) : BaseController
 {
     [HttpGet]
-    [ResponseCache(Duration = 120)]
+    [ResponseCache(NoStore = true)]
     public async Task<IActionResult> Movie(int id, CancellationToken ct = default)
     {
         Guid userId = User.UserId();

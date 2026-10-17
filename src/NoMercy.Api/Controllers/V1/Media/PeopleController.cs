@@ -35,7 +35,7 @@ public class PeopleController(
 {
     [HttpGet]
     [Route("api/v{version:apiVersion}/person")] // match themoviedb.org API
-    [ResponseCache(Duration = 300, VaryByQueryKeys = ["take", "page"])]
+    [ResponseCache(NoStore = true)]
     public async Task<IActionResult> Index([FromQuery] PageRequestDto request)
     {
         Guid userId = User.UserId();
@@ -53,7 +53,7 @@ public class PeopleController(
 
     [HttpGet]
     [Route("/api/v{version:apiVersion}/person/{id:int}")] // match themoviedb.org API
-    [ResponseCache(Duration = 300)]
+    [ResponseCache(NoStore = true)]
     public async Task<IActionResult> Show(int id)
     {
         string country = Country();

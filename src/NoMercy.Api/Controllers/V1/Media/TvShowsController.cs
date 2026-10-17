@@ -48,7 +48,9 @@ public class TvShowsController(
 ) : BaseController
 {
     [HttpGet]
-    [ResponseCache(Duration = 120)]
+    // Never stored: a rescan changes this per-user answer, and the RefreshLibrary
+    // refetch must reach the server instead of the browser cache.
+    [ResponseCache(NoStore = true)]
     public async Task<IActionResult> Tv(int id, CancellationToken ct = default)
     {
         Guid userId = User.UserId();
