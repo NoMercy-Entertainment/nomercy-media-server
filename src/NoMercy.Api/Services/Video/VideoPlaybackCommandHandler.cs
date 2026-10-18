@@ -365,7 +365,7 @@ public class VideoPlaybackCommandHandler(
 
     private async Task HandleCycleAudio(User user, VideoPlayerState state)
     {
-        if (state.CurrentItem is null)
+        if (state.CurrentItem is null || state.Audio.Count == 0)
             return;
 
         int currentIndex = state.CurrentAudio is not null

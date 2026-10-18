@@ -740,6 +740,22 @@ public class VideoPlaybackCommandHandlerTests : IClassFixture<NoMercyApiFactory>
         state.CurrentAudio.Should().BeNull();
     }
 
+    [Fact]
+    public async Task CycleAudio_NoAudioTracks_IsNoOp()
+    {
+        User user = SeededUser();
+        VideoPlayerState state = new()
+        {
+            CurrentItem = await BuildMovieItemAsync(SeededMovieId),
+            Audio = [],
+        };
+
+        Func<Task> act = () => CreateHandler().HandleCommand(user, "cycleAudio", null, state, null);
+
+        await act.Should().NotThrowAsync();
+        state.CurrentAudio.Should().BeNull();
+    }
+
     // =========================================================================
     // caption / cycleCaption
     // =========================================================================
