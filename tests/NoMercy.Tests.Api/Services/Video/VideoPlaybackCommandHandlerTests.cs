@@ -647,6 +647,32 @@ public class VideoPlaybackCommandHandlerTests : IClassFixture<NoMercyApiFactory>
     }
 
     [Fact]
+    public async Task Volume_FromControllerDevice_LeavesTheControllersOwnVolumeAlone()
+    {
+        User user = SeededUser();
+        VideoPlayerState state = new()
+        {
+            CurrentItem = await BuildMovieItemAsync(SeededMovieId),
+            DeviceId = "playing-tv",
+        };
+        Client controller = new()
+        {
+            Id = Ulid.NewUlid(),
+            Sub = user.Id,
+            DeviceId = $"controller-phone-{Guid.NewGuid()}",
+            Endpoint = "/videoHub",
+            Type = "mobile",
+            Socket = Mock.Of<ISingleClientProxy>(),
+            VolumePercent = 20,
+        };
+
+        await CreateHandler().HandleCommand(user, "volume", "55", state, controller);
+
+        state.VolumePercentage.Should().Be(55);
+        controller.VolumePercent.Should().Be(20);
+    }
+
+    [Fact]
     public async Task Volume_NullCurrentItem_IsNoOp()
     {
         User user = SeededUser();

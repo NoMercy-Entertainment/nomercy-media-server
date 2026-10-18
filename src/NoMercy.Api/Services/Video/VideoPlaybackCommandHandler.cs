@@ -276,7 +276,10 @@ public class VideoPlaybackCommandHandler(
         state.VolumePercentage = volume;
         state.Muted = false;
 
-        if (device is not null)
+        bool deviceIsPlaying =
+            state.DeviceId is null
+            || state.DeviceId.Equals(device?.DeviceId, StringComparison.OrdinalIgnoreCase);
+        if (device is not null && deviceIsPlaying)
         {
             device.VolumePercent = volume;
 
