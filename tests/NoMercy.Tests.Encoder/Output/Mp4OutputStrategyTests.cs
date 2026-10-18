@@ -11,8 +11,10 @@
 
 using NoMercy.Encoder.Codecs;
 using NoMercy.Encoder.Commands;
+using NoMercy.Encoder.Execution;
 using NoMercy.Encoder.Output;
 using NoMercy.Encoder.Pipeline;
+using NoMercy.Encoder.Progress;
 using NoMercy.Tests.Encoder.Storage;
 
 namespace NoMercy.Tests.Encoder.Output;
@@ -188,6 +190,51 @@ public class Mp4OutputStrategyTests
         new Mp4OutputStrategy(TestStorageFactory.CreateLocal())
             .Format.Should()
             .Be(OutputFormat.Mp4);
+    }
+
+    [Fact]
+    public async Task FinalizeAsync_ChapterRemux_MapsEveryInputStream()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        try
+        {
+            await File.WriteAllBytesAsync(Path.Combine(dir, "output.mp4"), [0]);
+            CapturingExecutor executor = new();
+            Mp4OutputStrategy strategy = new(TestStorageFactory.CreateLocal(), executor);
+            OutputPlan plan = CreatePlan() with
+            {
+                Chapters = [new(TimeSpan.Zero, TimeSpan.FromMinutes(1), "One")],
+            };
+
+            await strategy.FinalizeAsync(dir, plan, "title", CancellationToken.None);
+
+            string[] args = executor.Commands.Single().Arguments.ToArray();
+            int map = Array.IndexOf(args, "-map");
+            map.Should().BeGreaterThanOrEqualTo(0);
+            args[map + 1].Should().Be("0");
+        }
+        finally
+        {
+            Directory.Delete(dir, true);
+        }
+    }
+
+    private sealed class CapturingExecutor : IFfmpegExecutor
+    {
+        public List<FfmpegCommand> Commands { get; } = [];
+
+        public Task<ExecutionResult> ExecuteAsync(
+            FfmpegCommand command,
+            TimeSpan inputDuration,
+            Action<EncodingProgress>? onProgress = null,
+            string? correlationId = null,
+            CancellationToken ct = default
+        )
+        {
+            Commands.Add(command);
+            return Task.FromResult(new ExecutionResult(true, 0, "", TimeSpan.Zero, null));
+        }
     }
 
     private static OutputPlan CreatePlan() =>
