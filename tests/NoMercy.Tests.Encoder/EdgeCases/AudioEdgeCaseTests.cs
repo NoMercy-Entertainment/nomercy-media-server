@@ -253,8 +253,12 @@ public class AudioEdgeCaseTests
         StageResult result = await _stage.ExecuteAsync(input, _context, default);
 
         StageSuccess<ExecutionPlan> success = Assert.IsType<StageSuccess<ExecutionPlan>>(result);
-        AudioOutputPlan audio = Assert.Single(success.Value.OutputPlan.AudioOutputs);
-        audio.Action.Should().Be(StreamAction.Copy);
+        AudioOutputPlan[] plans = success.Value.OutputPlan.AudioOutputs;
+        plans[0].Action.Should().Be(StreamAction.Copy);
+        plans
+            .Skip(1)
+            .Should()
+            .ContainSingle(p => p.CodecToken == "aac", "the Dolby-only title also gets AAC");
     }
 
     [Fact]
@@ -312,7 +316,8 @@ public class AudioEdgeCaseTests
         StageResult result = await _stage.ExecuteAsync(input, _context, default);
 
         StageSuccess<ExecutionPlan> success = Assert.IsType<StageSuccess<ExecutionPlan>>(result);
-        AudioOutputPlan audio = Assert.Single(success.Value.OutputPlan.AudioOutputs);
+        // A Dolby copy also gets an appended AAC twin; the first plan is the profile's output.
+        AudioOutputPlan audio = success.Value.OutputPlan.AudioOutputs[0];
 
         if (shouldCopy)
             audio.Action.Should().Be(StreamAction.Copy);

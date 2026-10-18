@@ -27,7 +27,8 @@ public class PlaylistGenerator : IPlaylistGenerator
         string Uri,
         string Language,
         string DisplayName,
-        bool IsSourceDefault
+        bool IsSourceDefault,
+        AudioOutputPlan Plan
     );
 
     /// <summary>
@@ -111,13 +112,6 @@ public class PlaylistGenerator : IPlaylistGenerator
 
         sb.AppendLine();
 
-        // Audio groups — keyed by codec for GROUP-ID
-        string audioGroupId = "audio_aac";
-        if (plan.AudioOutputs.Length > 0)
-        {
-            audioGroupId = $"audio_{plan.AudioOutputs[0].CodecToken}";
-        }
-
         // Collect the renditions that will actually be written before any line
         // is emitted. DEFAULT=YES must go to the source's default-disposition
         // track, and that track is not necessarily the first one that survives
@@ -156,14 +150,19 @@ public class PlaylistGenerator : IPlaylistGenerator
                     Uri: $"{subDir}/{playlistFile}.m3u8",
                     Language: language,
                     DisplayName: GetAudioDisplayName(language),
-                    IsSourceDefault: audio.IsSourceDefault
+                    IsSourceDefault: audio.IsSourceDefault,
+                    Plan: audio
                 )
             );
         }
 
-        int defaultAudioIndex = audioEntries.FindIndex(entry => entry.IsSourceDefault);
-        if (defaultAudioIndex < 0)
-            defaultAudioIndex = 0;
+        // One audio group per codec, in first-appearance order, so a client that
+        // cannot decode one codec can pick the variants of another by CODECS.
+        List<string> audioGroupIds =
+        [
+            .. audioEntries.Select(entry => $"audio_{entry.Plan.CodecToken}").Distinct(),
+        ];
+        bool multipleAudioGroups = audioGroupIds.Count > 1;
 
         // Tracks whether any EXT-X-MEDIA:TYPE=AUDIO line was actually written —
         // NOT just whether plan.AudioOutputs is non-empty. A rendition can be
@@ -171,12 +170,23 @@ public class PlaylistGenerator : IPlaylistGenerator
         // gets skipped above; the STREAM-INF AUDIO="..." attribute must follow
         // that same fate so it never references a group with zero members.
         bool audioGroupEmitted = audioEntries.Count > 0;
-        for (int i = 0; i < audioEntries.Count; i++)
+        foreach (string groupId in audioGroupIds)
         {
-            AudioMediaEntry entry = audioEntries[i];
-            sb.AppendLine(
-                $"#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"{audioGroupId}\",LANGUAGE=\"{entry.Language}\",AUTOSELECT=YES,DEFAULT={YesNo(i == defaultAudioIndex)},URI=\"{entry.Uri}\",NAME=\"{entry.DisplayName}\""
-            );
+            List<AudioMediaEntry> groupEntries =
+            [
+                .. audioEntries.Where(entry => $"audio_{entry.Plan.CodecToken}" == groupId),
+            ];
+            int defaultAudioIndex = groupEntries.FindIndex(entry => entry.IsSourceDefault);
+            if (defaultAudioIndex < 0)
+                defaultAudioIndex = 0;
+
+            for (int i = 0; i < groupEntries.Count; i++)
+            {
+                AudioMediaEntry entry = groupEntries[i];
+                sb.AppendLine(
+                    $"#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"{groupId}\",LANGUAGE=\"{entry.Language}\",AUTOSELECT=YES,DEFAULT={YesNo(i == defaultAudioIndex)},URI=\"{entry.Uri}\",NAME=\"{entry.DisplayName}\""
+                );
+            }
         }
 
         // Subtitle groups — one EXT-X-MEDIA per plan. URI now reflects
@@ -214,12 +224,21 @@ public class PlaylistGenerator : IPlaylistGenerator
             sb.AppendLine();
         }
 
-        // Video variants with measured bandwidth
+        // Video variants with measured bandwidth, group-major: every video for
+        // the first audio group, then every video for the next, so the head of
+        // the master matches what single-codec masters always listed.
+        List<string?> variantGroupIds = audioGroupEmitted ? [.. audioGroupIds] : [null];
+        foreach (string? audioGroupId in variantGroupIds)
         foreach (VideoOutputPlan video in plan.VideoOutputs)
         {
+            AudioOutputPlan? primaryAudio = audioGroupId is null
+                ? plan.AudioOutputs.FirstOrDefault()
+                : plan.AudioOutputs.First(a => $"audio_{a.CodecToken}" == audioGroupId);
+
             string? videoCodecTag = GetVideoCodecTag(video);
-            string? audioCodecTag =
-                plan.AudioOutputs.Length > 0 ? GetAudioCodecTag(plan.AudioOutputs[0]) : null;
+            string? audioCodecTag = primaryAudio is null
+                ? null
+                : GetAudioCodecTag(primaryAudio, multipleAudioGroups);
             string codecsAttr = BuildCodecsAttribute(videoCodecTag, audioCodecTag);
 
             // Resolve this variant's own playlist path up front — it is the key
@@ -249,9 +268,8 @@ public class PlaylistGenerator : IPlaylistGenerator
                 continue;
 
             VariantMetrics audMetrics = new(0, 0);
-            if (plan.AudioOutputs.Length > 0)
+            if (primaryAudio is not null)
             {
-                AudioOutputPlan primaryAudio = plan.AudioOutputs[0];
                 Dictionary<string, string> audioTokens = TemplateResolver.AudioTokens(
                     primaryAudio.Language ?? "und",
                     primaryAudio.CodecToken,
@@ -281,7 +299,9 @@ public class PlaylistGenerator : IPlaylistGenerator
             // Never point AUDIO="..." at a group with zero EXT-X-MEDIA members —
             // a title with genuinely no audio must emit neither the group nor
             // this reference, not a dangling one a player fails to resolve.
-            string audioAttr = audioGroupEmitted ? $",AUDIO=\"{audioGroupId}\"" : string.Empty;
+            string audioAttr = audioGroupId is not null
+                ? $",AUDIO=\"{audioGroupId}\""
+                : string.Empty;
 
             sb.AppendLine(
                 $"#EXT-X-STREAM-INF:BANDWIDTH={peakBandwidth},AVERAGE-BANDWIDTH={avgBandwidth},RESOLUTION={video.Width}x{video.Height},FRAME-RATE={frameRate}{codecsAttr},VIDEO-RANGE={videoRange}{audioAttr}{subsAttr}"
@@ -342,8 +362,23 @@ public class PlaylistGenerator : IPlaylistGenerator
             video.PixelFormat
         );
 
-    private static string? GetAudioCodecTag(AudioOutputPlan audio) =>
-        HlsCodecsStringBuilder.AudioCodecString(audio.EncoderName);
+    // A copied Dolby/DTS rendition is only tagged when an AAC twin exists, so the
+    // tag is what lets a client without Dolby pick the AAC variants.
+    private static string? GetAudioCodecTag(AudioOutputPlan audio, bool tagCopiedDolby)
+    {
+        if (tagCopiedDolby && audio.Action == StreamAction.Copy)
+        {
+            return audio.CodecToken.ToLowerInvariant() switch
+            {
+                "ac3" => HlsCodecsStringBuilder.ForAc3(),
+                "eac3" => HlsCodecsStringBuilder.ForEac3(),
+                "dts" => "dtsc",
+                _ => null,
+            };
+        }
+
+        return HlsCodecsStringBuilder.AudioCodecString(audio.EncoderName);
+    }
 
     /// <summary>
     /// Builds the ",CODECS=&quot;...&quot;" clause (leading comma included) from
