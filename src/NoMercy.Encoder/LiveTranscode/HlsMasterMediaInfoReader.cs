@@ -49,6 +49,7 @@ public static class HlsMasterMediaInfoReader
             return null;
 
         Dictionary<string, int> audioGroupChannels = ReadAudioGroupChannels(lines);
+        Dictionary<string, string?> audioGroupCodecs = ReadAudioGroupCodecs(lines);
         List<MediaInfo> variants = [];
 
         foreach (string rawLine in lines)
@@ -58,7 +59,12 @@ public static class HlsMasterMediaInfoReader
                 continue;
 
             Dictionary<string, string> attributes = ParseAttributes(line[StreamInfTag.Length..]);
-            MediaInfo? variant = BuildVariant(attributes, audioGroupChannels, filePath);
+            MediaInfo? variant = BuildVariant(
+                attributes,
+                audioGroupChannels,
+                audioGroupCodecs,
+                filePath
+            );
             if (variant is null)
                 return null;
 
@@ -71,6 +77,7 @@ public static class HlsMasterMediaInfoReader
     private static MediaInfo? BuildVariant(
         Dictionary<string, string> attributes,
         Dictionary<string, int> audioGroupChannels,
+        Dictionary<string, string?> audioGroupCodecs,
         string filePath
     )
     {
@@ -155,6 +162,24 @@ public static class HlsMasterMediaInfoReader
 
         if (video is null)
             return null;
+
+        // CODECS may list only the video; then the audio group names the codec.
+        if (audio is null && attributes.TryGetValue("AUDIO", out string? groupId))
+        {
+            if (!audioGroupCodecs.TryGetValue(groupId, out string? groupCodec) || groupCodec is null)
+                return null;
+
+            audio = new AudioStreamInfo(
+                Index: 1,
+                Codec: groupCodec,
+                Channels: audioChannels,
+                SampleRate: 48000,
+                BitRateKbps: 0,
+                Language: null,
+                IsDefault: true,
+                IsForced: false
+            );
+        }
 
         return new MediaInfo(
             FilePath: filePath,
@@ -345,6 +370,50 @@ public static class HlsMasterMediaInfoReader
                 && channels > 0
             )
                 result[groupId] = Math.Max(channels, result.GetValueOrDefault(groupId));
+        }
+
+        return result;
+    }
+
+    // Codec per audio GROUP-ID: the rendition's CODECS, else the "audio_{codec}"
+    // group name this server writes. Null when neither names a known codec.
+    private static Dictionary<string, string?> ReadAudioGroupCodecs(string[] lines)
+    {
+        Dictionary<string, string?> result = new(StringComparer.Ordinal);
+
+        foreach (string rawLine in lines)
+        {
+            string line = rawLine.Trim();
+            if (!line.StartsWith(MediaTag, StringComparison.Ordinal))
+                continue;
+
+            Dictionary<string, string> attributes = ParseAttributes(line[MediaTag.Length..]);
+            if (
+                !string.Equals(
+                    attributes.GetValueOrDefault("TYPE"),
+                    "AUDIO",
+                    StringComparison.Ordinal
+                )
+                || !attributes.TryGetValue("GROUP-ID", out string? groupId)
+            )
+                continue;
+
+            string? codec = null;
+            if (attributes.TryGetValue("CODECS", out string? codecs))
+                TryMapAudioCodec(codecs.Split(',')[0].Trim(), out codec);
+
+            if (codec is null && groupId.StartsWith("audio_", StringComparison.Ordinal))
+                codec = groupId["audio_".Length..].ToLowerInvariant() switch
+                {
+                    "eac3" => "eac3",
+                    "ac3" => "ac3",
+                    "aac" => "aac",
+                    "opus" => "opus",
+                    "flac" => "flac",
+                    _ => null,
+                };
+
+            result[groupId] = codec;
         }
 
         return result;
