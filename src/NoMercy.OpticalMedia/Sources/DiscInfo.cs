@@ -26,7 +26,8 @@ public record DiscInfo(
     /// <c>BDMV/META/DL/bdmt_*.xml</c>). Preferred over the raw volume
     /// label when available. Null when no embedded title was found.
     /// </summary>
-    string? DiscTitle = null
+    string? DiscTitle = null,
+    string? DrivePath = null
 )
 {
     /// <summary>

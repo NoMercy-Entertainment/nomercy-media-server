@@ -66,7 +66,8 @@ public sealed class CdDiscSource(
                 AudioTracks: audioTracks,
                 TotalDuration: audioTracks.Sum(t => t.Duration.Ticks) is long ticks
                     ? TimeSpan.FromTicks(ticks)
-                    : TimeSpan.Zero
+                    : TimeSpan.Zero,
+                DrivePath: drive.Path
             );
         }
 
@@ -78,7 +79,8 @@ public sealed class CdDiscSource(
             DiscLabel: drive.Label,
             Titles: [],
             AudioTracks: files,
-            TotalDuration: TimeSpan.Zero
+            TotalDuration: TimeSpan.Zero,
+            DrivePath: drive.Path
         );
     }
 
