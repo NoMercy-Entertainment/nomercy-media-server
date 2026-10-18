@@ -433,6 +433,92 @@ public class LiveDiscSessionTests
         );
     }
 
+    private static (
+        LiveDiscSession Session,
+        Mock<ILiveEncoder> Encoder,
+        Mock<ILiveStreamingService> Streaming
+    ) MakeMultiAudioSut(List<LiveEncodeRequest> videoRequests, Func<int, bool> childFails)
+    {
+        (
+            LiveDiscSession session,
+            Mock<IMediaAnalyzer> analyzerMock,
+            Mock<ILiveEncoder> encoderMock,
+            Mock<ILiveStreamingService> streamingMock
+        ) = MakeSut();
+        analyzerMock
+            .Setup(a =>
+                a.AnalyzeAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string[]>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .ReturnsAsync(
+                MakeMediaInfo("bluray:D:/", [MakeAudioStream(0, "eng"), MakeAudioStream(1, "jpn")])
+            );
+        encoderMock
+            .Setup(e => e.StartAsync(It.IsAny<LiveEncodeRequest>(), It.IsAny<CancellationToken>()))
+            .Callback<LiveEncodeRequest, CancellationToken>((req, _) => videoRequests.Add(req))
+            .ReturnsAsync(() =>
+                Mock.Of<ILiveSession>(s => s.SessionId == $"video-{videoRequests.Count}")
+            );
+        encoderMock
+            .Setup(e =>
+                e.StartAudioRenditionAsync(
+                    It.IsAny<LiveEncodeRequest>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .ReturnsAsync(
+                (LiveEncodeRequest req, CancellationToken _) =>
+                    childFails(req.AudioStreamIndex)
+                        ? throw new InvalidOperationException("child failed")
+                        : Mock.Of<ILiveSession>(s => s.SessionId == $"child-{req.AudioStreamIndex}")
+            );
+        return (session, encoderMock, streamingMock);
+    }
+
+    private static Task<ILiveSession> StartTwoTracks(LiveDiscSession session) =>
+        session.StartAsync(
+            new("D:\\", "LABEL", true, OpticalDiscType.BluRay),
+            1,
+            TimeSpan.Zero,
+            null,
+            [new(StreamIndex: 0, Include: true), new(StreamIndex: 1, Include: true)],
+            CancellationToken.None
+        );
+
+    [Fact]
+    public async Task StartAsync_EveryAudioChildFails_FallsBackToMuxedAudio()
+    {
+        List<LiveEncodeRequest> videoRequests = [];
+        (LiveDiscSession session, _, _) = MakeMultiAudioSut(videoRequests, _ => true);
+
+        ILiveSession result = await StartTwoTracks(session);
+
+        videoRequests.Should().HaveCount(2);
+        videoRequests[1].VideoOnly.Should().BeFalse();
+        videoRequests[1].AudioStreamIndex.Should().Be(0);
+        result.SessionId.Should().Be("video-2");
+    }
+
+    [Fact]
+    public async Task StartAsync_FirstAudioChildFails_NextRenditionIsDefault()
+    {
+        List<LiveEncodeRequest> videoRequests = [];
+        (LiveDiscSession session, _, Mock<ILiveStreamingService> streamingMock) =
+            MakeMultiAudioSut(videoRequests, index => index == 0);
+        IReadOnlyList<LiveAudioRendition>? stamped = null;
+        streamingMock
+            .Setup(s => s.StampAudioRenditions(It.IsAny<string>(), It.IsAny<IReadOnlyList<LiveAudioRendition>>()))
+            .Callback<string, IReadOnlyList<LiveAudioRendition>>((_, r) => stamped = r);
+
+        await StartTwoTracks(session);
+
+        stamped.Should().NotBeNull();
+        stamped!.Should().ContainSingle().Which.IsDefault.Should().BeTrue();
+    }
+
     [Fact]
     public async Task StartAsync_ExactlyOneSelectedTrack_KeepsSingleMuxedSessionAtThatIndex()
     {

@@ -137,7 +137,18 @@ public sealed class LiveDiscSession(
             );
 
             if (renditions.Count > 0)
+            {
                 streamingService.StampAudioRenditions(session.SessionId, renditions);
+            }
+            else
+            {
+                // No audio child started: restart with the first track muxed in.
+                await session.DisposeAsync();
+                session = await liveEncoder.StartAsync(
+                    request with { VideoOnly = false, AudioStreamIndex = selected[0] },
+                    ct
+                );
+            }
         }
 
         return session;
@@ -187,7 +198,7 @@ public sealed class LiveDiscSession(
                 new LiveAudioRendition(
                     Language: string.IsNullOrWhiteSpace(language) ? "und" : language,
                     Uri: $"/api/v1/streaming/live/sessions/{child.SessionId}/playlist.m3u8",
-                    IsDefault: position == 0
+                    IsDefault: renditions.Count == 0
                 )
             );
         }
