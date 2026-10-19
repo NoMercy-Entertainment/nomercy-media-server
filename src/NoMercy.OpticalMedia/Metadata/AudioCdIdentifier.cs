@@ -48,7 +48,7 @@ public sealed class AudioCdIdentifier(
 
     public async Task<DiscIdentification> IdentifyAsync(DiscInfo disc, CancellationToken ct)
     {
-        string drivePath = disc.DiscLabel ?? string.Empty;
+        string drivePath = disc.DrivePath ?? disc.DiscLabel ?? string.Empty;
 
         DiscToc? toc = await tocReader.ReadTocAsync(drivePath, ct);
         if (toc is null)

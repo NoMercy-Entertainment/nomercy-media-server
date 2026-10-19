@@ -1317,13 +1317,15 @@ public static class ProfileRuleValidator
         if (profile.Video is not null)
             ScanCustomArgs("video.custom_arguments", profile.Video.CustomArguments, rules);
 
-        for (int i = 0; i < profile.Audio.Length; i++)
-            ScanCustomArgs($"audio[{i}].custom_arguments", profile.Audio[i].CustomArguments, rules);
+        AudioOutput[] audio = profile.Audio ?? [];
+        for (int i = 0; i < audio.Length; i++)
+            ScanCustomArgs($"audio[{i}].custom_arguments", audio[i].CustomArguments, rules);
 
-        for (int i = 0; i < profile.Subtitles.Length; i++)
+        SubtitleOutput[] subtitles = profile.Subtitles ?? [];
+        for (int i = 0; i < subtitles.Length; i++)
             ScanCustomArgs(
                 $"subtitles[{i}].custom_arguments",
-                profile.Subtitles[i].CustomArguments,
+                subtitles[i].CustomArguments,
                 rules
             );
     }

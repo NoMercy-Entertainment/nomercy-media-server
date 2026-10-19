@@ -158,6 +158,8 @@ public class Mp4OutputStrategy(IStorage storage, IFfmpegExecutor? ffmpegExecutor
                 mp4Path,
                 "-i",
                 ffmetaPath,
+                "-map",
+                "0",
                 "-map_metadata",
                 "1",
                 "-metadata_header_padding",

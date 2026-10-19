@@ -79,6 +79,22 @@ public class AudioCdIdentifierTests
     }
 
     [Fact]
+    public async Task IdentifyAsync_ReadsTocFromDrivePath_NotVolumeLabel()
+    {
+        string? requested = null;
+        Mock<ITocReader> tocMock = new();
+        tocMock
+            .Setup(r => r.ReadTocAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .Callback<string, CancellationToken>((path, _) => requested = path)
+            .ReturnsAsync((DiscToc?)null);
+        DiscInfo disc = MakeCdDisc("MY ALBUM") with { DrivePath = "D:\\" };
+
+        await MakeSut(tocReader: tocMock.Object).IdentifyAsync(disc, CancellationToken.None);
+
+        requested.Should().Be("D:\\");
+    }
+
+    [Fact]
     public async Task IdentifyAsync_WithNullTocReaderDefault_ReturnsNeedsManualAssignment()
     {
         AudioCdIdentifier sut = MakeSut(tocReader: new NullTocReader());

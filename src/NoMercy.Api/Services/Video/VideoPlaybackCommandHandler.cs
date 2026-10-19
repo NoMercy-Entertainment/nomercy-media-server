@@ -276,7 +276,10 @@ public class VideoPlaybackCommandHandler(
         state.VolumePercentage = volume;
         state.Muted = false;
 
-        if (device is not null)
+        bool deviceIsPlaying =
+            state.DeviceId is null
+            || state.DeviceId.Equals(device?.DeviceId, StringComparison.OrdinalIgnoreCase);
+        if (device is not null && deviceIsPlaying)
         {
             device.VolumePercent = volume;
 
@@ -365,7 +368,7 @@ public class VideoPlaybackCommandHandler(
 
     private async Task HandleCycleAudio(User user, VideoPlayerState state)
     {
-        if (state.CurrentItem is null)
+        if (state.CurrentItem is null || state.Audio.Count == 0)
             return;
 
         int currentIndex = state.CurrentAudio is not null

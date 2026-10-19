@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.Encoder.Analysis;
+using NoMercy.Encoder.Codecs;
 using NoMercy.Encoder.Codecs.Definitions;
 using NoMercy.Encoder.Output;
 using NoMercy.Encoder.Profiles;
@@ -94,6 +95,60 @@ public static class AudioPlanBuilder
         // streams all collapse to the same directory + filename. Append the
         // source stream index to colliding plans only — single-stream-per-
         // language sources keep their stable templates.
-        return [.. PlanStageDisambiguation.DisambiguateAudio(audioPlans)];
+        AudioOutputPlan[] disambiguated =
+        [
+            .. PlanStageDisambiguation.DisambiguateAudio(audioPlans),
+        ];
+        return AppendAacFallback(disambiguated, profile, media);
+    }
+
+    private static readonly HashSet<string> DolbyFamilyTokens = new(
+        ["ac3", "eac3", "dts"],
+        StringComparer.OrdinalIgnoreCase
+    );
+
+    // Dolby/DTS-only titles also get a stereo AAC twin, appended after the
+    // originals so the first rendition stays what it was.
+    private static AudioOutputPlan[] AppendAacFallback(
+        AudioOutputPlan[] plans,
+        EncodingProfile profile,
+        MediaInfo media
+    )
+    {
+        HashSet<string?> aacLanguages = plans
+            .Where(p => p.CodecToken.Equals("aac", StringComparison.OrdinalIgnoreCase))
+            .Select(p => p.Language)
+            .ToHashSet();
+
+        HashSet<int> dolbySources = plans
+            .Where(p => DolbyFamilyTokens.Contains(p.CodecToken))
+            .Where(p => !aacLanguages.Contains(p.Language))
+            .Select(p => p.SourceStreamIndex)
+            .ToHashSet();
+        if (dolbySources.Count == 0)
+            return plans;
+
+        AudioOutput aac = new(
+            Policy: StreamPolicy.Transcode,
+            Codec: AudioCodecType.Aac,
+            BitrateKbps: 192,
+            Channels: 2,
+            SampleRateHz: 48000,
+            AllowedLanguages: AllowedLanguages.All,
+            DefaultLanguage: null,
+            Loudness: null,
+            Downmix: null,
+            SegmentNameTemplate: ":type:_:language:_:codec:/:type:_:language:_:codec:",
+            PlaylistNameTemplate: ":type:_:language:_:codec:/:type:_:language:_:codec:"
+        );
+
+        // Built over the full stream list so MapLabel keeps the real 0:a:N ordinal.
+        AudioOutputPlan[] twins =
+        [
+            .. Build(profile with { Audio = [aac] }, media)
+                .Where(p => dolbySources.Contains(p.SourceStreamIndex)),
+        ];
+
+        return [.. plans, .. twins];
     }
 }

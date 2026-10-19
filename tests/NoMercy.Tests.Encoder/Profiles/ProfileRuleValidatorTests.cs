@@ -107,6 +107,20 @@ public class ProfileRuleValidatorTests
             PlaylistNameTemplate: "subs/:lang:"
         );
 
+    [Fact]
+    public void Validate_ProfileWithoutAudioOrSubtitles_DoesNotThrow()
+    {
+        EncodingProfile profile = ProfileFor(video: Video()) with
+        {
+            Audio = null!,
+            Subtitles = null!,
+        };
+
+        Action act = () => ProfileRuleValidator.Validate(profile);
+
+        act.Should().NotThrow();
+    }
+
     private static bool HasRule(ValidationEnvelope env, string id) =>
         env.Errors.Any(r => r.Id == id) || env.Warnings.Any(r => r.Id == id);
 
