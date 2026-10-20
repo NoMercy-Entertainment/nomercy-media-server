@@ -96,7 +96,7 @@ public static class DeviceListComposer
     // string into a Ulid's 16 bytes so the same Cast device id always
     // produces the same placeholder DeviceId across polls/broadcasts,
     // without persisting a row for a device we may never own.
-    private static Ulid DeterministicId(string castId)
+    public static Ulid DeterministicId(string castId)
     {
         byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes($"cast:{castId}"));
         return new Ulid([.. hash.AsSpan(0, 16)]);

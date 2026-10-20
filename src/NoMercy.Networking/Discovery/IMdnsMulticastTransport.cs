@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Net;
 using Makaretu.Dns;
 
 namespace NoMercy.Networking.Discovery;
@@ -26,4 +27,14 @@ public interface IMdnsMulticastTransport : IDisposable
     void Start();
 
     void Stop();
+
+    /// <summary>Asks for answers with the QU bit set, so a responder may reply by unicast.</summary>
+    void SendUnicastResponseQuery(DomainName service);
+
+    /// <summary>Sends one query straight to <paramref name="address"/> and returns its reply, or null on timeout.</summary>
+    Task<Message?> QueryHostAsync(
+        IPAddress address,
+        DomainName service,
+        CancellationToken cancellationToken
+    );
 }

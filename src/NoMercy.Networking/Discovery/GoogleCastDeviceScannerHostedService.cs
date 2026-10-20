@@ -36,6 +36,7 @@ public sealed class GoogleCastDeviceScannerHostedService(
             try
             {
                 scanner.Probe();
+                await scanner.ProbeHostsAsync(stoppingToken);
                 await Task.Delay(ProbeInterval, stoppingToken);
             }
             catch (OperationCanceledException)

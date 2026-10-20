@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using System.Collections.Concurrent;
+using System.Net;
 using Makaretu.Dns;
 using Microsoft.Extensions.Logging;
 using Message = Makaretu.Dns.Message;
@@ -38,6 +39,8 @@ public sealed class GoogleCastDeviceScanner : ICastMdnsRegistry, IDisposable
 {
     public const string ServiceType = "_googlecast._tcp";
 
+    private static readonly DomainName ServiceName = new($"{ServiceType}.local");
+
     // Matches MdnsDeviceScanner's own 5-minute staleness convention. Pruned
     // lazily on read rather than swept on a timer — a LAN's Cast device count
     // is small enough that a linear scan of live entries is cheap.
@@ -55,16 +58,24 @@ public sealed class GoogleCastDeviceScanner : ICastMdnsRegistry, IDisposable
         (string? FriendlyName, string? Model, string Ip, int? Port, DateTime SeenAt)
     > _seen = new();
 
+    private readonly ICastProbeTargets? _probeTargets;
+
+    // Every address a Cast announcement ever came from; kept past the staleness
+    // window so a TV that went quiet is still asked directly.
+    private readonly ConcurrentDictionary<string, byte> _knownIps = new();
+
     private int _started;
 
     // The transport is optional so DI keeps building this singleton without a
     // registration; a test passes one that never joins the 5353 group.
     public GoogleCastDeviceScanner(
         ILogger<GoogleCastDeviceScanner> logger,
-        IMdnsMulticastTransport? multicast = null
+        IMdnsMulticastTransport? multicast = null,
+        ICastProbeTargets? probeTargets = null
     )
     {
         _logger = logger;
+        _probeTargets = probeTargets;
         _multicast = multicast ?? new MdnsMulticastTransport();
         _discovery = new(_multicast.Service);
     }
@@ -79,6 +90,7 @@ public sealed class GoogleCastDeviceScanner : ICastMdnsRegistry, IDisposable
             _discovery.QueryServiceInstances(ServiceType);
 
         _multicast.Start();
+        _multicast.SendUnicastResponseQuery(ServiceName);
 
         stoppingToken.Register(() =>
         {
@@ -87,7 +99,41 @@ public sealed class GoogleCastDeviceScanner : ICastMdnsRegistry, IDisposable
         });
     }
 
-    public void Probe() => _discovery.QueryServiceInstances(ServiceType);
+    public void Probe()
+    {
+        // QU first: it is the query a reply-losing network can still answer.
+        _multicast.SendUnicastResponseQuery(ServiceName);
+        _discovery.QueryServiceInstances(ServiceType);
+    }
+
+    /// <summary>Queries each registered or previously seen LAN address directly; no multicast reply needed.</summary>
+    public async Task ProbeHostsAsync(CancellationToken cancellationToken)
+    {
+        HashSet<string> targets = [.. _knownIps.Keys];
+        if (_probeTargets is not null)
+            targets.UnionWith(await _probeTargets.GetLanIpsAsync(cancellationToken));
+
+        foreach (string target in targets)
+        {
+            if (!IPAddress.TryParse(target, out IPAddress? address))
+                continue;
+
+            try
+            {
+                Message? reply = await _multicast.QueryHostAsync(
+                    address,
+                    ServiceName,
+                    cancellationToken
+                );
+                if (reply is not null)
+                    Record(reply, target);
+            }
+            catch (Exception ex) when (ex is not OperationCanceledException)
+            {
+                _logger.LogDebug(ex, "Direct Google Cast query to {Target} failed", target);
+            }
+        }
+    }
 
     /// <summary>
     /// True when a Google Cast mDNS announcement was seen, within the
@@ -127,20 +173,28 @@ public sealed class GoogleCastDeviceScanner : ICastMdnsRegistry, IDisposable
     {
         try
         {
-            (string? id, string? friendlyName, string? model) = ExtractCastInfo(e.Message);
-            if (string.IsNullOrEmpty(id))
-                return;
-
-            (string? ip, int? port) = MdnsDeviceScanner.ExtractEndpoint(e.Message);
-            if (ip is null)
-                return;
-
-            _seen[id] = (friendlyName, model, ip, port, DateTime.UtcNow);
+            Record(e.Message, null);
         }
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Google Cast mDNS hit processing failed");
         }
+    }
+
+    // fallbackIp: the address a direct query went to; used when the reply has no A record.
+    private void Record(Message message, string? fallbackIp)
+    {
+        (string? id, string? friendlyName, string? model) = ExtractCastInfo(message);
+        if (string.IsNullOrEmpty(id))
+            return;
+
+        (string? ip, int? port) = MdnsDeviceScanner.ExtractEndpoint(message);
+        ip ??= fallbackIp;
+        if (ip is null)
+            return;
+
+        _seen[id] = (friendlyName, model, ip, port, DateTime.UtcNow);
+        _knownIps[ip] = 0;
     }
 
     // Internal so the pure TXT parsing is directly unit-testable against real
