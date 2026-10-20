@@ -193,6 +193,67 @@ public sealed class DeviceHub : ConnectionHub
         return HubCommandResult.FromWakeStatus(dispatched ? "wake_sent" : "no_route");
     }
 
+    // Statuses: cast_sent, invalid_input, not_owned, forbidden, not_found, no_route.
+    public async Task<HubCommandResult> CastToNearby(string deviceId, NearbyCastRequest request)
+    {
+        if (
+            !Ulid.TryParse(deviceId, out Ulid id)
+            || id == Ulid.Empty
+            || string.IsNullOrWhiteSpace(request?.MediaType)
+            || string.IsNullOrWhiteSpace(request.MediaId)
+        )
+            return HubCommandResult.FromWakeStatus("invalid_input");
+
+        User? user = UserCacheService.GetUser(Context.User.UserId());
+        if (user is null)
+            return HubCommandResult.FromWakeStatus("not_owned");
+        if (!user.Allowed && !user.Owner)
+            return HubCommandResult.Forbidden("Caller has no media access.");
+
+        CastMdnsHit? hit = _castMdnsRegistry
+            .GetSeen()
+            .FirstOrDefault(h => DeviceListComposer.DeterministicId(h.Id) == id);
+        if (hit is null)
+            return HubCommandResult.NotFound("Nearby device was not found.");
+
+        try
+        {
+            // Never persisted: the row only carries the address and name to the launcher.
+            Device nearby = new()
+            {
+                Id = id,
+                Name = hit.FriendlyName ?? hit.Model ?? "Chromecast device",
+                LanIp = hit.Ip,
+                Type = "chromecast",
+            };
+            CastIntent intent = CastIntent.PlayVideo(
+                request.MediaType,
+                request.MediaId,
+                request.ResumeAt,
+                request.AudioLanguage,
+                request.SubtitleLanguage,
+                request.SubtitleType,
+                request.SubtitleCodec
+            );
+
+            // Web Receiver: the NoMercy app may not be installed on a TV we never registered.
+            bool dispatched = await _castWaker.WakeAsync(
+                nearby,
+                user.Id,
+                intent,
+                useAndroidReceiver: false
+            );
+            return dispatched
+                ? new HubCommandResult(true, null, null, "cast_sent")
+                : HubCommandResult.FromWakeStatus("no_route");
+        }
+        catch (Exception exception)
+        {
+            _logger.LogError(exception, "Could not cast to nearby device {DeviceId}", deviceId);
+            return HubCommandResult.Failed();
+        }
+    }
+
     public async Task<List<DeviceDropNoticeDto>> PendingNotices()
     {
         User? user = UserCacheService.GetUser(Context.User.UserId());

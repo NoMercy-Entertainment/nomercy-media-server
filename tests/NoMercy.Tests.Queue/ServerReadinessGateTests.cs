@@ -172,4 +172,16 @@ public class ServerReadinessGateTests
         await waiter.WaitAsync(TimeSpan.FromSeconds(5));
         waiter.IsCompletedSuccessfully.Should().BeTrue();
     }
+
+    [Fact]
+    public void WaitForReady_WhenApplicationAlreadyStarted_CompletesWithoutTheThreadPool()
+    {
+        // A busy CI runner starved a Task.Run watcher past the 5 s wait above.
+        FakeLifetime lifetime = new(alreadyStarted: true);
+        ServerReadinessGate gate = new(lifetime, NullLogger<ServerReadinessGate>.Instance);
+
+        Task waiter = gate.WaitForReadyAsync(CancellationToken.None);
+
+        waiter.IsCompletedSuccessfully.Should().BeTrue();
+    }
 }

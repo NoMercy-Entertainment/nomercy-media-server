@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Net;
 using Makaretu.Dns;
 using NoMercy.Networking.Discovery;
 
@@ -25,9 +26,34 @@ internal sealed class NonBindingMulticastTransport : IMdnsMulticastTransport
 
     public bool Started { get; private set; }
 
+    public List<DomainName> UnicastResponseQueries { get; } = [];
+
+    public List<IPAddress> HostQueries { get; } = [];
+
+    public Dictionary<IPAddress, Message> HostReplies { get; } = [];
+
     public void Start() => Started = true;
 
     public void Stop() => Started = false;
+
+    public void SendUnicastResponseQuery(DomainName service) => UnicastResponseQueries.Add(service);
+
+    public Task<Message?> QueryHostAsync(
+        IPAddress address,
+        DomainName service,
+        CancellationToken cancellationToken
+    )
+    {
+        HostQueries.Add(address);
+        return Task.FromResult(HostReplies.GetValueOrDefault(address));
+    }
+
+    public List<(Message Reply, string FromIp)> LegacyReplies { get; } = [];
+
+    public Task<IReadOnlyList<(Message Reply, string FromIp)>> QueryLegacyMulticastAsync(
+        DomainName service,
+        CancellationToken cancellationToken
+    ) => Task.FromResult<IReadOnlyList<(Message Reply, string FromIp)>>(LegacyReplies);
 
     public void Dispose() => Service.Dispose();
 }

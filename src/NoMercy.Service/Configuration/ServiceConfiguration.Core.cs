@@ -384,6 +384,7 @@ public static partial class ServiceConfiguration
         // while its own app process is alive. This one hears any Chromecast
         // or Cast-Connect Android TV regardless of foreground app, so a
         // registered device idle on another app still reports as reachable.
+        services.AddSingleton<ICastProbeTargets, RegisteredDeviceCastProbeTargets>();
         services.AddSingleton<GoogleCastDeviceScanner>();
         services.AddSingleton<ICastMdnsRegistry>(sp =>
             sp.GetRequiredService<GoogleCastDeviceScanner>()

@@ -46,7 +46,12 @@ public class ServerCastWaker(
     /// on the bus, which is what the caller waits on, so a dispatched launch is
     /// reported the same way a bus wake is.
     /// </summary>
-    public async Task<bool> WakeAsync(Device tv, Guid userId, CastIntent intent)
+    public async Task<bool> WakeAsync(
+        Device tv,
+        Guid userId,
+        CastIntent intent,
+        bool useAndroidReceiver = true
+    )
     {
         string? targetIp = CastAddress.Resolve(tv.LanIp, tv.Ip);
         if (targetIp is null)
@@ -77,7 +82,7 @@ public class ServerCastWaker(
         await launcher.LaunchIfColdAsync(
             targetIsLive: false,
             targetIp: targetIp,
-            useAndroidReceiver: true,
+            useAndroidReceiver: useAndroidReceiver,
             resolveLaunchData: () =>
                 tokens.MintAsync(
                     userId: userId,

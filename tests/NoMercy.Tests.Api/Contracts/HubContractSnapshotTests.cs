@@ -77,6 +77,7 @@ public class HubContractSnapshotTests
 
     private static readonly string[] DeviceHubMethods =
     [
+        "CastToNearby(System.String, NoMercy.Api.Hubs.NearbyCastRequest) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
         "DeclareCapabilities(NoMercy.Encoder.Devices.DeviceCapabilities) -> System.Threading.Tasks.Task<NoMercy.Api.Hubs.HubCommandResult>",
         "GetDevices() -> System.Threading.Tasks.Task<System.Collections.Generic.List<NoMercy.Networking.Devices.DeviceListItem>>",
         "PendingNotices() -> System.Threading.Tasks.Task<System.Collections.Generic.List<NoMercy.Api.Hubs.DeviceDropNoticeDto>>",

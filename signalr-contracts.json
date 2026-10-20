@@ -57,6 +57,7 @@
       "StopResources() -\u003E NoMercy.Api.Hubs.HubCommandResult"
     ],
     "DeviceHub": [
+      "CastToNearby(System.String, NoMercy.Api.Hubs.NearbyCastRequest) -\u003E System.Threading.Tasks.Task\u003CNoMercy.Api.Hubs.HubCommandResult\u003E",
       "DeclareCapabilities(NoMercy.Encoder.Devices.DeviceCapabilities) -\u003E System.Threading.Tasks.Task\u003CNoMercy.Api.Hubs.HubCommandResult\u003E",
       "Devices() -\u003E System.Collections.Generic.List\u003CNoMercy.Database.Models.Users.Device\u003E",
       "GetCountryFromContext() -\u003E System.String",

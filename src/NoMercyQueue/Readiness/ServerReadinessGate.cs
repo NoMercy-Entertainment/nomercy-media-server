@@ -128,8 +128,10 @@ public sealed class ServerReadinessGate : IServerReadinessGate
 
     public Task WaitForReadyAsync(CancellationToken ct)
     {
+        // Called directly: it yields at its first wait, and a sealed gate resolves
+        // here instead of waiting for a thread-pool thread.
         if (Interlocked.CompareExchange(ref _watcherStarted, 1, 0) == 0)
-            _ = Task.Run(() => WatchAsync(ct));
+            _ = WatchAsync(ct);
 
         return _resolvedTcs.Task.WaitAsync(ct);
     }
@@ -165,7 +167,8 @@ public sealed class ServerReadinessGate : IServerReadinessGate
                     .ToList();
 
                 _logger.LogWarning(
-                    "Server readiness: {Timeout}s timeout reached — signals still pending: [{Laggards}]. Proceeding anyway", [TimeoutSeconds, string.Join(", ", laggards)]
+                    "Server readiness: {Timeout}s timeout reached — signals still pending: [{Laggards}]. Proceeding anyway",
+                    [TimeoutSeconds, string.Join(", ", laggards)]
                 );
             }
             else
