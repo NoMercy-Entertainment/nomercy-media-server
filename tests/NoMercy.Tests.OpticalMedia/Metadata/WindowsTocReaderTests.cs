@@ -120,6 +120,18 @@ public class WindowsTocReaderTests
         discId.Should().Be(CanonicalDiscId);
     }
 
+    [Fact]
+    public void ParseCdromToc_FirstTrackAboveOne_LaysTheOffsetsOutFromTheFirstTrack()
+    {
+        byte[] buffer = BuildTocBuffer(2, 3, [150, 20150], 40000);
+
+        DiscToc toc = WindowsTocReader.ParseCdromToc(buffer);
+
+        toc.FirstTrack.Should().Be(2);
+        toc.LastTrack.Should().Be(3);
+        toc.TrackOffsetsSectors.Should().Equal(150, 20150);
+    }
+
     // ── ParseCdromToc — per-track offset assertions ───────────────────────────
 
     [Fact]

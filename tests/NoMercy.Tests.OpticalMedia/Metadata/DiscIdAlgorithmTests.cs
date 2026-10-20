@@ -9,6 +9,9 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
 using NoMercy.OpticalMedia.Metadata;
 
 namespace NoMercy.Tests.OpticalMedia.Metadata;
@@ -39,6 +42,57 @@ public class DiscIdAlgorithmTests
         string discId = MusicBrainzDiscId.Compute(toc);
 
         discId.Should().Be("49HHV7Eb8UKF3aQiNmu1GR8vKTY-");
+    }
+
+    [Fact]
+    public void DocumentedAlgorithm_CanonicalSpecFixture_ReproducesThePublishedDiscId()
+    {
+        string discId = DocumentedDiscId(
+            firstTrack: 1,
+            lastTrack: 6,
+            leadOutOffsetSectors: 95462,
+            offsetByTrackNumber: new Dictionary<int, int>
+            {
+                [1] = 150,
+                [2] = 15363,
+                [3] = 32314,
+                [4] = 46592,
+                [5] = 63414,
+                [6] = 80489,
+            }
+        );
+
+        discId
+            .Should()
+            .Be(
+                "49HHV7Eb8UKF3aQiNmu1GR8vKTY-",
+                "the reference the FirstTrack tests compare against must itself match the published example"
+            );
+    }
+
+    [Fact]
+    public void Compute_FirstTrackAboveOne_PutsEachOffsetInItsTrackNumberSlot()
+    {
+        // The array is laid out from FirstTrack (index 0 is track 2 here); the
+        // hash input is laid out by track number, so track 1's slot stays 0.
+        DiscToc toc = new(
+            FirstTrack: 2,
+            LastTrack: 3,
+            LeadOutOffsetSectors: 40000,
+            TrackOffsetsSectors: [150, 20150]
+        );
+
+        string discId = MusicBrainzDiscId.Compute(toc);
+
+        discId
+            .Should()
+            .Be(DocumentedDiscId(2, 3, 40000, new Dictionary<int, int> { [2] = 150, [3] = 20150 }));
+        discId
+            .Should()
+            .NotBe(
+                DocumentedDiscId(2, 3, 40000, new Dictionary<int, int> { [1] = 150, [2] = 20150 }),
+                "the offsets must not be packed from track 1's slot as if the disc started at track 1"
+            );
     }
 
     [Fact]
@@ -102,5 +156,35 @@ public class DiscIdAlgorithmTests
         NullTocReader reader = new();
         DiscToc? result = await reader.ReadTocAsync("/dev/sr0", CancellationToken.None);
         result.Should().BeNull();
+    }
+
+    /// <summary>
+    /// The published algorithm (https://musicbrainz.org/doc/Disc_ID_Calculation,
+    /// libdiscid disc.c): first and last track number as two upper-case hex
+    /// digits, then 100 offsets of eight hex digits — the lead-out followed by
+    /// one slot per track number 1..99 holding that track's absolute offset, or
+    /// 0 when the disc has no such track — SHA-1 hashed and base64 encoded with
+    /// <c>+ / =</c> replaced by <c>. _ -</c>. Keyed by track number so it does
+    /// not depend on how <see cref="DiscToc"/> lays out its offset array.
+    /// </summary>
+    private static string DocumentedDiscId(
+        int firstTrack,
+        int lastTrack,
+        int leadOutOffsetSectors,
+        IReadOnlyDictionary<int, int> offsetByTrackNumber
+    )
+    {
+        StringBuilder hex = new();
+        hex.Append(firstTrack.ToString("X2", CultureInfo.InvariantCulture));
+        hex.Append(lastTrack.ToString("X2", CultureInfo.InvariantCulture));
+        hex.Append(leadOutOffsetSectors.ToString("X8", CultureInfo.InvariantCulture));
+        for (int trackNumber = 1; trackNumber <= 99; trackNumber++)
+        {
+            int offset = offsetByTrackNumber.GetValueOrDefault(trackNumber, 0);
+            hex.Append(offset.ToString("X8", CultureInfo.InvariantCulture));
+        }
+
+        byte[] digest = SHA1.HashData(Encoding.ASCII.GetBytes(hex.ToString()));
+        return Convert.ToBase64String(digest).Replace('+', '.').Replace('/', '_').Replace('=', '-');
     }
 }

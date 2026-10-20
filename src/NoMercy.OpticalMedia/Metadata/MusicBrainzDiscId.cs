@@ -23,8 +23,8 @@ namespace NoMercy.OpticalMedia.Metadata;
 ///      - 2-hex: first track number (zero-padded, upper-case)
 ///      - 2-hex: last track number (zero-padded, upper-case)
 ///      - 8-hex: lead-out offset
-///      - 99 x 8-hex: track offsets in order; slots above the last track are
-///        00000000
+///      - 99 x 8-hex: one slot per track number 1..99 holding that track's
+///        offset; slots outside FirstTrack..LastTrack are 00000000
 ///   2. SHA1 of the ASCII input string.
 ///   3. Base64-encode the 20 raw SHA1 bytes.
 ///   4. Apply MusicBrainz alphabet substitutions:
@@ -63,9 +63,10 @@ public static class MusicBrainzDiscId
         sb.Append(toc.LastTrack.ToString("X2", CultureInfo.InvariantCulture));
         sb.Append(toc.LeadOutOffsetSectors.ToString("X8", CultureInfo.InvariantCulture));
 
-        for (int slotIndex = 0; slotIndex < TocSlots; slotIndex++)
+        for (int trackNumber = 1; trackNumber <= TocSlots; trackNumber++)
         {
-            int offset = slotIndex < trackCount ? toc.TrackOffsetsSectors[slotIndex] : 0;
+            bool onDisc = trackNumber >= toc.FirstTrack && trackNumber <= toc.LastTrack;
+            int offset = onDisc ? toc.TrackOffsetsSectors[trackNumber - toc.FirstTrack] : 0;
             sb.Append(offset.ToString("X8", CultureInfo.InvariantCulture));
         }
 
