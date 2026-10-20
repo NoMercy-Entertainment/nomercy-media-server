@@ -570,7 +570,6 @@ public class LibraryManager(
         FileManager fileManager = new(
             fileRepository,
             storageFactory,
-            storageDriver,
             mediaAnalyzer,
             filenameParser,
             pluginMediaSources ?? NullPluginMediaSourceProvider.Instance

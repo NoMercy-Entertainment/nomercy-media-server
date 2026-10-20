@@ -33,7 +33,6 @@ namespace NoMercy.MediaProcessing.Files;
 public partial class FileManager(
     IFileRepository fileRepository,
     IStorageFactory storageFactory,
-    IStorageDriver storageDriver,
     IMediaAnalyzer mediaAnalyzer,
     IFilenameParserPipeline filenameParser,
     IPluginMediaSourceProvider? pluginMediaSources = null
@@ -479,7 +478,7 @@ public partial class FileManager(
                 if (!folderStorage.Exists(path))
                 {
                     string? match = FileNameSanitizer.FindMatchingDirectory(
-                        storageDriver,
+                        folderStorage.Driver,
                         folderRoot,
                         tv.Folder.Replace("/", "")
                     );
@@ -505,7 +504,7 @@ public partial class FileManager(
                 if (!folderStorage.Exists(path))
                 {
                     string? match = FileNameSanitizer.FindMatchingDirectory(
-                        storageDriver,
+                        folderStorage.Driver,
                         folderRoot,
                         movie.Folder.Replace("/", "")
                     );

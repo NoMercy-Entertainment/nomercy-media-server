@@ -126,7 +126,6 @@ public sealed class FileManagerReconcileStaleVideoFilesTests : IDisposable
         FileManager manager = new(
             repoMock.Object,
             factoryMock.Object,
-            new Mock<IStorageDriver>().Object,
             new Mock<IMediaAnalyzer>().Object,
             TestFilenameParser.Default
         );

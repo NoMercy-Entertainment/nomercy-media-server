@@ -239,7 +239,6 @@ public class VideoEncodeJob
         FileManager fileManager = new(
             fileRepository,
             StorageFactory,
-            StorageDriver,
             _mediaAnalyzer!,
             _filenameParser!,
             PluginMediaSources
@@ -983,7 +982,6 @@ public class VideoEncodeJob
         FileManager fileManager = new(
             fileRepository,
             StorageFactory,
-            StorageDriver,
             _mediaAnalyzer!,
             _filenameParser!,
             PluginMediaSources

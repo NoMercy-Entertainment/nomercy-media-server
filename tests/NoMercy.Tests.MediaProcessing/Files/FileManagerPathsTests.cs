@@ -66,17 +66,13 @@ public sealed class FileManagerPathsTests : IDisposable
         cleanup.SaveChanges();
     }
 
-    private static FileManager BuildManager(
-        Mock<IStorageFactory>? factoryMock = null,
-        Mock<IStorageDriver>? driverMock = null
-    )
+    private static FileManager BuildManager(Mock<IStorageFactory>? factoryMock = null)
     {
         Mock<IFileRepository> repoMock = new();
         Mock<IMediaAnalyzer> mediaAnalyzerMock = new();
         return new(
             repoMock.Object,
             (factoryMock ?? new()).Object,
-            (driverMock ?? new()).Object,
             mediaAnalyzerMock.Object,
             TestFilenameParser.Default
         );

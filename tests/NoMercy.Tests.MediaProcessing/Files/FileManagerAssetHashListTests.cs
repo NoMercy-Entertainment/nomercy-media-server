@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using System.Reflection;
+using ImageMagick;
 using Moq;
 using NoMercy.Database;
 using NoMercy.Database.Models.Media;
@@ -18,7 +19,6 @@ using NoMercy.MediaProcessing.Files;
 using NoMercy.Storage;
 using NoMercy.Storage.Drivers.Local;
 using NoMercy.Storage.Validation;
-using ImageMagick;
 
 namespace NoMercy.Tests.MediaProcessing.Files;
 
@@ -51,12 +51,10 @@ public sealed class FileManagerAssetHashListTests : IDisposable
     {
         Mock<IFileRepository> repoMock = new();
         Mock<IStorageFactory> factoryMock = new();
-        Mock<IStorageDriver> driverMock = new();
         Mock<IMediaAnalyzer> mediaAnalyzerMock = new();
         return new(
             repoMock.Object,
             factoryMock.Object,
-            driverMock.Object,
             mediaAnalyzerMock.Object,
             TestFilenameParser.Default
         );

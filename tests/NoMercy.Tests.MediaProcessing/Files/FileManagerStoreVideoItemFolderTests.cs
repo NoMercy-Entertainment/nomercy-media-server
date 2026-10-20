@@ -115,7 +115,6 @@ public sealed class FileManagerStoreVideoItemFolderTests : IDisposable
         FileManager manager = new(
             repoMock.Object,
             factoryMock.Object,
-            new Mock<IStorageDriver>().Object,
             new Mock<IMediaAnalyzer>().Object,
             TestFilenameParser.Default
         );
@@ -249,7 +248,6 @@ public sealed class FileManagerStoreVideoItemFolderTests : IDisposable
         FileManager manager = new(
             repoMock.Object,
             factoryMock.Object,
-            new Mock<IStorageDriver>().Object,
             new Mock<IMediaAnalyzer>().Object,
             TestFilenameParser.Default
         );
