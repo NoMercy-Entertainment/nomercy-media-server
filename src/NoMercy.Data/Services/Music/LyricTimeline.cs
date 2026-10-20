@@ -14,6 +14,19 @@ namespace NoMercy.Data.Services.Music;
 
 public static class LyricTimeline
 {
+    /// <summary>A line time from seconds, with the minutes, seconds and hundredths the clients read.</summary>
+    public static Lyric.LineTime FromSeconds(double seconds)
+    {
+        int totalHundredths = (int)Math.Round(seconds * 100);
+        return new()
+        {
+            Total = seconds,
+            Minutes = totalHundredths / 6000,
+            Seconds = totalHundredths / 100 % 60,
+            Hundredths = totalHundredths % 100,
+        };
+    }
+
     /// <summary>
     /// Shifts every line by the track's offset. A line pushed before the start of
     /// the track is clamped to zero.
@@ -28,18 +41,10 @@ public static class LyricTimeline
         [
             .. lyrics.Select(line =>
             {
-                double newTotal = Math.Max(0, line.Time.Total + offsetSec);
-                int totalHundredths = (int)Math.Round(newTotal * 100);
                 return new Lyric
                 {
                     Text = line.Text,
-                    Time = new()
-                    {
-                        Total = newTotal,
-                        Minutes = totalHundredths / 6000,
-                        Seconds = totalHundredths / 100 % 60,
-                        Hundredths = totalHundredths % 100,
-                    },
+                    Time = FromSeconds(Math.Max(0, line.Time.Total + offsetSec)),
                     Words = line
                         .Words?.Select(word => new LyricWord
                         {

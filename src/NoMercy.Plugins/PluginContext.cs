@@ -134,6 +134,12 @@ public class PluginContext : IPluginContext
     public IPluginMusicAnalysisWriter? MusicAnalysisWriter { get; }
 
     /// <summary>
+    /// Reading a track's lyrics state and writing generated timings. Null
+    /// when the plugin never declared the <c>lyricsWrite</c> hook.
+    /// </summary>
+    public IPluginLyrics? Lyrics { get; }
+
+    /// <summary>
     /// Playback, typed. Always present: the grants decide whether an intent
     /// reaches anyone, and a plugin branching on null for a surface that is part
     /// of its contract would be branching on how the host was wired rather than
@@ -170,7 +176,8 @@ public class PluginContext : IPluginContext
         IPluginNet? net = null,
         IPluginProcess? process = null,
         IPluginNative? native = null,
-        IPluginBrowser? browser = null
+        IPluginBrowser? browser = null,
+        IPluginLyrics? lyrics = null
     )
     {
         _net = net;
@@ -186,6 +193,7 @@ public class PluginContext : IPluginContext
         AudioTools = audioTools;
         DerivedAudio = derivedAudio;
         MusicAnalysisWriter = musicAnalysisWriter;
+        Lyrics = lyrics;
 
         PluginId = pluginId;
         _eventBus = eventBus ?? throw new ArgumentNullException(nameof(eventBus));

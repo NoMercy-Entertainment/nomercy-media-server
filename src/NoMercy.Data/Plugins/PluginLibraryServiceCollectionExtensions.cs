@@ -63,6 +63,11 @@ public static class PluginLibraryServiceCollectionExtensions
             PluginMusicAnalysisWriterFactory
         >();
 
+        // Generated lyric timings: the plugin reads the state, aligns, and
+        // writes back under the host's rules (never over synced provider
+        // lyrics, and only at the version it read).
+        services.AddSingleton<IPluginLyricsFactory, PluginLyricsFactory>();
+
         return services;
     }
 }
