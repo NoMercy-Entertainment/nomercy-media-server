@@ -1016,7 +1016,24 @@ public class LibrariesController(
 
         try
         {
-            await fileManager.MoveToLibraryFolder(request.Id, folder);
+            MoveToLibraryFolderResult result = await fileManager.MoveToLibraryFolder(
+                request.Id,
+                folder
+            );
+
+            switch (result)
+            {
+                case MoveToLibraryFolderResult.TargetFolderHasNoLibrary:
+                    return UnprocessableEntityResponse(
+                        "The target folder is not linked to a library"
+                    );
+                case MoveToLibraryFolderResult.SourceFolderNotFound:
+                    return NotFoundResponse("The item's folder was not found on disk");
+                case MoveToLibraryFolderResult.DatabaseUpdateFailed:
+                    return InternalServerErrorResponse(
+                        "The files were moved but the library records could not be updated"
+                    );
+            }
 
             return Ok(
                 new StatusResponseDto<string>

@@ -531,6 +531,76 @@ public class HardwareBenchmarkTests
     }
 
     [Fact]
+    public async Task CalibrateAsync_TwoOverlappingCalls_NeverRunProbesConcurrently()
+    {
+        int concurrent = 0;
+        int maxConcurrent = 0;
+        TaskCompletionSource gate = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        Mock<IProcessRunner> runner = new();
+        runner
+            .Setup(r =>
+                r.RunAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string[]>(),
+                    It.IsAny<Action<string>>(),
+                    It.IsAny<Action<string>>(),
+                    It.IsAny<string>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .Returns(
+                async (
+                    string _,
+                    string[] _,
+                    Action<string>? onStdOut,
+                    Action<string>? _,
+                    string? _,
+                    CancellationToken _
+                ) =>
+                {
+                    int now = Interlocked.Increment(ref concurrent);
+                    int seen;
+                    while (now > (seen = Volatile.Read(ref maxConcurrent)))
+                        Interlocked.CompareExchange(ref maxConcurrent, now, seen);
+
+                    await gate.Task;
+
+                    onStdOut?.Invoke("fps=60");
+                    onStdOut?.Invoke("speed=2.0x");
+                    onStdOut?.Invoke("progress=end");
+                    Interlocked.Decrement(ref concurrent);
+                    return new ProcessResult(
+                        ExitCode: 0,
+                        StdOut: "",
+                        StdErr: "",
+                        Duration: TimeSpan.Zero
+                    );
+                }
+            );
+
+        Mock<IHardwareCapabilities> hardware = new();
+        hardware.Setup(h => h.Gpus).Returns([]);
+        Mock<ISpeedIndexStore> store = new();
+
+        HardwareBenchmark sut = NewBenchmark(hardware.Object, runner.Object, store.Object);
+
+        Task<SpeedIndex> first = sut.CalibrateAsync(CancellationToken.None);
+        Task<SpeedIndex> second = sut.CalibrateAsync(CancellationToken.None);
+
+        // Give both calls time to reach the process runner.
+        await Task.Delay(500);
+
+        Volatile.Read(ref maxConcurrent).Should().Be(1, "only one calibration may probe at a time");
+        sut.IsRunning.Should().BeTrue();
+
+        gate.SetResult();
+        await Task.WhenAll(first, second);
+
+        sut.IsRunning.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task CalibrateAsync_SkipsFailedEncoderRuns()
     {
         Mock<IProcessRunner> runner = new();

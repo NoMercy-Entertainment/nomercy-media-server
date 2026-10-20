@@ -17,13 +17,15 @@ namespace NoMercy.Providers.Jikan;
 
 public class JikanMetadataProvider : ExternalApiClient, IJikanMetadataProvider
 {
-    // Jikan's documented cap is 3 req/s / 60 req/min. Exposed as a constructor
-    // parameter, configured from "Providers:Jikan:RequestIntervalMs" via
-    // IConfiguration in ServiceConfiguration.Core.cs, so the interval is
-    // changeable without a code change.
+    // Jikan's documented cap is 3 req/s and 60 req/min. A bulk import runs for
+    // minutes, so the per-minute cap binds and 1000ms is the floor. Exposed as a
+    // constructor parameter, configured from "Providers:Jikan:RequestIntervalMs"
+    // via IConfiguration in ServiceConfiguration.Core.cs, so the interval is
+    // changeable without a code change; ProviderQueues.OptionsFor carries the
+    // same default for the static JikanClient entry points.
     private readonly int _requestIntervalMs;
 
-    public JikanMetadataProvider(int requestIntervalMs = 350)
+    public JikanMetadataProvider(int requestIntervalMs = 1000)
     {
         _requestIntervalMs = requestIntervalMs;
         _ = RequestQueue;

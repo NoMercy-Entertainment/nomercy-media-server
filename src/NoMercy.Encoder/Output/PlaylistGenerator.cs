@@ -183,8 +183,11 @@ public class PlaylistGenerator : IPlaylistGenerator
             for (int i = 0; i < groupEntries.Count; i++)
             {
                 AudioMediaEntry entry = groupEntries[i];
+                int channels = entry.Plan.OutputChannels;
+                string channelsAttribute =
+                    channels > 0 ? $",CHANNELS=\"{channels}\"" : string.Empty;
                 sb.AppendLine(
-                    $"#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"{groupId}\",LANGUAGE=\"{entry.Language}\",AUTOSELECT=YES,DEFAULT={YesNo(i == defaultAudioIndex)},URI=\"{entry.Uri}\",NAME=\"{entry.DisplayName}\""
+                    $"#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"{groupId}\",LANGUAGE=\"{entry.Language}\",AUTOSELECT=YES,DEFAULT={YesNo(i == defaultAudioIndex)}{channelsAttribute},URI=\"{entry.Uri}\",NAME=\"{entry.DisplayName}\""
                 );
             }
         }
@@ -290,7 +293,11 @@ public class PlaylistGenerator : IPlaylistGenerator
             // remux is SDR; mislabelling them as PQ makes hls.js reject the
             // master with manifestIncompatibleCodecsError because the segments'
             // actual transfer characteristics don't match.
-            string videoRange = video.IsHdrOutput ? "PQ" : "SDR";
+            string videoRange = !video.IsHdrOutput
+                ? "SDR"
+                : string.Equals(video.ColorTransfer, "arib-std-b67", StringComparison.OrdinalIgnoreCase)
+                    ? "HLG"
+                    : "PQ";
             string frameRate = video.FrameRate.ToString("F3", CultureInfo.InvariantCulture);
 
             string subsAttr =

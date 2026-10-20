@@ -18,6 +18,7 @@ using NoMercy.Database.Models.TvShows;
 using NoMercy.Encoder.Output;
 using NoMercy.Encoder.PostProcess;
 using NoMercy.Encoder.Subtitles;
+using NoMercy.MediaProcessing.Jobs;
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
 using NoMercy.MediaProcessing.Jobs.SubtitleJobs;
 using NoMercy.NmSystem.Dto;
@@ -268,7 +269,22 @@ public partial class FileManager
         await fileRepository.StoreVideoFile(videoFile);
 
         _storedVideoFileKeys.Add(new(videoFile.Share, videoFile.HostFolder, videoFile.Filename));
+        DispatchAudioTrackBackfillOnce();
         return true;
+    }
+
+    // One sweep per pass is enough: it fills every file that has no track rows.
+    private void DispatchAudioTrackBackfillOnce()
+    {
+        if (_audioTrackBackfillQueued)
+            return;
+
+        QueueJobDispatcher? dispatcher = QueueRunner.Current?.Dispatcher;
+        if (dispatcher is null)
+            return;
+
+        _audioTrackBackfillQueued = true;
+        dispatcher.Dispatch(new VideoFileAudioTrackBackfillJob(), "file", 1);
     }
 
     /// <summary>

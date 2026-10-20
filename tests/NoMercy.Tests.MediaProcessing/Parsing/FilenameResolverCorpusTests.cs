@@ -54,8 +54,14 @@ public class FilenameResolverCorpusTests
             )
         );
 
-    private static MovieFile Resolve(string fileName, string directory = @"C:\Anime\Show") =>
-        Resolver().Resolve(fileName, directory, Path.Combine(directory, fileName), "anime").Parsed;
+    private static MovieFile Resolve(
+        string fileName,
+        string directory = @"C:\Anime\Show",
+        string libraryType = "anime"
+    ) =>
+        Resolver()
+            .Resolve(fileName, directory, Path.Combine(directory, fileName), libraryType)
+            .Parsed;
 
     // ---------------------------------------------------------------------------
     // A re-release marks its version on the episode number: "- 01v2". The suffix
@@ -387,6 +393,43 @@ public class FilenameResolverCorpusTests
         MovieFile result = Resolve(file);
         result.Season.Should().Be(0);
         result.Episode.Should().Be(episode);
+    }
+
+    // ---------------------------------------------------------------------------
+    // A numbered episode whose TITLE holds a specials word. The word matched
+    // anywhere in the name and nothing looked at the number already set off
+    // before it, so "Show Name - 12 - The Special" was filed as S00E01 — the slot
+    // an unnumbered marker defaults to — on top of every other such episode of
+    // the show, while the real episode 12 read as missing.
+    // ---------------------------------------------------------------------------
+    [Theory]
+    [InlineData("Show Name - 12 - The Special.mkv", "Show Name", 12)]
+    [InlineData("Naruto - 052 - Extra Training.mkv", "Naruto", 52)]
+    [InlineData("Show Name - 07 - Movie Night.mkv", "Show Name", 7)]
+    public void A_numbered_episode_whose_title_holds_a_specials_word_keeps_its_number(
+        string file,
+        string title,
+        int episode
+    )
+    {
+        MovieFile result = Resolve(file, @"E:\TV.Shows\Show Name", "tv");
+        result.Episode.Should().Be(episode);
+        result.Season.Should().NotBe(0);
+        result.Title.Should().Be(title);
+    }
+
+    [Theory]
+    // The guard. A number inside the show's own name has no dash of its own, and
+    // the parenthesised year is gone before any adapter reads a number. Neither
+    // is an episode, so the bare marker after them is still the first special.
+    [InlineData("Mob Psycho 100 - Special.mkv", "Mob Psycho 100")]
+    [InlineData("Dororo (2019) - Special.mkv", "Dororo")]
+    public void A_number_inside_the_show_name_does_not_unmake_a_special(string file, string title)
+    {
+        MovieFile result = Resolve(file, @"E:\TV.Shows\Whatever", "tv");
+        result.Title.Should().Be(title);
+        result.Season.Should().Be(0);
+        result.Episode.Should().Be(1);
     }
 
     // ---------------------------------------------------------------------------

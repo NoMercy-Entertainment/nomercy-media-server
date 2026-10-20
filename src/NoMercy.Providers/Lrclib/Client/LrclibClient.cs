@@ -91,7 +91,8 @@ public partial class LrclibClient : LrclibBaseClient
 
         bool hasSynced = !string.IsNullOrEmpty(result.SyncedLyrics);
         LyricLine[]? lines = ConvertToMusixmatchLyrics(
-            hasSynced ? result.SyncedLyrics : result.PlainLyrics
+            hasSynced ? result.SyncedLyrics : result.PlainLyrics,
+            hasSynced
         );
         if (lines is null)
             return null;
@@ -105,7 +106,7 @@ public partial class LrclibClient : LrclibBaseClient
         );
     }
 
-    private static LyricLine[]? ConvertToMusixmatchLyrics(string? lyrics)
+    private static LyricLine[]? ConvertToMusixmatchLyrics(string? lyrics, bool synced)
     {
         if (string.IsNullOrEmpty(lyrics))
             return null;
@@ -117,46 +118,49 @@ public partial class LrclibClient : LrclibBaseClient
             string trimmedLine = line.Trim();
             if (string.IsNullOrEmpty(trimmedLine))
                 continue;
-            LyricLine? lyricLine = MakeLyricLine(trimmedLine);
-            if (lyricLine != null)
-                lyricLines.Add(lyricLine);
+            // LRC headers ([ar:], [ti:], [offset:], ...) describe the file, not the
+            // song. Plain lyrics carry no headers, so a bracketed label there is text.
+            if (synced && IdTag().IsMatch(trimmedLine))
+                continue;
+            lyricLines.AddRange(MakeLyricLines(trimmedLine));
         }
-        return lyricLines.Count == 0 ? null : lyricLines.ToArray();
-    }
-
-    private static LyricLine? MakeLyricLine(string trimmedLine)
-    {
-        if (string.IsNullOrEmpty(trimmedLine))
+        if (lyricLines.Count == 0)
             return null;
 
-        Match match = TimeStamped().Match(trimmedLine);
-        if (!match.Success)
-            return new()
-            {
-                Text = trimmedLine,
-                Time = new()
-                {
-                    Total = 0,
-                    Minutes = 0,
-                    Seconds = 0,
-                    Hundredths = 0,
-                },
-            };
+        // A repeated tag yields its line once per timestamp, so the lines no longer
+        // arrive in play order by themselves.
+        return lyricLines.OrderBy(lyricLine => lyricLine.Time.Total).ToArray();
+    }
 
-        int minutes = int.Parse(match.Groups[1].Value);
-        int seconds = int.Parse(match.Groups[2].Value);
+    private static IEnumerable<LyricLine> MakeLyricLines(string trimmedLine)
+    {
+        MatchCollection timestamps = LeadingTimestamps().Matches(trimmedLine);
+        if (timestamps.Count == 0)
+        {
+            yield return new() { Text = trimmedLine, Time = new() };
+            yield break;
+        }
+
+        Match lastTimestamp = timestamps[^1];
+        string text = trimmedLine[(lastTimestamp.Index + lastTimestamp.Length)..].Trim();
+        foreach (Match timestamp in timestamps)
+            yield return MakeLyricLine(timestamp, text);
+    }
+
+    private static LyricLine MakeLyricLine(Match timestamp, string text)
+    {
+        int minutes = int.Parse(timestamp.Groups[1].Value);
+        int seconds = int.Parse(timestamp.Groups[2].Value);
         // LRC fractions come in both hundredths ([mm:ss.xx]) and milliseconds
         // ([mm:ss.xxx]) precision. Scale by the digit count so a 3-digit tag is
-        // read as milliseconds, not as an out-of-range hundredths value — and so
-        // the timestamp is stripped from the text instead of being left in it.
-        string fraction = match.Groups[3].Value;
+        // read as milliseconds, not as an out-of-range hundredths value.
+        string fraction = timestamp.Groups[3].Value;
         double fractionalSeconds = fraction.Length switch
         {
             3 => int.Parse(fraction) / 1000.0,
             2 => int.Parse(fraction) / 100.0,
             _ => 0,
         };
-        string text = match.Groups[4].Value.Trim();
         double total = (minutes * 60) + seconds + fractionalSeconds;
 
         return new()
@@ -172,6 +176,11 @@ public partial class LrclibClient : LrclibBaseClient
         };
     }
 
-    [GeneratedRegex(@"^\[(\d{1,2}):(\d{2})(?:[.:](\d{2,3}))?\](.*)$")]
-    private static partial Regex TimeStamped();
+    // \G chains each match to the end of the previous one, so only the run of
+    // tags at the start of the line is read; whatever follows is the lyric text.
+    [GeneratedRegex(@"\G\s*\[(\d{1,2}):(\d{2})(?:[.:](\d{2,3}))?\]")]
+    private static partial Regex LeadingTimestamps();
+
+    [GeneratedRegex(@"^\[[A-Za-z#][A-Za-z0-9_#]*:[^\]]*\]$")]
+    private static partial Regex IdTag();
 }

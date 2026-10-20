@@ -160,12 +160,9 @@ public sealed class SmbReadStreamTests
     [Fact]
     public void Read_propagates_non_success_non_eof_status_as_IOException()
     {
-        // The stream only distinguishes "error" from "EOF" once it has a
-        // non-empty chunk in hand — an empty/null chunk short-circuits to EOF
-        // regardless of status (this is what lets a server's EOF-with-error
-        // response still terminate the stream cleanly). A non-empty chunk
-        // paired with a failure status is the case that must reach
-        // SmbStatus.EnsureSuccess and throw.
+        // A failure status must throw whether or not the server attached data.
+        // This is the chunk-with-error shape; the null-buffer shape SMBLibrary
+        // actually produces on failure is covered below.
         Mock<ISMBFileStore> store = new();
         byte[] nonEmptyChunk = [0x01];
         store
@@ -179,6 +176,82 @@ public sealed class SmbReadStreamTests
         Action act = () => _ = stream.Read(new byte[4], 0, 4);
 
         act.Should().Throw<IOException>().WithMessage("*STATUS_ACCESS_DENIED*");
+    }
+
+    [Fact]
+    public void Read_throws_IOException_when_ReadFile_fails_without_returning_data()
+    {
+        // SMBLibrary assigns the buffer only on STATUS_SUCCESS, so every failed
+        // read arrives as a null chunk. Treating that as end of file let a
+        // dropped session finish a copy with a short destination file.
+        Mock<ISMBFileStore> store = new();
+        store
+            .Setup(s =>
+                s.ReadFile(
+                    out It.Ref<byte[]>.IsAny,
+                    It.IsAny<object>(),
+                    It.IsAny<long>(),
+                    It.IsAny<int>()
+                )
+            )
+            .Returns(
+                (InvokeReadFile)(
+                    (out byte[] data, object _, long _, int _) =>
+                    {
+                        data = null!;
+                        return NTStatus.STATUS_USER_SESSION_DELETED;
+                    }
+                )
+            );
+        SmbSession session = NewSession(store);
+        using SmbReadStream stream = new(session, new object(), "/movie.mkv");
+
+        Action act = () => _ = stream.Read(new byte[4], 0, 4);
+
+        act.Should().Throw<IOException>().WithMessage("*STATUS_USER_SESSION_DELETED*");
+    }
+
+    [Fact]
+    public void Read_treats_a_successful_empty_chunk_as_end_of_file()
+    {
+        Mock<ISMBFileStore> store = new();
+        store
+            .Setup(s =>
+                s.ReadFile(
+                    out It.Ref<byte[]>.IsAny,
+                    It.IsAny<object>(),
+                    It.IsAny<long>(),
+                    It.IsAny<int>()
+                )
+            )
+            .Returns(
+                (InvokeReadFile)(
+                    (out byte[] data, object _, long _, int _) =>
+                    {
+                        data = [];
+                        return NTStatus.STATUS_SUCCESS;
+                    }
+                )
+            );
+        SmbSession session = NewSession(store);
+        using SmbReadStream stream = new(session, new object(), "/empty.bin");
+
+        int read = stream.Read(new byte[4], 0, 4);
+        int readAgain = stream.Read(new byte[4], 0, 4);
+
+        read.Should().Be(0);
+        readAgain.Should().Be(0);
+        store.Verify(
+            s =>
+                s.ReadFile(
+                    out It.Ref<byte[]>.IsAny,
+                    It.IsAny<object>(),
+                    It.IsAny<long>(),
+                    It.IsAny<int>()
+                ),
+            Times.Once,
+            "an empty successful chunk marks EOF, so the stream must not ask the server again"
+        );
     }
 
     [Fact]

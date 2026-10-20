@@ -105,13 +105,11 @@ public sealed partial class VideoDiscIdentifier(ILogger<VideoDiscIdentifier> log
         {
             if (
                 candidate.Source == "tmdb"
+                && candidate.Type == MediaType.TvShow
                 && !string.IsNullOrEmpty(candidate.StableId)
                 && discDurationSec > 0
             )
             {
-                // Determine whether this is a TV candidate by trying to parse
-                // the StableId and checking back against results from SearchAsync.
-                // We use the SeasonNumber field as the TV discriminator.
                 DiscCandidate enriched = await TryResolveEpisodeAsync(
                     candidate,
                     discDurationSec,

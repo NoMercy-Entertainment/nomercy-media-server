@@ -90,6 +90,14 @@ public class LiveIngestKeyStore : ILiveIngestKeyStore
         }
     }
 
+    public void RevokeIfUnbound(string key)
+    {
+        // Remove the entry exactly as it was read, so a bind that lands in between
+        // (which replaces the entry with a bound one) is never undone.
+        if (_byKey.TryGetValue(key, out Entry? entry) && entry.SessionId is null)
+            _byKey.TryRemove(KeyValuePair.Create(key, entry));
+    }
+
     private void PruneExpired()
     {
         DateTime now = DateTime.UtcNow;

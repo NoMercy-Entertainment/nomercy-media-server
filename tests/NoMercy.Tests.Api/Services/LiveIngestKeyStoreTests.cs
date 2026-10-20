@@ -112,4 +112,29 @@ public sealed class LiveIngestKeyStoreTests
 
         store.TryValidate(kept, keptPath).Should().BeTrue();
     }
+
+    [Fact]
+    public void RevokeIfUnbound_DropsAKeyNoSessionClaimed()
+    {
+        LiveIngestKeyStore store = new();
+        string path = "/01ABC/Anime/Show/Ep.mkv";
+        string key = store.Issue(path);
+
+        store.RevokeIfUnbound(key);
+
+        store.TryValidate(key, path).Should().BeFalse();
+    }
+
+    [Fact]
+    public void RevokeIfUnbound_LeavesABoundKeyAlive()
+    {
+        LiveIngestKeyStore store = new();
+        string path = "/01ABC/Anime/Show/Ep.mkv";
+        string key = store.Issue(path);
+        store.BindSession(key, "session-1");
+
+        store.RevokeIfUnbound(key);
+
+        store.TryValidate(key, path).Should().BeTrue();
+    }
 }

@@ -19,7 +19,7 @@ public class TmdbSeasonChangeItem
     public string Id { get; set; } = string.Empty;
 
     [JsonProperty("action")]
-    public Action? Action { get; set; }
+    public string Action { get; set; } = string.Empty;
 
     [JsonProperty("time")]
     public string Time { get; set; } = string.Empty;

@@ -83,7 +83,8 @@ public static class AudioPlanBuilder
                             : null,
                         SourceCodecName: stream.Codec.ToLowerInvariant(),
                         SourceStreamIndex: stream.Index,
-                        IsSourceDefault: stream.IsDefault
+                        IsSourceDefault: stream.IsDefault,
+                        SourceChannels: stream.Channels
                     )
                 );
             }

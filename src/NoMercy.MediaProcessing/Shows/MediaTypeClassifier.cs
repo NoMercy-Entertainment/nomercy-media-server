@@ -33,10 +33,11 @@ public class MediaTypeClassifier(
 
         // Same safety rule the Kitsu-era classifier used: a title match alone
         // is not enough. Origin check uses TMDB's origin_country only — Jikan
-        // has no reliable country field.
+        // has no reliable country field. An empty list is unknown, like null:
+        // only a stated non-Japanese origin vetoes the match.
         if (
             isAnime == true
-            && originCountry is not null
+            && originCountry is { Length: > 0 }
             && !originCountry.Any(c => string.Equals(c, "JP", StringComparison.OrdinalIgnoreCase))
         )
             isAnime = false;

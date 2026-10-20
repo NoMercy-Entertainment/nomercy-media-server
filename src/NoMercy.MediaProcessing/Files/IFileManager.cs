@@ -16,5 +16,5 @@ namespace NoMercy.MediaProcessing.Files;
 public interface IFileManager
 {
     Task<bool> FindFiles(int id, Library library);
-    Task MoveToLibraryFolder(int id, Folder folder);
+    Task<MoveToLibraryFolderResult> MoveToLibraryFolder(int id, Folder folder);
 }

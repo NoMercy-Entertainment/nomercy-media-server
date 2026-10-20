@@ -105,6 +105,42 @@ public class LiveTranscodeService(
         if (resolved is null)
             return LiveResult.NotFound("Video file not found or you lack access");
 
+        try
+        {
+            return await StartResolvedSessionAsync(
+                userId,
+                request,
+                deviceId,
+                videoFileId,
+                resolved,
+                ct
+            );
+        }
+        finally
+        {
+            // The self-ingest key is minted before the start knows whether a
+            // transcode will run, and only a key bound to a session dies with that
+            // session. Direct play, a refused slot, a failed probe and a failed
+            // encoder start all end without one, so drop the key unless this start
+            // bound it; otherwise it unlocks the file's folder for its whole
+            // absolute lifetime.
+            if (resolved.IngestKey is not null)
+                ingestKeyStore.RevokeIfUnbound(resolved.IngestKey);
+        }
+    }
+
+    // Everything after authorization: the playback decision, the encoder start and
+    // the session's audio wiring. Binds the ingest key once a session exists; every
+    // other exit leaves it unbound for StartSessionAsync to revoke.
+    private async Task<LiveResult> StartResolvedSessionAsync(
+        Guid userId,
+        StartLiveSessionRequest request,
+        string? deviceId,
+        Ulid videoFileId,
+        AuthorizedFile resolved,
+        CancellationToken ct
+    )
+    {
         if (!await ReserveSessionSlotAsync(userId))
             return LiveResult.ServiceUnavailable("Maximum concurrent live sessions reached");
 

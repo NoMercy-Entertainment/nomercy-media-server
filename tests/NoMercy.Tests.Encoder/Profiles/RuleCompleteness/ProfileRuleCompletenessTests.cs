@@ -69,6 +69,7 @@ public class ProfileRuleCompletenessTests
         EncoderRuleId.CustomArgsReservedFlag,
         EncoderRuleId.DrmHttpNotHttps,
         EncoderRuleId.DrmKeyMissing,
+        EncoderRuleId.DrmSchemeUnsupported,
         EncoderRuleId.SourceVariableFrameRate,
         EncoderRuleId.SourceDolbyVisionWillBeStripped,
         EncoderRuleId.SourceUpscalingDetected,
@@ -503,6 +504,10 @@ public class ProfileRuleCompletenessTests
             {
                 Drm = new("aes-128", new()),
             },
+            [EncoderRuleId.DrmSchemeUnsupported] = MakeProfile(VideoTranscode()) with
+            {
+                Drm = new("cbcs", new() { ["key_uri"] = "https://server/key.bin" }),
+            },
         };
 
         List<string> notFiring = [];
@@ -759,6 +764,10 @@ public class ProfileRuleCompletenessTests
             {
                 Drm = new("aes-128", new() { ["key_uri"] = "https://server/key.bin" }),
             },
+            [EncoderRuleId.DrmSchemeUnsupported] = MakeProfile(VideoTranscode()) with
+            {
+                Drm = new("cenc", new() { ["license_url"] = "https://license.example/issue" }),
+            },
         };
 
         List<string> falsePositives = [];
@@ -794,8 +803,8 @@ public class ProfileRuleCompletenessTests
         count
             .Should()
             .Be(
-                72,
-                "EncoderRuleId currently catalogues 72 rules; "
+                73,
+                "EncoderRuleId currently catalogues 73 rules; "
                     + "if this count changed, update the completeness sets above and this guard"
             );
     }

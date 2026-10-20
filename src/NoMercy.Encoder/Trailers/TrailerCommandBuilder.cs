@@ -48,7 +48,7 @@ public static partial class TrailerCommandBuilder
     {
         StringBuilder sb = new();
 
-        sb.Append(ytdlpPath);
+        sb.Append(Quote(ytdlpPath));
         sb.Append(" -f bestvideo+bestaudio  --extractor-args \"youtube:player_client=default\" ");
 
         if (IsSafeLanguage(language))
@@ -58,7 +58,7 @@ public static partial class TrailerCommandBuilder
 
         sb.Append(" -o - ");
         sb.Append(
-            $" | {ffmpegPath} -i pipe: -map 0:0 -map 0:1 -c:v libx264 -c:a aac -ac 2 -preset ultrafast "
+            $" | {Quote(ffmpegPath)} -i pipe: -map 0:0 -map 0:1 -c:v libx264 -c:a aac -ac 2 -preset ultrafast "
         );
         sb.Append(
             "-segment_list_type m3u8 -hls_playlist_type event -hls_init_time 4 -hls_time 4 -hls_segment_filename video_%05d.ts video.m3u8 "
@@ -66,4 +66,8 @@ public static partial class TrailerCommandBuilder
 
         return sb.ToString();
     }
+
+    // The shell splits the command on spaces, so a tool path under Program Files
+    // or a user profile with a space has to travel as one quoted token.
+    private static string Quote(string path) => "\"" + path.Replace("\"", "\\\"") + "\"";
 }

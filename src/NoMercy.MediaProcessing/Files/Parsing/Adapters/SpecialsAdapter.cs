@@ -34,6 +34,12 @@ namespace NoMercy.MediaProcessing.Files.Parsing.Adapters;
 /// the ambiguous WORD markers additionally require a show title to precede them in
 /// the file name itself - protecting shows literally named "Special" or "Extras".
 /// </para>
+/// <para>
+/// A word marker with no number of its own also declines when a dash-set number
+/// already precedes it: "Show Name - 12 - The Special" is episode 12 with the word
+/// in its title, and the absolute-number adapter reads the 12. Claimed here, every
+/// such episode of a show landed on S00E01 and the real one read as missing.
+/// </para>
 /// </summary>
 public sealed partial class SpecialsAdapter : IFilenameParseAdapter
 {
@@ -68,6 +74,27 @@ public sealed partial class SpecialsAdapter : IFilenameParseAdapter
         return numbered.Success ? int.Parse(numbered.Groups["num"].Value) : 1;
     }
 
+    /// <summary>
+    /// A number set off by a dash before the marker — the "12" of
+    /// "Show Name - 12 - The Special". A number inside the show's own name
+    /// ("Mob Psycho 100 - Special") has no dash of its own and is not one.
+    /// </summary>
+    [GeneratedRegex(@"(?<![A-Za-z0-9])-[\s\.\-_]*(?<num>[0-9]{1,4})(?![A-Za-z0-9])")]
+    private static partial Regex DashedNumber();
+
+    /// <summary>
+    /// Whether the text before the marker already numbers the file. A year is
+    /// skipped for the same reason the absolute-number adapter skips it.
+    /// </summary>
+    private static bool HasEpisodeNumber(string beforeMarker) =>
+        DashedNumber()
+            .Matches(beforeMarker)
+            .Any(number => !LooksLikeYear(number.Groups["num"].Value));
+
+    private static bool LooksLikeYear(string number) =>
+        number.Length == 4
+        && (number.StartsWith("18") || number.StartsWith("19") || number.StartsWith("20"));
+
     public MovieFile? TryParse(ParseContext context)
     {
         if (
@@ -81,6 +108,12 @@ public sealed partial class SpecialsAdapter : IFilenameParseAdapter
             return null;
 
         string beforeMarker = context.CleanedFileName[..match.Index];
+        bool isWordMarker = match.Groups["word"].Success;
+
+        // An unnumbered word marker borrows the file's number. A number already
+        // set off before it IS that number, and the word is episode-title text.
+        if (isWordMarker && !match.Groups["num"].Success && HasEpisodeNumber(beforeMarker))
+            return null;
 
         // A BD batch puts the season between the show name and the marker
         // ("Overlord - S01 NCOP"), and everything before the marker is the title,
@@ -96,8 +129,6 @@ public sealed partial class SpecialsAdapter : IFilenameParseAdapter
             .TrimEnd('-', ' ')
             .Trim()
             .CleanSeriesTitle();
-
-        bool isWordMarker = match.Groups["word"].Success;
 
         if (string.IsNullOrWhiteSpace(title) || title.Length <= 1)
         {

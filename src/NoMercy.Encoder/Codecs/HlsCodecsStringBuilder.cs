@@ -9,6 +9,8 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Globalization;
+
 namespace NoMercy.Encoder.Codecs;
 
 /// <summary>
@@ -295,12 +297,9 @@ public static class HlsCodecsStringBuilder
         if (string.IsNullOrEmpty(level))
             return 0x28; // 4.0
 
-        // Handle both "4.0" and "40" style input
-        string normalized = level.Replace(".", "");
-        if (int.TryParse(normalized, out int numeric))
-            return (byte)numeric;
-
-        return level switch
+        // The level table goes first: a whole number such as "4" is the major
+        // level 4.0, and reading it as level_idc 4 would advertise level 0.4.
+        byte? tabled = level switch
         {
             "1" or "1.0" => 10,
             "1.1" => 11,
@@ -321,8 +320,20 @@ public static class HlsCodecsStringBuilder
             "6" or "6.0" => 60,
             "6.1" => 61,
             "6.2" => 62,
-            _ => 40,
+            _ => null,
         };
+        if (tabled is byte tabledIdc)
+            return tabledIdc;
+
+        // level_idc-style input ("40", "41"). Only the range the table spans is
+        // a level; anything larger would wrap in the byte cast.
+        if (
+            int.TryParse(level, NumberStyles.Integer, CultureInfo.InvariantCulture, out int numeric)
+            && numeric is >= 10 and <= 62
+        )
+            return (byte)numeric;
+
+        return 40;
     }
 
     private static int ParseHevcLevel(string? level, bool tenBit)

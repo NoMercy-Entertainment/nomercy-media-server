@@ -142,7 +142,12 @@ public partial class FileLogic(
         if (item?.Parsed is null)
             return;
 
-        Folder? folder = Folders.FirstOrDefault(folder => item.Path.Contains(folder.Path));
+        // Folder.Path is stored with forward slashes while the scan returns the
+        // driver's native path, so both sides are compared on forward slashes.
+        string itemPath = item.Path.Replace('\\', '/');
+        Folder? folder = Folders.FirstOrDefault(folder =>
+            itemPath.Contains(folder.Path.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase)
+        );
         if (folder == null)
             return;
 
@@ -152,10 +157,7 @@ public partial class FileLogic(
         // driver-absolute. Rebase onto the scope-relative folder root so the
         // facade calls below (ExistsAsync / List) accept it on remote backends
         // and the persisted path stays backend-neutral.
-        string itemPath = StoragePathHelpers.RebaseToFolderRoot(
-            item.Path.Replace('\\', '/'),
-            folder.Path
-        );
+        itemPath = StoragePathHelpers.RebaseToFolderRoot(itemPath, folder.Path);
         string fileName = "/" + StoragePathHelpers.GetName(itemPath);
         string hostFolder = itemPath.Replace(fileName, "");
 
@@ -254,14 +256,16 @@ public partial class FileLogic(
                 return;
             }
 
+            // The only unique index on VideoFiles is (Filename, HostFolder);
+            // SQLite refuses a conflict target that names anything else. The
+            // matched row keeps its Id, which UserData rows point at.
             await mediaContext
                 .VideoFiles.Upsert(videoFile)
-                .On(vf => vf.Filename)
+                .On(vf => new { vf.Filename, vf.HostFolder })
                 .WhenMatched(
                     (vs, vi) =>
                         new()
                         {
-                            Id = vi.Id,
                             EpisodeId = vi.EpisodeId,
                             MovieId = vi.MovieId,
                             Folder = vi.Folder,
@@ -279,7 +283,10 @@ public partial class FileLogic(
         }
         catch (Exception e)
         {
-            logger.LogError(e.Message);
+            // A row that was not written must fail the scan; finishing without
+            // it would report a library that has no record of the file.
+            logger.LogError(e, "Storing video file '{Path}' failed", item.Path);
+            throw;
         }
     }
 

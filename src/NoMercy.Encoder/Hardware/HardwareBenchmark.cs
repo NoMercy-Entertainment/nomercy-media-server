@@ -133,10 +133,17 @@ public class HardwareBenchmark(
     public const int BenchmarkSchemaVersion = 2;
 
     private SpeedIndex _cache = new(new());
-    private bool _isRunning;
+    // Calibrations are serialized: a second caller (dashboard "Run benchmark"
+    // during the startup or monthly run) waits its turn instead of running a
+    // second set of ffmpeg probes that would skew both measurements.
+    private readonly SemaphoreSlim _runGate = new(1, 1);
+
+    // Callers that are running or waiting. IsRunning stays true until the
+    // last of them ends, so one run finishing cannot clear it for another.
+    private int _activeCalls;
     private BenchmarkProgress? _progress;
 
-    public bool IsRunning => _isRunning;
+    public bool IsRunning => Volatile.Read(ref _activeCalls) > 0;
 
     public BenchmarkProgress? CurrentProgress => _progress;
 
@@ -187,15 +194,23 @@ public class HardwareBenchmark(
 
     public async Task<SpeedIndex> CalibrateAsync(CancellationToken ct)
     {
-        _isRunning = true;
-        _progress = new(0, 0, 0, "starting", DateTime.UtcNow);
+        Interlocked.Increment(ref _activeCalls);
         try
         {
-            return await CalibrateInternalAsync(ct).ConfigureAwait(false);
+            await _runGate.WaitAsync(ct).ConfigureAwait(false);
+            try
+            {
+                _progress = new(0, 0, 0, "starting", DateTime.UtcNow);
+                return await CalibrateInternalAsync(ct).ConfigureAwait(false);
+            }
+            finally
+            {
+                _runGate.Release();
+            }
         }
         finally
         {
-            _isRunning = false;
+            Interlocked.Decrement(ref _activeCalls);
         }
     }
 

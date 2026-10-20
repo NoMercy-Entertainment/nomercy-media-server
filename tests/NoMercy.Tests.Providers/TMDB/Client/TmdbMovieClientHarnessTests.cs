@@ -14,6 +14,7 @@ using NoMercy.NmSystem.Configuration;
 using NoMercy.Providers.Helpers;
 using NoMercy.Providers.TMDB.Client;
 using NoMercy.Providers.TMDB.Models.Movies;
+using NoMercy.Providers.TMDB.Models.Shared;
 using NoMercy.Tests.Common.Providers;
 using NoMercy.Tests.Providers.TMDB.Mocks;
 
@@ -189,4 +190,49 @@ public sealed class TmdbMovieClientHarnessTests : ProviderHttpHarness
         result.Should().BeNull();
         Handler.RequestCountFor($"movie/{movieId}").Should().Be(4); // 1 initial + 3 retries
     }
+
+    [Theory]
+    [InlineData("latest")]
+    [InlineData("now_playing")]
+    [InlineData("top_rated")]
+    [InlineData("upcoming")]
+    public async Task ListRoutes_ClientHasMovieId_PathOmitsIt(string route)
+    {
+        // Requirement: latest, now_playing, top_rated and upcoming are TMDB list
+        // endpoints (movie/<route>), the same shape TmdbTvClient uses; the
+        // client's movie id has no place in them.
+        TestApiKeyStore.Instance.TmdbToken = "tmdb-test-token";
+        const int movieId = 900_008;
+        TmdbMovieDetails movie = TmdbMovieMockData.GenerateMovieWithId(movieId);
+        object body =
+            route == "latest"
+                ? movie
+                : new TmdbPaginatedResponse<TmdbMovie>
+                {
+                    Page = 1,
+                    Results = [movie],
+                    TotalPages = 1,
+                    TotalResults = 1,
+                };
+        Handler.WhenGet($"movie/{route}", MockResponse.Json(HttpStatusCode.OK, body));
+
+        // List routes carry no id, so a unique language is what keeps the shared
+        // on-disk cache from answering this request with another test's body.
+        using TmdbMovieClient client = new(movieId, language: $"xx-{Guid.NewGuid():N}");
+        object? result = await CallListRoute(client, route);
+
+        CapturedRequest request = Handler.Requests.Should().ContainSingle().Which;
+        request.Path.Should().Be($"/3/movie/{route}");
+        result.Should().NotBeNull();
+    }
+
+    private static async Task<object?> CallListRoute(TmdbMovieClient client, string route) =>
+        route switch
+        {
+            "latest" => await client.Latest(priority: true),
+            "now_playing" => await client.NowPlaying(priority: true),
+            "top_rated" => await client.TopRated(priority: true),
+            "upcoming" => await client.Upcoming(priority: true),
+            _ => throw new ArgumentOutOfRangeException(nameof(route), route, null),
+        };
 }

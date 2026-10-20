@@ -1128,6 +1128,33 @@ public class ProfileRuleValidatorTests
         Assert.False(HasRule(env, EncoderRuleId.DrmKeyMissing));
     }
 
+    [Theory]
+    [InlineData("key_url")]
+    [InlineData("keyfile")]
+    [InlineData("key_file")]
+    [InlineData("Key_Uri")]
+    public void DrmKeyMissing_EveryAcceptedKeyName_DoesNotFire(string parameterName)
+    {
+        EncodingProfile profile = ProfileFor(Video()) with
+        {
+            Drm = new("aes-128", new() { [parameterName] = "https://server/key.bin" }),
+        };
+        ValidationEnvelope env = ProfileRuleValidator.Validate(profile);
+        Assert.False(HasRule(env, EncoderRuleId.DrmKeyMissing));
+    }
+
+    [Fact]
+    public void DrmKeyMissing_KeyUriPresentButBlank_Fires()
+    {
+        // A blank key_uri reaches the packager as an empty KeyUri and fails there.
+        EncodingProfile profile = ProfileFor(Video()) with
+        {
+            Drm = new("aes-128", new() { ["key_uri"] = "   " }),
+        };
+        ValidationEnvelope env = ProfileRuleValidator.Validate(profile);
+        Assert.True(HasRule(env, EncoderRuleId.DrmKeyMissing));
+    }
+
     [Fact]
     public void DrmKeyMissing_LicenseUrlPresent_DoesNotFire()
     {
@@ -1153,6 +1180,61 @@ public class ProfileRuleValidatorTests
         EncodingProfile profile = ProfileFor(Video()) with { Drm = new("none", new()) };
         ValidationEnvelope env = ProfileRuleValidator.Validate(profile);
         Assert.False(HasRule(env, EncoderRuleId.DrmKeyMissing));
+    }
+
+    // ── DrmSchemeUnsupported ─────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData("cbcs")]
+    [InlineData("aes-128-cbc")]
+    [InlineData("aes 128")]
+    public void DrmSchemeUnsupported_UnknownScheme_Fires(string scheme)
+    {
+        EncodingProfile profile = ProfileFor(Video()) with
+        {
+            Drm = new(scheme, new() { ["key_uri"] = "https://server/key.bin" }),
+        };
+        ValidationEnvelope env = ProfileRuleValidator.Validate(profile);
+        Assert.True(HasRule(env, EncoderRuleId.DrmSchemeUnsupported));
+        Assert.False(env.Valid);
+    }
+
+    [Fact]
+    public void DrmSchemeUnsupported_Message_NamesTheSchemeAndTheSupportedOnes()
+    {
+        EncodingProfile profile = ProfileFor(Video()) with
+        {
+            Drm = new("cbcs", new() { ["key_uri"] = "https://server/key.bin" }),
+        };
+        ValidationEnvelope env = ProfileRuleValidator.Validate(profile);
+        EncoderRule rule = env.Errors.Single(r => r.Id == EncoderRuleId.DrmSchemeUnsupported);
+        Assert.Equal("drm.scheme", rule.Field);
+        Assert.Contains("cbcs", rule.Message);
+        Assert.Contains("aes128", rule.Message);
+        Assert.Contains("cenc", rule.Message);
+    }
+
+    [Theory]
+    [InlineData("aes128")]
+    [InlineData("AES-128")]
+    [InlineData("cenc")]
+    [InlineData("none")]
+    [InlineData("")]
+    public void DrmSchemeUnsupported_SupportedOrDisabledScheme_DoesNotFire(string scheme)
+    {
+        EncodingProfile profile = ProfileFor(Video()) with
+        {
+            Drm = new(scheme, new() { ["key_uri"] = "https://server/key.bin" }),
+        };
+        ValidationEnvelope env = ProfileRuleValidator.Validate(profile);
+        Assert.False(HasRule(env, EncoderRuleId.DrmSchemeUnsupported));
+    }
+
+    [Fact]
+    public void DrmSchemeUnsupported_NoDrm_DoesNotFire()
+    {
+        ValidationEnvelope env = ProfileRuleValidator.Validate(ProfileFor(Video()));
+        Assert.False(HasRule(env, EncoderRuleId.DrmSchemeUnsupported));
     }
 
     // ── SourceUpscalingDetected (source-dependent) ──────────────────────────

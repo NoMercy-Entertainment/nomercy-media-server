@@ -11,6 +11,7 @@
 
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 using NoMercy.Encoder.Analysis;
 using NoMercy.Encoder.Commands;
 using NoMercy.Encoder.Composition;
@@ -25,7 +26,7 @@ namespace NoMercy.Encoder.PostProcess;
 // EncoderOptions is registered as a configured singleton, not through the options
 // pattern. Asking for IOptions<EncoderOptions> resolves — with a default-constructed
 // instance that carries no ffmpeg path, so every run threw before reaching ffmpeg.
-public class SpriteSheetRefresher(
+public partial class SpriteSheetRefresher(
     IMediaAnalyzer analyzer,
     IFfmpegExecutor executor,
     EncoderOptions options
@@ -41,6 +42,11 @@ public class SpriteSheetRefresher(
         ".avi",
         ".ts",
     ];
+
+    // Rendition folders are named by TemplateResolver.VideoTokens: video_{width}x{height},
+    // with an _SDR suffix on tonemapped output and nothing after the size otherwise.
+    [GeneratedRegex(@"^video_(?<width>\d+)x(?<height>\d+)", RegexOptions.IgnoreCase)]
+    private static partial Regex RenditionFolderRegex();
 
     public async Task<string?> RefreshAsync(
         IStorage storage,
@@ -191,7 +197,7 @@ public class SpriteSheetRefresher(
     /// </summary>
     private static string? FindRenditionPlaylist(IStorage storage, string mediaFolder)
     {
-        List<string> renditions = [];
+        List<(long Pixels, string Path)> renditions = [];
 
         foreach (StorageEntry entry in storage.List(mediaFolder, null, recursive: false))
         {
@@ -202,6 +208,8 @@ public class SpriteSheetRefresher(
             if (!name.StartsWith("video_", StringComparison.OrdinalIgnoreCase))
                 continue;
 
+            long pixels = RenditionPixels(name);
+
             foreach (StorageEntry inner in storage.List(entry.Path, null, recursive: false))
             {
                 if (
@@ -211,14 +219,54 @@ public class SpriteSheetRefresher(
                         .EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase)
                 )
                     renditions.Add(
-                        storage.CombinePath(mediaFolder, $"{name}/{storage.GetName(inner.Path)}")
+                        (
+                            pixels,
+                            storage.CombinePath(
+                                mediaFolder,
+                                $"{name}/{storage.GetName(inner.Path)}"
+                            )
+                        )
                     );
             }
         }
 
+        // The size is in the folder name with unpadded digits, so as text
+        // "video_854x480" outranks "video_1920x1080". Compare the picture, and
+        // fall back to the name only to keep ties and unsized folders stable.
         return renditions
-            .OrderByDescending(path => path, StringComparer.OrdinalIgnoreCase)
+            .OrderByDescending(rendition => rendition.Pixels)
+            .ThenByDescending(rendition => rendition.Path, StringComparer.OrdinalIgnoreCase)
+            .Select(rendition => rendition.Path)
             .FirstOrDefault();
+    }
+
+    /// <summary>
+    /// The pixel count a rendition folder's name states, or zero when the name
+    /// carries no size, so such a folder ranks below every one that does.
+    /// </summary>
+    private static long RenditionPixels(string folderName)
+    {
+        Match match = RenditionFolderRegex().Match(folderName);
+        if (!match.Success)
+            return 0;
+
+        if (
+            !long.TryParse(
+                match.Groups["width"].Value,
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out long width
+            )
+            || !long.TryParse(
+                match.Groups["height"].Value,
+                NumberStyles.None,
+                CultureInfo.InvariantCulture,
+                out long height
+            )
+        )
+            return 0;
+
+        return width * height;
     }
 
     /// <summary>

@@ -15,6 +15,7 @@ using NoMercy.Data.DTOs.Specials;
 using NoMercy.Database;
 using NoMercy.Database.Models.Common;
 using NoMercy.Database.Models.TvShows;
+using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Extensions;
 
 namespace NoMercy.Api.DTOs.Media;
@@ -99,7 +100,9 @@ public record SpecialResponseItemDto
         foreach (SpecialItem specialItem in special.Items)
             if (specialItem.MovieId is not null)
             {
-                SpecialItemsDto? newItem = items.Find(i => i.Id == specialItem.MovieId);
+                SpecialItemsDto? newItem = items.Find(i =>
+                    i.MediaType == MediaTypes.MovieMediaType && i.Id == specialItem.MovieId
+                );
                 if (newItem is null)
                     continue;
 
@@ -188,7 +191,7 @@ public record SpecialResponseItemDto
             .Select(specialItem => specialItem.Rating)
             .DistinctBy(rating => rating.Iso31661);
 
-        Special = specialItems.DistinctBy(si => si.Id);
+        Special = specialItems.DistinctBy(si => (si.MediaType, si.Id));
     }
 
     public SpecialResponseItemDto(Special special)
@@ -246,7 +249,9 @@ public record SpecialResponseItemDto
         foreach (SpecialItemRefDto itemRef in detail.Items)
             if (itemRef.MovieId is not null)
             {
-                SpecialItemsDto? newItem = items.Find(i => i.Id == itemRef.MovieId);
+                SpecialItemsDto? newItem = items.Find(i =>
+                    i.MediaType == MediaTypes.MovieMediaType && i.Id == itemRef.MovieId
+                );
                 if (newItem is null)
                     continue;
 
@@ -325,6 +330,6 @@ public record SpecialResponseItemDto
             .Select(specialItem => specialItem.Rating)
             .DistinctBy(rating => rating.Iso31661);
 
-        Special = specialItems.DistinctBy(si => si.Id);
+        Special = specialItems.DistinctBy(si => (si.MediaType, si.Id));
     }
 }

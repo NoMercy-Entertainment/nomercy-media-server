@@ -120,6 +120,15 @@ public record PersonResponseItemDto
 
         ImagesDto = new() { Profiles = [.. person.Images.Select(image => new ImageDto(image))] };
 
+        // Season and episode crew credits carry only SeasonId or EpisodeId, so
+        // they have no movie or show to title and link to.
+        KnownForDto[] crewCredits =
+        [
+            .. person
+                .Crews.Where(crew => crew.Movie is not null || crew.Tv is not null)
+                .Select(crew => new KnownForDto(crew)),
+        ];
+
         CombinedCredits = new()
         {
             Cast =
@@ -129,19 +138,14 @@ public record PersonResponseItemDto
                     .OrderByDescending(knownFor => knownFor.Year),
             ],
 
-            Crew =
-            [
-                .. person
-                    .Crews.Select(crew => new KnownForDto(crew))
-                    .OrderByDescending(knownFor => knownFor.Year),
-            ],
+            Crew = [.. crewCredits.OrderByDescending(knownFor => knownFor.Year)],
         };
 
         KnownFor =
         [
             .. person
                 .Casts.Select(crew => new KnownForDto(crew))
-                .Concat(person.Crews.Select(crew => new KnownForDto(crew)))
+                .Concat(crewCredits)
                 .OrderByDescending(knownFor => knownFor.Popularity),
         ];
     }

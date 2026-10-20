@@ -226,46 +226,16 @@ public class HomeService(
         if (parallelData is { MovieCount: 0, TvCount: 0, AnimeCount: 0 })
             return new() { Data = [EmptyHomeState(parallelData.Libraries, canManageLibraries)] };
 
-        (List<GenreSourceData> genreSources, List<int> movieIds, List<int> tvIds) =
-            PickGenreSources(parallelData.GenreItems);
-
-        // "Latest in {library}" belongs to the desktop home only; the lolomo clients lay
-        // their library rows out themselves, so these would be duplicate content there.
-        // An empty list also keeps the prev/next chain below free of rows never emitted.
-        Task<List<GenreCarouselData>> libraryCarouselsTask =
-            version == LolomoVersion
-                ? Task.FromResult<List<GenreCarouselData>>([])
-                : LoadLibraryCarouselsAsync(userId, country, parallelData);
-
-        Task<HomeTvsAndMoviesData> tvsAndMoviesTask = homeRepository.GetHomeTvsAndMoviesAsync(
-            tvIds,
-            movieIds,
+        HomeCarousels homeCarousels = await LoadHomeCarouselsAsync(
+            userId,
             language,
-            country
+            country,
+            version,
+            parallelData
         );
 
-        await Task.WhenAll(tvsAndMoviesTask, libraryCarouselsTask);
-
-        HomeTvsAndMoviesData tvsAndMovies = tvsAndMoviesTask.Result;
-        List<GenreCarouselData> libraryCarousels = libraryCarouselsTask.Result;
-
-        List<GenreCarouselData> genreCarousels = genreSources
-            .Select(g => new GenreCarouselData(
-                g.Id,
-                g.Title,
-                g.MoreLink,
-                g.Source.Select(source =>
-                        ResolveCardData(source, tvsAndMovies.TvData, tvsAndMovies.MovieData)
-                    )
-                    .Where(c => c != null)
-                    .Cast<CardData>()
-                    .ToList()
-            ))
-            .Where(g => g.Items.Count > 0)
-            .ToList();
-
-        CardData? homeCardItem = genreCarousels
-            .Where(g => !string.IsNullOrEmpty(g.Title))
+        CardData? homeCardItem = homeCarousels
+            .Genres.Where(g => !string.IsNullOrEmpty(g.Title))
             .SelectMany(g => g.Items)
             .Where(c => !string.IsNullOrWhiteSpace(c.Title))
             .Randomize()
@@ -287,13 +257,9 @@ public class HomeService(
         HashSet<UserData> continueWatching = parallelData.ContinueWatching;
         string? continueId = continueWatching.Count > 0 ? "continue" : null;
 
-        List<(string Id, string Title, GenreCarouselData Data)> carousels =
-        [
-            .. libraryCarousels.Select(library =>
-                ($"library_{library.Id}", $"Latest in {library.Title}", library)
-            ),
-            .. genreCarousels.Select(genre => ($"genre_{genre.Id}", genre.Title, genre)),
-        ];
+        List<(string Id, string Title, GenreCarouselData Data)> carousels = InPageOrder(
+            homeCarousels
+        );
         List<string> carouselIds = [.. carousels.Select(carousel => carousel.Id)];
 
         if (continueId is not null)
@@ -400,6 +366,75 @@ public class HomeService(
                 }
             )
             .Build();
+
+    /// <summary>
+    /// The rows below "continue watching", each resolved to its cards: the "Latest in
+    /// {library}" rows and the genre rows. A row that would render empty is left out here,
+    /// so the prev/next chain never points at a carousel the page does not show. The home
+    /// page and the continue-watching refresh both take their chain from this, which is
+    /// what keeps the two in step.
+    /// </summary>
+    private async Task<HomeCarousels> LoadHomeCarouselsAsync(
+        Guid userId,
+        string language,
+        string country,
+        string? version,
+        HomeParallelData parallelData
+    )
+    {
+        (List<GenreSourceData> genreSources, List<int> movieIds, List<int> tvIds) =
+            PickGenreSources(parallelData.GenreItems);
+
+        // "Latest in {library}" belongs to the desktop home only; the lolomo clients lay
+        // their library rows out themselves, so these would be duplicate content there.
+        // An empty list also keeps the prev/next chain free of rows never emitted.
+        Task<List<GenreCarouselData>> libraryCarouselsTask =
+            version == LolomoVersion
+                ? Task.FromResult<List<GenreCarouselData>>([])
+                : LoadLibraryCarouselsAsync(userId, country, parallelData);
+
+        Task<HomeTvsAndMoviesData> tvsAndMoviesTask = homeRepository.GetHomeTvsAndMoviesAsync(
+            tvIds,
+            movieIds,
+            language,
+            country
+        );
+
+        await Task.WhenAll(tvsAndMoviesTask, libraryCarouselsTask);
+
+        HomeTvsAndMoviesData tvsAndMovies = tvsAndMoviesTask.Result;
+
+        List<GenreCarouselData> genreCarousels = genreSources
+            .Select(g => new GenreCarouselData(
+                g.Id,
+                g.Title,
+                g.MoreLink,
+                g.Source.Select(source =>
+                        ResolveCardData(source, tvsAndMovies.TvData, tvsAndMovies.MovieData)
+                    )
+                    .Where(c => c != null)
+                    .Cast<CardData>()
+                    .ToList()
+            ))
+            .Where(g => g.Items.Count > 0)
+            .ToList();
+
+        return new(libraryCarouselsTask.Result, genreCarousels);
+    }
+
+    /// <summary>
+    /// The carousels in page order, each under the id the prev/next chain uses: the
+    /// library rows first, the genre rows after them.
+    /// </summary>
+    private static List<(string Id, string Title, GenreCarouselData Data)> InPageOrder(
+        HomeCarousels carousels
+    ) =>
+        [
+            .. carousels.Libraries.Select(library =>
+                ($"library_{library.Id}", $"Latest in {library.Title}", library)
+            ),
+            .. carousels.Genres.Select(genre => ($"genre_{genre.Id}", genre.Title, genre)),
+        ];
 
     /// <summary>
     /// A random carousel's worth of titles per genre, and every movie and show id
@@ -803,13 +838,28 @@ public class HomeService(
         Ulid replaceId
     )
     {
-        HashSet<UserData> continueWatching = await homeRepository.GetContinueWatchingAsync(
+        HomeParallelData parallelData = await homeRepository.GetHomeParallelDataAsync(
             userId,
             language,
             country
         );
 
-        IEnumerable<UserData> filtered = continueWatching.Where(item =>
+        // The client swaps the whole carousel for this reply, navigation included, so it
+        // has to carry the chain the page was built with. The request names no page
+        // version, so this is the desktop chain, library rows included.
+        HomeCarousels homeCarousels = await LoadHomeCarouselsAsync(
+            userId,
+            language,
+            country,
+            version: null,
+            parallelData
+        );
+        List<string> carouselIds = [.. InPageOrder(homeCarousels).Select(carousel => carousel.Id)];
+        (string? lastCarouselId, string? afterContinueId) = HomeCarouselNavigation.ForContinue(
+            carouselIds
+        );
+
+        IEnumerable<UserData> filtered = parallelData.ContinueWatching.Where(item =>
             item.Tv?.Episodes.LastOrDefault()?.VideoFiles.Newest()?.Id != item.VideoFileId
             || item.Time < (item.VideoFile.Duration?.ToSeconds() ?? 0) * 0.8
         );
@@ -821,7 +871,7 @@ public class HomeService(
                 Component
                     .Carousel()
                     .WithId("continue")
-                    .WithNavigation("continue", "28")
+                    .WithNavigation(lastCarouselId, afterContinueId)
                     .WithTitle("Continue watching".Localize())
                     .WithUpdate("pageLoad", "/home/continue")
                     .WithItems(BuildContinueWatchingCards(filtered, country))
@@ -840,4 +890,6 @@ public class HomeService(
     );
 
     private record GenreCarouselData(string Id, string Title, Uri MoreLink, List<CardData> Items);
+
+    private record HomeCarousels(List<GenreCarouselData> Libraries, List<GenreCarouselData> Genres);
 }

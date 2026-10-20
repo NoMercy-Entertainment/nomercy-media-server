@@ -74,6 +74,18 @@ public class BundleGarbageCollector(
             if (blueprint is null)
                 continue;
 
+            // The positional record lets Newtonsoft hand over a null list when the
+            // JSON carries no encodes (a hand-edited or partially written file).
+            // Skip it like an unreadable one so every other blueprint still gets swept.
+            if (blueprint.Encodes is null)
+            {
+                logger.LogWarning(
+                    "Blueprint at {Path} has no encodes list — skipping",
+                    blueprintFile.Path
+                );
+                continue;
+            }
+
             string mediaFolder = storage.GetParent(blueprintFile.Path) ?? libraryRoot;
 
             foreach (BlueprintEncode encode in blueprint.Encodes)

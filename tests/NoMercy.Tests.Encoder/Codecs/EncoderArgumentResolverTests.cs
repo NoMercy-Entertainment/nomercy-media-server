@@ -307,6 +307,26 @@ public class EncoderArgumentResolverTests
         (h % 2).Should().Be(0, "encoders require even dimensions");
     }
 
+    [Theory]
+    [InlineData(null, null)]
+    [InlineData(null, 0)]
+    [InlineData(0, null)]
+    [InlineData(0, 0)]
+    public void ResolveDimensions_NoSourceWidthAndKeepSourceRung_ReturnsSmallestEvenFrame(
+        int? width,
+        int? height
+    )
+    {
+        // A probe that reports no width (a broken or unusual stream) combined
+        // with a keep-source rung leaves nothing to derive an aspect ratio from.
+        // The resolver must fall through to its 2x2 floor, never divide by zero.
+        VideoOutput profile = MakeVideoOutput(width, height);
+        (int w, int h) = EncoderArgumentResolver.ResolveDimensions(profile, 0, 0);
+        w.Should().Be(2, "no usable width collapses to the smallest legal even frame");
+        h.Should()
+            .Be(2, "no aspect ratio to derive from collapses to the smallest legal even frame");
+    }
+
     [Fact]
     public void ResolveProfile_HighOnNumericVocabulary_MapsToHighNotFirstEntry()
     {

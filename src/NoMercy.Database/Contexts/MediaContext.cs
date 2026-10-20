@@ -447,6 +447,13 @@ public class MediaContext : DbContext
             .IsRequired(false)
             .OnDelete(DeleteBehavior.Cascade);
 
+        modelBuilder
+            .Entity<VideoFileAudioTrack>()
+            .HasOne<VideoFile>()
+            .WithMany()
+            .HasForeignKey(track => track.VideoFileId)
+            .OnDelete(DeleteBehavior.Cascade);
+
         modelBuilder.Entity<EncodingPresetFolder>(b =>
         {
             b.HasOne(epf => epf.Preset)
@@ -547,6 +554,7 @@ public class MediaContext : DbContext
     public virtual DbSet<MediaAttachment> MediaAttachments { get; init; }
     public virtual DbSet<Media> Medias { get; init; }
     public virtual DbSet<MediaStream> MediaStreams { get; init; }
+    public virtual DbSet<VideoFileAudioTrack> VideoFileAudioTracks { get; init; }
     public virtual DbSet<Message> Messages { get; init; }
     public virtual DbSet<Metadata> Metadata { get; init; }
     public virtual DbSet<Movie> Movies { get; init; }

@@ -91,6 +91,7 @@ public static class EncoderRuleId
     // ---- DRM / signing ---------------------------------------------------
     public const string DrmKeyMissing = "drm.key_missing";
     public const string DrmHttpNotHttps = "drm.http_not_https";
+    public const string DrmSchemeUnsupported = "drm.scheme_unsupported";
     public const string ImportHttpNotHttps = "import.http_not_https";
     public const string ImportFetchFailed = "import.fetch_failed";
     public const string ImportSourceMissing = "import.source_missing";

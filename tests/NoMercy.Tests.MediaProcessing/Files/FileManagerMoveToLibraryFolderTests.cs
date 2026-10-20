@@ -113,9 +113,34 @@ public sealed class FileManagerMoveToLibraryFolderTests : IDisposable
         return (library, folder);
     }
 
+    private Folder SeedUnlinkedFolder(string folderPath)
+    {
+        Driver driver = new()
+        {
+            Id = Ulid.NewUlid(),
+            Name = $"test-driver-{Ulid.NewUlid()}",
+            Type = "local",
+        };
+        _driverIds.Add(driver.Id);
+
+        Folder folder = new()
+        {
+            Id = Ulid.NewUlid(),
+            Path = folderPath,
+            DriverId = driver.Id,
+        };
+        _folderIds.Add(folder.Id);
+
+        using MediaContext context = new();
+        context.Drivers.Add(driver);
+        context.Folders.Add(folder);
+        context.SaveChanges();
+
+        return folder;
+    }
+
     private static FileManager BuildManager(Mock<IFileRepository> repoMock, IStorageFactory factory)
     {
-        Mock<IStorageDriver> driverMock = new();
         Mock<IMediaAnalyzer> mediaAnalyzerMock = new();
 
         // The real repository answers with an empty list, never a null task; without
@@ -131,17 +156,11 @@ public sealed class FileManagerMoveToLibraryFolderTests : IDisposable
             )
             .ReturnsAsync([]);
 
-        return new(
-            repoMock.Object,
-            factory,
-            driverMock.Object,
-            mediaAnalyzerMock.Object,
-            TestFilenameParser.Default
-        );
+        return new(repoMock.Object, factory, mediaAnalyzerMock.Object, TestFilenameParser.Default);
     }
 
     [Fact]
-    public async Task MoveToLibraryFolder_MovieFolderMissingEverywhere_LogsAndReturnsWithoutThrowing()
+    public async Task MoveToLibraryFolder_MovieFolderMissingEverywhere_ReportsSourceFolderNotFound()
     {
         (Library sourceLibrary, Folder sourceFolder) = SeedLibraryWithFolder(
             MediaTypes.MovieMediaType,
@@ -178,10 +197,14 @@ public sealed class FileManagerMoveToLibraryFolderTests : IDisposable
             Path.Combine(_tempRoot, "dest-unused")
         );
 
-        Func<Task> act = () => manager.MoveToLibraryFolder(movieId, destFolder);
+        MoveToLibraryFolderResult result = await manager.MoveToLibraryFolder(movieId, destFolder);
 
-        await act.Should()
-            .NotThrowAsync("a folder that resolves nowhere must log and return, never throw");
+        result
+            .Should()
+            .Be(
+                MoveToLibraryFolderResult.SourceFolderNotFound,
+                "a folder that resolves nowhere is reported, never thrown or passed off as moved"
+            );
 
         using MediaContext verify = new();
         Movie? unchanged = await verify.Movies.FirstOrDefaultAsync(m => m.Id == movieId);
@@ -253,8 +276,9 @@ public sealed class FileManagerMoveToLibraryFolderTests : IDisposable
 
         FileManager manager = BuildManager(repoMock, factoryMock.Object);
 
-        await manager.MoveToLibraryFolder(movieId, destFolder);
+        MoveToLibraryFolderResult result = await manager.MoveToLibraryFolder(movieId, destFolder);
 
+        result.Should().Be(MoveToLibraryFolderResult.Moved);
         Directory
             .Exists(sourceMovieDir)
             .Should()
@@ -339,8 +363,9 @@ public sealed class FileManagerMoveToLibraryFolderTests : IDisposable
 
         FileManager manager = BuildManager(repoMock, factoryMock.Object);
 
-        await manager.MoveToLibraryFolder(tvId, destFolder);
+        MoveToLibraryFolderResult result = await manager.MoveToLibraryFolder(tvId, destFolder);
 
+        result.Should().Be(MoveToLibraryFolderResult.Moved);
         Directory.Exists(sourceShowDir).Should().BeFalse();
         string destShowDir = Path.Combine(destFolder.Path, showFolderName);
         Directory.Exists(destShowDir).Should().BeTrue();
@@ -351,6 +376,222 @@ public sealed class FileManagerMoveToLibraryFolderTests : IDisposable
 
         LibraryTv? libraryTv = await verify.LibraryTv.FirstOrDefaultAsync(lt => lt.TvId == tvId);
         libraryTv.Should().NotBeNull();
+        libraryTv!.LibraryId.Should().Be(destLibrary.Id);
+    }
+
+    // A Folder row no library links to: DeleteFolder and SyncFolderLibraryAsync
+    // both drop FolderLibrary rows set-based, so the dashboard can hand the move
+    // endpoint such a folder. Moving the files first and discovering the missing
+    // link afterwards strands the title — its rows name a path that no longer
+    // exists and nothing rescans the new location.
+    [Fact]
+    public async Task MoveToLibraryFolder_TargetFolderWithoutLibrary_MovesNothingAndReportsFailure()
+    {
+        (Library sourceLibrary, Folder sourceFolder) = SeedLibraryWithFolder(
+            MediaTypes.MovieMediaType,
+            Path.Combine(_tempRoot, "source-linked")
+        );
+        Folder unlinkedFolder = SeedUnlinkedFolder(Path.Combine(_tempRoot, "dest-unlinked"));
+        Directory.CreateDirectory(unlinkedFolder.Path);
+
+        string movieFolderName = "Orphan.Movie.2021";
+        string sourceMovieDir = Path.Combine(sourceFolder.Path, movieFolderName);
+        Directory.CreateDirectory(sourceMovieDir);
+        File.WriteAllText(Path.Combine(sourceMovieDir, "info.nfo"), "movie info");
+
+        int movieId = 500_004;
+        _movieIds.Add(movieId);
+        Movie movie = new()
+        {
+            Id = movieId,
+            Title = "Orphan Movie",
+            Folder = movieFolderName,
+            LibraryId = sourceLibrary.Id,
+        };
+        using (MediaContext seed = new())
+        {
+            seed.Movies.Add(movie);
+            seed.LibraryMovie.Add(new(sourceLibrary.Id, movieId));
+            seed.SaveChanges();
+        }
+
+        LocalStorageDriver sourceDriver = new();
+        LocalStorageDriver destDriver = new();
+        Mock<IStorageFactory> factoryMock = new();
+        factoryMock
+            .Setup(f => f.For(sourceFolder.Id, sourceFolder.DriverId, string.Empty))
+            .Returns(new LocalStorage(sourceDriver, new StoragePathGuard([], sourceDriver)));
+        factoryMock
+            .Setup(f => f.For(unlinkedFolder.Id, unlinkedFolder.DriverId, string.Empty))
+            .Returns(new LocalStorage(destDriver, new StoragePathGuard([], destDriver)));
+
+        Mock<IFileRepository> repoMock = new();
+        FileManager manager = BuildManager(repoMock, factoryMock.Object);
+
+        MoveToLibraryFolderResult result = await manager.MoveToLibraryFolder(
+            movieId,
+            unlinkedFolder
+        );
+
+        result.Should().Be(MoveToLibraryFolderResult.TargetFolderHasNoLibrary);
+        Directory
+            .Exists(sourceMovieDir)
+            .Should()
+            .BeTrue("a target folder with no library must leave the files where they are");
+        Directory
+            .Exists(Path.Combine(unlinkedFolder.Path, movieFolderName))
+            .Should()
+            .BeFalse("nothing may land under a folder no library owns");
+
+        using MediaContext verify = new();
+        Movie? unchanged = await verify.Movies.FirstOrDefaultAsync(m => m.Id == movieId);
+        unchanged!
+            .LibraryId.Should()
+            .Be(sourceLibrary.Id, "a refused move must not repoint the title");
+    }
+
+    // ---------------------------------------------------------------------------
+    // A folder on a remote backend (NFS, SMB, WebDAV, S3). When the stored folder
+    // name differs from the directory in case or punctuation, the lookup that
+    // rescues it has to walk the folder's own driver: the default driver the
+    // manager is constructed with is the local disk and knows nothing about the
+    // remote export. Mocking here targets the external backend, not the unit
+    // under test — see FileManagerPathsTests for the same pattern.
+    // ---------------------------------------------------------------------------
+    private sealed class RemoteDriverStub(params string[] directories) : IStorageDriver
+    {
+        private readonly HashSet<string> _directories = [.. directories];
+
+        public List<(string From, string To)> MovedDirectories { get; } = [];
+
+        public bool FileExists(string path) => false;
+
+        public bool DirectoryExists(string path) => _directories.Contains(path);
+
+        public void CreateDirectory(string path) { }
+
+        public void DeleteFile(string path) { }
+
+        public void DeleteDirectory(string path, bool recursive) { }
+
+        public long GetFileSize(string path) => 0;
+
+        public DateTime GetLastWriteTimeUtc(string path) => DateTime.UtcNow;
+
+        public DateTime GetCreationTimeUtc(string path) => DateTime.UtcNow;
+
+        public DateTime GetLastAccessTimeUtc(string path) => DateTime.UtcNow;
+
+        public Stream OpenRead(string path) => Stream.Null;
+
+        public Stream OpenWrite(string path, bool overwrite) => Stream.Null;
+
+        public void MoveFile(string source, string destination) { }
+
+        public void CopyFile(string source, string destination, bool overwrite) { }
+
+        public void MoveDirectory(string source, string destination) =>
+            MovedDirectories.Add((source, destination));
+
+        public IEnumerable<string> EnumerateFileSystemEntries(
+            string directory,
+            string searchPattern,
+            SearchOption option
+        ) =>
+            _directories.Where(entry =>
+                entry.StartsWith(directory + "/", StringComparison.Ordinal)
+                && !entry[(directory.Length + 1)..].Contains('/')
+            );
+
+        public string GetFullPath(string path) => path;
+
+        public string? ResolveLinkTarget(string path) => null;
+
+        public bool IsHidden(string path) => false;
+    }
+
+    private static Mock<IStorage> RemoteStorage(RemoteDriverStub driver)
+    {
+        Mock<IStorage> storage = new();
+        storage.Setup(s => s.Driver).Returns(driver);
+        storage.Setup(s => s.GetFullPath(It.IsAny<string>())).Returns((string path) => path);
+        storage
+            .Setup(s => s.CombinePath(It.IsAny<string>(), It.IsAny<string[]>()))
+            .Returns(
+                (string parent, string[] children) =>
+                    $"{parent.TrimEnd('/')}/{string.Join('/', children)}"
+            );
+        storage
+            .Setup(s => s.Exists(It.IsAny<string>()))
+            .Returns((string path) => driver.DirectoryExists(path));
+        storage
+            .Setup(s => s.MoveDirectory(It.IsAny<string>(), It.IsAny<string>()))
+            .Callback((string from, string to) => driver.MoveDirectory(from, to));
+        return storage;
+    }
+
+    [Fact]
+    public async Task MoveToLibraryFolder_RemoteShowFolderNamedDifferently_MatchesOnTheFolderDriverAndMoves()
+    {
+        (Library sourceLibrary, Folder sourceFolder) = SeedLibraryWithFolder(
+            MediaTypes.TvMediaType,
+            "/remote/export/tv"
+        );
+        (Library destLibrary, Folder destFolder) = SeedLibraryWithFolder(
+            MediaTypes.TvMediaType,
+            "/remote/export/tv-2"
+        );
+
+        // Stored with dots, on the export with a space: byte-for-byte different,
+        // equal once normalized, so only the fuzzy lookup can find it.
+        string storedFolderName = "Show.Name";
+        string onDiskShowDir = "/remote/export/tv/Show name";
+        RemoteDriverStub remoteDriver = new("/remote/export/tv", onDiskShowDir);
+
+        int tvId = 500_005;
+        _tvIds.Add(tvId);
+        Tv show = new()
+        {
+            Id = tvId,
+            Title = "Remote Show",
+            Folder = storedFolderName,
+            LibraryId = sourceLibrary.Id,
+        };
+        using (MediaContext seed = new())
+        {
+            seed.Tvs.Add(show);
+            seed.LibraryTv.Add(new(sourceLibrary.Id, tvId));
+            seed.SaveChanges();
+        }
+
+        Mock<IStorageFactory> factoryMock = new();
+        factoryMock
+            .Setup(f => f.For(sourceFolder.Id, sourceFolder.DriverId, string.Empty))
+            .Returns(RemoteStorage(remoteDriver).Object);
+        factoryMock
+            .Setup(f => f.For(destFolder.Id, destFolder.DriverId, string.Empty))
+            .Returns(RemoteStorage(remoteDriver).Object);
+
+        Mock<IFileRepository> repoMock = new();
+        repoMock
+            .Setup(r => r.MediaType(tvId, It.IsAny<Library>()))
+            .ReturnsAsync(((Movie?)null, show, MediaTypes.TvMediaType));
+
+        FileManager manager = BuildManager(repoMock, factoryMock.Object);
+
+        MoveToLibraryFolderResult result = await manager.MoveToLibraryFolder(tvId, destFolder);
+
+        remoteDriver
+            .MovedDirectories.Should()
+            .ContainSingle("the show folder must be found on the remote driver and moved")
+            .Which.Should()
+            .Be((onDiskShowDir, $"/remote/export/tv-2/{storedFolderName}"));
+        result.Should().Be(MoveToLibraryFolderResult.Moved);
+
+        using MediaContext verify = new();
+        Tv? moved = await verify.Tvs.FirstOrDefaultAsync(t => t.Id == tvId);
+        moved!.LibraryId.Should().Be(destLibrary.Id);
+        LibraryTv? libraryTv = await verify.LibraryTv.FirstOrDefaultAsync(lt => lt.TvId == tvId);
         libraryTv!.LibraryId.Should().Be(destLibrary.Id);
     }
 }

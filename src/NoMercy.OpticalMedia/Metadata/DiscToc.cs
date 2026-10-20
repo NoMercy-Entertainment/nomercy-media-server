@@ -22,8 +22,9 @@ namespace NoMercy.OpticalMedia.Metadata;
 /// <param name="LastTrack">Last audio track number.</param>
 /// <param name="LeadOutOffsetSectors">Lead-out absolute start sector (= total disc length).</param>
 /// <param name="TrackOffsetsSectors">
-/// Per-track absolute start sectors, indexed 0-based (index 0 = track 1,
-/// normally 150). Length must equal <c>LastTrack - FirstTrack + 1</c>.
+/// Per-track absolute start sectors, indexed 0-based from
+/// <paramref name="FirstTrack"/> (index 0 = the first track, normally 150).
+/// Length must equal <c>LastTrack - FirstTrack + 1</c>.
 /// </param>
 public record DiscToc(
     int FirstTrack,

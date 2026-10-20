@@ -83,6 +83,7 @@ public record LibrariesResponseItemDto
         bool shouldPaginate = library.LibraryMovies.Count + library.LibraryTvs.Count > 500;
         Id = library.Id;
         AutoRefreshInterval = library.AutoRefreshInterval;
+        ChapterImages = library.ChapterImages ? 1 : 0;
         Image = library.Image;
         PerfectSubtitleMatch = library.PerfectSubtitleMatch;
         Realtime = library.Realtime;
@@ -94,6 +95,7 @@ public record LibrariesResponseItemDto
         Type = library.Type;
         Order = library.Order;
         CreatedAt = library.CreatedAt;
+        UpdatedAt = library.UpdatedAt;
         Pagination = shouldPaginate ? "letter" : "auto";
         Link = shouldPaginate
             ? new($"/libraries/{Id}/letter/A", UriKind.Relative)

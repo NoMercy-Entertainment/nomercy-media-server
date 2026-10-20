@@ -79,6 +79,25 @@ public sealed class MediaTypeClassifierTests
 
         result.Should().Be("anime");
     }
+
+    [Fact]
+    public async Task ClassifyAsync_OriginListIsEmpty_TrustsTheTitleMatch()
+    {
+        // TMDB leaves origin_country empty on some entries and ShowManager hands
+        // the array over as-is. Empty says nothing about where a show was made:
+        // it is "unknown", like null, not "not Japan".
+        Mock<IAniListMetadataProvider> aniList = new();
+        aniList
+            .Setup(p => p.SearchAsync("Hunter x Hunter", 2011, It.IsAny<bool?>()))
+            .ReturnsAsync(new AniListMedia { Title = new() { Romaji = "Hunter x Hunter" } });
+        Mock<IJikanMetadataProvider> jikan = new();
+
+        MediaTypeClassifier classifier = new(aniList.Object, jikan.Object);
+
+        string? result = await classifier.ClassifyAsync("Hunter x Hunter", 2011, []);
+
+        result.Should().Be("anime");
+    }
 }
 
 public class MediaTypeClassifierAniListJikanTests

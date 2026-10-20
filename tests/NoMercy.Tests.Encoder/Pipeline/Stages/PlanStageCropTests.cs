@@ -14,6 +14,7 @@ using Moq;
 using NoMercy.Encoder.Analysis;
 using NoMercy.Encoder.BuildingBlocks;
 using NoMercy.Encoder.Codecs;
+using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.ContentAnalysis;
 using NoMercy.Encoder.Hardware;
 using NoMercy.Encoder.Hdr;
@@ -50,6 +51,66 @@ public class PlanStageCropTests
             Times.Never
         );
         plan.VideoOutputs[0].CropFilter.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GlobalOptOut_DetectorNotInvoked_EvenWhenProfileOptsIn()
+    {
+        // EnableCropDetectSubscriber is the operator's single switch for crop
+        // detection; a profile that asks for it must still be refused.
+        Mock<ICropDetector> detector = new();
+        PlanStage stage = BuildStage(
+            detector.Object,
+            new EncoderOptions { EnableCropDetectSubscriber = false }
+        );
+
+        OutputPlan plan = await RunPlan(stage, BuildProfile(autoDetectCrop: true));
+
+        detector.Verify(
+            d =>
+                d.DetectAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<Guid?>(),
+                    It.IsAny<bool?>(),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Never
+        );
+        plan.VideoOutputs[0].CropFilter.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GlobalOptOutLeftOn_ProfileOptIn_DetectorInvoked()
+    {
+        Mock<ICropDetector> detector = new();
+        detector
+            .Setup(d =>
+                d.DetectAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<Guid?>(),
+                    It.IsAny<bool?>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .ReturnsAsync(new CropResult(0, 0, 0, 0, ShouldCrop: false));
+
+        PlanStage stage = BuildStage(
+            detector.Object,
+            new EncoderOptions { EnableCropDetectSubscriber = true }
+        );
+
+        await RunPlan(stage, BuildProfile(autoDetectCrop: true));
+
+        detector.Verify(
+            d =>
+                d.DetectAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<Guid?>(),
+                    It.IsAny<bool?>(),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Once
+        );
     }
 
     [Fact]
@@ -208,7 +269,7 @@ public class PlanStageCropTests
         capturedHdr.Should().BeTrue();
     }
 
-    private static PlanStage BuildStage(ICropDetector cropDetector)
+    private static PlanStage BuildStage(ICropDetector cropDetector, EncoderOptions? options = null)
     {
         Mock<IHardwareCapabilities> hardware = new();
         hardware.Setup(h => h.HasGpu).Returns(false);
@@ -258,7 +319,8 @@ public class PlanStageCropTests
             new Mock<IFfmpegCapabilities>().Object,
             new AbrLadderGenerator(),
             cropDetector,
-            NullLogger<PlanStage>.Instance
+            NullLogger<PlanStage>.Instance,
+            options: options
         );
     }
 

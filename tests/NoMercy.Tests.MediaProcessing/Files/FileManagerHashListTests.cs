@@ -42,12 +42,10 @@ public sealed class FileManagerHashListTests : IDisposable
     {
         Mock<IFileRepository> repoMock = new();
         Mock<IStorageFactory> factoryMock = new();
-        Mock<IStorageDriver> driverMock = new();
         Mock<IMediaAnalyzer> mediaAnalyzerMock = new();
         return new(
             repoMock.Object,
             factoryMock.Object,
-            driverMock.Object,
             mediaAnalyzerMock.Object,
             TestFilenameParser.Default
         );

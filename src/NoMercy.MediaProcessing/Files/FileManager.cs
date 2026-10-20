@@ -33,7 +33,6 @@ namespace NoMercy.MediaProcessing.Files;
 public partial class FileManager(
     IFileRepository fileRepository,
     IStorageFactory storageFactory,
-    IStorageDriver storageDriver,
     IMediaAnalyzer mediaAnalyzer,
     IFilenameParserPipeline filenameParser,
     IPluginMediaSourceProvider? pluginMediaSources = null
@@ -134,6 +133,8 @@ public partial class FileManager(
     /// </summary>
     private readonly HashSet<RecordedVideoFileLocation> _storedVideoFileKeys = [];
 
+    private bool _audioTrackBackfillQueued;
+
     /// <summary>
     /// The Share (Folders.Id) of every folder that had at least one item
     /// <see cref="StoreVideoItem"/> could not resolve this pass. A Share in
@@ -232,6 +233,7 @@ public partial class FileManager(
         _itemOriginFolder.Clear();
         _storedVideoFileKeys.Clear();
         _sharesWithSkippedItems.Clear();
+        _audioTrackBackfillQueued = false;
 
         await MediaType(id, library);
 
@@ -427,7 +429,7 @@ public partial class FileManager(
         DispatchedMediaId = mediaId;
     }
 
-    public async Task MoveToLibraryFolder(int id, Folder folder)
+    public async Task<MoveToLibraryFolderResult> MoveToLibraryFolder(int id, Folder folder)
     {
         await using MediaContext context = new();
 
@@ -446,6 +448,23 @@ public partial class FileManager(
             .Include(movie => movie.VideoFiles)
             .FirstOrDefaultAsync(movie => movie.Id == id);
 
+        // Every row below is repointed at the target folder's library, so a folder
+        // no library links to is refused before anything moves on disk. Found
+        // afterwards, the title's rows would name a path that no longer exists.
+        FolderLibrary? newFolderLibrary = await context
+            .FolderLibrary.Include(fl => fl.Library)
+            .Include(fl => fl.Folder)
+            .FirstOrDefaultAsync(fl => fl.FolderId == folder.Id);
+
+        if (newFolderLibrary is null)
+        {
+            Logger.App(
+                $"Not moving id={id}: folder {folder.Id} ({folder.Path}) is not linked to any library",
+                LogEventLevel.Warning
+            );
+            return MoveToLibraryFolderResult.TargetFolderHasNoLibrary;
+        }
+
         string folderName = "";
         string sourceFolder = "";
         IStorage? sourceStorage = null;
@@ -459,7 +478,7 @@ public partial class FileManager(
                 if (!folderStorage.Exists(path))
                 {
                     string? match = FileNameSanitizer.FindMatchingDirectory(
-                        storageDriver,
+                        folderStorage.Driver,
                         folderRoot,
                         tv.Folder.Replace("/", "")
                     );
@@ -485,7 +504,7 @@ public partial class FileManager(
                 if (!folderStorage.Exists(path))
                 {
                     string? match = FileNameSanitizer.FindMatchingDirectory(
-                        storageDriver,
+                        folderStorage.Driver,
                         folderRoot,
                         movie.Folder.Replace("/", "")
                     );
@@ -509,8 +528,11 @@ public partial class FileManager(
             || sourceStorage is null
         )
         {
-            Logger.App("Folder not found");
-            return;
+            Logger.App(
+                $"Not moving id={id}: its folder was not found under any folder of its library",
+                LogEventLevel.Warning
+            );
+            return MoveToLibraryFolderResult.SourceFolderNotFound;
         }
 
         IStorage destinationStorage = StorageFor(folder);
@@ -521,18 +543,39 @@ public partial class FileManager(
 
         await MoveFolderAsync(sourceFolder, destinationFolder, sourceStorage, destinationStorage);
 
-        FolderLibrary? newFolderLibrary = await context
-            .FolderLibrary.Include(fl => fl.Library)
-            .Include(fl => fl.Folder)
-            .FirstOrDefaultAsync(fl => fl.FolderId == folder.Id);
+        try
+        {
+            await RepointLibraryAsync(context, tv, movie, folderName, newFolderLibrary.LibraryId);
+        }
+        catch (Exception ex)
+        {
+            // The files are already at the destination while the rows still name the
+            // old library; both paths go in the log so the operator can repair by hand.
+            Logger.App(
+                $"Moved {sourceFolder} to {destinationFolder} but the database update for id={id} failed, "
+                    + $"its rows still point at the old library: {ex.Message}",
+                LogEventLevel.Error
+            );
+            return MoveToLibraryFolderResult.DatabaseUpdateFailed;
+        }
 
-        if (newFolderLibrary is null)
-            return;
+        _ = await FindFiles(id, newFolderLibrary.Library);
 
+        return MoveToLibraryFolderResult.Moved;
+    }
+
+    private static async Task RepointLibraryAsync(
+        MediaContext context,
+        Tv? tv,
+        Movie? movie,
+        string folderName,
+        Ulid libraryId
+    )
+    {
         if (tv?.Folder is not null)
         {
             tv.Folder = folderName;
-            tv.LibraryId = newFolderLibrary.LibraryId;
+            tv.LibraryId = libraryId;
 
             // LibraryTv.LibraryId is part of its composite primary key
             // (LibraryId, TvId) — EF Core rejects mutating a PK column on a
@@ -546,7 +589,7 @@ public partial class FileManager(
             if (libraryTv is not null)
             {
                 context.LibraryTv.Remove(libraryTv);
-                context.LibraryTv.Add(new(newFolderLibrary.LibraryId, tv.Id));
+                context.LibraryTv.Add(new(libraryId, tv.Id));
             }
 
             await context.SaveChangesAsync();
@@ -554,7 +597,7 @@ public partial class FileManager(
         else if (movie?.Folder is not null)
         {
             movie.Folder = folderName;
-            movie.LibraryId = newFolderLibrary.LibraryId;
+            movie.LibraryId = libraryId;
 
             // See the LibraryTv comment above — LibraryMovie.LibraryId is
             // equally part of its composite primary key.
@@ -565,12 +608,10 @@ public partial class FileManager(
             if (libraryMovie is not null)
             {
                 context.LibraryMovie.Remove(libraryMovie);
-                context.LibraryMovie.Add(new(newFolderLibrary.LibraryId, movie.Id));
+                context.LibraryMovie.Add(new(libraryId, movie.Id));
             }
 
             await context.SaveChangesAsync();
         }
-
-        _ = await FindFiles(id, newFolderLibrary.Library);
     }
 }

@@ -529,4 +529,96 @@ public class BufferAdaptiveServiceTests
 
         session.State.Should().Be(LiveSessionState.Buffered);
     }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // Isolation: a session whose action throws must not starve the sessions
+    // after it in the sweep — every session is evaluated on its own.
+    // ──────────────────────────────────────────────────────────────────────────
+
+    private static Mock<ILiveStreamingService> BuildOrderedStreamingServiceMock(
+        params LiveRuntimeSession[] runtimes
+    )
+    {
+        IReadOnlyCollection<string> sessionIds = [.. runtimes.Select(r => r.Session.SessionId)];
+
+        Mock<ILiveStreamingService> streamingMock = new();
+        streamingMock.SetupGet(s => s.ActiveSessionIds).Returns(sessionIds);
+        foreach (LiveRuntimeSession runtime in runtimes)
+        {
+            LiveRuntimeSession captured = runtime;
+            string sessionId = runtime.Session.SessionId;
+            streamingMock.Setup(s => s.TryGetRuntime(sessionId, out captured)).Returns(true);
+        }
+        return streamingMock;
+    }
+
+    private static Mock<ILiveSession> BuildSuspendThrowingSessionMock(Exception failure)
+    {
+        Mock<ILiveSession> sessionMock = new();
+        sessionMock.SetupGet(s => s.SessionId).Returns(Ulid.NewUlid().ToString());
+        sessionMock.SetupGet(s => s.State).Returns(LiveSessionState.Transcoding);
+        sessionMock.SetupGet(s => s.CurrentQuality).Returns(MakeQuality());
+        // 40 s of encoder lead — above the suspend threshold — so every sweep
+        // reaches Suspend() on this session and hits the failure.
+        sessionMock.SetupGet(s => s.BufferAhead).Returns(TimeSpan.FromSeconds(40));
+        sessionMock.Setup(s => s.Suspend()).Throws(failure);
+        return sessionMock;
+    }
+
+    private static LiveSession MakeOverBufferedSession()
+    {
+        LiveSession session = new(Ulid.NewUlid().ToString(), MakeQuality());
+        session.SetState(LiveSessionState.Transcoding);
+        // 40 s transcoded, 0 s reported — crosses the suspend threshold (30 s).
+        session.PushSegment(new(0, TimeSpan.Zero, TimeSpan.FromSeconds(40), "/tmp/seg0.ts", 1000));
+        return session;
+    }
+
+    [Fact]
+    public async Task EvaluateAll_SessionThatThrows_StillEvaluatesTheSessionsAfterIt()
+    {
+        Mock<ILiveSession> throwingSession = BuildSuspendThrowingSessionMock(
+            new InvalidOperationException("runner is gone")
+        );
+        LiveSession healthySession = MakeOverBufferedSession();
+
+        Mock<ILiveStreamingService> streamingMock = BuildOrderedStreamingServiceMock(
+            new(throwingSession.Object, TimeSpan.FromSeconds(4)),
+            new(healthySession, TimeSpan.FromSeconds(4))
+        );
+
+        BufferAdaptiveService service = BuildService(streamingMock.Object);
+
+        await service.EvaluateAllAsync(CancellationToken.None);
+
+        throwingSession.Verify(s => s.Suspend(), Times.Once());
+        healthySession
+            .State.Should()
+            .Be(LiveSessionState.Buffered, "a failing session must not starve the next one");
+    }
+
+    [Fact]
+    public async Task EvaluateAll_SessionCancelledWithTheServiceToken_StopsTheSweep()
+    {
+        // Shutdown must still win: a cancellation carrying the service's own
+        // token is not a per-session failure to log and step over.
+        using CancellationTokenSource cts = new();
+        Mock<ILiveSession> cancelledSession = BuildSuspendThrowingSessionMock(
+            new OperationCanceledException(cts.Token)
+        );
+        LiveSession healthySession = MakeOverBufferedSession();
+
+        Mock<ILiveStreamingService> streamingMock = BuildOrderedStreamingServiceMock(
+            new(cancelledSession.Object, TimeSpan.FromSeconds(4)),
+            new(healthySession, TimeSpan.FromSeconds(4))
+        );
+
+        BufferAdaptiveService service = BuildService(streamingMock.Object);
+
+        await cts.CancelAsync();
+        Func<Task> act = () => service.EvaluateAllAsync(cts.Token);
+
+        await act.Should().ThrowAsync<OperationCanceledException>();
+        healthySession.State.Should().Be(LiveSessionState.Transcoding);
+    }
 }

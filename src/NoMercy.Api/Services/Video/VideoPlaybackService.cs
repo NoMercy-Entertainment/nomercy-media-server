@@ -111,7 +111,7 @@ public class VideoPlaybackService
             return;
         }
 
-        UpdateState(state, currentIndex + 1);
+        UpdateState(state, currentIndex);
 
         await UpdatePlaybackState(user, state);
     }

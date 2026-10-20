@@ -46,6 +46,11 @@ public sealed class HardwareBenchmarkRecalibrationService : BackgroundService
     private readonly TimeSpan _busyRetryInterval;
     private readonly TimeSpan _maxDeferralWindow;
 
+    // DetectAndPersistAsync records the new fingerprint as seen, so a driver
+    // change is reported once. Keep it until a calibration succeeds, or a
+    // deferred or failed run would wait for the 30-day age check.
+    private bool _driverChangePending;
+
     public HardwareBenchmarkRecalibrationService(
         IHardwareBenchmark benchmark,
         IDriverChangeDetector driverChangeDetector,
@@ -129,9 +134,11 @@ public sealed class HardwareBenchmarkRecalibrationService : BackgroundService
             return;
 
         bool driverChanged = await DetectDriverChangeAsync(ct).ConfigureAwait(false);
+        if (driverChanged)
+            _driverChangePending = true;
         bool ageExceeded = IsAgeExceeded();
 
-        if (!driverChanged && !ageExceeded)
+        if (!_driverChangePending && !ageExceeded)
         {
             _logger.LogDebug(
                 "Recalibration check: speed index is fresh and driver unchanged — nothing to do"
@@ -139,7 +146,7 @@ public sealed class HardwareBenchmarkRecalibrationService : BackgroundService
             return;
         }
 
-        string reason = driverChanged
+        string reason = _driverChangePending
             ? "driver change detected"
             : "speed index age exceeded 30 days";
         _logger.LogInformation("Recalibration triggered: {Reason}", reason);
@@ -152,7 +159,10 @@ public sealed class HardwareBenchmarkRecalibrationService : BackgroundService
                 "Recalibration skipped after {MaxDeferral} of continuous busy state — will re-evaluate next hour",
                 _maxDeferralWindow
             );
+            return;
         }
+
+        _driverChangePending = false;
     }
 
     private async Task<bool> DetectDriverChangeAsync(CancellationToken ct)
@@ -195,7 +205,8 @@ public sealed class HardwareBenchmarkRecalibrationService : BackgroundService
                 return false;
 
             _logger.LogDebug(
-                "Recalibration deferred — encoder busy (elapsed: {Elapsed:g}), retry in {Retry}", [elapsed, _busyRetryInterval]
+                "Recalibration deferred — encoder busy (elapsed: {Elapsed:g}), retry in {Retry}",
+                [elapsed, _busyRetryInterval]
             );
 
             try

@@ -122,7 +122,7 @@ public class AudioCdIdentifierTests
     // ── BuildTocString ──────────────────────────────────────────────────────
 
     [Fact]
-    public void BuildTocString_FormatsFirstLastLeadOutAndTrackOffsetsWith150Pregap()
+    public void BuildTocString_SendsTheAbsoluteOffsetsUnchanged()
     {
         DiscToc toc = new(
             FirstTrack: 1,
@@ -133,7 +133,45 @@ public class AudioCdIdentifierTests
 
         string result = AudioCdIdentifier.BuildTocString(toc);
 
-        result.Should().Be("1+2+30150+300+15300");
+        result.Should().Be("1+2+30000+150+15150");
+    }
+
+    /// <summary>
+    /// The example query from the MusicBrainz API documentation
+    /// (https://musicbrainz.org/doc/MusicBrainz_API#discid): first track, track
+    /// count, lead-out, then one absolute offset per track with track 1 at 150.
+    /// </summary>
+    [Fact]
+    public void BuildTocString_ReproducesTheDocumentedExampleQuery()
+    {
+        DiscToc toc = new(
+            FirstTrack: 1,
+            LastTrack: 12,
+            LeadOutOffsetSectors: 267257,
+            TrackOffsetsSectors:
+            [
+                150,
+                22767,
+                41887,
+                58317,
+                72102,
+                91375,
+                104652,
+                115380,
+                132165,
+                143932,
+                159870,
+                174597,
+            ]
+        );
+
+        string result = AudioCdIdentifier.BuildTocString(toc);
+
+        result
+            .Should()
+            .Be(
+                "1+12+267257+150+22767+41887+58317+72102+91375+104652+115380+132165+143932+159870+174597"
+            );
     }
 }
 

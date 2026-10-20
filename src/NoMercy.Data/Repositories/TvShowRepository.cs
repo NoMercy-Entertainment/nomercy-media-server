@@ -438,16 +438,24 @@ public class TvShowRepository(
                         }
                     );
                 }
+                else
+                {
+                    // Finishing or hiding the episode leaves the row behind with this
+                    // flag set; adding the show back has to make it visible again.
+                    existingUserData.RemovedFromContinueWatching = false;
+                }
             }
         }
         else
         {
-            // Remove all userdata for this tv show
-            List<UserData> userDataToRemove = await context
+            // Hidden, not deleted: every episode keeps its resume point, the same
+            // way UserDataRepository.RemoveForItemAsync takes a show off the list.
+            await context
                 .UserData.Where(ud => ud.UserId == userId && ud.TvId == tvId)
-                .ToListAsync(ct);
-
-            context.UserData.RemoveRange(userDataToRemove);
+                .ExecuteUpdateAsync(
+                    setters => setters.SetProperty(ud => ud.RemovedFromContinueWatching, true),
+                    ct
+                );
         }
 
         await context.SaveChangesAsync(ct);

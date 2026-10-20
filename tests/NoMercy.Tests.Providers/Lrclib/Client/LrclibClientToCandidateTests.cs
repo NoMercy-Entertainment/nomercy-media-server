@@ -382,4 +382,79 @@ public class LrclibClientToCandidateTests
         candidate.Should().NotBeNull();
         candidate!.HasSyncedLyrics.Should().BeFalse();
     }
+
+    [Fact]
+    public void ToCandidate_RepeatedTimestamps_EmitOneLinePerTagWithCleanText()
+    {
+        LrclibSongResult result = new()
+        {
+            TrackName = "Song",
+            ArtistName = "Artist",
+            Duration = 100,
+            Instrumental = false,
+            SyncedLyrics = "[ar:X]\n[00:12.00][01:30.00]Chorus",
+        };
+
+        LyricCandidate? candidate = LrclibClient.ToCandidate(result);
+
+        candidate!.Lines.Select(line => line.Text).Should().Equal("Chorus", "Chorus");
+        candidate.Lines[0].Time.Total.Should().Be(12.0);
+        candidate.Lines[1].Time.Total.Should().Be(90.0);
+        candidate.Lines[1].Time.Minutes.Should().Be(1);
+        candidate.Lines[1].Time.Seconds.Should().Be(30);
+    }
+
+    [Fact]
+    public void ToCandidate_DropsIdTagsFromSyncedLyrics()
+    {
+        LrclibSongResult result = new()
+        {
+            TrackName = "Song",
+            ArtistName = "Artist",
+            Duration = 100,
+            Instrumental = false,
+            SyncedLyrics = "[ar:Artist]\n[ti:Song]\n[offset:+500]\n[00:01.00]First",
+        };
+
+        LyricCandidate? candidate = LrclibClient.ToCandidate(result);
+
+        candidate!.Lines.Should().ContainSingle().Which.Text.Should().Be("First");
+    }
+
+    [Fact]
+    public void ToCandidate_OrdersRepeatedTimestampsChronologically()
+    {
+        LrclibSongResult result = new()
+        {
+            TrackName = "Song",
+            ArtistName = "Artist",
+            Duration = 100,
+            Instrumental = false,
+            SyncedLyrics = "[00:12.00][01:30.00]Chorus\n[00:20.00]Verse",
+        };
+
+        LyricCandidate? candidate = LrclibClient.ToCandidate(result);
+
+        candidate!.Lines.Select(line => line.Time.Total).Should().Equal(12.0, 20.0, 90.0);
+        candidate.Lines.Select(line => line.Text).Should().Equal("Chorus", "Verse", "Chorus");
+    }
+
+    [Fact]
+    public void ToCandidate_KeepsBracketedPlainLyricLines()
+    {
+        // Plain lyrics carry no LRC header, so a bracketed section label with a
+        // colon is lyric text, not an ID tag to drop.
+        LrclibSongResult result = new()
+        {
+            TrackName = "Song",
+            ArtistName = "Artist",
+            Duration = 100,
+            Instrumental = false,
+            PlainLyrics = "[Chorus: Artist]\nFirst line",
+        };
+
+        LyricCandidate? candidate = LrclibClient.ToCandidate(result);
+
+        candidate!.Lines.Select(line => line.Text).Should().Equal("[Chorus: Artist]", "First line");
+    }
 }

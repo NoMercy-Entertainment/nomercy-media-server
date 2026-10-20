@@ -698,8 +698,11 @@ public class PlanStage(
     /// When the profile opts into <see cref="EncodingProfile.AutoDetectCrop"/>
     /// and the source has a video stream, run the crop detector and return
     /// a <c>W:H:X:Y</c> string suitable for the <c>crop=</c> filter. Returns
-    /// null when the profile disables auto-crop, the source has no video,
-    /// or detection concludes the frame is already letterbox-free.
+    /// null when the profile disables auto-crop, the operator turned crop
+    /// detection off for every encode
+    /// (<see cref="Composition.EncoderOptions.EnableCropDetectSubscriber"/>),
+    /// the source has no video, or detection concludes the frame is already
+    /// letterbox-free.
     /// </summary>
     private async Task<string?> ResolveCropFilterAsync(
         EncodingProfile profile,
@@ -710,6 +713,18 @@ public class PlanStage(
     {
         if (!profile.AutoDetectCrop || media.VideoStreams.Count == 0)
             return null;
+
+        // The operator's switch outranks the profile: it is the one place crop
+        // detection can be turned off without editing every profile.
+        if (options is { EnableCropDetectSubscriber: false })
+        {
+            logger.LogDebug(
+                "[{CorrelationId}] Profile asks for auto-crop but crop detection is "
+                    + "disabled globally (EnableCropDetectSubscriber) — skipping",
+                correlationId
+            );
+            return null;
+        }
 
         try
         {
@@ -1125,7 +1140,10 @@ public class PlanStage(
                                 // Every rung here is built from media.VideoStreams[0] —
                                 // the source stream this output was planned against. See
                                 // VideoOutputPlan.SourceStreamIndex.
-                                SourceStreamIndex: media.VideoStreams[0].Index
+                                SourceStreamIndex: media.VideoStreams[0].Index,
+                                ColorTransfer: preservesHdr
+                                    ? media.VideoStreams[0].ColorTransfer
+                                    : null
                             );
                         }
                     )

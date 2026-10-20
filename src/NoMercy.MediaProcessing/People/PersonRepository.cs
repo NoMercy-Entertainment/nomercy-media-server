@@ -11,14 +11,16 @@
 
 using FlexLabs.EntityFrameworkCore.Upsert;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using NoMercy.Database;
 using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.People;
 using NoMercy.Database.Models.TvShows;
-using Microsoft.Extensions.Logging;
+
 namespace NoMercy.MediaProcessing.People;
 
-public class PersonRepository(MediaContext context, ILogger<PersonRepository> logger) : IPersonRepository
+public class PersonRepository(MediaContext context, ILogger<PersonRepository> logger)
+    : IPersonRepository
 {
     public Task Store(IEnumerable<Person> people)
     {
@@ -217,13 +219,30 @@ public class PersonRepository(MediaContext context, ILogger<PersonRepository> lo
             .Jobs.Where(job => crewArray.Select(c => c.CreditId).Contains(job.CreditId))
             .ToArray();
 
-        crewArray = crewArray
-            .Select(c =>
-            {
-                c.JobId = jobs.First(j => j.CreditId == c.CreditId).Id;
-                return c;
-            })
-            .ToArray();
+        // A credit without a credit_id has no key: its job sits under the empty
+        // string, and a crew row keyed on null never meets the upsert's conflict
+        // columns, so each refresh would insert it again. It is dropped and the
+        // rest of the title's crew is still stored.
+        List<Crew> keyedCrew = [];
+        foreach (Crew member in crewArray)
+        {
+            Job? job = jobs.FirstOrDefault(j => j.CreditId == member.CreditId);
+            if (job is null)
+                continue;
+
+            member.JobId = job.Id;
+            keyedCrew.Add(member);
+        }
+
+        if (keyedCrew.Count < crewArray.Length)
+            logger.LogWarning(
+                "{Count} crew credits had no stored job and were skipped",
+                crewArray.Length - keyedCrew.Count
+            );
+
+        crewArray = keyedCrew.ToArray();
+        if (crewArray.Length == 0)
+            return;
 
         try
         {

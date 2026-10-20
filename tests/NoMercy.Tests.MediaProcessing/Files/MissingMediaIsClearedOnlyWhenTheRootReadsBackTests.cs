@@ -136,7 +136,6 @@ public sealed class MissingMediaIsClearedOnlyWhenTheRootReadsBackTests : IDispos
         return new(
             repoMock.Object,
             factoryMock.Object,
-            Mock.Of<IStorageDriver>(),
             Mock.Of<IMediaAnalyzer>(),
             TestFilenameParser.Default
         );

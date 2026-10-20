@@ -974,9 +974,14 @@ public class SpecialRepository(MediaContext context, IDbContextFactory<MediaCont
 
         if (add)
         {
-            // Find the first item in the special with a video file (prefer movies)
-            SpecialItem? firstItemWithVideo = await context
+            // The first item by Order may never have been imported; only an item
+            // with a file on disk can carry the entry.
+            SpecialItem? firstPlayableItem = await context
                 .SpecialItems.Where(si => si.SpecialId == specialId)
+                .Where(si =>
+                    (si.Movie != null && si.Movie.VideoFiles.Any(vf => vf.Folder != null))
+                    || (si.Episode != null && si.Episode.VideoFiles.Any(vf => vf.Folder != null))
+                )
                 .Include(si => si.Movie)
                     .ThenInclude(m => m!.VideoFiles)
                 .Include(si => si.Episode)
@@ -984,35 +989,36 @@ public class SpecialRepository(MediaContext context, IDbContextFactory<MediaCont
                 .OrderBy(si => si.Order)
                 .FirstOrDefaultAsync(ct);
 
-            if (firstItemWithVideo is not null)
+            VideoFile? videoFile =
+                firstPlayableItem?.Movie?.VideoFiles.Newest(vf => vf.Folder != null)
+                ?? firstPlayableItem?.Episode?.VideoFiles.Newest(vf => vf.Folder != null);
+
+            if (videoFile is null)
+                return false;
+
+            // The same file may already carry the viewer's standalone row for the
+            // movie or episode; the special's own entry is keyed on SpecialId too.
+            UserData? existingUserData = await context.UserData.FirstOrDefaultAsync(
+                ud =>
+                    ud.UserId == userId
+                    && ud.VideoFileId == videoFile.Id
+                    && ud.SpecialId == specialId,
+                ct
+            );
+
+            if (existingUserData is null)
             {
-                VideoFile? videoFile =
-                    firstItemWithVideo.Movie?.VideoFiles.Newest(vf => vf.Folder != null)
-                    ?? firstItemWithVideo.Episode?.VideoFiles.Newest(vf => vf.Folder != null);
-
-                if (videoFile is not null)
-                {
-                    // Check if userdata already exists for this video file
-                    UserData? existingUserData = await context.UserData.FirstOrDefaultAsync(
-                        ud => ud.UserId == userId && ud.VideoFileId == videoFile.Id,
-                        ct
-                    );
-
-                    if (existingUserData is null)
+                context.UserData.Add(
+                    new()
                     {
-                        context.UserData.Add(
-                            new()
-                            {
-                                UserId = userId,
-                                VideoFileId = videoFile.Id,
-                                SpecialId = specialId,
-                                Time = 0,
-                                LastPlayedDate = DateTime.UtcNow.ToString("o"),
-                                Type = MediaTypes.SpecialMediaType,
-                            }
-                        );
+                        UserId = userId,
+                        VideoFileId = videoFile.Id,
+                        SpecialId = specialId,
+                        Time = 0,
+                        LastPlayedDate = DateTime.UtcNow.ToString("o"),
+                        Type = MediaTypes.SpecialMediaType,
                     }
-                }
+                );
             }
         }
         else

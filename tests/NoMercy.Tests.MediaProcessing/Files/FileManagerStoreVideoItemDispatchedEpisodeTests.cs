@@ -150,13 +150,11 @@ public sealed class FileManagerStoreVideoItemDispatchedEpisodeTests : IDisposabl
         factoryMock
             .Setup(factory => factory.For(It.IsAny<Ulid>(), It.IsAny<Ulid>(), It.IsAny<string>()))
             .Returns(BuildLocalStorage());
-        Mock<IStorageDriver> driverMock = new();
         Mock<IMediaAnalyzer> mediaAnalyzerMock = new();
 
         FileManager manager = new(
             repoMock.Object,
             factoryMock.Object,
-            driverMock.Object,
             mediaAnalyzerMock.Object,
             TestFilenameParser.Default
         );

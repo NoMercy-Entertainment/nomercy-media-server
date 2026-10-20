@@ -46,7 +46,8 @@ public sealed class CropDetectSubscriber
     }
 
     /// <summary>
-    /// Read by <c>PlanStage</c> alongside <c>profile.AutoDetectCrop</c> to
+    /// Mirrors <see cref="EncoderOptions.EnableCropDetectSubscriber"/>, the
+    /// flag <c>PlanStage</c> reads alongside <c>profile.AutoDetectCrop</c> to
     /// decide whether to actually invoke the crop detector. False means the
     /// detector is globally disabled regardless of profile setting.
     /// </summary>

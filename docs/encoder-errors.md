@@ -52,6 +52,7 @@ shows up below wrapped in backticks. Add a new ID → add a new bullet here in t
 ## DRM
 - `drm.http_not_https` — DRM key URI must be HTTPS.
 - `drm.key_missing` — encryption requested but no key configured.
+- `drm.scheme_unsupported` — drm.scheme names a scheme the pipeline cannot package; supported: aes128, aes-128, cenc (or none to disable DRM).
 
 ## Encoder runtime
 - `encoder.init_failed` — encoder handle could not be initialised (driver fault, missing kernel module, etc.).
