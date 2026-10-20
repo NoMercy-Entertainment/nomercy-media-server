@@ -121,6 +121,19 @@ public partial class MusicLogic : IAsyncDisposable
                         file.Path,
                         cancellationToken
                     );
+                    // Matched with an empty probe, the file was stored as a track
+                    // with no duration and a quality of zero, and that row then
+                    // counted as imported. Skipped, it is tried again on the next
+                    // scan (#320).
+                    if (ffProbeData.Failed)
+                    {
+                        _logger.LogWarning(
+                            "Skipping {Name}: its probe failed ({Reason})",
+                            file.Name,
+                            string.Join("; ", ffProbeData.ErrorData)
+                        );
+                        return;
+                    }
 
                     AcoustIdFingerprintRecording? fingerPrintRecording = await MatchTrack(
                         file,
@@ -787,6 +800,19 @@ public partial class MusicLogic : IAsyncDisposable
             }
 
             FfProbeData ffProbeData = await FfProbe.CreateAsync(file);
+            // A row stored here with an empty duration passes the hasTrack
+            // check above on every later scan, so it would never be probed
+            // again. Not stored, the track comes back on the next scan (#320).
+            if (ffProbeData.Failed)
+            {
+                _logger.LogWarning(
+                    "Skipping track {Title}: the probe of '{File}' failed ({Reason})",
+                    musicBrainzTrack.Title,
+                    file,
+                    string.Join("; ", ffProbeData.ErrorData)
+                );
+                return null;
+            }
 
             insert.Filename = filename;
             insert.Quality = (int)Math.Floor(ffProbeData.Format.BitRate / 1000.0);

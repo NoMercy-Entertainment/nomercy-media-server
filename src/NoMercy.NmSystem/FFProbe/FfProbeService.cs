@@ -42,14 +42,7 @@ public class FfProbeService : IFfProbeService
         try
         {
             string json = await RunFfprobeWithRetry(file, ct);
-            if (string.IsNullOrEmpty(json))
-                return new() { ErrorData = ["ffprobe returned empty output"] };
-
-            FfProbeRawResult? raw = json.FromJson<FfProbeRawResult>();
-            if (raw is null)
-                return new() { ErrorData = ["Failed to parse ffprobe output"] };
-
-            return BuildFfProbeData(file, raw);
+            return FromFfprobeJson(file, json);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -93,10 +86,7 @@ public class FfProbeService : IFfProbeService
             // past the probe budget). ffprobe streams to EOF, times out, and
             // yields nothing. Fall back to a seekable local copy — the same way
             // playback and the encoder already read these files successfully.
-            if (
-                raw is null
-                || (raw.Format is null && (raw.Streams is null || raw.Streams.Length == 0))
-            )
+            if (raw is null || HasNoMedia(raw))
                 return await CreateFromStagedCopyAsync(driver, file, ct);
 
             return BuildFfProbeData(file, raw);
@@ -134,14 +124,7 @@ public class FfProbeService : IFfProbeService
             await using LocalPathLease lease = await driver.AcquireLocalPathAsync(file, ct);
 
             string json = await RunFfprobeWithRetry(lease.Path, ct);
-            if (string.IsNullOrEmpty(json))
-                return new() { ErrorData = ["ffprobe returned empty output"] };
-
-            FfProbeRawResult? raw = json.FromJson<FfProbeRawResult>();
-            if (raw is null)
-                return new() { ErrorData = ["Failed to parse ffprobe output"] };
-
-            return BuildFfProbeData(file, raw);
+            return FromFfprobeJson(file, json);
         }
         finally
         {
@@ -310,6 +293,27 @@ public class FfProbeService : IFfProbeService
         using StreamReader reader = new(s);
         return await reader.ReadToEndAsync(ct);
     }
+
+    // ffprobe prints "{}" and exits 1 for a file it cannot open: missing, empty,
+    // or not media at all. The exit code is never read, so this is the one place
+    // that answer is told apart from a real probe of a file with no streams (#320).
+    internal FfProbeData FromFfprobeJson(string file, string json)
+    {
+        if (string.IsNullOrEmpty(json))
+            return new() { ErrorData = ["ffprobe returned empty output"] };
+
+        FfProbeRawResult? raw = json.FromJson<FfProbeRawResult>();
+        if (raw is null)
+            return new() { ErrorData = ["Failed to parse ffprobe output"] };
+
+        if (HasNoMedia(raw))
+            return new() { ErrorData = ["ffprobe found no format and no streams"] };
+
+        return BuildFfProbeData(file, raw);
+    }
+
+    private static bool HasNoMedia(FfProbeRawResult raw) =>
+        raw.Format is null && (raw.Streams is null || raw.Streams.Length == 0);
 
     private FfProbeData BuildFfProbeData(string file, FfProbeRawResult raw)
     {

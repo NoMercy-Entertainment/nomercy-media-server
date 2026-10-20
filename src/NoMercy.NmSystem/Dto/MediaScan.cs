@@ -404,6 +404,17 @@ public class MediaScan : IDisposable, IAsyncDisposable
                         if (isVideoFile || isAudioFile)
                         {
                             ffprobe = await FfProbe.CreateAsync(_driver, file, cancellationToken);
+                            // Every reader of MediaFile.FFprobe takes null as "not
+                            // probed". A failed probe kept as a result looked like
+                            // a file with no streams and no duration (#320).
+                            if (ffprobe.Failed)
+                            {
+                                Logger.App(
+                                    $"Listing {file} without a probe: {string.Join("; ", ffprobe.ErrorData)}",
+                                    LogEventLevel.Warning
+                                );
+                                ffprobe = null;
+                            }
                             if (isAudioFile)
                             {
                                 // TagFile needs random access — only safe on local FS.
