@@ -367,4 +367,65 @@ public class SpecialResponseItemDtoTests
         Assert.False(dto.Favorite);
         Assert.Empty(dto.Special!);
     }
+
+    // Movie ids and show ids are separate TMDB numbering spaces, so a special can hold a
+    // movie and a show with the same number. Each is its own entry.
+    [Fact]
+    public void Ctor_SpecialWithItems_MovieAndShowSharingAnId_KeepsBoth()
+    {
+        SpecialItemsDto movie = BuildItem(
+            7,
+            "movie",
+            voteAverage: null,
+            totalDuration: 10,
+            ratingIso: "US"
+        );
+        SpecialItemsDto show = BuildItem(
+            7,
+            "tv",
+            voteAverage: null,
+            totalDuration: 20,
+            ratingIso: "US",
+            episodeIds: [70]
+        );
+
+        Special special = new() { Id = Ulid.NewUlid(), Title = "Same Number" };
+        special.Items.Add(new() { MovieId = 7 });
+        special.Items.Add(new() { EpisodeId = 70 });
+
+        SpecialResponseItemDto dto = new(special, [movie, show]);
+
+        dto.Special.Should().HaveCount(2);
+        dto.Special.Should().ContainSingle(item => item.MediaType == "movie" && item.Id == 7);
+        dto.Special.Should().ContainSingle(item => item.MediaType == "tv" && item.Id == 7);
+    }
+
+    [Fact]
+    public void Ctor_SpecialDetailDto_MovieAndShowSharingAnId_KeepsBoth()
+    {
+        SpecialItemsDto movie = BuildItem(
+            7,
+            "movie",
+            voteAverage: null,
+            totalDuration: 10,
+            ratingIso: "US"
+        );
+        SpecialItemsDto show = BuildItem(
+            7,
+            "tv",
+            voteAverage: null,
+            totalDuration: 20,
+            ratingIso: "US",
+            episodeIds: [70]
+        );
+
+        SpecialDetailDto detail = BuildDetail(string.Empty);
+        detail.Items = [new() { MovieId = 7 }, new() { EpisodeId = 70, TvId = 7 }];
+
+        SpecialResponseItemDto dto = new(detail, [movie, show]);
+
+        dto.Special.Should().HaveCount(2);
+        dto.Special.Should().ContainSingle(item => item.MediaType == "movie" && item.Id == 7);
+        dto.Special.Should().ContainSingle(item => item.MediaType == "tv" && item.Id == 7);
+    }
 }
