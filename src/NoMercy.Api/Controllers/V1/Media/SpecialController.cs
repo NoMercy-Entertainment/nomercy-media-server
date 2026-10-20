@@ -254,7 +254,7 @@ public class SpecialController(
         bool success = await specialRepository.AddToWatchListAsync(id, userId, request.Add, ct);
 
         if (!success)
-            return UnprocessableEntityResponse("Special not found");
+            return UnprocessableEntityResponse("Special not found or has no playable item");
 
         return Ok(
             new StatusResponseDto<string>
