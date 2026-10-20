@@ -32,5 +32,6 @@ namespace NoMercy.PluginSdk;
 /// </summary>
 public interface IPluginAudioToolsFactory
 {
-    IPluginAudioTools CreateFor(Ulid pluginId);
+    /// <param name="dataFolderPath">The plugin's own data folder, which a <c>{pluginFile:…}</c> token in a filter graph resolves inside of.</param>
+    IPluginAudioTools CreateFor(Ulid pluginId, string dataFolderPath);
 }

@@ -209,7 +209,9 @@ public class PluginDiIntegrationTests : IDisposable
         Mock<IPluginMusicAnalysisWriterFactory> analysisWriterFactory = new();
         IPluginAudioTools audioTools = Mock.Of<IPluginAudioTools>();
         IPluginMusicAnalysisWriter analysisWriter = Mock.Of<IPluginMusicAnalysisWriter>();
-        audioToolsFactory.Setup(f => f.CreateFor(It.IsAny<Ulid>())).Returns(audioTools);
+        audioToolsFactory
+            .Setup(f => f.CreateFor(It.IsAny<Ulid>(), It.IsAny<string>()))
+            .Returns(audioTools);
         analysisWriterFactory.Setup(f => f.CreateFor(It.IsAny<Ulid>())).Returns(analysisWriter);
 
         ServiceCollection services = new();

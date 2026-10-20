@@ -205,6 +205,33 @@ public class FfmpegCapabilityProbeTests
     }
 
     // -------------------------------------------------------------------------
+    // VAD model
+    // -------------------------------------------------------------------------
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ProbeAsync_reports_whether_the_vad_model_is_present(bool present)
+    {
+        Mock<IFfmpegCapabilities> caps = CapsWithProtocol(false, false);
+        Mock<IProcessRunner> runner = new();
+        Mock<IStorage> storage = new();
+        SetupMuxerOutput(runner, AllMuxersOutput());
+        SetupFpcalc(runner, 0);
+
+        EncoderOptions options = new() { VadModelPath = "/models/ggml-silero-v5.1.2.bin" };
+        storage.Setup(s => s.Exists("/models/ggml-silero-v5.1.2.bin")).Returns(present);
+        storage
+            .Setup(s => s.Exists(It.Is<string>(p => p != "/models/ggml-silero-v5.1.2.bin")))
+            .Returns(false);
+
+        FfmpegCapabilityProbe probe = BuildProbe(caps, runner, storage, options);
+        await probe.ProbeAsync();
+
+        probe.GetCachedReport()!.VadModelPresent.Should().Be(present);
+    }
+
+    // -------------------------------------------------------------------------
     // Stemsplit model
     // -------------------------------------------------------------------------
 

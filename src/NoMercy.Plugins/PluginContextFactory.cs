@@ -97,7 +97,7 @@ public class PluginContextFactory(
         // pair above.
         IPluginAudioTools? audioToolsFacade = null;
         if (PluginCapabilityGuard.DeclaresHook(capabilities, PluginHookCapability.AudioTools))
-            audioToolsFacade = audioToolsFactory?.CreateFor(pluginId);
+            audioToolsFacade = audioToolsFactory?.CreateFor(pluginId, dataFolderPath);
 
         IPluginDerivedAudio? derivedAudioFacade = null;
         if (PluginCapabilityGuard.DeclaresHook(capabilities, PluginHookCapability.DerivedAudio))

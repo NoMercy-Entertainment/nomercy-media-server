@@ -92,6 +92,8 @@ public sealed class FfmpegCapabilityProbe(
 
         bool whisperModelPresent = ProbeWhisperModel();
 
+        bool vadModelPresent = ProbeModel(options.VadModelPath);
+
         bool stemsplitModelPresent = ProbeStemsplitModel();
 
         (bool tesseractPresent, string? tesseractDir) = ProbeTesseract();
@@ -114,7 +116,8 @@ public sealed class FfmpegCapabilityProbe(
             StemsplitModelPresent: stemsplitModelPresent,
             TesseractEngTraineddataPresent: tesseractPresent,
             TesseractModelsDirectory: tesseractDir,
-            Issues: issues
+            Issues: issues,
+            VadModelPresent: vadModelPresent
         );
 
         logger.LogInformation(
@@ -156,9 +159,10 @@ public sealed class FfmpegCapabilityProbe(
         return available;
     }
 
-    private bool ProbeWhisperModel()
+    private bool ProbeWhisperModel() => ProbeModel(options.WhisperModelPath);
+
+    private bool ProbeModel(string? modelPath)
     {
-        string? modelPath = options.WhisperModelPath;
         if (string.IsNullOrWhiteSpace(modelPath))
             return false;
 

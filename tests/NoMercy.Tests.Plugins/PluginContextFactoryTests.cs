@@ -88,7 +88,7 @@ public class PluginContextFactoryTests
     {
         IPluginAudioTools audioTools = Mock.Of<IPluginAudioTools>();
         IPluginMusicAnalysisWriter analysisWriter = Mock.Of<IPluginMusicAnalysisWriter>();
-        _audioToolsFactory.Setup(f => f.CreateFor(PluginId)).Returns(audioTools);
+        _audioToolsFactory.Setup(f => f.CreateFor(PluginId, "data")).Returns(audioTools);
         _analysisWriterFactory.Setup(f => f.CreateFor(PluginId)).Returns(analysisWriter);
 
         PluginCapabilities capabilities = new()
@@ -101,7 +101,7 @@ public class PluginContextFactoryTests
         Assert.Same(audioTools, context.AudioTools);
         Assert.Same(_derivedAudio.Object, context.DerivedAudio);
         Assert.Same(analysisWriter, context.MusicAnalysisWriter);
-        _audioToolsFactory.Verify(f => f.CreateFor(PluginId), Times.Once);
+        _audioToolsFactory.Verify(f => f.CreateFor(PluginId, "data"), Times.Once);
         _analysisWriterFactory.Verify(f => f.CreateFor(PluginId), Times.Once);
     }
 
@@ -115,7 +115,10 @@ public class PluginContextFactoryTests
         Assert.Null(context.AudioTools);
         Assert.Null(context.DerivedAudio);
         Assert.Null(context.MusicAnalysisWriter);
-        _audioToolsFactory.Verify(f => f.CreateFor(It.IsAny<Ulid>()), Times.Never);
+        _audioToolsFactory.Verify(
+            f => f.CreateFor(It.IsAny<Ulid>(), It.IsAny<string>()),
+            Times.Never
+        );
         _analysisWriterFactory.Verify(f => f.CreateFor(It.IsAny<Ulid>()), Times.Never);
     }
 
@@ -123,7 +126,7 @@ public class PluginContextFactoryTests
     public void Create_OnlyAudioToolsHookDeclared_OnlyAudioToolsNonNull()
     {
         IPluginAudioTools audioTools = Mock.Of<IPluginAudioTools>();
-        _audioToolsFactory.Setup(f => f.CreateFor(PluginId)).Returns(audioTools);
+        _audioToolsFactory.Setup(f => f.CreateFor(PluginId, "data")).Returns(audioTools);
 
         PluginCapabilities capabilities = new() { Hooks = ["audioTools"] };
 

@@ -48,5 +48,6 @@ public sealed record CapabilityReport(
     bool StemsplitModelPresent,
     bool TesseractEngTraineddataPresent,
     string? TesseractModelsDirectory,
-    IReadOnlyList<EncoderRule> Issues
+    IReadOnlyList<EncoderRule> Issues,
+    bool VadModelPresent = false
 );

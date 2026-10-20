@@ -44,6 +44,24 @@ public interface IPluginAudioTools
     );
 
     /// <summary>
+    /// The same run with <paramref name="options" />: today, a longer timeout
+    /// for a graph that runs whisper over a whole track.
+    /// <para>
+    /// Default-implemented so an implementer written against an older ABI
+    /// keeps compiling; that fallback runs with the host's default options.
+    /// Added in ABI 12.6.
+    /// </para>
+    /// </summary>
+    Task<PluginAudioRunResult> RunFilterGraphAsync(
+        PluginAudioInput input,
+        PluginFilterGraph graph,
+        Action<string>? onStdOut,
+        Action<string>? onStdErr,
+        PluginAudioRunOptions options,
+        CancellationToken ct = default
+    ) => RunFilterGraphAsync(input, graph, onStdOut, onStdErr, ct);
+
+    /// <summary>
     /// Coverage Full splits the whole track; MixIn or MixOut split that
     /// window (first 20 % / last 25 %, computed by the host from the track
     /// duration). Stems land in the derived store and in the stem register.

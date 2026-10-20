@@ -661,6 +661,7 @@ public static partial class ServiceConfiguration
             opts.FfprobePathOverride = AppFiles.FfProbePath;
             opts.TesseractModelsDirectory = AppFiles.TesseractModelsFolder;
             opts.WhisperModelPath = AppFiles.WhisperModelPath;
+            opts.VadModelPath = AppFiles.VadModelPath;
             opts.StemsplitModelPath = AppFiles.StemsplitModelPath;
             // Without this the JsonSpeedIndexStore silently no-ops on Save
             // ("No SpeedIndexCachePath configured — skipping save"), and every
