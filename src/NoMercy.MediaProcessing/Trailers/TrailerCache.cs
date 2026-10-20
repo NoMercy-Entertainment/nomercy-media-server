@@ -145,6 +145,8 @@ public partial class TrailerCache(IStorage transcodeStorage, ILogger<TrailerCach
 
             if (Software.IsWindows)
             {
+                // cmd needs the raw `/c "<command>"` form: it strips only the outer
+                // quote pair and keeps the quoted tool paths inside intact.
                 logger.LogDebug("cmd -c \"{Command}\"", command);
                 Shell.ExecSync(
                     "cmd",
@@ -154,10 +156,13 @@ public partial class TrailerCache(IStorage transcodeStorage, ILogger<TrailerCach
             }
             else
             {
+                // bash gets the command as one argv token. Through the raw argument
+                // string, the runtime's own argv parser would split it at the quoted
+                // tool paths before bash ever saw it.
                 logger.LogDebug("/bin/bash -c \"{Command}\"", command);
                 Shell.ExecSync(
                     "/bin/bash",
-                    $"-c \"{command}\"",
+                    ["-c", command],
                     new() { WorkingDirectory = workingDirectory }
                 );
             }

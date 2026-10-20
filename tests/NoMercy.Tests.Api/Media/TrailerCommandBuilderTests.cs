@@ -36,7 +36,7 @@ public class TrailerCommandBuilderTests
         command.Should().NotContain("--write-subs");
         // ...but the trailer still fetches.
         command.Should().Contain(TrailerId);
-        command.Should().Contain($"| {Ffmpeg}");
+        command.Should().Contain($"| \"{Ffmpeg}\"");
     }
 
     [Theory]
@@ -74,10 +74,32 @@ public class TrailerCommandBuilderTests
     {
         string command = TrailerCommandBuilder.Build(Ytdlp, Ffmpeg, TrailerId, "en");
 
-        command.Should().StartWith(Ytdlp);
+        command.Should().StartWith($"\"{Ytdlp}\"");
         command.Should().Contain(TrailerId);
-        command.Should().Contain($"| {Ffmpeg} -i pipe:");
+        command.Should().Contain($"| \"{Ffmpeg}\" -i pipe:");
         command.Should().Contain("video.m3u8");
+    }
+
+    [Fact]
+    public void Build_ToolPathsWithSpaces_QuotesBothToolPaths()
+    {
+        const string ytdlp = @"C:\Program Files\NoMercy\binaries\yt-dlp.exe";
+        const string ffmpeg = @"C:\Program Files\NoMercy\binaries\ffmpeg\ffmpeg.exe";
+
+        string command = TrailerCommandBuilder.Build(ytdlp, ffmpeg, TrailerId, "en");
+
+        command.Should().StartWith($"\"{ytdlp}\" ");
+        command.Should().Contain($" | \"{ffmpeg}\" -i pipe:");
+    }
+
+    [Fact]
+    public void Build_ToolPathWithEmbeddedQuote_EscapesTheQuote()
+    {
+        const string ytdlp = "/opt/no\"mercy/yt-dlp";
+
+        string command = TrailerCommandBuilder.Build(ytdlp, Ffmpeg, TrailerId, "en");
+
+        command.Should().StartWith("\"/opt/no\\\"mercy/yt-dlp\" ");
     }
 
     [Theory]
