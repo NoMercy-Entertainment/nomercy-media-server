@@ -113,6 +113,32 @@ public sealed class FileManagerMoveToLibraryFolderTests : IDisposable
         return (library, folder);
     }
 
+    private Folder SeedUnlinkedFolder(string folderPath)
+    {
+        Driver driver = new()
+        {
+            Id = Ulid.NewUlid(),
+            Name = $"test-driver-{Ulid.NewUlid()}",
+            Type = "local",
+        };
+        _driverIds.Add(driver.Id);
+
+        Folder folder = new()
+        {
+            Id = Ulid.NewUlid(),
+            Path = folderPath,
+            DriverId = driver.Id,
+        };
+        _folderIds.Add(folder.Id);
+
+        using MediaContext context = new();
+        context.Drivers.Add(driver);
+        context.Folders.Add(folder);
+        context.SaveChanges();
+
+        return folder;
+    }
+
     private static FileManager BuildManager(Mock<IFileRepository> repoMock, IStorageFactory factory)
     {
         Mock<IStorageDriver> driverMock = new();
@@ -141,7 +167,7 @@ public sealed class FileManagerMoveToLibraryFolderTests : IDisposable
     }
 
     [Fact]
-    public async Task MoveToLibraryFolder_MovieFolderMissingEverywhere_LogsAndReturnsWithoutThrowing()
+    public async Task MoveToLibraryFolder_MovieFolderMissingEverywhere_ReportsSourceFolderNotFound()
     {
         (Library sourceLibrary, Folder sourceFolder) = SeedLibraryWithFolder(
             MediaTypes.MovieMediaType,
@@ -178,10 +204,14 @@ public sealed class FileManagerMoveToLibraryFolderTests : IDisposable
             Path.Combine(_tempRoot, "dest-unused")
         );
 
-        Func<Task> act = () => manager.MoveToLibraryFolder(movieId, destFolder);
+        MoveToLibraryFolderResult result = await manager.MoveToLibraryFolder(movieId, destFolder);
 
-        await act.Should()
-            .NotThrowAsync("a folder that resolves nowhere must log and return, never throw");
+        result
+            .Should()
+            .Be(
+                MoveToLibraryFolderResult.SourceFolderNotFound,
+                "a folder that resolves nowhere is reported, never thrown or passed off as moved"
+            );
 
         using MediaContext verify = new();
         Movie? unchanged = await verify.Movies.FirstOrDefaultAsync(m => m.Id == movieId);
@@ -253,8 +283,9 @@ public sealed class FileManagerMoveToLibraryFolderTests : IDisposable
 
         FileManager manager = BuildManager(repoMock, factoryMock.Object);
 
-        await manager.MoveToLibraryFolder(movieId, destFolder);
+        MoveToLibraryFolderResult result = await manager.MoveToLibraryFolder(movieId, destFolder);
 
+        result.Should().Be(MoveToLibraryFolderResult.Moved);
         Directory
             .Exists(sourceMovieDir)
             .Should()
@@ -339,8 +370,9 @@ public sealed class FileManagerMoveToLibraryFolderTests : IDisposable
 
         FileManager manager = BuildManager(repoMock, factoryMock.Object);
 
-        await manager.MoveToLibraryFolder(tvId, destFolder);
+        MoveToLibraryFolderResult result = await manager.MoveToLibraryFolder(tvId, destFolder);
 
+        result.Should().Be(MoveToLibraryFolderResult.Moved);
         Directory.Exists(sourceShowDir).Should().BeFalse();
         string destShowDir = Path.Combine(destFolder.Path, showFolderName);
         Directory.Exists(destShowDir).Should().BeTrue();
@@ -352,5 +384,76 @@ public sealed class FileManagerMoveToLibraryFolderTests : IDisposable
         LibraryTv? libraryTv = await verify.LibraryTv.FirstOrDefaultAsync(lt => lt.TvId == tvId);
         libraryTv.Should().NotBeNull();
         libraryTv!.LibraryId.Should().Be(destLibrary.Id);
+    }
+
+    // A Folder row no library links to: DeleteFolder and SyncFolderLibraryAsync
+    // both drop FolderLibrary rows set-based, so the dashboard can hand the move
+    // endpoint such a folder. Moving the files first and discovering the missing
+    // link afterwards strands the title — its rows name a path that no longer
+    // exists and nothing rescans the new location.
+    [Fact]
+    public async Task MoveToLibraryFolder_TargetFolderWithoutLibrary_MovesNothingAndReportsFailure()
+    {
+        (Library sourceLibrary, Folder sourceFolder) = SeedLibraryWithFolder(
+            MediaTypes.MovieMediaType,
+            Path.Combine(_tempRoot, "source-linked")
+        );
+        Folder unlinkedFolder = SeedUnlinkedFolder(Path.Combine(_tempRoot, "dest-unlinked"));
+        Directory.CreateDirectory(unlinkedFolder.Path);
+
+        string movieFolderName = "Orphan.Movie.2021";
+        string sourceMovieDir = Path.Combine(sourceFolder.Path, movieFolderName);
+        Directory.CreateDirectory(sourceMovieDir);
+        File.WriteAllText(Path.Combine(sourceMovieDir, "info.nfo"), "movie info");
+
+        int movieId = 500_004;
+        _movieIds.Add(movieId);
+        Movie movie = new()
+        {
+            Id = movieId,
+            Title = "Orphan Movie",
+            Folder = movieFolderName,
+            LibraryId = sourceLibrary.Id,
+        };
+        using (MediaContext seed = new())
+        {
+            seed.Movies.Add(movie);
+            seed.LibraryMovie.Add(new(sourceLibrary.Id, movieId));
+            seed.SaveChanges();
+        }
+
+        LocalStorageDriver sourceDriver = new();
+        LocalStorageDriver destDriver = new();
+        Mock<IStorageFactory> factoryMock = new();
+        factoryMock
+            .Setup(f => f.For(sourceFolder.Id, sourceFolder.DriverId, string.Empty))
+            .Returns(new LocalStorage(sourceDriver, new StoragePathGuard([], sourceDriver)));
+        factoryMock
+            .Setup(f => f.For(unlinkedFolder.Id, unlinkedFolder.DriverId, string.Empty))
+            .Returns(new LocalStorage(destDriver, new StoragePathGuard([], destDriver)));
+
+        Mock<IFileRepository> repoMock = new();
+        FileManager manager = BuildManager(repoMock, factoryMock.Object);
+
+        MoveToLibraryFolderResult result = await manager.MoveToLibraryFolder(
+            movieId,
+            unlinkedFolder
+        );
+
+        result.Should().Be(MoveToLibraryFolderResult.TargetFolderHasNoLibrary);
+        Directory
+            .Exists(sourceMovieDir)
+            .Should()
+            .BeTrue("a target folder with no library must leave the files where they are");
+        Directory
+            .Exists(Path.Combine(unlinkedFolder.Path, movieFolderName))
+            .Should()
+            .BeFalse("nothing may land under a folder no library owns");
+
+        using MediaContext verify = new();
+        Movie? unchanged = await verify.Movies.FirstOrDefaultAsync(m => m.Id == movieId);
+        unchanged!
+            .LibraryId.Should()
+            .Be(sourceLibrary.Id, "a refused move must not repoint the title");
     }
 }
