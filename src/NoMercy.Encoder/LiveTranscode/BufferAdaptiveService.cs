@@ -103,16 +103,35 @@ public class BufferAdaptiveService(
             if (runtime.IsComplete)
                 continue;
 
-            ILiveSession session = runtime.Session;
-
-            bool networkActionTaken = await TryApplyNetworkAxisAsync(runtime, session, ct)
-                .ConfigureAwait(false);
-
-            if (!networkActionTaken)
-                await ApplyEncoderCapacityAxisAsync(runtime, session, ct).ConfigureAwait(false);
-
-            await PushTranscodeStateAsync(session, ct).ConfigureAwait(false);
+            try
+            {
+                await EvaluateSessionAsync(runtime, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+                when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+            {
+                // One session whose runner misbehaves must not starve the sessions
+                // after it of their suspend, resume and quality drops.
+                logger.LogWarning(
+                    ex,
+                    "BufferAdaptive: evaluation failed for session {SessionId}; skipping it this sweep",
+                    sessionId
+                );
+            }
         }
+    }
+
+    private async Task EvaluateSessionAsync(LiveRuntimeSession runtime, CancellationToken ct)
+    {
+        ILiveSession session = runtime.Session;
+
+        bool networkActionTaken = await TryApplyNetworkAxisAsync(runtime, session, ct)
+            .ConfigureAwait(false);
+
+        if (!networkActionTaken)
+            await ApplyEncoderCapacityAxisAsync(runtime, session, ct).ConfigureAwait(false);
+
+        await PushTranscodeStateAsync(session, ct).ConfigureAwait(false);
     }
 
     private async Task ApplyEncoderCapacityAxisAsync(
