@@ -50,19 +50,22 @@ public class BaseImageManager : IBaseImageManager, IDisposable
 
     public static string GenerateColorPalette(IEnumerable<ColorPaletteArgument> items)
     {
-        Dictionary<string, PaletteColors?> palette = new();
+        // A null image has no palette: omit its key, since an all-null entry
+        // serializes as {} and reads as answered forever.
+        Dictionary<string, PaletteColors?> dict = new();
 
         foreach (ColorPaletteArgument item in items)
-            palette.Add(item.Key, ColorPaletteFromImage(item.ImageData));
-
-        IEnumerable<KeyValuePair<string, PaletteColors?>> palettes = palette.Where(x =>
-            x.Value != null
-        );
-
-        Dictionary<string, PaletteColors?> dict = palettes.ToDictionary(x => x.Key, x => x.Value);
+            if (item.ImageData is not null)
+                dict.Add(item.Key, ColorPaletteFromImage(item.ImageData));
 
         return JsonConvert.SerializeObject(dict);
     }
+
+    private static HttpRequestException DownloadFailed(IEnumerable<string?> paths) =>
+        new(
+            "Palette image download failed (rate limit, server error or undecodable body): "
+                + string.Join(", ", paths)
+        );
 
     public static PaletteColors ColorPaletteFromImage(MagickImage? image)
     {
@@ -131,6 +134,11 @@ public class BaseImageManager : IBaseImageManager, IDisposable
         MagickImage? imageData = await client.Invoke(path, download, maxDecodeSize);
 #pragma warning restore CS8602 // Dereference of a possibly null reference.
 
+        // A requested path whose download returned null is a failed download,
+        // not an entity without an image: throw so the queue retries it.
+        if (imageData is null && !string.IsNullOrEmpty(path))
+            throw DownloadFailed([path]);
+
         return GenerateColorPalette(
             new List<ColorPaletteArgument>
             {
@@ -147,13 +155,20 @@ public class BaseImageManager : IBaseImageManager, IDisposable
     )
     {
         List<ColorPaletteArgument> list = [];
+        List<string> failed = [];
         foreach (MultiStringType item in items)
         {
 #pragma warning disable CS8602 // Dereference of a possibly null reference.
             MagickImage? imageData = await client.Invoke(item.Path, download, maxDecodeSize);
 #pragma warning restore CS8602 // Dereference of a possibly null reference.
             list.Add(new() { Key = item.Key, ImageData = imageData });
+            if (imageData is null && !string.IsNullOrEmpty(item.Path))
+                failed.Add(item.Path);
         }
+
+        // Every requested image failed: throw so the queue retries; a partial result is kept.
+        if (failed.Count > 0 && list.All(x => x.ImageData is null))
+            throw DownloadFailed(failed);
 
         return GenerateColorPalette(list);
     }
