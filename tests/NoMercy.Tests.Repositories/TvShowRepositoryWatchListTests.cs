@@ -105,4 +105,84 @@ public class TvShowRepositoryWatchListTests : IDisposable
         Assert.Equal(0, row.Time);
         Assert.False(row.RemovedFromContinueWatching);
     }
+
+    // Removing the show from the list used to delete every UserData row it had:
+    // the resume point of each episode, with nothing to restore from. The rows
+    // must stay, hidden, with their positions intact.
+    [Fact]
+    public async Task AddToWatchList_Remove_HidesTheShow_AndKeepsEveryEpisodesResumePoint()
+    {
+        await AddSecondEpisodeRowAsync();
+        Dictionary<Ulid, int?> timesBefore = (await ShowRowsAsync()).ToDictionary(
+            ud => ud.Id,
+            ud => ud.Time
+        );
+        Assert.Equal(2, timesBefore.Count);
+
+        bool result = await _repository.AddToWatchListAsync(
+            ShowId,
+            SeedConstants.UserId,
+            add: false
+        );
+
+        Assert.True(result);
+        List<UserData> after = await ShowRowsAsync();
+        Assert.Equal(2, after.Count);
+        foreach (UserData row in after)
+        {
+            Assert.True(row.RemovedFromContinueWatching);
+            Assert.Equal(timesBefore[row.Id], row.Time);
+        }
+    }
+
+    [Fact]
+    public async Task AddToWatchList_Remove_LeavesOtherItemsListed()
+    {
+        await _repository.AddToWatchListAsync(ShowId, SeedConstants.UserId, add: false);
+
+        await using MediaContext context = await _factory.CreateDbContextAsync();
+        List<UserData> movieRows = await context
+            .UserData.AsNoTracking()
+            .Where(ud => ud.UserId == SeedConstants.UserId && ud.MovieId == 129)
+            .ToListAsync();
+        Assert.Equal(2, movieRows.Count);
+        Assert.All(movieRows, row => Assert.False(row.RemovedFromContinueWatching));
+    }
+
+    [Fact]
+    public async Task AddToWatchList_RemoveThenAdd_ListsTheShowAgain_WithItsPositions()
+    {
+        await AddSecondEpisodeRowAsync();
+
+        await _repository.AddToWatchListAsync(ShowId, SeedConstants.UserId, add: false);
+        await _repository.AddToWatchListAsync(ShowId, SeedConstants.UserId, add: true);
+
+        List<UserData> rows = await ShowRowsAsync();
+        Assert.Equal(2, rows.Count);
+        UserData firstEpisode = Assert.Single(rows, ud => ud.Id == SeededFirstEpisodeRowId);
+        Assert.False(firstEpisode.RemovedFromContinueWatching);
+        Assert.Equal(2400, firstEpisode.Time);
+        UserData secondEpisode = Assert.Single(
+            rows,
+            ud => ud.VideoFileId == SeedConstants.TvVideoFile2Id
+        );
+        Assert.Equal(1200, secondEpisode.Time);
+    }
+
+    private async Task AddSecondEpisodeRowAsync()
+    {
+        await using MediaContext context = await _factory.CreateDbContextAsync();
+        context.UserData.Add(
+            new()
+            {
+                UserId = SeedConstants.UserId,
+                TvId = ShowId,
+                VideoFileId = SeedConstants.TvVideoFile2Id,
+                Type = "tv",
+                Time = 1200,
+                LastPlayedDate = "2026-02-03T14:00:00Z",
+            }
+        );
+        await context.SaveChangesAsync();
+    }
 }
