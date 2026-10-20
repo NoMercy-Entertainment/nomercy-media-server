@@ -201,6 +201,23 @@ public class VideoPlaybackCommandHandlerTests : IClassFixture<NoMercyApiFactory>
         state.Time.Should().Be(30_000 - 5_000);
     }
 
+    [Fact]
+    public async Task Backward_WithinSkipLengthOfStart_ClampsToZero()
+    {
+        // Time is in milliseconds: five seconds in, a ten second skip back must
+        // land on the start, not broadcast a negative position to every device.
+        User user = SeededUser();
+        VideoPlayerState state = new()
+        {
+            CurrentItem = await BuildMovieItemAsync(SeededMovieId),
+            Time = 5_000,
+        };
+
+        await CreateHandler().HandleCommand(user, "backward", "10", state, null);
+
+        state.Time.Should().Be(0);
+    }
+
     // =========================================================================
     // next / previous
     // =========================================================================

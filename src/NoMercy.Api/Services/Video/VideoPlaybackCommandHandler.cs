@@ -132,15 +132,9 @@ public class VideoPlaybackCommandHandler(
 
     private async Task HandleBackward(User user, VideoPlayerState state, object? data)
     {
-        if (state.Time < 10)
-        {
-            state.Time = 0;
-            return;
-        }
-
         if (!int.TryParse(data?.ToString() ?? "10", out int seconds))
             return;
-        state.Time -= seconds * 1000;
+        state.Time = Math.Max(0, state.Time - seconds * 1000);
         await videoPlaybackService.StoreWatchProgression(state, user);
     }
 
