@@ -34,16 +34,19 @@ public class TracksController : BaseController
     private readonly IMusicRepository _musicRepository;
     private readonly IEventBus _eventBus;
     private readonly LyricsResolver _lyricsResolver;
+    private readonly LyricsRequestedNotifier _lyricsRequested;
 
     public TracksController(
         IMusicRepository musicService,
         IEventBus eventBus,
-        LyricsResolver lyricsResolver
+        LyricsResolver lyricsResolver,
+        LyricsRequestedNotifier lyricsRequested
     )
     {
         _musicRepository = musicService;
         _eventBus = eventBus;
         _lyricsResolver = lyricsResolver;
+        _lyricsRequested = lyricsRequested;
     }
 
     [HttpGet]
@@ -186,10 +189,13 @@ public class TracksController : BaseController
         // rather than re-querying the rate-limited providers.
         if (track.Lyrics is { Length: > 0 })
             return Ok(
-                LyricsResponse(track, new(track.Lyrics, track.LyricsSource, track.LyricsTiming))
+                await Served(track, new(track.Lyrics, track.LyricsSource, track.LyricsTiming))
             );
         if (track.Lyrics is not null)
+        {
+            await _lyricsRequested.NotifyAsync(id);
             return NotFoundResponse("Subtitle not found");
+        }
 
         try
         {
@@ -198,8 +204,11 @@ public class TracksController : BaseController
             // rate-limited Lrclib/Musixmatch queues.
             ResolvedLyrics? lyrics = await _lyricsResolver.ResolveAsync(id);
             if (lyrics is null)
+            {
+                await _lyricsRequested.NotifyAsync(id);
                 return NotFoundResponse("Subtitle not found");
-            return Ok(LyricsResponse(track, lyrics));
+            }
+            return Ok(await Served(track, lyrics));
         }
         catch (Exception e)
         {
@@ -211,6 +220,15 @@ public class TracksController : BaseController
     // coalescing LyricsResolver hands the same Lyric[] instance to every
     // concurrent caller, so in-place mutation here would double-apply the
     // offset per extra device.
+    // Text without timing is the other cue for a plugin that generates it;
+    // the topic is throttled per track by the notifier.
+    private async Task<LyricsResponseDto> Served(Track track, ResolvedLyrics lyrics)
+    {
+        if (!lyrics.Lines.Any(line => line.Time.Total > 0))
+            await _lyricsRequested.NotifyAsync(track.Id);
+        return LyricsResponse(track, lyrics);
+    }
+
     private static LyricsResponseDto LyricsResponse(Track track, ResolvedLyrics lyrics) =>
         new()
         {
