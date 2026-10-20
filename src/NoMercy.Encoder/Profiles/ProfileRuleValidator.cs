@@ -67,6 +67,7 @@ public static class ProfileRuleValidator
         EmitCustomArgsReservedFlag(profile, rules);
         EmitDrmHttpNotHttps(profile, rules);
         EmitDrmKeyMissing(profile, rules);
+        EmitDrmSchemeUnsupported(profile, rules);
 
         return ValidationEnvelope.FromRules(rules);
     }
@@ -550,7 +551,7 @@ public static class ProfileRuleValidator
             return;
 
         string scheme = (profile.Drm.Scheme ?? string.Empty).ToLowerInvariant();
-        if (scheme is "" or "none")
+        if (DrmSchemes.Canonical(scheme) == DrmSchemes.None)
             return;
 
         // The same lookup the plan converter uses, so a key this rule accepts is
@@ -569,6 +570,28 @@ public static class ProfileRuleValidator
             Fix: "Add a key_uri / license_url entry to drm.parameters pointing to "
                 + "the key server, or set drm.scheme to 'none' to disable DRM."
         );
+
+    private static void EmitDrmSchemeUnsupported(EncodingProfile profile, List<EncoderRule> rules)
+    {
+        // A scheme the pipeline cannot package used to convert to "no DRM" and
+        // ship plaintext for a profile that asked for encryption. Reject it here,
+        // where the typo can still be fixed.
+        if (profile.Drm is null || DrmSchemes.Canonical(profile.Drm.Scheme) is not null)
+            return;
+
+        rules.Add(
+            new(
+                Id: EncoderRuleId.DrmSchemeUnsupported,
+                Severity: EncoderRuleSeverity.Error,
+                Field: "drm.scheme",
+                Message: $"DRM scheme '{profile.Drm.Scheme}' is not supported, so the encode "
+                    + "would ship unencrypted; supported schemes: "
+                    + $"{string.Join(", ", DrmSchemes.Supported)}.",
+                Fix: "Set drm.scheme to one of the supported schemes, or to 'none' to "
+                    + "disable DRM."
+            )
+        );
+    }
 
     private static void EmitDrmHttpNotHttps(EncodingProfile profile, List<EncoderRule> rules)
     {

@@ -17,7 +17,9 @@ namespace NoMercy.Encoder.Pipeline.Stages;
 
 /// <summary>
 /// Converts <see cref="DrmConfig"/> into the legacy DRM config shape
-/// consumed by the output pipeline. Extracted from PlanStage.
+/// consumed by the output pipeline. Extracted from PlanStage. A scheme the
+/// pipeline cannot package fails the plan here rather than converting to
+/// DrmMethod.None, which would ship the encode unencrypted.
 /// </summary>
 public static class DrmConfigConverter
 {
@@ -26,11 +28,16 @@ public static class DrmConfigConverter
         if (v2Drm is null)
             return null;
 
-        LegacyDrmMethod method = v2Drm.Scheme.ToLowerInvariant() switch
+        LegacyDrmMethod method = DrmSchemes.Canonical(v2Drm.Scheme) switch
         {
-            "aes128" or "aes-128" => LegacyDrmMethod.Aes128,
-            "cenc" => LegacyDrmMethod.Cenc,
-            _ => LegacyDrmMethod.None,
+            DrmSchemes.None => LegacyDrmMethod.None,
+            DrmSchemes.Aes128 => LegacyDrmMethod.Aes128,
+            DrmSchemes.Cenc => LegacyDrmMethod.Cenc,
+            _ => throw new InvalidOperationException(
+                $"DRM scheme '{v2Drm.Scheme}' is not supported; supported schemes: "
+                    + $"{string.Join(", ", DrmSchemes.Supported)} (or 'none' to disable DRM). "
+                    + "Refusing to plan an unencrypted encode for a profile that asked for DRM."
+            ),
         };
 
         string keyUri = DrmKeyParameters.FindKeyUri(v2Drm.Parameters) ?? string.Empty;
