@@ -142,6 +142,26 @@ public class KnownForDtoTests
         dto.HasItem.Should().BeTrue();
     }
 
+    [Fact]
+    public void Constructor_FromCrewWithOnlySeason_DoesNotThrowAndReportsNoItem()
+    {
+        Crew crew = new()
+        {
+            SeasonId = 1,
+            Job = new() { Task = "Director" },
+            Person = new(),
+        };
+
+        KnownForDto dto = new(crew);
+
+        dto.Title.Should().BeNull();
+        dto.Id.Should().BeNull();
+        dto.Job.Should().Be("Director");
+        dto.HasItem.Should().BeFalse();
+        dto.HaveItems.Should().Be(0);
+        dto.NumberOfItems.Should().Be(0);
+    }
+
     private static TmdbPersonCredit BuildTvCredit()
     {
         return new()

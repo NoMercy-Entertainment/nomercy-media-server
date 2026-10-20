@@ -148,19 +148,19 @@ public record KnownForDto
 
     public KnownForDto(Crew crew)
     {
-        Title = crew.Movie?.Title ?? crew.Tv!.Title;
+        Title = crew.Movie?.Title ?? crew.Tv?.Title;
         MediaType = crew.Movie is not null ? MediaTypes.MovieMediaType : MediaTypes.TvMediaType;
-        Year = crew.Movie?.ReleaseDate.ParseYear() ?? crew.Tv!.FirstAirDate.ParseYear();
-        Id = crew.Movie?.Id ?? crew.Tv!.Id;
+        Year = crew.Movie?.ReleaseDate.ParseYear() ?? crew.Tv?.FirstAirDate.ParseYear();
+        Id = crew.Movie?.Id ?? crew.Tv?.Id;
         Adult = crew.Movie?.Adult ?? false;
-        Backdrop = crew.Movie?.Backdrop ?? crew.Tv!.Backdrop;
-        OriginalLanguage = (crew.Movie?.OriginalLanguage ?? crew.Tv!.OriginalLanguage).OrEmpty();
-        Overview = (crew.Movie?.Overview ?? crew.Tv!.Overview).OrEmpty();
-        Popularity = crew.Movie?.Popularity ?? crew.Tv!.Popularity ?? 0;
-        Poster = (crew.Movie?.Poster ?? crew.Tv!.Poster).OrEmpty();
-        ReleaseDate = crew.Movie?.ReleaseDate ?? crew.Tv!.FirstAirDate;
-        VoteAverage = crew.Movie?.VoteAverage ?? crew.Tv!.VoteAverage ?? 0;
-        VoteCount = crew.Movie?.VoteCount ?? crew.Tv!.VoteCount ?? 0;
+        Backdrop = crew.Movie?.Backdrop ?? crew.Tv?.Backdrop;
+        OriginalLanguage = (crew.Movie?.OriginalLanguage ?? crew.Tv?.OriginalLanguage).OrEmpty();
+        Overview = (crew.Movie?.Overview ?? crew.Tv?.Overview).OrEmpty();
+        Popularity = crew.Movie?.Popularity ?? crew.Tv?.Popularity ?? 0;
+        Poster = (crew.Movie?.Poster ?? crew.Tv?.Poster).OrEmpty();
+        ReleaseDate = crew.Movie?.ReleaseDate ?? crew.Tv?.FirstAirDate;
+        VoteAverage = crew.Movie?.VoteAverage ?? crew.Tv?.VoteAverage ?? 0;
+        VoteCount = crew.Movie?.VoteCount ?? crew.Tv?.VoteCount ?? 0;
         Job = crew.Job.Task.OrEmpty();
         Link = new($"/{MediaType}/{Id}", UriKind.Relative);
         HasItem =
