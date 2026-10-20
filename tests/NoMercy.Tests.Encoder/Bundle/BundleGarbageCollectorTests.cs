@@ -292,4 +292,41 @@ public class BundleGarbageCollectorTests
 
         orphans.Should().BeEmpty();
     }
+
+    // -----------------------------------------------------------------------
+    // Test 7: a blueprint that parses but carries no encodes list is skipped
+    // like an unreadable one — the orphans of every other blueprint survive.
+    // -----------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("{\"version\":1}")]
+    [InlineData("{\"version\":1,\"encodes\":null}")]
+    public async Task Sweep_BlueprintWithoutEncodes_IsSkippedAndOtherOrphansStillReturned(
+        string partialBlueprintJson
+    )
+    {
+        const string deadId = "01HZTEST000000000000000006";
+        const string partialFolder = "Hand-Edited Item";
+        const string orphanFolder = "Blade Runner (1982)";
+        string outputLocation = $"{LibraryRoot}/{orphanFolder}";
+
+        TestStorage storage = new();
+        storage.Seed(
+            $"{LibraryRoot}/{partialFolder}/.nomercy.json",
+            Encoding.UTF8.GetBytes(partialBlueprintJson)
+        );
+        SeedBlueprint(storage, orphanFolder, MakeEncode(deadId, "web-1080p", outputLocation));
+
+        (MediaContext _, IDbContextFactory<MediaContext> factory) = MakeDb();
+        BundleGarbageCollector gc = MakeCollector(storage, factory);
+
+        IReadOnlyList<BundleOrphan> orphans = await gc.SweepAsync(
+            LibraryRoot,
+            CancellationToken.None
+        );
+
+        orphans.Should().ContainSingle();
+        orphans[0].PresetId.Should().Be(deadId);
+        orphans[0].Path.Should().Be(outputLocation);
+    }
 }
