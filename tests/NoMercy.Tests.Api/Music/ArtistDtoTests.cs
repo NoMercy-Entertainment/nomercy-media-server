@@ -222,6 +222,32 @@ public class ArtistDtoTests
     }
 
     [Fact]
+    public void Ctor_ArtistTrack_MatchingTranslation_DescriptionUsesTranslation()
+    {
+        ArtistTrack artistTrack = BuildArtistTrack(
+            artistDescription: "English artist bio",
+            translations: [new() { Iso31661 = "NL", Description = "Vertaalde artiest bio" }]
+        );
+
+        ArtistDto dto = new(artistTrack, "NL");
+
+        dto.Description.Should().Be("Vertaalde artiest bio");
+    }
+
+    [Fact]
+    public void Ctor_ArtistTrack_TranslationForDifferentCountry_FallsBackToArtistDescription()
+    {
+        ArtistTrack artistTrack = BuildArtistTrack(
+            artistDescription: "English artist bio",
+            translations: [new() { Iso31661 = "DE", Description = "Deutsche Bio" }]
+        );
+
+        ArtistDto dto = new(artistTrack, "NL");
+
+        dto.Description.Should().Be("English artist bio");
+    }
+
+    [Fact]
     public void Ctor_ArtistTrack_SetsIdNameLinkAndType()
     {
         ArtistTrack artistTrack = BuildArtistTrack();

@@ -89,9 +89,7 @@ public class ArtistDto
             ? new Uri($"/images/music{img.FilePath}", UriKind.Relative).ToString()
             : null;
         Link = new($"/music/artists/{Id}", UriKind.Relative);
-        Description = artistTrack.Artist.Description;
         Type = "artist";
-        Disambiguation = artistTrack.Artist.Disambiguation;
         ColorPalette = artistTrack.Artist._colorPalette.ToRaw();
     }
 
