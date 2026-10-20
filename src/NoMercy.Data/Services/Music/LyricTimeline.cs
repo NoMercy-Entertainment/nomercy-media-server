@@ -40,6 +40,14 @@ public static class LyricTimeline
                         Seconds = totalHundredths / 100 % 60,
                         Hundredths = totalHundredths % 100,
                     },
+                    Words = line
+                        .Words?.Select(word => new LyricWord
+                        {
+                            Text = word.Text,
+                            Start = Math.Max(0, word.Start + offsetSec),
+                            End = Math.Max(0, word.End + offsetSec),
+                        })
+                        .ToArray(),
                 };
             }),
         ];

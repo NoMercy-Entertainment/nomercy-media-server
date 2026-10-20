@@ -22,6 +22,13 @@ public class Lyric
     [JsonProperty("time")]
     public LineTime Time { get; set; } = new();
 
+    /// <summary>
+    /// Word timings inside the line, in seconds. Absent from the JSON when
+    /// null, so rows and clients from before word timing are unaffected.
+    /// </summary>
+    [JsonProperty("words", NullValueHandling = NullValueHandling.Ignore)]
+    public LyricWord[]? Words { get; set; }
+
     [JsonProperty("rtl")]
     public bool Rtl => Text.GetTextDirection() == StringExtensions.TextDirection.RTL;
 
