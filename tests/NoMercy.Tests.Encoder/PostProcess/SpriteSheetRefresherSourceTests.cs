@@ -100,6 +100,41 @@ public class SpriteSheetRefresherSourceTests : IDisposable
     }
 
     [Fact]
+    public async Task ALadder_IsSampledFromTheRenditionWithTheMostPixels()
+    {
+        // As text "video_854x480_SDR" sorts above "video_1920x1080_SDR": the
+        // digits are unpadded, so the leading figure decides, not the picture.
+        WriteRendition("video_1920x1080_SDR");
+        WriteRendition("video_854x480_SDR");
+
+        FfmpegCommand? command = await RunAsync(succeeds: false);
+
+        command!.Arguments.Should().ContainMatch("*video_1920x1080_SDR.m3u8");
+    }
+
+    [Fact]
+    public async Task AFolderWithoutAPictureSize_RanksBelowEveryRenditionThatStatesOne()
+    {
+        WriteRendition("video_zzz");
+        WriteRendition("video_854x480_SDR");
+        WriteRendition("video_3840x2160");
+
+        FfmpegCommand? command = await RunAsync(succeeds: false);
+
+        command!.Arguments.Should().ContainMatch("*video_3840x2160.m3u8");
+    }
+
+    [Fact]
+    public async Task AFolderWithoutAPictureSize_IsStillSampledWhenItIsAllThereIs()
+    {
+        WriteRendition("video_main");
+
+        FfmpegCommand? command = await RunAsync(succeeds: false);
+
+        command!.Arguments.Should().ContainMatch("*video_main.m3u8");
+    }
+
+    [Fact]
     public async Task ASuccessfulRebuild_TakesTheLegacyPairWithIt()
     {
         WriteFile("Show.S01E01.NoMercy.mp4", 4_000);
@@ -137,6 +172,12 @@ public class SpriteSheetRefresherSourceTests : IDisposable
     private void WriteFile(string name, int bytes)
     {
         File.WriteAllBytes(Path.Combine(_mediaFolder, name), new byte[bytes]);
+    }
+
+    private void WriteRendition(string folder)
+    {
+        Directory.CreateDirectory(Path.Combine(_mediaFolder, folder));
+        File.WriteAllText(Path.Combine(_mediaFolder, folder, $"{folder}.m3u8"), "#EXTM3U");
     }
 
     private async Task<FfmpegCommand?> RunAsync(bool succeeds)
