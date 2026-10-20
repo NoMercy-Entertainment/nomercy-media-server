@@ -32,6 +32,15 @@ public interface IPluginLyrics
     Task<PluginLyricsState?> GetStateAsync(Guid trackId, CancellationToken ct = default);
 
     /// <summary>
+    /// Every validated lyric text the host can find for a track: each
+    /// provider candidate, not just the winner, and the lyrics embedded in
+    /// the file's own tags. Provider calls run inside the host's rate limits
+    /// and backoff, and the answer is kept for a day, so a plugin may ask
+    /// freely. Empty when nothing was found or the track is unknown.
+    /// </summary>
+    Task<PluginLyricsText> GetTextCandidatesAsync(Guid trackId, CancellationToken ct = default);
+
+    /// <summary>
     /// Replaces the lyrics of a track with generated timing. Refused, as a
     /// <see cref="PluginWriteResult" /> whose reason starts with one of the
     /// <see cref="PluginLyricsRefusal" /> codes, when the version moved, when

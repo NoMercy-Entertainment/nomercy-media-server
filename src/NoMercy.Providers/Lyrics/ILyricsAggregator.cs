@@ -20,4 +20,11 @@ namespace NoMercy.Providers.Lyrics;
 public interface ILyricsAggregator
 {
     Task<LyricsFetchResult> SearchLyrics(Track track);
+
+    /// <summary>
+    /// Every validated candidate from every provider stage, not only the
+    /// winner <see cref="SearchLyrics" /> picks: for a caller that wants to
+    /// choose or combine the texts itself.
+    /// </summary>
+    Task<LyricsCandidatesResult> SearchCandidatesAsync(Track track);
 }

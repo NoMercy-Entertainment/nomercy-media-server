@@ -39,9 +39,12 @@ namespace NoMercy.Data.Plugins;
 public class PluginLyricsWriter(
     Ulid pluginId,
     IDbContextFactory<MediaContext> contextFactory,
+    ILyricsTextCandidates? textCandidates = null,
     ILogger<PluginLyricsWriter>? logger = null
 ) : IPluginLyrics
 {
+    private static readonly PluginLyricsText NoText = new([]);
+
     // A word is "where its line starts" within a millisecond: alignment
     // produces floating point, and a plugin that rounds differently from the
     // host is not writing a wrong timeline.
@@ -64,6 +67,20 @@ public class PluginLyricsWriter(
             nameof(GetStateAsync),
             () => GetStateCoreAsync(trackId, ct),
             (PluginLyricsState?)null,
+            _logger
+        );
+
+    // A host wired without the candidates service answers "nothing found"
+    // rather than throwing: the plugin can still write what it transcribed.
+    public Task<PluginLyricsText> GetTextCandidatesAsync(
+        Guid trackId,
+        CancellationToken ct = default
+    ) =>
+        PluginCallGuard.RunOrAsync(
+            pluginId.ToString(),
+            nameof(GetTextCandidatesAsync),
+            () => textCandidates?.GetAsync(trackId, ct) ?? Task.FromResult(NoText),
+            NoText,
             _logger
         );
 

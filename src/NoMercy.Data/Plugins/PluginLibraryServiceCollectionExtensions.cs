@@ -10,6 +10,8 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.Extensions.DependencyInjection;
+using NoMercy.Data.Services.Music;
+using NoMercy.MediaProcessing.Lyrics;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Storage;
@@ -66,6 +68,8 @@ public static class PluginLibraryServiceCollectionExtensions
         // Generated lyric timings: the plugin reads the state, aligns, and
         // writes back under the host's rules (never over synced provider
         // lyrics, and only at the version it read).
+        services.AddSingleton<IEmbeddedLyricsReader, EmbeddedLyricsReader>();
+        services.AddSingleton<ILyricsTextCandidates, LyricsTextCandidates>();
         services.AddSingleton<IPluginLyricsFactory, PluginLyricsFactory>();
 
         return services;

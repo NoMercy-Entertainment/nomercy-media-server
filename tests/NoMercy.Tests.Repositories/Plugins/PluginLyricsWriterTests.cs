@@ -14,6 +14,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Moq;
 using NoMercy.Data.Plugins;
+using NoMercy.Data.Services.Music;
 using NoMercy.Database;
 using NoMercy.Database.Models.Music;
 using NoMercy.PluginSdk.Abstractions;
@@ -294,6 +295,25 @@ public sealed class PluginLyricsWriterTests : IDisposable
         stored.LyricsSource.Should().BeNull();
         stored.LyricsTiming.Should().BeNull();
         stored.LyricsVersion.Should().Be(4);
+    }
+
+    [Fact]
+    public async Task GetTextCandidates_AnswersFromTheCandidatesService()
+    {
+        PluginLyricsText text = new([new(LyricsSources.Lrclib, ["one"], null, true)]);
+        Mock<ILyricsTextCandidates> candidates = new();
+        candidates
+            .Setup(c => c.GetAsync(_plainText, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(text);
+        PluginLyricsWriter writer = new(_pluginId, ContextFactory(), candidates.Object);
+
+        (await writer.GetTextCandidatesAsync(_plainText)).Should().BeSameAs(text);
+    }
+
+    [Fact]
+    public async Task GetTextCandidates_WithoutTheService_AnswersNothingRatherThanThrowing()
+    {
+        (await Writer().GetTextCandidatesAsync(_plainText)).Candidates.Should().BeEmpty();
     }
 
     private PluginLyricsWriter Writer() => new(_pluginId, ContextFactory());

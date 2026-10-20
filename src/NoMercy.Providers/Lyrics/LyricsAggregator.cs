@@ -53,12 +53,74 @@ public class LyricsAggregator : ILyricsAggregator
     /// track's title, artist and (for synced lyrics) release length, so a
     /// mismatched song or a wrong-release timing is rejected instead of stored.
     /// </summary>
-    public async Task<LyricsFetchResult> SearchLyrics(Track track)
+    /// <summary>
+    /// Every validated candidate of every stage, deduplicated by source and
+    /// text, for a caller that chooses or combines the texts itself. The
+    /// stages run concurrently; each provider's own rate limit still applies.
+    /// </summary>
+    public async Task<LyricsCandidatesResult> SearchCandidatesAsync(Track track)
     {
-        // `using` so an exception mid-search doesn't leak the HttpClient wrappers.
         using MusixmatchClient musixmatchClient = new();
         using LrclibClient lrclibClient = new();
 
+        (LyricQuery query, string[] artists, string label) = QueryFor(track);
+        Stopwatch total = Stopwatch.StartNew();
+
+        ProviderAttempt[] single = await Task.WhenAll(
+            RunProvider(
+                "Lrclib-get",
+                LyricsSources.Lrclib,
+                () => FromLrclibGet(lrclibClient, query, artists)
+            ),
+            RunProvider(
+                "Musixmatch-tight",
+                LyricsSources.Musixmatch,
+                () => MusixmatchTight(musixmatchClient, query)
+            ),
+            RunProvider(
+                "Musixmatch-relaxed",
+                LyricsSources.Musixmatch,
+                () => MusixmatchRelaxed(musixmatchClient, query)
+            )
+        );
+        ProviderAttempts search = await RunProviderMany(
+            "Lrclib-search",
+            LyricsSources.Lrclib,
+            () => FromLrclibSearchAll(lrclibClient, query, artists)
+        );
+
+        List<LyricsTextCandidate> candidates = [];
+        HashSet<string> seen = [];
+        foreach (ProviderAttempt attempt in single)
+            if (attempt.Candidate is not null)
+                AddCandidate(candidates, seen, attempt.Source, attempt.Candidate);
+        foreach (LyricCandidate candidate in search.Candidates)
+            AddCandidate(candidates, seen, search.Source, candidate);
+
+        bool errored = search.Errored || single.Any(attempt => attempt.Errored);
+        Logger.Lyrics(
+            $"{candidates.Count} lyric candidate(s) for {label} in {total.ElapsedMilliseconds}ms"
+        );
+
+        return candidates.Count == 0 && errored
+            ? LyricsCandidatesResult.TransientFailure
+            : new(candidates, false);
+    }
+
+    private static void AddCandidate(
+        List<LyricsTextCandidate> candidates,
+        HashSet<string> seen,
+        string source,
+        LyricCandidate candidate
+    )
+    {
+        string key = source + "\n" + string.Join("\n", candidate.Lines.Select(line => line.Text));
+        if (seen.Add(key))
+            candidates.Add(new(source, candidate));
+    }
+
+    private static (LyricQuery Query, string[] Artists, string Label) QueryFor(Track track)
+    {
         string[] artists = track
             .ArtistTrack.Select(artistTrack => artistTrack.Artist.Name)
             .ToArray();
@@ -67,7 +129,16 @@ public class LyricsAggregator : ILyricsAggregator
         int? durationSeconds = parsedDuration > 0 ? parsedDuration : null;
 
         LyricQuery query = new(track.Name, artists, albumName, durationSeconds);
-        string label = $"{track.Name} - {string.Join(", ", artists)}";
+        return (query, artists, $"{track.Name} - {string.Join(", ", artists)}");
+    }
+
+    public async Task<LyricsFetchResult> SearchLyrics(Track track)
+    {
+        // `using` so an exception mid-search doesn't leak the HttpClient wrappers.
+        using MusixmatchClient musixmatchClient = new();
+        using LrclibClient lrclibClient = new();
+
+        (LyricQuery query, string[] artists, string label) = QueryFor(track);
         Stopwatch total = Stopwatch.StartNew();
 
         // The /get endpoint is an exact artist+title+album+duration lookup.
@@ -206,6 +277,59 @@ public class LyricsAggregator : ILyricsAggregator
         );
     }
 
+    /// <summary>
+    /// <see cref="RunProvider" /> for a stage that keeps every validated
+    /// candidate rather than its best one. Same budget, same outcome logging,
+    /// same "an error is a miss, not a crash" rule.
+    /// </summary>
+    private async Task<ProviderAttempts> RunProviderMany(
+        string provider,
+        string source,
+        Func<Task<IReadOnlyList<LyricCandidate>>> fetch
+    )
+    {
+        Stopwatch stopwatch = Stopwatch.StartNew();
+        try
+        {
+            IReadOnlyList<LyricCandidate> candidates = await fetch().WaitAsync(_providerTimeout);
+            stopwatch.Stop();
+            Logger.Lyrics(
+                $"{provider}: {candidates.Count} candidate(s) in {stopwatch.ElapsedMilliseconds}ms"
+            );
+            return new(source, candidates, false);
+        }
+        catch (Exception ex)
+        {
+            stopwatch.Stop();
+            Logger.Lyrics(
+                $"{provider}: {(ex is TimeoutException ? "timed out" : "error")} after {stopwatch.ElapsedMilliseconds}ms ({ex.GetType().Name}: {ex.Message})",
+                LogEventLevel.Warning
+            );
+            return new(source, [], true);
+        }
+    }
+
+    private static async Task<IReadOnlyList<LyricCandidate>> FromLrclibSearchAll(
+        LrclibClient client,
+        LyricQuery query,
+        string[] artists
+    )
+    {
+        LrclibSongResult[]? results = await client.Search(artists, query.Title);
+        if (results is null)
+            return [];
+
+        List<LyricCandidate> validated = [];
+        foreach (LrclibSongResult result in results)
+            if (
+                LrclibClient.ToCandidate(result) is { } candidate
+                && LyricMatcher.Score(query, candidate) >= 0
+            )
+                validated.Add(candidate);
+
+        return validated;
+    }
+
     private static async Task<LyricCandidate?> FromLrclibGet(
         LrclibClient client,
         LyricQuery query,
@@ -298,6 +422,12 @@ public class LyricsAggregator : ILyricsAggregator
         string Provider,
         string Source,
         LyricCandidate? Candidate,
+        bool Errored
+    );
+
+    private sealed record ProviderAttempts(
+        string Source,
+        IReadOnlyList<LyricCandidate> Candidates,
         bool Errored
     );
 }
