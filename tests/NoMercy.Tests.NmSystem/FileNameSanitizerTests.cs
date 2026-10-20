@@ -9,6 +9,8 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using NoMercy.Storage.Drivers.Local;
+
 namespace NoMercy.Tests.NmSystem;
 
 [Trait("Category", "Unit")]
@@ -167,6 +169,51 @@ public class FileNameSanitizerTests
     {
         string result = "A&B".NormalizeForComparison();
         result.Should().Be("aandb");
+    }
+
+    [Fact]
+    public void NormalizeForComparison_KeepsNonLatinLetters()
+    {
+        "進撃の巨人".NormalizeForComparison().Should().NotBeEmpty();
+        "進撃の巨人".NormalizeForComparison().Should().NotBe("鬼滅の刃".NormalizeForComparison());
+        "Привет".NormalizeForComparison().Should().Be("привет");
+    }
+
+    [Fact]
+    public void FindMatchingDirectory_TwoNonLatinFolders_DoesNotReturnTheOtherOne()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "nm-379-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "鬼滅の刃"));
+        Directory.CreateDirectory(Path.Combine(root, "進撃の巨人"));
+        try
+        {
+            LocalStorageDriver driver = new();
+
+            string? other = FileNameSanitizer.FindMatchingDirectory(driver, root, "ワンピース");
+            string? same = FileNameSanitizer.FindMatchingDirectory(driver, root, "進撃の巨人");
+
+            other.Should().BeNull();
+            same.Should().Be(Path.Combine(root, "進撃の巨人"));
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public void FindMatchingDirectory_EmptyNormalizedName_ReturnsNull()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "nm-379-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "---"));
+        try
+        {
+            FileNameSanitizer.FindMatchingDirectory(new LocalStorageDriver(), root, "...").Should().BeNull();
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
     }
 
     [Fact]

@@ -161,7 +161,9 @@ public static class FileNameSanitizer
     public static string NormalizeForComparison(this string name)
     {
         name = name.Replace("&", "and");
-        return Regex.Replace(name, @"[^a-zA-Z0-9]", "").ToLowerInvariant();
+        // Keep every Unicode letter and digit, so a Japanese, Korean or Cyrillic
+        // name does not collapse to an empty string that equals every other one.
+        return new string(name.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
     }
 
     public static string? FindMatchingDirectory(
@@ -174,6 +176,8 @@ public static class FileNameSanitizer
             return null;
 
         string normalizedExpected = expectedFolderName.NormalizeForComparison();
+        if (normalizedExpected.Length == 0)
+            return null;
 
         foreach (
             string dir in driver.EnumerateFileSystemEntries(
