@@ -13,6 +13,10 @@ using Newtonsoft.Json;
 
 namespace NoMercy.Cli.Models;
 
+/// <summary>
+/// Body of <c>GET /manage/config</c>, mirrored key for key from the server's
+/// <c>ManagementConfigDto</c>.
+/// </summary>
 internal class ConfigResponse
 {
     [JsonProperty("internal_port")]
@@ -24,8 +28,14 @@ internal class ConfigResponse
     [JsonProperty("server_name")]
     public string? ServerName { get; set; }
 
-    [JsonProperty("queue_workers")]
-    public int QueueWorkers { get; set; }
+    [JsonProperty("library_workers")]
+    public int LibraryWorkers { get; set; }
+
+    [JsonProperty("import_workers")]
+    public int ImportWorkers { get; set; }
+
+    [JsonProperty("extras_workers")]
+    public int ExtrasWorkers { get; set; }
 
     [JsonProperty("encoder_workers")]
     public int EncoderWorkers { get; set; }
@@ -33,17 +43,14 @@ internal class ConfigResponse
     [JsonProperty("cron_workers")]
     public int CronWorkers { get; set; }
 
-    [JsonProperty("data_workers")]
-    public int DataWorkers { get; set; }
-
     [JsonProperty("image_workers")]
     public int ImageWorkers { get; set; }
 
     [JsonProperty("file_workers")]
     public int FileWorkers { get; set; }
 
-    [JsonProperty("request_workers")]
-    public int RequestWorkers { get; set; }
+    [JsonProperty("music_workers")]
+    public int MusicWorkers { get; set; }
 
     [JsonProperty("swagger")]
     public bool Swagger { get; set; }

@@ -10,6 +10,8 @@
 // -----------------------------------------------------------------------------
 
 using System.CommandLine;
+using System.Globalization;
+using System.Reflection;
 using System.Text;
 using Newtonsoft.Json;
 using NoMercy.Cli.Models;
@@ -18,6 +20,20 @@ namespace NoMercy.Cli.Commands;
 
 internal static class ConfigCommand
 {
+    private static readonly JsonSerializerSettings OmitUnsetKeys = new()
+    {
+        NullValueHandling = NullValueHandling.Ignore,
+    };
+
+    // `config set` accepts exactly the keys the server reads on PUT, so the list is
+    // read off ConfigUpdateRequest instead of being kept by hand next to it.
+    private static readonly IReadOnlyDictionary<string, PropertyInfo> WritableKeys =
+        typeof(ConfigUpdateRequest)
+            .GetProperties()
+            .Select(property => (Key: JsonKey(property), Property: property))
+            .Where(entry => entry.Key is not null)
+            .ToDictionary(entry => entry.Key!, entry => entry.Property);
+
     public static Command Create(Option<string?> pipeOption, ICliClientFactory clientFactory)
     {
         Command getCmd = new("get") { Description = "Show current configuration" };
@@ -41,19 +57,24 @@ internal static class ConfigCommand
                 Console.WriteLine($"Server Name:      {config.ServerName}");
                 Console.WriteLine($"Internal Port:    {config.InternalPort}");
                 Console.WriteLine($"External Port:    {config.ExternalPort}");
-                Console.WriteLine($"Queue Workers:    {config.QueueWorkers}");
+                Console.WriteLine($"Library Workers:  {config.LibraryWorkers}");
+                Console.WriteLine($"Import Workers:   {config.ImportWorkers}");
+                Console.WriteLine($"Extras Workers:   {config.ExtrasWorkers}");
                 Console.WriteLine($"Encoder Workers:  {config.EncoderWorkers}");
                 Console.WriteLine($"Cron Workers:     {config.CronWorkers}");
-                Console.WriteLine($"Data Workers:     {config.DataWorkers}");
                 Console.WriteLine($"Image Workers:    {config.ImageWorkers}");
                 Console.WriteLine($"File Workers:     {config.FileWorkers}");
-                Console.WriteLine($"Request Workers:  {config.RequestWorkers}");
+                Console.WriteLine($"Music Workers:    {config.MusicWorkers}");
                 Console.WriteLine($"Swagger:          {config.Swagger}");
                 return (int)ExitCode.Success;
             }
         );
 
-        Argument<string> keyArg = new("key") { Description = "Configuration key to set" };
+        Argument<string> keyArg = new("key")
+        {
+            Description =
+                "Configuration key to set. One of: " + string.Join(", ", WritableKeys.Keys),
+        };
         Argument<string> valArg = new("value") { Description = "Value to set" };
 
         Command setCmd = new("set") { Description = "Update a configuration value" };
@@ -67,15 +88,29 @@ internal static class ConfigCommand
                 string key = parseResult.GetValue(keyArg)!;
                 string val = parseResult.GetValue(valArg)!;
 
-                using ICliClient client = clientFactory.Create(pipe);
-
-                Dictionary<string, object> payload = new()
+                if (!WritableKeys.TryGetValue(ToSnakeCase(key), out PropertyInfo? property))
                 {
-                    { ToSnakeCase(key), ParseValue(val) },
-                };
-                string json = JsonConvert.SerializeObject(payload);
+                    await Console.Error.WriteLineAsync($"Unknown configuration key: {key}");
+                    await Console.Error.WriteLineAsync(
+                        $"Accepted keys: {string.Join(", ", WritableKeys.Keys)}"
+                    );
+                    return (int)ExitCode.ConfigurationError;
+                }
+
+                if (!TryConvert(val, property.PropertyType, out object? converted))
+                {
+                    await Console.Error.WriteLineAsync(
+                        $"Invalid value for {key}: expected {ValueKind(property.PropertyType)}, got '{val}'"
+                    );
+                    return (int)ExitCode.ConfigurationError;
+                }
+
+                ConfigUpdateRequest request = new();
+                property.SetValue(request, converted);
+                string json = JsonConvert.SerializeObject(request, OmitUnsetKeys);
                 StringContent content = new(json, Encoding.UTF8, "application/json");
 
+                using ICliClient client = clientFactory.Create(pipe);
                 bool ok = await client.PutAsync(ApiRoutes.Config, content, ct);
 
                 if (ok)
@@ -116,12 +151,27 @@ internal static class ConfigCommand
         return sb.ToString();
     }
 
-    private static object ParseValue(string val)
+    private static string? JsonKey(PropertyInfo property) =>
+        property.GetCustomAttribute<JsonPropertyAttribute>()?.PropertyName;
+
+    private static bool TryConvert(string value, Type targetType, out object? converted)
     {
-        if (int.TryParse(val, out int intVal))
-            return intVal;
-        if (bool.TryParse(val, out bool boolVal))
-            return boolVal;
-        return val;
+        Type type = Nullable.GetUnderlyingType(targetType) ?? targetType;
+        try
+        {
+            converted = Convert.ChangeType(value, type, CultureInfo.InvariantCulture);
+            return true;
+        }
+        catch (Exception ex)
+            when (ex is FormatException or OverflowException or InvalidCastException)
+        {
+            converted = null;
+            return false;
+        }
     }
+
+    private static string ValueKind(Type targetType) =>
+        (Nullable.GetUnderlyingType(targetType) ?? targetType) == typeof(int)
+            ? "a whole number"
+            : "text";
 }
