@@ -438,6 +438,12 @@ public class TvShowRepository(
                         }
                     );
                 }
+                else
+                {
+                    // Finishing or hiding the episode leaves the row behind with this
+                    // flag set; adding the show back has to make it visible again.
+                    existingUserData.RemovedFromContinueWatching = false;
+                }
             }
         }
         else
