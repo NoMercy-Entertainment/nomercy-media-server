@@ -16,7 +16,7 @@ using NoMercy.Database.Models.Music;
 
 namespace NoMercy.Api.DTOs.Music;
 
-public record AlbumTrackDto
+public record AlbumTrackDto : ITrackLyricsDto
 {
     [JsonProperty("id")]
     public Guid Id { get; set; }
@@ -57,6 +57,15 @@ public record AlbumTrackDto
     [JsonProperty("lyrics")]
     public Lyric[]? Lyrics { get; set; }
 
+    [JsonProperty("lyrics_offset")]
+    public int? LyricsOffset { get; set; }
+
+    [JsonProperty("lyrics_source")]
+    public string? LyricsSource { get; set; }
+
+    [JsonProperty("lyrics_timing")]
+    public string? LyricsTiming { get; set; }
+
     [JsonProperty("type")]
     public string Type { get; set; }
 
@@ -83,7 +92,7 @@ public record AlbumTrackDto
         Favorite = albumTrack.Track.TrackUser.Count != 0;
         Quality = albumTrack.Track.Quality;
         Track = albumTrack.Track.TrackNumber;
-        Lyrics = albumTrack.Track.Lyrics;
+        this.ApplyLyrics(albumTrack.Track);
         Link = new($"/music/tracks/{Id}", UriKind.Relative);
 
         Artists = albumTrack.Track.ArtistTrack.Select(artistTrack => new ArtistDto(
