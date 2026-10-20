@@ -114,7 +114,10 @@ public record VideoOutputPlan(
     // by this index rather than re-deriving it by array position later — see
     // .claude/specs/reconstruction-blueprint/SPEC.md "The match key must be
     // captured, not guessed".
-    int SourceStreamIndex = -1
+    int SourceStreamIndex = -1,
+    // ffprobe color_transfer of an HDR output: arib-std-b67 writes VIDEO-RANGE=HLG.
+    // Null on an HDR output means PQ.
+    string? ColorTransfer = null
 );
 
 public record AudioOutputPlan(

@@ -366,6 +366,29 @@ public class PlaylistGeneratorTests
         playlist.Should().Contain("BANDWIDTH=3192000");
     }
 
+    [Theory]
+    [InlineData("arib-std-b67", "VIDEO-RANGE=HLG")]
+    [InlineData("smpte2084", "VIDEO-RANGE=PQ")]
+    [InlineData(null, "VIDEO-RANGE=PQ")]
+    public void MasterPlaylist_HdrVideoRange_FollowsTheColorTransfer(
+        string? colorTransfer,
+        string expected
+    )
+    {
+        OutputPlan plan = CreatePlan(encoderName: "libx265", tenBit: true);
+        plan = plan with
+        {
+            VideoOutputs =
+            [
+                plan.VideoOutputs[0] with { IsHdrOutput = true, ColorTransfer = colorTransfer },
+            ],
+        };
+
+        string playlist = Generate(plan);
+
+        playlist.Should().Contain(expected);
+    }
+
     private static OutputPlan CreatePlan(string encoderName = "libx264", bool tenBit = false)
     {
         return new(

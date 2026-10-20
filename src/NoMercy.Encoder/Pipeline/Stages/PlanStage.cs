@@ -1140,7 +1140,10 @@ public class PlanStage(
                                 // Every rung here is built from media.VideoStreams[0] —
                                 // the source stream this output was planned against. See
                                 // VideoOutputPlan.SourceStreamIndex.
-                                SourceStreamIndex: media.VideoStreams[0].Index
+                                SourceStreamIndex: media.VideoStreams[0].Index,
+                                ColorTransfer: preservesHdr
+                                    ? media.VideoStreams[0].ColorTransfer
+                                    : null
                             );
                         }
                     )
