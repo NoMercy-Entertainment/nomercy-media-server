@@ -8,6 +8,7 @@
     <IsTestProject>false</IsTestProject>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="NoMercy.Tests.NmSystem" />
     <InternalsVisibleTo Include="NoMercy.Tests.Setup" />
   </ItemGroup>
 

@@ -67,6 +67,44 @@ public class FfProbeServiceFailureTests
         new FfProbeData().Failed.Should().BeFalse();
     }
 
+    [Fact]
+    public void An_answer_with_no_format_and_no_streams_says_the_probe_failed()
+    {
+        // ffprobe prints "{}" and exits 1 for a file it cannot open: missing,
+        // empty, or not media. The exit code is never read, so this answer
+        // used to pass as a real probe of a file with no streams.
+        FfProbeData result = new FfProbeService().FromFfprobeJson("Movie.mkv", "{\n\n}");
+
+        result.Failed.Should().BeTrue();
+    }
+
+    [Fact]
+    public void An_empty_answer_says_the_probe_failed()
+    {
+        FfProbeData result = new FfProbeService().FromFfprobeJson("Movie.mkv", string.Empty);
+
+        result.Failed.Should().BeTrue();
+    }
+
+    [Fact]
+    public void An_answer_with_a_format_has_not_failed()
+    {
+        const string json = """
+            {
+              "streams": [
+                { "index": 0, "codec_type": "video", "codec_name": "h264", "width": 1920, "height": 1080 }
+              ],
+              "format": { "filename": "Movie.mkv", "duration": "61.5" }
+            }
+            """;
+
+        FfProbeData result = new FfProbeService().FromFfprobeJson("Movie.mkv", json);
+
+        result.Failed.Should().BeFalse();
+        result.Duration.Should().Be(TimeSpan.FromSeconds(61.5));
+        result.VideoStreams.Should().ContainSingle();
+    }
+
     private static IStorageDriver RemoteDriver()
     {
         Mock<IStorageDriver> driver = new();
