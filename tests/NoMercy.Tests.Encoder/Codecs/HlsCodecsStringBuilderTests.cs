@@ -206,6 +206,26 @@ public class HlsCodecsStringBuilderTests
         HlsCodecsStringBuilder.ForH264("high", "garbage").Should().Be("avc1.640028");
     }
 
+    [Theory]
+    [InlineData("4", "avc1.640028")] // a whole number is the major level: 4 → 4.0 (0x28), not level_idc 4
+    [InlineData("5", "avc1.640032")]
+    [InlineData("3", "avc1.64001E")]
+    [InlineData("41", "avc1.640029")] // level_idc-style input keeps working
+    public void ForH264_WholeNumberLevel_MeansMajorLevel(string level, string expected)
+    {
+        HlsCodecsStringBuilder.ForH264("high", level).Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("256")] // would wrap to 0x00 in a byte cast
+    [InlineData("300")]
+    [InlineData("9")] // below the smallest level_idc (1.0 = 10)
+    [InlineData("-40")]
+    public void ForH264_NumberOutsideLevelIdcRange_DefaultsTo4_0(string level)
+    {
+        HlsCodecsStringBuilder.ForH264("high", level).Should().Be("avc1.640028");
+    }
+
     // ── HEVC additional levels ──────────────────────────────────────────────
 
     [Theory]
