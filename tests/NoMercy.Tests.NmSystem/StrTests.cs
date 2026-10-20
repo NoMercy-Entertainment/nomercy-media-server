@@ -58,7 +58,7 @@ public class StrTests
     [Theory]
     [InlineData(["A & B!", "aandb"])]
     [InlineData(["The Matrix", "thematrix"])]
-    [InlineData(["café", "caf"])] // non-ASCII stripped, not transliterated
+    [InlineData(["café", "café"])] // non-ASCII letters kept, not stripped (#379)
     public void NormalizeForComparison_StripsToLowerAlphaNumeric(string input, string expected)
     {
         input.NormalizeForComparison().Should().Be(expected);
