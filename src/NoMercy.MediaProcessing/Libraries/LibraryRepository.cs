@@ -75,6 +75,7 @@ public class LibraryRepository(MediaContext context, IStorageDriver storageDrive
                 .Include(lm => lm.Movie)
                 .Select(lm => lm.Movie.Folder)
                 .ToListAsync(),
+            MediaTypes.MusicMediaType => await GetAlbumFolderLeafNamesAsync(libraryId),
             _ => await context
                 .LibraryTv.Where(lt => lt.LibraryId == libraryId)
                 .Include(lt => lt.Tv)
@@ -87,6 +88,24 @@ public class LibraryRepository(MediaContext context, IStorageDriver storageDrive
             .. folders
                 .Where(f => f is not null)
                 .Select(f => f!.Replace("/", "").NormalizeForComparison()),
+        ];
+    }
+
+    // Music folders live on Album rows (linked through AlbumLibrary), not LibraryTv.
+    // Album.Folder is the path under the library root (e.g. "/Artist/Album"); the scan
+    // compares the album folder's own name, so only the last segment is kept.
+    private async Task<List<string?>> GetAlbumFolderLeafNamesAsync(Ulid libraryId)
+    {
+        List<string?> albumFolders = await context
+            .AlbumLibrary.Where(al => al.LibraryId == libraryId)
+            .Select(al => al.Album.Folder)
+            .ToListAsync();
+
+        return
+        [
+            .. albumFolders.Select(f =>
+                f?.TrimEnd('/', '\\').Split('/', '\\').LastOrDefault()
+            ),
         ];
     }
 
