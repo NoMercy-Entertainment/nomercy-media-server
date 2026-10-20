@@ -69,11 +69,11 @@ public class LyricsResolverTests
         ) = MakeResolver(track);
         aggregator.Setup(a => a.SearchLyrics(track)).ReturnsAsync(LyricsFetchResult.NotFound);
 
-        Lyric[]? result = await resolver.ResolveAsync(track.Id);
+        ResolvedLyrics? result = await resolver.ResolveAsync(track.Id);
 
         result.Should().BeNull();
         repository.Verify(
-            r => r.UpdateTrackLyricsAsync(track, "[]", It.IsAny<CancellationToken>()),
+            r => r.UpdateTrackLyricsAsync(track, "[]", null, null, It.IsAny<CancellationToken>()),
             Times.Once
         );
     }
@@ -91,7 +91,7 @@ public class LyricsResolverTests
             .Setup(a => a.SearchLyrics(track))
             .ReturnsAsync(LyricsFetchResult.TransientFailure);
 
-        Lyric[]? result = await resolver.ResolveAsync(track.Id);
+        ResolvedLyrics? result = await resolver.ResolveAsync(track.Id);
 
         result.Should().BeNull();
         repository.Verify(
@@ -99,6 +99,8 @@ public class LyricsResolverTests
                 r.UpdateTrackLyricsAsync(
                     It.IsAny<Track>(),
                     It.IsAny<string>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<string?>(),
                     It.IsAny<CancellationToken>()
                 ),
             Times.Never
@@ -158,19 +160,78 @@ public class LyricsResolverTests
         Lyric[] persisted = [new() { Text = "line one" }];
         aggregator
             .Setup(a => a.SearchLyrics(track))
-            .ReturnsAsync(LyricsFetchResult.Found(lines, "Lrclib-get"));
+            .ReturnsAsync(LyricsFetchResult.Found(lines, "Lrclib-get", LyricsSources.Lrclib, true));
         repository
             .Setup(r =>
                 r.UpdateTrackLyricsAsync(
                     track,
                     It.Is<string>(json => json.Contains("line one")),
+                    LyricsSources.Lrclib,
+                    LyricsTimings.Provider,
                     It.IsAny<CancellationToken>()
                 )
             )
             .ReturnsAsync(persisted);
 
-        Lyric[]? result = await resolver.ResolveAsync(track.Id);
+        ResolvedLyrics? result = await resolver.ResolveAsync(track.Id);
 
-        result.Should().BeEquivalentTo(persisted);
+        result!.Lines.Should().BeEquivalentTo(persisted);
+        result.Source.Should().Be(LyricsSources.Lrclib);
+        result.Timing.Should().Be(LyricsTimings.Provider);
+    }
+
+    [Fact]
+    public async Task ResolveAsync_PlainProviderText_StoresTimingNone()
+    {
+        Track track = MakeUncachedTrack();
+        (
+            LyricsResolver resolver,
+            Mock<IMusicRepository> repository,
+            Mock<ILyricsAggregator> aggregator
+        ) = MakeResolver(track);
+        LyricLine[] lines = [new() { Text = "line one" }];
+        aggregator
+            .Setup(a => a.SearchLyrics(track))
+            .ReturnsAsync(
+                LyricsFetchResult.Found(lines, "Musixmatch-tight", LyricsSources.Musixmatch, false)
+            );
+        repository
+            .Setup(r =>
+                r.UpdateTrackLyricsAsync(
+                    track,
+                    It.IsAny<string>(),
+                    LyricsSources.Musixmatch,
+                    LyricsTimings.None,
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .ReturnsAsync([new() { Text = "line one" }]);
+
+        ResolvedLyrics? result = await resolver.ResolveAsync(track.Id);
+
+        result.Should().NotBeNull();
+        result!.Source.Should().Be(LyricsSources.Musixmatch);
+        result.Timing.Should().Be(LyricsTimings.None, "plain text has no line timing");
+    }
+
+    [Fact]
+    public async Task ResolveAsync_CachedLyrics_ReturnTheirStoredProvenanceWithoutAFetch()
+    {
+        Track track = new()
+        {
+            Id = Guid.NewGuid(),
+            Name = "Track",
+            Lyrics = [new() { Text = "line one" }],
+            LyricsSource = LyricsSources.Lrclib,
+            LyricsTiming = LyricsTimings.Provider,
+        };
+        (LyricsResolver resolver, _, Mock<ILyricsAggregator> aggregator) = MakeResolver(track);
+
+        ResolvedLyrics? result = await resolver.ResolveAsync(track.Id);
+
+        result.Should().NotBeNull();
+        result!.Source.Should().Be(LyricsSources.Lrclib);
+        result.Timing.Should().Be(LyricsTimings.Provider);
+        aggregator.Verify(a => a.SearchLyrics(It.IsAny<Track>()), Times.Never);
     }
 }

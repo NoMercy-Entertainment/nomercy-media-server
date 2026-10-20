@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using NoMercy.Database.Models.Music;
 using NoMercy.Providers.Abstractions;
 
 namespace NoMercy.Providers.Lyrics;
@@ -20,12 +21,25 @@ namespace NoMercy.Providers.Lyrics;
 /// error on any provider stage -- must NOT be cached the same way, since the
 /// track was never actually checked).
 /// </summary>
-public sealed record LyricsFetchResult(LyricLine[]? Lines, bool IsTransientError, string? Winner)
+/// <param name="Winner">The provider stage that answered, for the log.</param>
+/// <param name="Source">Where the text came from: a <see cref="LyricsSources" /> value.</param>
+/// <param name="Synced">True when the provider gave line timing, false for plain text.</param>
+public sealed record LyricsFetchResult(
+    LyricLine[]? Lines,
+    bool IsTransientError,
+    string? Winner,
+    string? Source,
+    bool Synced
+)
 {
-    public static readonly LyricsFetchResult NotFound = new(null, false, null);
+    public static readonly LyricsFetchResult NotFound = new(null, false, null, null, false);
 
-    public static readonly LyricsFetchResult TransientFailure = new(null, true, null);
+    public static readonly LyricsFetchResult TransientFailure = new(null, true, null, null, false);
 
-    public static LyricsFetchResult Found(LyricLine[] lines, string winner) =>
-        new(lines, false, winner);
+    public static LyricsFetchResult Found(
+        LyricLine[] lines,
+        string winner,
+        string source,
+        bool synced
+    ) => new(lines, false, winner, source, synced);
 }

@@ -93,14 +93,19 @@ public class AnalysisRecordMigrationTests : IDisposable
                     DriverId = driverId,
                 }
             );
-            oldContext.Add(
-                new Track
-                {
-                    Id = trackId,
-                    Name = "A Track",
-                    Duration = "03:45",
-                    FolderId = folderId,
-                }
+            // The folder must be in the database before the raw insert below
+            // references it.
+            await oldContext.SaveChangesAsync();
+
+            // Raw SQL, not the entity: the entity is the current model, and the
+            // database here is at the old schema, so a Track column added by a
+            // later migration (LyricsSource, for one) does not exist yet.
+            DateTime now = DateTime.UtcNow;
+            await oldContext.Database.ExecuteSqlAsync(
+                $"""
+                INSERT INTO Tracks (Id, Name, TrackNumber, DiscNumber, Duration, FolderId, CreatedAt, UpdatedAt)
+                VALUES ({trackId}, {"A Track"}, {1}, {1}, {"03:45"}, {folderId.ToString()}, {now}, {now})
+                """
             );
             oldContext.Add(
                 new TrackAudioAnalysis

@@ -3046,6 +3046,17 @@ namespace NoMercy.Database.Migrations
                     b.Property<int?>("LyricsOffset")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("LyricsSource")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("LyricsTiming")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("LyricsVersion")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("MetadataId")
                         .HasColumnType("TEXT");
 

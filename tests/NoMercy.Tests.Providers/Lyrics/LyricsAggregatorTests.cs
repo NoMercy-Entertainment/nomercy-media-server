@@ -213,6 +213,8 @@ public class LyricsAggregatorTests : IDisposable
         result.IsTransientError.Should().BeFalse();
         result.Lines.Should().NotBeNull();
         result.Winner.Should().Be("Lrclib-get");
+        result.Source.Should().Be(LyricsSources.Lrclib);
+        result.Synced.Should().BeTrue();
         musixmatchCalls
             .Should()
             .Be(0, "a synced /get hit is authoritative and must skip Musixmatch entirely");
@@ -270,6 +272,8 @@ public class LyricsAggregatorTests : IDisposable
         result.Lines.Should().NotBeNull();
         result.Lines!.Single().Text.Should().Be("line one");
         result.Winner.Should().Be("Musixmatch-tight");
+        result.Source.Should().Be(LyricsSources.Musixmatch);
+        result.Synced.Should().BeTrue();
     }
 
     [Fact]

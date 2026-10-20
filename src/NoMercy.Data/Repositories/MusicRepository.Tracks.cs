@@ -164,6 +164,8 @@ public partial class MusicRepository
     public async Task<Lyric[]?> UpdateTrackLyricsAsync(
         Track track,
         string lyricsJson,
+        string? source,
+        string? timing,
         CancellationToken ct = default
     )
     {
@@ -171,7 +173,15 @@ public partial class MusicRepository
         await mediaContext
             .Upsert(track)
             .On(v => new { v.Id })
-            .WhenMatched(v => new() { _lyrics = lyricsJson })
+            .WhenMatched(v =>
+                new()
+                {
+                    _lyrics = lyricsJson,
+                    LyricsSource = source,
+                    LyricsTiming = timing,
+                    LyricsVersion = v.LyricsVersion + 1,
+                }
+            )
             .RunAsync();
 
         return lyricsJson.FromJson<Lyric[]>();
@@ -187,7 +197,9 @@ public partial class MusicRepository
         await mediaContext
             .Upsert(track)
             .On(v => new { v.Id })
-            .WhenMatched(v => new() { LyricsOffset = offsetMs })
+            .WhenMatched(v =>
+                new() { LyricsOffset = offsetMs, LyricsVersion = v.LyricsVersion + 1 }
+            )
             .RunAsync();
     }
 
