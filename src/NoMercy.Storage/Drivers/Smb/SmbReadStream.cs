@@ -75,12 +75,20 @@ internal sealed class SmbReadStream : Stream
             return 0;
 
         NTStatus st = _session.Store.ReadFile(out byte[] chunk, _handle, _serverOffset, _chunkSize);
-        if (st == NTStatus.STATUS_END_OF_FILE || chunk is null || chunk.Length == 0)
+        if (st == NTStatus.STATUS_END_OF_FILE)
         {
             _eof = true;
             return 0;
         }
+        // SMBLibrary only fills the buffer on success, so a failed read looks
+        // like an empty one; the status must be judged first or a dropped
+        // session ends the stream as if the file were complete.
         SmbStatus.EnsureSuccess(st, $"read '{_path}'");
+        if (chunk is null || chunk.Length == 0)
+        {
+            _eof = true;
+            return 0;
+        }
         _serverOffset += chunk.Length;
         _carry = chunk;
         _carryPos = 0;
