@@ -244,8 +244,9 @@ public sealed class AudioCdIdentifier(
     }
 
     /// <summary>
-    /// Builds the <c>toc=</c> query string for the MusicBrainz fuzzy TOC lookup.
-    /// Format: firstTrack+lastTrack+leadOut+150+t1+150+t2+150+…
+    /// Builds the <c>toc=</c> query string for the MusicBrainz fuzzy TOC lookup:
+    /// <c>firstTrack+lastTrack+leadOut+t1+t2+…</c>. The offsets are the absolute
+    /// ones the TOC reader delivers, which already include the 150-frame pregap.
     /// </summary>
     internal static string BuildTocString(DiscToc toc)
     {
@@ -253,14 +254,12 @@ public sealed class AudioCdIdentifier(
         [
             toc.FirstTrack.ToString(System.Globalization.CultureInfo.InvariantCulture),
             toc.LastTrack.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            (toc.LeadOutOffsetSectors + 150).ToString(
-                System.Globalization.CultureInfo.InvariantCulture
-            ),
+            toc.LeadOutOffsetSectors.ToString(System.Globalization.CultureInfo.InvariantCulture),
         ];
 
         foreach (int offset in toc.TrackOffsetsSectors)
         {
-            parts.Add((offset + 150).ToString(System.Globalization.CultureInfo.InvariantCulture));
+            parts.Add(offset.ToString(System.Globalization.CultureInfo.InvariantCulture));
         }
 
         return string.Join("+", parts);
