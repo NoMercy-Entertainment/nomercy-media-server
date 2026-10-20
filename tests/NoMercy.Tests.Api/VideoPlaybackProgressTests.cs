@@ -11,6 +11,7 @@
 
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
+using NoMercy.Api.DTOs.Media;
 using NoMercy.Api.Services.Video;
 using NoMercy.Database.Models.Users;
 using NoMercy.Networking.Messaging;
@@ -43,19 +44,23 @@ public class VideoPlaybackProgressTests
         };
     }
 
-    private static VideoPlayerState MakePlayingState()
+    private static VideoPlayerState MakePlayingState(int itemCount = 2, int currentIndex = 0)
     {
+        List<VideoPlaylistResponseDto> playlist = [];
+        for (int id = 1; id <= itemCount; id++)
+        {
+            playlist.Add(new() { Id = id, Duration = TwentyFiveMinutes });
+        }
+
+        // The service locates the current item by reference, so it has to be the
+        // playlist entry itself; an equal-looking copy is never found in the list.
         return new()
         {
             PlayState = true,
             CurrentList = new("/tv/1399/watch", UriKind.Relative),
             Actions = new(),
-            CurrentItem = new() { Id = 1, Duration = TwentyFiveMinutes },
-            Playlist =
-            [
-                new() { Id = 1, Duration = TwentyFiveMinutes },
-                new() { Id = 2, Duration = TwentyFiveMinutes },
-            ],
+            CurrentItem = playlist[currentIndex],
+            Playlist = playlist,
         };
     }
 
@@ -151,6 +156,48 @@ public class VideoPlaybackProgressTests
 
         await service.ApplyClientProgress(user, state, TwentyFiveMinutesMs);
 
-        state.CurrentItem!.Id.Should().Be(2);
+        state.CurrentItem.Should().BeSameAs(state.Playlist[1]);
+    }
+
+    [Fact]
+    public async Task FinishingAnItemPlaysTheOneRightAfterIt()
+    {
+        // Three episodes and the first one ends: the second must play, not the third.
+        (VideoPlaybackService service, VideoPlayerStateManager states) = MakeService();
+        User user = MakeUser();
+        VideoPlayerState state = MakePlayingState(itemCount: 3, currentIndex: 0);
+        states.UpdateState(user.Id, state);
+
+        await service.ApplyClientProgress(user, state, TwentyFiveMinutesMs);
+
+        state.CurrentItem.Should().BeSameAs(state.Playlist[1]);
+    }
+
+    [Fact]
+    public async Task FinishingTheSecondToLastItemPlaysTheLastOne()
+    {
+        (VideoPlaybackService service, VideoPlayerStateManager states) = MakeService();
+        User user = MakeUser();
+        VideoPlayerState state = MakePlayingState(itemCount: 3, currentIndex: 1);
+        states.UpdateState(user.Id, state);
+
+        await service.ApplyClientProgress(user, state, TwentyFiveMinutesMs);
+
+        state.CurrentItem.Should().BeSameAs(state.Playlist[2]);
+    }
+
+    [Fact]
+    public async Task FinishingTheLastItemEndsTheSession()
+    {
+        (VideoPlaybackService service, VideoPlayerStateManager states) = MakeService();
+        User user = MakeUser();
+        VideoPlayerState state = MakePlayingState(itemCount: 3, currentIndex: 2);
+        states.UpdateState(user.Id, state);
+
+        await service.ApplyClientProgress(user, state, TwentyFiveMinutesMs);
+
+        state.CurrentItem.Should().BeNull();
+        state.Playlist.Should().BeEmpty();
+        states.HasState(user.Id).Should().BeFalse();
     }
 }
