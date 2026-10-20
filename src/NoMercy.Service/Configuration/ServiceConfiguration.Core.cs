@@ -199,7 +199,7 @@ public static partial class ServiceConfiguration
         ));
         int jikanRequestIntervalMs = configuration.GetValue(
             "Providers:Jikan:RequestIntervalMs",
-            350
+            1000
         );
         services.AddSingleton<IJikanMetadataProvider>(_ => new JikanMetadataProvider(
             jikanRequestIntervalMs

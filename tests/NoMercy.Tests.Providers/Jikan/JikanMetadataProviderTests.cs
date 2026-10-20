@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using NoMercy.Providers.Helpers;
 using NoMercy.Providers.Jikan;
 
 namespace NoMercy.Tests.Providers.Jikan;
@@ -21,10 +22,25 @@ public class JikanMetadataProviderTests
         JikanMetadataProvider defaultProvider = new();
         JikanMetadataProvider customProvider = new(4000);
 
-        // Jikan's documented cap is 3 req/s / 60 req/min — 334ms is the floor
-        // that keeps a single-threaded queue under 3 req/s. This must be
-        // settable, not a compile-time constant.
-        defaultProvider.RequestIntervalMsForTesting.Should().BeGreaterThanOrEqualTo(334);
+        // Jikan's documented cap is 3 req/s and 60 req/min. A bulk import runs
+        // for minutes, so the per-minute cap is the binding one and 1000ms is the
+        // floor for a single-threaded queue. This must be settable, not a
+        // compile-time constant.
+        defaultProvider.RequestIntervalMsForTesting.Should().BeGreaterThanOrEqualTo(1000);
         customProvider.RequestIntervalMsForTesting.Should().Be(4000);
+    }
+
+    // The static JikanClient entry points pace through the Jikan family's own
+    // queue default, so a process that never constructs the provider first must
+    // get the same spacing as one that does.
+    [Fact]
+    public void DefaultRequestInterval_MatchesTheJikanQueueDefault()
+    {
+        JikanMetadataProvider defaultProvider = new();
+
+        ProviderQueues
+            .OptionsFor(HttpClientNames.Jikan)
+            .Interval.Should()
+            .Be(defaultProvider.RequestIntervalMsForTesting);
     }
 }

@@ -62,11 +62,7 @@ public static class JikanClient
         using HttpResponseMessage response = await client.GetAsync(url);
         if (!response.IsSuccessStatusCode)
         {
-            if (
-                response.StatusCode == System.Net.HttpStatusCode.TooManyRequests
-                || (int)response.StatusCode >= 500
-            )
-                response.EnsureProviderSuccess();
+            ThrowIfRetryable(response);
             return null;
         }
 
@@ -114,11 +110,7 @@ public static class JikanClient
         using HttpResponseMessage response = await client.GetAsync($"anime/{malId}");
         if (!response.IsSuccessStatusCode)
         {
-            if (
-                response.StatusCode == System.Net.HttpStatusCode.TooManyRequests
-                || (int)response.StatusCode >= 500
-            )
-                response.EnsureProviderSuccess();
+            ThrowIfRetryable(response);
             return null;
         }
 
@@ -135,11 +127,27 @@ public static class JikanClient
             $"genres/anime?filter={Uri.EscapeDataString(filter)}"
         );
         if (!response.IsSuccessStatusCode)
+        {
+            ThrowIfRetryable(response);
             return null;
+        }
 
         string body = await response.Content.ReadAsStringAsync();
         JikanGenreResponse? parsed = JsonConvert.DeserializeObject<JikanGenreResponse>(body);
 
         return parsed?.Data;
+    }
+
+    // A rate limit or a server failure has to leave the call as an exception
+    // carrying the status: the provider queue retries 429 and 5xx with backoff,
+    // and a null here would read as "no match" and end the lookup for good. Any
+    // other failure is a genuine no-match.
+    private static void ThrowIfRetryable(HttpResponseMessage response)
+    {
+        if (
+            response.StatusCode == System.Net.HttpStatusCode.TooManyRequests
+            || (int)response.StatusCode >= 500
+        )
+            response.EnsureProviderSuccess();
     }
 }

@@ -40,7 +40,7 @@ public static class ProviderQueues
             },
             HttpClientNames.MusicBrainz => new() { Concurrent = 1, Interval = 1500 },
             HttpClientNames.AniList => new() { Concurrent = 1, Interval = 2000 },
-            HttpClientNames.Jikan => new() { Concurrent = 1, Interval = 350 },
+            HttpClientNames.Jikan => new() { Concurrent = 1, Interval = 1000 },
             _ => new() { Concurrent = 1, Interval = 1000 },
         };
 
