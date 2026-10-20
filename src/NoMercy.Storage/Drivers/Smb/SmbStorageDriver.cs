@@ -12,6 +12,7 @@
 using System.Net;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using NoMercy.Storage.Common;
 using SMBLibrary;
 using SMBLibrary.Client;
 using FileAttributes = SMBLibrary.FileAttributes;
@@ -33,6 +34,7 @@ public sealed class SmbStorageDriver : IStorageDriver, IDisposable
 
     private readonly SmbDriverConfig _config;
     private readonly ILogger _log;
+    private readonly Func<SmbSession> _connect;
     private readonly object _lock = new();
     private bool _disposed;
 
@@ -43,9 +45,14 @@ public sealed class SmbStorageDriver : IStorageDriver, IDisposable
     internal int StreamChunkSize { get; set; } = 1024 * 1024;
 
     public SmbStorageDriver(SmbDriverConfig config, ILogger? log = null)
+        : this(config, log, connect: null) { }
+
+    // Tests hand in a session over a fake store; production opens a real connection.
+    internal SmbStorageDriver(SmbDriverConfig config, ILogger? log, Func<SmbSession>? connect)
     {
         _config = config ?? throw new ArgumentNullException(nameof(config));
         _log = log ?? NullLogger.Instance;
+        _connect = connect ?? Connect;
     }
 
     // ── path helpers ─────────────────────────────────────────────────────────
@@ -125,7 +132,7 @@ public sealed class SmbStorageDriver : IStorageDriver, IDisposable
     {
         lock (_lock)
         {
-            using SmbSession session = Connect();
+            using SmbSession session = _connect();
             return action(session);
         }
     }
@@ -223,7 +230,7 @@ public sealed class SmbStorageDriver : IStorageDriver, IDisposable
         // A dedicated connection + open handle streamed for the caller's lifetime
         // (not under the shared metadata lock, and not buffered in memory) — a
         // multi-GB media read stays flat in memory. The stream owns the session.
-        SmbSession session = Connect();
+        SmbSession session = _connect();
         try
         {
             OpenForRead(session, ToSmbPath(path), out object handle);
@@ -251,7 +258,7 @@ public sealed class SmbStorageDriver : IStorageDriver, IDisposable
         // A dedicated connection + open handle streamed for the caller's lifetime
         // — bytes go straight to the share via WriteFile at an advancing offset,
         // so a multi-GB write never buffers in memory. The stream owns the session.
-        SmbSession session = Connect();
+        SmbSession session = _connect();
         try
         {
             NTStatus st = session.Store.CreateFile(
@@ -455,10 +462,15 @@ public sealed class SmbStorageDriver : IStorageDriver, IDisposable
             SmbStatus.EnsureSuccess(st, $"open-dir '{directory}'");
             try
             {
+                // The server applies the search pattern to folder names too, so
+                // a filtered query hides every folder the pattern does not name
+                // and the recursion below would never reach the files in them
+                // (and a folder with no match at all answers STATUS_NO_SUCH_FILE).
+                // List everything and match names here, like the other drivers.
                 NTStatus qst = s.Store.QueryDirectory(
                     out List<QueryDirectoryFileInformation> entries,
                     handle,
-                    string.IsNullOrEmpty(searchPattern) ? "*" : searchPattern,
+                    "*",
                     FileInformationClass.FileDirectoryInformation
                 );
                 if (qst != NTStatus.STATUS_SUCCESS && qst != NTStatus.STATUS_NO_MORE_FILES)
@@ -484,7 +496,8 @@ public sealed class SmbStorageDriver : IStorageDriver, IDisposable
         foreach ((string name, bool isDir) in children)
         {
             string childRel = dirRel.Length == 0 ? name : $"{dirRel}/{name}";
-            results.Add("/" + childRel);
+            if (StoragePatternMatcher.Matches(name, searchPattern))
+                results.Add("/" + childRel);
             if (option == SearchOption.AllDirectories && isDir)
                 CollectEntries(childRel, searchPattern, option, results);
         }
