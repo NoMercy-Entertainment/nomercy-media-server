@@ -229,7 +229,7 @@ public record KnownForDto
                 )
                 && (
                     c.Movie?.VideoFiles.Count > 0
-                    || c.Tv?.Episodes.Any(e => e.VideoFiles.Count != 0) != null
+                    || c.Tv?.Episodes.Any(e => e.VideoFiles.Count != 0) == true
                 )
             ) == true;
 
@@ -286,7 +286,7 @@ public record KnownForDto
                 )
                 && (
                     c.Movie?.VideoFiles.Count > 0
-                    || c.Tv?.Episodes.Any(e => e.VideoFiles.Count != 0) != null
+                    || c.Tv?.Episodes.Any(e => e.VideoFiles.Count != 0) == true
                 )
             ) == true;
 
