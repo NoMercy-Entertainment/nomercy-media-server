@@ -165,6 +165,7 @@ public static class StorageDriverGrouper
     /// <summary>
     /// Computes the relative sub-path from <paramref name="driverRoot"/> to
     /// <paramref name="absolutePath"/>. Returns empty string when they are equal.
+    /// The separator style of either input does not change the result.
     /// </summary>
     internal static string ComputeSubPath(
         string driverRoot,
@@ -173,8 +174,8 @@ public static class StorageDriverGrouper
     )
     {
         char separator = kind == StorageEndpointKind.Smb ? '\\' : LocalSeparator(absolutePath);
-        string normalizedRoot = driverRoot.TrimEnd('/', '\\');
-        string normalizedPath = absolutePath.TrimEnd('/', '\\');
+        string normalizedRoot = NormalizeSeparators(driverRoot, separator).TrimEnd(separator);
+        string normalizedPath = NormalizeSeparators(absolutePath, separator).TrimEnd(separator);
 
         if (string.Equals(normalizedRoot, normalizedPath, StringComparison.OrdinalIgnoreCase))
             return string.Empty;
@@ -197,8 +198,15 @@ public static class StorageDriverGrouper
 
     private static string[] SplitPath(string path, char separator)
     {
-        return path.Replace(separator == '\\' ? '/' : '\\', separator)
+        return NormalizeSeparators(path, separator)
             .Split(separator, StringSplitOptions.RemoveEmptyEntries);
+    }
+
+    // Stored folder paths mix '/' and '\\' (a Windows drive path saved with
+    // forward slashes is common), so every comparison runs on one separator.
+    private static string NormalizeSeparators(string path, char separator)
+    {
+        return path.Replace(separator == '\\' ? '/' : '\\', separator);
     }
 
     private static string JoinSegments(string[] segments, char separator, StorageEndpointKind kind)

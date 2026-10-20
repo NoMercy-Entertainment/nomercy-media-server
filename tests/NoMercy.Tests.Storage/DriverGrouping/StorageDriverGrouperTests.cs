@@ -162,6 +162,21 @@ public class StorageDriverGrouperTests
         result.Should().Be("Movies");
     }
 
+    [Fact]
+    public void ComputeSubPath_ForwardSlashFolderUnderBackslashRoot_ReturnsRelativePathInRootSeparator()
+    {
+        // The common ancestor is always joined with the drive separator, but a
+        // stored folder path may still use '/'; the sub path must not depend on
+        // which style the row happens to hold.
+        string result = StorageDriverGrouper.ComputeSubPath(
+            @"C:\Media",
+            "C:/Media/TV/Anime",
+            StorageEndpointKind.Local
+        );
+
+        result.Should().Be(@"TV\Anime");
+    }
+
     // -----------------------------------------------------------------------
     // Group — primary scenarios
     // -----------------------------------------------------------------------
@@ -277,6 +292,23 @@ public class StorageDriverGrouperTests
         group.Folders.Should().Contain(a => a.FolderId == animesId && a.SubPath == "Anime");
         group.Folders.Should().Contain(a => a.FolderId == moviesId && a.SubPath == "Movies");
         group.Folders.Should().Contain(a => a.FolderId == musicId && a.SubPath == "Music");
+    }
+
+    [Fact]
+    public void Group_WindowsFoldersStoredWithForwardSlashes_ProducesSubPathsRelativeToTheSharedRoot()
+    {
+        Ulid moviesId = Ulid.NewUlid();
+        Ulid tvId = Ulid.NewUlid();
+
+        FolderRootInput[] inputs = [new(moviesId, "C:/Media/Movies"), new(tvId, "C:/Media/TV")];
+
+        IReadOnlyList<DriverGroup> groups = StorageDriverGrouper.Group(inputs);
+
+        groups.Should().HaveCount(1);
+        DriverGroup group = groups[0];
+        group.DriverRoot.Should().Be(@"C:\Media");
+        group.Folders.Should().Contain(a => a.FolderId == moviesId && a.SubPath == "Movies");
+        group.Folders.Should().Contain(a => a.FolderId == tvId && a.SubPath == "TV");
     }
 
     [Fact]
