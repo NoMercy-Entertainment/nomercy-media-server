@@ -334,10 +334,14 @@ public static class EncoderArgumentResolver
         // carry a non-nullable int, so an upstream null collapses to 0 — a literal
         // 0 here would name the variant "WIDTHx0" and advertise RESOLUTION=WIDTHx0,
         // which players skip. An explicit height is clamped to the source so a
-        // profile can never request an upscale ffmpeg would happily honor.
-        int outputHeight = profile.Height is int explicitHeight and > 0
-            ? Math.Min(explicitHeight, effectiveSourceHeight)
-            : outputWidth * effectiveSourceHeight / effectiveSourceWidth;
+        // profile can never request an upscale ffmpeg would happily honor. With
+        // no usable width at all (probe reported 0, rung keeps source) there is
+        // no aspect ratio to derive from; leave 0 for the floor below.
+        int outputHeight =
+            profile.Height is int explicitHeight and > 0
+                ? Math.Min(explicitHeight, effectiveSourceHeight)
+            : effectiveSourceWidth > 0 ? outputWidth * effectiveSourceHeight / effectiveSourceWidth
+            : 0;
 
         // Encoders require even luma dimensions on the common 4:2:0 pixel
         // formats; an odd width or height makes ffmpeg abort ("not divisible
