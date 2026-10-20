@@ -103,6 +103,20 @@ public sealed class GoogleCastDeviceScannerUnicastTests
     }
 
     [Fact]
+    public async Task ProbeHosts_LegacyMulticastReplyFromUnknownIp_BecomesSeenHit()
+    {
+        NonBindingMulticastTransport transport = new();
+        transport.LegacyReplies.Add((Reply("cast-id-2", "Test Living Room"), "192.0.2.21"));
+        using GoogleCastDeviceScanner scanner = Build(transport);
+
+        await scanner.ProbeHostsAsync(CancellationToken.None);
+
+        CastMdnsHit hit = Assert.Single(scanner.GetSeen());
+        Assert.Equal("cast-id-2", hit.Id);
+        Assert.Equal("192.0.2.21", hit.Ip);
+    }
+
+    [Fact]
     public async Task ProbeHosts_NoReply_LeavesNothingSeen()
     {
         NonBindingMulticastTransport transport = new();

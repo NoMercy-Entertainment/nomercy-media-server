@@ -109,6 +109,21 @@ public sealed class GoogleCastDeviceScanner : ICastMdnsRegistry, IDisposable
     /// <summary>Queries each registered or previously seen LAN address directly; no multicast reply needed.</summary>
     public async Task ProbeHostsAsync(CancellationToken cancellationToken)
     {
+        try
+        {
+            foreach (
+                (Message reply, string fromIp) in await _multicast.QueryLegacyMulticastAsync(
+                    ServiceName,
+                    cancellationToken
+                )
+            )
+                Record(reply, fromIp);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogDebug(ex, "Legacy Google Cast multicast query failed");
+        }
+
         HashSet<string> targets = [.. _knownIps.Keys];
         if (_probeTargets is not null)
             targets.UnionWith(await _probeTargets.GetLanIpsAsync(cancellationToken));

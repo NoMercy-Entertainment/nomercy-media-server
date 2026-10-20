@@ -31,6 +31,13 @@ public interface IMdnsMulticastTransport : IDisposable
     /// <summary>Asks for answers with the QU bit set, so a responder may reply by unicast.</summary>
     void SendUnicastResponseQuery(DomainName service);
 
+    /// <summary>Multicast query from a random port (RFC 6762 legacy): replies come back by unicast to that port,
+    /// even where Windows' own mDNS service owns 5353.</summary>
+    Task<IReadOnlyList<(Message Reply, string FromIp)>> QueryLegacyMulticastAsync(
+        DomainName service,
+        CancellationToken cancellationToken
+    );
+
     /// <summary>Sends one query straight to <paramref name="address"/> and returns its reply, or null on timeout.</summary>
     Task<Message?> QueryHostAsync(
         IPAddress address,

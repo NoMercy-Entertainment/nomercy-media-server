@@ -48,5 +48,12 @@ internal sealed class NonBindingMulticastTransport : IMdnsMulticastTransport
         return Task.FromResult(HostReplies.GetValueOrDefault(address));
     }
 
+    public List<(Message Reply, string FromIp)> LegacyReplies { get; } = [];
+
+    public Task<IReadOnlyList<(Message Reply, string FromIp)>> QueryLegacyMulticastAsync(
+        DomainName service,
+        CancellationToken cancellationToken
+    ) => Task.FromResult<IReadOnlyList<(Message Reply, string FromIp)>>(LegacyReplies);
+
     public void Dispose() => Service.Dispose();
 }
