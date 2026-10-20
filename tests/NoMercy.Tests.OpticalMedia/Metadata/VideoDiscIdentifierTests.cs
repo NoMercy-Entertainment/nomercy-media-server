@@ -334,6 +334,69 @@ public sealed class VideoDiscIdentifierHttpTests : ProviderHttpHarness
     }
 
     [Fact]
+    public async Task IdentifyAsync_MovieMatch_DoesNotResolveTheMovieIdAsATvShow()
+    {
+        // TMDB numbers movies and shows independently, so a movie id is also
+        // some show's id. Scripting that show proves the movie is never
+        // looked up as it: a resolved season could only have come from there.
+        const int movieId = 4860001;
+        Handler.WhenGet(
+            "search/movie",
+            MockResponse.Json(
+                HttpStatusCode.OK,
+                MovieSearchResults(movieId, "Solaris Rising", "2011-03-04")
+            )
+        );
+        Handler.WhenGet("search/tv", MockResponse.Json(HttpStatusCode.OK, EmptySearchResults()));
+        Handler.WhenGet(
+            $"movie/{movieId}",
+            MockResponse.Json(HttpStatusCode.OK, MovieDetails(120))
+        );
+        // Season route first: the show route's path is a substring of it.
+        Handler.WhenGet(
+            $"tv/{movieId}/season/1",
+            MockResponse.Json(
+                HttpStatusCode.OK,
+                """
+                {
+                  "season_number": 1,
+                  "episodes": [ { "id": 1, "episode_number": 1 }, { "id": 2, "episode_number": 2 } ]
+                }
+                """
+            )
+        );
+        Handler.WhenGet(
+            $"tv/{movieId}",
+            MockResponse.Json(
+                HttpStatusCode.OK,
+                """
+                {
+                  "name": "Unrelated Show",
+                  "episode_run_time": [60],
+                  "seasons": [ { "id": 1, "season_number": 1, "name": "Season 1" } ]
+                }
+                """
+            )
+        );
+
+        VideoDiscIdentifier sut = new(NullLogger<VideoDiscIdentifier>.Instance);
+
+        DiscIdentification result = await sut.IdentifyAsync(
+            MakeDisc(label: "Solaris_Rising", durationSec: 120 * 60),
+            CancellationToken.None
+        );
+
+        result.Candidates.Should().ContainSingle();
+        result.Candidates[0].Type.Should().Be(MediaType.Movie);
+        result.Candidates[0].SeasonNumber.Should().BeNull("a movie has no season to resolve");
+        result.Candidates[0].EpisodeNumber.Should().BeNull();
+        Handler
+            .RequestCountFor($"tv/{movieId}")
+            .Should()
+            .Be(0, "a movie's TMDB id must never be queried as a TV show id");
+    }
+
+    [Fact]
     public async Task IdentifyAsync_NoMatchesOnFullQuery_FallsBackToFirstWord()
     {
         const int movieId = 603;
