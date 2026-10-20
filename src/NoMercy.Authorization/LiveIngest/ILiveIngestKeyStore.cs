@@ -44,4 +44,13 @@ public interface ILiveIngestKeyStore
 
     /// <summary>Drop every key bound to the session.</summary>
     void RevokeSession(string sessionId);
+
+    /// <summary>
+    /// Drop the key unless <see cref="BindSession"/> handed it to a session. A
+    /// start that ends without a session (direct play, a refused slot, a failed
+    /// probe or encoder start) calls this on every exit so no unbound key outlives
+    /// the request that minted it; a bound key belongs to its session and dies
+    /// with <see cref="RevokeSession"/>.
+    /// </summary>
+    void RevokeIfUnbound(string key);
 }
