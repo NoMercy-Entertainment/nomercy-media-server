@@ -16,10 +16,11 @@ using NoMercy.Encoder.Subscribers;
 namespace NoMercy.Tests.Encoder.Subscribers;
 
 /// <summary>
-/// CropDetectSubscriber is an opt-out toggle — PlanStage reads
-/// <see cref="CropDetectSubscriber.IsEnabled"/> alongside the per-profile
-/// AutoDetectCrop flag to decide whether to actually invoke ICropDetector.
-/// False here means the detector is globally disabled regardless of profile.
+/// CropDetectSubscriber is an opt-out toggle — <see cref="CropDetectSubscriber.IsEnabled"/>
+/// mirrors <see cref="EncoderOptions.EnableCropDetectSubscriber"/>, which PlanStage
+/// reads alongside the per-profile AutoDetectCrop flag to decide whether to
+/// actually invoke ICropDetector (see PlanStageCropTests). False here means the
+/// detector is globally disabled regardless of profile.
 /// </summary>
 public class CropDetectSubscriberTests
 {
