@@ -1605,6 +1605,62 @@ namespace NoMercy.Database.Migrations
                         });
                 });
 
+            modelBuilder.Entity("NoMercy.Database.Models.Media.VideoFileAudioTrack", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<long>("BitRateKbps")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("ChannelLayout")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("Channels")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Codec")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("GroupId")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Language")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Profile")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SampleRate")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Uri")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("VideoFileId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("VideoFileId");
+
+                    b.HasIndex("Codec", "Channels");
+
+                    b.ToTable("VideoFileAudioTracks");
+                });
+
             modelBuilder.Entity("NoMercy.Database.Models.Movies.AnimeDemographicMovie", b =>
                 {
                     b.Property<int>("AnimeDemographicId")
@@ -5376,6 +5432,15 @@ namespace NoMercy.Database.Migrations
                     b.Navigation("Metadata");
 
                     b.Navigation("Movie");
+                });
+
+            modelBuilder.Entity("NoMercy.Database.Models.Media.VideoFileAudioTrack", b =>
+                {
+                    b.HasOne("NoMercy.Database.Models.Media.VideoFile", null)
+                        .WithMany()
+                        .HasForeignKey("VideoFileId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
                 });
 
             modelBuilder.Entity("NoMercy.Database.Models.Movies.AnimeDemographicMovie", b =>

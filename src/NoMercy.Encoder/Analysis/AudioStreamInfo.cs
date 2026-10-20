@@ -21,5 +21,7 @@ public record AudioStreamInfo(
     bool IsDefault,
     bool IsForced,
     double StartTimeSeconds = 0,
-    double DelayVsVideoSeconds = 0
+    double DelayVsVideoSeconds = 0,
+    string? Profile = null,
+    string? ChannelLayout = null
 );

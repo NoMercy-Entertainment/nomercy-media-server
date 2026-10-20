@@ -134,6 +134,8 @@ public partial class FileManager(
     /// </summary>
     private readonly HashSet<RecordedVideoFileLocation> _storedVideoFileKeys = [];
 
+    private bool _audioTrackBackfillQueued;
+
     /// <summary>
     /// The Share (Folders.Id) of every folder that had at least one item
     /// <see cref="StoreVideoItem"/> could not resolve this pass. A Share in
@@ -232,6 +234,7 @@ public partial class FileManager(
         _itemOriginFolder.Clear();
         _storedVideoFileKeys.Clear();
         _sharesWithSkippedItems.Clear();
+        _audioTrackBackfillQueued = false;
 
         await MediaType(id, library);
 

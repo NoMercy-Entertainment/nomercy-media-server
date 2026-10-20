@@ -183,8 +183,11 @@ public class PlaylistGenerator : IPlaylistGenerator
             for (int i = 0; i < groupEntries.Count; i++)
             {
                 AudioMediaEntry entry = groupEntries[i];
+                int channels = entry.Plan.OutputChannels;
+                string channelsAttribute =
+                    channels > 0 ? $",CHANNELS=\"{channels}\"" : string.Empty;
                 sb.AppendLine(
-                    $"#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"{groupId}\",LANGUAGE=\"{entry.Language}\",AUTOSELECT=YES,DEFAULT={YesNo(i == defaultAudioIndex)},URI=\"{entry.Uri}\",NAME=\"{entry.DisplayName}\""
+                    $"#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"{groupId}\",LANGUAGE=\"{entry.Language}\",AUTOSELECT=YES,DEFAULT={YesNo(i == defaultAudioIndex)}{channelsAttribute},URI=\"{entry.Uri}\",NAME=\"{entry.DisplayName}\""
                 );
             }
         }

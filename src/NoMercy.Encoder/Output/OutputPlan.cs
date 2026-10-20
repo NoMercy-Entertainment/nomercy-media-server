@@ -145,9 +145,15 @@ public record AudioOutputPlan(
     // The source stream's default disposition. The master playlist marks this
     // rendition DEFAULT=YES so playback follows what the release intended
     // instead of whichever stream ffprobe happened to list first.
-    bool IsSourceDefault = false
+    bool IsSourceDefault = false,
+    // The source stream's channel count. A copied rendition keeps it; Channels
+    // above is the profile target, which a copied stream does not follow.
+    int SourceChannels = 0
 )
 {
+    /// <summary>Channels the written rendition has; 0 when unknown (a plan rebuilt from disk).</summary>
+    public int OutputChannels => Action == StreamAction.Copy ? SourceChannels : Channels;
+
     /// <summary>
     /// The value that fills the <c>{codec}</c> / <c>:codec:</c> naming-template
     /// token. For a stream-copied output this must be the real source codec

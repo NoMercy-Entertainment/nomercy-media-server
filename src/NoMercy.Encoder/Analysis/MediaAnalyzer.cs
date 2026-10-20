@@ -348,7 +348,9 @@ public class MediaAnalyzer(IProcessRunner processRunner, IStorage storage, Encod
             BitRateKbps: ParseStreamBitrateKbps(stream),
             Language: stream["tags"]?.Value<string>("language"),
             IsDefault: stream["disposition"]?.Value<int>("default") == 1,
-            IsForced: stream["disposition"]?.Value<int>("forced") == 1
+            IsForced: stream["disposition"]?.Value<int>("forced") == 1,
+            Profile: stream.Value<string>("profile"),
+            ChannelLayout: stream.Value<string>("channel_layout")
         );
     }
 
