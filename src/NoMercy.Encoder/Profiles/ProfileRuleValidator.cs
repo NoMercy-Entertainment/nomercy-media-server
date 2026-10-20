@@ -553,22 +553,9 @@ public static class ProfileRuleValidator
         if (scheme is "" or "none")
             return;
 
-        if (profile.Drm.Parameters is null || profile.Drm.Parameters.Count == 0)
-        {
-            rules.Add(BuildDrmKeyMissingRule(scheme, "drm.parameters"));
-            return;
-        }
-
-        // Accept conventional key field names — schemes vary.
-        bool hasKeyUri = profile.Drm.Parameters.Keys.Any(k =>
-            k.Equals("key_uri", StringComparison.OrdinalIgnoreCase)
-            || k.Equals("key_url", StringComparison.OrdinalIgnoreCase)
-            || k.Equals("license_url", StringComparison.OrdinalIgnoreCase)
-            || k.Equals("keyfile", StringComparison.OrdinalIgnoreCase)
-            || k.Equals("key_file", StringComparison.OrdinalIgnoreCase)
-        );
-
-        if (!hasKeyUri)
+        // The same lookup the plan converter uses, so a key this rule accepts is
+        // one the packager receives.
+        if (DrmKeyParameters.FindKeyUri(profile.Drm.Parameters) is null)
             rules.Add(BuildDrmKeyMissingRule(scheme, "drm.parameters"));
     }
 
@@ -1323,11 +1310,7 @@ public static class ProfileRuleValidator
 
         SubtitleOutput[] subtitles = profile.Subtitles ?? [];
         for (int i = 0; i < subtitles.Length; i++)
-            ScanCustomArgs(
-                $"subtitles[{i}].custom_arguments",
-                subtitles[i].CustomArguments,
-                rules
-            );
+            ScanCustomArgs($"subtitles[{i}].custom_arguments", subtitles[i].CustomArguments, rules);
     }
 
     private static void ScanCustomArgs(

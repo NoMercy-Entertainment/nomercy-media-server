@@ -1128,6 +1128,33 @@ public class ProfileRuleValidatorTests
         Assert.False(HasRule(env, EncoderRuleId.DrmKeyMissing));
     }
 
+    [Theory]
+    [InlineData("key_url")]
+    [InlineData("keyfile")]
+    [InlineData("key_file")]
+    [InlineData("Key_Uri")]
+    public void DrmKeyMissing_EveryAcceptedKeyName_DoesNotFire(string parameterName)
+    {
+        EncodingProfile profile = ProfileFor(Video()) with
+        {
+            Drm = new("aes-128", new() { [parameterName] = "https://server/key.bin" }),
+        };
+        ValidationEnvelope env = ProfileRuleValidator.Validate(profile);
+        Assert.False(HasRule(env, EncoderRuleId.DrmKeyMissing));
+    }
+
+    [Fact]
+    public void DrmKeyMissing_KeyUriPresentButBlank_Fires()
+    {
+        // A blank key_uri reaches the packager as an empty KeyUri and fails there.
+        EncodingProfile profile = ProfileFor(Video()) with
+        {
+            Drm = new("aes-128", new() { ["key_uri"] = "   " }),
+        };
+        ValidationEnvelope env = ProfileRuleValidator.Validate(profile);
+        Assert.True(HasRule(env, EncoderRuleId.DrmKeyMissing));
+    }
+
     [Fact]
     public void DrmKeyMissing_LicenseUrlPresent_DoesNotFire()
     {
