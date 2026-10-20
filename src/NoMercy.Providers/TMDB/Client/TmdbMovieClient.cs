@@ -166,12 +166,12 @@ public class TmdbMovieClient : TmdbBaseClient, ITmdbMovieClient
 
     public Task<TmdbMovieLatest?> Latest(bool? priority = false)
     {
-        return Get<TmdbMovieLatest>("movie/" + Id + "/latest", priority: priority);
+        return Get<TmdbMovieLatest>("movie/latest", priority: priority);
     }
 
     public Task<TmdbMovieNowPlaying?> NowPlaying(bool? priority = false)
     {
-        return Get<TmdbMovieNowPlaying>("movie/" + Id + "/now_playing", priority: priority);
+        return Get<TmdbMovieNowPlaying>("movie/now_playing", priority: priority);
     }
 
     public Task<List<TmdbMovie>?> Popular(int limit = 10)
@@ -181,12 +181,12 @@ public class TmdbMovieClient : TmdbBaseClient, ITmdbMovieClient
 
     public Task<TmdbMovieTopRated?> TopRated(bool? priority = false)
     {
-        return Get<TmdbMovieTopRated>("movie/" + Id + "/top_rated", priority: priority);
+        return Get<TmdbMovieTopRated>("movie/top_rated", priority: priority);
     }
 
     public Task<TmdbMovieUpcoming?> Upcoming(bool? priority = false)
     {
-        return Get<TmdbMovieUpcoming>("movie/" + Id + "/upcoming", priority: priority);
+        return Get<TmdbMovieUpcoming>("movie/upcoming", priority: priority);
     }
 
     public Task<TmdbMovieCertifications?> Certifications(bool? priority = false)
