@@ -51,7 +51,7 @@ public class PluginAudioToolsFactory(
 {
     private readonly ConcurrentDictionary<Ulid, PluginAudioTools> _perPlugin = new();
 
-    public IPluginAudioTools CreateFor(Ulid pluginId) =>
+    public IPluginAudioTools CreateFor(Ulid pluginId, string dataFolderPath) =>
         _perPlugin.GetOrAdd(
             pluginId,
             id => new PluginAudioTools(
@@ -65,7 +65,8 @@ public class PluginAudioToolsFactory(
                 writerFactory,
                 contextFactory,
                 capabilityProbe,
-                logger
+                logger,
+                dataFolderPath
             )
         );
 }

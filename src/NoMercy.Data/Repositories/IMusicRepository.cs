@@ -67,9 +67,18 @@ public interface IMusicRepository
         CancellationToken ct = default
     );
 
+    /// <summary>
+    /// Stores the lyrics of a track with where the text came from
+    /// (<paramref name="source" />, a <see cref="LyricsSources" /> value) and
+    /// where the timing came from (<paramref name="timing" />, a
+    /// <see cref="LyricsTimings" /> value). Both are null for the negative
+    /// marker <c>[]</c>.
+    /// </summary>
     Task<Lyric[]?> UpdateTrackLyricsAsync(
         Track track,
         string lyricsJson,
+        string? source,
+        string? timing,
         CancellationToken ct = default
     );
 

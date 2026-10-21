@@ -11,6 +11,7 @@
 
 using Newtonsoft.Json;
 using NoMercy.Database;
+using NoMercy.Database.Models.Music;
 using NoMercy.MediaProcessing.Recordings;
 using NoMercy.Providers.Lyrics;
 
@@ -33,7 +34,9 @@ public class LyricFetchJob : AbstractLyricJob
 
         await recordingRepository.UpdateTrackLyricsAsync(
             Track,
-            JsonConvert.SerializeObject(result.Lines)
+            JsonConvert.SerializeObject(result.Lines),
+            result.Source,
+            result.Synced ? LyricsTimings.Provider : LyricsTimings.None
         );
     }
 }

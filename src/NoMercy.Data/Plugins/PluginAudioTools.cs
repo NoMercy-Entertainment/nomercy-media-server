@@ -58,7 +58,8 @@ public sealed class PluginAudioTools(
     IPluginMusicAnalysisWriterFactory writerFactory,
     IDbContextFactory<MediaContext> contextFactory,
     IFfmpegCapabilityProbe capabilityProbe,
-    ILogger<PluginAudioTools>? logger = null
+    ILogger<PluginAudioTools>? logger = null,
+    string? dataFolderPath = null
 ) : IPluginAudioTools
 {
     /// <summary>
@@ -99,6 +100,8 @@ public sealed class PluginAudioTools(
 
     private const string FfmpegMissing = "ffmpeg is not installed";
     private const string StemsplitModelMissing = "the stemsplit model is not installed";
+    private const string WhisperModelMissing = "the whisper model is not installed";
+    private const string VadModelMissing = "the VAD model is not installed";
     private const string RunInProgress = "another ffmpeg run of this plugin is still in progress";
     private const string NoStemOutput = "stemsplit produced no output";
 
@@ -117,16 +120,45 @@ public sealed class PluginAudioTools(
         PluginCallGuard.RunAsync(
             pluginId.ToString(),
             nameof(RunFilterGraphAsync),
-            () => RunFilterGraphCoreAsync(input, graph, onStdOut, onStdErr, ct),
+            () => RunFilterGraphCoreAsync(input, graph, onStdOut, onStdErr, null, ct),
             PluginAudioRunResult.Refused,
             _logger
         );
+
+    public Task<PluginAudioRunResult> RunFilterGraphAsync(
+        PluginAudioInput input,
+        PluginFilterGraph graph,
+        Action<string>? onStdOut,
+        Action<string>? onStdErr,
+        PluginAudioRunOptions options,
+        CancellationToken ct = default
+    ) =>
+        PluginCallGuard.RunAsync(
+            pluginId.ToString(),
+            nameof(RunFilterGraphAsync),
+            () => RunFilterGraphCoreAsync(input, graph, onStdOut, onStdErr, options, ct),
+            PluginAudioRunResult.Refused,
+            _logger
+        );
+
+    /// <summary>
+    /// The timeout a run gets: the host's default without options, what the
+    /// plugin asked for otherwise, never more than the maximum. A zero or
+    /// negative request is a mistake, not a wish for no time at all.
+    /// </summary>
+    internal static TimeSpan EffectiveTimeout(PluginAudioRunOptions? options, TimeSpan fallback) =>
+        options?.Timeout is { } requested && requested > TimeSpan.Zero
+            ? requested > PluginAudioRunOptions.MaxTimeout
+                ? PluginAudioRunOptions.MaxTimeout
+                : requested
+            : fallback;
 
     private async Task<PluginAudioRunResult> RunFilterGraphCoreAsync(
         PluginAudioInput input,
         PluginFilterGraph graph,
         Action<string>? onStdOut,
         Action<string>? onStdErr,
+        PluginAudioRunOptions? options,
         CancellationToken ct
     )
     {
@@ -136,15 +168,31 @@ public sealed class PluginAudioTools(
             return PluginAudioRunResult.Refused(FfmpegMissing);
         }
 
-        string text = PluginAudioArguments.ApplyModelToken(graph.Text);
-
-        // The filter exists in the build whether or not the model was ever
+        // Each filter exists in the build whether or not its model was ever
         // downloaded, so ffmpeg would start, read the whole input and only
         // then fail. Cheaper, and far clearer, to say so up front.
-        if (text.Contains("stemsplit", StringComparison.Ordinal) && !StemsplitModelPresent())
+        if (graph.Text.Contains("stemsplit", StringComparison.Ordinal) && !StemsplitModelPresent())
         {
             return PluginAudioRunResult.Refused(StemsplitModelMissing);
         }
+
+        if (PluginGraphTokens.UsesWhisperModel(graph.Text) && !WhisperModelPresent())
+        {
+            return PluginAudioRunResult.Refused(WhisperModelMissing);
+        }
+
+        if (PluginGraphTokens.UsesVadModel(graph.Text) && !VadModelPresent())
+        {
+            return PluginAudioRunResult.Refused(VadModelMissing);
+        }
+
+        ResolvedGraphText resolvedText = PluginGraphTokens.Resolve(graph.Text, dataFolderPath);
+        if (resolvedText.Refusal is not null)
+        {
+            return PluginAudioRunResult.Refused(resolvedText.Refusal);
+        }
+
+        string text = resolvedText.Text;
 
         if (!await _oneRunAtATime.WaitAsync(0, ct))
         {
@@ -168,7 +216,8 @@ public sealed class PluginAudioTools(
                 arguments,
                 onStdOut,
                 onStdErr,
-                ct
+                ct,
+                timeout: EffectiveTimeout(options, RunTimeout)
             );
 
             // Null is the timeout: -2 rather than a refusal, because the run
@@ -500,11 +549,13 @@ public sealed class PluginAudioTools(
         Action<string>? onStdOut,
         Action<string>? onStdErr,
         CancellationToken ct,
-        bool watchForExitMarker = false
+        bool watchForExitMarker = false,
+        TimeSpan? timeout = null
     )
     {
+        TimeSpan runTimeout = timeout ?? RunTimeout;
         using CancellationTokenSource runCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-        runCts.CancelAfter(RunTimeout);
+        runCts.CancelAfter(runTimeout);
 
         // Disposed after the run has returned, as FfmpegExecutor does - never
         // through a `using`.
@@ -554,7 +605,7 @@ public sealed class PluginAudioTools(
             _logger.LogWarning(
                 "plugin {PluginId}: ffmpeg run timed out after {Seconds}s",
                 pluginId,
-                RunTimeout.TotalSeconds
+                runTimeout.TotalSeconds
             );
             return null;
         }
@@ -619,18 +670,39 @@ public sealed class PluginAudioTools(
     /// from exactly that constant.
     /// </para>
     /// </summary>
-    private bool StemsplitModelPresent()
+    private bool StemsplitModelPresent() =>
+        ModelPresent(
+            report => report.StemsplitModelPresent,
+            options.StemsplitModelPath,
+            AppFiles.StemsplitModelPath
+        );
+
+    private bool WhisperModelPresent() =>
+        ModelPresent(
+            report => report.WhisperModelPresent,
+            options.WhisperModelPath,
+            AppFiles.WhisperModelPath
+        );
+
+    private bool VadModelPresent() =>
+        ModelPresent(report => report.VadModelPresent, options.VadModelPath, AppFiles.VadModelPath);
+
+    private bool ModelPresent(
+        Func<CapabilityReport, bool> fromReport,
+        string? configuredPath,
+        string fallbackPath
+    )
     {
         CapabilityReport? report = capabilityProbe.GetCachedReport();
         if (report is not null)
         {
-            return report.StemsplitModelPresent;
+            return fromReport(report);
         }
 
-        string? modelPath = options.StemsplitModelPath;
+        string? modelPath = configuredPath;
         if (string.IsNullOrWhiteSpace(modelPath))
         {
-            modelPath = AppFiles.StemsplitModelPath;
+            modelPath = fallbackPath;
         }
 
         try

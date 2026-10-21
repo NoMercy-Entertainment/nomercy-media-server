@@ -118,6 +118,13 @@ public class EncoderOptions
     public string? WhisperModelPath { get; set; }
 
     /// <summary>
+    /// Absolute path to the silero VAD GGML model whisper uses to skip
+    /// silence (e.g. ggml-silero-v5.1.2.bin). A plugin graph that names
+    /// <c>{vadModel}</c> is refused while it is missing.
+    /// </summary>
+    public string? VadModelPath { get; set; }
+
+    /// <summary>
     /// Path to the stemsplit GGUF model; the analysis job passes its file name
     /// relative to the ffmpeg folder.
     /// </summary>

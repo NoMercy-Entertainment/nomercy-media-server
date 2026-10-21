@@ -18,10 +18,13 @@ namespace NoMercy.PluginSdk.Abstractions;
 /// </summary>
 /// <param name="Text">
 /// The filter chain itself, in ffmpeg's own syntax - for example
-/// <c>"stereotools=mlev=0"</c>. The literal token <c>"{stemsModel}"</c>,
-/// where a filter needs one, is replaced by the host with the model file's
-/// name before the graph runs, so a plugin never hard-codes a path that only
-/// exists on the machine running the server.
+/// <c>"stereotools=mlev=0"</c>. The tokens in
+/// <see cref="PluginFilterGraphTokens" /> - <c>{stemsModel}</c>,
+/// <c>{whisperModel}</c>, <c>{vadModel}</c> and <c>{pluginFile:…}</c> - are
+/// replaced by the host with the file's name or path before the graph runs,
+/// so a plugin never hard-codes a path that only exists on the machine
+/// running the server. For the whisper filter's stdout use
+/// <c>destination=-</c>, not <c>pipe:1</c>, whose colon would need escaping.
 /// </param>
 /// <param name="Complex">
 /// False runs <see cref="Text" /> as <c>-af</c>, a single input to a single

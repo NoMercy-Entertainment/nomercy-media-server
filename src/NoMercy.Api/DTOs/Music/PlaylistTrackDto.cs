@@ -18,7 +18,7 @@ using NoMercy.NmSystem.Extensions;
 
 namespace NoMercy.Api.DTOs.Music;
 
-public record PlaylistTrackDto
+public record PlaylistTrackDto : ITrackLyricsDto
 {
     [JsonProperty("id")]
     public Guid Id { get; set; }
@@ -67,6 +67,15 @@ public record PlaylistTrackDto
 
     [JsonProperty("lyrics")]
     public Lyric[]? Lyrics { get; set; }
+
+    [JsonProperty("lyrics_offset")]
+    public int? LyricsOffset { get; set; }
+
+    [JsonProperty("lyrics_source")]
+    public string? LyricsSource { get; set; }
+
+    [JsonProperty("lyrics_timing")]
+    public string? LyricsTiming { get; set; }
 
     [JsonProperty("album_track")]
     public List<AlbumDto> Album { get; set; }
@@ -144,7 +153,7 @@ public record PlaylistTrackDto
         Duration = track.Duration;
         Favorite = track.TrackUser.Count != 0;
         Quality = track.Quality;
-        Lyrics = track.Lyrics;
+        this.ApplyLyrics(track);
         Type = "track";
         AlbumName = track.AlbumTrack.FirstOrDefault()?.Album.Name;
 
@@ -185,7 +194,7 @@ public record PlaylistTrackDto
         Duration = artistTrack.Track.Duration;
         Favorite = artistTrack.Track.TrackUser.Count != 0;
         Quality = artistTrack.Track.Quality;
-        Lyrics = artistTrack.Track.Lyrics;
+        this.ApplyLyrics(artistTrack.Track);
         Type = "track";
         AlbumName = artistTrack.Track.AlbumTrack.FirstOrDefault()?.Album.Name;
 
@@ -225,7 +234,7 @@ public record PlaylistTrackDto
         Duration = trackTrack.Track.Duration;
         Favorite = trackTrack.Track.TrackUser.Count != 0;
         Quality = trackTrack.Track.Quality;
-        Lyrics = trackTrack.Track.Lyrics;
+        this.ApplyLyrics(trackTrack.Track);
         Type = "track";
         AlbumName = trackTrack.Track.AlbumTrack.FirstOrDefault()?.Album.Name;
 
@@ -266,7 +275,7 @@ public record PlaylistTrackDto
         Duration = artistTrack.Track.Duration;
         Favorite = artistTrack.Track.TrackUser.Count != 0;
         Quality = artistTrack.Track.Quality;
-        Lyrics = artistTrack.Track.Lyrics;
+        this.ApplyLyrics(artistTrack.Track);
         Type = "track";
         AlbumName = artistTrack.Track.AlbumTrack.FirstOrDefault()?.Album.Name;
 
@@ -305,7 +314,7 @@ public record PlaylistTrackDto
         Duration = genreTrack.Track.Duration;
         Favorite = genreTrack.Track.TrackUser.Count != 0;
         Quality = genreTrack.Track.Quality;
-        Lyrics = genreTrack.Track.Lyrics;
+        this.ApplyLyrics(genreTrack.Track);
         Type = "track";
         AlbumName = genreTrack.Track.AlbumTrack.FirstOrDefault()?.Album.Name;
 

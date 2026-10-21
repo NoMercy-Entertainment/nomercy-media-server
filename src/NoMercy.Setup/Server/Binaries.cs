@@ -566,6 +566,14 @@ public class Binaries
                     "Whisper models",
                     () => DownloadWhisperModels(AppFiles.WhisperModel)
                 );
+                // The silero VAD model ships in the same release as the whisper
+                // models and lands beside them; until the release carries it,
+                // the download logs "no assets" and the plugin graph that
+                // names {vadModel} is refused.
+                await AttemptDownload(
+                    "VAD model",
+                    () => DownloadWhisperModels(AppFiles.VadModel, "VAD")
+                );
                 await AttemptDownload(
                     "stemsplit model",
                     () => DownloadStemsplitModel(AppFiles.StemsplitModel)
@@ -1923,7 +1931,11 @@ public class Binaries
         }
     }
 
-    internal async Task DownloadWhisperModels(string modelName = "ggml-large-v3")
+    /// <param name="label">What the binary report and the log call the model: "Whisper", or "VAD" for the silero model that ships in the same release.</param>
+    internal async Task DownloadWhisperModels(
+        string modelName = "ggml-large-v3",
+        string label = "Whisper"
+    )
     {
         string destinationPath = Path.Combine(AppFiles.FfmpegFolder, modelName + ".bin");
 
@@ -1939,7 +1951,7 @@ public class Binaries
 
         if (CheckLocalVersion(releaseInfo, destinationPath, out string version))
         {
-            _binaryReport.Add($"Whisper = {version}");
+            _binaryReport.Add($"{label} = {version}");
             return;
         }
 
@@ -1984,7 +1996,7 @@ public class Binaries
 
             await FileAttributes.SetCreatedAttribute(outputPath, releaseInfo.PublishedAt);
 
-            Logger.Setup($"Downloaded and concatenated Whisper model parts to {outputPath}");
+            Logger.Setup($"Downloaded and concatenated {label} model parts to {outputPath}");
         }
         else
         {
@@ -1996,7 +2008,7 @@ public class Binaries
                 paths[0],
                 destinationPath,
                 releaseInfo.PublishedAt,
-                "Whisper model"
+                $"{label} model"
             );
         }
     }

@@ -213,6 +213,8 @@ public class LyricsAggregatorTests : IDisposable
         result.IsTransientError.Should().BeFalse();
         result.Lines.Should().NotBeNull();
         result.Winner.Should().Be("Lrclib-get");
+        result.Source.Should().Be(LyricsSources.Lrclib);
+        result.Synced.Should().BeTrue();
         musixmatchCalls
             .Should()
             .Be(0, "a synced /get hit is authoritative and must skip Musixmatch entirely");
@@ -270,6 +272,79 @@ public class LyricsAggregatorTests : IDisposable
         result.Lines.Should().NotBeNull();
         result.Lines!.Single().Text.Should().Be("line one");
         result.Winner.Should().Be("Musixmatch-tight");
+        result.Source.Should().Be(LyricsSources.Musixmatch);
+        result.Synced.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SearchCandidates_ReturnsEveryValidatedCandidate_WithItsSource_Deduplicated()
+    {
+        string title = Unique("Title");
+        string artist = Unique("Artist");
+        Track track = MakeTrack(title, artist, "Album", 300);
+
+        ConfigureHttp(
+            new ScriptedHandler(request =>
+            {
+                if (request.RequestUri!.AbsolutePath.EndsWith("/get"))
+                    return Task.FromResult(
+                        OkJson(
+                            new LrclibSongResult
+                            {
+                                TrackName = title,
+                                ArtistName = artist,
+                                Duration = 300,
+                                SyncedLyrics = "[00:01.00]line one",
+                            }
+                        )
+                    );
+
+                // /search repeats the /get hit (same text: dropped as a
+                // duplicate), adds a plain-text variant, and a wrong song
+                // that validation must throw out.
+                return Task.FromResult(
+                    OkJson<LrclibSongResult[]>([
+                        new()
+                        {
+                            TrackName = title,
+                            ArtistName = artist,
+                            Duration = 300,
+                            SyncedLyrics = "[00:01.00]line one",
+                        },
+                        new()
+                        {
+                            TrackName = title,
+                            ArtistName = artist,
+                            Duration = 300,
+                            PlainLyrics = "line one\nline two",
+                        },
+                        new()
+                        {
+                            TrackName = "Some Other Song Entirely",
+                            ArtistName = "A Totally Different Band",
+                            Duration = 300,
+                            PlainLyrics = "wrong",
+                        },
+                    ])
+                );
+            }),
+            new ScriptedHandler(_ =>
+                Task.FromResult(OkJson(SubtitleResponse(title, artist, 300, 1.0)))
+            )
+        );
+
+        LyricsCandidatesResult result = await new LyricsAggregator().SearchCandidatesAsync(track);
+
+        result.IsTransientError.Should().BeFalse();
+        result.Candidates.Select(c => c.Source).Should().Contain(LyricsSources.Lrclib);
+        result.Candidates.Select(c => c.Source).Should().Contain(LyricsSources.Musixmatch);
+        result
+            .Candidates.Count(c => c.Source == LyricsSources.Lrclib)
+            .Should()
+            .Be(2, "the /get hit and the plain variant, not the duplicate or the wrong song");
+        result
+            .Candidates.Should()
+            .NotContain(c => c.Candidate.Lines.Any(line => line.Text == "wrong"));
     }
 
     [Fact]

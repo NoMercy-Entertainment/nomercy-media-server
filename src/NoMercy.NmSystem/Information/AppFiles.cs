@@ -141,6 +141,13 @@ public static class AppFiles
     // libbluray jars — the build output puts everything ffmpeg-runtime there.
     public static string WhisperModelPath => Path.Combine(FfmpegFolder, WhisperModel + ".bin");
 
+    // The silero VAD model whisper uses to skip silence. Shipped in the
+    // nomercy-whisper-models release beside the whisper models, so it lands
+    // beside ffmpeg the same way and a bare file name resolves there.
+    public static string VadModel { get; set; } = "ggml-silero-v5.1.2";
+
+    public static string VadModelPath => Path.Combine(FfmpegFolder, VadModel + ".bin");
+
     public static string StemsplitModel { get; set; } = "spleeter-2stems-f16";
 
     // The model ships beside ffmpeg (like the whisper model above) so a relative

@@ -22,4 +22,12 @@ public static class PluginTopics
     /// payload deserialises as <see cref="PluginMusicAnalysisCompleted" />.
     /// </summary>
     public const string MusicAnalysisCompleted = "music.analysis.completed";
+
+    /// <summary>
+    /// Published when a track's lyrics were asked for and the server had
+    /// none, or only text without timing: the cue for a plugin that can
+    /// generate timing. At most once per track per day. The payload
+    /// deserialises as <see cref="PluginLyricsRequested" />. Added in ABI 12.6.
+    /// </summary>
+    public const string LyricsRequested = "music.lyrics.requested";
 }

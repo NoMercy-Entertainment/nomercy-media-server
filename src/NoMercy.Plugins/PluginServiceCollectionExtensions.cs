@@ -638,6 +638,7 @@ public static class PluginServiceCollectionExtensions
             audioToolsFactory: sp.GetService<IPluginAudioToolsFactory>(),
             derivedAudio: sp.GetService<IPluginDerivedAudio>(),
             analysisWriterFactory: sp.GetService<IPluginMusicAnalysisWriterFactory>(),
+            lyricsFactory: sp.GetService<IPluginLyricsFactory>(),
             // Lazily, like the cron registrar below: the media factory asks
             // what a plugin declared, that answer comes from the manager, and
             // the manager is built with this context factory. Resolving it

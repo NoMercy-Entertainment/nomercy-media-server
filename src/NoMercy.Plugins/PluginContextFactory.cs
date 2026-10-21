@@ -47,6 +47,7 @@ public class PluginContextFactory(
     IPluginDerivedAudio? derivedAudio = null,
     IPluginMusicAnalysisWriterFactory? analysisWriterFactory = null,
     Func<IPluginMediaFactory?>? mediaFactory = null,
+    IPluginLyricsFactory? lyricsFactory = null,
     IPluginLibraryScanner? libraryScanner = null,
     string? pluginsRoot = null,
     IPluginFolderCatalog? folderCatalog = null,
@@ -96,7 +97,7 @@ public class PluginContextFactory(
         // pair above.
         IPluginAudioTools? audioToolsFacade = null;
         if (PluginCapabilityGuard.DeclaresHook(capabilities, PluginHookCapability.AudioTools))
-            audioToolsFacade = audioToolsFactory?.CreateFor(pluginId);
+            audioToolsFacade = audioToolsFactory?.CreateFor(pluginId, dataFolderPath);
 
         IPluginDerivedAudio? derivedAudioFacade = null;
         if (PluginCapabilityGuard.DeclaresHook(capabilities, PluginHookCapability.DerivedAudio))
@@ -110,6 +111,10 @@ public class PluginContextFactory(
             )
         )
             analysisWriter = analysisWriterFactory?.CreateFor(pluginId);
+
+        IPluginLyrics? lyrics = null;
+        if (PluginCapabilityGuard.DeclaresHook(capabilities, PluginHookCapability.LyricsWrite))
+            lyrics = lyricsFactory?.CreateFor(pluginId);
 
         return new PluginContext(
             pluginId,
@@ -145,7 +150,8 @@ public class PluginContextFactory(
             Net(pluginId),
             Spawning(pluginId),
             NativeCode(pluginId, dataFolderPath),
-            Browser(pluginId, capabilities)
+            Browser(pluginId, capabilities),
+            lyrics
         );
     }
 

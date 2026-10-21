@@ -79,6 +79,15 @@ public static class PluginHookCapability
     public const string MusicAnalysisWrite = "musicAnalysisWrite";
 
     /// <summary>
+    /// Writing generated lyric timings through <see cref="IPluginLyrics" />.
+    /// <para>
+    /// Elevated: what lands there is what every client shows under the
+    /// player, and the host's own provider lyrics are what it may replace.
+    /// </para>
+    /// </summary>
+    public const string LyricsWrite = "lyricsWrite";
+
+    /// <summary>
     /// The hooks a plugin may run without the owner being asked first.
     /// <para>
     /// The one definition. It used to be written out separately in the consent
@@ -122,5 +131,6 @@ public static class PluginHookCapability
             AudioTools,
             DerivedAudio,
             MusicAnalysisWrite,
+            LyricsWrite,
         };
 }

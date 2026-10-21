@@ -27,6 +27,7 @@ public static class MusicHubServiceExtensions
         services.AddSingleton<MusicPlaybackCommandHandler>();
         // Single-flight lyric fetch coalescing across concurrent device requests.
         services.AddSingleton<LyricsResolver>();
+        services.AddSingleton<LyricsRequestedNotifier>();
         services.AddSingleton<CastPanelWakeLauncher>();
 
         // Scoped - one instance per request

@@ -140,6 +140,16 @@ public interface IPluginContext
     IPluginMusicAnalysisWriter? MusicAnalysisWriter => null;
 
     /// <summary>
+    /// Reading a track's lyrics state and writing generated timings.
+    /// <para>
+    /// Present only when the plugin declared
+    /// <see cref="PluginHookCapability.LyricsWrite" />; null otherwise, so the
+    /// absence is checkable rather than a call that throws. Added in ABI 12.6.
+    /// </para>
+    /// </summary>
+    IPluginLyrics? Lyrics => null;
+
+    /// <summary>
     /// Sockets, discovery and port mapping, as far as the owner granted them.
     /// <para>
     /// Non-nullable, unlike the members above it. A null facade taught a

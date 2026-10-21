@@ -54,4 +54,40 @@ public class LyricTimelineTests
         time.Seconds.Should().Be(0);
         time.Hundredths.Should().Be(0);
     }
+
+    [Fact]
+    public void ShiftBy_ShiftsTheWordsWithTheLine_AndClampsThemAtZero()
+    {
+        Lyric line = Line(1.0);
+        line.Words =
+        [
+            new()
+            {
+                Text = "a",
+                Start = 1.0,
+                End = 1.4,
+            },
+            new()
+            {
+                Text = "b",
+                Start = 1.5,
+                End = 2.0,
+            },
+        ];
+
+        Lyric shifted = LyricTimeline.ShiftBy([line], -1200)[0];
+
+        shifted.Words.Should().HaveCount(2);
+        shifted.Words![0].Start.Should().Be(0, "a word pushed before the start is clamped");
+        shifted.Words[0].End.Should().BeApproximately(0.2, 0.0001);
+        shifted.Words[1].Start.Should().BeApproximately(0.3, 0.0001);
+        shifted.Words[1].End.Should().BeApproximately(0.8, 0.0001);
+        line.Words[0].Start.Should().Be(1.0, "ShiftBy never mutates its input");
+    }
+
+    [Fact]
+    public void ShiftBy_LeavesWordsNull_WhenTheLineHasNone()
+    {
+        LyricTimeline.ShiftBy([Line(1.0)], 500)[0].Words.Should().BeNull();
+    }
 }

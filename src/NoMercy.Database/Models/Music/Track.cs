@@ -61,6 +61,28 @@ public class Track : ColorPaletteTimeStamps
     [JsonProperty("lyrics_offset")]
     public int? LyricsOffset { get; set; }
 
+    /// <summary>
+    /// Where the lyric text came from: a <see cref="LyricsSources" /> value.
+    /// Null on rows written before provenance was recorded.
+    /// </summary>
+    [JsonProperty("lyrics_source")]
+    public string? LyricsSource { get; set; }
+
+    /// <summary>
+    /// Where the line timing came from: a <see cref="LyricsTimings" /> value.
+    /// Null on rows written before provenance was recorded.
+    /// </summary>
+    [JsonProperty("lyrics_timing")]
+    public string? LyricsTiming { get; set; }
+
+    /// <summary>
+    /// Bumped by every write to the lyrics: a provider fetch, the offset, a
+    /// plugin. A writer that read version N and finds N+1 knows someone else
+    /// wrote in between.
+    /// </summary>
+    [JsonProperty("lyrics_version")]
+    public long LyricsVersion { get; set; }
+
     [Column("Lyrics")]
     [System.Text.Json.Serialization.JsonIgnore]
     // ReSharper disable once InconsistentNaming

@@ -103,12 +103,25 @@ public class RecordingRepository(MediaContext context) : IRecordingRepository
             .RunAsync();
     }
 
-    public async Task<int> UpdateTrackLyricsAsync(Track track, string serializeObject)
+    public async Task<int> UpdateTrackLyricsAsync(
+        Track track,
+        string serializeObject,
+        string? source,
+        string? timing
+    )
     {
         return await context
             .Upsert(track)
             .On(v => new { v.Id })
-            .WhenMatched(v => new() { _lyrics = serializeObject })
+            .WhenMatched(v =>
+                new()
+                {
+                    _lyrics = serializeObject,
+                    LyricsSource = source,
+                    LyricsTiming = timing,
+                    LyricsVersion = v.LyricsVersion + 1,
+                }
+            )
             .RunAsync();
     }
 }

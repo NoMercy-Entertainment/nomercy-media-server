@@ -65,7 +65,7 @@ public class PluginAudioToolsFactoryTests
 
         IPluginAudioToolsFactory factory = provider.GetRequiredService<IPluginAudioToolsFactory>();
 
-        IPluginAudioTools tools = factory.CreateFor(Ulid.NewUlid());
+        IPluginAudioTools tools = factory.CreateFor(Ulid.NewUlid(), "data");
 
         tools.Should().NotBeNull();
     }
@@ -83,9 +83,9 @@ public class PluginAudioToolsFactoryTests
         IPluginAudioToolsFactory factory = provider.GetRequiredService<IPluginAudioToolsFactory>();
         Ulid pluginId = Ulid.NewUlid();
 
-        IPluginAudioTools first = factory.CreateFor(pluginId);
-        IPluginAudioTools second = factory.CreateFor(pluginId);
-        IPluginAudioTools other = factory.CreateFor(Ulid.NewUlid());
+        IPluginAudioTools first = factory.CreateFor(pluginId, "data");
+        IPluginAudioTools second = factory.CreateFor(pluginId, "data");
+        IPluginAudioTools other = factory.CreateFor(Ulid.NewUlid(), "data");
 
         second.Should().BeSameAs(first);
         other.Should().NotBeSameAs(first);

@@ -34,16 +34,19 @@ public class TracksController : BaseController
     private readonly IMusicRepository _musicRepository;
     private readonly IEventBus _eventBus;
     private readonly LyricsResolver _lyricsResolver;
+    private readonly LyricsRequestedNotifier _lyricsRequested;
 
     public TracksController(
         IMusicRepository musicService,
         IEventBus eventBus,
-        LyricsResolver lyricsResolver
+        LyricsResolver lyricsResolver,
+        LyricsRequestedNotifier lyricsRequested
     )
     {
         _musicRepository = musicService;
         _eventBus = eventBus;
         _lyricsResolver = lyricsResolver;
+        _lyricsRequested = lyricsRequested;
     }
 
     [HttpGet]
@@ -164,6 +167,14 @@ public class TracksController : BaseController
         );
     }
 
+    /// <summary>
+    /// The lyrics of a track. Every line time is final: the track offset is
+    /// already applied, here and in every track DTO that embeds lyrics, so a
+    /// client never shifts the times again. <c>offset</c> is informational, for
+    /// the adjustment UI. <c>source</c> says where the text came from and drives
+    /// attribution; <c>timing</c> says where the line timing came from. Both are
+    /// null for lyrics stored before provenance was recorded.
+    /// </summary>
     [HttpGet]
     [Route("{id:guid}/lyrics")]
     public async Task<IActionResult> Lyrics(Guid id)
@@ -178,30 +189,26 @@ public class TracksController : BaseController
         // rather than re-querying the rate-limited providers.
         if (track.Lyrics is { Length: > 0 })
             return Ok(
-                new LyricsResponseDto
-                {
-                    Data = LyricTimeline.ShiftBy(track.Lyrics, track.LyricsOffset),
-                    Offset = track.LyricsOffset,
-                }
+                await Served(track, new(track.Lyrics, track.LyricsSource, track.LyricsTiming))
             );
         if (track.Lyrics is not null)
+        {
+            await _lyricsRequested.NotifyAsync(id);
             return NotFoundResponse("Subtitle not found");
+        }
 
         try
         {
             // Coalesced: concurrent requests from multiple devices for this
             // track share a single provider fetch instead of each hitting the
             // rate-limited Lrclib/Musixmatch queues.
-            Lyric[]? lyrics = await _lyricsResolver.ResolveAsync(id);
+            ResolvedLyrics? lyrics = await _lyricsResolver.ResolveAsync(id);
             if (lyrics is null)
+            {
+                await _lyricsRequested.NotifyAsync(id);
                 return NotFoundResponse("Subtitle not found");
-            return Ok(
-                new LyricsResponseDto
-                {
-                    Data = LyricTimeline.ShiftBy(lyrics, track.LyricsOffset),
-                    Offset = track.LyricsOffset,
-                }
-            );
+            }
+            return Ok(await Served(track, lyrics));
         }
         catch (Exception e)
         {
@@ -209,6 +216,33 @@ public class TracksController : BaseController
         }
     }
 
+    // Pure: ShiftBy returns a new array and never mutates the input. The
+    // coalescing LyricsResolver hands the same Lyric[] instance to every
+    // concurrent caller, so in-place mutation here would double-apply the
+    // offset per extra device.
+    // Text without timing is the other cue for a plugin that generates it;
+    // the topic is throttled per track by the notifier.
+    private async Task<LyricsResponseDto> Served(Track track, ResolvedLyrics lyrics)
+    {
+        if (!lyrics.Lines.Any(line => line.Time.Total > 0))
+            await _lyricsRequested.NotifyAsync(track.Id);
+        return LyricsResponse(track, lyrics);
+    }
+
+    private static LyricsResponseDto LyricsResponse(Track track, ResolvedLyrics lyrics) =>
+        new()
+        {
+            Data = LyricTimeline.ShiftBy(lyrics.Lines, track.LyricsOffset),
+            Offset = track.LyricsOffset,
+            Source = lyrics.Source,
+            Timing = lyrics.Timing,
+        };
+
+    /// <summary>
+    /// Sets or clears the lyrics offset of a track, in milliseconds (-30000 to
+    /// 30000). The next <c>GET /lyrics</c> and every track DTO that embeds
+    /// lyrics return the line times with the new offset applied.
+    /// </summary>
     [HttpPatch]
     [Route("{id:guid}/lyrics-offset")]
     public async Task<IActionResult> LyricsOffset(Guid id, [FromBody] PatchLyricsOffsetDto request)
@@ -235,9 +269,6 @@ public class TracksController : BaseController
         );
     }
 
-    // Pure: returns a new array and never mutates the input. The coalescing
-    // LyricsResolver hands the same Lyric[] instance to every concurrent caller,
-    // so in-place mutation here would double-apply the offset per extra device.
     [HttpPost]
     [Route("{id:guid}/playback")]
     public async Task<IActionResult> Playback(Guid id)

@@ -26,7 +26,7 @@ namespace NoMercy.Data.Services.Music;
 /// </summary>
 public class LyricsResolver(IServiceScopeFactory scopeFactory, ILyricsAggregator lyricsAggregator)
 {
-    private readonly ConcurrentDictionary<Guid, Lazy<Task<Lyric[]?>>> _inFlight = new();
+    private readonly ConcurrentDictionary<Guid, Lazy<Task<ResolvedLyrics?>>> _inFlight = new();
 
     // A provider hiccup (timeout / rate limit / unexpected error) is not a
     // confirmed "no lyrics" and must not be cached as one -- but replaying the
@@ -51,17 +51,17 @@ public class LyricsResolver(IServiceScopeFactory scopeFactory, ILyricsAggregator
     }
 
     /// <summary>
-    /// Returns the track's lyrics, fetching + persisting them once even when
-    /// called concurrently for the same track. Returns null when no lyrics
-    /// could be resolved (including while a prior transient failure is still
-    /// within its backoff window).
+    /// Returns the track's lyrics with their provenance, fetching + persisting
+    /// them once even when called concurrently for the same track. Returns null
+    /// when no lyrics could be resolved (including while a prior transient
+    /// failure is still within its backoff window).
     /// </summary>
-    public Task<Lyric[]?> ResolveAsync(Guid trackId)
+    public Task<ResolvedLyrics?> ResolveAsync(Guid trackId)
     {
         if (_transientBackoffUntil.TryGetValue(trackId, out DateTime until))
         {
             if (DateTime.UtcNow < until)
-                return Task.FromResult<Lyric[]?>(null);
+                return Task.FromResult<ResolvedLyrics?>(null);
             _transientBackoffUntil.TryRemove(trackId, out _);
         }
 
@@ -69,7 +69,7 @@ public class LyricsResolver(IServiceScopeFactory scopeFactory, ILyricsAggregator
         return _inFlight.GetOrAdd(trackId, _ => new(() => FetchAndPersistAsync(trackId))).Value;
     }
 
-    private async Task<Lyric[]?> FetchAndPersistAsync(Guid trackId)
+    private async Task<ResolvedLyrics?> FetchAndPersistAsync(Guid trackId)
     {
         try
         {
@@ -90,7 +90,7 @@ public class LyricsResolver(IServiceScopeFactory scopeFactory, ILyricsAggregator
             // negative marker persisted below: the track has been checked and
             // has no lyrics, so don't re-query the rate-limited providers.
             if (track.Lyrics is { Length: > 0 })
-                return track.Lyrics;
+                return new(track.Lyrics, track.LyricsSource, track.LyricsTiming);
             if (track.Lyrics is not null)
                 return null;
 
@@ -110,14 +110,22 @@ public class LyricsResolver(IServiceScopeFactory scopeFactory, ILyricsAggregator
                 // play of this track doesn't re-hit Lrclib/Musixmatch and trip
                 // their rate limits. A library rescan still overwrites this if
                 // lyrics appear for the track later.
-                await repository.UpdateTrackLyricsAsync(track, "[]");
+                await repository.UpdateTrackLyricsAsync(track, "[]", null, null);
                 return null;
             }
 
-            return await repository.UpdateTrackLyricsAsync(
+            // The text's source is kept apart from where the timing came from:
+            // plain provider text has no timing, and timing generated later
+            // still credits the text to its provider.
+            string timing = result.Synced ? LyricsTimings.Provider : LyricsTimings.None;
+            Lyric[]? persisted = await repository.UpdateTrackLyricsAsync(
                 track,
-                JsonConvert.SerializeObject(result.Lines)
+                JsonConvert.SerializeObject(result.Lines),
+                result.Source,
+                timing
             );
+
+            return persisted is null ? null : new(persisted, result.Source, timing);
         }
         finally
         {

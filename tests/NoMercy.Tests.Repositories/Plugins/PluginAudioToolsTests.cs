@@ -330,7 +330,11 @@ public class PluginAudioToolsTests : IDisposable
             );
     }
 
-    private static CapabilityReport Report(bool stemsplitModelPresent) =>
+    private static CapabilityReport Report(
+        bool stemsplitModelPresent,
+        bool whisperModelPresent = true,
+        bool vadModelPresent = true
+    ) =>
         new(
             BluRayProtocol: true,
             DvdReadProtocol: true,
@@ -338,11 +342,12 @@ public class PluginAudioToolsTests : IDisposable
             MissingFilters: [],
             MissingMuxers: [],
             FpcalcPresent: true,
-            WhisperModelPresent: true,
+            WhisperModelPresent: whisperModelPresent,
             StemsplitModelPresent: stemsplitModelPresent,
             TesseractEngTraineddataPresent: true,
             TesseractModelsDirectory: null,
-            Issues: []
+            Issues: [],
+            VadModelPresent: vadModelPresent
         );
 
     private PluginAudioTools CreateTools(
@@ -365,7 +370,8 @@ public class PluginAudioToolsTests : IDisposable
             _store.Object,
             _writerFactory.Object,
             contextFactory.Object,
-            _probe.Object
+            _probe.Object,
+            dataFolderPath: Path.Combine(Path.GetTempPath(), "nm-plugin-data")
         )
         {
             RunTimeout = runTimeout ?? TimeSpan.FromMinutes(10),
@@ -604,6 +610,97 @@ public class PluginAudioToolsTests : IDisposable
 
         result.Refusal.Should().Be("the stemsplit model is not installed");
         _runCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task RunFilterGraph_RefusesWhenTheWhisperModelIsAbsent()
+    {
+        _probe
+            .Setup(probe => probe.GetCachedReport())
+            .Returns(Report(stemsplitModelPresent: true, whisperModelPresent: false));
+
+        PluginAudioRunResult result = await CreateTools()
+            .RunFilterGraphAsync(
+                PluginAudioInput.Track(_trackId.ToString()),
+                new PluginFilterGraph("whisper=model={whisperModel}:destination=-", Complex: false),
+                null,
+                null
+            );
+
+        result.Refusal.Should().Be("the whisper model is not installed");
+        _runCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task RunFilterGraph_RefusesWhenTheVadModelIsAbsent()
+    {
+        _probe
+            .Setup(probe => probe.GetCachedReport())
+            .Returns(Report(stemsplitModelPresent: true, vadModelPresent: false));
+
+        PluginAudioRunResult result = await CreateTools()
+            .RunFilterGraphAsync(
+                PluginAudioInput.Track(_trackId.ToString()),
+                new PluginFilterGraph("whisper=model={whisperModel}:vad_model={vadModel}", false),
+                null,
+                null,
+                new PluginAudioRunOptions(TimeSpan.FromMinutes(30))
+            );
+
+        result.Refusal.Should().Be("the VAD model is not installed");
+        _runCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task RunFilterGraph_WithOptions_ReplacesTheModelTokensAndRuns()
+    {
+        await CreateTools()
+            .RunFilterGraphAsync(
+                PluginAudioInput.Track(_trackId.ToString()),
+                new PluginFilterGraph("whisper=model={whisperModel}:vad_model={vadModel}", false),
+                null,
+                null,
+                new PluginAudioRunOptions(TimeSpan.FromMinutes(30))
+            );
+
+        ArgumentAfter("-af")
+            .Should()
+            .Be($"whisper=model={AppFiles.WhisperModel}.bin:vad_model={AppFiles.VadModel}.bin");
+        _runCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task RunFilterGraph_RefusesAPluginFileOutsideTheDataFolder()
+    {
+        PluginAudioRunResult result = await CreateTools()
+            .RunFilterGraphAsync(
+                PluginAudioInput.Track(_trackId.ToString()),
+                new PluginFilterGraph("whisper=prompt_file={pluginFile:../secret.txt}", false),
+                null,
+                null
+            );
+
+        result.Refusal.Should().Contain("leaves the plugin's data folder");
+        _runCount.Should().Be(0);
+    }
+
+    [Theory]
+    [InlineData(null, 10)]
+    [InlineData(0, 10)]
+    [InlineData(30, 30)]
+    [InlineData(90, 60)]
+    public void EffectiveTimeout_IsTheDefault_TheRequest_OrTheMaximum(
+        int? requestedMinutes,
+        int expectedMinutes
+    )
+    {
+        PluginAudioRunOptions? options = requestedMinutes is { } minutes
+            ? new(TimeSpan.FromMinutes(minutes))
+            : null;
+
+        TimeSpan effective = PluginAudioTools.EffectiveTimeout(options, TimeSpan.FromMinutes(10));
+
+        effective.Should().Be(TimeSpan.FromMinutes(expectedMinutes));
     }
 
     [Fact]

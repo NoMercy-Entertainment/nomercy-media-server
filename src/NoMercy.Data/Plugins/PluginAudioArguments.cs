@@ -23,19 +23,13 @@ namespace NoMercy.Data.Plugins;
 /// </summary>
 internal static class PluginAudioArguments
 {
-    /// <summary>What a plugin writes in its filter text where the model file's name belongs.</summary>
-    private const string ModelToken = "{stemsModel}";
-
     /// <summary>
-    /// The model file's own name, not its path: ffmpeg runs with
+    /// The stemsplit model file's own name, not its path: ffmpeg runs with
     /// <see cref="AppFiles.FfmpegFolder" /> as its working directory, so a
-    /// bare name resolves there on every machine.
+    /// bare name resolves there on every machine. The tokens a plugin writes
+    /// in its own text are replaced by <see cref="PluginGraphTokens" />.
     /// </summary>
-    internal static string ModelFileName => AppFiles.StemsplitModel + ".gguf";
-
-    /// <summary>Substitutes the model file's name for <c>{stemsModel}</c>.</summary>
-    internal static string ApplyModelToken(string text) =>
-        text.Replace(ModelToken, ModelFileName, StringComparison.Ordinal);
+    internal static string ModelFileName => PluginGraphTokens.StemsModelFileName;
 
     /// <summary>
     /// One filter chain over one input, decoded and thrown away: the plugin
