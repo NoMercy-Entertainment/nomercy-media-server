@@ -47,6 +47,9 @@ public sealed class VideoFileAudioTrackBackfill(
             {
                 pending = await context
                     .VideoFiles.AsNoTracking()
+                    // Only an HLS master lists renditions. Any other file (a direct-play .mp4 or .mkv)
+                    // is the whole video, and reading it as text loads gigabytes into memory.
+                    .Where(file => EF.Functions.Like(file.Filename, "%.m3u8"))
                     .Where(file =>
                         !context.VideoFileAudioTracks.Any(track => track.VideoFileId == file.Id)
                     )

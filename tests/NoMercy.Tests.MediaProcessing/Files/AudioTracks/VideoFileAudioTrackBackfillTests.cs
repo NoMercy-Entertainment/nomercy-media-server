@@ -260,4 +260,42 @@ public sealed class VideoFileAudioTrackBackfillTests : IDisposable
 
         (await _backfill.RunAsync()).Should().Be(0);
     }
+
+    // A direct-play file is the whole video. Reading it as playlist text loaded gigabytes per
+    // file into memory on every scan (2026-10-21: the dev server reached 14.6 GB and crashed).
+    [Fact]
+    public async Task RunAsync_FileThatIsNotAnHlsMaster_IsNeverReadAsAPlaylist()
+    {
+        string folder = WriteRelease("Example.Four");
+        // Same bytes as a master, so a read would show up as stored tracks.
+        File.Copy(
+            Path.Combine(folder, "Example.Four.m3u8"),
+            Path.Combine(folder, "Example.Four.mp4")
+        );
+        VideoFile direct = new()
+        {
+            Filename = "/Example.Four.mp4",
+            HostFolder = folder,
+            Share = _folderId.ToString(),
+        };
+        using (MediaContext context = new(_options))
+        {
+            context.VideoFiles.Add(direct);
+            context.SaveChanges();
+        }
+
+        int filled = await _backfill.RunAsync();
+
+        filled.Should().Be(0);
+        TracksOf(direct.Id).Should().BeEmpty();
+        _analyzer.Verify(
+            analyzer =>
+                analyzer.AnalyzeAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<IStorage>(),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Never
+        );
+    }
 }
