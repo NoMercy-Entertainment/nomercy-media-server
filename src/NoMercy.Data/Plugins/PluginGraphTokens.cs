@@ -93,10 +93,13 @@ internal static partial class PluginGraphTokens
         if (string.IsNullOrWhiteSpace(relativePath))
             return new(string.Empty, "a plugin file token names no file");
 
+        // Checked the same way on every platform: a Windows drive letter is
+        // not rooted to a Linux host, but it is still not a relative path.
         if (
             Path.IsPathRooted(relativePath)
             || relativePath.StartsWith('/')
             || relativePath.StartsWith('\\')
+            || HasDriveLetter(relativePath)
         )
             return new(
                 string.Empty,
@@ -131,6 +134,9 @@ internal static partial class PluginGraphTokens
     /// second into <c>:</c>. Backslashes become forward slashes first, which
     /// every platform's ffmpeg opens, so they never need escaping at all.
     /// </summary>
+    private static bool HasDriveLetter(string path) =>
+        path.Length >= 2 && char.IsAsciiLetter(path[0]) && path[1] == ':';
+
     internal static string EscapeForFilterGraph(string path) =>
         path.Replace('\\', '/').Replace(":", "\\\\:", StringComparison.Ordinal);
 
