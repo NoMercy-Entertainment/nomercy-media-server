@@ -156,10 +156,32 @@ public class HmacValidationMiddleware(
         await next(context);
     }
 
-    private bool IsProtected(string path) =>
-        hmacOptions.Value.ProtectedPrefixes.Any(prefix =>
-            path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+    private bool IsProtected(string path)
+    {
+        string routed = WithMajorVersion(path);
+        return hmacOptions.Value.ProtectedPrefixes.Any(prefix =>
+            routed.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
         );
+    }
+
+    // The router reads v1, v1.0 and v01 as one API version; the prefix list names only v1.
+    internal static string WithMajorVersion(string path)
+    {
+        const string api = "/api/v";
+        if (!path.StartsWith(api, StringComparison.OrdinalIgnoreCase))
+            return path;
+
+        int end = path.IndexOf('/', api.Length);
+        string version = end < 0 ? path[api.Length..] : path[api.Length..end];
+        int digits = 0;
+        while (digits < version.Length && char.IsAsciiDigit(version[digits]))
+            digits++;
+
+        if (digits == 0 || !int.TryParse(version[..digits], out int major))
+            return path;
+
+        return $"{api}{major}{(end < 0 ? string.Empty : path[end..])}";
+    }
 
     private static bool IsExempt(string path) =>
         ExemptSuffixes.Any(suffix => path.EndsWith(suffix, StringComparison.OrdinalIgnoreCase));

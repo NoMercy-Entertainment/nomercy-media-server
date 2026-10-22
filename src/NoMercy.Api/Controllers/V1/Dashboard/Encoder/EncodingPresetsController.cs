@@ -19,6 +19,7 @@ using NoMercy.Database.Models.Media;
 using NoMercy.Encoder.Errors;
 using NoMercy.Encoder.Profiles;
 using NoMercy.NmSystem.Networking;
+using NoMercy.Providers.Helpers;
 
 namespace NoMercy.Api.Controllers.V1.Dashboard.Encoder;
 
@@ -342,7 +343,7 @@ public class EncodingPresetsController(
         PresetExport? export;
         try
         {
-            HttpClient client = httpClientFactory.CreateClient("preset-import");
+            HttpClient client = httpClientFactory.CreateClient(HttpClientNames.PresetImport);
             client.Timeout = TimeSpan.FromSeconds(15);
             string body = await client.GetStringAsync(parsed, ct);
             export = JsonConvert.DeserializeObject<PresetExport>(body);

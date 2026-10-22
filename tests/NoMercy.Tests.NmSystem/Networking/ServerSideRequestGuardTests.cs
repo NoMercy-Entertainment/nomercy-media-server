@@ -133,12 +133,47 @@ public class ServerSideRequestGuardTests
     [Fact]
     public async Task IsSafePublicHttpUrlAsync_WithPort_Accepted()
     {
-        Assert.True(await ServerSideRequestGuard.IsSafePublicHttpUrlAsync("https://1.1.1.1:443/path"));
+        Assert.True(
+            await ServerSideRequestGuard.IsSafePublicHttpUrlAsync("https://1.1.1.1:443/path")
+        );
     }
 
     [Fact]
     public void IsPubliclyRoutable_PublicIpv6_Accepted()
     {
-        Assert.True(ServerSideRequestGuard.IsPubliclyRoutable(IPAddress.Parse("2001:4860:4860::8888")));
+        Assert.True(
+            ServerSideRequestGuard.IsPubliclyRoutable(IPAddress.Parse("2001:4860:4860::8888"))
+        );
+    }
+
+    // The URL check runs once, on the first URL. A redirect or a second DNS answer
+    // reaches the network only through the connect step, so that is where it is refused.
+    [Fact]
+    public async Task PublicOnlyHandler_RefusesToConnectToLoopback_EvenWithAListenerThere()
+    {
+        using System.Net.Sockets.TcpListener listener = new(IPAddress.Loopback, 0);
+        listener.Start();
+        int port = ((IPEndPoint)listener.LocalEndpoint).Port;
+
+        using HttpClient client = new(ServerSideRequestGuard.CreatePublicOnlyHandler());
+        client.Timeout = TimeSpan.FromSeconds(5);
+
+        HttpRequestException refused = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            client.GetAsync($"http://127.0.0.1:{port}/manage/status")
+        );
+        Assert.Contains("not publicly routable", refused.ToString(), StringComparison.Ordinal);
+        Assert.False(listener.Pending());
+    }
+
+    [Fact]
+    public async Task PublicOnlyHandler_RefusesAHostNameThatResolvesToLoopback()
+    {
+        using HttpClient client = new(ServerSideRequestGuard.CreatePublicOnlyHandler());
+        client.Timeout = TimeSpan.FromSeconds(5);
+
+        HttpRequestException refused = await Assert.ThrowsAsync<HttpRequestException>(() =>
+            client.GetAsync("http://localhost:9/")
+        );
+        Assert.Contains("not publicly routable", refused.ToString(), StringComparison.Ordinal);
     }
 }

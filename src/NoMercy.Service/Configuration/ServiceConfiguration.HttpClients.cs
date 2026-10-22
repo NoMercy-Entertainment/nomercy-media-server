@@ -11,6 +11,7 @@
 
 using NoMercy.NmSystem.Configuration;
 using NoMercy.NmSystem.Information;
+using NoMercy.NmSystem.Networking;
 using NoMercy.Providers.Helpers;
 
 namespace NoMercy.Service.Configuration;
@@ -116,17 +117,25 @@ public static partial class ServiceConfiguration
             }
         );
 
-        services.AddHttpClient(
-            HttpClientNames.OpenSubtitlesDownload,
-            client =>
-            {
-                client.DefaultRequestHeaders.Add(
-                    "User-Agent",
-                    ExternalServicesConfig.Current.OpenSubtitlesUserAgent
-                );
-                client.Timeout = defaultTimeout;
-            }
-        );
+        // Both fetch a URL the caller supplied: every connection, redirects included,
+        // must go to a public host (ServerSideRequestGuard).
+        services
+            .AddHttpClient(
+                HttpClientNames.OpenSubtitlesDownload,
+                client =>
+                {
+                    client.DefaultRequestHeaders.Add(
+                        "User-Agent",
+                        ExternalServicesConfig.Current.OpenSubtitlesUserAgent
+                    );
+                    client.Timeout = defaultTimeout;
+                }
+            )
+            .ConfigurePrimaryHttpMessageHandler(ServerSideRequestGuard.CreatePublicOnlyHandler);
+
+        services
+            .AddHttpClient(HttpClientNames.PresetImport)
+            .ConfigurePrimaryHttpMessageHandler(ServerSideRequestGuard.CreatePublicOnlyHandler);
 
         services.AddHttpClient(
             HttpClientNames.FanArt,

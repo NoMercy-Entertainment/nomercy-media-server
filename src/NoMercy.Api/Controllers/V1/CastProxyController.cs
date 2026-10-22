@@ -9,13 +9,18 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Net;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using NoMercy.Authorization;
 using NoMercy.Data.Repositories;
 using NoMercy.Database.Models.Users;
+using NoMercy.Networking.Http;
 
 namespace NoMercy.Api.Controllers.V1;
 
@@ -55,6 +60,76 @@ public class CastProxyController(
         string.IsNullOrWhiteSpace(tv.LanIp)
             ? (null, TvControlPort)
             : (tv.LanIp, tv.LanPort ?? TvControlPort);
+
+    // The LAN address comes from mDNS. Pointed at this machine, the proxy would reach the
+    // loopback-only management API on behalf of any user.
+    internal static bool IsDialableLanTarget(
+        string host,
+        IReadOnlyCollection<IPAddress> ownAddresses
+    )
+    {
+        if (!IPAddress.TryParse(host, out IPAddress? address))
+            return false;
+        if (address.IsIPv4MappedToIPv6)
+            address = address.MapToIPv4();
+
+        if (
+            IPAddress.IsLoopback(address)
+            || address.Equals(IPAddress.Any)
+            || address.Equals(IPAddress.IPv6Any)
+            || address.IsIPv6LinkLocal
+            || address.IsIPv6Multicast
+        )
+            return false;
+
+        if (address.AddressFamily == AddressFamily.InterNetwork)
+        {
+            byte[] octets = address.GetAddressBytes();
+            bool linkLocal = octets[0] == 169 && octets[1] == 254;
+            if (octets[0] == 0 || linkLocal || octets[0] >= 224)
+                return false;
+        }
+
+        return !ownAddresses.Any(own =>
+            (own.IsIPv4MappedToIPv6 ? own.MapToIPv4() : own).Equals(address)
+        );
+    }
+
+    private static IPAddress[] OwnAddresses() =>
+        [
+            .. NetworkInterface
+                .GetAllNetworkInterfaces()
+                .SelectMany(nic => nic.GetIPProperties().UnicastAddresses)
+                .Select(unicast => unicast.Address),
+        ];
+
+    internal static HttpRequestMessage BuildForward(HttpContext context, string targetUrl)
+    {
+        HttpRequest request = context.Request;
+        HttpRequestMessage forward = new(new HttpMethod(request.Method), targetUrl);
+
+        if (request.ContentLength is > 0)
+        {
+            StreamContent content = new(request.Body);
+            if (!string.IsNullOrEmpty(request.ContentType))
+                content.Headers.TryAddWithoutValidation("Content-Type", request.ContentType);
+            forward.Content = content;
+        }
+
+        // Forward the caller's own bearer token verbatim — the TV's /v1 accepts
+        // the same Keycloak user token the phone uses; no re-mint needed.
+        string? authorization = request.Headers.Authorization.FirstOrDefault();
+        if (!string.IsNullOrEmpty(authorization))
+            forward.Headers.TryAddWithoutValidation("Authorization", authorization);
+
+        // Marks the forward as relayed, so LocalhostOnly refuses it if it ever lands here.
+        forward.Headers.TryAddWithoutValidation(
+            "X-Forwarded-For",
+            context.ClientIp()?.ToString() ?? "unknown"
+        );
+
+        return forward;
+    }
 
     // PATCH is not optional: every selection endpoint on the TV's /v1 surface —
     // subtitle, audio, quality, playlist, volume — is a PATCH. Omitting it made
@@ -96,25 +171,21 @@ public class CastProxyController(
         // Transparent passthrough: the caller already includes the TV's API
         // version in the path (e.g. "v1/launch"), so forward it verbatim rather
         // than re-prefixing "/v1/" — doubling it (…/v1/v1/launch) 404s the TV.
-        string query = Request.QueryString.HasValue ? Request.QueryString.Value! : string.Empty;
-        string targetUrl = $"http://{host}:{port}/{path}{query}";
-        logger.LogInformation("[CastProxy] forwarding to {TargetUrl}", targetUrl);
-
-        using HttpRequestMessage forward = new(new HttpMethod(Request.Method), targetUrl);
-
-        if (Request.ContentLength is > 0)
+        if (!IsDialableLanTarget(host, OwnAddresses()))
         {
-            StreamContent content = new(Request.Body);
-            if (!string.IsNullOrEmpty(Request.ContentType))
-                content.Headers.TryAddWithoutValidation("Content-Type", Request.ContentType);
-            forward.Content = content;
+            logger.LogWarning(
+                "[CastProxy] refused TV '{Name}': {Ip} is not another device on the LAN",
+                [tv.Name, host]
+            );
+            return ServiceUnavailableResponse("Target TV has no usable LAN address");
         }
 
-        // Forward the caller's own bearer token verbatim — the TV's /v1 accepts
-        // the same Keycloak user token the phone uses; no re-mint needed.
-        string? authorization = Request.Headers.Authorization.FirstOrDefault();
-        if (!string.IsNullOrEmpty(authorization))
-            forward.Headers.TryAddWithoutValidation("Authorization", authorization);
+        string query = Request.QueryString.HasValue ? Request.QueryString.Value! : string.Empty;
+        string targetHost = host.Contains(':') ? $"[{host}]" : host;
+        string targetUrl = $"http://{targetHost}:{port}/{path}{query}";
+        logger.LogInformation("[CastProxy] forwarding to {TargetUrl}", targetUrl);
+
+        using HttpRequestMessage forward = BuildForward(HttpContext, targetUrl);
 
         HttpClient client = httpClientFactory.CreateClient();
         client.Timeout = TimeSpan.FromSeconds(10);
