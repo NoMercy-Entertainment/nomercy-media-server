@@ -148,6 +148,21 @@ public class HmacValidationMiddlewareTests
     // Tests: protected routes without headers → 401
     // -------------------------------------------------------------------------
 
+    // The router reads v1, v1.0 and V1 as the same API version, so every spelling
+    // must meet the signature check; /api/v1.0/worker/... used to skip it.
+    [Theory]
+    [InlineData("/api/v1.0/worker/execute-task")]
+    [InlineData("/api/V1/worker/execute-task")]
+    [InlineData("/api/v1.0/distribution/workers")]
+    [InlineData("/api/v1/worker/./execute-task")]
+    public async Task OtherSpellingsOfAProtectedRoute_AreCheckedToo(string path)
+    {
+        HttpClient client = BuildClient(Secret);
+        HttpResponseMessage response = await client.PostAsync(path, new StringContent("{}"));
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
     [Fact]
     public async Task DistributionRoute_NoTimestamp_Returns401()
     {

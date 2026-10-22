@@ -21,6 +21,7 @@ public static class HttpClientNames
     public const string AcoustId = "AcoustId";
     public const string OpenSubtitles = "OpenSubtitles";
     public const string OpenSubtitlesDownload = "opensubtitles-download";
+    public const string PresetImport = "preset-import";
     public const string FanArt = "FanArt";
     public const string FanArtImage = "FanArtImage";
     public const string CoverArt = "CoverArt";

@@ -68,6 +68,38 @@ public static class ServerSideRequestGuard
         return addresses.Length > 0 && addresses.All(IsPubliclyRoutable);
     }
 
+    /// <summary>For caller-supplied URLs: checks every connection, so a redirect or a second DNS answer cannot reach a private host.</summary>
+    public static SocketsHttpHandler CreatePublicOnlyHandler() =>
+        new() { ConnectCallback = ConnectPublicOnlyAsync };
+
+    private static async ValueTask<Stream> ConnectPublicOnlyAsync(
+        SocketsHttpConnectionContext context,
+        CancellationToken cancellationToken
+    )
+    {
+        string host = context.DnsEndPoint.Host;
+        IPAddress[] addresses = IPAddress.TryParse(host, out IPAddress? literal)
+            ? [literal]
+            : await Dns.GetHostAddressesAsync(host, cancellationToken);
+
+        if (addresses.Length == 0 || !addresses.All(IsPubliclyRoutable))
+            throw new HttpRequestException(
+                $"Refused to connect to {host}: it is not publicly routable."
+            );
+
+        Socket socket = new(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+        try
+        {
+            await socket.ConnectAsync(addresses, context.DnsEndPoint.Port, cancellationToken);
+            return new NetworkStream(socket, ownsSocket: true);
+        }
+        catch
+        {
+            socket.Dispose();
+            throw;
+        }
+    }
+
     /// <summary>
     /// False for loopback, private (RFC 1918), CGNAT (100.64/10), link-local
     /// (169.254/16, fe80::/10), unique-local (fc00::/7), unspecified, and

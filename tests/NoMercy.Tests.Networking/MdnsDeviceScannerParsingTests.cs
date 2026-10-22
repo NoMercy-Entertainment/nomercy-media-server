@@ -149,6 +149,53 @@ public sealed class MdnsDeviceScannerParsingTests
         Assert.Null(port);
     }
 
+    // mDNS has no authentication: any host on the LAN can answer for any fingerprint.
+    // An address is only believed when the device announces itself, so a third host
+    // cannot point another user's TV (and the bearer tokens sent to it) somewhere else.
+    [Fact]
+    public void ExtractSenderEndpoint_AddressThatIsNotTheSender_IsRefused()
+    {
+        Message msg = new();
+        msg.AdditionalRecords.Add(new SRVRecord { Port = 7627, Target = new("tv.local") });
+        msg.AdditionalRecords.Add(new ARecord { Address = IPAddress.Parse("127.0.0.1") });
+
+        (string? ip, int? port) = MdnsDeviceScanner.ExtractSenderEndpoint(
+            msg,
+            IPAddress.Parse("192.168.1.66")
+        );
+
+        Assert.Null(ip);
+        Assert.Null(port);
+    }
+
+    [Fact]
+    public void ExtractSenderEndpoint_DeviceAnnouncingItself_IsBelieved()
+    {
+        Message msg = new();
+        msg.AdditionalRecords.Add(new SRVRecord { Port = 7626, Target = new("tv.local") });
+        msg.AdditionalRecords.Add(new ARecord { Address = IPAddress.Parse("192.168.1.42") });
+
+        (string? ip, int? port) = MdnsDeviceScanner.ExtractSenderEndpoint(
+            msg,
+            IPAddress.Parse("::ffff:192.168.1.42")
+        );
+
+        Assert.Equal("192.168.1.42", ip);
+        Assert.Equal(7626, port);
+    }
+
+    [Fact]
+    public void ExtractSenderEndpoint_UnknownSender_IsRefused()
+    {
+        Message msg = new();
+        msg.AdditionalRecords.Add(new SRVRecord { Port = 7626, Target = new("tv.local") });
+        msg.AdditionalRecords.Add(new ARecord { Address = IPAddress.Parse("192.168.1.42") });
+
+        (string? ip, _) = MdnsDeviceScanner.ExtractSenderEndpoint(msg, null);
+
+        Assert.Null(ip);
+    }
+
     // -- Lifecycle: Start()/Dispose() idempotency and disposal safety. The
     // real multicast join and mDNS wire receive (OnInstanceDiscovered firing
     // from an actual network packet, and the DB upsert it triggers) require a

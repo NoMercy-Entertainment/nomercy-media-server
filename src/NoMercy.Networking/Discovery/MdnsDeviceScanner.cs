@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Net;
 using Makaretu.Dns;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -74,7 +75,7 @@ public sealed class MdnsDeviceScanner : IDisposable
             if (string.IsNullOrEmpty(fingerprint))
                 return;
 
-            (string? ip, int? port) = ExtractEndpoint(e.Message);
+            (string? ip, int? port) = ExtractSenderEndpoint(e.Message, e.RemoteEndPoint?.Address);
             if (ip is null)
                 return;
 
@@ -124,6 +125,17 @@ public sealed class MdnsDeviceScanner : IDisposable
         }
 
         return null;
+    }
+
+    // mDNS is unauthenticated: an address is only believed from the device announcing itself.
+    internal static (string?, int?) ExtractSenderEndpoint(Message msg, IPAddress? sender)
+    {
+        (string? ip, int? port) = ExtractEndpoint(msg);
+        if (ip is null || sender is null || !IPAddress.TryParse(ip, out IPAddress? announced))
+            return (null, null);
+
+        IPAddress from = sender.IsIPv4MappedToIPv6 ? sender.MapToIPv4() : sender;
+        return announced.Equals(from) ? (ip, port) : (null, null);
     }
 
     internal static (string?, int?) ExtractEndpoint(Message msg)
