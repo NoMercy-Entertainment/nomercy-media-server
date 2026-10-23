@@ -31,6 +31,12 @@ public static class ManifestScan
         AllowTrailingCommas = true,
     };
 
+    // PluginCapabilityGuard matches a declared hook against these names, so a
+    // scan that refuses them blocks plugins the host would have honored.
+    private static bool IsHostHook(string hook) =>
+        PluginHookCapability.Baseline.Contains(hook)
+        || PluginHookCapability.Elevated.Contains(hook);
+
     public static IReadOnlyList<PluginRefusal> Run(string folder)
     {
         string path = Path.Combine(folder, "plugin.json");
@@ -120,7 +126,7 @@ public static class ManifestScan
             );
 
         foreach (string hook in manifest.Capabilities?.Hooks ?? [])
-            if (PluginCapabilityVocabulary.ByName(hook) is null)
+            if (PluginCapabilityVocabulary.ByName(hook) is null && !IsHostHook(hook))
                 findings.Add(
                     new PluginRefusal(
                         PluginRefusalCodes.ManifestInvalid,

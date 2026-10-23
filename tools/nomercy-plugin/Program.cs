@@ -5,6 +5,12 @@ string folder =
     args.Length > 1 && !args[1].StartsWith('-') ? args[1] : Directory.GetCurrentDirectory();
 bool asJson = args.Contains("--json");
 
+string? OptionValue(string name)
+{
+    int index = Array.IndexOf(args, name);
+    return index >= 0 && index + 1 < args.Length ? args[index + 1] : null;
+}
+
 switch (verb)
 {
     case "verify":
@@ -27,7 +33,34 @@ switch (verb)
     case "test":
         return Passthrough("test", folder);
     case "pack":
-        return Passthrough("publish", folder);
+    {
+        string? output = OptionValue("--output");
+
+        if (output is null)
+        {
+            Console.Error.WriteLine("pack needs --output <folder> for the zip and plugin.json.");
+            return 1;
+        }
+
+        try
+        {
+            await PackCommand.RunAsync(
+                new(
+                    folder,
+                    Path.GetFullPath(output),
+                    OptionValue("--feed")
+                        ?? Environment.GetEnvironmentVariable("NOMERCY_PLUGIN_FEED")
+                ),
+                Console.Out
+            );
+            return 0;
+        }
+        catch (PackException exception)
+        {
+            Console.Error.WriteLine($"pack failed: {exception.Message}");
+            return 1;
+        }
+    }
     case "new":
         return Passthrough("new nomercy-plugin", folder);
 
@@ -39,7 +72,9 @@ switch (verb)
               new       scaffold a plugin from the template
               build     build it
               test      run its tests
-              pack      publish it to a folder ready to zip
+              pack      build it offline into one zip and plugin.json:
+                        pack [folder] --output <folder> [--feed <folder>]
+                        the feed defaults to NOMERCY_PLUGIN_FEED
               verify    run the scan the marketplace runs
 
             verify exits 1 when anything is blocked, and 0 with a banner when
