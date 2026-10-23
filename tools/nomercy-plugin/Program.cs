@@ -1,8 +1,7 @@
 using NoMercy.Plugin.Cli;
 
 string verb = args.Length > 0 ? args[0] : "help";
-string folder =
-    args.Length > 1 && !args[1].StartsWith('-') ? args[1] : Directory.GetCurrentDirectory();
+string folder = CliArguments.Target(args);
 bool asJson = args.Contains("--json");
 
 string? OptionValue(string name)
