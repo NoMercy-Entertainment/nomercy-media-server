@@ -38,6 +38,10 @@ public class PluginCatalogueEntryDto
     [JsonProperty("latest_version")]
     public string? LatestVersion { get; init; }
 
+    /// <summary>False for a listing the index carries without a released version.</summary>
+    [JsonProperty("has_release")]
+    public bool HasRelease { get; init; }
+
     /// <summary>What is on this server right now, or null when nothing is.</summary>
     [JsonProperty("installed_version")]
     public string? InstalledVersion { get; init; }
