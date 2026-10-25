@@ -20,6 +20,7 @@ namespace NoMercy.PluginSdk.Browser;
 internal sealed class HiddenChrome : IAsyncDisposable
 {
     internal static readonly TimeSpan DisplayStartTimeout = TimeSpan.FromSeconds(30);
+    internal static readonly TimeSpan ChromeStartTimeout = TimeSpan.FromSeconds(60);
 
     private readonly Process _chrome;
     private readonly Process? _display;
@@ -173,7 +174,7 @@ internal sealed class HiddenChrome : IAsyncDisposable
             using CancellationTokenSource ready = CancellationTokenSource.CreateLinkedTokenSource(
                 ct
             );
-            ready.CancelAfter(TimeSpan.FromSeconds(20));
+            ready.CancelAfter(ChromeStartTimeout);
             while (portLines.Length < 2)
             {
                 ready.Token.ThrowIfCancellationRequested();

@@ -119,6 +119,12 @@ public class PluginBrowserHostTests
         HiddenChrome.DisplayStartTimeout.Should().BeGreaterThanOrEqualTo(TimeSpan.FromSeconds(30));
     }
 
+    [Fact]
+    public void ChromeHasRoomToOpenItsControlPortOnASlowOrBusyHost()
+    {
+        HiddenChrome.ChromeStartTimeout.Should().BeGreaterThanOrEqualTo(TimeSpan.FromSeconds(60));
+    }
+
     [SkippableFact]
     public async Task ARealWindowedChromeSupportsTheSolverMembersAndClosesWithItsLastPage()
     {
