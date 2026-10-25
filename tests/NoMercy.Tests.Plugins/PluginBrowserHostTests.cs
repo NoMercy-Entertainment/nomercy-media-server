@@ -113,6 +113,12 @@ public class PluginBrowserHostTests
         registry.Dispose();
     }
 
+    [Fact]
+    public void TheVirtualDisplayHasRoomToStartOnASlowOrBusyHost()
+    {
+        HiddenChrome.DisplayStartTimeout.Should().BeGreaterThanOrEqualTo(TimeSpan.FromSeconds(30));
+    }
+
     [SkippableFact]
     public async Task ARealWindowedChromeSupportsTheSolverMembersAndClosesWithItsLastPage()
     {

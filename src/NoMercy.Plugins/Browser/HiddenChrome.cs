@@ -19,6 +19,8 @@ namespace NoMercy.PluginSdk.Browser;
 /// <summary>Chrome starts only after its private Windows desktop or X display exists.</summary>
 internal sealed class HiddenChrome : IAsyncDisposable
 {
+    internal static readonly TimeSpan DisplayStartTimeout = TimeSpan.FromSeconds(30);
+
     private readonly Process _chrome;
     private readonly Process? _display;
     private readonly WindowsChromeDesktop? _desktop;
@@ -122,7 +124,7 @@ internal sealed class HiddenChrome : IAsyncDisposable
                 string? number = await display
                     .StandardOutput.ReadLineAsync(ct)
                     .AsTask()
-                    .WaitAsync(TimeSpan.FromSeconds(10), ct);
+                    .WaitAsync(DisplayStartTimeout, ct);
                 if (!int.TryParse(number, CultureInfo.InvariantCulture, out int displayNumber))
                     throw new InvalidOperationException("Xvfb did not create a display.");
                 displayName = ":" + displayNumber.ToString(CultureInfo.InvariantCulture);
