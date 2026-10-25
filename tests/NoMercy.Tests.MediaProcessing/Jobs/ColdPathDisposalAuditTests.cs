@@ -108,12 +108,16 @@ public partial class ColdPathDisposalAuditTests
         Assert.Empty(violations);
     }
 
-    [GeneratedRegex(@"Process\.Start\([""n]")]
+    [GeneratedRegex(@"Process\.Start\([""n]", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex ProcessStartStaticPattern();
 
-    [GeneratedRegex(@"_\w+\.Start\(\)")]
+    [GeneratedRegex(@"_\w+\.Start\(\)", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex InstanceStartPattern();
 
-    [GeneratedRegex(@"(?<!\w)File\.(OpenWrite|OpenRead|Create)\(")]
+    [GeneratedRegex(
+        @"(?<!\w)File\.(OpenWrite|OpenRead|Create)\(",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex FileOpenPattern();
 }

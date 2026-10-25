@@ -34,8 +34,21 @@ namespace NoMercy.Tests.MediaProcessing.Files;
 /// directly against a fixture published output folder, exactly like a
 /// real post-encode rescan would see it.
 /// </summary>
-public sealed class FileManagerMasterRebuildTests : IDisposable
+public sealed partial class FileManagerMasterRebuildTests : IDisposable
 {
+    [GeneratedRegex("#EXT-X-MEDIA:TYPE=AUDIO", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex AudioMediaEntry();
+
+    [GeneratedRegex(
+        "#EXT-X-MEDIA:TYPE=SUBTITLES",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex SubtitleMediaEntry();
+
+    [GeneratedRegex("AUDIO=\"(?<id>[^\"]+)\"", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex AudioGroupAttribute();
+
     private readonly string _tempRoot;
     private readonly Mock<IMediaAnalyzer> _mediaAnalyzer = new();
 
@@ -137,11 +150,8 @@ public sealed class FileManagerMasterRebuildTests : IDisposable
             .Sum(languageDir => Directory.GetFiles(languageDir, "*.ass").Length);
 
         streamInfLines.Count.Should().Be(videoDirsOnDisk);
-        Regex.Matches(master, "#EXT-X-MEDIA:TYPE=AUDIO").Count.Should().Be(audioDirsOnDisk);
-        Regex
-            .Matches(master, "#EXT-X-MEDIA:TYPE=SUBTITLES")
-            .Count.Should()
-            .Be(subtitleTracksOnDisk);
+        AudioMediaEntry().Matches(master).Count.Should().Be(audioDirsOnDisk);
+        SubtitleMediaEntry().Matches(master).Count.Should().Be(subtitleTracksOnDisk);
     }
 
     [Fact]
@@ -280,8 +290,8 @@ public sealed class FileManagerMasterRebuildTests : IDisposable
         File.Exists(masterPath).Should().BeTrue();
         string master = await File.ReadAllTextAsync(masterPath);
 
-        Regex
-            .Matches(master, "#EXT-X-MEDIA:TYPE=AUDIO")
+        AudioMediaEntry()
+            .Matches(master)
             .Count.Should()
             .Be(2, "both old-naming audio dirs must surface as a group, not be silently skipped");
         master.Should().Contain("LANGUAGE=\"jpn\"");
@@ -290,10 +300,7 @@ public sealed class FileManagerMasterRebuildTests : IDisposable
         string streamInfLine = master
             .Split('\n')
             .First(line => line.StartsWith("#EXT-X-STREAM-INF:", StringComparison.Ordinal));
-        System.Text.RegularExpressions.Match audioAttr = Regex.Match(
-            streamInfLine,
-            "AUDIO=\"(?<id>[^\"]+)\""
-        );
+        System.Text.RegularExpressions.Match audioAttr = AudioGroupAttribute().Match(streamInfLine);
         audioAttr
             .Success.Should()
             .BeTrue(
@@ -530,7 +537,9 @@ public sealed class FileManagerMasterRebuildTests : IDisposable
     {
         System.Text.RegularExpressions.Match match = Regex.Match(
             streamInfLine,
-            $@"{attribute}=(?<value>\d+)"
+            $@"{attribute}=(?<value>\d+)",
+            RegexOptions.None,
+            TimeSpan.FromSeconds(1)
         );
         return int.Parse(match.Groups["value"].Value);
     }

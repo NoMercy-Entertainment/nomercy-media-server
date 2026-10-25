@@ -117,11 +117,17 @@ public partial class ImageDisposalAuditTests
         Assert.Empty(violations);
     }
 
-    [GeneratedRegex(@"Image\.Load(?:Async)?[<\(]")]
+    [GeneratedRegex(
+        @"Image\.Load(?:Async)?[<\(]",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex ImageLoadPattern();
 
     [GeneratedRegex(
-        @"(?:TmdbImageClient|FanArtImageClient|CoverArtCoverArtClient|NoMercyImageClient)\.Download\s*\("
+        @"(?:TmdbImageClient|FanArtImageClient|CoverArtCoverArtClient|NoMercyImageClient)\.Download\s*\(",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
     )]
     private static partial Regex DownloadCallPattern();
 }

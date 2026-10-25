@@ -15,8 +15,15 @@ using NoMercy.Tests.Common;
 namespace NoMercy.Tests.MediaProcessing.Jobs;
 
 [Trait("Category", "Unit")]
-public sealed class ExtrasJobTimeoutAuditTests
+public sealed partial class ExtrasJobTimeoutAuditTests
 {
+    [GeneratedRegex(
+        @"await\s+\w+Manager\s*\.\s*Store\w*\s*\([^;]*?\);",
+        RegexOptions.Singleline,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex StoreCall();
+
     [Theory]
     [InlineData("MovieExtrasJob.cs", 9)]
     [InlineData("CollectionExtrasJob.cs", 1)]
@@ -31,11 +38,7 @@ public sealed class ExtrasJobTimeoutAuditTests
             jobFile
         );
         string source = File.ReadAllText(path);
-        MatchCollection calls = Regex.Matches(
-            source,
-            @"await\s+\w+Manager\s*\.\s*Store\w*\s*\([^;]*?\);",
-            RegexOptions.Singleline
-        );
+        MatchCollection calls = StoreCall().Matches(source);
 
         calls.Count.Should().Be(expectedStoreCalls);
         foreach (Match call in calls)
