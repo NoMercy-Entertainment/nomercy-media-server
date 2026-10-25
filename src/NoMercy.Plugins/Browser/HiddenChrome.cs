@@ -22,6 +22,11 @@ internal sealed class HiddenChrome : IAsyncDisposable
     internal static readonly TimeSpan DisplayStartTimeout = TimeSpan.FromSeconds(30);
     internal static readonly TimeSpan ChromeStartTimeout = TimeSpan.FromSeconds(60);
 
+    // The shell ends when Chrome ends, so a crashed Chrome shows as HasExited. set -m gives Chrome its
+    // own process group without setsid, which forks and returns early when the shell leads its group.
+    internal const string LinuxLauncher =
+        "set -m; executable=$1; log=$2; shift 2; \"$executable\" \"$@\" </dev/null >/dev/null 2>\"$log\" & pid=$!; { IFS= read -r _; /bin/kill -TERM -- \"-$pid\" 2>/dev/null || :; } <&0 & wait \"$pid\"";
+
     private readonly Process _chrome;
     private readonly Process? _display;
     private readonly WindowsChromeDesktop? _desktop;
@@ -82,8 +87,6 @@ internal sealed class HiddenChrome : IAsyncDisposable
 
         if (OperatingSystem.IsLinux() && FindOnPath("Xvfb") is null)
             return (string.Empty, "Xvfb is not installed on this host.");
-        if (OperatingSystem.IsLinux() && FindOnPath("setsid") is null)
-            return (string.Empty, "setsid is not installed on this host.");
 
         return (chrome, string.Empty);
     }
@@ -166,10 +169,7 @@ internal sealed class HiddenChrome : IAsyncDisposable
                     RedirectStandardInput = true,
                 };
                 start.ArgumentList.Add("-c");
-                // The shell ends when Chrome ends, so a crashed Chrome shows as HasExited.
-                start.ArgumentList.Add(
-                    "executable=$1; log=$2; shift 2; setsid \"$executable\" \"$@\" </dev/null >/dev/null 2>\"$log\" & pid=$!; { IFS= read -r _; /bin/kill -TERM -- \"-$pid\" 2>/dev/null || :; } <&0 & wait \"$pid\""
-                );
+                start.ArgumentList.Add(LinuxLauncher);
                 start.ArgumentList.Add("nomercy-chrome");
                 start.ArgumentList.Add(executable);
                 start.ArgumentList.Add(stderrLog);

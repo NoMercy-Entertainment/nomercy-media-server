@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Diagnostics;
 using System.Net;
 using System.Net.Sockets;
 using System.Runtime.Versioning;
@@ -170,6 +171,48 @@ public class PluginBrowserHostTests
         }
         finally
         {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [SkippableFact]
+    [SupportedOSPlatform("linux")]
+    public async Task TheLauncherOutlivesChromeEvenWhenItIsAProcessGroupLeader()
+    {
+        Skip.IfNot(OperatingSystem.IsLinux(), "The virtual display path is Linux only.");
+        string folder = Path.Combine(Path.GetTempPath(), "nomercy-fake-chrome-" + Ulid.NewUlid());
+        Directory.CreateDirectory(folder);
+        try
+        {
+            string chrome = WriteScript(
+                folder,
+                "chrome",
+                "sleep 0.3\necho 'fake chrome cannot create its sandbox' >&2\nexit 7"
+            );
+            string log = Path.Combine(folder, "stderr.log");
+            // setsid makes the launcher a group leader, which is how a CI runner can start it.
+            ProcessStartInfo start = new("setsid")
+            {
+                UseShellExecute = false,
+                RedirectStandardInput = true,
+            };
+            foreach (string argument in new[] { "sh", "-c", HiddenChrome.LinuxLauncher })
+                start.ArgumentList.Add(argument);
+            foreach (string argument in new[] { "nomercy-chrome", chrome, log })
+                start.ArgumentList.Add(argument);
+            using Process launcher = Process.Start(start)!;
+
+            await launcher.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(10));
+
+            HiddenChrome
+                .ReadStderrTail(log)
+                .Should()
+                .Contain("fake chrome cannot create its sandbox");
+            launcher.StandardInput.Close();
+        }
+        finally
+        {
+            await Task.Delay(500);
             Directory.Delete(folder, recursive: true);
         }
     }
