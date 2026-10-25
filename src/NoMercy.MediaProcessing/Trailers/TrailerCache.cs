@@ -29,7 +29,7 @@ public partial class TrailerCache(IStorage transcodeStorage, ILogger<TrailerCach
     // YouTube video ids are exactly 11 chars of [A-Za-z0-9_-]. The id flows into
     // shell command strings (yt-dlp/ffmpeg) and filesystem paths, so a strict match
     // is the trust boundary that blocks command injection and path traversal.
-    [GeneratedRegex("^[A-Za-z0-9_-]{11}$")]
+    [GeneratedRegex("^[A-Za-z0-9_-]{11}$", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex TrailerIdRegex();
 
     public static bool IsValidId(string trailerId) => TrailerIdRegex().IsMatch(trailerId);

@@ -37,10 +37,10 @@ public static partial class SpriteSheet
     /// </summary>
     public const int MinimumWidth = 320;
 
-    [GeneratedRegex(@"^thumbs_(?<width>\d+)x(?<height>\d+)\.webp$", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"^thumbs_(?<width>\d+)x(?<height>\d+)\.webp$", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
     private static partial Regex SpriteFileNameRegex();
 
-    [GeneratedRegex(@"^sprite\.webp$", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"^sprite\.webp$", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
     private static partial Regex LegacySpriteFileNameRegex();
 
     /// <summary>

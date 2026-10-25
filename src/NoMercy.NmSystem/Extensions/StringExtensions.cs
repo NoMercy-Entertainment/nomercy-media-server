@@ -49,10 +49,16 @@ public static partial class StringExtensions
 
     public static string RemoveNonAlphaNumericCharacters(this string text)
     {
-        return Regex.Replace(text, @"[^a-zA-Z0-9\s.-]", "");
+        return NonAlphaNumericRegex().Replace(text, "");
     }
 
-    [GeneratedRegex(@"(1(8|9)|20)[0-9]{2}(?!p|i|(1(8|9)|20)[0-9]{2}|\W(1(8|9)|20)[0-9]{2})")]
+    [GeneratedRegex(@"[^a-zA-Z0-9\s.-]", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex NonAlphaNumericRegex();
+
+    [GeneratedRegex(@"\s+", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex WhitespaceRunRegex();
+
+    [GeneratedRegex(@"(1(8|9)|20)[0-9]{2}(?!p|i|(1(8|9)|20)[0-9]{2}|\W(1(8|9)|20)[0-9]{2})", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     public static partial Regex MatchYearRegex();
 
     public static string? TryGetYear(this string str)
@@ -61,11 +67,11 @@ public static partial class StringExtensions
         return match.Success ? match.Value : null;
     }
 
-    [GeneratedRegex(@"\[.*?\]")]
+    [GeneratedRegex(@"\[.*?\]", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     public static partial Regex RemoveBracketedString();
 
     /// <summary>Matches a [tmdb-1234] hint embedded in a filename.</summary>
-    [GeneratedRegex(@"\[tmdb-([0-9]+)\]", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"\[tmdb-([0-9]+)\]", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
     public static partial Regex MatchTmdbHint();
 
     /// <summary>
@@ -85,7 +91,7 @@ public static partial class StringExtensions
     /// matched the fullwidth ２ and threw <c>FormatException</c> out of the
     /// scan. One such file in a library stopped the whole import.
     /// </summary>
-    [GeneratedRegex(@"[0-9]+")]
+    [GeneratedRegex(@"[0-9]+", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     public static partial Regex MatchNumbers();
 
     // '+' joins the earlier one is included: a BD batch folder like
@@ -93,10 +99,10 @@ public static partial class StringExtensions
     // contains with '+' rather than a space/dash/underscore, so "S1" was never
     // bounded on its right and the whole "S1+S2+Movie+OVAs" tail leaked into
     // the show title handed to TitleFromFolder.
-    [GeneratedRegex(@"[\.\s\-_+]S[0-9]{1,2}(?:E[0-9]+)?(?:[\.\s\-_+]|$)", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"[\.\s\-_+]S[0-9]{1,2}(?:E[0-9]+)?(?:[\.\s\-_+]|$)", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
     public static partial Regex MatchSeasonTag();
 
-    [GeneratedRegex(@"^S([0-9]{1,2})E([0-9]+)", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"^S([0-9]{1,2})E([0-9]+)", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
     public static partial Regex MatchEpisodePrefix();
 
     /// <summary>
@@ -105,16 +111,16 @@ public static partial class StringExtensions
     /// through to the generic detector, which reads the release's absolute episode number as
     /// the episode and searches for a title that includes it.
     /// </summary>
-    [GeneratedRegex(@"[\.\s\-_\(\[\{]S([0-9]{1,2})E([0-9]+)", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"[\.\s\-_\(\[\{]S([0-9]{1,2})E([0-9]+)", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
     public static partial Regex MatchSeasonEpisode();
 
-    [GeneratedRegex(@"\(.*?\)")]
+    [GeneratedRegex(@"\(.*?\)", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     public static partial Regex RemoveParenthesizedString();
 
-    [GeneratedRegex(@"[\-\.\s]+Episode\s*([0-9]+)", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"[\-\.\s]+Episode\s*([0-9]+)", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
     public static partial Regex MatchEpisodeWord();
 
-    [GeneratedRegex(@"(?<![A-Za-z0-9])([0-9]{1,2})[xX×]([0-9]{1,3})(?![0-9])")]
+    [GeneratedRegex(@"(?<![A-Za-z0-9])([0-9]{1,2})[xX×]([0-9]{1,3})(?![0-9])", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     public static partial Regex MatchCrossFormatEpisode();
 
     /// <summary>
@@ -129,42 +135,48 @@ public static partial class StringExtensions
     /// <summary>Resolution tags: 480p/720p/1080p/2160p (interlaced too), 4k/8k, uhd.</summary>
     [GeneratedRegex(
         @"(?<![A-Za-z0-9])(?:\d{3,4}[pi]|[48]k|uhd)(?![A-Za-z0-9])",
-        RegexOptions.IgnoreCase
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
     )]
     public static partial Regex MatchResolutionTag();
 
     /// <summary>Source / medium tags (web-dl, web-rip, bluray, hdtv, dvd*, remux, streaming services, ...).</summary>
     [GeneratedRegex(
         @"(?<![A-Za-z0-9])(?:web[\s.\-]?dl|web[\s.\-]?rip|web[\s.\-]?hd|blu[\s.\-]?ray|bd[\s.\-]?rip|b[rd][\s.\-]?rip|hd[\s.\-]?tv|pd[\s.\-]?tv|dvd[\s.\-]?rip|hd[\s.\-]?rip|hd[\s.\-]?cam|uhd[\s.\-]?bd|remux|hd[\s.\-]?dvd|hd[\s.\-]?tc|ed[\s.\-]?tv|dvd[\s.\-]?scr|dvdscr|dsr|amzn|dsnp|atvp|hmax|hulu|nflx|hd[\s.\-]?light|sdtv|dvb|vod[\s.\-]?rip|tv[\s.\-]?rip|sat[\s.\-]?rip|dth[\s.\-]?rip|web[\s.\-]?cap|hd[\s.\-]?ts|telesync|telecine|workprint|ld[\s.\-]?rip|dvdr|ppv|screener)(?![A-Za-z0-9])",
-        RegexOptions.IgnoreCase
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
     )]
     public static partial Regex MatchSourceTag();
 
     /// <summary>Video codec tags (x264/5, h264/5, hevc, xvid, divx, avc, vc-1, wmv, mpeg(2), vp8/9).</summary>
     [GeneratedRegex(
         @"(?<![A-Za-z0-9])(?:x[\s.\-]?26[45]|h[\s.\-]?26[45]|hevc|xvid|divx|avc|vc[\s.\-]?1|wmv|mpeg2?|vp[89]|av1|vvc|h[\s.\-]?266|mpeg4)(?![A-Za-z0-9])",
-        RegexOptions.IgnoreCase
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
     )]
     public static partial Regex MatchCodecTag();
 
     /// <summary>Audio tags (ddp5.1, eac3, dts(-hd/ma/es/x), truehd, atmos, aac, flac, ac3d, mp3).</summary>
     [GeneratedRegex(
         @"(?<![A-Za-z0-9])(?:ddp?[\s.\-]?\d(?:[\s.\-]?\d)?|e?ac[\s.\-]?3|dts(?:[\s.\-]?hd)?(?:[\s.\-]?ma)?|dts[\s.\-]?(?:es|x)|true[\s.\-]?hd|atmos|aac(?:[\s.\-]?\d(?:[\s.\-]?\d)?)?|flac|ac3d|eac3d|mp3|lpcm|dd\+|ddp\+)(?![A-Za-z0-9])",
-        RegexOptions.IgnoreCase
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
     )]
     public static partial Regex MatchAudioTag();
 
     /// <summary>HDR / bit-depth tags (10bit, hdr10+, hdr, dovi, dolby vision, hlg).</summary>
     [GeneratedRegex(
         @"(?<![A-Za-z0-9])(?:\d{1,2}[\s.\-]?bit|hdr10\+?|hdr|do[\s.\-]?vi|dolby[\s.\-]?vision|hlg|sdr)(?![A-Za-z0-9])",
-        RegexOptions.IgnoreCase
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
     )]
     public static partial Regex MatchHdrTag();
 
     /// <summary>Release flags / editions (repack, multi, imax).</summary>
     [GeneratedRegex(
         @"(?<![A-Za-z0-9])(?:repack|multi|imax|dir[\s.\-]?fix|nfo[\s.\-]?fix|read[\s.\-]?nfo|proof[\s.\-]?fix|re[\s.\-]?rip)(?![A-Za-z0-9])",
-        RegexOptions.IgnoreCase
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
     )]
     public static partial Regex MatchFlagTag();
 
@@ -231,9 +243,7 @@ public static partial class StringExtensions
         if (string.IsNullOrWhiteSpace(raw))
             return false;
 
-        string normalized = Regex
-            .Replace(raw.Replace('.', ' ').Replace('_', ' '), @"\s+", " ")
-            .Trim();
+        string normalized = WhitespaceRunRegex().Replace(raw.Replace('.', ' ').Replace('_', ' '), " ").Trim();
         return EarliestReleaseTag(normalized, out category, out value) >= 0;
     }
 
@@ -250,13 +260,13 @@ public static partial class StringExtensions
             return string.Empty;
 
         string normalized = raw.Replace('.', ' ').Replace('_', ' ');
-        normalized = Regex.Replace(normalized, @"\s+", " ").Trim();
+        normalized = WhitespaceRunRegex().Replace(normalized, " ").Trim();
 
         int cut = EarliestReleaseTag(normalized, out _, out _);
         string title = cut >= 0 ? normalized[..cut] : normalized;
 
         title = title.TrimEnd(' ', '-', '_', '.');
-        return Regex.Replace(title, @"\s+", " ").Trim();
+        return WhitespaceRunRegex().Replace(title, " ").Trim();
     }
 
     /// <summary>
@@ -311,12 +321,13 @@ public static partial class StringExtensions
     /// <summary>Matches a "Season N" / "Series N" (and common localized) folder name.</summary>
     [GeneratedRegex(
         @"(?<![A-Za-z])(?:season|series|saison|staffel|temporada|stagione)[\s\.\-_]*0*([0-9]{1,3})(?![0-9])",
-        RegexOptions.IgnoreCase
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
     )]
     public static partial Regex MatchFolderSeasonWord();
 
     /// <summary>Matches a bare "S2" / "S02" folder name (whole string).</summary>
-    [GeneratedRegex(@"^[Ss]0*([0-9]{1,3})$")]
+    [GeneratedRegex(@"^[Ss]0*([0-9]{1,3})$", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     public static partial Regex MatchSeasonFolderShort();
 
     /// <summary>
@@ -345,7 +356,7 @@ public static partial class StringExtensions
         return null;
     }
 
-    [GeneratedRegex("/[^a-zA-Z0-9]/")]
+    [GeneratedRegex("/[^a-zA-Z0-9]/", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     public static partial Regex IsAlphaNumeric();
 
     public static bool IsAlphaNumeric(this string str)
@@ -353,7 +364,7 @@ public static partial class StringExtensions
         return IsAlphaNumeric().IsMatch(str);
     }
 
-    [GeneratedRegex("/[0-9]/")]
+    [GeneratedRegex("/[0-9]/", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     public static partial Regex IsNumeric();
 
     public static bool IsNumeric(this string str)
@@ -363,8 +374,11 @@ public static partial class StringExtensions
 
     public static string PathName(this string path)
     {
-        return Regex.Replace(path, @"[\/\\]", DirectorySeparator);
+        return PathSeparatorRegex().Replace(path, DirectorySeparator);
     }
+
+    [GeneratedRegex(@"[\/\\]", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex PathSeparatorRegex();
 
     public static int ToInt(this string value)
     {
@@ -469,9 +483,15 @@ public static partial class StringExtensions
 
     public static string SplitPascalCase(this string str)
     {
-        str = Regex.Replace(str, @"(\P{Ll})(\P{Ll}\p{Ll})", "$1 $2");
-        return Regex.Replace(str, @"(\p{Ll})(\P{Ll})", "$1 $2");
+        str = PascalCaseAcronymRegex().Replace(str, "$1 $2");
+        return PascalCaseWordRegex().Replace(str, "$1 $2");
     }
+
+    [GeneratedRegex(@"(\P{Ll})(\P{Ll}\p{Ll})", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex PascalCaseAcronymRegex();
+
+    [GeneratedRegex(@"(\p{Ll})(\P{Ll})", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex PascalCaseWordRegex();
 
     /** This method sanitizes a string by removing diacritics, non-alphanumeric characters and accents. */
     public static string Sanitize(this string str)
@@ -530,8 +550,11 @@ public static partial class StringExtensions
 
     public static string EscapeQuotes(this string str)
     {
-        return Regex.Replace(str, "\"", "'");
+        return DoubleQuoteRegex().Replace(str, "'");
     }
+
+    [GeneratedRegex("\"", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex DoubleQuoteRegex();
 
     public static string Capitalize(this string str)
     {
@@ -644,10 +667,13 @@ public static partial class StringExtensions
         string result = stringBuilder.ToString();
 
         // Remove non-alphanumeric characters (optional)
-        result = Regex.Replace(result, @"[^a-zA-Z0-9\s-]", "");
+        result = NonAlphaNumericKeepDashRegex().Replace(result, "");
 
         return result;
     }
+
+    [GeneratedRegex(@"[^a-zA-Z0-9\s-]", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex NonAlphaNumericKeepDashRegex();
 
     public enum TextDirection
     {
@@ -680,6 +706,15 @@ public static partial class StringExtensions
         return TextDirection.LTR;
     }
 
+    [GeneratedRegex(@"\s", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex SingleWhitespaceRegex();
+
+    [GeneratedRegex(@"[^a-z0-9\s-_]", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex InvalidSlugCharsRegex();
+
+    [GeneratedRegex(@"([-_]){2,}", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex RepeatedSlugSeparatorRegex();
+
     public static string ToSlug(this string value)
     {
         //First to lower case
@@ -690,16 +725,16 @@ public static partial class StringExtensions
         value = Encoding.ASCII.GetString(bytes);
 
         //Replace spaces
-        value = Regex.Replace(value, @"\s", "-", RegexOptions.Compiled);
+        value = SingleWhitespaceRegex().Replace(value, "-");
 
         //Remove invalid chars
-        value = Regex.Replace(value, @"[^a-z0-9\s-_]", "", RegexOptions.Compiled);
+        value = InvalidSlugCharsRegex().Replace(value, "");
 
         //Trim dashes from end
         value = value.Trim('-', '_');
 
         //Replace double occurences of - or _
-        value = Regex.Replace(value, @"([-_]){2,}", "$1", RegexOptions.Compiled);
+        value = RepeatedSlugSeparatorRegex().Replace(value, "$1");
 
         // random id
         value += "-" + Guid.NewGuid().ToString("n").Substring(0, 8);

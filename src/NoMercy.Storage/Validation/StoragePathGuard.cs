@@ -140,10 +140,10 @@ public sealed partial class StoragePathGuard
             || WindowsUncRoot().IsMatch(path);
     }
 
-    [GeneratedRegex(@"^[A-Za-z]:[\\/]")]
+    [GeneratedRegex(@"^[A-Za-z]:[\\/]", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex WindowsDriveLetterRoot();
 
-    [GeneratedRegex(@"^\\\\")]
+    [GeneratedRegex(@"^\\\\", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex WindowsUncRoot();
 
     /// <summary>

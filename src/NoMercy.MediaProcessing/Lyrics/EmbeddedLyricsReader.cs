@@ -119,6 +119,6 @@ public sealed partial class EmbeddedLyricsReader(IStorage storage) : IEmbeddedLy
     private static string? Iso639Part1(string? language) =>
         language is { Length: 2 } && language.All(char.IsAsciiLetterLower) ? language : null;
 
-    [GeneratedRegex(@"^(\[\d{1,2}:\d{2}(?:[.:]\d{1,3})?\])+")]
+    [GeneratedRegex(@"^(\[\d{1,2}:\d{2}(?:[.:]\d{1,3})?\])+", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex LrcTimestamp();
 }

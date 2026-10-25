@@ -37,13 +37,14 @@ public sealed partial class SeasonPackAdapter : IFilenameParseAdapter
 
     /// <summary>"Season 2", "Series 2", the localised spellings, or a bare "S02".</summary>
     [GeneratedRegex(
-        @"(?<![\p{L}\p{N}])(?:(?:season|series|saison|staffel|temporada|stagione)[\s._-]*0*(?<season>[0-9]{1,2})"
-            + @"|S(?<season2>[0-9]{1,2}))(?![\p{L}\p{N}])",
-        RegexOptions.IgnoreCase
+        matchTimeoutMilliseconds: 1000,
+        options: RegexOptions.IgnoreCase,
+        pattern: @"(?<![\p{L}\p{N}])(?:(?:season|series|saison|staffel|temporada|stagione)[\s._-]*0*(?<season>[0-9]{1,2})"
+            + @"|S(?<season2>[0-9]{1,2}))(?![\p{L}\p{N}])"
     )]
     private static partial Regex SeasonMarker();
 
-    [GeneratedRegex(@"(?<![A-Za-z0-9])[0-9]{1,4}(?![A-Za-z0-9])")]
+    [GeneratedRegex(@"(?<![A-Za-z0-9])[0-9]{1,4}(?![A-Za-z0-9])", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex StandaloneNumber();
 
     public MovieFile? TryParse(ParseContext context)

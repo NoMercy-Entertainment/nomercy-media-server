@@ -15,8 +15,20 @@ using NoMercy.Storage;
 
 namespace NoMercy.NmSystem.Extensions;
 
-public static class FileNameSanitizer
+public static partial class FileNameSanitizer
 {
+    [GeneratedRegex(@"\s+", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex WhitespaceRegex();
+
+    [GeneratedRegex(@"[^\u0000-\u007FÀ-ſĀ-ɏ]+", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex NonAsciiRegex();
+
+    [GeneratedRegex(@"\.+", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex RepeatedDotsRegex();
+
+    [GeneratedRegex(@"[/\\|:*?\""<>{}]", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex PathSeparatorsRegex();
+
     private static string _cleanFileName(string? name)
     {
         if (string.IsNullOrWhiteSpace(name))
@@ -25,10 +37,10 @@ public static class FileNameSanitizer
         // Replace invalid file system characters with dots
         string invalidChars = $"{string.Join("", Path.GetInvalidFileNameChars())}:?*<>|\"";
         string pattern = $"[{Regex.Escape(invalidChars)}]";
-        name = Regex.Replace(name, pattern, ".");
+        name = Regex.Replace(name, pattern, ".", RegexOptions.None, TimeSpan.FromSeconds(1));
 
         // Replace whitespace with dots
-        name = Regex.Replace(name, @"\s+", ".");
+        name = WhitespaceRegex().Replace(name, ".");
 
         // Replace special characters and symbols in a single pass
         StringBuilder sb = new(name.Length + 16);
@@ -63,10 +75,10 @@ public static class FileNameSanitizer
         name = sb.ToString();
 
         // Replace any remaining non-ASCII characters with dots
-        name = Regex.Replace(name, @"[^\u0000-\u007F\u00C0-\u017F\u0100-\u024F]+", ".");
+        name = NonAsciiRegex().Replace(name, ".");
 
         // Collapse multiple dots
-        name = Regex.Replace(name, @"\.+", ".");
+        name = RepeatedDotsRegex().Replace(name, ".");
 
         // Remove leading/trailing dots
         name = name.Trim('.');
@@ -98,7 +110,7 @@ public static class FileNameSanitizer
     {
         if (string.IsNullOrEmpty(self))
             return string.Empty;
-        string name = Regex.Replace(self, @"[/\\|:*?\""<>{}]", " ");
+        string name = PathSeparatorsRegex().Replace(self, " ");
         return name.Trim().SanitizeFileName();
     }
 
@@ -106,7 +118,7 @@ public static class FileNameSanitizer
     {
         if (string.IsNullOrEmpty(self))
             return string.Empty;
-        string name = Regex.Replace(self, @"[/\\|:*?\""<>{}]", "_");
+        string name = PathSeparatorsRegex().Replace(self, "_");
         return name.Trim().SanitizeFileName();
     }
 

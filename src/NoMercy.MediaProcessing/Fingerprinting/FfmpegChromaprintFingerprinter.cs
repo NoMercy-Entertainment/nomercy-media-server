@@ -39,7 +39,7 @@ public sealed partial class FfmpegChromaprintFingerprinter(
     /// muxer writes nothing else on stdout, so the whole payload is the value —
     /// this only strips whitespace and rejects anything that isn't base64.
     /// </summary>
-    [GeneratedRegex(@"^[A-Za-z0-9_\-=]+$")]
+    [GeneratedRegex(@"^[A-Za-z0-9_\-=]+$", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex Base64FingerprintRegex();
 
     public async Task<AudioFingerprint?> FingerprintAsync(string filePath, CancellationToken ct)

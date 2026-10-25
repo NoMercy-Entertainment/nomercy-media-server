@@ -140,6 +140,6 @@ internal static partial class PluginGraphTokens
     internal static string EscapeForFilterGraph(string path) =>
         path.Replace('\\', '/').Replace(":", "\\\\:", StringComparison.Ordinal);
 
-    [GeneratedRegex(@"\{pluginFile:([^}]*)\}")]
+    [GeneratedRegex(@"\{pluginFile:([^}]*)\}", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex PluginFileToken();
 }

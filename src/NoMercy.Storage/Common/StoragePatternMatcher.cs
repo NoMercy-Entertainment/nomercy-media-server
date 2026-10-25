@@ -41,6 +41,6 @@ internal static class StoragePatternMatcher
             )
             + "$";
 
-        return Regex.IsMatch(name, regexPattern, RegexOptions.IgnoreCase);
+        return Regex.IsMatch(name, regexPattern, RegexOptions.IgnoreCase, TimeSpan.FromSeconds(1));
     }
 }

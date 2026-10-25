@@ -538,7 +538,9 @@ public partial class FileManager
     }
 
     [GeneratedRegex(
-        @"^((?:\d{1,3}:)?\d{2}:\d{2}(?:\.\d{1,3})?)\s+-->\s+((?:\d{1,3}:)?\d{2}:\d{2}(?:\.\d{1,3})?)"
+        @"^((?:\d{1,3}:)?\d{2}:\d{2}(?:\.\d{1,3})?)\s+-->\s+((?:\d{1,3}:)?\d{2}:\d{2}(?:\.\d{1,3})?)",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
     )]
     private static partial Regex ChapterTimingRegex();
 

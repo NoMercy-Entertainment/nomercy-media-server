@@ -27,7 +27,7 @@ public static partial class CardColor
     private const double TooDarkBelow = 40;
     private const double TooLightAbove = 120;
 
-    [GeneratedRegex(@"\d+")]
+    [GeneratedRegex(@"\d+", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex Number();
 
     public static string? Pick(PaletteColors? palette)

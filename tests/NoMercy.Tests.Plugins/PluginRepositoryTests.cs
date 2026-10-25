@@ -94,6 +94,19 @@ public class PluginRepositoryTests : IDisposable
             .And.NotContain("raw.githubusercontent");
     }
 
+    private async Task<PluginRepository> LoadRepositoryAsync()
+    {
+        PluginRepository repository = new(
+            new(),
+            NullLogger.Instance,
+            _tempDir,
+            TestStorageHelper.CreateStorage(_tempDir)
+        );
+        await repository.LoadRepositoriesFromDiskAsync();
+
+        return repository;
+    }
+
     [Fact]
     public async Task A_repository_the_owner_added_is_left_alone()
     {
@@ -106,20 +119,108 @@ public class PluginRepositoryTests : IDisposable
             }
         );
 
-        PluginRepository repository = new(
-            new(),
-            NullLogger.Instance,
-            _tempDir,
-            TestStorageHelper.CreateStorage(_tempDir)
-        );
-        await repository.LoadRepositoriesFromDiskAsync();
+        PluginRepository repository = await LoadRepositoryAsync();
 
-        repository
+        PluginRepositoryInfo mine = repository
             .GetRepositories()
-            .Should()
-            .ContainSingle()
-            .Which.Url.Should()
-            .Be("https://example.test/index.json");
+            .Single(info => info.Name == "Mine");
+        mine.Url.Should().Be("https://example.test/index.json");
+        mine.Trusted.Should().BeFalse();
+        repository.GetRepositories().Should().HaveCount(2);
+    }
+
+    [Fact]
+    public async Task A_server_with_an_empty_list_gets_the_trusted_marketplace_and_saves_it()
+    {
+        string path = WriteRepositoriesFile();
+
+        PluginRepository repository = await LoadRepositoryAsync();
+
+        PluginRepositoryInfo seeded = repository.GetRepositories().Should().ContainSingle().Subject;
+        seeded.Url.Should().Be(MarketplaceIndex);
+        seeded.Trusted.Should().BeTrue();
+        File.ReadAllText(path).Should().Contain(MarketplaceIndex);
+    }
+
+    [Fact]
+    public async Task A_server_without_a_list_gets_the_trusted_marketplace()
+    {
+        PluginRepository repository = await LoadRepositoryAsync();
+
+        PluginRepositoryInfo seeded = repository.GetRepositories().Should().ContainSingle().Subject;
+        seeded.Url.Should().Be(MarketplaceIndex);
+        seeded.Trusted.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task A_marketplace_the_owner_removed_stays_removed_after_a_reload()
+    {
+        WriteRepositoriesFile();
+        PluginRepository first = await LoadRepositoryAsync();
+        await first.RemoveRepositoryAsync("NoMercy Marketplace");
+
+        PluginRepository reloaded = await LoadRepositoryAsync();
+
+        reloaded.GetRepositories().Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_marketplace_the_owner_removed_stays_removed_next_to_another_repository()
+    {
+        WriteRepositoriesFile(
+            new PluginRepositoryInfo { Name = "Mine", Url = "https://example.test/index.json" }
+        );
+        PluginRepository first = await LoadRepositoryAsync();
+        await first.RemoveRepositoryAsync("NoMercy Marketplace");
+
+        PluginRepository reloaded = await LoadRepositoryAsync();
+
+        reloaded.GetRepositories().Should().ContainSingle().Which.Name.Should().Be("Mine");
+    }
+
+    [Fact]
+    public async Task Removing_another_repository_does_not_stop_the_marketplace_from_being_seeded()
+    {
+        WriteRepositoriesFile(
+            new PluginRepositoryInfo { Name = "Mine", Url = "https://example.test/index.json" }
+        );
+        PluginRepository first = await LoadRepositoryAsync();
+        await first.RemoveRepositoryAsync("Mine");
+        File.WriteAllText(Path.Combine(_tempDir, "configurations", "repositories.json"), "[]");
+
+        PluginRepository reloaded = await LoadRepositoryAsync();
+
+        reloaded.GetRepositories().Should().ContainSingle().Which.Url.Should().Be(MarketplaceIndex);
+    }
+
+    [Fact]
+    public async Task A_marketplace_already_listed_is_not_added_twice()
+    {
+        WriteRepositoriesFile(
+            new PluginRepositoryInfo
+            {
+                Name = "Renamed by the owner",
+                Url = MarketplaceIndex,
+                Trusted = false,
+            }
+        );
+
+        PluginRepository repository = await LoadRepositoryAsync();
+
+        PluginRepositoryInfo listed = repository.GetRepositories().Should().ContainSingle().Subject;
+        listed.Name.Should().Be("Renamed by the owner");
+        listed.Trusted.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task The_removed_marketplace_marker_is_a_separate_file_older_servers_never_read()
+    {
+        string path = WriteRepositoriesFile();
+        PluginRepository first = await LoadRepositoryAsync();
+        await first.RemoveRepositoryAsync("NoMercy Marketplace");
+
+        File.ReadAllText(path).Should().NotContain(MarketplaceIndex);
+        Directory.GetFiles(Path.Combine(_tempDir, "configurations")).Should().HaveCount(2);
     }
 
     private static PluginRepositoryManifest CreateTestManifest(
@@ -835,8 +936,7 @@ public class PluginRepositoryTests : IDisposable
         );
 
         IReadOnlyList<PluginRepositoryInfo> loaded = repo.GetRepositories();
-        loaded.Should().ContainSingle();
-        loaded[0].Name.Should().Be("persisted-repo");
+        loaded.Select(info => info.Name).Should().Equal("persisted-repo", "NoMercy Marketplace");
     }
 
     // ── Concurrent save ───────────────────────────────────────────────────────

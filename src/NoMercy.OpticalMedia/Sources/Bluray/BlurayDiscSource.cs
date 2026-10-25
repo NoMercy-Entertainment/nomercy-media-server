@@ -534,7 +534,8 @@ public sealed partial class BlurayDiscSource(
 
     [GeneratedRegex(
         @"playlist\s+(?<index>\d+)\.mpls\s+\((?<duration>\d{1,}:\d{1,}:\d{1,})\)",
-        RegexOptions.IgnoreCase
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
     )]
     private static partial Regex PlaylistRegex();
 }

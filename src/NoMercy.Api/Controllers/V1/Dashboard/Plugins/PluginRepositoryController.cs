@@ -197,6 +197,11 @@ public class PluginRepositoryController(
             ? Newest(entry)
             : repository.FindVersion(pluginId, version);
 
+        if (target is null && entry.Versions.Count == 0)
+            return NotFoundResponse(
+                "This plugin has no released version yet, so there is nothing to install."
+            );
+
         if (target is null)
             return NotFoundResponse("The catalogue does not carry that version");
 
@@ -311,6 +316,7 @@ public class PluginRepositoryController(
             ProjectUrl = entry.ProjectUrl,
             Versions = entry.Versions.Select(version => new PluginVersionDto(version)).ToList(),
             LatestVersion = newest?.Version,
+            HasRelease = newest is not null,
             InstalledVersion = installedVersion,
             UpdateAvailable = IsNewer(newest?.Version, installedVersion),
         };

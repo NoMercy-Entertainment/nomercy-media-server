@@ -86,6 +86,6 @@ public static partial class ReclaimClassifier
         return new(ReclaimKind.None, [], 0);
     }
 
-    [GeneratedRegex(@"^(video_\d+x\d+(_.+)?|audio_[A-Za-z0-9_]+)$")]
+    [GeneratedRegex(@"^(video_\d+x\d+(_.+)?|audio_[A-Za-z0-9_]+)$", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex LadderDirectoryRegex();
 }

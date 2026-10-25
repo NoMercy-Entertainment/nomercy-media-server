@@ -245,31 +245,31 @@ public partial class MusicLogic : IAsyncDisposable
             );
 
         foreach (MusicBrainzMedia media in releaseAppends.Media)
-        foreach (MusicBrainzTrack track in media.Tracks)
-        {
-            if (await StoreTrack(mediaContext, releaseAppends, track, media, mediaFile) is null)
-                continue;
-
-            await LinkTrackToRelease(mediaContext, track, releaseAppends);
-
-            if (encodableTrack is not null && track.Id == encodableTrack.Id)
-                await DispatchEncode(releaseAppends, track, mediaFile);
-
-            foreach (ReleaseArtistCredit artist in track.ArtistCredit)
+            foreach (MusicBrainzTrack track in media.Tracks)
             {
-                await StoreArtist(mediaContext, artist.MusicBrainzArtist);
-                await LinkArtistToTrack(mediaContext, artist.MusicBrainzArtist, track);
+                if (await StoreTrack(mediaContext, releaseAppends, track, media, mediaFile) is null)
+                    continue;
 
-                await LinkArtistToAlbum(mediaContext, artist.MusicBrainzArtist, releaseAppends);
-                await LinkArtistToLibrary(mediaContext, artist.MusicBrainzArtist);
+                await LinkTrackToRelease(mediaContext, track, releaseAppends);
 
-                await LinkArtistToReleaseGroup(
-                    mediaContext,
-                    releaseAppends,
-                    artist.MusicBrainzArtist.Id
-                );
+                if (encodableTrack is not null && track.Id == encodableTrack.Id)
+                    await DispatchEncode(releaseAppends, track, mediaFile);
+
+                foreach (ReleaseArtistCredit artist in track.ArtistCredit)
+                {
+                    await StoreArtist(mediaContext, artist.MusicBrainzArtist);
+                    await LinkArtistToTrack(mediaContext, artist.MusicBrainzArtist, track);
+
+                    await LinkArtistToAlbum(mediaContext, artist.MusicBrainzArtist, releaseAppends);
+                    await LinkArtistToLibrary(mediaContext, artist.MusicBrainzArtist);
+
+                    await LinkArtistToReleaseGroup(
+                        mediaContext,
+                        releaseAppends,
+                        artist.MusicBrainzArtist.Id
+                    );
+                }
             }
-        }
 
         await Task.CompletedTask;
     }
@@ -1257,7 +1257,7 @@ public partial class MusicLogic : IAsyncDisposable
             ?.Parsed!.FilePath;
     }
 
-    [GeneratedRegex("^00:")]
+    [GeneratedRegex("^00:", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex HmsRegex();
 
     public ValueTask DisposeAsync()
@@ -1278,7 +1278,9 @@ public partial class MusicLogic : IAsyncDisposable
     }
 
     [GeneratedRegex(
-        @"(?<library_folder>.+?)[\\\/]((?<letter>.{1})?|\[(?<type>.+?)\])[\\\/](?<artist>.+?)?[\\\/]?(\[(?<year>[0-9]{4})\]?\s?(?<album>.*)?)"
+        @"(?<library_folder>.+?)[\\\/]((?<letter>.{1})?|\[(?<type>.+?)\])[\\\/](?<artist>.+?)?[\\\/]?(\[(?<year>[0-9]{4})\]?\s?(?<album>.*)?)",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
     )]
     private static partial Regex PathRegex();
 }

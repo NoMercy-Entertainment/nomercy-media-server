@@ -44,18 +44,18 @@ public static partial class RipOutputPathHelper
         {
             case "tv":
             case "anime":
-            {
-                int season = meta.SeasonNumber ?? 1;
-                int episode = (meta.EpisodeStartNumber ?? 1) + batchIndex;
-                string seasonDir = $"Season {season:D2}";
-                string fileName = $"{safeTitle} S{season:D2}E{episode:D2}.mkv";
-                return $"{showRoot}/{seasonDir}/{fileName}";
-            }
+                {
+                    int season = meta.SeasonNumber ?? 1;
+                    int episode = (meta.EpisodeStartNumber ?? 1) + batchIndex;
+                    string seasonDir = $"Season {season:D2}";
+                    string fileName = $"{safeTitle} S{season:D2}E{episode:D2}.mkv";
+                    return $"{showRoot}/{seasonDir}/{fileName}";
+                }
             case "movie":
-            {
-                string suffix = batchIndex == 0 ? "" : $" - Disc {batchIndex + 1}";
-                return $"{showRoot}/{safeTitle}{yearSuffix}{suffix}.mkv";
-            }
+                {
+                    string suffix = batchIndex == 0 ? "" : $" - Disc {batchIndex + 1}";
+                    return $"{showRoot}/{safeTitle}{yearSuffix}{suffix}.mkv";
+                }
             default:
                 return $"disc-rips/title_{titleIndex:D2}.mkv";
         }
@@ -67,9 +67,9 @@ public static partial class RipOutputPathHelper
         return WhitespaceRun().Replace(trimmed, " ");
     }
 
-    [GeneratedRegex(@"[<>:""/\\|?*\x00-\x1F]")]
+    [GeneratedRegex(@"[<>:""/\\|?*\x00-\x1F]", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex InvalidFsChars();
 
-    [GeneratedRegex(@"\s+")]
+    [GeneratedRegex(@"\s+", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex WhitespaceRun();
 }

@@ -233,7 +233,12 @@ public sealed partial class EmbeddedStaticAssetsMiddleware
         string regexPattern =
             "^" + Regex.Escape(pattern).Replace(@"\*\*", ".*").Replace("\\*", "[^/]*") + "$";
 
-        return Regex.IsMatch(path, regexPattern, RegexOptions.IgnoreCase);
+        return Regex.IsMatch(
+            path,
+            regexPattern,
+            RegexOptions.IgnoreCase,
+            TimeSpan.FromSeconds(1)
+        );
     }
 
     private byte[] InjectHtmlContent(byte[] content)
@@ -316,10 +321,10 @@ public sealed partial class EmbeddedStaticAssetsMiddleware
         return sb.ToString();
     }
 
-    [GeneratedRegex("</head>", RegexOptions.IgnoreCase)]
+    [GeneratedRegex("</head>", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
     private static partial Regex HeadCloseRegex();
 
-    [GeneratedRegex("</body>", RegexOptions.IgnoreCase)]
+    [GeneratedRegex("</body>", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
     private static partial Regex BodyCloseRegex();
 
     private static (byte[] content, string? encoding) SelectBestEncoding(

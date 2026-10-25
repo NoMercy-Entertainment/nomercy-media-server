@@ -24,7 +24,11 @@ internal static partial class LogsCommand
 {
     private static DateTime _lastEntryTime = DateTime.MinValue;
 
-    [GeneratedRegex(@"(\x1b|\\u001[bB])\[[0-9;]*[A-Za-z]")]
+    [GeneratedRegex(
+        @"(\x1b|\\u001[bB])\[[0-9;]*[A-Za-z]",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex AnsiEscapeRegex();
 
     public static Command Create(Option<string?> pipeOption, ICliClientFactory clientFactory)
@@ -193,7 +197,7 @@ internal static partial class LogsCommand
         string separator = new('-', 60);
         Console.WriteLine();
         Console.WriteLine(
-            $"{"", 16}{"Server Restart".PadLeft(14)} | {separator}".Pastel(Color.DarkGray)
+            $"{"",16}{"Server Restart".PadLeft(14)} | {separator}".Pastel(Color.DarkGray)
         );
         Console.WriteLine();
     }

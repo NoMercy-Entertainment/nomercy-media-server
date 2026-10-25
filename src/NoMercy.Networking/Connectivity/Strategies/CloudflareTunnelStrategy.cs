@@ -46,11 +46,12 @@ public partial class CloudflareTunnelStrategy : IConnectivityStrategy, IDisposab
     /// </summary>
     [GeneratedRegex(
         @"registered tunnel connection|connection .* registered",
-        RegexOptions.IgnoreCase
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
     )]
     private static partial Regex ConnectionRegisteredPattern();
 
-    [GeneratedRegex(@"\bERR\b|\bFTL\b|error|failed|unauthorized|expired", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"\bERR\b|\bFTL\b|error|failed|unauthorized|expired", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
     private static partial Regex FailurePattern();
 
     /// <summary>
@@ -64,7 +65,8 @@ public partial class CloudflareTunnelStrategy : IConnectivityStrategy, IDisposab
     /// </summary>
     [GeneratedRegex(
         @"ended abruptly: context canceled|canceled by remote with error code 0\b|\bcontext canceled\b",
-        RegexOptions.IgnoreCase
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
     )]
     private static partial Regex ClientCancellationPattern();
 

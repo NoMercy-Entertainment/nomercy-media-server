@@ -28,8 +28,11 @@ namespace NoMercy.Database.Models.Music;
 // libraries that already contain duplicate tracks. Speeds the dedup lookup; a
 // unique constraint needs a separate de-dup migration first.
 [Index(nameof(Filename), nameof(HostFolder))]
-public class Track : ColorPaletteTimeStamps
+public partial class Track : ColorPaletteTimeStamps
 {
+    [GeneratedRegex("^\"|\"$", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex SurroundingQuotes();
+
     [DatabaseGenerated(DatabaseGeneratedOption.None)]
     [JsonProperty("id")]
     public Guid Id { get; set; }
@@ -106,7 +109,7 @@ public class Track : ColorPaletteTimeStamps
                 [
                     .. _lyrics
                         .Split("\\n")
-                        .Select(l => new Lyric { Text = Regex.Replace(l, "^\"|\"$", "") }),
+                        .Select(l => new Lyric { Text = SurroundingQuotes().Replace(l, "") }),
                 ];
             }
         }

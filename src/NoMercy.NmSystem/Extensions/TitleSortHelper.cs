@@ -13,25 +13,34 @@ using System.Text.RegularExpressions;
 
 namespace NoMercy.NmSystem.Extensions;
 
-public static class TitleSortHelper
+public static partial class TitleSortHelper
 {
+    [GeneratedRegex(@"^(The|An|A)\s+", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex LeadingArticleRegex();
+
+    [GeneratedRegex(@"[:]\s| and the ", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex SubtitleSeparatorRegex();
+
+    [GeneratedRegex(@"\.+", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex RepeatedDotsRegex();
+
     private static string _parseTitleSort(string? value = null, DateTime? date = null)
     {
         if (string.IsNullOrWhiteSpace(value))
             return "";
 
         // Remove leading "The ", "An ", "A " (case-insensitive)
-        value = Regex.Replace(value, @"^(The|An|A)\s+", "", RegexOptions.IgnoreCase);
+        value = LeadingArticleRegex().Replace(value, "");
 
         // Replace ": " and " and the " with the year if available
         if (date != null)
         {
             string year = date.Value.Year.ToString();
-            value = Regex.Replace(value, @"[:]\s| and the ", $".{year}.", RegexOptions.IgnoreCase);
+            value = SubtitleSeparatorRegex().Replace(value, $".{year}.");
         }
 
         // Replace multiple dots with a space (keeps readability)
-        value = Regex.Replace(value, @"\.+", " ");
+        value = RepeatedDotsRegex().Replace(value, " ");
 
         // Sanitize file name to remove unwanted characters
         value = value.CleanFileName();

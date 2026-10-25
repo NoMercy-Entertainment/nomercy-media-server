@@ -105,9 +105,9 @@ public static partial class Url
         return url;
     }
 
-    [GeneratedRegex(":")]
+    [GeneratedRegex(":", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex ReplaceIpV6();
 
-    [GeneratedRegex("\\.")]
+    [GeneratedRegex("\\.", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex ReplaceIpV4();
 }

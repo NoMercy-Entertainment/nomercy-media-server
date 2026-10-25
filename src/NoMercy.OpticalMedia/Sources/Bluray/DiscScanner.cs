@@ -34,7 +34,7 @@ namespace NoMercy.OpticalMedia.Sources.Bluray;
 /// The caller passes whichever form the OS yielded — the scanner doesn't
 /// rewrite paths. <see cref="IDriveMonitor"/> produces usable paths.
 /// </summary>
-public class DiscScanner(
+public partial class DiscScanner(
     EncoderOptions options,
     IProcessRunner processRunner,
     ILogger<DiscScanner> logger
@@ -386,7 +386,7 @@ public class DiscScanner(
         foreach (string line in stderr.Split('\n'))
         {
             // Look for a line containing a 32-char hex string — the AACS volume ID.
-            Match m = Regex.Match(line, @"[0-9A-Fa-f]{32}");
+            Match m = VolumeIdRegex().Match(line);
             if (m.Success)
                 return m.Value.ToUpperInvariant();
         }
@@ -401,4 +401,7 @@ public class DiscScanner(
         string[] lines = stdErr.Split('\n', StringSplitOptions.RemoveEmptyEntries);
         return lines.Length <= 3 ? stdErr : string.Join('\n', lines[^3..]);
     }
+
+    [GeneratedRegex(@"[0-9A-Fa-f]{32}", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex VolumeIdRegex();
 }

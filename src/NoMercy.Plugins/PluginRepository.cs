@@ -21,6 +21,7 @@ public class PluginRepository : IPluginRepository
     private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
     private readonly string _repositoriesFilePath;
+    private readonly string _declinedDefaultFilePath;
     private readonly IStorage _storage;
     private readonly List<PluginRepositoryInfo> _repositories = [];
     private readonly List<PluginRepositoryEntry> _availablePlugins = [];
@@ -65,6 +66,7 @@ public class PluginRepository : IPluginRepository
         }
 
         _repositoriesFilePath = Path.Combine(configDir, "repositories.json");
+        _declinedDefaultFilePath = Path.Combine(configDir, "default-repository-removed");
     }
 
     /// <summary>
@@ -129,8 +131,13 @@ public class PluginRepository : IPluginRepository
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
 
+        bool removedDefault;
         lock (_lock)
         {
+            removedDefault = _repositories.Any(r =>
+                r.Name == name && r.Url == DefaultRepositoryUrl
+            );
+
             int removed = _repositories.RemoveAll(r => r.Name == name);
             if (removed == 0)
             {
@@ -138,6 +145,11 @@ public class PluginRepository : IPluginRepository
             }
 
             _pluginsByRepository.Remove(name);
+        }
+
+        if (removedDefault)
+        {
+            await RecordDefaultRemovedAsync(ct);
         }
 
         await SaveRepositoriesToDiskAsync(ct);
@@ -307,36 +319,39 @@ public class PluginRepository : IPluginRepository
         }
     }
 
-    /// <summary>
-    /// Reads the persisted repository list. Public because the container builds
-    /// this singleton synchronously and the file read is async: startup calls
-    /// this once, rather than the resolve blocking a thread on disk.
-    /// </summary>
-    /// <summary>
-    /// The index every server reads unless its owner removes it. Seeded on a
-    /// server that has never had a repository list, rather than hard-coded into
-    /// lookups: it lands in the same file every other repository lives in, so
-    /// removing it is the ordinary Remove and it stays removed.
-    /// </summary>
-    private static readonly PluginRepositoryInfo DefaultRepository = new()
-    {
-        Name = "NoMercy Marketplace",
-        Url = "https://api.nomercy.tv/v1/marketplace/index.json",
-        // Someone running this server has already decided to trust what we
-        // publish. Trust is provenance only: a plugin listed here still waits
-        // for the owner's consent before it runs.
-        Trusted = true,
-    };
+    private const string DefaultRepositoryName = "NoMercy Marketplace";
+    private const string DefaultRepositoryUrl = "https://api.nomercy.tv/v1/marketplace/index.json";
 
+    /// <summary>
+    /// The index every server reads unless its owner removes it. A new instance
+    /// each time, because trust is toggled on the stored object.
+    /// </summary>
+    private static PluginRepositoryInfo NewDefaultRepository() =>
+        new()
+        {
+            Name = DefaultRepositoryName,
+            Url = DefaultRepositoryUrl,
+            // Someone running this server has already decided to trust what we
+            // publish. Trust is provenance only: a plugin listed here still waits
+            // for the owner's consent before it runs.
+            Trusted = true,
+        };
+
+    /// <summary>
+    /// Reads the persisted list. Public so startup awaits it once, instead of
+    /// the synchronous container resolve blocking a thread on disk.
+    /// </summary>
     public async Task LoadRepositoriesFromDiskAsync(CancellationToken ct = default)
     {
+        bool declined = _storage.Exists(_declinedDefaultFilePath);
+
         if (!_storage.Exists(_repositoriesFilePath))
         {
             lock (_lock)
             {
-                if (_repositories.Count == 0)
+                if (_repositories.Count == 0 && !declined)
                 {
-                    _repositories.Add(DefaultRepository);
+                    _repositories.Add(NewDefaultRepository());
                 }
             }
 
@@ -355,7 +370,10 @@ public class PluginRepository : IPluginRepository
                 _repositories.AddRange(repos);
             }
 
-            if (MoveOffTheRetiredIndex())
+            bool moved = MoveOffTheRetiredIndex();
+            bool seeded = !declined && SeedDefaultRepository();
+
+            if (moved || seeded)
             {
                 await SaveRepositoriesToDiskAsync(ct);
             }
@@ -392,9 +410,43 @@ public class PluginRepository : IPluginRepository
             if (at < 0)
                 return false;
 
-            _repositories[at] = DefaultRepository;
+            _repositories[at] = NewDefaultRepository();
 
             return true;
+        }
+    }
+
+    /// <summary>Adds the default unless its url or name is listed already.</summary>
+    private bool SeedDefaultRepository()
+    {
+        lock (_lock)
+        {
+            if (
+                _repositories.Any(repository =>
+                    repository.Url == DefaultRepositoryUrl
+                    || repository.Name == DefaultRepositoryName
+                )
+            )
+                return false;
+
+            _repositories.Add(NewDefaultRepository());
+
+            return true;
+        }
+    }
+
+    private async Task RecordDefaultRemovedAsync(CancellationToken ct)
+    {
+        try
+        {
+            await _storage.WriteAllTextAsync(_declinedDefaultFilePath, "removed", ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                "Failed to record the removed default repository at {Path}: {Error}",
+                [_declinedDefaultFilePath, ex.Message]
+            );
         }
     }
 

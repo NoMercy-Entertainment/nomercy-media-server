@@ -126,7 +126,11 @@ public partial class FfmpegCapabilities(
         return names;
     }
 
-    [GeneratedRegex(@"^[VASD][F.][S.][X.][B.][D.]\s+(?<name>\S+)")]
+    [GeneratedRegex(
+        @"^[VASD][F.][S.][X.][B.][D.]\s+(?<name>\S+)",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex EncoderPattern();
 
     // Demuxer rows: "D   3dostr             3DO STR". The flag column is
@@ -134,20 +138,32 @@ public partial class FfmpegCapabilities(
     // with spaces. Exclude legend rows (third column is "=") by requiring
     // the name to start with [a-z0-9] and to be followed by a non-empty
     // description token.
-    [GeneratedRegex(@"^[DE.d ]+\s+(?<name>[a-z0-9][a-z0-9_]*)\s+\S")]
+    [GeneratedRegex(
+        @"^[DE.d ]+\s+(?<name>[a-z0-9][a-z0-9_]*)\s+\S",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex DemuxerPattern();
 
     // Filter rows: optional flag chars (NoMercy fork shows 2, stock ffmpeg
     // shows 3), then a name, then a "AA->A" / "VV->V" / "N->V" type
     // signature. The signature requirement is what excludes legend rows
     // like "T.. = Timeline support" without needing a separate skip list.
-    [GeneratedRegex(@"^[TSC.]+\s+(?<name>\S+)\s+[VANS|]+->[VANS|]+")]
+    [GeneratedRegex(
+        @"^[TSC.]+\s+(?<name>\S+)\s+[VANS|]+->[VANS|]+",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex FilterPattern();
 
     // Protocols print one identifier per line under "Input:" / "Output:"
     // headers. Match lowercase identifiers only — the headers (capitalised,
     // colon-suffixed) and the "Supported file protocols:" preamble are
     // automatically excluded.
-    [GeneratedRegex(@"^(?<name>[a-z][a-z0-9_]*)$")]
+    [GeneratedRegex(
+        @"^(?<name>[a-z][a-z0-9_]*)$",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex ProtocolPattern();
 }

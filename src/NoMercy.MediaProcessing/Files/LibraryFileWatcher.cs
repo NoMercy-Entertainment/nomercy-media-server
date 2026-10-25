@@ -23,7 +23,7 @@ using Serilog.Events;
 
 namespace NoMercy.MediaProcessing.Files;
 
-public class LibraryFileWatcher
+public partial class LibraryFileWatcher
 {
     // ReSharper disable once InconsistentNaming
     private static readonly Lazy<LibraryFileWatcher> _instance = new(() =>
@@ -41,10 +41,12 @@ public class LibraryFileWatcher
     private static readonly Dictionary<string, FileChangeGroup> FileChangeGroups = new();
     private static readonly Lock LockObject = new();
 
-    private static readonly Regex EncodingOutputRegex = new(
+    [GeneratedRegex(
         @"^(video_.*|audio_.*|subtitles|fonts|thumbs|metadata|scans|cds.*|NCED|NCOP)$",
-        RegexOptions.IgnoreCase | RegexOptions.Compiled
-    );
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex EncodingOutputRegex();
 
     private const int Delay = 10;
 
@@ -145,7 +147,7 @@ public class LibraryFileWatcher
         while (!string.IsNullOrEmpty(directory))
         {
             string dirName = Path.GetFileName(directory);
-            if (EncodingOutputRegex.IsMatch(dirName))
+            if (EncodingOutputRegex().IsMatch(dirName))
                 return true;
 
             directory = Path.GetDirectoryName(directory);

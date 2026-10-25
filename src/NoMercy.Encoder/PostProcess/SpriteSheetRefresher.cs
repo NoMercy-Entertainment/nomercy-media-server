@@ -45,7 +45,7 @@ public partial class SpriteSheetRefresher(
 
     // Rendition folders are named by TemplateResolver.VideoTokens: video_{width}x{height},
     // with an _SDR suffix on tonemapped output and nothing after the size otherwise.
-    [GeneratedRegex(@"^video_(?<width>\d+)x(?<height>\d+)", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"^video_(?<width>\d+)x(?<height>\d+)", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
     private static partial Regex RenditionFolderRegex();
 
     public async Task<string?> RefreshAsync(
