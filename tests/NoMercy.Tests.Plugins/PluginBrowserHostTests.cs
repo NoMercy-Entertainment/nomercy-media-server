@@ -122,6 +122,14 @@ public class PluginBrowserHostTests
     }
 
     [Fact]
+    public void ALinuxHostRunningAsRootIsRefusedBecauseChromeNeedsItsSandbox()
+    {
+        HiddenChrome.SandboxReason(isLinux: true, userName: "root").Should().Contain("root");
+        HiddenChrome.SandboxReason(isLinux: true, userName: "nomercy").Should().BeEmpty();
+        HiddenChrome.SandboxReason(isLinux: false, userName: "root").Should().BeEmpty();
+    }
+
+    [Fact]
     public void ChromeHasRoomToOpenItsControlPortOnASlowOrBusyHost()
     {
         HiddenChrome.ChromeStartTimeout.Should().BeGreaterThanOrEqualTo(TimeSpan.FromSeconds(60));

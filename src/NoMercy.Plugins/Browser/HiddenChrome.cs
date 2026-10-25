@@ -88,8 +88,18 @@ internal sealed class HiddenChrome : IAsyncDisposable
         if (OperatingSystem.IsLinux() && FindOnPath("Xvfb") is null)
             return (string.Empty, "Xvfb is not installed on this host.");
 
+        string sandbox = SandboxReason(OperatingSystem.IsLinux(), Environment.UserName);
+        if (sandbox.Length != 0)
+            return (string.Empty, sandbox);
+
         return (chrome, string.Empty);
     }
+
+    // Chrome refuses root unless its sandbox is off; plugin pages keep the sandbox, so root is refused.
+    internal static string SandboxReason(bool isLinux, string userName) =>
+        isLinux && userName == "root"
+            ? "Chrome cannot run as root with its sandbox on. Run the server as a non-root user to use plugin browser pages."
+            : string.Empty;
 
     internal static async Task<HiddenChrome> StartAsync(CancellationToken ct)
     {
