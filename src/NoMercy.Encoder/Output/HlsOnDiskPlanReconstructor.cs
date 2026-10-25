@@ -50,7 +50,11 @@ public partial class HlsOnDiskPlanReconstructor(
 
     private IMediaBlueprintWriter BlueprintReader => blueprintReader ?? FallbackBlueprintReader;
 
-    [GeneratedRegex(@"^video_(?<width>\d+)x(?<height>\d+)(?<sdr>_SDR)?$")]
+    [GeneratedRegex(
+        @"^video_(?<width>\d+)x(?<height>\d+)(?<sdr>_SDR)?$",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex VideoRenditionDirRegex();
 
     // The codec suffix is optional: older encodes published `audio_<lang>/`
@@ -60,7 +64,11 @@ public partial class HlsOnDiskPlanReconstructor(
     // ReconstructAudio. Requiring the suffix here silently dropped every
     // old-naming rendition from the rebuilt master, which is what shipped a
     // title with a missing audio group (plays silent).
-    [GeneratedRegex(@"^audio_(?<lang>[a-zA-Z]{2,3})(?:_(?<codec>[a-zA-Z0-9]+))?(_\d+)?$")]
+    [GeneratedRegex(
+        @"^audio_(?<lang>[a-zA-Z]{2,3})(?:_(?<codec>[a-zA-Z0-9]+))?(_\d+)?$",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex AudioRenditionDirRegex();
 
     private static readonly HashSet<string> HdrColorTransfers = new(

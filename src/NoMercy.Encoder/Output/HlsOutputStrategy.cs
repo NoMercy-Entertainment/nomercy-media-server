@@ -22,9 +22,12 @@ using NoMercy.Storage;
 
 namespace NoMercy.Encoder.Output;
 
-public class HlsOutputStrategy(IStorage storage) : IOutputStrategy
+public partial class HlsOutputStrategy(IStorage storage) : IOutputStrategy
 {
     public OutputFormat Format => OutputFormat.Hls;
+
+    [GeneratedRegex(@"_\d{5}\.vtt$", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex SegmentFileNameRegex();
 
     /// <summary>
     /// Language + readable title for one audio rendition. Falls back to "und" and
@@ -428,7 +431,7 @@ public class HlsOutputStrategy(IStorage storage) : IOutputStrategy
 
             // Skip our own segment files if the language probe finds them
             // before the source — they end with _NNNNN.vtt.
-            if (Regex.IsMatch(storage.GetName(sourceVttPath), @"_\d{5}\.vtt$"))
+            if (SegmentFileNameRegex().IsMatch(storage.GetName(sourceVttPath)))
                 continue;
 
             string vttContent = Encoding.UTF8.GetString(storage.Read(sourceVttPath));

@@ -32,7 +32,8 @@ public static partial class SpriteVttTrimmer
 {
     [GeneratedRegex(
         @"^(?<h>\d+):(?<m>\d{2}):(?<s>\d{2})\.(?<ms>\d{3})\s*-->",
-        RegexOptions.Compiled
+        RegexOptions.Compiled,
+        matchTimeoutMilliseconds: 1000
     )]
     private static partial Regex CueStartRegex();
 

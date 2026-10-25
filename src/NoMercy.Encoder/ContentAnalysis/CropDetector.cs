@@ -299,6 +299,10 @@ public partial class CropDetector(
         }
     }
 
-    [GeneratedRegex(@"crop=(?<crop>\d+:\d+:\d+:\d+)")]
+    [GeneratedRegex(
+        @"crop=(?<crop>\d+:\d+:\d+:\d+)",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex CropRegex();
 }
