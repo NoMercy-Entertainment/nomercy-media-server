@@ -73,7 +73,7 @@ public partial class PluginMediaProxy(
     /// A URI attribute in a tag line: EXT-X-KEY, EXT-X-MAP, EXT-X-MEDIA,
     /// EXT-X-I-FRAME-STREAM-INF and the rest all name their address this way.
     /// </summary>
-    [GeneratedRegex("URI=\"([^\"]*)\"")]
+    [GeneratedRegex("URI=\"([^\"]*)\"", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex UriAttribute();
 
     public Task<PluginMediaUrl> MintAsync(
