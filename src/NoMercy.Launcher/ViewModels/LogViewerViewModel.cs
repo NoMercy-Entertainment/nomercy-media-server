@@ -29,7 +29,7 @@ public partial class LogViewerViewModel : INotifyPropertyChanged
     private readonly ServerConnection _serverConnection;
     private CancellationTokenSource? _streamCts;
 
-    [GeneratedRegex(@"(\x1b|\\u001[bB])\[[0-9;]*[A-Za-z]")]
+    [GeneratedRegex(@"(\x1b|\\u001[bB])\[[0-9;]*[A-Za-z]", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex AnsiEscapeRegex();
 
     private string _searchText = string.Empty;
