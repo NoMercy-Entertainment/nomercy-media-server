@@ -97,6 +97,6 @@ public static partial class ReleaseChannelSelector
         return match.Success && Version.TryParse(match.Groups[1].Value, out version!);
     }
 
-    [GeneratedRegex(@"^v?(\d+\.\d+\.\d+)$")]
+    [GeneratedRegex(@"^v?(\d+\.\d+\.\d+)$", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex PlainVersionTag();
 }

@@ -47,6 +47,6 @@ public static partial class CollectionTitleFormatter
         return string.IsNullOrWhiteSpace(stripped) ? title : stripped;
     }
 
-    [GeneratedRegex(@"\s*\bCollection\s*$", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"\s*\bCollection\s*$", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
     private static partial Regex TrailingCollectionWordRegex();
 }

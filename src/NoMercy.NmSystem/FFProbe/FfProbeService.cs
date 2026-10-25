@@ -25,9 +25,15 @@ using Serilog.Events;
 
 namespace NoMercy.NmSystem.FFProbe;
 
-public class FfProbeService : IFfProbeService
+public partial class FfProbeService : IFfProbeService
 {
     public static FfProbeService Current { get; } = new();
+
+    [GeneratedRegex(@"RESOLUTION=(\d+)x(\d+)", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex HlsResolutionRegex();
+
+    [GeneratedRegex("CODECS=\"([^\"]+)\"", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex HlsCodecsRegex();
 
     // A probe over a non-seekable stdin pipe scans to end-of-file on containers whose
     // duration lives there, which this codebase already measures at ~30 s/file on a
@@ -156,13 +162,13 @@ public class FfProbeService : IFfProbeService
                 string line = lines[i].TrimEnd('\r');
                 if (line.StartsWith("#EXT-X-STREAM-INF", StringComparison.Ordinal))
                 {
-                    Match res = Regex.Match(line, @"RESOLUTION=(\d+)x(\d+)");
+                    Match res = HlsResolutionRegex().Match(line);
                     if (res.Success)
                     {
                         width = int.Parse(res.Groups[1].Value);
                         height = int.Parse(res.Groups[2].Value);
                     }
-                    Match codecs = Regex.Match(line, "CODECS=\"([^\"]+)\"");
+                    Match codecs = HlsCodecsRegex().Match(line);
                     if (codecs.Success)
                     {
                         string[] codecList = codecs.Groups[1].Value.Split(',');

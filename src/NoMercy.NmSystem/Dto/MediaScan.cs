@@ -22,7 +22,7 @@ using Serilog.Events;
 
 namespace NoMercy.NmSystem.Dto;
 
-public class MediaScan : IDisposable, IAsyncDisposable
+public partial class MediaScan : IDisposable, IAsyncDisposable
 {
     private readonly MovieDetector _movieDetector = new();
     private readonly IStorageDriver _driver;
@@ -31,10 +31,12 @@ public class MediaScan : IDisposable, IAsyncDisposable
     private bool _regexFilterEnabled = true;
     private string? Filter { get; set; }
 
-    private readonly Regex _folderNameRegex = new(
+    [GeneratedRegex(
         @"video_.*|audio_.*|subtitles|scans|cds.*|ost|album|music|original|fonts|thumbs|metadata|NCED|NCOP|\s\(\d\)\.|~",
-        RegexOptions.IgnoreCase
-    );
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex FolderNameRegex();
 
     private string[] _extensionFilter = [];
 
@@ -148,7 +150,7 @@ public class MediaScan : IDisposable, IAsyncDisposable
                 {
                     string folderName = Path.GetFileName(directory);
 
-                    if ((_regexFilterEnabled && _folderNameRegex.IsMatch(folderName)) || depth == 0)
+                    if ((_regexFilterEnabled && FolderNameRegex().IsMatch(folderName)) || depth == 0)
                     {
                         files.Add(
                             new()
@@ -246,7 +248,7 @@ public class MediaScan : IDisposable, IAsyncDisposable
 
                     string folderName = Path.GetFileName(dir);
 
-                    if (_regexFilterEnabled && _folderNameRegex.IsMatch(folderName))
+                    if (_regexFilterEnabled && FolderNameRegex().IsMatch(folderName))
                     {
                         folders.Add(
                             new()
