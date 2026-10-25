@@ -58,14 +58,14 @@ public sealed partial class AudioAnalysisOutputParser
     /// </summary>
     private const double VerdictTempoTolerance = 0.03;
 
-    [GeneratedRegex(@"^lavfi\.(?<key>[a-z0-9_.]+)=(?<value>.*)$", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"^lavfi\.(?<key>[a-z0-9_.]+)=(?<value>.*)$", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
     private static partial Regex MetadataLineRegex();
 
     /// <summary>
     /// The header <c>ametadata</c> writes before each frame's keys. It is the
     /// only marker of where one frame's metadata ends and the next begins.
     /// </summary>
-    [GeneratedRegex(@"^frame:\s*[0-9]+\b")]
+    [GeneratedRegex(@"^frame:\s*[0-9]+\b", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex FrameHeaderRegex();
 
     // The fallback for builds older than nomercy-ffmpeg v1.0.40, which publish
@@ -73,19 +73,22 @@ public sealed partial class AudioAnalysisOutputParser
     // also writes the same value through a bare fprintf carrying no instance
     // tag, which cannot be attributed to a detector.
     [GeneratedRegex(
-        @"\[Parsed_beatdetect_(?<instance>[0-9]+) @[^]]*\]\s*lavfi\.beatdetect\.bpm=(?<bpm>[0-9]+(?:\.[0-9]+)?)"
+        @"\[Parsed_beatdetect_(?<instance>[0-9]+) @[^]]*\]\s*lavfi\.beatdetect\.bpm=(?<bpm>[0-9]+(?:\.[0-9]+)?)",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
     )]
     private static partial Regex BeatdetectStderrRegex();
 
-    [GeneratedRegex(@"silence_start:\s*(?<value>-?[0-9]+(?:\.[0-9]+)?)")]
+    [GeneratedRegex(@"silence_start:\s*(?<value>-?[0-9]+(?:\.[0-9]+)?)", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex SilenceStartRegex();
 
-    [GeneratedRegex(@"silence_end:\s*(?<value>-?[0-9]+(?:\.[0-9]+)?)")]
+    [GeneratedRegex(@"silence_end:\s*(?<value>-?[0-9]+(?:\.[0-9]+)?)", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex SilenceEndRegex();
 
     [GeneratedRegex(
         @"Duration:\s*(?<h>\d+):(?<m>\d{2}):(?<s>\d{2}(?:\.\d+)?)",
-        RegexOptions.IgnoreCase
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
     )]
     private static partial Regex DurationRegex();
 

@@ -31,28 +31,20 @@ public sealed partial class InboxClassifier
     ];
 
     // SxxExx e.g. S01E01, S1E1
-    private static readonly Regex SeasonEpisodePattern = new(
-        @"[Ss]\d{1,2}[Ee]\d{1,2}",
-        RegexOptions.Compiled
-    );
+    [GeneratedRegex(@"[Ss]\d{1,2}[Ee]\d{1,2}", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex SeasonEpisodePattern();
 
     // NxNN e.g. 1x01, 2x12
-    private static readonly Regex EpisodePrefixPattern = new(
-        @"\b\d{1,2}x\d{2}\b",
-        RegexOptions.Compiled
-    );
+    [GeneratedRegex(@"\b\d{1,2}x\d{2}\b", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex EpisodePrefixPattern();
 
     // "Season N" or "Season 01" in any path segment
-    private static readonly Regex SeasonFolderPattern = new(
-        @"\bSeason\s*\d+\b",
-        RegexOptions.Compiled | RegexOptions.IgnoreCase
-    );
+    [GeneratedRegex(@"\bSeason\s*\d+\b", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex SeasonFolderPattern();
 
     // "Title (Year)" movie shape — year in parens
-    private static readonly Regex MovieYearPattern = new(
-        @"\((?:19|20)\d{2}\)",
-        RegexOptions.Compiled
-    );
+    [GeneratedRegex(@"\((?:19|20)\d{2}\)", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex MovieYearPattern();
 
     // Fansub bracket at start of FILENAME: "[Group] Title - NNN ..."
     // Conservative: only flag an episodic (tv-shaped) file when the filename
@@ -62,16 +54,24 @@ public sealed partial class InboxClassifier
     // anime/tv split itself is decided by IMediaTypeClassifier (AniList/Jikan),
     // never by bracket-guessing, since normally-named anime files with no
     // fansub bracket were routing to the wrong library.
-    private static readonly Regex FansubAbsoluteEpPattern = new(
-        @"^\[[^\]]+\].*\s-\s\d{1,4}\s",
-        RegexOptions.Compiled
-    );
+    [GeneratedRegex(@"^\[[^\]]+\].*\s-\s\d{1,4}\s", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex FansubAbsoluteEpPattern();
 
-    [GeneratedRegex(@"\.NoMercy\.m3u8$", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"\.NoMercy\.m3u8$", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
     private static partial Regex FinishedHlsMasterPattern();
 
-    [GeneratedRegex(@"^(video_\d+x\d+(_.+)?|audio_[A-Za-z0-9_]+)$")]
+    [GeneratedRegex(@"^(video_\d+x\d+(_.+)?|audio_[A-Za-z0-9_]+)$", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex HlsLadderEntryPattern();
+
+    [GeneratedRegex(
+        @"\b(720p|1080p|2160p|4k|BluRay|WEB-DL|WEBRip|HDTV|x264|x265|HEVC|H\.?264|H\.?265|AAC|DTS|AC3)\b.*$",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex QualityTagTail();
+
+    [GeneratedRegex(@"\s*\((?:19|20)\d{2}\)\s*$", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex TrailingYearInParens();
 
     private readonly IInboxMetadataProbe _probe;
     private readonly IInboxAudioTagReader _tagReader;
@@ -109,16 +109,16 @@ public sealed partial class InboxClassifier
     {
         string filename = Path.GetFileNameWithoutExtension(path);
 
-        if (FansubAbsoluteEpPattern.IsMatch(filename))
+        if (FansubAbsoluteEpPattern().IsMatch(filename))
             return "tv";
 
-        if (SeasonEpisodePattern.IsMatch(path))
+        if (SeasonEpisodePattern().IsMatch(path))
             return "tv";
 
-        if (EpisodePrefixPattern.IsMatch(path))
+        if (EpisodePrefixPattern().IsMatch(path))
             return "tv";
 
-        if (SeasonFolderPattern.IsMatch(path))
+        if (SeasonFolderPattern().IsMatch(path))
             return "tv";
 
         MovieDetector detector = new();
@@ -127,7 +127,7 @@ public sealed partial class InboxClassifier
         if (info.IsSeries && (info.Season.HasValue || info.Episode.HasValue))
             return "tv";
 
-        if (MovieYearPattern.IsMatch(path))
+        if (MovieYearPattern().IsMatch(path))
             return "movie";
 
         return "unknown";
@@ -445,17 +445,10 @@ public sealed partial class InboxClassifier
         string name = Path.GetFileNameWithoutExtension(path);
 
         // Strip resolution / quality tags
-        name = Regex
-            .Replace(
-                name,
-                @"\b(720p|1080p|2160p|4k|BluRay|WEB-DL|WEBRip|HDTV|x264|x265|HEVC|H\.?264|H\.?265|AAC|DTS|AC3)\b.*$",
-                string.Empty,
-                RegexOptions.IgnoreCase
-            )
-            .Trim();
+        name = QualityTagTail().Replace(name, string.Empty).Trim();
 
         // Strip year in parens at end
-        name = Regex.Replace(name, @"\s*\((?:19|20)\d{2}\)\s*$", string.Empty).Trim();
+        name = TrailingYearInParens().Replace(name, string.Empty).Trim();
 
         return name.Trim('.', ' ', '-', '_');
     }
@@ -466,7 +459,7 @@ public sealed partial class InboxClassifier
         if (!string.IsNullOrWhiteSpace(info.Year) && int.TryParse(info.Year, out int parsed))
             return parsed;
 
-        Match yearMatch = MovieYearPattern.Match(path);
+        Match yearMatch = MovieYearPattern().Match(path);
         if (!yearMatch.Success)
             return null;
 

@@ -397,10 +397,10 @@ public partial class RecordingManager(
         return FolderRootPath(folderStorage, libraryFolder.Path);
     }
 
-    [GeneratedRegex("^00:")]
+    [GeneratedRegex("^00:", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex HmsRegex();
 
-    [GeneratedRegex(@"[\(\[]\s*(feat|ft)\.?\s[^\)\]]*[\)\]]", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"[\(\[]\s*(feat|ft)\.?\s[^\)\]]*[\)\]]", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
     private static partial Regex FeaturingClause();
 
     private const double LengthToleranceSeconds = 3;
@@ -425,7 +425,7 @@ public partial class RecordingManager(
             && Math.Abs(fileDuration.TotalSeconds - trackSeconds) <= LengthToleranceSeconds;
     }
 
-    [GeneratedRegex("[^a-z0-9]")]
+    [GeneratedRegex("[^a-z0-9]", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex NotLetterOrDigit();
 
     private static string ComparableTitle(string title) =>

@@ -33,6 +33,12 @@ namespace NoMercy.MediaProcessing.Files;
 
 public partial class FileManager
 {
+    [GeneratedRegex(@"\.\d+", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex DurationFractionRegex();
+
+    [GeneratedRegex("^00:", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex DurationLeadingZeroRegex();
+
     private async Task StoreMusic()
     {
         List<MediaFile> items =
@@ -242,11 +248,11 @@ public partial class FileManager
             Filename = fileName.Replace("\\", "/"),
 
             Share = folder.Id.ToString(),
-            Duration = Regex.Replace(
-                Regex.Replace((item.FFprobe?.Duration.ToString()).OrEmpty(), @"\.\d+", ""),
-                "^00:",
-                ""
-            ),
+            Duration = DurationLeadingZeroRegex()
+                .Replace(
+                    DurationFractionRegex().Replace((item.FFprobe?.Duration.ToString()).OrEmpty(), ""),
+                    ""
+                ),
             // Chapters = JsonConvert.SerializeObject(item.FFprobe?.Chapters ?? []),
             Chapters = "",
             // Derive languages from the encoded audio tracks (the audio_<lang>_<codec>

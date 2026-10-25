@@ -47,15 +47,16 @@ public sealed partial class PartAdapter : IFilenameParseAdapter
     /// part3」" — and a marker glued to the end of a word is not a marker.</para>
     /// </summary>
     [GeneratedRegex(
-        @"(?<![\p{L}\p{N}])(?:part|pt)[\s._-]*(?<num>[0-9]{1,3}|[IVXLC]{1,6})"
+        matchTimeoutMilliseconds: 1000,
+        options: RegexOptions.IgnoreCase,
+        pattern: @"(?<![\p{L}\p{N}])(?:part|pt)[\s._-]*(?<num>[0-9]{1,3}|[IVXLC]{1,6})"
             + @"(?:[\s._-]*of[\s._-]*[0-9]{1,3})?"
             + @"(?:[\s._-]*(?:and|&|to)[\s._-]*(?:(?:part|pt)[\s._-]*)?[0-9]{1,3})*"
-            + @"(?![\p{L}\p{N}])",
-        RegexOptions.IgnoreCase
+            + @"(?![\p{L}\p{N}])"
     )]
     private static partial Regex PartMarker();
 
-    [GeneratedRegex(@"(?<![A-Za-z0-9])[0-9]{1,4}(?![A-Za-z0-9])")]
+    [GeneratedRegex(@"(?<![A-Za-z0-9])[0-9]{1,4}(?![A-Za-z0-9])", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex StandaloneNumber();
 
     public MovieFile? TryParse(ParseContext context)

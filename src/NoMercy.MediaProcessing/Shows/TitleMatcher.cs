@@ -25,7 +25,7 @@ namespace NoMercy.MediaProcessing.Shows;
 /// </summary>
 public static partial class TitleMatcher
 {
-    [GeneratedRegex(@"\s+")]
+    [GeneratedRegex(@"\s+", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex CollapseWhitespace();
 
     private static string Normalize(string title) =>

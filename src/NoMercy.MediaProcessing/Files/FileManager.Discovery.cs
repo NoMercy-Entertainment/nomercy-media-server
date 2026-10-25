@@ -278,19 +278,19 @@ public partial class FileManager
     // only matched 3-char lang + 3-4 char type + 3-char ext and the consumer methods
     // further filtered to type in (sign, song, full) — both combined silently dropped
     // every "alt" / "sdh" / "forced" subtitle file.
-    [GeneratedRegex(@"(?<lang>[a-zA-Z]{2,3})\.(?<type>\w+)\.(?<ext>\w{3,6})$")]
+    [GeneratedRegex(@"(?<lang>[a-zA-Z]{2,3})\.(?<type>\w+)\.(?<ext>\w{3,6})$", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex SubtitleFileRegex();
 
-    [GeneratedRegex(@"#xywh=\d+,\d+,(?<width>\d+),(?<height>\d+)")]
+    [GeneratedRegex(@"#xywh=\d+,\d+,(?<width>\d+),(?<height>\d+)", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex ImageDimensions();
 
-    [GeneratedRegex(@"^video_(?<width>\d+)x(?<height>\d+)(?:_(?:SDR|HDR))?$")]
+    [GeneratedRegex(@"^video_(?<width>\d+)x(?<height>\d+)(?:_(?:SDR|HDR))?$", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex VideoDirectoryRegex();
 
     // Older encodes name the rendition dir `audio_<lang>` (no codec suffix);
     // newer ones `audio_<lang>_<codec>` (e.g. audio_jpn_aac). Match both — the
     // codec group is optional — or a rescan drops the audio group from the
     // rebuilt master and the title plays silent.
-    [GeneratedRegex(@"^audio_(?<lang>[a-z]{2,3})(?:_(?<codec>\w+))?$")]
+    [GeneratedRegex(@"^audio_(?<lang>[a-z]{2,3})(?:_(?<codec>\w+))?$", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex AudioDirectoryRegex();
 }
