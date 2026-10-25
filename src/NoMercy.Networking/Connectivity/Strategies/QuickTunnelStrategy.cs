@@ -51,16 +51,17 @@ public partial class QuickTunnelStrategy : IConnectivityStrategy, IDisposable
     private static readonly TimeSpan PublicationPollInterval = TimeSpan.FromSeconds(3);
     private static readonly HttpClient DnsOverHttps = new() { Timeout = TimeSpan.FromSeconds(8) };
 
-    [GeneratedRegex(@"https://[a-z0-9-]+\.trycloudflare\.com", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"https://[a-z0-9-]+\.trycloudflare\.com", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
     private static partial Regex AssignedUrlPattern();
 
     [GeneratedRegex(
         @"Registered tunnel connection|Connection [0-9a-f-]+ registered",
-        RegexOptions.IgnoreCase
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
     )]
     private static partial Regex ConnectionRegisteredPattern();
 
-    [GeneratedRegex(@"\bERR\b|\bFTL\b|error|failed", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"\bERR\b|\bFTL\b|error|failed", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
     private static partial Regex FailurePattern();
 
     public QuickTunnelStrategy(
