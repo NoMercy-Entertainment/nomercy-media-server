@@ -54,13 +54,13 @@ public static partial class PicardNaming
     /// producing a straight <c>"</c>) fails CreateDirectory outright rather than just
     /// looking different from Picard's own output.
     /// </summary>
-    [GeneratedRegex("[?*:\\\\_\"<>|]+")]
+    [GeneratedRegex("[?*:\\\\_\"<>|]+", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex UnsafeRun();
 
-    [GeneratedRegex(@"\.(?=/)")]
+    [GeneratedRegex(@"\.(?=/)", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex TrailingFolderDot();
 
-    [GeneratedRegex(@"^(the|a|an)\s+", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"^(the|a|an)\s+", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
     private static partial Regex LeadingArticle();
 
     public static string BuildPath(MusicNamingContext context) =>
