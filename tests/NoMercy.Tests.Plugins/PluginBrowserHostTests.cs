@@ -11,6 +11,7 @@
 
 using System.Net;
 using System.Net.Sockets;
+using System.Runtime.Versioning;
 using System.Text;
 using FluentAssertions;
 using NoMercy.PluginSdk.Abstractions;
@@ -123,6 +124,63 @@ public class PluginBrowserHostTests
     public void ChromeHasRoomToOpenItsControlPortOnASlowOrBusyHost()
     {
         HiddenChrome.ChromeStartTimeout.Should().BeGreaterThanOrEqualTo(TimeSpan.FromSeconds(60));
+    }
+
+    [Fact]
+    public void ChromesStderrTailKeepsOnlyTheLastTwentyLines()
+    {
+        string path = Path.Combine(Path.GetTempPath(), "nomercy-stderr-" + Ulid.NewUlid());
+        File.WriteAllLines(path, Enumerable.Range(1, 30).Select(n => "line " + n));
+        try
+        {
+            string[] tail = HiddenChrome.ReadStderrTail(path).Split(Environment.NewLine);
+
+            tail.Should().HaveCount(20);
+            tail[0].Should().Be("line 11");
+            tail[^1].Should().Be("line 30");
+            HiddenChrome.ReadStderrTail(path + ".missing").Should().BeEmpty();
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [SkippableFact]
+    [SupportedOSPlatform("linux")]
+    public async Task AChromeThatDiesOnStartupReportsItsOwnWords()
+    {
+        Skip.IfNot(OperatingSystem.IsLinux(), "The virtual display path is Linux only.");
+        string folder = Path.Combine(Path.GetTempPath(), "nomercy-fake-chrome-" + Ulid.NewUlid());
+        Directory.CreateDirectory(folder);
+        try
+        {
+            string xvfb = WriteScript(folder, "Xvfb", "echo 99\nexec sleep 300");
+            string chrome = WriteScript(
+                folder,
+                "chrome",
+                "echo 'first line' >&2\necho 'fake chrome cannot create its sandbox' >&2\nexit 7"
+            );
+
+            Func<Task> start = async () => await HiddenChrome.StartAsync(chrome, xvfb, default);
+
+            (await start.Should().ThrowAsync<InvalidOperationException>())
+                .Which.Message.Should()
+                .Contain("fake chrome cannot create its sandbox");
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [SupportedOSPlatform("linux")]
+    private static string WriteScript(string folder, string name, string body)
+    {
+        string path = Path.Combine(folder, name);
+        File.WriteAllText(path, "#!/bin/sh\n" + body + "\n");
+        File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserExecute);
+        return path;
     }
 
     [SkippableFact]

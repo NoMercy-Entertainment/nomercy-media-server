@@ -94,11 +94,21 @@ internal sealed class HiddenChrome : IAsyncDisposable
         if (reason.Length != 0)
             throw new InvalidOperationException(reason);
 
+        return await StartAsync(executable, FindOnPath("Xvfb"), ct);
+    }
+
+    internal static async Task<HiddenChrome> StartAsync(
+        string executable,
+        string? xvfbPath,
+        CancellationToken ct
+    )
+    {
         string profile = Path.Combine(
             Path.GetTempPath(),
             "nomercy-plugin-browser-" + Guid.NewGuid().ToString("N")
         );
         Directory.CreateDirectory(profile);
+        string stderrLog = Path.Combine(profile, "chrome-stderr.log");
         Process? display = null;
         Process? chrome = null;
         WindowsChromeDesktop? desktop = null;
@@ -118,7 +128,7 @@ internal sealed class HiddenChrome : IAsyncDisposable
                     "\"$1\" -displayfd 1 -screen 0 1280x1024x24 -nolisten tcp & pid=$!; IFS= read -r _; kill -TERM \"$pid\" 2>/dev/null || :; wait \"$pid\""
                 );
                 xvfb.ArgumentList.Add("nomercy-xvfb");
-                xvfb.ArgumentList.Add(FindOnPath("Xvfb")!);
+                xvfb.ArgumentList.Add(xvfbPath!);
                 display =
                     Process.Start(xvfb)
                     ?? throw new InvalidOperationException("Xvfb did not start.");
@@ -156,11 +166,13 @@ internal sealed class HiddenChrome : IAsyncDisposable
                     RedirectStandardInput = true,
                 };
                 start.ArgumentList.Add("-c");
+                // The shell ends when Chrome ends, so a crashed Chrome shows as HasExited.
                 start.ArgumentList.Add(
-                    "executable=$1; shift; setsid \"$executable\" \"$@\" </dev/null >/dev/null 2>&1 & pid=$!; IFS= read -r _; /bin/kill -TERM -- \"-$pid\" 2>/dev/null || :; wait \"$pid\""
+                    "executable=$1; log=$2; shift 2; setsid \"$executable\" \"$@\" </dev/null >/dev/null 2>\"$log\" & pid=$!; { IFS= read -r _; /bin/kill -TERM -- \"-$pid\" 2>/dev/null || :; } <&0 & wait \"$pid\""
                 );
                 start.ArgumentList.Add("nomercy-chrome");
                 start.ArgumentList.Add(executable);
+                start.ArgumentList.Add(stderrLog);
                 foreach (string argument in arguments)
                     start.ArgumentList.Add(argument);
                 start.Environment["DISPLAY"] = displayName;
@@ -211,13 +223,45 @@ internal sealed class HiddenChrome : IAsyncDisposable
                 .WaitAsync(ct);
             return new HiddenChrome(browser, chrome, display, desktop, profile);
         }
-        catch
+        catch (Exception error)
         {
+            string said = ReadStderrTail(stderrLog);
             StopProcess(chrome);
             StopProcess(display);
             desktop?.Dispose();
             await DeleteProfileAsync(profile);
-            throw;
+            if (said.Length == 0 || ct.IsCancellationRequested)
+                throw;
+            throw new InvalidOperationException(
+                error.Message + " Chrome said:" + Environment.NewLine + said,
+                error
+            );
+        }
+    }
+
+    internal static string ReadStderrTail(string path, int lines = 20)
+    {
+        try
+        {
+            using FileStream stream = new(
+                path,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite
+            );
+            using StreamReader reader = new(stream);
+            Queue<string> tail = new();
+            while (reader.ReadLine() is { } line)
+            {
+                tail.Enqueue(line);
+                if (tail.Count > lines)
+                    tail.Dequeue();
+            }
+            return string.Join(Environment.NewLine, tail);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return string.Empty;
         }
     }
 
