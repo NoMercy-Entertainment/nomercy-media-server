@@ -14,8 +14,15 @@ using NoMercy.Encoder.LiveTranscode;
 
 namespace NoMercy.Tests.Encoder.LiveTranscode;
 
-public class LivePlaylistBuilderTests
+public partial class LivePlaylistBuilderTests
 {
+    [System.Text.RegularExpressions.GeneratedRegex(
+        "DEFAULT=YES",
+        System.Text.RegularExpressions.RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial System.Text.RegularExpressions.Regex DefaultYes();
+
     private readonly LivePlaylistBuilder _builder = new();
 
     private static Segment MakeSegment(int index, double startSec, double durSec) =>
@@ -277,7 +284,7 @@ public class LivePlaylistBuilderTests
 
         // Exactly one DEFAULT=YES, and it is the English track even though Japanese
         // is listed first — the viewer's language opens by default.
-        System.Text.RegularExpressions.Regex.Matches(master, "DEFAULT=YES").Count.Should().Be(1);
+        DefaultYes().Matches(master).Count.Should().Be(1);
         string engLine = master.Split('\n').First(line => line.Contains("LANGUAGE=\"eng\""));
         engLine.Should().Contain("DEFAULT=YES");
     }

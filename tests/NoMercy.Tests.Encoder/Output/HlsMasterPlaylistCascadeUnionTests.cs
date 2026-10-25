@@ -201,7 +201,12 @@ public class HlsMasterPlaylistCascadeUnionTests : IDisposable
 
     private static int ExtractInt(string streamInfLine, string attribute)
     {
-        Match match = Regex.Match(streamInfLine, $@"{attribute}=(?<value>\d+)");
+        Match match = Regex.Match(
+            streamInfLine,
+            $@"{attribute}=(?<value>\d+)",
+            RegexOptions.None,
+            TimeSpan.FromSeconds(1)
+        );
         return int.Parse(match.Groups["value"].Value);
     }
 

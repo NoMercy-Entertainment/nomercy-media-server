@@ -59,14 +59,14 @@ public static partial class EncodeFidelityOracle
         if (taggedDv && !hasRpu)
             violations.Add(
                 $"DV-tag-without-RPU: codec_tag '{tag}' claims Dolby Vision but no DOVI "
-                      + "configuration/RPU side-data is present — a re-encode that strips the RPU "
-                      + "MUST be tagged hvc1/hev1. This is the reported corrupt-playback case."
+                    + "configuration/RPU side-data is present — a re-encode that strips the RPU "
+                    + "MUST be tagged hvc1/hev1. This is the reported corrupt-playback case."
             );
 
         if (!taggedDv && hasRpu)
             violations.Add(
                 $"DV-RPU-without-tag: an RPU is present but codec_tag '{tag}' is not a Dolby "
-                      + "Vision tag — the DV signalling is inconsistent."
+                    + "Vision tag — the DV signalling is inconsistent."
             );
     }
 
@@ -100,7 +100,7 @@ public static partial class EncodeFidelityOracle
         if (!output.HasSideData("Mastering display metadata"))
             violations.Add(
                 "HDR10-mastering-display: PQ transfer but no Mastering-display side-data "
-                      + "(dropped on re-encode → washed-out HDR)."
+                    + "(dropped on re-encode → washed-out HDR)."
             );
     }
 
@@ -123,7 +123,7 @@ public static partial class EncodeFidelityOracle
         if (tag == "hev1")
             violations.Add(
                 "HEVC-tag-hev1: HLS fMP4 requires hvc1 (params in init segment); hev1 is "
-                      + "refused by Safari/AVFoundation."
+                    + "refused by Safari/AVFoundation."
             );
     }
 
@@ -147,7 +147,7 @@ public static partial class EncodeFidelityOracle
         foreach (Match m in streamInfs)
         {
             string line = m.Value;
-            Match bw = Regex.Match(line, @"BANDWIDTH=(\d+)");
+            Match bw = BandwidthRegex().Match(line);
             if (!bw.Success)
             {
                 violations.Add($"HLS-missing-bandwidth: variant has no BANDWIDTH → {Trim(line)}");
@@ -168,7 +168,7 @@ public static partial class EncodeFidelityOracle
         if (bandwidths.Count > 1 && bandwidths.Distinct().Count() == 1)
             violations.Add(
                 $"HLS-identical-bandwidth: all {bandwidths.Count} variants advertise the same "
-                      + $"BANDWIDTH={bandwidths[0]} — ABR cannot pick by bitrate (the MapLabel-collision bug)."
+                    + $"BANDWIDTH={bandwidths[0]} — ABR cannot pick by bitrate (the MapLabel-collision bug)."
             );
     }
 
@@ -182,8 +182,8 @@ public static partial class EncodeFidelityOracle
     /// </summary>
     private static void CheckHevcCodecsLevelForResolution(string streamInf, List<string> violations)
     {
-        Match res = Regex.Match(streamInf, @"RESOLUTION=(\d+)x(\d+)");
-        Match hevc = Regex.Match(streamInf, @"hvc1\.\d+\.[0-9A-Fa-f]+\.L(\d+)");
+        Match res = ResolutionRegex().Match(streamInf);
+        Match hevc = HevcCodecRegex().Match(streamInf);
         if (!res.Success || !hevc.Success)
             return;
 
@@ -202,7 +202,7 @@ public static partial class EncodeFidelityOracle
         if (levelIdc < floorIdc)
             violations.Add(
                 $"HLS-codecs-level-too-low: {res.Groups[1].Value}x{res.Groups[2].Value} variant "
-                      + $"advertises HEVC L{levelIdc} but needs ≥ L{floorIdc} for that resolution → {Trim(streamInf)}"
+                    + $"advertises HEVC L{levelIdc} but needs ≥ L{floorIdc} for that resolution → {Trim(streamInf)}"
             );
     }
 
@@ -224,7 +224,7 @@ public static partial class EncodeFidelityOracle
         if (outAudio.Count < srcAudio.Count)
             violations.Add(
                 $"audio-tracks-dropped: source has {srcAudio.Count} audio track(s), output has "
-                      + $"{outAudio.Count} — a track was dropped (keep-all unless a policy explicitly prunes)."
+                    + $"{outAudio.Count} — a track was dropped (keep-all unless a policy explicitly prunes)."
             );
 
         foreach (JObject a in outAudio)
@@ -236,7 +236,7 @@ public static partial class EncodeFidelityOracle
                 if (srcAudio.Any(s => Lang(s) != "und"))
                     violations.Add(
                         "audio-language-stripped: an output audio track has language 'und' while "
-                              + "the source carried language tags."
+                            + "the source carried language tags."
                     );
             }
         }
@@ -259,7 +259,7 @@ public static partial class EncodeFidelityOracle
             if (sameCodec && srcLayout.Length > 0 && outLayout != srcLayout)
                 violations.Add(
                     $"audio-channel-layout: copied primary audio layout changed '{srcLayout}' → "
-                          + $"'{outLayout}' (5.1(side) vs 5.1 mismatches break channel routing)."
+                        + $"'{outLayout}' (5.1(side) vs 5.1 mismatches break channel routing)."
                 );
         }
     }
@@ -290,7 +290,7 @@ public static partial class EncodeFidelityOracle
             if (Lang(s) == "und" && source.SubtitleStreams.Any(x => Lang(x) != "und"))
                 violations.Add(
                     "subtitle-language-stripped: an output subtitle track is 'und' while the "
-                          + "source carried subtitle languages."
+                        + "source carried subtitle languages."
                 );
         }
     }
@@ -333,12 +333,12 @@ public static partial class EncodeFidelityOracle
         if (looksSdr && transfer is "smpte2084" or "arib-std-b67")
             violations.Add(
                 $"SDR-residual-hdr-transfer: bt709 primaries but color_transfer='{transfer}' — "
-                      + "an SDR output must not keep an HDR transfer characteristic."
+                    + "an SDR output must not keep an HDR transfer characteristic."
             );
         if (looksSdr && output.HasSideData("Mastering display metadata"))
             violations.Add(
                 "SDR-residual-mastering-display: an SDR (bt709) output still carries HDR "
-                      + "mastering-display side-data."
+                    + "mastering-display side-data."
             );
     }
 
@@ -371,7 +371,7 @@ public static partial class EncodeFidelityOracle
         if (Math.Abs(vStart - aStart) > 0.1)
             violations.Add(
                 $"av-sync-drift: video/audio start_time differ by {Math.Abs(vStart - aStart):F3}s "
-                      + "(>100ms → lip-sync drift on edit-list-ignoring players)."
+                    + "(>100ms → lip-sync drift on edit-list-ignoring players)."
             );
     }
 
@@ -405,7 +405,7 @@ public static partial class EncodeFidelityOracle
         if (srcRatio > 0 && (outRatio <= 0 || Math.Abs(srcRatio - outRatio) / srcRatio > 0.02))
             violations.Add(
                 $"anamorphic-dar-lost: source display_aspect_ratio='{srcDar}' but output='{outDar}' "
-                      + "— anamorphic geometry collapsed (SAR reset to 1:1 without a compensating scale)."
+                    + "— anamorphic geometry collapsed (SAR reset to 1:1 without a compensating scale)."
             );
     }
 
@@ -436,7 +436,7 @@ public static partial class EncodeFidelityOracle
         if (!preserved && !applied)
             violations.Add(
                 $"rotation-lost-or-doubled: source rotation={srcRot}° but output rotation={outRot}° "
-                      + $"(dims swapped={dimsSwapped}) — plays sideways or double-rotated."
+                    + $"(dims swapped={dimsSwapped}) — plays sideways or double-rotated."
             );
     }
 
@@ -537,6 +537,23 @@ public static partial class EncodeFidelityOracle
 
     private static string Trim(string line) => line.Length > 90 ? line[..90] + "…" : line;
 
-    [GeneratedRegex(@"#EXT-X-STREAM-INF:[^\r\n]+", RegexOptions.Multiline)]
+    [GeneratedRegex(
+        @"#EXT-X-STREAM-INF:[^\r\n]+",
+        RegexOptions.Multiline,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex StreamInfRegex();
+
+    [GeneratedRegex(@"BANDWIDTH=(\d+)", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex BandwidthRegex();
+
+    [GeneratedRegex(@"RESOLUTION=(\d+)x(\d+)", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex ResolutionRegex();
+
+    [GeneratedRegex(
+        @"hvc1\.\d+\.[0-9A-Fa-f]+\.L(\d+)",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex HevcCodecRegex();
 }
