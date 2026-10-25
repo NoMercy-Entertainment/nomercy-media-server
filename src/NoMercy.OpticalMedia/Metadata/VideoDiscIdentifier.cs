@@ -503,9 +503,9 @@ public sealed partial class VideoDiscIdentifier(ILogger<VideoDiscIdentifier> log
             NeedsManualAssignment: true
         );
 
-    [GeneratedRegex(@"\s+")]
+    [GeneratedRegex(@"\s+", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex MultiSpaceRegex();
 
-    [GeneratedRegex(@"(\s+|^)disc\s*\d+\s*$", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(\s+|^)disc\s*\d+\s*$", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
     private static partial Regex DiscSuffixRegex();
 }

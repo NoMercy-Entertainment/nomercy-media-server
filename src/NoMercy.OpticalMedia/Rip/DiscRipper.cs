@@ -248,10 +248,10 @@ public partial class DiscRipper(
         return WhitespaceRunRegex().Replace(trimmed, " ");
     }
 
-    [GeneratedRegex(@"[<>:""/\\|?*\x00-\x1F]")]
+    [GeneratedRegex(@"[<>:""/\\|?*\x00-\x1F]", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex InvalidFsCharsRegex();
 
-    [GeneratedRegex(@"\s+")]
+    [GeneratedRegex(@"\s+", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex WhitespaceRunRegex();
 
     private async Task<DiscRipResult> RipOneTitleAsync(
