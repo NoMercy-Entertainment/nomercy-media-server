@@ -28,7 +28,7 @@ namespace NoMercy.Tests.Api;
 /// both sides or forgets the Obsolete marker.
 /// </summary>
 [Trait("Category", "Routes")]
-public class EncoderProfilesController_Routes_Test
+public partial class EncoderProfilesController_Routes_Test
 {
     // =========================================================================
     // Helpers
@@ -82,7 +82,10 @@ public class EncoderProfilesController_Routes_Test
     /// detail this test doesn't guard.
     /// </summary>
     private static string StripConstraints(string template) =>
-        Regex.Replace(template, @"\{(\w+):[^}]+\}", "{$1}");
+        RouteConstraint().Replace(template, "{$1}");
+
+    [GeneratedRegex(@"\{(\w+):[^}]+\}", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex RouteConstraint();
 
     private static void AssertEndpointExists(
         Type controller,
