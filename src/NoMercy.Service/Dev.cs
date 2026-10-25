@@ -18,8 +18,14 @@ using NoMercy.Storage.Drivers.Local;
 
 namespace NoMercy.Service;
 
-public static class Dev
+public static partial class Dev
 {
+    [GeneratedRegex(@"BANDWIDTH\s*=\s*\d+", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex BandwidthRegex();
+
+    [GeneratedRegex(@"video_(\d+)x(\d+)", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex VideoResolutionRegex();
+
     public static async Task Run()
     {
         // string path = "M:\\Anime\\Anime";
@@ -352,8 +358,6 @@ public static class Dev
                     }
                 });
 
-            Regex bwRegex = new(@"BANDWIDTH\s*=\s*\d+", RegexOptions.IgnoreCase);
-
             foreach (string masterPath in masters)
             {
                 string original = storage
@@ -398,9 +402,9 @@ public static class Dev
                     string tag = lines[i];
 
                     // Replace or add BANDWIDTH attribute
-                    if (bwRegex.IsMatch(tag))
+                    if (BandwidthRegex().IsMatch(tag))
                     {
-                        tag = bwRegex.Replace(tag, $"BANDWIDTH={computed}");
+                        tag = BandwidthRegex().Replace(tag, $"BANDWIDTH={computed}");
                     }
                     else
                     {
@@ -525,7 +529,7 @@ public static class Dev
                     .Replace("\\", "/");
 
                 // Parse resolution from directory name (video_1920x1080)
-                Match resMatch = Regex.Match(dirName, @"video_(\d+)x(\d+)");
+                Match resMatch = VideoResolutionRegex().Match(dirName);
                 if (resMatch.Success)
                 {
                     string width = resMatch.Groups[1].Value;
