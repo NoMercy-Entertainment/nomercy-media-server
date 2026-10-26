@@ -24,8 +24,15 @@ namespace NoMercy.Tests.Api.Media;
 /// accent color.
 /// </summary>
 [Trait("Category", "Unit")]
-public class GroupCardGenericFieldsTests
+public partial class GroupCardGenericFieldsTests
 {
+    [GeneratedRegex(
+        @"/tmdb-images/abc123\.jpg\?width=\d+",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex PosterImageUrl();
+
     private static JObject Json(GroupCardData card) =>
         JObject.Parse(JsonConvert.SerializeObject(card));
 
@@ -151,7 +158,7 @@ public class GroupCardGenericFieldsTests
         string url = (string?)poster["url"] ?? string.Empty;
         Assert.True(Uri.TryCreate(url, UriKind.Absolute, out Uri? parsed), url);
         Assert.StartsWith("http", parsed!.Scheme);
-        Assert.Matches(new Regex(@"/tmdb-images/abc123\.jpg\?width=\d+"), url);
+        Assert.Matches(PosterImageUrl(), url);
     }
 
     [Fact]

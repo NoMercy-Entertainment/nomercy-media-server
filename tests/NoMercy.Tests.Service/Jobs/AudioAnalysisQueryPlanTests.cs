@@ -22,8 +22,15 @@ namespace NoMercy.Tests.Service.Jobs;
 /// and "the column is indexed" is not evidence that the query uses it — so this
 /// asks SQLite directly.
 /// </summary>
-public class AudioAnalysisQueryPlanTests : IDisposable
+public partial class AudioAnalysisQueryPlanTests : IDisposable
 {
+    [System.Text.RegularExpressions.GeneratedRegex(
+        @"@[A-Za-z_][A-Za-z0-9_]*",
+        System.Text.RegularExpressions.RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial System.Text.RegularExpressions.Regex SqlParameterName();
+
     private readonly SqliteConnection _connection;
     private readonly DbContextOptions<MediaContext> _options;
 
@@ -106,8 +113,8 @@ public class AudioAnalysisQueryPlanTests : IDisposable
     {
         // Bind whatever the generated SQL asks for so EXPLAIN can prepare.
         // Values do not affect the chosen plan.
-        return System
-            .Text.RegularExpressions.Regex.Matches(sql, @"@[A-Za-z_][A-Za-z0-9_]*")
+        return SqlParameterName()
+            .Matches(sql)
             .Select(match => match.Value)
             .Distinct()
             .Select(name => new SqliteParameter(name, 1));

@@ -19,8 +19,36 @@ using RegexMatch = System.Text.RegularExpressions.Match;
 namespace NoMercy.Tests.Providers.Setup;
 
 [Trait("Category", "Characterization")]
-public class BinariesCloudflaredArchTests
+public partial class BinariesCloudflaredArchTests
 {
+    [GeneratedRegex(
+        @"OSPlatform\.OSX\).*?Architecture\.Arm64\s*\).*?cloudflared-darwin-(\w+)\.tgz",
+        RegexOptions.Singleline,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex MacOsArm64Branch();
+
+    [GeneratedRegex(
+        @"OSPlatform\.OSX\).*?Architecture\.X64\s*\).*?cloudflared-darwin-(\w+)\.tgz",
+        RegexOptions.Singleline,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex MacOsX64Branch();
+
+    [GeneratedRegex(
+        @"OSPlatform\.Linux\).*?Architecture\.Arm64\s*\).*?cloudflared-linux-(\w+)""",
+        RegexOptions.Singleline,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex LinuxArm64Branch();
+
+    [GeneratedRegex(
+        @"OSPlatform\.Linux\).*?Architecture\.X64\s*\).*?cloudflared-linux-(\w+)""",
+        RegexOptions.Singleline,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex LinuxX64Branch();
+
     private static readonly string SourcePath = FindSourceFile();
 
     private static string FindSourceFile()
@@ -72,12 +100,7 @@ public class BinariesCloudflaredArchTests
 
         // Match: OSPlatform.OSX) && ...Architecture.Arm64) ... cloudflared-darwin-XXX.tgz
         // \s* before \) handles formatter putting the closing paren on its own line
-        Regex pattern = new(
-            @"OSPlatform\.OSX\).*?Architecture\.Arm64\s*\).*?cloudflared-darwin-(\w+)\.tgz",
-            RegexOptions.Singleline
-        );
-
-        RegexMatch match = pattern.Match(method);
+        RegexMatch match = MacOsArm64Branch().Match(method);
         Assert.True(match.Success, "Could not find macOS Arm64 branch with darwin asset");
         Assert.Equal("arm64", match.Groups[1].Value);
     }
@@ -89,12 +112,7 @@ public class BinariesCloudflaredArchTests
 
         // Match: OSPlatform.OSX) && ...Architecture.X64) ... cloudflared-darwin-XXX.tgz
         // \s* before \) handles formatter putting the closing paren on its own line
-        Regex pattern = new(
-            @"OSPlatform\.OSX\).*?Architecture\.X64\s*\).*?cloudflared-darwin-(\w+)\.tgz",
-            RegexOptions.Singleline
-        );
-
-        RegexMatch match = pattern.Match(method);
+        RegexMatch match = MacOsX64Branch().Match(method);
         Assert.True(match.Success, "Could not find macOS X64 branch with darwin asset");
         Assert.Equal("amd64", match.Groups[1].Value);
     }
@@ -106,17 +124,8 @@ public class BinariesCloudflaredArchTests
 
         // Extract both macOS branches and verify each downloads the correct architecture
         // \s* before \) handles formatter putting the closing paren on its own line
-        Regex arm64Pattern = new(
-            @"OSPlatform\.OSX\).*?Architecture\.Arm64\s*\).*?cloudflared-darwin-(\w+)\.tgz",
-            RegexOptions.Singleline
-        );
-        Regex x64Pattern = new(
-            @"OSPlatform\.OSX\).*?Architecture\.X64\s*\).*?cloudflared-darwin-(\w+)\.tgz",
-            RegexOptions.Singleline
-        );
-
-        RegexMatch arm64Match = arm64Pattern.Match(method);
-        RegexMatch x64Match = x64Pattern.Match(method);
+        RegexMatch arm64Match = MacOsArm64Branch().Match(method);
+        RegexMatch x64Match = MacOsX64Branch().Match(method);
 
         Assert.True(arm64Match.Success, "macOS Arm64 branch not found");
         Assert.True(x64Match.Success, "macOS X64 branch not found");
@@ -140,11 +149,7 @@ public class BinariesCloudflaredArchTests
         string method = ExtractDownloadCloudflaredMethod(GetSourceCode());
 
         // \s* before \) handles formatter putting the closing paren on its own line
-        Regex pattern = new(
-            @"OSPlatform\.Linux\).*?Architecture\.Arm64\s*\).*?cloudflared-linux-(\w+)""",
-            RegexOptions.Singleline
-        );
-        RegexMatch match = pattern.Match(method);
+        RegexMatch match = LinuxArm64Branch().Match(method);
         Assert.True(match.Success, "Could not find Linux Arm64 branch");
 
         // cloudflared-linux-arm is the 32-bit build. This assertion previously pinned the
@@ -159,11 +164,7 @@ public class BinariesCloudflaredArchTests
         string method = ExtractDownloadCloudflaredMethod(GetSourceCode());
 
         // \s* before \) handles formatter putting the closing paren on its own line
-        Regex pattern = new(
-            @"OSPlatform\.Linux\).*?Architecture\.X64\s*\).*?cloudflared-linux-(\w+)""",
-            RegexOptions.Singleline
-        );
-        RegexMatch match = pattern.Match(method);
+        RegexMatch match = LinuxX64Branch().Match(method);
         Assert.True(match.Success, "Could not find Linux X64 branch");
         Assert.Equal("amd64", match.Groups[1].Value);
     }

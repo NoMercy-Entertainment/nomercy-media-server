@@ -29,7 +29,7 @@ namespace NoMercy.Tests.Api;
 ///   2. InboxAssignRequest binds from a representative JSON payload (contract test).
 /// </summary>
 [Trait("Category", "Routes")]
-public class InboxController_Routes_Test
+public partial class InboxController_Routes_Test
 {
     // -------------------------------------------------------------------------
     // Helpers — mirror EncoderProfilesController_Routes_Test
@@ -72,7 +72,10 @@ public class InboxController_Routes_Test
     }
 
     private static string StripConstraints(string template) =>
-        Regex.Replace(template, @"\{(\w+):[^}]+\}", "{$1}");
+        RouteConstraint().Replace(template, "{$1}");
+
+    [GeneratedRegex(@"\{(\w+):[^}]+\}", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex RouteConstraint();
 
     private static void AssertEndpointExists(
         Type controller,

@@ -19,6 +19,14 @@ namespace NoMercy.PluginSdk.Browser;
 /// <summary>Chrome starts only after its private Windows desktop or X display exists.</summary>
 internal sealed class HiddenChrome : IAsyncDisposable
 {
+    internal static readonly TimeSpan DisplayStartTimeout = TimeSpan.FromSeconds(30);
+    internal static readonly TimeSpan ChromeStartTimeout = TimeSpan.FromSeconds(60);
+
+    // The shell ends when Chrome ends, so a crashed Chrome shows as HasExited. set -m gives Chrome its
+    // own process group without setsid, which forks and returns early when the shell leads its group.
+    internal const string LinuxLauncher =
+        "set -m; executable=$1; log=$2; shift 2; \"$executable\" \"$@\" </dev/null >/dev/null 2>\"$log\" & pid=$!; { IFS= read -r _; /bin/kill -TERM -- \"-$pid\" 2>/dev/null || :; } <&0 & wait \"$pid\"";
+
     private readonly Process _chrome;
     private readonly Process? _display;
     private readonly WindowsChromeDesktop? _desktop;
@@ -79,11 +87,19 @@ internal sealed class HiddenChrome : IAsyncDisposable
 
         if (OperatingSystem.IsLinux() && FindOnPath("Xvfb") is null)
             return (string.Empty, "Xvfb is not installed on this host.");
-        if (OperatingSystem.IsLinux() && FindOnPath("setsid") is null)
-            return (string.Empty, "setsid is not installed on this host.");
+
+        string sandbox = SandboxReason(OperatingSystem.IsLinux(), Environment.UserName);
+        if (sandbox.Length != 0)
+            return (string.Empty, sandbox);
 
         return (chrome, string.Empty);
     }
+
+    // Chrome refuses root unless its sandbox is off; plugin pages keep the sandbox, so root is refused.
+    internal static string SandboxReason(bool isLinux, string userName) =>
+        isLinux && userName == "root"
+            ? "Chrome cannot run as root with its sandbox on. Run the server as a non-root user to use plugin browser pages."
+            : string.Empty;
 
     internal static async Task<HiddenChrome> StartAsync(CancellationToken ct)
     {
@@ -91,11 +107,21 @@ internal sealed class HiddenChrome : IAsyncDisposable
         if (reason.Length != 0)
             throw new InvalidOperationException(reason);
 
+        return await StartAsync(executable, FindOnPath("Xvfb"), ct);
+    }
+
+    internal static async Task<HiddenChrome> StartAsync(
+        string executable,
+        string? xvfbPath,
+        CancellationToken ct
+    )
+    {
         string profile = Path.Combine(
             Path.GetTempPath(),
             "nomercy-plugin-browser-" + Guid.NewGuid().ToString("N")
         );
         Directory.CreateDirectory(profile);
+        string stderrLog = Path.Combine(profile, "chrome-stderr.log");
         Process? display = null;
         Process? chrome = null;
         WindowsChromeDesktop? desktop = null;
@@ -115,14 +141,14 @@ internal sealed class HiddenChrome : IAsyncDisposable
                     "\"$1\" -displayfd 1 -screen 0 1280x1024x24 -nolisten tcp & pid=$!; IFS= read -r _; kill -TERM \"$pid\" 2>/dev/null || :; wait \"$pid\""
                 );
                 xvfb.ArgumentList.Add("nomercy-xvfb");
-                xvfb.ArgumentList.Add(FindOnPath("Xvfb")!);
+                xvfb.ArgumentList.Add(xvfbPath!);
                 display =
                     Process.Start(xvfb)
                     ?? throw new InvalidOperationException("Xvfb did not start.");
                 string? number = await display
                     .StandardOutput.ReadLineAsync(ct)
                     .AsTask()
-                    .WaitAsync(TimeSpan.FromSeconds(10), ct);
+                    .WaitAsync(DisplayStartTimeout, ct);
                 if (!int.TryParse(number, CultureInfo.InvariantCulture, out int displayNumber))
                     throw new InvalidOperationException("Xvfb did not create a display.");
                 displayName = ":" + displayNumber.ToString(CultureInfo.InvariantCulture);
@@ -153,11 +179,10 @@ internal sealed class HiddenChrome : IAsyncDisposable
                     RedirectStandardInput = true,
                 };
                 start.ArgumentList.Add("-c");
-                start.ArgumentList.Add(
-                    "executable=$1; shift; setsid \"$executable\" \"$@\" </dev/null >/dev/null 2>&1 & pid=$!; IFS= read -r _; /bin/kill -TERM -- \"-$pid\" 2>/dev/null || :; wait \"$pid\""
-                );
+                start.ArgumentList.Add(LinuxLauncher);
                 start.ArgumentList.Add("nomercy-chrome");
                 start.ArgumentList.Add(executable);
+                start.ArgumentList.Add(stderrLog);
                 foreach (string argument in arguments)
                     start.ArgumentList.Add(argument);
                 start.Environment["DISPLAY"] = displayName;
@@ -171,7 +196,7 @@ internal sealed class HiddenChrome : IAsyncDisposable
             using CancellationTokenSource ready = CancellationTokenSource.CreateLinkedTokenSource(
                 ct
             );
-            ready.CancelAfter(TimeSpan.FromSeconds(20));
+            ready.CancelAfter(ChromeStartTimeout);
             while (portLines.Length < 2)
             {
                 ready.Token.ThrowIfCancellationRequested();
@@ -208,13 +233,45 @@ internal sealed class HiddenChrome : IAsyncDisposable
                 .WaitAsync(ct);
             return new HiddenChrome(browser, chrome, display, desktop, profile);
         }
-        catch
+        catch (Exception error)
         {
+            string said = ReadStderrTail(stderrLog);
             StopProcess(chrome);
             StopProcess(display);
             desktop?.Dispose();
             await DeleteProfileAsync(profile);
-            throw;
+            if (said.Length == 0 || ct.IsCancellationRequested)
+                throw;
+            throw new InvalidOperationException(
+                error.Message + " Chrome said:" + Environment.NewLine + said,
+                error
+            );
+        }
+    }
+
+    internal static string ReadStderrTail(string path, int lines = 20)
+    {
+        try
+        {
+            using FileStream stream = new(
+                path,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.ReadWrite
+            );
+            using StreamReader reader = new(stream);
+            Queue<string> tail = new();
+            while (reader.ReadLine() is { } line)
+            {
+                tail.Enqueue(line);
+                if (tail.Count > lines)
+                    tail.Dequeue();
+            }
+            return string.Join(Environment.NewLine, tail);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            return string.Empty;
         }
     }
 

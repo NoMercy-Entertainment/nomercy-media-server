@@ -15,7 +15,7 @@ using NoMercy.Tests.Common;
 namespace NoMercy.Tests.MediaProcessing.Jobs;
 
 /// <summary>
-/// Every regex in src carries a match timeout, so hostile input cannot hang a worker.
+/// Every regex in src and tests carries a match timeout, so hostile input cannot hang a worker.
 /// The rule mirrors the workspace regex-timeout-check script.
 /// </summary>
 [Trait("Category", "Unit")]
@@ -25,18 +25,22 @@ public partial class RegexTimeoutAuditTests
     private const int StatementLookahead = 5;
 
     [Fact]
-    public void Source_EveryRegexHasAMatchTimeout()
+    public void SourceAndTests_EveryRegexHasAMatchTimeout()
     {
-        string srcDir = RepoPaths.Src;
         List<string> violations = [];
 
-        foreach (string file in Directory.GetFiles(srcDir, "*.cs", SearchOption.AllDirectories))
+        foreach (string rootDir in new[] { RepoPaths.Src, RepoPaths.At("tests") })
         {
-            if (BuildOutputPath().IsMatch(file))
-                continue;
+            foreach (
+                string file in Directory.GetFiles(rootDir, "*.cs", SearchOption.AllDirectories)
+            )
+            {
+                if (BuildOutputPath().IsMatch(file))
+                    continue;
 
-            string relative = Path.GetRelativePath(srcDir, file);
-            violations.AddRange(FindUntimedRegexes(File.ReadAllText(file), relative));
+                string relative = Path.GetRelativePath(RepoPaths.Root, file);
+                violations.AddRange(FindUntimedRegexes(File.ReadAllText(file), relative));
+            }
         }
 
         Assert.Empty(violations);
@@ -63,17 +67,27 @@ public partial class RegexTimeoutAuditTests
 
     [Theory]
     [InlineData("{A}(@\"a+\", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]")]
-    [InlineData("{A}(\n    @\"a+\",\n    RegexOptions.IgnoreCase,\n    matchTimeoutMilliseconds: 1000\n)]")]
+    [InlineData(
+        "{A}(\n    @\"a+\",\n    RegexOptions.IgnoreCase,\n    matchTimeoutMilliseconds: 1000\n)]"
+    )]
     [InlineData("{A}(@\"\\([^)]*\\)\", matchTimeoutMilliseconds: 1000)]")]
     [InlineData("{R} r = new {R}(\"a+\", RegexOptions.None, TimeSpan.FromSeconds(1));")]
     [InlineData("{R} r = new(\"a+\", RegexOptions.None, TimeSpan.FromSeconds(1));")]
     [InlineData("bool b = {R}.IsMatch(input, \"a+\", RegexOptions.None, TimeSpan.FromSeconds(1));")]
     [InlineData("Match m = {R}.Match(input, \"a+\", RegexOptions.None, TimeSpan.FromSeconds(1));")]
-    [InlineData("MatchCollection m = {R}.Matches(input, \"a+\", RegexOptions.None, TimeSpan.FromSeconds(1));")]
-    [InlineData("string s = {R}.Replace(input, \"a+\", \"b\", RegexOptions.None, TimeSpan.FromSeconds(1));")]
-    [InlineData("string[] s = {R}.Split(input, \"a+\", RegexOptions.None, TimeSpan.FromSeconds(1));")]
+    [InlineData(
+        "MatchCollection m = {R}.Matches(input, \"a+\", RegexOptions.None, TimeSpan.FromSeconds(1));"
+    )]
+    [InlineData(
+        "string s = {R}.Replace(input, \"a+\", \"b\", RegexOptions.None, TimeSpan.FromSeconds(1));"
+    )]
+    [InlineData(
+        "string[] s = {R}.Split(input, \"a+\", RegexOptions.None, TimeSpan.FromSeconds(1));"
+    )]
     [InlineData("int n = {R}.Count(input, \"a+\", RegexOptions.None, TimeSpan.FromSeconds(1));")]
-    [InlineData("foreach (ValueMatch m in {R}.EnumerateMatches(input, \"a+\", RegexOptions.None, TimeSpan.FromSeconds(1))) { }")]
+    [InlineData(
+        "foreach (ValueMatch m in {R}.EnumerateMatches(input, \"a+\", RegexOptions.None, TimeSpan.FromSeconds(1))) { }"
+    )]
     [InlineData("bool b = FooRegex.IsMatch(input);")]
     public void Rule_AcceptsARegexWithATimeout(string source)
     {
@@ -141,7 +155,11 @@ public partial class RegexTimeoutAuditTests
     [GeneratedRegex(@"[\\/](bin|obj)[\\/]", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex BuildOutputPath();
 
-    [GeneratedRegex(@"matchTimeoutMilliseconds\s*:", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    [GeneratedRegex(
+        @"matchTimeoutMilliseconds\s*:",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex MatchTimeoutArgument();
 
     [GeneratedRegex(@"\)\]\s*$", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
@@ -154,6 +172,10 @@ public partial class RegexTimeoutAuditTests
     )]
     private static partial Regex RuntimeRegexCall();
 
-    [GeneratedRegex(@"TimeSpan|Timeout|matchTimeout", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    [GeneratedRegex(
+        @"TimeSpan|Timeout|matchTimeout",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex TimeoutWord();
 }

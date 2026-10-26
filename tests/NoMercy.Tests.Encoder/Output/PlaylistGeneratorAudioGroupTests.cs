@@ -16,8 +16,22 @@ using NoMercy.Encoder.Pipeline;
 
 namespace NoMercy.Tests.Encoder.Output;
 
-public class PlaylistGeneratorAudioGroupTests
+public partial class PlaylistGeneratorAudioGroupTests
 {
+    [System.Text.RegularExpressions.GeneratedRegex(
+        "#EXT-X-MEDIA:TYPE=AUDIO",
+        System.Text.RegularExpressions.RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial System.Text.RegularExpressions.Regex AudioMediaEntry();
+
+    [System.Text.RegularExpressions.GeneratedRegex(
+        "DEFAULT=YES",
+        System.Text.RegularExpressions.RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial System.Text.RegularExpressions.Regex DefaultYes();
+
     private const string MediaTitle = "Test.Title";
 
     private string Generate(OutputPlan plan)
@@ -312,9 +326,7 @@ public class PlaylistGeneratorAudioGroupTests
             audioMetrics
         );
 
-        int audioMediaCount = System
-            .Text.RegularExpressions.Regex.Matches(master, "#EXT-X-MEDIA:TYPE=AUDIO")
-            .Count;
+        int audioMediaCount = AudioMediaEntry().Matches(master).Count;
         audioMediaCount.Should().Be(2);
 
         master.Should().Contain("LANGUAGE=\"eng\"");
@@ -437,9 +449,7 @@ public class PlaylistGeneratorAudioGroupTests
             audioMetrics
         );
 
-        int defaultCount = System
-            .Text.RegularExpressions.Regex.Matches(master, "DEFAULT=YES")
-            .Count;
+        int defaultCount = DefaultYes().Matches(master).Count;
         defaultCount.Should().Be(1);
 
         master.Should().Contain("LANGUAGE=\"eng\",AUTOSELECT=YES,DEFAULT=YES");

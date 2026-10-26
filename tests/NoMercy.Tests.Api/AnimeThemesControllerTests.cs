@@ -31,7 +31,7 @@ namespace NoMercy.Tests.Api;
 /// than inventing a new harness.
 /// </summary>
 [Trait("Category", "Routes")]
-public class AnimeThemesControllerTests
+public partial class AnimeThemesControllerTests
 {
     // -------------------------------------------------------------------------
     // Helpers — mirror EncoderProfilesController_Routes_Test
@@ -74,7 +74,10 @@ public class AnimeThemesControllerTests
     }
 
     private static string StripConstraints(string template) =>
-        Regex.Replace(template, @"\{(\w+):[^}]+\}", "{$1}");
+        RouteConstraint().Replace(template, "{$1}");
+
+    [GeneratedRegex(@"\{(\w+):[^}]+\}", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex RouteConstraint();
 
     private static void AssertEndpointExists(
         Type controller,

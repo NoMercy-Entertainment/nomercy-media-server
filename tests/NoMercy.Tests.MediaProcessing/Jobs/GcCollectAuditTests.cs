@@ -149,15 +149,23 @@ public partial class GcCollectAuditTests
         Assert.Empty(violations);
     }
 
-    [GeneratedRegex(@"GC\.Collect\s*\(")]
+    [GeneratedRegex(@"GC\.Collect\s*\(", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex GcCollectPattern();
 
-    [GeneratedRegex(@"GC\.WaitForFullGCComplete\s*\(")]
+    [GeneratedRegex(
+        @"GC\.WaitForFullGCComplete\s*\(",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex GcWaitForFullGcPattern();
 
-    [GeneratedRegex(@"GC\.WaitForPendingFinalizers\s*\(")]
+    [GeneratedRegex(
+        @"GC\.WaitForPendingFinalizers\s*\(",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex GcWaitForPendingFinalizersPattern();
 
-    [GeneratedRegex(@"~\w+\s*\(\)")]
+    [GeneratedRegex(@"~\w+\s*\(\)", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex FinalizerPattern();
 }
