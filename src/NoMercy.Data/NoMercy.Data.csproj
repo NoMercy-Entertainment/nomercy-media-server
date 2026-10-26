@@ -13,6 +13,21 @@
   </ItemGroup>
 
   <ItemGroup>
+    <EmbeddedResource
+      Include="Visualizers\Bundle\visualizers-bundle.json.gz"
+      LogicalName="NoMercy.Data.Visualizers.Bundle.visualizers-bundle.json.gz"
+    />
+    <EmbeddedResource
+      Include="Visualizers\Bundle\bundle-hash.txt"
+      LogicalName="NoMercy.Data.Visualizers.Bundle.bundle-hash.txt"
+    />
+    <EmbeddedResource
+      Include="Visualizers\Bundle\textures\*.jpg"
+      LogicalName="NoMercy.Data.Visualizers.Bundle.textures.%(Filename)%(Extension)"
+    />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\NoMercy.Events\NoMercy.Events.csproj" />
     <ProjectReference Include="..\NoMercy.NmSystem\NoMercy.NmSystem.csproj" />
     <ProjectReference Include="..\NoMercy.Database\NoMercy.Database.csproj" />

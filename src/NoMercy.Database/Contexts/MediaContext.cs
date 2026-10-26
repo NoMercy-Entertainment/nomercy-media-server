@@ -469,6 +469,18 @@ public class MediaContext : DbContext
                 .OnDelete(DeleteBehavior.Cascade);
         });
 
+        modelBuilder.Entity<VisualizerUser>(b =>
+        {
+            b.HasOne(vu => vu.Visualizer)
+                .WithMany(v => v.Users)
+                .HasForeignKey(vu => vu.VisualizerId)
+                .OnDelete(DeleteBehavior.Cascade);
+            b.HasOne(vu => vu.User)
+                .WithMany()
+                .HasForeignKey(vu => vu.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
         // EncodeTaskOutcome.OutputArtifactsJson is free-form concatenated paths
         // and must exceed the global 256-char string cap.
         modelBuilder
@@ -511,6 +523,8 @@ public class MediaContext : DbContext
     public virtual DbSet<EncodingHistory> EncodingHistory { get; init; }
     public virtual DbSet<EncodingPreset> EncodingPresets { get; init; }
     public DbSet<EncodingPresetFolder> EncodingPresetFolders => Set<EncodingPresetFolder>();
+    public DbSet<Visualizer> Visualizers => Set<Visualizer>();
+    public DbSet<VisualizerUser> VisualizerUsers => Set<VisualizerUser>();
     public virtual DbSet<ContentSegment> ContentSegments { get; init; }
     public virtual DbSet<Episode> Episodes { get; init; }
     public virtual DbSet<FolderLibrary> FolderLibrary { get; init; }
