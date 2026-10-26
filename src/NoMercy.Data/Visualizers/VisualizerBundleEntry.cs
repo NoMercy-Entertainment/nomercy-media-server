@@ -57,4 +57,14 @@ public class VisualizerBundleEntry
 
     [JsonProperty("payload_bytes")]
     public int PayloadBytes { get; set; }
+
+    /// <summary>File name (content hash) of the 320x180 still in the bundle; null when the bundle has none.</summary>
+    [JsonProperty("preview_static", NullValueHandling = NullValueHandling.Ignore)]
+    public string? PreviewStatic { get; set; }
+
+    [JsonProperty("preview_animated", NullValueHandling = NullValueHandling.Ignore)]
+    public string? PreviewAnimated { get; set; }
+
+    [JsonProperty("preview_placeholder", DefaultValueHandling = DefaultValueHandling.Ignore)]
+    public bool PreviewPlaceholder { get; set; }
 }

@@ -58,10 +58,17 @@ public class VisualizerBundle
         return reader.ReadToEnd().Trim();
     }
 
-    /// <summary>Hash of the entries as the content repo computes it: canonical JSON, sorted keys.</summary>
+    /// <summary>Hash of the entries as the content repo computes it, without the preview_* keys.</summary>
     public string ComputeHash()
     {
         JArray entries = JArray.FromObject(Entries);
+        foreach (JObject entry in entries.Cast<JObject>())
+        {
+            entry.Remove("preview_static");
+            entry.Remove("preview_animated");
+            entry.Remove("preview_placeholder");
+        }
+
         return VisualizerCanonicalJson.Hash(VisualizerCanonicalJson.Serialize(entries));
     }
 }

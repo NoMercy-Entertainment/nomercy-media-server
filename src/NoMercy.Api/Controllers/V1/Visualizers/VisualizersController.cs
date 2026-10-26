@@ -420,6 +420,22 @@ public class VisualizersController(IVisualizerRepository repository) : BaseContr
         return File(texture.Bytes, texture.ContentType);
     }
 
+    [HttpGet("{id:ulid}/preview/{kind}")]
+    public async Task<IActionResult> GetPreview(Ulid id, string kind)
+    {
+        VisualizerPreview? preview = VisualizerPreviewStore.Find(id, kind);
+        if (preview is null || await repository.GetAsync(id, IsModerator) is null)
+            return NotFoundResponse("Preview not found.");
+
+        string etag = ETagOf(preview.Sha256);
+        Response.Headers.ETag = etag;
+        Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+        if (Matches(Request.Headers.IfNoneMatch, etag))
+            return StatusCode(StatusCodes.Status304NotModified);
+
+        return File(preview.Bytes, preview.ContentType);
+    }
+
     private static VisualizerChoiceDto ToChoice(VisualizerChoiceState state) =>
         new()
         {

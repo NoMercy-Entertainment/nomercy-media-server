@@ -25,6 +25,10 @@
       Include="Visualizers\Bundle\textures\*.jpg"
       LogicalName="NoMercy.Data.Visualizers.Bundle.textures.%(Filename)%(Extension)"
     />
+    <EmbeddedResource
+      Include="Visualizers\Bundle\previews\*.webp"
+      LogicalName="NoMercy.Data.Visualizers.Bundle.previews.%(Filename)%(Extension)"
+    />
   </ItemGroup>
 
   <ItemGroup>

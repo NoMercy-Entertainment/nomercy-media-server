@@ -27,7 +27,14 @@ public class VisualizerBundleSeeder(MediaContext context)
     public Task SeedAsync(CancellationToken ct = default) =>
         SeedAsync(VisualizerBundle.LoadEmbedded(), ct);
 
-    public async Task SeedAsync(VisualizerBundle bundle, CancellationToken ct = default)
+    public Task SeedAsync(VisualizerBundle bundle, CancellationToken ct = default) =>
+        SeedAsync(bundle, null, ct);
+
+    public async Task SeedAsync(
+        VisualizerBundle bundle,
+        Func<string, byte[]?>? previewReader,
+        CancellationToken ct = default
+    )
     {
         List<Visualizer> existing = await context
             .Visualizers.Where(v => v.IsBuiltIn || v.Source == RetiredSource)
@@ -72,6 +79,7 @@ public class VisualizerBundleSeeder(MediaContext context)
 
         await context.SaveChangesAsync(ct);
         await RetireUnshippedAsync(existing, shipped, ct);
+        VisualizerPreviewStore.Load(bundle, previewReader);
     }
 
     private static void Apply(Visualizer row, VisualizerBundleEntry entry)

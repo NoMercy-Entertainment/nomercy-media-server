@@ -29,6 +29,11 @@ mkdir -p "$target_dir/textures"
 rm -f "$target_dir"/textures/*.jpg
 cp "$bundle" "$target_dir/visualizers-bundle.json.gz"
 cp "$source_dir"/textures/*.jpg "$target_dir/textures/"
+rm -f "$target_dir"/previews/*.webp
+if [ -d "$source_dir/previews" ]; then
+    mkdir -p "$target_dir/previews"
+    cp "$source_dir"/previews/*.webp "$target_dir/previews/"
+fi
 printf '%s\n' "$bundle_hash" > "$target_dir/bundle-hash.txt"
 
 echo "bundle_hash $bundle_hash"

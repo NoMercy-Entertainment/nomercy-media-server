@@ -335,6 +335,18 @@ public class VisualizerLibraryTests : IDisposable
     }
 
     [Fact]
+    public void BundleHash_IgnoresThePreviewFields()
+    {
+        VisualizerBundle bundle = VisualizerBundle.LoadEmbedded();
+        string before = bundle.ComputeHash();
+        bundle.Entries[0].PreviewStatic = "aaaa.webp";
+        bundle.Entries[0].PreviewAnimated = "bbbb.webp";
+        bundle.Entries[0].PreviewPlaceholder = true;
+
+        bundle.ComputeHash().Should().Be(before);
+    }
+
+    [Fact]
     public void PinnedBundle_ShipsEveryTextureWithItsHash()
     {
         VisualizerBundle bundle = VisualizerBundle.LoadEmbedded();

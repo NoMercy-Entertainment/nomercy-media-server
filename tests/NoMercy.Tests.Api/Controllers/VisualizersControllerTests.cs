@@ -431,6 +431,136 @@ public class VisualizersControllerTests : IClassFixture<NoMercyApiFactory>
         );
     }
 
+    private const string StaticName = "1111aaaa.webp";
+    private const string AnimatedName = "2222bbbb.webp";
+
+    private static readonly byte[] StaticBytes = [0x52, 0x49, 0x46, 0x46, 1, 2, 3, 4];
+    private static readonly byte[] AnimatedBytes = [0x52, 0x49, 0x46, 0x46, 9, 8, 7, 6, 5];
+
+    // Entries 0..2 of the embedded bundle: both previews, still only, none.
+    private async Task<string[]> SeedPreviews()
+    {
+        VisualizerBundle bundle = VisualizerBundle.LoadEmbedded();
+        bundle.Entries[0].PreviewStatic = StaticName;
+        bundle.Entries[0].PreviewAnimated = AnimatedName;
+        bundle.Entries[1].PreviewStatic = StaticName;
+        bundle.Entries[2].PreviewStatic = null;
+        bundle.Entries[2].PreviewAnimated = null;
+
+        using IServiceScope scope = _factory.Services.CreateScope();
+        MediaContext context = scope.ServiceProvider.GetRequiredService<MediaContext>();
+        await new VisualizerBundleSeeder(context).SeedAsync(
+            bundle,
+            name =>
+                name == StaticName ? StaticBytes
+                : name == AnimatedName ? AnimatedBytes
+                : null
+        );
+        return bundle.Entries.Take(3).Select(e => VisualizerSlug.ToId(e.Slug).ToString()).ToArray();
+    }
+
+    [Theory]
+    [InlineData("static")]
+    [InlineData("animated")]
+    public async Task Preview_IsImmutableWebpWithAContentHashETag(string kind)
+    {
+        string id = (await SeedPreviews())[0];
+        byte[] expected = kind == "static" ? StaticBytes : AnimatedBytes;
+
+        HttpResponseMessage first = await _viewer.GetAsync($"{Base}/{id}/preview/{kind}");
+
+        Assert.Equal(HttpStatusCode.OK, first.StatusCode);
+        Assert.Equal("image/webp", first.Content.Headers.ContentType!.MediaType);
+        Assert.Equal("public, max-age=31536000, immutable", first.Headers.CacheControl!.ToString());
+        Assert.Equal(
+            $"\"{Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(expected))}\"",
+            first.Headers.ETag!.Tag
+        );
+        Assert.False(first.Headers.ETag.IsWeak);
+        Assert.Equal(expected, await first.Content.ReadAsByteArrayAsync());
+
+        using HttpRequestMessage again = new(HttpMethod.Get, $"{Base}/{id}/preview/{kind}");
+        again.Headers.TryAddWithoutValidation("If-None-Match", first.Headers.ETag.Tag);
+        Assert.Equal(HttpStatusCode.NotModified, (await _viewer.SendAsync(again)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Preview_RefusesUnknownMissingAndOtherKinds()
+    {
+        string[] ids = await SeedPreviews();
+
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (await _viewer.GetAsync($"{Base}/{Ulid.NewUlid()}/preview/static")).StatusCode
+        );
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (await _viewer.GetAsync($"{Base}/not-a-ulid/preview/static")).StatusCode
+        );
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (await _viewer.GetAsync($"{Base}/{ids[0]}/preview/gif")).StatusCode
+        );
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (await _viewer.GetAsync($"{Base}/{ids[1]}/preview/animated")).StatusCode
+        );
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (await _viewer.GetAsync($"{Base}/{ids[2]}/preview/static")).StatusCode
+        );
+    }
+
+    [Fact]
+    public async Task Preview_OfADisabledEntryIsHiddenFromViewersOnly()
+    {
+        string id = (await SeedPreviews())[0];
+        await _moderator.PutAsync($"{Base}/{id}/enabled", Json(new JObject { ["enabled"] = false }));
+
+        Assert.Equal(
+            HttpStatusCode.NotFound,
+            (await _viewer.GetAsync($"{Base}/{id}/preview/static")).StatusCode
+        );
+        Assert.Equal(
+            HttpStatusCode.OK,
+            (await _moderator.GetAsync($"{Base}/{id}/preview/static")).StatusCode
+        );
+        await _moderator.PutAsync($"{Base}/{id}/enabled", Json(new JObject { ["enabled"] = true }));
+    }
+
+    [Fact]
+    public async Task List_RowsCarryPreviewUrlsOrNull()
+    {
+        string[] ids = await SeedPreviews();
+
+        JArray rows = (JArray)(await BodyOf(await _moderator.GetAsync($"{Base}?take=1000")))["data"]!;
+        JObject Row(string id) => (JObject)rows.First(r => (string)r["id"]! == id);
+
+        Assert.Equal($"{Base}/{ids[0]}/preview/static", (string)Row(ids[0])["preview_static"]!);
+        Assert.Equal($"{Base}/{ids[0]}/preview/animated", (string)Row(ids[0])["preview_animated"]!);
+        Assert.Equal($"{Base}/{ids[1]}/preview/static", (string)Row(ids[1])["preview_static"]!);
+        Assert.Equal(JTokenType.Null, Row(ids[1])["preview_animated"]!.Type);
+        Assert.Equal(JTokenType.Null, Row(ids[2])["preview_static"]!.Type);
+        Assert.Equal(JTokenType.Null, Row(ids[2])["preview_animated"]!.Type);
+    }
+
+    [Fact]
+    public async Task Preview_SurvivesAReseedAndKeepsTheModeratorChoice()
+    {
+        string id = (await SeedPreviews())[0];
+        await _moderator.PutAsync($"{Base}/{id}/enabled", Json(new JObject { ["enabled"] = false }));
+
+        await SeedPreviews();
+
+        JObject row = await BodyOf(await _moderator.GetAsync($"{Base}/{id}"));
+        Assert.False((bool)row["enabled"]!);
+        Assert.Equal(
+            HttpStatusCode.OK,
+            (await _moderator.GetAsync($"{Base}/{id}/preview/animated")).StatusCode
+        );
+        await _moderator.PutAsync($"{Base}/{id}/enabled", Json(new JObject { ["enabled"] = true }));
+    }
+
     [Fact]
     public async Task TexturesAreImmutableAndCacheable()
     {
