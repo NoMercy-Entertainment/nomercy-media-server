@@ -195,6 +195,7 @@ public class VisualizerRepository(MediaContext context) : IVisualizerRepository
             return null;
 
         update(visualizer);
+        visualizer.UpdatedAt = DateTime.UtcNow;
         await context.SaveChangesAsync();
         return visualizer;
     }
@@ -221,6 +222,7 @@ public class VisualizerRepository(MediaContext context) : IVisualizerRepository
             return false;
 
         visualizer.Enabled = enabled;
+        visualizer.UpdatedAt = DateTime.UtcNow;
         await context.SaveChangesAsync();
         return true;
     }
