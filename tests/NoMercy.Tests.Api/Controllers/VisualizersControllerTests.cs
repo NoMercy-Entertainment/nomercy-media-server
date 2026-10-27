@@ -499,6 +499,36 @@ public class VisualizersControllerTests : IClassFixture<NoMercyApiFactory>
     }
 
     [Fact]
+    public async Task ShippedBundle_IsServedWholeThroughTheListTheDetailAndTheTextures()
+    {
+        JObject list = await BodyOf(await _viewer.GetAsync($"{Base}?take=1000"));
+        List<JObject> builtIn = ((JArray)list["data"]!)
+            .Cast<JObject>()
+            .Where(row => (bool)row["is_built_in"]!)
+            .ToList();
+
+        Assert.False((bool)list["has_more"]!);
+        Assert.Equal(9, builtIn.Count(row => (string)row["format"]! != "milkdrop"));
+        Assert.Equal(541, builtIn.Count(row => (string)row["format"]! == "milkdrop"));
+        foreach (JObject row in builtIn)
+        {
+            JObject detail = await BodyOf(await _viewer.GetAsync($"{Base}/{(string)row["id"]!}"));
+            Assert.Equal((string)row["content_hash"]!, (string)detail["content_hash"]!);
+            Assert.Equal((string)row["format"]!, (string)detail["payload"]!["format"]!);
+        }
+
+        List<VisualizerBundleTexture> textures = VisualizerBundle.LoadEmbedded().Textures;
+        Assert.Equal(16, textures.Count);
+        foreach (VisualizerBundleTexture texture in textures)
+        {
+            string stem = Path.GetFileNameWithoutExtension(texture.Name);
+            HttpResponseMessage response = await _viewer.GetAsync($"{Base}/textures/{stem}");
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            Assert.Equal(texture.Bytes, (await response.Content.ReadAsByteArrayAsync()).Length);
+        }
+    }
+
+    [Fact]
     public async Task TexturesAreImmutableAndCacheable()
     {
         HttpResponseMessage first = await _viewer.GetAsync($"{Base}/textures/clouds");

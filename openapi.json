@@ -12932,6 +12932,18 @@
         }
       }
     },
+    "/api/v1/visualizers/bundle": {
+      "get": {
+        "tags": [
+          "Visualizers"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/visualizers/{id}": {
       "get": {
         "tags": [
