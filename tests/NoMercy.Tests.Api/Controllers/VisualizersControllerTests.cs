@@ -432,6 +432,73 @@ public class VisualizersControllerTests : IClassFixture<NoMercyApiFactory>
     }
 
     [Fact]
+    public async Task Bundle_ReturnsTheVersionShapeWithAnEtagOfTheHash()
+    {
+        HttpResponseMessage response = await _viewer.GetAsync($"{Base}/bundle");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Contains("private", response.Headers.CacheControl!.ToString());
+        JObject body = await BodyOf(response);
+        Assert.Equal(
+            new[] { "bundle_hash", "count", "updated_at" }.Order(),
+            body.Properties().Select(p => p.Name).Order()
+        );
+        string hash = (string)body["bundle_hash"]!;
+        Assert.Matches("^[0-9a-f]{64}$", hash);
+        Assert.True((int)body["count"]! >= 550);
+        Assert.Equal(JTokenType.Date, body["updated_at"]!.Type);
+        Assert.Equal($"\"{hash}\"", response.Headers.ETag!.Tag);
+    }
+
+    [Fact]
+    public async Task Bundle_AnswersNotModifiedForItsEtagAndFullForAStaleOne()
+    {
+        string etag = (await _viewer.GetAsync($"{Base}/bundle")).Headers.ETag!.Tag;
+
+        using HttpRequestMessage same = new(HttpMethod.Get, $"{Base}/bundle");
+        same.Headers.TryAddWithoutValidation("If-None-Match", etag);
+        HttpResponseMessage notModified = await _viewer.SendAsync(same);
+        Assert.Equal(HttpStatusCode.NotModified, notModified.StatusCode);
+        Assert.Equal(etag, notModified.Headers.ETag!.Tag);
+
+        using HttpRequestMessage stale = new(HttpMethod.Get, $"{Base}/bundle");
+        stale.Headers.TryAddWithoutValidation("If-None-Match", "\"0000\"");
+        Assert.Equal(HttpStatusCode.OK, (await _viewer.SendAsync(stale)).StatusCode);
+    }
+
+    [Fact]
+    public async Task Bundle_ChangesWhenAnEntryIsCreatedEditedAndDeleted()
+    {
+        async Task<JObject> Version() => await BodyOf(await _viewer.GetAsync($"{Base}/bundle"));
+
+        JObject start = await Version();
+        string id = await CreateEntry("Version probe");
+        JObject created = await Version();
+        await _moderator.PutAsync($"{Base}/{id}", Json(new JObject { ["name"] = "Renamed probe" }));
+        JObject edited = await Version();
+        await _moderator.DeleteAsync($"{Base}/{id}");
+        JObject deleted = await Version();
+
+        Assert.Equal((int)start["count"]! + 1, (int)created["count"]!);
+        Assert.NotEqual((string)start["bundle_hash"]!, (string)created["bundle_hash"]!);
+        Assert.NotEqual((string)created["bundle_hash"]!, (string)edited["bundle_hash"]!);
+        Assert.NotEqual((string)edited["bundle_hash"]!, (string)deleted["bundle_hash"]!);
+        Assert.Equal((int)start["count"]!, (int)deleted["count"]!);
+        Assert.True((DateTime)edited["updated_at"]! >= (DateTime)created["updated_at"]!);
+    }
+
+    [Fact]
+    public async Task Bundle_RefusesAnUnauthenticatedCaller()
+    {
+        HttpClient anonymous = _factory.CreateClient().AsUnauthenticated();
+
+        Assert.Equal(
+            HttpStatusCode.Unauthorized,
+            (await anonymous.GetAsync($"{Base}/bundle")).StatusCode
+        );
+    }
+
+    [Fact]
     public async Task TexturesAreImmutableAndCacheable()
     {
         HttpResponseMessage first = await _viewer.GetAsync($"{Base}/textures/clouds");

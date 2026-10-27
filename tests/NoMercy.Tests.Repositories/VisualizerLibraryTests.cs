@@ -401,6 +401,80 @@ public class VisualizerLibraryTests : IDisposable
         );
     }
 
+    [Fact]
+    public async Task BundleVersion_IsThePinnedHashUntilAUserEntryOrADisabledBuiltInExists()
+    {
+        await SeedOne();
+        await using MediaContext context = new(_options);
+        VisualizerRepository repository = new(context);
+
+        VisualizerBundleVersion clean = await repository.GetBundleVersionAsync();
+        clean.BundleHash.Should().Be(VisualizerBundle.PinnedHash());
+        clean.Count.Should().Be(1);
+        clean.UpdatedAt.Should().NotBeNull();
+
+        await repository.SetEnabledAsync(VisualizerSlug.ToId("shader/one"), false);
+        VisualizerBundleVersion disabled = await repository.GetBundleVersionAsync();
+        disabled.BundleHash.Should().NotBe(clean.BundleHash).And.MatchRegex("^[0-9a-f]{64}$");
+        disabled.Count.Should().Be(0);
+
+        await repository.SetEnabledAsync(VisualizerSlug.ToId("shader/one"), true);
+        (await repository.GetBundleVersionAsync()).BundleHash.Should().Be(clean.BundleHash);
+    }
+
+    [Fact]
+    public async Task BundleVersion_FollowsUserEntriesThroughCreateEditAndDelete()
+    {
+        await SeedOne();
+        await using MediaContext context = new(_options);
+        VisualizerRepository repository = new(context);
+        string seeded = (await repository.GetBundleVersionAsync()).BundleHash;
+
+        Visualizer created = await repository.CreateAsync(UserEntry("shader/mine-1"));
+        VisualizerBundleVersion afterCreate = await repository.GetBundleVersionAsync();
+        await repository.UpdateAsync(created.Id, v => v.Name = "Renamed");
+        VisualizerBundleVersion afterEdit = await repository.GetBundleVersionAsync();
+        await repository.DeleteAsync(created.Id);
+        VisualizerBundleVersion afterDelete = await repository.GetBundleVersionAsync();
+
+        afterCreate.Count.Should().Be(2);
+        afterCreate.BundleHash.Should().NotBe(seeded);
+        afterEdit.BundleHash.Should().NotBe(afterCreate.BundleHash);
+        afterDelete.BundleHash.Should().Be(seeded);
+        afterDelete.Count.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task UpdateAndSetEnabled_MoveUpdatedAtForward()
+    {
+        await using MediaContext context = new(_options);
+        VisualizerRepository repository = new(context);
+        Visualizer created = await repository.CreateAsync(UserEntry("shader/mine-1"));
+        DateTime stamp = (await repository.GetAsync(created.Id, true))!.UpdatedAt;
+
+        await repository.UpdateAsync(created.Id, v => v.Name = "Renamed");
+        DateTime afterUpdate = (await repository.GetAsync(created.Id, true))!.UpdatedAt;
+        await repository.SetEnabledAsync(created.Id, false);
+        DateTime afterDisable = (await repository.GetAsync(created.Id, true))!.UpdatedAt;
+
+        afterUpdate.Should().BeAfter(stamp);
+        afterDisable.Should().BeAfter(afterUpdate);
+    }
+
+    [Fact]
+    public async Task BundleVersion_OfAnEmptyLibraryHasNoUpdatedAt()
+    {
+        await using MediaContext context = new(_options);
+
+        VisualizerBundleVersion version = await new VisualizerRepository(
+            context
+        ).GetBundleVersionAsync();
+
+        version.Count.Should().Be(0);
+        version.UpdatedAt.Should().BeNull();
+        version.BundleHash.Should().Be(VisualizerBundle.PinnedHash());
+    }
+
     private async Task SeedOne()
     {
         await using MediaContext context = new(_options);

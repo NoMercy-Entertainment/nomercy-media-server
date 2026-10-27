@@ -100,6 +100,29 @@ public class VisualizersController(IVisualizerRepository repository) : BaseContr
         );
     }
 
+    [HttpGet("bundle")]
+    public async Task<IActionResult> GetBundleVersion()
+    {
+        VisualizerBundleVersion version = await repository.GetBundleVersionAsync();
+
+        string etag = ETagOf(version.BundleHash);
+        Response.Headers.ETag = etag;
+        Response.Headers.CacheControl = "private, no-cache";
+        if (Matches(Request.Headers.IfNoneMatch, etag))
+            return StatusCode(StatusCodes.Status304NotModified);
+
+        return Ok(
+            new VisualizerBundleVersionDto
+            {
+                BundleHash = version.BundleHash,
+                Count = version.Count,
+                UpdatedAt = version.UpdatedAt is { } at
+                    ? DateTime.SpecifyKind(at, DateTimeKind.Utc)
+                    : null,
+            }
+        );
+    }
+
     [HttpGet("{id:ulid}")]
     public async Task<IActionResult> Get(Ulid id)
     {

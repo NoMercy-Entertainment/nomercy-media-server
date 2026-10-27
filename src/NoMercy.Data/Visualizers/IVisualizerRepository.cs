@@ -19,6 +19,8 @@ public interface IVisualizerRepository
 
     Task<Visualizer?> GetAsync(Ulid id, bool includeDisabled);
 
+    Task<VisualizerBundleVersion> GetBundleVersionAsync();
+
     /// <summary>Stores a new user entry; the slug is made unique here.</summary>
     Task<Visualizer> CreateAsync(Visualizer visualizer);
 

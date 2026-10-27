@@ -145,6 +145,19 @@ public record VisualizerDto : VisualizerCoreDto
     }
 }
 
+/// <summary>The library version a client compares with its cached copy.</summary>
+public record VisualizerBundleVersionDto
+{
+    [JsonProperty("bundle_hash")]
+    public string BundleHash { get; set; } = "";
+
+    [JsonProperty("count")]
+    public int Count { get; set; }
+
+    [JsonProperty("updated_at")]
+    public DateTime? UpdatedAt { get; set; }
+}
+
 public record VisualizerChoiceDto
 {
     [JsonProperty("visualizer_id")]
