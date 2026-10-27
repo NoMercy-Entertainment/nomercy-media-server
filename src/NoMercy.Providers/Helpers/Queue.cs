@@ -194,6 +194,15 @@ public class Queue(QueueOptions options)
                                 tcs.SetException(ex);
                                 if (IsExpectedTransport(ex))
                                     return;
+                                if (IsUnreachable(ex))
+                                {
+                                    Logger.App(
+                                        $"Provider unreachable: {url}",
+                                        LogEventLevel.Verbose
+                                    );
+                                    return;
+                                }
+
                                 Logger.App($"Url failed: {url} {ex.Message}", LogEventLevel.Debug);
                                 return;
                             }
@@ -288,6 +297,19 @@ public class Queue(QueueOptions options)
     }
 
     private bool IsEmpty => Size == 0;
+
+    // The caller gets the exception and decides how loudly to report it; an
+    // offline provider is not worth a log line per request.
+    private static bool IsUnreachable(Exception ex)
+    {
+        return ex
+            is HttpRequestException
+                {
+                    HttpRequestError: HttpRequestError.ConnectionError
+                        or HttpRequestError.NameResolutionError,
+                }
+                or TaskCanceledException { InnerException: TimeoutException };
+    }
 
     private static bool IsExpectedTransport(Exception ex)
     {
