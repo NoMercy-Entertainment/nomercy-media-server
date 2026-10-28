@@ -19,8 +19,10 @@ public class FileChangeGroup(Library library, string folderPath)
 
     public string FolderPath { get; set; } = folderPath;
     public Library Library { get; set; } = library;
-    public Timer? Timer { get; set; }
     public IReadOnlyList<FileChange> Changes => _changes;
+
+    public void Forget(string fullPath) =>
+        _changes.RemoveAll(change => change.FullPath == fullPath);
 
     /// <summary>One action per path, the latest; a deleted rename target also deletes its source.</summary>
     public void Record(WatcherChangeTypes type, string fullPath, string? oldFullPath)
