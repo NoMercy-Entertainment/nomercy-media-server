@@ -212,6 +212,7 @@ public class RouteContractSnapshotTests : IClassFixture<NoMercyApiFactory>
         "GET api/v{version:apiVersion}/visualizers/current [Visualizers.GetCurrent]",
         "GET api/v{version:apiVersion}/visualizers/textures/{name} [Visualizers.GetTexture]",
         "GET api/v{version:apiVersion}/visualizers/{id:ulid} [Visualizers.Get]",
+        "GET api/v{version:apiVersion}/visualizers/{id:ulid}/preview/{kind} [Visualizers.GetPreview]",
         "POST api/v{version:apiVersion}/visualizers [Visualizers.Create]",
         "POST api/v{version:apiVersion}/visualizers/import-device-state [Visualizers.ImportDeviceState]",
         "POST api/v{version:apiVersion}/visualizers/{id:ulid}/clone [Visualizers.Clone]",

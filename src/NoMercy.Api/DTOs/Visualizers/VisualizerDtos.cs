@@ -11,6 +11,7 @@
 
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using NoMercy.Data.Visualizers;
 using NoMercy.Database.Models.Media;
 
 namespace NoMercy.Api.DTOs.Visualizers;
@@ -117,10 +118,19 @@ public record VisualizerSummaryDto : VisualizerCoreDto
     [JsonProperty("last_used_at")]
     public DateTime? LastUsedAt { get; set; }
 
+    /// <summary>Route path of the still, null when the bundle has none for this entry.</summary>
+    [JsonProperty("preview_static")]
+    public string? PreviewStatic { get; set; }
+
+    [JsonProperty("preview_animated")]
+    public string? PreviewAnimated { get; set; }
+
     public static VisualizerSummaryDto From(Visualizer entity, VisualizerUser? link)
     {
         VisualizerSummaryDto dto = new()
         {
+            PreviewStatic = PreviewPath(entity.Id, VisualizerPreviewStore.Static),
+            PreviewAnimated = PreviewPath(entity.Id, VisualizerPreviewStore.Animated),
             IsFavorite = link?.IsFavorite ?? false,
             LastUsedAt = link?.LastUsedAt is { } used
                 ? DateTime.SpecifyKind(used, DateTimeKind.Utc)
@@ -129,6 +139,9 @@ public record VisualizerSummaryDto : VisualizerCoreDto
         dto.Fill(entity);
         return dto;
     }
+
+    private static string? PreviewPath(Ulid id, string kind) =>
+        VisualizerPreviewStore.Has(id, kind) ? $"/api/v1/visualizers/{id}/preview/{kind}" : null;
 }
 
 /// <summary>Detail: the core plus the payload, with no per-user fields so the ETag stays true.</summary>
