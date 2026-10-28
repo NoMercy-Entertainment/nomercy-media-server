@@ -175,7 +175,8 @@ public class LibraryManager(
                 await reconciler.ReconcileAsync(
                     folder.Id,
                     ResolveScanRoot(folderStorage, folder.Path),
-                    folderStorage.Driver
+                    folderStorage.Driver,
+                    force: true
                 );
             }
             catch (Exception e)

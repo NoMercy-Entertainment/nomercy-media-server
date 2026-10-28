@@ -110,13 +110,10 @@ public sealed class MusicTrackReconcilerTests : IDisposable
         IRecordingIdentifier? identifier = null
     ) => new(_context, NullLogger.Instance, identifier, cache ?? new());
 
-    private Task<MusicReconcileResult> Reconcile(MusicTrackReconciler reconciler, DateTime? now = null) =>
-        reconciler.ReconcileAsync(
-            _folder.Id,
-            _folder.Path,
-            _driver,
-            nowUtc: now ?? Now
-        );
+    private Task<MusicReconcileResult> Reconcile(
+        MusicTrackReconciler reconciler,
+        DateTime? now = null
+    ) => reconciler.ReconcileAsync(_folder.Id, _folder.Path, _driver, nowUtc: now ?? Now);
 
     private Track Row(Guid id) => _context.Tracks.AsNoTracking().Single(track => track.Id == id);
 
@@ -153,7 +150,13 @@ public sealed class MusicTrackReconcilerTests : IDisposable
         MusicReconcileResult result = await Reconcile(Reconciler());
 
         result.Removed.Should().Be(1);
-        _context.Tracks.AsNoTracking().Select(t => t.Id).ToList().Should().Contain(recent).And.NotContain(expired);
+        _context
+            .Tracks.AsNoTracking()
+            .Select(t => t.Id)
+            .ToList()
+            .Should()
+            .Contain(recent)
+            .And.NotContain(expired);
     }
 
     [Fact]
@@ -229,6 +232,34 @@ public sealed class MusicTrackReconcilerTests : IDisposable
     }
 
     [Fact]
+    public async Task A_forced_pass_lists_a_folder_again_that_an_automatic_pass_would_reuse()
+    {
+        DateTime written = new(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        Mock<IStorageDriver> driver = new();
+        driver.Setup(d => d.DirectoryExists("/m")).Returns(true);
+        driver.Setup(d => d.GetLastWriteTimeUtc("/m")).Returns(written);
+        driver
+            .Setup(d => d.EnumerateEntries("/m", "*", SearchOption.TopDirectoryOnly))
+            .Returns([new StorageEntryInfo("/m/one.flac", false, 10, written)]);
+        MusicListingCache cache = new();
+        MusicTrackReconciler reconciler = Reconciler(cache);
+
+        await reconciler.ReconcileAsync(_folder.Id, "/m", driver.Object, nowUtc: Now);
+        await reconciler.ReconcileAsync(_folder.Id, "/m", driver.Object, nowUtc: Now);
+        driver.Verify(
+            d => d.EnumerateEntries("/m", "*", SearchOption.TopDirectoryOnly),
+            Times.Once
+        );
+
+        await reconciler.ReconcileAsync(_folder.Id, "/m", driver.Object, nowUtc: Now, force: true);
+
+        driver.Verify(
+            d => d.EnumerateEntries("/m", "*", SearchOption.TopDirectoryOnly),
+            Times.Exactly(2)
+        );
+    }
+
+    [Fact]
     public async Task A_moved_file_the_listing_cannot_match_is_repointed_by_its_content()
     {
         string original = Write("01 Song.flac");
@@ -240,7 +271,13 @@ public sealed class MusicTrackReconcilerTests : IDisposable
 
         Mock<IRecordingIdentifier> identifier = new();
         identifier
-            .Setup(i => i.IdentifyAsync(It.IsAny<IStorageDriver>(), It.Is<string>(p => p.EndsWith("01 Renamed.flac")), It.IsAny<CancellationToken>()))
+            .Setup(i =>
+                i.IdentifyAsync(
+                    It.IsAny<IStorageDriver>(),
+                    It.Is<string>(p => p.EndsWith("01 Renamed.flac")),
+                    It.IsAny<CancellationToken>()
+                )
+            )
             .ReturnsAsync([id]);
 
         MusicReconcileResult result = await Reconcile(Reconciler(identifier: identifier.Object));

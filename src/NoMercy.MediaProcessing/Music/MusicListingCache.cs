@@ -18,6 +18,8 @@ namespace NoMercy.MediaProcessing.Music;
 /// Lists a music library tree and remembers it in memory. A folder whose own last-write
 /// time is unchanged since the last listing is not enumerated again: its files and
 /// subfolders are taken from memory. Only directory times are read for those folders.
+/// A forced listing (manual refresh or rescan) always enumerates: a file edited in place
+/// changes its own size and time, not its folder's.
 /// </summary>
 public sealed class MusicListingCache
 {
@@ -34,7 +36,8 @@ public sealed class MusicListingCache
 
     public (IReadOnlyList<TrackFileEntry> Previous, IReadOnlyList<TrackFileEntry> Current) List(
         IStorageDriver driver,
-        string root
+        string root,
+        bool force = false
     )
     {
         string normalizedRoot = Normalize(root);
@@ -47,7 +50,7 @@ public sealed class MusicListingCache
             string directory = pending.Pop();
             visited.Add(directory);
 
-            DirectorySnapshot snapshot = SnapshotOf(driver, directory);
+            DirectorySnapshot snapshot = SnapshotOf(driver, directory, force);
             current.AddRange(snapshot.Files);
             foreach (string subDirectory in snapshot.SubDirectories)
                 pending.Push(subDirectory);
@@ -66,11 +69,12 @@ public sealed class MusicListingCache
         return (previous ?? [], current);
     }
 
-    private DirectorySnapshot SnapshotOf(IStorageDriver driver, string directory)
+    private DirectorySnapshot SnapshotOf(IStorageDriver driver, string directory, bool force)
     {
         DateTime lastWrite = driver.GetLastWriteTimeUtc(directory);
         if (
-            _directories.TryGetValue(directory, out DirectorySnapshot? known)
+            !force
+            && _directories.TryGetValue(directory, out DirectorySnapshot? known)
             && known.LastWriteUtc == lastWrite
         )
             return known;
@@ -94,7 +98,9 @@ public sealed class MusicListingCache
                         directory,
                         "/" + name,
                         entry.Size,
-                        new DateTimeOffset(DateTime.SpecifyKind(entry.LastWriteUtc, DateTimeKind.Utc))
+                        new DateTimeOffset(
+                            DateTime.SpecifyKind(entry.LastWriteUtc, DateTimeKind.Utc)
+                        )
                     )
                 );
         }
