@@ -33,6 +33,7 @@ public class RecordingRepository(MediaContext context) : IRecordingRepository
                             DiscNumber = ti.DiscNumber,
                             TrackNumber = ti.TrackNumber,
                             Date = ti.Date,
+                            MissingSince = null,
                             Folder = ts.Folder,
                             FolderId = ts.FolderId,
                             HostFolder = ts.HostFolder,
@@ -56,6 +57,7 @@ public class RecordingRepository(MediaContext context) : IRecordingRepository
                         DiscNumber = ti.DiscNumber,
                         TrackNumber = ti.TrackNumber,
                         Date = ti.Date,
+                        MissingSince = null,
                         Folder = ti.Folder,
                         FolderId = ti.FolderId,
                         HostFolder = ti.HostFolder,
@@ -65,6 +67,28 @@ public class RecordingRepository(MediaContext context) : IRecordingRepository
                     }
             )
             .RunAsync();
+    }
+
+    public Task<int> RepointTrackFile(
+        string fromHostFolder,
+        string fromFilename,
+        TrackFilePlacement to
+    )
+    {
+        // ExecuteUpdate skips the entity setters, so the separators are normalized here.
+        string fromHost = fromHostFolder.Replace('\\', '/');
+        string toFolder = to.Folder.Replace('\\', '/');
+        string toHost = to.HostFolder.Replace('\\', '/');
+
+        return context
+            .Tracks.Where(track => track.HostFolder == fromHost && track.Filename == fromFilename)
+            .ExecuteUpdateAsync(setters =>
+                setters
+                    .SetProperty(track => track.FolderId, to.FolderId)
+                    .SetProperty(track => track.Folder, toFolder)
+                    .SetProperty(track => track.HostFolder, toHost)
+                    .SetProperty(track => track.Filename, to.Filename)
+            );
     }
 
     public Task LinkToRelease(AlbumTrack trackRelease)

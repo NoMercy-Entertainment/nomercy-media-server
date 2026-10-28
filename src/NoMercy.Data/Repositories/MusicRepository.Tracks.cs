@@ -38,6 +38,7 @@ public partial class MusicRepository
         await using MediaContext mediaContext = await contextFactory.CreateDbContextAsync(ct);
         return await mediaContext
             .Tracks.AsNoTracking()
+            .Playable()
             .Where(track => track.Id == id)
             .Include(track => track.AlbumTrack)
                 .ThenInclude(albumTrack => albumTrack.Album)
@@ -55,6 +56,7 @@ public partial class MusicRepository
         await using MediaContext mediaContext = await contextFactory.CreateDbContextAsync(ct);
         return await mediaContext
             .TrackUser.AsNoTracking()
+            .Playable()
             .Where(tu => tu.UserId == userId)
             .Include(trackUser => trackUser.Track)
                 .ThenInclude(track => track.AlbumTrack)
@@ -108,6 +110,7 @@ public partial class MusicRepository
         await using MediaContext mediaContext = await contextFactory.CreateDbContextAsync(ct);
         return await mediaContext
             .Tracks.AsNoTracking()
+            .Playable()
             .Where(track => track.Id == id)
             .Include(track => track.ArtistTrack)
                 .ThenInclude(artistTrack => artistTrack.Artist)

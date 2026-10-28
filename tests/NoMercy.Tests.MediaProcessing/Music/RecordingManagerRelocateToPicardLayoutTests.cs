@@ -67,6 +67,16 @@ public sealed class RecordingManagerRelocateToPicardLayoutTests : IDisposable
             new(_libraryFolder.Id, library.Id) { Library = library, Folder = _libraryFolder }
         );
 
+        _recordings
+            .Setup(repository =>
+                repository.RepointTrackFile(
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<TrackFilePlacement>()
+                )
+            )
+            .ReturnsAsync(0);
+
         Mock<IStorageFactory> factory = new();
         factory
             .Setup(f => f.For(It.IsAny<Ulid>(), It.IsAny<Ulid>(), It.IsAny<string>()))
@@ -322,6 +332,43 @@ public sealed class RecordingManagerRelocateToPicardLayoutTests : IDisposable
         File.Exists(source).Should().BeFalse("a matching relative tail is not the library target");
         File.ReadAllText(target).Should().Be("archive");
         mediaFile.Path.Should().Be(target);
+    }
+
+    [Fact]
+    public async Task A_file_the_host_stored_under_a_replaced_character_is_not_moved_again()
+    {
+        MusicBrainzReleaseAppends release = Release();
+        MusicBrainzTrack track = new()
+        {
+            Id = Guid.NewGuid(),
+            Title = "Synthetic ❤ Track",
+            Position = 1,
+        };
+        string hostName = TargetRelativePath(release, track).Replace('❤', '�');
+        string source = WriteFile(Path.Combine(_driveRoot, "Music", hostName), "host-named");
+        MediaFile mediaFile = MediaFileAt(source);
+        mediaFile.FFprobe!.Format.Tags!["title"] = track.Title;
+
+        await _manager.RelocateToPicardLayout(
+            release,
+            track,
+            mediaFile,
+            _libraryFolder,
+            _libraryRoot
+        );
+
+        File.ReadAllText(source).Should().Be("host-named");
+        Directory.GetFiles(Path.GetDirectoryName(source)!).Should().ContainSingle();
+        mediaFile.Path.Should().Be(source);
+        _recordings.Verify(
+            repository =>
+                repository.RepointTrackFile(
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<TrackFilePlacement>()
+                ),
+            Times.Never
+        );
     }
 
     [Fact]

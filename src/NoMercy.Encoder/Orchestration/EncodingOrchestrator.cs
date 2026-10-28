@@ -708,6 +708,22 @@ public class EncodingOrchestrator(
         return (mergedPlan, strategy.Decompose(plan: mergedPlan, groupTag: groupTag));
     }
 
+    // Tells the library file watcher the publish is the server's own output.
+    private static IDisposable? HoldDestination(IStorage dest, string outputDirectory)
+    {
+        if (dest is not LocalStorage)
+            return null;
+
+        try
+        {
+            return ServerWriteLedger.Shared.Hold(folder: dest.GetFullPath(path: outputDirectory));
+        }
+        catch (NotSupportedException)
+        {
+            return null;
+        }
+    }
+
     /// <summary>
     /// Moves every file under <paramref name="tempDir"/> to its mirrored path
     /// under <paramref name="outputDirectory"/> on <paramref name="destinationStorage"/>.
@@ -716,7 +732,7 @@ public class EncodingOrchestrator(
     /// directories are created on demand because NFS <c>creat</c> rejects writes
     /// when the enclosing directory is missing.
     /// </summary>
-    private async Task PublishTempDirAsync(
+    internal async Task PublishTempDirAsync(
         string tempDir,
         string outputDirectory,
         IStorage destinationStorage,
@@ -726,6 +742,7 @@ public class EncodingOrchestrator(
     {
         bool isLocalDest = destinationStorage is LocalStorage;
         bool sameVolume = false;
+        using IDisposable? hold = HoldDestination(dest: destinationStorage, outputDirectory: outputDirectory);
 
         if (isLocalDest)
         {
