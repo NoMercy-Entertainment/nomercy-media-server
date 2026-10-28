@@ -86,7 +86,14 @@ public sealed class MusicTrackReconcilerTests : IDisposable
         return path.Replace('\\', '/');
     }
 
-    private Guid Seed(string absoluteFile, DateTime? missingSince = null, Guid? id = null)
+    private Guid Seed(
+        string absoluteFile,
+        DateTime? missingSince = null,
+        Guid? id = null,
+        int trackNumber = 0,
+        string duration = "",
+        Ulid? folderId = null
+    )
     {
         string normalized = absoluteFile.Replace('\\', '/');
         int slash = normalized.LastIndexOf('/');
@@ -94,9 +101,11 @@ public sealed class MusicTrackReconcilerTests : IDisposable
         {
             Id = id ?? Guid.NewGuid(),
             Name = normalized[(slash + 1)..],
-            FolderId = _folder.Id,
+            FolderId = folderId ?? _folder.Id,
             HostFolder = normalized[..slash],
             Filename = normalized[slash..],
+            TrackNumber = trackNumber,
+            Duration = duration,
             MissingSince = missingSince,
             LibraryFolder = null!,
             Metadata = null!,
@@ -109,8 +118,27 @@ public sealed class MusicTrackReconcilerTests : IDisposable
     private MusicTrackReconciler Reconciler(
         MusicListingCache? cache = null,
         IRecordingIdentifier? identifier = null,
-        ILogger? logger = null
-    ) => new(_context, logger ?? NullLogger.Instance, identifier, cache ?? new());
+        ILogger? logger = null,
+        ITrackFileReader? reader = null
+    ) => new(_context, logger ?? NullLogger.Instance, identifier, cache ?? new(), reader);
+
+    private sealed class FakeTrackFileReader(Dictionary<string, TrackFileFacts> facts)
+        : ITrackFileReader
+    {
+        public Task<TrackFileFacts?> ReadAsync(
+            IStorageDriver driver,
+            string path,
+            CancellationToken cancellationToken
+        ) =>
+            Task.FromResult(
+                facts.TryGetValue(System.IO.Path.GetFileName(path), out TrackFileFacts? found)
+                    ? found
+                    : null
+            );
+    }
+
+    private static TrackFileFacts Facts(int track, int seconds) =>
+        new(track, TimeSpan.FromSeconds(seconds));
 
     // ExecuteUpdate skips the Track setters, so this stores a path the way an old row has it.
     private void StoreRawHostFolder(Guid id, string hostFolder) =>
@@ -404,5 +432,124 @@ public sealed class MusicTrackReconcilerTests : IDisposable
 
         result.Moved.Should().Be(1);
         Row(id).Filename.Should().Be("/01 Renamed.flac");
+    }
+
+    private const string OldName = "01 Song [Artist One feat. Artist Two].flac";
+    private const string NewName = "01 Song [Artist One, Artist Two].flac";
+
+    // A hidden row (3:45, track 1) whose file was renamed in place; two live rows stay.
+    private Guid HiddenRowWithRenamedFile(string newName = NewName)
+    {
+        Seed(Write("02 Other.flac"));
+        Seed(Write("03 Third.flac"));
+        string original = Write(OldName);
+        Guid id = Seed(original, Now.AddDays(-3), trackNumber: 1, duration: "03:45");
+        File.Move(original, Path.Combine(AlbumFolder, newName));
+        return id;
+    }
+
+    private Task<MusicReconcileResult> ReconcileWith(
+        Dictionary<string, TrackFileFacts> facts,
+        ILogger? logger = null
+    ) => Reconcile(Reconciler(logger: logger, reader: new FakeTrackFileReader(facts)));
+
+    [Fact]
+    public async Task A_renamed_file_with_the_same_track_number_and_length_is_linked_to_the_hidden_row()
+    {
+        Guid id = HiddenRowWithRenamedFile();
+        ListLogger logger = new();
+
+        MusicReconcileResult result = await ReconcileWith(
+            new() { [NewName] = Facts(1, 227) },
+            logger
+        );
+
+        result.Moved.Should().Be(1);
+        Track row = Row(id);
+        row.Filename.Should().Be("/" + NewName);
+        row.MissingSince.Should().BeNull();
+        logger
+            .Entries.Count(entry =>
+                entry.Level == LogLevel.Warning && entry.Message.Contains(NewName)
+            )
+            .Should()
+            .Be(1);
+    }
+
+    [Fact]
+    public async Task A_renamed_file_whose_length_differs_by_more_than_two_seconds_stays_unlinked()
+    {
+        Guid id = HiddenRowWithRenamedFile();
+
+        MusicReconcileResult result = await ReconcileWith(new() { [NewName] = Facts(1, 230) });
+
+        result.Moved.Should().Be(0);
+        Row(id).Filename.Should().Be("/" + OldName);
+        Row(id).MissingSince.Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task A_renamed_file_with_another_track_number_stays_unlinked()
+    {
+        Guid id = HiddenRowWithRenamedFile();
+
+        MusicReconcileResult result = await ReconcileWith(new() { [NewName] = Facts(2, 225) });
+
+        result.Moved.Should().Be(0);
+        Row(id).Filename.Should().Be("/" + OldName);
+    }
+
+    [Fact]
+    public async Task Two_new_files_that_both_fit_the_hidden_row_link_neither()
+    {
+        Guid id = HiddenRowWithRenamedFile();
+        Write("01 Song [Artist One and Artist Two].flac");
+
+        MusicReconcileResult result = await ReconcileWith(
+            new()
+            {
+                [NewName] = Facts(1, 225),
+                ["01 Song [Artist One and Artist Two].flac"] = Facts(1, 226),
+            }
+        );
+
+        result.Moved.Should().Be(0);
+        Row(id).Filename.Should().Be("/" + OldName);
+    }
+
+    [Fact]
+    public async Task A_new_file_another_row_owns_is_not_linked_to_the_hidden_row()
+    {
+        Guid id = HiddenRowWithRenamedFile();
+        Seed(Path.Combine(AlbumFolder, NewName), folderId: Ulid.NewUlid());
+
+        MusicReconcileResult result = await ReconcileWith(new() { [NewName] = Facts(1, 225) });
+
+        result.Moved.Should().Be(0);
+        Row(id).Filename.Should().Be("/" + OldName);
+    }
+
+    [Fact]
+    public async Task A_new_file_in_another_folder_is_not_linked_to_the_hidden_row()
+    {
+        Guid id = HiddenRowWithRenamedFile();
+        File.Delete(Path.Combine(AlbumFolder, NewName));
+        Write(NewName, Path.Combine(_root, "Synthetic Artist", "Other Album"));
+
+        MusicReconcileResult result = await ReconcileWith(new() { [NewName] = Facts(1, 225) });
+
+        result.Moved.Should().Be(0);
+        Row(id).Filename.Should().Be("/" + OldName);
+    }
+
+    [Fact]
+    public async Task A_new_file_whose_tags_cannot_be_read_stays_unlinked()
+    {
+        Guid id = HiddenRowWithRenamedFile();
+
+        MusicReconcileResult result = await ReconcileWith([]);
+
+        result.Moved.Should().Be(0);
+        Row(id).Filename.Should().Be("/" + OldName);
     }
 }

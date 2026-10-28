@@ -13,6 +13,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NoMercy.Database;
 using NoMercy.MediaProcessing.Recordings;
+using NoMercy.NmSystem.Extensions;
 using NoMercy.Storage;
 
 namespace NoMercy.MediaProcessing.Music;
@@ -27,21 +28,27 @@ public class MusicTrackReconciler(
     MediaContext mediaContext,
     ILogger logger,
     IRecordingIdentifier? recordingIdentifier = null,
-    MusicListingCache? listingCache = null
+    MusicListingCache? listingCache = null,
+    ITrackFileReader? fileReader = null
 )
 {
     private const int MaxFingerprintsPerPass = 200;
+    private const int MaxTagReadsPerPass = 200;
+    private const int DurationToleranceSeconds = 2;
 
     private static readonly string[] AudioExtensions = [".mp3", ".flac", ".opus", ".wav", ".m4a"];
 
     private readonly MusicListingCache _cache = listingCache ?? MusicListingCache.Shared;
+    private readonly ITrackFileReader _fileReader = fileReader ?? new TagLibTrackFileReader();
     private readonly MissingTrackPruner _pruner = new(mediaContext, logger);
 
     private readonly record struct TrackRow(
         Guid Id,
         string HostFolder,
         string Filename,
-        DateTime? MissingSince
+        DateTime? MissingSince,
+        int TrackNumber,
+        string Duration
     )
     {
         public string Path => HostFolder.TrimEnd('/') + Filename;
@@ -186,6 +193,7 @@ public class MusicTrackReconciler(
 
         List<(TrackFileEntry From, TrackFileEntry To)> moves = [.. diff.Moves];
         await MatchByContentAsync(driver, diff.Added, gone, rowsByPath, moves, cancellationToken);
+        await MatchByTagsAsync(driver, diff.Added, gone, rowsByPath, moves, cancellationToken);
 
         int moved = await ApplyMovesAsync(folderId, scanRoot, rowsByPath, moves, cancellationToken);
 
@@ -258,7 +266,9 @@ public class MusicTrackReconciler(
                 track.Id,
                 track.HostFolder!,
                 track.Filename!,
-                track.MissingSince
+                track.MissingSince,
+                track.TrackNumber,
+                track.Duration
             ))
             .ToListAsync(cancellationToken);
 
@@ -325,14 +335,7 @@ public class MusicTrackReconciler(
 
         List<TrackFileEntry> candidates =
         [
-            .. added
-                .Where(entry =>
-                    AudioExtensions.Contains(
-                        Path.GetExtension(entry.Filename),
-                        StringComparer.OrdinalIgnoreCase
-                    )
-                )
-                .Take(MaxFingerprintsPerPass),
+            .. added.Where(IsAudioFile).Take(MaxFingerprintsPerPass),
         ];
 
         foreach (TrackFileEntry candidate in candidates)
@@ -358,6 +361,103 @@ public class MusicTrackReconciler(
             gone.Remove(match);
         }
     }
+
+    private static bool IsAudioFile(TrackFileEntry entry) =>
+        AudioExtensions.Contains(
+            Path.GetExtension(entry.Filename),
+            StringComparer.OrdinalIgnoreCase
+        );
+
+    // A file renamed in place has no listing identity and may carry new tags. Track number and
+    // length stand in for it, and only a one-to-one fit in the same folder is trusted.
+    private async Task MatchByTagsAsync(
+        IStorageDriver driver,
+        IReadOnlyList<TrackFileEntry> added,
+        List<TrackFileEntry> gone,
+        Dictionary<string, List<TrackRow>> rowsByPath,
+        List<(TrackFileEntry From, TrackFileEntry To)> moves,
+        CancellationToken cancellationToken
+    )
+    {
+        if (gone.Count == 0)
+            return;
+
+        HashSet<string> taken = [.. moves.Select(move => move.To.Path)];
+        HashSet<string> goneFolders = [.. gone.Select(entry => entry.HostFolder)];
+        List<TrackFileEntry> candidates =
+        [
+            .. added
+                .Where(entry =>
+                    IsAudioFile(entry)
+                    && !taken.Contains(entry.Path)
+                    && goneFolders.Contains(entry.HostFolder)
+                )
+                .Take(MaxTagReadsPerPass),
+        ];
+
+        List<(TrackFileEntry Candidate, List<TrackFileEntry> Fits)> fits = [];
+        foreach (TrackFileEntry candidate in candidates)
+        {
+            if (await IsOwnedByRowAsync(candidate, cancellationToken))
+                continue;
+
+            TrackFileFacts? facts = await _fileReader.ReadAsync(
+                driver,
+                candidate.Path,
+                cancellationToken
+            );
+            if (facts is null || facts.TrackNumber <= 0)
+                continue;
+
+            List<TrackFileEntry> fitting =
+            [
+                .. gone.Where(entry =>
+                    entry.HostFolder == candidate.HostFolder
+                    && rowsByPath[entry.Path].All(row => Fits(row, facts))
+                ),
+            ];
+            if (fitting.Count > 0)
+                fits.Add((candidate, fitting));
+        }
+
+        foreach ((TrackFileEntry candidate, List<TrackFileEntry> fitting) in fits)
+        {
+            if (fitting.Count != 1)
+                continue;
+
+            TrackFileEntry from = fitting[0];
+            if (fits.Count(other => other.Fits.Contains(from)) != 1)
+                continue;
+
+            logger.LogWarning(
+                "Linking renamed file '{To}' to the missing track row(s) of '{From}': same track number, length within {Seconds} s",
+                candidate.Path,
+                from.Path,
+                DurationToleranceSeconds
+            );
+            moves.Add((from, candidate));
+            gone.Remove(from);
+        }
+    }
+
+    private static bool Fits(TrackRow row, TrackFileFacts facts)
+    {
+        int rowSeconds = row.Duration.ToSeconds();
+        return row.TrackNumber == facts.TrackNumber
+            && rowSeconds > 0
+            && Math.Abs(rowSeconds - facts.Duration.TotalSeconds) <= DurationToleranceSeconds;
+    }
+
+    private Task<bool> IsOwnedByRowAsync(
+        TrackFileEntry file,
+        CancellationToken cancellationToken
+    ) =>
+        mediaContext
+            .Tracks.AsNoTracking()
+            .AnyAsync(
+                track => track.HostFolder == file.HostFolder && track.Filename == file.Filename,
+                cancellationToken
+            );
 
     private async Task<int> ApplyMovesAsync(
         Ulid folderId,
