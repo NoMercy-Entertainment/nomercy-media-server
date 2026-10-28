@@ -240,6 +240,92 @@ public class PicardNamingTests
         Assert.Equal("U/U2/[1987] Album_ The _Reckoning_/01 Track_Name", sanitized);
     }
 
+    /// <summary>A shared drive read by Windows, Linux and macOS needs names all three accept.</summary>
+    [Fact]
+    public void A_slash_inside_an_artist_name_stays_one_folder()
+    {
+        MusicNamingContext context = JoshuaTree() with
+        {
+            AlbumName = "Back in Black",
+            Year = 1980,
+            AlbumArtistSort = "AC/DC",
+            AlbumArtistPrimary = "AC/DC",
+        };
+
+        string sanitized = PicardNaming.Sanitize(PicardNaming.BuildPath(context));
+
+        Assert.Equal(
+            "A/AC_DC/[1980] Back in Black/01 Where the Streets Have No Name [U2]",
+            sanitized
+        );
+    }
+
+    [Fact]
+    public void An_album_named_with_a_question_mark_keeps_a_readable_folder()
+    {
+        MusicNamingContext context = JoshuaTree() with { AlbumName = "?", Year = 2018 };
+
+        string sanitized = PicardNaming.Sanitize(PicardNaming.BuildDirectory(context));
+
+        Assert.Equal("U/U2/[2018] _", sanitized);
+    }
+
+    [Theory]
+    [InlineData("❤", "U/U2/[2018] ❤")]
+    [InlineData("\U0001F3B5 Party", "U/U2/[2018] \U0001F3B5 Party")]
+    public void An_album_named_with_a_symbol_keeps_the_real_character(
+        string albumName,
+        string expected
+    )
+    {
+        MusicNamingContext context = JoshuaTree() with { AlbumName = albumName, Year = 2018 };
+
+        string sanitized = PicardNaming.Sanitize(PicardNaming.BuildDirectory(context));
+
+        Assert.Equal(expected, sanitized);
+    }
+
+    [Fact]
+    public void A_reserved_device_name_as_an_artist_or_title_gets_a_suffix()
+    {
+        MusicNamingContext context = JoshuaTree() with
+        {
+            AlbumArtistSort = "CON",
+            AlbumArtistPrimary = "CON",
+        };
+
+        string sanitized = PicardNaming.Sanitize($"{PicardNaming.BuildPath(context)}.flac");
+        string titled = PicardNaming.Sanitize("U/U2/[1987] A/CON.flac");
+
+        Assert.Equal(
+            "C/CON_/[1987] The Joshua Tree/01 Where the Streets Have No Name [U2].flac",
+            sanitized
+        );
+        Assert.Equal("U/U2/[1987] A/CON_.flac", titled);
+    }
+
+    [Fact]
+    public void A_control_character_in_a_title_is_replaced()
+    {
+        MusicNamingContext context = JoshuaTree() with { TrackTitle = "Where\u0001Streets" };
+
+        string sanitized = PicardNaming.Sanitize(PicardNaming.BuildPath(context));
+
+        Assert.Equal("U/U2/[1987] The Joshua Tree/01 Where_Streets", sanitized);
+    }
+
+    [Fact]
+    public void A_wide_character_title_never_passes_255_bytes_in_one_component()
+    {
+        MusicNamingContext context = JoshuaTree() with { TrackTitle = new string('日', 128) };
+
+        string sanitized = PicardNaming.Sanitize($"{PicardNaming.BuildPath(context)}.flac");
+
+        string name = sanitized.Split('/')[^1];
+        Assert.True(System.Text.Encoding.UTF8.GetByteCount(name) <= 255);
+        Assert.EndsWith(".flac", name);
+    }
+
     /// <summary>
     /// Windows drops a trailing dot from a folder name, so "[2001] Melody A.M." landed in a
     /// new "[2001] Melody A.M" beside the album's real "[2001] Melody A.M_" (2026-10-07).

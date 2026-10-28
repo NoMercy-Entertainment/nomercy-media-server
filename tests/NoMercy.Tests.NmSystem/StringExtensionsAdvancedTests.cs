@@ -278,6 +278,13 @@ public class StringExtensionsAdvancedTests
     }
 
     [Fact]
+    public void RemoveAccents_KeepsACharacterLatin1CannotHold()
+    {
+        "❤".RemoveAccents().Should().Be("❤");
+        "Café \U0001F3B5".RemoveAccents().Should().Be("Cafe \U0001F3B5");
+    }
+
+    [Fact]
     public void PathName_NormalizesForwardSlashes()
     {
         // PathName rewrites every separator to Path.DirectorySeparatorChar, which IS

@@ -1,0 +1,15 @@
+*
+!Directory.Build.props
+!Directory.Packages.props
+!nuget.config
+!.editorconfig
+!LICENSE
+!src/NoMercy.Analyzers
+!src/NoMercy.Events
+!src/NoMercy.Design
+!src/NoMercy.PluginSdk.Abstractions
+!src/NoMercy.PluginSdk.Mvc
+!tools/nomercy-plugin
+**/bin
+**/obj
+**/bin_efgen

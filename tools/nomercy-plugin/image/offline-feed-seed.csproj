@@ -1,0 +1,20 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Never built. Restoring it extracts the packages a plugin build may need,
+    with their transitive closure, so the image can carry them as a feed.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <NuGetAudit>false</NuGetAudit>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NoMercy.PluginSdk.Abstractions" Version="12.*" />
+    <PackageReference Include="NoMercy.PluginSdk.Mvc" Version="12.*" />
+  </ItemGroup>
+
+  <ItemGroup Label="Third party">
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.11" />
+    <PackageReference Include="PuppeteerSharp" Version="25.6.0" />
+  </ItemGroup>
+</Project>

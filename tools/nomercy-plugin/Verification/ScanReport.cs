@@ -26,6 +26,8 @@ public sealed record ScanReport
 {
     public required IReadOnlyList<PluginRefusal> Refusals { get; init; }
 
+    public bool Passed => ExitCode == 0;
+
     public int ExitCode =>
         Refusals.Any(refusal => refusal.Severity == PluginRefusalSeverity.Blocked) ? 1 : 0;
 

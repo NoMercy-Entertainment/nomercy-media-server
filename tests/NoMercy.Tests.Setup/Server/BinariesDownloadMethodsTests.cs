@@ -752,6 +752,164 @@ public sealed class BinariesDownloadMethodsTests : IDisposable
         Assert.False(File.Exists(AppFiles.CloudflareDPath));
     }
 
+    private const string CloudflaredListUrl =
+        "https://api.github.com/repos/cloudflare/cloudflared/releases?per_page=30";
+
+    private static Asset[] CloudflaredAssets(string url, byte[] payload) =>
+        [
+            MakeAsset("cloudflared-windows-amd64.exe", url, payload),
+            MakeAsset("cloudflared-linux-amd64", url, payload),
+            MakeAsset("cloudflared-linux-arm64", url, payload),
+        ];
+
+    private static async Task InstallCloudflared(string content, int daysOld)
+    {
+        Directory.CreateDirectory(AppFiles.DependenciesPath);
+        await File.WriteAllTextAsync(AppFiles.CloudflareDPath, content);
+        File.SetLastWriteTimeUtc(AppFiles.CloudflareDPath, DateTime.UtcNow.AddDays(-daysOld));
+    }
+
+    private static Binaries CloudflaredWith(FakeHttpHandler handler, string? installedReports)
+    {
+        Binaries binaries = BuildBinaries(handler);
+        binaries.ReadInstalledVersion = _ => Task.FromResult(installedReports);
+        return binaries;
+    }
+
+    [Fact]
+    public async Task DownloadCloudflared_InstalledBelowFloor_UpgradesEvenWhenFileIsNewerThanRelease()
+    {
+        await InstallCloudflared("cloudflared-2026.9.1", daysOld: 3);
+
+        byte[] payload = [.. "cloudflared-2026.10.2"u8];
+        string url = "https://example.com/cloudflared";
+        FakeHttpHandler handler = new();
+        handler.Register(url, payload);
+        handler.RegisterReleaseList(
+            CloudflaredListUrl,
+            [
+                ReleaseWithAssets(
+                    DateTimeOffset.UtcNow.AddDays(-20),
+                    "2026.10.2",
+                    CloudflaredAssets(url, payload)
+                ),
+            ]
+        );
+
+        await CloudflaredWith(handler, "cloudflared version 2026.9.1 (built 2026-09-01)")
+            .DownloadCloudflared();
+
+        Assert.Equal(
+            "cloudflared-2026.10.2",
+            await File.ReadAllTextAsync(AppFiles.CloudflareDPath)
+        );
+    }
+
+    [Fact]
+    public async Task DownloadCloudflared_InstalledBelowFloor_AdoptsReleaseYoungerThanSoak()
+    {
+        await InstallCloudflared("cloudflared-2026.9.1", daysOld: 40);
+
+        byte[] fixedPayload = [.. "cloudflared-2026.10.2"u8];
+        byte[] oldPayload = [.. "cloudflared-2026.9.3"u8];
+        string fixedUrl = "https://example.com/cloudflared-fixed";
+        string oldUrl = "https://example.com/cloudflared-old";
+        FakeHttpHandler handler = new();
+        handler.Register(fixedUrl, fixedPayload);
+        handler.Register(oldUrl, oldPayload);
+        handler.RegisterReleaseList(
+            CloudflaredListUrl,
+            [
+                ReleaseWithAssets(
+                    DateTimeOffset.UtcNow.AddDays(-1),
+                    "2026.10.2",
+                    CloudflaredAssets(fixedUrl, fixedPayload)
+                ),
+                ReleaseWithAssets(
+                    DateTimeOffset.UtcNow.AddDays(-30),
+                    "2026.9.3",
+                    CloudflaredAssets(oldUrl, oldPayload)
+                ),
+            ]
+        );
+
+        await CloudflaredWith(handler, "cloudflared version 2026.9.1 (built 2026-09-01)")
+            .DownloadCloudflared();
+
+        Assert.Equal(
+            "cloudflared-2026.10.2",
+            await File.ReadAllTextAsync(AppFiles.CloudflareDPath)
+        );
+    }
+
+    [Fact]
+    public async Task DownloadCloudflared_InstalledAtFloor_StillWaitsOutTheSoak()
+    {
+        await InstallCloudflared("cloudflared-2026.10.2", daysOld: 40);
+
+        byte[] youngPayload = [.. "cloudflared-2026.11.0"u8];
+        string youngUrl = "https://example.com/cloudflared-young";
+        FakeHttpHandler handler = new();
+        handler.Register(youngUrl, youngPayload);
+        handler.RegisterReleaseList(
+            CloudflaredListUrl,
+            [
+                ReleaseWithAssets(
+                    DateTimeOffset.UtcNow.AddDays(-1),
+                    "2026.11.0",
+                    CloudflaredAssets(youngUrl, youngPayload)
+                ),
+            ]
+        );
+
+        await CloudflaredWith(handler, "cloudflared version 2026.10.2 (built 2026-10-20)")
+            .DownloadCloudflared();
+
+        Assert.Equal(
+            "cloudflared-2026.10.2",
+            await File.ReadAllTextAsync(AppFiles.CloudflareDPath)
+        );
+    }
+
+    [Fact]
+    public async Task DownloadCloudflared_NothingInstalled_AdoptsReleaseYoungerThanSoak()
+    {
+        byte[] payload = [.. "cloudflared-2026.10.2"u8];
+        string url = "https://example.com/cloudflared";
+        FakeHttpHandler handler = new();
+        handler.Register(url, payload);
+        handler.RegisterReleaseList(
+            CloudflaredListUrl,
+            [
+                ReleaseWithAssets(
+                    DateTimeOffset.UtcNow.AddDays(-1),
+                    "2026.10.2",
+                    CloudflaredAssets(url, payload)
+                ),
+            ]
+        );
+
+        await CloudflaredWith(handler, null).DownloadCloudflared();
+
+        Assert.Equal(
+            "cloudflared-2026.10.2",
+            await File.ReadAllTextAsync(AppFiles.CloudflareDPath)
+        );
+    }
+
+    [Theory]
+    [InlineData("cloudflared version 2026.9.1 (built 2026-09-01T10:00:00Z)", "2026.9.1")]
+    [InlineData("yt-dlp 2026.10.01", "2026.10.1")]
+    [InlineData("packager version v3.4.2-release", "3.4.2")]
+    [InlineData("no version here", null)]
+    [InlineData(null, null)]
+    public void ParseReportedVersion_ReadsFirstVersionToken(string? output, string? expected)
+    {
+        Version? parsed = Binaries.ParseReportedVersion(output);
+
+        Assert.Equal(expected, parsed?.ToString());
+    }
+
     // NOTE: DownloadCloudflared's happy path beyond asset selection is NOT covered here.
     // Unlike every other Download* method, it fetches the binary via
     // NoMercy.NmSystem.SystemCalls.Download.DownloadFile, which uses its OWN static

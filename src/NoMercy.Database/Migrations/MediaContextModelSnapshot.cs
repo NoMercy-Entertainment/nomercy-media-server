@@ -3191,6 +3191,9 @@ namespace NoMercy.Database.Migrations
                     b.Property<string>("MetadataId")
                         .HasColumnType("TEXT");
 
+                    b.Property<DateTime?>("MissingSince")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(256)

@@ -13,12 +13,36 @@ using NoMercy.Database.Models.Libraries;
 
 namespace NoMercy.MediaProcessing.Files;
 
-public class FileChangeGroup(WatcherChangeTypes type, Library library, string folderPath)
+public class FileChangeGroup(Library library, string folderPath)
 {
+    private readonly List<FileChange> _changes = [];
+
     public string FolderPath { get; set; } = folderPath;
-    public string? FullPath { get; set; }
-    public string? OldFullPath { get; set; }
     public Library Library { get; set; } = library;
-    public WatcherChangeTypes ChangeType { get; set; } = type;
-    public Timer? Timer { get; set; }
+    public IReadOnlyList<FileChange> Changes => _changes;
+
+    public void Forget(string fullPath) =>
+        _changes.RemoveAll(change => change.FullPath == fullPath);
+
+    /// <summary>One action per path, the latest; a deleted rename target also deletes its source.</summary>
+    public void Record(WatcherChangeTypes type, string fullPath, string? oldFullPath)
+    {
+        int rename = _changes.FindIndex(change =>
+            change.FullPath == fullPath
+            && change is { ChangeType: WatcherChangeTypes.Renamed, OldFullPath: not null }
+        );
+        if (rename >= 0 && type == WatcherChangeTypes.Deleted)
+            _changes[rename] = new(WatcherChangeTypes.Deleted, _changes[rename].OldFullPath!);
+        else
+            _changes.RemoveAll(change => change.FullPath == fullPath);
+
+        _changes.Add(new(type, fullPath, oldFullPath));
+    }
+
+    public FileChangeGroup Snapshot()
+    {
+        FileChangeGroup snapshot = new(Library, FolderPath);
+        snapshot._changes.AddRange(_changes);
+        return snapshot;
+    }
 }

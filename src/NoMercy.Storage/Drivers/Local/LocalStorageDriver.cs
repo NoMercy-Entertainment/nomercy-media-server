@@ -77,6 +77,7 @@ public sealed class LocalStorageDriver : IStorageDriver
             try
             {
                 Directory.CreateDirectory(path);
+                ServerWriteLedger.Shared.Note(Path.GetFullPath(path));
                 return;
             }
             catch (IOException) when (attempt < 3)
@@ -118,8 +119,9 @@ public sealed class LocalStorageDriver : IStorageDriver
             useAsync: true
         );
 
-    public Stream OpenWrite(string path, bool overwrite) =>
-        new FileStream(
+    public Stream OpenWrite(string path, bool overwrite)
+    {
+        FileStream stream = new(
             path,
             overwrite ? FileMode.Create : FileMode.CreateNew,
             FileAccess.Write,
@@ -127,16 +129,26 @@ public sealed class LocalStorageDriver : IStorageDriver
             4096,
             useAsync: true
         );
+        ServerWriteLedger.Shared.Note(Path.GetFullPath(path));
+        return stream;
+    }
 
     // Local files are already on local FS; no staging needed.
     public Task<LocalPathLease> AcquireLocalPathAsync(string path, CancellationToken ct) =>
         Task.FromResult(new LocalPathLease(path));
 
-    public void MoveFile(string source, string destination) =>
+    public void MoveFile(string source, string destination)
+    {
+        ServerWriteLedger.Shared.Note(Path.GetFullPath(source));
+        ServerWriteLedger.Shared.Note(Path.GetFullPath(destination));
         File.Move(source, destination, overwrite: false);
+    }
 
-    public void CopyFile(string source, string destination, bool overwrite) =>
+    public void CopyFile(string source, string destination, bool overwrite)
+    {
+        ServerWriteLedger.Shared.Note(Path.GetFullPath(destination));
         File.Copy(source, destination, overwrite);
+    }
 
     public IEnumerable<string> EnumerateFileSystemEntries(
         string directory,
@@ -209,6 +221,10 @@ public sealed class LocalStorageDriver : IStorageDriver
         }
     }
 
-    public void MoveDirectory(string source, string destination) =>
+    public void MoveDirectory(string source, string destination)
+    {
+        ServerWriteLedger.Shared.NoteFolder(Path.GetFullPath(source));
+        ServerWriteLedger.Shared.NoteFolder(Path.GetFullPath(destination));
         Directory.Move(source, destination);
+    }
 }

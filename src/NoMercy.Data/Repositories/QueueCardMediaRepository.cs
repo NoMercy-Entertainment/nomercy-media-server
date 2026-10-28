@@ -53,6 +53,7 @@ public class QueueCardMediaRepository(MediaContext context) : IQueueCardMediaRep
     {
         return context
             .Tracks.AsNoTracking()
+            .Playable()
             .Where(track => trackIds.Contains(track.Id))
             .Include(track => track.AlbumTrack)
                 .ThenInclude(albumTrack => albumTrack.Album)
@@ -103,6 +104,7 @@ public class QueueCardMediaRepository(MediaContext context) : IQueueCardMediaRep
     {
         return context
             .AlbumTrack.AsNoTracking()
+            .Playable()
             .Where(link => releaseIds.Contains(link.AlbumId))
             .GroupBy(link => link.AlbumId)
             .ToDictionaryAsync(group => group.Key, group => group.Count());
@@ -120,6 +122,7 @@ public class QueueCardMediaRepository(MediaContext context) : IQueueCardMediaRep
     {
         List<AlbumCoverRow> trackCovers = await context
             .AlbumTrack.AsNoTracking()
+            .Playable()
             .Where(link => releaseIds.Contains(link.AlbumId) && link.Track.Cover != null)
             .Select(link => new AlbumCoverRow(link.AlbumId, link.Track.Cover))
             .ToListAsync();
