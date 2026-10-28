@@ -13172,6 +13172,36 @@
         }
       }
     },
+    "/api/v1/visualizers/{id}/preview/{kind}": {
+      "get": {
+        "tags": [
+          "Visualizers"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/worker/tasks": {
       "post": {
         "tags": [
