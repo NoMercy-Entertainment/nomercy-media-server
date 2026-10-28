@@ -55,7 +55,8 @@ public class MusicTrackReconciler(
         IStorageDriver driver,
         IReadOnlyCollection<string>? onlyUnder = null,
         DateTime? nowUtc = null,
-        CancellationToken cancellationToken = default
+        CancellationToken cancellationToken = default,
+        bool force = false
     )
     {
         DateTime now = nowUtc ?? DateTime.UtcNow;
@@ -78,7 +79,7 @@ public class MusicTrackReconciler(
         )
         {
             (IReadOnlyList<TrackFileEntry> previous, IReadOnlyList<TrackFileEntry> current) =
-                _cache.List(driver, root);
+                _cache.List(driver, root, force);
             previousListing.AddRange(previous);
             currentListing.AddRange(current);
         }
@@ -127,7 +128,11 @@ public class MusicTrackReconciler(
 
         int moved = await ApplyMovesAsync(folderId, scanRoot, rowsByPath, moves, cancellationToken);
 
-        HashSet<string> present = [.. currentListing.Select(entry => entry.Path), .. presentButUnlisted];
+        HashSet<string> present =
+        [
+            .. currentListing.Select(entry => entry.Path),
+            .. presentButUnlisted,
+        ];
         int cleared = await _pruner.ClearMissingAsync(
             [
                 .. rows.Where(row => row.MissingSince is not null && present.Contains(row.Path))

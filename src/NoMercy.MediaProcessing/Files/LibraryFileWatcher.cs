@@ -9,14 +9,11 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Text.RegularExpressions;
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.Events;
 using NoMercy.Events.FileWatcher;
-using NoMercy.NmSystem.Domain;
-using NoMercy.NmSystem.Extensions;
 using NoMercy.NmSystem.SystemCalls;
 using NoMercy.Storage;
 using Serilog.Events;
@@ -38,17 +35,17 @@ public partial class LibraryFileWatcher
     private static IStorageDriver StorageDriver => _driverStore!;
     private static IStorageFactory StorageFactory => _storageFactoryStore!;
 
-    private static readonly Dictionary<string, FileChangeGroup> FileChangeGroups = new();
-    private static readonly Lock LockObject = new();
-
-    [GeneratedRegex(
-        @"^(video_.*|audio_.*|subtitles|fonts|thumbs|metadata|scans|cds.*|NCED|NCOP)$",
-        RegexOptions.IgnoreCase,
-        matchTimeoutMilliseconds: 1000
-    )]
-    private static partial Regex EncodingOutputRegex();
-
     private const int Delay = 10;
+
+    private static readonly FileChangeCollector Collector = new(
+        PublishFileEvent,
+        ServerWriteLedger.Shared,
+        TimeProvider.System,
+        TimeSpan.FromSeconds(Delay),
+        transcodeRoot: () => StoragePaths.TranscodeRoot
+    );
+
+    private static Timer? _tick;
 
     private static List<Library> _libraries = [];
 
@@ -66,6 +63,20 @@ public partial class LibraryFileWatcher
 
         RefreshLibraryCache();
         Parallel.ForEach(_libraries, library => AddLibraryWatcher(library));
+
+        _tick ??= new(_ => _ = TickSafe(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
+    }
+
+    private static async Task TickSafe()
+    {
+        try
+        {
+            await Collector.TickAsync();
+        }
+        catch (Exception ex)
+        {
+            Logger.System($"FileWatcher tick failed: {ex.Message}", LogEventLevel.Error);
+        }
     }
 
     public static void RefreshLibraryCache()
@@ -141,140 +152,19 @@ public partial class LibraryFileWatcher
         );
     }
 
-    private static bool IsInEncodingOutputDirectory(string fullPath)
-    {
-        string? directory = Path.GetDirectoryName(fullPath);
-        while (!string.IsNullOrEmpty(directory))
-        {
-            string dirName = Path.GetFileName(directory);
-            if (EncodingOutputRegex().IsMatch(dirName))
-                return true;
-
-            directory = Path.GetDirectoryName(directory);
-        }
-        return false;
-    }
-
     private void HandleFileChange(FileWatcherEventArgs e)
     {
-        if (IsInEncodingOutputDirectory(e.FullPath))
-            return;
-
-        string watcherPath = e.Path;
-        Library? library = GetLibraryByPath(watcherPath);
-
+        Library? library = GetLibraryByPath(e.Path);
         if (library is null)
             return;
 
-        if (!IsAllowedExtensionForLibrary(library, e.FullPath))
-            return;
-
-        if (e.ChangeType != WatcherChangeTypes.Deleted && !Path.Exists(e.FullPath))
-            return;
-
-        string folderPath = Path.GetDirectoryName(e.FullPath).OrEmpty();
-
-        if (string.IsNullOrEmpty(folderPath))
-            return;
-
-        lock (LockObject)
-        {
-            if (!FileChangeGroups.TryGetValue(folderPath, out FileChangeGroup? fileChangeGroup))
-            {
-                fileChangeGroup = new(library, folderPath);
-                FileChangeGroups[folderPath] = fileChangeGroup;
-            }
-
-            fileChangeGroup.Record(
-                e.ChangeType,
-                e.FullPath,
-                e.ChangeType == WatcherChangeTypes.Renamed ? e.OldFullPath : null
-            );
-
-            fileChangeGroup.Timer?.Dispose();
-            fileChangeGroup.Timer = new(
-                ProcessFileChanges,
-                fileChangeGroup,
-                TimeSpan.FromSeconds(Delay),
-                Timeout.InfiniteTimeSpan
-            );
-        }
-    }
-
-    private static bool IsAllowedExtensionForLibrary(Library library, string path)
-    {
-        if (StorageDriver.DirectoryExists(path))
-            return true;
-
-        switch (library.Type)
-        {
-            case MediaTypes.MovieMediaType:
-            case MediaTypes.TvMediaType:
-            case MediaTypes.AnimeMediaType:
-                string[] videoExtensions = [".mp4", ".mkv", ".avi", ".webm", ".mov", ".m3u8"];
-                return videoExtensions.Contains(
-                    Path.GetExtension(path),
-                    StringComparer.OrdinalIgnoreCase
-                );
-            case MediaTypes.MusicMediaType:
-                string[] audioExtensions = [".mp3", ".flac", ".opus", ".wav", ".m4a"];
-                return audioExtensions.Contains(
-                    Path.GetExtension(path),
-                    StringComparer.OrdinalIgnoreCase
-                );
-            case MediaTypes.InboxMediaType:
-                string[] inboxExtensions =
-                [
-                    ".mp4",
-                    ".mkv",
-                    ".avi",
-                    ".webm",
-                    ".mov",
-                    ".m3u8",
-                    ".mp3",
-                    ".flac",
-                    ".opus",
-                    ".wav",
-                    ".m4a",
-                ];
-                return inboxExtensions.Contains(
-                    Path.GetExtension(path),
-                    StringComparer.OrdinalIgnoreCase
-                );
-            default:
-                return false;
-        }
-    }
-
-    private void ProcessFileChanges(object? state)
-    {
-        if (state is not FileChangeGroup group)
-            return;
-
-        FileChangeGroup snapshot;
-        lock (LockObject)
-        {
-            snapshot = group.Snapshot();
-            FileChangeGroups.Remove(group.FolderPath);
-            // The one-shot debounce timer has fired; dispose it so its handle is
-            // released now instead of leaking until GC on a busy library.
-            group.Timer?.Dispose();
-        }
-
-        Task.Run(async () =>
-        {
-            try
-            {
-                await PublishFileEvent(snapshot);
-            }
-            catch (Exception ex)
-            {
-                Logger.System(
-                    $"FileWatcher error processing {snapshot.FolderPath}: {ex.Message}",
-                    LogEventLevel.Error
-                );
-            }
-        });
+        Collector.Handle(
+            library,
+            e.ChangeType,
+            e.FullPath,
+            e.ChangeType == WatcherChangeTypes.Renamed ? e.OldFullPath : null,
+            StorageDriver.DirectoryExists
+        );
     }
 
     private static async Task PublishFileEvent(FileChangeGroup group)

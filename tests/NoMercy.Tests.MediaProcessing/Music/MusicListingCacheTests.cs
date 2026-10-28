@@ -23,6 +23,7 @@ public sealed class MusicListingCacheTests
 
     private readonly Mock<IStorageDriver> _driver = new();
     private DateTime _albumWritten = Written;
+    private long _fileSize = 10;
 
     public MusicListingCacheTests()
     {
@@ -33,7 +34,33 @@ public sealed class MusicListingCacheTests
             .Returns([new StorageEntryInfo("/m/Album", true, 0, Written)]);
         _driver
             .Setup(d => d.EnumerateEntries("/m/Album", "*", SearchOption.TopDirectoryOnly))
-            .Returns([new StorageEntryInfo("/m/Album/one.flac", false, 10, Written)]);
+            .Returns(() => [new StorageEntryInfo("/m/Album/one.flac", false, _fileSize, Written)]);
+    }
+
+    [Fact]
+    public void A_forced_listing_sees_a_file_edited_in_place_inside_an_unchanged_folder()
+    {
+        MusicListingCache cache = new();
+        cache.List(_driver.Object, "/m");
+        _fileSize = 99;
+
+        (IReadOnlyList<TrackFileEntry> previous, IReadOnlyList<TrackFileEntry> current) =
+            cache.List(_driver.Object, "/m", force: true);
+
+        current.Should().ContainSingle().Which.SizeBytes.Should().Be(99);
+        previous.Should().ContainSingle().Which.SizeBytes.Should().Be(10);
+    }
+
+    [Fact]
+    public void An_automatic_listing_still_reuses_the_cached_folder()
+    {
+        MusicListingCache cache = new();
+        cache.List(_driver.Object, "/m");
+        _fileSize = 99;
+
+        (_, IReadOnlyList<TrackFileEntry> current) = cache.List(_driver.Object, "/m");
+
+        current.Should().ContainSingle().Which.SizeBytes.Should().Be(10);
     }
 
     [Fact]
@@ -45,8 +72,14 @@ public sealed class MusicListingCacheTests
         (IReadOnlyList<TrackFileEntry> previous, IReadOnlyList<TrackFileEntry> current) =
             cache.List(_driver.Object, "/m");
 
-        _driver.Verify(d => d.EnumerateEntries("/m", "*", SearchOption.TopDirectoryOnly), Times.Once);
-        _driver.Verify(d => d.EnumerateEntries("/m/Album", "*", SearchOption.TopDirectoryOnly), Times.Once);
+        _driver.Verify(
+            d => d.EnumerateEntries("/m", "*", SearchOption.TopDirectoryOnly),
+            Times.Once
+        );
+        _driver.Verify(
+            d => d.EnumerateEntries("/m/Album", "*", SearchOption.TopDirectoryOnly),
+            Times.Once
+        );
         current.Should().ContainSingle().Which.Path.Should().Be("/m/Album/one.flac");
         previous.Should().BeEquivalentTo(current);
     }
@@ -60,7 +93,13 @@ public sealed class MusicListingCacheTests
 
         cache.List(_driver.Object, "/m");
 
-        _driver.Verify(d => d.EnumerateEntries("/m/Album", "*", SearchOption.TopDirectoryOnly), Times.Exactly(2));
-        _driver.Verify(d => d.EnumerateEntries("/m", "*", SearchOption.TopDirectoryOnly), Times.Once);
+        _driver.Verify(
+            d => d.EnumerateEntries("/m/Album", "*", SearchOption.TopDirectoryOnly),
+            Times.Exactly(2)
+        );
+        _driver.Verify(
+            d => d.EnumerateEntries("/m", "*", SearchOption.TopDirectoryOnly),
+            Times.Once
+        );
     }
 }
