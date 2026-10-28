@@ -49,6 +49,12 @@ public class MusicTrackReconciler(
 
     private static readonly MusicReconcileResult Nothing = new(0, 0, 0, 0, false);
 
+    private sealed class PassCounts
+    {
+        public int Listed { get; set; }
+        public int Skipped { get; set; }
+    }
+
     public async Task<MusicReconcileResult> ReconcileAsync(
         Ulid folderId,
         string scanRoot,
@@ -57,6 +63,43 @@ public class MusicTrackReconciler(
         DateTime? nowUtc = null,
         CancellationToken cancellationToken = default,
         bool force = false
+    )
+    {
+        PassCounts counts = new();
+        MusicReconcileResult result = await ReconcileCoreAsync(
+            folderId,
+            scanRoot,
+            driver,
+            onlyUnder,
+            nowUtc,
+            force,
+            counts,
+            cancellationToken
+        );
+
+        logger.LogInformation(
+            "Reconciled music tracks of '{Root}': {Listed} folder(s) listed, {Skipped} skipped, {Repointed} repointed, {Marked} marked unavailable, {Cleared} cleared, {Removed} removed, {GuardSkips} guard skip(s)",
+            scanRoot,
+            counts.Listed,
+            counts.Skipped,
+            result.Moved,
+            result.Marked,
+            result.Cleared,
+            result.Removed,
+            result.DeletesSkipped ? 1 : 0
+        );
+        return result;
+    }
+
+    private async Task<MusicReconcileResult> ReconcileCoreAsync(
+        Ulid folderId,
+        string scanRoot,
+        IStorageDriver driver,
+        IReadOnlyCollection<string>? onlyUnder,
+        DateTime? nowUtc,
+        bool force,
+        PassCounts counts,
+        CancellationToken cancellationToken
     )
     {
         DateTime now = nowUtc ?? DateTime.UtcNow;
@@ -72,19 +115,37 @@ public class MusicTrackReconciler(
 
         List<TrackFileEntry> previousListing = [];
         List<TrackFileEntry> currentListing = [];
+        List<string> unreadable = [];
         foreach (
             string root in onlyUnder is null
                 ? [scanRoot]
                 : onlyUnder.Where(driver.DirectoryExists).ToList()
         )
         {
-            (IReadOnlyList<TrackFileEntry> previous, IReadOnlyList<TrackFileEntry> current) =
-                _cache.List(driver, root, force);
-            previousListing.AddRange(previous);
-            currentListing.AddRange(current);
+            MusicListing listing = _cache.List(driver, root, force);
+            previousListing.AddRange(listing.Previous);
+            currentListing.AddRange(listing.Current);
+            counts.Listed += listing.ListedFolders;
+            foreach ((string directory, Exception error) in listing.SkippedFolders)
+            {
+                unreadable.Add(directory);
+                logger.LogWarning(
+                    error,
+                    "Skipping unreadable music folder '{Folder}'; its tracks stay as they are",
+                    directory
+                );
+            }
         }
 
-        List<TrackRow> rows = await LoadRowsAsync(folderId, onlyUnder, cancellationToken);
+        counts.Skipped = unreadable.Count;
+
+        // A track under a folder that could not be read is held: nothing says it is gone.
+        List<TrackRow> rows =
+        [
+            .. (await LoadRowsAsync(folderId, onlyUnder, cancellationToken)).Where(row =>
+                !unreadable.Any(directory => IsUnder(row.HostFolder, directory))
+            ),
+        ];
         Dictionary<string, List<TrackRow>> rowsByPath = rows.GroupBy(row => row.Path)
             .ToDictionary(group => group.Key, group => group.ToList());
 
@@ -184,39 +245,69 @@ public class MusicTrackReconciler(
         CancellationToken cancellationToken
     )
     {
+        List<TrackRow> stored = await mediaContext
+            .Tracks.AsNoTracking()
+            .Where(track =>
+                track.FolderId == folderId
+                && track.HostFolder != null
+                && track.HostFolder != ""
+                && track.Filename != null
+                && track.Filename != ""
+            )
+            .Select(track => new TrackRow(
+                track.Id,
+                track.HostFolder!,
+                track.Filename!,
+                track.MissingSince
+            ))
+            .ToListAsync(cancellationToken);
+
+        await NormalizeStoredHostFoldersAsync(folderId, stored, cancellationToken);
         List<TrackRow> rows =
         [
-            .. await mediaContext
-                .Tracks.AsNoTracking()
-                .Where(track =>
-                    track.FolderId == folderId
-                    && track.HostFolder != null
-                    && track.HostFolder != ""
-                    && track.Filename != null
-                    && track.Filename != ""
-                )
-                .Select(track => new TrackRow(
-                    track.Id,
-                    track.HostFolder!,
-                    track.Filename!,
-                    track.MissingSince
-                ))
-                .ToListAsync(cancellationToken),
+            .. stored.Select(row =>
+                row with
+                {
+                    HostFolder = MusicListingCache.Normalize(row.HostFolder),
+                }
+            ),
         ];
 
         if (onlyUnder is null)
             return rows;
 
         List<string> prefixes = [.. onlyUnder.Select(MusicListingCache.Normalize)];
-        return
-        [
-            .. rows.Where(row =>
-                prefixes.Any(prefix =>
-                    row.HostFolder == prefix
-                    || row.HostFolder.StartsWith(prefix + "/", StringComparison.Ordinal)
+        return [.. rows.Where(row => prefixes.Any(prefix => IsUnder(row.HostFolder, prefix)))];
+    }
+
+    private static bool IsUnder(string hostFolder, string directory) =>
+        hostFolder == directory || hostFolder.StartsWith(directory + "/", StringComparison.Ordinal);
+
+    // An old row can hold backslashes or a trailing slash. RepointTrackFile matches the
+    // normalized form, so a row left in its old form could never be repointed.
+    private async Task NormalizeStoredHostFoldersAsync(
+        Ulid folderId,
+        List<TrackRow> stored,
+        CancellationToken cancellationToken
+    )
+    {
+        foreach (
+            string rawHostFolder in stored
+                .Select(row => row.HostFolder)
+                .Where(host => host != MusicListingCache.Normalize(host))
+                .Distinct()
+        )
+        {
+            string normalized = MusicListingCache.Normalize(rawHostFolder);
+            await mediaContext
+                .Tracks.Where(track =>
+                    track.FolderId == folderId && track.HostFolder == rawHostFolder
                 )
-            ),
-        ];
+                .ExecuteUpdateAsync(
+                    setters => setters.SetProperty(track => track.HostFolder, normalized),
+                    cancellationToken
+                );
+        }
     }
 
     // The listing could not match these files; only now is their content read.

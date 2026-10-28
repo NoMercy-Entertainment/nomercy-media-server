@@ -34,23 +34,32 @@ public sealed class MusicListingCache
     private readonly ConcurrentDictionary<string, DirectorySnapshot> _directories = new();
     private readonly ConcurrentDictionary<string, List<TrackFileEntry>> _lastListings = new();
 
-    public (IReadOnlyList<TrackFileEntry> Previous, IReadOnlyList<TrackFileEntry> Current) List(
-        IStorageDriver driver,
-        string root,
-        bool force = false
-    )
+    public MusicListing List(IStorageDriver driver, string root, bool force = false)
     {
         string normalizedRoot = Normalize(root);
         List<TrackFileEntry> current = [];
+        List<(string Directory, Exception Error)> skipped = [];
         HashSet<string> visited = [];
         Stack<string> pending = new([normalizedRoot]);
+        int listed = 0;
 
         while (pending.Count > 0)
         {
             string directory = pending.Pop();
             visited.Add(directory);
 
-            DirectorySnapshot snapshot = SnapshotOf(driver, directory, force);
+            DirectorySnapshot snapshot;
+            try
+            {
+                snapshot = SnapshotOf(driver, directory, force);
+            }
+            catch (Exception error) when (error is not OperationCanceledException)
+            {
+                skipped.Add((directory, error));
+                continue;
+            }
+
+            listed++;
             current.AddRange(snapshot.Files);
             foreach (string subDirectory in snapshot.SubDirectories)
                 pending.Push(subDirectory);
@@ -66,7 +75,7 @@ public sealed class MusicListingCache
 
         _lastListings.TryGetValue(normalizedRoot, out List<TrackFileEntry>? previous);
         _lastListings[normalizedRoot] = current;
-        return (previous ?? [], current);
+        return new(previous ?? [], current, listed, skipped);
     }
 
     private DirectorySnapshot SnapshotOf(IStorageDriver driver, string directory, bool force)
