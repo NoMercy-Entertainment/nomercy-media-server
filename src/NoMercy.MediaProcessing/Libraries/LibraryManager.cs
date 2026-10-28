@@ -23,6 +23,7 @@ using NoMercy.MediaProcessing.Files;
 using NoMercy.MediaProcessing.Files.Parsing;
 using NoMercy.MediaProcessing.Jobs;
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
+using NoMercy.MediaProcessing.Music;
 using NoMercy.NmSystem;
 using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Dto;
@@ -110,6 +111,7 @@ public class LibraryManager(
         ];
 
         int depth = GetDepth();
+        ConcurrentBag<Folder> scannedMusicFolders = [];
 
         await Parallel.ForEachAsync(
             targets,
@@ -122,6 +124,8 @@ public class LibraryManager(
                     case MediaTypes.MusicMediaType:
                         int audioCount = await ScanAudioFolder(folder, depth);
                         Interlocked.Add(ref itemsFound, audioCount);
+                        if (audioCount > 0)
+                            scannedMusicFolders.Add(folder);
                         break;
                     case MediaTypes.AnimeMediaType:
                     case MediaTypes.TvMediaType:
@@ -133,6 +137,7 @@ public class LibraryManager(
             }
         );
 
+        await PruneMissingTracks(scannedMusicFolders);
         await PublishImportsQueued(bus);
         stopwatch.Stop();
 
@@ -150,6 +155,33 @@ public class LibraryManager(
         }
 
         logger.LogInformation("Scanning done");
+    }
+
+    // Only folders the scan just listed are pruned: an empty listing means an unreadable
+    // share, and then every file would look gone.
+    private async Task PruneMissingTracks(IEnumerable<Folder> scannedFolders)
+    {
+        MissingTrackPruner pruner = new(mediaContext, logger);
+        foreach (Folder folder in scannedFolders)
+        {
+            try
+            {
+                IStorage folderStorage = storageFactory.For(
+                    folder.Id,
+                    folder.DriverId,
+                    string.Empty
+                );
+                await pruner.PruneAsync(
+                    folder.Id,
+                    ResolveScanRoot(folderStorage, folder.Path),
+                    folderStorage.Driver
+                );
+            }
+            catch (Exception e)
+            {
+                logger.LogError(e, "Pruning missing tracks of {Path} failed", folder.Path);
+            }
+        }
     }
 
     public async Task ProcessNewLibraryItems(Ulid id)

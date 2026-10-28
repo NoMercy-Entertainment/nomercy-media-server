@@ -400,7 +400,11 @@ public partial class RecordingManager(
     [GeneratedRegex("^00:", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex HmsRegex();
 
-    [GeneratedRegex(@"[\(\[]\s*(feat|ft)\.?\s[^\)\]]*[\)\]]", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
+    [GeneratedRegex(
+        @"[\(\[]\s*(feat|ft)\.?\s[^\)\]]*[\)\]]",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex FeaturingClause();
 
     private const double LengthToleranceSeconds = 3;
@@ -569,10 +573,13 @@ public partial class RecordingManager(
         // occupant into a disambiguated name in the same folder — rather than overwriting
         // it — keeps its bytes intact for the NEXT repair pass to re-fingerprint and place
         // correctly, once the slot it actually needs has, in turn, been vacated.
+        string placedPath = $"{libraryRoot.TrimEnd('/')}/{targetRelativePath}";
+
         if (await libraryStorage.ExistsAsync(scopedTo, CancellationToken.None))
         {
-            string displaced =
-                $"{StoragePathHelpers.GetParent(scopedTo)}/.repair-displaced-{Guid.NewGuid():N}{Path.GetExtension(scopedTo)}";
+            string displacedName =
+                $".repair-displaced-{Guid.NewGuid():N}{Path.GetExtension(scopedTo)}";
+            string displaced = $"{StoragePathHelpers.GetParent(scopedTo)}/{displacedName}";
             await libraryStorage.MoveAsync(scopedTo, displaced, CancellationToken.None);
             logger.LogInformation(
                 "Displaced occupant of '{Path}' to '{Displaced}' to make room for {Track}",
@@ -580,8 +587,16 @@ public partial class RecordingManager(
                 displaced,
                 trackAppends.Title
             );
+
+            await RepointTrackRows(
+                placedPath,
+                $"{StoragePathHelpers.GetParent(placedPath.Replace('\\', '/'))}/{displacedName}",
+                libraryFolder,
+                libraryRoot
+            );
         }
 
+        string sourcePath = mediaFile.Path;
         await libraryStorage.MoveAsync(scopedFrom, scopedTo, CancellationToken.None);
 
         logger.LogInformation(
@@ -591,7 +606,57 @@ public partial class RecordingManager(
             targetRelativePath
         );
 
-        mediaFile.Path = $"{libraryRoot.TrimEnd('/')}/{targetRelativePath}";
+        mediaFile.Path = placedPath;
+        await RepointTrackRows(sourcePath, placedPath, libraryFolder, libraryRoot);
+    }
+
+    // A move leaves every Track row that still addresses the old name pointing at nothing.
+    private async Task RepointTrackRows(
+        string fromPath,
+        string toPath,
+        Folder libraryFolder,
+        string libraryRoot
+    )
+    {
+        if (
+            !StoragePathHelpers.TryGetLibraryRelativeParts(
+                toPath,
+                libraryRoot,
+                out string folder,
+                out string filename
+            )
+        )
+        {
+            logger.LogWarning(
+                "Track rows addressing '{From}' were not repointed: '{To}' does not resolve under '{Root}'",
+                fromPath,
+                toPath,
+                libraryRoot
+            );
+            return;
+        }
+
+        string fromNormalized = fromPath.Replace('\\', '/');
+        string fromHostFolder = (
+            StoragePathHelpers.GetParent(fromNormalized) ?? string.Empty
+        ).PathName();
+        string toHostFolder = (
+            StoragePathHelpers.GetParent(toPath.Replace('\\', '/')) ?? string.Empty
+        ).PathName();
+
+        int repointed = await recordingRepository.RepointTrackFile(
+            fromHostFolder,
+            "/" + StoragePathHelpers.GetName(fromNormalized),
+            new(libraryFolder.Id, folder, toHostFolder, filename)
+        );
+
+        if (repointed > 0)
+            logger.LogInformation(
+                "Repointed {Count} track row(s) from '{From}' to '{To}'",
+                repointed,
+                fromPath,
+                toPath
+            );
     }
 
     public async Task Store(

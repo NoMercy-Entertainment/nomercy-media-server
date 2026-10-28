@@ -67,6 +67,16 @@ public sealed class RecordingManagerRelocateToPicardLayoutTests : IDisposable
             new(_libraryFolder.Id, library.Id) { Library = library, Folder = _libraryFolder }
         );
 
+        _recordings
+            .Setup(repository =>
+                repository.RepointTrackFile(
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<TrackFilePlacement>()
+                )
+            )
+            .ReturnsAsync(0);
+
         Mock<IStorageFactory> factory = new();
         factory
             .Setup(f => f.For(It.IsAny<Ulid>(), It.IsAny<Ulid>(), It.IsAny<string>()))
