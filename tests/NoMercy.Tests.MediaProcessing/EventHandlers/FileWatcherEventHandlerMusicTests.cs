@@ -50,7 +50,14 @@ public sealed class FileWatcherEventHandlerMusicTests : IDisposable
         _options = new DbContextOptionsBuilder<MediaContext>().UseSqlite(_connection).Options;
         using MediaContext context = new(_options);
         context.Database.EnsureCreated();
-        context.Folders.Add(new() { Id = _folderId, Path = LibraryRoot, DriverId = Ulid.NewUlid() });
+        context.Folders.Add(
+            new()
+            {
+                Id = _folderId,
+                Path = LibraryRoot,
+                DriverId = Ulid.NewUlid(),
+            }
+        );
         context.FolderLibrary.Add(new(_folderId, _libraryId));
         context.SaveChanges();
     }
@@ -110,11 +117,13 @@ public sealed class FileWatcherEventHandlerMusicTests : IDisposable
             .Setup(factory => factory.CreateDbContextAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => new(_options));
 
+        IStorageDriver driver = OnlineRootStorage.Driver([LibraryRoot]);
+
         return new(
             NullLogger<FileWatcherEventHandler>.Instance,
             new Mock<IEventBus>().Object,
-            new Mock<IStorageDriver>().Object,
-            new Mock<IStorageFactory>().Object,
+            driver,
+            OnlineRootStorage.Factory(driver),
             contexts.Object
         );
     }

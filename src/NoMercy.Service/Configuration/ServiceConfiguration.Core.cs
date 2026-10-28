@@ -37,12 +37,12 @@ using NoMercy.MediaProcessing.DerivedAudio;
 using NoMercy.MediaProcessing.Episodes;
 using NoMercy.MediaProcessing.EventHandlers;
 using NoMercy.MediaProcessing.Files;
-using NoMercy.MediaProcessing.Music;
 using NoMercy.MediaProcessing.Images.Palettes;
 using NoMercy.MediaProcessing.Images.Palettes.Sources;
 using NoMercy.MediaProcessing.Jobs;
 using NoMercy.MediaProcessing.Libraries;
 using NoMercy.MediaProcessing.Movies;
+using NoMercy.MediaProcessing.Music;
 using NoMercy.MediaProcessing.People;
 using NoMercy.MediaProcessing.Reclaim;
 using NoMercy.MediaProcessing.Seasons;
@@ -340,6 +340,7 @@ public static partial class ServiceConfiguration
         services.AddSingleton<IUpdateChecker, UpdateChecker>();
         services.AddHostedService<PeriodicUpdateCheckService>();
         services.AddHostedService<MusicLibraryStartupScanService>();
+        services.AddLibraryFileWatcher();
 
         // Connectivity manager (replaces ServerRegistrationService + CloudflareTunnelService).
         // The tunnel availability check belongs to the manager, not the tunnel strategy: the

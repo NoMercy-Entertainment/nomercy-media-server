@@ -365,10 +365,4 @@ public partial class LibraryFileWatcher
                 break;
         }
     }
-
-    public static void Start(IStorageDriver storageDriver)
-    {
-        _driverStore = storageDriver;
-        _ = Instance;
-    }
 }

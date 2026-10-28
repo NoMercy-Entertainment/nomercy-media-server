@@ -40,6 +40,7 @@ public class FileWatcherEventHandler : IDisposable
     private readonly SemaphoreSlim _semaphore = new(2);
     private readonly IStorageDriver _storageDriver;
     private readonly IStorageFactory _storageFactory;
+    private readonly FileDeleteGuard _deleteGuard;
     private readonly IDbContextFactory<MediaContext>? _contextFactory;
 
     private readonly ILogger<FileWatcherEventHandler> _logger;
@@ -55,6 +56,7 @@ public class FileWatcherEventHandler : IDisposable
         _logger = logger;
         _storageDriver = storageDriver;
         _storageFactory = storageFactory;
+        _deleteGuard = new(storageFactory, logger);
         _contextFactory = contextFactory;
         _subscriptions.Add(eventBus.Subscribe<FileCreatedEvent>(OnFileCreated));
         _subscriptions.Add(eventBus.Subscribe<FileDeletedEvent>(OnFileDeleted));
@@ -184,16 +186,21 @@ public class FileWatcherEventHandler : IDisposable
                 @event.LibraryId,
                 ct
             );
-            List<string> hostFolders = StoredHostFoldersOf(
-                directory,
-                LibraryFolderOf(directory, libraryFolders)
-            );
+            Folder? libraryFolder = LibraryFolderOf(directory, libraryFolders);
+            List<string> hostFolders = StoredHostFoldersOf(directory, libraryFolder);
+
+            if (libraryFolder is not null && !_deleteGuard.RootIsOnline(libraryFolder))
+                return;
 
             if (@event.LibraryType == MediaTypes.MusicMediaType)
             {
                 await MarkMusicFileMissingAsync(mediaContext, hostFolders, filename, ct);
                 return;
             }
+
+            int knownFiles = await mediaContext.VideoFiles.CountAsync(ct);
+            if (_deleteGuard.IsBurst(@event.LibraryId, knownFiles, DateTime.UtcNow))
+                return;
 
             List<int> affectedMovieIds = await mediaContext
                 .VideoFiles.Where(vf =>
