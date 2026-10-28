@@ -221,6 +221,7 @@ public class LibraryManager(
         ];
 
         int depth = GetDepth();
+        ConcurrentBag<Folder> scannedMusicFolders = [];
 
         await Parallel.ForEachAsync(
             targets,
@@ -231,7 +232,12 @@ public class LibraryManager(
                 switch (_library.Type)
                 {
                     case MediaTypes.MusicMediaType:
-                        int audioCount = await ScanNewAudioFolder(folder, depth, existingFolders);
+                        int audioCount = await ScanNewAudioFolder(
+                            folder,
+                            depth,
+                            existingFolders,
+                            scannedMusicFolders
+                        );
                         Interlocked.Add(ref itemsFound, audioCount);
                         break;
                     case MediaTypes.AnimeMediaType:
@@ -244,6 +250,7 @@ public class LibraryManager(
             }
         );
 
+        await PruneMissingTracks(scannedMusicFolders);
         await PublishImportsQueued(bus);
         stopwatch.Stop();
 
@@ -334,7 +341,8 @@ public class LibraryManager(
     private async Task<int> ScanNewAudioFolder(
         Folder folder,
         int depth,
-        HashSet<string> existingFolders
+        HashSet<string> existingFolders,
+        ConcurrentBag<Folder> scannedFolders
     )
     {
         // Mount at configured root; MediaScan walks via absolute paths.
@@ -353,6 +361,9 @@ public class LibraryManager(
                 r.SubFolders ?? []
             ),
         ];
+
+        if (rootFolders.Count > 0)
+            scannedFolders.Add(folder);
 
         List<MediaFolderExtend> newFolders =
         [

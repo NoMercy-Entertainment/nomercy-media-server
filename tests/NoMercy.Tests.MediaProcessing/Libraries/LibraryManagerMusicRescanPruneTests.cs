@@ -116,7 +116,8 @@ public sealed class LibraryManagerMusicRescanPruneTests : IDisposable
         return row.Id;
     }
 
-    private async Task RescanAsync()
+    // newItemsOnly is the path LibraryScanJob takes: the dashboard rescan.
+    private async Task RescanAsync(bool newItemsOnly)
     {
         Mock<IStorageFactory> factory = new();
         factory
@@ -135,24 +136,35 @@ public sealed class LibraryManagerMusicRescanPruneTests : IDisposable
             NullLogger<LibraryManager>.Instance
         );
 
-        await manager.ProcessLibrary(_library.Id);
+        if (newItemsOnly)
+            await manager.ProcessNewLibraryItems(_library.Id);
+        else
+            await manager.ProcessLibrary(_library.Id);
     }
 
-    [Fact]
-    public async Task A_rescan_removes_the_track_row_whose_file_is_gone_and_keeps_the_live_one()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_rescan_removes_the_track_row_whose_file_is_gone_and_keeps_the_live_one(
+        bool newItemsOnly
+    )
     {
         Guid live = SeedTrackAt(WriteAlbumFile("01 Live.mp3"));
         Guid stale = SeedTrackAt(Path.Combine(AlbumFolder, "05 Old Name.mp3"));
 
-        await RescanAsync();
+        await RescanAsync(newItemsOnly);
 
         List<Guid> remaining = await _context.Tracks.AsNoTracking().Select(t => t.Id).ToListAsync();
         remaining.Should().BeEquivalentTo([live]);
         remaining.Should().NotContain(stale);
     }
 
-    [Fact]
-    public async Task A_rescan_keeps_a_missing_track_a_user_has_in_a_playlist_or_likes()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_rescan_keeps_a_missing_track_a_user_has_in_a_playlist_or_likes(
+        bool newItemsOnly
+    )
     {
         WriteAlbumFile("01 Live.mp3");
         Guid inPlaylist = SeedTrackAt(Path.Combine(AlbumFolder, "02 Gone.mp3"));
@@ -161,18 +173,22 @@ public sealed class LibraryManagerMusicRescanPruneTests : IDisposable
         _context.TrackUser.Add(new(liked, Guid.NewGuid()));
         await _context.SaveChangesAsync();
 
-        await RescanAsync();
+        await RescanAsync(newItemsOnly);
 
         List<Guid> remaining = await _context.Tracks.AsNoTracking().Select(t => t.Id).ToListAsync();
         remaining.Should().BeEquivalentTo([inPlaylist, liked]);
     }
 
-    [Fact]
-    public async Task A_rescan_of_a_library_root_with_nothing_in_it_removes_nothing()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_rescan_of_a_library_root_with_nothing_in_it_removes_nothing(
+        bool newItemsOnly
+    )
     {
         Guid row = SeedTrackAt(Path.Combine(AlbumFolder, "01 Unmounted.mp3"));
 
-        await RescanAsync();
+        await RescanAsync(newItemsOnly);
 
         (await _context.Tracks.AsNoTracking().Select(t => t.Id).ToListAsync())
             .Should()
