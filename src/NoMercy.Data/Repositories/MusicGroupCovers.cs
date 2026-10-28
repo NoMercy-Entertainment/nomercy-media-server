@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Database;
+using NoMercy.Database.Models.Music;
 using NoMercy.Providers.FanArt.Client;
 
 namespace NoMercy.Data.Repositories;
@@ -108,6 +109,7 @@ public static class MusicGroupCovers
         // A plain join: SQLite cannot run the APPLY a SelectMany over Track.AlbumTrack needs.
         List<CoverRow> rows = await context
             .PlaylistTrack.AsNoTracking()
+            .Playable()
             .Where(entry => playlistIds.Contains(entry.PlaylistId))
             .Join(
                 context.AlbumTrack,

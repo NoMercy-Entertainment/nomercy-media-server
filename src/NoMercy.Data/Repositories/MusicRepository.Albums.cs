@@ -33,7 +33,9 @@ public partial class MusicRepository
             .ForUser(userId)
             .Include(album => album.Library)
             .Include(album => album.AlbumUser.Where(au => au.UserId == userId))
-            .Include(album => album.AlbumTrack)
+            .Include(album =>
+                album.AlbumTrack.AsQueryable().Where(TrackAvailability.AlbumTrackIsPlayable)
+            )
                 .ThenInclude(albumTrack => albumTrack.Track)
                     .ThenInclude(track => track.ArtistTrack)
                         .ThenInclude(artistTrack => artistTrack.Artist)
@@ -110,6 +112,7 @@ public partial class MusicRepository
         await using MediaContext mediaContext = await contextFactory.CreateDbContextAsync(ct);
         return await mediaContext
             .AlbumTrack.AsNoTracking()
+            .Playable()
             .Where(at => albumIds.Contains(at.AlbumId))
             .Include(at => at.Track)
             .ToListAsync(ct);
@@ -137,7 +140,12 @@ public partial class MusicRepository
                     )
                     : (album.TitleSort ?? album.Name).ToLower().StartsWith(letter.ToLower())
             )
-            .Where(album => album.AlbumTrack.Any(at => at.Track.Duration != null))
+            .Where(album =>
+                album
+                    .AlbumTrack.AsQueryable()
+                    .Where(TrackAvailability.AlbumTrackIsPlayable)
+                    .Any(at => at.Track.Duration != null)
+            )
             .OrderBy(album => album.TitleSort ?? album.Name)
             .ThenBy(album => album.Id)
             .Select(album => new AlbumCardDto
@@ -151,7 +159,10 @@ public partial class MusicRepository
                 LibraryId = album.LibraryId,
                 Folder = album.Folder,
                 Year = album.Year,
-                TrackCount = album.AlbumTrack.Count(at => at.Track.Duration != null),
+                TrackCount = album
+                    .AlbumTrack.AsQueryable()
+                    .Where(TrackAvailability.AlbumTrackIsPlayable)
+                    .Count(at => at.Track.Duration != null),
                 ArtistName = album
                     .AlbumArtist.OrderBy(link => link.Artist.Name)
                     .Select(link => link.Artist.Name)
@@ -186,7 +197,12 @@ public partial class MusicRepository
         return await mediaContext
             .Albums.AsNoTracking()
             .ForUser(userId)
-            .Where(album => album.AlbumTrack.Any(at => at.Track.Duration != null))
+            .Where(album =>
+                album
+                    .AlbumTrack.AsQueryable()
+                    .Where(TrackAvailability.AlbumTrackIsPlayable)
+                    .Any(at => at.Track.Duration != null)
+            )
             .OrderBy(album => album.TitleSort ?? album.Name)
             .ThenBy(album => album.Id)
             .Select(album => new AlbumCardDto
@@ -200,7 +216,10 @@ public partial class MusicRepository
                 LibraryId = album.LibraryId,
                 Folder = album.Folder,
                 Year = album.Year,
-                TrackCount = album.AlbumTrack.Count(at => at.Track.Duration != null),
+                TrackCount = album
+                    .AlbumTrack.AsQueryable()
+                    .Where(TrackAvailability.AlbumTrackIsPlayable)
+                    .Count(at => at.Track.Duration != null),
                 ArtistName = album
                     .AlbumArtist.OrderBy(link => link.Artist.Name)
                     .Select(link => link.Artist.Name)
@@ -229,7 +248,10 @@ public partial class MusicRepository
         await using MediaContext mediaContext = await contextFactory.CreateDbContextAsync(ct);
         return await mediaContext
             .Albums.AsNoTracking()
-            .Where(album => !string.IsNullOrEmpty(album.Cover) && album.AlbumTrack.Any())
+            .Where(album =>
+                !string.IsNullOrEmpty(album.Cover)
+                && album.AlbumTrack.AsQueryable().Any(TrackAvailability.AlbumTrackIsPlayable)
+            )
             .OrderByDescending(album => album.CreatedAt)
             .ThenBy(album => album.Id)
             .Select(album => new AlbumCardDto
@@ -243,7 +265,9 @@ public partial class MusicRepository
                 LibraryId = album.LibraryId,
                 Folder = album.Folder,
                 Year = album.Year,
-                TrackCount = album.AlbumTrack.Count(),
+                TrackCount = album
+                    .AlbumTrack.AsQueryable()
+                    .Count(TrackAvailability.AlbumTrackIsPlayable),
                 ArtistName = album
                     .AlbumArtist.OrderBy(link => link.Artist.Name)
                     .Select(link => link.Artist.Name)
@@ -276,7 +300,9 @@ public partial class MusicRepository
                 LibraryId = albumUser.Album.LibraryId,
                 Folder = albumUser.Album.Folder,
                 Year = albumUser.Album.Year,
-                TrackCount = albumUser.Album.AlbumTrack.Count(),
+                TrackCount = albumUser
+                    .Album.AlbumTrack.AsQueryable()
+                    .Count(TrackAvailability.AlbumTrackIsPlayable),
                 ArtistName = albumUser
                     .Album.AlbumArtist.OrderBy(link => link.Artist.Name)
                     .Select(link => link.Artist.Name)
@@ -306,7 +332,9 @@ public partial class MusicRepository
                 LibraryId = album.LibraryId,
                 Folder = album.Folder,
                 Year = album.Year,
-                TrackCount = album.AlbumTrack.Count(),
+                TrackCount = album
+                    .AlbumTrack.AsQueryable()
+                    .Count(TrackAvailability.AlbumTrackIsPlayable),
                 ArtistName = album
                     .AlbumArtist.OrderBy(link => link.Artist.Name)
                     .Select(link => link.Artist.Name)
