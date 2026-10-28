@@ -16,6 +16,12 @@ namespace NoMercy.MediaProcessing.Recordings;
 public interface IRecordingRepository
 {
     Task Store(Track recording, bool update = false);
+
+    /// <summary>
+    /// Points every Track row addressing the given file at <paramref name="to"/>; returns the row count.
+    /// </summary>
+    Task<int> RepointTrackFile(string fromHostFolder, string fromFilename, TrackFilePlacement to);
+
     Task LinkToRelease(AlbumTrack trackRelease);
     Task LinkToArtist(ArtistTrack insert);
     Task LinkToLibrary(LibraryTrack libraryTrack);

@@ -12,6 +12,7 @@
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+using NoMercy.NmSystem.Extensions;
 
 namespace NoMercy.Database.Music;
 
@@ -181,11 +182,14 @@ public static partial class PicardNaming
 
         return string.IsNullOrWhiteSpace(context.TrackArtistsAdditional)
             ? string.Empty
-            : $" [feat. {context.TrackArtistsAdditional}]";
+            : $" [feat. {NoSlash(context.TrackArtistsAdditional)}]";
     }
 
     private static string Wrap(string? value) =>
-        string.IsNullOrWhiteSpace(value) ? string.Empty : $" [{value}]";
+        string.IsNullOrWhiteSpace(value) ? string.Empty : $" [{NoSlash(value)}]";
+
+    // A slash inside a name would add a folder level once the parts are joined with slashes.
+    private static string NoSlash(string value) => value.Replace('/', '_');
 
     private static string Comparable(string? artist) =>
         LeadingArticle().Replace((artist ?? string.Empty).Trim(), string.Empty).ToLowerInvariant();
@@ -208,7 +212,7 @@ public static partial class PicardNaming
         year is null or <= 0 ? "0000" : year.Value.ToString("D4");
 
     private static string Fallback(string? value, string fallback) =>
-        string.IsNullOrWhiteSpace(value) ? fallback : value.Trim();
+        string.IsNullOrWhiteSpace(value) ? fallback : NoSlash(value.Trim());
 
     private static string Truncate(string value) =>
         value.Length <= TitleMaxLength ? value : $"{value[..(TitleMaxLength - 3)]}...";
@@ -224,8 +228,10 @@ public static partial class PicardNaming
     /// that last dot as "_" ("M.I.A.M.I_", "On a Day Like This.._" in the library).
     /// </remarks>
     public static string Sanitize(string pathAndFileName) =>
-        TrailingFolderDot()
-            .Replace(UnsafeRun().Replace(FoldUnsafeUnicode(pathAndFileName), "_"), "_");
+        PortableFileName.Path(
+            TrailingFolderDot()
+                .Replace(UnsafeRun().Replace(FoldUnsafeUnicode(pathAndFileName), "_"), "_")
+        );
 
     /// <summary>
     /// A deliberate deviation from the byte-exact Picard reproduction: any character

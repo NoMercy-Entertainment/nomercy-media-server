@@ -170,11 +170,13 @@ public sealed class FileWatcherEventHandlerPathTests : IDisposable
             .Setup(factory => factory.CreateDbContextAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => new(_options));
 
+        IStorageDriver driver = OnlineRootStorage.Driver([LibraryRoot]);
+
         return new(
             NullLogger<FileWatcherEventHandler>.Instance,
             new Mock<IEventBus>().Object,
-            new Mock<IStorageDriver>().Object,
-            new Mock<IStorageFactory>().Object,
+            driver,
+            OnlineRootStorage.Factory(driver),
             contexts.Object
         );
     }

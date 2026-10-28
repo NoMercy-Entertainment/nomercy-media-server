@@ -22,14 +22,7 @@ public static partial class StringExtensions
     public static string DirectorySeparator => Path.DirectorySeparatorChar.ToString();
 
     [Pure]
-    public static string RemoveAccents(this string s)
-    {
-        Encoding destEncoding = Encoding.GetEncoding("ISO-8859-1");
-
-        return destEncoding.GetString(
-            Encoding.Convert(Encoding.UTF8, destEncoding, Encoding.UTF8.GetBytes(s))
-        );
-    }
+    public static string RemoveAccents(this string s) => s.RemoveDiacritics();
 
     [Pure]
     public static string RemoveDiacritics(this string text)

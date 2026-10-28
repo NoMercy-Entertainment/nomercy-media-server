@@ -484,8 +484,12 @@ public class GenreRepository(MediaContext context) : IGenreRepository
                     g.Artist.Library.LibraryUsers.Any(u => u.UserId == userId)
                 )
             )
-            .Where(genre => genre.MusicGenreTracks.Any())
-            .Include(genre => genre.MusicGenreTracks)
+            .Where(genre =>
+                genre.MusicGenreTracks.AsQueryable().Any(TrackAvailability.GenreTrackIsPlayable)
+            )
+            .Include(genre =>
+                genre.MusicGenreTracks.AsQueryable().Where(TrackAvailability.GenreTrackIsPlayable)
+            )
             .OrderBy(genre => genre.Name)
             .ThenBy(genre => genre.Id)
             .ToListAsync(ct);
@@ -506,14 +510,18 @@ public class GenreRepository(MediaContext context) : IGenreRepository
                     g.Artist.Library.LibraryUsers.Any(u => u.UserId == userId)
                 )
             )
-            .Where(genre => genre.MusicGenreTracks.Any())
+            .Where(genre =>
+                genre.MusicGenreTracks.AsQueryable().Any(TrackAvailability.GenreTrackIsPlayable)
+            )
             .OrderBy(genre => genre.Name)
             .ThenBy(genre => genre.Id)
             .Select(genre => new MusicGenreCardDto
             {
                 Id = genre.Id,
                 Name = genre.Name,
-                TrackCount = genre.MusicGenreTracks.Count(),
+                TrackCount = genre
+                    .MusicGenreTracks.AsQueryable()
+                    .Count(TrackAvailability.GenreTrackIsPlayable),
             })
             .ToListAsync(ct);
 
@@ -538,13 +546,17 @@ public class GenreRepository(MediaContext context) : IGenreRepository
                     g.Artist.Library.LibraryUsers.Any(u => u.UserId == userId)
                 )
             )
-            .Where(genre => genre.MusicGenreTracks.Any())
+            .Where(genre =>
+                genre.MusicGenreTracks.AsQueryable().Any(TrackAvailability.GenreTrackIsPlayable)
+            )
             .Where(genre =>
                 (letter == "_" || letter == "#")
                     ? Letters.Any(p => genre.Name.StartsWith(p.ToLower()))
                     : genre.Name.StartsWith(letter.ToLower())
             )
-            .Include(genre => genre.MusicGenreTracks)
+            .Include(genre =>
+                genre.MusicGenreTracks.AsQueryable().Where(TrackAvailability.GenreTrackIsPlayable)
+            )
             .OrderBy(genre => genre.Name)
             .ThenBy(genre => genre.Id)
             .Skip(page * take)
@@ -570,7 +582,9 @@ public class GenreRepository(MediaContext context) : IGenreRepository
                     g.Artist.Library.LibraryUsers.Any(u => u.UserId == userId)
                 )
             )
-            .Where(genre => genre.MusicGenreTracks.Any())
+            .Where(genre =>
+                genre.MusicGenreTracks.AsQueryable().Any(TrackAvailability.GenreTrackIsPlayable)
+            )
             .Where(genre =>
                 (letter == "_" || letter == "#")
                     ? Letters.Any(p => genre.Name.StartsWith(p.ToLower()))
@@ -584,7 +598,9 @@ public class GenreRepository(MediaContext context) : IGenreRepository
             {
                 Id = genre.Id,
                 Name = genre.Name,
-                TrackCount = genre.MusicGenreTracks.Count(),
+                TrackCount = genre
+                    .MusicGenreTracks.AsQueryable()
+                    .Count(TrackAvailability.GenreTrackIsPlayable),
             })
             .ToListAsync(ct);
 
@@ -623,26 +639,38 @@ public class GenreRepository(MediaContext context) : IGenreRepository
                 )
             )
             .Where(genre => genre.Id == genreId)
-            .Where(genre => genre.MusicGenreTracks.Any())
-            .Include(genre => genre.MusicGenreTracks)
+            .Where(genre =>
+                genre.MusicGenreTracks.AsQueryable().Any(TrackAvailability.GenreTrackIsPlayable)
+            )
+            .Include(genre =>
+                genre.MusicGenreTracks.AsQueryable().Where(TrackAvailability.GenreTrackIsPlayable)
+            )
                 .ThenInclude(mgt => mgt.Track)
                     .ThenInclude(track => track.TrackUser.Where(tu => tu.UserId == userId))
-            .Include(genre => genre.MusicGenreTracks)
+            .Include(genre =>
+                genre.MusicGenreTracks.AsQueryable().Where(TrackAvailability.GenreTrackIsPlayable)
+            )
                 .ThenInclude(mgt => mgt.Track)
                     .ThenInclude(track => track.ArtistTrack)
                         .ThenInclude(at => at.Artist)
                             .ThenInclude(artist => artist.Translations)
-            .Include(genre => genre.MusicGenreTracks)
+            .Include(genre =>
+                genre.MusicGenreTracks.AsQueryable().Where(TrackAvailability.GenreTrackIsPlayable)
+            )
                 .ThenInclude(mgt => mgt.Track)
                     .ThenInclude(track => track.ArtistTrack)
                         .ThenInclude(at => at.Artist)
                             .ThenInclude(artist => artist.Images)
-            .Include(genre => genre.MusicGenreTracks)
+            .Include(genre =>
+                genre.MusicGenreTracks.AsQueryable().Where(TrackAvailability.GenreTrackIsPlayable)
+            )
                 .ThenInclude(mgt => mgt.Track)
                     .ThenInclude(track => track.AlbumTrack)
                         .ThenInclude(at => at.Album)
                             .ThenInclude(album => album.Translations)
-            .Include(genre => genre.MusicGenreTracks)
+            .Include(genre =>
+                genre.MusicGenreTracks.AsQueryable().Where(TrackAvailability.GenreTrackIsPlayable)
+            )
                 .ThenInclude(mgt => mgt.Track)
                     .ThenInclude(track => track.AlbumTrack)
                         .ThenInclude(at => at.Album)
