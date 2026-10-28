@@ -20,6 +20,9 @@ using NoMercy.Events.Library;
 using NoMercy.MediaProcessing.Files;
 using NoMercy.MediaProcessing.Jobs;
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
+using NoMercy.MediaProcessing.Libraries;
+using NoMercy.MediaProcessing.Music;
+using NoMercy.MediaProcessing.Recordings;
 using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Dto;
 using NoMercy.NmSystem.Extensions;
@@ -186,6 +189,12 @@ public class FileWatcherEventHandler : IDisposable
                 LibraryFolderOf(directory, libraryFolders)
             );
 
+            if (@event.LibraryType == MediaTypes.MusicMediaType)
+            {
+                await MarkMusicFileMissingAsync(mediaContext, hostFolders, filename, ct);
+                return;
+            }
+
             List<int> affectedMovieIds = await mediaContext
                 .VideoFiles.Where(vf =>
                     hostFolders.Contains(vf.HostFolder)
@@ -286,6 +295,12 @@ public class FileWatcherEventHandler : IDisposable
             );
             Folder? newLibraryFolder = LibraryFolderOf(newDirectory, libraryFolders);
 
+            if (
+                @event.LibraryType == MediaTypes.MusicMediaType
+                && await HandleMusicRenameAsync(mediaContext, @event, libraryFolders, ct)
+            )
+                return;
+
             // Stored the way the scanner stores it: HostFolder rebased onto the
             // library folder, Folder measured from that folder's root. A file
             // moved out of every library folder has no such form, and is left
@@ -356,6 +371,108 @@ public class FileWatcherEventHandler : IDisposable
                 [@event.OldFullPath, @event.NewFullPath, ex.Message]
             );
         }
+    }
+
+    private async Task MarkMusicFileMissingAsync(
+        MediaContext mediaContext,
+        List<string> hostFolders,
+        string filename,
+        CancellationToken ct
+    )
+    {
+        List<Guid> trackIds = await mediaContext
+            .Tracks.AsNoTracking()
+            .Where(track =>
+                track.HostFolder != null
+                && hostFolders.Contains(track.HostFolder)
+                && track.Filename == filename
+            )
+            .Select(track => track.Id)
+            .ToListAsync(ct);
+
+        int marked = await new MissingTrackPruner(mediaContext, _logger).MarkMissingAsync(
+            trackIds,
+            DateTime.UtcNow,
+            ct
+        );
+        _logger.LogInformation(
+            "FileWatcher: Marked {Marked} track row(s) unavailable for {Filename}",
+            [marked, filename]
+        );
+    }
+
+    // True when the rename was settled here; false sends it down the import path.
+    private async Task<bool> HandleMusicRenameAsync(
+        MediaContext mediaContext,
+        FileRenamedEvent @event,
+        List<Folder> libraryFolders,
+        CancellationToken ct
+    )
+    {
+        string newPath = @event.NewFullPath.Replace('\\', '/');
+        string newDirectory = HostFolderOf(newPath);
+        string oldDirectory = HostFolderOf(@event.OldFullPath);
+        Folder? libraryFolder = LibraryFolderOf(newDirectory, libraryFolders);
+        if (libraryFolder is null)
+            return false;
+
+        if (_storageDriver.DirectoryExists(newPath))
+        {
+            IStorage storage = _storageFactory.For(libraryFolder.Id, libraryFolder.DriverId, "");
+            MusicReconcileResult result = await new MusicTrackReconciler(
+                mediaContext,
+                _logger
+            ).ReconcileAsync(
+                libraryFolder.Id,
+                LibraryManager.ResolveScanRoot(storage, libraryFolder.Path),
+                storage.Driver,
+                [newPath, @event.OldFullPath.Replace('\\', '/')],
+                cancellationToken: ct
+            );
+            return result.Moved > 0;
+        }
+
+        if (
+            !StoragePathHelpers.TryGetLibraryRelativeParts(
+                newPath,
+                libraryFolder.Path,
+                out string folder,
+                out string filename
+            )
+        )
+            return false;
+
+        string oldFilename = "/" + Path.GetFileName(@event.OldFullPath);
+        RecordingRepository repository = new(mediaContext);
+        int repointed = 0;
+        foreach (
+            string oldHostFolder in StoredHostFoldersOf(
+                oldDirectory,
+                LibraryFolderOf(oldDirectory, libraryFolders)
+            )
+        )
+            repointed += await repository.RepointTrackFile(
+                oldHostFolder,
+                oldFilename,
+                new(libraryFolder.Id, folder, newDirectory, filename)
+            );
+
+        if (repointed == 0)
+            return false;
+
+        await new MissingTrackPruner(mediaContext, _logger).ClearMissingAsync(
+            await mediaContext
+                .Tracks.AsNoTracking()
+                .Where(track => track.HostFolder == newDirectory && track.Filename == filename)
+                .Select(track => track.Id)
+                .ToListAsync(ct),
+            ct
+        );
+        _logger.LogInformation(
+            "FileWatcher: Repointed {Count} track row(s) from {Old} to {New}",
+            [repointed, @event.OldFullPath, newPath]
+        );
+        return true;
     }
 
     private async Task<MediaContext> OpenContextAsync(CancellationToken ct) =>

@@ -48,7 +48,8 @@ public class LibraryManager(
     IFilenameParserPipeline filenameParser,
     ILogger<LibraryManager> logger,
     IEventBus? eventBus = null,
-    IPluginMediaSourceProvider? pluginMediaSources = null
+    IPluginMediaSourceProvider? pluginMediaSources = null,
+    IRecordingIdentifier? recordingIdentifier = null
 ) : BaseManager, ILibraryManager
 {
     private Library? _library;
@@ -157,11 +158,11 @@ public class LibraryManager(
         logger.LogInformation("Scanning done");
     }
 
-    // Only folders the scan just listed are pruned: an empty listing means an unreadable
+    // Only folders the scan just listed are reconciled: an empty listing means an unreadable
     // share, and then every file would look gone.
     private async Task PruneMissingTracks(IEnumerable<Folder> scannedFolders)
     {
-        MissingTrackPruner pruner = new(mediaContext, logger);
+        MusicTrackReconciler reconciler = new(mediaContext, logger, recordingIdentifier);
         foreach (Folder folder in scannedFolders)
         {
             try
@@ -171,7 +172,7 @@ public class LibraryManager(
                     folder.DriverId,
                     string.Empty
                 );
-                await pruner.PruneAsync(
+                await reconciler.ReconcileAsync(
                     folder.Id,
                     ResolveScanRoot(folderStorage, folder.Path),
                     folderStorage.Driver

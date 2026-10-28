@@ -15,80 +15,81 @@ using Microsoft.Extensions.Logging;
 using NoMercy.Database;
 using NoMercy.Database.Maintenance;
 using NoMercy.Database.Models.Music;
-using NoMercy.Storage;
 
 namespace NoMercy.MediaProcessing.Music;
 
 /// <summary>
-/// Drops the Track rows of one library folder whose file is gone, so a rescan no longer
-/// lists tracks that play nothing. A row a user holds in a playlist or likes is kept and
-/// only counted, and nothing is touched while the folder root is unreadable (an unmounted
-/// share), because then every file looks gone.
+/// Marks Track rows whose file is gone as unavailable and removes them once the grace
+/// period has passed. A row a user holds in a playlist or likes is marked but never
+/// removed.
 /// </summary>
 public class MissingTrackPruner(MediaContext mediaContext, ILogger logger)
 {
+    public static readonly TimeSpan GracePeriod = TimeSpan.FromDays(30);
+
     private const int BatchSize = 500;
 
-    private readonly record struct TrackLocation(Guid Id, string HostFolder, string Filename);
-
-    public async Task<int> PruneAsync(
-        Ulid folderId,
-        string scanRoot,
-        IStorageDriver driver,
+    public async Task<int> MarkMissingAsync(
+        IReadOnlyCollection<Guid> trackIds,
+        DateTime nowUtc,
         CancellationToken cancellationToken = default
     )
     {
-        if (!driver.DirectoryExists(scanRoot))
-        {
-            logger.LogWarning(
-                "Not pruning missing tracks: library folder root '{Root}' is not readable",
-                scanRoot
-            );
-            return 0;
-        }
+        int marked = 0;
+        foreach (Guid[] batch in trackIds.Chunk(BatchSize))
+            marked += await mediaContext
+                .Tracks.Where(track => batch.Contains(track.Id) && track.MissingSince == null)
+                .ExecuteUpdateAsync(
+                    setters => setters.SetProperty(track => track.MissingSince, nowUtc),
+                    cancellationToken
+                );
 
-        List<TrackLocation> locations = await mediaContext
-            .Tracks.AsNoTracking()
-            .Where(track =>
-                track.FolderId == folderId
-                && track.HostFolder != null
-                && track.HostFolder != ""
-                && track.Filename != null
-                && track.Filename != ""
-            )
-            .Select(track => new TrackLocation(track.Id, track.HostFolder!, track.Filename!))
-            .ToListAsync(cancellationToken);
+        return marked;
+    }
 
-        List<Guid> missing =
-        [
-            .. locations
-                .Where(location =>
-                    !driver.FileExists(driver.CombinePath(location.HostFolder, location.Filename))
-                )
-                .Select(location => location.Id),
-        ];
+    public async Task<int> ClearMissingAsync(
+        IReadOnlyCollection<Guid> trackIds,
+        CancellationToken cancellationToken = default
+    )
+    {
+        int cleared = 0;
+        foreach (Guid[] batch in trackIds.Chunk(BatchSize))
+            cleared += await mediaContext
+                .Tracks.Where(track => batch.Contains(track.Id) && track.MissingSince != null)
+                .ExecuteUpdateAsync(
+                    setters => setters.SetProperty(track => track.MissingSince, (DateTime?)null),
+                    cancellationToken
+                );
 
-        if (missing.Count == 0)
-            return 0;
+        return cleared;
+    }
 
-        HashSet<Guid> heldByUsers = await UserHeldAsync(missing, cancellationToken);
-        List<Guid> removable = [.. missing.Where(id => !heldByUsers.Contains(id))];
+    /// <summary>Removes the rows a user does not hold; returns (removed, kept).</summary>
+    public async Task<(int Removed, int Kept)> RemoveUnheldAsync(
+        IReadOnlyCollection<Guid> trackIds,
+        CancellationToken cancellationToken = default
+    )
+    {
+        if (trackIds.Count == 0)
+            return (0, 0);
+
+        HashSet<Guid> heldByUsers = await UserHeldAsync(trackIds, cancellationToken);
+        List<Guid> removable = [.. trackIds.Where(id => !heldByUsers.Contains(id))];
 
         if (removable.Count > 0)
             await RemoveAsync(removable, cancellationToken);
 
         logger.LogInformation(
-            "Pruned {Removed} track row(s) of '{Root}' whose file is gone; kept {Kept} that a playlist or like still holds",
+            "Removed {Removed} track row(s) missing past the grace period; kept {Kept} that a playlist or like still holds",
             removable.Count,
-            scanRoot,
             heldByUsers.Count
         );
 
-        return removable.Count;
+        return (removable.Count, heldByUsers.Count);
     }
 
     private async Task<HashSet<Guid>> UserHeldAsync(
-        List<Guid> trackIds,
+        IReadOnlyCollection<Guid> trackIds,
         CancellationToken cancellationToken
     )
     {

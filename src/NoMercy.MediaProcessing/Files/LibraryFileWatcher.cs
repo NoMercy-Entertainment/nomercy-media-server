@@ -181,15 +181,15 @@ public partial class LibraryFileWatcher
         {
             if (!FileChangeGroups.TryGetValue(folderPath, out FileChangeGroup? fileChangeGroup))
             {
-                fileChangeGroup = new(e.ChangeType, library, folderPath);
+                fileChangeGroup = new(library, folderPath);
                 FileChangeGroups[folderPath] = fileChangeGroup;
             }
 
-            fileChangeGroup.FullPath = e.FullPath;
-            fileChangeGroup.ChangeType = e.ChangeType;
-
-            if (e is { ChangeType: WatcherChangeTypes.Renamed, OldFullPath: not null })
-                fileChangeGroup.OldFullPath = e.OldFullPath;
+            fileChangeGroup.Record(
+                e.ChangeType,
+                e.FullPath,
+                e.ChangeType == WatcherChangeTypes.Renamed ? e.OldFullPath : null
+            );
 
             fileChangeGroup.Timer?.Dispose();
             fileChangeGroup.Timer = new(
@@ -254,11 +254,7 @@ public partial class LibraryFileWatcher
         FileChangeGroup snapshot;
         lock (LockObject)
         {
-            snapshot = new(group.ChangeType, group.Library, group.FolderPath)
-            {
-                FullPath = group.FullPath,
-                OldFullPath = group.OldFullPath,
-            };
+            snapshot = group.Snapshot();
             FileChangeGroups.Remove(group.FolderPath);
             // The one-shot debounce timer has fired; dispose it so its handle is
             // released now instead of leaking until GC on a busy library.
@@ -286,7 +282,25 @@ public partial class LibraryFileWatcher
         if (!EventBusProvider.IsConfigured)
             return;
 
-        switch (group.ChangeType)
+        // Deletes and renames go out one by one, in order. Created and changed files
+        // share one folder import, so the last of them stands for the rest.
+        FileChange? import = group.Changes.LastOrDefault(change =>
+            change.ChangeType is WatcherChangeTypes.Created or WatcherChangeTypes.Changed
+        );
+        foreach (
+            FileChange change in group.Changes.Where(change =>
+                change.ChangeType is not (WatcherChangeTypes.Created or WatcherChangeTypes.Changed)
+            )
+        )
+            await PublishChange(group, change);
+
+        if (import is not null)
+            await PublishChange(group, import);
+    }
+
+    private static async Task PublishChange(FileChangeGroup group, FileChange change)
+    {
+        switch (change.ChangeType)
         {
             case WatcherChangeTypes.Created:
             case WatcherChangeTypes.Changed:
@@ -306,29 +320,29 @@ public partial class LibraryFileWatcher
 
             case WatcherChangeTypes.Deleted:
                 Logger.System(
-                    $"FileWatcher: Publishing FileDeletedEvent for {group.FullPath}",
+                    $"FileWatcher: Publishing FileDeletedEvent for {change.FullPath}",
                     LogEventLevel.Debug
                 );
                 await EventBusProvider.Current.PublishAsync(
                     new FileDeletedEvent
                     {
-                        FullPath = group.FullPath ?? group.FolderPath,
+                        FullPath = change.FullPath,
                         LibraryId = group.Library.Id,
                         LibraryType = group.Library.Type,
                     }
                 );
                 break;
 
-            case WatcherChangeTypes.Renamed when group.OldFullPath is not null:
+            case WatcherChangeTypes.Renamed when change.OldFullPath is not null:
                 Logger.System(
-                    $"FileWatcher: Publishing FileRenamedEvent from {group.OldFullPath} to {group.FullPath}",
+                    $"FileWatcher: Publishing FileRenamedEvent from {change.OldFullPath} to {change.FullPath}",
                     LogEventLevel.Debug
                 );
                 await EventBusProvider.Current.PublishAsync(
                     new FileRenamedEvent
                     {
-                        OldFullPath = group.OldFullPath,
-                        NewFullPath = group.FullPath ?? group.FolderPath,
+                        OldFullPath = change.OldFullPath,
+                        NewFullPath = change.FullPath,
                         LibraryId = group.Library.Id,
                         LibraryType = group.Library.Type,
                     }

@@ -145,7 +145,7 @@ public sealed class LibraryManagerMusicRescanPruneTests : IDisposable
     [Theory]
     [InlineData(false)]
     [InlineData(true)]
-    public async Task A_rescan_removes_the_track_row_whose_file_is_gone_and_keeps_the_live_one(
+    public async Task A_rescan_marks_the_track_row_whose_file_is_gone_and_leaves_the_live_one(
         bool newItemsOnly
     )
     {
@@ -154,9 +154,30 @@ public sealed class LibraryManagerMusicRescanPruneTests : IDisposable
 
         await RescanAsync(newItemsOnly);
 
-        List<Guid> remaining = await _context.Tracks.AsNoTracking().Select(t => t.Id).ToListAsync();
-        remaining.Should().BeEquivalentTo([live]);
-        remaining.Should().NotContain(stale);
+        List<Track> rows = await _context.Tracks.AsNoTracking().ToListAsync();
+        rows.Should().HaveCount(2);
+        rows.Single(t => t.Id == stale).MissingSince.Should().NotBeNull();
+        rows.Single(t => t.Id == live).MissingSince.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task A_rescan_removes_a_track_row_that_has_been_missing_for_thirty_days(
+        bool newItemsOnly
+    )
+    {
+        Guid live = SeedTrackAt(WriteAlbumFile("01 Live.mp3"));
+        Guid expired = SeedTrackAt(Path.Combine(AlbumFolder, "05 Old Name.mp3"));
+        await _context
+            .Tracks.Where(t => t.Id == expired)
+            .ExecuteUpdateAsync(s => s.SetProperty(t => t.MissingSince, DateTime.UtcNow.AddDays(-31)));
+
+        await RescanAsync(newItemsOnly);
+
+        (await _context.Tracks.AsNoTracking().Select(t => t.Id).ToListAsync())
+            .Should()
+            .BeEquivalentTo([live]);
     }
 
     [Theory]
