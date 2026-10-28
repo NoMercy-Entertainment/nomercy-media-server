@@ -335,6 +335,43 @@ public sealed class RecordingManagerRelocateToPicardLayoutTests : IDisposable
     }
 
     [Fact]
+    public async Task A_file_the_host_stored_under_a_replaced_character_is_not_moved_again()
+    {
+        MusicBrainzReleaseAppends release = Release();
+        MusicBrainzTrack track = new()
+        {
+            Id = Guid.NewGuid(),
+            Title = "Synthetic ❤ Track",
+            Position = 1,
+        };
+        string hostName = TargetRelativePath(release, track).Replace('❤', '�');
+        string source = WriteFile(Path.Combine(_driveRoot, "Music", hostName), "host-named");
+        MediaFile mediaFile = MediaFileAt(source);
+        mediaFile.FFprobe!.Format.Tags!["title"] = track.Title;
+
+        await _manager.RelocateToPicardLayout(
+            release,
+            track,
+            mediaFile,
+            _libraryFolder,
+            _libraryRoot
+        );
+
+        File.ReadAllText(source).Should().Be("host-named");
+        Directory.GetFiles(Path.GetDirectoryName(source)!).Should().ContainSingle();
+        mediaFile.Path.Should().Be(source);
+        _recordings.Verify(
+            repository =>
+                repository.RepointTrackFile(
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<TrackFilePlacement>()
+                ),
+            Times.Never
+        );
+    }
+
+    [Fact]
     public async Task A_source_already_at_the_exact_target_is_not_moved()
     {
         MusicBrainzReleaseAppends release = Release();

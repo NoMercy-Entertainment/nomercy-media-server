@@ -499,17 +499,31 @@ public partial class RecordingManager(
             $"{PicardNaming.BuildDirectory(namingContext)}/{PicardNaming.BuildFileName(namingContext)}{Path.GetExtension(mediaFile.Path)}"
         );
 
-        bool alreadyPlaced = localSource
-            ? string.Equals(
-                mediaFile.Path.Replace('\\', '/'),
-                $"{libraryRoot.Replace('\\', '/').TrimEnd('/')}/{targetRelativePath}",
-                OperatingSystem.IsWindows()
-                    ? StringComparison.OrdinalIgnoreCase
-                    : StringComparison.Ordinal
-            )
-            : string.Equals(currentRelativePath, targetRelativePath, StringComparison.Ordinal);
-        if (alreadyPlaced)
+        StringComparison comparison =
+            localSource && OperatingSystem.IsWindows()
+                ? StringComparison.OrdinalIgnoreCase
+                : StringComparison.Ordinal;
+        string currentPlacement = localSource
+            ? mediaFile.Path.Replace('\\', '/')
+            : currentRelativePath;
+        string targetPlacement = localSource
+            ? $"{libraryRoot.Replace('\\', '/').TrimEnd('/')}/{targetRelativePath}"
+            : targetRelativePath;
+
+        if (string.Equals(currentPlacement, targetPlacement, comparison))
             return;
+
+        // The host stored the name with some characters replaced; a new move would only
+        // produce the same name again on every later pass.
+        if (PortableFileName.IsHostReplacedForm(targetPlacement, currentPlacement, comparison))
+        {
+            logger.LogWarning(
+                "Leaving '{Path}' in place: the host stores it under a different name than the intended '{Intended}'",
+                currentPlacement,
+                targetPlacement
+            );
+            return;
+        }
 
         // 2026-10-07: a repair trusted a wrong release match and renamed 24 files to fit
         // it — the file holding "Heavy" became "1-08 Hocus Pocus.mp3". The match decides
@@ -598,6 +612,7 @@ public partial class RecordingManager(
 
         string sourcePath = mediaFile.Path;
         await libraryStorage.MoveAsync(scopedFrom, scopedTo, CancellationToken.None);
+        placedPath = await ResolveStoredPath(libraryStorage, scopedTo, placedPath, comparison);
 
         logger.LogInformation(
             "Organized {Track}: moved '{From}' to '{To}'",
@@ -608,6 +623,47 @@ public partial class RecordingManager(
 
         mediaFile.Path = placedPath;
         await RepointTrackRows(sourcePath, placedPath, libraryFolder, libraryRoot);
+    }
+
+    // A host can store the moved file under a name with replaced characters. Rows must
+    // address the stored name, and the next organize pass then leaves the file alone.
+    private async Task<string> ResolveStoredPath(
+        IStorage storage,
+        string scopedTarget,
+        string placedPath,
+        StringComparison comparison
+    )
+    {
+        string intendedName = StoragePathHelpers.GetName(scopedTarget);
+        List<string> storedNames = [];
+        await foreach (
+            StorageEntry entry in storage.ListAsync(
+                StoragePathHelpers.GetParent(scopedTarget) ?? string.Empty,
+                null,
+                false,
+                CancellationToken.None
+            )
+        )
+            if (!entry.IsDirectory)
+                storedNames.Add(StoragePathHelpers.GetName(entry.Path));
+
+        if (storedNames.Contains(intendedName, StringComparer.FromComparison(comparison)))
+            return placedPath;
+
+        string? storedName = storedNames.FirstOrDefault(name =>
+            PortableFileName.IsHostReplacedForm(intendedName, name, comparison)
+        );
+        if (storedName is null)
+            return placedPath;
+
+        string storedPath =
+            $"{StoragePathHelpers.GetParent(placedPath.Replace('\\', '/'))}/{storedName}";
+        logger.LogWarning(
+            "The host stored '{Intended}' as '{Stored}'; later organize passes leave it in place",
+            placedPath,
+            storedPath
+        );
+        return storedPath;
     }
 
     // A move leaves every Track row that still addresses the old name pointing at nothing.

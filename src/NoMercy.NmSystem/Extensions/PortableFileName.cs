@@ -77,6 +77,37 @@ public static class PortableFileName
         return string.Join('/', segments);
     }
 
+    /// <summary>
+    /// True when <paramref name="onDisk"/> is <paramref name="intended"/> after a host swapped
+    /// some non-ASCII characters for '?' or U+FFFD. Moving such a file to the intended name
+    /// again only produces the same swapped name.
+    /// </summary>
+    public static bool IsHostReplacedForm(
+        string intended,
+        string onDisk,
+        StringComparison comparison
+    ) =>
+        !string.Equals(intended, onDisk, comparison)
+        && intended.Any(character => character > 0x7F)
+        && string.Equals(MaskReplaceable(intended), MaskReplaceable(onDisk), comparison);
+
+    // Each run of non-ASCII or replacement characters becomes one '?': a host may swap one
+    // character for one to four marks.
+    private static string MaskReplaceable(string name)
+    {
+        StringBuilder builder = new(name.Length);
+        foreach (char character in name)
+        {
+            bool replaceable = character > 0x7F || character == '?';
+            if (!replaceable)
+                builder.Append(character);
+            else if (builder.Length == 0 || builder[^1] != '?')
+                builder.Append('?');
+        }
+
+        return builder.ToString();
+    }
+
     private static bool IsReserved(char character) =>
         char.IsControl(character)
         || character is '?' or ':' or '*' or '"' or '<' or '>' or '|' or '\\' or '/';

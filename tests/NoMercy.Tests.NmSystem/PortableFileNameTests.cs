@@ -132,6 +132,38 @@ public class PortableFileNameTests
         name.CleanFileName().Should().Be(expected);
     }
 
+    [Theory]
+    [InlineData("a/[2018] ❤/01 Song.flac", "a/[2018] ?/01 Song.flac")]
+    [InlineData("a/[2018] ❤/01 Song.flac", "a/[2018] �/01 Song.flac")]
+    [InlineData("a/01 \U0001F600 Song.flac", "a/01 ?? Song.flac")]
+    [InlineData("a/01 大地.flac", "a/01 ??.flac")]
+    public void A_name_with_a_host_replaced_character_matches_what_was_asked_for(
+        string intended,
+        string onDisk
+    )
+    {
+        PortableFileName
+            .IsHostReplacedForm(intended, onDisk, StringComparison.Ordinal)
+            .Should()
+            .BeTrue();
+    }
+
+    [Theory]
+    [InlineData("a/[2018] ❤/01 Song.flac", "a/[2018] ❤/01 Song.flac")]
+    [InlineData("a/[2018] ❤/01 Song.flac", "a/[2019] ?/01 Song.flac")]
+    [InlineData("a/[2018] ❤/01 Song.flac", "b/[2018] ?/01 Song.flac")]
+    [InlineData("a/01 Song.flac", "a/01 Son?.flac")]
+    public void A_name_that_differs_for_any_other_reason_is_not_a_host_replacement(
+        string intended,
+        string onDisk
+    )
+    {
+        PortableFileName
+            .IsHostReplacedForm(intended, onDisk, StringComparison.Ordinal)
+            .Should()
+            .BeFalse();
+    }
+
     [Fact]
     public void The_video_name_cleaner_drops_control_characters_on_every_host()
     {
