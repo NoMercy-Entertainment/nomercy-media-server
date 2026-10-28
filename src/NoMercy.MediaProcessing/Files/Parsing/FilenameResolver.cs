@@ -355,7 +355,7 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
     /// "- 01" of "NCED - 01", the "06" of "Opening 06", the hyphen in
     /// "OVA-Water Slider".
     /// </summary>
-    [GeneratedRegex(@"[\d\.\-_\[\]\(\)#]+")]
+    [GeneratedRegex(@"[\d\.\-_\[\]\(\)#]+", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex RoleWordNoise();
 
     /// <summary>
@@ -364,7 +364,8 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
     /// </summary>
     [GeneratedRegex(
         @"(?<![A-Za-z0-9])S[0-9]{1,4}[\s._-]*E[0-9]{1,4}(?![A-Za-z0-9])",
-        RegexOptions.IgnoreCase
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
     )]
     private static partial Regex TitleEpisodeMarker();
 
@@ -394,7 +395,11 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
     }
 
     /// <summary>A bracketed or parenthesised block, innermost pair only.</summary>
-    [GeneratedRegex(@"\[[^\[\]]*\]|\([^()]*\)|\{[^{}]*\}")]
+    [GeneratedRegex(
+        matchTimeoutMilliseconds: 1000,
+        options: RegexOptions.None,
+        pattern: @"\[[^\[\]]*\]|\([^()]*\)|\{[^{}]*\}"
+    )]
     private static partial Regex ReleaseGroup();
 
     /// <summary>
@@ -407,7 +412,8 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
     /// </summary>
     [GeneratedRegex(
         @"^[\s.\-_]*www\.[A-Za-z0-9.\-]+?\.[A-Za-z]{2,6}(?![A-Za-z0-9])[\s.\-_]*",
-        RegexOptions.IgnoreCase
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
     )]
     private static partial Regex TrackerAddress();
 
@@ -416,7 +422,7 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
     /// <para>Whitespace and a dash only, so this rule adds nothing to what
     /// already happens to a leading dot further down.</para>
     /// </summary>
-    [GeneratedRegex(@"^\s*[-–—]?\s*")]
+    [GeneratedRegex(@"^\s*[-–—]?\s*", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex LeadingSeparator();
 
     /// <summary>
@@ -424,12 +430,12 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
     /// dash, then the number. Its presence is what makes a trailing number in
     /// the title an episode marker rather than part of the name.
     /// </summary>
-    [GeneratedRegex(@"[\s._]-[\s._][0-9]{1,4}(?![0-9])")]
+    [GeneratedRegex(@"[\s._]-[\s._][0-9]{1,4}(?![0-9])", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex AbsoluteEpisodeForm();
 
     /// <summary>A number sitting at the very end of a title, with the separator
     /// a release puts before it.</summary>
-    [GeneratedRegex(@"[\s._-]+(?<number>[0-9]{1,4})\s*$")]
+    [GeneratedRegex(@"[\s._-]+(?<number>[0-9]{1,4})\s*$", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex TrailingNumber();
 
     /// <summary>
@@ -468,9 +474,10 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
     /// cutting the title here cannot rename a real one.
     /// </summary>
     [GeneratedRegex(
-        @"(?<![A-Za-z0-9])(?:creditless|textless|non-?credit(?:s|less)?|"
-            + @"NC(?:OP|ED)|clean[\s._-]+(?:OP|ED|opening|ending))(?![A-Za-z0-9])",
-        RegexOptions.IgnoreCase
+        matchTimeoutMilliseconds: 1000,
+        options: RegexOptions.IgnoreCase,
+        pattern: @"(?<![A-Za-z0-9])(?:creditless|textless|non-?credit(?:s|less)?|"
+            + @"NC(?:OP|ED)|clean[\s._-]+(?:OP|ED|opening|ending))(?![A-Za-z0-9])"
     )]
     private static partial Regex CreditlessMarkerInTitle();
 
@@ -481,12 +488,13 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
     /// losing the TV that is part of the show's name.
     /// </summary>
     [GeneratedRegex(
-        @"(?:[\s._-]+(?:raw|dvd|dvdrip|bd|bdrip|blu-?ray|hdtv|web-?rip|web-?dl|ts|"
+        matchTimeoutMilliseconds: 1000,
+        options: RegexOptions.IgnoreCase,
+        pattern: @"(?:[\s._-]+(?:raw|dvd|dvdrip|bd|bdrip|blu-?ray|hdtv|web-?rip|web-?dl|ts|"
             + @"x26[45]|h\.?26[45]|hevc|avc|xvid|divx|aac|flac|ac3|dts|mp3|"
             + @"[0-9]{3,4}p|[0-9]{3,4}x[0-9]{3,4}|hi10p?|10bit|8bit|"
             + @"jap|jpn|eng|ita|multi|dual[\s._-]*audio|sub(?:bed|s)?|dub(?:bed|s)?|"
-            + @"uncensored|censored|remux|batch|complete))+\s*$",
-        RegexOptions.IgnoreCase
+            + @"uncensored|censored|remux|batch|complete))+\s*$"
     )]
     private static partial Regex TrailingReleaseNoise();
 
@@ -532,11 +540,11 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
     /// the episode was lost entirely. Anchored to a preceding digit, so a title
     /// that merely contains a v ("NieR-Automata Ver1.1a") is untouched.
     /// </summary>
-    [GeneratedRegex(@"(?<=[0-9])v[0-9]{1,2}(?![A-Za-z0-9])", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(?<=[0-9])v[0-9]{1,2}(?![A-Za-z0-9])", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
     private static partial Regex VersionSuffix();
 
     /// <summary>A MakeMKV-style disc track suffix — "…Volume 1_t12".</summary>
-    [GeneratedRegex(@"_t[0-9]{2}$", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"_t[0-9]{2}$", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
     private static partial Regex DiscTrackMarker();
 
     /// <summary>
@@ -548,7 +556,8 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
     /// </summary>
     [GeneratedRegex(
         @"(?<![A-Za-z0-9])(?:NC(?:OP|ED)|(?:textless|clean|creditless)[\s\._-]*(?:OP|ED|opening|ending))(?![A-Za-z])",
-        RegexOptions.IgnoreCase
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
     )]
     private static partial Regex CreditlessSequenceMarker();
 }

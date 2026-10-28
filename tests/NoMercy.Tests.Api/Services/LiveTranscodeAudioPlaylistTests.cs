@@ -33,8 +33,22 @@ using Xunit;
 namespace NoMercy.Tests.Api.Services;
 
 [Trait("Category", "Unit")]
-public class LiveTranscodeAudioPlaylistTests
+public partial class LiveTranscodeAudioPlaylistTests
 {
+    [GeneratedRegex(
+        "#EXT-X-MEDIA:TYPE=AUDIO[^\n]*URI=\"([^\"]+)\"",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex AudioMediaUri();
+
+    [GeneratedRegex(
+        @"/sessions/([^/]+)/playlist\.m3u8$",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex SessionPlaylistPath();
+
     [Theory]
     [InlineData(PlaybackAction.Remux)]
     [InlineData(PlaybackAction.TranscodeVideo)]
@@ -199,10 +213,7 @@ public class LiveTranscodeAudioPlaylistTests
         );
         (masterResponse.StatusCode ?? 200).Should().Be(200);
         string master = masterResponse.Content!;
-        MatchCollection audioUris = Regex.Matches(
-            master,
-            "#EXT-X-MEDIA:TYPE=AUDIO[^\n]*URI=\"([^\"]+)\""
-        );
+        MatchCollection audioUris = AudioMediaUri().Matches(master);
         audioUris.Count.Should().Be(2);
         string videoUri = master
             .Split('\n', StringSplitOptions.RemoveEmptyEntries)
@@ -217,10 +228,8 @@ public class LiveTranscodeAudioPlaylistTests
         foreach (string uri in renditionUris)
         {
             Uri absolute = new(new Uri("https://example.test" + response.PlaylistUrl), uri);
-            System.Text.RegularExpressions.Match sessionId = Regex.Match(
-                absolute.AbsolutePath,
-                @"/sessions/([^/]+)/playlist\.m3u8$"
-            );
+            System.Text.RegularExpressions.Match sessionId = SessionPlaylistPath()
+                .Match(absolute.AbsolutePath);
             sessionId.Success.Should().BeTrue($"master URI {uri} must point to a live playlist");
             ContentResult playlist = Assert.IsType<ContentResult>(
                 controller.GetPlaylist(sessionId.Groups[1].Value)

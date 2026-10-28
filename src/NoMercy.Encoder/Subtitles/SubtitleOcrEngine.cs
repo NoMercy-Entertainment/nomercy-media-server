@@ -375,7 +375,7 @@ public partial class SubtitleOcrEngine(
         return lines.Length <= 5 ? stdErr : string.Join('\n', lines[^5..]);
     }
 
-    [GeneratedRegex(@"pts_time:(?<pts>\d+(?:\.\d+)?)")]
+    [GeneratedRegex(@"pts_time:(?<pts>\d+(?:\.\d+)?)", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex PtsTimeRegex();
 
     public record SubtitleCue(double StartSeconds, double EndSeconds, string Text);

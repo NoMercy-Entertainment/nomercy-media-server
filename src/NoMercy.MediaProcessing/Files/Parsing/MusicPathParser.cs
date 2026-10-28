@@ -22,11 +22,13 @@ namespace NoMercy.MediaProcessing.Files.Parsing;
 public static partial class MusicPathParser
 {
     [GeneratedRegex(
-        @"(?<library_folder>.+?)[\\\/]((?<letter>.{1})?|\[(?<type>.+?)\])[\\\/](?<artist>.+?)?[\\\/]?(\[(?<year>[0-9]{4})\]|\[(?<releaseType>Singles)\])\s?(?<album>.*)?"
+        @"(?<library_folder>.+?)[\\\/]((?<letter>.{1})?|\[(?<type>.+?)\])[\\\/](?<artist>.+?)?[\\\/]?(\[(?<year>[0-9]{4})\]|\[(?<releaseType>Singles)\])\s?(?<album>.*)?",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
     )]
     public static partial Regex MatchAlbumPath();
 
-    [GeneratedRegex(@"\[[0-9]{4}\]\s?")]
+    [GeneratedRegex(@"\[[0-9]{4}\]\s?", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     public static partial Regex MatchYearTag();
 
     /// <summary>Parsed album metadata. Year is 0 when absent.</summary>

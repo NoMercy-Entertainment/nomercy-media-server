@@ -56,7 +56,7 @@ public partial class PluginUserAgentHandler(
     );
 
     /// <summary>Everything outside an RFC 9110 token, which is most punctuation.</summary>
-    [GeneratedRegex("[^A-Za-z0-9!#$%&'*+.^_`|~-]+")]
+    [GeneratedRegex("[^A-Za-z0-9!#$%&'*+.^_`|~-]+", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex NonTokenCharacters();
 
     private readonly string _product = BuildProduct(pluginId, pluginName, pluginVersion);

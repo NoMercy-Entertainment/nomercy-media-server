@@ -107,6 +107,10 @@ public partial class HttpResponseDisposalAuditTests
         return false;
     }
 
-    [GeneratedRegex(@"HttpResponseMessage\s+\w+\s*=")]
+    [GeneratedRegex(
+        @"HttpResponseMessage\s+\w+\s*=",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex HttpResponseDeclarationPattern();
 }

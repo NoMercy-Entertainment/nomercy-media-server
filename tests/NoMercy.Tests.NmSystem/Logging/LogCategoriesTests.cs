@@ -20,8 +20,11 @@ namespace NoMercy.Tests.NmSystem;
 /// category, and unknown input falls back to the default.
 /// </summary>
 [Trait("Category", "Unit")]
-public class LogCategoriesTests
+public partial class LogCategoriesTests
 {
+    [GeneratedRegex("^#[0-9a-f]{6}$", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex LowerHexColor();
+
     [Theory]
     [InlineData("moviedb", "TheMovieDB")]
     [InlineData("tvdb", "TheTVDB")]
@@ -81,7 +84,7 @@ public class LogCategoriesTests
     public void Colours_AreValidHex(string key)
     {
         LogCategory category = LogCategories.Resolve(key);
-        Regex hex = new("^#[0-9a-f]{6}$");
+        Regex hex = LowerHexColor();
         hex.IsMatch(category.DarkHex).Should().BeTrue();
         hex.IsMatch(category.LightHex).Should().BeTrue();
     }

@@ -70,7 +70,7 @@ public sealed partial class SeasonEpisodeAdapter : IFilenameParseAdapter
         };
     }
 
-    [GeneratedRegex(@"[0-9]+")]
+    [GeneratedRegex(@"[0-9]+", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex MatchNumbers();
 
     /// <summary>
@@ -78,6 +78,6 @@ public sealed partial class SeasonEpisodeAdapter : IFilenameParseAdapter
     /// the season marker that follows it. Requires the separator, so a show whose name simply
     /// ends in a number ("Mobile Suit Gundam 00") is left alone.
     /// </summary>
-    [GeneratedRegex(@"\s-\s[0-9]{1,4}\s*[(\[{]?\s*$")]
+    [GeneratedRegex(@"\s-\s[0-9]{1,4}\s*[(\[{]?\s*$", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex MatchTrailingAbsoluteEpisode();
 }

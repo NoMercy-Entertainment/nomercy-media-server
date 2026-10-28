@@ -47,7 +47,7 @@ namespace NoMercy.Tests.Encoder.Integration;
 /// </summary>
 [Trait("Category", "Integration")]
 [Collection("RealEncode")]
-public class JsonProfileCommandOracleTests : IAsyncLifetime
+public partial class JsonProfileCommandOracleTests : IAsyncLifetime
 {
     private string _testDir = string.Empty;
     private string _inputFile = string.Empty;
@@ -1130,8 +1130,14 @@ public class JsonProfileCommandOracleTests : IAsyncLifetime
     /// Replaces characters that are not valid in directory names with underscores
     /// so output directories can be created cleanly for each test case.
     /// </summary>
-    private static string SanitizeName(string name) =>
-        System.Text.RegularExpressions.Regex.Replace(name, @"[^A-Za-z0-9_\-]", "_");
+    private static string SanitizeName(string name) => UnsafeNameChars().Replace(name, "_");
+
+    [System.Text.RegularExpressions.GeneratedRegex(
+        @"[^A-Za-z0-9_\-]",
+        System.Text.RegularExpressions.RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial System.Text.RegularExpressions.Regex UnsafeNameChars();
 
     private async Task<IReadOnlySet<string>> ProbeAvailableEncodersAsync()
     {

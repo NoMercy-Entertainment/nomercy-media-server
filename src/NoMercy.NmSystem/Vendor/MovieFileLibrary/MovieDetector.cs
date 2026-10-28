@@ -2,7 +2,7 @@
 // Copyright (c) Peyman Mohammadi — Licensed under the MIT License.
 // Imported into this repository to own the parsing logic and named regexes; behavior preserved.
 
-﻿namespace MovieFileLibrary
+namespace MovieFileLibrary
 {
     using System;
     using System.IO;
@@ -219,19 +219,19 @@
         {
             return words.Any(x => IsEpisode(x));
         }
-        [GeneratedRegex("([0-9]{1,2})([xX])([0-9]{1,2})")]
+        [GeneratedRegex("([0-9]{1,2})([xX])([0-9]{1,2})", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
         private static partial Regex SeasonEpisodeXRegex();
 
-        [GeneratedRegex("^(19|20)[0-9][0-9]")]
+        [GeneratedRegex("^(19|20)[0-9][0-9]", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
         private static partial Regex YearRegex();
 
-        [GeneratedRegex("^Se?([0-9]{1,2})Ep?([0-9]{1,2})", RegexOptions.IgnoreCase)]
+        [GeneratedRegex("^Se?([0-9]{1,2})Ep?([0-9]{1,2})", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
         private static partial Regex SeasonEpisodeRegex();
 
-        [GeneratedRegex("^Se?([0-9]{1,2})$", RegexOptions.IgnoreCase)]
+        [GeneratedRegex("^Se?([0-9]{1,2})$", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
         private static partial Regex SeasonOnlyRegex();
 
-        [GeneratedRegex("^Ep?([0-9]{1,2})", RegexOptions.IgnoreCase)]
+        [GeneratedRegex("^Ep?([0-9]{1,2})", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
         private static partial Regex EpisodeOnlyRegex();
 
     }

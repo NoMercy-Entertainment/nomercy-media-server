@@ -231,11 +231,12 @@ public partial class FileLogic(
                 Filename = fileName.Replace("\\", "/"),
 
                 Share = folder.Id.ToString(),
-                Duration = Regex.Replace(
-                    Regex.Replace((item.FFprobe?.Duration.ToString()).OrEmpty(), @"\.\d+", ""),
-                    "^00:",
-                    ""
-                ),
+                Duration = LeadingZeroHoursRegex()
+                    .Replace(
+                        FractionalSecondsRegex()
+                            .Replace((item.FFprobe?.Duration.ToString()).OrEmpty(), ""),
+                        ""
+                    ),
                 // Chapters = JsonConvert.SerializeObject(item.FFprobe?.Chapters ?? []),
                 Chapters = "",
                 Languages = JsonConvert.SerializeObject(
@@ -403,8 +404,18 @@ public partial class FileLogic(
     // anywhere in the filename tail. 2-3 char lang (ISO 639-1/2), any-length
     // variant (sign, full, sdh, alt, forced, …), 3-6 char extension (vtt,
     // ass, srt, ssa, sub, idx, webvtt).
-    [GeneratedRegex(@"(?<lang>[a-zA-Z]{2,3})\.(?<type>\w+)\.(?<ext>\w{3,6})$")]
+    [GeneratedRegex(
+        @"(?<lang>[a-zA-Z]{2,3})\.(?<type>\w+)\.(?<ext>\w{3,6})$",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex SubtitleFileTagsRegex();
+
+    [GeneratedRegex(@"\.\d+", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex FractionalSecondsRegex();
+
+    [GeneratedRegex("^00:", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex LeadingZeroHoursRegex();
 
     public void Dispose()
     {

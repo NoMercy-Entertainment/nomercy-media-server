@@ -31,8 +31,15 @@ namespace NoMercy.Tests.Service.Jobs;
 /// only searched by index.
 /// </para>
 /// </summary>
-public class DjAnalysisQueryPlanTests : IDisposable
+public partial class DjAnalysisQueryPlanTests : IDisposable
 {
+    [System.Text.RegularExpressions.GeneratedRegex(
+        @"@[A-Za-z_][A-Za-z0-9_]*",
+        System.Text.RegularExpressions.RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial System.Text.RegularExpressions.Regex SqlParameterName();
+
     private readonly SqliteConnection _connection;
     private readonly DbContextOptions<MediaContext> _options;
 
@@ -110,8 +117,8 @@ public class DjAnalysisQueryPlanTests : IDisposable
     {
         // Bind whatever the generated SQL asks for so EXPLAIN can prepare.
         // Values do not affect the chosen plan.
-        return System
-            .Text.RegularExpressions.Regex.Matches(sql, @"@[A-Za-z_][A-Za-z0-9_]*")
+        return SqlParameterName()
+            .Matches(sql)
             .Select(match => match.Value)
             .Distinct()
             .Select(name => new SqliteParameter(name, 1));

@@ -640,20 +640,29 @@ public partial class PlatformHardwareDetector(
 
     [GeneratedRegex(
         @"(?:VGA compatible|3D) controller.*?:\s*(?<name>.+?)(?:\s+\[[\da-f]{4}:[\da-f]{4}\])?$",
-        RegexOptions.IgnoreCase
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
     )]
     private static partial Regex VgaControllerPattern();
 
-    [GeneratedRegex(@"(?<size>\d+)\s*GB", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"(?<size>\d+)\s*GB", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
     private static partial Regex VramPattern();
 
     // Matches "M1", "M2 Pro", "M3 Max", "M4 Ultra", "M17" etc — any Apple Silicon generation
-    [GeneratedRegex(@"\bM\d+", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"\bM\d+", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
     private static partial Regex AppleSiliconPattern();
 
-    [GeneratedRegex(@"^Chipset Model:\s*(?<name>.+)$")]
+    [GeneratedRegex(
+        @"^Chipset Model:\s*(?<name>.+)$",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex MacChipsetPattern();
 
-    [GeneratedRegex(@"^VRAM\s*\([^)]*\):\s*(?<size>\d+)\s*(?<unit>MB|GB)", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(
+        @"^VRAM\s*\([^)]*\):\s*(?<size>\d+)\s*(?<unit>MB|GB)",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex MacVramPattern();
 }

@@ -28,7 +28,7 @@ public sealed partial class AnimeAbsoluteAdapter : IFilenameParseAdapter
     public string Name => "anime-absolute";
     public int Order => 50;
 
-    [GeneratedRegex(@"(?<![A-Za-z0-9])([0-9]{1,4})(?![A-Za-z0-9])")]
+    [GeneratedRegex(@"(?<![A-Za-z0-9])([0-9]{1,4})(?![A-Za-z0-9])", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex StandaloneNumber();
 
     /// <summary>
@@ -36,7 +36,7 @@ public sealed partial class AnimeAbsoluteAdapter : IFilenameParseAdapter
     /// Name", the "001-013" of a batch. The run names a span, and a span starts
     /// at its first number.
     /// </summary>
-    [GeneratedRegex(@"(?<![A-Za-z0-9])([0-9]{1,4})(?:-[0-9]{1,4})+(?![A-Za-z0-9])")]
+    [GeneratedRegex(@"(?<![A-Za-z0-9])([0-9]{1,4})(?:-[0-9]{1,4})+(?![A-Za-z0-9])", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex NumberRun();
 
     public MovieFile? TryParse(ParseContext context)

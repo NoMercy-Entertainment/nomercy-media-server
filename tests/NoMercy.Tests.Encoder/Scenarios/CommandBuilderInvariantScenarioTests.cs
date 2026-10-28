@@ -23,8 +23,11 @@ namespace NoMercy.Tests.Encoder.Scenarios;
 /// etc.) and asserts invariants that MUST hold or the command is malformed.
 /// If a test fails, the builder is emitting broken ffmpeg syntax.
 /// </summary>
-public class CommandBuilderInvariantScenarioTests
+public partial class CommandBuilderInvariantScenarioTests
 {
+    [GeneratedRegex(@"\[(\w+)\]", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex FilterPad();
+
     private const string FfmpegPath = "ffmpeg";
     private const string InputPath = "/media/source.mkv";
     private const string OutputPath = "/output/video.mp4";
@@ -132,11 +135,7 @@ public class CommandBuilderInvariantScenarioTests
             )
             .Build(FfmpegPath);
 
-        MatchCollection padMatches = Regex.Matches(
-            filterGraph,
-            @"\[(\w+)\]",
-            RegexOptions.IgnoreCase
-        );
+        MatchCollection padMatches = FilterPad().Matches(filterGraph);
         string[] outputPads =
         [
             .. padMatches.Cast<Match>().Select(m => m.Groups[1].Value).Distinct(),

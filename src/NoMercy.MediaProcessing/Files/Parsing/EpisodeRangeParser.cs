@@ -32,17 +32,19 @@ public static partial class EpisodeRangeParser
 
     [GeneratedRegex(
         @"(?<![A-Za-z0-9])S([0-9]{1,2})E([0-9]{1,4})((?:[\s._]*E[0-9]{1,4})*)(?:[\s._-]*-[\s._-]*E?([0-9]{1,4}))?",
-        RegexOptions.IgnoreCase
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
     )]
     private static partial Regex SeasonEpisodeRange();
 
     [GeneratedRegex(
         @"(?<![A-Za-z0-9])([0-9]{1,2})x([0-9]{1,3})((?:x[0-9]{1,3})*)(?:[\s._-]*-[\s._-]*(?:[0-9]{1,2}x)?([0-9]{1,3}))?",
-        RegexOptions.IgnoreCase
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
     )]
     private static partial Regex CrossEpisodeRange();
 
-    [GeneratedRegex(@"[0-9]{1,4}")]
+    [GeneratedRegex(@"[0-9]{1,4}", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex Numbers();
 
     /// <summary>

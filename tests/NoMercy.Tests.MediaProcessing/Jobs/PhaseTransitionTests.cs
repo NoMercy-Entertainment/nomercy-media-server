@@ -260,6 +260,10 @@ public partial class PhaseTransitionTests
         return source.Substring(methodStart, length);
     }
 
-    [GeneratedRegex(@"private\s+async\s+Task\s+Handle\w+Async")]
+    [GeneratedRegex(
+        @"private\s+async\s+Task\s+Handle\w+Async",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex PhaseHandlerPattern();
 }

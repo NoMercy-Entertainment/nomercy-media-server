@@ -29,8 +29,15 @@ namespace NoMercy.Tests.Launcher;
 /// failed build ("Unable to load DLL 'nfs'", July 2026).
 /// </para>
 /// </summary>
-public class BuildInputsStayInRepoTests
+public partial class BuildInputsStayInRepoTests
 {
+    [GeneratedRegex(
+        @"\$\(MSBuildThisFileDirectory\)((?:\.\.[/\\])+[^;""]*)",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex ParentTraversal();
+
     private static readonly string[] NfsBinaries =
     [
         "win-x64/libnfs.dll",
@@ -55,11 +62,13 @@ public class BuildInputsStayInRepoTests
             {
                 foreach (string value in Values(element))
                 {
-                    Match match = Regex.Match(value, @"\$\(MSBuildThisFileDirectory\)((?:\.\.[/\\])+[^;""]*)");
+                    Match match = ParentTraversal().Match(value);
                     if (!match.Success)
                         continue;
 
-                    string target = Path.GetFullPath(Path.Combine(directory, match.Groups[1].Value));
+                    string target = Path.GetFullPath(
+                        Path.Combine(directory, match.Groups[1].Value)
+                    );
                     if (target.StartsWith(root, StringComparison.OrdinalIgnoreCase))
                         continue;
 
@@ -68,7 +77,9 @@ public class BuildInputsStayInRepoTests
             }
         }
 
-        escapes.Should().BeEmpty("a build that reads a sibling folder works only in the developer's workspace");
+        escapes
+            .Should()
+            .BeEmpty("a build that reads a sibling folder works only in the developer's workspace");
     }
 
     [Fact]
@@ -85,55 +96,86 @@ public class BuildInputsStayInRepoTests
             string path = Path.Combine(nfs, binary);
             File.Exists(path).Should().BeTrue($"{binary} ships in every release");
             expected.Should().ContainKey(binary);
-            Convert.ToHexString(SHA256.HashData(File.ReadAllBytes(path))).ToLowerInvariant()
-                .Should().Be(expected[binary], $"{binary} must be the published libnfs build");
+            Convert
+                .ToHexString(SHA256.HashData(File.ReadAllBytes(path)))
+                .ToLowerInvariant()
+                .Should()
+                .Be(expected[binary], $"{binary} must be the published libnfs build");
         }
     }
 
     [Fact]
     public void AMissingNfsBinaryFailsTheBuildInsteadOfShippingWithoutIt()
     {
-        XDocument storage = XDocument.Load(RepoPaths.At("src", "NoMercy.Storage", "NoMercy.Storage.csproj"));
+        XDocument storage = XDocument.Load(
+            RepoPaths.At("src", "NoMercy.Storage", "NoMercy.Storage.csproj")
+        );
 
-        List<string> guarded = storage.Descendants()
-            .Where(element => (string?)element.Attribute("Include") is { } include && include.Contains("$(LibNfsDir)"))
+        List<string> guarded = storage
+            .Descendants()
+            .Where(element =>
+                (string?)element.Attribute("Include") is { } include
+                && include.Contains("$(LibNfsDir)")
+            )
             .Where(element => element.Attribute("Condition") is not null)
             .Select(element => (string)element.Attribute("Include")!)
             .ToList();
 
-        guarded.Should().BeEmpty("an Exists guard turns a missing libnfs into a release without NFS");
+        guarded
+            .Should()
+            .BeEmpty("an Exists guard turns a missing libnfs into a release without NFS");
     }
 
     [Fact]
     public void SmbLibraryComesFromThePublishedPackage()
     {
-        foreach (string project in new[]
-                 {
-                     RepoPaths.At("src", "NoMercy.Storage", "NoMercy.Storage.csproj"),
-                     RepoPaths.At("tests", "NoMercy.Tests.Storage", "NoMercy.Tests.Storage.csproj"),
-                 })
+        foreach (
+            string project in new[]
+            {
+                RepoPaths.At("src", "NoMercy.Storage", "NoMercy.Storage.csproj"),
+                RepoPaths.At("tests", "NoMercy.Tests.Storage", "NoMercy.Tests.Storage.csproj"),
+            }
+        )
         {
             XDocument document = XDocument.Load(project);
 
-            document.Descendants("PackageReference")
+            document
+                .Descendants("PackageReference")
                 .Select(element => (string?)element.Attribute("Include"))
-                .Should().Contain("NoMercy.SMBLibrary", $"{Path.GetFileName(project)} takes the fork from nuget.org");
-            document.Descendants("HintPath")
+                .Should()
+                .Contain(
+                    "NoMercy.SMBLibrary",
+                    $"{Path.GetFileName(project)} takes the fork from nuget.org"
+                );
+            document
+                .Descendants("HintPath")
                 .Select(element => element.Value)
-                .Should().NotContain(value => value.Contains("SMBLibrary"), "a copied DLL is not the published package");
+                .Should()
+                .NotContain(
+                    value => value.Contains("SMBLibrary"),
+                    "a copied DLL is not the published package"
+                );
         }
 
-        Directory.Exists(RepoPaths.At("libs", "smb")).Should().BeFalse("the vendored SMBLibrary copy is replaced by the package");
+        Directory
+            .Exists(RepoPaths.At("libs", "smb"))
+            .Should()
+            .BeFalse("the vendored SMBLibrary copy is replaced by the package");
     }
 
     private static IEnumerable<string> BuildFiles(string root)
     {
-        return Directory.EnumerateFiles(root, "*.*", SearchOption.AllDirectories)
-            .Where(file => file.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)
-                           || file.EndsWith(".props", StringComparison.OrdinalIgnoreCase)
-                           || file.EndsWith(".targets", StringComparison.OrdinalIgnoreCase))
-            .Where(file => !file.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
-                .Any(part => part is "bin" or "obj" or "node_modules" or ".git"));
+        return Directory
+            .EnumerateFiles(root, "*.*", SearchOption.AllDirectories)
+            .Where(file =>
+                file.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase)
+                || file.EndsWith(".props", StringComparison.OrdinalIgnoreCase)
+                || file.EndsWith(".targets", StringComparison.OrdinalIgnoreCase)
+            )
+            .Where(file =>
+                !file.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                    .Any(part => part is "bin" or "obj" or "node_modules" or ".git")
+            );
     }
 
     private static IEnumerable<string> Values(XElement element)

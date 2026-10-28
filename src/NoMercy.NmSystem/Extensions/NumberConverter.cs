@@ -147,6 +147,6 @@ public partial class NumberConverter
         return MyRegex().Replace(input, match => NumberToWords(int.Parse(match.Value)));
     }
 
-    [GeneratedRegex(@"\b\d+\b")]
+    [GeneratedRegex(@"\b\d+\b", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex MyRegex();
 }

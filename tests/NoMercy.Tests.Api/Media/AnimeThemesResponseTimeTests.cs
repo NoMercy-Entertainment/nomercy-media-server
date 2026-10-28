@@ -46,10 +46,18 @@ public partial class AnimeThemesResponseTimeTests(ITestOutputHelper output)
         Converters = [new StringEnumConverter()],
     };
 
-    [GeneratedRegex(@"Executed DbCommand \((\d+)ms\)")]
+    [GeneratedRegex(
+        @"Executed DbCommand \((\d+)ms\)",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex ExecutedCommand();
 
-    [GeneratedRegex(@"spending (\d+)ms reading results")]
+    [GeneratedRegex(
+        @"spending (\d+)ms reading results",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex ReaderDisposed();
 
     [Fact]

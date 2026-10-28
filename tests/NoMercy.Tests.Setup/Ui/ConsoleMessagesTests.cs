@@ -27,8 +27,11 @@ namespace NoMercy.Tests.Setup.Ui;
 /// The test host captures the welcome output through <c>Console.Out</c>.
 /// </remarks>
 [Trait("Category", "Unit")]
-public class ConsoleMessagesTests
+public partial class ConsoleMessagesTests
 {
+    [GeneratedRegex(@"\x1b\[[0-9;]*m", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex AnsiColorCode();
+
     [Theory]
     [InlineData(2026, 12, 6, false)]
     [InlineData(2026, 12, 7, true)]
@@ -101,7 +104,7 @@ public class ConsoleMessagesTests
         }
 
         // Pastel adds ANSI color codes between the label and the value on a color console.
-        string plain = Regex.Replace(output.ToString(), @"\x1b\[[0-9;]*m", string.Empty);
+        string plain = AnsiColorCode().Replace(output.ToString(), string.Empty);
         Assert.Contains($"Version:  {Software.GetReleaseVersion()}", plain);
     }
 }

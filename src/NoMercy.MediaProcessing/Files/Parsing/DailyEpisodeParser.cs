@@ -24,7 +24,9 @@ namespace NoMercy.MediaProcessing.Files.Parsing;
 public static partial class DailyEpisodeParser
 {
     [GeneratedRegex(
-        @"(?<![0-9])(?<y>(?:19|20)[0-9]{2})[._\-/](?<m>0[1-9]|1[0-2])[._\-/](?<d>0[1-9]|[12][0-9]|3[01])(?![0-9])"
+        @"(?<![0-9])(?<y>(?:19|20)[0-9]{2})[._\-/](?<m>0[1-9]|1[0-2])[._\-/](?<d>0[1-9]|[12][0-9]|3[01])(?![0-9])",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
     )]
     private static partial Regex AirDate();
 

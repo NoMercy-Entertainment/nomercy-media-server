@@ -57,6 +57,10 @@ public partial class TagFileDisposalAuditTests
     }
 
     // Matches: TagLib.File xxx = TagLib.File.Create(...)  or  FileTag? xxx = FileTag.Create(...)
-    [GeneratedRegex(@"(TagLib\.File|FileTag\??)\s+\w+\s*=\s*(TagLib\.File|FileTag)\.Create")]
+    [GeneratedRegex(
+        @"(TagLib\.File|FileTag\??)\s+\w+\s*=\s*(TagLib\.File|FileTag)\.Create",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex TagLibFileCreatePattern();
 }

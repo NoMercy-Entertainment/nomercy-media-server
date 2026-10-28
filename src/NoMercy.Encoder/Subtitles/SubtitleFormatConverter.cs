@@ -28,7 +28,7 @@ public static partial class SubtitleFormatConverter
     // U+FEFF byte-order mark — some OpenSubtitles-hosted SRT payloads start with one.
     private const char ByteOrderMark = '﻿';
 
-    [GeneratedRegex(@"(\d{2}:\d{2}:\d{2}),(\d{3})")]
+    [GeneratedRegex(@"(\d{2}:\d{2}:\d{2}),(\d{3})", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex SrtTimestampCommaRegex();
 
     /// <summary>

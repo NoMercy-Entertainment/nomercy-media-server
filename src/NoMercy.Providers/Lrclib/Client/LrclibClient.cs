@@ -178,9 +178,9 @@ public partial class LrclibClient : LrclibBaseClient
 
     // \G chains each match to the end of the previous one, so only the run of
     // tags at the start of the line is read; whatever follows is the lyric text.
-    [GeneratedRegex(@"\G\s*\[(\d{1,2}):(\d{2})(?:[.:](\d{2,3}))?\]")]
+    [GeneratedRegex(@"\G\s*\[(\d{1,2}):(\d{2})(?:[.:](\d{2,3}))?\]", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex LeadingTimestamps();
 
-    [GeneratedRegex(@"^\[[A-Za-z#][A-Za-z0-9_#]*:[^\]]*\]$")]
+    [GeneratedRegex(@"^\[[A-Za-z#][A-Za-z0-9_#]*:[^\]]*\]$", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex IdTag();
 }

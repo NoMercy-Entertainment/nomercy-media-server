@@ -982,10 +982,11 @@ public partial class MediaIdentificationService(
     }
 
     [GeneratedRegex(
-        @"(?<![A-Za-z0-9])(?:[0-9]{3,4}[pi]|[0-9]{3,4}x[0-9]{3,4}|web[\s._-]?(?:dl|rip)|webrip|hdtv|"
+        matchTimeoutMilliseconds: 1000,
+        options: RegexOptions.IgnoreCase,
+        pattern: @"(?<![A-Za-z0-9])(?:[0-9]{3,4}[pi]|[0-9]{3,4}x[0-9]{3,4}|web[\s._-]?(?:dl|rip)|webrip|hdtv|"
             + @"blu-?ray|bdrip|dvdrip|amzn|nf|dsnp|hmax|atvp|hulu|pcok|x26[45]|h[\s.]?26[45]|hevc|"
-            + @"repack|proper|internal)(?![A-Za-z0-9])",
-        RegexOptions.IgnoreCase
+            + @"repack|proper|internal)(?![A-Za-z0-9])"
     )]
     private static partial Regex ReleaseBlockStart();
 
@@ -1016,7 +1017,7 @@ public partial class MediaIdentificationService(
         return overlapRatio < 0.35;
     }
 
-    [GeneratedRegex(@"[^a-z0-9]+")]
+    [GeneratedRegex(@"[^a-z0-9]+", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex TitleTokenSeparator();
 
     private static HashSet<string> TokenizeTitle(string title) =>

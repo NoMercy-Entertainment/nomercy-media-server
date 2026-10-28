@@ -1661,6 +1661,137 @@ namespace NoMercy.Database.Migrations
                     b.ToTable("VideoFileAudioTracks");
                 });
 
+            modelBuilder.Entity("NoMercy.Database.Models.Media.Visualizer", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Author")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.Property<bool>("Enabled")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Format")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsBuiltIn")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("License")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Name")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("PayloadBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("PayloadJson")
+                        .IsRequired()
+                        .HasMaxLength(524288)
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("RenderableWebgl2")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<int>("Schema")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Slug")
+                        .IsRequired()
+                        .HasMaxLength(160)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Source")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceSha1")
+                        .HasMaxLength(40)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceUrl")
+                        .HasMaxLength(2048)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Tags")
+                        .IsRequired()
+                        .HasMaxLength(2560)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Textures")
+                        .IsRequired()
+                        .HasMaxLength(640)
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .IsConcurrencyToken()
+                        .ValueGeneratedOnAddOrUpdate()
+                        .HasColumnType("TEXT")
+                        .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Format");
+
+                    b.HasIndex("IsBuiltIn");
+
+                    b.HasIndex("Slug")
+                        .IsUnique();
+
+                    b.ToTable("Visualizers", t =>
+                        {
+                            t.HasTrigger("update_Visualizers_updated_at");
+                        });
+                });
+
+            modelBuilder.Entity("NoMercy.Database.Models.Media.VisualizerUser", b =>
+                {
+                    b.Property<string>("VisualizerId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("ChosenAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<bool>("IsFavorite")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("LastUsedAt")
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("VisualizerId", "UserId");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("VisualizerId");
+
+                    b.ToTable("VisualizerUsers");
+                });
+
             modelBuilder.Entity("NoMercy.Database.Models.Movies.AnimeDemographicMovie", b =>
                 {
                     b.Property<int>("AnimeDemographicId")
@@ -5454,6 +5585,25 @@ namespace NoMercy.Database.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("NoMercy.Database.Models.Media.VisualizerUser", b =>
+                {
+                    b.HasOne("NoMercy.Database.Models.Users.User", "User")
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.HasOne("NoMercy.Database.Models.Media.Visualizer", "Visualizer")
+                        .WithMany("Users")
+                        .HasForeignKey("VisualizerId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+
+                    b.Navigation("Visualizer");
+                });
+
             modelBuilder.Entity("NoMercy.Database.Models.Movies.AnimeDemographicMovie", b =>
                 {
                     b.HasOne("NoMercy.Database.Models.Common.AnimeDemographic", "AnimeDemographic")
@@ -6930,6 +7080,11 @@ namespace NoMercy.Database.Migrations
             modelBuilder.Entity("NoMercy.Database.Models.Media.VideoFile", b =>
                 {
                     b.Navigation("UserData");
+                });
+
+            modelBuilder.Entity("NoMercy.Database.Models.Media.Visualizer", b =>
+                {
+                    b.Navigation("Users");
                 });
 
             modelBuilder.Entity("NoMercy.Database.Models.Movies.Collection", b =>

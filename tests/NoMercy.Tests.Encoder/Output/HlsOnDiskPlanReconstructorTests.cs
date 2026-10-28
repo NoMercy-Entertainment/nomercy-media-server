@@ -29,8 +29,18 @@ namespace NoMercy.Tests.Encoder.Output;
 /// in play at all — this is the single-preset / self-finalized-bundles path
 /// the earlier plan-based fix never actually reached.
 /// </summary>
-public class HlsOnDiskPlanReconstructorTests : IDisposable
+public partial class HlsOnDiskPlanReconstructorTests : IDisposable
 {
+    [GeneratedRegex("#EXT-X-MEDIA:TYPE=AUDIO", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex AudioMediaEntry();
+
+    [GeneratedRegex(
+        "#EXT-X-MEDIA:TYPE=SUBTITLES",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex SubtitleMediaEntry();
+
     private readonly string _outputDirectory;
     private readonly Mock<IMediaAnalyzer> _mediaAnalyzer = new();
 
@@ -136,8 +146,8 @@ public class HlsOnDiskPlanReconstructorTests : IDisposable
             .Sum(languageDir => Directory.GetFiles(languageDir, "*.ass").Length);
 
         int videoEntriesInMaster = streamInfLines.Count;
-        int audioEntriesInMaster = Regex.Matches(master, "#EXT-X-MEDIA:TYPE=AUDIO").Count;
-        int subtitleEntriesInMaster = Regex.Matches(master, "#EXT-X-MEDIA:TYPE=SUBTITLES").Count;
+        int audioEntriesInMaster = AudioMediaEntry().Matches(master).Count;
+        int subtitleEntriesInMaster = SubtitleMediaEntry().Matches(master).Count;
 
         videoEntriesInMaster.Should().Be(videoDirsOnDisk);
         audioEntriesInMaster.Should().Be(audioDirsOnDisk);
@@ -256,7 +266,9 @@ public class HlsOnDiskPlanReconstructorTests : IDisposable
     {
         System.Text.RegularExpressions.Match match = Regex.Match(
             streamInfLine,
-            $@"{attribute}=(?<value>\d+)"
+            $@"{attribute}=(?<value>\d+)",
+            RegexOptions.None,
+            TimeSpan.FromSeconds(1)
         );
         return int.Parse(match.Groups["value"].Value);
     }

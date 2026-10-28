@@ -37,13 +37,21 @@ public sealed partial class SetupPageNeverShowsDeadButtonTests
         return reader.ReadToEnd();
     }
 
-    [GeneratedRegex("""<a\s+id="btn-login"[^>]*>""")]
+    [GeneratedRegex(
+        """<a\s+id="btn-login"[^>]*>""",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex LoginAnchorRegex();
 
-    [GeneratedRegex(@"(\d+)\s*\);\s*\r?\n\s*window\.addEventListener\(""message""")]
+    [GeneratedRegex(
+        @"(\d+)\s*\);\s*\r?\n\s*window\.addEventListener\(""message""",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex SilentTimeoutRegex();
 
-    [GeneratedRegex("""class="check-row""")]
+    [GeneratedRegex("""class="check-row""", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex CheckRowRegex();
 
     [Fact]

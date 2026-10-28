@@ -13,11 +13,13 @@ using System.Text.RegularExpressions;
 
 namespace NoMercy.NmSystem.Dto;
 
-public class AnimeParser
+public partial class AnimeParser
 {
-    private static readonly Regex NameRegex = new(
-        @"^\[([^\s\[\]]*?)\](?:[\s_\.]+)?([^\[\]]+?)(?:[\s_\.]+)?-?(?:[\s_\.]+)?(?:(?:S(\d+))?(?:[\s_.]+)?-?(?:[\s_.]+)E?([0-9\.]+)(?:v[0-9]+)?(?:[\s_\.]+)?([^\(\[\]\)]+?)?(?:[\s_\.]+)?)?(?:[\(\[](.*?)[\]\)])?(?:[\s_\.]+)?(?:\[([a-fA-F0-9]+)\])\.([a-zA-Z]+)$"
-    );
+    private const string NamePattern =
+        @"^\[([^\s\[\]]*?)\](?:[\s_\.]+)?([^\[\]]+?)(?:[\s_\.]+)?-?(?:[\s_\.]+)?(?:(?:S(\d+))?(?:[\s_.]+)?-?(?:[\s_.]+)E?([0-9\.]+)(?:v[0-9]+)?(?:[\s_\.]+)?([^\(\[\]\)]+?)?(?:[\s_\.]+)?)?(?:[\(\[](.*?)[\]\)])?(?:[\s_\.]+)?(?:\[([a-fA-F0-9]+)\])\.([a-zA-Z]+)$";
+
+    [GeneratedRegex(NamePattern, RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex NameRegex();
 
     /// <summary>
     /// This function parses video filenames to determine information about the series or movie they are a part of.
@@ -36,7 +38,7 @@ public class AnimeParser
     /// </returns>
     public static AnimeInfo ParseAnimeFilename(string filename)
     {
-        Match match = NameRegex.Match(filename.Trim());
+        Match match = NameRegex().Match(filename.Trim());
         if (!match.Success)
             return new() { FileName = filename };
 

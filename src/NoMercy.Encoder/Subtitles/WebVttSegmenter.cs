@@ -22,12 +22,14 @@ namespace NoMercy.Encoder.Subtitles;
 /// segment boundary are duplicated into both segments (per the HLS subtitle
 /// spec, RFC 8216 §3.5).
 /// </summary>
-public sealed class WebVttSegmenter
+public sealed partial class WebVttSegmenter
 {
-    private static readonly Regex TimestampLineRx = new(
+    [GeneratedRegex(
         @"^(?:(\d+):)?(\d{2}):(\d{2})\.(\d{3})\s+-->\s+(?:(\d+):)?(\d{2}):(\d{2})\.(\d{3})",
-        RegexOptions.Compiled
-    );
+        RegexOptions.Compiled,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex TimestampLineRx();
 
     /// <summary>
     /// Parse <paramref name="vttFilePath"/> and emit one
@@ -126,7 +128,7 @@ public sealed class WebVttSegmenter
 
             // Optional cue identifier (not a timestamp line).
             string? cueId = null;
-            if (!TimestampLineRx.IsMatch(lines[idx]))
+            if (!TimestampLineRx().IsMatch(lines[idx]))
             {
                 cueId = lines[idx];
                 idx++;
@@ -136,7 +138,7 @@ public sealed class WebVttSegmenter
                 break;
 
             // Timestamp line.
-            if (!TimestampLineRx.IsMatch(lines[idx]))
+            if (!TimestampLineRx().IsMatch(lines[idx]))
             {
                 idx++;
                 continue;
@@ -167,7 +169,7 @@ public sealed class WebVttSegmenter
     private static bool TryParseTimestamps(string line, out TimeSpan start, out TimeSpan end)
     {
         start = end = TimeSpan.Zero;
-        Match m = TimestampLineRx.Match(line);
+        Match m = TimestampLineRx().Match(line);
         if (!m.Success)
             return false;
 

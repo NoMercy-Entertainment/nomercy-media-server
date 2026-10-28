@@ -17,8 +17,22 @@ using NoMercy.MediaProcessing.Shows;
 namespace NoMercy.Tests.MediaProcessing.Inbox;
 
 [Trait("Category", "Unit")]
-public class InboxClassifierTests
+public partial class InboxClassifierTests
 {
+    [System.Text.RegularExpressions.GeneratedRegex(
+        @"\s*\((?:19|20)\d{2}\)\s*",
+        System.Text.RegularExpressions.RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial System.Text.RegularExpressions.Regex ParenthesizedYearWithSpaces();
+
+    [System.Text.RegularExpressions.GeneratedRegex(
+        @"\((?:19|20)(\d{2})\)",
+        System.Text.RegularExpressions.RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial System.Text.RegularExpressions.Regex ParenthesizedYear();
+
     // -----------------------------------------------------------------------
     // Factory helpers
     // -----------------------------------------------------------------------
@@ -711,20 +725,13 @@ public class InboxClassifierTests
     private static string ExtractMovieTitleFromPath(string path)
     {
         string filename = Path.GetFileNameWithoutExtension(path);
-        filename = System.Text.RegularExpressions.Regex.Replace(
-            filename,
-            @"\s*\((?:19|20)\d{2}\)\s*",
-            string.Empty
-        );
+        filename = ParenthesizedYearWithSpaces().Replace(filename, string.Empty);
         return filename.Trim();
     }
 
     private static int? ExtractYearFromPath(string path)
     {
-        System.Text.RegularExpressions.Match match = System.Text.RegularExpressions.Regex.Match(
-            path,
-            @"\((?:19|20)(\d{2})\)"
-        );
+        System.Text.RegularExpressions.Match match = ParenthesizedYear().Match(path);
         if (!match.Success)
             return null;
         return int.TryParse(match.Value.Trim('(', ')'), out int year) ? year : null;

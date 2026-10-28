@@ -428,6 +428,23 @@ public class UserSettingsTests : IDisposable
     }
 
     [Fact]
+    public void BuildDumpCells_SeedBookkeepingRows_AreNotListedAsSettings()
+    {
+        Dictionary<string, string> settings = new()
+        {
+            ["cronRunners"] = "2",
+            ["genre_translation_miss:am"] = "1",
+            ["genre_translation_miss:xx"] = "1",
+            ["seed_state:anime_themes_fetched_at"] = "2026-10-01T00:00:00.0000000Z",
+            ["auth_access_token"] = "secret-value",
+        };
+
+        List<string> cells = UserSettings.BuildDumpCells(settings);
+
+        cells.Should().Equal("cronRunners = 2");
+    }
+
+    [Fact]
     public void ApplySettings_NotSilent_SecondCall_DoesNotRedumpConfig()
     {
         System.Reflection.FieldInfo? field = typeof(UserSettings).GetField(

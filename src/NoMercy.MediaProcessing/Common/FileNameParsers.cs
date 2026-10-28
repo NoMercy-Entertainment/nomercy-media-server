@@ -23,8 +23,20 @@ using NoMercy.Providers.TMDB.Models.TV;
 
 namespace NoMercy.MediaProcessing.Common;
 
-public static class FileNameParsers
+public static partial class FileNameParsers
 {
+    [GeneratedRegex("^The[\\s]*", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex LeadingTheRegex();
+
+    [GeneratedRegex("^An[\\s]{1,}", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex LeadingAnRegex();
+
+    [GeneratedRegex("^A[\\s]{1,}", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex LeadingARegex();
+
+    [GeneratedRegex(@":\s|\sand\sthe", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex TitleSeparatorRegex();
+
     private static string Pad(int number, int width)
     {
         return number.ToString().PadLeft(width, '0');
@@ -70,13 +82,13 @@ public static class FileNameParsers
         title = char.ToUpper(title[0]) + title[1..];
 
         // Step 2: Remove leading "The", "An", and "A" from the title
-        title = Regex.Replace(title, "^The[\\s]*", "", RegexOptions.IgnoreCase);
-        title = Regex.Replace(title, "^An[\\s]{1,}", "", RegexOptions.IgnoreCase);
-        title = Regex.Replace(title, "^A[\\s]{1,}", "", RegexOptions.IgnoreCase);
+        title = LeadingTheRegex().Replace(title, "");
+        title = LeadingAnRegex().Replace(title, "");
+        title = LeadingARegex().Replace(title, "");
 
         // Step 3: Replace ": " and " and the" with the parsed year (if available) or "."
         string replacement = date != null ? $".{date.ParseYear()}." : ".";
-        title = Regex.Replace(title, @":\s|\sand\sthe", replacement, RegexOptions.IgnoreCase);
+        title = TitleSeparatorRegex().Replace(title, replacement);
 
         // Step 4: Replace all "." with " "
         title = title.Replace(".", " ");

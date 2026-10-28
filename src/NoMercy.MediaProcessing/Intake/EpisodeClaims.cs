@@ -76,7 +76,8 @@ public static partial class EpisodeClaims
 
     [GeneratedRegex(
         @"(?<![A-Za-z0-9])(?:S\d{1,4}[\s._-]*E\d{1,4}|\d{1,2}x\d{1,3}|-[\s._]*\d{1,4}[\s._]*-)(?![A-Za-z0-9])",
-        RegexOptions.IgnoreCase
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
     )]
     private static partial Regex ExplicitEpisodeMarker();
 }

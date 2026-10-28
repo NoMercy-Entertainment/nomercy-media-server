@@ -30,9 +30,16 @@ namespace NoMercy.Tests.Storage.Contract;
 /// </summary>
 [Collection("StorageBackends")]
 [Trait("Category", "Integration")]
-public sealed class WebDavStorageContractTests(StorageBackendsFixture fixture)
+public sealed partial class WebDavStorageContractTests(StorageBackendsFixture fixture)
     : IStorageContractTests
 {
+    [System.Text.RegularExpressions.GeneratedRegex(
+        "<D:href>([^<]+)</D:href>",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial System.Text.RegularExpressions.Regex DavHref();
+
     // Raw HTTP client built per-test from the shared fixture's credentials.
     private HttpClient BuildRawHttp()
     {
@@ -139,12 +146,7 @@ public sealed class WebDavStorageContractTests(StorageBackendsFixture fixture)
 
             string body = await list.Content.ReadAsStringAsync();
             // Crude href extraction — good enough for this fixture.
-            System.Text.RegularExpressions.MatchCollection matches =
-                System.Text.RegularExpressions.Regex.Matches(
-                    body,
-                    "<D:href>([^<]+)</D:href>",
-                    System.Text.RegularExpressions.RegexOptions.IgnoreCase
-                );
+            System.Text.RegularExpressions.MatchCollection matches = DavHref().Matches(body);
 
             foreach (System.Text.RegularExpressions.Match m in matches)
             {

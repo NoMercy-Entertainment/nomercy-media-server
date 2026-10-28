@@ -17,8 +17,11 @@ using Xunit;
 namespace NoMercy.Tests.Networking;
 
 [Trait("Category", "Unit")]
-public sealed class ReachCodesTests
+public sealed partial class ReachCodesTests
 {
+    [GeneratedRegex("^[A-Za-z0-9_-]{22,64}$", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex ApiAcceptedCode();
+
     [Fact]
     public void AnIssuedCode_MatchesItsOwnPath()
     {
@@ -34,7 +37,7 @@ public sealed class ReachCodesTests
         // The API validates ^[A-Za-z0-9_-]{22,64}$; a code it refuses is a check that never runs.
         string code = new ReachCodes().Issue();
 
-        Assert.Matches(new Regex("^[A-Za-z0-9_-]{22,64}$"), code);
+        Assert.Matches(ApiAcceptedCode(), code);
     }
 
     [Fact]

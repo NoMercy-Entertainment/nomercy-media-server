@@ -26,15 +26,24 @@ namespace NoMercy.Tests.Networking;
 /// listener binds loopback instead, and this guard reads the test sources so
 /// a new wildcard bind fails here before it reaches a developer's machine.
 /// </summary>
-public sealed class TestListenersBindLoopbackGuardTests
+public sealed partial class TestListenersBindLoopbackGuardTests
 {
     // A wildcard address inside a socket expression: a constructor call
     // (new(...), new TcpListener(...), new UdpClient(...), new IPEndPoint(...))
     // or a Bind(...) call. An Assert.Equal(IPAddress.IPv6Any, ...) is not a bind.
-    private static readonly Regex WildcardBind = new(
+    [GeneratedRegex(
         @"(new\s*(TcpListener|UdpClient|IPEndPoint|Socket)?\s*\(|\.Bind\s*\()[^;]*IPAddress\.(Any|IPv6Any)\b",
-        RegexOptions.Compiled
-    );
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex WildcardBind();
+
+    [GeneratedRegex(
+        @"\b(MdnsDeviceScanner|GoogleCastDeviceScanner)\s+\w+\s*=\s*new\b",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex BuildsScanner();
 
     // Test files whose wildcard text is fixture source handed to an analyzer,
     // never a socket this process opens.
@@ -65,7 +74,7 @@ public sealed class TestListenersBindLoopbackGuardTests
 
             for (int i = 0; i < lines.Length; i++)
             {
-                if (WildcardBind.IsMatch(lines[i]))
+                if (WildcardBind().IsMatch(lines[i]))
                     offenders.Add($"{relative}:{i + 1}: {lines[i].Trim()}");
             }
         }
@@ -117,9 +126,6 @@ public sealed class TestListenersBindLoopbackGuardTests
     public void EveryTestThatBuildsAnMdnsScannerPassesTheNonBindingTransport()
     {
         string testsRoot = RepoPaths.At("tests");
-        Regex buildsScanner = new(
-            @"\b(MdnsDeviceScanner|GoogleCastDeviceScanner)\s+\w+\s*=\s*new\b"
-        );
         List<string> offenders = [];
 
         foreach (
@@ -133,7 +139,10 @@ public sealed class TestListenersBindLoopbackGuardTests
 
             string text = File.ReadAllText(file);
 
-            if (buildsScanner.IsMatch(text) && !text.Contains(nameof(NonBindingMulticastTransport)))
+            if (
+                BuildsScanner().IsMatch(text)
+                && !text.Contains(nameof(NonBindingMulticastTransport))
+            )
                 offenders.Add(relative);
         }
 

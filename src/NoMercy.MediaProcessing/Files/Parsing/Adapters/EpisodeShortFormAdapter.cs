@@ -29,7 +29,8 @@ public sealed partial class EpisodeShortFormAdapter : IFilenameParseAdapter
 
     [GeneratedRegex(
         @"(?<![A-Za-z0-9])(?:S([0-9]{1,2})[\.\s\-_]?)?E(?:p|pisode)?[\.\s]?([0-9]{1,3})(?![A-Za-z0-9])",
-        RegexOptions.IgnoreCase
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
     )]
     private static partial Regex ShortForm();
 

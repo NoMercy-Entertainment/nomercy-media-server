@@ -20,8 +20,15 @@ using Xunit;
 namespace NoMercy.Tests.Api;
 
 [Trait("Category", "Unit")]
-public class LocalizationMiddlewareTests
+public partial class LocalizationMiddlewareTests
 {
+    [GeneratedRegex(
+        @"UseRequestLocalization\s*\(",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex UseRequestLocalizationCall();
+
     [Theory]
     [InlineData(["en-US,nl;q=0.9", "en-US"])]
     [InlineData(["nl;q=1.0,en;q=0.5", "nl"])]
@@ -46,7 +53,7 @@ public class LocalizationMiddlewareTests
 
         string source = File.ReadAllText(sourceFile);
 
-        int count = Regex.Matches(source, @"UseRequestLocalization\s*\(").Count;
+        int count = UseRequestLocalizationCall().Matches(source).Count;
 
         Assert.Equal(1, count);
     }

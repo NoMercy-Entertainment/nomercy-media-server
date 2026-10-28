@@ -19,7 +19,7 @@ public static partial class ImageDataUri
     public const string NotADataUri = "Cover must be a data:image/...;base64,... payload";
     public const string NotBase64 = "Cover payload is not valid base64";
 
-    [GeneratedRegex("data:image/(?<type>.+?),(?<data>.+)")]
+    [GeneratedRegex("data:image/(?<type>.+?),(?<data>.+)", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex DataUriRegex();
 
     /// <summary>

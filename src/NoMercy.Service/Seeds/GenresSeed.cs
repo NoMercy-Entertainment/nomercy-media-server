@@ -25,7 +25,7 @@ namespace NoMercy.Service.Seeds;
 
 public static class GenresSeed
 {
-    private const string MissKeyPrefix = "genre_translation_miss:";
+    private const string MissKeyPrefix = ConfigurationBookkeeping.GenreTranslationMissPrefix;
 
     public static async Task Init(this MediaContext dbContext, AppDbContext? appDbContext = null)
     {
