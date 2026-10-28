@@ -573,7 +573,10 @@ public static partial class ServiceConfiguration
         services.AddScoped<IDriverRepository, DriverRepository>();
         services.AddScoped<IEncodingHistoryRepository, EncodingHistoryRepository>();
         services.AddScoped<IEncodingPresetRepository, EncodingPresetRepository>();
-        services.AddScoped<NoMercy.Data.Visualizers.IVisualizerRepository, NoMercy.Data.Visualizers.VisualizerRepository>();
+        services.AddScoped<
+            NoMercy.Data.Visualizers.IVisualizerRepository,
+            NoMercy.Data.Visualizers.VisualizerRepository
+        >();
         services.AddScoped<IFolderRepository, FolderRepository>();
         services.AddScoped<IAnimeThemeRepository, AnimeThemeRepository>();
         services.AddScoped<IAnimeDemographicRepository, AnimeDemographicRepository>();

@@ -208,6 +208,7 @@ public class RouteContractSnapshotTests : IClassFixture<NoMercyApiFactory>
         "GET api/v{version:apiVersion}/encoder/profiles/{id:ulid} [EncoderProfiles.Get]",
         "GET api/v{version:apiVersion}/encoder/profiles/{id:ulid}/resolved [EncoderProfiles.GetResolved]",
         "GET api/v{version:apiVersion}/visualizers [Visualizers.List]",
+        "GET api/v{version:apiVersion}/visualizers/bundle [Visualizers.GetBundleVersion]",
         "GET api/v{version:apiVersion}/visualizers/current [Visualizers.GetCurrent]",
         "GET api/v{version:apiVersion}/visualizers/textures/{name} [Visualizers.GetTexture]",
         "GET api/v{version:apiVersion}/visualizers/{id:ulid} [Visualizers.Get]",

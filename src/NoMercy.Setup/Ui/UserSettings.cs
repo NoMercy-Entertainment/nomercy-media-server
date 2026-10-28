@@ -133,6 +133,24 @@ public static class UserSettings
 
     private static bool _configDumpLogged;
 
+    internal static List<string> BuildDumpCells(IReadOnlyDictionary<string, string> settings)
+    {
+        List<string> cells = new();
+        foreach (KeyValuePair<string, string> entry in settings)
+        {
+            bool isSecret =
+                entry.Key.Contains("token", StringComparison.OrdinalIgnoreCase)
+                || entry.Key.Contains("ssl_", StringComparison.OrdinalIgnoreCase)
+                || entry.Key.Contains("fingerprint", StringComparison.OrdinalIgnoreCase)
+                || entry.Key.Contains("secret", StringComparison.OrdinalIgnoreCase);
+            if (isSecret || ConfigurationBookkeeping.IsBookkeepingKey(entry.Key))
+                continue;
+            cells.Add($"{entry.Key} = {entry.Value}");
+        }
+
+        return cells;
+    }
+
     public static void ApplySettings(Dictionary<string, string> settings, bool silent = false)
     {
         // Dump the resolved config once per process at Verbose, with secret
@@ -147,18 +165,7 @@ public static class UserSettings
         // they must not be written to logs. Logged once per process at Verbose.
         if (dumpConfig)
         {
-            List<string> cells = new();
-            foreach (KeyValuePair<string, string> entry in settings)
-            {
-                bool isSecret =
-                    entry.Key.Contains("token", StringComparison.OrdinalIgnoreCase)
-                    || entry.Key.Contains("ssl_", StringComparison.OrdinalIgnoreCase)
-                    || entry.Key.Contains("fingerprint", StringComparison.OrdinalIgnoreCase)
-                    || entry.Key.Contains("secret", StringComparison.OrdinalIgnoreCase);
-                if (isSecret)
-                    continue;
-                cells.Add($"{entry.Key} = {entry.Value}");
-            }
+            List<string> cells = BuildDumpCells(settings);
 
             if (cells.Count > 0)
             {

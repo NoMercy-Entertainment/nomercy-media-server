@@ -121,6 +121,63 @@ public class VisualizerRepository(MediaContext context) : IVisualizerRepository
             .FirstOrDefaultAsync(v => v.Id == id && (includeDisabled || v.Enabled));
     }
 
+    /// <summary>The pinned hash while nothing local differs; user entries and disabled built-ins fold in.</summary>
+    public async Task<VisualizerBundleVersion> GetBundleVersionAsync()
+    {
+        List<Visualizer> rows = await context
+            .Visualizers.AsNoTracking()
+            .Select(v => new Visualizer
+            {
+                Id = v.Id,
+                Slug = v.Slug,
+                Name = v.Name,
+                Author = v.Author,
+                License = v.License,
+                SourceUrl = v.SourceUrl,
+                Format = v.Format,
+                Tags = v.Tags,
+                Textures = v.Textures,
+                ContentHash = v.ContentHash,
+                IsBuiltIn = v.IsBuiltIn,
+                Enabled = v.Enabled,
+                UpdatedAt = v.UpdatedAt,
+                PayloadJson = "",
+            })
+            .ToListAsync();
+
+        List<string> local = rows.Where(v => !v.IsBuiltIn)
+            .Select(v =>
+                string.Join(
+                    '|',
+                    v.Id,
+                    v.Slug,
+                    v.Name,
+                    v.Author,
+                    v.License,
+                    v.SourceUrl,
+                    v.Tags,
+                    v.Textures,
+                    v.ContentHash,
+                    v.Enabled
+                )
+            )
+            .Concat(rows.Where(v => v.IsBuiltIn && !v.Enabled).Select(v => $"{v.Id}|off"))
+            .Order(StringComparer.Ordinal)
+            .ToList();
+
+        string pinned = VisualizerBundle.PinnedHash();
+        string hash =
+            local.Count == 0
+                ? pinned
+                : VisualizerCanonicalJson.Hash(pinned + "\n" + string.Join('\n', local));
+
+        return new(
+            hash,
+            rows.Count(v => v.Enabled),
+            rows.Count == 0 ? null : rows.Max(v => v.UpdatedAt)
+        );
+    }
+
     public async Task<Visualizer> CreateAsync(Visualizer visualizer)
     {
         while (await context.Visualizers.AnyAsync(v => v.Slug == visualizer.Slug))
@@ -138,6 +195,7 @@ public class VisualizerRepository(MediaContext context) : IVisualizerRepository
             return null;
 
         update(visualizer);
+        visualizer.UpdatedAt = DateTime.UtcNow;
         await context.SaveChangesAsync();
         return visualizer;
     }
@@ -164,6 +222,7 @@ public class VisualizerRepository(MediaContext context) : IVisualizerRepository
             return false;
 
         visualizer.Enabled = enabled;
+        visualizer.UpdatedAt = DateTime.UtcNow;
         await context.SaveChangesAsync();
         return true;
     }
