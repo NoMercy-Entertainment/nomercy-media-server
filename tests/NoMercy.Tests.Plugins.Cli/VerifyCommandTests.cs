@@ -160,6 +160,23 @@ public class VerifyCommandTests : IDisposable
     }
 
     [Fact]
+    public async Task A_hook_the_host_enforces_by_name_is_left_alone()
+    {
+        ScanReport report = await VerifyCommand.RunAsync(
+            Write(
+                Clean.Replace(
+                    "\"rest\": true",
+                    "\"rest\": true, \"hooks\": [\"ui\", \"scheduledTask\", \"encoder\"]"
+                )
+            )
+        );
+
+        report
+            .Refusals.Should()
+            .BeEmpty("the host grants these exact names, so the scan may not refuse them");
+    }
+
+    [Fact]
     public void A_mount_naming_a_kind_that_does_not_exist_is_blocked()
     {
         IReadOnlyList<PluginRefusal> findings = ManifestScan.Run(
