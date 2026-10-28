@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using System.Collections.Concurrent;
+using NoMercy.MediaProcessing.Music;
 using NoMercy.NmSystem.Extensions;
 using NoMercy.NmSystem.SystemCalls;
 using Stowage;
@@ -182,6 +183,10 @@ internal class StowageWatcher : IDisposable
         ICollection<string> snapshotKeys = _snapshot.Keys;
         HashSet<string> currentPathsSet = new(foundPaths);
 
+        if (!initial && ListingLostTooMuch(snapshotKeys, currentPathsSet))
+            return;
+
+        _deletesHeld = false;
         Parallel.ForEach(
             snapshotKeys,
             path =>
@@ -205,6 +210,23 @@ internal class StowageWatcher : IDisposable
         );
     }
 
+    // An empty or short listing that still answered OK is an unmounted share, not deletes.
+    private bool ListingLostTooMuch(ICollection<string> snapshotKeys, HashSet<string> current)
+    {
+        int gone = snapshotKeys.Count(path => !current.Contains(path));
+        bool lostAll = current.Count == 0 && snapshotKeys.Count > 0;
+        if (!lostAll && !MissingFileGuard.ShouldSkipDeletes(snapshotKeys.Count, gone))
+            return false;
+
+        if (!_deletesHeld)
+            Logger.Warning(
+                $"StowageWatcher '{_path}' listing lost {gone} of {snapshotKeys.Count} files, reporting no deletes"
+            );
+        _deletesHeld = true;
+        return true;
+    }
+
+    private bool _deletesHeld;
     private bool _disposed;
 
     public void Dispose()

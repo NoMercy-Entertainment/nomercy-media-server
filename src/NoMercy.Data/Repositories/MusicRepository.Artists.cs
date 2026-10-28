@@ -43,11 +43,15 @@ public partial class MusicRepository
             .Include(artist => artist.AlbumArtist)
                 .ThenInclude(albumArtist => albumArtist.Album)
                     .ThenInclude(album => album.Images)
-            .Include(artist => artist.ArtistTrack)
+            .Include(artist =>
+                artist.ArtistTrack.AsQueryable().Where(TrackAvailability.ArtistTrackIsPlayable)
+            )
                 .ThenInclude(at => at.Track)
                     .ThenInclude(track => track.AlbumTrack)
                         .ThenInclude(albumTrack => albumTrack.Album)
-            .Include(artist => artist.ArtistTrack)
+            .Include(artist =>
+                artist.ArtistTrack.AsQueryable().Where(TrackAvailability.ArtistTrackIsPlayable)
+            )
                 .ThenInclude(at => at.Track)
                     .ThenInclude(track => track.TrackUser.Where(tu => tu.UserId == userId))
             .Include(artist => artist.ArtistMusicGenre)
@@ -164,7 +168,9 @@ public partial class MusicRepository
                     )
                     : (artist.TitleSort ?? artist.Name).ToLower().StartsWith(letter.ToLower())
             )
-            .Where(artist => artist.ArtistTrack.Any())
+            .Where(artist =>
+                artist.ArtistTrack.AsQueryable().Any(TrackAvailability.ArtistTrackIsPlayable)
+            )
             .OrderBy(artist => artist.TitleSort ?? artist.Name)
             .ThenBy(artist => artist.Id)
             .Select(artist => new ArtistCardDto
@@ -177,7 +183,9 @@ public partial class MusicRepository
                 ColorPalette = artist._colorPalette ?? string.Empty,
                 LibraryId = artist.LibraryId,
                 Folder = artist.Folder,
-                TrackCount = artist.ArtistTrack.Count(),
+                TrackCount = artist
+                    .ArtistTrack.AsQueryable()
+                    .Count(TrackAvailability.ArtistTrackIsPlayable),
                 ThumbImagePath = artist
                     .Images.Where(image => image.Type == "thumb")
                     .Select(image => image.FilePath)
@@ -205,7 +213,9 @@ public partial class MusicRepository
         List<ArtistCardDto> cards = await mediaContext
             .Artists.AsNoTracking()
             .ForUser(userId)
-            .Where(artist => artist.ArtistTrack.Any())
+            .Where(artist =>
+                artist.ArtistTrack.AsQueryable().Any(TrackAvailability.ArtistTrackIsPlayable)
+            )
             .OrderBy(artist => artist.TitleSort ?? artist.Name)
             .ThenBy(artist => artist.Id)
             .Select(artist => new ArtistCardDto
@@ -218,7 +228,9 @@ public partial class MusicRepository
                 ColorPalette = artist._colorPalette ?? string.Empty,
                 LibraryId = artist.LibraryId,
                 Folder = artist.Folder,
-                TrackCount = artist.ArtistTrack.Count(),
+                TrackCount = artist
+                    .ArtistTrack.AsQueryable()
+                    .Count(TrackAvailability.ArtistTrackIsPlayable),
                 ThumbImagePath = artist
                     .Images.Where(image => image.Type == "thumb")
                     .Select(image => image.FilePath)
@@ -240,7 +252,10 @@ public partial class MusicRepository
         await using MediaContext mediaContext = await contextFactory.CreateDbContextAsync(ct);
         return await mediaContext
             .Artists.AsNoTracking()
-            .Where(artist => !string.IsNullOrEmpty(artist.Cover) && artist.ArtistTrack.Any())
+            .Where(artist =>
+                !string.IsNullOrEmpty(artist.Cover)
+                && artist.ArtistTrack.AsQueryable().Any(TrackAvailability.ArtistTrackIsPlayable)
+            )
             .OrderByDescending(artist => artist.CreatedAt)
             .ThenBy(artist => artist.Id)
             .Select(artist => new ArtistCardDto
@@ -253,7 +268,9 @@ public partial class MusicRepository
                 ColorPalette = artist._colorPalette ?? string.Empty,
                 LibraryId = artist.LibraryId,
                 Folder = artist.Folder,
-                TrackCount = artist.ArtistTrack.Count(),
+                TrackCount = artist
+                    .ArtistTrack.AsQueryable()
+                    .Count(TrackAvailability.ArtistTrackIsPlayable),
                 ThumbImagePath = artist
                     .Images.Where(image => image.Type == "thumb")
                     .Select(image => image.FilePath)
@@ -285,7 +302,9 @@ public partial class MusicRepository
                 ColorPalette = artistUser.Artist._colorPalette ?? string.Empty,
                 LibraryId = artistUser.Artist.LibraryId,
                 Folder = artistUser.Artist.Folder,
-                TrackCount = artistUser.Artist.ArtistTrack.Count(),
+                TrackCount = artistUser
+                    .Artist.ArtistTrack.AsQueryable()
+                    .Count(TrackAvailability.ArtistTrackIsPlayable),
                 ThumbImagePath = artistUser
                     .Artist.Images.Where(image => image.Type == "thumb")
                     .Select(image => image.FilePath)
@@ -314,7 +333,9 @@ public partial class MusicRepository
                 ColorPalette = artist._colorPalette ?? string.Empty,
                 LibraryId = artist.LibraryId,
                 Folder = artist.Folder,
-                TrackCount = artist.ArtistTrack.Count(),
+                TrackCount = artist
+                    .ArtistTrack.AsQueryable()
+                    .Count(TrackAvailability.ArtistTrackIsPlayable),
                 ThumbImagePath = artist
                     .Images.Where(image => image.Type == "thumb")
                     .Select(image => image.FilePath)

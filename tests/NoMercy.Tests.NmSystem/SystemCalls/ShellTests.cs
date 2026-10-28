@@ -90,4 +90,23 @@ public class ShellTests
         Assert.Equal(0, result.ExitCode);
         Assert.Contains(maliciousLookingArgument, result.StandardOutput);
     }
+
+    [Fact]
+    public async Task ExecAsync_ReadsCapturedOutputAsUtf8_WhateverTheHostCodePage()
+    {
+        // The child writes the UTF-8 bytes of U+2764; a host code page must not decode them.
+        Shell.ExecResult result = OperatingSystem.IsWindows()
+            ? await Shell.ExecAsync(
+                "powershell",
+                [
+                    "-NoProfile",
+                    "-Command",
+                    "[Console]::OutputEncoding = New-Object Text.UTF8Encoding($false); [Console]::Out.Write([char]0x2764)",
+                ]
+            )
+            : await Shell.ExecAsync("printf", ["\\342\\235\\244"]);
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Equal("❤", result.StandardOutput);
+    }
 }

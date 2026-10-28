@@ -42,6 +42,7 @@ using NoMercy.MediaProcessing.Images.Palettes.Sources;
 using NoMercy.MediaProcessing.Jobs;
 using NoMercy.MediaProcessing.Libraries;
 using NoMercy.MediaProcessing.Movies;
+using NoMercy.MediaProcessing.Music;
 using NoMercy.MediaProcessing.People;
 using NoMercy.MediaProcessing.Reclaim;
 using NoMercy.MediaProcessing.Seasons;
@@ -338,6 +339,8 @@ public static partial class ServiceConfiguration
         // Update checker + periodic background check
         services.AddSingleton<IUpdateChecker, UpdateChecker>();
         services.AddHostedService<PeriodicUpdateCheckService>();
+        services.AddHostedService<MusicLibraryStartupScanService>();
+        services.AddLibraryFileWatcher();
 
         // Connectivity manager (replaces ServerRegistrationService + CloudflareTunnelService).
         // The tunnel availability check belongs to the manager, not the tunnel strategy: the
@@ -609,6 +612,7 @@ public static partial class ServiceConfiguration
         // Add Managers
         // services.AddScoped<EncoderManager>();
         services.AddScoped<IDefaultEncodingPresetLinker, DefaultEncodingPresetLinker>();
+        services.AddSingleton<IRecordingIdentifier, AcoustIdRecordingIdentifier>();
         services.AddScoped<LibraryManager>();
         services.AddScoped<MovieManager>();
         services.AddScoped<CollectionManager>();

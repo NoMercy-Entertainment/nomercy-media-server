@@ -29,7 +29,9 @@ public partial class MusicRepository
         return await mediaContext
             .Playlists.AsNoTracking()
             .Where(playlist => playlist.UserId == userId)
-            .Include(playlist => playlist.Tracks)
+            .Include(playlist =>
+                playlist.Tracks.AsQueryable().Where(TrackAvailability.PlaylistTrackIsPlayable)
+            )
                 .ThenInclude(trackUser => trackUser.Track)
             .OrderBy(playlist => playlist.Name)
             .ThenBy(playlist => playlist.Id)
@@ -49,14 +51,18 @@ public partial class MusicRepository
             .Playlists.AsNoTracking()
             .Where(playlist => playlist.Id == id)
             .Where(playlist => playlist.UserId == userId)
-            .Include(playlist => playlist.Tracks)
+            .Include(playlist =>
+                playlist.Tracks.AsQueryable().Where(TrackAvailability.PlaylistTrackIsPlayable)
+            )
                 .ThenInclude(trackUser => trackUser.Track)
                     .ThenInclude(track => track.AlbumTrack)
                         .ThenInclude(albumTrack => albumTrack.Album)
                             .ThenInclude(album => album.AlbumArtist)
                                 .ThenInclude(albumArtist => albumArtist.Artist)
                                     .ThenInclude(artist => artist.Images)
-            .Include(playlist => playlist.Tracks)
+            .Include(playlist =>
+                playlist.Tracks.AsQueryable().Where(TrackAvailability.PlaylistTrackIsPlayable)
+            )
                 .ThenInclude(trackUser => trackUser.Track)
                     .ThenInclude(track => track.ArtistTrack)
                         .ThenInclude(artistTrack => artistTrack.Artist)
@@ -83,6 +89,7 @@ public partial class MusicRepository
         await using MediaContext mediaContext = await contextFactory.CreateDbContextAsync(ct);
         return await mediaContext
             .PlaylistTrack.AsNoTracking()
+            .Playable()
             .Where(pt => pt.PlaylistId == playlistId && pt.Playlist.UserId == userId)
             .Include(pt => pt.Track)
                 .ThenInclude(track => track.AlbumTrack)
@@ -135,6 +142,7 @@ public partial class MusicRepository
 
         List<AlbumTrack> albumTracks = await mediaContext
             .AlbumTrack.AsNoTracking()
+            .Playable()
             .Where(at => at.AlbumId == albumId)
             .Include(at => at.Track)
                 .ThenInclude(track => track.ArtistTrack)
@@ -226,6 +234,7 @@ public partial class MusicRepository
 
         List<ArtistTrack> artistTracks = await mediaContext
             .ArtistTrack.AsNoTracking()
+            .Playable()
             .Where(at => at.ArtistId == artistId)
             .Include(at => at.Artist)
                 .ThenInclude(artist => artist.Images)
@@ -316,6 +325,7 @@ public partial class MusicRepository
 
         List<MusicGenreTrack> genreTracks = await mediaContext
             .MusicGenreTrack.AsNoTracking()
+            .Playable()
             .Where(mgt =>
                 mgt.Genre.AlbumMusicGenres.Any(g =>
                     g.Album.Library.LibraryUsers.Any(u => u.UserId == userId)
@@ -388,7 +398,9 @@ public partial class MusicRepository
                 Cover = playlist.Cover,
                 Description = playlist.Description,
                 ColorPalette = playlist._colorPalette ?? string.Empty,
-                TrackCount = playlist.Tracks.Count(),
+                TrackCount = playlist
+                    .Tracks.AsQueryable()
+                    .Count(TrackAvailability.PlaylistTrackIsPlayable),
             })
             .Take(take)
             .ToListAsync(ct);
@@ -411,7 +423,9 @@ public partial class MusicRepository
                 Cover = playlist.Cover,
                 Description = playlist.Description,
                 ColorPalette = playlist._colorPalette ?? string.Empty,
-                TrackCount = playlist.Tracks.Count(),
+                TrackCount = playlist
+                    .Tracks.AsQueryable()
+                    .Count(TrackAvailability.PlaylistTrackIsPlayable),
             })
             .ToListAsync(ct);
         return await MusicGroupCovers.FillPlaylistsAsync(mediaContext, playlists, ct);

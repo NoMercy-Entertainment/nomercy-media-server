@@ -81,8 +81,12 @@ public static class Shell
         configureArguments(process.StartInfo);
         process.StartInfo.WorkingDirectory = options.WorkingDirectory.OrEmpty();
 
+        // Unset, .NET decodes a child's output with the host code page and mangles non-ASCII names.
         if (options.CaptureStdOut)
+        {
             process.StartInfo.RedirectStandardOutput = true;
+            process.StartInfo.StandardOutputEncoding = Encoding.UTF8;
+        }
 
         if (options.RedirectInput)
             process.StartInfo.RedirectStandardInput = true;
@@ -96,7 +100,11 @@ public static class Shell
         if (options.MergeStdErrToOut)
             process.StartInfo.RedirectStandardError = false;
         else
+        {
             process.StartInfo.RedirectStandardError = options.CaptureStdErr;
+            if (options.CaptureStdErr)
+                process.StartInfo.StandardErrorEncoding = Encoding.UTF8;
+        }
 
         foreach (KeyValuePair<string, string> envVar in options.EnvironmentVariables)
             process.StartInfo.EnvironmentVariables[envVar.Key] = envVar.Value;
@@ -179,6 +187,7 @@ public static class Shell
                 FileName = "/bin/bash",
                 Arguments = $"-c \"{command}\"",
                 RedirectStandardOutput = true,
+                StandardOutputEncoding = Encoding.UTF8,
                 UseShellExecute = false,
                 CreateNoWindow = true,
             };

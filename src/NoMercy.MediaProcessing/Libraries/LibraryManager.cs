@@ -23,6 +23,7 @@ using NoMercy.MediaProcessing.Files;
 using NoMercy.MediaProcessing.Files.Parsing;
 using NoMercy.MediaProcessing.Jobs;
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
+using NoMercy.MediaProcessing.Music;
 using NoMercy.NmSystem;
 using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Dto;
@@ -47,7 +48,8 @@ public class LibraryManager(
     IFilenameParserPipeline filenameParser,
     ILogger<LibraryManager> logger,
     IEventBus? eventBus = null,
-    IPluginMediaSourceProvider? pluginMediaSources = null
+    IPluginMediaSourceProvider? pluginMediaSources = null,
+    IRecordingIdentifier? recordingIdentifier = null
 ) : BaseManager, ILibraryManager
 {
     private Library? _library;
@@ -110,6 +112,7 @@ public class LibraryManager(
         ];
 
         int depth = GetDepth();
+        ConcurrentBag<Folder> scannedMusicFolders = [];
 
         await Parallel.ForEachAsync(
             targets,
@@ -122,6 +125,8 @@ public class LibraryManager(
                     case MediaTypes.MusicMediaType:
                         int audioCount = await ScanAudioFolder(folder, depth);
                         Interlocked.Add(ref itemsFound, audioCount);
+                        if (audioCount > 0)
+                            scannedMusicFolders.Add(folder);
                         break;
                     case MediaTypes.AnimeMediaType:
                     case MediaTypes.TvMediaType:
@@ -133,6 +138,7 @@ public class LibraryManager(
             }
         );
 
+        await PruneMissingTracks(scannedMusicFolders);
         await PublishImportsQueued(bus);
         stopwatch.Stop();
 
@@ -150,6 +156,34 @@ public class LibraryManager(
         }
 
         logger.LogInformation("Scanning done");
+    }
+
+    // Only folders the scan just listed are reconciled: an empty listing means an unreadable
+    // share, and then every file would look gone.
+    private async Task PruneMissingTracks(IEnumerable<Folder> scannedFolders)
+    {
+        MusicTrackReconciler reconciler = new(mediaContext, logger, recordingIdentifier);
+        foreach (Folder folder in scannedFolders)
+        {
+            try
+            {
+                IStorage folderStorage = storageFactory.For(
+                    folder.Id,
+                    folder.DriverId,
+                    string.Empty
+                );
+                await reconciler.ReconcileAsync(
+                    folder.Id,
+                    ResolveScanRoot(folderStorage, folder.Path),
+                    folderStorage.Driver,
+                    force: true
+                );
+            }
+            catch (Exception e)
+            {
+                logger.LogError(e, "Pruning missing tracks of {Path} failed", folder.Path);
+            }
+        }
     }
 
     public async Task ProcessNewLibraryItems(Ulid id)
@@ -189,6 +223,7 @@ public class LibraryManager(
         ];
 
         int depth = GetDepth();
+        ConcurrentBag<Folder> scannedMusicFolders = [];
 
         await Parallel.ForEachAsync(
             targets,
@@ -199,7 +234,12 @@ public class LibraryManager(
                 switch (_library.Type)
                 {
                     case MediaTypes.MusicMediaType:
-                        int audioCount = await ScanNewAudioFolder(folder, depth, existingFolders);
+                        int audioCount = await ScanNewAudioFolder(
+                            folder,
+                            depth,
+                            existingFolders,
+                            scannedMusicFolders
+                        );
                         Interlocked.Add(ref itemsFound, audioCount);
                         break;
                     case MediaTypes.AnimeMediaType:
@@ -212,6 +252,7 @@ public class LibraryManager(
             }
         );
 
+        await PruneMissingTracks(scannedMusicFolders);
         await PublishImportsQueued(bus);
         stopwatch.Stop();
 
@@ -302,7 +343,8 @@ public class LibraryManager(
     private async Task<int> ScanNewAudioFolder(
         Folder folder,
         int depth,
-        HashSet<string> existingFolders
+        HashSet<string> existingFolders,
+        ConcurrentBag<Folder> scannedFolders
     )
     {
         // Mount at configured root; MediaScan walks via absolute paths.
@@ -321,6 +363,9 @@ public class LibraryManager(
                 r.SubFolders ?? []
             ),
         ];
+
+        if (rootFolders.Count > 0)
+            scannedFolders.Add(folder);
 
         List<MediaFolderExtend> newFolders =
         [

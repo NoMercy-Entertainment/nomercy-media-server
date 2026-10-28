@@ -53,7 +53,7 @@ public class PluginMusicQuery(
 
         await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
 
-        IQueryable<LibraryTrack> libraryTracks = context.LibraryTrack.AsNoTracking();
+        IQueryable<LibraryTrack> libraryTracks = context.LibraryTrack.AsNoTracking().Playable();
 
         if (library is { } only)
         {

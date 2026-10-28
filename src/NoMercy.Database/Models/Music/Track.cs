@@ -130,6 +130,10 @@ public partial class Track : ColorPaletteTimeStamps
         set => field = PathNormalizer.NormalizeNullable(value);
     }
 
+    /// <summary>UTC time the file was first seen missing; null while the file is there.</summary>
+    [JsonProperty("missing_since")]
+    public DateTime? MissingSince { get; set; }
+
     [JsonProperty("folder_id")]
     public Ulid FolderId { get; set; }
     public Folder LibraryFolder { get; set; } = null!;

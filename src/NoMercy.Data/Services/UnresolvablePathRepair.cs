@@ -10,10 +10,10 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Logging;
 using NoMercy.Database;
+using NoMercy.Database.Maintenance;
 using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.Music;
 
@@ -85,7 +85,7 @@ public class UnresolvablePathRepair(
         // means the links have to go first. VideoFile children cascade and need
         // no equivalent.
         List<Guid> trackIds = tracks.Select(track => track.Id).ToList();
-        await ClearRestrictedChildrenAsync(
+        await RestrictedChildren.ClearAsync(
             mediaContext,
             typeof(Track),
             trackIds,
@@ -98,65 +98,5 @@ public class UnresolvablePathRepair(
         await transaction.CommitAsync(cancellationToken);
 
         return tracks.Count + videoFiles.Count;
-    }
-
-    /// <summary>
-    /// Deletes the rows that a RESTRICT foreign key would otherwise use to block
-    /// deleting the given parents. Reads the dependents from the EF model rather
-    /// than a hand-kept list, so a child table added later is covered the day it
-    /// is mapped instead of resurfacing this as a boot-time failure.
-    /// </summary>
-    private static async Task ClearRestrictedChildrenAsync(
-        MediaContext mediaContext,
-        Type parentType,
-        List<Guid> parentIds,
-        CancellationToken cancellationToken
-    )
-    {
-        if (parentIds.Count == 0)
-            return;
-
-        IEntityType parent =
-            mediaContext.Model.FindEntityType(parentType)
-            ?? throw new InvalidOperationException($"{parentType.Name} is not a mapped entity.");
-
-        string placeholders = string.Join(
-            ",",
-            Enumerable.Range(0, parentIds.Count).Select(index => $"{{{index}}}")
-        );
-        object[] parameters = parentIds.Cast<object>().ToArray();
-
-        foreach (IForeignKey foreignKey in parent.GetReferencingForeignKeys())
-        {
-            if (foreignKey.DeleteBehavior != DeleteBehavior.Restrict)
-                continue;
-
-            IEntityType dependent = foreignKey.DeclaringEntityType;
-            string? table = dependent.GetTableName();
-            if (table is null)
-                continue;
-
-            StoreObjectIdentifier storeObject = StoreObjectIdentifier.Table(
-                table,
-                dependent.GetSchema()
-            );
-            string? column = foreignKey.Properties[0].GetColumnName(storeObject);
-            if (column is null)
-                continue;
-
-            // Table and column are EF model metadata, never user input; the ids
-            // are bound as parameters.
-            string sql = string.Concat(
-                "DELETE FROM \"",
-                table,
-                "\" WHERE \"",
-                column,
-                "\" IN (",
-                placeholders,
-                ")"
-            );
-
-            await mediaContext.Database.ExecuteSqlRawAsync(sql, parameters, cancellationToken);
-        }
     }
 }

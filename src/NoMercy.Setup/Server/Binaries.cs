@@ -81,6 +81,14 @@ public class Binaries
     // releases are exempt — they are signature-verified and must ship fast.
     private static readonly TimeSpan ThirdPartyMinReleaseAge = TimeSpan.FromDays(14);
 
+    // Oldest cloudflared that does not trust compromised certificates. An install below
+    // it skips the soak window above; raise the floor only for a vendor security fix.
+    private static readonly Version CloudflaredMinSafeVersion = new(2026, 10, 2);
+
+    // Replaceable so tests need no real executable.
+    internal Func<string, Task<string?>> ReadInstalledVersion { get; set; } =
+        ReadInstalledVersionFromProcess;
+
     public Binaries(IStorageDriver driver, IStorage storage)
     {
         _driver = driver;
@@ -1803,13 +1811,58 @@ public class Binaries
         Logger.Setup($"Downloaded shaka-packager to {outputPath}");
     }
 
+    private static async Task<string?> ReadInstalledVersionFromProcess(string path)
+    {
+        try
+        {
+            return await Shell.ExecStdOutAsync(path, "--version");
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    // First version-looking token of a --version output: "cloudflared version 2026.9.1 (built ...)".
+    internal static Version? ParseReportedVersion(string? output)
+    {
+        foreach (
+            string token in (output ?? string.Empty).Split(
+                (char[]?)null,
+                StringSplitOptions.RemoveEmptyEntries
+            )
+        )
+        {
+            string candidate = token.TrimStart('v');
+            int suffix = candidate.IndexOfAny(['-', '+']);
+            if (suffix >= 0)
+                candidate = candidate[..suffix];
+
+            if (Version.TryParse(candidate, out Version? version))
+                return version;
+        }
+
+        return null;
+    }
+
+    // A binary that reports no version counts as below the floor: it cannot be vouched for.
+    private async Task<bool> IsBelowFloor(string installedPath, Version minSafeVersion)
+    {
+        if (!_storage.Exists(installedPath))
+            return true;
+
+        Version? installed = ParseReportedVersion(await ReadInstalledVersion(installedPath));
+        return installed is null || installed < minSafeVersion;
+    }
+
     internal async Task DownloadCloudflared()
     {
         string destinationPath = AppFiles.CloudflareDPath;
 
+        bool belowFloor = await IsBelowFloor(destinationPath, CloudflaredMinSafeVersion);
         GithubReleaseResponse releaseInfo = await GetLatestReleaseInfoOlderThan(
             GithubCloudflaredApiUrl,
-            ThirdPartyMinReleaseAge
+            belowFloor ? TimeSpan.Zero : ThirdPartyMinReleaseAge
         );
         if (releaseInfo.Assets.Length == 0)
         {
@@ -1817,7 +1870,9 @@ public class Binaries
             return;
         }
 
-        if (CheckLocalVersion(releaseInfo, destinationPath, out string version))
+        // The file date says nothing about a version below the floor: the soak may have
+        // installed it after this release was published.
+        if (!belowFloor && CheckLocalVersion(releaseInfo, destinationPath, out string version))
         {
             _binaryReport.Add($"Cloudflared = {version}");
             return;

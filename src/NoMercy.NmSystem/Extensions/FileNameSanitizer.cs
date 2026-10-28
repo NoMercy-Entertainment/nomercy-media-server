@@ -29,15 +29,16 @@ public static partial class FileNameSanitizer
     [GeneratedRegex(@"[/\\|:*?\""<>{}]", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex PathSeparatorsRegex();
 
+    [GeneratedRegex(@"[/\\:*?""<>|\p{Cc}]", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex InvalidFileNameCharsRegex();
+
     private static string _cleanFileName(string? name)
     {
         if (string.IsNullOrWhiteSpace(name))
             return "";
 
-        // Replace invalid file system characters with dots
-        string invalidChars = $"{string.Join("", Path.GetInvalidFileNameChars())}:?*<>|\"";
-        string pattern = $"[{Regex.Escape(invalidChars)}]";
-        name = Regex.Replace(name, pattern, ".", RegexOptions.None, TimeSpan.FromSeconds(1));
+        // The same set on every host: Path.GetInvalidFileNameChars is shorter on Linux.
+        name = InvalidFileNameCharsRegex().Replace(name, ".");
 
         // Replace whitespace with dots
         name = WhitespaceRegex().Replace(name, ".");
@@ -83,7 +84,7 @@ public static partial class FileNameSanitizer
         // Remove leading/trailing dots
         name = name.Trim('.');
 
-        return name;
+        return name.Length == 0 ? name : PortableFileName.Segment(name);
     }
 
     public static string SanitizeFileName(this string filePath)
@@ -111,7 +112,7 @@ public static partial class FileNameSanitizer
         if (string.IsNullOrEmpty(self))
             return string.Empty;
         string name = PathSeparatorsRegex().Replace(self, " ");
-        return name.Trim().SanitizeFileName();
+        return PortableFileName.Segment(name.Trim().SanitizeFileName());
     }
 
     public static string MusicBrainzSafeName(this string? self)
@@ -119,7 +120,7 @@ public static partial class FileNameSanitizer
         if (string.IsNullOrEmpty(self))
             return string.Empty;
         string name = PathSeparatorsRegex().Replace(self, "_");
-        return name.Trim().SanitizeFileName();
+        return PortableFileName.Segment(name.Trim().SanitizeFileName());
     }
 
     public static string CleanFileName(this string? self)
