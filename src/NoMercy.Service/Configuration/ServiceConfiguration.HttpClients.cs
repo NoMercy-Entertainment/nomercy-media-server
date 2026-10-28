@@ -249,6 +249,7 @@ public static partial class ServiceConfiguration
             {
                 client.BaseAddress = new("https://api.jikan.moe/v4/");
                 client.DefaultRequestHeaders.Accept.ParseAdd("application/json");
+                client.Timeout = TimeSpan.FromSeconds(15);
             }
         );
 

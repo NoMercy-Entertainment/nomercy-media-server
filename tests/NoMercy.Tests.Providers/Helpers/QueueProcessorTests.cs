@@ -12,6 +12,8 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Net;
+using NoMercy.NmSystem.Dto;
+using NoMercy.NmSystem.SystemCalls;
 using NoMercy.Providers.Helpers;
 using ProviderQueue = NoMercy.Providers.Helpers.Queue;
 
@@ -388,6 +390,85 @@ public class QueueProcessorTests
                 );
             burst++;
         }
+    }
+
+    public static TheoryData<Exception> UnreachableProviderFailures =>
+        new()
+        {
+            new TaskCanceledException("timeout", new TimeoutException()),
+            new HttpRequestException(
+                HttpRequestError.ConnectionError,
+                "connection attempt failed",
+                new System.Net.Sockets.SocketException(10060)
+            ),
+            new HttpRequestException(
+                HttpRequestError.NameResolutionError,
+                "no such host",
+                new System.Net.Sockets.SocketException(11001)
+            ),
+        };
+
+    [Theory]
+    [MemberData(nameof(UnreachableProviderFailures))]
+    public async Task Queue_ProviderUnreachable_RaisesToTheCallerWithoutAUrlFailedLogLine(
+        Exception failure
+    )
+    {
+        string url = $"unreachable-{Guid.NewGuid():N}";
+        List<LogEntry> logged = [];
+        void Capture(LogEntry entry)
+        {
+            lock (logged)
+                logged.Add(entry);
+        }
+
+        Logger.LogEmitted += Capture;
+        try
+        {
+            ProviderQueue queue = new(new() { Concurrent = 1, Interval = 1 });
+
+            Exception raised = await Assert.ThrowsAnyAsync<Exception>(() =>
+                queue.Enqueue<int>(() => throw failure, url)
+            );
+
+            raised.Should().BeSameAs(failure);
+        }
+        finally
+        {
+            Logger.LogEmitted -= Capture;
+        }
+
+        lock (logged)
+            logged.Where(entry => entry.Message.Contains(url)).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Queue_UnexpectedFailure_StillLogsTheUrl()
+    {
+        string url = $"broken-{Guid.NewGuid():N}";
+        List<LogEntry> logged = [];
+        void Capture(LogEntry entry)
+        {
+            lock (logged)
+                logged.Add(entry);
+        }
+
+        Logger.LogEmitted += Capture;
+        try
+        {
+            ProviderQueue queue = new(new() { Concurrent = 1, Interval = 1 });
+
+            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+                queue.Enqueue<int>(() => throw new InvalidOperationException("boom"), url)
+            );
+        }
+        finally
+        {
+            Logger.LogEmitted -= Capture;
+        }
+
+        lock (logged)
+            logged.Should().ContainSingle(entry => entry.Message.Contains(url));
     }
 
     private sealed class StubHandler(Func<HttpResponseMessage> send) : HttpMessageHandler
