@@ -52,7 +52,13 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
         string? extractedYear =
             ParenthesizedYear().Matches(cleanedForYear).LastOrDefault()?.Groups["year"].Value
             ?? BareYear().Matches(cleanedForYear).LastOrDefault()?.Value
-            ?? cleanedForYear.TryGetYear();
+            ?? cleanedForYear.TryGetYear()
+            ?? NullIfEmpty(BracketedYear().Match(rawFileName).Groups["year"].Value)
+            ?? ParenthesizedYear()
+                .Matches(directoryName ?? "")
+                .LastOrDefault()
+                ?.Groups["year"]
+                .Value;
 
         string title = StringExtensions
             .RemoveBracketedString()
@@ -226,7 +232,7 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
 
         // "Show S2 - 08" leaves the season to the absolute-number adapter, which
         // has none; the name still said it.
-        if (parsed is { Episode: not null, Season: null })
+        if (parsed is { Episode: not null, Season: null or 1 })
         {
             Match seasonWord = SeasonWordBeforeEpisode().Match(cleanedFileName);
             if (seasonWord.Success)
@@ -521,6 +527,16 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
     )]
     private static partial Regex BareYear();
 
+    /// <summary>"[2014]" and "[Xvid 1987]": a year the release put in square brackets.</summary>
+    [GeneratedRegex(
+        @"\[(?:[^\[\]]*?[\s,.-])?(?<year>(?:18|19|20)[0-9]{2})(?:[\s,.-][^\[\]]*)?\]",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex BracketedYear();
+
+    private static string? NullIfEmpty(string value) => value.Length == 0 ? null : value;
+
     [GeneratedRegex(
         @"\((?:[^()]*?[\s,.-])?(?<year>(?:18|19|20)[0-9]{2})(?:[\s,.-][^()]*)?\)",
         RegexOptions.None,
@@ -624,9 +640,9 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
     private static partial Regex CreditlessMarkerInTitle();
 
     [GeneratedRegex(
-        @"(?<![\p{L}\p{N}])(?:(?:S|season[\s._-]*|saison[\s._-]*|temporada[\s._-]*|"
-            + @"staffel[\s._-]*|stagione[\s._-]*|сезон[\s._-]*)0*(?<n>[0-9]{1,2})|"
-            + @"(?<n2>[0-9]{1,2})(?:st|nd|rd|th|ª|-?й|-?го)?[\s._-]*(?:season|сезон|temporada))(?![\p{L}\p{N}])",
+        @"(?<![\p{L}\p{N}])(?:(?:S|seasons?[\s._-]*|saisons?[\s._-]*|temporada[\s._-]*|"
+            + @"staffel[\s._-]*|stagione[\s._-]*|seizoen[\s._-]*|säsong[\s._-]*|сезон[\s._-]*)0*(?<n>[0-9]{1,2})|"
+            + @"(?<n2>[0-9]{1,2})(?:st|nd|rd|th|ª|-?й|-?го)?\.?[\s._-]*(?:season|сезон|temporada|staffel|évad|säsong|saison))(?![\p{L}\p{N}])",
         RegexOptions.IgnoreCase,
         matchTimeoutMilliseconds: 1000
     )]

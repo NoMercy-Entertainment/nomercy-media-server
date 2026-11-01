@@ -40,7 +40,7 @@ public sealed partial class SeasonPackAdapter : IFilenameParseAdapter
         matchTimeoutMilliseconds: 1000,
         options: RegexOptions.IgnoreCase,
         pattern: @"(?<![\p{L}\p{N}])(?:(?:season|series|saison|staffel|temporada|stagione)[\s._-]*0*(?<season>[0-9]{1,2})"
-            + @"|S(?<season2>[0-9]{1,2}))(?![\p{L}\p{N}])"
+            + @"|S(?<season2>[0-9]{1,4}))(?![\p{L}\p{N}])"
     )]
     private static partial Regex SeasonMarker();
 

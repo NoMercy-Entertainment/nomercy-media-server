@@ -51,7 +51,11 @@ public static partial class StringExtensions
     [GeneratedRegex(@"\s+", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex WhitespaceRunRegex();
 
-    [GeneratedRegex(@"(1(8|9)|20)[0-9]{2}(?!p|i|(1(8|9)|20)[0-9]{2}|\W(1(8|9)|20)[0-9]{2})", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    [GeneratedRegex(
+        @"(1(8|9)|20)[0-9]{2}(?!p|i|(1(8|9)|20)[0-9]{2}|\W(1(8|9)|20)[0-9]{2})",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     public static partial Regex MatchYearRegex();
 
     public static string? TryGetYear(this string str)
@@ -92,10 +96,18 @@ public static partial class StringExtensions
     // contains with '+' rather than a space/dash/underscore, so "S1" was never
     // bounded on its right and the whole "S1+S2+Movie+OVAs" tail leaked into
     // the show title handed to TitleFromFolder.
-    [GeneratedRegex(@"[\.\s\-_+]S[0-9]{1,2}(?:E[0-9]+)?(?:[\.\s\-_+]|$)", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
+    [GeneratedRegex(
+        @"[\.\s\-_+]S[0-9]{1,2}(?:E[0-9]+)?(?:[\.\s\-_+]|$)",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
     public static partial Regex MatchSeasonTag();
 
-    [GeneratedRegex(@"^S([0-9]{1,2})E([0-9]+)", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
+    [GeneratedRegex(
+        @"^S([0-9]{1,4})E([0-9]+)",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
     public static partial Regex MatchEpisodePrefix();
 
     /// <summary>
@@ -104,16 +116,28 @@ public static partial class StringExtensions
     /// through to the generic detector, which reads the release's absolute episode number as
     /// the episode and searches for a title that includes it.
     /// </summary>
-    [GeneratedRegex(@"[\.\s\-_\(\[\{]S([0-9]{1,2})E([0-9]+)", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
+    [GeneratedRegex(
+        @"[\.\s\-_\(\[\{]S([0-9]{1,4})E([0-9]+)",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
     public static partial Regex MatchSeasonEpisode();
 
     [GeneratedRegex(@"\(.*?\)", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     public static partial Regex RemoveParenthesizedString();
 
-    [GeneratedRegex(@"[\-\.\s]+Episode\s*([0-9]+)", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
+    [GeneratedRegex(
+        @"[\-\.\s]+Episode\s*([0-9]+)",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
     public static partial Regex MatchEpisodeWord();
 
-    [GeneratedRegex(@"(?<![A-Za-z0-9])([0-9]{1,2})[xX×]([0-9]{1,3})(?![0-9])", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    [GeneratedRegex(
+        @"(?<![A-Za-z0-9])([0-9]{1,2}|(?:19|20)[0-9]{2})[xX×]([0-9]{1,3})(?![0-9])",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     public static partial Regex MatchCrossFormatEpisode();
 
     /// <summary>
@@ -236,7 +260,9 @@ public static partial class StringExtensions
         if (string.IsNullOrWhiteSpace(raw))
             return false;
 
-        string normalized = WhitespaceRunRegex().Replace(raw.Replace('.', ' ').Replace('_', ' '), " ").Trim();
+        string normalized = WhitespaceRunRegex()
+            .Replace(raw.Replace('.', ' ').Replace('_', ' '), " ")
+            .Trim();
         return EarliestReleaseTag(normalized, out category, out value) >= 0;
     }
 
