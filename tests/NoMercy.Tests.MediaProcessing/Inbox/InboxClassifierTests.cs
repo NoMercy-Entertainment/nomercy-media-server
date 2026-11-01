@@ -13,6 +13,7 @@ using Moq;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.MediaProcessing.Inbox;
 using NoMercy.MediaProcessing.Shows;
+using NoMercy.Tests.MediaProcessing.Files;
 
 namespace NoMercy.Tests.MediaProcessing.Inbox;
 
@@ -46,7 +47,7 @@ public partial class InboxClassifierTests
         probe ??= new Mock<IInboxMetadataProbe>().Object;
         tagReader ??= new Mock<IInboxAudioTagReader>().Object;
         mediaTypeClassifier ??= NonAnimeClassifier().Object;
-        return new(probe, tagReader, mediaTypeClassifier);
+        return new(probe, tagReader, mediaTypeClassifier, TestFilenameParser.Default);
     }
 
     private static Mock<IMediaTypeClassifier> NonAnimeClassifier()
@@ -268,6 +269,53 @@ public partial class InboxClassifierTests
         );
 
         result.Confidence.Should().Be("low");
+    }
+
+    // -----------------------------------------------------------------------
+    // Classify — video: a fansub batch is searched by its show name alone
+    // -----------------------------------------------------------------------
+
+    [Theory]
+    [InlineData(
+        "Download/complete/[SubsPlease] Kamiina Botan, Yoeru Sugata wa Yuri no Hana (01-12) (1080p) [Batch]/[SubsPlease] Kamiina Botan, Yoeru Sugata wa Yuri no Hana - 01 (1080p) [E38EAFF4].mkv",
+        "Kamiina Botan, Yoeru Sugata wa Yuri no Hana"
+    )]
+    [InlineData(
+        "Download/complete/[SubsPlease] Made Up Show, With A Comma (01-12) (1080p) [Batch]/[SubsPlease] Made Up Show, With A Comma - 07 (1080p) [ABCD1234].mkv",
+        "Made Up Show, With A Comma"
+    )]
+    [InlineData(
+        "Download/complete/[Erai-raws] Another Made Up Show - 12 [1080p][E15A4F27].mkv",
+        "Another Made Up Show"
+    )]
+    public async Task Classify_FansubBatchFile_SearchesTheShowNameOnly(string path, string title)
+    {
+        Mock<IInboxMetadataProbe> probe = EmptyProbe();
+
+        InboxClassifier classifier = MakeClassifier(
+            probe: probe.Object,
+            mediaTypeClassifier: AnimeClassifier().Object
+        );
+        await classifier.Classify(path, Ulid.NewUlid(), CancellationToken.None);
+
+        probe.Verify(
+            p => p.SearchTvAsync(title, It.IsAny<int?>(), It.IsAny<CancellationToken>()),
+            Times.Once
+        );
+    }
+
+    [Fact]
+    public async Task Classify_NumberedTitleWithoutEpisodeShape_KeepsItsNumber()
+    {
+        Mock<IInboxMetadataProbe> probe = EmptyProbe();
+
+        InboxClassifier classifier = MakeClassifier(probe: probe.Object);
+        await classifier.Classify("Inbox/Toy Story 3.mkv", Ulid.NewUlid(), CancellationToken.None);
+
+        probe.Verify(
+            p => p.SearchMoviesAsync("Toy Story 3", It.IsAny<int?>(), It.IsAny<CancellationToken>()),
+            Times.Once
+        );
     }
 
     // -----------------------------------------------------------------------

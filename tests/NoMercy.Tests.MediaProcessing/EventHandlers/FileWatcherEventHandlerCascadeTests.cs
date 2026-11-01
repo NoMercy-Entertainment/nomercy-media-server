@@ -29,6 +29,7 @@ using NoMercy.Providers.Helpers;
 using NoMercy.Storage;
 using NoMercy.Storage.Drivers.Local;
 using NoMercy.Storage.Factory;
+using NoMercy.Tests.MediaProcessing.Files;
 using NoMercyQueue;
 using NoMercyQueue.Core.Interfaces;
 using NoMercyQueue.Core.Models;
@@ -536,7 +537,8 @@ public class InboxClassifierCascadeViaEventBusTests : IDisposable
         InboxClassifier classifier = new(
             probeMock.Object,
             tagMock.Object,
-            mediaTypeClassifierMock.Object
+            mediaTypeClassifierMock.Object,
+            TestFilenameParser.Default
         );
         NoMercy.MediaProcessing.Jobs.JobDispatcher jobDispatcher = new();
         InboxRoutingService routing = new(storageFactoryMock.Object, jobDispatcher);

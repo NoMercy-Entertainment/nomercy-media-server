@@ -19,6 +19,7 @@ using NoMercy.Data.Notifications;
 using NoMercy.Database;
 using NoMercy.Events;
 using NoMercy.MediaProcessing.EventHandlers;
+using NoMercy.MediaProcessing.Files.Parsing;
 using NoMercy.MediaProcessing.Inbox;
 using NoMercy.MediaProcessing.Shows;
 using NoMercy.Networking.Messaging;
@@ -216,7 +217,9 @@ public static class EventHandlerExtensions
             IInboxAudioTagReader tagReader = sp.GetRequiredService<IInboxAudioTagReader>();
             IMediaTypeClassifier mediaTypeClassifier =
                 sp.GetRequiredService<IMediaTypeClassifier>();
-            return new(probe, tagReader, mediaTypeClassifier);
+            IFilenameParserPipeline filenameParser =
+                sp.GetRequiredService<IFilenameParserPipeline>();
+            return new(probe, tagReader, mediaTypeClassifier, filenameParser);
         });
         services.AddSingleton<InboxRoutingService>(sp =>
         {
