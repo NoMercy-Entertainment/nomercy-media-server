@@ -41,7 +41,12 @@ public class FileListServiceTitleCleanupTests
         storage.SetupGet(s => s.Driver).Returns(driver.Object);
 
         List<StorageEntry> entries = fileNames
-            .Select(name => new StorageEntry($"Anime/{name}", false, 1000, DateTimeOffset.UtcNow))
+            .Select(name => new StorageEntry(
+                name.Contains('/') ? name : $"Anime/{name}",
+                false,
+                1000,
+                DateTimeOffset.UtcNow
+            ))
             .ToList();
         storage
             .Setup(s => s.List(It.IsAny<string>(), It.IsAny<string?>(), It.IsAny<bool>()))
@@ -86,7 +91,14 @@ public class FileListServiceTitleCleanupTests
                 {
                     new EpisodePrefixAdapter(),
                     new EpisodeWordAdapter(),
+                    new CrossFormatAdapter(),
                     new SeasonEpisodeAdapter(),
+                    new SeasonSpecialAdapter(),
+                    new AnimeAbsoluteAdapter(),
+                    new EpisodeShortFormAdapter(),
+                    new SpecialsAdapter(),
+                    new SeasonPackAdapter(),
+                    new PartAdapter(),
                     new MovieDetectorAdapter(),
                 }
             ),
@@ -143,6 +155,36 @@ public class FileListServiceTitleCleanupTests
 
         parsed.Should().ContainSingle();
         parsed[0].Title.Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData(
+        "Download/complete/[SubsPlease] Kamiina Botan, Yoeru Sugata wa Yuri no Hana (01-12) (1080p) [Batch]/[SubsPlease] Kamiina Botan, Yoeru Sugata wa Yuri no Hana - 01 (1080p) [E38EAFF4].mkv",
+        "Kamiina Botan, Yoeru Sugata wa Yuri no Hana",
+        1
+    )]
+    [InlineData(
+        "Download/complete/[SubsPlease] Made Up Show, With A Comma (01-12) (1080p) [Batch]/[SubsPlease] Made Up Show, With A Comma - 07 (1080p) [ABCD1234].mkv",
+        "Made Up Show, With A Comma",
+        7
+    )]
+    [InlineData(
+        "Download/complete/[SubsPlease] Another Made Up Show (01-24) (720p) [Batch]/[SubsPlease] Another Made Up Show - 12 (720p) [ABCD1234].mkv",
+        "Another Made Up Show",
+        12
+    )]
+    public async Task BatchFolderRelease_ParsesTheEpisodeFileNotTheFolder(
+        string path,
+        string expectedTitle,
+        int expectedEpisode
+    )
+    {
+        List<MovieFile> parsed = await ParsedTitlesFor("anime", path);
+
+        parsed.Should().ContainSingle();
+        parsed[0].Title.Should().Be(expectedTitle);
+        parsed[0].Episode.Should().Be(expectedEpisode);
+        parsed[0].IsSeries.Should().BeTrue();
     }
 
     /// <summary>

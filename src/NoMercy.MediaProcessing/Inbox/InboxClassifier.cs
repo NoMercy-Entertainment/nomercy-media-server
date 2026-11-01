@@ -12,7 +12,10 @@
 using System.Text.RegularExpressions;
 using MovieFileLibrary;
 using NoMercy.Database.Models.Libraries;
+using NoMercy.MediaProcessing.Files.Parsing;
 using NoMercy.MediaProcessing.Shows;
+using NoMercy.NmSystem.Domain;
+using NoMercy.NmSystem.Extensions;
 
 namespace NoMercy.MediaProcessing.Inbox;
 
@@ -76,16 +79,19 @@ public sealed partial class InboxClassifier
     private readonly IInboxMetadataProbe _probe;
     private readonly IInboxAudioTagReader _tagReader;
     private readonly IMediaTypeClassifier _mediaTypeClassifier;
+    private readonly FilenameResolver _resolver;
 
     public InboxClassifier(
         IInboxMetadataProbe probe,
         IInboxAudioTagReader tagReader,
-        IMediaTypeClassifier mediaTypeClassifier
+        IMediaTypeClassifier mediaTypeClassifier,
+        IFilenameParserPipeline filenameParser
     )
     {
         _probe = probe;
         _tagReader = tagReader;
         _mediaTypeClassifier = mediaTypeClassifier;
+        _resolver = new(filenameParser);
     }
 
     // -----------------------------------------------------------------------
@@ -121,8 +127,7 @@ public sealed partial class InboxClassifier
         if (SeasonFolderPattern().IsMatch(path))
             return "tv";
 
-        MovieDetector detector = new();
-        MovieFile info = detector.GetInfo(path);
+        MovieFile info = DetectUntagged(path);
 
         if (info.IsSeries && (info.Season.HasValue || info.Episode.HasValue))
             return "tv";
@@ -233,9 +238,7 @@ public sealed partial class InboxClassifier
     {
         string structuralType = StructuralType(path);
 
-        // Parse title and year from path for provider search
-        MovieDetector detector = new();
-        MovieFile info = detector.GetInfo(path);
+        MovieFile info = ParseName(path, structuralType);
         string title = ExtractTitle(path, info);
 
         if (string.IsNullOrWhiteSpace(title))
@@ -434,6 +437,33 @@ public sealed partial class InboxClassifier
     private static CandidateMatch[] RankCandidates(CandidateMatch[] candidates)
     {
         return [.. candidates.OrderByDescending(c => c.Score)];
+    }
+
+    // Only episodic files use the library scan's resolver: its trailing-number rule
+    // would cut "Toy Story 3", and the detector's year rule copes with "Blade Runner 2049 (2017)".
+    private MovieFile ParseName(string path, string structuralType)
+    {
+        if (structuralType != "tv")
+            return DetectUntagged(path);
+
+        return _resolver
+            .Resolve(
+                Path.GetFileName(path),
+                Path.GetDirectoryName(path),
+                path,
+                MediaTypes.TvMediaType
+            )
+            .Parsed;
+    }
+
+    // Release tags in square brackets ([E38EAFF4], [1080p]) are not part of the
+    // name; the detector read a CRC starting with E and two digits as an episode.
+    private static MovieFile DetectUntagged(string path)
+    {
+        string name = Path.GetFileNameWithoutExtension(path);
+        string untagged = StringExtensions.RemoveBracketedString().Replace(name, string.Empty);
+
+        return new MovieDetector().GetInfo(untagged + Path.GetExtension(path));
     }
 
     private static string ExtractTitle(string path, MovieFile info)

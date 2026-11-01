@@ -25,6 +25,7 @@ using NoMercy.NmSystem.Domain;
 using NoMercy.Storage;
 using NoMercy.Storage.Drivers.Local;
 using NoMercy.Storage.Factory;
+using NoMercy.Tests.MediaProcessing.Files;
 
 namespace NoMercy.Tests.MediaProcessing.Inbox;
 
@@ -124,7 +125,8 @@ public class InboxClassifierEventHandlerTests : IDisposable
         InboxClassifier classifier = new(
             _probeMock.Object,
             _tagReaderMock.Object,
-            _mediaTypeClassifierMock.Object
+            _mediaTypeClassifierMock.Object,
+            TestFilenameParser.Default
         );
         InboxRoutingService routing = new(_storageFactoryMock.Object, new());
 
@@ -416,7 +418,8 @@ public class InboxClassifierEventHandlerTests : IDisposable
             InboxClassifier classifier = new(
                 probeMock.Object,
                 tagReaderMock.Object,
-                mediaTypeClassifierMock.Object
+                mediaTypeClassifierMock.Object,
+                TestFilenameParser.Default
             );
             InboxRoutingService routing = new(realStorageFactory, new());
 
