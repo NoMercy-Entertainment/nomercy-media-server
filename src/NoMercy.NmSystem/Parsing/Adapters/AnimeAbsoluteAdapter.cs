@@ -29,7 +29,7 @@ public sealed partial class AnimeAbsoluteAdapter : IFilenameParseAdapter
     public int Order => 50;
 
     [GeneratedRegex(
-        @"(?<![A-Za-z0-9])([0-9]{1,4})(?![A-Za-z0-9])",
+        @"(?<![A-Za-z0-9])(?<e>[0-9]{1,4})(?![A-Za-z0-9])",
         RegexOptions.None,
         matchTimeoutMilliseconds: 1000
     )]
@@ -41,7 +41,8 @@ public sealed partial class AnimeAbsoluteAdapter : IFilenameParseAdapter
     /// at its first number.
     /// </summary>
     [GeneratedRegex(
-        @"(?<![A-Za-z0-9])([0-9]{1,4})(?:-[0-9]{1,4})+(?![A-Za-z0-9])",
+        @"(?<![A-Za-z0-9])(?:(?<e>[0-9]{1,4})(?:-[0-9]{1,4}|\s*~\s*[0-9]{1,4})+|"
+            + @"(?<e>0[0-9]{1,3})\s+-\s+[0-9]{2,4})(?![A-Za-z0-9])",
         RegexOptions.None,
         matchTimeoutMilliseconds: 1000
     )]
@@ -59,7 +60,7 @@ public sealed partial class AnimeAbsoluteAdapter : IFilenameParseAdapter
         Match? episode = null;
         for (int i = matches.Count - 1; i >= 0; i--)
         {
-            if (LooksLikeYear(matches[i].Groups[1].Value))
+            if (LooksLikeYear(matches[i].Groups["e"].Value))
                 continue;
             episode = matches[i];
             break;
@@ -98,7 +99,7 @@ public sealed partial class AnimeAbsoluteAdapter : IFilenameParseAdapter
         return new(context.Title)
         {
             Title = showTitle,
-            Episode = int.Parse(episode.Groups[1].Value),
+            Episode = int.Parse(episode.Groups["e"].Value),
             IsSeries = true,
             IsSuccess = true,
         };
