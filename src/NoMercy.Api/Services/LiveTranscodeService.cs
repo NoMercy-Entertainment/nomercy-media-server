@@ -47,7 +47,8 @@ public class LiveTranscodeService(
     IDeviceAwareVariantSelector variantSelector,
     ILiveIngestKeyStore ingestKeyStore,
     ILogger<LiveTranscodeService> logger,
-    ILiveSessionTransport? transport = null
+    ILiveSessionTransport? transport = null,
+    ILiveSessionActivity? activity = null
 ) : ILiveTranscodeService
 {
     // How long a segment request blocks waiting for the encoder to produce the
@@ -261,6 +262,16 @@ public class LiveTranscodeService(
         // straight off the filesystem and never touch the HTTP serving port.
         if (resolved.IngestKey is not null)
             ingestKeyStore.BindSession(resolved.IngestKey, session.SessionId);
+
+        if (activity is not null)
+            await activity.RecordStartedAsync(
+                session.SessionId,
+                userId,
+                deviceId,
+                resolved.File,
+                session.CurrentQuality,
+                Math.Max(0, request.StartTimeSeconds)
+            );
 
         // Assemble the master's audio list: the file's own renditions when it has
         // them, otherwise a per-language live audio child for a raw source. Either
