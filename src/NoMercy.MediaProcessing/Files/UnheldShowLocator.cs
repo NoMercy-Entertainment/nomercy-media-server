@@ -31,15 +31,7 @@ public static class UnheldShowLocator
         string libraryType
     )
     {
-        string fileName = Path.GetFileName(inputFile);
-        string? directory = Path.GetDirectoryName(inputFile);
-
-        ResolvedName resolved = new FilenameResolver(pipeline).Resolve(
-            fileName,
-            directory,
-            inputFile,
-            libraryType
-        );
+        ResolvedName resolved = ResolveName(pipeline, inputFile, libraryType);
 
         if (resolved.Parsed.Title == null || !resolved.Parsed.Episode.HasValue)
             return null;
@@ -64,4 +56,16 @@ public static class UnheldShowLocator
 
         return (showId, resolved.Parsed.Season ?? 1, resolved.Parsed.Episode.Value);
     }
+
+    internal static ResolvedName ResolveName(
+        IFilenameParserPipeline pipeline,
+        string inputFile,
+        string libraryType
+    ) =>
+        new FilenameResolver(pipeline).Resolve(
+            Path.GetFileName(inputFile),
+            Path.GetDirectoryName(inputFile),
+            inputFile,
+            libraryType
+        );
 }

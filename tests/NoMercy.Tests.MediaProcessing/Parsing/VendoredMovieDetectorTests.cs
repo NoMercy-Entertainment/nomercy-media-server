@@ -23,12 +23,36 @@ public class VendoredMovieDetectorTests
 {
     // filename, title, year, season(-1 = null), episode(-1 = null), isSeries, isSpecial
     [Theory]
-    [InlineData(["Inception.2010.1080p.BluRay.x264.mkv", "Inception", "2010", -1, -1, false, false])]
+    [InlineData([
+        "Inception.2010.1080p.BluRay.x264.mkv",
+        "Inception",
+        "2010",
+        -1,
+        -1,
+        false,
+        false,
+    ])]
     [InlineData(["Normal.People.S01E04.1080p.mkv", "Normal People", null, 1, 4, true, false])]
     [InlineData(["The.Grand.Tour.S04.E04.1080p.mkv", "The Grand Tour", null, 4, 4, true, false])]
     [InlineData(["Top Gear 17x03 HDTV.mp4", "Top Gear", null, 17, 3, true, false])]
-    [InlineData(["Scenes.from.a.Marriage.1973.E01.mkv", "Scenes from a Marriage", "1973", -1, 1, true, false])]
-    [InlineData(["The.Legend.of.1900.1998.mkv", "The Legend of 1900", "1998", -1, -1, false, false])]
+    [InlineData([
+        "Scenes.from.a.Marriage.1973.E01.mkv",
+        "Scenes from a Marriage",
+        "1973",
+        -1,
+        1,
+        true,
+        false,
+    ])]
+    [InlineData([
+        "The.Legend.of.1900.1998.mkv",
+        "The Legend of 1900",
+        "1998",
+        -1,
+        -1,
+        false,
+        false,
+    ])]
     [InlineData(["Sherlock.S01.Special.mkv", "Sherlock", null, 1, -1, true, true])]
     public void GetInfo_ParsesCanonicalCorpus(
         string fileName,

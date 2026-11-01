@@ -44,7 +44,11 @@ public sealed partial class SeasonPackAdapter : IFilenameParseAdapter
     )]
     private static partial Regex SeasonMarker();
 
-    [GeneratedRegex(@"(?<![A-Za-z0-9])[0-9]{1,4}(?![A-Za-z0-9])", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    [GeneratedRegex(
+        @"(?<![A-Za-z0-9])[0-9]{1,4}(?![A-Za-z0-9])",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex StandaloneNumber();
 
     public MovieFile? TryParse(ParseContext context)

@@ -35,7 +35,6 @@ public sealed class EpisodeWordAdapter : IFilenameParseAdapter
         int episodeNumber = int.Parse(match.Groups[1].Value);
         string showTitle = fileNameNoParens[..match.Index].TrimEnd('-', '.', '_', ' ');
 
-
         showTitle = showTitle.CleanSeriesTitle();
 
         if (string.IsNullOrWhiteSpace(showTitle) || showTitle.Length <= 1)

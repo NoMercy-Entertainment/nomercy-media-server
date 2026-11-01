@@ -12,6 +12,7 @@
 using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
 using MovieFileLibrary;
+using NoMercy.MediaProcessing.Files.Parsing;
 using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Extensions;
 using NoMercy.NmSystem.FFProbe;
@@ -39,6 +40,7 @@ public partial class MediaScan : IDisposable, IAsyncDisposable
     private static partial Regex FolderNameRegex();
 
     private string[] _extensionFilter = [];
+    private string _libraryType = MediaTypes.TvMediaType;
 
     public MediaScan(IStorageDriver driver)
     {
@@ -61,6 +63,9 @@ public partial class MediaScan : IDisposable, IAsyncDisposable
 
     public MediaScan FilterByMediaType(string mediaType)
     {
+        if (mediaType is "anime" or MediaTypes.TvMediaType or MediaTypes.MovieMediaType)
+            _libraryType = mediaType;
+
         _extensionFilter = mediaType switch
         {
             "anime" or MediaTypes.TvMediaType or MediaTypes.MovieMediaType or "video" =>
@@ -150,7 +155,10 @@ public partial class MediaScan : IDisposable, IAsyncDisposable
                 {
                     string folderName = Path.GetFileName(directory);
 
-                    if ((_regexFilterEnabled && FolderNameRegex().IsMatch(folderName)) || depth == 0)
+                    if (
+                        (_regexFilterEnabled && FolderNameRegex().IsMatch(folderName))
+                        || depth == 0
+                    )
                     {
                         files.Add(
                             new()
@@ -315,6 +323,17 @@ public partial class MediaScan : IDisposable, IAsyncDisposable
         }
     }
 
+    /// <summary>What a scan reads from one file's name: title, year, season and episode.</summary>
+    public MovieFile ParseFileName(string file, string libraryType) =>
+        BuiltInFilenameParser
+            .Resolver.Resolve(
+                Path.GetFileName(file),
+                Path.GetDirectoryName(file),
+                file,
+                libraryType
+            )
+            .Parsed;
+
     private async Task<ConcurrentBag<MediaFile>> FilesAsync(string folderPath)
     {
         ConcurrentBag<MediaFile> files = [];
@@ -348,56 +367,9 @@ public partial class MediaScan : IDisposable, IAsyncDisposable
                         return;
 
                     MovieFile? movieFile =
-                        isVideoFile || isAudioFile ? _movieDetector.GetInfo(file) : null;
-
-                    // Override MovieDetector's season/episode with our own regex on the filename only,
-                    // because MovieDetector can pick up season/episode numbers from parent folder segments
-                    // in the full path (e.g. "S02 1080p" in the folder name instead of the file name).
-                    if (movieFile is not null && (isVideoFile || isAudioFile))
-                    {
-                        string fileNameWithoutExtension = Path.GetFileNameWithoutExtension(file);
-                        string cleanedFileName = StringExtensions
-                            .RemoveBracketedString()
-                            .Replace(fileNameWithoutExtension, string.Empty)
-                            .Trim();
-
-                        Match epMatch = StringExtensions
-                            .MatchEpisodePrefix()
-                            .Match(cleanedFileName);
-                        if (!epMatch.Success)
-                            epMatch = StringExtensions.MatchSeasonEpisode().Match(cleanedFileName);
-
-                        // TryParse, not Parse: the patterns take any number of
-                        // digits, and a name like Show.S01E20240101123000 does
-                        // not fit an int. Thrown here, it ended the scan of the
-                        // whole folder and its other files went missing (#243).
-                        if (
-                            epMatch is { Success: true, Groups.Count: >= 3 }
-                            && int.TryParse(epMatch.Groups[1].Value, out int season)
-                            && int.TryParse(epMatch.Groups[2].Value, out int episode)
-                        )
-                        {
-                            movieFile.Season = season;
-                            movieFile.Episode = episode;
-                            movieFile.IsSeries = true;
-                            movieFile.IsSuccess = true;
-                        }
-                        else
-                        {
-                            Match wordMatch = StringExtensions
-                                .MatchEpisodeWord()
-                                .Match(cleanedFileName);
-                            if (
-                                wordMatch.Success
-                                && int.TryParse(wordMatch.Groups[1].Value, out int wordEpisode)
-                            )
-                            {
-                                movieFile.Episode = wordEpisode;
-                                movieFile.IsSeries = true;
-                                movieFile.IsSuccess = true;
-                            }
-                        }
-                    }
+                        isVideoFile ? ParseFileName(file, _libraryType)
+                        : isAudioFile ? _movieDetector.GetInfo(file)
+                        : null;
 
                     FfProbeData? ffprobe = null;
                     TagFile? tagFile = null;

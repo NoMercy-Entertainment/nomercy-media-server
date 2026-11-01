@@ -47,7 +47,10 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
         string cleanedForYear = StringExtensions
             .RemoveBracketedString()
             .Replace(rawFileName, string.Empty);
-        string? extractedYear = cleanedForYear.TryGetYear();
+        // A year in parentheses is the release year: "Blade Runner 2049 (2017)".
+        string? extractedYear =
+            ParenthesizedYear().Matches(cleanedForYear).LastOrDefault()?.Groups["year"].Value
+            ?? cleanedForYear.TryGetYear();
 
         string title = StringExtensions
             .RemoveBracketedString()
@@ -76,7 +79,7 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
 
         // The tracker that repackaged a release stamps its address on the front:
         // "www.Torrenting.com.-.Show.Name.S01E02". The show is everything after
-        // it, and left on, the search is for a name no catalogue holds.
+        // it, and left on, the search is for a name no catalog holds.
         //
         // An address is matched by BEING one rather than by being on a list. The
         // parsers this corpus came from kept sixty-odd literal tracker tags and
@@ -109,7 +112,7 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
 
         // The episode marker is not part of the show's name. Left on, the title
         // that goes to a provider is "Never-Ending Summer - S01E19" — a search
-        // string no catalogue holds, answered with whatever scores least badly.
+        // string no catalog holds, answered with whatever scores least badly.
         // The number-only shape ("- 175") was already trimmed; this is the same
         // rule for the shape that spells the season out.
         Match episodeMarker = TitleEpisodeMarker().Match(parsed.Title);
@@ -138,11 +141,17 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
         if (creditless is { Success: true, Index: > 0 })
             parsed.Title = parsed.Title[..creditless.Index].TrimEnd(' ', '-', '.', '_', ',');
 
+        // Source, codec, resolution and language tags no title contains. The
+        // show's name is everything before the first one.
+        Match releaseToken = ReleaseTokenInTitle().Match(parsed.Title);
+        if (releaseToken is { Success: true, Index: > 0 })
+            parsed.Title = parsed.Title[..releaseToken.Index].TrimEnd(' ', '-', '.', '_', ',');
+
         // Release vocabulary that survived to the end of the title: the source,
         // the codec, the resolution, the language tag. Measured against 10,329
         // real release names, 253 titles still carried one — "CLANNAD 06 raw",
         // "Inukami Creditless Ending HKG DVD" — and every one is a search string
-        // with a word in it no catalogue has ever heard the show called.
+        // with a word in it no catalog has ever heard the show called.
         parsed.Title = TrailingReleaseNoise().Replace(parsed.Title, string.Empty).Trim();
 
         // The episode number, still on the end of the title once the group that
@@ -394,6 +403,13 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
             : string.Empty;
     }
 
+    [GeneratedRegex(
+        @"\((?<year>(?:18|19|20)[0-9]{2})\)",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex ParenthesizedYear();
+
     /// <summary>A bracketed or parenthesised block, innermost pair only.</summary>
     [GeneratedRegex(
         matchTimeoutMilliseconds: 1000,
@@ -430,12 +446,20 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
     /// dash, then the number. Its presence is what makes a trailing number in
     /// the title an episode marker rather than part of the name.
     /// </summary>
-    [GeneratedRegex(@"[\s._]-[\s._][0-9]{1,4}(?![0-9])", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    [GeneratedRegex(
+        @"[\s._]-[\s._][0-9]{1,4}(?![0-9])",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex AbsoluteEpisodeForm();
 
     /// <summary>A number sitting at the very end of a title, with the separator
     /// a release puts before it.</summary>
-    [GeneratedRegex(@"[\s._-]+(?<number>[0-9]{1,4})\s*$", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    [GeneratedRegex(
+        @"[\s._-]+(?<number>[0-9]{1,4})\s*$",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex TrailingNumber();
 
     /// <summary>
@@ -480,6 +504,15 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
             + @"NC(?:OP|ED)|clean[\s._-]+(?:OP|ED|opening|ending))(?![A-Za-z0-9])"
     )]
     private static partial Regex CreditlessMarkerInTitle();
+
+    [GeneratedRegex(
+        @"(?<![A-Za-z0-9])(?:dvd-?rip|dvdr|bd-?rip|br-?rip|blu-?ray|hdtv(?:rip)?|web-?rip|web-?dl|"
+            + @"xvid|divx|x26[45]|h\.?26[45]|hevc|e?ac3|dts|truefrench|vostfr|subbed|dubbed|"
+            + @"repack|dirfix|nfofix|screener|(?:480|576|720|1080|2160)[pi])(?![A-Za-z0-9])",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex ReleaseTokenInTitle();
 
     /// <summary>
     /// Release vocabulary clinging to the end of a title — source, codec,
@@ -540,7 +573,11 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
     /// the episode was lost entirely. Anchored to a preceding digit, so a title
     /// that merely contains a v ("NieR-Automata Ver1.1a") is untouched.
     /// </summary>
-    [GeneratedRegex(@"(?<=[0-9])v[0-9]{1,2}(?![A-Za-z0-9])", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
+    [GeneratedRegex(
+        @"(?<=[0-9])v[0-9]{1,2}(?![A-Za-z0-9])",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex VersionSuffix();
 
     /// <summary>A MakeMKV-style disc track suffix — "…Volume 1_t12".</summary>
