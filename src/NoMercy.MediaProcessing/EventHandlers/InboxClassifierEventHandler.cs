@@ -82,6 +82,35 @@ public class InboxClassifierEventHandler : EventSubscriber
         }
     }
 
+    // A release arrives as a folder of episodes; the folder itself has no media
+    // extension, so only the files inside it can be classified.
+    private static List<StorageEntry> ExpandFolders(
+        IStorage storage,
+        IReadOnlyList<StorageEntry> children
+    )
+    {
+        List<StorageEntry> files = [];
+
+        foreach (StorageEntry child in children)
+        {
+            if (!child.IsDirectory)
+            {
+                files.Add(child);
+                continue;
+            }
+
+            files.AddRange(
+                storage
+                    .List(child.Path, null, recursive: true)
+                    .Where(entry =>
+                        !entry.IsDirectory && InboxClassifier.MediaFamilyOf(entry.Path) != "unknown"
+                    )
+            );
+        }
+
+        return files;
+    }
+
     internal async Task OnFileCreated(FileCreatedEvent @event, CancellationToken ct)
     {
         if (@event.LibraryType != MediaTypes.InboxMediaType)
@@ -129,7 +158,10 @@ public class InboxClassifierEventHandler : EventSubscriber
 
         IStorage storage = _storageFactory.For(folderId, driverId, inboxRoot);
 
-        IReadOnlyList<StorageEntry> children = storage.List("", null, recursive: false);
+        IReadOnlyList<StorageEntry> children = ExpandFolders(
+            storage,
+            storage.List("", null, recursive: false)
+        );
 
         if (children.Count == 0)
         {
