@@ -128,6 +128,72 @@ public class DeviceIdentityResolverTests : IDisposable
     }
 
     [Fact]
+    public void ResolveAndPersist_BareMetal_DegenerateHardwareId_NoCertificate_GetsPersistedUniqueId()
+    {
+        Guid knownDegenerateId = KnownDegenerateDeviceIds.Values.First();
+
+        Guid resolvedId = DeviceIdentityResolver.ResolveAndPersist(
+            _context,
+            knownDegenerateId,
+            inContainer: false
+        );
+
+        Assert.NotEqual(Guid.Empty, resolvedId);
+        Assert.False(KnownDegenerateDeviceIds.IsDegenerate(resolvedId));
+
+        Configuration? stored = _context.Configuration.FirstOrDefault(c =>
+            c.Key == DeviceIdentityResolver.ConfigKey
+        );
+        Assert.NotNull(stored);
+        Assert.Equal(resolvedId.ToString(), stored.Value);
+
+        Guid second = DeviceIdentityResolver.ResolveAndPersist(
+            _context,
+            knownDegenerateId,
+            inContainer: false
+        );
+        Assert.Equal(resolvedId, second);
+    }
+
+    [Fact]
+    public void ResolveAndPersist_BareMetal_DegenerateHardwareId_NoCertificate_SecondInstallGetsDifferentId()
+    {
+        using AppDbContext otherInstall = CreateFreshContext();
+        Guid knownDegenerateId = KnownDegenerateDeviceIds.Values.First();
+
+        Guid first = DeviceIdentityResolver.ResolveAndPersist(
+            _context,
+            knownDegenerateId,
+            inContainer: false
+        );
+        Guid second = DeviceIdentityResolver.ResolveAndPersist(
+            otherInstall,
+            knownDegenerateId,
+            inContainer: false
+        );
+
+        Assert.NotEqual(first, second);
+    }
+
+    [Fact]
+    public void ResolveAndPersist_BareMetal_UniqueHardwareId_NoCertificate_IsKeptAndNotPersisted()
+    {
+        Guid hardwareId = Guid.Parse("0f9a4c31-7c2e-4a55-9a6d-5f2b1e3d7c48");
+        Assert.False(KnownDegenerateDeviceIds.IsDegenerate(hardwareId));
+
+        Guid resolvedId = DeviceIdentityResolver.ResolveAndPersist(
+            _context,
+            hardwareId,
+            inContainer: false
+        );
+
+        Assert.Equal(hardwareId, resolvedId);
+        Assert.Null(
+            _context.Configuration.FirstOrDefault(c => c.Key == DeviceIdentityResolver.ConfigKey)
+        );
+    }
+
+    [Fact]
     public void ResolveAndPersist_Container_DegenerateHardwareId_MigratesEvenWithPriorRegistrationEvidence()
     {
         Guid knownDegenerateId = KnownDegenerateDeviceIds.Values.First();

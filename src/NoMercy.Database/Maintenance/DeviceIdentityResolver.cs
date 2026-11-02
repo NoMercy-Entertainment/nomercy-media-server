@@ -31,7 +31,9 @@ namespace NoMercy.Database.Maintenance;
 /// serials are a containerized-install phenomenon; a bare-metal box reads a real,
 /// stable fingerprint and its DNS subdomain + certificate were issued for exactly
 /// that id, so it is returned untouched — changing a bare-metal server's id would
-/// break the identity it already registered. Inside a container, a box registered
+/// break the identity it already registered. The one exception is a bare-metal
+/// install on a known-degenerate id with no certificate on file: it gets a fresh
+/// persisted id, since nothing was registered under the shared one. Inside a container, a box registered
 /// on one of the <see cref="KnownDegenerateDeviceIds"/> values is NOT preserved —
 /// that id is shared with every other container that hit the same empty-DMI probe,
 /// so "prior registration evidence" proves nothing about uniqueness. It is migrated
@@ -84,7 +86,8 @@ public static class DeviceIdentityResolver
         // registered. So on bare metal the fingerprint is authoritative and
         // returned untouched; only a container ever migrates a degenerate id or
         // persists an override.
-        if (!(inContainer ?? Screen.IsDocker))
+        bool isContainer = inContainer ?? Screen.IsDocker;
+        if (!isContainer && !KnownDegenerateDeviceIds.IsDegenerate(hardwareId))
             return hardwareId;
 
         Configuration? existing = db.Configuration.FirstOrDefault(c => c.Key == ConfigKey);
@@ -94,6 +97,11 @@ public static class DeviceIdentityResolver
             && !KnownDegenerateDeviceIds.IsDegenerate(persistedId)
         )
             return persistedId;
+
+        // Bare metal with a junk id and a certificate issued for it keeps that id;
+        // only a never-registered install gets a fresh one.
+        if (!isContainer && HasEvidenceOfPriorRegistration(db))
+            return hardwareId;
 
         Guid resolvedId;
 
