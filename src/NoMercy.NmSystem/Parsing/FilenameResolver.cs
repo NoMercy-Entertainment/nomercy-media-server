@@ -45,9 +45,11 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
         // A [tmdb-1234] hint baked into the name, e.g. "[tmdb-553604]Spring (2019).mkv".
         int? overrideTmdbId = rawFileName.TryGetTmdbHint();
 
-        string cleanedForYear = StringExtensions
-            .RemoveBracketedString()
-            .Replace(rawFileName, string.Empty);
+        string cleanedForYear = TechnicalSize()
+            .Replace(
+                StringExtensions.RemoveBracketedString().Replace(rawFileName, string.Empty),
+                RemoveIfPictureSize
+            );
         // A year in parentheses is the release year: "Blade Runner 2049 (2017)".
         string? extractedYear =
             ParenthesizedYear().Matches(cleanedForYear).LastOrDefault()?.Groups["year"].Value
@@ -58,7 +60,13 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
                 .Matches(directoryName ?? "")
                 .LastOrDefault()
                 ?.Groups["year"]
-                .Value;
+                .Value
+            ?? NullIfEmpty(
+                FolderBareYear()
+                    .Match(directoryName?.LeafSegment() ?? string.Empty)
+                    .Groups["year"]
+                    .Value
+            );
 
         string title = StringExtensions
             .RemoveBracketedString()
@@ -100,14 +108,18 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
 
         // Sizes and codec numbers are not episodes: "704x480", "h.264". A letter
         // after an episode ("01b", "111C") marks a part of that episode.
-        cleanedFileName = TechnicalSize().Replace(cleanedFileName, " ");
+        cleanedFileName = TechnicalSize().Replace(cleanedFileName, RemoveIfPictureSize);
         cleanedFileName = LetteredEpisode().Replace(cleanedFileName, "${n}");
         bool fractionalEpisode = FractionalEpisode().IsMatch(cleanedFileName);
 
         MovieFile parsed = pipeline.Parse(
             new()
             {
-                FileNameWithExtension = TechnicalSize().Replace(fileNameWithExtension, " "),
+                FileNameWithExtension = TrackerAddress()
+                    .Replace(
+                        TechnicalSize().Replace(fileNameWithExtension, RemoveIfPictureSize),
+                        string.Empty
+                    ),
                 DirectoryName = directoryName,
                 Title = title,
                 CleanedFileName = cleanedFileName,
@@ -116,7 +128,16 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
             }
         );
 
-        parsed.Year = extractedYear ?? parsed.Year ?? YearFromDate(rawFileName);
+        // A show's year is its first-air year; an episode's air date would send
+        // the provider search to the wrong year, so only movies read one.
+        parsed.Year =
+            extractedYear
+            ?? parsed.Year
+            ?? (
+                libraryType is MediaTypes.TvMediaType or MediaTypes.AnimeMediaType
+                    ? null
+                    : YearFromDate(rawFileName)
+            );
 
         // The library stores whole episodes; "07.5" is a special between 7 and 8.
         if (fractionalEpisode)
@@ -138,7 +159,15 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
             if (
                 rangeEnd is > 1 and < 1900
                 && rangeEnd > rangeStart
-                && (parsed.Episode is null || parsed.Episode == rangeEnd)
+                && (
+                    parsed.Episode is null
+                    || parsed.Episode == rangeEnd
+                    || (
+                        batch.Index > 0
+                        && rawFileName[batch.Index - 1] is '[' or '('
+                        && parsed.Episode != rangeStart
+                    )
+                )
             )
                 parsed.Episode = rangeStart;
 
@@ -161,11 +190,49 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
         )
             parsed.Episode = int.Parse(dashed.Groups["n"].Value, CultureInfo.InvariantCulture);
 
+        if (libraryType is MediaTypes.TvMediaType or MediaTypes.AnimeMediaType)
+            ApplyExplicitMarker(parsed, cleanedFileName, rawFileName, directoryName);
+        else if (
+            libraryType is MediaTypes.MovieMediaType
+            && parsed.Episode is not null
+            && MovieEpisodeWord().IsMatch(cleanedFileName)
+        )
+        {
+            // "Star Wars Episode 4 A New Hope" is a movie whose title says Episode.
+            int cut = cleanedFileName.Length;
+            foreach (
+                Match tag in new[]
+                {
+                    ReleaseTokenInTitle().Match(cleanedFileName),
+                    BareYear().Match(cleanedFileName),
+                }
+            )
+            {
+                if (tag.Success && tag.Index > 0)
+                    cut = Math.Min(cut, tag.Index);
+            }
+
+            parsed.Title = cleanedFileName[..cut]
+                .Replace('.', ' ')
+                .Replace('_', ' ')
+                .Trim(' ', '-');
+            parsed.Episode = null;
+            parsed.Season = null;
+        }
+
         // A pack that lists seasons ("S01 S02", "Seasons 1-2", "S01D03") belongs
         // to the first one listed, never to season 0.
         if (parsed.Episode is null || parsed.Season == 0)
         {
             Match firstSeason = FirstListedSeason().Match(rawFileName);
+            if (
+                !firstSeason.Success
+                && (
+                    parsed.Episode is null
+                    || rawFileName.Contains("complete", StringComparison.OrdinalIgnoreCase)
+                )
+            )
+                firstSeason = GluedSeasonList().Match(rawFileName);
             if (firstSeason.Success)
             {
                 parsed.Episode = null;
@@ -178,12 +245,14 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
 
         // "2012.AC3.720p.BluRay" and "24.S02E02": the number is the title, and
         // every adapter took it for a year or an episode and left nothing.
+        bool numberTitle = false;
         if (parsed.Title is null || !parsed.Title.Any(char.IsLetterOrDigit))
         {
             Match leading = LeadingNumberTitle().Match(rawFileName);
             if (leading.Success)
             {
                 parsed.Title = leading.Groups["t"].Value;
+                numberTitle = NumberIsFollowedByTags(rawFileName, leading);
                 if (parsed.Year == parsed.Title)
                     parsed.Year = null;
             }
@@ -245,6 +314,10 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
         // with a word in it no catalog has ever heard the show called.
         parsed.Title = TrailingReleaseNoise().Replace(parsed.Title, string.Empty).Trim();
 
+        // "Part 2", "Vol.03" and "Disk 2 of 2" are the pack's furniture for a series, but a movie title.
+        if (libraryType is MediaTypes.TvMediaType or MediaTypes.AnimeMediaType)
+            parsed.Title = TvPackNoise().Replace(parsed.Title, string.Empty).Trim();
+
         // "2012.AC3.720p" and "1923.s01e01": the noise strip emptied a title the
         // adapters had seeded from the tail, and the leading number is the show.
         if (
@@ -253,6 +326,7 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
         )
         {
             parsed.Title = named.Groups["t"].Value;
+            numberTitle = NumberIsFollowedByTags(rawFileName, named);
             if (parsed.Year == parsed.Title)
                 parsed.Year = null;
         }
@@ -296,7 +370,18 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
         // 01.mkv" became Great British Menu, "Opening 06.mkv" became an episode
         // of Opening Act, and "NCED - 01.mkv" became Flavor, NC. A search will
         // always return something; that is exactly why it must not be asked.
-        if (IsRoleWordRatherThanTitle(parsed.Title))
+        if (
+            !numberTitle
+            && LeadingNumberTitle().Match(rawFileName) is { Success: true } lead
+            && lead.Groups["t"].Value == parsed.Title
+        )
+            numberTitle = NumberIsFollowedByTags(rawFileName, lead);
+
+        if (
+            !numberTitle
+            && !TitleEpisodeMarker().IsMatch(rawFileName)
+            && IsRoleWordRatherThanTitle(parsed.Title)
+        )
         {
             string folderTitle = TitleFromFolder(directoryName);
 
@@ -308,10 +393,12 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
 
         // "Show S2 - 08" leaves the season to the absolute-number adapter, which
         // has none; the name still said it.
-        if (parsed is { Episode: not null, Season: null or 1 })
+        if (parsed.Episode is not null)
         {
             Match seasonWord = SeasonWordBeforeEpisode().Match(cleanedFileName);
-            if (seasonWord.Success)
+            bool spelledOut =
+                seasonWord.Groups["n"].Success && !TitleEpisodeMarker().IsMatch(cleanedFileName);
+            if (seasonWord.Success && (parsed.Season is null or 0 or 1 || spelledOut))
             {
                 string digits = seasonWord.Groups["n"].Success
                     ? seasonWord.Groups["n"].Value
@@ -374,10 +461,19 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
         // "Season N" folder takes the season from the folder rather than
         // defaulting to 1. seasonExplicit deliberately keeps the name-derived
         // value so the absolute-index fallback stays available.
-        int? folderSeason = directoryName.TryGetFolderSeason();
+        int? folderSeason =
+            directoryName.TryGetFolderSeason() ?? SeasonFromFolderSuffix(directoryName);
 
         if (parsed is { Episode: not null, Season: null })
             parsed.Season = folderSeason ?? 1;
+        else if (
+            parsed is { Episode: not null, Season: 1 }
+            && folderSeason is not null
+            && !SeasonWordBeforeEpisode().IsMatch(cleanedFileName)
+            && !TitleEpisodeMarker().IsMatch(cleanedFileName)
+            && !StringExtensions.MatchCrossFormatEpisode().IsMatch(rawFileName)
+        )
+            parsed.Season = folderSeason;
 
         // A name with no episode marker has no episode. This used to reach into
         // the TITLE for the first number it could find and call that the episode,
@@ -395,6 +491,234 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
         // operator instead of quietly taking someone else's slot.
         return new(parsed, overrideTmdbId, seasonExplicit, airDate);
     }
+
+    /// <summary>"2012.AC3.720p": a number followed by release tags is a title; a bare "01" is an episode.</summary>
+    private static bool NumberIsFollowedByTags(string rawFileName, Match number)
+    {
+        string rest = rawFileName[(number.Index + number.Length)..];
+        return ReleaseTokenInTitle().IsMatch(rest)
+            || TitleEpisodeMarker().IsMatch(rest)
+            || BareYear().IsMatch(rest);
+    }
+
+    private readonly record struct ExplicitMarker(int? Season, int Episode, int Index, bool Strong);
+
+    /// <summary>A season/episode spelled in a form no adapter reads; the first one listed wins.</summary>
+    private static void ApplyExplicitMarker(
+        MovieFile parsed,
+        string cleanedFileName,
+        string rawFileName,
+        string? directoryName
+    )
+    {
+        ExplicitMarker? own = FindExplicitMarker(cleanedFileName) ?? FindChineseMarker(rawFileName);
+        string leaf = TechnicalSize()
+            .Replace(directoryName?.LeafSegment() ?? string.Empty, RemoveIfPictureSize);
+
+        if (own is null || own.Value.Strong is false)
+        {
+            ExplicitMarker? folder = leaf.Length > 0 ? FindExplicitMarker(leaf) : null;
+            bool fileHasNoMarker = own is null;
+            if (
+                folder is { } found
+                && fileHasNoMarker
+                && (
+                    parsed.Episode is null
+                    || DigitsOnlyName().IsMatch(rawFileName)
+                    || parsed.Episode == (found.Season ?? 0) * 100 + found.Episode
+                    || parsed.Episode == (found.Season ?? 0) * 1000 + found.Episode
+                )
+            )
+            {
+                parsed.Season = found.Season ?? parsed.Season;
+                parsed.Episode = found.Episode;
+                string show = leaf[..found.Index].Replace('.', ' ').Replace('_', ' ');
+                show = show.Trim(' ', '-');
+                if (show.Any(char.IsLetterOrDigit))
+                    parsed.Title = show;
+                return;
+            }
+        }
+
+        if (own is not { } marker)
+            return;
+
+        int at = Math.Min(marker.Index, cleanedFileName.Length);
+        if (FractionAfterMarker().IsMatch(cleanedFileName[at..]))
+            return;
+
+        bool absoluteBefore =
+            parsed.Episode is not null && AbsoluteEpisodeForm().IsMatch(cleanedFileName[..at]);
+        if (absoluteBefore)
+            return;
+
+        if (marker.Strong || parsed.Episode is null)
+        {
+            parsed.Episode = marker.Episode;
+            if (marker.Season is not null)
+                parsed.Season = marker.Season;
+        }
+    }
+
+    private static ExplicitMarker? FindExplicitMarker(string text)
+    {
+        Match match = ExplicitSeasonEpisode().Match(text);
+        if (match.Success)
+            return new(
+                int.Parse(match.Groups["s"].Value, CultureInfo.InvariantCulture),
+                int.Parse(match.Groups["e"].Value, CultureInfo.InvariantCulture),
+                match.Index,
+                true
+            );
+
+        match = SeasonWordEpisodeWord().Match(text);
+        if (match.Success)
+            return new(
+                int.Parse(match.Groups["s"].Value, CultureInfo.InvariantCulture),
+                int.Parse(match.Groups["e"].Value, CultureInfo.InvariantCulture),
+                match.Index,
+                true
+            );
+
+        if (FindChineseMarker(text) is { } chinese)
+            return chinese;
+
+        match = EpisodeOfTotal().Match(text);
+        if (
+            match.Success
+            && int.Parse(match.Groups["t"].Value, CultureInfo.InvariantCulture)
+                >= int.Parse(match.Groups["e"].Value, CultureInfo.InvariantCulture)
+        )
+            return new(
+                null,
+                int.Parse(match.Groups["e"].Value, CultureInfo.InvariantCulture),
+                match.Index,
+                true
+            );
+
+        match = CrossFormatMarker().Match(text);
+        if (match.Success)
+            return new(
+                int.Parse(match.Groups["s"].Value, CultureInfo.InvariantCulture),
+                int.Parse(match.Groups["e"].Value, CultureInfo.InvariantCulture),
+                match.Index,
+                false
+            );
+
+        return null;
+    }
+
+    /// <summary>"Friends S03" and "庆余年第二季": a season printed at the end of the folder name.</summary>
+    private static int? SeasonFromFolderSuffix(string? directoryName)
+    {
+        string leaf = directoryName?.LeafSegment() ?? string.Empty;
+        Match suffix = FolderSeasonSuffix().Match(leaf);
+        if (suffix.Success)
+            return int.Parse(suffix.Groups["n"].Value, CultureInfo.InvariantCulture);
+
+        Match chinese = ChineseSeason().Match(leaf);
+        return chinese.Success ? ChineseNumber(chinese.Groups["s"].Value) : null;
+    }
+
+    [GeneratedRegex(
+        @"(?<![A-Za-z0-9])S0*(?<n>[0-9]{1,3})\s*$",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex FolderSeasonSuffix();
+
+    private static ExplicitMarker? FindChineseMarker(string text)
+    {
+        Match match = ChineseEpisode().Match(text);
+        if (!match.Success || ChineseNumber(match.Groups["e"].Value) is not int episode)
+            return null;
+
+        Match season = ChineseSeason().Match(text);
+        int? seasonNumber = season.Success ? ChineseNumber(season.Groups["s"].Value) : null;
+        return new(
+            seasonNumber,
+            episode,
+            Math.Min(match.Index, season.Success ? season.Index : match.Index),
+            true
+        );
+    }
+
+    /// <summary>1 to 99 in Chinese numerals: 二, 十, 十一, 二十三.</summary>
+    private static int? ChineseNumber(string text)
+    {
+        if (int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out int plain))
+            return plain;
+
+        const string Digits = "零一二三四五六七八九";
+        int tens = text.IndexOf('十');
+        if (tens < 0)
+            return text.Length == 1 && Digits.IndexOf(text[0]) is var one and >= 0 ? one : null;
+
+        int high = tens == 0 ? 1 : Digits.IndexOf(text[0]);
+        int low = tens + 1 < text.Length ? Digits.IndexOf(text[tens + 1]) : 0;
+        return high < 0 || low < 0 ? null : high * 10 + low;
+    }
+
+    [GeneratedRegex(
+        @"(?<![A-Za-z0-9])S(?<s>[0-9]{1,4})[\s._-]*(?:E|Ep|x(?!26[45]))[\s._]*(?<e>[0-9]{1,5})(?![0-9])|"
+            + @"(?<![A-Za-z0-9])T(?<s>[0-9]{1,2})X?E(?<e>[0-9]{1,3})(?![0-9])",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex ExplicitSeasonEpisode();
+
+    [GeneratedRegex(
+        @"(?<![A-Za-z])(?:season|se|seizoen|saison|staffel|temporada)\.?[\s._]*(?<s>[0-9]{1,3})[\s._,()-]*"
+            + @"(?:episode|epi|ep|afl|folge|episodio)\.?[\s._]*(?<e>[0-9]{1,4})(?![0-9])",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex SeasonWordEpisodeWord();
+
+    [GeneratedRegex(
+        @"第(?<e>[0-9]{1,4}|[零一二三四五六七八九十]{1,3})(?:-[0-9]{1,4})?[集话話]|\[(?<e>[0-9]{1,4})[集话話完]",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex ChineseEpisode();
+
+    [GeneratedRegex(
+        @"第(?<s>[0-9]{1,2}|[零一二三四五六七八九十]{1,3})[季期]",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex ChineseSeason();
+
+    [GeneratedRegex(
+        @"(?<![A-Za-z0-9])(?<e>[0-9]{1,3})[\s._]*(?:of|di|din|de|из|von|sur|van)[\s._]*(?<t>[0-9]{1,3})(?![A-Za-z0-9])",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex EpisodeOfTotal();
+
+    [GeneratedRegex(
+        @"(?<![A-Za-z0-9])(?<s>[0-9]{1,4})x(?<e>[0-9]{1,4})(?![A-Za-z0-9])",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex CrossFormatMarker();
+
+    [GeneratedRegex(
+        @"(?<![A-Za-z])Episode[\s._-]*(?:[0-9]{1,2}|[IVX]{1,4})(?![A-Za-z0-9])",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex MovieEpisodeWord();
+
+    [GeneratedRegex(@"^[0-9][0-9\s._-]*$", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex DigitsOnlyName();
+
+    [GeneratedRegex(
+        @"^[^\s._-]*\.[1-9](?![0-9A-Za-z])",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex FractionAfterMarker();
 
     /// <summary>
     /// Words that describe a file's place in a release rather than name a show:
@@ -596,6 +920,14 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
     )]
     private static partial Regex LeadingNumberTitle();
 
+    /// <summary>A year in a release folder, unless it starts an air date like 2014.08.15.</summary>
+    [GeneratedRegex(
+        @"(?<![A-Za-z0-9])(?<year>(?:18|19|20)[0-9]{2})(?![A-Za-z0-9])(?![._-][0-9]{2}[._-][0-9]{2})",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex FolderBareYear();
+
     [GeneratedRegex(
         @"(?<![A-Za-z0-9])(?:18|19|20)[0-9]{2}(?![A-Za-z0-9])",
         RegexOptions.None,
@@ -619,6 +951,22 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
         matchTimeoutMilliseconds: 1000
     )]
     private static partial Regex TechnicalSize();
+
+    /// <summary>"2016x231" is season 2016 episode 231; no picture is shorter than 240 lines.</summary>
+    private static string RemoveIfPictureSize(Match size)
+    {
+        Match pair = PictureSizePair().Match(size.Value);
+        return pair.Success && int.Parse(pair.Groups["h"].Value, CultureInfo.InvariantCulture) < 240
+            ? size.Value
+            : " ";
+    }
+
+    [GeneratedRegex(
+        @"^(?<w>[0-9]{3,4})x(?<h>[0-9]{3,4})$",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex PictureSizePair();
 
     /// <summary>" - 01b", "_-_111C": the part letter right behind a dashed episode number.</summary>
     [GeneratedRegex(
@@ -658,6 +1006,14 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
         matchTimeoutMilliseconds: 1000
     )]
     private static partial Regex FirstListedSeason();
+
+    /// <summary>"S01S02": seasons run together, so the first one is the pack's season.</summary>
+    [GeneratedRegex(
+        @"(?<![\p{L}\p{N}])S(?<n>[0-9]{1,2})(?=S[0-9]{1,2}(?![\p{L}\p{N}]))",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex GluedSeasonList();
 
     [GeneratedRegex(
         @"(?<![0-9])(?<yy>[0-9]{2})[._-](?<mm>0[1-9]|1[0-2])[._-](?<dd>0[1-9]|[12][0-9]|3[01])(?![0-9])|"
@@ -834,6 +1190,15 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
             + @"s[0-9]{1,2}(?:d[0-9]{1,2})?|e[0-9]{1,3}))+\s*$"
     )]
     private static partial Regex TrailingReleaseNoise();
+
+    [GeneratedRegex(
+        matchTimeoutMilliseconds: 1000,
+        options: RegexOptions.IgnoreCase,
+        pattern: @"(?:[\s._+-]+(?:part|vol(?:ume)?|dis[ck]|episode|episodio|capitulo|ep|"
+            + @"second[\s._-]+season|complete[\s._-]+version)\.?[\s._-]*[0-9]{0,3}"
+            + @"(?:[\s._-]*(?:of|de|di|din)[\s._-]*[0-9]{1,3})?)+\s*$"
+    )]
+    private static partial Regex TvPackNoise();
 
     internal static string TitleFromFolder(string? directoryName)
     {

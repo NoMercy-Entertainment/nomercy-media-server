@@ -456,6 +456,13 @@ public class FilenameResolverCorpusTests
     public void A_title_that_merely_looks_domain_shaped_is_left_alone(string file, string title) =>
         Resolve(file).Title.Should().Be(title);
 
+    [Theory]
+    [InlineData("Show.Name.17.10.12.720p.HDTV.x264.mkv", "tv")]
+    [InlineData("Show Name 140722.mkv", "tv")]
+    [InlineData("Show.Name.17.10.12.720p.HDTV.x264.mkv", "anime")]
+    public void An_air_date_in_a_tv_name_is_not_the_show_year(string file, string libraryType) =>
+        Resolve(file, @"C:\TV\Show", libraryType).Year.Should().BeNull();
+
     [Fact]
     public void A_part_glued_to_a_word_is_not_a_part_marker()
     {
