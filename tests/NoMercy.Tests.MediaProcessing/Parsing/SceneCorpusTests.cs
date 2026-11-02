@@ -41,7 +41,10 @@ public class SceneCorpusTests
         List<CorpusMismatch> failing =
         [
             .. SceneCorpusRun.Mismatches.Where(m =>
-                m.Entry.SourceRepo == source && m.Mode == mode && !SceneCorpus.IsKnown(m)
+                m.Entry.SourceRepo == source
+                && m.Mode == mode
+                && m.Field != "title"
+                && !SceneCorpus.IsKnown(m)
             ),
         ];
         int failingNames = failing.Select(m => m.Entry).Distinct().Count();

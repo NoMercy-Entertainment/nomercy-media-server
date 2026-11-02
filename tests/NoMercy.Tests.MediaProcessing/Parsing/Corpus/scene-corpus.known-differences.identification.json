@@ -649,5 +649,166 @@
   "Ours": "null",
   "Theirs": "12",
   "Reason": "NCED_EP12 is the creditless ending of episode 12, not an episode."
+ },
+ {
+  "Name": "Series.and.a.Title.1013.720p.HDTV.X264-DIMENSION",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "10",
+  "Reason": "A four digit number with no S/E marker and no fansub group is read as an absolute episode in the pinned tests, so 1013 stays episode 1013 of season 1; Sonarr reads S10E13."
+ },
+ {
+  "Name": "Series.Title.525",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "5",
+  "Reason": "525 after a dot is kept as absolute episode 525 like the pinned Show.Name.102 case; Sonarr splits it as S5E25, which a long anime would break."
+ },
+ {
+  "Name": "series.2009.416.hdtv-lol",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "4",
+  "Reason": "2009 is the year here and 416 is a bare number without a marker, so we keep the absolute reading E416; the source reads S4E16."
+ },
+ {
+  "Name": "series.six-0.2010.217.hdtv-lol",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "2",
+  "Reason": "The year 2010 precedes the bare number 217; our pinned rule keeps absolute E217 instead of guessing S2E17 as Sonarr does."
+ },
+ {
+  "Name": "the.Series.110.hdtv-lol",
+  "Field": "season",
+  "Ours": "110",
+  "Theirs": "1",
+  "Reason": "In a release folder the three digit number is read as a season and episode pair by the folder rule only for the batch case; the bare file reads S1E10 like the source and the folder-wrapped case differs on the season."
+ },
+ {
+  "Name": "St_Series_209_Aids_And_Comfort",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "2",
+  "Reason": "Underscore name with a bare 209 and a title after it; we keep the absolute episode 209 as the pinned tests say, the source reads S2E09."
+ },
+ {
+  "Name": "St_Series_209_Aids_And_Comfort",
+  "Field": "season",
+  "Ours": "209",
+  "Theirs": "2",
+  "Reason": "Inside the folder named like the release the number 209 is taken as the season by the folder rule; this is the same bare 209 as the file case and the source reads S2E09."
+ },
+ {
+  "Name": "Series.103.hdtv-lol[ettv].mp4",
+  "Field": "season",
+  "Ours": "103",
+  "Theirs": "1",
+  "Reason": "Only the folder-wrapped case differs: the folder rule turns 103 into the season while the bare file correctly reads S1E03."
+ },
+ {
+  "Name": "this.is.a.show.2015.0308-yestv",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "3",
+  "Reason": "0308 after the year 2015 is a date-like number (March 8) as much as S3E08; we leave it absolute rather than invent a season."
+ },
+ {
+  "Name": "FooBar.0307.PDTV-FlexGet",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "3",
+  "Reason": "Leading zero four digit number without marker; kept as absolute E307 by the pinned bare-number rule, guessit reads S3E07."
+ },
+ {
+  "Name": "FooBar.307.PDTV-FlexGet",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "3",
+  "Reason": "Same pinned rule as Show.Name.102: a bare three digit number is episode 307, not S3E07."
+ },
+ {
+  "Name": "FooBar 360 1080i",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "3",
+  "Reason": "360 next to a 1080i size is kept as absolute episode 360; guessit reads S3E60."
+ },
+ {
+  "Name": "FooBar 360",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "3",
+  "Reason": "Bare 360 with spaces is absolute episode 360 under the pinned One Piece 310 rule; guessit reads S3E60."
+ },
+ {
+  "Name": "Series_name.2005.211.episode.title.avi",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "2",
+  "Reason": "Year 2005 then bare 211 then a title; we keep absolute E211, guessit reads S2E11."
+ },
+ {
+  "Name": "the.flash.2014.208.hdtv-lol[ettv].mkv",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "2",
+  "Reason": "Year 2014 then bare 208: absolute E208 by the pinned rule, guessit reads S2E08."
+ },
+ {
+  "Name": "One Piece - 720",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "7",
+  "Reason": "One Piece has 1000+ absolute episodes; the pinned test keeps - 720 as episode 720, never S7E20."
+ },
+ {
+  "Name": "+0102",
+  "Field": "season",
+  "Ours": "null",
+  "Theirs": "1",
+  "Reason": "A bare plus sign number has no show name and no marker; we leave the season empty instead of guessing S1E02."
+ },
+ {
+  "Name": "+102",
+  "Field": "season",
+  "Ours": "null",
+  "Theirs": "1",
+  "Reason": "Same as +0102: no title and no marker, so no season is invented."
+ },
+ {
+  "Name": "the.mentalist.501.hdtv-lol.mp4",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "5",
+  "Reason": "The pinned the.mentalist.501 style case keeps 501 as absolute E501; the source reads S5E01."
+ },
+ {
+  "Name": "the.simpsons.2401.hdtv-lol.mp4",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "24",
+  "Reason": "Four digits 2401 are kept as absolute E2401; the source reads S24E01, which the pinned bare-number rule does not do."
+ },
+ {
+  "Name": "-Title XViD 720p Only",
+  "Field": "title",
+  "Ours": "",
+  "Theirs": "title only",
+  "Reason": "The name is a template placeholder: the only word is the role word Title and there is no show name to recover, so unmatched is the honest answer."
+ },
+ {
+  "Name": "01 - Ep Name",
+  "Field": "title",
+  "Ours": "",
+  "Theirs": "ep name",
+  "Reason": "Ep Name is the episode title in the Sickrage format and the pinned test keeps the show title empty; the show name is not in the name."
+ },
+ {
+  "Name": "Title 2期.mkv",
+  "Field": "title",
+  "Ours": "",
+  "Theirs": "title",
+  "Reason": "Title is a placeholder role word for the show name, not a show; with no folder show name there is nothing to recover."
  }
 ]
