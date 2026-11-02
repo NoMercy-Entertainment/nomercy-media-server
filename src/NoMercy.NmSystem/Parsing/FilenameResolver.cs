@@ -40,6 +40,95 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
         string libraryType
     )
     {
+        ResolvedName resolved = ResolveCore(
+            fileNameWithExtension,
+            directoryName,
+            pathForTitle,
+            libraryType
+        );
+        if (string.IsNullOrWhiteSpace(resolved.Parsed.Title))
+        {
+            string? rescued = TitleFromNameShape(
+                Path.GetFileNameWithoutExtension(fileNameWithExtension)
+            );
+            if (rescued is not null)
+                resolved.Parsed.Title = rescued;
+        }
+
+        return resolved;
+    }
+
+    /// <summary>The show name hidden behind a leading number, "Episode N" or "(2001)".</summary>
+    private static string? TitleFromNameShape(string rawFileName)
+    {
+        string text = LeadingGroupOrYear().Replace(rawFileName, string.Empty);
+        if (
+            text.Length < rawFileName.Length
+            && rawFileName.StartsWith('[')
+            && NumberTitleBeforeEpisode().Match(text) is { Success: true } numbered
+        )
+            return numbered.Groups["t"].Value;
+
+        Match prefix = LeadingEpisodePrefix().Match(text);
+        bool bareTitleAllowed = prefix.Success
+            ? !prefix.Value.Contains(" -") && !prefix.Value.Contains("- ")
+            : rawFileName.StartsWith('(');
+        text = LeadingEpisodePrefix().Replace(text, string.Empty);
+        int cut = text.Length;
+        foreach (
+            int at in new[]
+            {
+                text.IndexOf(" - ", StringComparison.Ordinal),
+                text.IndexOfAny(['[', '(']),
+                TitleEpisodeMarker().Match(text) is { Success: true } marker ? marker.Index : -1,
+                ReleaseTokenInTitle().Match(text) is { Success: true } token ? token.Index : -1,
+            }
+        )
+        {
+            if (at >= 0 && at < cut)
+                cut = at;
+        }
+
+        if (cut == text.Length && !bareTitleAllowed)
+            return null;
+
+        string title = text[..cut].Replace('.', ' ').Replace('_', ' ').Trim(' ', '-');
+        if (!title.Any(char.IsLetter))
+            return null;
+
+        return IsRoleWordRatherThanTitle(title) && !TitleEpisodeMarker().IsMatch(rawFileName)
+            ? null
+            : title;
+    }
+
+    [GeneratedRegex(
+        @"^(?:\s*(?:\[[^\]]*\]|\((?:19|20)[0-9]{2}\)))+[\s._-]*",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex LeadingGroupOrYear();
+
+    [GeneratedRegex(
+        @"^(?<t>[0-9]{1,4}(?:-[0-9]{1,2})?)[\s._]*-[\s._]*[0-9]{1,4}(?![\p{L}0-9])",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex NumberTitleBeforeEpisode();
+
+    [GeneratedRegex(
+        @"^(?:episode|ep|folge)?[\s._]*[0-9]{1,4}(?:-[0-9]{1,4})?(?:[\s._]+-?[\s._]*|-|\.)(?=\p{L})",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex LeadingEpisodePrefix();
+
+    private ResolvedName ResolveCore(
+        string fileNameWithExtension,
+        string? directoryName,
+        string pathForTitle,
+        string libraryType
+    )
+    {
         string rawFileName = Path.GetFileNameWithoutExtension(fileNameWithExtension);
 
         // A [tmdb-1234] hint baked into the name, e.g. "[tmdb-553604]Spring (2019).mkv".
