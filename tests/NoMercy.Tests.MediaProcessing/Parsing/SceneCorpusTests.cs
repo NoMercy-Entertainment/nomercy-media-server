@@ -65,6 +65,18 @@ public class SceneCorpusTests
     }
 
     [Fact]
+    public void No_known_difference_is_an_open_defect()
+    {
+        IEnumerable<string> open = SceneCorpus
+            .KnownDifferences.Where(known =>
+                known.Reason.Contains("OPEN DEFECT", StringComparison.OrdinalIgnoreCase)
+            )
+            .Select(known => $"{known.Name} ({known.Field})");
+
+        open.Should().BeEmpty("an open defect is fixed in the resolver, not listed");
+    }
+
+    [Fact]
     public void Every_known_difference_still_differs()
     {
         HashSet<(string, string, string)> live =

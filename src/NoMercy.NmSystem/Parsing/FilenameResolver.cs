@@ -157,11 +157,23 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
             int rangeStart = batch.Success
                 ? int.Parse(batch.Groups["a"].Value, CultureInfo.InvariantCulture)
                 : 0;
+            bool inLaterRange =
+                batch.Success
+                && parsed.Episode is int current
+                && BatchRange()
+                    .Matches(rawFileName)
+                    .Skip(1)
+                    .Any(later =>
+                        int.Parse(later.Groups["a"].Value, CultureInfo.InvariantCulture) == current
+                        || int.Parse(later.Groups["b"].Value, CultureInfo.InvariantCulture)
+                            == current
+                    );
             if (
                 rangeEnd is > 1 and < 1900
                 && rangeEnd > rangeStart
                 && (
                     parsed.Episode is null
+                    || inLaterRange
                     || parsed.Episode == rangeEnd
                     || (
                         batch.Index > 0
@@ -174,7 +186,11 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
 
             // "(Season 1)" and "2nd Season" print the season outside any episode marker.
             Match seasonWord = SeasonWordBeforeEpisode().Match(rawFileName);
-            if (seasonWord.Success && parsed.Season is null or 0 or 1)
+            bool spelledSeason =
+                seasonWord.Groups["n"].Success
+                && seasonWord.Value.Length > 1
+                && !char.IsDigit(seasonWord.Value[1]);
+            if (seasonWord.Success && (parsed.Season is null or 0 or 1 || spelledSeason))
             {
                 string digits = seasonWord.Groups["n"].Success
                     ? seasonWord.Groups["n"].Value
@@ -224,10 +240,37 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
                     != parsed.Episode
             )
                 parsed.Episode = int.Parse(middle.Groups["n"].Value, CultureInfo.InvariantCulture);
+
+            if (
+                parsed.Episode is null
+                && VersionedEpisode().Match(rawFileName) is { Success: true } versioned
+            )
+                parsed.Episode = int.Parse(
+                    versioned.Groups["n"].Value,
+                    CultureInfo.InvariantCulture
+                );
+
+            if (SpecialEpisode().Match(cleanedFileName) is { Success: true } special)
+                parsed.Episode = int.Parse(special.Groups["n"].Value, CultureInfo.InvariantCulture);
+
+            // "Another OVA - The Other": a special with no number must not take episode 1's slot.
+            if (
+                parsed.Episode is not null
+                && UnnumberedSpecial().IsMatch(cleanedFileName)
+                && !cleanedFileName.Any(char.IsDigit)
+            )
+                parsed.Episode = null;
+
+            // "[全24集]" counts the episodes of a complete season; it names none.
+            if (CompleteSeasonCount().IsMatch(rawFileName))
+                parsed.Episode = null;
         }
 
         if (
-            parsed.Episode is null
+            (
+                parsed.Episode is null
+                || (parsed.Episode == 1 && SeasonWordBeforeEpisode().IsMatch(rawFileName))
+            )
             && libraryType is MediaTypes.TvMediaType or MediaTypes.AnimeMediaType
             && !TitleEpisodeMarker().IsMatch(rawFileName)
             && DashedEpisodeAtEnd().Match(cleanedFileName) is { Success: true } dashed
@@ -264,6 +307,22 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
             parsed.Episode = null;
             parsed.Season = null;
         }
+
+        if (
+            libraryType is MediaTypes.TvMediaType or MediaTypes.AnimeMediaType
+            && SeasonDisc().Match(rawFileName) is { Success: true } disc
+        )
+        {
+            parsed.Season = int.Parse(disc.Groups["n"].Value, CultureInfo.InvariantCulture);
+            parsed.Episode = null;
+        }
+        else if (
+            libraryType is MediaTypes.TvMediaType or MediaTypes.AnimeMediaType
+            && parsed.Episode is null
+            && SpelledSeason().Match(rawFileName) is { Success: true } spelled
+            && SeasonNumberFromWord(spelled.Groups["w"].Value) is int spelledNumber
+        )
+            parsed.Season = spelledNumber;
 
         // A pack that lists seasons ("S01 S02", "Seasons 1-2", "S01D03") belongs
         // to the first one listed, never to season 0.
@@ -358,6 +417,7 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
         // "Inukami Creditless Ending HKG DVD" — and every one is a search string
         // with a word in it no catalog has ever heard the show called.
         parsed.Title = TrailingReleaseNoise().Replace(parsed.Title, string.Empty).Trim();
+        parsed.Title = LeadingTrackerWords().Replace(parsed.Title, string.Empty).Trim();
 
         // "Part 2", "Vol.03" and "Disk 2 of 2" are the pack's furniture for a series, but a movie title.
         if (libraryType is MediaTypes.TvMediaType or MediaTypes.AnimeMediaType)
@@ -425,6 +485,7 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
         if (
             !numberTitle
             && !TitleEpisodeMarker().IsMatch(rawFileName)
+            && parsed.Year is null
             && IsRoleWordRatherThanTitle(parsed.Title)
         )
         {
@@ -512,8 +573,9 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
         if (parsed is { Episode: not null, Season: null })
             parsed.Season = folderSeason ?? 1;
         else if (
-            parsed is { Episode: not null, Season: 1 }
+            parsed is { Episode: not null, Season: not null }
             && folderSeason is not null
+            && parsed.Season != folderSeason
             && !SeasonWordBeforeEpisode().IsMatch(cleanedFileName)
             && !TitleEpisodeMarker().IsMatch(cleanedFileName)
             && !StringExtensions.MatchCrossFormatEpisode().IsMatch(rawFileName)
@@ -546,7 +608,13 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
             || BareYear().IsMatch(rest);
     }
 
-    private readonly record struct ExplicitMarker(int? Season, int Episode, int Index, bool Strong);
+    private readonly record struct ExplicitMarker(
+        int? Season,
+        int Episode,
+        int Index,
+        bool Strong,
+        int End
+    );
 
     /// <summary>A season/episode spelled in a form no adapter reads; the first one listed wins.</summary>
     private static void ApplyExplicitMarker(
@@ -570,6 +638,7 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
                 && (
                     parsed.Episode is null
                     || DigitsOnlyName().IsMatch(rawFileName)
+                    || IsReversedReleaseName(rawFileName)
                     || parsed.Episode == (found.Season ?? 0) * 100 + found.Episode
                     || parsed.Episode == (found.Season ?? 0) * 1000 + found.Episode
                 )
@@ -579,8 +648,27 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
                 parsed.Episode = found.Episode;
                 string show = leaf[..found.Index].Replace('.', ' ').Replace('_', ' ');
                 show = show.Trim(' ', '-');
+                if (BareYear().Match(show) is { Success: true, Index: > 0 } yearInShow)
+                    show = show[..yearInShow.Index].TrimEnd(' ', '-');
                 if (show.Any(char.IsLetterOrDigit))
                     parsed.Title = show;
+                return;
+            }
+
+            // Folder "Show.Name.S01.720p" and file "show.name.0106": season 1, episode 6.
+            if (
+                fileHasNoMarker
+                && folder is null
+                && parsed.Episode is int packed
+                && FolderSeasonToken().Match(leaf) is { Success: true } token
+                && int.Parse(token.Groups["n"].Value, CultureInfo.InvariantCulture)
+                    is > 0
+                        and var folderNumber
+                && packed / 100 == folderNumber
+            )
+            {
+                parsed.Season = folderNumber;
+                parsed.Episode = packed % 100;
                 return;
             }
         }
@@ -588,12 +676,13 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
         if (own is not { } marker)
             return;
 
-        int at = Math.Min(marker.Index, cleanedFileName.Length);
-        if (FractionAfterMarker().IsMatch(cleanedFileName[at..]))
+        int at = Math.Min(marker.End, cleanedFileName.Length);
+        if (FractionRightAfter().IsMatch(cleanedFileName[at..]))
             return;
 
         bool absoluteBefore =
-            parsed.Episode is not null && AbsoluteEpisodeForm().IsMatch(cleanedFileName[..at]);
+            parsed.Episode is not null
+            && AbsoluteEpisodeForm().IsMatch(cleanedFileName[..Math.Min(marker.Index, at)]);
         if (absoluteBefore)
             return;
 
@@ -609,21 +698,11 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
     {
         Match match = ExplicitSeasonEpisode().Match(text);
         if (match.Success)
-            return new(
-                int.Parse(match.Groups["s"].Value, CultureInfo.InvariantCulture),
-                int.Parse(match.Groups["e"].Value, CultureInfo.InvariantCulture),
-                match.Index,
-                true
-            );
+            return Marker(match, true);
 
         match = SeasonWordEpisodeWord().Match(text);
         if (match.Success)
-            return new(
-                int.Parse(match.Groups["s"].Value, CultureInfo.InvariantCulture),
-                int.Parse(match.Groups["e"].Value, CultureInfo.InvariantCulture),
-                match.Index,
-                true
-            );
+            return Marker(match, true);
 
         if (FindChineseMarker(text) is { } chinese)
             return chinese;
@@ -634,24 +713,42 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
             && int.Parse(match.Groups["t"].Value, CultureInfo.InvariantCulture)
                 >= int.Parse(match.Groups["e"].Value, CultureInfo.InvariantCulture)
         )
-            return new(
-                null,
-                int.Parse(match.Groups["e"].Value, CultureInfo.InvariantCulture),
-                match.Index,
-                true
-            );
+            return Marker(match, true);
+
+        match = LocalizedEpisode().Match(text);
+        if (match.Success)
+            return Marker(match, true);
 
         match = CrossFormatMarker().Match(text);
         if (match.Success)
-            return new(
-                int.Parse(match.Groups["s"].Value, CultureInfo.InvariantCulture),
-                int.Parse(match.Groups["e"].Value, CultureInfo.InvariantCulture),
-                match.Index,
-                false
-            );
+            return Marker(match, false);
 
-        return null;
+        match = CapituloMarker().Match(text);
+        if (match.Success)
+        {
+            int packed = int.Parse(match.Groups["se"].Value, CultureInfo.InvariantCulture);
+            return new(packed / 100, packed % 100, match.Index, false, match.Index + match.Length);
+        }
+
+        match = LeadingSeasonDashEpisode().Match(text);
+        return match.Success ? Marker(match, true) : null;
     }
+
+    private static ExplicitMarker Marker(Match match, bool strong) =>
+        new(
+            match.Groups["s"].Success
+                ? int.Parse(match.Groups["s"].Value, CultureInfo.InvariantCulture)
+                : null,
+            int.Parse(match.Groups["e"].Value, CultureInfo.InvariantCulture),
+            match.Index,
+            strong,
+            match.Index + match.Length
+        );
+
+    /// <summary>"sbuS LN-1.5DD LD-BEW p0801": a release name written backwards to hide it.</summary>
+    private static bool IsReversedReleaseName(string rawFileName) =>
+        !ReleaseTokenInTitle().IsMatch(rawFileName)
+        && ReleaseTokenInTitle().IsMatch(new string([.. rawFileName.Reverse()]));
 
     /// <summary>"Friends S03" and "庆余年第二季": a season printed at the end of the folder name.</summary>
     private static int? SeasonFromFolderSuffix(string? directoryName)
@@ -662,7 +759,13 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
             return int.Parse(suffix.Groups["n"].Value, CultureInfo.InvariantCulture);
 
         Match chinese = ChineseSeason().Match(leaf);
-        return chinese.Success ? ChineseNumber(chinese.Groups["s"].Value) : null;
+        if (chinese.Success)
+            return ChineseNumber(chinese.Groups["s"].Value);
+
+        Match token = FolderSeasonToken().Match(leaf);
+        return token.Success && !TitleEpisodeMarker().IsMatch(leaf)
+            ? int.Parse(token.Groups["n"].Value, CultureInfo.InvariantCulture)
+            : null;
     }
 
     [GeneratedRegex(
@@ -684,7 +787,8 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
             seasonNumber,
             episode,
             Math.Min(match.Index, season.Success ? season.Index : match.Index),
-            true
+            true,
+            Math.Max(match.Index + match.Length, season.Success ? season.Index + season.Length : 0)
         );
     }
 
@@ -706,7 +810,8 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
 
     [GeneratedRegex(
         @"(?<![A-Za-z0-9])S(?<s>[0-9]{1,4})[\s._-]*(?:E|Ep|x(?!26[45])E?)[\s._]*(?<e>[0-9]{1,5})(?![0-9])|"
-            + @"(?<![A-Za-z0-9])T(?<s>[0-9]{1,2})X?E(?<e>[0-9]{1,3})(?![0-9])",
+            + @"(?<![A-Za-z0-9])T(?<s>[0-9]{1,2})X?E(?<e>[0-9]{1,3})(?![0-9])|"
+            + @"(?<![A-Za-z0-9])E(?<e>[0-9]{1,3})[\s._-]+S(?<s>[0-9]{4})(?![0-9A-Za-z])",
         RegexOptions.IgnoreCase,
         matchTimeoutMilliseconds: 1000
     )]
@@ -735,11 +840,44 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
     private static partial Regex ChineseSeason();
 
     [GeneratedRegex(
-        @"(?<![A-Za-z0-9])(?<e>[0-9]{1,3})[\s._]*(?:of|di|din|de|из|von|sur|van)[\s._]*(?<t>[0-9]{1,3})(?![A-Za-z0-9])",
+        @"(?<![A-Za-z0-9])(?<!seasons?[\s._-]*)(?<e>[0-9]{1,3})[\s._]*(?:(?:серия|серии)[\s._]*)?"
+            + @"(?:of|di|din|de|из|von|sur|van)[\s._]*(?<t>[0-9]{1,3})(?![A-Za-z0-9])",
         RegexOptions.IgnoreCase,
         matchTimeoutMilliseconds: 1000
     )]
     private static partial Regex EpisodeOfTotal();
+
+    /// <summary>Turkish "7.Bolum", "79.BLM"; Dutch and German "afl.3", "Folge 3": an episode word with no season.</summary>
+    [GeneratedRegex(
+        @"(?<![A-Za-z0-9])(?<e>[0-9]{1,4})[\s._]*(?:b[oö]l[uü]m|blm)(?![A-Za-z])|"
+            + @"(?<![A-Za-z])(?:b[oö]l[uü]m|blm|afl|folge)\.?[\s._]*(?<e>[0-9]{1,4})(?![0-9])",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex LocalizedEpisode();
+
+    /// <summary>"11-02 The Series Reaction": a name that opens with season-episode.</summary>
+    [GeneratedRegex(
+        @"^(?<s>[0-9]{1,2})-(?<e>[0-9]{2})(?=[\s._]+\p{L})",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex LeadingSeasonDashEpisode();
+
+    /// <summary>"Cap.113", "Capitulo 1503": Spanish season and episode, SEE packed.</summary>
+    [GeneratedRegex(
+        @"(?<![A-Za-z])cap(?:itulo)?\.?[\s_]*(?<se>[0-9]{3,4})(?![0-9])",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex CapituloMarker();
+
+    [GeneratedRegex(
+        @"(?<![A-Za-z0-9])S0*(?<n>[0-9]{1,2})(?![A-Za-z0-9])",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex FolderSeasonToken();
 
     [GeneratedRegex(
         @"(?<![A-Za-z0-9])(?<s>[0-9]{1,4})x(?<e>[0-9]{1,4})(?![A-Za-z0-9])",
@@ -759,11 +897,11 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
     private static partial Regex DigitsOnlyName();
 
     [GeneratedRegex(
-        @"^[^\s._-]*\.[1-9](?![0-9A-Za-z])",
+        @"^\.[1-9](?![0-9A-Za-z]|-[0-9])",
         RegexOptions.None,
         matchTimeoutMilliseconds: 1000
     )]
-    private static partial Regex FractionAfterMarker();
+    private static partial Regex FractionRightAfter();
 
     /// <summary>
     /// Words that describe a file's place in a release rather than name a show:
@@ -858,7 +996,7 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
     /// title. Anything from there on describes the episode, not the show.
     /// </summary>
     [GeneratedRegex(
-        @"(?<![A-Za-z0-9])S[0-9]{1,4}[\s._-]*E[0-9]{1,4}(?![A-Za-z0-9])",
+        @"(?<![A-Za-z0-9])S[0-9]{1,4}[\s._-]*E[0-9]{1,5}(?![A-Za-z0-9])",
         RegexOptions.IgnoreCase,
         matchTimeoutMilliseconds: 1000
     )]
@@ -881,7 +1019,11 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
     /// </summary>
     private static string RemoveUnlessItNamesTheEpisode(Match group)
     {
-        if (TitleEpisodeMarker().IsMatch(group.Value))
+        if (
+            TitleEpisodeMarker().IsMatch(group.Value)
+            || SeasonWordEpisodeWord().IsMatch(group.Value)
+            || (group.Index > 0 && ParenthesizedEpisodeWord().IsMatch(group.Value))
+        )
             return group.Value;
 
         if (group.Index > 0)
@@ -942,6 +1084,14 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
     private static bool IsResolutionNumber(string number) =>
         number is "480" or "576" or "720" or "360" or "240";
 
+    /// <summary>"(Ep 6)", "[Episode 12]": a group that holds nothing but an episode word and its number.</summary>
+    [GeneratedRegex(
+        @"^\(\s*(?:ep|episode)\.?[\s._]*[0-9]{1,4}\s*\)$",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex ParenthesizedEpisodeWord();
+
     /// <summary>"[01]", "[12END]", "[01 of 24]": a group that holds nothing but the episode.</summary>
     [GeneratedRegex(
         @"^[\[{]\s*(?<n>[0-9]{1,3})(?:v[0-9])?(?:\s*(?:end|fin))?(?:[\s_]*of[\s_]*[0-9]{1,3})?\s*[\]}]$",
@@ -952,7 +1102,7 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
 
     /// <summary>"[Cap.102]", "[Cap.1503_1506]": Spanish season and episode, SEE packed.</summary>
     [GeneratedRegex(
-        @"^\[\s*cap\.?\s*(?<se>[0-9]{3,4})(?:[_-][0-9]{3,4})?\s*\]$",
+        @"^\[\s*cap\.?\s*(?<se>[0-9]{3,4})(?:[_-][0-9]{3,4})?(?:[._\s][A-Za-z]+)?\s*\]$",
         RegexOptions.IgnoreCase,
         matchTimeoutMilliseconds: 1000
     )]
@@ -1040,7 +1190,7 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
 
     /// <summary>"[Ep.24]", "[24（END）]": an episode number alone in a bracket.</summary>
     [GeneratedRegex(
-        @"\[\s*(?:(?:ep(?:isode)?|e)[\s._]*(?<n>[0-9]{1,4})|(?<n>(?!(?:360|480|576|720)\])[0-9]{1,3})(?:[（(][^)）\]]*[)）])?)\s*\]",
+        @"\[\s*(?:(?:ep(?:isode)?|e)[\s._]*(?<n>[0-9]{1,4})|(?<n>(?!(?:360|480|576|720|1080|2160|(?:19|20)[0-9]{2})\])[0-9]{1,4})(?:[（(][^)）\]]*[)）])?)\s*\]",
         RegexOptions.IgnoreCase,
         matchTimeoutMilliseconds: 1000
     )]
@@ -1067,6 +1217,78 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
         matchTimeoutMilliseconds: 1000
     )]
     private static partial Regex DashedEpisodeAtEnd();
+
+    /// <summary>"312v1": a re-release prints its version right behind the episode.</summary>
+    [GeneratedRegex(
+        @"(?<![\p{L}\p{N}.])(?<n>[0-9]{1,4})v[0-9]{1,2}(?![\p{L}\p{N}])",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex VersionedEpisode();
+
+    /// <summary>"Show - 14 OAD": the number before the special word is the episode of that special.</summary>
+    [GeneratedRegex(
+        @"[\s._]-[\s._]+(?<n>[0-9]{1,4})[\s._]+(?:OAD|OVA|ONA)(?![A-Za-z0-9])",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex SpecialEpisode();
+
+    [GeneratedRegex(
+        @"(?<![A-Za-z0-9])(?:OAD|OVA|ONA)(?![A-Za-z0-9])",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex UnnumberedSpecial();
+
+    [GeneratedRegex(@"全[0-9]{1,4}集", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex CompleteSeasonCount();
+
+    /// <summary>"S07D1-3&amp;5": the discs of season 7.</summary>
+    [GeneratedRegex(
+        @"(?<![\p{L}\p{N}])S(?<n>[0-9]{1,2})(?:D|DVD)[0-9]",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex SeasonDisc();
+
+    /// <summary>"Saison VII", "Season Two", "Saison sept": the season number written as a word.</summary>
+    [GeneratedRegex(
+        @"(?<![\p{L}\p{N}])(?:season|saison|staffel|temporada|stagione|seizoen|sezon)[\s._-]*"
+            + @"(?<w>[IVX]{1,4}|one|two|three|four|five|six|seven|eight|nine|ten|"
+            + @"un|deux|trois|quatre|cinq|sept|huit|neuf|dix)(?![\p{L}\p{N}])",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex SpelledSeason();
+
+    private static readonly Dictionary<string, int> SeasonWords = new(
+        StringComparer.OrdinalIgnoreCase
+    )
+    {
+        ["one"] = 1,
+        ["two"] = 2,
+        ["three"] = 3,
+        ["four"] = 4,
+        ["five"] = 5,
+        ["six"] = 6,
+        ["seven"] = 7,
+        ["eight"] = 8,
+        ["nine"] = 9,
+        ["ten"] = 10,
+        ["un"] = 1,
+        ["deux"] = 2,
+        ["trois"] = 3,
+        ["quatre"] = 4,
+        ["cinq"] = 5,
+        ["sept"] = 7,
+        ["huit"] = 8,
+        ["neuf"] = 9,
+        ["dix"] = 10,
+    };
+
+    private static int? SeasonNumberFromWord(string word) =>
+        SeasonWords.TryGetValue(word, out int number) ? number : RomanNumeral.TryParse(word);
 
     /// <summary>"[01-05]", "(01-04)", "1-24", "01..03", "01+02": no space around a dash or plus.</summary>
     [GeneratedRegex(
@@ -1218,10 +1440,19 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
     )]
     private static partial Regex CreditlessMarkerInTitle();
 
+    private const string OrdinalSeasonWord =
+        "(?:season|сезон|temporada|staffel|évad|säsong|saison|sezon)";
+
     [GeneratedRegex(
         @"(?<![\p{L}\p{N}])(?:(?:S|seasons?[\s._-]*|saisons?[\s._-]*|temporada[\s._-]*|"
-            + @"staffel[\s._-]*|stagione[\s._-]*|seizoen[\s._-]*|säsong[\s._-]*|сезон[\s._-]*)0*(?<n>[0-9]{1,2})|"
-            + @"(?<n2>[0-9]{1,2})(?:st|nd|rd|th|ª|-?й|-?го)?\.?[\s._-]*(?:season|сезон|temporada|staffel|évad|säsong|saison))(?![\p{L}\p{N}])",
+            + @"staffel[\s._-]*|stagione[\s._-]*|seizoen[\s._-]*|säsong[\s._-]*|сезон[\s._-]*|sezon[\s._-]*|se\.[\s._-]*)0*(?<n>[0-9]{1,2})|"
+            + @"(?<n2>[0-9]{1,2})(?:st|nd|rd|th|ª|-?й|-?го)\.?[\s._-]*"
+            + OrdinalSeasonWord
+            + "|"
+            + @"(?<n2>[0-9]{1,2})\.?[\s._-]*"
+            + OrdinalSeasonWord
+            + @"(?![\s._-]*[0-9]{1,2}(?![0-9A-Za-z])(?![\s._]*(?:b[oö]l[uü]m|blm|серия|серии|r[eé]sz|ep(?:isode)?(?![A-Za-z])))))"
+            + @"(?:(?![\p{L}\p{N}])|(?=of[0-9]))",
         RegexOptions.IgnoreCase,
         matchTimeoutMilliseconds: 1000
     )]
@@ -1232,13 +1463,13 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
             + @"xvid|divx|x26[45]|h\.?26[45]|hevc|e?ac3|dts|truefrench|vostfr|subbed|dubbed|"
             + @"repack|dirfix|nfofix|screener|(?:480|576|720|1080|2160)[pi]|3d|uncut|xxx|internal|"
             + @"multi|dl|proper|integrale|sbs|swissgerman|complete[\s._-]+(?:series|seasons?)|"
-            + @"\d{1,2}(?:st|nd|rd|th)[\s._-]+seasons?|seasons?[\s._-]*\d+|saison[\s._-]*\d+|"
-            + @"temporada[\s._-]*\d+|stagione[\s._-]*\d+|staffel[\s._-]*\d+|"
+            + @"\d{1,2}(?:st|nd|rd|th)[\s._-]+seasons?|seasons?[\s._-]*\d+(?:of[0-9]+)?|saison[\s._-]*\d+|"
+            + @"temporada[\s._-]*\d+|tem[\s._-]*\d+|stagione[\s._-]*\d+|staffel[\s._-]*\d+|"
             + @"amzn|dsnp|hmax|atvp|ddp?[0-9]|(?:br|bd|hd|web)mux|seizoen[\s._-]*[0-9]+|"
             + @"ep(?:isodul|isodio)?\.?[\s._-]*[0-9]+|s[0-9]{1,2}(?:d(?:vd)?[0-9]{1,2})?|[0-9]x?dvd[0-9]?|"
             + @"aka|(?:[0-9]{1,2}(?:st|nd|rd|th)[\s._-]+)?(?:special[\s._-]+)?(?:extended|collectors?|"
             + @"anniversary|ultimate|special|directors?|theatrical|unrated)[\s._-]+(?:cut|edition)|"
-            + @"extras[\s._-]+only|(?<![0-9])[0-9]{2}[._][0-9]{2}[._][0-9]{2}(?![0-9])|"
+            + @"extras[\s._-]+only|(?<![0-9])[0-9]{2}[ ._][0-9]{2}[ ._][0-9]{2}(?![0-9])|"
             + @"camrip|hdrip|r5|boxset|vr(?:[\s._-]*180)?|[0-9](?:st|nd|rd|th)[\s._-]+cour|"
             + @"cour[\s._-]*[0-9]|limited[\s._-]+edition|第[0-9一二三四五六七八九十]+[期季話话集])"
             + @"(?![A-Za-z0-9])",
@@ -1268,12 +1499,22 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
     )]
     private static partial Regex TrailingReleaseNoise();
 
+    /// <summary>A tracker address whose dots became spaces: "www torrenting com Show".</summary>
+    [GeneratedRegex(
+        @"^www[\s._]+[A-Za-z0-9\s._-]*?[\s._]+(?:com|net|org|world|to|me|cc|tv|info|io|ws|vip|xyz|pw|site|club|live)"
+            + @"(?![A-Za-z0-9])[\s._-]*",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex LeadingTrackerWords();
+
     [GeneratedRegex(
         matchTimeoutMilliseconds: 1000,
         options: RegexOptions.IgnoreCase,
-        pattern: @"(?:[\s._+-]+(?:part|vol(?:ume)?|dis[ck]|episode|episodio|capitulo|ep|"
-            + @"second[\s._-]+season|complete[\s._-]+version)\.?[\s._-]*[0-9]{0,3}"
-            + @"(?:[\s._-]*(?:of|de|di|din)[\s._-]*[0-9]{1,3})?)+\s*$"
+        pattern: @"(?:[\s._+-]+(?:(?:part|vol(?:ume)?|dis[ck]|episode|episodio|capitulo|ep|seasons?|"
+            + @"second[\s._-]+season|complete[\s._-]+version|complete[\s._-]+collection)\.?[\s._+-]*"
+            + @"(?:[0-9]{1,3}|one|two|three|four|five|six|seven|eight|nine|ten)?"
+            + @"(?:[\s._+-]*(?:of|de|di|din)(?:[\s._+-]*[0-9]{1,3})?)?|series[\s._-]*[0-9]{1,2}))+\s*$"
     )]
     private static partial Regex TvPackNoise();
 
