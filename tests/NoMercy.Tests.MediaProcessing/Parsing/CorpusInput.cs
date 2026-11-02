@@ -50,7 +50,7 @@ internal sealed record CorpusInput(string FileName, string? Directory, string Li
         string? ownDirectory = isPath ? string.Join('/', segments[..^1]) : null;
         string? directory = mode switch
         {
-            CorpusMode.BatchFolder => entry.Folder ?? $"Download/complete/{stem}",
+            CorpusMode.BatchFolder => ownDirectory ?? entry.Folder ?? $"Download/complete/{stem}",
             _ => ownDirectory,
         };
 
