@@ -40,12 +40,26 @@ public sealed partial class SeasonPackAdapter : IFilenameParseAdapter
         matchTimeoutMilliseconds: 1000,
         options: RegexOptions.IgnoreCase,
         pattern: @"(?<![\p{L}\p{N}])(?:(?:season|series|saison|staffel|temporada|stagione)[\s._-]*0*(?<season>[0-9]{1,2})"
-            + @"|S(?<season2>[0-9]{1,2}))(?![\p{L}\p{N}])"
+            + @"|S(?<season2>[0-9]{1,4}))(?![\p{L}\p{N}])"
     )]
     private static partial Regex SeasonMarker();
 
-    [GeneratedRegex(@"(?<![A-Za-z0-9])[0-9]{1,4}(?![A-Za-z0-9])", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    [GeneratedRegex(
+        @"(?<![A-Za-z0-9])[0-9]{1,4}(?![A-Za-z0-9])",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex StandaloneNumber();
+
+    // Audio layouts and codec numbers ("EAC3.51", "DDP5.1", "H.264", "5.1") are
+    // numbers, but never the episode.
+    [GeneratedRegex(
+        @"(?:(?<![A-Za-z0-9])(?:e?ac3|ddp?|aac|dts(?:-hd)?|truehd|flac|opus)\+?[\s._]*[0-9]?[._]?[0-9]?|"
+            + @"(?<![A-Za-z0-9])h[\s._]?26[45]|(?<![0-9])[1-9][._][0-2](?![0-9]))",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex TechnicalNumber();
 
     public MovieFile? TryParse(ParseContext context)
     {
@@ -64,7 +78,7 @@ public sealed partial class SeasonPackAdapter : IFilenameParseAdapter
             + " "
             + context.CleanedFileName[(match.Index + match.Length)..];
 
-        if (StandaloneNumber().IsMatch(withoutMarker))
+        if (StandaloneNumber().IsMatch(TechnicalNumber().Replace(withoutMarker, " ")))
             return null;
 
         Group season = match.Groups["season"].Success

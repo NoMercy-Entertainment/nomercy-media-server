@@ -23,10 +23,34 @@ public class MusicPathParserTests
 {
     [Theory]
     [InlineData(["/data/Music/A/Adele/[2015] 25", 2015, "25", "Adele", null])]
-    [InlineData(["/data/Music/[Albums]/Daft Punk/[2013] Random Access Memories", 2013, "Random Access Memories", "Daft Punk", null])]
-    [InlineData([@"D:\Music\R\Radiohead\[1997] OK Computer", 1997, "OK Computer", "Radiohead", null])]
-    [InlineData(["/m/Music/T/Taylor Swift/[Singles] Cardigan", 0, "Cardigan", "Taylor Swift", "Singles"])]
-    [InlineData(["/srv/Music/M/Miles Davis/[1959] Kind of Blue", 1959, "Kind of Blue", "Miles Davis", null])]
+    [InlineData([
+        "/data/Music/[Albums]/Daft Punk/[2013] Random Access Memories",
+        2013,
+        "Random Access Memories",
+        "Daft Punk",
+        null,
+    ])]
+    [InlineData([
+        @"D:\Music\R\Radiohead\[1997] OK Computer",
+        1997,
+        "OK Computer",
+        "Radiohead",
+        null,
+    ])]
+    [InlineData([
+        "/m/Music/T/Taylor Swift/[Singles] Cardigan",
+        0,
+        "Cardigan",
+        "Taylor Swift",
+        "Singles",
+    ])]
+    [InlineData([
+        "/srv/Music/M/Miles Davis/[1959] Kind of Blue",
+        1959,
+        "Kind of Blue",
+        "Miles Davis",
+        null,
+    ])]
     public void Parses_album_layouts(
         string path,
         int year,

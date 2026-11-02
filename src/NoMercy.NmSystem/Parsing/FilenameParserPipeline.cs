@@ -53,11 +53,26 @@ public sealed class FilenameParserPipeline : IFilenameParserPipeline
     {
         foreach (IFilenameParseAdapter adapter in _adapters)
         {
-            MovieFile? result = adapter.TryParse(context);
+            MovieFile? result;
+            try
+            {
+                result = adapter.TryParse(context);
+            }
+            catch (Exception e) when (e is OverflowException or FormatException)
+            {
+                // A number too long for an int (S01E20240101123000) is no episode (#243).
+                _logger?.LogDebug(
+                    "Adapter {Adapter} could not read a number in '{File}'",
+                    [adapter.Name, context.FileNameWithExtension]
+                );
+                continue;
+            }
+
             if (result is not null)
             {
                 _logger?.LogDebug(
-                    "Filename '{File}' parsed by adapter {Adapter}", [context.FileNameWithExtension, adapter.Name]
+                    "Filename '{File}' parsed by adapter {Adapter}",
+                    [context.FileNameWithExtension, adapter.Name]
                 );
                 return result;
             }

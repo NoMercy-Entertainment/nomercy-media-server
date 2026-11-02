@@ -81,7 +81,11 @@ public sealed partial class SpecialsAdapter : IFilenameParseAdapter
     /// "Show Name - 12 - The Special". A number inside the show's own name
     /// ("Mob Psycho 100 - Special") has no dash of its own and is not one.
     /// </summary>
-    [GeneratedRegex(@"(?<![A-Za-z0-9])-[\s\.\-_]*(?<num>[0-9]{1,4})(?![A-Za-z0-9])", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    [GeneratedRegex(
+        @"(?<![A-Za-z0-9])-[\s\.\-_]*(?<num>[0-9]{1,4})(?![A-Za-z0-9])",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex DashedNumber();
 
     /// <summary>

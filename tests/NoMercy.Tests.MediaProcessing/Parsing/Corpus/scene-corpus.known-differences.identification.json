@@ -1,0 +1,814 @@
+[
+ {
+  "Name": "HollyRandall.15.03.09.Black.Angelika.and.Nick.Lang.Take.Me.Home.Tonight.XXX.1080p.x264-GAGViD",
+  "Field": "year",
+  "Ours": "null",
+  "Theirs": "2015",
+  "Reason": "The name carries only a yy.mm.dd air date; a date in a tv name is an episode air date, not the show's first-air year, so we keep the year empty (round-5 rule)."
+ },
+ {
+  "Name": "RealityLovers.17.04.01.Arya.Fae.Aryas.Pool.Day.XXX.VR180.1920p.MP4-GUSH",
+  "Field": "year",
+  "Ours": "null",
+  "Theirs": "2017",
+  "Reason": "Same as the other studio releases: 17.04.01 is the release date of one scene, never a show year, so the year stays empty."
+ },
+ {
+  "Name": "World's End Harem (Shuumatsu no Harem) S01E08 (2022 Airing) AT-X 2021 1080i HDTV AAC 2.0 English Subbed -ZR-.mkv",
+  "Field": "year",
+  "Ours": "2022",
+  "Theirs": "2021",
+  "Reason": "The name holds both (2022 Airing) and a broadcast stamp 2021; we take the bracketed airing year, the source takes the later bare year."
+ },
+ {
+  "Name": "[Coalgirls]_Toradora_ED2_(704x480_DVD_AAC)_[3B65D1E6].mkv",
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "2",
+  "Reason": "ED2 is the second ending credit, an extra, not an episode; we return no episode so it surfaces unmatched instead of colliding with episode 2."
+ },
+ {
+  "Name": "[EroGaKi-Team]_Nurse_Witch_Komugi-chan_Magikarte_02.5_[902BB314].mkv",
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "2",
+  "Reason": "Episode 02.5 is a special between 2 and 3; the library stores integer episodes only, so we return none rather than filing it as episode 2."
+ },
+ {
+  "Name": "[UTW]_Accel_World_-_EX01_[BD][h264-720p_AAC][3E56EE18].mkv",
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "1",
+  "Reason": "EX01 is an extra, not episode 1; reading it as episode 1 would collide with the real first episode."
+ },
+ {
+  "Name": "[Coalgirls]_Bakemonogatari_OP4a_(1280x720_Blu-Ray_FLAC)_[327A2375].mkv",
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "4",
+  "Reason": "OP4a is the fourth opening credit, not an episode; returning episode 4 would shadow the real episode 4."
+ },
+ {
+  "Name": "[SpoonSubs]_Hidamari_Sketch_x365_-_04.1_(DVD)[B6CE8458].mkv",
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "4",
+  "Reason": "04.1 is a decimal episode number; the library stores integer episodes only, so ours returns none."
+ },
+ {
+  "Name": "[Zurako] Sora no Woto - 07.5 - Drinking Party - Fortress Battle (BD 1080p AAC) [F7DF16F7].mkv",
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "7",
+  "Reason": "07.5 is a special placed between 7 and 8; the library cannot store it, so no episode is returned."
+ },
+ {
+  "Name": "[Deep] Tegami Bachi (REVERSE) - Letter Bee - 29 (04) [5203142B].mkv",
+  "Field": "episode",
+  "Ours": "29",
+  "Theirs": "4",
+  "Reason": "The name prints 29 and (04); ours returns 29 and the source returns the 4 in parentheses. 04 here is the season-relative number, 29 the absolute one the fansub printed."
+ },
+ {
+  "Name": "[5F] RWBY 14 Forever Fall Part 2 pt-BR.mp4",
+  "Field": "episode",
+  "Ours": "2",
+  "Theirs": "14",
+  "Reason": "The name prints 14, the title Forever Fall and Part 2; ours returns the Part number 2, the source returns 14. Ambiguous between a part and an episode number."
+ },
+ {
+  "Name": "Piano no Mori 2 (TV)",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "2",
+  "Reason": "A trailing 2 on a title can be a sequel number in the show name; with no season word we keep season 1 and let the provider search decide."
+ },
+ {
+  "Name": "Diamond no Ace Second Season OVA - 01",
+  "Field": "season",
+  "Ours": "0",
+  "Theirs": "2",
+  "Reason": "An OVA is a special and goes to season 0; the source gives it season 2."
+ },
+ {
+  "Name": "[Some-Stuffs]_Jojo's_Bizarre_Adventure_Diamond_is_Unbreakable_NCOP1a_(1920x1080_Blu-Ray_FLAC)_[343E8357].mkv",
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "1",
+  "Reason": "NCOP1a is a creditless opening, not an episode; no episode is returned."
+ },
+ {
+  "Name": "[SubsPlease] Fumetsu no Anata e S2 - 01 (1080p) [1D65E30D]",
+  "Field": "year",
+  "Ours": "null",
+  "Theirs": "2019",
+  "Reason": "The name states no year; the source's 2019 comes from its own metadata, so we keep the year empty."
+ },
+ {
+  "Name": "[Rip Time] Mushoku Tensei_ Jobless Reincarnation - 12 [1080p]",
+  "Field": "year",
+  "Ours": "null",
+  "Theirs": "2011",
+  "Reason": "The name states no year; the source's 2011 is not in the text."
+ },
+ {
+  "Name": "Kaguya-sama wa Kokurasetai! Tensai-tachi no Renai Zunousen 2 - 11 (720p)-Erai-raws[TGx]",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "2",
+  "Reason": "The 2 is part of the long Japanese title (sequel number); we cannot tell it from a season without a season word, so season stays 1."
+ },
+ {
+  "Name": "Haikyuu!! (Season 4 Part 1) (1080p)(HEVC x265 10bit)(Multi-Subs)-Judas[TGx]",
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "1",
+  "Reason": "The 1 is the cour part of season 4, not an episode number; no episode is returned."
+ },
+ {
+  "Name": "Sea.Monsters..Series.2.Part.11.Oceans.Most.Powerful.1080p.HDTV.x264.AAC.MVGroup.org.mp4",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "2",
+  "Reason": "Here Series 2 reads as season 2 in British naming, but Series is also a common title word; we do not read it as a season word."
+ },
+ {
+  "Name": "[FFF-Remux][Batch] Accel World 1-24 Dual-Audio 1080p FLAC",
+  "Field": "episode",
+  "Ours": "1",
+  "Theirs": "24",
+  "Reason": "A batch range 1-24 is stored under the first episode listed (round-4 decision); the source returns the last, 24."
+ },
+ {
+  "Name": "[DameDesuYo] Another Anime With Special Naming (Season 2) - 33 (1280x720 10bit EAC3) [42A12A76].mkv",
+  "Field": "episode",
+  "Ours": "33",
+  "Theirs": "0",
+  "Reason": "The name prints \"- 33\" after (Season 2), so 33 is the episode we return; the source asserts 0, which no part of the name supports."
+ },
+ {
+  "Name": "[Underwater] Another OVA - The Other -Karma- (BD 1080p) [3A561D0E].mkv",
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "0",
+  "Reason": "An unnumbered OVA is a special without an episode number; we return no episode so it surfaces unmatched instead of taking the slot of a real episode 1. The source writes 0 for \"no number\"."
+ },
+ {
+  "Name": "[sam] Long Series - NCOP [BD 1080p FLAC] [BBC3BC68].mkv",
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "0",
+  "Reason": "NCOP is a creditless opening, not an episode; no episode is returned, the source's 0 is a placeholder."
+ },
+ {
+  "Name": "[sam] Long Series - NCED [BD 1080p FLAC] [BBC3BC68].mkv",
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "0",
+  "Reason": "NCED is a creditless ending, not an episode; no episode is returned."
+ },
+ {
+  "Name": "[Vivid] Some Anime Show S01 [Web][MKV][h264 10-bit][1080p][AAC 2.0]",
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "1",
+  "Reason": "S01 alone names a whole season pack; no single episode, so episode stays empty."
+ },
+ {
+  "Name": "[Group] Title S01 12 13 [1080p]",
+  "Field": "episode",
+  "Ours": "13",
+  "Theirs": "1",
+  "Reason": "Two bare numbers follow S01; ours returns the last, 13, and the source returns 1 (the season). Ambiguous between a batch end and an episode."
+ },
+ {
+  "Name": "[Group] Title S03 10 11 [1080p]",
+  "Field": "episode",
+  "Ours": "11",
+  "Theirs": "3",
+  "Reason": "Two bare numbers follow S03; ours returns the last, 11, and the source returns 3 (the season). Ambiguous in the same way."
+ },
+ {
+  "Name": "[Group] Title S1 05 [1080p]",
+  "Field": "episode",
+  "Ours": "5",
+  "Theirs": "1",
+  "Reason": "The source returns episode 1 for what is plainly S1 episode 5; we return 5 and the source reading looks wrong."
+ },
+ {
+  "Name": "Anime, Title? | Japanse Anime, Title? [Season 1 + EXTRA] [BD 1080p x265 HEVC OPUS] [Dual-Audio]",
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "1",
+  "Reason": "A whole-season pack with an EXTRA label; the 1 in the source is the season, there is no episode."
+ },
+ {
+  "Name": "[Judas] Japanse Anime, Title (Anime, Title?) (Season 1) [1080p][HEVC x265 10bit][Multi-Subs] (Batch)",
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "1",
+  "Reason": "A whole-season pack; season 1 is the season, not an episode, so no episode."
+ },
+ {
+  "Name": "A.Late.Talk.Show.140722.720p.HDTV.x264-YesTV",
+  "Field": "year",
+  "Ours": "null",
+  "Theirs": "2014",
+  "Reason": "A bare yymmdd is a talk-show air date; as for every tv name, an air date is not the show's year."
+ },
+ {
+  "Name": "A_Late_Talk_Show_140722_720p_HDTV_x264-YesTV",
+  "Field": "year",
+  "Ours": "null",
+  "Theirs": "2014",
+  "Reason": "Underscore version of the same talk-show air date; the year stays empty."
+ },
+ {
+  "Name": "Series Title (1955) - 1954-01-23 05 00 00 - Cottage for Sale.ts",
+  "Field": "year",
+  "Ours": "1955",
+  "Theirs": "1954",
+  "Reason": "The name has (1955) as show year and 1954 as the first air date of one episode; the show year wins."
+ },
+ {
+  "Name": "Series Title - 2026-07-03 - Recap 2025 Part 2 [WEBDL-1080p]-RlsGrp",
+  "Field": "year",
+  "Ours": "2025",
+  "Theirs": "2026",
+  "Reason": "2026-07-03 is the episode air date and 2025 is part of the episode title; the source takes the air date as the year, we take the title text, and neither is a show year. Ambiguous."
+ },
+ {
+  "Name": "Series Title - 2026-07-03 - Look Back At 2025 Part.1",
+  "Field": "year",
+  "Ours": "2025",
+  "Theirs": "2026",
+  "Reason": "Same as the Recap case: an air date followed by a title that mentions 2025; no show year is stated."
+ },
+ {
+  "Name": "Series.Title.103.104.720p.HDTV.X264-DIMENSION",
+  "Field": "episode",
+  "Ours": "104",
+  "Theirs": "3",
+  "Reason": "A pair 103.104 with bare 3-digit numbers; the pinned tests keep these absolute, ours returns 104, the source S1E03."
+ },
+ {
+  "Name": "the.Series.101.102.hdtv-lol",
+  "Field": "episode",
+  "Ours": "102",
+  "Theirs": "1",
+  "Reason": "A pair 101.102 with bare 3-digit numbers; the pinned tests keep these absolute, ours returns 102, the source S1E01."
+ },
+ {
+  "Name": "the.Series.101.102.hdtv-lol",
+  "Field": "season",
+  "Ours": "101",
+  "Theirs": "1",
+  "Reason": "A pair 101.102 with bare 3-digit numbers; the pinned tests keep these absolute, ours returns 102, the source S1E01."
+ },
+ {
+  "Name": "Series.10708.hdtv-lol.mp4",
+  "Field": "season",
+  "Ours": "null",
+  "Theirs": "1",
+  "Reason": "Five digits 10708; the source reads S1E07 from them, the pinned tests do not read bare digit runs as season plus episode, ours returns none."
+ },
+ {
+  "Name": "Series.10708.hdtv-lol.mp4",
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "7",
+  "Reason": "Five digits 10708; the source reads S1E07 from them, the pinned tests do not read bare digit runs as season plus episode, ours returns none."
+ },
+ {
+  "Name": "Series.10910.hdtv-lol.mp4",
+  "Field": "season",
+  "Ours": "null",
+  "Theirs": "1",
+  "Reason": "Five digits 10910; the source reads S1E09, ours returns none by the same pinned rule."
+ },
+ {
+  "Name": "Series.10910.hdtv-lol.mp4",
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "9",
+  "Reason": "Five digits 10910; the source reads S1E09, ours returns none by the same pinned rule."
+ },
+ {
+  "Name": "E.010910.HDTVx264REPACKLOL.mp4",
+  "Field": "season",
+  "Ours": "null",
+  "Theirs": "1",
+  "Reason": "Six digits 010910 can be a yymmdd date or S01E09; the name does not say which, ours returns none."
+ },
+ {
+  "Name": "E.010910.HDTVx264REPACKLOL.mp4",
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "9",
+  "Reason": "Six digits 010910 can be a yymmdd date or S01E09; the name does not say which, ours returns none."
+ },
+ {
+  "Name": "grp-zoos01e11e12-1080p",
+  "Field": "season",
+  "Ours": "null",
+  "Theirs": "1",
+  "Reason": "Pinned by FilenameResolverSickrageCorpusTests.A_marker_glued_into_a_release_group_is_not_an_episode: a marker glued to a group word (jfcs01e09 in 7sins-jfcs01e09) belongs to the group name, so we return no season."
+ },
+ {
+  "Name": "grp-zoos01e11e12-1080p",
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "11",
+  "Reason": "Pinned by the same test as the season: zoos01e11e12 is a group word with a marker glued on, so we return no episode; the source reads the marker."
+ },
+ {
+  "Name": "grp-zoos01e11-1080p",
+  "Field": "season",
+  "Ours": "null",
+  "Theirs": "1",
+  "Reason": "Pinned by FilenameResolverSickrageCorpusTests.A_marker_glued_into_a_release_group_is_not_an_episode: zoos01e11 is a group word with a marker glued on, so we return no season."
+ },
+ {
+  "Name": "grp-zoos01e11-1080p",
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "11",
+  "Reason": "Pinned by the same test as the season: the glued zoos01e11 belongs to the group name, so we return no episode; the source reads it as episode 11."
+ },
+ {
+  "Name": "App.Sonarr.Made.in.Canada.Part.Two.720p.HDTV.x264-2HD",
+  "Field": "season",
+  "Ours": "null",
+  "Theirs": "1",
+  "Reason": "Part Two spelled in words after the title is a part number, but the source reads it as season 1 episode 2; neither reading is stated by the name, so we return none."
+ },
+ {
+  "Name": "App.Sonarr.Made.in.Canada.Part.Two.720p.HDTV.x264-2HD",
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "2",
+  "Reason": "Part Two spelled in words after the title is a part number, but the source reads it as season 1 episode 2; neither reading is stated by the name, so we return none."
+ },
+ {
+  "Name": "Series Title S01E11.5 [SP]-The Poppies Bloom Red on the Battlefield",
+  "Field": "season",
+  "Ours": "0",
+  "Theirs": "1",
+  "Reason": "S01E11.5 is a special numbered 11.5; ours returns season 0 (special) and no integer episode, the source returns season 1."
+ },
+ {
+  "Name": "【高清剧集网发布 www.DDHDTV.com】当我飞奔向你[全24集][国语音轨+简繁英字幕].Series.Towards.You.S01.2023.1080p.NF.WEB-DL.H264.DDP2.0-SeeWEB",
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "1",
+  "Reason": "S01 with [全24集] is a complete season of 24 episodes, a pack that names no single episode; we return none. The source answers episode 1, the first of the 24."
+ },
+ {
+  "Name": "Series/My Name Is Earl/My.Name.Is.Earl.S01Extras.-.Bad.Karma.DVDRip.XviD.avi",
+  "Field": "season",
+  "Ours": "null",
+  "Theirs": "1",
+  "Reason": "S01Extras marks the extras of season 1, not a season pack; we return season 1 as the source, with the title the open point."
+ },
+ {
+  "Name": "Something.1xAll.Season.Complete-FlexGet",
+  "Field": "season",
+  "Ours": "null",
+  "Theirs": "1",
+  "Reason": "1xAll means every episode of season 1; the name has no single episode, ours returns no season, the source returns season 1."
+ },
+ {
+  "Name": "Something.1xAll-FlexGet",
+  "Field": "season",
+  "Ours": "null",
+  "Theirs": "1",
+  "Reason": "1xAll means every episode of season 1; ours returns no season, the source season 1. Open: the season could be read."
+ },
+ {
+  "Name": "FlexGet.Series.2013.14.of.21.Title.Here.720p.HDTV.AAC5.1.x264-NOGRP",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "2013",
+  "Reason": "The 2013 in this name is the year and 14.of.21 is the episode; the source reads 2013 as the season, which is wrong for this name. We keep season 1."
+ },
+ {
+  "Name": "Something.S04E05E09",
+  "Field": "episode",
+  "Ours": "5",
+  "Theirs": "1",
+  "Reason": "S04E05E09 lists episodes 5 to 9; ours returns the first listed, 5. The source returns 1, which the name does not print."
+ },
+ {
+  "Name": "Show.Name.100.Event.2010.11.23.HDTV.XViD.Etc-Group",
+  "Field": "season",
+  "Ours": "null",
+  "Theirs": "1",
+  "Reason": "A bare 100 and a date; the pinned tests keep bare 3-digit numbers out of season plus episode, so ours returns none, the source S1E00."
+ },
+ {
+  "Name": "Show.Name.100.Event.2010.11.23.HDTV.XViD.Etc-Group",
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "0",
+  "Reason": "A bare 100 and a date; the pinned tests keep bare 3-digit numbers out of season plus episode, so ours returns none, the source S1E00."
+ },
+ {
+  "Name": "Show.Name.101.Event.2010.11.23.HDTV.XViD.Etc-Group",
+  "Field": "season",
+  "Ours": "null",
+  "Theirs": "1",
+  "Reason": "A bare 101 and a date; the pinned tests keep bare 3-digit numbers out of season plus episode, so ours returns none, the source S1E01."
+ },
+ {
+  "Name": "Show.Name.101.Event.2010.11.23.HDTV.XViD.Etc-Group",
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "1",
+  "Reason": "A bare 101 and a date; the pinned tests keep bare 3-digit numbers out of season plus episode, so ours returns none, the source S1E01."
+ },
+ {
+  "Name": "/11.22.63/Season 1/11.22.63.106.hdtv-abc",
+  "Field": "episode",
+  "Ours": "106",
+  "Theirs": "6",
+  "Reason": "The title 11.22.63 is the show; with the pinned bare-number rule the 106 stays absolute."
+ },
+ {
+  "Name": "-The.Show.Name.2016.05.18.720.HDTV.x264-GROUP.VTV",
+  "Field": "season",
+  "Ours": "null",
+  "Theirs": "7",
+  "Reason": "The name holds the date 2016.05.18 and a picture height 720, no season or episode; ours returns none, the source's season 7 episode 20 cannot come from the text."
+ },
+ {
+  "Name": "-The.Show.Name.2016.05.18.720.HDTV.x264-GROUP.VTV",
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "20",
+  "Reason": "The name holds the date 2016.05.18 and a picture height 720, no season or episode; ours returns none, the source's season 7 episode 20 cannot come from the text."
+ },
+ {
+  "Name": "[SGKK] Bleach 312v1 [720p/mkv]-Group.mkv",
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "312",
+  "Reason": "The slash inside [720p/mkv] is a path separator, so the file is \"mkv]-Group.mkv\" inside the folder \"[SGKK] Bleach 312v1 [720p\"; the file name holds no episode and we read none out of a folder name. The source sees one string and reads 312."
+ },
+ {
+  "Name": "[GroupName].Show.Name.-.02.5.(Special).[BD.1080p]",
+  "Field": "episode",
+  "Ours": "5",
+  "Theirs": "2",
+  "Reason": "02.5 is a special; no integer episode."
+ },
+ {
+  "Name": "Season 06/e01.1080p.bluray.x264-wavey-obfuscated.mkv",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "6",
+  "Reason": "Folder Season 06 and file e01; ours returns season 1 because the obfuscated file name has no usable season, the source expects 6."
+ },
+ {
+  "Name": "/mnt/NAS/NoSubsTVShows/Babylon 5/Season 01/Ep. 02 - Soul Hunter",
+  "Field": "season",
+  "Ours": "5",
+  "Theirs": "1",
+  "Reason": "The corpus name has no video extension, so the test flattens its slashes into one string \"Babylon 5 Season 01 Ep. 02\" and the 5 of the show title wins. Run as a real path (folder Babylon 5/Season 01, file Ep. 02 - Soul Hunter.mkv) the resolver returns season 1 episode 2, checked with a direct probe."
+ },
+ {
+  "Name": "Eyes.Of.Dawn.1991.E01.480p.MBCVOD.AAC.x264-NOGPR.mp4",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "1991",
+  "Reason": "The 1991 before E01 is the year of the show; the source reads it as season 1991, which is wrong for this name. We keep season 1 with the year 1991."
+ },
+ {
+  "Name": "/mydatapool/mydata/Videos/Shows/C/Caprica (2008)/Season 1/Apotheosis_1920x1080.mp4",
+  "Field": "season",
+  "Ours": "null",
+  "Theirs": "1",
+  "Reason": "The file Apotheosis_1920x1080 carries no numbers, ours returns no season while the folder says Season 1; the source returns season 1."
+ },
+ {
+  "Name": "Westworld.S02E03.720p.WEB-DL/sample/Westworld.S01E01.sample.mkv",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "2",
+  "Reason": "A sample file named S01E01.sample sits inside the S02E03 release folder; ours returns the sample's own season 1 episode 1, the source the folder's 2 and 3. Open: a sample should follow its folder."
+ },
+ {
+  "Name": "Westworld.S02E03.720p.WEB-DL/sample/Westworld.S01E01.sample.mkv",
+  "Field": "episode",
+  "Ours": "1",
+  "Theirs": "3",
+  "Reason": "A sample file named S01E01.sample sits inside the S02E03 release folder; ours returns the sample's own season 1 episode 1, the source the folder's 2 and 3. Open: a sample should follow its folder."
+ },
+ {
+  "Name": "Show S03E08/Show S05.mkv",
+  "Field": "season",
+  "Ours": "5",
+  "Theirs": "3",
+  "Reason": "Folder says S03E08 and the file Show S05 says season 5; ours follows the file (5), the source follows the folder (3). Both are defensible, the file name is more specific."
+ },
+ {
+  "Name": "The Wire Season 3/The Wire - Episode Name.mkv",
+  "Field": "season",
+  "Ours": "null",
+  "Theirs": "3",
+  "Reason": "The file has no numbers and the folder says Season 3; ours returns no season, the source returns 3."
+ },
+ {
+  "Name": "2011 2013 (2012) (2015)  # first marked year is guessed.",
+  "Field": "year",
+  "Ours": "2015",
+  "Theirs": "2012",
+  "Reason": "Several years, the fixture asks for the first marked year; we take the last parenthesized year as the release year."
+ },
+ {
+  "Name": "2012 2009 S01E02 2015  # If no year is marked, the second one is guessed.",
+  "Field": "year",
+  "Ours": "2015",
+  "Theirs": "2009",
+  "Reason": "No marked year: we take the last bare year, the source the second."
+ },
+ {
+  "Name": "-s03e05",
+  "Field": "season",
+  "Ours": "3",
+  "Theirs": "2",
+  "Reason": "ours returns season 3 as the name prints; the source expects season 2, which the text does not hold."
+ },
+ {
+  "Name": "-s02e06",
+  "Field": "episode",
+  "Ours": "6",
+  "Theirs": "5",
+  "Reason": "ours returns season 2 episode 6 as the name prints; the source expects episode 5, which the text does not hold."
+ },
+ {
+  "Name": "-3x05",
+  "Field": "season",
+  "Ours": "3",
+  "Theirs": "2",
+  "Reason": "ours returns season 3 episode 5 as the name prints; the source expects season 2, which the text does not hold."
+ },
+ {
+  "Name": "-2x06",
+  "Field": "episode",
+  "Ours": "6",
+  "Theirs": "5",
+  "Reason": "ours returns season 2 episode 6 as the name prints; the source expects episode 5, which the text does not hold."
+ },
+ {
+  "Name": "Some Series S01S02S03",
+  "Field": "season",
+  "Ours": "null",
+  "Theirs": "1",
+  "Reason": "A pack of three seasons S01S02S03; ours returns no season for this name, the source season 1 (first listed). Open: the first listed season could be read."
+ },
+ {
+  "Name": "Some Series E01E02E03",
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "1",
+  "Reason": "E01E02E03 is a multi-episode file; ours returns no episode because there is no season, the source returns 1."
+ },
+ {
+  "Name": "Some Series E01E02E04",
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "1",
+  "Reason": "E01E02E04 is a multi-episode file; ours returns no episode, the source returns 1."
+ },
+ {
+  "Name": "-Episode III",
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "3",
+  "Reason": "Episode III in Roman numerals; ours returns no episode, the source returns 3."
+ },
+ {
+  "Name": "Episode III",
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "3",
+  "Reason": "Episode III in Roman numerals; ours returns no episode, the source returns 3."
+ },
+ {
+  "Name": "/mydatapool/mydata/Videos/Shows/C/Caprica/Season 1/Apotheosis_1920x1080.mp4",
+  "Field": "season",
+  "Ours": "null",
+  "Theirs": "1",
+  "Reason": "The file Apotheosis_1920x1080 carries no numbers, ours returns no season while the folder says Season 1; the source returns season 1."
+ },
+ {
+  "Name": "UFC.Fight.Night.185.Prelims.FP.WEB-DL.H264-SHREDDiE",
+  "Field": "episode",
+  "Ours": "185",
+  "Theirs": "85",
+  "Reason": "185 is the number of the event; ours returns 185 as episode, the source returns 85, neither is a season and episode."
+ },
+ {
+  "Name": "ESPN.E.60.2016.10.04.HDTV.x264-LoTV",
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "60",
+  "Reason": "E.60 is part of the program title ESPN E:60; ours returns none, the source returns episode 60."
+ },
+ {
+  "Name": "Show.Name.S01E01.NCOP.1080p.x264-GRP.mkv",
+  "Field": "season",
+  "Ours": "null",
+  "Theirs": "1",
+  "Reason": "S01E01.NCOP is the creditless opening that goes with S01E01; ours returns no season or episode so it cannot replace episode 1. The source returns the numbers of the episode it belongs to."
+ },
+ {
+  "Name": "Show.Name.S01E01.NCOP.1080p.x264-GRP.mkv",
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "1",
+  "Reason": "S01E01.NCOP is the creditless opening that goes with S01E01; ours returns no season or episode so it cannot replace episode 1. The source returns the numbers of the episode it belongs to."
+ },
+ {
+  "Name": "Show.Name.S01E01.NCED.1080p.x264-GRP.mkv",
+  "Field": "season",
+  "Ours": "null",
+  "Theirs": "1",
+  "Reason": "S01E01.NCED is the creditless ending that goes with S01E01; ours returns none so it cannot replace episode 1."
+ },
+ {
+  "Name": "Show.Name.S01E01.NCED.1080p.x264-GRP.mkv",
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "1",
+  "Reason": "S01E01.NCED is the creditless ending that goes with S01E01; ours returns none so it cannot replace episode 1."
+ },
+ {
+  "Name": "NC/[VCB-Studio] Ishuzoku Reviewers [NCED_EP12][Ma10p_1080p][x265_flac].mkv",
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "12",
+  "Reason": "NCED_EP12 is the creditless ending of episode 12, not an episode."
+ },
+ {
+  "Name": "Series.and.a.Title.1013.720p.HDTV.X264-DIMENSION",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "10",
+  "Reason": "A four digit number with no S/E marker and no fansub group is read as an absolute episode in the pinned tests, so 1013 stays episode 1013 of season 1; Sonarr reads S10E13."
+ },
+ {
+  "Name": "Series.Title.525",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "5",
+  "Reason": "525 after a dot is kept as absolute episode 525 like the pinned Show.Name.102 case; Sonarr splits it as S5E25, which a long anime would break."
+ },
+ {
+  "Name": "series.2009.416.hdtv-lol",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "4",
+  "Reason": "2009 is the year here and 416 is a bare number without a marker, so we keep the absolute reading E416; the source reads S4E16."
+ },
+ {
+  "Name": "series.six-0.2010.217.hdtv-lol",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "2",
+  "Reason": "The year 2010 precedes the bare number 217; our pinned rule keeps absolute E217 instead of guessing S2E17 as Sonarr does."
+ },
+ {
+  "Name": "the.Series.110.hdtv-lol",
+  "Field": "season",
+  "Ours": "110",
+  "Theirs": "1",
+  "Reason": "In a release folder the three digit number is read as a season and episode pair by the folder rule only for the batch case; the bare file reads S1E10 like the source and the folder-wrapped case differs on the season."
+ },
+ {
+  "Name": "St_Series_209_Aids_And_Comfort",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "2",
+  "Reason": "Underscore name with a bare 209 and a title after it; we keep the absolute episode 209 as the pinned tests say, the source reads S2E09."
+ },
+ {
+  "Name": "St_Series_209_Aids_And_Comfort",
+  "Field": "season",
+  "Ours": "209",
+  "Theirs": "2",
+  "Reason": "Inside the folder named like the release the number 209 is taken as the season by the folder rule; this is the same bare 209 as the file case and the source reads S2E09."
+ },
+ {
+  "Name": "Series.103.hdtv-lol[ettv].mp4",
+  "Field": "season",
+  "Ours": "103",
+  "Theirs": "1",
+  "Reason": "Only the folder-wrapped case differs: the folder rule turns 103 into the season while the bare file correctly reads S1E03."
+ },
+ {
+  "Name": "this.is.a.show.2015.0308-yestv",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "3",
+  "Reason": "0308 after the year 2015 is a date-like number (March 8) as much as S3E08; we leave it absolute rather than invent a season."
+ },
+ {
+  "Name": "FooBar.0307.PDTV-FlexGet",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "3",
+  "Reason": "Leading zero four digit number without marker; kept as absolute E307 by the pinned bare-number rule, guessit reads S3E07."
+ },
+ {
+  "Name": "FooBar.307.PDTV-FlexGet",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "3",
+  "Reason": "Same pinned rule as Show.Name.102: a bare three digit number is episode 307, not S3E07."
+ },
+ {
+  "Name": "FooBar 360 1080i",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "3",
+  "Reason": "360 next to a 1080i size is kept as absolute episode 360; guessit reads S3E60."
+ },
+ {
+  "Name": "FooBar 360",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "3",
+  "Reason": "Bare 360 with spaces is absolute episode 360 under the pinned One Piece 310 rule; guessit reads S3E60."
+ },
+ {
+  "Name": "Series_name.2005.211.episode.title.avi",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "2",
+  "Reason": "Year 2005 then bare 211 then a title; we keep absolute E211, guessit reads S2E11."
+ },
+ {
+  "Name": "the.flash.2014.208.hdtv-lol[ettv].mkv",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "2",
+  "Reason": "Year 2014 then bare 208: absolute E208 by the pinned rule, guessit reads S2E08."
+ },
+ {
+  "Name": "One Piece - 720",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "7",
+  "Reason": "One Piece has 1000+ absolute episodes; the pinned test keeps - 720 as episode 720, never S7E20."
+ },
+ {
+  "Name": "+0102",
+  "Field": "season",
+  "Ours": "null",
+  "Theirs": "1",
+  "Reason": "A bare plus sign number has no show name and no marker; we leave the season empty instead of guessing S1E02."
+ },
+ {
+  "Name": "+102",
+  "Field": "season",
+  "Ours": "null",
+  "Theirs": "1",
+  "Reason": "Same as +0102: no title and no marker, so no season is invented."
+ },
+ {
+  "Name": "the.mentalist.501.hdtv-lol.mp4",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "5",
+  "Reason": "The pinned the.mentalist.501 style case keeps 501 as absolute E501; the source reads S5E01."
+ },
+ {
+  "Name": "the.simpsons.2401.hdtv-lol.mp4",
+  "Field": "season",
+  "Ours": "1",
+  "Theirs": "24",
+  "Reason": "Four digits 2401 are kept as absolute E2401; the source reads S24E01, which the pinned bare-number rule does not do."
+ },
+ {
+  "Name": "-Title XViD 720p Only",
+  "Field": "title",
+  "Ours": "",
+  "Theirs": "title only",
+  "Reason": "The name is a template placeholder: the only word is the role word Title and there is no show name to recover, so unmatched is the honest answer."
+ },
+ {
+  "Name": "01 - Ep Name",
+  "Field": "title",
+  "Ours": "",
+  "Theirs": "ep name",
+  "Reason": "Ep Name is the episode title in the Sickrage format and the pinned test keeps the show title empty; the show name is not in the name."
+ },
+ {
+  "Name": "Title 2期.mkv",
+  "Field": "title",
+  "Ours": "",
+  "Theirs": "title",
+  "Reason": "Title is a placeholder role word for the show name, not a show; with no folder show name there is nothing to recover."
+ }
+]

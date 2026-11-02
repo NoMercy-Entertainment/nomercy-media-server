@@ -57,13 +57,21 @@ public sealed partial class InboxClassifier
     // anime/tv split itself is decided by IMediaTypeClassifier (AniList/Jikan),
     // never by bracket-guessing, since normally-named anime files with no
     // fansub bracket were routing to the wrong library.
-    [GeneratedRegex(@"^\[[^\]]+\].*\s-\s\d{1,4}\s", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    [GeneratedRegex(
+        @"^\[[^\]]+\].*\s-\s\d{1,4}\s",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex FansubAbsoluteEpPattern();
 
     [GeneratedRegex(@"\.NoMercy\.m3u8$", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
     private static partial Regex FinishedHlsMasterPattern();
 
-    [GeneratedRegex(@"^(video_\d+x\d+(_.+)?|audio_[A-Za-z0-9_]+)$", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    [GeneratedRegex(
+        @"^(video_\d+x\d+(_.+)?|audio_[A-Za-z0-9_]+)$",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex HlsLadderEntryPattern();
 
     [GeneratedRegex(
@@ -73,7 +81,11 @@ public sealed partial class InboxClassifier
     )]
     private static partial Regex QualityTagTail();
 
-    [GeneratedRegex(@"\s*\((?:19|20)\d{2}\)\s*$", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    [GeneratedRegex(
+        @"\s*\((?:19|20)\d{2}\)\s*$",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex TrailingYearInParens();
 
     private readonly IInboxMetadataProbe _probe;
@@ -439,22 +451,15 @@ public sealed partial class InboxClassifier
         return [.. candidates.OrderByDescending(c => c.Score)];
     }
 
-    // Only episodic files use the library scan's resolver: its trailing-number rule
-    // would cut "Toy Story 3", and the detector's year rule copes with "Blade Runner 2049 (2017)".
-    private MovieFile ParseName(string path, string structuralType)
-    {
-        if (structuralType != "tv")
-            return DetectUntagged(path);
-
-        return _resolver
+    internal MovieFile ParseName(string path, string structuralType) =>
+        _resolver
             .Resolve(
                 Path.GetFileName(path),
                 Path.GetDirectoryName(path),
                 path,
-                MediaTypes.TvMediaType
+                structuralType == "tv" ? MediaTypes.TvMediaType : MediaTypes.MovieMediaType
             )
             .Parsed;
-    }
 
     // Release tags in square brackets ([E38EAFF4], [1080p]) are not part of the
     // name; the detector read a CRC starting with E and two digits as an episode.

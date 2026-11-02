@@ -406,9 +406,9 @@ public partial class MediaIdentificationService(
     /// Names the episode a file is for a show the server does not hold yet, which is
     /// what the Add content dialog lists before the owner has added anything. It asks
     /// TMDB for the one episode and writes nothing: no show, season or episode row.
-    /// Only a file that states its own season and episode is answered; a dated or
-    /// flat-numbered name needs the show's local episode rows to be read correctly,
-    /// and stays unmatched until the show is added.
+    /// A file with no stated season is read as season one when its episode is below
+    /// 100, as fansub batches number. No episode, 100 or higher, or a dated name
+    /// stays unmatched until the show is added.
     /// </summary>
     private static async Task<(
         MovieOrEpisode match,
@@ -420,10 +420,14 @@ public partial class MediaIdentificationService(
         TimeSpan? duration
     )
     {
-        if (!seasonExplicit || !parsed.Season.HasValue || !parsed.Episode.HasValue)
+        if (!parsed.Episode.HasValue || (!seasonExplicit && parsed.Episode.Value >= 100))
             return null;
 
-        TmdbEpisodeClient episodeClient = new(show.Id, parsed.Season.Value, parsed.Episode.Value);
+        if (seasonExplicit && !parsed.Season.HasValue)
+            return null;
+
+        int season = parsed.Season ?? 1;
+        TmdbEpisodeClient episodeClient = new(show.Id, season, parsed.Episode.Value);
         TmdbEpisodeDetails? details = await episodeClient.Details(true);
         if (details == null)
             return null;
@@ -512,21 +516,14 @@ public partial class MediaIdentificationService(
             if (details == null)
                 return null;
 
-            // The same rule as the show path above, and the same reason. This was
-            // only ever reported against shows because shows are what the owner
-            // had been scanning; the construction here is identical and imports a
-            // whole movie on the first search result for a parsed filename.
-            bool hasMovie = ctx.Movies.AsNoTracking().Any(item => item.Id == movie.Id);
-
-            if (!hasMovie)
-                return null;
-
+            // Answered from TMDB and never saved, like an unheld show.
             movieItem = new()
             {
                 Id = details.Id,
                 Title = details.Title,
                 Overview = details.Overview,
                 Poster = details.PosterPath,
+                ImdbId = details.ImdbId,
             };
         }
 

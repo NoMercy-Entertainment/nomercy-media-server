@@ -23,6 +23,13 @@ public sealed class EpisodeWordAdapter : IFilenameParseAdapter
 
     public MovieFile? TryParse(ParseContext context)
     {
+        // An explicit S##E## outranks a spelled-out "Episode 55" label in the title.
+        if (
+            StringExtensions.MatchSeasonEpisode().IsMatch(context.CleanedFileName)
+            || StringExtensions.MatchCrossFormatEpisode().IsMatch(context.CleanedFileName)
+        )
+            return null;
+
         string fileNameNoParens = StringExtensions
             .RemoveParenthesizedString()
             .Replace(context.CleanedFileName, string.Empty)
@@ -34,7 +41,6 @@ public sealed class EpisodeWordAdapter : IFilenameParseAdapter
 
         int episodeNumber = int.Parse(match.Groups[1].Value);
         string showTitle = fileNameNoParens[..match.Index].TrimEnd('-', '.', '_', ' ');
-
 
         showTitle = showTitle.CleanSeriesTitle();
 
