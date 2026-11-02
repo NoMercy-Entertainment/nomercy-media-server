@@ -278,6 +278,100 @@ public class ShowNotYetInLibraryIsIdentifiedTests : ProviderHttpHarness
         collided.Should().BeEmpty();
     }
 
+    private async Task<(MovieOrEpisode match, string? imdbId)?> IdentifyFlat(string file)
+    {
+        ScriptTmdb();
+        Handler.WhenGet(
+            $"/tv/{ShowId}/season/1/episode/5",
+            MockResponse.Json(
+                HttpStatusCode.OK,
+                """
+                {"id":9005,"name":"Fifth","overview":"","season_number":1,"episode_number":5,"still_path":"/s5.jpg","air_date":"2023-03-08"}
+                """
+            )
+        );
+        Handler.WhenGet(
+            $"/tv/{ShowId}/season/2/episode/3",
+            MockResponse.Json(
+                HttpStatusCode.OK,
+                """
+                {"id":9203,"name":"Third","overview":"","season_number":2,"episode_number":3,"still_path":"/s23.jpg","air_date":"2023-04-08"}
+                """
+            )
+        );
+        ResolvedName resolved = Resolve(file);
+
+        await using MediaContext context = new(_options);
+        MediaIdentificationService service = new(
+            context,
+            new ServiceCollection()
+                .BuildServiceProvider()
+                .GetRequiredService<IServiceScopeFactory>()
+        );
+
+        return await service.IdentifyAsync(
+            resolved.Parsed,
+            MediaTypes.TvMediaType,
+            duration: null,
+            resolved.OverrideTmdbId,
+            resolved.SeasonExplicit,
+            resolved.AirDate
+        );
+    }
+
+    [Fact]
+    public async Task A_flat_numbered_fansub_name_without_a_season_identifies_season_one()
+    {
+        (MovieOrEpisode match, string? imdbId)? result = await IdentifyFlat(
+            "[SubsPlease] The Ark - 05 (1080p) [ABCD1234].mkv"
+        );
+
+        result.Should().NotBeNull();
+        result!.Value.match.SeasonNumber.Should().Be(1);
+        result.Value.match.EpisodeNumber.Should().Be(5);
+        result.Value.match.Still.Should().Be("/s5.jpg");
+    }
+
+    [Fact]
+    public async Task A_scene_joined_number_without_a_season_stays_unmatched()
+    {
+        ScriptTmdb();
+        ResolvedName resolved = Resolve("[SubsPlease] The Ark - 05 (1080p) [ABCD1234].mkv");
+        resolved.Parsed.Season = null;
+        resolved.Parsed.Episode = 102;
+
+        await using MediaContext context = new(_options);
+        MediaIdentificationService service = new(
+            context,
+            new ServiceCollection()
+                .BuildServiceProvider()
+                .GetRequiredService<IServiceScopeFactory>()
+        );
+
+        (MovieOrEpisode match, string? imdbId)? result = await service.IdentifyAsync(
+            resolved.Parsed,
+            MediaTypes.TvMediaType,
+            duration: null,
+            resolved.OverrideTmdbId,
+            seasonExplicit: false,
+            resolved.AirDate
+        );
+
+        result.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task An_explicit_season_and_episode_still_identifies()
+    {
+        (MovieOrEpisode match, string? imdbId)? result = await IdentifyFlat(
+            "The.Ark.S02E03.1080p.WEB.mkv"
+        );
+
+        result.Should().NotBeNull();
+        result!.Value.match.SeasonNumber.Should().Be(2);
+        result.Value.match.EpisodeNumber.Should().Be(3);
+    }
+
     [Fact]
     public async Task The_show_of_a_file_is_found_from_its_name_for_the_add_path()
     {
