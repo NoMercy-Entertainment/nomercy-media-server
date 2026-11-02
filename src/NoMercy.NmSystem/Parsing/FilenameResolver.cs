@@ -1462,13 +1462,15 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
         @"(?<![A-Za-z0-9])(?:dvd-?rip|dvdr|bd-?rip|br-?rip|blu-?ray|hdtv(?:rip)?|web-?rip|web-?dl|"
             + @"xvid|divx|x26[45]|h\.?26[45]|hevc|e?ac3|dts|truefrench|vostfr|subbed|dubbed|"
             + @"repack|dirfix|nfofix|screener|(?:480|576|720|1080|2160)[pi]|3d|uncut|xxx|internal|"
-            + @"multi|dl|proper|integrale|sbs|swissgerman|complete[\s._-]+(?:series|seasons?)|"
-            + @"\d{1,2}(?:st|nd|rd|th)[\s._-]+seasons?|seasons?[\s._-]*\d+(?:of[0-9]+)?|saison[\s._-]*\d+|"
-            + @"temporada[\s._-]*\d+|tem[\s._-]*\d+|stagione[\s._-]*\d+|staffel[\s._-]*\d+|"
+            + @"multi|dl|proper|integrale|sbs|swissgerman|complete[\s._-]+(?:series|seasons?|collection)|"
+            + @"\d{1,2}(?:st|nd|rd|th)[\s._-]+seasons?|seasons?[\s._-]*\d+(?:of[0-9]+)?|"
+            + @"saison[\s._-]*(?:\d+|[ivx]+)|folge[\s._-]*\d+|"
+            + @"(?<![0-9])[0-9]{1,3}[\s._-]+(?:of|von)[\s._-]+[0-9]{1,3}|"
+            + @"temporada[\s._-]*\d+|tem[\s._-]*\d+|stagione[\s._-]*\d+|staffel[\s._-]*(?:\d+|[ivx]+)|"
             + @"amzn|dsnp|hmax|atvp|ddp?[0-9]|(?:br|bd|hd|web)mux|seizoen[\s._-]*[0-9]+|"
             + @"ep(?:isodul|isodio)?\.?[\s._-]*[0-9]+|s[0-9]{1,2}(?:d(?:vd)?[0-9]{1,2})?|[0-9]x?dvd[0-9]?|"
             + @"aka|(?:[0-9]{1,2}(?:st|nd|rd|th)[\s._-]+)?(?:special[\s._-]+)?(?:extended|collectors?|"
-            + @"anniversary|ultimate|special|directors?|theatrical|unrated)[\s._-]+(?:cut|edition)|"
+            + @"anniversary|ultimate|special|director'?s?|theatrical|unrated)[\s._-]+(?:cut|edition)|"
             + @"extras[\s._-]+only|(?<![0-9])[0-9]{2}[ ._][0-9]{2}[ ._][0-9]{2}(?![0-9])|"
             + @"camrip|hdrip|r5|boxset|vr(?:[\s._-]*180)?|[0-9](?:st|nd|rd|th)[\s._-]+cour|"
             + @"cour[\s._-]*[0-9]|limited[\s._-]+edition|第[0-9一二三四五六七八九十]+[期季話话集])"
@@ -1501,7 +1503,7 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
 
     /// <summary>A tracker address whose dots became spaces: "www torrenting com Show".</summary>
     [GeneratedRegex(
-        @"^www[\s._]+[A-Za-z0-9\s._-]*?[\s._]+(?:com|net|org|world|to|me|cc|tv|info|io|ws|vip|xyz|pw|site|club|live)"
+        @"^www[\s._]+[A-Za-z0-9\s._-]*?[\s._]+(?:com|net|org|world|to|me|cc|tv|info|io|ws|vip|xyz|pw|site|club|live|lat|nl|ru|cx|best|bz|pl|one|top)"
             + @"(?![A-Za-z0-9])[\s._-]*",
         RegexOptions.IgnoreCase,
         matchTimeoutMilliseconds: 1000
