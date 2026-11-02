@@ -72,6 +72,7 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
             .RemoveBracketedString()
             .Replace(pathForTitle.Replace("v2", ""), string.Empty);
         title = TrackerAddress().Replace(title, string.Empty);
+        title = TechnicalSize().Replace(title, RemoveIfPictureSize);
 
         // Everything the release put in brackets or parentheses goes before any
         // adapter reads a number out of this. Only the square brackets used to
@@ -180,6 +181,49 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
                     : seasonWord.Groups["n2"].Value;
                 parsed.Season = int.Parse(digits, CultureInfo.InvariantCulture);
             }
+            else if (
+                seasonWord is { Success: true, Groups: { } groups }
+                && groups["n2"].Success
+                && parsed.Episode is null
+                && parsed.Season > int.Parse(groups["n2"].Value, CultureInfo.InvariantCulture)
+            )
+            {
+                // "2nd Season 24": the number after the season word is the episode.
+                parsed.Episode = parsed.Season;
+                parsed.Season = int.Parse(groups["n2"].Value, CultureInfo.InvariantCulture);
+            }
+
+            if (
+                parsed.Episode is null
+                && ParenthesizedEpisodeAtEnd().Match(rawFileName) is { Success: true } inParens
+            )
+                parsed.Episode = int.Parse(
+                    inParens.Groups["n"].Value,
+                    CultureInfo.InvariantCulture
+                );
+
+            if (
+                parsed.Episode is null
+                && BracketedEpisode().Match(rawFileName) is { Success: true } inBrackets
+            )
+                parsed.Episode = int.Parse(
+                    inBrackets.Groups["n"].Value,
+                    CultureInfo.InvariantCulture
+                );
+
+            if (
+                JapaneseSeason().Match(rawFileName) is { Success: true } period
+                && parsed.Season is null or 0 or 1
+            )
+                parsed.Season = int.Parse(period.Groups["n"].Value, CultureInfo.InvariantCulture);
+
+            if (
+                !TitleEpisodeMarker().IsMatch(rawFileName)
+                && DashedEpisodeInMiddle().Match(cleanedFileName) is { Success: true } middle
+                && int.Parse(middle.Groups["n"].Value, CultureInfo.InvariantCulture)
+                    != parsed.Episode
+            )
+                parsed.Episode = int.Parse(middle.Groups["n"].Value, CultureInfo.InvariantCulture);
         }
 
         if (
@@ -196,6 +240,7 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
             libraryType is MediaTypes.MovieMediaType
             && parsed.Episode is not null
             && MovieEpisodeWord().IsMatch(cleanedFileName)
+            && !TitleEpisodeMarker().IsMatch(rawFileName)
         )
         {
             // "Star Wars Episode 4 A New Hope" is a movie whose title says Episode.
@@ -660,7 +705,7 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
     }
 
     [GeneratedRegex(
-        @"(?<![A-Za-z0-9])S(?<s>[0-9]{1,4})[\s._-]*(?:E|Ep|x(?!26[45]))[\s._]*(?<e>[0-9]{1,5})(?![0-9])|"
+        @"(?<![A-Za-z0-9])S(?<s>[0-9]{1,4})[\s._-]*(?:E|Ep|x(?!26[45])E?)[\s._]*(?<e>[0-9]{1,5})(?![0-9])|"
             + @"(?<![A-Za-z0-9])T(?<s>[0-9]{1,2})X?E(?<e>[0-9]{1,3})(?![0-9])",
         RegexOptions.IgnoreCase,
         matchTimeoutMilliseconds: 1000
@@ -946,7 +991,9 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
     private static string? NullIfEmpty(string value) => value.Length == 0 ? null : value;
 
     [GeneratedRegex(
-        @"(?<![0-9A-Za-z])[0-9]{3,4}x[0-9]{3,4}(?![0-9A-Za-z])|(?<![A-Za-z0-9])[xh][\s._]?26[45](?![0-9])",
+        @"(?<![0-9A-Za-z])[0-9]{3,4}x[0-9]{3,4}(?![0-9A-Za-z])|(?<![A-Za-z0-9])[xh][\s._]?26[45](?![0-9])"
+            + @"|(?<![0-9A-Za-z])[0-9]+(?:\.[0-9]+)?\s?(?:mbits?|kbits?|mbps|kbps|fps)(?![A-Za-z])"
+            + @"|(?<=[\s._])(?:480|576|720|1080|2160)(?=[\s._](?:BD|Blu-?Ray|DVD|WEB|HDTV|BDRip)(?![A-Za-z]))",
         RegexOptions.IgnoreCase,
         matchTimeoutMilliseconds: 1000
     )]
@@ -983,6 +1030,36 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
         matchTimeoutMilliseconds: 1000
     )]
     private static partial Regex FractionalEpisode();
+
+    [GeneratedRegex(
+        @"[\s._]\((?<n>[0-9]{1,3})\)[\s._]*$",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex ParenthesizedEpisodeAtEnd();
+
+    /// <summary>"[Ep.24]", "[24（END）]": an episode number alone in a bracket.</summary>
+    [GeneratedRegex(
+        @"\[\s*(?:(?:ep(?:isode)?|e)[\s._]*(?<n>[0-9]{1,4})|(?<n>(?!(?:360|480|576|720)\])[0-9]{1,3})(?:[（(][^)）\]]*[)）])?)\s*\]",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex BracketedEpisode();
+
+    /// <summary>"第2期", "2期", "シーズン2": the season counted in periods.</summary>
+    [GeneratedRegex(
+        @"(?:第\s*(?<n>[0-9]{1,2})\s*期|(?<![0-9])(?<n>[0-9]{1,2})\s*期|シーズン\s*(?<n>[0-9]{1,2}))",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex JapaneseSeason();
+
+    [GeneratedRegex(
+        @"(?:^|[\s._]-[\s._]+)(?<n>[0-9]{1,3})(?=[\s._]+-[\s._]+\p{L})",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex DashedEpisodeInMiddle();
 
     [GeneratedRegex(
         @"[\s._]-[\s._]+(?<n>[0-9]{1,4})(?![0-9A-Za-z])[\s._]*$",

@@ -54,6 +54,19 @@ public class FilenameResolverCorpusTests
             )
         );
 
+    [Fact]
+    public void A_marker_beside_the_word_episode_in_a_movie_library_keeps_season_and_episode()
+    {
+        MovieFile parsed = Resolve(
+            "Moon.Knight.S01E06.Episode.6.2160p.WEB-DL.DDP5.1.Atmos.DV.MKV.x265-StevemWv.mkv",
+            @"H:\Marvels\TV.Shows\Moon.Knight.(2022)",
+            "movie"
+        );
+
+        parsed.Season.Should().Be(1);
+        parsed.Episode.Should().Be(6);
+    }
+
     private static MovieFile Resolve(
         string fileName,
         string directory = @"C:\Anime\Show",

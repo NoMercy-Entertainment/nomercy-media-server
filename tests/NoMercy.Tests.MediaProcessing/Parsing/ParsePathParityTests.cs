@@ -63,13 +63,14 @@ public class ParsePathParityTests
                         ? "tv"
                         : "movie"
                     : input.LibraryType;
-            Answer expected = Answer.Of(
-                resolver.Resolve(input.FileName, input.Directory, input.Path, libraryType).Parsed
-            );
+            MovieFile resolved = resolver
+                .Resolve(input.FileName, input.Directory, input.Path, libraryType)
+                .Parsed;
+            Answer expected = Answer.Of(resolved);
             Answer actual = parsePath(input);
 
             // The file list drops a file with no title (FileListService.cs:263).
-            if (path == FileList && expected.Title.Length == 0)
+            if (path == FileList && resolved.Title is null)
                 expected = Answer.None;
 
             if (actual != expected)

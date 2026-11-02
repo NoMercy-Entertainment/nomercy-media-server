@@ -28,7 +28,10 @@ internal static class SceneCorpus
         Load<SceneCorpusEntry>("scene-corpus.json");
 
     public static IReadOnlyList<KnownDifference> KnownDifferences { get; } =
-        Load<KnownDifference>("scene-corpus.known-differences.json");
+    [
+        .. Load<KnownDifference>("scene-corpus.known-differences.json"),
+        .. Load<KnownDifference>("scene-corpus.known-differences.identification.json"),
+    ];
 
     public static IReadOnlyList<string> Sources { get; } =
     [.. Entries.Select(entry => entry.SourceRepo).Distinct().Order()];
