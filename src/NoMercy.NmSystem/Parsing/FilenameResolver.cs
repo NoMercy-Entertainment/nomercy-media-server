@@ -212,6 +212,7 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
             if (
                 parsed.Episode is null
                 && ParenthesizedEpisodeAtEnd().Match(rawFileName) is { Success: true } inParens
+                && !rawFileName[..inParens.Index].Trim().All(char.IsDigit)
             )
                 parsed.Episode = int.Parse(
                     inParens.Groups["n"].Value,
@@ -484,8 +485,7 @@ public sealed partial class FilenameResolver(IFilenameParserPipeline pipeline)
 
         if (
             !numberTitle
-            && !TitleEpisodeMarker().IsMatch(rawFileName)
-            && parsed.Year is null
+            && (parsed.Year is null || !StringExtensions.MatchYearRegex().IsMatch(rawFileName))
             && IsRoleWordRatherThanTitle(parsed.Title)
         )
         {
