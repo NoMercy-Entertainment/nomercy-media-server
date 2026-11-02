@@ -516,21 +516,14 @@ public partial class MediaIdentificationService(
             if (details == null)
                 return null;
 
-            // The same rule as the show path above, and the same reason. This was
-            // only ever reported against shows because shows are what the owner
-            // had been scanning; the construction here is identical and imports a
-            // whole movie on the first search result for a parsed filename.
-            bool hasMovie = ctx.Movies.AsNoTracking().Any(item => item.Id == movie.Id);
-
-            if (!hasMovie)
-                return null;
-
+            // Answered from TMDB and never saved, like an unheld show.
             movieItem = new()
             {
                 Id = details.Id,
                 Title = details.Title,
                 Overview = details.Overview,
                 Poster = details.PosterPath,
+                ImdbId = details.ImdbId,
             };
         }
 
