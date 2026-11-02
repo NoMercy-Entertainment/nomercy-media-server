@@ -135,7 +135,8 @@ public class DeviceIdentityResolverTests : IDisposable
         Guid resolvedId = DeviceIdentityResolver.ResolveAndPersist(
             _context,
             knownDegenerateId,
-            inContainer: false
+            inContainer: false,
+            legacyCertFilesExist: () => false
         );
 
         Assert.NotEqual(Guid.Empty, resolvedId);
@@ -150,7 +151,8 @@ public class DeviceIdentityResolverTests : IDisposable
         Guid second = DeviceIdentityResolver.ResolveAndPersist(
             _context,
             knownDegenerateId,
-            inContainer: false
+            inContainer: false,
+            legacyCertFilesExist: () => false
         );
         Assert.Equal(resolvedId, second);
     }
@@ -164,15 +166,55 @@ public class DeviceIdentityResolverTests : IDisposable
         Guid first = DeviceIdentityResolver.ResolveAndPersist(
             _context,
             knownDegenerateId,
-            inContainer: false
+            inContainer: false,
+            legacyCertFilesExist: () => false
         );
         Guid second = DeviceIdentityResolver.ResolveAndPersist(
             otherInstall,
             knownDegenerateId,
-            inContainer: false
+            inContainer: false,
+            legacyCertFilesExist: () => false
         );
 
         Assert.NotEqual(first, second);
+    }
+
+    [Fact]
+    public void ResolveAndPersist_BareMetal_DegenerateHardwareId_LegacyCertFiles_IsKeptAndNotPersisted()
+    {
+        Guid knownDegenerateId = KnownDegenerateDeviceIds.Values.First();
+
+        Guid resolvedId = DeviceIdentityResolver.ResolveAndPersist(
+            _context,
+            knownDegenerateId,
+            inContainer: false,
+            legacyCertFilesExist: () => true
+        );
+
+        Assert.Equal(knownDegenerateId, resolvedId);
+        Assert.Null(
+            _context.Configuration.FirstOrDefault(c => c.Key == DeviceIdentityResolver.ConfigKey)
+        );
+    }
+
+    [Fact]
+    public void ResolveAndPersist_BareMetal_DegenerateHardwareId_OnlyAuthToken_IsMigrated()
+    {
+        Guid knownDegenerateId = KnownDegenerateDeviceIds.Values.First();
+        _context.Configuration.Add(
+            new() { Key = "auth_access_token", SecureValue = "existing-access-token" }
+        );
+        _context.SaveChanges();
+
+        Guid resolvedId = DeviceIdentityResolver.ResolveAndPersist(
+            _context,
+            knownDegenerateId,
+            inContainer: false,
+            legacyCertFilesExist: () => false
+        );
+
+        Assert.NotEqual(knownDegenerateId, resolvedId);
+        Assert.False(KnownDegenerateDeviceIds.IsDegenerate(resolvedId));
     }
 
     [Fact]

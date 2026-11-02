@@ -11,6 +11,8 @@
 
 using NoMercy.NmSystem.Information;
 using NoMercy.NmSystem.SystemCalls;
+using NoMercy.Storage;
+using NoMercy.Storage.Drivers.Local;
 using Serilog.Events;
 
 namespace NoMercy.Database.Maintenance;
@@ -69,10 +71,14 @@ public static class DeviceIdentityResolver
     /// both the container and bare-metal branches deterministically regardless
     /// of the CI host environment.
     /// </param>
+    /// <param name="legacyCertFilesExist">
+    /// Overrides the legacy PEM file check so tests never read this machine.
+    /// </param>
     public static Guid ResolveAndPersist(
         AppDbContext db,
         Guid? hardwareDerivedId = null,
-        bool? inContainer = null
+        bool? inContainer = null,
+        Func<bool>? legacyCertFilesExist = null
     )
     {
         Guid hardwareId = hardwareDerivedId ?? Info.DeviceId;
@@ -100,7 +106,13 @@ public static class DeviceIdentityResolver
 
         // Bare metal with a junk id and a certificate issued for it keeps that id;
         // only a never-registered install gets a fresh one.
-        if (!isContainer && HasEvidenceOfPriorRegistration(db))
+        if (
+            !isContainer
+            && (
+                HasEvidenceOfPriorRegistration(db)
+                || (legacyCertFilesExist ?? LegacyCertFilesExist)()
+            )
+        )
             return hardwareId;
 
         Guid resolvedId;
@@ -145,6 +157,16 @@ public static class DeviceIdentityResolver
 
         if (staleCertRows.Count > 0)
             db.Configuration.RemoveRange(staleCertRows);
+    }
+
+    // Pre-DB installs kept the certificate as PEM files; CertificateService.LoadFromDb
+    // still honors them. LOCAL-ONLY driver: this runs before StorageProvider exists.
+    private static bool LegacyCertFilesExist()
+    {
+        IStorageDriver driver = new LocalStorageDriver();
+#pragma warning disable CS0618
+        return driver.FileExists(AppFiles.CertFile) && driver.FileExists(AppFiles.KeyFile);
+#pragma warning restore CS0618
     }
 
     private static bool HasEvidenceOfPriorRegistration(AppDbContext db)
