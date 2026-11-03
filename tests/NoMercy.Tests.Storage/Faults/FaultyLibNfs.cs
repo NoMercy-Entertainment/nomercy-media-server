@@ -53,6 +53,8 @@ internal sealed class FaultyLibNfs : ILibNfs
     /// </summary>
     public Dictionary<string, int> CallCounts { get; } = new();
 
+    public int ZeroContextStatCalls { get; private set; }
+
     /// <summary>
     /// When &gt; 0, every libnfs call sleeps this long inside the protected
     /// region. Forces concurrency races to surface in stress tests so the
@@ -222,6 +224,8 @@ internal sealed class FaultyLibNfs : ILibNfs
 
     public int Stat64(IntPtr nfs, string path, out LibNfs.NfsStat64 stat)
     {
+        if (nfs == IntPtr.Zero)
+            ZeroContextStatCalls++;
         if (TryFault(nameof(Stat64), out int rc, out _))
         {
             stat = default;
