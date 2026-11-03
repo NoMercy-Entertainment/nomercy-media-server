@@ -252,4 +252,54 @@ public class DiscRipPreparationServiceTests
         result.Success.Should().BeTrue();
         result.EnrichedRequest!.SelectedTitleIndices.Should().BeEquivalentTo([0, 1]);
     }
+
+    [Fact]
+    public async Task PrepareAsync_CarriesProbedDiscLabelAndEmbeddedTitleOntoTheRipRequest()
+    {
+        Mock<IDiscSource> source = new();
+        source.Setup(s => s.Type).Returns(OpticalDiscType.BluRay);
+        source
+            .Setup(s => s.ProbeAsync(It.IsAny<DiscDrive>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakeProbe() with { DiscLabel = "THE_MATRIX", DiscTitle = "The Matrix" });
+
+        DiscRipPreparationService service = new(
+            MakeSourceFactory(source.Object),
+            Mock.Of<ILibraryRepository>(),
+            Mock.Of<IStorageDriver>()
+        );
+
+        DiscRipPreparationResult result = await service.PrepareAsync(
+            MakeDrive(OpticalDiscType.BluRay),
+            MakeRequest(mode: RipMode.RipToRaw),
+            CancellationToken.None
+        );
+
+        result.EnrichedRequest!.DiscLabel.Should().Be("THE_MATRIX");
+        result.EnrichedRequest.DiscTitle.Should().Be("The Matrix");
+    }
+
+    [Fact]
+    public async Task PrepareAsync_ProbeWithoutLabel_FallsBackToTheDriveMonitorLabel()
+    {
+        Mock<IDiscSource> source = new();
+        source.Setup(s => s.Type).Returns(OpticalDiscType.Dvd);
+        source
+            .Setup(s => s.ProbeAsync(It.IsAny<DiscDrive>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(MakeProbe() with { DiscLabel = null });
+
+        DiscRipPreparationService service = new(
+            MakeSourceFactory(source.Object),
+            Mock.Of<ILibraryRepository>(),
+            Mock.Of<IStorageDriver>()
+        );
+
+        DiscRipPreparationResult result = await service.PrepareAsync(
+            MakeDrive(),
+            MakeRequest(mode: RipMode.RipToRaw),
+            CancellationToken.None
+        );
+
+        result.EnrichedRequest!.DiscLabel.Should().Be("TEST");
+        result.EnrichedRequest.DiscTitle.Should().BeNull();
+    }
 }

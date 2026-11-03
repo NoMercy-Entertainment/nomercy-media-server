@@ -33,9 +33,10 @@ public class DiscRipPreparationService(
     {
         // Fail fast if the disc is DRM-locked the host can't read.
         IDiscSource? source = discSourceFactory.CreateFor(drive.DiscType);
+        DiscInfo? precheck = null;
         if (source is not null)
         {
-            DiscInfo precheck = await source.ProbeAsync(drive, ct);
+            precheck = await source.ProbeAsync(drive, ct);
             if (precheck.Protection is not null)
                 return new()
                 {
@@ -76,11 +77,15 @@ public class DiscRipPreparationService(
         string outputDir = Path.Combine(AppFiles.TranscodePath, "ripper", sanitisedDrive);
         storageDriver.CreateDirectory(outputDir);
 
+        // The probed label and embedded title travel with the request so the
+        // rip job can auto-identify the disc without re-probing it.
         // For audio CDs, default to all probed tracks when the caller sent
         // no SelectedTitleIndices (CD tracks don't map to video-title semantics).
         RipRequest enriched = request with
         {
             DiscType = drive.DiscType,
+            DiscLabel = precheck?.DiscLabel ?? drive.Label,
+            DiscTitle = precheck?.DiscTitle,
         };
 
         if (drive.DiscType == OpticalDiscType.Cd && enriched.SelectedTitleIndices.Length == 0)

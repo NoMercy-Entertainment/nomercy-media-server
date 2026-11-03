@@ -203,18 +203,13 @@ public class DiscRipJob : IShouldQueue, IJobStorageInjector
             return;
         }
 
-        // When the caller supplied no custom metadata, build a synthetic DiscInfo
-        // from the drive path label so the metadata resolver can attempt TMDB
-        // auto-resolution. The probe already ran at rip time; we don't re-probe.
-        DiscInfo? discInfo = null;
-        if (Request.Custom is null)
-        {
-            // Separator-agnostic leaf so the synthetic label is identical on
-            // Windows and Linux (Path.GetFileName treats '\' as literal on Linux).
-            string trimmedDrivePath = Request.DrivePath.TrimEnd('/', '\\');
-            string label = trimmedDrivePath[(trimmedDrivePath.LastIndexOfAny(['\\', '/']) + 1)..];
-            discInfo = new(Request.DiscType, label, [], null, TimeSpan.Zero);
-        }
+        // When the caller supplied no custom metadata, try TMDB auto-resolution
+        // once for the whole disc, from the label the probe captured before
+        // dispatch. The probe already ran at rip time; we don't re-probe.
+        DiscInfo? discInfo = Request.Custom is null ? BuildIdentificationInput() : null;
+        DiscIdentification? identification = discInfo is null
+            ? null
+            : await IdentificationService.IdentifyAsync(discInfo, CancellationToken.None);
 
         IStorage folderStorage = StorageFactory.For(
             targetFolder.Id,
@@ -231,12 +226,8 @@ public class DiscRipJob : IShouldQueue, IJobStorageInjector
         {
             RipRequest effectiveRequest = Request;
 
-            if (Request.Custom is null && discInfo is not null)
+            if (discInfo is not null && identification is not null)
             {
-                DiscIdentification identification = await IdentificationService.IdentifyAsync(
-                    discInfo,
-                    CancellationToken.None
-                );
                 DiscCandidate? top = identification.TopCandidate;
 
                 if (top is not null && identification.AutoApply)
@@ -579,6 +570,34 @@ public class DiscRipJob : IShouldQueue, IJobStorageInjector
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// The disc as the identifier sees it: the probed volume label and
+    /// embedded title carried on the request. Null when neither is known,
+    /// because the drive path ("D:", "sr0") names the drive, not the film,
+    /// and asking TMDB for it only produces no match or a wrong one.
+    /// </summary>
+    private DiscInfo? BuildIdentificationInput()
+    {
+        if (string.IsNullOrWhiteSpace(Request.DiscTitle ?? Request.DiscLabel))
+        {
+            Log.LogInformation(
+                "[DiscRipJob] No disc label known for drive {Drive} — skipping auto-identification; titles keep their default names",
+                Request.DrivePath
+            );
+            return null;
+        }
+
+        return new(
+            Request.DiscType,
+            Request.DiscLabel,
+            [],
+            null,
+            TimeSpan.Zero,
+            DiscTitle: Request.DiscTitle,
+            DrivePath: Request.DrivePath
+        );
+    }
 
     private void PublishProgress(string status, string message)
     {

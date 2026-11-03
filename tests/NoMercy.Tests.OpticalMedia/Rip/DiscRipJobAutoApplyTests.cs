@@ -40,7 +40,8 @@ file sealed class TestableDiscRipJob(Folder folder, Library library) : DiscRipJo
 /// <summary>
 /// REQUIREMENT: when a rip request supplies no <see cref="RipRequest.Custom"/>
 /// metadata, <see cref="DiscRipJob.Handle"/> must build a synthetic
-/// <see cref="DiscInfo"/> from the drive-path label and run it through
+/// <see cref="DiscInfo"/> from the probed disc label (never the drive path)
+/// and run it through
 /// <see cref="DiscIdentificationService"/>. A high-confidence single
 /// candidate auto-applies (the file is renamed/moved using the resolved
 /// title); a lower-confidence candidate instead writes a
@@ -55,7 +56,11 @@ public class DiscRipJobAutoApplyTests
     private static readonly Ulid KnownFolderId = Ulid.NewUlid();
     private static readonly Ulid KnownLibraryId = Ulid.NewUlid();
 
-    private static RipRequest MakeNoCustomRequest(string drivePath = "D:\\Inception") =>
+    private static RipRequest MakeNoCustomRequest(
+        string drivePath = "D:\\",
+        string? discLabel = "Inception",
+        string? discTitle = null
+    ) =>
         new(
             DrivePath: drivePath,
             SelectedTitleIndices: [1],
@@ -67,7 +72,9 @@ public class DiscRipJobAutoApplyTests
             AudioTracks: [],
             Subtitles: [],
             Mode: RipMode.RipAndEncode,
-            DiscType: OpticalDiscType.Dvd
+            DiscType: OpticalDiscType.Dvd,
+            DiscLabel: discLabel,
+            DiscTitle: discTitle
         );
 
     private static Folder MakeFolder() =>
@@ -386,6 +393,158 @@ public class DiscRipJobAutoApplyTests
 
             await job.Handle();
 
+            published
+                .OfType<DriveStateChangedEvent>()
+                .Select(e => e.DriveStateData.Method)
+                .Should()
+                .Contain("rip_complete");
+        }
+        finally
+        {
+            if (File.Exists(tempFile))
+                File.Delete(tempFile);
+        }
+    }
+
+    private static Mock<IDiscRipper> MakeRipperMock(string outputPath)
+    {
+        Mock<IDiscRipper> ripperMock = new();
+        ripperMock
+            .Setup(r =>
+                r.RipAsync(
+                    It.IsAny<RipRequest>(),
+                    It.IsAny<string>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .ReturnsAsync([MakeRipResult(outputPath)]);
+        return ripperMock;
+    }
+
+    private static Mock<IDiscIdentifier> MakeCapturingIdentifier(List<DiscInfo> captured)
+    {
+        Mock<IDiscIdentifier> identifierMock = new();
+        identifierMock.Setup(i => i.CanHandle(It.IsAny<OpticalDiscType>())).Returns(true);
+        identifierMock
+            .Setup(i => i.IdentifyAsync(It.IsAny<DiscInfo>(), It.IsAny<CancellationToken>()))
+            .Callback<DiscInfo, CancellationToken>((disc, _) => captured.Add(disc))
+            .ReturnsAsync(
+                new DiscIdentification(
+                    Kind: MediaKind.Movie,
+                    Candidates: [],
+                    TopConfidence: 0,
+                    AutoApply: false,
+                    NeedsManualAssignment: true
+                )
+            );
+        return identifierMock;
+    }
+
+    [Fact]
+    public async Task Handle_NoCustomMetadata_DriveLetterPath_QueriesWithDiscLabelNotDrivePath()
+    {
+        string tempFile = Path.Combine(Path.GetTempPath(), $"label_{Guid.NewGuid():N}.mkv");
+        await File.WriteAllBytesAsync(tempFile, []);
+        try
+        {
+            List<DiscInfo> captured = [];
+            DiscIdentificationService identificationService = new(
+                [MakeCapturingIdentifier(captured).Object],
+                NullLogger<DiscIdentificationService>.Instance
+            );
+            ConfigureEventBus([]);
+
+            DiscRipJob job = BuildJob(
+                MakeNoCustomRequest(drivePath: "D:", discLabel: "THE_MATRIX"),
+                MakeRipperMock(tempFile).Object,
+                identificationService,
+                MakeStorageMock("/media/movies").Object
+            );
+
+            await job.Handle();
+
+            captured.Should().ContainSingle("the disc is identified once per rip job");
+            DiscInfo disc = captured[0];
+            string query = VideoDiscIdentifier.NormalizeLabel(disc.DiscTitle ?? disc.DiscLabel!);
+            query
+                .Should()
+                .Be(
+                    "THE MATRIX",
+                    "TMDB must be asked for the disc's volume label, not the drive path 'D:'"
+                );
+        }
+        finally
+        {
+            if (File.Exists(tempFile))
+                File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public async Task Handle_NoCustomMetadata_EmbeddedTitle_IsPassedToIdentification()
+    {
+        string tempFile = Path.Combine(Path.GetTempPath(), $"title_{Guid.NewGuid():N}.mkv");
+        await File.WriteAllBytesAsync(tempFile, []);
+        try
+        {
+            List<DiscInfo> captured = [];
+            DiscIdentificationService identificationService = new(
+                [MakeCapturingIdentifier(captured).Object],
+                NullLogger<DiscIdentificationService>.Instance
+            );
+            ConfigureEventBus([]);
+
+            DiscRipJob job = BuildJob(
+                MakeNoCustomRequest(
+                    drivePath: "/dev/sr0",
+                    discLabel: "MATRIX_D1",
+                    discTitle: "The Matrix"
+                ),
+                MakeRipperMock(tempFile).Object,
+                identificationService,
+                MakeStorageMock("/media/movies").Object
+            );
+
+            await job.Handle();
+
+            captured.Should().ContainSingle();
+            captured[0].DiscTitle.Should().Be("The Matrix");
+            captured[0].DiscLabel.Should().Be("MATRIX_D1");
+        }
+        finally
+        {
+            if (File.Exists(tempFile))
+                File.Delete(tempFile);
+        }
+    }
+
+    [Fact]
+    public async Task Handle_NoCustomMetadata_NoDiscLabelKnown_SkipsIdentification()
+    {
+        string tempFile = Path.Combine(Path.GetTempPath(), $"nolabel_{Guid.NewGuid():N}.mkv");
+        await File.WriteAllBytesAsync(tempFile, []);
+        try
+        {
+            List<DiscInfo> captured = [];
+            DiscIdentificationService identificationService = new(
+                [MakeCapturingIdentifier(captured).Object],
+                NullLogger<DiscIdentificationService>.Instance
+            );
+            List<object> published = [];
+            ConfigureEventBus(published);
+
+            DiscRipJob job = BuildJob(
+                MakeNoCustomRequest(drivePath: "/dev/sr0", discLabel: null),
+                MakeRipperMock(tempFile).Object,
+                identificationService,
+                MakeStorageMock("/media/movies").Object
+            );
+
+            await job.Handle();
+
+            captured
+                .Should()
+                .BeEmpty("with no disc label the drive path 'sr0' must never be sent to TMDB");
             published
                 .OfType<DriveStateChangedEvent>()
                 .Select(e => e.DriveStateData.Method)
