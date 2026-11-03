@@ -118,4 +118,63 @@ public class PluginLoaderTests
 
         pluginManager.Verify(m => m.LoadAllAsync(cts.Token), Times.Once);
     }
+
+    /// <summary>
+    /// The catalogue is refreshed at start, beside the boot rather than in it: a
+    /// server that cannot reach the index must still boot, on the catalogue it
+    /// cached the last time it could.
+    /// </summary>
+    [Fact]
+    public async Task LoadPlugins_RefreshesTheCatalogueWithoutWaitingForIt()
+    {
+        Mock<IPluginManager> pluginManager = new();
+        pluginManager.Setup(m => m.LoadAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        TaskCompletionSource refreshStarted = new(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
+        TaskCompletionSource neverAnswers = new();
+        Mock<IPluginRepository> repository = new();
+        repository
+            .Setup(r => r.RefreshAsync(It.IsAny<CancellationToken>()))
+            .Callback(() => refreshStarted.TrySetResult())
+            .Returns(neverAnswers.Task);
+        PluginLoader loader = new(
+            NullLogger<PluginLoader>.Instance,
+            pluginManager.Object,
+            Mock.Of<IPluginCronRegistrar>(),
+            PartRegistrar(),
+            repository.Object
+        );
+
+        Task<IReadOnlyList<PluginLoadResult>> loading = loader.LoadPlugins(CancellationToken.None);
+
+        (await Task.WhenAny(loading, Task.Delay(TimeSpan.FromSeconds(10))))
+            .Should()
+            .BeSameAs(loading, "a refresh that never answers must not hold up the boot");
+        (await Task.WhenAny(refreshStarted.Task, Task.Delay(TimeSpan.FromSeconds(10))))
+            .Should()
+            .BeSameAs(refreshStarted.Task, "the catalogue is refreshed at start");
+    }
+
+    [Fact]
+    public async Task LoadPlugins_ARefreshThatThrows_DoesNotFailTheBoot()
+    {
+        Mock<IPluginManager> pluginManager = new();
+        pluginManager.Setup(m => m.LoadAllAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        Mock<IPluginRepository> repository = new();
+        repository
+            .Setup(r => r.RefreshAsync(It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new HttpRequestException("Network unavailable"));
+        PluginLoader loader = new(
+            NullLogger<PluginLoader>.Instance,
+            pluginManager.Object,
+            Mock.Of<IPluginCronRegistrar>(),
+            PartRegistrar(),
+            repository.Object
+        );
+
+        Func<Task> act = () => loader.LoadPlugins(CancellationToken.None);
+
+        await act.Should().NotThrowAsync();
+    }
 }

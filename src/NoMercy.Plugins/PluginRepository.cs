@@ -22,13 +22,14 @@ public class PluginRepository : IPluginRepository
     private readonly ILogger _logger;
     private readonly string _repositoriesFilePath;
     private readonly string _declinedDefaultFilePath;
+    private readonly string _catalogueFilePath;
     private readonly IStorage _storage;
     private readonly List<PluginRepositoryInfo> _repositories = [];
     private readonly List<PluginRepositoryEntry> _availablePlugins = [];
     private readonly Dictionary<string, List<PluginRepositoryEntry>> _pluginsByRepository = [];
 
     /// <summary>
-    /// The plugins a trusted repository lists, rebuilt on every refresh.
+    /// The plugins a trusted repository lists, rebuilt on every load and refresh.
     /// <para>
     /// Kept apart from the entries themselves because an entry says what a
     /// plugin is and this says where it came from — and the second one is the
@@ -67,6 +68,7 @@ public class PluginRepository : IPluginRepository
 
         _repositoriesFilePath = Path.Combine(configDir, "repositories.json");
         _declinedDefaultFilePath = Path.Combine(configDir, "default-repository-removed");
+        _catalogueFilePath = Path.Combine(configDir, "repository-catalogue.json");
     }
 
     /// <summary>
@@ -84,13 +86,23 @@ public class PluginRepository : IPluginRepository
     )
     {
         PluginRepository repository = new(httpClient, logger, pluginsPath, storage);
-        await repository.LoadRepositoriesFromDiskAsync(ct);
+        await repository.LoadAsync(ct);
         return repository;
     }
 
-    public Task LoadAsync(CancellationToken ct = default)
+    /// <summary>
+    /// Reads the repository list, then the catalogue the last refresh cached.
+    /// <para>
+    /// The catalogue is what tells a trusted repository's plugins apart, and a
+    /// refresh needs the internet. Reading the cached one here means a server
+    /// knows what its trusted repositories list from the moment it starts, also
+    /// when nomercy.tv cannot be reached; the next refresh replaces it.
+    /// </para>
+    /// </summary>
+    public async Task LoadAsync(CancellationToken ct = default)
     {
-        return LoadRepositoriesFromDiskAsync(ct);
+        await LoadRepositoriesFromDiskAsync(ct);
+        await LoadCatalogueFromDiskAsync(ct);
     }
 
     public IReadOnlyList<PluginRepositoryInfo> GetRepositories()
@@ -192,35 +204,23 @@ public class PluginRepository : IPluginRepository
             repos = [.. _repositories.Where(r => r.Enabled)];
         }
 
-        List<PluginRepositoryEntry> allPlugins = [];
-        HashSet<Ulid> trusted = [];
         Dictionary<string, List<PluginRepositoryEntry>> refreshed = [];
 
         foreach (PluginRepositoryInfo repo in repos)
         {
-            List<PluginRepositoryEntry> plugins;
             try
             {
-                plugins = await FetchRepositoryPluginsAsync(repo.Url, ct);
-                refreshed[repo.Name] = plugins;
+                refreshed[repo.Name] = await FetchRepositoryPluginsAsync(repo.Url, ct);
             }
             catch (Exception ex)
             {
+                // The repository keeps what it listed last: an index that cannot
+                // be reached right now has not stopped listing its plugins.
                 _logger.LogWarning(
                     "Failed to refresh repository '{Name}' ({Url}): {Error}",
                     [repo.Name, repo.Url, ex.Message]
                 );
-
-                lock (_lock)
-                {
-                    plugins = _pluginsByRepository.GetValueOrDefault(repo.Name) ?? [];
-                }
             }
-
-            allPlugins.AddRange(plugins);
-
-            if (repo.Trusted)
-                trusted.UnionWith(plugins.Select(plugin => plugin.Id));
         }
 
         lock (_lock)
@@ -230,14 +230,13 @@ public class PluginRepository : IPluginRepository
                 _pluginsByRepository[entry.Key] = entry.Value;
             }
 
-            _availablePlugins.Clear();
-            _availablePlugins.AddRange(allPlugins);
+            RebuildAvailablePlugins();
+            RebuildTrustedSet();
+        }
 
-            // Replaced rather than merged: a plugin dropped from a trusted index,
-            // or a repository the owner stopped trusting, has to stop being
-            // trusted here too, and a merge would keep it forever.
-            _trustedPluginIds.Clear();
-            _trustedPluginIds.UnionWith(trusted);
+        if (refreshed.Count > 0)
+        {
+            await SaveCatalogueToDiskAsync(ct);
         }
     }
 
@@ -309,6 +308,8 @@ public class PluginRepository : IPluginRepository
                 _pluginsByRepository[name] = plugins;
                 _availablePlugins.AddRange(plugins);
             }
+
+            await SaveCatalogueToDiskAsync(ct);
         }
         catch (Exception ex)
         {
@@ -446,6 +447,129 @@ public class PluginRepository : IPluginRepository
             _logger.LogWarning(
                 "Failed to record the removed default repository at {Path}: {Error}",
                 [_declinedDefaultFilePath, ex.Message]
+            );
+        }
+    }
+
+    /// <summary>
+    /// The catalogue: what every enabled repository listed last. The caller
+    /// holds <see cref="_lock"/>.
+    /// </summary>
+    private void RebuildAvailablePlugins()
+    {
+        _availablePlugins.Clear();
+
+        foreach (PluginRepositoryInfo repository in _repositories.Where(r => r.Enabled))
+        {
+            if (
+                _pluginsByRepository.TryGetValue(
+                    repository.Name,
+                    out List<PluginRepositoryEntry>? plugins
+                )
+            )
+                _availablePlugins.AddRange(plugins);
+        }
+    }
+
+    /// <summary>
+    /// The trusted set, from each enabled repository's trust flag and what it
+    /// listed last. The caller holds <see cref="_lock"/>.
+    /// <para>
+    /// Recomputed rather than adjusted: a plugin dropped from a trusted index,
+    /// or a repository the owner stopped trusting, has to stop being trusted
+    /// here too, and adding to the old set would keep it forever.
+    /// </para>
+    /// </summary>
+    private void RebuildTrustedSet()
+    {
+        _trustedPluginIds.Clear();
+
+        foreach (
+            PluginRepositoryInfo repository in _repositories.Where(r => r.Enabled && r.Trusted)
+        )
+        {
+            if (
+                _pluginsByRepository.TryGetValue(
+                    repository.Name,
+                    out List<PluginRepositoryEntry>? plugins
+                )
+            )
+                _trustedPluginIds.UnionWith(plugins.Select(plugin => plugin.Id));
+        }
+    }
+
+    /// <summary>
+    /// Reads what each repository listed at the last refresh, so trust and the
+    /// catalogue survive a restart. Keyed by the repository's address: an entry
+    /// counts only for a repository that still points where it was read from.
+    /// </summary>
+    private async Task LoadCatalogueFromDiskAsync(CancellationToken ct)
+    {
+        if (!_storage.Exists(_catalogueFilePath))
+            return;
+
+        try
+        {
+            string json = await _storage.ReadAllTextAsync(_catalogueFilePath, ct);
+            Dictionary<string, List<PluginRepositoryEntry>>? byUrl = JsonSerializer.Deserialize<
+                Dictionary<string, List<PluginRepositoryEntry>>
+            >(json, JsonOptions);
+
+            if (byUrl is null)
+                return;
+
+            lock (_lock)
+            {
+                foreach (PluginRepositoryInfo repository in _repositories)
+                {
+                    // A refresh that already answered is newer than the file.
+                    if (_pluginsByRepository.ContainsKey(repository.Name))
+                        continue;
+
+                    if (byUrl.TryGetValue(repository.Url, out List<PluginRepositoryEntry>? plugins))
+                        _pluginsByRepository[repository.Name] = plugins;
+                }
+
+                RebuildAvailablePlugins();
+                RebuildTrustedSet();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                "Failed to load the cached repository catalogue from {Path}: {Error}",
+                [_catalogueFilePath, ex.Message]
+            );
+        }
+    }
+
+    private async Task SaveCatalogueToDiskAsync(CancellationToken ct)
+    {
+        try
+        {
+            Dictionary<string, List<PluginRepositoryEntry>> byUrl = [];
+            lock (_lock)
+            {
+                foreach (PluginRepositoryInfo repository in _repositories)
+                {
+                    if (
+                        _pluginsByRepository.TryGetValue(
+                            repository.Name,
+                            out List<PluginRepositoryEntry>? plugins
+                        )
+                    )
+                        byUrl[repository.Url] = [.. plugins];
+                }
+            }
+
+            string json = JsonSerializer.Serialize(byUrl, JsonOptions);
+            await _storage.WriteAllTextAsync(_catalogueFilePath, json, ct);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                "Failed to save the repository catalogue to {Path}: {Error}",
+                [_catalogueFilePath, ex.Message]
             );
         }
     }
