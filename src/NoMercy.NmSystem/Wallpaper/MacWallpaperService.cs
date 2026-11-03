@@ -15,18 +15,18 @@ using System.Runtime.Versioning;
 namespace NoMercy.NmSystem.Wallpaper;
 
 [SupportedOSPlatform("macos")]
-public class MacWallpaperService : IWallpaperService
+public class MacWallpaperService(IWallpaperCommandRunner commandRunner) : IWallpaperService
 {
     public bool IsSupported => true;
 
-    public void Set(string imagePath, WallpaperStyle style, string hexColor)
+    public bool Set(string imagePath, WallpaperStyle style, string hexColor)
     {
-        ApplyWallpaper(imagePath);
+        return ApplyWallpaper(imagePath);
     }
 
-    public void SetSilent(string imagePath, WallpaperStyle style, string hexColor)
+    public bool SetSilent(string imagePath, WallpaperStyle style, string hexColor)
     {
-        Set(imagePath, style, hexColor);
+        return Set(imagePath, style, hexColor);
     }
 
     public void Restore()
@@ -35,43 +35,50 @@ public class MacWallpaperService : IWallpaperService
         // The OS manages wallpaper history internally.
     }
 
-    private static void ApplyWallpaper(string imagePath)
+    private bool ApplyWallpaper(string imagePath)
     {
+        string quotedPath = QuoteForAppleScript(imagePath);
+
         // Try the System Events approach first (works on macOS 14+ Sonoma)
         string script =
-            $"tell application \"System Events\" to tell every desktop to set picture to \"{imagePath}\"";
+            $"tell application \"System Events\" to tell every desktop to set picture to {quotedPath}";
 
-        if (!RunOsascript(script))
-        {
-            // Fallback for older macOS versions
-            string fallbackScript =
-                $"tell application \"Finder\" to set desktop picture to POSIX file \"{imagePath}\"";
-            RunOsascript(fallbackScript);
-        }
+        if (RunOsascript(script))
+            return true;
+
+        // Fallback for older macOS versions
+        string fallbackScript =
+            $"tell application \"Finder\" to set desktop picture to POSIX file {quotedPath}";
+        return RunOsascript(fallbackScript);
     }
 
-    private static bool RunOsascript(string script)
+    private bool RunOsascript(string script)
     {
-        try
-        {
-            using Process process = new();
-            process.StartInfo = new()
-            {
-                FileName = "osascript",
-                Arguments = $"-e '{script}'",
-                RedirectStandardOutput = true,
-                RedirectStandardError = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            };
+        return commandRunner.Run(BuildOsascriptStartInfo(script)) == 0;
+    }
 
-            process.Start();
-            process.WaitForExit(5000);
-            return process.ExitCode == 0;
-        }
-        catch
+    // The script is one argv token. On Unix, .NET splits the Arguments string
+    // with rules where only double quotes group, so a single-quoted script
+    // reached osascript in pieces and every call failed.
+    private static ProcessStartInfo BuildOsascriptStartInfo(string script)
+    {
+        ProcessStartInfo startInfo = new()
         {
-            return false;
-        }
+            FileName = "osascript",
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        startInfo.ArgumentList.Add("-e");
+        startInfo.ArgumentList.Add(script);
+        return startInfo;
+    }
+
+    // AppleScript string literals escape backslash and double quote with a backslash.
+    private static string QuoteForAppleScript(string value)
+    {
+        string escaped = value.Replace("\\", "\\\\").Replace("\"", "\\\"");
+        return $"\"{escaped}\"";
     }
 }

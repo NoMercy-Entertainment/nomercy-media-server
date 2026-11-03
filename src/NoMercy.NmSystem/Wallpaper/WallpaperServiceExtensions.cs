@@ -21,7 +21,10 @@ public static class WallpaperServiceExtensions
         if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
             services.AddSingleton<IWallpaperService, WindowsWallpaperService>();
         else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+        {
+            services.AddSingleton<IWallpaperCommandRunner, WallpaperCommandRunner>();
             services.AddSingleton<IWallpaperService, MacWallpaperService>();
+        }
         else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
         {
             bool hasDisplay =

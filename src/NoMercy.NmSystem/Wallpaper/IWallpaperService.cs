@@ -14,7 +14,15 @@ namespace NoMercy.NmSystem.Wallpaper;
 public interface IWallpaperService
 {
     bool IsSupported { get; }
-    void Set(string imagePath, WallpaperStyle style, string hexColor);
-    void SetSilent(string imagePath, WallpaperStyle style, string hexColor);
+
+    /// <summary>Applies the wallpaper. False when the desktop did not accept it.</summary>
+    bool Set(string imagePath, WallpaperStyle style, string hexColor);
+
+    /// <summary>
+    /// Applies the wallpaper without leaving it in the desktop's history.
+    /// False when the desktop did not accept it.
+    /// </summary>
+    bool SetSilent(string imagePath, WallpaperStyle style, string hexColor);
+
     void Restore();
 }

@@ -30,19 +30,19 @@ public class LinuxWallpaperService : IWallpaperService
         }
     }
 
-    public void Set(string imagePath, WallpaperStyle style, string hexColor)
+    public bool Set(string imagePath, WallpaperStyle style, string hexColor)
     {
         if (!IsSupported)
-            return;
+            return false;
 
         SaveCurrentWallpaper();
         ApplyColor(hexColor);
-        ApplyWallpaper(imagePath, style);
+        return ApplyWallpaper(imagePath, style);
     }
 
-    public void SetSilent(string imagePath, WallpaperStyle style, string hexColor)
+    public bool SetSilent(string imagePath, WallpaperStyle style, string hexColor)
     {
-        Set(imagePath, style, hexColor);
+        return Set(imagePath, style, hexColor);
     }
 
     public void Restore()
@@ -80,7 +80,8 @@ public class LinuxWallpaperService : IWallpaperService
         }
     }
 
-    private static void ApplyWallpaper(string imagePath, WallpaperStyle style)
+    // True when the desktop's own tool accepted the picture.
+    private static bool ApplyWallpaper(string imagePath, WallpaperStyle style)
     {
         DesktopEnvironment de = DetectDesktopEnvironment();
 
@@ -92,11 +93,11 @@ public class LinuxWallpaperService : IWallpaperService
                     "gsettings",
                     ["set", "org.gnome.desktop.background", "picture-options", gnomeStyle]
                 );
-                RunCommand(
+                string? lightResult = RunCommand(
                     "gsettings",
                     ["set", "org.gnome.desktop.background", "picture-uri", $"file://{imagePath}"]
                 );
-                RunCommand(
+                string? darkResult = RunCommand(
                     "gsettings",
                     [
                         "set",
@@ -105,7 +106,7 @@ public class LinuxWallpaperService : IWallpaperService
                         $"file://{imagePath}",
                     ]
                 );
-                break;
+                return lightResult is not null && darkResult is not null;
 
             case DesktopEnvironment.Kde:
                 string kdeScript =
@@ -116,7 +117,7 @@ public class LinuxWallpaperService : IWallpaperService
                     + "  d.currentConfigGroup = Array('Wallpaper','org.kde.image','General');"
                     + $"  d.writeConfig('Image', 'file://{imagePath}');"
                     + "}";
-                RunCommand(
+                string? kdeResult = RunCommand(
                     "qdbus",
                     [
                         "org.kde.plasmashell",
@@ -125,10 +126,10 @@ public class LinuxWallpaperService : IWallpaperService
                         kdeScript,
                     ]
                 );
-                break;
+                return kdeResult is not null;
 
             case DesktopEnvironment.Xfce:
-                RunCommand(
+                string? xfceResult = RunCommand(
                     "xfconf-query",
                     [
                         "-c",
@@ -139,11 +140,11 @@ public class LinuxWallpaperService : IWallpaperService
                         imagePath,
                     ]
                 );
-                break;
+                return xfceResult is not null;
 
-            case DesktopEnvironment.Fallback:
-                RunCommand("feh", ["--bg-fill", imagePath]);
-                break;
+            default:
+                string? fehResult = RunCommand("feh", ["--bg-fill", imagePath]);
+                return fehResult is not null;
         }
     }
 
@@ -195,6 +196,7 @@ public class LinuxWallpaperService : IWallpaperService
 
     // One argv token per entry: the image path and colour come from the user's
     // own choice, and a token is never re-parsed, so nothing in it can add a flag.
+    // Null when the tool is missing, hangs, or exits non-zero.
     private static string? RunCommand(string command, IReadOnlyList<string> arguments)
     {
         try
@@ -213,9 +215,10 @@ public class LinuxWallpaperService : IWallpaperService
 
             process.Start();
             string output = process.StandardOutput.ReadToEnd();
-            process.WaitForExit(5000);
+            if (!process.WaitForExit(5000))
+                return null;
 
-            return output;
+            return process.ExitCode == 0 ? output : null;
         }
         catch
         {

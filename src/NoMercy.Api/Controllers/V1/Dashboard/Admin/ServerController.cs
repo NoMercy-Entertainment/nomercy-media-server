@@ -684,7 +684,9 @@ public partial class ServerController(
 
         string color = request.Color ?? await GetDominantColorAsync(path);
 
-        wallpaperService.SetSilent(path, request.Style, color);
+        bool applied = wallpaperService.SetSilent(path, request.Style, color);
+        if (!applied)
+            return InternalServerErrorResponse("The desktop did not accept the wallpaper");
 
         return Ok(
             new StatusResponseDto<string> { Status = "ok", Message = "Wallpaper set successfully" }

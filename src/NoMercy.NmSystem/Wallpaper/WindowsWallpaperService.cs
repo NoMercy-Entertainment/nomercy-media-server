@@ -64,18 +64,19 @@ public class WindowsWallpaperService : IWallpaperService
         public string Color;
     }
 
-    public void Set(string imagePath, WallpaperStyle style, string hexColor)
+    public bool Set(string imagePath, WallpaperStyle style, string hexColor)
     {
         SaveBackup();
         ApplyStyle(style);
         ApplyColor(hexColor);
-        ApplyWallpaper(imagePath);
+        return ApplyWallpaper(imagePath);
     }
 
-    public void SetSilent(string imagePath, WallpaperStyle style, string hexColor)
+    public bool SetSilent(string imagePath, WallpaperStyle style, string hexColor)
     {
-        Set(imagePath, style, hexColor);
+        bool applied = Set(imagePath, style, hexColor);
         RestoreHistory();
+        return applied;
     }
 
     public void Restore()
@@ -218,14 +219,16 @@ public class WindowsWallpaperService : IWallpaperService
         SetWallpaperConfig(config);
     }
 
-    private static void ApplyWallpaper(string? filename)
+    // SystemParametersInfo returns zero when the desktop rejected the change.
+    private static bool ApplyWallpaper(string? filename)
     {
-        SystemParametersInfo(
+        int result = SystemParametersInfo(
             SpiSetdeskwallpaper,
             0,
             filename,
             SpifUpdateinifile | SpifSendwininichange
         );
+        return result != 0;
     }
 
     public static int HexToWin32Color(string hex)
