@@ -24,8 +24,13 @@ namespace NoMercy.NmSystem.SystemCalls;
 /// </summary>
 public static partial class ReleaseChannelSelector
 {
+    /// <summary>
+    /// The first page of the server's release list. Nightlies pile up in front
+    /// of the newest beta, so a reader pages on from here with
+    /// <see cref="GithubReleaseList"/> until a page offers the channel a release.
+    /// </summary>
     public const string MediaServerReleaseListUrl =
-        "https://api.github.com/repos/NoMercy-Entertainment/nomercy-media-server/releases?per_page=30";
+        "https://api.github.com/repos/NoMercy-Entertainment/nomercy-media-server/releases?per_page=100";
 
     private const string BetaMarker = "<!-- nomercy-channel: beta -->";
     private const string RetractedNotice = "**RETRACTED ";

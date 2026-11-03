@@ -795,18 +795,17 @@ public class Binaries
         GithubReleaseResponse result;
         try
         {
-            using HttpResponseMessage response = await _httpClient.GetAsync(
-                ReleaseChannelSelector.MediaServerReleaseListUrl
-            );
-            response.EnsureSuccessStatusCode();
-            string json = await response.Content.ReadAsStringAsync();
-
-            GithubReleaseResponse[] releases = json.FromJson<GithubReleaseResponse[]>() ?? [];
             result =
-                ReleaseChannelSelector.Select(
-                    releases,
-                    r => new(r.TagName, r.Draft, r.Prerelease, r.Body),
-                    channel
+                await GithubReleaseList.FindAsync(
+                    _httpClient,
+                    ReleaseChannelSelector.MediaServerReleaseListUrl,
+                    json => json.FromJson<GithubReleaseResponse[]>() ?? [],
+                    releases =>
+                        ReleaseChannelSelector.Select(
+                            releases,
+                            r => new(r.TagName, r.Draft, r.Prerelease, r.Body),
+                            channel
+                        )
                 ) ?? new();
         }
         catch (Exception e)
