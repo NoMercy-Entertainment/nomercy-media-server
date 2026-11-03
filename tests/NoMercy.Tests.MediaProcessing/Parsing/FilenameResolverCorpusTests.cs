@@ -122,18 +122,33 @@ public class FilenameResolverCorpusTests
     }
 
     // ---------------------------------------------------------------------------
-    // A recap that airs between two episodes is numbered with a half, and was
-    // read as the whole episode either side of it.
+    // A recap that airs between two episodes is numbered with a half. Read as
+    // the whole episode either side of it, it took that episode's place; read as
+    // season 0, the same half in two seasons ("S01E21.5", "S02E21.5") landed on
+    // one special and the later file overwrote the earlier one (#278). It keeps
+    // its own season and claims no whole episode, the same way a bare "- 07.5"
+    // already does.
     // ---------------------------------------------------------------------------
     [Theory]
-    [InlineData(["NANA - S01E21.5 (1080p VRV Dual Audio WEB-DL -KS-).mkv", 21])]
-    [InlineData(["S02E05.5 [SP]-Guidepost [4227F7A0].mkv", 5])]
-    [InlineData(["[Judas] NieR-Automata Ver1.1a - S01E18.5.mkv", 18])]
-    public void A_half_episode_is_season_zero(string file, int episode)
+    [InlineData(["NANA - S01E21.5 (1080p VRV Dual Audio WEB-DL -KS-).mkv", 1])]
+    [InlineData(["S02E05.5 [SP]-Guidepost [4227F7A0].mkv", 2])]
+    [InlineData(["[Judas] NieR-Automata Ver1.1a - S01E18.5.mkv", 1])]
+    public void A_half_episode_keeps_its_season_and_claims_no_whole_episode(string file, int season)
     {
         MovieFile result = Resolve(file);
-        result.Season.Should().Be(0);
-        result.Episode.Should().Be(episode);
+        result.Season.Should().Be(season);
+        result.Episode.Should().BeNull();
+        result.IsSpecialEpisode.Should().BeTrue();
+    }
+
+    [Fact]
+    public void The_same_half_episode_in_two_seasons_does_not_collide()
+    {
+        MovieFile first = Resolve("NANA - S01E21.5.mkv");
+        MovieFile second = Resolve("NANA - S02E21.5.mkv");
+
+        first.Season.Should().Be(1);
+        second.Season.Should().Be(2);
     }
 
     [Theory]
