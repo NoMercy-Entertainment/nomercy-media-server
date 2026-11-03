@@ -12,6 +12,7 @@
 using System.Runtime.InteropServices;
 using NoMercy.NmSystem.Dto;
 using NoMercy.NmSystem.Information;
+using NoMercy.NmSystem.SystemCalls.OpticalDrives;
 using NoMercy.Storage;
 using NoMercy.Storage.Drivers.Local;
 
@@ -19,6 +20,8 @@ namespace NoMercy.NmSystem.SystemCalls;
 
 public static class Optical
 {
+    private static readonly ICommandRunner _commandRunner = new ShellCommandRunner();
+
     public static Dictionary<string, string?> GetOpticalDrives()
     {
         if (Software.IsWindows)
@@ -61,25 +64,10 @@ public static class Optical
         return drives;
     }
 
-    private static Dictionary<string, string?> GetMacOpticalDrives()
-    {
-        Dictionary<string, string?> drives = new();
-        List<string> output = RunShellCommand("diskutil list | grep -i 'CD/DVD'");
-
-        foreach (string line in output)
-        {
-            string[] parts = line.Split([' '], StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length <= 0)
-                continue;
-
-            string path = parts[^1]; // Last item is typically the disk identifier (e.g., /dev/disk2)
-            drives[path] = RunShellCommand($"diskutil info {path} | grep 'Volume Name'")
-                .FirstOrDefault()
-                ?.Split(": ")[1];
-        }
-
-        return drives;
-    }
+    private static Dictionary<string, string?> GetMacOpticalDrives() =>
+        new MacOpticalDriveScanner(_commandRunner)
+            .GetDrives()
+            .ToDictionary(drive => drive.Path, drive => drive.HasDisc ? drive.Label : null);
 
     private static List<string> RunShellCommand(string command)
     {
@@ -213,9 +201,7 @@ public static class Optical
         }
         catch (Exception ex)
         {
-            Logger.Error(
-                $"[ERROR] Failed to open Linux optical drive '{drivePath}': {ex.Message}"
-            );
+            Logger.Error($"[ERROR] Failed to open Linux optical drive '{drivePath}': {ex.Message}");
             return false;
         }
     }
@@ -249,9 +235,7 @@ public static class Optical
         }
         catch (Exception ex)
         {
-            Logger.Error(
-                $"[ERROR] Failed to open macOS optical drive '{drivePath}': {ex.Message}"
-            );
+            Logger.Error($"[ERROR] Failed to open macOS optical drive '{drivePath}': {ex.Message}");
             return false;
         }
     }
