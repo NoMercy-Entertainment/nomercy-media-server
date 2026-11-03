@@ -330,7 +330,8 @@ public class AnimeDemographicRepository(MediaContext context) : IAnimeDemographi
             .Where(adt => adt.Tv.Library.LibraryUsers.Any(u => u.UserId == userId))
             .Where(adt =>
                 adt.Tv.Episodes.Any(e =>
-                    (
+                    e.SeasonNumber > 0
+                    && (
                         e.VideoFiles.Any(v => v.Folder != null)
                         || e.Tv.Episodes.Any(o =>
                             o.SeasonNumber == e.SeasonNumber

@@ -143,7 +143,17 @@ public class LibraryResponseItemDtoTests
             }
         );
 
-        Episode episodeWithFile = new() { Id = 10 };
+        Episode episodeWithFile = new() { Id = 10, SeasonNumber = 1 };
+        Episode specialWithFile = new() { Id = 12, SeasonNumber = 0 };
+        specialWithFile.VideoFiles.Add(
+            new()
+            {
+                Filename = "special.mkv",
+                HostFolder = "/x",
+                Folder = "/x",
+            }
+        );
+        tv.Episodes.Add(specialWithFile);
         episodeWithFile.VideoFiles.Add(
             new()
             {
@@ -198,7 +208,7 @@ public class LibraryResponseItemDtoTests
         Assert.Equal("/tv/2", dto.Link.ToString());
         Assert.Equal("tv-trailer-key", dto.VideoId);
         Assert.Equal(5, dto.NumberOfItems);
-        // Only the episode whose video file has a non-null Folder counts.
+        // Only the season 1+ episode whose video file has a non-null Folder counts.
         Assert.Equal(1, dto.HaveItems);
 
         dto.Genres.Should().ContainSingle();

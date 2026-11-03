@@ -13,6 +13,7 @@ using Newtonsoft.Json;
 using NoMercy.Data.DTOs.Specials;
 using NoMercy.Data.Repositories;
 using NoMercy.Database;
+using NoMercy.Database.Models;
 using NoMercy.Database.Models.Movies;
 using NoMercy.Database.Models.TvShows;
 using NoMercy.Database.Models.Users;
@@ -125,7 +126,7 @@ public class NmCardDto
 
         Link = new($"/tv/{Id}", UriKind.Relative);
         NumberOfItems = tv.NumberOfEpisodes;
-        HaveItems = tv.Episodes.Count(episode => episode.VideoFiles.Any(v => v.Folder != null));
+        HaveItems = tv.Episodes.Count(episode => episode.IsAvailable());
 
         ColorPalette = tv.ColorPalette;
 
@@ -489,9 +490,7 @@ public class NmCardDto
             CreatedAt = item.Tv.CreatedAt;
 
             NumberOfItems = item.Tv.NumberOfEpisodes;
-            HaveItems = item.Tv.Episodes.Count(episode =>
-                episode.VideoFiles.Any(v => v.Folder != null)
-            );
+            HaveItems = item.Tv.Episodes.Count(episode => episode.IsAvailable());
 
             Rating = item
                 .Tv.CertificationTvs.Where(certificationMovie =>

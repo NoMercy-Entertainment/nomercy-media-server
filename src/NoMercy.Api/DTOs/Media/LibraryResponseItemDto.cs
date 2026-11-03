@@ -12,6 +12,7 @@
 using Newtonsoft.Json;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Database;
+using NoMercy.Database.Models;
 using NoMercy.Database.Models.Movies;
 using NoMercy.Database.Models.People;
 using NoMercy.Database.Models.TvShows;
@@ -120,7 +121,7 @@ public record LibraryResponseItemDto
         MediaType = MediaTypes.TvMediaType;
         Link = new($"/tv/{Id}", UriKind.Relative);
         NumberOfItems = tv.Tv.NumberOfEpisodes;
-        HaveItems = tv.Tv.Episodes.Count(episode => episode.VideoFiles.Any(v => v.Folder != null));
+        HaveItems = tv.Tv.Episodes.Count(episode => episode.IsAvailable());
 
         Genres = tv.Tv.GenreTvs.Select(genreTv => new GenreDto(genreTv)).ToArray();
         VideoId = tv.Tv.Trailer;
@@ -172,7 +173,7 @@ public record LibraryResponseItemDto
         Link = new($"/tv/{Id}", UriKind.Relative);
 
         NumberOfItems = tv.NumberOfEpisodes;
-        HaveItems = tv.Episodes.Count(episode => episode.VideoFiles.Any(v => v.Folder != null));
+        HaveItems = tv.Episodes.Count(episode => episode.IsAvailable());
 
         Genres = tv.GenreTvs.Select(genreTv => new GenreDto(genreTv)).ToArray();
         VideoId = tv.Trailer;

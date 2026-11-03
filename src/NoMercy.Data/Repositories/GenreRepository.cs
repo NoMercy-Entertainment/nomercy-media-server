@@ -113,7 +113,8 @@ public class GenreRepository(MediaContext context) : IGenreRepository
                     )
                     .Where(gt =>
                         gt.Tv.Episodes.Any(e =>
-                            (
+                            e.SeasonNumber > 0
+                            && (
                                 e.VideoFiles.Any(v => v.Folder != null)
                                 || e.Tv.Episodes.Any(o =>
                                     o.SeasonNumber == e.SeasonNumber
@@ -259,7 +260,8 @@ public class GenreRepository(MediaContext context) : IGenreRepository
             .Where(gt => gt.Tv.Library.LibraryUsers.Any(u => u.UserId == userId))
             .Where(gt =>
                 gt.Tv.Episodes.Any(e =>
-                    (
+                    e.SeasonNumber > 0
+                    && (
                         e.VideoFiles.Any(v => v.Folder != null)
                         || e.Tv.Episodes.Any(o =>
                             o.SeasonNumber == e.SeasonNumber
@@ -451,7 +453,9 @@ public class GenreRepository(MediaContext context) : IGenreRepository
             .Where(gt =>
                 ids.Contains(gt.GenreId)
                 && gt.Tv.Library.LibraryUsers.Any(u => u.UserId == userId)
-                && gt.Tv.Episodes.Any(e => e.VideoFiles.Any(v => v.Folder != null))
+                && gt.Tv.Episodes.Any(e =>
+                    e.SeasonNumber > 0 && e.VideoFiles.Any(v => v.Folder != null)
+                )
             )
             .GroupBy(gt => gt.GenreId)
             .Select(group => new { group.Key, Count = group.Count() })

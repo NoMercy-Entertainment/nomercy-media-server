@@ -14,6 +14,7 @@ using Microsoft.EntityFrameworkCore;
 using NoMercy.Data.DTOs;
 using NoMercy.Data.Extensions;
 using NoMercy.Database;
+using NoMercy.Database.Models;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.Movies;
@@ -222,7 +223,8 @@ public class LibraryRepository(IDbContextFactory<MediaContext> contextFactory) :
                 library
                     .LibraryTvs.Where(lt =>
                         lt.Tv.Episodes.Any(e =>
-                            (
+                            e.SeasonNumber > 0
+                            && (
                                 e.VideoFiles.Any(v => v.Folder != null)
                                 || e.Tv.Episodes.Any(o =>
                                     o.SeasonNumber == e.SeasonNumber
@@ -1084,7 +1086,7 @@ public class LibraryRepository(IDbContextFactory<MediaContext> contextFactory) :
             // A multi-episode file lives on its own episode, which already passes the
             // direct test, so this TV-level "has a playable episode" filter needs only
             // the direct check.
-            .Where(tv => tv.Episodes.Any(e => e.VideoFiles.Any(v => v.Folder != null)))
+            .Where(MediaAvailability.TvIsAvailable)
             .OrderBy(tv => EF.Functions.Random())
             .Select(tv => new HomeTvCardDto
             {

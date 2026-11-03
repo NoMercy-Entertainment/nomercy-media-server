@@ -17,6 +17,7 @@ using NoMercy.Api.DTOs.Media;
 using NoMercy.Data.Repositories;
 using NoMercy.Data.Services.Recommendations;
 using NoMercy.Database;
+using NoMercy.Database.Models;
 using NoMercy.Database.Models.Movies;
 using NoMercy.Database.Models.TvShows;
 using NoMercy.NmSystem.Domain;
@@ -499,9 +500,7 @@ public class RecommendationService
             Year = t.FirstAirDate?.Year,
             ColorPalette = t.ColorPalette,
             MediaType = "tv",
-            HaveItems = t.Episodes.Count(e =>
-                e.SeasonNumber > 0 && e.VideoFiles.Any(vf => vf.Folder != null)
-            ),
+            HaveItems = t.Episodes.Count(e => e.IsAvailable()),
             NumberOfItems = t.Episodes.Count(e => e.SeasonNumber > 0),
             Duration = t.Duration ?? 0,
             Tags = t.KeywordTvs.Select(kt => kt.Keyword.Name),

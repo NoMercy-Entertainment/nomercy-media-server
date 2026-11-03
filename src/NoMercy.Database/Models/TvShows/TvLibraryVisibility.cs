@@ -30,7 +30,9 @@ public static class TvLibraryVisibility
     // A multi-episode file lives on its own (first) episode, so "an episode has a
     // file" already covers the episodes such a file spans.
     public static readonly Expression<Func<Tv, bool>> IsListed = tv =>
-        tv.Episodes.Any(episode => episode.VideoFiles.Any(file => file.Folder != null))
+        tv.Episodes.Any(episode =>
+            episode.SeasonNumber > 0 && episode.VideoFiles.Any(file => file.Folder != null)
+        )
         || tv.Library.LibraryTvs.Any(link =>
             link.TvId == tv.Id && link.AddedBy == LibraryLinkOrigin.Manual
         );

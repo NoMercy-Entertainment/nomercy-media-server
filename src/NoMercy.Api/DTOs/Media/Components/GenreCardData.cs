@@ -93,7 +93,8 @@ public record GenreCardData
             genre.GenreMovies.Count(gm => gm.Movie.VideoFiles.Any(v => v.Folder != null))
             + genre.GenreTvShows.Count(gt =>
                 gt.Tv.Episodes.Any(e =>
-                    (
+                    e.SeasonNumber > 0
+                    && (
                         e.VideoFiles.Any(v => v.Folder != null)
                         || e.Tv.Episodes.Any(o =>
                             o.SeasonNumber == e.SeasonNumber

@@ -12,6 +12,7 @@
 using Newtonsoft.Json;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Database;
+using NoMercy.Database.Models;
 using NoMercy.Database.Models.Movies;
 using NoMercy.Database.Models.TvShows;
 using NoMercy.NmSystem.Domain;
@@ -399,9 +400,7 @@ public record InfoResponseItemDto
             .Sum();
 
         NumberOfItems = tv.NumberOfEpisodes;
-        HaveItems = tv.Episodes.Count(episode =>
-            episode.VideoFiles.Any(videoFile => videoFile.Folder != null)
-        );
+        HaveItems = tv.Episodes.Count(episode => episode.IsAvailable());
 
         Year = tv.FirstAirDate.ParseYear();
         VoteAverage = tv.VoteAverage ?? 0;

@@ -341,7 +341,8 @@ public class AnimeThemeRepository(MediaContext context) : IAnimeThemeRepository
             .Where(att => att.Tv.Library.LibraryUsers.Any(u => u.UserId == userId))
             .Where(att =>
                 att.Tv.Episodes.Any(e =>
-                    (
+                    e.SeasonNumber > 0
+                    && (
                         e.VideoFiles.Any(v => v.Folder != null)
                         || e.Tv.Episodes.Any(o =>
                             o.SeasonNumber == e.SeasonNumber
