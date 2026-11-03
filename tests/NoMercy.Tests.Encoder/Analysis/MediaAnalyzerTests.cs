@@ -18,6 +18,57 @@ namespace NoMercy.Tests.Encoder.Analysis;
 
 public class MediaAnalyzerTests
 {
+    [Fact]
+    public void Parse_RotationFromDisplayMatrix_PreservesSignedAngle()
+    {
+        string json = """
+            {
+              "streams": [
+                {
+                  "index": 0,
+                  "codec_type": "video",
+                  "codec_name": "h264",
+                  "width": 1920,
+                  "height": 1080,
+                  "side_data_list": [
+                    { "side_data_type": "Display Matrix", "rotation": -90 }
+                  ]
+                }
+              ],
+              "format": { "duration": "60" }
+            }
+            """;
+
+        MediaInfo media = MediaAnalyzer.ParseFfprobeJson(json, "/media/portrait.mp4");
+
+        media.VideoStreams[0].Rotation.Should().Be(-90);
+        media.PrimaryRotation.Should().Be(-90);
+    }
+
+    [Fact]
+    public void Parse_RotationFromLegacyTag_WhenDisplayMatrixIsAbsent()
+    {
+        string json = """
+            {
+              "streams": [
+                {
+                  "index": 0,
+                  "codec_type": "video",
+                  "codec_name": "h264",
+                  "width": 1920,
+                  "height": 1080,
+                  "tags": { "rotate": "90" }
+                }
+              ],
+              "format": { "duration": "60" }
+            }
+            """;
+
+        MediaInfo media = MediaAnalyzer.ParseFfprobeJson(json, "/media/portrait.mp4");
+
+        media.VideoStreams[0].Rotation.Should().Be(90);
+    }
+
     private static string LoadFixture(string name)
     {
         string path = Path.Combine(AppContext.BaseDirectory, "Analysis", "Fixtures", name);

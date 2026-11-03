@@ -133,6 +133,44 @@ public class PlanStageAutoLadderTests
     }
 
     [Fact]
+    public async Task AutoLadder_RotatedSource_UsesPortraitDimensions()
+    {
+        EncodingProfile profile = BuildProfile(autoLadder: true, rungs: [BuildVideo(1920, 1080)]);
+
+        OutputPlan plan = await RunPlan(BuildMedia(1920, 1080, rotation: -90), profile);
+
+        Assert.All(plan.VideoOutputs, output => Assert.True(output.Width < output.Height));
+        Assert.Contains(plan.VideoOutputs, output => output.Width == 1080 && output.Height == 1920);
+    }
+
+    [Fact]
+    public async Task AutoConfigLadder_RotatedSource_UsesPortraitDimensions()
+    {
+        EncodingProfile profile = BuildProfile(
+            autoLadder: true,
+            rungs: [BuildVideo(1920, 1080)]
+        ) with
+        {
+            Ladder = new()
+            {
+                Mode = LadderMode.Auto,
+                Rungs = [BuildVideo(1920, 1080)],
+                AutoConfig = new()
+                {
+                    NeverUpscale = true,
+                    NeverUpsource = false,
+                    MinTierGapPercent = 0,
+                },
+            },
+        };
+
+        OutputPlan plan = await RunPlan(BuildMedia(1920, 1080, rotation: 90), profile);
+
+        Assert.All(plan.VideoOutputs, output => Assert.True(output.Width < output.Height));
+        Assert.Contains(plan.VideoOutputs, output => output.Width == 1080 && output.Height == 1920);
+    }
+
+    [Fact]
     public async Task AutoLadder_On_MultipleVariants_FallsBackToManual()
     {
         // AutoLadder requires exactly 1 reference profile — with more than 1,
@@ -168,7 +206,12 @@ public class PlanStageAutoLadderTests
         return success.Value.OutputPlan;
     }
 
-    private static MediaInfo BuildMedia(int width, int height, long bitrateKbps = 6000) =>
+    private static MediaInfo BuildMedia(
+        int width,
+        int height,
+        long bitrateKbps = 6000,
+        int rotation = 0
+    ) =>
         new(
             FilePath: "/media/test.mkv",
             Format: "matroska",
@@ -189,7 +232,8 @@ public class PlanStageAutoLadderTests
                     ColorTransfer: null,
                     ColorSpace: null,
                     IsDefault: true,
-                    BitRateKbps: bitrateKbps
+                    BitRateKbps: bitrateKbps,
+                    Rotation: rotation
                 ),
             ],
             AudioStreams: [],

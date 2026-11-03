@@ -35,8 +35,8 @@ public class LiveQualitySelector(ICodecResolver codecResolver, IHardwareCapabili
     )
     {
         VideoStreamInfo? primaryVideo = input.VideoStreams.Count > 0 ? input.VideoStreams[0] : null;
-        int sourceWidth = primaryVideo?.Width ?? 1920;
-        int sourceHeight = primaryVideo?.Height ?? 1080;
+        (int sourceWidth, int sourceHeight) = primaryVideo?.GetDisplayDimensions() ?? (1920, 1080);
+        bool portrait = sourceWidth < sourceHeight;
 
         VideoCodecType targetCodec = ResolveTargetCodec(client);
         ResolvedCodec resolved = codecResolver.Resolve(targetCodec, hardware);
@@ -48,14 +48,17 @@ public class LiveQualitySelector(ICodecResolver codecResolver, IHardwareCapabili
 
         foreach ((int tierWidth, int tierHeight) in ResolutionTiers)
         {
+            (int outputWidth, int outputHeight) = portrait
+                ? (tierHeight, tierWidth)
+                : (tierWidth, tierHeight);
             // Skip resolutions larger than the source
-            if (tierWidth > sourceWidth || tierHeight > sourceHeight)
+            if (outputWidth > sourceWidth || outputHeight > sourceHeight)
                 continue;
 
             qualities.Add(
                 BuildQuality(
-                    tierWidth,
-                    tierHeight,
+                    outputWidth,
+                    outputHeight,
                     targetCodec,
                     resolved,
                     speeds,
@@ -71,6 +74,8 @@ public class LiveQualitySelector(ICodecResolver codecResolver, IHardwareCapabili
         if (qualities.Count == 0)
         {
             (int fallbackWidth, int fallbackHeight) = ResolutionTiers[^1];
+            if (portrait)
+                (fallbackWidth, fallbackHeight) = (fallbackHeight, fallbackWidth);
             qualities.Add(
                 BuildQuality(
                     fallbackWidth,
@@ -102,14 +107,14 @@ public class LiveQualitySelector(ICodecResolver codecResolver, IHardwareCapabili
         double speedMultiplier = speeds.GetSpeedMultiplier(
             targetCodec,
             resolved.FfmpegEncoderName,
-            tierWidth,
+            Math.Max(tierWidth, tierHeight),
             deviceName
         );
 
         bool canRealtime = speedMultiplier >= 1.2;
 
-        string qualityId = $"{tierHeight}p";
-        string label = $"{tierHeight}p";
+        string qualityId = $"{Math.Min(tierWidth, tierHeight)}p";
+        string label = qualityId;
 
         return new(
             Id: qualityId,
@@ -138,8 +143,7 @@ public class LiveQualitySelector(ICodecResolver codecResolver, IHardwareCapabili
 
         // Filter by client capabilities
         IEnumerable<LiveQuality> allowed = candidates.Where(q =>
-            q.Width <= (client.MaxWidth ?? int.MaxValue)
-            && q.Height <= (client.MaxHeight ?? int.MaxValue)
+            FitsClientDimensions(q, client)
             && (
                 allowedCodecs is null
                 || allowedCodecs.Length == 0
@@ -164,6 +168,16 @@ public class LiveQualitySelector(ICodecResolver codecResolver, IHardwareCapabili
         optimal ??= candidates.OrderBy(q => q.Width).ThenBy(q => q.Height).First();
 
         return optimal;
+    }
+
+    private static bool FitsClientDimensions(LiveQuality quality, ClientCapabilities client)
+    {
+        if (client.MaxWidth is int maxWidth && client.MaxHeight is int maxHeight)
+            return Math.Max(quality.Width, quality.Height) <= Math.Max(maxWidth, maxHeight)
+                && Math.Min(quality.Width, quality.Height) <= Math.Min(maxWidth, maxHeight);
+
+        return quality.Width <= (client.MaxWidth ?? int.MaxValue)
+            && quality.Height <= (client.MaxHeight ?? int.MaxValue);
     }
 
     public LiveQuality SelectForBandwidth(
@@ -231,7 +245,7 @@ public class LiveQualitySelector(ICodecResolver codecResolver, IHardwareCapabili
             : client.SupportedVideoCodecs;
 
     private static int EstimateBitrateKbps(int width, int height) =>
-        (width, height) switch
+        (Math.Max(width, height), Math.Min(width, height)) switch
         {
             (3840, 2160) => 20000,
             (1920, 1080) => 8000,
