@@ -58,6 +58,20 @@ public class DeviceStateRepository(IDbContextFactory<MediaContext> contextFactor
         return await ResolveOwnedDeviceAsync(context, fingerprint, userId, deviceName, deviceType);
     }
 
+    public async Task RefreshPresenceAsync(Ulid deviceId)
+    {
+        DateTime now = DateTime.UtcNow;
+        DateTime cutoff = now.AddMinutes(-5);
+        await using MediaContext context = await contextFactory.CreateDbContextAsync();
+        await context
+            .Devices.Where(device =>
+                device.Id == deviceId
+                && device.OwnerUserId != null
+                && (device.WsConnectedAt == null || device.WsConnectedAt <= cutoff)
+            )
+            .ExecuteUpdateAsync(device => device.SetProperty(d => d.WsConnectedAt, now));
+    }
+
     public async Task<bool> RetireSupersededAsync(
         Device device,
         Guid ownerUserId,

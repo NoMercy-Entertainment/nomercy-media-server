@@ -9,9 +9,12 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 using System.Net.WebSockets;
+using System.Reflection;
+using System.Text.Json;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NoMercy.Api.Hubs;
 using NoMercy.Api.WebSockets;
@@ -186,5 +189,73 @@ public sealed class DeviceBusRegistryTests : IDisposable
         Assert.True(registry.IsOnline(device.Id));
         Assert.Equal((true, true), registry.GetStatus(device.Id));
         Assert.True(await registry.SendAsync(device.Id, new { type = "ping" }));
+    }
+
+    [Fact]
+    public async Task ClosedSocket_IsNotReportedOnline()
+    {
+        Device device = await SeedOwnedDeviceAsync(DateTime.UtcNow);
+        DeviceBusRegistry registry = MakeRegistry();
+        WebSocket ws = Mock.Of<WebSocket>(socket => socket.State == WebSocketState.Closed);
+
+        await registry.Register(device.Id, ws);
+
+        Assert.False(registry.IsOnline(device.Id));
+    }
+
+    [Fact]
+    public async Task ForceClose_ClearsTheStatusOfTheEvictedSocket()
+    {
+        Device device = await SeedOwnedDeviceAsync(DateTime.UtcNow);
+        DeviceBusRegistry registry = MakeRegistry();
+        WebSocket ws = Mock.Of<WebSocket>(socket => socket.State == WebSocketState.Open);
+
+        await registry.Register(device.Id, ws);
+        registry.UpdateStatus(device.Id, foreground: true, screenOn: true);
+        registry.ForceClose(device.Id);
+
+        Assert.False(registry.IsOnline(device.Id));
+        Assert.Equal((false, false), registry.GetStatus(device.Id));
+    }
+
+    [Fact]
+    public async Task StatusFrame_RefreshesThePersistedLastSeenTime()
+    {
+        DateTime stale = DateTime.UtcNow.AddDays(-8);
+        Device device = await SeedOwnedDeviceAsync(stale);
+        DeviceBusEndpoint endpoint = new(
+            new DeviceStateRepository(_contextFactory),
+            null!,
+            MakeRegistry(),
+            null!,
+            null!,
+            null!,
+            NullLogger<DeviceBusEndpoint>.Instance
+        );
+        using JsonDocument status = JsonDocument.Parse("{\"type\":\"status\",\"foreground\":true}");
+        MethodInfo method = typeof(DeviceBusEndpoint).GetMethod(
+            "HandleStatus",
+            BindingFlags.Instance | BindingFlags.NonPublic
+        )!;
+
+        await (Task)method.Invoke(endpoint, [status.RootElement, device])!;
+
+        await using MediaContext context = await _contextFactory.CreateDbContextAsync();
+        Device reloaded = await context.Devices.SingleAsync(d => d.Id == device.Id);
+        Assert.True(reloaded.WsConnectedAt > stale);
+    }
+
+    [Fact]
+    public async Task PresenceRefresh_WritesAtMostOncePerFiveMinutes()
+    {
+        DateTime recent = DateTime.UtcNow.AddMinutes(-1);
+        Device device = await SeedOwnedDeviceAsync(recent);
+        DeviceStateRepository repository = new(_contextFactory);
+
+        await repository.RefreshPresenceAsync(device.Id);
+
+        await using MediaContext context = await _contextFactory.CreateDbContextAsync();
+        Device reloaded = await context.Devices.SingleAsync(d => d.Id == device.Id);
+        Assert.Equal(recent, reloaded.WsConnectedAt);
     }
 }
