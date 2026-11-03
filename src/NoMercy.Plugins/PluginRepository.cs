@@ -157,6 +157,8 @@ public class PluginRepository : IPluginRepository
             }
 
             _pluginsByRepository.Remove(name);
+            RebuildAvailablePlugins();
+            RebuildTrustedSet();
         }
 
         if (removedDefault)
@@ -186,11 +188,10 @@ public class PluginRepository : IPluginRepository
 
             repository.Trusted = trusted;
 
-            // Cleared rather than adjusted. An entry does not carry which index
-            // listed it, so the only honest answer until the next refresh
-            // rebuilds the set is that nothing is trusted — and an owner who
-            // takes trust back means now, not at the next refresh.
-            _trustedPluginIds.Clear();
+            // Recomputed from what every repository listed last, at once: an
+            // owner who grants trust or takes it back means now, not at the
+            // next refresh, and only for this repository.
+            RebuildTrustedSet();
         }
 
         await SaveRepositoriesToDiskAsync(ct);
