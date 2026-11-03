@@ -92,4 +92,16 @@ public class AssBurnInFilterBuilderTests
 
         Assert.Equal("ass='/media/[Group] show, part;1.ass'", result);
     }
+
+    [Fact]
+    public void Build_PathWithApostrophe_KeepsFontsDirAsASeparateOption()
+    {
+        // Verified against a real ffmpeg build: an apostrophe escaped inside
+        // the quotes, or escaped for one parse level only, makes libass read
+        // ":fontsdir=..." as part of the file name. The path must close its
+        // quote, emit \\\' and reopen so fontsdir survives as its own option.
+        string result = _builder.Build("/media/it's a show.ass", "/output/fonts");
+
+        Assert.Equal("ass='/media/it'\\\\\\''s a show.ass':fontsdir='/output/fonts'", result);
+    }
 }

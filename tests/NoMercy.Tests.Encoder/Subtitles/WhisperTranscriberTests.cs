@@ -314,8 +314,8 @@ public class WhisperTranscriberTests
             [afIndex + 1]
             .Should()
             .Be(
-                "whisper=model='C\\:/models/Bob\\'s, [model];=1.bin':language=eng"
-                    + ":queue=3:destination='/media/Hello, it\\'s [World];=1.eng.whisper.srt':format=srt"
+                "whisper=model='C\\:/models/Bob'\\\\\\''s, [model];\\=1.bin':language=eng"
+                    + ":queue=3:destination='/media/Hello, it'\\\\\\''s [World];\\=1.eng.whisper.srt':format=srt"
             );
     }
 
