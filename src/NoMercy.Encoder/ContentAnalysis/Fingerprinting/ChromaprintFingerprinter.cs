@@ -56,7 +56,8 @@ public class ChromaprintFingerprinter(
     public async Task<AudioFingerprint> FingerprintAsync(
         string filePath,
         FingerprintWindow? window,
-        CancellationToken ct
+        CancellationToken ct,
+        IStorage? sourceStorage = null
     )
     {
         string jobId = Guid.NewGuid().ToString("N");
@@ -67,7 +68,9 @@ public class ChromaprintFingerprinter(
         // reading from the source file — see MediaActivityMonitor.
         await activityMonitor.WaitForIdleAsync(MaxIdleWait, ct).ConfigureAwait(false);
 
-        await using LocalPathLease inputLease = storage.AcquireLocalPath(filePath);
+        await using LocalPathLease inputLease = (sourceStorage ?? storage).AcquireLocalPath(
+            filePath
+        );
         List<string> args = ["-v", "error", "-nostdin"];
 
         if (window is not null)

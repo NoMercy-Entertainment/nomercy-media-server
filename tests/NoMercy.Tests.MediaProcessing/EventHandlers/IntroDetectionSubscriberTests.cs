@@ -43,11 +43,12 @@ public class IntroDetectionSubscriberTests
                 f.FingerprintAsync(
                     It.IsAny<string>(),
                     It.IsAny<FingerprintWindow>(),
-                    It.IsAny<CancellationToken>()
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<IStorage?>()
                 )
             )
             .Returns(
-                async (string _, FingerprintWindow _, CancellationToken _) =>
+                async (string _, FingerprintWindow _, CancellationToken _, IStorage? _) =>
                 {
                     if (Interlocked.Increment(ref fingerprintCalls) == 1)
                     {

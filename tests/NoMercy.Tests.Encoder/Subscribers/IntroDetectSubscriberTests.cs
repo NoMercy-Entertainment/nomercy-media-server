@@ -20,6 +20,7 @@ using NoMercy.Encoder.Subscribers;
 using NoMercy.Events;
 using NoMercy.Events.Library;
 using NoMercy.Storage;
+using NoMercy.Tests.Encoder.Bundle;
 
 namespace NoMercy.Tests.Encoder.Subscribers;
 
@@ -46,17 +47,29 @@ public class IntroDetectSubscriberTests
     )
     {
         EncoderOptions options = new() { EnableIntroDetectSubscriber = enabled };
-        Mock<IStorage> storage = new();
-        storage.Setup(s => s.Exists(It.IsAny<string>())).Returns(true);
+        Mock<IStorage> storage = FolderStorage();
         return new(
             bus,
             fingerprinter,
             detector,
             options,
             NullLogger<IntroDetectSubscriber>.Instance,
-            storage.Object,
+            new FixedStorageFactory(storage.Object),
             factory
         );
+    }
+
+    private static Mock<IStorage> FolderStorage()
+    {
+        Mock<IStorage> storage = new();
+        storage.Setup(s => s.Exists(It.IsAny<string>())).Returns(true);
+        storage
+            .Setup(s => s.CombinePath(It.IsAny<string>(), It.IsAny<string[]>()))
+            .Returns(
+                (string parent, string[] children) =>
+                    parent.TrimEnd('/') + "/" + string.Join("/", children)
+            );
+        return storage;
     }
 
     private static async Task SeedTvSeasonAsync(
@@ -66,10 +79,30 @@ public class IntroDetectSubscriberTests
         int seasonId,
         int[] episodeIds,
         string hostFolder = "/media/tv/",
-        string[]? durations = null
+        string[]? durations = null,
+        string driverType = "local"
     )
     {
         await using MediaContext ctx = await factory.CreateDbContextAsync();
+
+        Ulid driverId = Ulid.NewUlid();
+        Ulid folderId = Ulid.NewUlid();
+        ctx.Drivers.Add(
+            new()
+            {
+                Id = driverId,
+                Name = $"{driverType}-{driverId}",
+                Type = driverType,
+            }
+        );
+        ctx.Folders.Add(
+            new()
+            {
+                Id = folderId,
+                Path = "/media",
+                DriverId = driverId,
+            }
+        );
 
         ctx.Libraries.Add(
             new()
@@ -121,6 +154,7 @@ public class IntroDetectSubscriberTests
                     Filename = $"s01e0{index + 1}.mkv",
                     HostFolder = hostFolder,
                     Folder = hostFolder,
+                    Share = folderId.ToString(),
                     EpisodeId = episodeId,
                     Duration = durations?[index] ?? "00:24:00",
                 }
@@ -176,7 +210,8 @@ public class IntroDetectSubscriberTests
                 f.FingerprintAsync(
                     It.IsAny<string>(),
                     It.IsAny<FingerprintWindow?>(),
-                    It.IsAny<CancellationToken>()
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<IStorage?>()
                 ),
             Times.Never
         );
@@ -216,7 +251,8 @@ public class IntroDetectSubscriberTests
                 f.FingerprintAsync(
                     It.IsAny<string>(),
                     It.IsAny<FingerprintWindow?>(),
-                    It.IsAny<CancellationToken>()
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<IStorage?>()
                 ),
             Times.Never
         );
@@ -269,7 +305,8 @@ public class IntroDetectSubscriberTests
                 f.FingerprintAsync(
                     It.IsAny<string>(),
                     It.IsAny<FingerprintWindow?>(),
-                    It.IsAny<CancellationToken>()
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<IStorage?>()
                 ),
             Times.Never
         );
@@ -314,8 +351,7 @@ public class IntroDetectSubscriberTests
         IDbContextFactory<MediaContext> factory = InMemoryFactory("introseeds");
         Mock<IAudioFingerprinter> fingerprinter = new();
         Mock<IIntroDetector> detector = new();
-        Mock<IStorage> storage = new();
-        storage.Setup(s => s.Exists(It.IsAny<string>())).Returns(true);
+        Mock<IStorage> storage = FolderStorage();
         InMemoryEventBus bus = new();
 
         AudioFingerprint fp = FakeFingerprint();
@@ -324,7 +360,8 @@ public class IntroDetectSubscriberTests
                 f.FingerprintAsync(
                     It.IsAny<string>(),
                     It.IsAny<FingerprintWindow?>(),
-                    It.IsAny<CancellationToken>()
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<IStorage?>()
                 )
             )
             .ReturnsAsync(fp);
@@ -348,7 +385,7 @@ public class IntroDetectSubscriberTests
             detector.Object,
             options,
             NullLogger<IntroDetectSubscriber>.Instance,
-            storage.Object,
+            new FixedStorageFactory(storage.Object),
             factory
         );
 
@@ -388,8 +425,7 @@ public class IntroDetectSubscriberTests
         IDbContextFactory<MediaContext> factory = InMemoryFactory("outroseeds");
         Mock<IAudioFingerprinter> fingerprinter = new();
         Mock<IIntroDetector> detector = new();
-        Mock<IStorage> storage = new();
-        storage.Setup(s => s.Exists(It.IsAny<string>())).Returns(true);
+        Mock<IStorage> storage = FolderStorage();
         InMemoryEventBus bus = new();
 
         AudioFingerprint fp = FakeFingerprint();
@@ -398,7 +434,8 @@ public class IntroDetectSubscriberTests
                 f.FingerprintAsync(
                     It.IsAny<string>(),
                     It.IsAny<FingerprintWindow?>(),
-                    It.IsAny<CancellationToken>()
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<IStorage?>()
                 )
             )
             .ReturnsAsync(fp);
@@ -423,7 +460,7 @@ public class IntroDetectSubscriberTests
             detector.Object,
             options,
             NullLogger<IntroDetectSubscriber>.Instance,
-            storage.Object,
+            new FixedStorageFactory(storage.Object),
             factory
         );
 
@@ -467,14 +504,15 @@ public class IntroDetectSubscriberTests
                 f.FingerprintAsync(
                     It.IsAny<string>(),
                     It.IsAny<FingerprintWindow?>(),
-                    It.IsAny<CancellationToken>()
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<IStorage?>()
                 )
             )
-            .Callback<string, FingerprintWindow?, CancellationToken>(
-                (_, window, _) => windows.Add(window)
+            .Callback<string, FingerprintWindow?, CancellationToken, IStorage?>(
+                (_, window, _, _) => windows.Add(window)
             )
             .ReturnsAsync(
-                (string _, FingerprintWindow? window, CancellationToken _) =>
+                (string _, FingerprintWindow? window, CancellationToken _, IStorage? _) =>
                     new AudioFingerprint(
                         hashes,
                         AudioFingerprint.ChromaprintFrameDuration,
@@ -648,13 +686,133 @@ public class IntroDetectSubscriberTests
     }
 
     [Fact]
+    public async Task OnLibraryScanCompleted_EpisodeOnAScopedFolder_IsFingerprintedThroughThatFolderStorage()
+    {
+        // HostFolder is stored scope-relative to its library folder ("TV.Shows/..."),
+        // so only that folder's storage can resolve it. The default storage cannot.
+        IDbContextFactory<MediaContext> factory = InMemoryFactory("scopedfolder");
+        Mock<IAudioFingerprinter> fingerprinter = new();
+        fingerprinter
+            .Setup(f =>
+                f.FingerprintAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<FingerprintWindow?>(),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<IStorage?>()
+                )
+            )
+            .ReturnsAsync(FakeFingerprint());
+        InMemoryEventBus bus = new();
+
+        Mock<IStorage> folderStorage = new();
+        folderStorage
+            .Setup(s => s.CombinePath(It.IsAny<string>(), It.IsAny<string[]>()))
+            .Returns(
+                (string parent, string[] children) =>
+                    parent.TrimEnd('/') + "/" + string.Join("/", children)
+            );
+        folderStorage.Setup(s => s.Exists("TV.Shows/Show/s01e01.mkv")).Returns(true);
+        folderStorage.Setup(s => s.Exists("TV.Shows/Show/s01e02.mkv")).Returns(true);
+
+        EncoderOptions options = new() { EnableIntroDetectSubscriber = true };
+        using IntroDetectSubscriber subject = new(
+            bus,
+            fingerprinter.Object,
+            Mock.Of<IIntroDetector>(),
+            options,
+            NullLogger<IntroDetectSubscriber>.Instance,
+            new FixedStorageFactory(folderStorage.Object),
+            factory
+        );
+
+        Ulid libraryId = Ulid.NewUlid();
+        await SeedTvSeasonAsync(
+            factory,
+            libraryId,
+            tvId: 11,
+            seasonId: 110,
+            episodeIds: [1100, 1101],
+            hostFolder: "TV.Shows/Show"
+        );
+
+        await bus.PublishAsync(
+            new LibraryScanCompletedEvent
+            {
+                LibraryId = libraryId,
+                LibraryName = "TV",
+                ItemsFound = 2,
+                Duration = TimeSpan.FromSeconds(1),
+            }
+        );
+
+        fingerprinter.Verify(
+            f =>
+                f.FingerprintAsync(
+                    "TV.Shows/Show/s01e01.mkv",
+                    It.IsAny<FingerprintWindow?>(),
+                    It.IsAny<CancellationToken>(),
+                    folderStorage.Object
+                ),
+            Times.AtLeastOnce,
+            "the episode exists on its folder's storage and must be fingerprinted"
+        );
+    }
+
+    [Fact]
+    public async Task OnLibraryScanCompleted_EpisodesOnANonLocalDriver_AreSkippedWithoutFingerprinting()
+    {
+        // ffmpeg needs a local path; for an NFS/S3 folder that means copying each
+        // whole episode, so those folders are skipped (with a warning) for now.
+        IDbContextFactory<MediaContext> factory = InMemoryFactory("nonlocal");
+        Mock<IAudioFingerprinter> fingerprinter = new();
+        InMemoryEventBus bus = new();
+
+        using IntroDetectSubscriber subject = BuildSubscriber(
+            bus,
+            factory,
+            fingerprinter.Object,
+            Mock.Of<IIntroDetector>()
+        );
+
+        Ulid libraryId = Ulid.NewUlid();
+        await SeedTvSeasonAsync(
+            factory,
+            libraryId,
+            tvId: 12,
+            seasonId: 120,
+            episodeIds: [1200, 1201],
+            driverType: "nfs"
+        );
+
+        await bus.PublishAsync(
+            new LibraryScanCompletedEvent
+            {
+                LibraryId = libraryId,
+                LibraryName = "TV",
+                ItemsFound = 2,
+                Duration = TimeSpan.FromSeconds(1),
+            }
+        );
+
+        fingerprinter.Verify(
+            f =>
+                f.FingerprintAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<FingerprintWindow?>(),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<IStorage?>()
+                ),
+            Times.Never
+        );
+    }
+
+    [Fact]
     public async Task OnLibraryScanCompleted_EpisodeWithManualIntro_IsSkipped_OtherEpisodeGetsDetectorSegment()
     {
         IDbContextFactory<MediaContext> factory = InMemoryFactory("manualskip");
         Mock<IAudioFingerprinter> fingerprinter = new();
         Mock<IIntroDetector> detector = new();
-        Mock<IStorage> storage = new();
-        storage.Setup(s => s.Exists(It.IsAny<string>())).Returns(true);
+        Mock<IStorage> storage = FolderStorage();
         InMemoryEventBus bus = new();
 
         AudioFingerprint fp = FakeFingerprint();
@@ -663,7 +821,8 @@ public class IntroDetectSubscriberTests
                 f.FingerprintAsync(
                     It.IsAny<string>(),
                     It.IsAny<FingerprintWindow?>(),
-                    It.IsAny<CancellationToken>()
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<IStorage?>()
                 )
             )
             .ReturnsAsync(fp);
@@ -687,7 +846,7 @@ public class IntroDetectSubscriberTests
             detector.Object,
             options,
             NullLogger<IntroDetectSubscriber>.Instance,
-            storage.Object,
+            new FixedStorageFactory(storage.Object),
             factory
         );
 
@@ -752,8 +911,7 @@ public class IntroDetectSubscriberTests
         IDbContextFactory<MediaContext> factory = InMemoryFactory("fpthrows");
         Mock<IAudioFingerprinter> fingerprinter = new();
         Mock<IIntroDetector> detector = new();
-        Mock<IStorage> storage = new();
-        storage.Setup(s => s.Exists(It.IsAny<string>())).Returns(true);
+        Mock<IStorage> storage = FolderStorage();
         InMemoryEventBus bus = new();
 
         fingerprinter
@@ -761,7 +919,8 @@ public class IntroDetectSubscriberTests
                 f.FingerprintAsync(
                     It.IsAny<string>(),
                     It.IsAny<FingerprintWindow?>(),
-                    It.IsAny<CancellationToken>()
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<IStorage?>()
                 )
             )
             .ThrowsAsync(new InvalidOperationException("chromaprint unavailable"));
@@ -773,7 +932,7 @@ public class IntroDetectSubscriberTests
             detector.Object,
             options,
             NullLogger<IntroDetectSubscriber>.Instance,
-            storage.Object,
+            new FixedStorageFactory(storage.Object),
             factory
         );
 
@@ -818,7 +977,7 @@ public class IntroDetectSubscriberTests
             Mock.Of<IIntroDetector>(),
             options,
             NullLogger<IntroDetectSubscriber>.Instance,
-            storage.Object,
+            new FixedStorageFactory(storage.Object),
             InMemoryFactory("ctor")
         );
 
@@ -849,7 +1008,7 @@ public class IntroDetectSubscriberTests
             Mock.Of<IIntroDetector>(),
             new(),
             NullLogger<IntroDetectSubscriber>.Instance,
-            Mock.Of<IStorage>(),
+            Mock.Of<IStorageFactory>(),
             InMemoryFactory("dispose")
         );
 

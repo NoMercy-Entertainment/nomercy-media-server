@@ -9,6 +9,8 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using NoMercy.Storage;
+
 namespace NoMercy.Encoder.ContentAnalysis.Fingerprinting;
 
 /// <summary>
@@ -23,9 +25,16 @@ public interface IAudioFingerprinter
     /// <paramref name="window"/> to fingerprint the entire file (useful
     /// for short snippets; avoid for full feature-length content).
     /// </summary>
+    /// <param name="sourceStorage">
+    /// The storage <paramref name="filePath"/> is addressed against — the
+    /// library folder's own storage for a scope-relative VideoFile path.
+    /// Null (the default) keeps the fingerprinter's injected storage, for
+    /// callers that already hold a path that storage resolves.
+    /// </param>
     Task<AudioFingerprint> FingerprintAsync(
         string filePath,
         FingerprintWindow? window,
-        CancellationToken ct
+        CancellationToken ct,
+        IStorage? sourceStorage = null
     );
 }

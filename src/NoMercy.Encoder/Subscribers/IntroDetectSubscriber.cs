@@ -13,6 +13,7 @@ using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NoMercy.Database;
+using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.TvShows;
 using NoMercy.Encoder.Composition;
@@ -31,6 +32,12 @@ namespace NoMercy.Encoder.Subscribers;
 /// Skips episodes that already have a <c>Source="manual"</c> row of the same
 /// type — manual annotations always win.
 ///
+/// Each episode's file is resolved through the storage of its own library
+/// folder (<see cref="IStorageFactory"/>): VideoFile.HostFolder is stored
+/// relative to that folder, so no other storage can find it. Folders on a
+/// non-local driver are skipped with a warning — ffmpeg needs a local path,
+/// and staging one would copy every whole episode to read a few minutes.
+///
 /// Opt-out: set <see cref="EncoderOptions.EnableIntroDetectSubscriber"/> = false.
 /// </summary>
 public class IntroDetectSubscriber : EventSubscriber
@@ -39,7 +46,7 @@ public class IntroDetectSubscriber : EventSubscriber
     private readonly IIntroDetector _introDetector;
     private readonly EncoderOptions _options;
     private readonly ILogger<IntroDetectSubscriber> _logger;
-    private readonly IStorage _storage;
+    private readonly IStorageFactory _storageFactory;
     private readonly IDbContextFactory<MediaContext> _contextFactory;
 
     // Fingerprint the first 3 minutes for intro detection.
@@ -52,7 +59,22 @@ public class IntroDetectSubscriber : EventSubscriber
     // to an absolute start (duration - 4 min) — see OutroWindowFor.
     private static readonly TimeSpan OutroLength = TimeSpan.FromMinutes(4);
 
-    private sealed record EpisodeSource(Episode Episode, string FilePath, TimeSpan Duration);
+    private const string LocalDriverType = "local";
+
+    private sealed record EpisodeSource(
+        Episode Episode,
+        string FilePath,
+        IStorage Storage,
+        TimeSpan Duration
+    );
+
+    private sealed record FileRow(
+        int EpisodeId,
+        string Share,
+        string HostFolder,
+        string Filename,
+        string? Duration
+    );
 
     public IntroDetectSubscriber(
         IEventBus eventBus,
@@ -60,7 +82,7 @@ public class IntroDetectSubscriber : EventSubscriber
         IIntroDetector introDetector,
         EncoderOptions options,
         ILogger<IntroDetectSubscriber> logger,
-        IStorage storage,
+        IStorageFactory storageFactory,
         IDbContextFactory<MediaContext> contextFactory
     )
     {
@@ -68,7 +90,7 @@ public class IntroDetectSubscriber : EventSubscriber
         _introDetector = introDetector;
         _options = options;
         _logger = logger;
-        _storage = storage;
+        _storageFactory = storageFactory;
         _contextFactory = contextFactory;
 
         Track(eventBus.Subscribe<LibraryScanCompletedEvent>(OnLibraryScanCompleted));
@@ -292,36 +314,98 @@ public class IntroDetectSubscriber : EventSubscriber
     {
         List<int> episodeIds = [.. episodes.Select(e => e.Id)];
 
-        List<(int EpisodeId, string HostFolder, string Filename, string? Duration)> fileRows;
+        List<FileRow> fileRows;
+        Dictionary<Ulid, Folder> folders;
         await using (MediaContext context = await _contextFactory.CreateDbContextAsync(ct))
         {
             fileRows = await context
                 .VideoFiles.AsNoTracking()
                 .Where(vf => vf.EpisodeId != null && episodeIds.Contains(vf.EpisodeId!.Value))
-                .Select(vf => new ValueTuple<int, string, string, string?>(
+                .Select(vf => new FileRow(
                     vf.EpisodeId!.Value,
+                    vf.Share,
                     vf.HostFolder,
                     vf.Filename,
                     vf.Duration
                 ))
                 .ToListAsync(ct);
+
+            List<Ulid> folderIds = [];
+            foreach (FileRow row in fileRows)
+            {
+                if (Ulid.TryParse(row.Share, out Ulid folderId) && !folderIds.Contains(folderId))
+                    folderIds.Add(folderId);
+            }
+
+            folders = await context
+                .Folders.AsNoTracking()
+                .Include(f => f.Driver)
+                .Where(f => folderIds.Contains(f.Id))
+                .ToDictionaryAsync(f => f.Id, ct);
         }
 
-        Dictionary<int, (string FilePath, TimeSpan Duration)> fileByEpisode = fileRows.ToDictionary(
-            r => r.EpisodeId,
-            r => (r.HostFolder + r.Filename, ParseDuration(r.Duration))
-        );
+        Dictionary<int, FileRow> rowByEpisode = fileRows.ToDictionary(r => r.EpisodeId);
+        HashSet<Ulid> reportedNonLocal = [];
+        List<EpisodeSource> sources = [];
 
-        return
-        [
-            .. episodes
-                .Where(e => fileByEpisode.ContainsKey(e.Id))
-                .Select(e => new EpisodeSource(
-                    e,
-                    fileByEpisode[e.Id].FilePath,
-                    fileByEpisode[e.Id].Duration
-                )),
-        ];
+        foreach (Episode episode in episodes)
+        {
+            if (!rowByEpisode.TryGetValue(episode.Id, out FileRow? row))
+                continue;
+
+            IStorage? storage = StorageForFolder(row, folders, reportedNonLocal);
+            if (storage is null)
+                continue;
+
+            string filePath = storage.CombinePath(row.HostFolder, row.Filename.TrimStart('/'));
+            sources.Add(new(episode, filePath, storage, ParseDuration(row.Duration)));
+        }
+
+        return sources;
+    }
+
+    /// <summary>
+    /// The storage scoped to the episode's library folder, or null when the
+    /// folder is unknown or sits on a driver ffmpeg cannot read in place.
+    /// </summary>
+    private IStorage? StorageForFolder(
+        FileRow row,
+        Dictionary<Ulid, Folder> folders,
+        HashSet<Ulid> reportedNonLocal
+    )
+    {
+        if (
+            !Ulid.TryParse(row.Share, out Ulid folderId)
+            || !folders.TryGetValue(folderId, out Folder? folder)
+        )
+        {
+            _logger.LogDebug(
+                "IntroDetect: episode {EpisodeId} has no known library folder ({Share}) — skipping",
+                [row.EpisodeId, row.Share]
+            );
+            return null;
+        }
+
+        // A folder without a driver row resolves to the built-in local driver,
+        // the same fallback StorageFactory applies.
+        if (
+            folder.Driver is not null
+            && !string.Equals(
+                folder.Driver.Type,
+                LocalDriverType,
+                StringComparison.OrdinalIgnoreCase
+            )
+        )
+        {
+            if (reportedNonLocal.Add(folder.Id))
+                _logger.LogWarning(
+                    "IntroDetect: folder {FolderPath} uses the {DriverType} storage driver; intro/outro detection only reads local folders (it would have to copy each whole episode first) — skipping its episodes",
+                    [folder.Path, folder.Driver.Type]
+                );
+            return null;
+        }
+
+        return _storageFactory.For(folder.Id, folder.DriverId, string.Empty);
     }
 
     private async Task<List<(Episode Episode, AudioFingerprint Fp)>> FingerprintAsync(
@@ -350,7 +434,7 @@ public class IntroDetectSubscriber : EventSubscriber
                 continue;
             }
 
-            if (!_storage.Exists(filePath))
+            if (!source.Storage.Exists(filePath))
             {
                 _logger.LogDebug(
                     "IntroDetect: file not found for episode {EpisodeId}: {FilePath}",
@@ -361,7 +445,12 @@ public class IntroDetectSubscriber : EventSubscriber
 
             try
             {
-                AudioFingerprint fp = await _fingerprinter.FingerprintAsync(filePath, window, ct);
+                AudioFingerprint fp = await _fingerprinter.FingerprintAsync(
+                    filePath,
+                    window,
+                    ct,
+                    source.Storage
+                );
                 results.Add((episode, fp));
             }
             catch (Exception ex)
