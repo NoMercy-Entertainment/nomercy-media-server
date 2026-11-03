@@ -311,6 +311,26 @@ public static class UserSettings
                         setting.Value.ToInt()
                     );
                     break;
+                // The keys below are "{queue name}Runners" as QueueRunner.SetWorkerCount
+                // writes them; without these cases the saved counts never came back at boot.
+                case "paletteRunners":
+                    RuntimeServerSettings.Current.PaletteWorkers = new(
+                        RuntimeServerSettings.Current.PaletteWorkers.Key,
+                        setting.Value.ToInt()
+                    );
+                    break;
+                case "encoder-gpuRunners":
+                    RuntimeServerSettings.Current.GpuEncoderWorkers = new(
+                        RuntimeServerSettings.Current.GpuEncoderWorkers.Key,
+                        setting.Value.ToInt()
+                    );
+                    break;
+                case "encoder-cpuRunners":
+                    RuntimeServerSettings.Current.CpuEncoderWorkers = new(
+                        RuntimeServerSettings.Current.CpuEncoderWorkers.Key,
+                        setting.Value.ToInt()
+                    );
+                    break;
                 case "swagger":
                     RuntimeServerSettings.Current.Swagger = setting.Value.ToBoolean();
                     break;

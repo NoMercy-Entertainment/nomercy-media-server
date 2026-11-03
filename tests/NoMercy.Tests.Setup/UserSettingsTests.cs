@@ -154,6 +154,9 @@ public class UserSettingsTests : IDisposable
     [InlineData("imageRunners", 14)]
     [InlineData("fileRunners", 15)]
     [InlineData("musicRunners", 16)]
+    [InlineData("paletteRunners", 3)]
+    [InlineData("encoder-gpuRunners", 17)]
+    [InlineData("encoder-cpuRunners", 18)]
     public void ApplySettings_WorkerCountSetting_UpdatesCorrespondingRuntimeWorkerCount(
         string key,
         int value
@@ -171,6 +174,9 @@ public class UserSettingsTests : IDisposable
             "imageRunners" => RuntimeServerSettings.Current.ImageWorkers.Value,
             "fileRunners" => RuntimeServerSettings.Current.FileWorkers.Value,
             "musicRunners" => RuntimeServerSettings.Current.MusicWorkers.Value,
+            "paletteRunners" => RuntimeServerSettings.Current.PaletteWorkers.Value,
+            "encoder-gpuRunners" => RuntimeServerSettings.Current.GpuEncoderWorkers.Value,
+            "encoder-cpuRunners" => RuntimeServerSettings.Current.CpuEncoderWorkers.Value,
             _ => throw new InvalidOperationException($"unmapped key {key}"),
         };
 
