@@ -141,7 +141,14 @@ public class LiveTranscodeService(
         CancellationToken ct
     )
     {
-        if (!await ReserveSessionSlotAsync(userId))
+        // The slot is claimed here and held for the rest of this method. Seconds
+        // pass before the session registers (the probe, the encoder spawn), and a
+        // mere check let parallel starts for one user each see the same free slot
+        // and each spawn an encoder. Completed once the encoder has started; every
+        // other exit (direct play, a failed probe, a failed or cancelled encoder
+        // start) disposes it and hands the slot back.
+        using ISessionReservation? reservation = await ReserveSessionSlotAsync(userId);
+        if (reservation is null)
             return LiveResult.ServiceUnavailable("Maximum concurrent live sessions reached");
 
         ClientCapabilities clientCaps = await ResolveClientCapsAsync(request, deviceId, ct);
@@ -254,7 +261,7 @@ public class LiveTranscodeService(
             return LiveResult.ServiceUnavailable(ex.Message);
         }
 
-        sessionManager.RegisterSession(session, userId.ToString());
+        reservation.Complete(session);
 
         // Tie the self-ingest key to the session so it dies on teardown, not just
         // on its absolute-lifetime backstop. Null for local/disc sources that read
@@ -286,26 +293,25 @@ public class LiveTranscodeService(
         return StartedResult(session, useMaster);
     }
 
-    /// <returns>False when the user is still at the live-session cap after evicting their stalest one.</returns>
-    private async Task<bool> ReserveSessionSlotAsync(Guid userId)
+    /// <returns>The claimed slot, or null when the user is still at the live-session cap after evicting their stalest one.</returns>
+    private async Task<ISessionReservation?> ReserveSessionSlotAsync(Guid userId)
     {
         // Reconcile accounting against the live runtimes first: a crashed FFmpeg or
         // an abandoned tab can leave a session counted against the cap after its
         // runtime is gone — the "0 active but max reached" symptom.
         sessionManager.PruneDeadSessions(streamingService.ActiveSessionIds);
 
-        if (!sessionManager.CanStartSession(userId.ToString()))
-        {
-            // Still at the cap with live sessions. Starting playback abandons the
-            // previous stream without a clean stop (a reload or item switch), so
-            // evict this user's stalest session to make room — the same way Plex and
-            // Jellyfin supersede a replaced playback session rather than refusing.
-            await EvictStalestUserSessionAsync(userId.ToString());
+        ISessionReservation? reservation = sessionManager.TryReserve(userId.ToString());
+        if (reservation is not null)
+            return reservation;
 
-            return sessionManager.CanStartSession(userId.ToString());
-        }
+        // Still at the cap with live sessions. Starting playback abandons the
+        // previous stream without a clean stop (a reload or item switch), so
+        // evict this user's stalest session to make room — the same way Plex and
+        // Jellyfin supersede a replaced playback session rather than refusing.
+        await EvictStalestUserSessionAsync(userId.ToString());
 
-        return true;
+        return sessionManager.TryReserve(userId.ToString());
     }
 
     private async Task<ClientCapabilities> ResolveClientCapsAsync(
