@@ -26,7 +26,11 @@ public interface IWhisperTranscriber
 }
 
 public record WhisperOptions(
-    string ModelPath,
+    /// <summary>
+    /// Model file to use instead of <c>EncoderOptions.WhisperModelPath</c>.
+    /// Null or blank means no override: the configured model applies.
+    /// </summary>
+    string? ModelPath = null,
     WhisperModelSize ModelSize = WhisperModelSize.LargeV3,
     bool TranslateToEnglish = false,
     int MaxSegmentLengthMs = 10000

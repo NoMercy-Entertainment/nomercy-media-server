@@ -41,9 +41,9 @@ public class WhisperTranscriber(
         CancellationToken ct
     )
     {
+        // A blank override means "no override", so the configured model applies.
         string modelPath =
-            options_?.ModelPath
-            ?? options.WhisperModelPath
+            FirstNonBlank(options_?.ModelPath, options.WhisperModelPath)
             ?? throw new InvalidOperationException(
                 "WhisperModelPath is not configured on EncoderOptions and no override supplied."
             );
@@ -139,6 +139,9 @@ public class WhisperTranscriber(
 
         return new(outputPath, language, SubtitleCodecType.Srt, cueCount);
     }
+
+    private static string? FirstNonBlank(params string?[] candidates) =>
+        candidates.FirstOrDefault(candidate => !string.IsNullOrWhiteSpace(candidate));
 
     private int CountCuesIn(string srtPath)
     {

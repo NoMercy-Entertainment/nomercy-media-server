@@ -328,11 +328,8 @@ public class ContentAnalysisService(
         if (!storageDriver.FileExists(path))
             return new() { SourceMissingPath = path };
 
-        WhisperOptions options = new(
-            ModelPath: string.Empty,
-            ModelSize: modelSize,
-            TranslateToEnglish: translateToEnglish
-        );
+        // No ModelPath: the transcriber uses the configured whisper model.
+        WhisperOptions options = new(ModelSize: modelSize, TranslateToEnglish: translateToEnglish);
 
         try
         {

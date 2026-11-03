@@ -137,6 +137,66 @@ public class WhisperTranscriberTests
         storage.Verify(s => s.Exists(ModelPath), Times.Never);
     }
 
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    public async Task Blank_override_ModelPath_falls_back_to_configured_model(string blank)
+    {
+        // Callers that have no model opinion send a blank WhisperOptions.ModelPath;
+        // a blank is "no override", not a model named "" (issue #239).
+        EncoderOptions options = new()
+        {
+            FfmpegPathOverride = FfmpegPath,
+            WhisperModelPath = ModelPath,
+        };
+        Mock<IStorage> storage = StorageMock(ModelPath);
+        Mock<IProcessRunner> processRunner = SuccessProcess();
+        InMemoryStream(storage, GetExpectedOutputPath("eng"), srtContent: "");
+
+        WhisperTranscriber transcriber = new(
+            options,
+            processRunner.Object,
+            storage.Object,
+            NullLogger<WhisperTranscriber>.Instance
+        );
+
+        await transcriber.TranscribeAsync(
+            InputPath,
+            0,
+            "eng",
+            options_: new(ModelPath: blank),
+            progress: null,
+            ct: default
+        );
+
+        storage.Verify(
+            s => s.Exists(ModelPath),
+            Times.AtLeastOnce,
+            "a blank ModelPath override must fall back to EncoderOptions.WhisperModelPath"
+        );
+        storage.Verify(s => s.Exists(blank), Times.Never);
+    }
+
+    [Fact]
+    public async Task Blank_configured_model_path_and_no_override_throws_not_configured()
+    {
+        EncoderOptions options = new() { FfmpegPathOverride = FfmpegPath, WhisperModelPath = "" };
+        WhisperTranscriber transcriber = new(
+            options,
+            Mock.Of<IProcessRunner>(),
+            Mock.Of<IStorage>(),
+            NullLogger<WhisperTranscriber>.Instance
+        );
+
+        await transcriber
+            .Invoking(t =>
+                t.TranscribeAsync(InputPath, 0, "eng", options_: null, progress: null, ct: default)
+            )
+            .Should()
+            .ThrowAsync<InvalidOperationException>()
+            .WithMessage("*WhisperModelPath is not configured*");
+    }
+
     // ── Filter arg construction ──────────────────────────────────────────────
 
     [Fact]

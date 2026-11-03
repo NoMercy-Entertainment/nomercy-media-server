@@ -10,9 +10,16 @@
 // -----------------------------------------------------------------------------
 
 using FluentAssertions;
+using Moq;
+using NoMercy.Data.Repositories;
 using NoMercy.Data.Services;
+using NoMercy.Database.Models.Media;
 using NoMercy.Encoder.Codecs;
+using NoMercy.Encoder.ContentAnalysis;
 using NoMercy.Encoder.ContentAnalysis.Fingerprinting;
+using NoMercy.Encoder.Progress;
+using NoMercy.Encoder.Subtitles;
+using NoMercy.Storage;
 
 namespace NoMercy.Tests.Repositories.Services;
 
@@ -145,5 +152,78 @@ public class ContentAnalysisServiceTests
         Action act = () => ContentAnalysisService.ComputeFingerprintHash(prints);
 
         act.Should().NotThrow();
+    }
+
+    // ─── TranscribeAsync ──────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task TranscribeAsync_SendsNoModelPathOverride()
+    {
+        // The service has no model opinion. An empty-string override used to
+        // hide the configured EncoderOptions.WhisperModelPath (issue #239).
+        VideoFile file = new() { HostFolder = "/media/show", Filename = "ep1.mkv" };
+        Mock<IVideoFileRepository> videoFiles = new();
+        videoFiles
+            .Setup(r => r.GetByIdAsync(file.Id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(file);
+
+        Mock<IStorageDriver> storageDriver = new();
+        storageDriver
+            .Setup(d => d.CombinePath(It.IsAny<string>(), It.IsAny<string[]>()))
+            .Returns("/media/show/ep1.mkv");
+        storageDriver.Setup(d => d.FileExists("/media/show/ep1.mkv")).Returns(true);
+
+        WhisperOptions? sent = null;
+        Mock<IWhisperTranscriber> transcriber = new();
+        transcriber
+            .Setup(t =>
+                t.TranscribeAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<int>(),
+                    It.IsAny<string>(),
+                    It.IsAny<WhisperOptions?>(),
+                    It.IsAny<IProgressObserver?>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .Callback<string, int, string, WhisperOptions?, IProgressObserver?, CancellationToken>(
+                (_, _, _, options, _, _) => sent = options
+            )
+            .ReturnsAsync(
+                new SubtitleTrack(
+                    "/media/show/ep1.eng.whisper.srt",
+                    "eng",
+                    SubtitleCodecType.Srt,
+                    0
+                )
+            );
+
+        ContentAnalysisService service = new(
+            Mock.Of<ICropDetector>(),
+            Mock.Of<IAudioFingerprinter>(),
+            Mock.Of<IIntroDetector>(),
+            ocrEngine: null,
+            transcriber.Object,
+            videoFiles.Object,
+            Mock.Of<IContentSegmentRepository>(),
+            storageDriver.Object
+        );
+
+        ContentAnalysisService.WhisperOutcome outcome = await service.TranscribeAsync(
+            file.Id,
+            audioStreamIndex: 0,
+            language: "eng",
+            modelSize: WhisperModelSize.Small,
+            translateToEnglish: false,
+            progress: null,
+            ct: CancellationToken.None
+        );
+
+        outcome.Track.Should().NotBeNull();
+        sent.Should().NotBeNull();
+        sent!
+            .ModelPath.Should()
+            .BeNull("the service must not override the configured whisper model");
+        sent.ModelSize.Should().Be(WhisperModelSize.Small);
     }
 }
