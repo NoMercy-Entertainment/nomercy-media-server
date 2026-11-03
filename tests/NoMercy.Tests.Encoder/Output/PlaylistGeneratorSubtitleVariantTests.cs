@@ -269,25 +269,34 @@ public class PlaylistGeneratorSubtitleVariantTests
     }
 
     [Fact]
-    public void Stream_inf_carries_subtitles_attribute_when_active_subs_present()
+    public void Stream_inf_carries_subtitles_attribute_and_closed_captions_none_when_active_subs_present()
     {
         // The video variant line must signal SUBTITLES="subs" so clients
-        // know to pick up the subtitle group.
+        // know to pick up the subtitle group. A subtitle group says nothing
+        // about captions, so CLOSED-CAPTIONS=NONE is still written: without
+        // it a player probes the video for CEA-608 and can invent a track.
         string playlist = Generate(
             Plan([SubtitleEntry(language: "eng", variant: "full", codec: SubtitleCodecType.WebVtt)])
         );
 
         playlist.Should().Contain("SUBTITLES=\"subs\"");
-        playlist.Should().NotContain("CLOSED-CAPTIONS=NONE");
+        playlist
+            .Should()
+            .Contain(
+                "CLOSED-CAPTIONS=NONE",
+                "every variant states it has no caption group, also when it has a subtitle group"
+            );
     }
 
     [Fact]
     public void Stream_inf_falls_back_to_closed_captions_none_when_no_active_subs()
     {
         // No active subtitles → stream-inf must explicitly state CLOSED-CAPTIONS=NONE
-        // so hls.js doesn't try to extract CEA-608/708 from the H.264 stream.
+        // so hls.js doesn't try to extract CEA-608/708 from the H.264 stream,
+        // and must not name a subtitle group the master never defines.
         string playlist = Generate(Plan(Array.Empty<SubtitleOutputPlan>()));
 
+        playlist.Should().NotContain("SUBTITLES=");
         playlist.Should().Contain("CLOSED-CAPTIONS=NONE");
     }
 
@@ -306,6 +315,12 @@ public class PlaylistGeneratorSubtitleVariantTests
         );
 
         playlist.Should().NotContain("TYPE=SUBTITLES");
+        playlist
+            .Should()
+            .NotContain(
+                "SUBTITLES=",
+                "a variant must never name a subtitle group the master does not define"
+            );
         playlist.Should().Contain("CLOSED-CAPTIONS=NONE");
     }
 
