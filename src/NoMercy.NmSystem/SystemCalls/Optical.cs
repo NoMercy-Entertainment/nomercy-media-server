@@ -28,36 +28,13 @@ public static class Optical
     public static IReadOnlyList<OpticalDriveState> GetOpticalDrives()
     {
         if (Software.IsWindows)
-            return GetWindowsOpticalDrives();
+            return new WindowsOpticalDriveScanner(new DriveInfoCdRomDriveSource()).GetDrives();
         if (Software.IsLinux)
             return new LinuxOpticalDriveScanner(_commandRunner).GetDrives();
         if (Software.IsMac)
             return new MacOpticalDriveScanner(_commandRunner).GetDrives();
 
         throw new PlatformNotSupportedException("Unsupported OS.");
-    }
-
-    private static List<OpticalDriveState> GetWindowsOpticalDrives()
-    {
-        List<OpticalDriveState> drives = [];
-        foreach (DriveInfo drive in DriveInfo.GetDrives())
-        {
-            if (drive.DriveType != DriveType.CDRom)
-                continue;
-
-            bool isReady = drive.IsReady;
-            string? label = isReady && drive.VolumeLabel.Length > 0 ? drive.VolumeLabel : null;
-            drives.Add(
-                new(
-                    Path: drive.Name,
-                    Label: label,
-                    HasDisc: label is not null,
-                    MountPoint: isReady ? drive.Name : null
-                )
-            );
-        }
-
-        return drives;
     }
 
     public static bool OpenDrive(string drivePath)
