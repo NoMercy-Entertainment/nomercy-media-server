@@ -10,9 +10,9 @@
 // -----------------------------------------------------------------------------
 
 using System.Net;
+using ImageMagick;
 using NoMercy.NmSystem.Information;
 using NoMercy.Tests.Api.Infrastructure;
-using ImageMagick;
 using Xunit;
 
 namespace NoMercy.Tests.Api;
@@ -20,8 +20,8 @@ namespace NoMercy.Tests.Api;
 /// <summary>
 /// Who may reach <c>/images/{type}/{path}</c>. GET is public on purpose: the
 /// clients load artwork through img tags and CSS backgrounds, which carry no
-/// header. DELETE drops a cached rendition and needs the MediaAccess policy.
-/// (#478)
+/// header. DELETE drops a cached rendition and needs the Moderator policy:
+/// purging server cache files is maintenance, not viewing. (#478, #292)
 /// </summary>
 [Trait("Category", "Characterization")]
 public class ImageControllerAnonymousAccessTests(NoMercyApiFactory factory)
@@ -70,7 +70,7 @@ public class ImageControllerAnonymousAccessTests(NoMercyApiFactory factory)
     }
 
     [Fact]
-    public async Task Delete_ByUserWithoutMediaAccess_IsRejectedWith403()
+    public async Task Delete_ByUnknownUser_IsRejectedWith403()
     {
         HttpClient client = factory.CreateClient().AsAuthenticated();
         client.DefaultRequestHeaders.Add(
@@ -84,7 +84,7 @@ public class ImageControllerAnonymousAccessTests(NoMercyApiFactory factory)
     }
 
     [Fact]
-    public async Task Delete_ByUserWithMediaAccess_ReachesTheAction()
+    public async Task Delete_ByModerator_ReachesTheAction()
     {
         HttpClient client = factory.CreateClient().AsAuthenticated();
 
@@ -95,5 +95,17 @@ public class ImageControllerAnonymousAccessTests(NoMercyApiFactory factory)
         Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
         string body = await response.Content.ReadAsStringAsync();
         Assert.Contains("Cache not found", body);
+    }
+
+    [Fact]
+    public async Task Delete_ByAllowedUserWithoutManage_IsRejectedWith403()
+    {
+        // The secondary seeded user may watch media (Allowed) but is neither
+        // a moderator nor the owner, so purging the cache is not theirs to do.
+        HttpClient client = factory.CreateClient().AsSecondaryUser();
+
+        HttpResponseMessage response = await client.DeleteAsync($"/images/{TypeFolder}/none.png");
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
     }
 }
