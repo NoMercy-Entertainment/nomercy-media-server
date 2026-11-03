@@ -11,6 +11,7 @@
 
 using NoMercy.Setup.Server;
 using NoMercy.Setup.Ui;
+using NoMercy.Tests.Setup.Infrastructure;
 
 namespace NoMercy.Tests.Setup.Ui;
 
@@ -32,6 +33,7 @@ namespace NoMercy.Tests.Setup.Ui;
 /// this file for exactly which lines that leaves uncovered.
 /// </remarks>
 [Trait("Category", "Unit")]
+[Collection(ProcessWideSetupStateCollection.Name)]
 public sealed class SetupTerminalUiTests : IDisposable
 {
     public void Dispose()
@@ -172,6 +174,61 @@ public sealed class SetupTerminalUiTests : IDisposable
         Thread.Sleep(300);
         ui.Dispose();
         Thread.Sleep(300);
+    }
+
+    [Fact]
+    public void Show_AfterShowProgress_StartsAFreshResizeWatcher()
+    {
+        // The device-grant endpoint reuses one instance, so sign-in can be restarted
+        // after the UI already moved to progress. Each Show must redraw on resize again.
+        SetupTerminalUi.ForceInteractiveForTests = true;
+        SetupTerminalUi ui = new();
+        SetupAddress address = SetupAddress.Resolve("192.168.2.10", 7626, inContainer: false);
+
+        try
+        {
+            ui.Show(
+                "https://auth.nomercy.tv/device?code=ABCD",
+                "https://auth.nomercy.tv/device",
+                "ABCD-1234",
+                address
+            );
+            Assert.True(ui.IsResizeWatcherRunning, "first Show did not start the watcher");
+
+            ui.ShowProgress(SetupPhase.Registering, SetupPhaseWords.Detail(SetupPhase.Registering));
+            Assert.True(
+                WaitUntil(() => !ui.IsResizeWatcherRunning),
+                "ShowProgress did not stop the watcher"
+            );
+
+            ui.Show(
+                "https://auth.nomercy.tv/device?code=EFGH",
+                "https://auth.nomercy.tv/device",
+                "EFGH-5678",
+                address
+            );
+
+            Assert.True(ui.IsResizeWatcherRunning, "second Show did not restart the watcher");
+        }
+        finally
+        {
+            // Stop the watcher before the next test touches the console (see the
+            // leaked-watcher note on the test above).
+            ui.Dispose();
+            WaitUntil(() => !ui.IsResizeWatcherRunning);
+        }
+    }
+
+    private static bool WaitUntil(Func<bool> condition)
+    {
+        DateTime deadline = DateTime.UtcNow.AddSeconds(5);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (condition())
+                return true;
+            Thread.Sleep(25);
+        }
+        return condition();
     }
 
     // ── GenerateAsciiQr (pure, no Console dependency) ────────────────────────

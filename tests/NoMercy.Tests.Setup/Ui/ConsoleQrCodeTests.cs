@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.Setup.Ui;
+using NoMercy.Tests.Setup.Infrastructure;
 
 namespace NoMercy.Tests.Setup.Ui;
 
@@ -30,6 +31,7 @@ namespace NoMercy.Tests.Setup.Ui;
 /// <c>SetupTerminalUiTests</c>.
 /// </remarks>
 [Trait("Category", "Unit")]
+[Collection(ProcessWideSetupStateCollection.Name)]
 public sealed class ConsoleQrCodeTests : IDisposable
 {
     public ConsoleQrCodeTests() => SetupTerminalUi.ForceInteractiveForTests = false;
