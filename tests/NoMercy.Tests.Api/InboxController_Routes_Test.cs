@@ -11,12 +11,17 @@
 
 using System.Reflection;
 using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
+using Moq;
 using Newtonsoft.Json;
 using NoMercy.Api.Controllers.V1.Dashboard.Media;
 using NoMercy.Api.DTOs.Dashboard;
+using NoMercy.Data.Repositories;
 using NoMercy.Database.Models.Libraries;
+using NoMercy.Events;
+using NoMercy.MediaProcessing.Inbox;
 using Xunit;
 
 namespace NoMercy.Tests.Api;
@@ -31,6 +36,73 @@ namespace NoMercy.Tests.Api;
 [Trait("Category", "Routes")]
 public partial class InboxController_Routes_Test
 {
+    [Fact]
+    public async Task Assign_UnsupportedType_ReturnsBadRequestWithoutMovingSource()
+    {
+        Ulid id = Ulid.NewUlid();
+        Ulid folderId = Ulid.NewUlid();
+        InboxItem item = new()
+        {
+            Id = id,
+            SourcePath = "inbox/example.mkv",
+            DriverId = Ulid.NewUlid(),
+            DetectedType = "unknown",
+            Confidence = "low",
+            Status = "NeedsReview",
+            Candidates = [],
+        };
+        Mock<IInboxRepository> repository = new();
+        repository
+            .Setup(r => r.GetTrackedByIdAsync(id, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(item);
+        repository
+            .Setup(r => r.GetFolderByIdAsync(folderId, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(
+                new Folder
+                {
+                    Id = folderId,
+                    Path = "library",
+                    DriverId = Ulid.NewUlid(),
+                }
+            );
+        InboxController controller = new(
+            repository.Object,
+            new Mock<IInboxMetadataProbe>().Object,
+            new Mock<IEventBus>().Object
+        )
+        {
+            ControllerContext = new ControllerContext { HttpContext = new DefaultHttpContext() },
+        };
+        InboxAssignRequest request = new()
+        {
+            Type = "video",
+            Match = new CandidateMatch
+            {
+                Provider = "tmdb",
+                ExternalId = "123",
+                Title = "Example",
+            },
+            TargetLibraryId = Ulid.NewUlid(),
+            TargetFolderId = folderId,
+            TargetProfileId = Ulid.Empty,
+        };
+
+        IActionResult result = await controller.Assign(id, request);
+
+        Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal("unknown", item.DetectedType);
+        repository.Verify(
+            r =>
+                r.ExecuteAssignmentAsync(
+                    It.IsAny<InboxItem>(),
+                    It.IsAny<CandidateMatch>(),
+                    It.IsAny<InboxDestination>(),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Never
+        );
+    }
+
     // -------------------------------------------------------------------------
     // Helpers — mirror EncoderProfilesController_Routes_Test
     // -------------------------------------------------------------------------
