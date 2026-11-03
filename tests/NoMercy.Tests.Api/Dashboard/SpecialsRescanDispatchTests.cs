@@ -10,114 +10,213 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.Data.Sqlite;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Logging;
 using Moq;
 using NoMercy.Api.Controllers.V1.Dashboard.Media;
 using NoMercy.Data.Repositories;
-using NoMercy.Data.Services;
-using NoMercy.Database;
 using NoMercy.Database.Models.TvShows;
-using NoMercy.Storage;
+using NoMercy.MediaProcessing.Jobs.MediaJobs;
 using Xunit;
+using IJobDispatcher = NoMercy.MediaProcessing.Jobs.IJobDispatcher;
 
 namespace NoMercy.Tests.Api.Dashboard;
 
 /// <summary>
-/// "Rescan all specials" loaded every special, built an empty title list and answered
-/// "Rescanning all specials." without starting a single rescan. Rescanning one special
-/// goes through <see cref="ILibraryLogicFactory"/>; rescanning all of them must take
-/// that same path once per special.
+/// Rescanning a special went through LibraryLogic, which looks the id up in Libraries.
+/// A special's id never matches a library, so the per-special rescan always answered
+/// "Special not found" and rescan-all dispatched nothing while reporting ok. A special
+/// is a list of movies and episodes; rescanning it means the FileRescanJob the movie
+/// and show rescans already use, once per movie and once per show.
 /// </summary>
 [Trait("Category", "Unit")]
-public class SpecialsRescanDispatchTests : IDisposable
+public class SpecialsRescanDispatchTests
 {
-    private readonly SqliteConnection _connection;
-    private readonly LibraryLogicFactory _libraryLogicFactory;
+    private static readonly Ulid MovieLibraryId = Ulid.NewUlid();
+    private static readonly Ulid TvLibraryId = Ulid.NewUlid();
 
-    public SpecialsRescanDispatchTests()
-    {
-        _connection = new("DataSource=:memory:");
-        _connection.Open();
-        DbContextOptions<MediaContext> options = new DbContextOptionsBuilder<MediaContext>()
-            .UseSqlite(_connection)
-            .Options;
+    private static SpecialItem MovieItem(int movieId) =>
+        new()
+        {
+            MovieId = movieId,
+            Movie = new() { Id = movieId, LibraryId = MovieLibraryId },
+        };
 
-        using MediaContext seedContext = new(options);
-        seedContext.Database.EnsureCreated();
+    private static SpecialItem EpisodeItem(int episodeId, int tvId) =>
+        new()
+        {
+            EpisodeId = episodeId,
+            Episode = new()
+            {
+                Id = episodeId,
+                TvId = tvId,
+                Tv = new() { Id = tvId, LibraryId = TvLibraryId },
+            },
+        };
 
-        _libraryLogicFactory = new(
-            new TestDbContextFactory(options),
-            Mock.Of<IStorageDriver>(),
-            Mock.Of<IStorageFactory>(),
-            Mock.Of<ILogger<LibraryLogic>>()
-        );
-    }
+    private static Special SpecialWith(string title, params SpecialItem[] items) =>
+        new()
+        {
+            Id = Ulid.NewUlid(),
+            Title = title,
+            Items = items,
+        };
 
-    public void Dispose() => _connection.Dispose();
-
-    private static List<Special> TwoSpecials() =>
-        [
-            new() { Id = Ulid.NewUlid(), Title = "Directors cut" },
-            new() { Id = Ulid.NewUlid(), Title = "Marathon" },
-        ];
-
-    private SpecialsController BuildController(
+    private static SpecialsController BuildController(
         List<Special> specials,
-        Mock<ILibraryLogicFactory> libraryLogicFactory
+        Mock<IJobDispatcher> jobDispatcher
     )
     {
         Mock<ISpecialRepository> specialRepository = new();
         specialRepository
-            .Setup(repository => repository.GetAllSpecialsForRescanAsync(It.IsAny<CancellationToken>()))
+            .Setup(repository =>
+                repository.GetAllSpecialsForRescanAsync(It.IsAny<CancellationToken>())
+            )
             .ReturnsAsync(specials);
+        specialRepository
+            .Setup(repository =>
+                repository.GetSpecialForRescanAsync(It.IsAny<Ulid>(), It.IsAny<CancellationToken>())
+            )
+            .ReturnsAsync(
+                (Ulid id, CancellationToken _) => specials.FirstOrDefault(s => s.Id == id)
+            );
 
-        libraryLogicFactory
-            .Setup(factory => factory.Create(It.IsAny<Ulid>()))
-            .Returns((Ulid id) => _libraryLogicFactory.Create(id));
-
-        return new(specialRepository.Object, libraryLogicFactory.Object);
+        return new(specialRepository.Object, jobDispatcher.Object);
     }
 
     [Fact]
-    public async Task Rescanning_every_special_rescans_each_one()
+    public async Task Rescanning_a_special_dispatches_a_file_rescan_for_each_of_its_items()
     {
-        List<Special> specials = TwoSpecials();
-        Mock<ILibraryLogicFactory> libraryLogicFactory = new();
+        Special special = SpecialWith("Marathon", MovieItem(41), EpisodeItem(7, 1399));
+        Mock<IJobDispatcher> jobDispatcher = new();
 
-        IActionResult result = await BuildController(specials, libraryLogicFactory).RescanAll();
+        IActionResult result = await BuildController([special], jobDispatcher).Rescan(special.Id);
 
+        jobDispatcher.Verify(
+            dispatcher => dispatcher.DispatchJob<FileRescanJob>(41, MovieLibraryId),
+            Times.Once,
+            "the special's movie must get the same file rescan the movie page dispatches"
+        );
+        jobDispatcher.Verify(
+            dispatcher => dispatcher.DispatchJob<FileRescanJob>(1399, TvLibraryId),
+            Times.Once,
+            "the special's episode must get the file rescan of its show"
+        );
+        jobDispatcher.Verify(
+            dispatcher => dispatcher.DispatchJob<FileRescanJob>(It.IsAny<int>(), It.IsAny<Ulid>()),
+            Times.Exactly(2)
+        );
         result.Should().BeOfType<OkObjectResult>();
-        foreach (Special special in specials)
-        {
-            libraryLogicFactory.Verify(
-                factory => factory.Create(special.Id),
-                Times.Once,
-                $"rescan-all must rescan '{special.Title}' the way rescanning it alone does"
-            );
-        }
-        libraryLogicFactory.Verify(
-            factory => factory.Create(It.IsAny<Ulid>()),
-            Times.Exactly(specials.Count)
+    }
+
+    [Fact]
+    public async Task Rescanning_every_special_dispatches_a_file_rescan_for_each_item_of_each_special()
+    {
+        List<Special> specials =
+        [
+            SpecialWith("Marathon", MovieItem(41), EpisodeItem(7, 1399)),
+            SpecialWith("Directors cut", MovieItem(42), EpisodeItem(9, 1402)),
+        ];
+        Mock<IJobDispatcher> jobDispatcher = new();
+
+        IActionResult result = await BuildController(specials, jobDispatcher).RescanAll();
+
+        jobDispatcher.Verify(
+            dispatcher => dispatcher.DispatchJob<FileRescanJob>(41, MovieLibraryId),
+            Times.Once
+        );
+        jobDispatcher.Verify(
+            dispatcher => dispatcher.DispatchJob<FileRescanJob>(1399, TvLibraryId),
+            Times.Once
+        );
+        jobDispatcher.Verify(
+            dispatcher => dispatcher.DispatchJob<FileRescanJob>(42, MovieLibraryId),
+            Times.Once
+        );
+        jobDispatcher.Verify(
+            dispatcher => dispatcher.DispatchJob<FileRescanJob>(1402, TvLibraryId),
+            Times.Once
+        );
+        jobDispatcher.Verify(
+            dispatcher => dispatcher.DispatchJob<FileRescanJob>(It.IsAny<int>(), It.IsAny<Ulid>()),
+            Times.Exactly(4)
+        );
+        result.Should().BeOfType<OkObjectResult>();
+    }
+
+    /// <summary>
+    /// FileRescanJob is addressed per show, not per episode, so two episodes of one show
+    /// are one rescan.
+    /// </summary>
+    [Fact]
+    public async Task Two_episodes_of_one_show_are_rescanned_once()
+    {
+        Special special = SpecialWith("Two-parter", EpisodeItem(7, 1399), EpisodeItem(8, 1399));
+        Mock<IJobDispatcher> jobDispatcher = new();
+
+        await BuildController([special], jobDispatcher).Rescan(special.Id);
+
+        jobDispatcher.Verify(
+            dispatcher => dispatcher.DispatchJob<FileRescanJob>(1399, TvLibraryId),
+            Times.Once
+        );
+        jobDispatcher.Verify(
+            dispatcher => dispatcher.DispatchJob<FileRescanJob>(It.IsAny<int>(), It.IsAny<Ulid>()),
+            Times.Once
+        );
+    }
+
+    [Fact]
+    public async Task A_movie_in_two_specials_is_rescanned_once_by_rescan_all()
+    {
+        List<Special> specials =
+        [
+            SpecialWith("Marathon", MovieItem(41)),
+            SpecialWith("Directors cut", MovieItem(41), MovieItem(42)),
+        ];
+        Mock<IJobDispatcher> jobDispatcher = new();
+
+        await BuildController(specials, jobDispatcher).RescanAll();
+
+        jobDispatcher.Verify(
+            dispatcher => dispatcher.DispatchJob<FileRescanJob>(41, MovieLibraryId),
+            Times.Once
+        );
+        jobDispatcher.Verify(
+            dispatcher => dispatcher.DispatchJob<FileRescanJob>(42, MovieLibraryId),
+            Times.Once
+        );
+        jobDispatcher.Verify(
+            dispatcher => dispatcher.DispatchJob<FileRescanJob>(It.IsAny<int>(), It.IsAny<Ulid>()),
+            Times.Exactly(2)
+        );
+    }
+
+    [Fact]
+    public async Task Rescanning_an_unknown_special_is_not_found()
+    {
+        Mock<IJobDispatcher> jobDispatcher = new();
+
+        IActionResult result = await BuildController([], jobDispatcher).Rescan(Ulid.NewUlid());
+
+        ObjectResult objectResult = result.Should().BeOfType<ObjectResult>().Subject;
+        objectResult.StatusCode.Should().Be(404);
+        jobDispatcher.Verify(
+            dispatcher => dispatcher.DispatchJob<FileRescanJob>(It.IsAny<int>(), It.IsAny<Ulid>()),
+            Times.Never
         );
     }
 
     [Fact]
     public async Task Rescanning_every_special_with_none_present_is_not_found()
     {
-        Mock<ILibraryLogicFactory> libraryLogicFactory = new();
+        Mock<IJobDispatcher> jobDispatcher = new();
 
-        IActionResult result = await BuildController([], libraryLogicFactory).RescanAll();
+        IActionResult result = await BuildController([], jobDispatcher).RescanAll();
 
         ObjectResult objectResult = result.Should().BeOfType<ObjectResult>().Subject;
         objectResult.StatusCode.Should().Be(404);
-        libraryLogicFactory.Verify(factory => factory.Create(It.IsAny<Ulid>()), Times.Never);
-    }
-
-    private sealed class TestDbContextFactory(DbContextOptions<MediaContext> options)
-        : IDbContextFactory<MediaContext>
-    {
-        public MediaContext CreateDbContext() => new(options);
+        jobDispatcher.Verify(
+            dispatcher => dispatcher.DispatchJob<FileRescanJob>(It.IsAny<int>(), It.IsAny<Ulid>()),
+            Times.Never
+        );
     }
 }

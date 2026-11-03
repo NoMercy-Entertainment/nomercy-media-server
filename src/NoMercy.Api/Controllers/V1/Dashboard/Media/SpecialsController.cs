@@ -16,14 +16,16 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
 using NoMercy.Api.DTOs.Common;
+using NoMercy.Api.DTOs.Dashboard;
 using NoMercy.Api.DTOs.Media;
 using NoMercy.Authorization;
 using NoMercy.Data.Repositories;
 using NoMercy.Data.Requests;
-using NoMercy.Data.Services;
 using NoMercy.Database.Models.Movies;
 using NoMercy.Database.Models.TvShows;
+using NoMercy.MediaProcessing.Jobs.MediaJobs;
 using NoMercy.NmSystem.Extensions;
+using IJobDispatcher = NoMercy.MediaProcessing.Jobs.IJobDispatcher;
 
 namespace NoMercy.Api.Controllers.V1.Dashboard.Media;
 
@@ -32,10 +34,8 @@ namespace NoMercy.Api.Controllers.V1.Dashboard.Media;
 [ApiVersion(1.0)]
 [Authorize(Policy = "Moderator")]
 [Route("api/v{version:apiVersion}/dashboard/specials", Order = 11)]
-public class SpecialsController(
-    ISpecialRepository specialRepository,
-    ILibraryLogicFactory libraryLogicFactory
-) : BaseController
+public class SpecialsController(ISpecialRepository specialRepository, IJobDispatcher jobDispatcher)
+    : BaseController
 {
     [HttpGet]
     public async Task<IActionResult> Index()
@@ -195,21 +195,26 @@ public class SpecialsController(
         if (specialsList.Count == 0)
             return NotFoundResponse("No specials exist");
 
-        List<dynamic> titles = [];
+        HashSet<(int MediaId, Ulid LibraryId)> alreadyDispatched = [];
+        List<SpecialRescanResponseDto> dispatched = [];
 
         foreach (Special special in specialsList)
         {
-            LibraryLogic specialLogic = libraryLogicFactory.Create(special.Id);
-
-            if (await specialLogic.Process())
-                titles.AddRange(specialLogic.Titles);
+            dispatched.Add(
+                new()
+                {
+                    Id = special.Id.ToString(),
+                    Title = special.Title,
+                    Dispatched = DispatchFileRescans(special, alreadyDispatched),
+                }
+            );
         }
 
         return Ok(
-            new StatusResponseDto<List<dynamic>>
+            new StatusResponseDto<List<SpecialRescanResponseDto>>
             {
                 Status = "ok",
-                Data = titles,
+                Data = dispatched,
                 Message = "Rescanning all specials.",
             }
         );
@@ -219,21 +224,62 @@ public class SpecialsController(
     [Route("{id:ulid}/rescan")]
     public async Task<IActionResult> Rescan(Ulid id)
     {
-        LibraryLogic specialLogic = libraryLogicFactory.Create(id);
+        Special? special = await specialRepository.GetSpecialForRescanAsync(id);
 
-        if (await specialLogic.Process())
-            return Ok(
-                new StatusResponseDto<List<dynamic>>
+        if (special is null)
+            return NotFoundResponse("Special not found");
+
+        return Ok(
+            new StatusResponseDto<SpecialRescanResponseDto>
+            {
+                Status = "ok",
+                Data = new()
                 {
-                    Status = "ok",
-                    Data = specialLogic.Titles,
-                    Message = "Rescanning {0} special.",
-                    Args = [specialLogic.Id],
-                }
-            );
-
-        return NotFoundResponse("Special not found");
+                    Id = special.Id.ToString(),
+                    Title = special.Title,
+                    Dispatched = DispatchFileRescans(special, []),
+                },
+                Message = "Rescanning {0} special.",
+                Args = [special.Title.OrEmpty()],
+            }
+        );
     }
+
+    /// <summary>
+    /// A special is a list of movies and episodes, not a library, so it is rescanned the
+    /// way the movie and show pages rescan: one <see cref="FileRescanJob"/> per movie and
+    /// one per show. Episodes map to their show, and a title that appears more than once
+    /// (two episodes of one show, a movie in two specials) is dispatched once; the set of
+    /// targets already dispatched is shared across a rescan-all run.
+    /// </summary>
+    private int DispatchFileRescans(
+        Special special,
+        HashSet<(int MediaId, Ulid LibraryId)> alreadyDispatched
+    )
+    {
+        int count = 0;
+
+        foreach ((int mediaId, Ulid libraryId) in FileRescanTargets(special))
+        {
+            if (!alreadyDispatched.Add((mediaId, libraryId)))
+                continue;
+
+            jobDispatcher.DispatchJob<FileRescanJob>(mediaId, libraryId);
+            count++;
+        }
+
+        return count;
+    }
+
+    private static IEnumerable<(int MediaId, Ulid LibraryId)> FileRescanTargets(Special special) =>
+        special
+            .Items.Where(item => item.Movie is not null)
+            .Select(item => (item.Movie!.Id, item.Movie.LibraryId))
+            .Concat(
+                special
+                    .Items.Where(item => item.Episode is not null)
+                    .Select(item => (item.Episode!.TvId, item.Episode.Tv.LibraryId))
+            );
 
     [HttpGet]
     [Route("{id:ulid}/items")]

@@ -50,7 +50,9 @@ public class SpecialsSortTests : IClassFixture<NoMercyApiFactory>
     private Task<HttpResponseMessage> SortAsync(params (string Id, int Order)[] items) =>
         _client.PatchAsync(
             "/api/v1/dashboard/specials/sort",
-            JsonBody(new { libraries = items.Select(item => new { id = item.Id, order = item.Order }) })
+            JsonBody(
+                new { libraries = items.Select(item => new { id = item.Id, order = item.Order }) }
+            )
         );
 
     private async Task<List<string>> ListedSpecialIdsAsync()

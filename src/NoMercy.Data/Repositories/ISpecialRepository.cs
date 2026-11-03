@@ -98,9 +98,9 @@ public interface ISpecialRepository
     Task<Special> CreateSpecialAsync(Guid userId, CancellationToken ct = default);
 
     Task<Special?> GetSpecialWithTvAsync(Guid userId, Ulid id, CancellationToken ct = default);
-    
+
     Task<Special?> GetSpecialByIdAsync(Ulid id, CancellationToken ct = default);
-    
+
     Task<Special?> UpdateSpecialAsync(
         Ulid id,
         string? title,
@@ -118,6 +118,8 @@ public interface ISpecialRepository
     Task ReorderSpecialsAsync(List<SpecialOrder> orders, CancellationToken ct = default);
 
     Task<List<Special>> GetAllSpecialsForRescanAsync(CancellationToken ct = default);
+
+    Task<Special?> GetSpecialForRescanAsync(Ulid id, CancellationToken ct = default);
 
     Task<List<SpecialItem>> GetSpecialItemsAdminAsync(Ulid id, CancellationToken ct = default);
 
