@@ -112,6 +112,11 @@ public class InboxController(
     [HttpPost("{id:ulid}/assign")]
     public async Task<IActionResult> Assign(Ulid id, [FromBody] InboxAssignRequest request)
     {
+        if (request.Type is not ("movie" or "tv" or "anime" or "music"))
+            return BadRequestResponse(
+                $"Unsupported type '{request.Type}'. Expected: movie, tv, anime, music"
+            );
+
         InboxItem? item = await inboxRepository.GetTrackedByIdAsync(id, HttpContext.RequestAborted);
 
         if (item is null)

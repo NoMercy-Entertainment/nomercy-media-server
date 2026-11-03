@@ -89,7 +89,7 @@ public partial class InboxController_Routes_Test
 
         IActionResult result = await controller.Assign(id, request);
 
-        Assert.IsType<BadRequestObjectResult>(result);
+        Assert.Equal(400, Assert.IsType<ObjectResult>(result).StatusCode);
         Assert.Equal("unknown", item.DetectedType);
         repository.Verify(
             r =>
