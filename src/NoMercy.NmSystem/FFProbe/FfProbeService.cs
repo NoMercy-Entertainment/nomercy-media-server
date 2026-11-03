@@ -47,7 +47,7 @@ public partial class FfProbeService : IFfProbeService
     {
         try
         {
-            string json = await RunFfprobeWithRetry(file, ct);
+            string json = await RunFfprobeWithForcedMp3Fallback(file, ct);
             return FromFfprobeJson(file, json);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -129,7 +129,7 @@ public partial class FfProbeService : IFfProbeService
         {
             await using LocalPathLease lease = await driver.AcquireLocalPathAsync(file, ct);
 
-            string json = await RunFfprobeWithRetry(lease.Path, ct);
+            string json = await RunFfprobeWithForcedMp3Fallback(lease.Path, ct);
             return FromFfprobeJson(file, json);
         }
         finally
@@ -433,13 +433,17 @@ public partial class FfProbeService : IFfProbeService
         };
     }
 
-    private async Task<string> RunFfprobeWithRetry(string file, CancellationToken ct)
+    private async Task<string> RunFfprobeWithRetry(
+        string file,
+        CancellationToken ct,
+        string? forcedFormat = null
+    )
     {
         for (int attempt = 1; attempt <= MaxRetries; attempt++)
         {
             try
             {
-                return await RunFfprobe(file, ct);
+                return await RunFfprobe(file, ct, forcedFormat);
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
@@ -499,7 +503,34 @@ public partial class FfProbeService : IFfProbeService
             CreateNoWindow = true,
         };
 
-    private async Task<string> RunFfprobe(string file, CancellationToken ct)
+    internal static string BuildProbeArguments(string file, string? forcedFormat = null)
+    {
+        string inputFormat = forcedFormat is null ? string.Empty : $"-f {forcedFormat} ";
+        return $"-hide_banner -v quiet {inputFormat}-show_format -show_streams -print_format json \"{file}\"";
+    }
+
+    // The wav demuxer rejects an MP3 stream in a RIFF/WAVE container that starts
+    // with an ID3v2 tag and ffprobe prints "{}"; forcing the mp3 demuxer reads it.
+    internal static bool NeedsForcedMp3Retry(string json)
+    {
+        if (string.IsNullOrEmpty(json))
+            return false;
+
+        FfProbeRawResult? raw = json.FromJson<FfProbeRawResult>();
+        return raw is not null && HasNoMedia(raw);
+    }
+
+    private async Task<string> RunFfprobeWithForcedMp3Fallback(string file, CancellationToken ct)
+    {
+        string json = await RunFfprobeWithRetry(file, ct);
+        if (!NeedsForcedMp3Retry(json))
+            return json;
+
+        string forced = await RunFfprobeWithRetry(file, ct, "mp3");
+        return NeedsForcedMp3Retry(forced) || string.IsNullOrEmpty(forced) ? json : forced;
+    }
+
+    private async Task<string> RunFfprobe(string file, CancellationToken ct, string? forcedFormat)
     {
         bool acquired = await FfProbeThrottle.WaitAsync(TimeSpan.FromSeconds(60), ct);
         if (!acquired)
@@ -513,9 +544,7 @@ public partial class FfProbeService : IFfProbeService
                 CancellationTokenSource.CreateLinkedTokenSource(ct, timeoutCts.Token);
 
             process = new();
-            process.StartInfo = CreateStartInfo(
-                $"-hide_banner -v quiet -show_format -show_streams -print_format json \"{file}\""
-            );
+            process.StartInfo = CreateStartInfo(BuildProbeArguments(file, forcedFormat));
 
             // Every child is tied to the server's job object, so a shutdown takes the
             // whole tree with it. Killing the process on the way out only covers the
