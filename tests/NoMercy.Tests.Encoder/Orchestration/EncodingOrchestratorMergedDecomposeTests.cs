@@ -94,7 +94,7 @@ public class EncodingOrchestratorMergedDecomposeTests
             PixelFormat: "yuv420p",
             MapLabel: "[v0]",
             ExtraFlags: [],
-            IsHdrOutput: isHdrOutput
+            VideoRange: isHdrOutput ? VideoRange.Pq : VideoRange.Sdr
         );
 
     private static OutputPlan MakePlan(

@@ -1142,14 +1142,15 @@ public class PlanStage(
                                     ? tonemapPlan.FilterStringFragment
                                     : null,
                                 CropFilter: cropFilter,
-                                IsHdrOutput: preservesHdr,
+                                VideoRange: preservesHdr
+                                    ? VideoRangeMapping.ForHdrTransfer(
+                                        media.VideoStreams[0].ColorTransfer
+                                    )
+                                    : VideoRange.Sdr,
                                 // Every rung here is built from media.VideoStreams[0] —
                                 // the source stream this output was planned against. See
                                 // VideoOutputPlan.SourceStreamIndex.
-                                SourceStreamIndex: media.VideoStreams[0].Index,
-                                ColorTransfer: preservesHdr
-                                    ? media.VideoStreams[0].ColorTransfer
-                                    : null
+                                SourceStreamIndex: media.VideoStreams[0].Index
                             );
                         }
                     )

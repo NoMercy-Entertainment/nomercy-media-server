@@ -101,6 +101,7 @@ public class PlanStageHdrPassthroughTests
         Assert.Equal("smpte2084", video.ExtraFlags["-color_trc"]);
         Assert.Contains("-colorspace", video.ExtraFlags.Keys);
         Assert.Equal("tv", video.ExtraFlags["-color_range"]);
+        Assert.Equal(VideoRange.Pq, video.VideoRange);
     }
 
     [Fact]
@@ -113,6 +114,7 @@ public class PlanStageHdrPassthroughTests
 
         VideoOutputPlan video = Assert.Single(plan.VideoOutputs);
         Assert.Equal("arib-std-b67", video.ExtraFlags["-color_trc"]);
+        Assert.Equal(VideoRange.Hlg, video.VideoRange);
     }
 
     [Fact]

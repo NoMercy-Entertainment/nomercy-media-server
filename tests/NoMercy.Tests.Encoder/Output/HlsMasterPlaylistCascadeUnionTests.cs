@@ -240,7 +240,7 @@ public class HlsMasterPlaylistCascadeUnionTests : IDisposable
             FrameRate: 23.976,
             SegmentNameTemplate: "video_{label}/video_{label}",
             PlaylistNameTemplate: "video_{label}/video_{label}",
-            IsHdrOutput: true
+            VideoRange: VideoRange.Pq
         );
 
     private static VideoOutputPlan Create1080pSdrVideo() =>
@@ -260,7 +260,7 @@ public class HlsMasterPlaylistCascadeUnionTests : IDisposable
             FrameRate: 23.976,
             SegmentNameTemplate: "video_{label}/video_{label}",
             PlaylistNameTemplate: "video_{label}/video_{label}",
-            IsHdrOutput: false
+            VideoRange: VideoRange.Sdr
         );
 
     private static AudioOutputPlan CreateAudio(string language) =>

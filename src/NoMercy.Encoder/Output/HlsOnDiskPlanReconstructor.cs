@@ -195,8 +195,9 @@ public partial class HlsOnDiskPlanReconstructor(
                     FrameRate: frameRate > 0 ? frameRate : 23.976,
                     SegmentNameTemplate: $"{dirName}/{dirName}",
                     PlaylistNameTemplate: $"{dirName}/{dirName}",
-                    IsHdrOutput: isHdrOutput,
-                    ColorTransfer: isHdrOutput ? colorTransfer : null
+                    VideoRange: isHdrOutput
+                        ? VideoRangeMapping.ForHdrTransfer(colorTransfer)
+                        : VideoRange.Sdr
                 )
             );
         }

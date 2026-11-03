@@ -49,7 +49,7 @@ public class OutputPlanMergerTests
             ExtraFlags: [],
             SegmentNameTemplate: segmentTemplate,
             PlaylistNameTemplate: playlistTemplate,
-            IsHdrOutput: isHdrOutput
+            VideoRange: isHdrOutput ? VideoRange.Pq : VideoRange.Sdr
         );
 
     private static AudioOutputPlan MakeAudio(

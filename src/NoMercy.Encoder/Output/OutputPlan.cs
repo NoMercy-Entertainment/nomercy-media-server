@@ -100,12 +100,11 @@ public record VideoOutputPlan(
     bool ConvertHdrToSdr = false,
     string? TonemapFilterChain = null,
     string? CropFilter = null,
-    // True when this output preserves the source's HDR transfer characteristics
-    // (PQ / HLG / SMPTE2084). Used by the :colorrange: template token so folder
-    // and playlist names label outputs HDR vs SDR based on the actual color
-    // pipeline, not bit depth — 10-bit BT.709 is SDR and conflating depth with
-    // HDR was mislabeling every 10-bit anime / SDR remux as HDR.
-    bool IsHdrOutput = false,
+    // The transfer characteristic this output carries: Sdr, or the source's
+    // preserved HDR transfer (Pq for smpte2084, Hlg for arib-std-b67). The
+    // master's VIDEO-RANGE is written from it, and IsHdrOutput derives from it.
+    // Set from the color pipeline, not bit depth — 10-bit BT.709 is SDR.
+    VideoRange VideoRange = VideoRange.Sdr,
     // The ffprobe stream index of the source video stream this output was
     // built from — set by PlanStage at the point the source stream is in
     // hand. -1 (default) means unset, kept only so existing positional
@@ -114,11 +113,16 @@ public record VideoOutputPlan(
     // by this index rather than re-deriving it by array position later — see
     // .claude/specs/reconstruction-blueprint/SPEC.md "The match key must be
     // captured, not guessed".
-    int SourceStreamIndex = -1,
-    // ffprobe color_transfer of an HDR output: arib-std-b67 writes VIDEO-RANGE=HLG.
-    // Null on an HDR output means PQ.
-    string? ColorTransfer = null
-);
+    int SourceStreamIndex = -1
+)
+{
+    /// <summary>
+    /// True when this output preserves the source's HDR (PQ or HLG). The
+    /// :colorrange: template token uses it so folder and playlist names label
+    /// outputs HDR vs SDR by the actual color pipeline, not bit depth.
+    /// </summary>
+    public bool IsHdrOutput => VideoRange is not VideoRange.Sdr;
+}
 
 public record AudioOutputPlan(
     string EncoderName,

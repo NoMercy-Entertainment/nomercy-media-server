@@ -295,15 +295,7 @@ public class PlaylistGenerator : IPlaylistGenerator
             // remux is SDR; mislabelling them as PQ makes hls.js reject the
             // master with manifestIncompatibleCodecsError because the segments'
             // actual transfer characteristics don't match.
-            string videoRange =
-                !video.IsHdrOutput ? "SDR"
-                : string.Equals(
-                    video.ColorTransfer,
-                    "arib-std-b67",
-                    StringComparison.OrdinalIgnoreCase
-                )
-                    ? "HLG"
-                : "PQ";
+            string videoRange = video.VideoRange.ToHlsVideoRange();
             string frameRate = video.FrameRate.ToString("F3", CultureInfo.InvariantCulture);
 
             // CLOSED-CAPTIONS=NONE is written on every variant, also next to a

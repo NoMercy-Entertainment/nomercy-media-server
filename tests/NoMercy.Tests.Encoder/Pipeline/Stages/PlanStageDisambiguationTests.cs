@@ -69,7 +69,7 @@ public class PlanStageDisambiguationTests
         {
             SegmentNameTemplate = segTemplate,
             PlaylistNameTemplate = playlistTemplate,
-            IsHdrOutput = hdr,
+            VideoRange = hdr ? VideoRange.Pq : VideoRange.Sdr,
         };
 
     // ── Audio disambiguation ────────────────────────────────────────────────
