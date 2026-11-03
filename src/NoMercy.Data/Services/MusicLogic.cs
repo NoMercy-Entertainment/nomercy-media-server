@@ -136,19 +136,18 @@ public partial class MusicLogic : IAsyncDisposable
                         file,
                         ffProbeData
                     );
-                    if (fingerPrintRecording is not null)
-                    {
-                        foreach (
-                            AcoustIdFingerprintReleaseGroups release in fingerPrintRecording.Releases
-                                ?? []
-                        )
-                        {
-                            if (release.TrackCount == null || release.TrackCount != Files?.Count)
-                            {
-                                _logger.LogTrace("Track Count Mismatch: {Title}", release.Title);
-                                return;
-                            }
+                    List<AcoustIdFingerprintReleaseGroups> matchingReleases = fingerPrintRecording
+                        is null
+                        ? []
+                        : ReleasesMatchingFolder(fingerPrintRecording, Files?.Count);
 
+                    // A recording pressed on several releases lists them in no
+                    // useful order, so one with another track count is passed over,
+                    // not the end of the file. With none left, the tags decide (#396).
+                    if (matchingReleases.Count > 0)
+                    {
+                        foreach (AcoustIdFingerprintReleaseGroups release in matchingReleases)
+                        {
                             try
                             {
                                 await ProcessRelease(
@@ -188,6 +187,21 @@ public partial class MusicLogic : IAsyncDisposable
             }
         );
     }
+
+    /// <summary>
+    /// The releases of the matched recording whose track count is the number of files
+    /// in the album folder being imported, in the order the fingerprint listed them.
+    /// A release with another track count is skipped, not the end of the list.
+    /// </summary>
+    internal static List<AcoustIdFingerprintReleaseGroups> ReleasesMatchingFolder(
+        AcoustIdFingerprintRecording recording,
+        int? fileCount
+    ) =>
+        [
+            .. (recording.Releases ?? []).Where(release =>
+                release.TrackCount != null && release.TrackCount == fileCount
+            ),
+        ];
 
     private async Task ProcessRelease(
         MediaContext mediaContext,
