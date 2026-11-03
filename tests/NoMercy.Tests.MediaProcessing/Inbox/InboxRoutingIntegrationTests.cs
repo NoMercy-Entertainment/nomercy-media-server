@@ -278,6 +278,42 @@ public sealed class InboxRoutingIntegrationTests : IDisposable
         );
     }
 
+    [Fact]
+    public async Task ExecuteAssignment_DispatchFailure_RestoresSourceFile()
+    {
+        string sourcePath = Path.Combine(_inboxDir, "Example (1984).mkv");
+        await File.WriteAllBytesAsync(sourcePath, [1, 2, 3]);
+        await using MediaContext context = BuildContext();
+        InboxDestination destination = SeedLibraryDestination(context, "movie", _movieLibDir);
+        CandidateMatch match = new()
+        {
+            Provider = "tmdb",
+            ExternalId = "123",
+            Title = "Example",
+            Year = 1984,
+            Score = 0.95,
+        };
+        InboxItem item = new()
+        {
+            Id = Ulid.NewUlid(),
+            SourcePath = sourcePath,
+            DriverId = _sharedDriverId,
+            DetectedType = "movie",
+            Status = "NeedsReview",
+            Candidates = [match],
+        };
+        _dispatcherMock
+            .Setup(d => d.DispatchJob<MovieImportJob>(123, destination.LibraryId))
+            .Throws(new InvalidOperationException("Queue unavailable"));
+
+        Func<Task> act = () => BuildService().ExecuteAssignment(item, match, destination, context);
+
+        await act.Should().ThrowAsync<InvalidOperationException>();
+        File.Exists(sourcePath).Should().BeTrue();
+        File.Exists(Path.Combine(_movieLibDir, "Example (1984).mkv")).Should().BeFalse();
+        item.Status.Should().Be("NeedsReview");
+    }
+
     // -----------------------------------------------------------------------
     // Test 3: Auto-route music — file moved + AudioImportJob dispatched
     // -----------------------------------------------------------------------
