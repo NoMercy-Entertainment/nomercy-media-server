@@ -137,7 +137,7 @@ public partial class ServerController(
 
     [HttpPost]
     [Route("stop")]
-    [Authorize(Policy = "Moderator")]
+    [Authorize(Policy = "Owner")]
     public IActionResult StopServer()
     {
         ApplicationLifetime.StopApplication();
@@ -162,7 +162,7 @@ public partial class ServerController(
 
     [HttpPost]
     [Route("restart")]
-    [Authorize(Policy = "Moderator")]
+    [Authorize(Policy = "Owner")]
     public IActionResult RestartServer()
     {
         return NotImplementedResponse("Restarting the server via the API is not implemented.");
@@ -176,7 +176,7 @@ public partial class ServerController(
 
     [HttpPost]
     [Route("shutdown")]
-    [Authorize(Policy = "Moderator")]
+    [Authorize(Policy = "Owner")]
     public IActionResult Shutdown()
     {
         ApplicationLifetime.StopApplication();
