@@ -9,6 +9,8 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 using System.Reflection;
+using System.Security.Cryptography;
+using System.Text;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using NoMercy.Events;
@@ -139,6 +141,98 @@ internal sealed class PluginLoader(
         _registry[manifest.Id.Value] = new(info, null, null);
     }
 
+    /// <summary>
+    /// Registers a plugin the owner has not approved yet without mapping a
+    /// byte of it: the dashboard needs the entry to offer the approval, and
+    /// the process must hold none of the code until it is given. A manifest
+    /// that does not parse is reported the way the load path reports it.
+    /// </summary>
+    internal async Task HoldPluginFromManifestAsync(
+        string manifestPath,
+        string reason,
+        CancellationToken ct = default
+    )
+    {
+        string pluginDir = Path.GetDirectoryName(manifestPath)!;
+
+        try
+        {
+            PluginManifest manifest = await PluginManifestParser.ParseFileAsync(
+                manifestPath,
+                _storage,
+                ct
+            );
+
+            PluginInfo info = PluginManifestParser.ToPluginInfo(
+                manifest,
+                _storage.CombinePath(pluginDir, manifest.Assembly),
+                PluginStatus.Disabled,
+                manifestPath
+            );
+
+            info.ApprovalReason = reason;
+
+            _registry[manifest.Id.Value] = new(info, null, null);
+
+            _logger.LogWarning(
+                "Plugin {PluginName} was not loaded and waits for the owner: {Reason}",
+                [manifest.Name, reason]
+            );
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                "Failed to parse plugin manifest {ManifestPath}: {Error}",
+                [manifestPath, ex.Message]
+            );
+
+            await _eventBus.PublishAsync(
+                new PluginErrorOccurredEvent
+                {
+                    PluginId = Ulid.Empty.ToString(),
+                    PluginName = Path.GetFileName(pluginDir),
+                    ErrorMessage = $"Invalid plugin manifest: {ex.Message}",
+                    ExceptionType = ex.GetType().Name,
+                },
+                ct
+            );
+        }
+    }
+
+    /// <summary>
+    /// The manifest-less twin of <see cref="HoldPluginFromManifestAsync"/>.
+    /// A bare assembly only says who it is once it runs, which is what the
+    /// hold prevents, so the folder is held under an id made from its name:
+    /// the same folder is the same entry on every start, and approving it
+    /// loads the assemblies, which then register under their own ids.
+    /// </summary>
+    internal void HoldPluginFolder(string folderPath, string firstAssemblyPath, string reason)
+    {
+        string folder = Path.GetFileName(folderPath);
+        Ulid id = PlaceholderId(folder);
+
+        PluginInfo info = new()
+        {
+            Id = id,
+            Name = folder,
+            Description = "A plugin folder without a manifest.",
+            Version = new Version(0, 0),
+            Status = PluginStatus.Disabled,
+            AssemblyPath = firstAssemblyPath,
+            ApprovalReason = reason,
+        };
+
+        _registry[id] = new(info, null, null);
+
+        _logger.LogWarning(
+            "Plugin folder {Folder} was not loaded and waits for the owner: {Reason}",
+            [folder, reason]
+        );
+    }
+
+    private static Ulid PlaceholderId(string folder) =>
+        new([.. SHA256.HashData(Encoding.UTF8.GetBytes(folder.ToLowerInvariant())).AsSpan(0, 16)]);
+
     private PluginRefusal? RunRefusal(
         PluginManifest manifest,
         string assemblyPath,
@@ -241,7 +335,9 @@ internal sealed class PluginLoader(
 
             string absoluteAssemblyPath = ToLocalAssemblyPath(assemblyPath);
 
-            // Manual drops carry no repository checksum; only ABI is enforced here.
+            // No repository checksum here: the package was checked when it was
+            // installed, and a folder the server never installed does not reach
+            // this method until the owner approves it (see PluginDropGate).
             PluginVerificationResult verification = _verifier.Verify(
                 manifest,
                 absoluteAssemblyPath,

@@ -17,6 +17,7 @@ using NoMercy.Setup.Dto;
 using NoMercy.Setup.Server;
 using NoMercy.Storage.Drivers.Local;
 using NoMercy.Storage.Validation;
+using NoMercy.Tests.Setup.Infrastructure;
 
 namespace NoMercy.Tests.Setup;
 
@@ -45,6 +46,7 @@ namespace NoMercy.Tests.Setup;
 /// mechanics themselves are covered by <c>BinaryDownloaderTests</c>.
 /// </remarks>
 [Trait("Category", "Unit")]
+[Collection(ProcessWideSetupStateCollection.Name)]
 public sealed class ServerUpdateDecisionTests : IDisposable
 {
     private readonly Version? _originalVersion;

@@ -397,6 +397,20 @@ public class ConnectivityManager : IConnectivityManager, IHostedService, IDispos
                 continue;
             }
 
+            if (_activeStrategy is { IsOutdated: true })
+            {
+                // The cloudflared upgrade lands in the background, often after the tunnel
+                // already started from the old file. Only a restart of the process makes
+                // the new binary — and its security fixes — the one carrying traffic.
+                _logger.LogInformation(
+                    "The binary behind {Name} was replaced on disk — restarting it so the upgrade takes effect",
+                    _activeStrategy.Name
+                );
+                attempt = 0;
+                await EvaluateAsync(ct);
+                continue;
+            }
+
             if (_activeStrategy?.Type is ConnectivityType.QuickTunnel)
             {
                 await RefreshTunnelAvailabilityAsync();

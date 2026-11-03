@@ -291,11 +291,34 @@ public class MetadataInjectorTests
     }
 
     [Fact]
-    public void BuildArgs_NoDispositionSet_OmitsDispositionFlag()
+    public void BuildArgs_NotDefaultNotForcedTrack_ClearsDisposition()
+    {
+        // Copy mode keeps the source disposition unless ffmpeg is told
+        // otherwise, so an explicit "off" must be written out (issue #349).
+        TrackMetadata track = new(
+            OutputIndex: 1,
+            Kind: "audio",
+            Language: "fra",
+            Title: null,
+            IsDefault: false,
+            IsForced: false
+        );
+        IReadOnlyList<string> args = _injector.BuildArgs(MovieCtx(tracks: [track]));
+
+        IndexOf(args, "-disposition:a:1", "0")
+            .Should()
+            .BeGreaterThanOrEqualTo(
+                0,
+                "a track the library marks not-default and not-forced must clear the source disposition with -disposition:a:1 0"
+            );
+    }
+
+    [Fact]
+    public void BuildArgs_NotDefaultNotForcedSubtitle_ClearsDisposition()
     {
         TrackMetadata track = new(
             OutputIndex: 0,
-            Kind: "audio",
+            Kind: "subtitle",
             Language: "eng",
             Title: null,
             IsDefault: false,
@@ -303,10 +326,44 @@ public class MetadataInjectorTests
         );
         IReadOnlyList<string> args = _injector.BuildArgs(MovieCtx(tracks: [track]));
 
-        bool hasDisposition = args.Any(a => a.StartsWith("-disposition:"));
-        hasDisposition
+        IndexOf(args, "-disposition:s:0", "0")
             .Should()
-            .BeFalse("no -disposition flags when neither IsDefault nor IsForced");
+            .BeGreaterThanOrEqualTo(0, "expected -disposition:s:0 0");
+    }
+
+    [Fact]
+    public void BuildArgs_CopyModeMergeOfSourceDefaultAndDbNotDefault_ClearsDisposition()
+    {
+        // Issue #349 end to end: the source flags audio 0 as default, the
+        // library says it is not. The merged track must clear the flag.
+        SourceTrackMetadata source = new(
+            OutputIndex: 0,
+            Kind: "audio",
+            Language: "eng",
+            Title: null,
+            Comment: null,
+            IsDefault: true,
+            IsForced: false
+        );
+        TrackMetadata db = new(
+            OutputIndex: 0,
+            Kind: "audio",
+            Language: "eng",
+            Title: null,
+            IsDefault: false,
+            IsForced: false
+        );
+        IReadOnlyList<TrackMetadata> merged = new MetadataMerger().Merge([source], [db]);
+
+        IReadOnlyList<string> args = _injector.BuildArgs(MovieCtx(tracks: merged));
+
+        IndexOf(args, "-disposition:a:0", "0")
+            .Should()
+            .BeGreaterThanOrEqualTo(
+                0,
+                "the library's not-default must override the source default in copy mode"
+            );
+        args.Should().NotContain("default", "no stream may keep the source default flag");
     }
 
     // ------------------------------------------------------------------

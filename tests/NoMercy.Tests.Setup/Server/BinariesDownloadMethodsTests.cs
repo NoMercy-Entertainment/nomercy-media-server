@@ -19,6 +19,7 @@ using NoMercy.Setup.Dto;
 using NoMercy.Setup.Server;
 using NoMercy.Storage.Drivers.Local;
 using NoMercy.Storage.Validation;
+using NoMercy.Tests.Setup.Infrastructure;
 
 namespace NoMercy.Tests.Setup.Server;
 
@@ -36,9 +37,13 @@ namespace NoMercy.Tests.Setup.Server;
 /// asset name against the same payload/digest (mirroring <c>ServerUpdateDecisionTests
 /// .ServerAssets()</c>) so the platform switch inside <see cref="Binaries"/> resolves
 /// identically whether the suite runs on a dev's Windows machine or ubuntu-latest.
-/// <c>NOMERCY_APP_PATH</c> isolation matches <c>ServerUpdateDecisionTests</c>.
+/// <c>NOMERCY_APP_PATH</c> isolation matches <c>ServerUpdateDecisionTests</c>. The
+/// variable is process-wide, so every class that points it at its own temp tree shares
+/// <see cref="ProcessWideSetupStateCollection"/>: run in parallel, one class's constructor
+/// or Dispose moves <c>AppFiles</c> under a test here between its download and its assert.
 /// </remarks>
 [Trait("Category", "Unit")]
+[Collection(ProcessWideSetupStateCollection.Name)]
 public sealed class BinariesDownloadMethodsTests : IDisposable
 {
     private readonly string? _originalAppPath;
@@ -362,10 +367,17 @@ public sealed class BinariesDownloadMethodsTests : IDisposable
             ])
         );
 
+        string launcherPath = AppFiles.LauncherExePath;
         Binaries binaries = BuildBinaries(handler);
         await binaries.DownloadLauncher();
 
-        Assert.True(File.Exists(AppFiles.LauncherExePath));
+        Assert.True(
+            File.Exists(launcherPath),
+            $"DownloadLauncher left no file at {launcherPath}. "
+                + $"AppFiles.LauncherExePath now resolves to {AppFiles.LauncherExePath} "
+                + $"and the test's app path {_tempAppPath} "
+                + (Directory.Exists(_tempAppPath) ? "still exists." : "is gone.")
+        );
     }
 
     [Fact]

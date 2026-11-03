@@ -20,10 +20,9 @@ using NoMercy.Tests.Encoder.Storage;
 namespace NoMercy.Tests.Encoder.ContentAnalysis;
 
 /// <summary>
-/// The chromaprint-backed fingerprinter parses ffmpeg stdout; these tests
-/// pin that parser and the command-line shape. Running real ffmpeg in unit
-/// tests would require bundled fixtures and network / binary assumptions
-/// that don't belong here.
+/// The chromaprint-backed fingerprinter decodes ffmpeg stdout; these tests
+/// pin that decoder against captured real muxer output and pin the
+/// command-line shape. ffmpeg itself is not run here.
 /// </summary>
 public class ChromaprintFingerprinterTests
 {
@@ -33,45 +32,174 @@ public class ChromaprintFingerprinterTests
         FfprobePathOverride = "/usr/bin/ffprobe",
     };
 
-    [Fact]
-    public void ParseRawOutput_CommaSeparatedHashes_ExtractsAllValues()
-    {
-        uint[] result = ChromaprintFingerprinter.ParseRawOutput("123,456,789\n");
+    // Real muxer output, captured once from ffmpeg 7 (chromaprint muxer) for the
+    // same 6 s synthetic clip in both formats:
+    //   ffmpeg -f lavfi -i "aevalsrc=0.6*sin(2*PI*(220+40*t)*t)+0.3*sin(2*PI*(660-25*t)*t)
+    //     +0.2*sin(2*PI*(1500+300*sin(t))*t):s=11025:d=6" -ac 1 -ar 11025
+    //     -f chromaprint -fp_format base64 -
+    // and again with "-fp_format raw" (108 bytes = 27 little-endian uint32 hashes).
+    private const string RealBase64Output =
+        "AQAAG-K1JFMU3MKPP9hH1Ekeg8mSnYSq4ynOE1-coM7RLJEw5Ieu5Mi5Fl-c4-2KvRR6orn04Sf2HNpzF3539AUCLaHCE8IBEw5qQYESABlFCCICCSCAAA";
 
-        result.Should().Equal([123u, 456u, 789u]);
+    private static readonly uint[] RealRawHashes =
+    [
+        3665379362u,
+        3660120098u,
+        3727360034u,
+        3710517282u,
+        1412038694u,
+        1961507894u,
+        816454414u,
+        279583308u,
+        279579276u,
+        27990668u,
+        36190860u,
+        103298716u,
+        103309740u,
+        103309736u,
+        372793769u,
+        910975403u,
+        390427050u,
+        356744490u,
+        97777962u,
+        91351342u,
+        90237246u,
+        1298508046u,
+        1307421966u,
+        1303224586u,
+        3384643864u,
+        3650728248u,
+        3650855208u,
+    ];
+
+    [Fact]
+    public async Task FingerprintAsync_RealMuxerOutput_YieldsTheHashesTheMuxerComputed()
+    {
+        string[]? captured = null;
+        Mock<IProcessRunner> runner = new();
+        runner
+            .Setup(r =>
+                r.RunAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string[]>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .Callback<string, string[], string?, CancellationToken>(
+                (_, args, _, _) => captured = args
+            )
+            .ReturnsAsync(
+                new ProcessResult(0, RealBase64Output, "", TimeSpan.FromMilliseconds(500))
+            );
+
+        ChromaprintFingerprinter fp = new(
+            _options,
+            runner.Object,
+            TestStorageFactory.CreateLocal(),
+            NullLogger<ChromaprintFingerprinter>.Instance,
+            new MediaActivityMonitor()
+        );
+
+        AudioFingerprint result = await fp.FingerprintAsync(
+            "/media/ep1.mkv",
+            null,
+            CancellationToken.None
+        );
+
+        captured
+            .Should()
+            .ContainInConsecutiveOrder(
+                ["-fp_format", "base64"],
+                "stdout is read as text, so the muxer must be asked for a text format"
+            );
+        result
+            .Hashes.Should()
+            .Equal(
+                RealRawHashes,
+                "the hashes must be the ones the muxer computed, not digit runs scraped from its output"
+            );
     }
 
     [Fact]
-    public void ParseRawOutput_PrefixedWithEquals_StripsLabel()
+    public void DecodeBase64_RealMuxerOutput_ReturnsTheRawHashes()
     {
-        // Some ffmpeg builds emit "CHROMAPRINT=1,2,3" — the parser must
-        // drop everything up to and including the '=' sign.
-        uint[] result = ChromaprintFingerprinter.ParseRawOutput("CHROMAPRINT=1,2,3");
-
-        result.Should().Equal([1u, 2u, 3u]);
+        ChromaprintFingerprintDecoder.DecodeBase64(RealBase64Output).Should().Equal(RealRawHashes);
     }
 
     [Fact]
-    public void ParseRawOutput_NegativeInts_HandledAsUnsigned()
+    public void DecodeBase64_TrailingNewline_IsIgnored()
     {
-        // Chromaprint hashes are 32-bit; signed values wrap to the high
-        // bits of uint. -1 → 0xFFFFFFFF.
-        uint[] result = ChromaprintFingerprinter.ParseRawOutput("-1,-2");
-
-        result[0].Should().Be(0xFFFFFFFFu);
-        result[1].Should().Be(0xFFFFFFFEu);
+        ChromaprintFingerprintDecoder
+            .DecodeBase64(RealBase64Output + "\n")
+            .Should()
+            .Equal(RealRawHashes);
     }
 
     [Fact]
-    public void ParseRawOutput_Empty_ReturnsEmptyArray()
+    public void DecodeBase64_HeaderWithZeroHashes_ReturnsEmptyArray()
     {
-        ChromaprintFingerprinter.ParseRawOutput("").Should().BeEmpty();
+        // Algorithm 1, count 0 — what the muxer writes for audio too short to hash.
+        ChromaprintFingerprintDecoder.DecodeBase64("AQAAAA").Should().BeEmpty();
     }
 
     [Fact]
-    public void ParseRawOutput_Whitespace_ReturnsEmptyArray()
+    public void DecodeBase64_Truncated_ReturnsEmptyArray()
     {
-        ChromaprintFingerprinter.ParseRawOutput("   \n\t").Should().BeEmpty();
+        ChromaprintFingerprintDecoder.DecodeBase64(RealBase64Output[..40]).Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   \n\t")]
+    [InlineData("1,2,3")]
+    [InlineData("not base64 at all!")]
+    public void DecodeBase64_NotAFingerprint_ReturnsEmptyArray(string stdout)
+    {
+        ChromaprintFingerprintDecoder.DecodeBase64(stdout).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task FingerprintAsync_FrameTimes_FollowTheChromaprintHopOf1365Samples()
+    {
+        // chromaprint emits one hash per 1365-sample hop at 11025 Hz (0.12381 s).
+        // Measured with the real muxer: 60 s of audio more yields 485 hashes more.
+        Mock<IProcessRunner> runner = new();
+        runner
+            .Setup(r =>
+                r.RunAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string[]>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .ReturnsAsync(
+                new ProcessResult(0, RealBase64Output, "", TimeSpan.FromMilliseconds(500))
+            );
+
+        ChromaprintFingerprinter fp = new(
+            _options,
+            runner.Object,
+            TestStorageFactory.CreateLocal(),
+            NullLogger<ChromaprintFingerprinter>.Instance,
+            new MediaActivityMonitor()
+        );
+
+        AudioFingerprint result = await fp.FingerprintAsync(
+            "/media/ep1.mkv",
+            null,
+            CancellationToken.None
+        );
+
+        result
+            .FrameToTime(100)
+            .TotalSeconds.Should()
+            .BeApproximately(
+                12.381,
+                0.001,
+                "hash 100 starts 100 hops of 1365 samples at 11025 Hz into the window"
+            );
     }
 
     [Fact]
@@ -91,7 +219,9 @@ public class ChromaprintFingerprinterTests
             .Callback<string, string[], string?, CancellationToken>(
                 (_, args, _, _) => captured = args
             )
-            .ReturnsAsync(new ProcessResult(0, "1,2,3\n", "", TimeSpan.FromMilliseconds(500)));
+            .ReturnsAsync(
+                new ProcessResult(0, RealBase64Output, "", TimeSpan.FromMilliseconds(500))
+            );
 
         ChromaprintFingerprinter fp = new(
             _options,
@@ -115,7 +245,7 @@ public class ChromaprintFingerprinterTests
         captured.Should().Contain("300.000");
         captured.Should().Contain("-f");
         captured.Should().Contain("chromaprint");
-        result.Hashes.Should().Equal([1u, 2u, 3u]);
+        result.Hashes.Should().Equal(RealRawHashes);
         result.StartTime.Should().Be(TimeSpan.FromSeconds(10));
     }
 
@@ -140,7 +270,9 @@ public class ChromaprintFingerprinterTests
             .Callback<string, string[], string?, CancellationToken>(
                 (_, args, _, _) => captured = args
             )
-            .ReturnsAsync(new ProcessResult(0, "1,2,3\n", "", TimeSpan.FromMilliseconds(500)));
+            .ReturnsAsync(
+                new ProcessResult(0, RealBase64Output, "", TimeSpan.FromMilliseconds(500))
+            );
 
         ChromaprintFingerprinter fp = new(
             _options,

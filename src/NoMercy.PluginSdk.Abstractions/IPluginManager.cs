@@ -60,6 +60,19 @@ public interface IPluginManager
     Task UninstallPluginAsync(Ulid pluginId, CancellationToken ct = default);
 
     /// <summary>
+    /// The owner's yes to a plugin that waits on <see cref="PluginInfo.ApprovalReason"/>:
+    /// the folder's files are recorded as approved and the plugin is loaded.
+    /// A file that changes afterwards puts the plugin back on hold.
+    /// <para>
+    /// Defaulted to a refusal so existing implementers (test doubles) keep
+    /// compiling, and so a manager that was never taught to hold a plugin
+    /// cannot be asked to approve one.
+    /// </para>
+    /// </summary>
+    Task ApprovePluginAsync(Ulid pluginId, CancellationToken ct = default) =>
+        throw new NotSupportedException("This plugin manager cannot approve a plugin.");
+
+    /// <summary>
     /// Removes a plugin, and with it the data folder, consent, grants and
     /// secrets the server held for it — unless the owner asks to keep them.
     /// <para>

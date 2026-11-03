@@ -83,19 +83,28 @@ public static class DatabaseSeeder
 
     private static async Task MigrateConfigurationData(AppDbContext appContext, IStorage storage)
     {
-        // Only migrate if app.db has no Configuration rows AND media.db exists with rows
-        bool appHasData = await appContext.Configuration.AnyAsync();
-        if (appHasData)
-            return;
-
         string mediaDbPath = AppFiles.MediaDatabase;
         if (!storage.Exists(mediaDbPath))
             return;
 
+        await MigrateConfigurationData(appContext, mediaDbPath, AppFiles.AppDatabase);
+    }
+
+    internal static async Task MigrateConfigurationData(
+        AppDbContext appContext,
+        string mediaDbPath,
+        string appDbPath
+    )
+    {
         try
         {
             // Check if media.db has a Configuration table with rows
-            await using SqliteConnection checkConn = new($"Data Source={mediaDbPath}");
+            SqliteConnectionStringBuilder sourceConnection = new()
+            {
+                DataSource = mediaDbPath,
+                Mode = SqliteOpenMode.ReadOnly,
+            };
+            await using SqliteConnection checkConn = new(sourceConnection.ToString());
             await checkConn.OpenAsync();
 
             await using SqliteCommand checkCmd = checkConn.CreateCommand();
@@ -119,19 +128,35 @@ public static class DatabaseSeeder
                 return;
 
             // Copy rows using ATTACH DATABASE on the app.db connection
-            string appDbPath = AppFiles.AppDatabase;
-            await using SqliteConnection appConn = new($"Data Source={appDbPath}");
+            SqliteConnectionStringBuilder destinationConnection = new() { DataSource = appDbPath };
+            await using SqliteConnection appConn = new(destinationConnection.ToString());
             await appConn.OpenAsync();
 
             await using SqliteCommand attachCmd = appConn.CreateCommand();
-            attachCmd.CommandText = $"ATTACH DATABASE '{mediaDbPath}' AS source";
+            attachCmd.CommandText = "ATTACH DATABASE $path AS source";
+            attachCmd.Parameters.AddWithValue("$path", mediaDbPath);
             await attachCmd.ExecuteNonQueryAsync();
 
+            await using SqliteTransaction transaction = (SqliteTransaction)
+                await appConn.BeginTransactionAsync();
             await using SqliteCommand copyCmd = appConn.CreateCommand();
+            copyCmd.Transaction = transaction;
             copyCmd.CommandText =
-                "INSERT OR IGNORE INTO Configuration (Key, Value, ModifiedBy, CreatedAt, UpdatedAt) "
-                + "SELECT Key, Value, ModifiedBy, CreatedAt, UpdatedAt FROM source.Configuration";
+                "INSERT OR IGNORE INTO Configuration (Key, Value, SecureValue, ModifiedBy, CreatedAt, UpdatedAt) "
+                + "SELECT Key, Value, SecureValue, ModifiedBy, CreatedAt, UpdatedAt FROM source.Configuration";
             int copied = await copyCmd.ExecuteNonQueryAsync();
+
+            await using SqliteCommand verifyCmd = appConn.CreateCommand();
+            verifyCmd.Transaction = transaction;
+            verifyCmd.CommandText =
+                "SELECT COUNT(*) FROM source.Configuration AS source "
+                + "LEFT JOIN main.Configuration AS target ON target.Key = source.Key "
+                + "WHERE target.Key IS NULL";
+            long missing = (long)(await verifyCmd.ExecuteScalarAsync() ?? 0L);
+            if (missing != 0)
+                throw new IOException($"Configuration transfer did not preserve {missing} row(s).");
+
+            await transaction.CommitAsync();
 
             await using SqliteCommand detachCmd = appConn.CreateCommand();
             detachCmd.CommandText = "DETACH DATABASE source";
@@ -144,9 +169,10 @@ public static class DatabaseSeeder
         catch (Exception ex)
         {
             Logger.Setup(
-                $"Configuration migration from media.db failed (non-fatal): {ex.Message}",
-                LogEventLevel.Warning
+                $"Configuration migration from media.db failed: {ex.Message}",
+                LogEventLevel.Fatal
             );
+            throw;
         }
     }
 

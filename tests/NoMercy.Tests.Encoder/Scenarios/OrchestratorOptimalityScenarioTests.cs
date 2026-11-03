@@ -83,7 +83,7 @@ public class OrchestratorOptimalityScenarioTests
             PixelFormat: "yuv420p",
             MapLabel: "0:v:0",
             ExtraFlags: [],
-            IsHdrOutput: false
+            VideoRange: VideoRange.Sdr
         );
 
     private static VideoOutputPlan TranscodeVideo(
@@ -106,7 +106,7 @@ public class OrchestratorOptimalityScenarioTests
             PixelFormat: "yuv420p",
             MapLabel: $"[v{width}]",
             ExtraFlags: [],
-            IsHdrOutput: isHdrOutput,
+            VideoRange: isHdrOutput ? VideoRange.Pq : VideoRange.Sdr,
             ConvertHdrToSdr: convertHdrToSdr,
             TonemapFilterChain: tonemapFilterChain
         );

@@ -12,6 +12,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NoMercy.Database;
+using NoMercy.MediaProcessing.Common;
 using NoMercy.NmSystem.Extensions;
 
 namespace NoMercy.MediaProcessing.Shows;
@@ -46,7 +47,7 @@ public class AnimeClassificationAuditService(
             string? classifiedType = await mediaTypeClassifier.ClassifyAsync(
                 row.Title,
                 row.FirstAirDate.ParseYear(),
-                row.OriginCountry is not null ? [row.OriginCountry] : null
+                OriginCountries.Parse(row.OriginCountry)
             );
 
             // An inconclusive lookup (provider failure, e.g. AniList rate-limiting a

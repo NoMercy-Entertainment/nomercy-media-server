@@ -45,6 +45,68 @@ public class NfsExpiredRecoveryTests
     }
 
     [Fact]
+    public void OpenWrite_exclusive_failure_never_truncates_with_Creat()
+    {
+        (NfsStorageDriver driver, FaultyLibNfs lib) = BuildDriver();
+        try
+        {
+            lib.Faults["Open:0"] = (-17, "EEXIST");
+
+            Action act = () => driver.OpenWrite("/new.bin", overwrite: false);
+
+            act.Should().Throw<IOException>();
+            lib.CallCounts.GetValueOrDefault("Creat").Should().Be(0);
+        }
+        finally
+        {
+            driver.Dispose();
+        }
+    }
+
+    [Theory]
+    [InlineData("/tvshows/a", "/tvshows/a")]
+    [InlineData("/tv/a", "/a")]
+    [InlineData("/tv", "/")]
+    public void Export_prefix_is_stripped_only_at_a_path_boundary(string path, string expected)
+    {
+        FaultyLibNfs lib = new();
+        lib.SeedDir("/");
+        NfsStorageDriver driver = new(BuildConfig() with { Export = "/tv" }, lib);
+        try
+        {
+            lib.Seed(expected, [1]);
+
+            driver.FileExists(path).Should().BeTrue();
+        }
+        finally
+        {
+            driver.Dispose();
+        }
+    }
+
+    [Fact]
+    public void Failed_remount_keeps_a_valid_context_for_the_next_operation()
+    {
+        (NfsStorageDriver driver, FaultyLibNfs lib) = BuildDriver();
+        try
+        {
+            lib.Seed("/file.bin", [1]);
+            lib.Faults["Stat64:0"] = (-11, "NFS4ERR_EXPIRED");
+            lib.Faults["InitContext:1"] = (-1, "init failed");
+
+            driver.FileExists("/file.bin");
+
+            driver.FileExists("/file.bin").Should().BeTrue();
+            lib.CallCounts.GetValueOrDefault("DestroyContext").Should().Be(0);
+            lib.ZeroContextStatCalls.Should().Be(0);
+        }
+        finally
+        {
+            driver.Dispose();
+        }
+    }
+
+    [Fact]
     public void OpenRead_recovers_when_first_Open_returns_NFS4ERR_EXPIRED()
     {
         (NfsStorageDriver driver, FaultyLibNfs lib) = BuildDriver();
@@ -226,13 +288,13 @@ public class NfsExpiredRecoveryTests
             using Stream _ = driver.OpenRead("/file.bin");
 
             // Constructor: 1 InitContext + 1 SetVersion + 1 SetUid + 1 SetGid + 1 Mount
-            // Remount: +1 of each (but DestroyContext runs on the old ctx first).
+            // Remount: +1 of each; the old context is destroyed after the new mount.
             lib.CallCounts["InitContext"].Should().Be(2);
             lib.CallCounts["SetVersion"].Should().Be(2);
             lib.CallCounts["SetUid"].Should().Be(2);
             lib.CallCounts["SetGid"].Should().Be(2);
             lib.CallCounts["Mount"].Should().Be(2);
-            lib.CallCounts["DestroyContext"].Should().Be(1, "old ctx destroyed before remount");
+            lib.CallCounts["DestroyContext"].Should().Be(1, "old ctx destroyed after remount");
         }
         finally
         {

@@ -20,9 +20,10 @@ namespace NoMercy.Tests.Encoder.BuildingBlocks;
 /// regression that stops escaping a metacharacter — or drops the quoting —
 /// fails loudly. The quoting/escaping combination is verified against a real
 /// ffmpeg build: quoting alone does not neutralise a drive-letter colon
-/// (ffmpeg misreads the option boundary), and escaping without quoting
-/// breaks graph-level comma/semicolon/bracket parsing. Both together are
-/// required.
+/// (ffmpeg misreads the option boundary), escaping without quoting breaks
+/// graph-level comma/semicolon/bracket parsing, and an apostrophe escaped
+/// inside the quotes (or escaped for one parse level only) swallows every
+/// option that follows the path. Both together are required.
 /// </summary>
 public class FilterGraphPathEscaperTests
 {
@@ -43,11 +44,27 @@ public class FilterGraphPathEscaperTests
     }
 
     [Fact]
-    public void Escape_PathWithSingleQuote_EscapesQuote()
+    public void Escape_PathWithSingleQuote_ClosesQuoteEscapesApostropheAndReopens()
     {
+        // ffmpeg does not process escapes inside single quotes, so a quoted \'
+        // closes the value at the apostrophe and the rest of the filter chain
+        // is swallowed into the path. The value must close its quote, emit the
+        // apostrophe escaped for both parse levels (\\\' -> \' at the graph
+        // level -> ' at the option level), then reopen.
         string result = FilterGraphPathEscaper.Escape("/media/it's a show.ass");
 
-        Assert.Equal("'/media/it\\'s a show.ass'", result);
+        Assert.Equal("'/media/it'\\\\\\''s a show.ass'", result);
+    }
+
+    [Fact]
+    public void Escape_PathWithEqualsSign_EscapesEqualsSoItIsNotReadAsAnOptionKey()
+    {
+        // The option-level parser reads "key=value" first. A path that starts
+        // with key characters (every Linux absolute path) and contains '='
+        // is split at the '=' and rejected as an unknown option.
+        string result = FilterGraphPathEscaper.Escape("/media/a=b.ass");
+
+        Assert.Equal("'/media/a\\=b.ass'", result);
     }
 
     [Fact]
@@ -75,10 +92,10 @@ public class FilterGraphPathEscaperTests
     }
 
     [Fact]
-    public void Escape_CombinedSpecialCharacters_EscapesOnlyColonBackslashAndQuote()
+    public void Escape_CombinedSpecialCharacters_EscapesOnlyOptionLevelMetacharacters()
     {
-        string result = FilterGraphPathEscaper.Escape(@"C:\media\[grp] it's a, show;1.ass");
+        string result = FilterGraphPathEscaper.Escape(@"C:\media\[grp] it's a, show;x=1.ass");
 
-        Assert.Equal("'C\\:/media/[grp] it\\'s a, show;1.ass'", result);
+        Assert.Equal("'C\\:/media/[grp] it'\\\\\\''s a, show;x\\=1.ass'", result);
     }
 }

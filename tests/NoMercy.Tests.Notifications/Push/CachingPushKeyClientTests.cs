@@ -154,4 +154,40 @@ public class CachingPushKeyClientTests
 
         Assert.Equal(2, fake.CallCount);
     }
+
+    /// <summary>
+    /// A refresh for a new token that is cancelled mid-fetch must not leave the
+    /// new token paired with the previous token's keys and expiry.
+    /// </summary>
+    [Fact]
+    public async Task GetKeysAsync_Fetches_Again_For_A_Token_Whose_Refresh_Was_Cancelled()
+    {
+        PushSubscriptionKey[] keysForA = [new(1, "A-p256dh", "A-auth")];
+        PushSubscriptionKey[] keysForB = [new(2, "B-p256dh", "B-auth")];
+        using CancellationTokenSource refreshB = new();
+        int attempt = 0;
+        FakePushKeyClient fake = new(() =>
+        {
+            attempt++;
+            if (attempt == 1)
+                return Task.FromResult(keysForA);
+            if (attempt == 2)
+            {
+                refreshB.Cancel();
+                return Task.FromCanceled<PushSubscriptionKey[]>(refreshB.Token);
+            }
+            return Task.FromResult(keysForB);
+        });
+        ManualTimeProvider clock = new(DateTimeOffset.UnixEpoch);
+        CachingPushKeyClient cache = new(fake, TimeSpan.FromMinutes(15), clock);
+
+        await cache.GetKeysAsync("token-a");
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() =>
+            cache.GetKeysAsync("token-b", refreshB.Token)
+        );
+        PushSubscriptionKey[] afterCancel = await cache.GetKeysAsync("token-b");
+
+        Assert.Equal(3, fake.CallCount);
+        Assert.Same(keysForB, afterCancel);
+    }
 }

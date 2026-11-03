@@ -15,6 +15,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
 using Newtonsoft.Json;
 using NoMercy.Database;
 using NoMercy.Networking.Certificate;
@@ -133,7 +134,7 @@ public sealed class SetupEndpointsDeviceGrantPollingTests : IDisposable
         catch (UnauthorizedAccessException) { }
     }
 
-    private SetupEndpoints BuildEndpoints()
+    private SetupEndpoints BuildEndpoints(TimeProvider? clock = null)
     {
         Mock<IHostApplicationLifetime> lifetime = new();
         lifetime.SetupGet(l => l.ApplicationStopping).Returns(_appStoppingCts.Token);
@@ -142,8 +143,51 @@ public sealed class SetupEndpointsDeviceGrantPollingTests : IDisposable
             _authManager,
             new NoOpRegistrationService(),
             new RealHttpClientFactory(),
-            lifetime.Object
+            lifetime.Object,
+            clock
         );
+    }
+
+    /// <summary>
+    /// Waits for a signal the fake clock cannot drive (the loopback round trip and the
+    /// poll task's own continuations). The deadline is only a safety net, not a timing
+    /// assumption.
+    /// </summary>
+    private static async Task WaitUntilAsync(Func<bool> condition, string what)
+    {
+        DateTime deadline = DateTime.UtcNow.AddSeconds(30);
+        while (!condition() && DateTime.UtcNow < deadline)
+            await Task.Delay(20);
+
+        Assert.True(condition(), $"timed out waiting for {what}");
+    }
+
+    /// <summary>A fake clock that also records every delay the poll asks it for.</summary>
+    private sealed class RecordingTimeProvider : FakeTimeProvider
+    {
+        private readonly List<TimeSpan> _requestedDelays = [];
+
+        public IReadOnlyList<TimeSpan> RequestedDelays
+        {
+            get
+            {
+                lock (_requestedDelays)
+                    return _requestedDelays.ToList();
+            }
+        }
+
+        public override ITimer CreateTimer(
+            TimerCallback callback,
+            object? state,
+            TimeSpan dueTime,
+            TimeSpan period
+        )
+        {
+            lock (_requestedDelays)
+                _requestedDelays.Add(dueTime);
+
+            return base.CreateTimer(callback, state, dueTime, period);
+        }
     }
 
     private sealed class RealHttpClientFactory : IHttpClientFactory
@@ -348,16 +392,34 @@ public sealed class SetupEndpointsDeviceGrantPollingTests : IDisposable
         );
         using ExternalServicesConfigScope scope = new(authBaseUrl: server.BaseUrl);
 
-        SetupEndpoints endpoints = BuildEndpoints();
+        // The poll waits on this clock, so the test advances it instead of sleeping
+        // through a real 1 s + 6 s back-off, which timed out under CI load (#621).
+        RecordingTimeProvider clock = new();
+        SetupEndpoints endpoints = BuildEndpoints(clock);
         DefaultHttpContext context = BuildPostContext("/setup/device-code");
         await endpoints.HandleRequestAsync(context);
 
-        // slow_down clamps the NEXT interval to +5s (1 -> 6) before retrying, so this
-        // scenario genuinely costs several real seconds.
-        DateTime deadline = DateTime.UtcNow.AddSeconds(15);
-        while (_setupState.CurrentPhase < SetupPhase.Authenticated && DateTime.UtcNow < deadline)
-            await Task.Delay(200);
+        // First tick waits the IdP's own interval.
+        await WaitUntilAsync(() => clock.RequestedDelays.Count >= 1, "the first poll delay");
+        Assert.Equal(TimeSpan.FromSeconds(1), clock.RequestedDelays[0]);
 
+        clock.Advance(TimeSpan.FromSeconds(1));
+
+        // slow_down: RFC 8628 §3.5 adds 5 s to the interval (1 -> 6) before the next tick,
+        // and the login is still pending until that tick fires.
+        await WaitUntilAsync(() => clock.RequestedDelays.Count >= 2, "the backed-off poll delay");
+        Assert.Equal(TimeSpan.FromSeconds(6), clock.RequestedDelays[1]);
+        Assert.True(
+            _setupState.CurrentPhase < SetupPhase.Authenticated,
+            $"expected the login to still be pending after slow_down, was {_setupState.CurrentPhase}"
+        );
+
+        clock.Advance(TimeSpan.FromSeconds(6));
+
+        await WaitUntilAsync(
+            () => _setupState.CurrentPhase >= SetupPhase.Authenticated,
+            "the backed-off tick to authenticate"
+        );
         Assert.True(
             _setupState.CurrentPhase >= SetupPhase.Authenticated,
             $"expected at least Authenticated, was {_setupState.CurrentPhase}"

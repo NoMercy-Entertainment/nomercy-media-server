@@ -15,6 +15,7 @@ using NoMercy.Encoder.Analysis;
 using NoMercy.Encoder.Codecs;
 using NoMercy.Encoder.Hardware;
 using NoMercy.Encoder.LiveTranscode;
+using NoMercy.Tests.Encoder.Hardware;
 using NoMercy.Tests.Encoder.Storage;
 
 namespace NoMercy.Tests.Encoder.LiveTranscode;
@@ -120,7 +121,7 @@ public class BufferAdaptiveServiceTests
     {
         LiveSessionLimits sessionLimits = limits ?? new();
         BufferManager bufferManager = new(sessionLimits);
-        SpeedIndex speedIndex = new(new());
+        StubSpeedIndexProvider speedIndexProvider = new();
         Mock<IResourceBudget> budgetMock = new();
 
         ILiveQualitySelector selector = qualitySelector ?? Mock.Of<ILiveQualitySelector>();
@@ -129,7 +130,7 @@ public class BufferAdaptiveServiceTests
             streamingService,
             selector,
             bufferManager,
-            speedIndex,
+            speedIndexProvider,
             budgetMock.Object,
             sessionLimits,
             NullLogger<BufferAdaptiveService>.Instance

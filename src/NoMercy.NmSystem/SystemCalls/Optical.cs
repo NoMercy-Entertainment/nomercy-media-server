@@ -12,6 +12,7 @@
 using System.Runtime.InteropServices;
 using NoMercy.NmSystem.Dto;
 using NoMercy.NmSystem.Information;
+using NoMercy.NmSystem.SystemCalls.OpticalDrives;
 using NoMercy.Storage;
 using NoMercy.Storage.Drivers.Local;
 
@@ -19,95 +20,29 @@ namespace NoMercy.NmSystem.SystemCalls;
 
 public static class Optical
 {
-    public static Dictionary<string, string?> GetOpticalDrives()
+    private static readonly ICommandRunner _commandRunner = new ShellCommandRunner();
+
+    // LOCAL-ONLY: discs are always mounted on this machine, never on a remote driver.
+    private static readonly IStorageDriver _localStorage = new LocalStorageDriver();
+
+    public static IReadOnlyList<OpticalDriveState> GetOpticalDrives()
     {
         if (Software.IsWindows)
-            return GetWindowsOpticalDrives();
+            return new WindowsOpticalDriveScanner(new DriveInfoCdRomDriveSource()).GetDrives();
         if (Software.IsLinux)
-            return GetLinuxOpticalDrives();
+            return new LinuxOpticalDriveScanner(_commandRunner).GetDrives();
         if (Software.IsMac)
-            return GetMacOpticalDrives();
+            return new MacOpticalDriveScanner(_commandRunner).GetDrives();
 
         throw new PlatformNotSupportedException("Unsupported OS.");
-    }
-
-    private static Dictionary<string, string?> GetWindowsOpticalDrives()
-    {
-        Dictionary<string, string?> drives = new();
-        foreach (DriveInfo drive in DriveInfo.GetDrives())
-            if (drive is { DriveType: DriveType.CDRom, IsReady: true })
-                drives[drive.Name] = drive.VolumeLabel.Length > 0 ? drive.VolumeLabel : null;
-            else if (drive.DriveType == DriveType.CDRom)
-                drives[drive.Name] = null;
-
-        return drives;
-    }
-
-    private static Dictionary<string, string?> GetLinuxOpticalDrives()
-    {
-        Dictionary<string, string?> drives = new();
-        List<string> output = RunShellCommand("lsblk -o NAME,MOUNTPOINT,LABEL -n | grep sr");
-
-        foreach (string line in output)
-        {
-            string[] parts = line.Split([' '], StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length < 2)
-                continue;
-
-            string path = $"/dev/{parts[0]}";
-            drives[path] = parts.Length > 2 ? parts[2] : null;
-        }
-
-        return drives;
-    }
-
-    private static Dictionary<string, string?> GetMacOpticalDrives()
-    {
-        Dictionary<string, string?> drives = new();
-        List<string> output = RunShellCommand("diskutil list | grep -i 'CD/DVD'");
-
-        foreach (string line in output)
-        {
-            string[] parts = line.Split([' '], StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length <= 0)
-                continue;
-
-            string path = parts[^1]; // Last item is typically the disk identifier (e.g., /dev/disk2)
-            drives[path] = RunShellCommand($"diskutil info {path} | grep 'Volume Name'")
-                .FirstOrDefault()
-                ?.Split(": ")[1];
-        }
-
-        return drives;
-    }
-
-    private static List<string> RunShellCommand(string command)
-    {
-        List<string> outputLines = [];
-
-        try
-        {
-            string result = Shell.ExecCommand(command);
-            outputLines.AddRange(
-                result.Split([Environment.NewLine], StringSplitOptions.RemoveEmptyEntries)
-            );
-        }
-        catch (Exception ex)
-        {
-            Logger.Error($"[ERROR] Failed to run command '{command}': {ex.Message}");
-        }
-
-        return outputLines;
     }
 
     public static bool OpenDrive(string drivePath)
     {
         if (Software.IsWindows)
             return OpenWindowsOpticalDrives(drivePath);
-        if (Software.IsLinux)
-            return OpenLinuxOpticalDrives(drivePath);
-        if (Software.IsMac)
-            return OpenMacOpticalDrives(drivePath);
+        if (Software.IsLinux || Software.IsMac)
+            return UnixTray().Open(drivePath);
 
         throw new PlatformNotSupportedException("Unsupported OS.");
     }
@@ -116,13 +51,13 @@ public static class Optical
     {
         if (Software.IsWindows)
             return CloseWindowsOpticalDrives(drivePath);
-        if (Software.IsLinux)
-            return CloseLinuxOpticalDrives(drivePath);
-        if (Software.IsMac)
-            return CloseMacOpticalDrives(drivePath);
+        if (Software.IsLinux || Software.IsMac)
+            return UnixTray().Close(drivePath);
 
         throw new PlatformNotSupportedException("Unsupported OS.");
     }
+
+    private static UnixTrayCommands UnixTray() => new(_commandRunner, Software.IsMac);
 
     #region Windows Optical Drive Control
 
@@ -202,107 +137,6 @@ public static class Optical
 
     #endregion
 
-    #region Linux Optical Drive Control
-
-    private static bool OpenLinuxOpticalDrives(string drivePath)
-    {
-        try
-        {
-            Shell.ExecSync("eject", [drivePath]);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(
-                $"[ERROR] Failed to open Linux optical drive '{drivePath}': {ex.Message}"
-            );
-            return false;
-        }
-    }
-
-    private static bool CloseLinuxOpticalDrives(string drivePath)
-    {
-        try
-        {
-            Shell.ExecSync("eject", ["-t", drivePath]);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(
-                $"[ERROR] Failed to close Linux optical drive '{drivePath}': {ex.Message}"
-            );
-            return false;
-        }
-    }
-
-    #endregion
-
-    #region macOS Optical Drive Control
-
-    private static bool OpenMacOpticalDrives(string drivePath)
-    {
-        try
-        {
-            Shell.ExecSync("drutil", ["eject", drivePath]);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(
-                $"[ERROR] Failed to open macOS optical drive '{drivePath}': {ex.Message}"
-            );
-            return false;
-        }
-    }
-
-    private static bool CloseMacOpticalDrives(string drivePath)
-    {
-        try
-        {
-            Shell.ExecSync("drutil", ["tray", "close", drivePath]);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(
-                $"[ERROR] Failed to close macOS optical drive '{drivePath}': {ex.Message}"
-            );
-            return false;
-        }
-    }
-
-    #endregion
-
-    public static OpticalDiscType GetDiscType(string drivePath)
-    {
-        // LOCAL-ONLY: Optical is a static class in NmSystem; no reference to NoMercy.Providers.
-        IStorageDriver driver = new LocalStorageDriver();
-
-        if (!driver.DirectoryExists(drivePath))
-            return OpticalDiscType.None;
-
-        // Check for Blu-ray
-        if (driver.DirectoryExists(Path.Combine(drivePath, "BDMV")))
-            return OpticalDiscType.BluRay;
-
-        // Check for DVD
-        if (driver.DirectoryExists(Path.Combine(drivePath, "VIDEO_TS")))
-            return OpticalDiscType.Dvd;
-
-        // Check for CD (Audio CD or Data CD)
-        try
-        {
-            DriveInfo drive = new(drivePath);
-            if (drive is { DriveType: DriveType.CDRom, IsReady: true })
-                // If we get here and it's not BD or DVD, it's some form of CD
-                return OpticalDiscType.Cd;
-        }
-        catch
-        {
-            return OpticalDiscType.None;
-        }
-
-        return OpticalDiscType.None;
-    }
+    public static OpticalDiscType GetDiscType(OpticalDriveState drive) =>
+        new OpticalDiscTypeResolver(_localStorage).Resolve(drive);
 }

@@ -395,10 +395,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IHardwareBenchmark, HardwareBenchmark>();
         services.AddSingleton<IBenchmarkJobTracker, BenchmarkJobTracker>();
 
-        // Lazy-load cached SpeedIndex from disk (empty when no benchmark has run yet).
-        services.AddSingleton<SpeedIndex>(sp =>
-            sp.GetRequiredService<IHardwareBenchmark>().GetCachedIndex()
-        );
+        // Consumers read the benchmark's current index at use time. A
+        // SpeedIndex singleton would freeze the boot-time snapshot (empty on a
+        // fresh server) until restart, missing every later benchmark run.
+        services.AddSingleton<ISpeedIndexProvider, BenchmarkSpeedIndexProvider>();
         services.AddTransient<ILiveFfmpegRunner, LiveFfmpegRunner>();
         // Stateless — reads the scratch directory fresh on every call, so one
         // shared instance across every live session is safe.
@@ -424,6 +424,7 @@ public static class ServiceCollectionExtensions
         // land as a follow-up behind a feature flag. Plugins can register a
         // replacement IWorkerDispatcher to change behavior project-wide.
         services.AddTransient<LocalWorkerDispatcher>();
+        services.AddTransient<ISourceDurationProbe, MediaAnalyzerSourceDurationProbe>();
         services.AddTransient<IWorkerAssigner, WorkerAssigner>();
 
         // Registry is a singleton so registrations accumulate across the
@@ -498,6 +499,12 @@ public static class ServiceCollectionExtensions
         // Self-registration background service — no-ops on standalone
         // installs (when CoordinatorUrl is not set). Safe to always
         // register; the service exits cleanly in that case.
+        // Its client signs every request: the coordinator's HMAC middleware
+        // rejects unsigned calls to /api/v1/distribution/ with 401.
+        services.AddTransient<HmacSigningHandler>();
+        services
+            .AddHttpClient(WorkerSelfRegistrationService.HttpClientName)
+            .AddHttpMessageHandler<HmacSigningHandler>();
         services.AddHostedService<WorkerSelfRegistrationService>();
         // The remote dispatcher is the public face — it transparently falls
         // back to the local dispatcher when no remote workers are registered,

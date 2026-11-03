@@ -49,7 +49,7 @@ public class EncodingPresetsController(
             pageIndex = 0;
 
         List<EncodingPreset> presets = await presetRepository.ListAsync(pageSize, pageIndex, tag);
-        int total = await presetRepository.GetTotalCountAsync();
+        int total = await presetRepository.GetTotalCountAsync(tag);
 
         return Ok(
             new

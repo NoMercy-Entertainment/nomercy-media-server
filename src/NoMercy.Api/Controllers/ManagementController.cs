@@ -90,6 +90,9 @@ public class ManagementController(
                 SetupDetail = setupState.PhaseDetail,
                 InternalAddress = networkDiscovery.InternalAddress,
                 ExternalAddress = networkDiscovery.ExternalAddress,
+                // Same value the setup page hands off to: the tray's "Open Dashboard"
+                // must land in the app, not on this server's API origin.
+                AppUrl = ExternalServicesConfig.Current.AppBaseUrl,
                 // Connectivity was decided every boot and reported to nobody, so a server
                 // sitting local-only looked identical to a reachable one from every surface
                 // a user can actually see.

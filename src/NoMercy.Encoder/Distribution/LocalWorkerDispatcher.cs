@@ -30,13 +30,21 @@ namespace NoMercy.Encoder.Distribution;
 public class LocalWorkerDispatcher(
     IFfmpegExecutor executor,
     ITaskProgressSink progressSink,
+    ISourceDurationProbe sourceDurationProbe,
     ILogger<LocalWorkerDispatcher> logger
 ) : IWorkerDispatcher
 {
-    // Overload for callers that don't want to plumb a progress sink —
-    // keeps the test-bootstrap shape unchanged.
+    // Overloads for callers that don't want to plumb a progress sink or a
+    // duration probe — keep the test-bootstrap shapes unchanged.
     public LocalWorkerDispatcher(IFfmpegExecutor executor, ILogger<LocalWorkerDispatcher> logger)
-        : this(executor, new NullTaskProgressSink(), logger) { }
+        : this(executor, new NullTaskProgressSink(), new NullSourceDurationProbe(), logger) { }
+
+    public LocalWorkerDispatcher(
+        IFfmpegExecutor executor,
+        ITaskProgressSink progressSink,
+        ILogger<LocalWorkerDispatcher> logger
+    )
+        : this(executor, progressSink, new NullSourceDurationProbe(), logger) { }
 
     public int AvailableWorkerCount => 1;
 
@@ -79,9 +87,10 @@ public class LocalWorkerDispatcher(
                     }
                 };
 
+                TimeSpan inputDuration = await ResolveInputDurationAsync(task, ct);
                 ExecutionResult exec = await executor.ExecuteAsync(
                     task.Command,
-                    task.TimeRangeDuration ?? TimeSpan.Zero,
+                    inputDuration,
                     onProgress,
                     task.TaskId,
                     ct
@@ -122,6 +131,34 @@ public class LocalWorkerDispatcher(
         }
 
         return results;
+    }
+
+    /// <summary>
+    /// The denominator ffmpeg progress is measured against. A time-chunked
+    /// task encodes only its slice; a full-source task runs against the
+    /// duration the coordinator declared, or the probed input when it
+    /// declared none. Zero means "no percentage" — never fail the encode
+    /// over a source we could not measure.
+    /// </summary>
+    private async Task<TimeSpan> ResolveInputDurationAsync(EncodeTask task, CancellationToken ct)
+    {
+        if (task.TimeRangeDuration is { } range)
+            return range;
+
+        if (task.SourceDuration is { } declared)
+            return declared;
+
+        if (string.IsNullOrWhiteSpace(task.InputPath))
+            return TimeSpan.Zero;
+
+        TimeSpan? probed = await sourceDurationProbe.ProbeAsync(task.InputPath, ct);
+        if (probed is null)
+            logger.LogDebug(
+                "Task {TaskId} has no measurable source duration; progress will stay at 0 %",
+                task.TaskId
+            );
+
+        return probed ?? TimeSpan.Zero;
     }
 
     private static string? ErrorMessage(EncodingError? error) =>

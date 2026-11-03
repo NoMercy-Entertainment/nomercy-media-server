@@ -19,6 +19,7 @@ using NoMercy.DiscFormat.Dvd.Identity;
 using NoMercy.DiscFormat.LibBluray;
 using NoMercy.DiscFormat.LibBluray.Identity;
 using NoMercy.Encoder.Audio;
+using NoMercy.NmSystem.SystemCalls.OpticalDrives;
 using NoMercy.OpticalMedia.Audio;
 using NoMercy.OpticalMedia.Capabilities;
 using NoMercy.OpticalMedia.Drives;
@@ -56,6 +57,8 @@ public static class ServiceCollectionExtensions
         });
 
         services.TryAddSingleton<IDriveMonitor, DriveMonitor>();
+        services.TryAddSingleton<ITrayCommands, PlatformTrayCommands>();
+        services.TryAddSingleton<IDriveTray, DriveTray>();
         services.TryAddSingleton<DriveLockRegistry>();
         services.TryAddSingleton<Onboarding.DiscOnboardingSessionStore>();
         services.TryAddSingleton<Onboarding.DiscOnboardingOrchestrator>();

@@ -92,6 +92,10 @@ public class PluginRestartAfterBootTests : IDisposable
             """
         );
 
+        // Recorded as an install records it, or the boot scan holds the
+        // folder for the owner instead of loading it.
+        InstalledPluginFolder.Record(_pluginsDir, pluginDir);
+
         return pluginDir;
     }
 

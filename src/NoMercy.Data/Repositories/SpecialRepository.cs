@@ -51,7 +51,8 @@ public class SpecialRepository(MediaContext context, IDbContextFactory<MediaCont
                             .Take(1)
                     )
                         .ThenInclude(c => c.Certification)
-            .OrderBy(special => special.TitleSort)
+            .OrderBy(special => special.Order)
+            .ThenBy(special => special.TitleSort)
             .ThenBy(special => special.Id)
             .Skip(page * take)
             .Take(take)
@@ -71,7 +72,8 @@ public class SpecialRepository(MediaContext context, IDbContextFactory<MediaCont
         return context
             .Specials.AsNoTracking()
             .AsSingleQuery()
-            .OrderBy(special => special.TitleSort)
+            .OrderBy(special => special.Order)
+            .ThenBy(special => special.TitleSort)
             .ThenBy(special => special.Id)
             .Skip(page * take)
             .Take(take)
@@ -123,7 +125,8 @@ public class SpecialRepository(MediaContext context, IDbContextFactory<MediaCont
         return await db
             .Specials.AsNoTracking()
             .AsSingleQuery()
-            .OrderBy(special => special.TitleSort)
+            .OrderBy(special => special.Order)
+            .ThenBy(special => special.TitleSort)
             .ThenBy(special => special.Id)
             .Skip(page * take)
             .Take(take)
@@ -847,7 +850,8 @@ public class SpecialRepository(MediaContext context, IDbContextFactory<MediaCont
                             .Take(1)
                     )
                         .ThenInclude(c => c.Certification)
-            .OrderBy(special => special.TitleSort)
+            .OrderBy(special => special.Order)
+            .ThenBy(special => special.TitleSort)
             .ThenBy(special => special.Id)
             .Skip(page * take)
             .Take(take)
@@ -1112,7 +1116,12 @@ public class SpecialRepository(MediaContext context, IDbContextFactory<MediaCont
     public async Task<List<Special>> GetAllSpecialsAdminAsync(CancellationToken ct = default)
     {
         await using MediaContext ctx = await contextFactory.CreateDbContextAsync(ct);
-        return await ctx.Specials.AsNoTracking().ToListAsync(ct);
+        return await ctx
+            .Specials.AsNoTracking()
+            .OrderBy(special => special.Order)
+            .ThenBy(special => special.TitleSort)
+            .ThenBy(special => special.Id)
+            .ToListAsync(ct);
     }
 
     public async Task<Special> CreateSpecialAsync(Guid userId, CancellationToken ct = default)
@@ -1211,14 +1220,58 @@ public class SpecialRepository(MediaContext context, IDbContextFactory<MediaCont
     public async Task<List<Special>> GetAllSpecialsSortableAsync(CancellationToken ct = default)
     {
         await using MediaContext ctx = await contextFactory.CreateDbContextAsync(ct);
-        return await ctx.Specials.AsTracking().ToListAsync(ct);
+        return await ctx.Specials.AsNoTracking().ToListAsync(ct);
+    }
+
+    public async Task ReorderSpecialsAsync(
+        List<SpecialOrder> orders,
+        CancellationToken ct = default
+    )
+    {
+        await using MediaContext ctx = await contextFactory.CreateDbContextAsync(ct);
+        List<Special> specials = await ctx.Specials.ToListAsync(ct);
+
+        foreach (SpecialOrder order in orders)
+        {
+            Special? special = specials.FirstOrDefault(s => s.Id == order.Id);
+            if (special is null)
+                continue;
+
+            special.Order = order.Order;
+        }
+
+        await ctx.SaveChangesAsync(ct);
     }
 
     public async Task<List<Special>> GetAllSpecialsForRescanAsync(CancellationToken ct = default)
     {
         await using MediaContext ctx = await contextFactory.CreateDbContextAsync(ct);
-        return await ctx.Specials.ToListAsync(ct);
+        return await SpecialsWithRescanTargets(ctx)
+            .OrderBy(special => special.Order)
+            .ThenBy(special => special.TitleSort)
+            .ThenBy(special => special.Id)
+            .ToListAsync(ct);
     }
+
+    public async Task<Special?> GetSpecialForRescanAsync(Ulid id, CancellationToken ct = default)
+    {
+        await using MediaContext ctx = await contextFactory.CreateDbContextAsync(ct);
+        return await SpecialsWithRescanTargets(ctx)
+            .FirstOrDefaultAsync(special => special.Id == id, ct);
+    }
+
+    /// <summary>
+    /// A file rescan is addressed per movie and per show, so a special's items are loaded
+    /// with the movie, or the episode's show, that carries the library to rescan in.
+    /// </summary>
+    private static IQueryable<Special> SpecialsWithRescanTargets(MediaContext ctx) =>
+        ctx
+            .Specials.AsNoTracking()
+            .Include(special => special.Items)
+                .ThenInclude(item => item.Movie)
+            .Include(special => special.Items)
+                .ThenInclude(item => item.Episode)
+                    .ThenInclude(episode => episode!.Tv);
 
     public async Task<List<SpecialItem>> GetSpecialItemsAdminAsync(
         Ulid id,

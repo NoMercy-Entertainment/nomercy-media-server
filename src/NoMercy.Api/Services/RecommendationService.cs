@@ -17,6 +17,7 @@ using NoMercy.Api.DTOs.Media;
 using NoMercy.Data.Repositories;
 using NoMercy.Data.Services.Recommendations;
 using NoMercy.Database;
+using NoMercy.Database.Models;
 using NoMercy.Database.Models.Movies;
 using NoMercy.Database.Models.TvShows;
 using NoMercy.NmSystem.Domain;
@@ -140,7 +141,7 @@ public class RecommendationService
             .. crossTypeCandidates,
         ]);
 
-        Dictionary<int, List<int>> combinedGenreMap = await LoadSourceGenreMapAsync(
+        Dictionary<SourceKey, List<int>> combinedGenreMap = await LoadSourceGenreMapAsync(
             allCandidates,
             profile,
             ct
@@ -363,14 +364,14 @@ public class RecommendationService
     {
         // Phase 1b: Cross-type keyword candidates from what the user rated, finished or favorited
         (
-            Dictionary<int, List<int>> movieKeywordMap,
-            Dictionary<int, List<int>> tvKeywordMap,
-            Dictionary<int, List<int>> animeKeywordMap
+            Dictionary<SourceKey, List<int>> movieKeywordMap,
+            Dictionary<SourceKey, List<int>> tvKeywordMap,
+            Dictionary<SourceKey, List<int>> animeKeywordMap
         ) = RecommendationScoring.HighSignalKeywordMaps(profile);
 
         // Cross-type: use keywords from one type to find candidates in another
         // Anime uses its own keywords to find anime candidates via the TV keyword path (anime is stored as TV)
-        Dictionary<int, List<int>> nonMovieKeywordMap = tvKeywordMap
+        Dictionary<SourceKey, List<int>> nonMovieKeywordMap = tvKeywordMap
             .Concat(animeKeywordMap)
             .ToDictionary(kv => kv.Key, kv => kv.Value);
 
@@ -417,26 +418,25 @@ public class RecommendationService
     }
 
     /// <summary>Genre ids per source title, looked up by the source's own media type.</summary>
-    private async Task<Dictionary<int, List<int>>> LoadSourceGenreMapAsync(
+    private async Task<Dictionary<SourceKey, List<int>>> LoadSourceGenreMapAsync(
         List<RecommendationCandidateDto> allCandidates,
         UserAffinityProfile profile,
         CancellationToken ct
     )
     {
-        // Phase 3: Get genre maps for source items — use actual source type from profile, not candidate type
-        HashSet<int> allSourceIds = allCandidates.SelectMany(c => c.SourceIds).ToHashSet();
-        List<int> allSourceMovieIds = allSourceIds
-            .Where(id =>
-                profile.SourceItems.TryGetValue(id, out UserAffinitySourceDto? s)
-                && s.MediaType == MediaTypes.MovieMediaType
-            )
+        // Phase 3: Get genre maps for source items the profile knows, split by their media type
+        HashSet<SourceKey> allSourceKeys = allCandidates
+            .SelectMany(c => c.SourceIds)
+            .Where(profile.SourceItems.ContainsKey)
+            .ToHashSet();
+        List<int> allSourceMovieIds = allSourceKeys
+            .Where(key => key.MediaType == MediaTypes.MovieMediaType)
+            .Select(key => key.ItemId)
             .ToList();
-        List<int> allSourceTvIds = allSourceIds
-            .Where(id =>
-                profile.SourceItems.TryGetValue(id, out UserAffinitySourceDto? s)
-                && s.MediaType != MediaTypes.MovieMediaType
-            )
+        List<SourceKey> allSourceTvKeys = allSourceKeys
+            .Where(key => key.MediaType != MediaTypes.MovieMediaType)
             .ToList();
+        List<int> allSourceTvIds = allSourceTvKeys.Select(key => key.ItemId).ToList();
 
         Task<Dictionary<int, List<int>>> movieGenreMapTask = Task.Run(
             () => _recommendationRepository.GetGenresForMovieIdsAsync(allSourceMovieIds, ct),
@@ -449,9 +449,15 @@ public class RecommendationService
 
         await Task.WhenAll([movieGenreMapTask, tvGenreMapTask]);
 
-        Dictionary<int, List<int>> combinedGenreMap = new(movieGenreMapTask.Result);
-        foreach (KeyValuePair<int, List<int>> kv in tvGenreMapTask.Result)
-            combinedGenreMap[kv.Key] = kv.Value;
+        // Shows are keyed by the type the profile holds them under: "tv" or "anime"
+        Dictionary<SourceKey, List<int>> combinedGenreMap = new();
+        foreach (KeyValuePair<int, List<int>> kv in movieGenreMapTask.Result)
+            combinedGenreMap[new SourceKey(MediaTypes.MovieMediaType, kv.Key)] = kv.Value;
+        foreach (SourceKey key in allSourceTvKeys)
+        {
+            if (tvGenreMapTask.Result.TryGetValue(key.ItemId, out List<int>? genreIds))
+                combinedGenreMap[key] = genreIds;
+        }
 
         return combinedGenreMap;
     }
@@ -494,9 +500,7 @@ public class RecommendationService
             Year = t.FirstAirDate?.Year,
             ColorPalette = t.ColorPalette,
             MediaType = "tv",
-            HaveItems = t.Episodes.Count(e =>
-                e.SeasonNumber > 0 && e.VideoFiles.Any(vf => vf.Folder != null)
-            ),
+            HaveItems = t.Episodes.Count(e => e.IsAvailable()),
             NumberOfItems = t.Episodes.Count(e => e.SeasonNumber > 0),
             Duration = t.Duration ?? 0,
             Tags = t.KeywordTvs.Select(kt => kt.Keyword.Name),

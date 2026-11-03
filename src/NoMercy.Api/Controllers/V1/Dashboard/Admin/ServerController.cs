@@ -318,6 +318,30 @@ public partial class ServerController(
                 );
             }
 
+            // A movie the server does not hold has no row to encode against: import it
+            // first and let that import queue the selected file.
+            if (library.Type == MediaTypes.MovieMediaType)
+            {
+                await using MediaContext context = new();
+                List<int> ids =
+                [
+                    .. toEncode
+                        .Select(file => int.TryParse(file.Id, out int id) ? id : 0)
+                        .Where(id => id != 0),
+                ];
+                HashSet<int> held =
+                [
+                    .. await context
+                        .Movies.IgnoreQueryFilters()
+                        .AsNoTracking()
+                        .Where(movie => ids.Contains(movie.Id))
+                        .Select(movie => movie.Id)
+                        .ToListAsync(),
+                ];
+
+                toEncode = UnheldMovieImports.Dispatch(jobDispatcher, library, toEncode, held);
+            }
+
             foreach (EncodeAfterImportFile file in toEncode)
             {
                 VideoEncodeJob job = new()
@@ -618,19 +642,37 @@ public partial class ServerController(
     }
 
     [HttpGet]
-    [Route("/files/${depth:int}/${path:required}")]
+    [Route("files/{depth:int}/{*path}")]
     [Authorize(Policy = "Moderator")]
-    public async Task<IActionResult> Files(string path, int depth)
+    public async Task<IActionResult> Files(string? path, int depth)
     {
-        MediaScan mediaScan = new(storageDriver);
+        // Like the folder picker this browses outside library roots, so it scans
+        // through the raw IStorageDriver; the one structural rule is that a path
+        // may not climb out of the folder it names.
+        if (string.IsNullOrWhiteSpace(path))
+            return BadRequestResponse("path is required");
 
-        ConcurrentBag<MediaFolderExtend> folders = await mediaScan
-            .EnableFileListing()
-            .Process(path, depth);
+        if (path.Split('/', '\\').Contains(".."))
+            return BadRequestResponse("path may not contain '..' segments");
 
-        await mediaScan.DisposeAsync();
+        try
+        {
+            await using MediaScan mediaScan = new(storageDriver);
 
-        return Ok(folders);
+            ConcurrentBag<MediaFolderExtend> folders = await mediaScan
+                .EnableFileListing()
+                .Process(path, depth);
+
+            return Ok(folders);
+        }
+        catch (UnauthorizedAccessException e)
+        {
+            return UnauthorizedResponse(e.Message);
+        }
+        catch (IOException e)
+        {
+            return BadRequestResponse(e.Message);
+        }
     }
 
     [HttpPatch]
@@ -684,7 +726,9 @@ public partial class ServerController(
 
         string color = request.Color ?? await GetDominantColorAsync(path);
 
-        wallpaperService.SetSilent(path, request.Style, color);
+        bool applied = wallpaperService.SetSilent(path, request.Style, color);
+        if (!applied)
+            return InternalServerErrorResponse("The desktop did not accept the wallpaper");
 
         return Ok(
             new StatusResponseDto<string> { Status = "ok", Message = "Wallpaper set successfully" }

@@ -15,9 +15,9 @@ public class NullWallpaperService : IWallpaperService
 {
     public bool IsSupported => false;
 
-    public void Set(string imagePath, WallpaperStyle style, string hexColor) { }
+    public bool Set(string imagePath, WallpaperStyle style, string hexColor) => false;
 
-    public void SetSilent(string imagePath, WallpaperStyle style, string hexColor) { }
+    public bool SetSilent(string imagePath, WallpaperStyle style, string hexColor) => false;
 
     public void Restore() { }
 }

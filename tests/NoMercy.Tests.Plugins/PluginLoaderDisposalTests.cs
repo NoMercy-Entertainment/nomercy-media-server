@@ -127,6 +127,10 @@ public class PluginLoaderDisposalTests : IDisposable
             }
             """;
         File.WriteAllText(Path.Combine(_echoPluginDir, "plugin.json"), manifestJson);
+
+        // Recorded as an install records it, or the boot scan holds the
+        // folder for the owner and never constructs the instance at all.
+        InstalledPluginFolder.Record(_tempPluginsDir, _echoPluginDir);
     }
 
     [Fact]

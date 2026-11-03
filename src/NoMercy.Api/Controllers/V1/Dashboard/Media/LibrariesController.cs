@@ -555,10 +555,10 @@ public class LibrariesController(
             id
         );
 
-        List<(string HostFolder, Guid AlbumId)> affectedFolders =
+        List<(string HostFolder, Guid AlbumId, Ulid FolderId)> affectedFolders =
         [
             .. rows.GroupBy(row => row.HostFolder)
-                .Select(group => (group.Key, group.First().AlbumId)),
+                .Select(group => (group.Key, group.First().AlbumId, group.First().FolderId)),
         ];
 
         if (affectedFolders.Count == 0)
@@ -571,12 +571,12 @@ public class LibrariesController(
                 }
             );
 
-        Folder folderLibrary = library.FolderLibraries.First().Folder;
-
-        foreach ((string hostFolder, Guid albumId) in affectedFolders)
+        // Each folder is repaired under the library folder its tracks are stored in,
+        // not the library's first folder (#279).
+        foreach ((string hostFolder, Guid albumId, Ulid folderId) in affectedFolders)
             jobDispatcher.DispatchJob<MusicTrackRepairJob>(
                 library.Id,
-                folderLibrary.Id,
+                folderId,
                 albumId,
                 hostFolder
             );

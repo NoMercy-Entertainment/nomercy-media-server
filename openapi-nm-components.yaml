@@ -758,18 +758,18 @@ components:
         album_name:
           type: string
           description: Name of the album
+        album_track:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrackArtist'
+          default: []
+          description: Albums this track appears on (each with type "album")
         artist_track:
           type: array
           items:
-            $ref: '#/components/schemas/Album'
+            $ref: '#/components/schemas/TrackArtist'
           default: []
-          description: Associated albums
-        artist_artist:
-          type: array
-          items:
-            $ref: '#/components/schemas/Artist'
-          default: []
-          description: Associated artists
+          description: Artists who perform this track (each with type "artist")
 
     NMTopResultCardWrapper:
       type: object
@@ -1197,6 +1197,26 @@ components:
         type:
           type: string
           description: Always "album"
+
+    TrackArtist:
+      type: object
+      description: Link from a track row to one of its artists or albums
+      required:
+        - id
+        - name
+        - link
+        - type
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        link:
+          type: string
+          description: Relative navigation link (/music/artists/{id} or /music/albums/{id})
+        type:
+          type: string
+          description: '"artist" or "album"'
 
     PlaylistItem:
       type: object

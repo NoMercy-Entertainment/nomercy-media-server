@@ -30,6 +30,7 @@ public class PermissionsResponseItemDto : User
         Owner = user.Owner;
         Name = user.Name;
         Allowed = user.Allowed;
+        OpticalAccess = user.OpticalAccess;
         AudioTranscoding = user.AudioTranscoding;
         VideoTranscoding = user.VideoTranscoding;
         NoTranscoding = user.NoTranscoding;

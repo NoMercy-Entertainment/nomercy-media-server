@@ -16,6 +16,7 @@ using NoMercy.Encoder.Codecs;
 using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.Hardware;
 using NoMercy.Encoder.LiveTranscode;
+using NoMercy.Tests.Encoder.Hardware;
 using NoMercy.Tests.Encoder.Storage;
 
 namespace NoMercy.Tests.Encoder.LiveTranscode;
@@ -100,7 +101,7 @@ public class LiveEncoderTests
         ILiveStreamingService? streamingService = null
     )
     {
-        SpeedIndex speedIndex = MakeSpeedIndex();
+        StubSpeedIndexProvider speedIndexProvider = new(MakeSpeedIndex());
         IResourceBudget budget = MakeBudget();
         LiveQuality defaultQuality = MakeQuality();
 
@@ -131,7 +132,7 @@ public class LiveEncoderTests
             new NoOpLiveFfmpegRunner(),
             segmentInventory,
             encoderOptions,
-            speedIndex,
+            speedIndexProvider,
             budget,
             NullLogger<LiveEncoder>.Instance
         );

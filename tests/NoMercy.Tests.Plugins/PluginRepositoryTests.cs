@@ -414,6 +414,129 @@ public class PluginRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task SetRepositoryTrustAsync_TrustingOneRepository_KeepsTheOthersAndTrustsItAtOnce()
+    {
+        const string urlA = "https://example.com/a.json";
+        const string urlB = "https://example.com/b.json";
+        PluginRepositoryManifest manifestA = CreateTestManifest(pluginCount: 1);
+        PluginRepositoryManifest manifestB = CreateTestManifest(pluginCount: 1);
+        ChangingHttpHandler handler = new();
+        handler.Manifests[urlA] = manifestA;
+        handler.Manifests[urlB] = manifestB;
+        PluginRepository repo = MakeRepo(new HttpClient(handler));
+        await repo.AddRepositoryAsync("a", urlA);
+        await repo.AddRepositoryAsync("b", urlB);
+        await repo.SetRepositoryTrustAsync("a", trusted: true);
+        await repo.RefreshAsync();
+
+        await repo.SetRepositoryTrustAsync("b", trusted: true);
+
+        repo.IsFromTrustedRepository(manifestA.Plugins[0].Id)
+            .Should()
+            .BeTrue("trusting b says nothing about a");
+        repo.IsFromTrustedRepository(manifestB.Plugins[0].Id)
+            .Should()
+            .BeTrue("trust takes effect when it is granted, not at the next refresh");
+    }
+
+    [Fact]
+    public async Task SetRepositoryTrustAsync_WithdrawingTrust_StopsTrustingOnlyThatRepositoryAtOnce()
+    {
+        const string urlA = "https://example.com/a.json";
+        const string urlB = "https://example.com/b.json";
+        PluginRepositoryManifest manifestA = CreateTestManifest(pluginCount: 1);
+        PluginRepositoryManifest manifestB = CreateTestManifest(pluginCount: 1);
+        ChangingHttpHandler handler = new();
+        handler.Manifests[urlA] = manifestA;
+        handler.Manifests[urlB] = manifestB;
+        PluginRepository repo = MakeRepo(new HttpClient(handler));
+        await repo.AddRepositoryAsync("a", urlA);
+        await repo.AddRepositoryAsync("b", urlB);
+        await repo.SetRepositoryTrustAsync("a", trusted: true);
+        await repo.SetRepositoryTrustAsync("b", trusted: true);
+        await repo.RefreshAsync();
+
+        await repo.SetRepositoryTrustAsync("b", trusted: false);
+
+        repo.IsFromTrustedRepository(manifestA.Plugins[0].Id).Should().BeTrue();
+        repo.IsFromTrustedRepository(manifestB.Plugins[0].Id).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task RemoveRepositoryAsync_ATrustedRepository_StopsTrustingWhatItListedAtOnce()
+    {
+        PluginRepositoryManifest manifest = CreateTestManifest(pluginCount: 1);
+        PluginRepository repo = MakeRepo(CreateMockHttpClient(manifest));
+        await repo.AddRepositoryAsync("test", "https://example.com/repo.json");
+        await repo.SetRepositoryTrustAsync("test", trusted: true);
+        await repo.RefreshAsync();
+
+        await repo.RemoveRepositoryAsync("test");
+
+        repo.IsFromTrustedRepository(manifest.Plugins[0].Id).Should().BeFalse();
+        repo.FindPlugin(manifest.Plugins[0].Id).Should().BeNull();
+    }
+
+    /// <summary>
+    /// The startup sequence. A server that read a trusted index before its
+    /// restart knows what that index listed as soon as it has loaded, without
+    /// waiting for a refresh that may never reach the internet.
+    /// </summary>
+    [Fact]
+    public async Task LoadAsync_WithACachedCatalogue_ReportsATrustedIndexsPluginsTrusted()
+    {
+        PluginRepositoryManifest manifest = CreateTestManifest(pluginCount: 1);
+        PluginRepository before = MakeRepo(CreateMockHttpClient(manifest));
+        await before.AddRepositoryAsync("test", "https://example.com/repo.json");
+        await before.SetRepositoryTrustAsync("test", trusted: true);
+        await before.RefreshAsync();
+        Ulid listed = manifest.Plugins[0].Id;
+
+        PluginRepository restarted = MakeRepo(CreateFailingHttpClient());
+        await restarted.LoadAsync();
+
+        restarted
+            .IsFromTrustedRepository(listed)
+            .Should()
+            .BeTrue("the trusted index was read before the restart and is cached on disk");
+        restarted.FindPlugin(listed).Should().NotBeNull();
+    }
+
+    [Fact]
+    public async Task LoadAsync_WithACachedCatalogue_KeepsAnUntrustedIndexUntrusted()
+    {
+        PluginRepositoryManifest manifest = CreateTestManifest(pluginCount: 1);
+        PluginRepository before = MakeRepo(CreateMockHttpClient(manifest));
+        await before.AddRepositoryAsync("test", "https://example.com/repo.json");
+        await before.RefreshAsync();
+        Ulid listed = manifest.Plugins[0].Id;
+
+        PluginRepository restarted = MakeRepo(CreateFailingHttpClient());
+        await restarted.LoadAsync();
+
+        restarted.FindPlugin(listed).Should().NotBeNull();
+        restarted.IsFromTrustedRepository(listed).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task LoadAsync_ARepositoryRemovedBeforeTheRestart_ContributesNothing()
+    {
+        PluginRepositoryManifest manifest = CreateTestManifest(pluginCount: 1);
+        PluginRepository before = MakeRepo(CreateMockHttpClient(manifest));
+        await before.AddRepositoryAsync("test", "https://example.com/repo.json");
+        await before.SetRepositoryTrustAsync("test", trusted: true);
+        await before.RefreshAsync();
+        await before.RemoveRepositoryAsync("test");
+        Ulid listed = manifest.Plugins[0].Id;
+
+        PluginRepository restarted = MakeRepo(CreateFailingHttpClient());
+        await restarted.LoadAsync();
+
+        restarted.FindPlugin(listed).Should().BeNull();
+        restarted.IsFromTrustedRepository(listed).Should().BeFalse();
+    }
+
+    [Fact]
     public async Task AddRepositoryAsync_DuplicateName_ThrowsInvalidOperation()
     {
         PluginRepositoryManifest manifest = CreateTestManifest();

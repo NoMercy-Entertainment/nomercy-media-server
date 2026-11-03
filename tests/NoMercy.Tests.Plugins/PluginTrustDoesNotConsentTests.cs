@@ -132,6 +132,10 @@ public class PluginTrustDoesNotConsentTests : IDisposable
             }
             """
         );
+
+        // Recorded as an install records it, or the boot scan holds the
+        // folder for the owner before trust or consent come into it.
+        InstalledPluginFolder.Record(_pluginsDir, _echoDir);
     }
 
     private static string EchoBinDir()

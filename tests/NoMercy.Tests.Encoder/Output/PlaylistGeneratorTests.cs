@@ -367,26 +367,27 @@ public class PlaylistGeneratorTests
     }
 
     [Theory]
-    [InlineData("arib-std-b67", "VIDEO-RANGE=HLG")]
-    [InlineData("smpte2084", "VIDEO-RANGE=PQ")]
-    [InlineData(null, "VIDEO-RANGE=PQ")]
-    public void MasterPlaylist_HdrVideoRange_FollowsTheColorTransfer(
-        string? colorTransfer,
-        string expected
-    )
+    [InlineData(VideoRange.Hlg, "VIDEO-RANGE=HLG")]
+    [InlineData(VideoRange.Pq, "VIDEO-RANGE=PQ")]
+    [InlineData(VideoRange.Sdr, "VIDEO-RANGE=SDR")]
+    public void MasterPlaylist_VideoRange_IsWrittenAsPlanned(VideoRange range, string expected)
     {
         OutputPlan plan = CreatePlan(encoderName: "libx265", tenBit: true);
-        plan = plan with
-        {
-            VideoOutputs =
-            [
-                plan.VideoOutputs[0] with { IsHdrOutput = true, ColorTransfer = colorTransfer },
-            ],
-        };
+        plan = plan with { VideoOutputs = [plan.VideoOutputs[0] with { VideoRange = range }] };
 
         string playlist = Generate(plan);
 
         playlist.Should().Contain(expected);
+    }
+
+    [Theory]
+    [InlineData("arib-std-b67", VideoRange.Hlg)]
+    [InlineData("ARIB-STD-B67", VideoRange.Hlg)]
+    [InlineData("smpte2084", VideoRange.Pq)]
+    [InlineData(null, VideoRange.Pq)]
+    public void ForHdrTransfer_MapsHlgAndDefaultsToPq(string? colorTransfer, VideoRange expected)
+    {
+        VideoRangeMapping.ForHdrTransfer(colorTransfer).Should().Be(expected);
     }
 
     private static OutputPlan CreatePlan(string encoderName = "libx264", bool tenBit = false)

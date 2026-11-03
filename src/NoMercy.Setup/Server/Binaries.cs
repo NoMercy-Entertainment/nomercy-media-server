@@ -16,6 +16,10 @@ using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text;
 using Newtonsoft.Json;
+using NoMercy.Authorization;
+using NoMercy.Database.Models.Users;
+using NoMercy.Events;
+using NoMercy.Events.Media;
 using NoMercy.NmSystem.Configuration;
 using NoMercy.NmSystem.Extensions;
 using NoMercy.NmSystem.FileSystem;
@@ -54,6 +58,18 @@ public class Binaries
     private readonly IStorage _storage;
     private readonly HttpClient _httpClient;
     private readonly RuntimeServerSettings _settings;
+    private readonly TimeProvider _timeProvider;
+
+    // Null outside tests: the production constructors are `new`ed from boot code and
+    // the management endpoint, so the owner alert resolves the process-wide bus and
+    // user cache at call time (the same fallback DegradedModeRecovery uses).
+    private readonly IEventBus? _eventBus;
+    private readonly IUserCache? _userCache;
+
+    // One alert per release endpoint per instance: App, Launcher, CLI and the server
+    // update all read the same media-server release, and the owner needs one push
+    // notification about it, not four.
+    private readonly HashSet<string> _refusedSignatureAlerts = new(StringComparer.Ordinal);
 
     internal TimeSpan DownloadIdleTimeout { get; set; } = TimeSpan.FromMinutes(1);
 
@@ -94,6 +110,7 @@ public class Binaries
         _driver = driver;
         _storage = storage;
         _settings = RuntimeServerSettings.Current;
+        _timeProvider = TimeProvider.System;
         _httpClient = new()
         {
             // Default HttpClient.Timeout is 100s which is fine for API calls
@@ -110,19 +127,28 @@ public class Binaries
 
     /// <summary>
     /// Testing constructor — allows injection of a custom <see cref="HttpClient"/> so that
-    /// unit tests can supply a fake <see cref="HttpMessageHandler"/> without hitting the network.
+    /// unit tests can supply a fake <see cref="HttpMessageHandler"/> without hitting the network,
+    /// plus the event bus and user cache the owner alert for a refused update goes through,
+    /// and a <see cref="TimeProvider"/> so the download idle timeout runs on a clock a test
+    /// advances instead of on wall time.
     /// </summary>
     internal Binaries(
         IStorageDriver driver,
         IStorage storage,
         HttpClient httpClient,
-        RuntimeServerSettings? settings = null
+        RuntimeServerSettings? settings = null,
+        IEventBus? eventBus = null,
+        IUserCache? userCache = null,
+        TimeProvider? timeProvider = null
     )
     {
         _driver = driver;
         _storage = storage;
         _httpClient = httpClient;
         _settings = settings ?? RuntimeServerSettings.Current;
+        _eventBus = eventBus;
+        _userCache = userCache;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     // -------------------------------------------------------------------------
@@ -144,8 +170,9 @@ public class Binaries
     /// <c>SignaturePresent</c> is tracked separately from <c>SignatureVerified</c> so a
     /// caller can tell "no <c>.sig</c> asset was published for this release" (the signing
     /// rollout has not reached this repo's CI yet — expected, low-noise) apart from "a
-    /// <c>.sig</c> asset exists but does not verify against the embedded key" (a real
-    /// integrity concern worth an error-level log).
+    /// <c>.sig</c> asset exists but does not verify against the embedded key" (a tamper
+    /// signal: <see cref="DownloadWithVerificationAsync"/> refuses the update and alerts
+    /// the owner).
     /// <para>
     /// Internal (not private) so <see cref="TesseractModelDownloader"/> can reuse the exact
     /// same manifest-fetch + signature-verification path — and its per-instance cache — for
@@ -243,10 +270,17 @@ public class Binaries
     /// compatibility with third-party releases).
     /// </para>
     /// <para>
-    /// If a manifest is present but its signature verification failed, a warning is emitted
-    /// and the SHA-256 from the manifest is still used for integrity checking.
+    /// For an owned release (<paramref name="enforceSignedManifest"/>) that publishes a
+    /// <c>manifest.json.sig</c> which does not verify against the embedded key, the update
+    /// is refused before anything is downloaded and every owner is alerted. An owned
+    /// release with no signature at all still installs on GitHub's asset digest while the
+    /// signing rollout is in progress.
     /// </para>
     /// </remarks>
+    /// <exception cref="InvalidDataException">
+    /// The published manifest signature failed, or the downloaded bytes do not match the
+    /// expected SHA-256.
+    /// </exception>
     internal async Task<string> DownloadWithVerificationAsync(
         string apiUrl,
         string label,
@@ -269,28 +303,26 @@ public class Binaries
         (ReleaseManifest? manifest, bool sigVerified, bool sigPresent) =
             await GetOrFetchManifestAsync(apiUrl, releaseInfo);
 
-        // Owned assets prefer the signature-verified manifest for authenticity. But a
-        // signature that does NOT verify — a stale key after a rotation, a CI signing
-        // glitch, or a stripped/forged manifest — must never brick the update path: we
-        // log loudly and fall through to GitHub's independent asset digest, which still
-        // guarantees integrity. Only an actual hash MISMATCH (below) is fatal. A hard
-        // throw here would also be illusory security: a repo-write attacker simply omits
-        // the manifest and hits the same digest fallback, so failing closed only strands
-        // honest servers on the next key rotation.
+        // Owned assets prefer the signature-verified manifest for authenticity. GitHub's
+        // digest only proves the bytes are the ones GitHub stored, not who published
+        // them, so it can stand in while a repo has no signature yet, but never for a
+        // release whose published signature FAILS: that is a positive tamper or forgery
+        // signal and the update is refused. A key rotation is not a reason to soften
+        // this — the next key ships in a release signed by the current one before it
+        // is used.
         bool manifestTrusted = sigVerified || !enforceSignedManifest;
 
         if (enforceSignedManifest && manifest is not null && sigPresent && !sigVerified)
         {
-            // A .sig asset WAS published for this release but did not verify against the
-            // embedded key — a genuine signing concern (rotated key, forged manifest, CI
-            // glitch) worth surfacing loudly.
-            Logger.Setup(
+            string reason =
                 $"Release manifest signature for {label} did not verify against the embedded NoMercy key — "
-                    + "falling back to GitHub asset-digest integrity. Investigate the signing key if this persists.",
-                LogEventLevel.Error
-            );
+                + "refusing to install this update. Investigate the release and the signing key.";
+            Logger.Setup(reason, LogEventLevel.Error);
+            await AlertOwnersOfRefusedUpdateAsync(apiUrl, label);
+            throw new InvalidDataException(reason);
         }
-        else if (enforceSignedManifest && manifest is not null && !sigPresent)
+
+        if (enforceSignedManifest && manifest is not null && !sigPresent)
         {
             // The manifest exists but no .sig asset was published at all — this repo's CI
             // signing rollout has not landed yet (ffmpeg/tesseract/whisper as of writing).
@@ -385,7 +417,9 @@ public class Binaries
             );
             response.EnsureSuccessStatusCode();
 
-            using CancellationTokenSource idle = new(DownloadIdleTimeout);
+            // The idle timer runs on _timeProvider, so a test can stall the body and
+            // advance the clock instead of waiting out a real timeout.
+            using CancellationTokenSource idle = new(DownloadIdleTimeout, _timeProvider);
             await using Stream contentStream = await response.Content.ReadAsStreamAsync(idle.Token);
             await using Stream fileStream = _driver.OpenWrite(tempPath, overwrite: true);
             byte[] buffer = new byte[81920];
@@ -443,10 +477,7 @@ public class Binaries
         }
 
         // --- Atomic replace with backup --------------------------------------------------------
-        string backupPath = destPath + ".bak";
-
-        if (_driver.FileExists(backupPath))
-            _driver.DeleteFile(backupPath);
+        string backupPath = ReserveBackupPath(destPath);
 
         if (_driver.FileExists(destPath))
             _driver.MoveFile(destPath, backupPath);
@@ -478,9 +509,7 @@ public class Binaries
             );
         }
 
-        // Backup no longer needed.
-        if (_driver.FileExists(backupPath))
-            _driver.DeleteFile(backupPath);
+        DiscardBackup(backupPath);
 
         Logger.Setup(
             $"Downloaded {label} to {destPath} ({_storage.SizeOrZero(destPath)} bytes)",
@@ -488,6 +517,40 @@ public class Binaries
         );
 
         return destPath;
+    }
+
+    /// <summary>
+    /// Alerts every owner that an update was refused because its published signature
+    /// failed, over the same security notification path <c>AbuseGuard</c> uses. Quiet
+    /// when no event bus or user cache is available yet (early boot); the error log
+    /// above still records the refusal.
+    /// </summary>
+    private async Task AlertOwnersOfRefusedUpdateAsync(string apiUrl, string label)
+    {
+        if (!_refusedSignatureAlerts.Add(apiUrl))
+            return;
+
+        IEventBus? bus =
+            _eventBus ?? (EventBusProvider.IsConfigured ? EventBusProvider.Current : null);
+        if (bus is null)
+            return;
+
+        IUserCache users = _userCache ?? UserCache.Current;
+        foreach (User owner in users.Users.Where(user => user.Owner))
+        {
+            await bus.PublishAsync(
+                new UserNotifiedEvent
+                {
+                    Title = "Update refused",
+                    Message =
+                        $"The {label} release carries a signature that does not verify against this server's trusted key. "
+                        + "It was not installed. Check the release before trusting it.",
+                    Type = "security",
+                    Route = "/dashboard",
+                    UserId = owner.Id,
+                }
+            );
+        }
     }
 
     /// <summary>
@@ -740,18 +803,17 @@ public class Binaries
         GithubReleaseResponse result;
         try
         {
-            using HttpResponseMessage response = await _httpClient.GetAsync(
-                ReleaseChannelSelector.MediaServerReleaseListUrl
-            );
-            response.EnsureSuccessStatusCode();
-            string json = await response.Content.ReadAsStringAsync();
-
-            GithubReleaseResponse[] releases = json.FromJson<GithubReleaseResponse[]>() ?? [];
             result =
-                ReleaseChannelSelector.Select(
-                    releases,
-                    r => new(r.TagName, r.Draft, r.Prerelease, r.Body),
-                    channel
+                await GithubReleaseList.FindAsync(
+                    _httpClient,
+                    ReleaseChannelSelector.MediaServerReleaseListUrl,
+                    json => json.FromJson<GithubReleaseResponse[]>() ?? [],
+                    releases =>
+                        ReleaseChannelSelector.Select(
+                            releases,
+                            r => new(r.TagName, r.Draft, r.Prerelease, r.Body),
+                            channel
+                        )
                 ) ?? new();
         }
         catch (Exception e)
@@ -2201,9 +2263,7 @@ public class Binaries
 
     private void ReplaceStagedFile(string sourcePath, string destinationPath)
     {
-        string backupPath = destinationPath + ".bak";
-        if (_driver.FileExists(backupPath))
-            _driver.DeleteFile(backupPath);
+        string backupPath = ReserveBackupPath(destinationPath);
 
         bool hadPrevious = _driver.FileExists(destinationPath);
         if (hadPrevious)
@@ -2221,7 +2281,65 @@ public class Binaries
         }
 
         if (hadPrevious)
-            _driver.DeleteFile(backupPath);
+            DiscardBackup(backupPath);
+    }
+
+    /// <summary>
+    /// Where the file being replaced is moved while the new one is put in place. The usual
+    /// <c>.bak</c> is reused once the previous one is cleared away; when it cannot be, a
+    /// unique name is used instead. On Windows the image of a running executable can be
+    /// renamed but not deleted, so a cloudflared still running from an earlier backup pins
+    /// that backup with "Access to the path ... is denied" — a leftover that is merely in
+    /// the way must never block the upgrade itself.
+    /// </summary>
+    private string ReserveBackupPath(string destinationPath)
+    {
+        string backupPath = destinationPath + ".bak";
+        SweepStaleBackups(destinationPath);
+
+        return _driver.FileExists(backupPath)
+            ? $"{destinationPath}.bak-{DateTime.UtcNow:yyyyMMddHHmmssfff}"
+            : backupPath;
+    }
+
+    /// <summary>
+    /// Best-effort removal of every backup an earlier upgrade left beside the file. One a
+    /// process still runs from stays until that process is gone and is swept on a later run.
+    /// </summary>
+    private void SweepStaleBackups(string destinationPath)
+    {
+        string? directory = Path.GetDirectoryName(destinationPath);
+        if (directory is null || !_driver.DirectoryExists(directory))
+            return;
+
+        string pattern = Path.GetFileName(destinationPath) + ".bak*";
+        List<string> stale = _driver
+            .EnumerateFileSystemEntries(directory, pattern, SearchOption.TopDirectoryOnly)
+            .ToList();
+
+        foreach (string backup in stale)
+            DiscardBackup(backup);
+    }
+
+    /// <summary>
+    /// Removes a backup the upgrade no longer needs. The binary a live tunnel runs from
+    /// cannot be deleted until that tunnel restarts; that is not an upgrade failure, the
+    /// new file is already in place.
+    /// </summary>
+    private void DiscardBackup(string backupPath)
+    {
+        try
+        {
+            if (_driver.FileExists(backupPath))
+                _driver.DeleteFile(backupPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Logger.Setup(
+                $"The previous binary at {backupPath} is still in use and stays until its process exits: {ex.Message}",
+                LogEventLevel.Debug
+            );
+        }
     }
 
     internal async Task DownloadTesseractData(IEnumerable<string> languages)

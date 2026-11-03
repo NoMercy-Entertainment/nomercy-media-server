@@ -115,6 +115,43 @@ public class VideoHubPlaybackTests : IClassFixture<NoMercyApiFactory>
         }
     }
 
+    // A disconnect whose user is no longer cached used to return before the base
+    // hub cleanup ran, so the connection stayed registered: a ghost device in
+    // every device list and a device-connection count that never went back down.
+    [Fact]
+    public async Task MissingCachedUser_StillRemovesConnectionFromConnectedClients()
+    {
+        Guid userId = Guid.NewGuid();
+        string connectionId = Guid.NewGuid().ToString();
+        ConnectedClients connectedClients = _factory.GetConnectedClients();
+        connectedClients.Clients[connectionId] = new Client
+        {
+            Id = Ulid.NewUlid(),
+            Sub = userId,
+            DeviceId = $"ghost-{Guid.NewGuid()}",
+            Endpoint = "/videoHub",
+            Type = "web",
+            Socket = Mock.Of<ISingleClientProxy>(),
+        };
+
+        try
+        {
+            (VideoHub hub, _) = CreateHub(connectionId, userId, out _);
+            await hub.OnDisconnectedAsync(null);
+
+            connectedClients
+                .Clients.Should()
+                .NotContainKey(
+                    connectionId,
+                    "the base hub cleanup must run even when the user is not cached"
+                );
+        }
+        finally
+        {
+            connectedClients.Clients.TryRemove(connectionId, out _);
+        }
+    }
+
     [Fact]
     public async Task PlaybackCommand_SeekObject_RoundsTimeAndUpdatesState()
     {

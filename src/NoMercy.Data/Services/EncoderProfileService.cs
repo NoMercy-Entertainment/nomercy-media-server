@@ -62,11 +62,7 @@ public class EncoderProfileService(
         if (string.IsNullOrWhiteSpace(name))
         {
             await TryLogFailureAsync(userId, "validation_error", "name is required");
-            return new()
-            {
-                ErrorCode = "validation_error",
-                ErrorMessage = "name is required",
-            };
+            return new() { ErrorCode = "validation_error", ErrorMessage = "name is required" };
         }
 
         if (string.IsNullOrWhiteSpace(profileJson))
@@ -203,6 +199,10 @@ public class EncoderProfileService(
         /// <summary>Non-null means return UnprocessableEntity with this envelope.</summary>
         public ValidationEnvelope? ValidationError { get; init; }
 
+        public string? ErrorCode { get; init; }
+        public string? ErrorMessage { get; init; }
+
+        public bool IsConflict => ErrorCode == "conflict";
         public bool IsSuccess => Saved is not null;
     }
 
@@ -344,10 +344,7 @@ public class EncoderProfileService(
 
             if (rejection is not null)
             {
-                return new()
-                {
-                    ValidationError = ValidationEnvelope.FromRules([rejection]),
-                };
+                return new() { ValidationError = ValidationEnvelope.FromRules([rejection]) };
             }
         }
         else
@@ -369,7 +366,19 @@ public class EncoderProfileService(
             }
         }
 
-        // --- 4. Persist ------------------------------------------------------
+        // --- 4. Unique name, the same rule CreateAsync applies ----------------
+        if (!string.IsNullOrWhiteSpace(profile.Name))
+        {
+            EncodingPreset? existing = await presetRepository.GetByNameAsync(profile.Name);
+            if (existing is not null)
+                return new()
+                {
+                    ErrorCode = "conflict",
+                    ErrorMessage = $"A profile named '{profile.Name}' already exists",
+                };
+        }
+
+        // --- 5. Persist ------------------------------------------------------
         Ulid newId = Ulid.NewUlid();
         EncodingProfile importedProfile = profile with { Id = newId, IsBuiltin = false };
         string savedJson = JsonConvert.SerializeObject(importedProfile);
@@ -417,26 +426,9 @@ public class EncoderProfileService(
         return new(
             ProfileId: id,
             SourceVideoFileId: sourcePath ?? string.Empty,
-            SourceAnalysis: new(
-                string.Empty,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                false,
-                null,
-                null,
-                null
-            ),
+            SourceAnalysis: new(string.Empty, 0, 0, 0, 0, 0, 0, 0, 0, false, null, null, null),
             PerStreamPlan: new([], [], []),
-            SourceWarnings:
-            [
-                new(ruleId, EncoderRuleSeverity.Error, field, message, suggestion),
-            ],
+            SourceWarnings: [new(ruleId, EncoderRuleSeverity.Error, field, message, suggestion)],
             EstimatedFps: 0,
             EstimatedDurationSeconds: 0,
             EncoderHandle: "auto"

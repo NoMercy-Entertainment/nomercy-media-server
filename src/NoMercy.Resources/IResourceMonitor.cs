@@ -41,7 +41,14 @@ public interface IResourceMonitor
     /// </summary>
     double GetSystemCpuUsagePercent();
 
+    /// <summary>
+    /// Current hardware-encoder load of the GPU behind <paramref name="gpuDeviceKey"/>,
+    /// in percent (0-100) like every other signal here, not a 0-1 fraction. The
+    /// dispatch gate compares it as-is against <c>ResourceBudgetOptions.GpuHeadroomPercent</c>.
+    /// Returns 0 when the load is unknown.
+    /// </summary>
     double GetGpuEncodeUtilization(string gpuDeviceKey);
+
     long GetAvailableMemoryMb();
 
     /// <summary>

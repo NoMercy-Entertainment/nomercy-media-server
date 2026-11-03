@@ -395,4 +395,40 @@ public sealed class CloudflareTunnelStrategyTests
 
         Assert.Equal([LogLevel.Debug], logger.Levels);
     }
+
+    [Fact]
+    public async Task TryEstablishAsync_AfterAFailedAttempt_TheNextAttemptLogsFailuresAtWarningAgain()
+    {
+        // The defect (#224): every failed attempt ends in StopTunnel, which raises the
+        // intentional-stop flag, and nothing lowered it again. The next attempt on the same
+        // instance then ran with the flag still up, so a genuine cloudflared error or exit
+        // during it was logged at Debug — invisible in the very log a user reads to find out
+        // why their tunnel keeps dropping.
+        //
+        // The first attempt fails for real: the isolated test app-data root never holds a
+        // cloudflared binary, so Process.Start throws and the attempt ends in StopTunnel. The
+        // second attempt stops at the binary check, which leaves whatever the attempt start
+        // did to the flag observable through LogProcessLine, the same gate the process
+        // event handlers read.
+        CapturingLogger logger = new();
+        int binaryChecks = 0;
+        CloudflareTunnelStrategy strategy = new(
+            logger,
+            new ConnectivityStatus { CloudflareTunnelToken = "assigned-token" },
+            binaryExists: () => binaryChecks++ == 0
+        );
+
+        ConnectivityResult first = await strategy.TryEstablishAsync(CancellationToken.None);
+        Assert.False(first.Established);
+
+        ConnectivityResult second = await strategy.TryEstablishAsync(CancellationToken.None);
+        Assert.False(second.Established);
+
+        logger.Levels.Clear();
+        strategy.LogProcessLine(
+            "2026-08-10T20:06:05Z ERR Register tunnel error error=\"Unauthorized: Not a valid tunnel token\""
+        );
+
+        Assert.Equal([LogLevel.Warning], logger.Levels);
+    }
 }

@@ -55,13 +55,15 @@ public class SetupEndpoints
     private readonly IServerRegistrationService _serverRegistrationService;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly CancellationToken _appStopping;
+    private readonly TimeProvider _timeProvider;
 
     public SetupEndpoints(
         SetupState state,
         AuthManager authManager,
         IServerRegistrationService serverRegistrationService,
         IHttpClientFactory httpClientFactory,
-        IHostApplicationLifetime appLifetime
+        IHostApplicationLifetime appLifetime,
+        TimeProvider? timeProvider = null
     )
     {
         _state = state;
@@ -69,6 +71,7 @@ public class SetupEndpoints
         _serverRegistrationService = serverRegistrationService;
         _httpClientFactory = httpClientFactory;
         _appStopping = appLifetime.ApplicationStopping;
+        _timeProvider = timeProvider ?? TimeProvider.System;
 
         _terminalUi = SetupTerminalUi.IsInteractiveTerminal ? new SetupTerminalUi() : null;
 
@@ -967,7 +970,7 @@ public class SetupEndpoints
 
         string tokenEndpoint =
             $"{ExternalServicesConfig.Current.AuthBaseUrl}protocol/openid-connect/token";
-        DateTime expiresAt = DateTime.UtcNow.AddSeconds(deviceData.ExpiresIn);
+        DateTimeOffset expiresAt = _timeProvider.GetUtcNow().AddSeconds(deviceData.ExpiresIn);
 
         SystemHttpClient httpClient = _httpClientFactory.CreateClient(
             ExternalServicesConfig.KeycloakHttpClientName
@@ -985,11 +988,13 @@ public class SetupEndpoints
         int consecutiveTransientFailures = 0;
         const int maxConsecutiveTransientFailures = 5;
 
-        while (DateTime.UtcNow < expiresAt && !_appStopping.IsCancellationRequested)
+        while (_timeProvider.GetUtcNow() < expiresAt && !_appStopping.IsCancellationRequested)
         {
             try
             {
-                await Task.Delay(intervalSec * 1000, _appStopping);
+                // The wait runs on the injected clock so a test can drive the
+                // back-off instead of sleeping through it.
+                await Task.Delay(TimeSpan.FromSeconds(intervalSec), _timeProvider, _appStopping);
             }
             catch (OperationCanceledException)
             {

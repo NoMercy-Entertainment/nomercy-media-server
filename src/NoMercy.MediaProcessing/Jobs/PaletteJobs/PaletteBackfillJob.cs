@@ -9,8 +9,14 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Linq.Expressions;
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Database;
+using NoMercy.Database.Models.Media;
+using NoMercy.Database.Models.Movies;
+using NoMercy.Database.Models.Music;
+using NoMercy.Database.Models.People;
+using NoMercy.Database.Models.TvShows;
 using NoMercy.MediaProcessing.Images.Palettes;
 using NoMercyQueue;
 using NoMercyQueue.Core.Interfaces;
@@ -30,11 +36,15 @@ public class PaletteBackfillJob : IShouldQueue
 
     // GUID rows already dispatched in this process. Bounds the drain: a row that stays
     // without a palette (no image) is not picked again until the next boot.
-    private static readonly System.Collections.Concurrent.ConcurrentDictionary<Guid, byte> AttemptedGuids = new();
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<
+        Guid,
+        byte
+    > AttemptedGuids = new();
 
     // Bumped to re-open the one-shot drain for existing libraries. v2 added
-    // "track"; v3 repairs GUID rows skipped by offset paging.
-    public const int CurrentVersion = 3;
+    // "track"; v3 repairs GUID rows skipped by offset paging; v4 repaints rows
+    // where a failed image download was stored as a colourless {"poster":{}}.
+    public const int CurrentVersion = 4;
 
     // Entity types and their PK kind (int vs Guid)
     private static readonly string[] IntTypes =
@@ -168,6 +178,22 @@ public class PaletteBackfillJob : IShouldQueue
         return rows.Count == BatchSize;
     }
 
+    /// <summary>
+    /// SQL twin of <see cref="ColorPalette.IsFinished"/>: a row needs a palette
+    /// when the column is blank, or holds a colourless entry such as
+    /// {"poster":{}} (an older build's record of a failed image download). The
+    /// "{}" no-image marker is terminal and stays out.
+    /// </summary>
+    private static Expression<Func<T, bool>> NeedsPalette<T>()
+        where T : ColorPaletteTimeStamps =>
+        x =>
+            x._colorPalette == null
+            || x._colorPalette == ""
+            || (
+                x._colorPalette != ColorPalette.NoImageJson
+                && x._colorPalette.Contains(ColorPalette.ColourlessEntryJson)
+            );
+
     private static Task<List<(int Id, string? Palette)>> GetIntPendingRowsAsync(
         MediaContext db,
         string entityType,
@@ -176,73 +202,64 @@ public class PaletteBackfillJob : IShouldQueue
         entityType switch
         {
             "movie" => db
-                .Movies.Where(m =>
-                    m.Id > cursor && (m._colorPalette == null || m._colorPalette == "")
-                )
+                .Movies.Where(m => m.Id > cursor)
+                .Where(NeedsPalette<Movie>())
                 .OrderBy(m => m.Id)
                 .Take(BatchSize)
                 .Select(m => new ValueTuple<int, string?>(m.Id, m._colorPalette))
                 .ToListAsync(),
             "tv" => db
-                .Tvs.Where(t => t.Id > cursor && (t._colorPalette == null || t._colorPalette == ""))
+                .Tvs.Where(t => t.Id > cursor)
+                .Where(NeedsPalette<Tv>())
                 .OrderBy(t => t.Id)
                 .Take(BatchSize)
                 .Select(t => new ValueTuple<int, string?>(t.Id, t._colorPalette))
                 .ToListAsync(),
             "season" => db
-                .Seasons.Where(s =>
-                    s.Id > cursor && (s._colorPalette == null || s._colorPalette == "")
-                )
+                .Seasons.Where(s => s.Id > cursor)
+                .Where(NeedsPalette<Season>())
                 .OrderBy(s => s.Id)
                 .Take(BatchSize)
                 .Select(s => new ValueTuple<int, string?>(s.Id, s._colorPalette))
                 .ToListAsync(),
             "episode" => db
-                .Episodes.Where(e =>
-                    e.Id > cursor && (e._colorPalette == null || e._colorPalette == "")
-                )
+                .Episodes.Where(e => e.Id > cursor)
+                .Where(NeedsPalette<Episode>())
                 .OrderBy(e => e.Id)
                 .Take(BatchSize)
                 .Select(e => new ValueTuple<int, string?>(e.Id, e._colorPalette))
                 .ToListAsync(),
             "collection" => db
-                .Collections.Where(c =>
-                    c.Id > cursor && (c._colorPalette == null || c._colorPalette == "")
-                )
+                .Collections.Where(c => c.Id > cursor)
+                .Where(NeedsPalette<Collection>())
                 .OrderBy(c => c.Id)
                 .Take(BatchSize)
                 .Select(c => new ValueTuple<int, string?>(c.Id, c._colorPalette))
                 .ToListAsync(),
             "person" => db
-                .People.Where(p =>
-                    p.Id > cursor && (p._colorPalette == null || p._colorPalette == "")
-                )
+                .People.Where(p => p.Id > cursor)
+                .Where(NeedsPalette<Person>())
                 .OrderBy(p => p.Id)
                 .Take(BatchSize)
                 .Select(p => new ValueTuple<int, string?>(p.Id, p._colorPalette))
                 .ToListAsync(),
             "recommendation" => db
-                .Recommendations.Where(r =>
-                    r.Id > cursor && (r._colorPalette == null || r._colorPalette == "")
-                )
+                .Recommendations.Where(r => r.Id > cursor)
+                .Where(NeedsPalette<Recommendation>())
                 .OrderBy(r => r.Id)
                 .Take(BatchSize)
                 .Select(r => new ValueTuple<int, string?>(r.Id, r._colorPalette))
                 .ToListAsync(),
             "similar" => db
-                .Similar.Where(s =>
-                    s.Id > cursor && (s._colorPalette == null || s._colorPalette == "")
-                )
+                .Similar.Where(s => s.Id > cursor)
+                .Where(NeedsPalette<Similar>())
                 .OrderBy(s => s.Id)
                 .Take(BatchSize)
                 .Select(s => new ValueTuple<int, string?>(s.Id, s._colorPalette))
                 .ToListAsync(),
             "image" => db
-                .Images.Where(i =>
-                    i.Id > cursor
-                    && i.Site == "https://image.tmdb.org/t/p/"
-                    && (i._colorPalette == null || i._colorPalette == "")
-                )
+                .Images.Where(i => i.Id > cursor && i.Site == "https://image.tmdb.org/t/p/")
+                .Where(NeedsPalette<Image>())
                 .OrderBy(i => i.Id)
                 .Take(BatchSize)
                 .Select(i => new ValueTuple<int, string?>(i.Id, i._colorPalette))
@@ -258,7 +275,7 @@ public class PaletteBackfillJob : IShouldQueue
         entityType switch
         {
             "artist" => db
-                .Artists.Where(a => a._colorPalette == null || a._colorPalette == "")
+                .Artists.Where(NeedsPalette<Artist>())
                 .AsNoTracking()
                 .Where(a => !skip.Contains(a.Id))
                 .OrderBy(a => a.Id)
@@ -266,7 +283,7 @@ public class PaletteBackfillJob : IShouldQueue
                 .Select(a => new ValueTuple<Guid, string?>(a.Id, a._colorPalette))
                 .ToListAsync(),
             "album" => db
-                .Albums.Where(a => a._colorPalette == null || a._colorPalette == "")
+                .Albums.Where(NeedsPalette<Album>())
                 .AsNoTracking()
                 .Where(a => !skip.Contains(a.Id))
                 .OrderBy(a => a.Id)
@@ -274,7 +291,7 @@ public class PaletteBackfillJob : IShouldQueue
                 .Select(a => new ValueTuple<Guid, string?>(a.Id, a._colorPalette))
                 .ToListAsync(),
             "track" => db
-                .Tracks.Where(t => t._colorPalette == null || t._colorPalette == "")
+                .Tracks.Where(NeedsPalette<Track>())
                 .AsNoTracking()
                 .Where(t => !skip.Contains(t.Id))
                 .OrderBy(t => t.Id)
@@ -282,7 +299,7 @@ public class PaletteBackfillJob : IShouldQueue
                 .Select(t => new ValueTuple<Guid, string?>(t.Id, t._colorPalette))
                 .ToListAsync(),
             "playlist" => db
-                .Playlists.Where(p => p._colorPalette == null || p._colorPalette == "")
+                .Playlists.Where(NeedsPalette<Playlist>())
                 .AsNoTracking()
                 .Where(p => !skip.Contains(p.Id))
                 .OrderBy(p => p.Id)
@@ -290,7 +307,7 @@ public class PaletteBackfillJob : IShouldQueue
                 .Select(p => new ValueTuple<Guid, string?>(p.Id, p._colorPalette))
                 .ToListAsync(),
             "releasegroup" => db
-                .ReleaseGroups.Where(r => r._colorPalette == null || r._colorPalette == "")
+                .ReleaseGroups.Where(NeedsPalette<ReleaseGroup>())
                 .AsNoTracking()
                 .Where(r => !skip.Contains(r.Id))
                 .OrderBy(r => r.Id)

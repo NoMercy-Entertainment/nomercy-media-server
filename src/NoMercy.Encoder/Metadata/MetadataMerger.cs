@@ -24,7 +24,9 @@ namespace NoMercy.Encoder.Metadata;
 ///              the caller as supplemental data; MetadataInjector does not
 ///              emit a comment flag today.
 ///   IsDefault / IsForced — DB wins. Booleans are non-nullable so the DB row
-///              is always considered intentional.
+///              is always considered intentional; MetadataInjector writes a
+///              false/false pair as "-disposition:... 0", so a DB "not default"
+///              clears a source default flag in copy mode.
 ///
 /// Track matching:
 ///   Source and DB tracks are correlated by OutputIndex.
@@ -61,7 +63,7 @@ public class MetadataMerger : IMetadataMerger
 
             if (hasSource && !hasDb)
             {
-                // Source-only: no DB row — emit source values, default dispositions false.
+                // Source-only: no DB row — emit source values, dispositions included.
                 result.Add(
                     new(
                         OutputIndex: src!.OutputIndex,

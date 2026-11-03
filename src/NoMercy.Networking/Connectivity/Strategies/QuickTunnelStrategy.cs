@@ -20,6 +20,8 @@ using NoMercy.NmSystem.Dto;
 using NoMercy.NmSystem.Information;
 using NoMercy.NmSystem.Status;
 using NoMercy.NmSystem.SystemCalls;
+using NoMercy.Storage;
+using NoMercy.Storage.Drivers.Local;
 
 namespace NoMercy.Networking.Connectivity.Strategies;
 
@@ -40,8 +42,10 @@ public partial class QuickTunnelStrategy : IConnectivityStrategy, IDisposable
     private readonly ILogger<QuickTunnelStrategy> _logger;
     private readonly IConnectivityStatus _connectivityStatus;
     private readonly Func<bool> _binaryExists;
+    private readonly Func<string?> _binaryStamp;
     private readonly Func<string, CancellationToken, Task<bool>> _resolves;
     private Process? _process;
+    private string? _startedFromStamp;
     private volatile bool _stoppingIntentionally;
     private bool _disposed;
 
@@ -51,7 +55,11 @@ public partial class QuickTunnelStrategy : IConnectivityStrategy, IDisposable
     private static readonly TimeSpan PublicationPollInterval = TimeSpan.FromSeconds(3);
     private static readonly HttpClient DnsOverHttps = new() { Timeout = TimeSpan.FromSeconds(8) };
 
-    [GeneratedRegex(@"https://[a-z0-9-]+\.trycloudflare\.com", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
+    [GeneratedRegex(
+        @"https://[a-z0-9-]+\.trycloudflare\.com",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex AssignedUrlPattern();
 
     [GeneratedRegex(
@@ -61,19 +69,26 @@ public partial class QuickTunnelStrategy : IConnectivityStrategy, IDisposable
     )]
     private static partial Regex ConnectionRegisteredPattern();
 
-    [GeneratedRegex(@"\bERR\b|\bFTL\b|error|failed", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
+    [GeneratedRegex(
+        @"\bERR\b|\bFTL\b|error|failed",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex FailurePattern();
 
     public QuickTunnelStrategy(
         ILogger<QuickTunnelStrategy> logger,
         IConnectivityStatus connectivityStatus,
         Func<bool>? binaryExists = null,
-        Func<string, CancellationToken, Task<bool>>? resolves = null
+        Func<string, CancellationToken, Task<bool>>? resolves = null,
+        IStorageDriver? driver = null
     )
     {
+        IStorageDriver binaries = driver ?? new LocalStorageDriver();
         _logger = logger;
         _connectivityStatus = connectivityStatus;
-        _binaryExists = binaryExists ?? (() => File.Exists(AppFiles.CloudflareDPath));
+        _binaryExists = binaryExists ?? (() => CloudflaredBinary.Exists(binaries));
+        _binaryStamp = () => CloudflaredBinary.Stamp(binaries);
         _resolves = resolves ?? IsPublishedAtCloudflareAsync;
     }
 
@@ -82,6 +97,19 @@ public partial class QuickTunnelStrategy : IConnectivityStrategy, IDisposable
     public ConnectivityType Type => ConnectivityType.QuickTunnel;
 
     public bool IsStillEstablished => _process is { HasExited: false };
+
+    /// <summary>
+    /// True while the tunnel runs from a cloudflared the background upgrade has since
+    /// replaced on disk. A missing or half-replaced file is not a verdict yet.
+    /// </summary>
+    public bool IsOutdated
+    {
+        get
+        {
+            string? current = _binaryStamp();
+            return IsStillEstablished && current is not null && current != _startedFromStamp;
+        }
+    }
 
     /// <summary>
     /// False while cloudflared has not been downloaded yet. The manager defers this
@@ -119,8 +147,15 @@ public partial class QuickTunnelStrategy : IConnectivityStrategy, IDisposable
             TaskCreationOptions.RunContinuationsAsynchronously
         );
 
+        // A quick tunnel from a run that ended without TeardownAsync keeps a dead server's
+        // name registered and, once its image is renamed by an upgrade, pins the backup.
+        CloudflaredBinary.ReapOrphans(_logger, _process);
+
         try
         {
+            // Read before Start(): a replacement landing in between then costs one
+            // needless restart instead of hiding the old binary behind the new stamp.
+            _startedFromStamp = _binaryStamp();
             _process = new()
             {
                 StartInfo = new()
@@ -167,6 +202,10 @@ public partial class QuickTunnelStrategy : IConnectivityStrategy, IDisposable
             };
 
             _process.Start();
+            // Bind the child to the server's kill-on-close job object so a crash or a hard
+            // kill of the server — where TeardownAsync never runs — cannot leave an
+            // orphaned cloudflared behind. No-op fallback off Windows.
+            Shell.ProcessHelper.AttachToParentLifetime(_process);
             _process.BeginOutputReadLine();
             _process.BeginErrorReadLine();
 

@@ -21,12 +21,9 @@ namespace NoMercy.NmSystem.Networking;
 /// (169.254.169.254). This validates the scheme and resolves the host, rejecting
 /// the request when ANY resolved address is not publicly routable.
 ///
-/// <para>Note: this is an egress allow-check, not a rebinding-proof pin. It
-/// resolves and validates, then the caller connects; a hostile resolver could in
-/// principle return a public address here and a private one to the HTTP client.
-/// For our threat model (a low-privilege authenticated user, not a network-level
-/// attacker) rejecting private/link-local resolutions closes the practical
-/// internal-SSRF vector.</para>
+/// <para>IsSafePublicHttpUrlAsync is an early check only. CreatePublicOnlyHandler pins
+/// each connection: it connects to the addresses it just validated, so DNS rebinding
+/// and redirects cannot reach a private host.</para>
 /// </summary>
 public static class ServerSideRequestGuard
 {

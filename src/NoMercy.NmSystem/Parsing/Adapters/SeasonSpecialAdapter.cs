@@ -8,6 +8,7 @@
 //
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
+using System.Globalization;
 using System.Text.RegularExpressions;
 using MovieFileLibrary;
 using NoMercy.NmSystem.Domain;
@@ -18,8 +19,16 @@ namespace NoMercy.MediaProcessing.Files.Parsing.Adapters;
 /// <summary>
 /// Season-scoped specials written as <c>S##S##</c> — "season 1's special 3" —
 /// which is how Judas, Erai-raws and most BD batch releases number the extras
-/// that ship alongside a season. Maps to season 0, keeping the special's own
-/// number as the episode.
+/// that ship alongside a season, and half-numbered episodes written as
+/// <c>S##E##.#</c>. The two forms map differently:
+/// <list type="bullet">
+/// <item><c>S01S21</c>, <c>S01SP21</c>, <c>S01OVA21</c>: season 0, episode 21 —
+/// the special keeps its own number.</item>
+/// <item><c>S01E21.5</c>: season 1, no episode, <see cref="MovieFile.IsSpecialEpisode"/>
+/// set. The library stores whole episodes and none is numbered 21.5, so the
+/// file claims no episode slot rather than taking the real episode 21's place,
+/// and it keeps its season so the same half in another season stays apart.</item>
+/// </list>
 /// <para>
 /// Restricted to anime/TV libraries and ordered directly after the S##E##
 /// matcher, whose marker it deliberately cannot match: without it these names
@@ -76,7 +85,8 @@ public sealed partial class SeasonSpecialAdapter : IFilenameParseAdapter
             return null;
 
         Match match = SeasonSpecialMarker().Match(context.CleanedFileName);
-        if (!match.Success)
+        bool isHalfEpisode = !match.Success;
+        if (isHalfEpisode)
             match = FractionalEpisode().Match(context.CleanedFileName);
         if (!match.Success)
             return null;
@@ -95,11 +105,22 @@ public sealed partial class SeasonSpecialAdapter : IFilenameParseAdapter
         if (string.IsNullOrWhiteSpace(title) || title.Length <= 1)
             return null;
 
+        if (isHalfEpisode)
+            return new(context.Title)
+            {
+                Title = title,
+                Season = int.Parse(match.Groups["season"].Value, CultureInfo.InvariantCulture),
+                Episode = null,
+                IsSpecialEpisode = true,
+                IsSeries = true,
+                IsSuccess = true,
+            };
+
         return new(context.Title)
         {
             Title = title,
             Season = 0,
-            Episode = int.Parse(match.Groups["special"].Value),
+            Episode = int.Parse(match.Groups["special"].Value, CultureInfo.InvariantCulture),
             IsSeries = true,
             IsSuccess = true,
         };

@@ -548,6 +548,107 @@ public class ArtistResponseItemDtoTests
     }
 
     // =========================================================================
+    // Tracks: one entry per unique track name
+    // =========================================================================
+
+    private static ArtistTrack BuildTrackOnAlbum(
+        Guid artistId,
+        string albumName,
+        string trackName,
+        string duration,
+        bool liked = false
+    )
+    {
+        Album album = new() { Id = Guid.NewGuid(), Name = albumName };
+        ArtistTrack artistTrack = BuildArtistTrack(
+            artistId,
+            linkedAlbum: album,
+            trackUsers: liked ? [new(Guid.NewGuid(), Guid.NewGuid())] : null,
+            trackName: trackName
+        );
+        artistTrack.Track.Duration = duration;
+
+        return artistTrack;
+    }
+
+    [Fact]
+    public void Ctor_TracksKeepOneEntryPerUniqueName()
+    {
+        Guid artistId = Guid.NewGuid();
+        ArtistTrack first = BuildTrackOnAlbum(artistId, "Alpha Album", "Night Drive", "261");
+        ArtistTrack other = BuildTrackOnAlbum(artistId, "Beta Album", "Quiet Room", "180");
+        ArtistTrack duplicate = BuildTrackOnAlbum(artistId, "Zeta Album", "night drive!", "258");
+
+        Artist artist = BuildMinimalArtist(id: artistId, artistTracks: [duplicate, other, first]);
+
+        ArtistResponseItemDto dto = new(artist, Guid.NewGuid());
+
+        dto.Tracks.Should().HaveCount(2);
+        dto.Tracks.Select(track => track.Id).Should().Equal(first.Track.Id, other.Track.Id);
+    }
+
+    [Fact]
+    public void Ctor_TracksPreferTheLikedDuplicate()
+    {
+        Guid artistId = Guid.NewGuid();
+        ArtistTrack plain = BuildTrackOnAlbum(artistId, "Alpha Album", "Night Drive", "261");
+        ArtistTrack liked = BuildTrackOnAlbum(
+            artistId,
+            "Zeta Album",
+            "Night Drive",
+            "258",
+            liked: true
+        );
+
+        Artist artist = BuildMinimalArtist(id: artistId, artistTracks: [plain, liked]);
+
+        ArtistResponseItemDto dto = new(artist, Guid.NewGuid());
+
+        dto.Tracks.Should().ContainSingle();
+        dto.Tracks.Single().Id.Should().Be(liked.Track.Id);
+    }
+
+    [Fact]
+    public void Ctor_TracksKeepDifferentNonLatinNamesApart()
+    {
+        Guid artistId = Guid.NewGuid();
+        ArtistTrack japanese = BuildTrackOnAlbum(artistId, "Alpha Album", "夜のドライブ", "200");
+        ArtistTrack cyrillic = BuildTrackOnAlbum(artistId, "Alpha Album", "Ночная поездка", "210");
+
+        Artist artist = BuildMinimalArtist(id: artistId, artistTracks: [japanese, cyrillic]);
+
+        ArtistResponseItemDto dto = new(artist, Guid.NewGuid());
+
+        dto.Tracks.Should().HaveCount(2);
+    }
+
+    [Fact]
+    public void Ctor_FavoriteTracksKeepsEveryLikedTrackEvenWithTheSameName()
+    {
+        Guid artistId = Guid.NewGuid();
+        ArtistTrack likedOne = BuildTrackOnAlbum(
+            artistId,
+            "Alpha Album",
+            "Night Drive",
+            "261",
+            liked: true
+        );
+        ArtistTrack likedTwo = BuildTrackOnAlbum(
+            artistId,
+            "Zeta Album",
+            "Night Drive",
+            "258",
+            liked: true
+        );
+
+        Artist artist = BuildMinimalArtist(id: artistId, artistTracks: [likedOne, likedTwo]);
+
+        ArtistResponseItemDto dto = new(artist, Guid.NewGuid());
+
+        dto.FavoriteTracks.Should().HaveCount(2);
+    }
+
+    // =========================================================================
     // FavoriteTracks: only tracks with a TrackUser "liked" row
     // =========================================================================
 

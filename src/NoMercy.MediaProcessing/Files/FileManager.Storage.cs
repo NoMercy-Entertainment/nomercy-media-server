@@ -250,7 +250,8 @@ public partial class FileManager
             Share = folder.Id.ToString(),
             Duration = DurationLeadingZeroRegex()
                 .Replace(
-                    DurationFractionRegex().Replace((item.FFprobe?.Duration.ToString()).OrEmpty(), ""),
+                    DurationFractionRegex()
+                        .Replace((item.FFprobe?.Duration.ToString()).OrEmpty(), ""),
                     ""
                 ),
             // Chapters = JsonConvert.SerializeObject(item.FFprobe?.Chapters ?? []),
@@ -565,7 +566,10 @@ public partial class FileManager
         // for, where a later bundle publishes a rung the current master never
         // listed — falls through to the full reconstruction.
         if (MasterCoversDiskOutput(storage, hostFolder, masterTitle, video))
+        {
+            await RepairDanglingSubtitleGroupAsync(storage, hostFolder, masterTitle);
             return;
+        }
 
         // Only logged when the rebuild actually runs (a missing or incomplete
         // master), so it stays quiet on the common already-complete rescan.
@@ -598,6 +602,42 @@ public partial class FileManager
         {
             Logger.App(
                 $"[RebuildHlsMasterFromDisk] {masterTitle}: master rebuild failed — {ex.Message}",
+                LogEventLevel.Warning
+            );
+        }
+    }
+
+    /// <summary>
+    /// Drops a <c>SUBTITLES="..."</c> reference to a group the on-disk master
+    /// never defines (#163: masters from older builds, on which players list an
+    /// unlabelled track). A string-level fix with no probing, so it is cheap on
+    /// a complete master that skips the rebuild; a master without the defect is
+    /// not rewritten. Best-effort, like the rebuild: a failure never fails the scan.
+    /// </summary>
+    private static async Task RepairDanglingSubtitleGroupAsync(
+        IStorage storage,
+        string hostFolder,
+        string masterTitle
+    )
+    {
+        string masterPath = storage.CombinePath(hostFolder, masterTitle + ".m3u8");
+        try
+        {
+            string master = await storage.ReadAllTextAsync(masterPath, CancellationToken.None);
+            string repaired = HlsMasterSubtitleGroupRepair.DropDanglingSubtitleGroups(master);
+            if (ReferenceEquals(repaired, master))
+                return;
+
+            await storage.WriteAllTextAsync(masterPath, repaired, CancellationToken.None);
+            Logger.App(
+                $"[MasterRepair] {masterTitle}: dropped a subtitle group reference the master never defined",
+                LogEventLevel.Information
+            );
+        }
+        catch (Exception ex)
+        {
+            Logger.App(
+                $"[MasterRepair] {masterTitle}: subtitle group repair failed — {ex.Message}",
                 LogEventLevel.Warning
             );
         }

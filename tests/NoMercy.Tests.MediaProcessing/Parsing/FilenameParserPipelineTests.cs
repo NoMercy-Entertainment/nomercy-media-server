@@ -463,6 +463,33 @@ public class FilenameParserPipelineTests
         new SeasonSpecialAdapter().TryParse(Context(file, libraryType: "anime")).Should().BeNull();
 
     [Fact]
+    public void A_half_episode_keeps_the_season_it_was_numbered_in()
+    {
+        SeasonSpecialAdapter adapter = new();
+        MovieFile? first = adapter.TryParse(Context("NANA - S01E21.5.mkv", libraryType: "anime"));
+        MovieFile? second = adapter.TryParse(Context("NANA - S02E21.5.mkv", libraryType: "anime"));
+
+        first.Should().NotBeNull();
+        second.Should().NotBeNull();
+        first!.Season.Should().Be(1, "S01E21.5 is a half episode of season 1");
+        second!.Season.Should().Be(2, "S02E21.5 is a half episode of season 2");
+        first.Episode.Should().BeNull("no whole episode is numbered 21.5");
+        first.IsSpecialEpisode.Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_season_scoped_special_still_maps_to_season_zero()
+    {
+        MovieFile? special = new SeasonSpecialAdapter().TryParse(
+            Context("[Judas] Overlord - S01S21.mkv", libraryType: "anime")
+        );
+
+        special.Should().NotBeNull();
+        special!.Season.Should().Be(0);
+        special.Episode.Should().Be(21);
+    }
+
+    [Fact]
     public void Season_scoped_specials_skipped_for_movie_libraries() =>
         new SeasonSpecialAdapter()
             .TryParse(Context("[Judas] Overlord - S01S01.mkv", libraryType: "movie"))

@@ -99,6 +99,16 @@ internal sealed class PluginLifecycleManager(
             return;
         }
 
+        // Enabling is not approving. A held plugin has no instance and an
+        // assembly path, which is the shape the reload below is for, so
+        // without this line "enable" was a way past the hold.
+        if (loaded.Info.ApprovalReason is not null)
+        {
+            throw new InvalidOperationException(
+                $"Plugin {loaded.Info.Name} is waiting for the owner's approval and cannot be enabled until it is approved."
+            );
+        }
+
         // Turning a plugin on is the owner answering the consent question, so
         // the answer is written down here. Left unrecorded, the next start read
         // the plugin as never consented and disabled it again, and the owner

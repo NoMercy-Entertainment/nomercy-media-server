@@ -47,7 +47,9 @@ public static class AnimeGroupRankingQueries
                     .Tvs.AsNoTracking()
                     .Where(tv =>
                         tvIds.Contains(tv.Id)
-                        && tv.Episodes.Any(e => e.VideoFiles.Any(v => v.Folder != null))
+                        && tv.Episodes.Any(e =>
+                            e.SeasonNumber > 0 && e.VideoFiles.Any(v => v.Folder != null)
+                        )
                     )
                     .Select(tv => new { tv.Id, tv.CreatedAt })
                     .ToDictionaryAsync(tv => tv.Id, tv => tv.CreatedAt, ct);

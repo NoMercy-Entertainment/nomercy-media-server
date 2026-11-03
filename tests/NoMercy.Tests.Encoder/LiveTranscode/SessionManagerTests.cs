@@ -206,4 +206,105 @@ public class SessionManagerTests
 
         manager.ActiveSessions.Should().ContainSingle(s => s.SessionId == "s2");
     }
+
+    // ──────────────────────────────────────────────────────────────────────────
+    // TryReserve — the slot is claimed at the check, not when the session
+    // registers seconds later, so parallel starts cannot share one free slot.
+    // ──────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void TryReserve_TwoClaimsForOneUserAtPerUserCap_GiveExactlyOneSlot()
+    {
+        SessionManager manager = new(new() { MaxConcurrentSessions = 10, MaxSessionsPerUser = 1 });
+
+        ISessionReservation? first = manager.TryReserve("user-1");
+        ISessionReservation? second = manager.TryReserve("user-1");
+
+        first.Should().NotBeNull();
+        second.Should().BeNull();
+    }
+
+    [Fact]
+    public void TryReserve_PendingClaimCountsAgainstTheGlobalCap()
+    {
+        SessionManager manager = new(new() { MaxConcurrentSessions = 1, MaxSessionsPerUser = 5 });
+
+        manager.TryReserve("user-1").Should().NotBeNull();
+
+        manager.TryReserve("user-2").Should().BeNull();
+        manager.TryReserve(userId: null).Should().BeNull();
+    }
+
+    [Fact]
+    public void TryReserve_DoesNotLetAnotherUserClaimPastTheGlobalCapOfRegisteredSessions()
+    {
+        SessionManager manager = new(new() { MaxConcurrentSessions = 1, MaxSessionsPerUser = 5 });
+        manager.RegisterSession(MakeSession("s1"), userId: "user-1");
+
+        manager.TryReserve("user-2").Should().BeNull();
+    }
+
+    [Fact]
+    public void TryReserve_DisposingAnUncompletedClaim_FreesTheSlot()
+    {
+        SessionManager manager = new(new() { MaxConcurrentSessions = 10, MaxSessionsPerUser = 1 });
+        ISessionReservation reservation = manager.TryReserve("user-1")!;
+
+        reservation.Dispose();
+
+        manager.TryReserve("user-1").Should().NotBeNull();
+        manager.ActiveSessionCount.Should().Be(0);
+    }
+
+    [Fact]
+    public void TryReserve_CompletedClaim_BecomesTheRegisteredSessionAndKeepsTheSlot()
+    {
+        SessionManager manager = new(new() { MaxConcurrentSessions = 10, MaxSessionsPerUser = 1 });
+
+        using (ISessionReservation reservation = manager.TryReserve("user-1")!)
+        {
+            reservation.Complete(MakeSession("u1-s1"));
+        }
+
+        manager.ActiveSessionCount.Should().Be(1);
+        manager.GetOwnerUserId("u1-s1").Should().Be("user-1");
+        manager.GetUserSessionIds("user-1").Should().ContainSingle().Which.Should().Be("u1-s1");
+        manager.TryReserve("user-1").Should().BeNull();
+
+        manager.RemoveSession("u1-s1");
+
+        manager.TryReserve("user-1").Should().NotBeNull();
+    }
+
+    [Fact]
+    public void TryReserve_CompletingASettledClaim_Throws()
+    {
+        SessionManager manager = new(new() { MaxConcurrentSessions = 10, MaxSessionsPerUser = 1 });
+        ISessionReservation reservation = manager.TryReserve("user-1")!;
+        reservation.Dispose();
+
+        Action act = () => reservation.Complete(MakeSession("u1-s1"));
+
+        act.Should().Throw<InvalidOperationException>();
+        manager.ActiveSessionCount.Should().Be(0);
+    }
+
+    [Fact]
+    public void TryReserve_ParallelClaims_NeverExceedTheCap()
+    {
+        SessionManager manager = new(new() { MaxConcurrentSessions = 3, MaxSessionsPerUser = 3 });
+        int granted = 0;
+
+        Parallel.For(
+            0,
+            64,
+            _ =>
+            {
+                if (manager.TryReserve("user-1") is not null)
+                    Interlocked.Increment(ref granted);
+            }
+        );
+
+        granted.Should().Be(3);
+    }
 }

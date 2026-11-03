@@ -42,6 +42,7 @@ namespace NoMercy.Tests.Setup;
 /// locks the Windows early-return.
 /// </remarks>
 [Trait("Category", "Unit")]
+[Collection(ProcessWideSetupStateCollection.Name)]
 public sealed class BootOrchestratorAdditionalTests : IDisposable
 {
     private readonly AppDbContext _appContext;

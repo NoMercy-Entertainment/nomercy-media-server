@@ -56,6 +56,18 @@ public record PluginInfoDto
     public bool AwaitingConsent { get; init; }
 
     /// <summary>
+    /// Whether the plugin is not loaded because the owner has not approved
+    /// it: it was put in the plugins folder by hand, or its files changed
+    /// after the last approval. Approve it with <c>POST {id}/approve</c>.
+    /// </summary>
+    [JsonProperty("awaiting_approval")]
+    public bool AwaitingApproval { get; init; }
+
+    /// <summary>Why the plugin waits for approval, when it does. Absent otherwise.</summary>
+    [JsonProperty("approval_reason", NullValueHandling = NullValueHandling.Ignore)]
+    public string? ApprovalReason { get; init; }
+
+    /// <summary>
     /// What the owner already approved, in the same shape as
     /// <see cref="Capabilities"/>. Null when nothing was approved yet.
     /// <para>
@@ -89,6 +101,8 @@ public record PluginInfoDto
     {
         Capabilities = info.Capabilities;
         AwaitingConsent = awaitingConsent;
+        AwaitingApproval = info.ApprovalReason is not null;
+        ApprovalReason = info.ApprovalReason;
         ConsentedCapabilities = consentedCapabilities;
         RestartRequired = restart?.Required ?? false;
         RestartReasons = restart?.Explain() ?? [];

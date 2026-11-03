@@ -168,7 +168,9 @@ public partial class LiveTranscodeAudioPlaylistTests
             analyzer.Object,
             Mock.Of<ILiveQualitySelector>(),
             decisions.Object,
-            new SpeedIndex([]),
+            Mock.Of<ISpeedIndexProvider>(p =>
+                p.Current == new SpeedIndex(new Dictionary<SpeedKey, SpeedMeasurement>())
+            ),
             Mock.Of<IResourceBudget>(),
             files.Object,
             new LiveSessionLimits(),

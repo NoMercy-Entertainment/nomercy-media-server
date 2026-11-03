@@ -208,12 +208,106 @@ public class FileNameSanitizerTests
         Directory.CreateDirectory(Path.Combine(root, "---"));
         try
         {
-            FileNameSanitizer.FindMatchingDirectory(new LocalStorageDriver(), root, "...").Should().BeNull();
+            FileNameSanitizer
+                .FindMatchingDirectory(new LocalStorageDriver(), root, "...")
+                .Should()
+                .BeNull();
         }
         finally
         {
             Directory.Delete(root, true);
         }
+    }
+
+    [Fact]
+    public void FindMatchingDirectory_EmptyNormalizedName_MatchesOnlyTheExactName()
+    {
+        string root = Path.Combine(Path.GetTempPath(), "nm-379-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, "!!!"));
+        Directory.CreateDirectory(Path.Combine(root, "+++"));
+        try
+        {
+            LocalStorageDriver driver = new();
+
+            FileNameSanitizer
+                .FindMatchingDirectory(driver, root, "+++")
+                .Should()
+                .Be(
+                    Path.Combine(root, "+++"),
+                    "a name with no letters or digits matches only itself"
+                );
+            FileNameSanitizer.FindMatchingDirectory(driver, root, "~~~").Should().BeNull();
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Fact]
+    public void FindMatchingDirectory_DecomposedName_MatchesTheComposedOne()
+    {
+        // macOS and some network shares hand out names decomposed: "e" followed
+        // by a combining acute instead of the single "é" the title was written with.
+        string root = Path.Combine(Path.GetTempPath(), "nm-379-" + Guid.NewGuid().ToString("N"));
+        string decomposed = "Amélie (2001)";
+        Directory.CreateDirectory(Path.Combine(root, decomposed));
+        try
+        {
+            FileNameSanitizer
+                .FindMatchingDirectory(new LocalStorageDriver(), root, "Amélie (2001)")
+                .Should()
+                .Be(Path.Combine(root, decomposed));
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Theory]
+    [InlineData(["The Office (US)", "The.Office.US"])]
+    [InlineData(["Marvel's Agents of S.H.I.E.L.D. (2013)", "Marvels Agents of SHIELD 2013"])]
+    public void FindMatchingDirectory_LatinNameWithPunctuation_StillMatches(
+        string onDisk,
+        string expected
+    )
+    {
+        string root = Path.Combine(Path.GetTempPath(), "nm-379-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(Path.Combine(root, onDisk));
+        try
+        {
+            FileNameSanitizer
+                .FindMatchingDirectory(new LocalStorageDriver(), root, expected)
+                .Should()
+                .Be(Path.Combine(root, onDisk));
+        }
+        finally
+        {
+            Directory.Delete(root, true);
+        }
+    }
+
+    [Theory]
+    // Decomposed and composed accents, full-width Latin, half-width katakana.
+    [InlineData(["Amélie", "Amélie"])]
+    [InlineData(["ＮＡＲＵＴＯ", "Naruto"])]
+    [InlineData(["ｶﾞﾝﾀﾞﾑ", "ガンダム"])]
+    public void NormalizeForComparison_FoldsTheSameNameWrittenDifferently(string a, string b)
+    {
+        a.NormalizeForComparison().Should().Be(b.NormalizeForComparison());
+    }
+
+    [Theory]
+    // A Devanagari vowel sign, two ideographs outside the 16-bit range, the
+    // dakuten that tells が from か, and an accent: each is what separates two names.
+    [InlineData(["दिल", "दल"])]
+    [InlineData(["𠮷野家", "𩸽野家"])]
+    [InlineData(["が", "か"])]
+    [InlineData(["Amélie", "Amelie"])]
+    public void NormalizeForComparison_KeepsWhatTellsTwoNamesApart(string a, string b)
+    {
+        a.NormalizeForComparison().Should().NotBe(b.NormalizeForComparison());
     }
 
     [Fact]

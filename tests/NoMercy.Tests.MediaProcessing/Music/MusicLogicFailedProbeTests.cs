@@ -72,12 +72,19 @@ public sealed class MusicLogicFailedProbeTests : IDisposable
             .Setup(factory => factory.CreateDbContextAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => new MediaContext(_options));
 
+        // Under a library folder, so the import reaches the probe rather than
+        // stopping at the unmatched-folder guard (#397).
+        Folder libraryFolder = LibraryFolderResolverTests.FolderAt(Path.GetTempPath());
+        IStorageFactory storageFactory = LibraryFolderResolverTests.FactoryResolving(
+            (libraryFolder, Path.GetTempPath())
+        );
+
         await using MusicLogic logic = new(
             NullLogger<MusicLogic>.Instance,
-            new Library(),
+            LibraryFolderResolverTests.LibraryWithFolders(libraryFolder),
             folder,
             contextFactory.Object,
-            new Mock<IStorageFactory>().Object,
+            storageFactory,
             fingerprinter.Object
         );
 

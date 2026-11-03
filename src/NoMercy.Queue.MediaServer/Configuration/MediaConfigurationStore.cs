@@ -29,41 +29,13 @@ public class MediaConfigurationStore(IDbContextFactory<AppDbContext> contextFact
     public void SetValue(string key, string value)
     {
         using AppDbContext context = contextFactory.CreateDbContext();
-        DbConfiguration? existing = context.Configuration.FirstOrDefault(c => c.Key == key);
-        if (existing is not null)
-        {
-            existing.Value = value;
-        }
-        else
-        {
-            context.Configuration.Add(new() { Key = key, Value = value });
-        }
-        context.SaveChanges();
+        context.SetValue(key, value);
     }
 
     public async Task SetValueAsync(string key, string value, Guid? modifiedBy = null)
     {
         await using AppDbContext context = await contextFactory.CreateDbContextAsync();
-        DbConfiguration? existing = await context.Configuration.FirstOrDefaultAsync(c =>
-            c.Key == key
-        );
-        if (existing is not null)
-        {
-            existing.Value = value;
-            existing.ModifiedBy = modifiedBy;
-        }
-        else
-        {
-            context.Configuration.Add(
-                new()
-                {
-                    Key = key,
-                    Value = value,
-                    ModifiedBy = modifiedBy,
-                }
-            );
-        }
-        await context.SaveChangesAsync();
+        await context.SetValueAsync(key, value, modifiedBy);
     }
 
     public bool HasKey(string key)

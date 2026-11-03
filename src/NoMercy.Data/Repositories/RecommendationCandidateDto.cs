@@ -9,6 +9,8 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using NoMercy.Data.Services.Recommendations;
+
 namespace NoMercy.Data.Repositories;
 
 public class RecommendationCandidateDto
@@ -23,5 +25,5 @@ public class RecommendationCandidateDto
     public string MediaType { get; set; } = string.Empty;
     public string? SourceMediaType { get; set; }
     public int SourceCount { get; set; }
-    public List<int> SourceIds { get; set; } = [];
+    public List<SourceKey> SourceIds { get; set; } = [];
 }

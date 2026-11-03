@@ -92,10 +92,14 @@ public class PlaylistGenerator : IPlaylistGenerator
         // .vtt extracts still exist but there is no playable HLS playlist
         // entry to advertise — referencing the raw .vtt would 404 on
         // spec-compliant clients.
-        bool hasSubsGroup = plan.SubtitleOutputs.Any(s =>
-            s.Action is StreamAction.Extract or StreamAction.Copy
-            && (s.OutputCodec is not SubtitleCodecType.WebVtt || plan.EmitSubtitleWebVttChunks)
-        );
+        SubtitleOutputPlan[] activeSubs =
+        [
+            .. plan.SubtitleOutputs.Where(s =>
+                s.Action is StreamAction.Extract or StreamAction.Copy
+                && (s.OutputCodec is not SubtitleCodecType.WebVtt || plan.EmitSubtitleWebVttChunks)
+            ),
+        ];
+        bool hasSubsGroup = activeSubs.Length > 0;
 
         bool hasChapterDateRanges = plan.Chapters is { Count: > 0 };
 
@@ -196,20 +200,18 @@ public class PlaylistGenerator : IPlaylistGenerator
         // language + variant + codec, so the "English (Full)" / "(Sign)" /
         // "(SDH)" tracks of a single source land as three distinct entries
         // pointing at three distinct files instead of collapsing to one.
-        // WebVTT entries are filtered out when chunking is disabled — same
-        // reasoning as hasSubsGroup above.
-        SubtitleOutputPlan[] activeSubs =
-        [
-            .. plan.SubtitleOutputs.Where(s =>
-                s.Action is StreamAction.Extract or StreamAction.Copy
-                && (s.OutputCodec is not SubtitleCodecType.WebVtt || plan.EmitSubtitleWebVttChunks)
-            ),
-        ];
-
+        // WebVTT entries are filtered out when chunking is disabled (see
+        // activeSubs above).
+        // Tracks whether any EXT-X-MEDIA:TYPE=SUBTITLES line was written: the
+        // variants' SUBTITLES="subs" follows it, so a variant never names a
+        // group the master does not define (players invent an unlabelled
+        // track for one, #163).
+        bool subtitleGroupEmitted = false;
         if (activeSubs.Length > 0)
         {
             foreach (SubtitleOutputPlan sub in activeSubs)
             {
+                subtitleGroupEmitted = true;
                 string lang = sub.Language ?? "und";
                 string displayName = GetSubtitleDisplayName(lang, sub.Variant);
                 string subsUri = GetSubtitlePlaylistUri(sub);
@@ -293,15 +295,15 @@ public class PlaylistGenerator : IPlaylistGenerator
             // remux is SDR; mislabelling them as PQ makes hls.js reject the
             // master with manifestIncompatibleCodecsError because the segments'
             // actual transfer characteristics don't match.
-            string videoRange = !video.IsHdrOutput
-                ? "SDR"
-                : string.Equals(video.ColorTransfer, "arib-std-b67", StringComparison.OrdinalIgnoreCase)
-                    ? "HLG"
-                    : "PQ";
+            string videoRange = video.VideoRange.ToHlsVideoRange();
             string frameRate = video.FrameRate.ToString("F3", CultureInfo.InvariantCulture);
 
-            string subsAttr =
-                activeSubs.Length > 0 ? ",SUBTITLES=\"subs\"" : ",CLOSED-CAPTIONS=NONE";
+            // CLOSED-CAPTIONS=NONE is written on every variant, also next to a
+            // subtitle group: the server never publishes a caption group, and
+            // without it a player probes the video for CEA-608/708 captions.
+            string subsAttr = subtitleGroupEmitted
+                ? ",SUBTITLES=\"subs\",CLOSED-CAPTIONS=NONE"
+                : ",CLOSED-CAPTIONS=NONE";
 
             // Never point AUDIO="..." at a group with zero EXT-X-MEDIA members —
             // a title with genuinely no audio must emit neither the group nor

@@ -88,14 +88,38 @@ public class ColorPaletteJobTests : IDisposable
     public async Task Already_filled_palette_skips_persist()
     {
         (ColorPaletteJob job, StubSource source) = Build(
-            current: "{\"poster\":{}}",
-            generate: () => Task.FromResult(PaletteResult.Success("{\"poster\":{}}"))
+            current: "{\"poster\":{\"dominant\":\"#abc\"}}",
+            generate: () =>
+                Task.FromResult(PaletteResult.Success("{\"poster\":{\"dominant\":\"#def\"}}"))
         );
         PaletteSourceRegistry registry = new([source]);
 
         await job.HandleCore(_db, registry);
 
         source.PersistCalled.Should().BeFalse("palette is already filled");
+    }
+
+    [Theory]
+    [InlineData("{\"poster\":{}}")]
+    [InlineData("{\"poster\":{},\"backdrop\":{}}")]
+    public async Task Stored_palette_without_colours_is_unfinished_and_regenerates(string current)
+    {
+        // Older builds serialised a failed poster download as an all-null
+        // PaletteColors, which reads as {"poster":{}}. Those rows are not an
+        // answer: the next pass must paint them.
+        string expectedJson = "{\"poster\":{\"dominant\":\"#abc\"}}";
+        (ColorPaletteJob job, StubSource source) = Build(
+            current: current,
+            generate: () => Task.FromResult(PaletteResult.Success(expectedJson))
+        );
+        PaletteSourceRegistry registry = new([source]);
+
+        await job.HandleCore(_db, registry);
+
+        source
+            .PersistCalled.Should()
+            .BeTrue("a palette entry without colours is a failed download, not an answer");
+        source.PersistedJson.Should().Be(expectedJson);
     }
 
     [Fact]

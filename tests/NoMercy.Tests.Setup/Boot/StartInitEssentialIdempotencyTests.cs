@@ -11,6 +11,7 @@
 
 using System.Reflection;
 using NoMercy.Setup.Boot;
+using NoMercy.Tests.Setup.Infrastructure;
 
 namespace NoMercy.Tests.Setup.Boot;
 
@@ -23,6 +24,7 @@ namespace NoMercy.Tests.Setup.Boot;
 /// UserSettings a second time on every single boot for no reason.
 /// </summary>
 [Trait("Category", "Unit")]
+[Collection(ProcessWideSetupStateCollection.Name)]
 public sealed class StartInitEssentialIdempotencyTests : IDisposable
 {
     private readonly string? _originalAppPath;

@@ -12,6 +12,7 @@
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Data.Extensions;
 using NoMercy.Database;
+using NoMercy.Database.Models;
 using NoMercy.Database.Models.Common;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.Media;
@@ -96,7 +97,8 @@ public class HomeRepository(MediaContext context, IDbContextFactory<MediaContext
             .Include(genre =>
                 genre.GenreTvShows.Where(genreTv =>
                     genreTv.Tv.Episodes.Any(episode =>
-                        episode.VideoFiles.Any(videoFile => videoFile.Folder != null)
+                        episode.SeasonNumber > 0
+                        && episode.VideoFiles.Any(videoFile => videoFile.Folder != null)
                     ) == true
                 )
             )
@@ -121,7 +123,7 @@ public class HomeRepository(MediaContext context, IDbContextFactory<MediaContext
         return await context
             .Tvs.AsNoTracking()
             .Where(tv => tvIds.Contains(tv.Id))
-            .Where(tv => tv.Episodes.Any(e => e.VideoFiles.Any()))
+            .Where(MediaAvailability.TvIsAvailable)
             .Select(tv => new HomeTvCardDto
             {
                 Id = tv.Id,
@@ -188,7 +190,7 @@ public class HomeRepository(MediaContext context, IDbContextFactory<MediaContext
         return await context
             .Movies.AsNoTracking()
             .Where(movie => movieIds.Contains(movie.Id))
-            .Where(movie => movie.VideoFiles.Any())
+            .Where(MediaAvailability.MovieIsAvailable)
             .Select(movie => new HomeMovieCardDto
             {
                 Id = movie.Id,
@@ -256,7 +258,12 @@ public class HomeRepository(MediaContext context, IDbContextFactory<MediaContext
             // also carries.
             .Where(ud =>
                 (ud.Movie != null && ud.Movie.VideoFiles.Any())
-                || (ud.Tv != null && ud.Tv.Episodes.Any(e => e.VideoFiles.Any()))
+                || (
+                    ud.Tv != null
+                    && ud.Tv.Episodes.Any(e =>
+                        e.SeasonNumber > 0 && e.VideoFiles.Any(v => v.Folder != null)
+                    )
+                )
                 || (
                     ud.Collection != null
                     && ud.Collection.CollectionMovies.Any(cm => cm.Movie.VideoFiles.Any())
@@ -435,7 +442,7 @@ public class HomeRepository(MediaContext context, IDbContextFactory<MediaContext
         List<Movie> movies = await db
             .Movies.AsNoTracking()
             .Where(movie => movie.MovieUser.Any(mu => mu.UserId == userId))
-            .Where(movie => movie.VideoFiles.Any())
+            .Where(MediaAvailability.MovieIsAvailable)
             .Include(movie => movie.Translations.Where(t => t.Iso6391 == language))
             .Include(movie =>
                 movie
@@ -459,7 +466,7 @@ public class HomeRepository(MediaContext context, IDbContextFactory<MediaContext
         List<Tv> tvShows = await db
             .Tvs.AsNoTracking()
             .Where(tv => tv.TvUser.Any(tu => tu.UserId == userId))
-            .Where(tv => tv.Episodes.Any(e => e.VideoFiles.Any()))
+            .Where(MediaAvailability.TvIsAvailable)
             .Include(tv => tv.Translations.Where(t => t.Iso6391 == language))
             .Include(tv =>
                 tv.Images.Where(image => image.Type == "logo" && image.Iso6391 == "en")
@@ -631,7 +638,9 @@ public class HomeRepository(MediaContext context, IDbContextFactory<MediaContext
             .Include(genre =>
                 genre.GenreTvShows.Where(gt =>
                     gt.Tv.Library.LibraryUsers.Any(u => u.UserId == userId)
-                    && gt.Tv.Episodes.Any(e => e.VideoFiles.Any())
+                    && gt.Tv.Episodes.Any(e =>
+                        e.SeasonNumber > 0 && e.VideoFiles.Any(v => v.Folder != null)
+                    )
                 )
             )
             .OrderBy(genre => genre.Name)

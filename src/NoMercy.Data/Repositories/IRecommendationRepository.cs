@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using NoMercy.Data.Services.Recommendations;
 using NoMercy.Database.Models.Movies;
 using NoMercy.Database.Models.TvShows;
 
@@ -48,7 +49,7 @@ public interface IRecommendationRepository
 
     Task<List<RecommendationCandidateDto>> GetKeywordCrossTypeTvCandidatesAsync(
         Guid userId,
-        Dictionary<int, List<int>> movieKeywordMap,
+        Dictionary<SourceKey, List<int>> movieKeywordMap,
         int minSharedKeywords = 3,
         int maxCandidates = 100,
         int maxKeywordFrequency = 50,
@@ -57,7 +58,7 @@ public interface IRecommendationRepository
 
     Task<List<RecommendationCandidateDto>> GetKeywordCrossTypeAnimeCandidatesAsync(
         Guid userId,
-        Dictionary<int, List<int>> movieKeywordMap,
+        Dictionary<SourceKey, List<int>> movieKeywordMap,
         int minSharedKeywords = 3,
         int maxCandidates = 100,
         int maxKeywordFrequency = 50,
@@ -66,7 +67,7 @@ public interface IRecommendationRepository
 
     Task<List<RecommendationCandidateDto>> GetKeywordCrossTypeMovieCandidatesAsync(
         Guid userId,
-        Dictionary<int, List<int>> tvKeywordMap,
+        Dictionary<SourceKey, List<int>> tvKeywordMap,
         int minSharedKeywords = 3,
         int maxCandidates = 100,
         int maxKeywordFrequency = 50,

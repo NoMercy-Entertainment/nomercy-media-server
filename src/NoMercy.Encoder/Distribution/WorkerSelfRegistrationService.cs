@@ -70,6 +70,13 @@ public class WorkerSelfRegistrationService(
     ILicenseTokenClient? licenseTokenClient = null
 ) : BackgroundService
 {
+    /// <summary>
+    /// Named HttpClient the service talks to the coordinator through. AddNoMercyEncoder
+    /// puts <see cref="HmacSigningHandler"/> on it, because the coordinator rejects
+    /// unsigned /api/v1/distribution/ requests.
+    /// </summary>
+    public const string HttpClientName = "worker-self-registration";
+
     // Token is considered "near expiry" when it has less than this left.
     private static readonly TimeSpan TokenRefreshLeadTime = TimeSpan.FromSeconds(60);
 
@@ -98,7 +105,7 @@ public class WorkerSelfRegistrationService(
             return;
         }
 
-        HttpClient http = httpClientFactory.CreateClient("worker-self-registration");
+        HttpClient http = httpClientFactory.CreateClient(HttpClientName);
         http.BaseAddress = new(options.CoordinatorUrl!);
         http.Timeout = TimeSpan.FromSeconds(10);
 
@@ -297,7 +304,8 @@ public class WorkerSelfRegistrationService(
             );
             return false;
         }
-        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        catch (Exception ex)
+            when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             // The 10s HttpClient timeout above surfaces as a TaskCanceledException,
             // which IS an OperationCanceledException. Only the service's own
@@ -327,7 +335,8 @@ public class WorkerSelfRegistrationService(
 
             return response.IsSuccessStatusCode;
         }
-        catch (Exception ex) when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
+        catch (Exception ex)
+            when (ex is not OperationCanceledException || !ct.IsCancellationRequested)
         {
             // Same reasoning as TryRegisterAsync above: a heartbeat timeout must
             // not escape as an uncaught OperationCanceledException, or it stops

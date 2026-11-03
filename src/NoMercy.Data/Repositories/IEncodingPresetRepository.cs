@@ -36,5 +36,9 @@ public interface IEncodingPresetRepository
     /// <summary>Whether any preset inherits from the preset with this id.</summary>
     Task<bool> HasChildrenAsync(Ulid id, CancellationToken ct = default);
 
-    Task<int> GetTotalCountAsync();
+    /// <summary>
+    /// Counts presets, narrowed by the same <paramref name="tagFilter"/> that
+    /// <see cref="ListAsync"/> applies so paging totals match the listed page.
+    /// </summary>
+    Task<int> GetTotalCountAsync(string? tagFilter = null);
 }

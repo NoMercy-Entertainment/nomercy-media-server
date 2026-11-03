@@ -3826,7 +3826,7 @@
         }
       }
     },
-    "/files/${depth}/${path}": {
+    "/api/v1/dashboard/server/files/{depth}/{path}": {
       "get": {
         "tags": [
           "Dashboard Server Management"
@@ -3847,15 +3847,6 @@
             "schema": {
               "type": "integer",
               "format": "int32"
-            }
-          },
-          {
-            "name": "api-version",
-            "in": "query",
-            "description": "The requested API version",
-            "schema": {
-              "type": "string",
-              "default": "1.0"
             }
           }
         ],
@@ -4269,6 +4260,28 @@
             }
           }
         },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/dashboard/plugins/{id}/approve": {
+      "post": {
+        "tags": [
+          "Dashboard Server Plugins"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "OK"
@@ -14483,6 +14496,25 @@
           },
           "task_type": {
             "$ref": "#/components/schemas/EncodeTaskType"
+          },
+          "input_path": {
+            "type": "string",
+            "nullable": true
+          },
+          "source_duration_seconds": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "time_range_start_seconds": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "time_range_duration_seconds": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -15614,6 +15646,10 @@
             "type": "string",
             "nullable": true
           },
+          "app_url": {
+            "type": "string",
+            "nullable": true
+          },
           "connectivity": {
             "$ref": "#/components/schemas/ConnectivityStatusDto"
           },
@@ -16298,6 +16334,14 @@
           },
           "discType": {
             "$ref": "#/components/schemas/OpticalDiscType"
+          },
+          "discLabel": {
+            "type": "string",
+            "nullable": true
+          },
+          "discTitle": {
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false

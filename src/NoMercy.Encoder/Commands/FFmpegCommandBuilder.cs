@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using System.Globalization;
+using NoMercy.Encoder.Profiles;
 
 namespace NoMercy.Encoder.Commands;
 
@@ -95,6 +96,9 @@ public class FfmpegCommandBuilder
         {
             foreach (KeyValuePair<string, string> flag in _globalExtraFlags)
             {
+                if (CustomArgumentGuard.ShouldDrop(flag.Key, flag.Value, false, "global flags"))
+                    continue;
+
                 args.Add(flag.Key);
                 // An empty value marks a bare boolean flag (e.g. "-an") — emitting
                 // it anyway adds a stray empty argv token ffmpeg treats as an
@@ -219,6 +223,9 @@ public class FfmpegCommandBuilder
             {
                 foreach (KeyValuePair<string, string> flag in output.ExtraFlags)
                 {
+                    if (CustomArgumentGuard.ShouldDrop(flag.Key, flag.Value, false, "output flags"))
+                        continue;
+
                     args.Add(flag.Key);
                     // An empty value marks a bare boolean flag (e.g. "-an") — emitting
                     // it anyway adds a stray empty argv token ffmpeg treats as an

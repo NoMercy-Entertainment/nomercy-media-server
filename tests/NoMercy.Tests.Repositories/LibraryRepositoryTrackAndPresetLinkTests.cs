@@ -128,6 +128,19 @@ public class LibraryRepositoryTrackAndPresetLinkTests : IDisposable
     }
 
     [Fact]
+    public async Task GetTrackHostFoldersForLibraryAsync_CarriesTheFolderEachTrackIsStoredUnder()
+    {
+        (Ulid libraryId, Ulid folderId) = SeedMusicLibrary();
+        SeedTrackInLibrary(libraryId, folderId, "/media/music/Album", "01.flac");
+
+        List<TrackHostFolderDto> rows = await _repository.GetTrackHostFoldersForLibraryAsync(
+            libraryId
+        );
+
+        rows.Should().ContainSingle().Which.FolderId.Should().Be(folderId);
+    }
+
+    [Fact]
     public async Task GetTrackHostFoldersForLibraryAsync_ExcludesTracksMissingHostFolderOrFilename()
     {
         (Ulid libraryId, Ulid folderId) = SeedMusicLibrary();

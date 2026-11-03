@@ -15,8 +15,10 @@
 
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
+using NoMercy.Database.Models.Libraries;
 using NoMercy.Events;
 using NoMercy.Events.Media;
+using NoMercy.MediaProcessing.Music;
 using NoMercy.Providers.AcoustId;
 using NoMercy.Storage;
 using NoMercyQueue.Core.Interfaces;
@@ -71,6 +73,30 @@ public abstract class AbstractMusicFolderJob : IShouldQueue, IJobAttemptReceiver
     public abstract int Priority { get; }
 
     public abstract Task Handle();
+
+    /// <summary>
+    /// The library folder this job stores its tracks under: the folder it was dispatched
+    /// for (<see cref="FolderId"/>) when that belongs to <paramref name="library"/>.
+    /// A payload queued before jobs carried a folder has none, so the folder that holds
+    /// <see cref="InputFolder"/> decides, and an album imported from outside every
+    /// library folder goes to the library's first folder.
+    /// </summary>
+    internal Folder ResolveDestinationFolder(Library library)
+    {
+        IEnumerable<Folder> folders = library.FolderLibraries.Select(folderLibrary =>
+            folderLibrary.Folder
+        );
+
+        if (FolderId != default)
+        {
+            Folder? dispatched = folders.FirstOrDefault(folder => folder.Id == FolderId);
+            if (dispatched is not null)
+                return dispatched;
+        }
+
+        return LibraryFolderResolver.FolderHolding(library, InputFolder, StorageFactory)
+            ?? folders.First();
+    }
 
     public void ReceiveAttempt(int attempt, int maxAttempts)
     {

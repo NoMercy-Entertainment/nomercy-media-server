@@ -351,10 +351,10 @@
  },
  {
   "Name": "Series Title S01E11.5 [SP]-The Poppies Bloom Red on the Battlefield",
-  "Field": "season",
-  "Ours": "0",
-  "Theirs": "1",
-  "Reason": "S01E11.5 is a special numbered 11.5; ours returns season 0 (special) and no integer episode, the source returns season 1."
+  "Field": "episode",
+  "Ours": "null",
+  "Theirs": "11",
+  "Reason": "S01E11.5 is a half episode of season 1; ours keeps season 1 and claims no whole episode, because the library stores whole episodes and reading it as 11 would take the real episode 11's place. The source returns episode 11."
  },
  {
   "Name": "【高清剧集网发布 www.DDHDTV.com】当我飞奔向你[全24集][国语音轨+简繁英字幕].Series.Towards.You.S01.2023.1080p.NF.WEB-DL.H264.DDP2.0-SeeWEB",

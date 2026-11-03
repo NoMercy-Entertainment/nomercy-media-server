@@ -34,4 +34,17 @@ public class PaletteColors
 
     [JsonProperty("darkMuted", NullValueHandling = NullValueHandling.Ignore)]
     public string DarkMuted { get; set; }
+
+    /// <summary>
+    /// False for the all-null entry older builds stored when an image download
+    /// failed; it serialises as {} and carries no colour at all.
+    /// </summary>
+    [JsonIgnore]
+    public bool HasColors =>
+        !string.IsNullOrEmpty(Dominant)
+        || !string.IsNullOrEmpty(Primary)
+        || !string.IsNullOrEmpty(LightVibrant)
+        || !string.IsNullOrEmpty(DarkVibrant)
+        || !string.IsNullOrEmpty(LightMuted)
+        || !string.IsNullOrEmpty(DarkMuted);
 }

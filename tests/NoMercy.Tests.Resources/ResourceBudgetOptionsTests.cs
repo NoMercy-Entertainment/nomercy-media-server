@@ -44,6 +44,14 @@ public sealed class ResourceBudgetOptionsTests
     }
 
     [Fact]
+    public void Disabled_GpuEncodePercentPerLease_SatisfiesDisabledContract()
+    {
+        // A non-zero per-lease estimate would still hold back GPU leases in the
+        // "every live check off" configuration.
+        ResourceBudgetOptions.Disabled.GpuEncodePercentPerLease.Should().Be(0);
+    }
+
+    [Fact]
     public void Disabled_IsASingleSharedInstance()
     {
         // ResourceBudget's legacy constructor null-coalesces onto this property

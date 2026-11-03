@@ -16,7 +16,9 @@ namespace NoMercy.NmSystem.Extensions;
 /// <c>TitleSort</c> value (e.g. "【Oshi No Ko】" -> "oshi.no.ko" -> bucket "O"),
 /// never the raw display title, so titles starting with articles or special
 /// characters land in a stable, predictable bucket. "#" catches anything whose
-/// TitleSort does not start with a letter.
+/// TitleSort does not start with an A-Z letter: digits, punctuation, accented
+/// Latin letters such as "é" and non-Latin scripts. Both <see cref="Matches"/> and
+/// <see cref="LetterFor"/> apply that one rule, so every title lands in exactly one bucket.
 /// </summary>
 public static class AlphaBucket
 {
@@ -57,13 +59,7 @@ public static class AlphaBucket
     /// </summary>
     public static bool Matches(string? titleSort, string bucket)
     {
-        if (string.IsNullOrEmpty(titleSort))
-            return bucket == "#";
-
-        if (bucket == "#")
-            return !char.IsLetter(titleSort[0]);
-
-        return titleSort.StartsWith(bucket, StringComparison.OrdinalIgnoreCase);
+        return string.Equals(LetterFor(titleSort), bucket, StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>

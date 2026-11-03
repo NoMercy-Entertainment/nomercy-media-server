@@ -19,6 +19,7 @@ using NoMercy.Encoder.Hdr;
 using NoMercy.Encoder.Output;
 using NoMercy.Encoder.Pipeline;
 using NoMercy.Encoder.Pipeline.Stages;
+using NoMercy.Tests.Encoder.Hardware;
 using CodecProfile = NoMercy.Encoder.Profiles.CodecProfile;
 using Container = NoMercy.Encoder.Profiles.Container;
 using EncodingProfile = NoMercy.Encoder.Profiles.EncodingProfile;
@@ -127,7 +128,7 @@ public class PlanStageHardwareVendorGateTests
             new NoOpCropDetector(),
             NullLogger<PlanStage>.Instance,
             hardwarePreferenceResolver: hardwarePreferenceResolver,
-            speedIndex: speedIndex,
+            speedIndexProvider: new StubSpeedIndexProvider(speedIndex),
             bitDepthPolicyResolver: bitDepthPolicyResolver
         );
 

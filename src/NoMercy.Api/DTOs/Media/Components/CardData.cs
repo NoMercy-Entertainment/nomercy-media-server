@@ -13,6 +13,7 @@ using Newtonsoft.Json;
 using NoMercy.Data.DTOs.Specials;
 using NoMercy.Data.Repositories;
 using NoMercy.Database;
+using NoMercy.Database.Models;
 using NoMercy.Database.Models.Common;
 using NoMercy.Database.Models.Movies;
 using NoMercy.Database.Models.TvShows;
@@ -216,9 +217,7 @@ public record CardData
             Type = "tv";
             CreatedAt = item.Tv.CreatedAt;
             NumberOfItems = item.Tv.NumberOfEpisodes;
-            HaveItems = item.Tv.Episodes.Count(episode =>
-                episode.VideoFiles.Any(v => v.Folder != null)
-            );
+            HaveItems = item.Tv.Episodes.Count(episode => episode.IsAvailable());
 
             Rating = item
                 .Tv.CertificationTvs.Where(ct => RatingClass.IsShownIn(ct.Certification, country))
@@ -243,7 +242,7 @@ public record CardData
                 genreMovie.Movie.VideoFiles.Any(v => v.Folder != null)
             )
             + genre.GenreTvShows.Count(genreTv =>
-                genreTv.Tv.Episodes.Any(episode => episode.VideoFiles.Any(v => v.Folder != null))
+                genreTv.Tv.Episodes.Any(episode => episode.IsAvailable())
             );
     }
 

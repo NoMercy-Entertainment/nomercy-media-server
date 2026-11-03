@@ -13,7 +13,16 @@ namespace NoMercy.MediaProcessing.Shows;
 
 public interface IAnimeEnrichmentService
 {
-    Task EnrichTvAsync(
+    /// <summary>
+    /// Classifies a show and, when it is anime, stores its themes, season and
+    /// demographics. Never throws: a provider failure must not abort an import.
+    /// </summary>
+    /// <returns>
+    /// True when the show is settled: enriched, already enriched, or answered
+    /// "not anime". False when AniList and Jikan could not answer (an outage,
+    /// a timeout, a rate limit), so a caller that walks titles can retry it later.
+    /// </returns>
+    Task<bool> EnrichTvAsync(
         int tvId,
         string title,
         int? year,
@@ -21,7 +30,8 @@ public interface IAnimeEnrichmentService
         bool? priority = false
     );
 
-    Task EnrichMovieAsync(
+    /// <summary>Movie counterpart of <see cref="EnrichTvAsync"/>, with the same result.</summary>
+    Task<bool> EnrichMovieAsync(
         int movieId,
         string title,
         int? year,

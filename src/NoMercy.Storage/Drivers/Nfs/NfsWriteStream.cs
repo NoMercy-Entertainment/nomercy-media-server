@@ -17,7 +17,8 @@ namespace NoMercy.Storage.Drivers.Nfs;
 /// <summary>
 /// Write-only <see cref="Stream"/> over a libnfs file handle.
 /// Buffers in 1 MiB chunks and flushes via <c>nfs_write</c>.
-/// The handle is closed (implicitly synced) on <see cref="Dispose"/>.
+/// The handle is closed (implicitly synced) on <see cref="Dispose"/>; a failed
+/// close throws <see cref="IOException"/> so a lost final commit is not silent.
 /// Every native call is gated on the driver's lock — the libnfs context is
 /// shared across streams and is not re-entrant.
 /// </summary>
@@ -155,12 +156,18 @@ internal sealed class NfsWriteStream : Stream
             return;
         _disposed = true;
 
+        // nfs_close commits the buffered writes, so a negative result means the
+        // file on the server is short or missing — surface it like Write does.
+        int rc = 0;
+        string? err = null;
         try
         {
             _lock.Wait();
             try
             {
-                _libNfs.Close(_nfs, _fh);
+                rc = _libNfs.Close(_nfs, _fh);
+                if (rc < 0)
+                    err = _libNfs.GetError(_nfs);
             }
             finally
             {
@@ -172,7 +179,12 @@ internal sealed class NfsWriteStream : Stream
             // Driver was disposed first — its own Dispose will tear down the
             // context, so the fh is already gone. Nothing to do.
         }
+        finally
+        {
+            base.Dispose(disposing);
+        }
 
-        base.Dispose(disposing);
+        if (rc < 0)
+            throw new IOException($"NFS close failed: {err}");
     }
 }

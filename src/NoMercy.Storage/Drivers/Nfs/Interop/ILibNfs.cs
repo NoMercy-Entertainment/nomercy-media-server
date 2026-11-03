@@ -63,7 +63,7 @@ internal interface ILibNfs
     int Close(IntPtr nfs, IntPtr fh);
     int Read(IntPtr nfs, IntPtr fh, IntPtr buf, int count);
     int Write(IntPtr nfs, IntPtr fh, IntPtr buf, int count);
-    long Lseek(IntPtr nfs, IntPtr fh, long offset, int whence, out ulong currentOffset);
+    int Lseek(IntPtr nfs, IntPtr fh, long offset, int whence, out ulong currentOffset);
     int Unlink(IntPtr nfs, string path);
     int Rename(IntPtr nfs, string oldPath, string newPath);
 

@@ -237,7 +237,7 @@ public class JobDispatcher : IJobDispatcher
                 .GetAwaiter()
                 .GetResult();
 
-            return string.IsNullOrEmpty(current);
+            return !ColorPalette.IsFinished(current);
         }
         catch
         {

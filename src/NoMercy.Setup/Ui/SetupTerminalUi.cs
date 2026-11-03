@@ -26,7 +26,9 @@ public sealed class SetupTerminalUi : IDisposable
     // Minimum terminal width needed to render the QR code block
     private const int MinWidthForQr = 40;
 
-    private readonly CancellationTokenSource _cts = new();
+    // One source per watcher run: a cancelled source cannot be reset, and the
+    // same instance is shown again when sign-in is restarted.
+    private CancellationTokenSource? _cts;
     private Task? _resizeWatchTask;
     private bool _isActive;
 
@@ -49,6 +51,14 @@ public sealed class SetupTerminalUi : IDisposable
     /// Left null in production; never read outside this property.
     /// </summary>
     internal static bool? ForceInteractiveForTests { get; set; }
+
+    /// <summary>
+    /// True while the background resize watcher is still polling. Internal so
+    /// NoMercy.Tests.Setup can prove a later <see cref="Show"/> restarts it; the
+    /// loop itself only redraws on a real terminal resize, which a test host
+    /// cannot trigger.
+    /// </summary>
+    internal bool IsResizeWatcherRunning => _resizeWatchTask is { IsCompleted: false };
 
     /// <summary>
     /// Returns true when the terminal is interactive and large enough to draw
@@ -188,7 +198,6 @@ public sealed class SetupTerminalUi : IDisposable
     public void Dispose()
     {
         StopResizeWatcher();
-        _cts.Dispose();
     }
 
     // ── Drawing ─────────────────────────────────────────────────────────────
@@ -297,14 +306,18 @@ public sealed class SetupTerminalUi : IDisposable
 
     private void StartResizeWatcher()
     {
+        StopResizeWatcher();
+        _cts = new();
+        CancellationToken token = _cts.Token;
+
         _resizeWatchTask = Task.Run(
             async () =>
             {
-                while (!_cts.Token.IsCancellationRequested && _isActive)
+                while (!token.IsCancellationRequested && _isActive)
                 {
                     try
                     {
-                        await Task.Delay(250, _cts.Token);
+                        await Task.Delay(250, token);
                     }
                     catch (OperationCanceledException)
                     {
@@ -325,20 +338,19 @@ public sealed class SetupTerminalUi : IDisposable
                     }
                 }
             },
-            _cts.Token
+            token
         );
     }
 
     private void StopResizeWatcher()
     {
-        try
-        {
-            _cts.Cancel();
-        }
-        catch (ObjectDisposedException)
-        {
-            // Already disposed
-        }
+        CancellationTokenSource? cts = _cts;
+        if (cts is null)
+            return;
+        _cts = null;
+
+        cts.Cancel();
+        cts.Dispose();
     }
 
     // ── Safe console size reads ──────────────────────────────────────────────

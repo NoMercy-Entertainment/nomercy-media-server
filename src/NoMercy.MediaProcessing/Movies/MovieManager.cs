@@ -110,8 +110,7 @@ public class MovieManager(
             ImdbId = movieAppends.ImdbId,
             OriginalTitle = movieAppends.OriginalTitle,
             OriginalLanguage = movieAppends.OriginalLanguage,
-            OriginCountry =
-                movieAppends.OriginCountry.Length > 0 ? movieAppends.OriginCountry[0] : null,
+            OriginCountry = OriginCountries.Join(movieAppends.OriginCountry),
             Overview = movieAppends.Overview ?? fromPlugins?.Overview,
             Popularity = movieAppends.Popularity,
             Poster = movieAppends.PosterPath ?? fromPlugins?.PosterUrl,

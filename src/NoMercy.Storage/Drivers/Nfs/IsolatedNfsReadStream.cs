@@ -100,7 +100,8 @@ internal sealed class IsolatedNfsReadStream : Stream
             _ => throw new ArgumentOutOfRangeException(nameof(origin)),
         };
 
-        long rc = _libNfs.Lseek(
+        // nfs_lseek returns a C int; see NfsReadStream.Seek.
+        int rc = _libNfs.Lseek(
             _ownedCtx,
             _fh,
             target,

@@ -21,8 +21,8 @@ namespace NoMercy.Encoder.Hardware;
 /// metrics from the host process + <see cref="System.Diagnostics"/>. GPU
 /// utilization stays at 0 — reading it reliably needs a vendor-specific
 /// tool (nvidia-smi, rocm-smi, intel_gpu_top) that ships with drivers but
-/// not the .NET runtime. Plugins can replace this with a vendor-aware
-/// implementation when they need real GPU numbers.
+/// not the .NET runtime. <see cref="NvmlGpuSampler"/>, the registered
+/// monitor, overrides the GPU members with nvidia-smi readings.
 /// </summary>
 public class ProcessResourceMonitor : IResourceMonitor
 {
@@ -105,7 +105,9 @@ public class ProcessResourceMonitor : IResourceMonitor
         return SampleProcessFamilyCpu();
     }
 
-    public double GetGpuEncodeUtilization(string gpuDeviceKey) => 0.0;
+    /// <inheritdoc />
+    /// <remarks>Always 0 here; <see cref="NvmlGpuSampler"/> measures NVIDIA encoders.</remarks>
+    public virtual double GetGpuEncodeUtilization(string gpuDeviceKey) => 0.0;
 
     /// <inheritdoc />
     /// <remarks>

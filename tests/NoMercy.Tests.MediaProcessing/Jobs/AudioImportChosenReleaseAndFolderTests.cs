@@ -9,11 +9,15 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.MediaProcessing.Jobs;
 using NoMercy.MediaProcessing.Jobs.Dto;
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
+using NoMercy.Providers.AcoustId;
+using NoMercy.Storage;
+using NoMercy.Tests.MediaProcessing.Music;
 
 namespace NoMercy.Tests.MediaProcessing.Jobs;
 
@@ -88,7 +92,10 @@ public sealed class AudioImportChosenReleaseAndFolderTests
         Folder second = FolderAt("Music2");
         Library library = LibraryWithFolders(first, second);
 
-        AudioImportJob.SelectDestinationFolder(library, second.Id).Should().BeSameAs(second);
+        ImportInto(second.Id, first, second)
+            .ResolveDestinationFolder(library)
+            .Should()
+            .BeSameAs(second);
     }
 
     [Fact]
@@ -98,17 +105,42 @@ public sealed class AudioImportChosenReleaseAndFolderTests
         Folder second = FolderAt("Music2");
         Library library = LibraryWithFolders(first, second);
 
-        AudioImportJob.SelectDestinationFolder(library, default).Should().BeSameAs(first);
+        ImportInto(default, first, second)
+            .ResolveDestinationFolder(library)
+            .Should()
+            .BeSameAs(first);
     }
 
     [Fact]
     public void A_folder_outside_the_library_falls_back_to_the_first_library_folder()
     {
         Folder first = FolderAt("Music");
-        Library library = LibraryWithFolders(first, FolderAt("Music2"));
+        Folder second = FolderAt("Music2");
+        Library library = LibraryWithFolders(first, second);
 
-        AudioImportJob.SelectDestinationFolder(library, Ulid.NewUlid()).Should().BeSameAs(first);
+        ImportInto(Ulid.NewUlid(), first, second)
+            .ResolveDestinationFolder(library)
+            .Should()
+            .BeSameAs(first);
     }
+
+    /// <summary>
+    /// An import of an album from outside every library folder (#500), dispatched for
+    /// <paramref name="folderId"/>.
+    /// </summary>
+    private static AudioImportJob ImportInto(Ulid folderId, params Folder[] libraryFolders) =>
+        new(
+            LibraryFolderResolverTests.FactoryResolving([
+                .. libraryFolders.Select(folder => (folder, "/srv/" + folder.Path)),
+            ]),
+            new Mock<IStorageDriver>().Object,
+            new Mock<IAudioFingerprinter>().Object,
+            NullLoggerFactory.Instance
+        )
+        {
+            FolderId = folderId,
+            InputFolder = "/downloads/complete/ABBA - Arrival",
+        };
 
     [Fact]
     public void ReleaseImportJob_hands_the_chosen_release_and_folder_to_AudioImportJob()

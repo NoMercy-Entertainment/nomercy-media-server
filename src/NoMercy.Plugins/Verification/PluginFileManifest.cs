@@ -9,6 +9,8 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Security.Cryptography;
+using System.Text;
 using NoMercy.PluginSdk.Sideload;
 
 namespace NoMercy.PluginSdk.Verification;
@@ -32,11 +34,48 @@ internal static class PluginFileManifest
 
     public static async Task WriteAsync(string pluginFolder, CancellationToken ct = default)
     {
+        await File.WriteAllLinesAsync(
+            Path.Combine(pluginFolder, FileName),
+            await LinesAsync(pluginFolder, ct),
+            ct
+        );
+    }
+
+    /// <summary>The synchronous twin, for the boot-time merge that runs before anything is async.</summary>
+    public static void Write(string pluginFolder)
+    {
+        List<string> lines = [];
+        foreach ((string path, string file) in Files(pluginFolder))
+            lines.Add($"{PluginPackageChecksum.Of(file)}  {path}");
+
+        File.WriteAllLines(Path.Combine(pluginFolder, FileName), lines);
+    }
+
+    /// <summary>
+    /// One SHA-256 over the whole folder: every file's hash and path, in
+    /// record order. Two folders digest the same exactly when their records
+    /// would, so an approval can name a folder's content in one string kept
+    /// outside the folder.
+    /// </summary>
+    public static async Task<string> DigestAsync(
+        string pluginFolder,
+        CancellationToken ct = default
+    )
+    {
+        string record = string.Join('\n', await LinesAsync(pluginFolder, ct));
+
+        return Convert
+            .ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(record)))
+            .ToLowerInvariant();
+    }
+
+    private static async Task<List<string>> LinesAsync(string pluginFolder, CancellationToken ct)
+    {
         List<string> lines = [];
         foreach ((string path, string file) in Files(pluginFolder))
             lines.Add($"{await PluginPackageChecksum.OfAsync(file, ct)}  {path}");
 
-        await File.WriteAllLinesAsync(Path.Combine(pluginFolder, FileName), lines, ct);
+        return lines;
     }
 
     /// <summary>

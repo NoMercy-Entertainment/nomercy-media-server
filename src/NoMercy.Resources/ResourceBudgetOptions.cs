@@ -22,11 +22,19 @@ namespace NoMercy.Resources;
 /// Any threshold left at or below 0 (or <c>MinFreeMemoryMb</c> at 0) is
 /// treated as disabled. Default values err on the side of "leave headroom
 /// for the user's other work" — they don't max out the box.
+///
+/// <c>GpuEncodePercentPerLease</c> is the estimated encoder load of one
+/// running GPU encode. The GPU gate takes the higher of the measured load
+/// and running GPU slots × this estimate, so concurrent GPU encodes still
+/// count where nothing measures the encoder (non-NVIDIA hosts, the first
+/// seconds after boot). 20 % lets about five encodes run under a 95 %
+/// headroom; 0 turns the estimate off.
 /// </summary>
 public sealed record ResourceBudgetOptions(
     double CpuHeadroomPercent = 75.0,
     double GpuHeadroomPercent = 80.0,
-    long MinFreeMemoryMb = 1024
+    long MinFreeMemoryMb = 1024,
+    double GpuEncodePercentPerLease = 20.0
 )
 {
     /// <summary>
@@ -35,5 +43,10 @@ public sealed record ResourceBudgetOptions(
     /// model live host load.
     /// </summary>
     public static ResourceBudgetOptions Disabled { get; } =
-        new(CpuHeadroomPercent: 0, GpuHeadroomPercent: 0, MinFreeMemoryMb: 0);
+        new(
+            CpuHeadroomPercent: 0,
+            GpuHeadroomPercent: 0,
+            MinFreeMemoryMb: 0,
+            GpuEncodePercentPerLease: 0
+        );
 }

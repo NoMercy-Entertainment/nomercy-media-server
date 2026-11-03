@@ -47,7 +47,21 @@ public record RipRequest(
     /// where the caller didn't bother — DiscRipper falls back to detecting
     /// from the drive-path prefix in that case.
     /// </summary>
-    OpticalDiscType DiscType = OpticalDiscType.None
+    OpticalDiscType DiscType = OpticalDiscType.None,
+    /// <summary>
+    /// Volume label of the disc in the drive (e.g. <c>THE_MATRIX</c>), filled
+    /// in by the server from the probe before dispatching the rip. Used as
+    /// the TMDB query when the caller supplied no <see cref="Custom"/>
+    /// metadata. Null when the drive reports no label.
+    /// </summary>
+    string? DiscLabel = null,
+    /// <summary>
+    /// Human-readable title read from disc-embedded metadata (Blu-ray
+    /// <c>bdmt_*.xml</c>), filled in by the server from the probe. Preferred
+    /// over <see cref="DiscLabel"/> for identification. Null when the disc
+    /// carries no embedded title.
+    /// </summary>
+    string? DiscTitle = null
 );
 
 public record CustomMetadata(

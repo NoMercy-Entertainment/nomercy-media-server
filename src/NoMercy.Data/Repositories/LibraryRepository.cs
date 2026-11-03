@@ -14,6 +14,7 @@ using Microsoft.EntityFrameworkCore;
 using NoMercy.Data.DTOs;
 using NoMercy.Data.Extensions;
 using NoMercy.Database;
+using NoMercy.Database.Models;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.Movies;
@@ -222,7 +223,8 @@ public class LibraryRepository(IDbContextFactory<MediaContext> contextFactory) :
                 library
                     .LibraryTvs.Where(lt =>
                         lt.Tv.Episodes.Any(e =>
-                            (
+                            e.SeasonNumber > 0
+                            && (
                                 e.VideoFiles.Any(v => v.Folder != null)
                                 || e.Tv.Episodes.Any(o =>
                                     o.SeasonNumber == e.SeasonNumber
@@ -409,18 +411,9 @@ public class LibraryRepository(IDbContextFactory<MediaContext> contextFactory) :
                 .Tvs.AsNoTracking()
                 .Where(tv => tv.Library.Id == libraryId)
                 .Where(tv => tv.Library.LibraryUsers.Any(u => u.UserId.Equals(userId)))
-                // A show the owner added is in the library the moment they add
-                // it, with or without a file. Filtering on files that exist was
-                // the only way to keep out the shows a scan attached on a guess,
-                // and it hid the newly added show along with them - the one day
-                // seeing it matters most. Provenance tells the two apart, so the
-                // filter can say what it means.
-                .Where(libraryTv =>
-                    libraryTv.Episodes.Any(episode => episode.VideoFiles.Any())
-                    || libraryTv.Library.LibraryTvs.Any(link =>
-                        link.TvId == libraryTv.Id && link.AddedBy == LibraryLinkOrigin.Manual
-                    )
-                )
+                // The carousel shows only what can play; the library listing keeps
+                // the manual-add exception (TvLibraryVisibility.IsListed).
+                .Where(MediaAvailability.TvIsAvailable)
                 .Include(tv =>
                     tv.Episodes.Where(episode =>
                         episode.SeasonNumber > 0 && episode.VideoFiles.Any()
@@ -595,11 +588,7 @@ public class LibraryRepository(IDbContextFactory<MediaContext> contextFactory) :
             .Tvs.AsNoTracking()
             .Where(tv => tv.Library.Id == libraryId)
             .ForUser(userId)
-            // "TV has a playable episode": a multi-episode video file lives on its own
-            // episode, so that episode already passes the direct test. The nested
-            // LastEpisodeNumber self-join never changed this TV-level filter, so the
-            // direct check alone selects the identical set of shows.
-            .Where(tv => tv.Episodes.Any(e => e.VideoFiles.Any(v => v.Folder != null)))
+            .ListedInLibrary()
             .Include(tv => tv.Images.Where(i => i.Type == "logo" && i.Iso6391 == "en"))
             .OrderByDescending(tv => tv.CreatedAt)
             .ThenBy(tv => tv.Id)
@@ -718,22 +707,7 @@ public class LibraryRepository(IDbContextFactory<MediaContext> contextFactory) :
             .Tvs.AsNoTracking()
             .Where(tv => tv.Library.Id == libraryId)
             .ForUser(userId)
-            .Where(tv =>
-                tv.Episodes.Any(e =>
-                    (
-                        e.VideoFiles.Any(v => v.Folder != null)
-                        || e.Tv.Episodes.Any(o =>
-                            o.SeasonNumber == e.SeasonNumber
-                            && o.VideoFiles.Any(w =>
-                                w.Folder != null
-                                && w.LastEpisodeNumber != null
-                                && o.EpisodeNumber <= e.EpisodeNumber
-                                && e.EpisodeNumber <= (w.LastEpisodeNumber ?? 0)
-                            )
-                        )
-                    )
-                )
-            )
+            .ListedInLibrary()
             .Where(tv =>
                 (letter == "_" || letter == "#")
                     ? Letters.Any(p => tv.TitleSort.StartsWith(p.ToLower()))
@@ -861,22 +835,7 @@ public class LibraryRepository(IDbContextFactory<MediaContext> contextFactory) :
             .Tvs.AsNoTracking()
             .Where(tv => tv.Library.Id == libraryId)
             .ForUser(userId)
-            .Where(tv =>
-                tv.Episodes.Any(e =>
-                    (
-                        e.VideoFiles.Any(v => v.Folder != null)
-                        || e.Tv.Episodes.Any(o =>
-                            o.SeasonNumber == e.SeasonNumber
-                            && o.VideoFiles.Any(w =>
-                                w.Folder != null
-                                && w.LastEpisodeNumber != null
-                                && o.EpisodeNumber <= e.EpisodeNumber
-                                && e.EpisodeNumber <= (w.LastEpisodeNumber ?? 0)
-                            )
-                        )
-                    )
-                )
-            )
+            .ListedInLibrary()
             .Where(tv =>
                 (letter == "_" || letter == "#")
                     ? Letters.Any(p => tv.TitleSort.StartsWith(p.ToLower()))
@@ -1122,7 +1081,7 @@ public class LibraryRepository(IDbContextFactory<MediaContext> contextFactory) :
             // A multi-episode file lives on its own episode, which already passes the
             // direct test, so this TV-level "has a playable episode" filter needs only
             // the direct check.
-            .Where(tv => tv.Episodes.Any(e => e.VideoFiles.Any(v => v.Folder != null)))
+            .Where(MediaAvailability.TvIsAvailable)
             .OrderBy(tv => EF.Functions.Random())
             .Select(tv => new HomeTvCardDto
             {
@@ -1518,7 +1477,7 @@ public class LibraryRepository(IDbContextFactory<MediaContext> contextFactory) :
                 libraryTrack.LibraryId == libraryId
                 && track.HostFolder != null
                 && track.Filename != null
-            select new TrackHostFolderDto(track.HostFolder!, albumTrack.AlbumId)
+            select new TrackHostFolderDto(track.HostFolder!, albumTrack.AlbumId, track.FolderId)
         ).ToListAsync(ct);
     }
 }

@@ -262,6 +262,43 @@ public partial class HlsOnDiskPlanReconstructorTests : IDisposable
         hdrLine.Should().NotContain("hvc1.2.");
     }
 
+    /// <summary>
+    /// #356: the reconstructor kept only an HDR bool, so a rebuilt master
+    /// advertised an HLG rendition as PQ. The probed transfer decides the range.
+    /// </summary>
+    [Theory]
+    [InlineData("video_3840x2160", "arib-std-b67", VideoRange.Hlg, "VIDEO-RANGE=HLG")]
+    [InlineData("video_3840x2160", "smpte2084", VideoRange.Pq, "VIDEO-RANGE=PQ")]
+    [InlineData("video_3840x2160_SDR", "bt709", VideoRange.Sdr, "VIDEO-RANGE=SDR")]
+    public async Task Reconstruct_VideoRange_FollowsTheProbedTransfer(
+        string dirName,
+        string colorTransfer,
+        VideoRange expectedRange,
+        string expectedAttribute
+    )
+    {
+        IStorage storage = TestStorageFactory.CreateLocal();
+
+        WriteVariant(dirName, dirName, segmentBytes: 900_000);
+        WriteVariant("audio_eng_aac", "audio_eng_aac", segmentBytes: 60_000);
+        SetupProbe(dirName, "hevc", 3840, 2160, bitDepth: 10, colorTransfer: colorTransfer);
+
+        HlsOnDiskPlanReconstructor reconstructor = new(_mediaAnalyzer.Object);
+        OutputPlan plan = await reconstructor.ReconstructAsync(
+            storage,
+            _outputDirectory,
+            CancellationToken.None
+        );
+
+        plan.VideoOutputs.Should().ContainSingle().Which.VideoRange.Should().Be(expectedRange);
+
+        HlsOutputStrategy strategy = new(storage);
+        await strategy.FinalizeAsync(_outputDirectory, plan, "Title", CancellationToken.None);
+        string master = await File.ReadAllTextAsync(Path.Combine(_outputDirectory, "Title.m3u8"));
+
+        master.Should().Contain(expectedAttribute);
+    }
+
     private static int ExtractInt(string streamInfLine, string attribute)
     {
         System.Text.RegularExpressions.Match match = Regex.Match(

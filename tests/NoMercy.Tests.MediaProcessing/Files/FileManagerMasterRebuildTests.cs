@@ -404,6 +404,94 @@ public sealed partial class FileManagerMasterRebuildTests : IDisposable
             );
     }
 
+    [Fact]
+    public async Task Scan_CompleteMasterWithDanglingSubtitleGroup_DropsTheReference()
+    {
+        // Measured on a real server (#163): an older build left a master whose
+        // variant names SUBTITLES="subs" with no TYPE=SUBTITLES entry, and the
+        // player invented an unlabelled "Track 1" for it. The master already
+        // lists every rendition on disk, so no rebuild runs; the scan still
+        // has to repair the dangling reference.
+        string hostDir = Path.Combine(_tempRoot, "No.Game.No.Life.S01E01.NoMercy");
+        Directory.CreateDirectory(hostDir);
+
+        WriteVariant(hostDir, "video_1920x1080_SDR", segmentBytes: 300_000, extension: ".m4s");
+        WriteVariant(hostDir, "audio_jpn_aac", segmentBytes: 60_000, extension: ".m4s");
+
+        string masterPath = Path.Combine(hostDir, "No.Game.No.Life.S01E01.NoMercy.m3u8");
+        string staleMaster =
+            "#EXTM3U\n"
+            + "#EXT-X-VERSION:6\n"
+            + "\n"
+            + "#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID=\"audio_aac\",LANGUAGE=\"jpn\",AUTOSELECT=YES,DEFAULT=YES,URI=\"audio_jpn_aac/audio_jpn_aac.m3u8\",NAME=\"Japanese\"\n"
+            + "#EXT-X-STREAM-INF:BANDWIDTH=5192000,RESOLUTION=1920x1080,VIDEO-RANGE=SDR,AUDIO=\"audio_aac\",SUBTITLES=\"subs\"\n"
+            + "video_1920x1080_SDR/video_1920x1080_SDR.m3u8\n";
+        await File.WriteAllTextAsync(masterPath, staleMaster);
+
+        LocalStorageDriver driver = new();
+        LocalStorage storage = new(driver, new StoragePathGuard([], driver));
+        FileManager manager = BuildFileManager();
+        List<IVideo> video = InvokeGetVideoHashList(manager, storage, hostDir);
+
+        await InvokeRebuildHlsMasterFromDiskAsync(
+            manager,
+            storage,
+            hostDir,
+            "/No.Game.No.Life.S01E01.NoMercy.m3u8",
+            video
+        );
+
+        string master = await File.ReadAllTextAsync(masterPath);
+        master
+            .Should()
+            .NotContain(
+                "SUBTITLES=\"subs\"",
+                "a variant must never name a subtitle group the master does not define"
+            );
+        master
+            .Should()
+            .Contain(
+                "VIDEO-RANGE=SDR,AUDIO=\"audio_aac\",CLOSED-CAPTIONS=NONE\n",
+                "the repaired variant states it has no caption group"
+            );
+        master.Should().Contain("video_1920x1080_SDR/video_1920x1080_SDR.m3u8");
+    }
+
+    [Fact]
+    public async Task Scan_CompleteMasterWithDefinedSubtitleGroup_IsLeftUntouched()
+    {
+        string hostDir = Path.Combine(_tempRoot, "Defined.Subtitles.NoMercy");
+        Directory.CreateDirectory(hostDir);
+
+        WriteVariant(hostDir, "video_1920x1080_SDR", segmentBytes: 300_000, extension: ".m4s");
+        WriteSubtitle(hostDir, "eng", "full");
+
+        string masterPath = Path.Combine(hostDir, "Defined.Subtitles.NoMercy.m3u8");
+        string goodMaster =
+            "#EXTM3U\n"
+            + "#EXT-X-VERSION:6\n"
+            + "\n"
+            + "#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID=\"subs\",NAME=\"English\",LANGUAGE=\"eng\",DEFAULT=NO,AUTOSELECT=YES,FORCED=NO,URI=\"subtitles/eng/full.ass\"\n"
+            + "#EXT-X-STREAM-INF:BANDWIDTH=5000000,RESOLUTION=1920x1080,VIDEO-RANGE=SDR,SUBTITLES=\"subs\"\n"
+            + "video_1920x1080_SDR/video_1920x1080_SDR.m3u8\n";
+        await File.WriteAllTextAsync(masterPath, goodMaster);
+
+        LocalStorageDriver driver = new();
+        LocalStorage storage = new(driver, new StoragePathGuard([], driver));
+        FileManager manager = BuildFileManager();
+        List<IVideo> video = InvokeGetVideoHashList(manager, storage, hostDir);
+
+        await InvokeRebuildHlsMasterFromDiskAsync(
+            manager,
+            storage,
+            hostDir,
+            "/Defined.Subtitles.NoMercy.m3u8",
+            video
+        );
+
+        (await File.ReadAllTextAsync(masterPath)).Should().Be(goodMaster);
+    }
+
     private static void WriteAudioBlueprint(string hostDir, IReadOnlyList<BlueprintTrack> tracks)
     {
         MediaBlueprint blueprint = new(

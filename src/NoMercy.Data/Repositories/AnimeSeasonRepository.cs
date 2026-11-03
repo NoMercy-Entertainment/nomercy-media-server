@@ -326,7 +326,8 @@ public class AnimeSeasonRepository(MediaContext context) : IAnimeSeasonRepositor
             .Where(ast => ast.Tv.Library.LibraryUsers.Any(u => u.UserId == userId))
             .Where(ast =>
                 ast.Tv.Episodes.Any(e =>
-                    (
+                    e.SeasonNumber > 0
+                    && (
                         e.VideoFiles.Any(v => v.Folder != null)
                         || e.Tv.Episodes.Any(o =>
                             o.SeasonNumber == e.SeasonNumber

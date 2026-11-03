@@ -45,7 +45,7 @@ public class PlanStage(
     ILogger<PlanStage> logger,
     IQualityScalerResolver? qualityScalerResolver = null,
     IHardwarePreferenceResolver? hardwarePreferenceResolver = null,
-    SpeedIndex? speedIndex = null,
+    ISpeedIndexProvider? speedIndexProvider = null,
     IBitDepthPolicyResolver? bitDepthPolicyResolver = null,
     IOutputNamingResolver? outputNamingResolver = null,
     ISubtitleAcquisitionService? subtitleAcquisitionService = null,
@@ -172,7 +172,8 @@ public class PlanStage(
 
             if (hardwarePreferenceResolver is not null)
             {
-                SpeedIndex effectiveSpeedIndex = speedIndex ?? new SpeedIndex(new());
+                SpeedIndex effectiveSpeedIndex =
+                    speedIndexProvider?.Current ?? new SpeedIndex(new());
 
                 List<string> availableEncoderNames = ffmpegCapabilities
                     .AvailableEncoders.Where(encoderName =>
@@ -351,6 +352,17 @@ public class PlanStage(
     }
 
     /// <summary>
+    /// The scale a profile's CRF is written in: the codec's software-encoder
+    /// range. H.264 / HEVC profiles are written in libx264 / libx265 terms
+    /// (0-51); AV1 and VP9 profiles in libsvtav1 / libvpx terms (0-63). This
+    /// is the source side of the single CRF translation — the
+    /// <see cref="IQualityScaler"/> maps from here to the encoder's native
+    /// range, and nothing downstream scales the value again.
+    /// </summary>
+    private static int ReferenceQualityMax(VideoCodecType codec) =>
+        codec is VideoCodecType.Av1 or VideoCodecType.Vp9 ? 63 : 51;
+
+    /// <summary>
     /// Downgrades an individual <see cref="VideoOutput"/> from Transcode to
     /// Copy when the source stream already satisfies the profile losslessly —
     /// re-encoding a matching lossy source can only add generation loss, never
@@ -478,7 +490,7 @@ public class PlanStage(
             codec,
             profile.HardwarePreference,
             availableEncoderNames,
-            speedIndex ?? new SpeedIndex(new()),
+            speedIndexProvider?.Current ?? new SpeedIndex(new()),
             NullDecisionLogSink.Instance
         );
 
@@ -944,12 +956,7 @@ public class PlanStage(
                                 ?? new LinearQualityScaler();
 
                             QualityRange nativeRange = encoder.QualityRange;
-                            int referenceMax = encoderHandle.Contains(
-                                "av1",
-                                StringComparison.OrdinalIgnoreCase
-                            )
-                                ? 63
-                                : 51;
+                            int referenceMax = ReferenceQualityMax(v.Codec);
 
                             CodecHint hint = new(encoderHandle, v.Codec);
                             int translatedCrf = scaler.Translate(
@@ -1100,6 +1107,15 @@ public class PlanStage(
                                         : $"-{argKey}";
                                     if (ProfileRuleValidator.ReservedFlags.Contains(normalizedKey))
                                         continue;
+                                    if (
+                                        CustomArgumentGuard.ShouldDrop(
+                                            argKey,
+                                            argValue,
+                                            true,
+                                            "video custom arguments"
+                                        )
+                                    )
+                                        continue;
                                     extraFlags[argKey] = argValue;
                                 }
                             }
@@ -1136,14 +1152,15 @@ public class PlanStage(
                                     ? tonemapPlan.FilterStringFragment
                                     : null,
                                 CropFilter: cropFilter,
-                                IsHdrOutput: preservesHdr,
+                                VideoRange: preservesHdr
+                                    ? VideoRangeMapping.ForHdrTransfer(
+                                        media.VideoStreams[0].ColorTransfer
+                                    )
+                                    : VideoRange.Sdr,
                                 // Every rung here is built from media.VideoStreams[0] —
                                 // the source stream this output was planned against. See
                                 // VideoOutputPlan.SourceStreamIndex.
-                                SourceStreamIndex: media.VideoStreams[0].Index,
-                                ColorTransfer: preservesHdr
-                                    ? media.VideoStreams[0].ColorTransfer
-                                    : null
+                                SourceStreamIndex: media.VideoStreams[0].Index
                             );
                         }
                     )
@@ -1343,7 +1360,8 @@ public class PlanStage(
 
         if (customArguments is { Count: > 0 })
             foreach ((string key, string value) in customArguments)
-                flags[key] = value;
+                if (!CustomArgumentGuard.ShouldDrop(key, value, true, "profile custom arguments"))
+                    flags[key] = value;
 
         return flags;
     }

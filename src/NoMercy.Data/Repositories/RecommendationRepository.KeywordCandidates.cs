@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.EntityFrameworkCore;
+using NoMercy.Data.Services.Recommendations;
 using NoMercy.Database;
 using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Extensions;
@@ -20,7 +21,7 @@ public partial class RecommendationRepository
 {
     public async Task<List<RecommendationCandidateDto>> GetKeywordCrossTypeTvCandidatesAsync(
         Guid userId,
-        Dictionary<int, List<int>> movieKeywordMap,
+        Dictionary<SourceKey, List<int>> movieKeywordMap,
         int minSharedKeywords = 3,
         int maxCandidates = 100,
         int maxKeywordFrequency = 50,
@@ -132,7 +133,7 @@ public partial class RecommendationRepository
                         string? Palette
                     ) meta = metaMap[g.Key];
                     HashSet<int> sharedKeywordIds = [.. g.Select(r => r.KeywordId)];
-                    List<int> sourceMovieIds =
+                    List<SourceKey> sourceMovieIds =
                     [
                         .. movieKeywordMap
                             .Where(kv => kv.Value.Any(kw => sharedKeywordIds.Contains(kw)))
@@ -160,7 +161,7 @@ public partial class RecommendationRepository
 
     public async Task<List<RecommendationCandidateDto>> GetKeywordCrossTypeAnimeCandidatesAsync(
         Guid userId,
-        Dictionary<int, List<int>> movieKeywordMap,
+        Dictionary<SourceKey, List<int>> movieKeywordMap,
         int minSharedKeywords = 3,
         int maxCandidates = 100,
         int maxKeywordFrequency = 50,
@@ -267,7 +268,7 @@ public partial class RecommendationRepository
                         string? Palette
                     ) meta = metaMap[g.Key];
                     HashSet<int> sharedKeywordIds = [.. g.Select(r => r.KeywordId)];
-                    List<int> sourceMovieIds =
+                    List<SourceKey> sourceMovieIds =
                     [
                         .. movieKeywordMap
                             .Where(kv => kv.Value.Any(kw => sharedKeywordIds.Contains(kw)))
@@ -295,7 +296,7 @@ public partial class RecommendationRepository
 
     public async Task<List<RecommendationCandidateDto>> GetKeywordCrossTypeMovieCandidatesAsync(
         Guid userId,
-        Dictionary<int, List<int>> tvKeywordMap,
+        Dictionary<SourceKey, List<int>> tvKeywordMap,
         int minSharedKeywords = 3,
         int maxCandidates = 100,
         int maxKeywordFrequency = 50,
@@ -404,7 +405,7 @@ public partial class RecommendationRepository
                         string? Palette
                     ) meta = metaMap[g.Key];
                     HashSet<int> sharedKeywordIds = [.. g.Select(r => r.KeywordId)];
-                    List<int> sourceTvIds =
+                    List<SourceKey> sourceTvIds =
                     [
                         .. tvKeywordMap
                             .Where(kv => kv.Value.Any(kw => sharedKeywordIds.Contains(kw)))

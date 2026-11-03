@@ -49,38 +49,41 @@ public class CachingPushKeyClient(
     private readonly TimeSpan _failureTtl = failureTtl ?? DefaultFailureTtl;
     private readonly SemaphoreSlim _refreshLock = new(1, 1);
 
-    private PushSubscriptionKey[] _cached = [];
-    private string? _cachedToken;
-    private DateTimeOffset _expiresAt = DateTimeOffset.MinValue;
+    // Token, keys and expiry live in one immutable snapshot that is replaced in a
+    // single assignment once a fetch outcome is known. A cancelled fetch never
+    // reaches that assignment, so the previous token's keys can never be paired
+    // with the new token, and the lock-free fast path never sees a half update.
+    private CacheEntry? _entry;
 
     public async Task<PushSubscriptionKey[]> GetKeysAsync(
         string accessToken,
         CancellationToken cancellationToken = default
     )
     {
-        if (IsFresh(accessToken))
-            return _cached;
+        if (_entry is { } cached && IsFresh(cached, accessToken))
+            return cached.Keys;
 
         await _refreshLock.WaitAsync(cancellationToken);
         try
         {
-            if (IsFresh(accessToken))
-                return _cached;
+            if (_entry is { } refreshed && IsFresh(refreshed, accessToken))
+                return refreshed.Keys;
 
-            _cachedToken = accessToken;
-
+            PushSubscriptionKey[] keys;
+            DateTimeOffset expiresAt;
             try
             {
-                _cached = await inner.GetKeysAsync(accessToken, cancellationToken);
-                _expiresAt = _timeProvider.GetUtcNow() + _ttl;
+                keys = await inner.GetKeysAsync(accessToken, cancellationToken);
+                expiresAt = _timeProvider.GetUtcNow() + _ttl;
             }
             catch (Exception exception) when (exception is not OperationCanceledException)
             {
-                _cached = [];
-                _expiresAt = _timeProvider.GetUtcNow() + _failureTtl;
+                keys = [];
+                expiresAt = _timeProvider.GetUtcNow() + _failureTtl;
             }
 
-            return _cached;
+            _entry = new(accessToken, keys, expiresAt);
+            return keys;
         }
         finally
         {
@@ -88,6 +91,12 @@ public class CachingPushKeyClient(
         }
     }
 
-    private bool IsFresh(string accessToken) =>
-        _cachedToken == accessToken && _timeProvider.GetUtcNow() < _expiresAt;
+    private bool IsFresh(CacheEntry entry, string accessToken) =>
+        entry.Token == accessToken && _timeProvider.GetUtcNow() < entry.ExpiresAt;
+
+    private sealed record CacheEntry(
+        string Token,
+        PushSubscriptionKey[] Keys,
+        DateTimeOffset ExpiresAt
+    );
 }

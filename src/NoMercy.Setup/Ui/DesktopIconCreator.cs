@@ -19,6 +19,8 @@ namespace NoMercy.Setup.Ui;
 
 public static class DesktopIconCreator
 {
+    private const int MacIconTimeoutMs = 10_000;
+
     // LOCAL-ONLY: DesktopIconCreator is in NoMercy.Setup which cannot reference NoMercy.Providers (circular).
     private static IStorageDriver _driver => new LocalStorageDriver();
 
@@ -117,27 +119,80 @@ public static class DesktopIconCreator
             using (Process? osascriptProc = Process.Start("osascript", scriptPath))
                 osascriptProc.WaitForExit();
 
-            if (!string.IsNullOrEmpty(iconPath) && _driver.FileExists(iconPath))
+            if (string.IsNullOrEmpty(iconPath) || !_driver.FileExists(iconPath))
+                return;
+
+            if (!_driver.FileExists(aliasPath))
             {
-                string iconDest = Path.Combine(aliasPath, "Icon.icns");
-                _driver.CopyFile(iconPath, iconDest, overwrite: true);
-
-                using (
-                    Process? shProc = Process.Start(
-                        "sh",
-                        $"-c \"cp '{iconPath}' '{aliasPath}/Icon.icns' && /usr/bin/SetFile -a C '{aliasPath}'\""
-                    )
-                )
-                    shProc.WaitForExit();
-
-                using (Process? killProc = Process.Start("killall", "Finder"))
-                    killProc.WaitForExit();
+                Console.WriteLine(
+                    $"Could not set the Mac shortcut icon: no alias was created at {aliasPath}"
+                );
+                return;
             }
+
+            ApplyMacIcon(iconPath, aliasPath);
         }
         catch (Exception ex)
         {
             Console.WriteLine($"Error creating Mac shortcut: {ex.Message}");
         }
+    }
+
+    private static void ApplyMacIcon(string iconPath, string aliasPath)
+    {
+        ProcessStartInfo startInfo = BuildMacIconCommand(iconPath, aliasPath);
+        startInfo.UseShellExecute = false;
+        startInfo.RedirectStandardError = true;
+        startInfo.CreateNoWindow = true;
+
+        using Process? process = Process.Start(startInfo);
+        if (process is null)
+        {
+            Console.WriteLine("Could not set the Mac shortcut icon: osascript did not start");
+            return;
+        }
+
+        Task<string> stderr = process.StandardError.ReadToEndAsync();
+        if (!process.WaitForExit(MacIconTimeoutMs))
+        {
+            process.Kill();
+            Console.WriteLine("Could not set the Mac shortcut icon: osascript timed out");
+            return;
+        }
+
+        if (process.ExitCode != 0)
+            Console.WriteLine($"Could not set the Mac shortcut icon: {stderr.Result.Trim()}");
+    }
+
+    /// <summary>
+    /// Builds the <c>osascript</c> call that gives the Finder alias at
+    /// <paramref name="aliasPath"/> the custom icon in <paramref name="iconPath"/>.
+    /// An alias is a plain file, so the icon is set on the file itself through
+    /// <c>NSWorkspace setIcon:forFile:</c>. Both paths are passed as script
+    /// arguments, never spliced into the script text, so quotes in a path are harmless.
+    /// </summary>
+    internal static ProcessStartInfo BuildMacIconCommand(string iconPath, string aliasPath)
+    {
+        string[] scriptLines =
+        [
+            "use framework \"AppKit\"",
+            "on run argv",
+            "set iconImage to current application's NSImage's alloc()'s initWithContentsOfFile:(item 1 of argv)",
+            "if iconImage is missing value then error \"cannot read icon \" & (item 1 of argv)",
+            "set applied to current application's NSWorkspace's sharedWorkspace()'s setIcon:iconImage forFile:(item 2 of argv) options:0",
+            "if applied is false then error \"Finder refused the icon for \" & (item 2 of argv)",
+            "end run",
+        ];
+
+        ProcessStartInfo startInfo = new("osascript");
+        foreach (string line in scriptLines)
+        {
+            startInfo.ArgumentList.Add("-e");
+            startInfo.ArgumentList.Add(line);
+        }
+        startInfo.ArgumentList.Add(iconPath);
+        startInfo.ArgumentList.Add(aliasPath);
+        return startInfo;
     }
 
     private static void CreateLinuxShortcut(

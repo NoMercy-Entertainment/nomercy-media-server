@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using ImageMagick;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Http.Extensions;
@@ -20,7 +21,6 @@ using NoMercy.NmSystem.Information;
 using NoMercy.Providers.Helpers;
 using NoMercy.Providers.TMDB.Client;
 using NoMercy.Storage;
-using ImageMagick;
 
 namespace NoMercy.Api.Controllers.File;
 
@@ -163,8 +163,10 @@ public class ImageController(
         }
     }
 
+    // Purging a cached rendition is server maintenance, not viewing: a viewer
+    // with MediaAccess could otherwise evict every cached image. (#292)
     [HttpDelete]
-    [Authorize(Policy = "MediaAccess")]
+    [Authorize(Policy = "Moderator")]
     public IActionResult DeleteCache(
         string type,
         string path,

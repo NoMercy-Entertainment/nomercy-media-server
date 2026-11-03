@@ -112,7 +112,9 @@ public static class GroupItemPosters
             .Tvs.AsNoTracking()
             .Where(tv =>
                 tvIds.Contains(tv.Id)
-                && tv.Episodes.Any(e => e.VideoFiles.Any(v => v.Folder != null))
+                && tv.Episodes.Any(e =>
+                    e.SeasonNumber > 0 && e.VideoFiles.Any(v => v.Folder != null)
+                )
             )
             .Select(tv => new GroupPosterRow(0, tv.Id, tv.CreatedAt, tv.TitleSort, null, tv.Poster))
             .ToDictionaryAsync(row => row.ItemId, ct);

@@ -18,6 +18,7 @@ using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.Hardware;
 using NoMercy.Encoder.LiveTranscode;
 using NoMercy.Storage;
+using NoMercy.Tests.Encoder.Hardware;
 using NoMercy.Tests.Encoder.Storage;
 
 namespace NoMercy.Tests.Encoder.LiveTranscode;
@@ -148,7 +149,7 @@ public class LiveEncoderGapFillTests
             segmentInventory
         );
         CapturingLiveFfmpegRunner runner = new();
-        SpeedIndex speedIndex = new(new());
+        StubSpeedIndexProvider speedIndexProvider = new();
         IResourceBudget budget = new ResourceBudget(gpuDevices: [], cpuCores: 8);
 
         LiveEncoder encoder = new(
@@ -158,7 +159,7 @@ public class LiveEncoderGapFillTests
             runner,
             segmentInventory,
             options,
-            speedIndex,
+            speedIndexProvider,
             budget,
             NullLogger<LiveEncoder>.Instance
         );

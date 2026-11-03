@@ -12,6 +12,7 @@
 using Newtonsoft.Json;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Database;
+using NoMercy.Database.Models;
 using NoMercy.Database.Models.Movies;
 using NoMercy.Database.Models.TvShows;
 using NoMercy.NmSystem.Domain;
@@ -233,9 +234,9 @@ public record InfoResponseItemDto
             animeSeasonMovie
         ));
 
-        PeopleDto[] cast = [.. movie.Cast.Select(cast => new PeopleDto(cast))];
+        PeopleDto[] cast = [.. ByCreditOrder(movie.Cast.Select(cast => new PeopleDto(cast)))];
 
-        PeopleDto[] crew = [.. movie.Crew.Select(crew => new PeopleDto(crew))];
+        PeopleDto[] crew = [.. ByCreditOrder(movie.Crew.Select(crew => new PeopleDto(crew)))];
 
         Cast = cast;
         Crew = crew;
@@ -322,9 +323,15 @@ public record InfoResponseItemDto
 
         Genres = tmdbMovie.Genres.Select(genreMovie => new GenreDto(genreMovie));
 
-        PeopleDto[] cast = [.. tmdbMovie.Credits.Cast.Select(cast => new PeopleDto(cast))];
+        PeopleDto[] cast =
+        [
+            .. ByCreditOrder(tmdbMovie.Credits.Cast.Select(cast => new PeopleDto(cast))),
+        ];
 
-        PeopleDto[] crew = [.. tmdbMovie.Credits.Crew.Select(crew => new PeopleDto(crew))];
+        PeopleDto[] crew =
+        [
+            .. ByCreditOrder(tmdbMovie.Credits.Crew.Select(crew => new PeopleDto(crew))),
+        ];
 
         Cast = cast;
         Crew = crew;
@@ -393,9 +400,7 @@ public record InfoResponseItemDto
             .Sum();
 
         NumberOfItems = tv.NumberOfEpisodes;
-        HaveItems = tv.Episodes.Count(episode =>
-            episode.VideoFiles.Any(videoFile => videoFile.Folder != null)
-        );
+        HaveItems = tv.Episodes.Count(episode => episode.IsAvailable());
 
         Year = tv.FirstAirDate.ParseYear();
         VoteAverage = tv.VoteAverage ?? 0;
@@ -449,20 +454,22 @@ public record InfoResponseItemDto
 
         PeopleDto[] cast =
         [
-            .. tv
-                .Episodes.SelectMany(episode => episode.Cast)
-                .Concat(tv.Cast)
-                .Select(cast => new PeopleDto(cast))
+            .. ByCreditOrder(
+                    tv.Episodes.SelectMany(episode => episode.Cast)
+                        .Concat(tv.Cast)
+                        .Select(cast => new PeopleDto(cast))
+                )
                 .GroupBy(people => people.Id)
                 .Select(group => group.First()),
         ];
 
         PeopleDto[] crew =
         [
-            .. tv
-                .Episodes.SelectMany(episode => episode.Crew)
-                .Concat(tv.Crew)
-                .Select(crew => new PeopleDto(crew))
+            .. ByCreditOrder(
+                    tv.Episodes.SelectMany(episode => episode.Crew)
+                        .Concat(tv.Crew)
+                        .Select(crew => new PeopleDto(crew))
+                )
                 .GroupBy(people => people.Id)
                 .Select(group => group.First()),
         ];
@@ -596,9 +603,15 @@ public record InfoResponseItemDto
 
         Genres = tmdbTv.Genres.Select(genreTv => new GenreDto(genreTv));
 
-        PeopleDto[] cast = [.. tmdbTv.Credits.Cast.Select(cast => new PeopleDto(cast))];
+        PeopleDto[] cast =
+        [
+            .. ByCreditOrder(tmdbTv.Credits.Cast.Select(cast => new PeopleDto(cast))),
+        ];
 
-        PeopleDto[] crew = [.. tmdbTv.Credits.Crew.Select(crew => new PeopleDto(crew))];
+        PeopleDto[] crew =
+        [
+            .. ByCreditOrder(tmdbTv.Credits.Crew.Select(crew => new PeopleDto(crew))),
+        ];
 
         Cast = cast;
         Crew = crew;
@@ -751,5 +764,14 @@ public record InfoResponseItemDto
         Companies = collection
             .CollectionMovies.SelectMany(cm => cm.Movie.CompaniesMovies)
             .Select(ctv => new CompanyDto(ctv));
+    }
+
+    /// <summary>
+    /// Billing order (TMDB credit order) ascending; credits without an order go last.
+    /// Database rows carry no guaranteed order, so the response must sort them itself.
+    /// </summary>
+    private static IOrderedEnumerable<PeopleDto> ByCreditOrder(IEnumerable<PeopleDto> people)
+    {
+        return people.OrderBy(person => person.Order is null).ThenBy(person => person.Order);
     }
 }

@@ -13,6 +13,7 @@ using Newtonsoft.Json;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Data.Repositories;
 using NoMercy.Database;
+using NoMercy.Database.Models;
 using NoMercy.Database.Models.Movies;
 using NoMercy.Database.Models.TvShows;
 using NoMercy.NmSystem.Domain;
@@ -140,7 +141,7 @@ public record GenreRowItemDto
         Type = MediaTypes.TvMediaType;
         Link = new($"/tv/{Id}", UriKind.Relative);
         NumberOfItems = tv.NumberOfEpisodes;
-        HaveItems = tv.Episodes.Count(episode => episode.VideoFiles.Any(v => v.Folder != null));
+        HaveItems = tv.Episodes.Count(episode => episode.IsAvailable());
 
         ColorPalette = tv.ColorPalette;
         Videos = [.. tv.Media.Select(media => new VideoDto(media))];

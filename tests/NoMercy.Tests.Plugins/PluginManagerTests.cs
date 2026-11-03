@@ -18,6 +18,7 @@ using NoMercy.Events;
 using NoMercy.Events.Plugins;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Approval;
 using NoMercy.PluginSdk.Verification;
 using NoMercy.Storage;
 using Xunit;
@@ -276,6 +277,17 @@ public class PluginManagerTests : IDisposable
             .Setup(s => s.CombinePath(_tempPluginsDir, PluginManager.PendingDeletesFolder))
             .Returns(Path.Combine(_tempPluginsDir, PluginManager.PendingDeletesFolder));
         storage.Setup(s => s.Exists(_tempPluginsDir)).Returns(true);
+        // The recorded set is read once before the scan, from the platform folder.
+        string recordedFolders = Path.Combine(
+            _tempPluginsDir,
+            "data",
+            "platform",
+            "recorded-folders.json"
+        );
+        storage
+            .Setup(s => s.CombinePath(_tempPluginsDir, "data", "platform", "recorded-folders.json"))
+            .Returns(recordedFolders);
+        storage.Setup(s => s.Exists(recordedFolders)).Returns(false);
         storage
             .Setup(s => s.List(_tempPluginsDir, null, false))
             .Returns([
@@ -640,6 +652,7 @@ public class PluginManagerTests : IDisposable
         }}";
         string manifestPath = Path.Combine(pluginDir, "plugin.json");
         await File.WriteAllTextAsync(manifestPath, manifestJson);
+        await InstalledPluginFolder.RecordAsync(_tempPluginsDir, pluginDir);
 
         List<PluginErrorOccurredEvent> errors = [];
         _eventBus.Subscribe<PluginErrorOccurredEvent>(
@@ -948,7 +961,7 @@ public class PluginManagerTests : IDisposable
     }
 
     [Fact]
-    public async Task AnUpgradeWritesMissingFileManifestsOnce()
+    public async Task AFolderTheServerNeverRecordedIsHeldAndNotRecordedAtBoot()
     {
         string pluginDir = Path.Combine(_tempPluginsDir, Echo);
         Directory.CreateDirectory(pluginDir);
@@ -961,7 +974,25 @@ public class PluginManagerTests : IDisposable
 
         File.Exists(sideFile)
             .Should()
-            .BeTrue("a plugin installed before this release is recorded at boot");
+            .BeFalse("nothing is recorded as installed until the owner approves the folder");
+        _manager
+            .GetInstalledPlugins()
+            .Should()
+            .ContainSingle()
+            .Which.ApprovalReason.Should()
+            .Be(PluginDropGate.NeverApproved);
+    }
+
+    [Fact]
+    public async Task ABootNeverRewritesTheRecordOfAnInstalledFolder()
+    {
+        string pluginDir = Path.Combine(_tempPluginsDir, Echo);
+        Directory.CreateDirectory(pluginDir);
+        string dll = Path.Combine(pluginDir, $"{Echo}.dll");
+        File.Copy(CodeScanVerificationStageTests.SampleDllPath(Echo), dll);
+        await File.WriteAllTextAsync(Path.Combine(pluginDir, "plugin.json"), EchoManifest());
+        await InstalledPluginFolder.RecordAsync(_tempPluginsDir, pluginDir);
+        string sideFile = Path.Combine(pluginDir, PluginFileManifest.FileName);
         string recorded = await File.ReadAllTextAsync(sideFile);
 
         await File.AppendAllTextAsync(dll, "x");
@@ -1038,6 +1069,7 @@ public class PluginManagerTests : IDisposable
     public async Task AStagedBareDllUpdateIsRecordedAtBoot()
     {
         string dll = StageEcho(Echo, withManifest: false);
+        await InstalledPluginFolder.MarkRecordedAsync(_tempPluginsDir, Echo);
         string record = Path.Combine(_tempPluginsDir, Echo, PluginFileManifest.FileName);
         await File.WriteAllTextAsync(record, $"{new string('0', 64)}  {Echo}.dll\n");
         string staging = Path.Combine(_tempPluginsDir, ".pending-updates", Echo);
@@ -1067,7 +1099,7 @@ public class PluginManagerTests : IDisposable
         string dll = StageEcho(Echo, withManifest: true);
         string leftover = Path.Combine(Path.GetDirectoryName(dll)!, "dropped-by-the-update.txt");
         await File.WriteAllTextAsync(leftover, "from the earlier version");
-        await PluginFileManifest.WriteAsync(Path.GetDirectoryName(dll)!);
+        await InstalledPluginFolder.RecordAsync(_tempPluginsDir, Path.GetDirectoryName(dll)!);
 
         string staging = Path.Combine(_tempPluginsDir, ".pending-updates", Echo);
         Directory.CreateDirectory(staging);
@@ -1153,9 +1185,10 @@ public class PluginManagerTests : IDisposable
     public async Task ARecordDeletedAfterTheFirstBootIsRefusedAtTheNext()
     {
         string dll = StageEcho(Echo, withManifest: true);
+        await InstalledPluginFolder.RecordAsync(_tempPluginsDir, Path.GetDirectoryName(dll)!);
         string sideFile = Path.Combine(Path.GetDirectoryName(dll)!, PluginFileManifest.FileName);
         await _manager.LoadPluginsFromDirectoryAsync();
-        File.Exists(sideFile).Should().BeTrue("the first start records the folder");
+        _manager.GetInstalledPlugins().Should().ContainSingle(p => p.Status == PluginStatus.Active);
         _manager.Dispose();
 
         File.Delete(sideFile);
@@ -1176,35 +1209,45 @@ public class PluginManagerTests : IDisposable
     }
 
     [Fact]
-    public async Task AFolderDroppedAfterTheFirstBootIsRecordedAndLoads()
+    public async Task AFolderDroppedAfterTheFirstBootIsHeldUntilTheOwnerApproves()
     {
         await _manager.LoadPluginsFromDirectoryAsync();
         _manager.Dispose();
 
         string dll = StageEcho(Echo, withManifest: true);
+        string sideFile = Path.Combine(Path.GetDirectoryName(dll)!, PluginFileManifest.FileName);
         InMemoryEventBus eventBus = new();
         List<PluginErrorOccurredEvent> errors = Errors(eventBus);
         using PluginManager second = SecondBoot(eventBus);
 
         await second.LoadPluginsFromDirectoryAsync();
 
-        errors.Should().BeEmpty();
-        File.Exists(Path.Combine(Path.GetDirectoryName(dll)!, PluginFileManifest.FileName))
+        errors.Should().BeEmpty("a held plugin is waiting, not broken");
+        File.Exists(sideFile).Should().BeFalse("nothing is recorded until the owner says yes");
+        PluginInfo held = second.GetInstalledPlugins().Should().ContainSingle().Subject;
+        held.Status.Should().Be(PluginStatus.Disabled);
+        held.ApprovalReason.Should().Be(PluginDropGate.NeverApproved);
+
+        await second.ApprovePluginAsync(held.Id);
+
+        File.Exists(sideFile)
             .Should()
-            .BeTrue("a folder the server has not seen before is recorded, as before this release");
+            .BeTrue("the owner's yes records the folder as an install does");
         second.GetInstalledPlugins().Should().ContainSingle(p => p.Status == PluginStatus.Active);
     }
 
     /// <summary>
     /// An uninstall forgets the folder: a plugin dropped again under the same
-    /// name is a new folder, seen for the first time.
+    /// name is a new folder, seen for the first time, and waits like one.
     /// </summary>
     [Fact]
-    public async Task AFolderDroppedAgainAfterAnUninstallLoads()
+    public async Task AFolderDroppedAgainAfterAnUninstallWaitsForApproval()
     {
-        StageEcho(Echo, withManifest: true);
+        string dll = StageEcho(Echo, withManifest: true);
+        await InstalledPluginFolder.RecordAsync(_tempPluginsDir, Path.GetDirectoryName(dll)!);
         await _manager.LoadPluginsFromDirectoryAsync();
         PluginInfo installed = _manager.GetInstalledPlugins().Should().ContainSingle().Subject;
+        installed.Status.Should().Be(PluginStatus.Active);
         await _manager.UninstallPluginAsync(installed.Id);
         _manager.Dispose();
         Directory.Exists(Path.Combine(_tempPluginsDir, Echo)).Should().BeFalse();
@@ -1217,7 +1260,12 @@ public class PluginManagerTests : IDisposable
         await second.LoadPluginsFromDirectoryAsync();
 
         errors.Should().BeEmpty();
-        second.GetInstalledPlugins().Should().ContainSingle(p => p.Status == PluginStatus.Active);
+        second
+            .GetInstalledPlugins()
+            .Should()
+            .ContainSingle()
+            .Which.ApprovalReason.Should()
+            .Be(PluginDropGate.NeverApproved);
     }
 
     private sealed class MinimalServiceProvider : IServiceProvider

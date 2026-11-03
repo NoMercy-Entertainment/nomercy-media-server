@@ -103,6 +103,23 @@ public class AlphaBucketTests
     }
 
     [Theory]
+    [InlineData("édith.piaf")]
+    [InlineData("Édith Piaf")]
+    [InlineData("進撃の巨人")]
+    [InlineData("1408")]
+    [InlineData("oshi.no.ko")]
+    public void Matches_EveryTitleSort_LandsOnlyInTheBucketLetterForNames(string titleSort)
+    {
+        string expectedBucket = AlphaBucket.LetterFor(titleSort);
+
+        List<string> hits = AlphaBucket
+            .Buckets.Where(bucket => AlphaBucket.Matches(titleSort, bucket))
+            .ToList();
+
+        hits.Should().Equal(expectedBucket);
+    }
+
+    [Theory]
     [InlineData([null, "#"])]
     [InlineData(["", "#"])]
     [InlineData(["abba", "A"])]

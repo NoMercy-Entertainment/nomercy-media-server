@@ -47,6 +47,10 @@ public class PluginLoader : IPluginLoader
         // "you never added one".
         await _repository.LoadAsync(ct);
 
+        // Beside the boot, not in it: a server that cannot reach the index must
+        // still start, on the catalogue LoadAsync read from the last refresh.
+        _ = Task.Run(() => RefreshCatalogueAsync(ct), CancellationToken.None);
+
         IReadOnlyList<PluginLoadResult> loadedPlugins = await _pluginManager.LoadAllAsync(ct);
 
         foreach (PluginLoadResult pluginResult in loadedPlugins)
@@ -65,5 +69,24 @@ public class PluginLoader : IPluginLoader
         _partRegistrar.AttachAll(_pluginManager);
 
         return loadedPlugins;
+    }
+
+    private async Task RefreshCatalogueAsync(CancellationToken ct)
+    {
+        try
+        {
+            await _repository.RefreshAsync(ct);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            // The server is shutting down; the next start refreshes again.
+        }
+        catch (Exception exception)
+        {
+            _logger.LogWarning(
+                exception,
+                "The plugin catalogue could not be refreshed at start; the cached one stays in use."
+            );
+        }
     }
 }

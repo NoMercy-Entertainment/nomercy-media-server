@@ -86,6 +86,9 @@ public class PluginController(
         if (plugin is null)
             return NotFoundResponse("Plugin not found");
 
+        if (RefusedWhileAwaitingApproval(id) is { } refused)
+            return refused;
+
         consentService.GrantConsent(id, plugin.Capabilities, plugin.Version);
 
         // Grants named in the same call, so consenting to a plugin that needs a
@@ -196,6 +199,19 @@ public class PluginController(
         );
     }
 
+    /// <summary>
+    /// Enabling, restarting and consenting all end in a load, and a held
+    /// plugin must not load by any door but the approval. The manager refuses
+    /// too; this one says so in the owner's words instead of a 404.
+    /// </summary>
+    private IActionResult? RefusedWhileAwaitingApproval(Ulid id) =>
+        pluginManager.GetInstalledPlugins().FirstOrDefault(p => p.Id == id)?.ApprovalReason
+            is not null
+            ? UnprocessableEntityResponse(
+                "This plugin is waiting for your approval. Approve it first; nothing else turns it on"
+            )
+            : null;
+
     private bool AwaitingConsent(PluginInfo plugin) =>
         !consentService.IsBaseline(plugin.Capabilities)
         && !consentService.ConsentCoversCapabilities(
@@ -204,9 +220,40 @@ public class PluginController(
             plugin.Version
         );
 
+    /// <summary>
+    /// The owner's yes to a plugin that was put in the plugins folder by
+    /// hand, or whose files changed after the last yes. The plugin is not
+    /// loaded until then; this records the approval against the folder's
+    /// current files and loads it.
+    /// </summary>
+    [HttpPost("{id:ulid}/approve")]
+    public async Task<IActionResult> Approve(Ulid id, CancellationToken ct)
+    {
+        PluginInfo? plugin = pluginManager.GetInstalledPlugins().FirstOrDefault(p => p.Id == id);
+        if (plugin is null)
+            return NotFoundResponse("Plugin not found");
+
+        if (plugin.ApprovalReason is null)
+            return UnprocessableEntityResponse("This plugin is not waiting for approval");
+
+        try
+        {
+            await pluginManager.ApprovePluginAsync(id, ct);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return UnprocessableEntityResponse(ex.Message);
+        }
+
+        return Ok(new StatusResponseDto<string> { Status = "ok", Message = "Plugin approved" });
+    }
+
     [HttpPost("{id:ulid}/enable")]
     public async Task<IActionResult> Enable(Ulid id)
     {
+        if (RefusedWhileAwaitingApproval(id) is { } refused)
+            return refused;
+
         try
         {
             await pluginManager.EnablePluginAsync(id);
@@ -254,6 +301,9 @@ public class PluginController(
     [HttpPost("{id:ulid}/restart")]
     public async Task<IActionResult> Restart(Ulid id)
     {
+        if (RefusedWhileAwaitingApproval(id) is { } refused)
+            return refused;
+
         try
         {
             await pluginManager.RestartPluginAsync(id);

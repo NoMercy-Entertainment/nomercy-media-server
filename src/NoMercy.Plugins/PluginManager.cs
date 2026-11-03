@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Logging;
 using NoMercy.Events;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Approval;
 using NoMercy.PluginSdk.Capabilities;
 using NoMercy.PluginSdk.Guests;
 using NoMercy.PluginSdk.Hub;
@@ -39,6 +40,8 @@ public class PluginManager : IPluginManager, IDisposable
     private readonly PluginGuestInstaller? _guestInstaller;
     private readonly IPluginConsentService _consentService;
     private readonly IPluginRegistry _registry;
+    private readonly IPluginApprovalStore _approvals;
+    private readonly PluginDropGate _dropGate;
     private readonly PluginLoader _loader;
     private readonly PluginLifecycleManager _lifecycle;
 
@@ -70,7 +73,8 @@ public class PluginManager : IPluginManager, IDisposable
         Action<Ulid>? registerScheduledWork = null,
         PluginSideloadPolicy? sideloadPolicy = null,
         PluginGuestInstaller? guestInstaller = null,
-        IPluginRegistry? registry = null
+        IPluginRegistry? registry = null,
+        IPluginApprovalStore? approvalStore = null
     )
     {
         _eventBus = eventBus ?? throw new ArgumentNullException(nameof(eventBus));
@@ -95,6 +99,8 @@ public class PluginManager : IPluginManager, IDisposable
                 _logger
             );
         _registry = registry ?? new PluginRegistry();
+        _approvals = approvalStore ?? new ConfigPluginApprovalStore(PlatformConfiguration());
+        _dropGate = new(_approvals);
         _assemblyTracker = assemblyTracker;
         _registerScheduledWork = registerScheduledWork;
 
@@ -741,7 +747,9 @@ public class PluginManager : IPluginManager, IDisposable
         // A staged archive carries its record and is the whole plugin: the
         // folder becomes equal to it, leftovers included, or the record would
         // call them added. A staged single dll has no record and is merged;
-        // the stale record goes, and the next start records the merged folder.
+        // the stale record goes, and the merged folder is recorded below. The
+        // server did the merge, so the server writes the record: a boot no
+        // longer records a folder on its own, that is the owner's approval.
         bool complete = _driver.FileExists(
             _storage.CombinePath(staging, PluginFileManifest.FileName)
         );
@@ -812,6 +820,11 @@ public class PluginManager : IPluginManager, IDisposable
             {
                 _driver.DeleteFile(info.Path);
             }
+        }
+
+        if (!complete)
+        {
+            PluginFileManifest.Write(LocalPath(pluginDir));
         }
 
         DeleteAndPruneEmptyParent(staging, PendingUpdatesFolder);
@@ -1183,14 +1196,65 @@ public class PluginManager : IPluginManager, IDisposable
         CancellationToken ct = default
     )
     {
-        // The folder leaves the recorded set with the plugin: a later drop of
-        // the same id is a new folder that is recorded on its first load.
+        // The folder leaves the recorded set with the plugin, and any approval
+        // with it: a later drop of the same id is a new folder that waits for
+        // the owner like any other.
         string? folder = Path.GetDirectoryName(GetPluginInfo(pluginId)?.AssemblyPath);
         await _lifecycle.UninstallPluginAsync(pluginId, keepData, ct);
         _guestInstaller?.Forget(pluginId);
         if (folder is not null)
         {
             await RememberRecordedFolderAsync(Path.GetFileName(folder), recorded: false, ct);
+            _approvals.Forget(Path.GetFileName(folder));
+        }
+    }
+
+    public async Task ApprovePluginAsync(Ulid pluginId, CancellationToken ct = default)
+    {
+        if (!_registry.TryGetValue(pluginId, out LoadedPlugin? held))
+        {
+            throw new InvalidOperationException($"Plugin {pluginId} is not installed.");
+        }
+
+        if (held.Info.ApprovalReason is null)
+        {
+            throw new InvalidOperationException(
+                $"Plugin {held.Info.Name} is not waiting for approval."
+            );
+        }
+
+        string entry = held.Info.ManifestPath ?? held.Info.AssemblyPath!;
+        string folder = Path.GetDirectoryName(LocalPath(entry))!;
+
+        // Recorded as an install records it, so a change from here on is a
+        // change from what the owner approved; and the yes itself names the
+        // content, outside the folder, so nothing in the folder can renew it.
+        await RecordFilesAsync(folder, ct);
+        _approvals.Approve(
+            Path.GetFileName(folder),
+            await PluginFileManifest.DigestAsync(folder, ct)
+        );
+
+        _logger.LogInformation(
+            "The owner approved plugin {PluginName}; its files are recorded and it is loading.",
+            held.Info.Name
+        );
+
+        // The held entry goes before the load registers the real one: a
+        // manifest-less folder was held under a placeholder id, and the
+        // plugin's own id is only known once its assembly runs.
+        _registry.TryRemove(pluginId, out _);
+
+        if (held.Info.ManifestPath is not null)
+        {
+            await LoadPluginFromManifestAsync(held.Info.ManifestPath, ct);
+            _registerScheduledWork?.Invoke(pluginId);
+            return;
+        }
+
+        foreach (StorageEntry dll in DllsIn(Path.GetDirectoryName(held.Info.AssemblyPath)!))
+        {
+            await LoadPluginAssemblyAsync(dll.Path, ct);
         }
     }
 
@@ -1220,6 +1284,8 @@ public class PluginManager : IPluginManager, IDisposable
         // backup file.
         ResolveStaleAssemblyBackups();
 
+        HashSet<string> recordedFolders = await ReadRecordedFoldersAsync(ct);
+
         IReadOnlyList<StorageEntry> entries = _storage.List(_pluginsPath, null, recursive: false);
         foreach (StorageEntry entry in entries)
         {
@@ -1246,29 +1312,48 @@ public class PluginManager : IPluginManager, IDisposable
             try
             {
                 string manifestPath = _storage.CombinePath(pluginDir, "plugin.json");
-                if (_storage.Exists(manifestPath))
+                bool hasManifest = _storage.Exists(manifestPath);
+                List<StorageEntry> dllEntries = hasManifest ? [] : DllsIn(pluginDir);
+
+                if (!hasManifest && dllEntries.Count == 0)
                 {
-                    await RecordFileManifestIfMissingAsync(pluginDir, ct);
+                    continue;
+                }
+
+                // Before anything is read as code: a folder the server did not
+                // put there waits for the owner, and so does an approved one
+                // that changed since.
+                string? held = await _dropGate.WhyHeldAsync(
+                    LocalPath(pluginDir),
+                    recordedFolders.Contains(dirName),
+                    ct
+                );
+
+                if (held is not null)
+                {
+                    if (hasManifest)
+                    {
+                        await _loader.HoldPluginFromManifestAsync(manifestPath, held, ct);
+                    }
+                    else
+                    {
+                        _loader.HoldPluginFolder(pluginDir, dllEntries[0].Path, held);
+                    }
+
+                    continue;
+                }
+
+                WarnIfRecordMissing(pluginDir);
+
+                if (hasManifest)
+                {
                     await LoadPluginFromManifestAsync(manifestPath, ct);
                     continue;
                 }
 
-                IReadOnlyList<StorageEntry> dllEntries = _storage.List(
-                    pluginDir,
-                    "*.dll",
-                    recursive: false
-                );
-                if (dllEntries.Any(dllEntry => !dllEntry.IsDirectory))
-                {
-                    await RecordFileManifestIfMissingAsync(pluginDir, ct);
-                }
-
                 foreach (StorageEntry dllEntry in dllEntries)
                 {
-                    if (!dllEntry.IsDirectory)
-                    {
-                        await LoadPluginAssemblyAsync(dllEntry.Path, ct);
-                    }
+                    await LoadPluginAssemblyAsync(dllEntry.Path, ct);
                 }
             }
             catch (Exception ex)
@@ -1286,38 +1371,21 @@ public class PluginManager : IPluginManager, IDisposable
     }
 
     /// <summary>
-    /// The one-time upgrade for a plugin the server sees for the first time
-    /// (a manual drop, or an install from before file hashes were recorded),
-    /// run at boot before its first load reads the files: the record is
-    /// written from what is present and the folder joins the recorded set.
-    /// A folder in the set whose record is gone is not recorded again: its
-    /// load is refused, because a missing record is a change too.
+    /// A folder reaches here only when the server recorded it, at install or
+    /// at the owner's approval. One whose record is gone is not recorded
+    /// again: its load is refused, because a missing record is a change too.
     /// </summary>
-    private async Task RecordFileManifestIfMissingAsync(string pluginDir, CancellationToken ct)
+    private void WarnIfRecordMissing(string pluginDir)
     {
-        // A storage entry is relative to the storage scope; the hashes are
-        // taken from the real folder, the way the loader resolves it.
-        string folder = Path.GetFullPath(Path.Combine(_pluginsPath, pluginDir));
-        if (File.Exists(Path.Combine(folder, PluginFileManifest.FileName)))
+        if (File.Exists(Path.Combine(LocalPath(pluginDir), PluginFileManifest.FileName)))
         {
             return;
         }
 
-        string name = Path.GetFileName(pluginDir);
-        if ((await ReadRecordedFoldersAsync(ct)).Contains(name))
-        {
-            _logger.LogWarning(
-                "Plugin folder {Folder} was recorded before and its record is missing; refusing it with {Code}.",
-                name,
-                PluginRefusalCode.FilesChanged
-            );
-            return;
-        }
-
-        await RecordFilesAsync(folder, ct);
-        _logger.LogInformation(
-            "Recorded file hashes for {Folder}; changes from now on are refused.",
-            name
+        _logger.LogWarning(
+            "Plugin folder {Folder} was recorded before and its record is missing; refusing it with {Code}.",
+            Path.GetFileName(pluginDir),
+            PluginRefusalCode.FilesChanged
         );
     }
 
@@ -1329,8 +1397,29 @@ public class PluginManager : IPluginManager, IDisposable
     private async Task RecordFilesAsync(string folder, CancellationToken ct)
     {
         await PluginFileManifest.WriteAsync(folder, ct);
-        await RememberRecordedFolderAsync(Path.GetFileName(folder), recorded: true, ct);
+
+        string name = Path.GetFileName(folder);
+        await RememberRecordedFolderAsync(name, recorded: true, ct);
+
+        // What the server installs supersedes what the owner approved of a
+        // hand-dropped folder of the same name; the approve path writes its
+        // own, newer approval right after this.
+        _approvals.Forget(name);
     }
+
+    /// <summary>The assemblies at the top of a plugin folder, as the storage lists them.</summary>
+    private List<StorageEntry> DllsIn(string pluginDir) =>
+        _storage
+            .List(pluginDir, "*.dll", recursive: false)
+            .Where(dllEntry => !dllEntry.IsDirectory)
+            .ToList();
+
+    /// <summary>
+    /// A storage entry is relative to the storage scope; the files are read
+    /// from the real folder, the way the loader resolves it.
+    /// </summary>
+    private string LocalPath(string storagePath) =>
+        Path.GetFullPath(Path.Combine(_pluginsPath, storagePath));
 
     private string RecordedFoldersPath =>
         _storage.CombinePath(_pluginsPath, "data", "platform", "recorded-folders.json");

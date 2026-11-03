@@ -36,13 +36,18 @@ public sealed class PollingDriveBackend(ILogger<PollingDriveBackend> logger) : I
         [
             .. Optical
                 .GetOpticalDrives()
-                .Select(kvp =>
+                .Select(state =>
                 {
-                    bool hasDisc = !string.IsNullOrEmpty(kvp.Value);
-                    OpticalDiscType type = hasDisc
-                        ? Optical.GetDiscType(kvp.Key)
+                    OpticalDiscType type = state.HasDisc
+                        ? Optical.GetDiscType(state)
                         : OpticalDiscType.None;
-                    return new DiscDrive(kvp.Key, kvp.Value, hasDisc, type);
+                    return new DiscDrive(
+                        state.Path,
+                        state.Label,
+                        state.HasDisc,
+                        type,
+                        state.MountPoint
+                    );
                 }),
         ];
 
@@ -74,19 +79,22 @@ public sealed class PollingDriveBackend(ILogger<PollingDriveBackend> logger) : I
         {
             try
             {
-                Dictionary<string, string?> detected = Optical
+                Dictionary<string, OpticalDriveState> detected = Optical
                     .GetOpticalDrives()
-                    .Where(d => d.Value != null)
-                    .ToDictionary(d => d.Key, d => d.Value);
+                    .Where(d => d.HasDisc)
+                    .ToDictionary(d => d.Path);
 
                 lock (_lock)
                 {
-                    foreach ((string drive, string? label) in detected)
+                    foreach ((string drive, OpticalDriveState state) in detected)
                         if (_knownDrives.Add(drive))
                         {
-                            OpticalDiscType type = Optical.GetDiscType(drive);
+                            OpticalDiscType type = Optical.GetDiscType(state);
                             _events.Writer.TryWrite(
-                                new(DriveEventType.DiscInserted, new(drive, label, true, type))
+                                new(
+                                    DriveEventType.DiscInserted,
+                                    new(drive, state.Label, true, type, state.MountPoint)
+                                )
                             );
                         }
 

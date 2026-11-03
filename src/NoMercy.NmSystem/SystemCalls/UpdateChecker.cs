@@ -162,15 +162,16 @@ public class UpdateChecker : IUpdateChecker
                 await GetJsonAsync(GithubReleasesUrl)
             );
 
-        LatestReleaseInfo[] releases =
-            JsonConvert.DeserializeObject<LatestReleaseInfo[]>(
-                await GetJsonAsync(ReleaseChannelSelector.MediaServerReleaseListUrl)
-            ) ?? [];
-
-        return ReleaseChannelSelector.Select(
-            releases,
-            r => new(r.TagName, r.Draft, r.Prerelease, r.Body),
-            _settings.UpdateChannel
+        return await GithubReleaseList.FindAsync(
+            _httpClient,
+            ReleaseChannelSelector.MediaServerReleaseListUrl,
+            json => JsonConvert.DeserializeObject<LatestReleaseInfo[]>(json) ?? [],
+            releases =>
+                ReleaseChannelSelector.Select(
+                    releases,
+                    r => new(r.TagName, r.Draft, r.Prerelease, r.Body),
+                    _settings.UpdateChannel
+                )
         );
     }
 

@@ -105,6 +105,50 @@ public class FfProbeServiceFailureTests
         result.VideoStreams.Should().ContainSingle();
     }
 
+    [Fact]
+    public void An_empty_probe_answer_asks_for_one_retry_with_the_mp3_demuxer()
+    {
+        // An MP3 stream in a RIFF/WAVE container with a leading ID3v2 tag makes
+        // the wav demuxer fail and ffprobe print "{}".
+        FfProbeService.NeedsForcedMp3Retry("{\n\n}").Should().BeTrue();
+    }
+
+    [Fact]
+    public void A_probe_answer_with_a_format_needs_no_retry()
+    {
+        const string json = """{ "format": { "filename": "01 Track.mp3", "duration": "61.5" } }""";
+
+        FfProbeService.NeedsForcedMp3Retry(json).Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_timed_out_probe_with_no_output_needs_no_mp3_retry()
+    {
+        FfProbeService.NeedsForcedMp3Retry(string.Empty).Should().BeFalse();
+    }
+
+    [Fact]
+    public void The_forced_probe_puts_the_input_format_before_the_file()
+    {
+        string args = FfProbeService.BuildProbeArguments(
+            "/music/Artist/[2000] Album/01 Track.mp3",
+            "mp3"
+        );
+
+        args.Should()
+            .Be(
+                "-hide_banner -v quiet -f mp3 -show_format -show_streams -print_format json \"/music/Artist/[2000] Album/01 Track.mp3\""
+            );
+    }
+
+    [Fact]
+    public void The_normal_probe_forces_no_input_format()
+    {
+        string args = FfProbeService.BuildProbeArguments("/music/Artist/[2000] Album/01 Track.mp3");
+
+        args.Should().NotContain("-f ");
+    }
+
     private static IStorageDriver RemoteDriver()
     {
         Mock<IStorageDriver> driver = new();

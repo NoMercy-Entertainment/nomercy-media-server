@@ -50,13 +50,18 @@ public sealed class WindowsDriveBackend : IDriveBackend
     public IReadOnlyList<DiscDrive> GetDrives() =>
         Optical
             .GetOpticalDrives()
-            .Select(kvp =>
+            .Select(state =>
             {
-                bool hasDisc = !string.IsNullOrEmpty(kvp.Value);
-                OpticalDiscType type = hasDisc
-                    ? Optical.GetDiscType(kvp.Key)
+                OpticalDiscType type = state.HasDisc
+                    ? Optical.GetDiscType(state)
                     : OpticalDiscType.None;
-                return new DiscDrive(kvp.Key, kvp.Value, hasDisc, type);
+                return new DiscDrive(
+                    state.Path,
+                    state.Label,
+                    state.HasDisc,
+                    type,
+                    state.MountPoint
+                );
             })
             .ToList();
 
@@ -86,11 +91,18 @@ public sealed class WindowsDriveBackend : IDriveBackend
             ManagementBaseObject target = (ManagementBaseObject)e.NewEvent["TargetInstance"];
             string deviceId = (string)target["DeviceID"];
             string mount = deviceId + Path.DirectorySeparatorChar;
-            string? volumeName = target["VolumeName"] as string;
-            bool hasDisc = !string.IsNullOrEmpty(volumeName);
+            string? volumeName =
+                target["VolumeName"] is string name && name.Length > 0 ? name : null;
+            // Win32_LogicalDisk reports a null Size while the tray is empty; a disc
+            // without a volume label still has a size, so the label alone is not
+            // a reliable "disc present" signal.
+            bool hasDisc = target["Size"] is not null || volumeName is not null;
+            string? mountPoint = hasDisc ? mount : null;
 
-            OpticalDiscType type = hasDisc ? Optical.GetDiscType(mount) : OpticalDiscType.None;
-            DiscDrive drive = new(mount, volumeName, hasDisc, type);
+            // A Windows drive root is both the drive's identity and its mount point.
+            OpticalDriveState state = new(mount, volumeName, hasDisc, mountPoint);
+            OpticalDiscType type = hasDisc ? Optical.GetDiscType(state) : OpticalDiscType.None;
+            DiscDrive drive = new(mount, volumeName, hasDisc, type, mountPoint);
 
             DriveEventType eventType = hasDisc
                 ? DriveEventType.DiscInserted

@@ -53,6 +53,8 @@ internal sealed class FaultyLibNfs : ILibNfs
     /// </summary>
     public Dictionary<string, int> CallCounts { get; } = new();
 
+    public int ZeroContextStatCalls { get; private set; }
+
     /// <summary>
     /// When &gt; 0, every libnfs call sleeps this long inside the protected
     /// region. Forces concurrency races to surface in stress tests so the
@@ -222,6 +224,8 @@ internal sealed class FaultyLibNfs : ILibNfs
 
     public int Stat64(IntPtr nfs, string path, out LibNfs.NfsStat64 stat)
     {
+        if (nfs == IntPtr.Zero)
+            ZeroContextStatCalls++;
         if (TryFault(nameof(Stat64), out int rc, out _))
         {
             stat = default;
@@ -458,9 +462,9 @@ internal sealed class FaultyLibNfs : ILibNfs
 
     public int Close(IntPtr nfs, IntPtr fh)
     {
-        TryFault(nameof(Close), out _, out _);
+        bool faulted = TryFault(nameof(Close), out int rc, out _);
         _openHandles.TryRemove(fh, out _);
-        return 0;
+        return faulted ? rc : 0;
     }
 
     public int Read(IntPtr nfs, IntPtr fh, IntPtr buf, int count)
@@ -505,7 +509,7 @@ internal sealed class FaultyLibNfs : ILibNfs
         return count;
     }
 
-    public long Lseek(IntPtr nfs, IntPtr fh, long offset, int whence, out ulong currentOffset)
+    public int Lseek(IntPtr nfs, IntPtr fh, long offset, int whence, out ulong currentOffset)
     {
         currentOffset = 0;
         if (TryFault(nameof(Lseek), out int rc, out _))
@@ -514,7 +518,9 @@ internal sealed class FaultyLibNfs : ILibNfs
             return -9;
         handle.Position = offset;
         currentOffset = (ulong)offset;
-        return offset;
+        // nfs_lseek returns 0 on success; the new position comes back through
+        // current_offset.
+        return 0;
     }
 
     public int Unlink(IntPtr nfs, string path)

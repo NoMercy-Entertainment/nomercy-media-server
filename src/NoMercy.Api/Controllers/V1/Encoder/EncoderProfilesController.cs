@@ -9,10 +9,12 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Text;
 using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Net.Http.Headers;
 using Newtonsoft.Json;
 using NoMercy.Api.DTOs.Dashboard;
 using NoMercy.Authorization;
@@ -49,6 +51,19 @@ public class EncoderProfilesController(
     EncoderProfileService encoderProfileService
 ) : BaseController
 {
+    private static readonly HashSet<char> UnsafeFileNameChars =
+    [
+        '"',
+        '\'',
+        '<',
+        '>',
+        ':',
+        '|',
+        '?',
+        '*',
+        ';',
+    ];
+
     /// <summary>
     /// Returns a paginated list of encoding profiles, built-in rows first
     /// then user-created alphabetically. Optionally filtered by <paramref name="tag"/>.
@@ -65,7 +80,7 @@ public class EncoderProfilesController(
             pageIndex = 0;
 
         List<EncodingPreset> presets = await presetRepository.ListAsync(pageSize, pageIndex, tag);
-        int total = await presetRepository.GetTotalCountAsync();
+        int total = await presetRepository.GetTotalCountAsync(tag);
 
         return Ok(
             new
@@ -426,6 +441,9 @@ public class EncoderProfilesController(
         if (result.ValidationError is not null)
             return UnprocessableEntity(result.ValidationError);
 
+        if (result.IsConflict)
+            return ConflictResponse(result.ErrorMessage!);
+
         return CreatedAtAction(
             nameof(Import),
             new { id = result.Saved!.Id.ToString() },
@@ -454,10 +472,38 @@ public class EncoderProfilesController(
         if (preset is null)
             return NotFoundResponse("Profile not found");
 
-        string fileName = preset.Name.Replace(" ", "_").Replace("/", "-") + ".json";
-
-        Response.Headers["Content-Disposition"] = $"attachment; filename=\"{fileName}\"";
+        ContentDispositionHeaderValue disposition = new("attachment");
+        disposition.SetHttpFileName(ExportFileName(preset));
+        Response.Headers.ContentDisposition = disposition.ToString();
 
         return Content(preset.ProfileJson, "application/json");
+    }
+
+    /// <summary>
+    /// Turns a preset name into a download filename that is safe inside a
+    /// Content-Disposition header and on every filesystem: path separators
+    /// become dashes, spaces underscores, and quotes, control characters and
+    /// other reserved filename characters are dropped. A name with no letter
+    /// or digit left falls back to the preset id. Non-ASCII letters are kept;
+    /// <see cref="ContentDispositionHeaderValue.SetHttpFileName"/> encodes them.
+    /// </summary>
+    private static string ExportFileName(EncodingPreset preset)
+    {
+        StringBuilder safe = new(preset.Name.Length);
+        foreach (char character in preset.Name.Trim())
+        {
+            if (character is '/' or '\\')
+                safe.Append('-');
+            else if (character == ' ')
+                safe.Append('_');
+            else if (!char.IsControl(character) && !UnsafeFileNameChars.Contains(character))
+                safe.Append(character);
+        }
+
+        string baseName = safe.ToString().Trim('.');
+        if (!baseName.Any(char.IsLetterOrDigit))
+            baseName = preset.Id.ToString();
+
+        return baseName + ".json";
     }
 }

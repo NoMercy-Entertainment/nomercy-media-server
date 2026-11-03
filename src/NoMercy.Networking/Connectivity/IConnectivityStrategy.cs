@@ -39,6 +39,16 @@ public interface IConnectivityStrategy
     bool IsReady => true;
 
     /// <summary>
+    /// True while the transport is up but the executable it was started from has since
+    /// been replaced on disk. The binary upgrade runs in the background and can land after
+    /// the tunnel already started, so without this a server kept running the old
+    /// cloudflared — including one below the security floor — until its next restart. The
+    /// manager tears the transport down and re-establishes it from the new file. Defaults
+    /// to false for strategies that run no executable of their own.
+    /// </summary>
+    bool IsOutdated => false;
+
+    /// <summary>
     /// Fired the instant the host begins shutting down — before Kestrel stops accepting
     /// requests and well before TeardownAsync runs. A strategy fronting a live process (the
     /// cloudflared tunnel) uses this to stop treating "origin unreachable" as a surprise

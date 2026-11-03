@@ -63,7 +63,14 @@ public record EncodeTask(
     /// sessions and CPU jobs to whichever worker has spare CPU threads
     /// even if its GPU is saturated.
     /// </summary>
-    bool RequiresGpu = false
+    bool RequiresGpu = false,
+    /// <summary>
+    /// Full duration of the source the task reads from. The progress
+    /// denominator when the task has no time range; without it the
+    /// dispatcher probes <see cref="InputPath"/> for it. Null when the
+    /// caller never measured the source.
+    /// </summary>
+    TimeSpan? SourceDuration = null
 );
 
 public record DispatchResult(

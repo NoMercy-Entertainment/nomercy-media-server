@@ -268,8 +268,11 @@ internal static class LibNfs
     [DllImport(LibName, EntryPoint = "nfs_write", CallingConvention = CallingConvention.Cdecl)]
     internal static extern int Write(IntPtr nfs, IntPtr fh, IntPtr buf, int count);
 
+    // libnfs.h: int nfs_lseek(struct nfs_context *, struct nfsfh *, int64_t offset,
+    //                         int whence, uint64_t *current_offset);
+    // The return is a C int: binding it as long drops the sign of an error on x64.
     [DllImport(LibName, EntryPoint = "nfs_lseek", CallingConvention = CallingConvention.Cdecl)]
-    internal static extern long Lseek(
+    internal static extern int Lseek(
         IntPtr nfs,
         IntPtr fh,
         long offset,
