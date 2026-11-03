@@ -9,17 +9,12 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NCrontab;
-
 namespace NoMercyQueue.Services;
 
 public class CronService
 {
-    public static DateTime GetNextOccurrence(string cronExpression, DateTime baseTime)
-    {
-        CrontabSchedule? schedule = CrontabSchedule.Parse(cronExpression);
-        return schedule.GetNextOccurrence(baseTime);
-    }
+    public static DateTime GetNextOccurrence(string cronExpression, DateTime baseTime) =>
+        CronSchedule.Parse(cronExpression).GetNextOccurrence(baseTime);
 
     public static bool ShouldRun(string cronExpression, DateTime lastRun, DateTime currentTime)
     {

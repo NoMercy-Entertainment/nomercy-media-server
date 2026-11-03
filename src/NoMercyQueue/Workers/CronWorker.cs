@@ -97,13 +97,9 @@ public class CronWorker : BackgroundService
             JobType = jobType,
             Parameters = parameters != null ? JsonConvert.SerializeObject(parameters) : null,
             IsEnabled = true,
-            NextRun = CronService.GetNextOccurrence(cronExpression, DateTime.UtcNow),
         };
 
-        _codeDefinedJobs.Add(job);
-
-        // Start individual worker for this job
-        StartJobWorker(job);
+        ScheduleCodeDefinedJob(job, DateTime.UtcNow);
     }
 
     public void RegisterJobWithSchedule<T>(string jobType, IServiceProvider serviceProvider)
@@ -115,7 +111,6 @@ public class CronWorker : BackgroundService
         T executor = scope.ServiceProvider.GetRequiredService<T>();
 
         DateTime currentTime = DateTime.UtcNow;
-        DateTime nextRun = CronService.GetNextOccurrence(executor.CronExpression, currentTime);
 
         // Individual registration logged at trace — summary logged in ExecuteAsync
 
@@ -126,14 +121,45 @@ public class CronWorker : BackgroundService
             JobType = jobType,
             Parameters = null,
             IsEnabled = true,
-            NextRun = nextRun,
             CreatedAt = currentTime,
         };
 
-        _codeDefinedJobs.Add(job);
+        ScheduleCodeDefinedJob(job, currentTime);
+    }
 
-        // Start individual worker for this job
+    /// <summary>
+    /// Parses the schedule once, here where the job is registered, so a
+    /// schedule the scheduler cannot read is one clear error at registration
+    /// instead of an exception out of the job's worker loop after its first run.
+    /// A job whose schedule does not parse is not started.
+    /// </summary>
+    private void ScheduleCodeDefinedJob(CronJobModel job, DateTime now)
+    {
+        CronSchedule? schedule = ParseScheduleOrLog(job);
+        if (schedule is null)
+            return;
+
+        job.NextRun = schedule.GetNextOccurrence(now);
+
+        _codeDefinedJobs.Add(job);
         StartJobWorker(job);
+    }
+
+    private CronSchedule? ParseScheduleOrLog(CronJobModel job)
+    {
+        try
+        {
+            return CronSchedule.Parse(job.CronExpression);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(
+                ex,
+                "Cron job {JobName} has a schedule the scheduler cannot parse: '{CronExpression}' ({Reason}); it will not run",
+                [job.Name, job.CronExpression, ex.GetBaseException().Message]
+            );
+            return null;
+        }
     }
 
     private void StartJobWorker(CronJobModel job)
@@ -346,12 +372,10 @@ public class CronWorker : BackgroundService
             JobType = registration.JobType,
             Parameters = null,
             IsEnabled = true,
-            NextRun = CronService.GetNextOccurrence(cronExpression, now),
             CreatedAt = now,
         };
 
-        _codeDefinedJobs.Add(job);
-        StartJobWorker(job);
+        ScheduleCodeDefinedJob(job, now);
     }
 
     // Schedules an executor INSTANCE directly — for runtime-discovered executors
@@ -371,12 +395,10 @@ public class CronWorker : BackgroundService
             JobType = executor.JobName,
             Parameters = null,
             IsEnabled = true,
-            NextRun = CronService.GetNextOccurrence(executor.CronExpression, now),
             CreatedAt = now,
         };
 
-        _codeDefinedJobs.Add(job);
-        StartJobWorker(job);
+        ScheduleCodeDefinedJob(job, now);
     }
 
     /// <summary>
@@ -486,7 +508,11 @@ public class CronWorker : BackgroundService
                     || _instanceExecutors.ContainsKey(job.JobType)
                 )
                 {
-                    StartJobWorker(job);
+                    // A stored row is parsed before it gets a worker: unchecked,
+                    // the loop would run the job once, fail to compute its next
+                    // run, and re-run it every minute because NextRun never moved.
+                    if (ParseScheduleOrLog(job) is not null)
+                        StartJobWorker(job);
                 }
                 else
                 {
