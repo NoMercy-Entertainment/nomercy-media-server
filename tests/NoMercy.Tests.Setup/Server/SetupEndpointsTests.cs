@@ -48,6 +48,7 @@ namespace NoMercy.Tests.Setup.Server;
 /// branch rather than constructing a real console resize-watcher thread.
 /// </remarks>
 [Trait("Category", "Unit")]
+[Collection(ProcessWideSetupStateCollection.Name)]
 public sealed class SetupEndpointsTests : IDisposable
 {
     private readonly AppDbContext _appContext;

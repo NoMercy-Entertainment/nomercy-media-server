@@ -23,6 +23,7 @@ using NoMercy.NmSystem.Status;
 using NoMercy.Setup.Auth;
 using NoMercy.Setup.Boot;
 using NoMercy.Storage.Drivers.Local;
+using NoMercy.Tests.Setup.Infrastructure;
 
 namespace NoMercy.Tests.Setup;
 
@@ -510,6 +511,7 @@ public class CloudflareFallbackTests
 // is the retry step the background recovery loop calls every backoff tick;
 // these tests exercise it directly (isolated NOMERCY_APP_PATH per test) rather
 // than waiting through the loop's real 30s+ backoff schedule.
+[Collection(ProcessWideSetupStateCollection.Name)]
 public class DegradedModeBinaryProvisioningTests : IDisposable
 {
     private readonly string _tempAppPath;
