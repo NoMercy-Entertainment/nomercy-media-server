@@ -64,7 +64,11 @@ public class CoordinatorDispatchController(
                     WorkingDirectory: null
                 ),
                 OutputPath: t.OutputPath,
-                Type: t.TaskType
+                Type: t.TaskType,
+                TimeRangeStart: Seconds(t.TimeRangeStartSeconds),
+                TimeRangeDuration: Seconds(t.TimeRangeDurationSeconds),
+                InputPath: t.InputPath,
+                SourceDuration: Seconds(t.SourceDurationSeconds)
             )),
         ];
 
@@ -88,6 +92,9 @@ public class CoordinatorDispatchController(
             }
         );
     }
+
+    private static TimeSpan? Seconds(double? seconds) =>
+        seconds is > 0 ? TimeSpan.FromSeconds(seconds.Value) : null;
 
     /// <summary>
     /// Poll the latest progress snapshot for a dispatched task.

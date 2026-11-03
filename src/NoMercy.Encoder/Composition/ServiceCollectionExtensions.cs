@@ -424,6 +424,7 @@ public static class ServiceCollectionExtensions
         // land as a follow-up behind a feature flag. Plugins can register a
         // replacement IWorkerDispatcher to change behavior project-wide.
         services.AddTransient<LocalWorkerDispatcher>();
+        services.AddTransient<ISourceDurationProbe, MediaAnalyzerSourceDurationProbe>();
         services.AddTransient<IWorkerAssigner, WorkerAssigner>();
 
         // Registry is a singleton so registrations accumulate across the

@@ -16,9 +16,9 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Routing;
 using Moq;
 using NoMercy.Api.Controllers.V1.Dashboard.Encoder;
+using NoMercy.Authorization;
 using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.Distribution;
-using NoMercy.Authorization;
 using Xunit;
 
 namespace NoMercy.Tests.Api;
@@ -150,10 +150,7 @@ public class CoordinatorDispatchController_Tests
         DefaultHttpContext ctx = new()
         {
             User = new(
-                new ClaimsIdentity(
-                    [new(ClaimTypes.NameIdentifier, OwnerUserId.ToString())],
-                    "test"
-                )
+                new ClaimsIdentity([new(ClaimTypes.NameIdentifier, OwnerUserId.ToString())], "test")
             ),
         };
         controller.ControllerContext = new() { HttpContext = ctx };
@@ -167,10 +164,7 @@ public class CoordinatorDispatchController_Tests
     {
         CoordinatorDispatchController sut = BuildController();
 
-        IActionResult result = await sut.Dispatch(
-            new(Tasks: []),
-            CancellationToken.None
-        );
+        IActionResult result = await sut.Dispatch(new(Tasks: []), CancellationToken.None);
 
         ObjectResult obj = Assert.IsType<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status400BadRequest, obj.StatusCode);
@@ -181,10 +175,7 @@ public class CoordinatorDispatchController_Tests
     {
         CoordinatorDispatchController sut = BuildController();
 
-        IActionResult result = await sut.Dispatch(
-            new(Tasks: null),
-            CancellationToken.None
-        );
+        IActionResult result = await sut.Dispatch(new(Tasks: null), CancellationToken.None);
 
         ObjectResult obj = Assert.IsType<ObjectResult>(result);
         Assert.Equal(StatusCodes.Status400BadRequest, obj.StatusCode);
@@ -209,9 +200,7 @@ public class CoordinatorDispatchController_Tests
         CoordinatorDispatchController sut = BuildController(dispatcherMock: mock);
 
         IActionResult result = await sut.Dispatch(
-            new(
-                Tasks: [new(OutputPath: "/out/t1", TaskId: "t1")]
-            ),
+            new(Tasks: [new(OutputPath: "/out/t1", TaskId: "t1")]),
             CancellationToken.None
         );
 
@@ -249,9 +238,7 @@ public class CoordinatorDispatchController_Tests
         CoordinatorDispatchController sut = BuildController(dispatcherMock: mock);
 
         await sut.Dispatch(
-            new(
-                Tasks: [new(OutputPath: "/out/auto", TaskId: null)]
-            ),
+            new(Tasks: [new(OutputPath: "/out/auto", TaskId: null)]),
             CancellationToken.None
         );
 
@@ -302,6 +289,61 @@ public class CoordinatorDispatchController_Tests
                 ),
             Times.Once
         );
+    }
+
+    [Fact]
+    public async Task Dispatch_CarriesSourceDurationAndTimeRange_OntoTheTask()
+    {
+        List<EncodeTask[]> captured = [];
+        Mock<IWorkerDispatcher> mock = new();
+        mock.SetupGet(d => d.AvailableWorkerCount).Returns(1);
+        mock.Setup(d => d.DispatchAsync(It.IsAny<EncodeTask[]>(), It.IsAny<CancellationToken>()))
+            .Callback<EncodeTask[], CancellationToken>((tasks, _) => captured.Add(tasks))
+            .ReturnsAsync(
+                (EncodeTask[] tasks, CancellationToken _) =>
+                    tasks
+                        .Select(t => new DispatchResult(
+                            t.TaskId,
+                            true,
+                            t.OutputPath,
+                            TimeSpan.Zero
+                        ))
+                        .ToArray()
+            );
+
+        CoordinatorDispatchController sut = BuildController(dispatcherMock: mock);
+
+        await sut.Dispatch(
+            new(
+                Tasks:
+                [
+                    new(
+                        OutputPath: "/out/full",
+                        TaskId: "full",
+                        InputPath: "/media/source.mkv",
+                        SourceDurationSeconds: 600
+                    ),
+                    new(
+                        OutputPath: "/out/slice",
+                        TaskId: "slice",
+                        TaskType: EncodeTaskType.TimeChunk,
+                        TimeRangeStartSeconds: 120,
+                        TimeRangeDurationSeconds: 60
+                    ),
+                ]
+            ),
+            CancellationToken.None
+        );
+
+        EncodeTask full = Assert.Single(captured)[0];
+        Assert.Equal("/media/source.mkv", full.InputPath);
+        Assert.Equal(TimeSpan.FromMinutes(10), full.SourceDuration);
+        Assert.Null(full.TimeRangeDuration);
+
+        EncodeTask slice = captured[0][1];
+        Assert.Equal(TimeSpan.FromSeconds(120), slice.TimeRangeStart);
+        Assert.Equal(TimeSpan.FromSeconds(60), slice.TimeRangeDuration);
+        Assert.Null(slice.SourceDuration);
     }
 
     // ── GetTaskStatus ─────────────────────────────────────────────────────────
