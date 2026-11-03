@@ -411,14 +411,9 @@ public class LibraryRepository(IDbContextFactory<MediaContext> contextFactory) :
                 .Tvs.AsNoTracking()
                 .Where(tv => tv.Library.Id == libraryId)
                 .Where(tv => tv.Library.LibraryUsers.Any(u => u.UserId.Equals(userId)))
-                // A show the owner added is in the library the moment they add
-                // it, with or without a file. Filtering on files that exist was
-                // the only way to keep out the shows a scan attached on a guess,
-                // and it hid the newly added show along with them - the one day
-                // seeing it matters most. Provenance tells the two apart, so the
-                // filter can say what it means - one rule, shared by every
-                // library surface.
-                .Where(TvLibraryVisibility.IsListed)
+                // The carousel shows only what can play; the library listing keeps
+                // the manual-add exception (TvLibraryVisibility.IsListed).
+                .Where(MediaAvailability.TvIsAvailable)
                 .Include(tv =>
                     tv.Episodes.Where(episode =>
                         episode.SeasonNumber > 0 && episode.VideoFiles.Any()

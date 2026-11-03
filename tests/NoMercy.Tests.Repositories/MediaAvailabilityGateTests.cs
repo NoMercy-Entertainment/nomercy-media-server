@@ -33,6 +33,7 @@ public class MediaAvailabilityGateTests : IDisposable
 
     private const int SpecialsOnlyShow = 101;
     private const int SeasonOneShow = 102;
+    private const int ManualShowWithNoFile = 103;
     private const int MovieWithFile = 201;
     private const int MovieWithoutFile = 202;
 
@@ -62,7 +63,7 @@ public class MediaAvailabilityGateTests : IDisposable
         HomeRepository repository = new(new MediaContext(_options), new Factory(_options));
 
         List<HomeTvCardDto> shows = await repository.GetHomeTvs(
-            [SpecialsOnlyShow, SeasonOneShow],
+            [SpecialsOnlyShow, SeasonOneShow, ManualShowWithNoFile],
             "en",
             "US"
         );
@@ -132,7 +133,7 @@ public class MediaAvailabilityGateTests : IDisposable
     }
 
     [Fact]
-    public async Task LibraryCards_DropAShowWhoseOnlyFilesAreSpecials()
+    public async Task LibraryCards_DropSpecialsOnlyButKeepAManualShowWithNoFile()
     {
         await SeedAsync();
         LibraryRepository repository = new(new Factory(_options));
@@ -141,7 +142,22 @@ public class MediaAvailabilityGateTests : IDisposable
             .Select(card => card.Id)
             .ToList();
 
-        listed.Should().BeEquivalentTo(new[] { SeasonOneShow });
+        listed.Should().BeEquivalentTo(new[] { SeasonOneShow, ManualShowWithNoFile });
+    }
+
+    [Fact]
+    public async Task LibraryListing_KeepsAManualShowWithNoFile()
+    {
+        await SeedAsync();
+        LibraryRepository repository = new(new Factory(_options));
+
+        List<int> listed = (
+            await repository.GetPaginatedLibraryShows(UserId, LibraryId, "s", "en", "US", 50, 0)
+        )
+            .Select(show => show.Id)
+            .ToList();
+
+        listed.Should().Contain(ManualShowWithNoFile).And.NotContain(SpecialsOnlyShow);
     }
 
     [Fact]
@@ -190,7 +206,7 @@ public class MediaAvailabilityGateTests : IDisposable
         await context.SaveChangesAsync();
 
         context.LibraryUser.Add(new() { LibraryId = LibraryId, UserId = UserId });
-        foreach (int id in new[] { SpecialsOnlyShow, SeasonOneShow })
+        foreach (int id in new[] { SpecialsOnlyShow, SeasonOneShow, ManualShowWithNoFile })
         {
             context.Tvs.Add(
                 new()
@@ -216,7 +232,11 @@ public class MediaAvailabilityGateTests : IDisposable
         }
         await context.SaveChangesAsync();
 
-        context.LibraryTv.AddRange(new(LibraryId, SpecialsOnlyShow), new(LibraryId, SeasonOneShow));
+        context.LibraryTv.AddRange(
+            new(LibraryId, SpecialsOnlyShow),
+            new(LibraryId, SeasonOneShow),
+            new(LibraryId, ManualShowWithNoFile, LibraryLinkOrigin.Manual)
+        );
         await context.SaveChangesAsync();
 
         Ulid specialsFileId = await AddEpisodeWithFileAsync(

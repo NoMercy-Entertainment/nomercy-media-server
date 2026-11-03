@@ -70,8 +70,13 @@ public class LibraryListingProvenanceTests : IDisposable
     public static TheoryData<string> Surfaces =>
         new() { Carousel, Cards, PaginatedShows, PaginatedCards };
 
+    // The carousel is not a listing: it shows only what can play, so a manual show
+    // with no file stays out of it (MediaAvailabilityGateTests pins that).
+    public static TheoryData<string> ListingSurfaces =>
+        new() { Cards, PaginatedShows, PaginatedCards };
+
     [Theory]
-    [MemberData(nameof(Surfaces))]
+    [MemberData(nameof(ListingSurfaces))]
     public async Task AShowTheOwnerAddedIsListedBeforeAnythingHasDownloadedForIt(string surface)
     {
         await SeedAsync();
