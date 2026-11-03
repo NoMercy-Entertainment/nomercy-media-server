@@ -95,6 +95,36 @@ public partial class InboxClassifierTests
             Score = 0.85,
         };
 
+    [Fact]
+    public async Task Classify_StrongMovieHit_KeepsYearMatchingHitFirst()
+    {
+        Mock<IInboxMetadataProbe> probe = EmptyProbe();
+        CandidateMatch original = StrongMovie("Example", 1984);
+        CandidateMatch remake = new()
+        {
+            Provider = "tmdb",
+            ExternalId = "456",
+            Title = "Example",
+            Year = 2012,
+            Score = 0.99,
+        };
+        probe
+            .Setup(p =>
+                p.SearchMoviesAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<int?>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .ReturnsAsync([original, remake]);
+
+        ClassificationResult result = await MakeClassifier(probe: probe.Object)
+            .Classify("inbox/Example (1984).mkv", Ulid.NewUlid(), CancellationToken.None);
+
+        result.Confidence.Should().Be("high");
+        result.Candidates[0].ExternalId.Should().Be(original.ExternalId);
+    }
+
     private static CandidateMatch StrongTv(string title, int year) =>
         new()
         {
@@ -313,7 +343,8 @@ public partial class InboxClassifierTests
         await classifier.Classify("Inbox/Toy Story 3.mkv", Ulid.NewUlid(), CancellationToken.None);
 
         probe.Verify(
-            p => p.SearchMoviesAsync("Toy Story 3", It.IsAny<int?>(), It.IsAny<CancellationToken>()),
+            p =>
+                p.SearchMoviesAsync("Toy Story 3", It.IsAny<int?>(), It.IsAny<CancellationToken>()),
             Times.Once
         );
     }

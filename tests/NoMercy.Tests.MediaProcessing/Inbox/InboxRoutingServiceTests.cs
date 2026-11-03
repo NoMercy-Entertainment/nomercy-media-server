@@ -267,6 +267,115 @@ public class InboxRoutingServiceTests : IDisposable
         outcome.Item.Status.Should().Be("Routing");
     }
 
+    [Fact]
+    public async Task Route_HighConfidence_MultipleMatches_RequiresReview()
+    {
+        SeedLibraryWithProfile("movie");
+        ClassificationResult classification = MakeClassification(
+            "movie",
+            "high",
+            [MakeCandidate("tmdb", "1", "Original"), MakeCandidate("tmdb", "2", "Remake")]
+        );
+
+        RouteOutcome outcome = await MakeService()
+            .Route(classification, "inbox/Original (1984).mkv", Ulid.NewUlid(), _context);
+
+        outcome.Mode.Should().Be("review");
+        outcome.Item.Status.Should().Be("NeedsReview");
+    }
+
+    [Fact]
+    public async Task ExecuteAssignment_CrossDriver_StreamsWithoutReadingWholeFile()
+    {
+        (Library library, Folder folder, _) = SeedLibraryWithProfile("movie");
+        Ulid sourceDriverId = Ulid.NewUlid();
+        Mock<IStorage> source = new();
+        Mock<IStorage> destinationStorage = new();
+        MemoryStream copied = new();
+        source
+            .Setup(s => s.ReadAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("Whole-file read attempted"));
+        source
+            .Setup(s => s.OpenReadAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => new MemoryStream([1, 2, 3, 4]));
+        source
+            .Setup(s => s.SizeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(4);
+        destinationStorage
+            .Setup(s => s.OpenWriteAsync(It.IsAny<string>(), true, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(copied);
+        destinationStorage
+            .Setup(s => s.SizeAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(4);
+        _storageFactoryMock
+            .Setup(f => f.For(Ulid.Empty, sourceDriverId, string.Empty))
+            .Returns(source.Object);
+        _storageFactoryMock
+            .Setup(f => f.For(folder.Id, folder.DriverId, folder.Path))
+            .Returns(destinationStorage.Object);
+
+        InboxItem item = new()
+        {
+            Id = Ulid.NewUlid(),
+            SourcePath = "inbox/movie.mkv",
+            DriverId = sourceDriverId,
+            DetectedType = "movie",
+            Status = "NeedsReview",
+            Candidates = [],
+        };
+        InboxDestination destination = new()
+        {
+            LibraryId = library.Id,
+            FolderId = folder.Id,
+            DriverId = folder.DriverId,
+            FolderPath = folder.Path,
+        };
+
+        await MakeService()
+            .ExecuteAssignment(item, MakeCandidate("tmdb", "123", "Movie"), destination, _context);
+
+        copied.ToArray().Should().Equal(1, 2, 3, 4);
+        source.Verify(
+            s => s.DeleteAsync(item.SourcePath, It.IsAny<CancellationToken>()),
+            Times.Once
+        );
+    }
+
+    [Fact]
+    public async Task ExecuteAssignment_InvalidExternalId_LeavesSourceInPlace()
+    {
+        (Library library, Folder folder, _) = SeedLibraryWithProfile("movie");
+        InboxItem item = new()
+        {
+            Id = Ulid.NewUlid(),
+            SourcePath = "inbox/movie.mkv",
+            DriverId = folder.DriverId,
+            DetectedType = "movie",
+            Status = "NeedsReview",
+            Candidates = [],
+        };
+        InboxDestination destination = new()
+        {
+            LibraryId = library.Id,
+            FolderId = folder.Id,
+            DriverId = folder.DriverId,
+            FolderPath = folder.Path,
+        };
+
+        Func<Task> act = () =>
+            MakeService()
+                .ExecuteAssignment(
+                    item,
+                    MakeCandidate("tmdb", "abc", "Movie"),
+                    destination,
+                    _context
+                );
+
+        await act.Should().ThrowAsync<FormatException>();
+        _driverMock.Verify(d => d.MoveFile(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        item.Status.Should().Be("NeedsReview");
+    }
+
     // -----------------------------------------------------------------------
     // Route — review branch: zero destinations
     // -----------------------------------------------------------------------
