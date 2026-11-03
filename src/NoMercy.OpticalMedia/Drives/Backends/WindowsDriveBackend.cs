@@ -50,13 +50,18 @@ public sealed class WindowsDriveBackend : IDriveBackend
     public IReadOnlyList<DiscDrive> GetDrives() =>
         Optical
             .GetOpticalDrives()
-            .Select(kvp =>
+            .Select(state =>
             {
-                bool hasDisc = !string.IsNullOrEmpty(kvp.Value);
-                OpticalDiscType type = hasDisc
-                    ? Optical.GetDiscType(kvp.Key)
+                OpticalDiscType type = state.HasDisc
+                    ? Optical.GetDiscType(state)
                     : OpticalDiscType.None;
-                return new DiscDrive(kvp.Key, kvp.Value, hasDisc, type);
+                return new DiscDrive(
+                    state.Path,
+                    state.Label,
+                    state.HasDisc,
+                    type,
+                    state.MountPoint
+                );
             })
             .ToList();
 
@@ -89,8 +94,10 @@ public sealed class WindowsDriveBackend : IDriveBackend
             string? volumeName = target["VolumeName"] as string;
             bool hasDisc = !string.IsNullOrEmpty(volumeName);
 
-            OpticalDiscType type = hasDisc ? Optical.GetDiscType(mount) : OpticalDiscType.None;
-            DiscDrive drive = new(mount, volumeName, hasDisc, type);
+            // A Windows drive root is both the drive's identity and its mount point.
+            OpticalDriveState state = new(mount, volumeName, hasDisc, mount);
+            OpticalDiscType type = hasDisc ? Optical.GetDiscType(state) : OpticalDiscType.None;
+            DiscDrive drive = new(mount, volumeName, hasDisc, type, mount);
 
             DriveEventType eventType = hasDisc
                 ? DriveEventType.DiscInserted

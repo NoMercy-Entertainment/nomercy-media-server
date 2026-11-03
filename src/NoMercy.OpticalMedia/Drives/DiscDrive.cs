@@ -13,4 +13,15 @@ using NoMercy.NmSystem.Dto;
 
 namespace NoMercy.OpticalMedia.Drives;
 
-public record DiscDrive(string Path, string? Label, bool HasDisc, OpticalDiscType DiscType);
+/// <summary>
+/// One optical drive as the app sees it. <paramref name="Path"/> identifies the
+/// drive (<c>D:\</c>, <c>/dev/sr0</c>, <c>/dev/disk4</c>); <paramref name="MountPoint"/>
+/// is where the disc's filesystem is browsable, or null when nothing is mounted.
+/// </summary>
+public record DiscDrive(
+    string Path,
+    string? Label,
+    bool HasDisc,
+    OpticalDiscType DiscType,
+    string? MountPoint = null
+);

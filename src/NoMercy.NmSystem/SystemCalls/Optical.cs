@@ -22,39 +22,43 @@ public static class Optical
 {
     private static readonly ICommandRunner _commandRunner = new ShellCommandRunner();
 
-    public static Dictionary<string, string?> GetOpticalDrives()
+    // LOCAL-ONLY: discs are always mounted on this machine, never on a remote driver.
+    private static readonly IStorageDriver _localStorage = new LocalStorageDriver();
+
+    public static IReadOnlyList<OpticalDriveState> GetOpticalDrives()
     {
         if (Software.IsWindows)
             return GetWindowsOpticalDrives();
         if (Software.IsLinux)
-            return GetLinuxOpticalDrives();
+            return new LinuxOpticalDriveScanner(_commandRunner).GetDrives();
         if (Software.IsMac)
-            return GetMacOpticalDrives();
+            return new MacOpticalDriveScanner(_commandRunner).GetDrives();
 
         throw new PlatformNotSupportedException("Unsupported OS.");
     }
 
-    private static Dictionary<string, string?> GetWindowsOpticalDrives()
+    private static List<OpticalDriveState> GetWindowsOpticalDrives()
     {
-        Dictionary<string, string?> drives = new();
+        List<OpticalDriveState> drives = [];
         foreach (DriveInfo drive in DriveInfo.GetDrives())
-            if (drive is { DriveType: DriveType.CDRom, IsReady: true })
-                drives[drive.Name] = drive.VolumeLabel.Length > 0 ? drive.VolumeLabel : null;
-            else if (drive.DriveType == DriveType.CDRom)
-                drives[drive.Name] = null;
+        {
+            if (drive.DriveType != DriveType.CDRom)
+                continue;
+
+            bool isReady = drive.IsReady;
+            string? label = isReady && drive.VolumeLabel.Length > 0 ? drive.VolumeLabel : null;
+            drives.Add(
+                new(
+                    Path: drive.Name,
+                    Label: label,
+                    HasDisc: label is not null,
+                    MountPoint: isReady ? drive.Name : null
+                )
+            );
+        }
 
         return drives;
     }
-
-    private static Dictionary<string, string?> GetLinuxOpticalDrives() =>
-        new LinuxOpticalDriveScanner(_commandRunner)
-            .GetDrives()
-            .ToDictionary(drive => drive.Path, drive => drive.HasDisc ? drive.Label : null);
-
-    private static Dictionary<string, string?> GetMacOpticalDrives() =>
-        new MacOpticalDriveScanner(_commandRunner)
-            .GetDrives()
-            .ToDictionary(drive => drive.Path, drive => drive.HasDisc ? drive.Label : null);
 
     public static bool OpenDrive(string drivePath)
     {
@@ -226,35 +230,6 @@ public static class Optical
 
     #endregion
 
-    public static OpticalDiscType GetDiscType(string drivePath)
-    {
-        // LOCAL-ONLY: Optical is a static class in NmSystem; no reference to NoMercy.Providers.
-        IStorageDriver driver = new LocalStorageDriver();
-
-        if (!driver.DirectoryExists(drivePath))
-            return OpticalDiscType.None;
-
-        // Check for Blu-ray
-        if (driver.DirectoryExists(Path.Combine(drivePath, "BDMV")))
-            return OpticalDiscType.BluRay;
-
-        // Check for DVD
-        if (driver.DirectoryExists(Path.Combine(drivePath, "VIDEO_TS")))
-            return OpticalDiscType.Dvd;
-
-        // Check for CD (Audio CD or Data CD)
-        try
-        {
-            DriveInfo drive = new(drivePath);
-            if (drive is { DriveType: DriveType.CDRom, IsReady: true })
-                // If we get here and it's not BD or DVD, it's some form of CD
-                return OpticalDiscType.Cd;
-        }
-        catch
-        {
-            return OpticalDiscType.None;
-        }
-
-        return OpticalDiscType.None;
-    }
+    public static OpticalDiscType GetDiscType(OpticalDriveState drive) =>
+        new OpticalDiscTypeResolver(_localStorage).Resolve(drive);
 }
