@@ -549,6 +549,10 @@ src/NoMercy.App/Resources
 *.webm
 *.m3u8
 *.ts
+# Exception: *.ts above means MPEG transport streams, but the plugin-contract
+# generator is TypeScript source. Must follow the *.ts rule, like the *.mp4
+# exception above.
+!tools/plugin-contract/**/*.ts
 *.m4a
 *.flac
 *.alac
