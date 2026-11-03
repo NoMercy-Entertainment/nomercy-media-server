@@ -90,6 +90,13 @@ public partial class LibraryFileWatcher
         ];
     }
 
+    public static void SetRealtime(Ulid libraryId, bool realtime)
+    {
+        Library? library = _libraries.FirstOrDefault(item => item.Id == libraryId);
+        if (library is not null)
+            library.Realtime = realtime;
+    }
+
     // ReSharper disable once MemberCanBePrivate.Global
     public static Action AddLibraryWatcher(Library library)
     {
@@ -138,7 +145,8 @@ public partial class LibraryFileWatcher
     private static Library? GetLibraryByPath(string path)
     {
         return _libraries.FirstOrDefault(library =>
-            library.FolderLibraries.Any(folderLibrary =>
+            library.Realtime
+            && library.FolderLibraries.Any(folderLibrary =>
             {
                 // Resolve through the driver, not the IStorage facade: the
                 // facade's GetFullPath is a LocalStorage-only escape hatch that

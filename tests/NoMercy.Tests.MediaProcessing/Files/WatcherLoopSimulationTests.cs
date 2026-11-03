@@ -30,7 +30,7 @@ public sealed class WatcherLoopSimulationTests : IDisposable
     private readonly ServerWriteLedger _ledger;
     private readonly List<FileChangeGroup> _published = [];
     private readonly FileChangeCollector _collector;
-    private readonly Library _library = new() { Type = MediaTypes.TvMediaType };
+    private readonly Library _library = new() { Type = MediaTypes.TvMediaType, Realtime = true };
 
     public WatcherLoopSimulationTests()
     {

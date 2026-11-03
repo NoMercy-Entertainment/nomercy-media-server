@@ -175,6 +175,8 @@ public class LibrariesController(
         {
             ApplyFieldUpdates(library, request);
             await libraryRepository.UpdateLibraryAsync(library);
+            if (request.Realtime.HasValue)
+                LibraryFileWatcher.SetRealtime(library.Id, library.Realtime);
             await UpdateSubtitleLanguagesAsync(library, request);
         }
         catch (Exception e)
