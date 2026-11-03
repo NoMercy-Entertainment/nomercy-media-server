@@ -160,6 +160,49 @@ public class ChromaprintFingerprinterTests
     }
 
     [Fact]
+    public async Task FingerprintAsync_FrameTimes_FollowTheChromaprintHopOf1365Samples()
+    {
+        // chromaprint emits one hash per 1365-sample hop at 11025 Hz (0.12381 s).
+        // Measured with the real muxer: 60 s of audio more yields 485 hashes more.
+        Mock<IProcessRunner> runner = new();
+        runner
+            .Setup(r =>
+                r.RunAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string[]>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .ReturnsAsync(
+                new ProcessResult(0, RealBase64Output, "", TimeSpan.FromMilliseconds(500))
+            );
+
+        ChromaprintFingerprinter fp = new(
+            _options,
+            runner.Object,
+            TestStorageFactory.CreateLocal(),
+            NullLogger<ChromaprintFingerprinter>.Instance,
+            new MediaActivityMonitor()
+        );
+
+        AudioFingerprint result = await fp.FingerprintAsync(
+            "/media/ep1.mkv",
+            null,
+            CancellationToken.None
+        );
+
+        result
+            .FrameToTime(100)
+            .TotalSeconds.Should()
+            .BeApproximately(
+                12.381,
+                0.001,
+                "hash 100 starts 100 hops of 1365 samples at 11025 Hz into the window"
+            );
+    }
+
+    [Fact]
     public async Task FingerprintAsync_AppliesWindowArgs()
     {
         string[]? captured = null;

@@ -28,10 +28,11 @@ namespace NoMercy.Encoder.ContentAnalysis.Fingerprinting;
 /// requested here (as the AcoustID fingerprinter in MediaProcessing does)
 /// and <see cref="ChromaprintFingerprintDecoder"/> unpacks it.
 ///
-/// chromaprint's documented algorithm advances one hash per ~0.1858 s at
-/// its internal 11025 Hz mono rate. Users rarely need sub-second marker
-/// precision for intros, so we treat FrameDuration as a constant rather
-/// than reading it back from ffmpeg.
+/// chromaprint advances one hash per <see cref="AudioFingerprint.ChromaprintHopSamples"/>
+/// samples at its internal <see cref="AudioFingerprint.ChromaprintSampleRate"/> Hz
+/// mono rate, so FrameDuration is the constant
+/// <see cref="AudioFingerprint.ChromaprintFrameDuration"/> rather than a value
+/// read back from ffmpeg.
 ///
 /// This is the fire-and-forget path both <c>IntroDetectSubscriber</c> and
 /// <c>IntroDetectionSubscriber</c> funnel through, and the worst NAS-read
@@ -50,12 +51,6 @@ public class ChromaprintFingerprinter(
     IAnalysisProgressObserver? progress = null
 ) : IAudioFingerprinter
 {
-    // chromaprint advances one fingerprint frame every 2048 samples at
-    // 11025 Hz = ~0.18576 seconds per frame.
-    private static readonly TimeSpan ChromaprintFrameDuration = TimeSpan.FromSeconds(
-        2048.0 / 11025.0
-    );
-
     private static readonly TimeSpan MaxIdleWait = TimeSpan.FromMinutes(5);
 
     public async Task<AudioFingerprint> FingerprintAsync(
@@ -108,7 +103,7 @@ public class ChromaprintFingerprinter(
             "-ac",
             "1",
             "-ar",
-            "11025",
+            AudioFingerprint.ChromaprintSampleRate.ToString(CultureInfo.InvariantCulture),
             "-f",
             "chromaprint",
             "-fp_format",
@@ -139,9 +134,9 @@ public class ChromaprintFingerprinter(
         TimeSpan startTime = window?.Start ?? TimeSpan.Zero;
 
         observer.Report(jobId, "fingerprint", 100, "done");
-        return new(hashes, ChromaprintFrameDuration, startTime);
+        return new(hashes, AudioFingerprint.ChromaprintFrameDuration, startTime);
     }
 
     private static AudioFingerprint Empty(FingerprintWindow? window) =>
-        new([], ChromaprintFrameDuration, window?.Start ?? TimeSpan.Zero);
+        new([], AudioFingerprint.ChromaprintFrameDuration, window?.Start ?? TimeSpan.Zero);
 }

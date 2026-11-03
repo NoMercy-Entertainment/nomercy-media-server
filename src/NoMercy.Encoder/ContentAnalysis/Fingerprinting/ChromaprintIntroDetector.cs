@@ -32,8 +32,8 @@ public class ChromaprintIntroDetector : IIntroDetector
     public ChromaprintIntroDetector(int bitDistanceThreshold = 8, int minMatchFrames = 25)
     {
         _bitDistanceThreshold = bitDistanceThreshold;
-        // ~5 seconds at chromaprint's frame rate — below this, matches are
-        // too short to be a real intro and are likely noise.
+        // ~3 seconds at chromaprint's frame rate (25 x 0.1238 s) — below this,
+        // matches are too short to be a real intro and are likely noise.
         _minMatchFrames = minMatchFrames;
     }
 
