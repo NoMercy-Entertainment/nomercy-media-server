@@ -90,9 +90,6 @@ public class PluginApplicationPartRegistrar(
 
     private bool AttachPart(PluginInfo info, IPluginManager pluginManager)
     {
-        if (_attached.ContainsKey(info.Id))
-            return false;
-
         if (info.Capabilities?.Rest != true)
             return false;
 
@@ -100,6 +97,18 @@ public class PluginApplicationPartRegistrar(
 
         if (assembly is null || !CarriesControllers(assembly))
             return false;
+
+        if (_attached.TryGetValue(info.Id, out AttachedPlugin? attached))
+        {
+            // The running copy's controllers are already served: nothing to do.
+            if (ReferenceEquals(attached.Assembly, assembly))
+                return false;
+
+            // An update loaded a new copy beside the old one. Serve the new
+            // copy's controllers, and let go of the old assembly so its load
+            // context can unload.
+            RemovePart(attached.Assembly);
+        }
 
         partManager.ApplicationParts.Add(new AssemblyPart(assembly));
         _attached[info.Id] = new(assembly, info.Capabilities?.RestAnonymous ?? false);
@@ -118,15 +127,19 @@ public class PluginApplicationPartRegistrar(
         if (!_attached.TryRemove(pluginId, out AttachedPlugin? attached))
             return;
 
+        RemovePart(attached.Assembly);
+        changeProvider.TriggerChange();
+    }
+
+    private void RemovePart(Assembly assembly)
+    {
         ApplicationPart? part = partManager.ApplicationParts.FirstOrDefault(candidate =>
             candidate is AssemblyPart assemblyPart
-            && ReferenceEquals(assemblyPart.Assembly, attached.Assembly)
+            && ReferenceEquals(assemblyPart.Assembly, assembly)
         );
 
         if (part is not null)
             partManager.ApplicationParts.Remove(part);
-
-        changeProvider.TriggerChange();
     }
 
     /// <summary>
