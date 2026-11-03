@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
 using NoMercy.Storage;
@@ -171,13 +172,47 @@ public static partial class FileNameSanitizer
         return head.Trim('.', ' ', '-', '_');
     }
 
+    /// <summary>
+    /// The key two folder or file names are compared by. "&amp;" reads as "and",
+    /// the name is folded to its compatibility-composed form (NFKC), case is
+    /// folded, and only the letters and digits of every script are kept, each
+    /// with the combining marks written on it.
+    /// <list type="bullet">
+    /// <item>NFKC makes the same name written differently compare equal: a
+    /// decomposed "e" plus acute (as macOS hands out names) is the composed "é",
+    /// full-width "ＮＡＲＵＴＯ" is "naruto", half-width "ｶﾞﾝﾀﾞﾑ" is "ガンダム".</item>
+    /// <item>Letters and digits are read per code point, so an ideograph outside
+    /// the 16-bit range ("𠮷") is kept instead of dropped as two surrogates.</item>
+    /// <item>A combining mark on a kept letter stays: a Devanagari or Thai vowel
+    /// sign is what tells two words apart. A mark on anything else (an emoji's
+    /// variation selector) goes with what it sits on.</item>
+    /// <item>Accents are deliberately NOT folded: "Amélie" and "Amelie" differ.
+    /// Folding them means stripping combining marks after decomposition, which
+    /// would also strip the dakuten that tells が from か.</item>
+    /// </list>
+    /// A name with no letters or digits at all ("---") yields an empty key, which
+    /// says nothing about the name; callers must not treat two empty keys as a match.
+    /// </summary>
     public static string NormalizeForComparison(this string name)
     {
-        name = name.Replace("&", "and");
-        // Keep every Unicode letter and digit, so a Japanese, Korean or Cyrillic
-        // name does not collapse to an empty string that equals every other one.
-        return new string(name.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
+        string composed = name.Replace("&", "and").Normalize(NormalizationForm.FormKC);
+        StringBuilder key = new(composed.Length);
+        bool previousKept = false;
+        foreach (Rune rune in composed.EnumerateRunes())
+        {
+            bool keep = Rune.IsLetterOrDigit(rune) || (previousKept && IsCombiningMark(rune));
+            if (keep)
+                key.Append(Rune.ToLowerInvariant(rune).ToString());
+            previousKept = keep && !Rune.IsDigit(rune);
+        }
+
+        return key.ToString();
     }
+
+    private static bool IsCombiningMark(Rune rune) =>
+        Rune.GetUnicodeCategory(rune)
+            is UnicodeCategory.NonSpacingMark
+                or UnicodeCategory.SpacingCombiningMark;
 
     public static string? FindMatchingDirectory(
         IStorageDriver driver,
@@ -188,9 +223,10 @@ public static partial class FileNameSanitizer
         if (!driver.DirectoryExists(rootPath))
             return null;
 
+        // A name with no letters or digits normalises to an empty key that every
+        // other such name shares, so it matches only a folder named exactly like it.
         string normalizedExpected = expectedFolderName.NormalizeForComparison();
-        if (normalizedExpected.Length == 0)
-            return null;
+        bool exactOnly = normalizedExpected.Length == 0;
 
         foreach (
             string dir in driver.EnumerateFileSystemEntries(
@@ -203,7 +239,10 @@ public static partial class FileNameSanitizer
             if (!driver.DirectoryExists(dir))
                 continue;
             string dirName = Path.GetFileName(dir).OrEmpty();
-            if (dirName.NormalizeForComparison() == normalizedExpected)
+            bool matches = exactOnly
+                ? string.Equals(dirName, expectedFolderName, StringComparison.Ordinal)
+                : dirName.NormalizeForComparison() == normalizedExpected;
+            if (matches)
                 return dir;
         }
 
