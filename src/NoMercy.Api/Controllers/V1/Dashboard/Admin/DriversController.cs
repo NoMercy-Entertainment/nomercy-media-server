@@ -278,6 +278,11 @@ public class DriversController(
                 "access_key and secret_key are both required and must be non-empty."
             );
 
+        // Same guard as Update: the built-in system local driver is immutable,
+        // and a credentials write would rewrite its Config all the same.
+        if (id == Driver.SystemLocalDriverId)
+            return ConflictResponse("Cannot edit the built-in system local driver.");
+
         string credRef = StoreCredentials(id, request);
         driver.Config = JsonConvert.SerializeObject(
             WithCredentialsRef(ParseConfigJson(driver.Config), credRef)

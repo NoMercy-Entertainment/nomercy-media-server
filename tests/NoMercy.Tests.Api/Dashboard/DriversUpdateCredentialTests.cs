@@ -86,4 +86,51 @@ public class DriversUpdateCredentialTests
             Directory.Delete(appPath, recursive: true);
         }
     }
+
+    [Fact]
+    public async Task UpdateCredentials_SystemLocalDriver_Returns409WithoutTouchingTheDriver()
+    {
+        string? previousAppPath = Environment.GetEnvironmentVariable("NOMERCY_APP_PATH");
+        string appPath = Path.Combine(AppContext.BaseDirectory, $"driver-test-{Guid.NewGuid():N}");
+        Environment.SetEnvironmentVariable("NOMERCY_APP_PATH", appPath);
+
+        Ulid id = Driver.SystemLocalDriverId;
+        string credentialRef = $"driver:{id}";
+
+        try
+        {
+            Directory.CreateDirectory(AppFiles.SecretsPath);
+
+            Driver driver = new()
+            {
+                Id = id,
+                Name = "System Local",
+                Type = "local",
+                Config = null,
+            };
+            Mock<IDriverRepository> repository = new();
+            repository.Setup(r => r.GetDriverByIdAsync(id)).ReturnsAsync(driver);
+            DriversController controller = new(
+                repository.Object,
+                Mock.Of<IStorageFactory>(),
+                NullLogger<DriversController>.Instance
+            );
+
+            IActionResult result = await controller.UpdateCredentials(
+                id,
+                new DriverCredentialsDto { AccessKey = "new-access", SecretKey = "new-secret" }
+            );
+
+            result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(409);
+            driver.Config.Should().BeNull("the built-in system local driver is immutable");
+            CredentialManager.Credential(credentialRef).Should().BeNull();
+            repository.Verify(r => r.UpdateDriverAsync(It.IsAny<Driver>()), Times.Never);
+        }
+        finally
+        {
+            CredentialManager.RemoveCredentials(credentialRef);
+            Environment.SetEnvironmentVariable("NOMERCY_APP_PATH", previousAppPath);
+            Directory.Delete(appPath, recursive: true);
+        }
+    }
 }

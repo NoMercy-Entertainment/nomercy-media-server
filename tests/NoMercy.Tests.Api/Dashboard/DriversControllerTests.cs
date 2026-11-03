@@ -361,6 +361,19 @@ public class DriversControllerTests : IClassFixture<NoMercyApiFactory>
     }
 
     [Fact]
+    public async Task UpdateCredentials_ReturnsConflict_WhenTargetingBuiltInSystemLocalDriver()
+    {
+        // The system-local guard fires before CredentialManager.SetCredentials
+        // and before the row is rewritten, so no real credential is ever written.
+        HttpResponseMessage response = await _authed.PutAsJsonAsync(
+            $"{BaseUrl}/{SystemLocalId}/credentials",
+            new { access_key = "ak", secret_key = "sk" }
+        );
+
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict);
+    }
+
+    [Fact]
     public async Task UpdateCredentials_ReturnsBadRequest_WhenBothFieldsBlank()
     {
         // Blank credentials short-circuit BEFORE CredentialManager.SetCredentials is
