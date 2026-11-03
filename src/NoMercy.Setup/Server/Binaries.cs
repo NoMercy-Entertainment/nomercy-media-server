@@ -58,6 +58,7 @@ public class Binaries
     private readonly IStorage _storage;
     private readonly HttpClient _httpClient;
     private readonly RuntimeServerSettings _settings;
+    private readonly TimeProvider _timeProvider;
 
     // Null outside tests: the production constructors are `new`ed from boot code and
     // the management endpoint, so the owner alert resolves the process-wide bus and
@@ -109,6 +110,7 @@ public class Binaries
         _driver = driver;
         _storage = storage;
         _settings = RuntimeServerSettings.Current;
+        _timeProvider = TimeProvider.System;
         _httpClient = new()
         {
             // Default HttpClient.Timeout is 100s which is fine for API calls
@@ -126,7 +128,9 @@ public class Binaries
     /// <summary>
     /// Testing constructor — allows injection of a custom <see cref="HttpClient"/> so that
     /// unit tests can supply a fake <see cref="HttpMessageHandler"/> without hitting the network,
-    /// plus the event bus and user cache the owner alert for a refused update goes through.
+    /// plus the event bus and user cache the owner alert for a refused update goes through,
+    /// and a <see cref="TimeProvider"/> so the download idle timeout runs on a clock a test
+    /// advances instead of on wall time.
     /// </summary>
     internal Binaries(
         IStorageDriver driver,
@@ -134,7 +138,8 @@ public class Binaries
         HttpClient httpClient,
         RuntimeServerSettings? settings = null,
         IEventBus? eventBus = null,
-        IUserCache? userCache = null
+        IUserCache? userCache = null,
+        TimeProvider? timeProvider = null
     )
     {
         _driver = driver;
@@ -143,6 +148,7 @@ public class Binaries
         _settings = settings ?? RuntimeServerSettings.Current;
         _eventBus = eventBus;
         _userCache = userCache;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     // -------------------------------------------------------------------------
@@ -411,7 +417,9 @@ public class Binaries
             );
             response.EnsureSuccessStatusCode();
 
-            using CancellationTokenSource idle = new(DownloadIdleTimeout);
+            // The idle timer runs on _timeProvider, so a test can stall the body and
+            // advance the clock instead of waiting out a real timeout.
+            using CancellationTokenSource idle = new(DownloadIdleTimeout, _timeProvider);
             await using Stream contentStream = await response.Content.ReadAsStreamAsync(idle.Token);
             await using Stream fileStream = _driver.OpenWrite(tempPath, overwrite: true);
             byte[] buffer = new byte[81920];

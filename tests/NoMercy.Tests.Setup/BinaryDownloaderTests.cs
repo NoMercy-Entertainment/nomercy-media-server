@@ -12,6 +12,7 @@
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.Extensions.Time.Testing;
 using Newtonsoft.Json;
 using NoMercy.Authorization;
 using NoMercy.Events;
@@ -49,6 +50,11 @@ public class BinaryDownloaderTests : IDisposable
             Directory.Delete(_tempDir, recursive: true);
     }
 
+    /// <summary>
+    /// A body that sends one chunk and then nothing must be given up on after the
+    /// idle timeout. The timeout runs on a clock the test advances, so the test
+    /// neither waits out a real timeout nor depends on how loaded the machine is.
+    /// </summary>
     [Fact]
     public async Task Download_BodyStopsAfterFirstChunk_CancelsOnIdle()
     {
@@ -61,8 +67,8 @@ public class BinaryDownloaderTests : IDisposable
             [TimeSpan.Zero, Timeout.InfiniteTimeSpan]
         );
         handler.RegisterStream(assetUrl, stalledBody);
-        Binaries binaries = BuildBinaries(handler);
-        binaries.DownloadIdleTimeout = TimeSpan.FromMilliseconds(150);
+        FakeTimeProvider clock = new();
+        Binaries binaries = BuildBinaries(handler, clock: clock);
 
         Task<string> transfer = binaries.DownloadWithVerificationAsync(
             "https://api.github.com/test",
@@ -73,10 +79,13 @@ public class BinaryDownloaderTests : IDisposable
             "stalled.bin",
             enforceSignedManifest: false
         );
-        Func<Task> download = () => transfer.WaitAsync(TimeSpan.FromSeconds(2));
+        Func<Task> download = () => transfer.WaitAsync(TimeSpan.FromSeconds(30));
 
         try
         {
+            await stalledBody.ReadStarted(1).WaitAsync(TimeSpan.FromSeconds(30));
+            clock.Advance(binaries.DownloadIdleTimeout);
+
             await download.Should().ThrowAsync<OperationCanceledException>();
         }
         finally
@@ -847,14 +856,22 @@ public class BinaryDownloaderTests : IDisposable
     private Binaries BuildBinaries(
         FakeHttpHandler handler,
         IEventBus? eventBus = null,
-        IUserCache? userCache = null
+        IUserCache? userCache = null,
+        TimeProvider? clock = null
     )
     {
         LocalStorageDriver driver = new();
         StoragePathGuard guard = new([], driver);
         LocalStorage storage = new(driver, guard);
         HttpClient http = new(handler);
-        return new(driver, storage, http, eventBus: eventBus, userCache: userCache);
+        return new(
+            driver,
+            storage,
+            http,
+            eventBus: eventBus,
+            userCache: userCache,
+            timeProvider: clock
+        );
     }
 
     private static GithubReleaseResponse BuildRelease(
@@ -980,8 +997,20 @@ internal sealed class TimedChunkStream(byte[][] chunks, TimeSpan[] delays) : Str
 {
     private int _index;
     private readonly CancellationTokenSource _release = new();
+    private readonly TaskCompletionSource[] _readStarted =
+    [
+        .. chunks.Select(_ => new TaskCompletionSource(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        )),
+    ];
 
     public void Release() => _release.Cancel();
+
+    /// <summary>
+    /// Completes once the reader has asked for chunk <paramref name="index"/>, so a
+    /// test can act while the body is still waiting on that chunk.
+    /// </summary>
+    public Task ReadStarted(int index) => _readStarted[index].Task;
 
     public override bool CanRead => true;
     public override bool CanSeek => false;
@@ -1001,6 +1030,7 @@ internal sealed class TimedChunkStream(byte[][] chunks, TimeSpan[] delays) : Str
         if (_index == chunks.Length)
             return 0;
 
+        _readStarted[_index].TrySetResult();
         using CancellationTokenSource read = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
             _release.Token
