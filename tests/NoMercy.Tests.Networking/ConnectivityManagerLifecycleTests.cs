@@ -159,6 +159,35 @@ public sealed class ConnectivityManagerLifecycleTests : IDisposable
         public Task TeardownAsync() => Task.CompletedTask;
     }
 
+    /// <summary>
+    /// A transport that is still up but reports that the binary it runs from was replaced
+    /// on disk — the shape of a cloudflared upgrade landing while the tunnel is already
+    /// carrying traffic.
+    /// </summary>
+    private sealed class OutdatedStrategy : IConnectivityStrategy
+    {
+        public int Attempts { get; private set; }
+        public int Teardowns { get; private set; }
+        public bool BinaryReplaced { get; set; }
+        public string Name => "Outdated";
+        public int Priority => 1;
+        public ConnectivityType Type => ConnectivityType.QuickTunnel;
+        public bool IsOutdated => BinaryReplaced;
+
+        public Task<ConnectivityResult> TryEstablishAsync(CancellationToken ct)
+        {
+            Attempts++;
+            BinaryReplaced = false;
+            return Task.FromResult(ConnectivityResult.Verified());
+        }
+
+        public Task TeardownAsync()
+        {
+            Teardowns++;
+            return Task.CompletedTask;
+        }
+    }
+
     private static ConnectivityManager BuildSupervisedManager(
         params IConnectivityStrategy[] strategies
     )
@@ -195,6 +224,35 @@ public sealed class ConnectivityManagerLifecycleTests : IDisposable
         // whose only transport was not ready yet stayed local-only for its whole uptime.
         Assert.Equal(ConnectivityState.Tunneled, manager.CurrentState);
         Assert.True(strategy.Attempts >= 3);
+
+        await manager.StopAsync(CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task Supervision_RestartsTheTransport_WhenItsBinaryWasReplaced()
+    {
+        OutdatedStrategy strategy = new();
+        ConnectivityManager manager = BuildSupervisedManager(strategy);
+
+        await manager.StartAsync(CancellationToken.None);
+        for (int i = 0; i < 200 && manager.CurrentState != ConnectivityState.Tunneled; i++)
+            await Task.Delay(20);
+
+        int attemptsWhenUp = strategy.Attempts;
+        strategy.BinaryReplaced = true;
+
+        for (int i = 0; i < 200 && strategy.Attempts == attemptsWhenUp; i++)
+            await Task.Delay(20);
+
+        // A tunnel that keeps running from the binary an upgrade just replaced is still
+        // the old, vulnerable cloudflared. The old process must be stopped and the
+        // transport re-established from the new file without a server restart.
+        Assert.True(
+            strategy.Attempts > attemptsWhenUp,
+            "the transport was not re-established after its binary was replaced"
+        );
+        Assert.True(strategy.Teardowns >= 1, "the old process was never torn down");
+        Assert.Equal(ConnectivityState.Tunneled, manager.CurrentState);
 
         await manager.StopAsync(CancellationToken.None);
     }

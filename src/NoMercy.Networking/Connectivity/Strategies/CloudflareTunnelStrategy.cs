@@ -17,6 +17,8 @@ using NoMercy.NmSystem.Dto;
 using NoMercy.NmSystem.Information;
 using NoMercy.NmSystem.Status;
 using NoMercy.NmSystem.SystemCalls;
+using NoMercy.Storage;
+using NoMercy.Storage.Drivers.Local;
 
 namespace NoMercy.Networking.Connectivity.Strategies;
 
@@ -25,7 +27,9 @@ public partial class CloudflareTunnelStrategy : IConnectivityStrategy, IDisposab
     private readonly Func<Task>? _checkTunnelAvailability;
     private readonly IConnectivityStatus _connectivityStatus;
     private readonly Func<bool> _binaryExists;
+    private readonly Func<string?> _binaryStamp;
     private Process? _tunnelProcess;
+    private string? _startedFromStamp;
     private bool _disposed;
 
     /// <summary>
@@ -51,7 +55,11 @@ public partial class CloudflareTunnelStrategy : IConnectivityStrategy, IDisposab
     )]
     private static partial Regex ConnectionRegisteredPattern();
 
-    [GeneratedRegex(@"\bERR\b|\bFTL\b|error|failed|unauthorized|expired", RegexOptions.IgnoreCase, matchTimeoutMilliseconds: 1000)]
+    [GeneratedRegex(
+        @"\bERR\b|\bFTL\b|error|failed|unauthorized|expired",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex FailurePattern();
 
     /// <summary>
@@ -104,6 +112,19 @@ public partial class CloudflareTunnelStrategy : IConnectivityStrategy, IDisposab
     public bool IsStillEstablished => _tunnelProcess is { HasExited: false };
 
     /// <summary>
+    /// True while the tunnel runs from a cloudflared the background upgrade has since
+    /// replaced on disk. A missing or half-replaced file is not a verdict yet.
+    /// </summary>
+    public bool IsOutdated
+    {
+        get
+        {
+            string? current = _binaryStamp();
+            return IsStillEstablished && current is not null && current != _startedFromStamp;
+        }
+    }
+
+    /// <summary>
     /// False only when a tunnel is assigned but the binary that runs it has not landed on
     /// disk yet. cloudflared is downloaded at runtime, sixth in a sequential queue, so on an
     /// early boot this is routinely still false for a few seconds — that is a "not yet", not
@@ -123,13 +144,16 @@ public partial class CloudflareTunnelStrategy : IConnectivityStrategy, IDisposab
         ILogger<CloudflareTunnelStrategy> logger,
         IConnectivityStatus connectivityStatus,
         Func<Task>? checkTunnelAvailability = null,
-        Func<bool>? binaryExists = null
+        Func<bool>? binaryExists = null,
+        IStorageDriver? driver = null
     )
     {
+        IStorageDriver binaries = driver ?? new LocalStorageDriver();
         _logger = logger;
         _checkTunnelAvailability = checkTunnelAvailability;
         _connectivityStatus = connectivityStatus;
-        _binaryExists = binaryExists ?? (() => File.Exists(AppFiles.CloudflareDPath));
+        _binaryExists = binaryExists ?? (() => CloudflaredBinary.Exists(binaries));
+        _binaryStamp = () => CloudflaredBinary.Stamp(binaries);
     }
 
     public async Task<ConnectivityResult> TryEstablishAsync(CancellationToken ct)
@@ -193,6 +217,9 @@ public partial class CloudflareTunnelStrategy : IConnectivityStrategy, IDisposab
 
         try
         {
+            // Read before Start(): a replacement landing in between then costs one
+            // needless restart instead of hiding the old binary behind the new stamp.
+            _startedFromStamp = _binaryStamp();
             _tunnelProcess = new()
             {
                 StartInfo = new()
@@ -251,6 +278,10 @@ public partial class CloudflareTunnelStrategy : IConnectivityStrategy, IDisposab
             };
 
             _tunnelProcess.Start();
+            // Bind the child to the server's kill-on-close job object so a crash or a hard
+            // kill of the server — where TeardownAsync never runs — cannot leave an
+            // orphaned cloudflared behind. No-op fallback off Windows.
+            Shell.ProcessHelper.AttachToParentLifetime(_tunnelProcess);
             _tunnelProcess.BeginOutputReadLine();
             _tunnelProcess.BeginErrorReadLine();
 
@@ -292,57 +323,10 @@ public partial class CloudflareTunnelStrategy : IConnectivityStrategy, IDisposab
     }
 
     /// <summary>
-    /// Kills any cloudflared started from our own binary path that is not the process this
-    /// strategy currently owns. Matching on the executable path rather than the name alone
-    /// keeps a cloudflared the user runs for their own tunnels out of scope.
+    /// Kills any cloudflared started from our own binaries directory that is not the process
+    /// this strategy currently owns. See <see cref="CloudflaredBinary.ReapOrphans"/>.
     /// </summary>
-    internal void ReapOrphanedTunnels()
-    {
-        string ourPath;
-        try
-        {
-            ourPath = Path.GetFullPath(AppFiles.CloudflareDPath);
-        }
-        catch
-        {
-            return;
-        }
-
-        foreach (Process candidate in Process.GetProcessesByName("cloudflared"))
-            using (candidate)
-            {
-                try
-                {
-                    if (_tunnelProcess is not null && candidate.Id == _tunnelProcess.Id)
-                        continue;
-
-                    string? path = candidate.MainModule?.FileName;
-                    if (
-                        path is null
-                        || !string.Equals(
-                            Path.GetFullPath(path),
-                            ourPath,
-                            StringComparison.OrdinalIgnoreCase
-                        )
-                    )
-                        continue;
-
-                    _logger.LogWarning(
-                        "Found an orphaned cloudflared from a previous run (pid {Pid}) — stopping it so this server registers one connector, not two",
-                        candidate.Id
-                    );
-
-                    candidate.Kill(true);
-                    candidate.WaitForExit(5000);
-                }
-                catch (Exception ex)
-                {
-                    // MainModule throws for processes we cannot inspect; that just means it
-                    // is not ours to reap.
-                    _logger.LogDebug("Skipped cloudflared pid inspection: {Message}", ex.Message);
-                }
-            }
-    }
+    internal void ReapOrphanedTunnels() => CloudflaredBinary.ReapOrphans(_logger, _tunnelProcess);
 
     public Task TeardownAsync()
     {

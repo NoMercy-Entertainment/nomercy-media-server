@@ -469,10 +469,7 @@ public class Binaries
         }
 
         // --- Atomic replace with backup --------------------------------------------------------
-        string backupPath = destPath + ".bak";
-
-        if (_driver.FileExists(backupPath))
-            _driver.DeleteFile(backupPath);
+        string backupPath = ReserveBackupPath(destPath);
 
         if (_driver.FileExists(destPath))
             _driver.MoveFile(destPath, backupPath);
@@ -504,9 +501,7 @@ public class Binaries
             );
         }
 
-        // Backup no longer needed.
-        if (_driver.FileExists(backupPath))
-            _driver.DeleteFile(backupPath);
+        DiscardBackup(backupPath);
 
         Logger.Setup(
             $"Downloaded {label} to {destPath} ({_storage.SizeOrZero(destPath)} bytes)",
@@ -2261,9 +2256,7 @@ public class Binaries
 
     private void ReplaceStagedFile(string sourcePath, string destinationPath)
     {
-        string backupPath = destinationPath + ".bak";
-        if (_driver.FileExists(backupPath))
-            _driver.DeleteFile(backupPath);
+        string backupPath = ReserveBackupPath(destinationPath);
 
         bool hadPrevious = _driver.FileExists(destinationPath);
         if (hadPrevious)
@@ -2281,7 +2274,65 @@ public class Binaries
         }
 
         if (hadPrevious)
-            _driver.DeleteFile(backupPath);
+            DiscardBackup(backupPath);
+    }
+
+    /// <summary>
+    /// Where the file being replaced is moved while the new one is put in place. The usual
+    /// <c>.bak</c> is reused once the previous one is cleared away; when it cannot be, a
+    /// unique name is used instead. On Windows the image of a running executable can be
+    /// renamed but not deleted, so a cloudflared still running from an earlier backup pins
+    /// that backup with "Access to the path ... is denied" — a leftover that is merely in
+    /// the way must never block the upgrade itself.
+    /// </summary>
+    private string ReserveBackupPath(string destinationPath)
+    {
+        string backupPath = destinationPath + ".bak";
+        SweepStaleBackups(destinationPath);
+
+        return _driver.FileExists(backupPath)
+            ? $"{destinationPath}.bak-{DateTime.UtcNow:yyyyMMddHHmmssfff}"
+            : backupPath;
+    }
+
+    /// <summary>
+    /// Best-effort removal of every backup an earlier upgrade left beside the file. One a
+    /// process still runs from stays until that process is gone and is swept on a later run.
+    /// </summary>
+    private void SweepStaleBackups(string destinationPath)
+    {
+        string? directory = Path.GetDirectoryName(destinationPath);
+        if (directory is null || !_driver.DirectoryExists(directory))
+            return;
+
+        string pattern = Path.GetFileName(destinationPath) + ".bak*";
+        List<string> stale = _driver
+            .EnumerateFileSystemEntries(directory, pattern, SearchOption.TopDirectoryOnly)
+            .ToList();
+
+        foreach (string backup in stale)
+            DiscardBackup(backup);
+    }
+
+    /// <summary>
+    /// Removes a backup the upgrade no longer needs. The binary a live tunnel runs from
+    /// cannot be deleted until that tunnel restarts; that is not an upgrade failure, the
+    /// new file is already in place.
+    /// </summary>
+    private void DiscardBackup(string backupPath)
+    {
+        try
+        {
+            if (_driver.FileExists(backupPath))
+                _driver.DeleteFile(backupPath);
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        {
+            Logger.Setup(
+                $"The previous binary at {backupPath} is still in use and stays until its process exits: {ex.Message}",
+                LogEventLevel.Debug
+            );
+        }
     }
 
     internal async Task DownloadTesseractData(IEnumerable<string> languages)
