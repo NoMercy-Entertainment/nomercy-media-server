@@ -46,47 +46,15 @@ public static class Optical
         return drives;
     }
 
-    private static Dictionary<string, string?> GetLinuxOpticalDrives()
-    {
-        Dictionary<string, string?> drives = new();
-        List<string> output = RunShellCommand("lsblk -o NAME,MOUNTPOINT,LABEL -n | grep sr");
-
-        foreach (string line in output)
-        {
-            string[] parts = line.Split([' '], StringSplitOptions.RemoveEmptyEntries);
-            if (parts.Length < 2)
-                continue;
-
-            string path = $"/dev/{parts[0]}";
-            drives[path] = parts.Length > 2 ? parts[2] : null;
-        }
-
-        return drives;
-    }
+    private static Dictionary<string, string?> GetLinuxOpticalDrives() =>
+        new LinuxOpticalDriveScanner(_commandRunner)
+            .GetDrives()
+            .ToDictionary(drive => drive.Path, drive => drive.HasDisc ? drive.Label : null);
 
     private static Dictionary<string, string?> GetMacOpticalDrives() =>
         new MacOpticalDriveScanner(_commandRunner)
             .GetDrives()
             .ToDictionary(drive => drive.Path, drive => drive.HasDisc ? drive.Label : null);
-
-    private static List<string> RunShellCommand(string command)
-    {
-        List<string> outputLines = [];
-
-        try
-        {
-            string result = Shell.ExecCommand(command);
-            outputLines.AddRange(
-                result.Split([Environment.NewLine], StringSplitOptions.RemoveEmptyEntries)
-            );
-        }
-        catch (Exception ex)
-        {
-            Logger.Error($"[ERROR] Failed to run command '{command}': {ex.Message}");
-        }
-
-        return outputLines;
-    }
 
     public static bool OpenDrive(string drivePath)
     {
