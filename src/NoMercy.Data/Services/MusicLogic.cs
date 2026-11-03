@@ -74,24 +74,7 @@ public partial class MusicLogic : IAsyncDisposable
         AlbumName = match.Groups["album"].Success ? match.Groups["album"].Value : string.Empty;
         Year = match.Groups["year"].Success ? Convert.ToInt32(match.Groups["year"].Value) : 1970;
 
-        // Post-migration: Folder.Path = "" (sub-path inside driver root). Match
-        // by resolving each folder's driver root and comparing against the scan path.
-        Folder = Library
-            .FolderLibraries.Select(folderLibrary => folderLibrary.Folder)
-            .FirstOrDefault(folder =>
-            {
-                IStorage folderStorage = _storageFactory.For(
-                    folder.Id,
-                    folder.DriverId,
-                    string.Empty
-                );
-                // Resolve through the driver, not the IStorage facade: the facade's
-                // GetFullPath is a LocalStorage-only escape hatch that throws on every
-                // remote backend, so a facade call here killed folder matching for
-                // NFS / SMB / S3 / WebDAV music libraries.
-                string driverRoot = folderStorage.Driver.GetFullPath(folder.Path);
-                return listPath.Path.StartsWith(driverRoot, StringComparison.OrdinalIgnoreCase);
-            });
+        Folder = LibraryFolderResolver.FolderHolding(Library, listPath.Path, _storageFactory);
 
         _logger.LogTrace("Files");
         _logger.LogTrace("{Files}", Files ?? []);
@@ -105,7 +88,21 @@ public partial class MusicLogic : IAsyncDisposable
 
     public async Task Process()
     {
-        _logger.LogTrace("Processing Folder: {Path}", Folder?.Path);
+        // Every row this import writes names its library folder, so an album no
+        // folder holds is skipped up front. Run without one, the first store threw
+        // a bare null reference and nothing of the album landed (#397).
+        if (Folder is not { } folder)
+        {
+            _logger.LogWarning(
+                "No library folder matches {Path}, so it was skipped; the folder roots of library {LibraryId} are: {Roots}",
+                ListPath.Path,
+                Library.Id,
+                string.Join(", ", LibraryFolderRoots())
+            );
+            return;
+        }
+
+        _logger.LogTrace("Processing Folder: {Path}", folder.Path);
         await Parallel.ForEachAsync(
             Files ?? [],
             SystemParallelism.Options,
@@ -156,6 +153,7 @@ public partial class MusicLogic : IAsyncDisposable
                             {
                                 await ProcessRelease(
                                     mediaContext,
+                                    folder,
                                     release,
                                     file,
                                     fingerPrintRecording
@@ -179,7 +177,7 @@ public partial class MusicLogic : IAsyncDisposable
                     if (fallbackParsedResult is null)
                         return;
 
-                    await ProcessRelease(mediaContext, fallbackParsedResult, file);
+                    await ProcessRelease(mediaContext, folder, fallbackParsedResult, file);
                 }
                 catch (Exception e)
                 {
@@ -193,6 +191,7 @@ public partial class MusicLogic : IAsyncDisposable
 
     private async Task ProcessRelease(
         MediaContext mediaContext,
+        Folder folder,
         AcoustIdFingerprintReleaseGroups release,
         MediaFile mediaFile,
         AcoustIdFingerprintRecording? matchedRecording = null
@@ -224,7 +223,7 @@ public partial class MusicLogic : IAsyncDisposable
                 [release.Title, release.Id]
             );
 
-        if (await StoreRelease(mediaContext, releaseAppends, mediaFile) is null)
+        if (await StoreRelease(mediaContext, folder, releaseAppends, mediaFile) is null)
             _logger.LogTrace("Release already exists: {Title}", releaseAppends.Title);
         // await Task.CompletedTask;
         // return;
@@ -245,31 +244,34 @@ public partial class MusicLogic : IAsyncDisposable
             );
 
         foreach (MusicBrainzMedia media in releaseAppends.Media)
-            foreach (MusicBrainzTrack track in media.Tracks)
+        foreach (MusicBrainzTrack track in media.Tracks)
+        {
+            if (
+                await StoreTrack(mediaContext, folder, releaseAppends, track, media, mediaFile)
+                is null
+            )
+                continue;
+
+            await LinkTrackToRelease(mediaContext, track, releaseAppends);
+
+            if (encodableTrack is not null && track.Id == encodableTrack.Id)
+                await DispatchEncode(folder, releaseAppends, track, mediaFile);
+
+            foreach (ReleaseArtistCredit artist in track.ArtistCredit)
             {
-                if (await StoreTrack(mediaContext, releaseAppends, track, media, mediaFile) is null)
-                    continue;
+                await StoreArtist(mediaContext, folder, artist.MusicBrainzArtist);
+                await LinkArtistToTrack(mediaContext, artist.MusicBrainzArtist, track);
 
-                await LinkTrackToRelease(mediaContext, track, releaseAppends);
+                await LinkArtistToAlbum(mediaContext, artist.MusicBrainzArtist, releaseAppends);
+                await LinkArtistToLibrary(mediaContext, artist.MusicBrainzArtist);
 
-                if (encodableTrack is not null && track.Id == encodableTrack.Id)
-                    await DispatchEncode(releaseAppends, track, mediaFile);
-
-                foreach (ReleaseArtistCredit artist in track.ArtistCredit)
-                {
-                    await StoreArtist(mediaContext, artist.MusicBrainzArtist);
-                    await LinkArtistToTrack(mediaContext, artist.MusicBrainzArtist, track);
-
-                    await LinkArtistToAlbum(mediaContext, artist.MusicBrainzArtist, releaseAppends);
-                    await LinkArtistToLibrary(mediaContext, artist.MusicBrainzArtist);
-
-                    await LinkArtistToReleaseGroup(
-                        mediaContext,
-                        releaseAppends,
-                        artist.MusicBrainzArtist.Id
-                    );
-                }
+                await LinkArtistToReleaseGroup(
+                    mediaContext,
+                    releaseAppends,
+                    artist.MusicBrainzArtist.Id
+                );
             }
+        }
 
         await Task.CompletedTask;
     }
@@ -343,21 +345,12 @@ public partial class MusicLogic : IAsyncDisposable
     /// (<see cref="Track.CreateTitle"/>) rather than assembling a path here.
     /// </summary>
     private async Task DispatchEncode(
+        Folder folder,
         MusicBrainzReleaseAppends release,
         MusicBrainzTrack track,
         MediaFile file
     )
     {
-        if (Folder is null)
-        {
-            _logger.LogWarning(
-                "No destination folder on this import, so {Track} from {File} was stored but never encoded",
-                track.Title,
-                file.Path
-            );
-            return;
-        }
-
         // Same per-library opt-in AutoEncodeSubscriber already enforces for video —
         // a preset assignment is "the preset to use when I encode", not "re-encode
         // everything the moment it is scanned". Without this gate music had no
@@ -378,7 +371,7 @@ public partial class MusicLogic : IAsyncDisposable
         await MusicEncodeDispatcher.Dispatch(
             _storageFactory,
             Library,
-            Folder,
+            folder,
             release,
             track,
             file,
@@ -545,6 +538,7 @@ public partial class MusicLogic : IAsyncDisposable
 
     private async Task<MusicBrainzReleaseAppends?> StoreRelease(
         MediaContext mediaContext,
+        Folder libraryFolder,
         MusicBrainzReleaseAppends musicBrainzRelease,
         MediaFile mediaFile
     )
@@ -563,7 +557,7 @@ public partial class MusicLogic : IAsyncDisposable
 
         StoragePathHelpers.TryGetLibraryRelativeParts(
             mediaFile.Path,
-            ResolveLibraryRoot(),
+            ResolveLibraryRoot(libraryFolder),
             out string relativeFolder,
             out _
         );
@@ -583,7 +577,7 @@ public partial class MusicLogic : IAsyncDisposable
             Tracks = media.Tracks.Length,
 
             LibraryId = Library.Id,
-            FolderId = Folder!.Id,
+            FolderId = libraryFolder.Id,
             Folder = relativeFolder,
             HostFolder = folder.PathName(),
         };
@@ -653,6 +647,7 @@ public partial class MusicLogic : IAsyncDisposable
 
     private async Task StoreArtist(
         MediaContext mediaContext,
+        Folder libraryFolder,
         MusicBrainzArtistDetails musicBrainzArtist
     )
     {
@@ -679,9 +674,9 @@ public partial class MusicLogic : IAsyncDisposable
             TitleSort = musicBrainzArtist.Name.TitleSort(),
 
             Folder = artistFolder,
-            HostFolder = Path.Join(ResolveLibraryRoot(), artistFolder).PathName(),
+            HostFolder = Path.Join(ResolveLibraryRoot(libraryFolder), artistFolder).PathName(),
             LibraryId = Library.Id,
-            FolderId = Folder!.Id,
+            FolderId = libraryFolder.Id,
         };
 
         if (HostFolderPath.ContainsSecondRoot(insert.HostFolder))
@@ -750,6 +745,7 @@ public partial class MusicLogic : IAsyncDisposable
 
     private async Task<MusicBrainzTrack?> StoreTrack(
         MediaContext mediaContext,
+        Folder libraryFolder,
         MusicBrainzReleaseAppends musicBrainzRelease,
         MusicBrainzTrack musicBrainzTrack,
         MusicBrainzMedia musicBrainzMedia,
@@ -785,7 +781,7 @@ public partial class MusicLogic : IAsyncDisposable
             if (
                 !StoragePathHelpers.TryGetLibraryRelativeParts(
                     file,
-                    ResolveLibraryRoot(),
+                    ResolveLibraryRoot(libraryFolder),
                     out string relativeFolder,
                     out string filename
                 )
@@ -837,7 +833,7 @@ public partial class MusicLogic : IAsyncDisposable
                 return null;
             }
 
-            insert.FolderId = Folder!.Id;
+            insert.FolderId = libraryFolder.Id;
             insert.Folder = relativeFolder;
             insert.HostFolder = hostFolder;
         }
@@ -1265,17 +1261,13 @@ public partial class MusicLogic : IAsyncDisposable
         return ValueTask.CompletedTask;
     }
 
-    private string ResolveLibraryRoot()
-    {
-        if (Folder is null)
-            return string.Empty;
-        IStorage folderStorage = _storageFactory.For(Folder.Id, Folder.DriverId, string.Empty);
-        // Resolve through the driver, not the IStorage facade: the facade's
-        // GetFullPath is a LocalStorage-only escape hatch that throws on every
-        // remote backend, so a facade call here killed folder-path resolution
-        // for NFS / SMB / S3 / WebDAV music libraries.
-        return folderStorage.Driver.GetFullPath(Folder.Path);
-    }
+    private string ResolveLibraryRoot(Folder libraryFolder) =>
+        LibraryFolderResolver.RootOf(libraryFolder, _storageFactory);
+
+    private IEnumerable<string> LibraryFolderRoots() =>
+        Library.FolderLibraries.Select(folderLibrary =>
+            LibraryFolderResolver.RootOf(folderLibrary.Folder, _storageFactory)
+        );
 
     [GeneratedRegex(
         @"(?<library_folder>.+?)[\\\/]((?<letter>.{1})?|\[(?<type>.+?)\])[\\\/](?<artist>.+?)?[\\\/]?(\[(?<year>[0-9]{4})\]?\s?(?<album>.*)?)",
