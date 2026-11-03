@@ -18,6 +18,7 @@ using NoMercy.Encoder.Hardware;
 using NoMercy.Encoder.Infrastructure;
 using NoMercy.Encoder.LiveTranscode;
 using NoMercy.Storage;
+using NoMercy.Tests.Encoder.Hardware;
 using NoMercy.Tests.Encoder.Storage;
 
 namespace NoMercy.Tests.Encoder.LiveTranscode;
@@ -145,7 +146,7 @@ public class LiveSessionKillFileHandleRaceTests
             budgetMock.Object
         );
 
-        SpeedIndex speedIndex = new(new());
+        StubSpeedIndexProvider speedIndexProvider = new();
 
         LiveEncoder encoder = new(
             selectorMock.Object,
@@ -154,7 +155,7 @@ public class LiveSessionKillFileHandleRaceTests
             runner,
             segmentInventory,
             options,
-            speedIndex,
+            speedIndexProvider,
             budgetMock.Object,
             NullLogger<LiveEncoder>.Instance
         );

@@ -38,7 +38,7 @@ public class LiveTranscodeService(
     IMediaAnalyzer mediaAnalyzer,
     ILiveQualitySelector qualitySelector,
     IPlaybackDecisionEngine decisionEngine,
-    SpeedIndex speedIndex,
+    ISpeedIndexProvider speedIndexProvider,
     IResourceBudget budget,
     IVideoFileRepository videoFileRepository,
     LiveSessionLimits sessionLimits,
@@ -634,7 +634,7 @@ public class LiveTranscodeService(
         LiveQuality[] available = qualitySelector.GetAvailableQualities(
             runtime.CachedMediaInfo,
             runtime.ClientCapabilities,
-            speedIndex,
+            speedIndexProvider.Current,
             budget
         );
         LiveQuality? newQuality = available.FirstOrDefault(q => q.Id == request.QualityId);

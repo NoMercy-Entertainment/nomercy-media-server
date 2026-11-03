@@ -14,7 +14,7 @@ using NoMercy.Encoder.Hardware;
 
 namespace NoMercy.Encoder.Pipeline.Optimizer;
 
-public class EncodeCostModel(SpeedIndex speedIndex) : IEncodeCostModel
+public class EncodeCostModel(ISpeedIndexProvider speedIndexProvider) : IEncodeCostModel
 {
     // Codec encode-effort multipliers relative to H.264 (heavier = pricier per pixel).
     private const double H264Effort = 1.0;
@@ -30,7 +30,7 @@ public class EncodeCostModel(SpeedIndex speedIndex) : IEncodeCostModel
     {
         double pixels = (double)width * height;
         double effort = EffortFor(codec);
-        double speed = speedIndex.GetSpeedMultiplier(codec, encoder, width, null);
+        double speed = speedIndexProvider.Current.GetSpeedMultiplier(codec, encoder, width, null);
         // Unknown speed (0) → treat as 1.0 realtime baseline.
         double divisor = speed > 0 ? speed : 1.0;
         return pixels * effort * passes / divisor / 1_000_000.0;

@@ -20,6 +20,7 @@ using NoMercy.Encoder.Hdr;
 using NoMercy.Encoder.Output;
 using NoMercy.Encoder.Pipeline;
 using NoMercy.Encoder.Pipeline.Stages;
+using NoMercy.Tests.Encoder.Hardware;
 using EncodingProfile = NoMercy.Encoder.Profiles.EncodingProfile;
 
 namespace NoMercy.Tests.Encoder.Pipeline.Stages;
@@ -188,7 +189,7 @@ public class LegacyProfileCodecRegressionTests
             new NoOpCropDetector(),
             NullLogger<PlanStage>.Instance,
             hardwarePreferenceResolver: hardwarePreferenceResolver,
-            speedIndex: speedIndex,
+            speedIndexProvider: new StubSpeedIndexProvider(speedIndex),
             bitDepthPolicyResolver: bitDepthPolicyResolver
         );
 

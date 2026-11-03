@@ -45,7 +45,7 @@ public class PlanStage(
     ILogger<PlanStage> logger,
     IQualityScalerResolver? qualityScalerResolver = null,
     IHardwarePreferenceResolver? hardwarePreferenceResolver = null,
-    SpeedIndex? speedIndex = null,
+    ISpeedIndexProvider? speedIndexProvider = null,
     IBitDepthPolicyResolver? bitDepthPolicyResolver = null,
     IOutputNamingResolver? outputNamingResolver = null,
     ISubtitleAcquisitionService? subtitleAcquisitionService = null,
@@ -172,7 +172,8 @@ public class PlanStage(
 
             if (hardwarePreferenceResolver is not null)
             {
-                SpeedIndex effectiveSpeedIndex = speedIndex ?? new SpeedIndex(new());
+                SpeedIndex effectiveSpeedIndex =
+                    speedIndexProvider?.Current ?? new SpeedIndex(new());
 
                 List<string> availableEncoderNames = ffmpegCapabilities
                     .AvailableEncoders.Where(encoderName =>
@@ -489,7 +490,7 @@ public class PlanStage(
             codec,
             profile.HardwarePreference,
             availableEncoderNames,
-            speedIndex ?? new SpeedIndex(new()),
+            speedIndexProvider?.Current ?? new SpeedIndex(new()),
             NullDecisionLogSink.Instance
         );
 

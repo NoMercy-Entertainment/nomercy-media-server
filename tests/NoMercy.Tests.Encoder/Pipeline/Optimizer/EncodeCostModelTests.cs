@@ -12,6 +12,7 @@
 using NoMercy.Encoder.Codecs;
 using NoMercy.Encoder.Hardware;
 using NoMercy.Encoder.Pipeline.Optimizer;
+using NoMercy.Tests.Encoder.Hardware;
 
 namespace NoMercy.Tests.Encoder.Pipeline.Optimizer;
 
@@ -22,7 +23,7 @@ public class EncodeCostModelTests
     [Fact]
     public void RungCost_HigherResolution_CostsMore()
     {
-        EncodeCostModel model = new(EmptySpeed);
+        EncodeCostModel model = new(new StubSpeedIndexProvider(EmptySpeed));
 
         double uhd = model.RungCost(3840, 2160, VideoCodecType.H265, "libx265", passes: 1);
         double fhd = model.RungCost(1920, 1080, VideoCodecType.H265, "libx265", passes: 1);
@@ -33,12 +34,38 @@ public class EncodeCostModelTests
     [Fact]
     public void RungCost_TwoPass_DoublesSinglePass()
     {
-        EncodeCostModel model = new(EmptySpeed);
+        EncodeCostModel model = new(new StubSpeedIndexProvider(EmptySpeed));
 
         double single = model.RungCost(1920, 1080, VideoCodecType.H264, "libx264", passes: 1);
         double twoPass = model.RungCost(1920, 1080, VideoCodecType.H264, "libx264", passes: 2);
 
         twoPass.Should().BeApproximately(single * 2, 0.001);
+    }
+
+    [Fact]
+    public void RungCost_AfterBenchmarkPublishes_UsesNewSpeed()
+    {
+        // Issue #350: the model must price with the index the benchmark holds
+        // now, not the one it saw when it was built.
+        StubSpeedIndexProvider provider = new(EmptySpeed);
+        EncodeCostModel model = new(provider);
+        double before = model.RungCost(1920, 1080, VideoCodecType.H265, "hevc_nvenc", passes: 1);
+
+        provider.Current = new(
+            new()
+            {
+                [new(VideoCodecType.H265, "hevc_nvenc", 1920, null)] = new(
+                    Fps: 120,
+                    SpeedMultiplier: 4.0,
+                    MeasuredAt: default
+                ),
+            }
+        );
+        double after = model.RungCost(1920, 1080, VideoCodecType.H265, "hevc_nvenc", passes: 1);
+
+        after
+            .Should()
+            .BeApproximately(before / 4.0, 0.001, "a 4x realtime encoder costs a quarter");
     }
 
     [Fact]
@@ -55,8 +82,8 @@ public class EncodeCostModelTests
                 ),
             }
         );
-        EncodeCostModel hw = new(fast);
-        EncodeCostModel sw = new(EmptySpeed);
+        EncodeCostModel hw = new(new StubSpeedIndexProvider(fast));
+        EncodeCostModel sw = new(new StubSpeedIndexProvider(EmptySpeed));
 
         double hwCost = hw.RungCost(1920, 1080, VideoCodecType.H265, "hevc_nvenc", passes: 1);
         double swCost = sw.RungCost(1920, 1080, VideoCodecType.H265, "libx265", passes: 1);
@@ -67,7 +94,7 @@ public class EncodeCostModelTests
     [Fact]
     public void TotalCost_SumsRungsPlusDecodeAndTonemap()
     {
-        EncodeCostModel model = new(EmptySpeed);
+        EncodeCostModel model = new(new StubSpeedIndexProvider(EmptySpeed));
 
         double withTonemap = model.TotalCost(
             sourceWidth: 3840,

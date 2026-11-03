@@ -23,7 +23,7 @@ public class LiveEncoder(
     ILiveFfmpegRunner runner,
     ILiveSegmentInventory segmentInventory,
     EncoderOptions options,
-    SpeedIndex speedIndex,
+    ISpeedIndexProvider speedIndexProvider,
     IResourceBudget budget,
     ILogger<LiveEncoder> logger
 ) : ILiveEncoder
@@ -315,7 +315,7 @@ public class LiveEncoder(
             LiveQuality[] available = qualitySelector.GetAvailableQualities(
                 request.CachedInfo,
                 request.Client,
-                speedIndex,
+                speedIndexProvider.Current,
                 budget
             );
 
@@ -327,7 +327,7 @@ public class LiveEncoder(
         return qualitySelector.SelectOptimal(
             request.CachedInfo,
             request.Client,
-            speedIndex,
+            speedIndexProvider.Current,
             budget
         );
     }

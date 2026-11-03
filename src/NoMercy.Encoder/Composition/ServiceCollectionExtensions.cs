@@ -395,10 +395,10 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IHardwareBenchmark, HardwareBenchmark>();
         services.AddSingleton<IBenchmarkJobTracker, BenchmarkJobTracker>();
 
-        // Lazy-load cached SpeedIndex from disk (empty when no benchmark has run yet).
-        services.AddSingleton<SpeedIndex>(sp =>
-            sp.GetRequiredService<IHardwareBenchmark>().GetCachedIndex()
-        );
+        // Consumers read the benchmark's current index at use time. A
+        // SpeedIndex singleton would freeze the boot-time snapshot (empty on a
+        // fresh server) until restart, missing every later benchmark run.
+        services.AddSingleton<ISpeedIndexProvider, BenchmarkSpeedIndexProvider>();
         services.AddTransient<ILiveFfmpegRunner, LiveFfmpegRunner>();
         // Stateless — reads the scratch directory fresh on every call, so one
         // shared instance across every live session is safe.

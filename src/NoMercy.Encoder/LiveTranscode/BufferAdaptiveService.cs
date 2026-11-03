@@ -38,7 +38,7 @@ public class BufferAdaptiveService(
     ILiveStreamingService streamingService,
     ILiveQualitySelector qualitySelector,
     BufferManager bufferManager,
-    SpeedIndex speedIndex,
+    ISpeedIndexProvider speedIndexProvider,
     IResourceBudget resourceBudget,
     LiveSessionLimits limits,
     ILogger<BufferAdaptiveService> logger,
@@ -232,7 +232,7 @@ public class BufferAdaptiveService(
         LiveQuality[] available = qualitySelector.GetAvailableQualities(
             runtime.CachedMediaInfo,
             runtime.ClientCapabilities,
-            speedIndex,
+            speedIndexProvider.Current,
             resourceBudget
         );
         if (available.Length == 0)
@@ -370,7 +370,7 @@ public class BufferAdaptiveService(
         LiveQuality[] available = qualitySelector.GetAvailableQualities(
             runtime.CachedMediaInfo,
             runtime.ClientCapabilities,
-            speedIndex,
+            speedIndexProvider.Current,
             resourceBudget
         );
 

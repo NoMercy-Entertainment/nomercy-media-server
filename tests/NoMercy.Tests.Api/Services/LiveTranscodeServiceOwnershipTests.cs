@@ -95,7 +95,9 @@ public class LiveTranscodeServiceOwnershipTests
             Mock.Of<IMediaAnalyzer>(),
             Mock.Of<ILiveQualitySelector>(),
             Mock.Of<IPlaybackDecisionEngine>(),
-            new SpeedIndex([]),
+            Mock.Of<ISpeedIndexProvider>(p =>
+                p.Current == new SpeedIndex(new Dictionary<SpeedKey, SpeedMeasurement>())
+            ),
             Mock.Of<IResourceBudget>(),
             Mock.Of<IVideoFileRepository>(),
             new LiveSessionLimits(),
