@@ -618,19 +618,37 @@ public partial class ServerController(
     }
 
     [HttpGet]
-    [Route("/files/${depth:int}/${path:required}")]
+    [Route("files/{depth:int}/{*path}")]
     [Authorize(Policy = "Moderator")]
-    public async Task<IActionResult> Files(string path, int depth)
+    public async Task<IActionResult> Files(string? path, int depth)
     {
-        MediaScan mediaScan = new(storageDriver);
+        // Like the folder picker this browses outside library roots, so it scans
+        // through the raw IStorageDriver; the one structural rule is that a path
+        // may not climb out of the folder it names.
+        if (string.IsNullOrWhiteSpace(path))
+            return BadRequestResponse("path is required");
 
-        ConcurrentBag<MediaFolderExtend> folders = await mediaScan
-            .EnableFileListing()
-            .Process(path, depth);
+        if (path.Split('/', '\\').Contains(".."))
+            return BadRequestResponse("path may not contain '..' segments");
 
-        await mediaScan.DisposeAsync();
+        try
+        {
+            await using MediaScan mediaScan = new(storageDriver);
 
-        return Ok(folders);
+            ConcurrentBag<MediaFolderExtend> folders = await mediaScan
+                .EnableFileListing()
+                .Process(path, depth);
+
+            return Ok(folders);
+        }
+        catch (UnauthorizedAccessException e)
+        {
+            return UnauthorizedResponse(e.Message);
+        }
+        catch (IOException e)
+        {
+            return BadRequestResponse(e.Message);
+        }
     }
 
     [HttpPatch]

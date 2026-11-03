@@ -724,6 +724,44 @@ public class DashboardEndpointSnapshotTests : IClassFixture<NoMercyApiFactory>
     }
 
     [Fact]
+    public async Task Server_Files_NestedPath_ReachesTheAction()
+    {
+        // The route was declared as "/files/${depth:int}/${path:required}" (JavaScript
+        // template syntax): the literal '$' made every request a 404 and a plain
+        // {path} segment could not carry a nested path (issue #195).
+        HttpResponseMessage response = await _client.GetAsync(
+            "/api/v1/dashboard/server/files/2/some/nested/path"
+        );
+
+        string body = await response.Content.ReadAsStringAsync();
+        Assert.True(
+            response.StatusCode == HttpStatusCode.OK,
+            $"Expected OK, got {(int)response.StatusCode}: {body}"
+        );
+
+        JsonDocument json = JsonDocument.Parse(body);
+        Assert.True(
+            json.RootElement.ValueKind == JsonValueKind.Array,
+            "Expected an array of scanned folders"
+        );
+    }
+
+    [Fact]
+    public async Task Server_Files_WithoutPath_IsRejected()
+    {
+        HttpResponseMessage response = await _client.GetAsync("/api/v1/dashboard/server/files/2/");
+
+        string body = await response.Content.ReadAsStringAsync();
+        Assert.True(
+            response.StatusCode == HttpStatusCode.BadRequest,
+            $"Expected 400, got {(int)response.StatusCode}: {body}"
+        );
+
+        JsonDocument json = JsonDocument.Parse(body);
+        AssertStatusResponse(json.RootElement);
+    }
+
+    [Fact]
     public async Task Server_Storage_ReturnsStorageInfo()
     {
         HttpResponseMessage response = await _client.GetAsync("/api/v1/dashboard/server/storage");

@@ -3826,7 +3826,7 @@
         }
       }
     },
-    "/files/${depth}/${path}": {
+    "/api/v1/dashboard/server/files/{depth}/{path}": {
       "get": {
         "tags": [
           "Dashboard Server Management"
@@ -3847,15 +3847,6 @@
             "schema": {
               "type": "integer",
               "format": "int32"
-            }
-          },
-          {
-            "name": "api-version",
-            "in": "query",
-            "description": "The requested API version",
-            "schema": {
-              "type": "string",
-              "default": "1.0"
             }
           }
         ],
