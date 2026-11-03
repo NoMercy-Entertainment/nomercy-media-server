@@ -315,6 +315,37 @@ public class LiveQualitySelectorTests
     }
 
     [Fact]
+    public void VideoOnlyClient_UsesTargetCodecResolutionLimit()
+    {
+        IHardwareCapabilities hardware = MakeGpuHardware();
+        ClientCapabilities client = new(
+            Video:
+            [
+                new(
+                    Codec: VideoCodecType.H264,
+                    Profiles: [],
+                    MaxBitDepth: 8,
+                    MaxWidth: 1920,
+                    MaxHeight: 1080,
+                    MaxFramerate: 60,
+                    HdrFormats: [],
+                    MaxBitrateKbps: 0
+                ),
+            ]
+        );
+
+        LiveQuality optimal = _gpuSelector.SelectOptimal(
+            MakeMedia(3840, 2160),
+            client,
+            MakeFastGpuSpeedIndex(),
+            MakeBudget(hardware)
+        );
+
+        optimal.Width.Should().Be(1920);
+        optimal.Height.Should().Be(1080);
+    }
+
+    [Fact]
     public void SoftwareOnly_MarkedNotHardwareAccelerated()
     {
         IHardwareCapabilities hardware = MakeSoftwareHardware();
