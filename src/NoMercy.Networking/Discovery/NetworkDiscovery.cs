@@ -412,7 +412,46 @@ public class NetworkDiscovery : INetworkDiscovery
         return Task.CompletedTask;
     }
 
+    /// <summary>
+    /// False for an address the port probe must not test: the "0.0.0.0" sentinel
+    /// <see cref="ExternalIp"/> reports when every lookup failed, an empty or unparseable
+    /// value, and any unspecified or loopback address. A TCP connect to 0.0.0.0 or to
+    /// loopback lands on this machine, where the server itself listens, so it would "prove"
+    /// a port forward that was never tested (#202).
+    /// </summary>
+    internal static bool IsRoutableExternalAddress(string? address)
+    {
+        if (!IPAddress.TryParse(address, out IPAddress? ip))
+            return false;
+
+        return !ip.Equals(IPAddress.Any)
+            && !ip.Equals(IPAddress.IPv6Any)
+            && !IPAddress.IsLoopback(ip);
+    }
+
     public async Task<bool> IsPortOpenAsync()
+    {
+        string externalIp = ExternalIp;
+        int externalPort = RuntimeServerSettings.Current.ExternalServerPort;
+
+        if (!IsRoutableExternalAddress(externalIp))
+        {
+            _logger.LogDebug(
+                "No known external address to probe ({ExternalIp}) — port forwarding cannot be confirmed.",
+                externalIp
+            );
+            return false;
+        }
+
+        return await CanConnectAsync(externalIp, externalPort);
+    }
+
+    /// <summary>
+    /// One TCP connect with a short timeout. Kept apart from <see cref="IsPortOpenAsync"/>
+    /// so the socket mechanics stay testable against a loopback listener, an address the
+    /// probe itself refuses to test.
+    /// </summary>
+    internal async Task<bool> CanConnectAsync(string address, int port)
     {
         int timeoutMilliseconds = 1500;
 
@@ -421,19 +460,15 @@ public class NetworkDiscovery : INetworkDiscovery
 
         try
         {
-            await client.ConnectAsync(
-                ExternalIp,
-                RuntimeServerSettings.Current.ExternalServerPort,
-                cts.Token
-            );
+            await client.ConnectAsync(address, port, cts.Token);
             return true;
         }
         catch (OperationCanceledException)
         {
             _logger.LogTrace(
                 "Timeout checking {ExternalIp}:{ExternalServerPort} after {TimeoutMilliseconds}ms.",
-                ExternalIp,
-                RuntimeServerSettings.Current.ExternalServerPort,
+                address,
+                port,
                 timeoutMilliseconds
             );
             return false;
@@ -442,8 +477,8 @@ public class NetworkDiscovery : INetworkDiscovery
         {
             _logger.LogDebug(
                 "SocketException checking {ExternalIp}:{ExternalServerPort}: {SocketErrorCode} ({Message})",
-                ExternalIp,
-                RuntimeServerSettings.Current.ExternalServerPort,
+                address,
+                port,
                 ex.SocketErrorCode,
                 ex.Message
             );
@@ -453,8 +488,8 @@ public class NetworkDiscovery : INetworkDiscovery
         {
             _logger.LogDebug(
                 "Exception checking {ExternalIp}:{ExternalServerPort}: {Message}",
-                ExternalIp,
-                RuntimeServerSettings.Current.ExternalServerPort,
+                address,
+                port,
                 ex.Message
             );
             return false;

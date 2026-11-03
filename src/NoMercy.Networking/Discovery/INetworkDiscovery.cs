@@ -48,7 +48,9 @@ public interface INetworkDiscovery
 
     /// <summary>
     /// True when the configured external server port is reachable from the public
-    /// internet (used by the port-forward connectivity strategy).
+    /// internet (used by the port-forward connectivity strategy). False, without
+    /// probing, while no external address is known: a connect to the 0.0.0.0 sentinel
+    /// or to loopback only ever reaches this machine and proves nothing.
     /// </summary>
     Task<bool> IsPortOpenAsync();
 
