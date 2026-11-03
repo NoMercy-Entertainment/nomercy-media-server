@@ -15627,6 +15627,10 @@
             "type": "string",
             "nullable": true
           },
+          "app_url": {
+            "type": "string",
+            "nullable": true
+          },
           "connectivity": {
             "$ref": "#/components/schemas/ConnectivityStatusDto"
           },

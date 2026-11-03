@@ -61,6 +61,26 @@ public class ManagementControllerTests : IClassFixture<NoMercyApiFactory>
     }
 
     [Fact]
+    public async Task ManageStatus_NamesTheAppUrl_SoTheTrayOpensTheAppNotTheApi()
+    {
+        // The launcher tray's "Open Dashboard" reads app_url from here: the server's
+        // own address serves the API, not the client (issue #447). It is the same
+        // value the setup page hands off to (ExternalServicesConfig.AppBaseUrl).
+        HttpResponseMessage response = await _client.GetAsync("/manage/status");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        string content = await response.Content.ReadAsStringAsync();
+        JsonElement root = JsonDocument.Parse(content).RootElement;
+
+        Assert.True(
+            root.TryGetProperty("app_url", out JsonElement appUrl),
+            "Expected /manage/status to name the app in app_url"
+        );
+        Assert.Equal(ExternalServicesConfig.Current.AppBaseUrl, appUrl.GetString());
+    }
+
+    [Fact]
     public async Task ManageLogs_ReturnsOk_WithLogEntries()
     {
         HttpResponseMessage response = await _client.GetAsync("/manage/logs?tail=10");

@@ -21,6 +21,8 @@ namespace NoMercy.Launcher.Services;
 
 public class TrayIconManager
 {
+    private const string DefaultAppUrl = "https://app.nomercy.tv/";
+
     private readonly ServerConnection _serverConnection;
     private readonly ServerProcessLauncher _processLauncher;
     private readonly IClassicDesktopStyleApplicationLifetime _lifetime;
@@ -31,7 +33,7 @@ public class TrayIconManager
     private NativeMenuItem? _startServerItem;
     private NativeMenuItem? _stopServerItem;
     private ServerState _currentState = ServerState.Disconnected;
-    private string? _dashboardUrl;
+    private string? _appUrl;
     private MainWindow? _mainWindow;
     private bool _autoStartAttempted;
     private bool _startupWindowOpened;
@@ -198,7 +200,7 @@ public class TrayIconManager
             _appAutoLaunched = await TryLaunchAppForSetup();
         }
 
-        _dashboardUrl = status.InternalAddress;
+        _appUrl = status.AppUrl;
 
         string uptimeText = FormatUptime(status.UptimeSeconds);
         string versionText = string.IsNullOrEmpty(status.Version) ? null! : status.Version;
@@ -356,10 +358,21 @@ public class TrayIconManager
 
     private void OnOpenDashboard(object? sender, EventArgs e)
     {
-        string url = _dashboardUrl is not null
-            ? $"{_dashboardUrl}/dashboard/system"
-            : "https://app.nomercy.tv";
-        OpenUrl(url);
+        OpenUrl(BuildDashboardUrl(_appUrl));
+    }
+
+    /// <summary>
+    /// "Open Dashboard" goes to the app, never to the server's own address: that
+    /// origin serves the API (Swagger at /), not the client (issue #447). The
+    /// server names the app in /manage/status as app_url, the same value the
+    /// setup page hands off to; an older server sends none, so the public app
+    /// is the fallback.
+    /// </summary>
+    internal static string BuildDashboardUrl(string? appUrl)
+    {
+        string baseUrl = string.IsNullOrWhiteSpace(appUrl) ? DefaultAppUrl : appUrl;
+
+        return $"{baseUrl.TrimEnd('/')}/dashboard/system";
     }
 
     private void OnViewLogs(object? sender, EventArgs e)

@@ -76,6 +76,13 @@ public class ServerStatusResponse
     [JsonProperty("external_address")]
     public string? ExternalAddress { get; set; }
 
+    /// <summary>
+    /// Where the app lives (app.nomercy.tv, or the dev app on a --dev server):
+    /// the same value the setup page hands off to. Null from an older server.
+    /// </summary>
+    [JsonProperty("app_url")]
+    public string? AppUrl { get; set; }
+
     [JsonProperty("app_status")]
     public AppStatusInfo? AppStatus { get; set; }
 }

@@ -77,6 +77,14 @@ public record ManagementStatusDto
     [JsonProperty("external_address")]
     public string? ExternalAddress { get; set; }
 
+    /// <summary>
+    /// Where the app lives (ExternalServicesConfig.AppBaseUrl): the launcher tray
+    /// opens the dashboard here, because the server's own address serves the
+    /// API, not the client. Additive: an older launcher ignores it.
+    /// </summary>
+    [JsonProperty("app_url")]
+    public string? AppUrl { get; set; }
+
     [JsonProperty("connectivity")]
     public ConnectivityStatusDto? Connectivity { get; set; }
 
