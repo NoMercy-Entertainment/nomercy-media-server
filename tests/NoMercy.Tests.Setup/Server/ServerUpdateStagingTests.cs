@@ -51,6 +51,25 @@ public class ServerUpdateStagingTests
     }
 
     [Fact]
+    public void PackageInstall_DoesNotOfferAStagedBinaryForSwap()
+    {
+        Mock<IStorageDriver> driver = new();
+        driver.Setup(d => d.FileExists(Staged)).Returns(true);
+
+        StagingCheck check = ServerUpdateStaging.Check(
+            driver.Object,
+            false,
+            Running,
+            Staged,
+            "/opt/nomercy/NoMercyMediaServer",
+            _ => "9.0.0"
+        );
+
+        check.State.ToString().Should().Be("PackageManager");
+        driver.Verify(d => d.DeleteFile(It.IsAny<string>()), Times.Never);
+    }
+
+    [Fact]
     public void NewerStagedBinary_IsKept()
     {
         (Mock<IStorageDriver> driver, StagingCheck check) = Run(false, true, "1.6.0", null);

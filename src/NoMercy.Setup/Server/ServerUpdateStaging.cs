@@ -25,6 +25,7 @@ public enum StagingState
     BinaryOnDiskIsNewer,
 
     NeedsDownload,
+    PackageManager,
 }
 
 /// <param name="Version">The staged or on-disk version the state refers to, when there is one.</param>
@@ -47,7 +48,8 @@ public static class ServerUpdateStaging
         string runningVersion,
         string stagedPath,
         string serverPath,
-        Func<string, string?> fileVersion
+        Func<string, string?> fileVersion,
+        string? runningDirectory = null
     )
     {
         // Deployment type is decided before anything else. A container keeps its data
@@ -60,6 +62,9 @@ public static class ServerUpdateStaging
                 storageDriver.DeleteFile(stagedPath);
             return new(StagingState.ContainerImage);
         }
+
+        if (IsPackageInstall(runningDirectory ?? serverPath))
+            return new(StagingState.PackageManager);
 
         string? discarded = null;
 
@@ -87,4 +92,11 @@ public static class ServerUpdateStaging
         && System.Version.TryParse(candidate, out Version? candidateVersion)
         && System.Version.TryParse(runningVersion, out Version? running)
         && candidateVersion > running;
+
+    public static bool IsPackageInstall(string path)
+    {
+        string normalized = path.Replace('\\', '/').TrimEnd('/');
+        return normalized.Equals("/opt/nomercy", StringComparison.Ordinal)
+            || normalized.StartsWith("/opt/nomercy/", StringComparison.Ordinal);
+    }
 }
