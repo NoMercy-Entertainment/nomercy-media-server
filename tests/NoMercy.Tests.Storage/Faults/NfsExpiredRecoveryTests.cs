@@ -288,13 +288,13 @@ public class NfsExpiredRecoveryTests
             using Stream _ = driver.OpenRead("/file.bin");
 
             // Constructor: 1 InitContext + 1 SetVersion + 1 SetUid + 1 SetGid + 1 Mount
-            // Remount: +1 of each (but DestroyContext runs on the old ctx first).
+            // Remount: +1 of each; the old context is destroyed after the new mount.
             lib.CallCounts["InitContext"].Should().Be(2);
             lib.CallCounts["SetVersion"].Should().Be(2);
             lib.CallCounts["SetUid"].Should().Be(2);
             lib.CallCounts["SetGid"].Should().Be(2);
             lib.CallCounts["Mount"].Should().Be(2);
-            lib.CallCounts["DestroyContext"].Should().Be(1, "old ctx destroyed before remount");
+            lib.CallCounts["DestroyContext"].Should().Be(1, "old ctx destroyed after remount");
         }
         finally
         {

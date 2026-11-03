@@ -129,6 +129,8 @@ public sealed class NfsStorageDriver : IStorageDriver, IDisposable
             return; // real work in progress — no need to renew separately
         try
         {
+            if (_nfs == IntPtr.Zero)
+                return;
             int rc = _libNfs.Stat64(_nfs, "/", out LibNfs.NfsStat64 stat);
             _ = stat;
             if (rc != 0)
@@ -279,18 +281,12 @@ public sealed class NfsStorageDriver : IStorageDriver, IDisposable
         }
     }
 
-    // Caller MUST hold _lock. Disposes the existing context and re-runs the
+    // Caller MUST hold _lock. Builds a replacement context and re-runs the
     // init/version/uid/gid/mount sequence used by the constructor. Throws on
     // failure — the remount path is the recovery; if it can't reconnect, the
     // server really is unreachable.
     private void Remount()
     {
-        if (_nfs != IntPtr.Zero)
-        {
-            _libNfs.DestroyContext(_nfs);
-            _nfs = IntPtr.Zero;
-        }
-
         IntPtr ctx = _libNfs.InitContext();
         if (ctx == IntPtr.Zero)
             throw new IOException("NFS remount: nfs_init_context returned null");
@@ -328,7 +324,10 @@ public sealed class NfsStorageDriver : IStorageDriver, IDisposable
             );
         }
 
+        IntPtr oldContext = _nfs;
         _nfs = ctx;
+        if (oldContext != IntPtr.Zero)
+            _libNfs.DestroyContext(oldContext);
         _log.LogWarning(
             "NFS session expired; reconnected to {Server}:{Export} (v{Version})",
             _config.Server,
@@ -845,8 +844,7 @@ public sealed class NfsStorageDriver : IStorageDriver, IDisposable
                     $"Cannot write to '{path}': file already exists and overwrite is false."
                 );
 
-            // UNCHECKED (overwrite) or GUARDED (fail if exists) — creat truncates in both cases
-            // since we already checked overwrite above; just use creat with GUARDED via O_EXCL
+            // O_EXCL remains the final authority when overwrite is false.
             int flags = overwrite
                 ? LibNfs.O_WRONLY | LibNfs.O_CREAT | LibNfs.O_TRUNC
                 : LibNfs.O_WRONLY | LibNfs.O_CREAT | LibNfs.O_EXCL;
@@ -864,6 +862,9 @@ public sealed class NfsStorageDriver : IStorageDriver, IDisposable
                     Remount();
                     continue;
                 }
+
+                if (!overwrite)
+                    throw new IOException($"NFS exclusive open failed for '{path}': {err}");
 
                 // Fall back to creat() which always truncates
                 rc = _libNfs.Creat(_nfs, nfsPath, LibNfs.DefaultFileMode, out fh);
@@ -1359,8 +1360,12 @@ public sealed class NfsStorageDriver : IStorageDriver, IDisposable
         try
         {
             _disposed = true;
-            _libNfs.Umount(_nfs);
-            _libNfs.DestroyContext(_nfs);
+            if (_nfs != IntPtr.Zero)
+            {
+                _libNfs.Umount(_nfs);
+                _libNfs.DestroyContext(_nfs);
+                _nfs = IntPtr.Zero;
+            }
         }
         finally
         {
@@ -1376,6 +1381,9 @@ public sealed class NfsStorageDriver : IStorageDriver, IDisposable
 
     private string ToNfsPath(string path)
     {
+        if (_nfs == IntPtr.Zero)
+            throw new IOException("NFS context is unavailable.");
+
         string normalized = path.Replace('\\', '/');
 
         // Path Contract Rule 2: collapse consecutive separators. Without
@@ -1390,7 +1398,13 @@ public sealed class NfsStorageDriver : IStorageDriver, IDisposable
         // libnfs paths are relative to the mounted Export. Strip a matching
         // Export prefix so callers can pass absolute server paths.
         string export = _config.Export.TrimEnd('/');
-        if (export.Length > 0 && normalized.StartsWith(export, StringComparison.OrdinalIgnoreCase))
+        if (
+            export.Length > 0
+            && (
+                normalized.Equals(export, StringComparison.OrdinalIgnoreCase)
+                || normalized.StartsWith(export + "/", StringComparison.OrdinalIgnoreCase)
+            )
+        )
         {
             normalized = normalized[export.Length..];
             if (normalized.Length == 0)
