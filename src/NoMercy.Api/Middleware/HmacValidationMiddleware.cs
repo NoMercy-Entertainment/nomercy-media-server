@@ -65,7 +65,7 @@ public class HmacValidationMiddleware(
 
         // Determine the signing secret.
         // Remote-worker path: X-NoMercy-WorkerToken is present → introspect it.
-        string? workerToken = context.Request.Headers["X-NoMercy-WorkerToken"].ToString();
+        string? workerToken = context.Request.Headers[HmacRequestHeaders.WorkerToken].ToString();
         string? secret;
 
         if (!string.IsNullOrWhiteSpace(workerToken) && licenseTokenClient is not null)
@@ -108,8 +108,10 @@ public class HmacValidationMiddleware(
         }
 
         if (
-            !context.Request.Headers.TryGetValue("X-NoMercy-Timestamp", out StringValues tsHeader)
-            || !long.TryParse(tsHeader.ToString(), out long timestamp)
+            !context.Request.Headers.TryGetValue(
+                HmacRequestHeaders.Timestamp,
+                out StringValues tsHeader
+            ) || !long.TryParse(tsHeader.ToString(), out long timestamp)
         )
         {
             await WriteHmacError(
@@ -121,8 +123,10 @@ public class HmacValidationMiddleware(
         }
 
         if (
-            !context.Request.Headers.TryGetValue("X-NoMercy-Signature", out StringValues sigHeader)
-            || string.IsNullOrWhiteSpace(sigHeader.ToString())
+            !context.Request.Headers.TryGetValue(
+                HmacRequestHeaders.Signature,
+                out StringValues sigHeader
+            ) || string.IsNullOrWhiteSpace(sigHeader.ToString())
         )
         {
             await WriteHmacError(

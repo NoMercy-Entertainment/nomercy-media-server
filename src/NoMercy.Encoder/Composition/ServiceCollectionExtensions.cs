@@ -499,6 +499,12 @@ public static class ServiceCollectionExtensions
         // Self-registration background service — no-ops on standalone
         // installs (when CoordinatorUrl is not set). Safe to always
         // register; the service exits cleanly in that case.
+        // Its client signs every request: the coordinator's HMAC middleware
+        // rejects unsigned calls to /api/v1/distribution/ with 401.
+        services.AddTransient<HmacSigningHandler>();
+        services
+            .AddHttpClient(WorkerSelfRegistrationService.HttpClientName)
+            .AddHttpMessageHandler<HmacSigningHandler>();
         services.AddHostedService<WorkerSelfRegistrationService>();
         // The remote dispatcher is the public face — it transparently falls
         // back to the local dispatcher when no remote workers are registered,
