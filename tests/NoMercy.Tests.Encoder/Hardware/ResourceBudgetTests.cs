@@ -188,11 +188,11 @@ public class ResourceBudgetTests
     [Fact]
     public void TryAcquire_WhenGpuEncodeUtilSaturated_ReturnsNull()
     {
-        // Monitor returns GPU encode util as fraction (0.0–1.0). 0.95 -> 95 %
-        // which exceeds the 80 % threshold.
+        // Monitor returns GPU encode util in percent (0–100); 95 % exceeds the
+        // 80 % threshold.
         Mock<IResourceMonitor> monitor = new();
         monitor.Setup(m => m.GetSystemCpuUsagePercent()).Returns(20.0);
-        monitor.Setup(m => m.GetGpuEncodeUtilization(TestGpu.Name)).Returns(0.95);
+        monitor.Setup(m => m.GetGpuEncodeUtilization(TestGpu.Name)).Returns(95.0);
         monitor.Setup(m => m.GetAvailableMemoryMb()).Returns(8192);
 
         ResourceBudgetOptions options = new(
@@ -240,7 +240,7 @@ public class ResourceBudgetTests
         // and only the static semaphores govern.
         Mock<IResourceMonitor> monitor = new();
         monitor.Setup(m => m.GetSystemCpuUsagePercent()).Returns(99.0);
-        monitor.Setup(m => m.GetGpuEncodeUtilization(It.IsAny<string>())).Returns(0.99);
+        monitor.Setup(m => m.GetGpuEncodeUtilization(It.IsAny<string>())).Returns(99.0);
         monitor.Setup(m => m.GetAvailableMemoryMb()).Returns(64);
 
         ResourceBudget budget = new(

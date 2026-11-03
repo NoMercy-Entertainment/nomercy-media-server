@@ -23,6 +23,10 @@ namespace NoMercy.Encoder.Hardware;
 public class ResourceBudget : IResourceBudget
 {
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _gpuSemaphores;
+
+    // Slot count each GPU semaphore was created with, so the headroom gate can
+    // tell how many GPU slots are leased right now (capacity - CurrentCount).
+    private readonly ConcurrentDictionary<SemaphoreSlim, int> _gpuCapacities = new();
     private readonly SemaphoreSlim _cpuSemaphore;
     private readonly IResourceMonitor? _monitor;
     private readonly ResourceBudgetOptions _options;
@@ -130,6 +134,7 @@ public class ResourceBudget : IResourceBudget
         {
             SemaphoreSlim semaphore = new(device.MaxEncoderSessions, device.MaxEncoderSessions);
             _gpuSemaphores[device.Name] = semaphore;
+            _gpuCapacities[semaphore] = device.MaxEncoderSessions;
 
             // Alias the same semaphore under every encoder vendor token this
             // GPU supports, so a ResourceRequirement keyed by encoder name
@@ -433,62 +438,85 @@ public class ResourceBudget : IResourceBudget
 
     private bool HasHeadroom(ResourceRequirement requirement, bool logIfDenied)
     {
-        if (_monitor is null)
+        bool hasHeadroom =
+            HasCpuHeadroom(logIfDenied)
+            && HasGpuHeadroom(requirement, logIfDenied)
+            && HasMemoryHeadroom(logIfDenied);
+
+        if (hasHeadroom)
+            _headroomDenialLogged = false;
+
+        return hasHeadroom;
+    }
+
+    private bool HasCpuHeadroom(bool logIfDenied)
+    {
+        if (_monitor is null || _options.CpuHeadroomPercent <= 0)
             return true;
 
-        if (_options.CpuHeadroomPercent > 0)
-        {
-            double systemCpu = _monitor.GetSystemCpuUsagePercent();
-            if (systemCpu >= _options.CpuHeadroomPercent)
-            {
-                LogHeadroomDenied(
-                    "system CPU",
-                    systemCpu,
-                    _options.CpuHeadroomPercent,
-                    logIfDenied
-                );
-                return false;
-            }
-        }
+        double systemCpu = _monitor.GetSystemCpuUsagePercent();
+        if (systemCpu < _options.CpuHeadroomPercent)
+            return true;
 
-        if (
-            _options.GpuHeadroomPercent > 0
-            && requirement.GpuDeviceKey is not null
-            && requirement.GpuSlots > 0
-        )
-        {
-            double gpuUtil = _monitor.GetGpuEncodeUtilization(requirement.GpuDeviceKey) * 100.0;
-            if (gpuUtil >= _options.GpuHeadroomPercent)
-            {
-                LogHeadroomDenied(
-                    $"GPU encode '{requirement.GpuDeviceKey}'",
-                    gpuUtil,
-                    _options.GpuHeadroomPercent,
-                    logIfDenied
-                );
-                return false;
-            }
-        }
-
-        if (_options.MinFreeMemoryMb > 0)
-        {
-            long freeMb = _monitor.GetAvailableMemoryMb();
-            if (freeMb > 0 && freeMb < _options.MinFreeMemoryMb)
-            {
-                LogHeadroomDenied(
-                    "free memory MB",
-                    freeMb,
-                    _options.MinFreeMemoryMb,
-                    logIfDenied,
-                    invert: true
-                );
-                return false;
-            }
-        }
-
-        _headroomDenialLogged = false;
-        return true;
+        LogHeadroomDenied("system CPU", systemCpu, _options.CpuHeadroomPercent, logIfDenied);
+        return false;
     }
+
+    /// <summary>
+    /// GPU encode load is the higher of what the monitor measures (percent) and
+    /// the running GPU slots times <see cref="ResourceBudgetOptions.GpuEncodePercentPerLease"/>.
+    /// The estimate keeps concurrent encodes counted where nothing measures the
+    /// encoder, which is every non-NVIDIA host and the first seconds after boot.
+    /// </summary>
+    private bool HasGpuHeadroom(ResourceRequirement requirement, bool logIfDenied)
+    {
+        if (
+            _options.GpuHeadroomPercent <= 0
+            || requirement.GpuDeviceKey is null
+            || requirement.GpuSlots <= 0
+        )
+            return true;
+
+        double measured = _monitor?.GetGpuEncodeUtilization(requirement.GpuDeviceKey) ?? 0;
+        double estimated =
+            RunningGpuSlots(requirement.GpuDeviceKey) * _options.GpuEncodePercentPerLease;
+        double gpuLoad = Math.Max(measured, estimated);
+        if (gpuLoad < _options.GpuHeadroomPercent)
+            return true;
+
+        LogHeadroomDenied(
+            $"GPU encode '{requirement.GpuDeviceKey}'",
+            gpuLoad,
+            _options.GpuHeadroomPercent,
+            logIfDenied
+        );
+        return false;
+    }
+
+    private bool HasMemoryHeadroom(bool logIfDenied)
+    {
+        if (_monitor is null || _options.MinFreeMemoryMb <= 0)
+            return true;
+
+        long freeMb = _monitor.GetAvailableMemoryMb();
+        if (freeMb <= 0 || freeMb >= _options.MinFreeMemoryMb)
+            return true;
+
+        LogHeadroomDenied(
+            "free memory MB",
+            freeMb,
+            _options.MinFreeMemoryMb,
+            logIfDenied,
+            invert: true
+        );
+        return false;
+    }
+
+    private int RunningGpuSlots(string gpuDeviceKey) =>
+        _gpuSemaphores.TryGetValue(gpuDeviceKey, out SemaphoreSlim? semaphore)
+        && _gpuCapacities.TryGetValue(semaphore, out int capacity)
+            ? capacity - semaphore.CurrentCount
+            : 0;
 
     private void LogHeadroomDenied(
         string signal,

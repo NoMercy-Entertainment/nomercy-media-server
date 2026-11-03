@@ -23,5 +23,9 @@ public class EncoderResourceConfig
     // The GPU is the one piece we do want saturated: it is dedicated to encoding
     // and nothing else on the host competes for its encoder blocks.
     public double EncoderGpuHeadroomPercent { get; set; } = 95.0;
+
+    // Estimated encoder load of one running GPU encode. Counts against the GPU
+    // headroom where nothing measures the encoder; 0 turns the estimate off.
+    public double EncoderGpuPercentPerEncode { get; set; } = 20.0;
     public long EncoderMinFreeMemoryMb { get; set; } = 1024;
 }
