@@ -24,14 +24,16 @@ public sealed class ConfigurationTransferTests
         string root = NewDirectory();
         try
         {
-            string mediaPath = Path.Combine(root, "media's.db");
+            string mediaPath = Path.Combine(root, "media.db");
             string appPath = Path.Combine(root, "app.db");
             await CreateConfigurationTable(mediaPath);
             await CreateConfigurationTable(appPath);
             await InsertConfiguration(mediaPath, "auth_token", "secret");
 
             await using (AppDbContext context = CreateAppContext(appPath))
-                await Assert.ThrowsAnyAsync<Exception>(() => Transfer(context, mediaPath, appPath));
+                await Assert.ThrowsAnyAsync<Exception>(() =>
+                    Transfer(context, mediaPath, Path.Combine(root, "missing", "app.db"))
+                );
 
             Assert.Equal("secret", await ReadSecureValue(mediaPath));
         }
@@ -48,7 +50,7 @@ public sealed class ConfigurationTransferTests
         string root = NewDirectory();
         try
         {
-            string mediaPath = Path.Combine(root, "media.db");
+            string mediaPath = Path.Combine(root, "media's.db");
             string appPath = Path.Combine(root, "app.db");
             await CreateConfigurationTable(mediaPath);
             await CreateConfigurationTable(appPath);
