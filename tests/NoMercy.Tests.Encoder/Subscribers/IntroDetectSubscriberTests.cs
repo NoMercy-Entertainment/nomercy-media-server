@@ -65,7 +65,8 @@ public class IntroDetectSubscriberTests
         int tvId,
         int seasonId,
         int[] episodeIds,
-        string hostFolder = "/media/tv/"
+        string hostFolder = "/media/tv/",
+        string[]? durations = null
     )
     {
         await using MediaContext ctx = await factory.CreateDbContextAsync();
@@ -121,6 +122,7 @@ public class IntroDetectSubscriberTests
                     HostFolder = hostFolder,
                     Folder = hostFolder,
                     EpisodeId = episodeId,
+                    Duration = durations?[index] ?? "00:24:00",
                 }
             );
         }
@@ -451,6 +453,198 @@ public class IntroDetectSubscriberTests
                 s.EndSeconds.Should().BeApproximately(1380.0, 0.001);
                 s.Source.Should().Be("detector");
             });
+    }
+
+    private static Mock<IAudioFingerprinter> WindowHonouringFingerprinter(
+        uint[] hashes,
+        List<FingerprintWindow?> windows
+    )
+    {
+        // Behaves like ChromaprintFingerprinter: the print starts where its window starts.
+        Mock<IAudioFingerprinter> fingerprinter = new();
+        fingerprinter
+            .Setup(f =>
+                f.FingerprintAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<FingerprintWindow?>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .Callback<string, FingerprintWindow?, CancellationToken>(
+                (_, window, _) => windows.Add(window)
+            )
+            .ReturnsAsync(
+                (string _, FingerprintWindow? window, CancellationToken _) =>
+                    new AudioFingerprint(
+                        hashes,
+                        AudioFingerprint.ChromaprintFrameDuration,
+                        window?.Start ?? TimeSpan.Zero
+                    )
+            );
+        return fingerprinter;
+    }
+
+    private static uint[] RandomTheme(int seed)
+    {
+        Random random = new(seed);
+        return [.. Enumerable.Range(0, 200).Select(_ => (uint)random.NextInt64())];
+    }
+
+    [Fact]
+    public async Task OnLibraryScanCompleted_OutroOnTwentyFourMinuteEpisodes_StoresMarkersInsideTheLastFourMinutes()
+    {
+        IDbContextFactory<MediaContext> factory = InMemoryFactory("outroabsolute");
+        List<FingerprintWindow?> windows = [];
+        Mock<IAudioFingerprinter> fingerprinter = WindowHonouringFingerprinter(
+            RandomTheme(42),
+            windows
+        );
+        InMemoryEventBus bus = new();
+
+        using IntroDetectSubscriber subject = BuildSubscriber(
+            bus,
+            factory,
+            fingerprinter.Object,
+            new ChromaprintIntroDetector()
+        );
+
+        Ulid libraryId = Ulid.NewUlid();
+        await SeedTvSeasonAsync(factory, libraryId, tvId: 7, seasonId: 70, episodeIds: [700, 701]);
+
+        await bus.PublishAsync(
+            new LibraryScanCompletedEvent
+            {
+                LibraryId = libraryId,
+                LibraryName = "TV",
+                ItemsFound = 2,
+                Duration = TimeSpan.FromSeconds(1),
+            }
+        );
+
+        windows
+            .Should()
+            .AllSatisfy(w =>
+                w!
+                    .Start.Should()
+                    .BeGreaterThanOrEqualTo(
+                        TimeSpan.Zero,
+                        "a window is resolved to absolute time before fingerprinting"
+                    )
+            );
+
+        await using MediaContext ctx = await factory.CreateDbContextAsync();
+        List<ContentSegment> outros =
+        [
+            .. ctx.ContentSegments.Where(s => s.SegmentType == ContentSegmentType.Outro),
+        ];
+
+        outros.Should().HaveCount(2, "one outro segment per episode");
+        outros
+            .Should()
+            .AllSatisfy(s =>
+            {
+                s.StartSeconds.Should()
+                    .BeInRange(1200, 1440, "the outro sits in the last 4 minutes of 24");
+                s.EndSeconds.Should()
+                    .BeInRange(1200, 1440, "the outro sits in the last 4 minutes of 24");
+            });
+    }
+
+    [Fact]
+    public async Task OnLibraryScanCompleted_OutroOnEpisodesOfDifferentLength_PlacesEachMarkerAgainstItsOwnEnd()
+    {
+        IDbContextFactory<MediaContext> factory = InMemoryFactory("outroperepisode");
+        Mock<IAudioFingerprinter> fingerprinter = WindowHonouringFingerprinter(RandomTheme(7), []);
+        InMemoryEventBus bus = new();
+
+        using IntroDetectSubscriber subject = BuildSubscriber(
+            bus,
+            factory,
+            fingerprinter.Object,
+            new ChromaprintIntroDetector()
+        );
+
+        Ulid libraryId = Ulid.NewUlid();
+        await SeedTvSeasonAsync(
+            factory,
+            libraryId,
+            tvId: 8,
+            seasonId: 80,
+            episodeIds: [800, 801],
+            durations: ["00:24:00", "00:23:30"]
+        );
+
+        await bus.PublishAsync(
+            new LibraryScanCompletedEvent
+            {
+                LibraryId = libraryId,
+                LibraryName = "TV",
+                ItemsFound = 2,
+                Duration = TimeSpan.FromSeconds(1),
+            }
+        );
+
+        await using MediaContext ctx = await factory.CreateDbContextAsync();
+        List<ContentSegment> outros =
+        [
+            .. ctx.ContentSegments.Where(s => s.SegmentType == ContentSegmentType.Outro),
+        ];
+
+        outros.Single(s => s.EpisodeId == 800).StartSeconds.Should().BeApproximately(1200, 0.001);
+        outros
+            .Single(s => s.EpisodeId == 801)
+            .StartSeconds.Should()
+            .BeApproximately(1170, 0.001, "the shorter episode's outro starts 30 s earlier");
+    }
+
+    [Fact]
+    public async Task OnLibraryScanCompleted_EpisodeWithoutDuration_IsLeftOutOfOutroDetection()
+    {
+        IDbContextFactory<MediaContext> factory = InMemoryFactory("outronoduration");
+        List<FingerprintWindow?> windows = [];
+        Mock<IAudioFingerprinter> fingerprinter = WindowHonouringFingerprinter(
+            RandomTheme(3),
+            windows
+        );
+        Mock<IIntroDetector> detector = new();
+        InMemoryEventBus bus = new();
+
+        using IntroDetectSubscriber subject = BuildSubscriber(
+            bus,
+            factory,
+            fingerprinter.Object,
+            detector.Object
+        );
+
+        Ulid libraryId = Ulid.NewUlid();
+        await SeedTvSeasonAsync(
+            factory,
+            libraryId,
+            tvId: 9,
+            seasonId: 90,
+            episodeIds: [900, 901],
+            durations: ["00:24:00", "garbage"]
+        );
+
+        await bus.PublishAsync(
+            new LibraryScanCompletedEvent
+            {
+                LibraryId = libraryId,
+                LibraryName = "TV",
+                ItemsFound = 2,
+                Duration = TimeSpan.FromSeconds(1),
+            }
+        );
+
+        windows
+            .Where(w => w!.Start != TimeSpan.Zero)
+            .Should()
+            .ContainSingle("only the episode with a known duration gets an outro window");
+        detector.Verify(
+            d => d.DetectOutro(It.IsAny<IReadOnlyList<AudioFingerprint>>()),
+            Times.Never,
+            "one usable outro fingerprint is not enough to detect a shared outro"
+        );
     }
 
     [Fact]

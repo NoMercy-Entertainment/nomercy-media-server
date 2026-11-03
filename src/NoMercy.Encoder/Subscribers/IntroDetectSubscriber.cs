@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NoMercy.Database;
@@ -47,11 +48,11 @@ public class IntroDetectSubscriber : EventSubscriber
         TimeSpan.FromMinutes(3)
     );
 
-    // Fingerprint the last 4 minutes for outro detection.
-    private static readonly FingerprintWindow OutroWindow = new(
-        TimeSpan.FromMinutes(-4),
-        TimeSpan.FromMinutes(4)
-    );
+    // Fingerprint the last 4 minutes for outro detection. Resolved per episode
+    // to an absolute start (duration - 4 min) — see OutroWindowFor.
+    private static readonly TimeSpan OutroLength = TimeSpan.FromMinutes(4);
+
+    private sealed record EpisodeSource(Episode Episode, string FilePath, TimeSpan Duration);
 
     public IntroDetectSubscriber(
         IEventBus eventBus,
@@ -173,10 +174,7 @@ public class IntroDetectSubscriber : EventSubscriber
         }
 
         // Resolve source file paths for each episode.
-        List<(Episode Episode, string FilePath)> episodeFiles = await ResolveFilePathsAsync(
-            episodes,
-            ct
-        );
+        List<EpisodeSource> episodeFiles = await ResolveFilePathsAsync(episodes, ct);
 
         if (episodeFiles.Count < 2)
             return;
@@ -200,7 +198,7 @@ public class IntroDetectSubscriber : EventSubscriber
         {
             List<(Episode Episode, AudioFingerprint Fp)> introFingerprints = await FingerprintAsync(
                 episodeFiles,
-                IntroWindow,
+                _ => IntroWindow,
                 ct
             );
 
@@ -212,7 +210,8 @@ public class IntroDetectSubscriber : EventSubscriber
 
                 if (marker is not null)
                 {
-                    foreach ((Episode episode, _) in introFingerprints)
+                    AudioFingerprint reference = introFingerprints[0].Fp;
+                    foreach ((Episode episode, AudioFingerprint fp) in introFingerprints)
                     {
                         if (episodesWithIntro.Contains(episode.Id))
                             continue;
@@ -222,8 +221,8 @@ public class IntroDetectSubscriber : EventSubscriber
                             {
                                 EpisodeId = episode.Id,
                                 SegmentType = ContentSegmentType.Intro,
-                                StartSeconds = marker.Start.TotalSeconds,
-                                EndSeconds = marker.End.TotalSeconds,
+                                StartSeconds = ToEpisodeTime(marker.Start, reference, fp),
+                                EndSeconds = ToEpisodeTime(marker.End, reference, fp),
                                 Confidence = marker.Confidence,
                                 Source = "detector",
                             }
@@ -237,7 +236,7 @@ public class IntroDetectSubscriber : EventSubscriber
         {
             List<(Episode Episode, AudioFingerprint Fp)> outroFingerprints = await FingerprintAsync(
                 episodeFiles,
-                OutroWindow,
+                OutroWindowFor,
                 ct
             );
 
@@ -249,7 +248,8 @@ public class IntroDetectSubscriber : EventSubscriber
 
                 if (marker is not null)
                 {
-                    foreach ((Episode episode, _) in outroFingerprints)
+                    AudioFingerprint reference = outroFingerprints[0].Fp;
+                    foreach ((Episode episode, AudioFingerprint fp) in outroFingerprints)
                     {
                         if (episodesWithOutro.Contains(episode.Id))
                             continue;
@@ -259,8 +259,8 @@ public class IntroDetectSubscriber : EventSubscriber
                             {
                                 EpisodeId = episode.Id,
                                 SegmentType = ContentSegmentType.Outro,
-                                StartSeconds = marker.Start.TotalSeconds,
-                                EndSeconds = marker.End.TotalSeconds,
+                                StartSeconds = ToEpisodeTime(marker.Start, reference, fp),
+                                EndSeconds = ToEpisodeTime(marker.End, reference, fp),
                                 Confidence = marker.Confidence,
                                 Source = "detector",
                             }
@@ -285,52 +285,70 @@ public class IntroDetectSubscriber : EventSubscriber
         );
     }
 
-    private async Task<List<(Episode Episode, string FilePath)>> ResolveFilePathsAsync(
+    private async Task<List<EpisodeSource>> ResolveFilePathsAsync(
         List<Episode> episodes,
         CancellationToken ct
     )
     {
         List<int> episodeIds = [.. episodes.Select(e => e.Id)];
 
-        List<(int EpisodeId, string HostFolder, string Filename)> fileRows;
+        List<(int EpisodeId, string HostFolder, string Filename, string? Duration)> fileRows;
         await using (MediaContext context = await _contextFactory.CreateDbContextAsync(ct))
         {
             fileRows = await context
                 .VideoFiles.AsNoTracking()
                 .Where(vf => vf.EpisodeId != null && episodeIds.Contains(vf.EpisodeId!.Value))
-                .Select(vf => new ValueTuple<int, string, string>(
+                .Select(vf => new ValueTuple<int, string, string, string?>(
                     vf.EpisodeId!.Value,
                     vf.HostFolder,
-                    vf.Filename
+                    vf.Filename,
+                    vf.Duration
                 ))
                 .ToListAsync(ct);
         }
 
-        Dictionary<int, string> fileByEpisode = fileRows.ToDictionary(
+        Dictionary<int, (string FilePath, TimeSpan Duration)> fileByEpisode = fileRows.ToDictionary(
             r => r.EpisodeId,
-            r => r.HostFolder + r.Filename
+            r => (r.HostFolder + r.Filename, ParseDuration(r.Duration))
         );
 
         return
         [
             .. episodes
                 .Where(e => fileByEpisode.ContainsKey(e.Id))
-                .Select(e => (e, fileByEpisode[e.Id])),
+                .Select(e => new EpisodeSource(
+                    e,
+                    fileByEpisode[e.Id].FilePath,
+                    fileByEpisode[e.Id].Duration
+                )),
         ];
     }
 
     private async Task<List<(Episode Episode, AudioFingerprint Fp)>> FingerprintAsync(
-        List<(Episode Episode, string FilePath)> episodeFiles,
-        FingerprintWindow window,
+        List<EpisodeSource> episodeFiles,
+        Func<EpisodeSource, FingerprintWindow?> windowFor,
         CancellationToken ct
     )
     {
         List<(Episode Episode, AudioFingerprint Fp)> results = [];
 
-        foreach ((Episode episode, string filePath) in episodeFiles)
+        foreach (EpisodeSource source in episodeFiles)
         {
             if (ct.IsCancellationRequested)
                 break;
+
+            Episode episode = source.Episode;
+            string filePath = source.FilePath;
+
+            FingerprintWindow? window = windowFor(source);
+            if (window is null)
+            {
+                _logger.LogDebug(
+                    "IntroDetect: no known duration for episode {EpisodeId}, so its outro window cannot be placed — skipping it",
+                    episode.Id
+                );
+                continue;
+            }
 
             if (!_storage.Exists(filePath))
             {
@@ -358,4 +376,39 @@ public class IntroDetectSubscriber : EventSubscriber
 
         return results;
     }
+
+    /// <summary>
+    /// The last <see cref="OutroLength"/> of the episode as an absolute window
+    /// (the whole file when it is shorter), or null when the duration is unknown.
+    /// The start must be absolute: the fingerprint copies it to StartTime and the
+    /// detector adds frame offsets to it, so an end-relative (negative) start
+    /// produced negative outro markers.
+    /// </summary>
+    private static FingerprintWindow? OutroWindowFor(EpisodeSource source)
+    {
+        if (source.Duration <= TimeSpan.Zero)
+            return null;
+
+        TimeSpan start =
+            source.Duration > OutroLength ? source.Duration - OutroLength : TimeSpan.Zero;
+        return new(start, OutroLength);
+    }
+
+    /// <summary>
+    /// The detector reports a marker in the reference (first) fingerprint's time.
+    /// Episodes differ in length, so the outro sits at a different absolute time in
+    /// each: carry the marker's offset into the reference window over to this
+    /// episode's own window.
+    /// </summary>
+    private static double ToEpisodeTime(
+        TimeSpan markerTime,
+        AudioFingerprint reference,
+        AudioFingerprint episodePrint
+    ) => (episodePrint.StartTime + (markerTime - reference.StartTime)).TotalSeconds;
+
+    /// <summary>VideoFile.Duration is stored as "HH:MM:SS"; unknown or malformed is zero.</summary>
+    private static TimeSpan ParseDuration(string? raw) =>
+        raw is not null && TimeSpan.TryParse(raw, CultureInfo.InvariantCulture, out TimeSpan parsed)
+            ? parsed
+            : TimeSpan.Zero;
 }
