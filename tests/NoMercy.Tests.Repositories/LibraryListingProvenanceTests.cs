@@ -39,6 +39,11 @@ public class LibraryListingProvenanceTests : IDisposable
     private const int AttachedByAScan = 456;
     private const int HasAFile = 789;
 
+    private const string Carousel = "carousel";
+    private const string Cards = "cards";
+    private const string PaginatedShows = "paginated shows";
+    private const string PaginatedCards = "paginated cards";
+
     private readonly SqliteConnection _connection;
     private readonly DbContextOptions<MediaContext> _options;
 
@@ -59,34 +64,43 @@ public class LibraryListingProvenanceTests : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    [Fact]
-    public async Task AShowTheOwnerAddedIsListedBeforeAnythingHasDownloadedForIt()
+    // Every surface that lists a library's shows: the home carousel, the
+    // library page's cards, and the paginated (letter-filtered) list and cards.
+    // They answer the same question, so they must give the same answer.
+    public static TheoryData<string> Surfaces =>
+        new() { Carousel, Cards, PaginatedShows, PaginatedCards };
+
+    [Theory]
+    [MemberData(nameof(Surfaces))]
+    public async Task AShowTheOwnerAddedIsListedBeforeAnythingHasDownloadedForIt(string surface)
     {
         await SeedAsync();
 
-        List<int> listed = await ListedShowIdsAsync();
+        List<int> listed = await ListedShowIdsAsync(surface);
 
         listed.Should().Contain(AddedByOwner, "the owner asked for this show");
     }
 
-    [Fact]
-    public async Task AShowAScanAttachedOnAGuessIsNotListed()
+    [Theory]
+    [MemberData(nameof(Surfaces))]
+    public async Task AShowAScanAttachedOnAGuessIsNotListed(string surface)
     {
         await SeedAsync();
 
-        List<int> listed = await ListedShowIdsAsync();
+        List<int> listed = await ListedShowIdsAsync(surface);
 
         listed
             .Should()
             .NotContain(AttachedByAScan, "nobody asked for it and there is nothing of it on disk");
     }
 
-    [Fact]
-    public async Task AShowWithAFileIsListedWhateverBroughtItIn()
+    [Theory]
+    [MemberData(nameof(Surfaces))]
+    public async Task AShowWithAFileIsListedWhateverBroughtItIn(string surface)
     {
         await SeedAsync();
 
-        List<int> listed = await ListedShowIdsAsync();
+        List<int> listed = await ListedShowIdsAsync(surface);
 
         listed.Should().Contain(HasAFile);
     }
@@ -101,11 +115,41 @@ public class LibraryListingProvenanceTests : IDisposable
     /// parameter here, so there is no reason not to call it.
     /// </para>
     /// </summary>
-    private async Task<List<int>> ListedShowIdsAsync()
+    private async Task<List<int>> ListedShowIdsAsync(string surface)
+    {
+        LibraryRepository repository = new(new Factory(_options));
+
+        return surface switch
+        {
+            Carousel => await CarouselShowIdsAsync(repository),
+            Cards => (await repository.GetLibraryTvCardsAsync(UserId, LibraryId, "US", 50, 0))
+                .Select(card => card.Id)
+                .ToList(),
+            PaginatedShows => (
+                await repository.GetPaginatedLibraryShows(UserId, LibraryId, "s", "en", "US", 50, 0)
+            )
+                .Select(show => show.Id)
+                .ToList(),
+            PaginatedCards => (
+                await repository.GetPaginatedLibraryTvCardsAsync(
+                    UserId,
+                    LibraryId,
+                    "s",
+                    "en",
+                    "US",
+                    50,
+                    0
+                )
+            )
+                .Select(card => card.Id)
+                .ToList(),
+            _ => throw new ArgumentOutOfRangeException(nameof(surface), surface, null),
+        };
+    }
+
+    private async Task<List<int>> CarouselShowIdsAsync(LibraryRepository repository)
     {
         await using MediaContext context = new(_options);
-
-        LibraryRepository repository = new(new Factory(_options));
 
         List<int> listed = [];
 
@@ -162,6 +206,7 @@ public class LibraryListingProvenanceTests : IDisposable
                 {
                     Id = id,
                     Title = $"Show {id}",
+                    TitleSort = $"show {id}",
                     LibraryId = LibraryId,
                 }
             );

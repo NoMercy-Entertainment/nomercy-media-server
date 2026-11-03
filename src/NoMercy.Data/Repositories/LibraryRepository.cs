@@ -414,13 +414,9 @@ public class LibraryRepository(IDbContextFactory<MediaContext> contextFactory) :
                 // the only way to keep out the shows a scan attached on a guess,
                 // and it hid the newly added show along with them - the one day
                 // seeing it matters most. Provenance tells the two apart, so the
-                // filter can say what it means.
-                .Where(libraryTv =>
-                    libraryTv.Episodes.Any(episode => episode.VideoFiles.Any())
-                    || libraryTv.Library.LibraryTvs.Any(link =>
-                        link.TvId == libraryTv.Id && link.AddedBy == LibraryLinkOrigin.Manual
-                    )
-                )
+                // filter can say what it means - one rule, shared by every
+                // library surface.
+                .Where(TvLibraryVisibility.IsListed)
                 .Include(tv =>
                     tv.Episodes.Where(episode =>
                         episode.SeasonNumber > 0 && episode.VideoFiles.Any()
@@ -595,11 +591,7 @@ public class LibraryRepository(IDbContextFactory<MediaContext> contextFactory) :
             .Tvs.AsNoTracking()
             .Where(tv => tv.Library.Id == libraryId)
             .ForUser(userId)
-            // "TV has a playable episode": a multi-episode video file lives on its own
-            // episode, so that episode already passes the direct test. The nested
-            // LastEpisodeNumber self-join never changed this TV-level filter, so the
-            // direct check alone selects the identical set of shows.
-            .Where(tv => tv.Episodes.Any(e => e.VideoFiles.Any(v => v.Folder != null)))
+            .ListedInLibrary()
             .Include(tv => tv.Images.Where(i => i.Type == "logo" && i.Iso6391 == "en"))
             .OrderByDescending(tv => tv.CreatedAt)
             .ThenBy(tv => tv.Id)
@@ -718,22 +710,7 @@ public class LibraryRepository(IDbContextFactory<MediaContext> contextFactory) :
             .Tvs.AsNoTracking()
             .Where(tv => tv.Library.Id == libraryId)
             .ForUser(userId)
-            .Where(tv =>
-                tv.Episodes.Any(e =>
-                    (
-                        e.VideoFiles.Any(v => v.Folder != null)
-                        || e.Tv.Episodes.Any(o =>
-                            o.SeasonNumber == e.SeasonNumber
-                            && o.VideoFiles.Any(w =>
-                                w.Folder != null
-                                && w.LastEpisodeNumber != null
-                                && o.EpisodeNumber <= e.EpisodeNumber
-                                && e.EpisodeNumber <= (w.LastEpisodeNumber ?? 0)
-                            )
-                        )
-                    )
-                )
-            )
+            .ListedInLibrary()
             .Where(tv =>
                 (letter == "_" || letter == "#")
                     ? Letters.Any(p => tv.TitleSort.StartsWith(p.ToLower()))
@@ -861,22 +838,7 @@ public class LibraryRepository(IDbContextFactory<MediaContext> contextFactory) :
             .Tvs.AsNoTracking()
             .Where(tv => tv.Library.Id == libraryId)
             .ForUser(userId)
-            .Where(tv =>
-                tv.Episodes.Any(e =>
-                    (
-                        e.VideoFiles.Any(v => v.Folder != null)
-                        || e.Tv.Episodes.Any(o =>
-                            o.SeasonNumber == e.SeasonNumber
-                            && o.VideoFiles.Any(w =>
-                                w.Folder != null
-                                && w.LastEpisodeNumber != null
-                                && o.EpisodeNumber <= e.EpisodeNumber
-                                && e.EpisodeNumber <= (w.LastEpisodeNumber ?? 0)
-                            )
-                        )
-                    )
-                )
-            )
+            .ListedInLibrary()
             .Where(tv =>
                 (letter == "_" || letter == "#")
                     ? Letters.Any(p => tv.TitleSort.StartsWith(p.ToLower()))
