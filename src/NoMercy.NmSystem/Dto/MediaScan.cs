@@ -141,9 +141,12 @@ public partial class MediaScan : IDisposable, IAsyncDisposable
                     .Where(e => _driver.DirectoryExists(e))
                     .OrderBy(f => f);
             }
-            catch
+            catch (Exception e)
             {
-                // ignored
+                Logger.App(
+                    $"Could not list folders in {folderPath}: {e.GetType().Name}: {e.Message}",
+                    LogEventLevel.Warning
+                );
             }
             if (directories is null)
                 return folders;
@@ -334,6 +337,43 @@ public partial class MediaScan : IDisposable, IAsyncDisposable
             )
             .Parsed;
 
+    internal async Task<(FfProbeData? Probe, TagFile? Tags)> ProbeAsync(
+        string file,
+        bool isAudioFile,
+        CancellationToken cancellationToken
+    )
+    {
+        FfProbeData? ffprobe = null;
+        TagFile? tagFile = null;
+        try
+        {
+            ffprobe = await FfProbe.CreateAsync(_driver, file, cancellationToken);
+            // Every reader of MediaFile.FFprobe takes null as "not
+            // probed". A failed probe kept as a result looked like
+            // a file with no streams and no duration (#320).
+            if (ffprobe.Failed)
+            {
+                Logger.App(
+                    $"Listing {file} without a probe: {string.Join("; ", ffprobe.ErrorData)}",
+                    LogEventLevel.Warning
+                );
+                ffprobe = null;
+            }
+            if (isAudioFile)
+            {
+                // TagFile needs random access — only safe on local FS.
+                if (_driver is LocalStorageDriver)
+                    tagFile = TagFile.Create(file);
+            }
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            Logger.App($"Probe of {file} failed: {e.GetType().Name}: {e}", LogEventLevel.Fatal);
+        }
+
+        return (ffprobe, tagFile);
+    }
+
     private async Task<ConcurrentBag<MediaFile>> FilesAsync(string folderPath)
     {
         ConcurrentBag<MediaFile> files = [];
@@ -371,36 +411,10 @@ public partial class MediaScan : IDisposable, IAsyncDisposable
                         : isAudioFile ? _movieDetector.GetInfo(file)
                         : null;
 
-                    FfProbeData? ffprobe = null;
-                    TagFile? tagFile = null;
-                    try
-                    {
-                        if (isVideoFile || isAudioFile)
-                        {
-                            ffprobe = await FfProbe.CreateAsync(_driver, file, cancellationToken);
-                            // Every reader of MediaFile.FFprobe takes null as "not
-                            // probed". A failed probe kept as a result looked like
-                            // a file with no streams and no duration (#320).
-                            if (ffprobe.Failed)
-                            {
-                                Logger.App(
-                                    $"Listing {file} without a probe: {string.Join("; ", ffprobe.ErrorData)}",
-                                    LogEventLevel.Warning
-                                );
-                                ffprobe = null;
-                            }
-                            if (isAudioFile)
-                            {
-                                // TagFile needs random access — only safe on local FS.
-                                if (_driver is LocalStorageDriver)
-                                    tagFile = TagFile.Create(file);
-                            }
-                        }
-                    }
-                    catch (Exception e)
-                    {
-                        Logger.App(e.Message, LogEventLevel.Fatal);
-                    }
+                    (FfProbeData? ffprobe, TagFile? tagFile) =
+                        isVideoFile || isAudioFile
+                            ? await ProbeAsync(file, isAudioFile, cancellationToken)
+                            : (null, null);
 
                     MovieFileExtend movieFileExtend = new()
                     {
@@ -441,7 +455,10 @@ public partial class MediaScan : IDisposable, IAsyncDisposable
         }
         catch (Exception e)
         {
-            Logger.App(e.Message, LogEventLevel.Fatal);
+            Logger.App(
+                $"Listing files in {folderPath} stopped early: {e.GetType().Name}: {e.Message}",
+                LogEventLevel.Fatal
+            );
 
             return files;
         }
