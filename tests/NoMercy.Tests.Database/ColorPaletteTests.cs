@@ -73,4 +73,29 @@ public class ColorPaletteTests
         Assert.NotNull(result!.Poster);
         Assert.Null(result.Backdrop);
     }
+
+    // ── IsFinished: what a stored palette string means to the palette queue ──
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("{not valid json")]
+    [InlineData("{\"poster\":{}}")]
+    [InlineData("{\"poster\":{},\"backdrop\":{}}")]
+    public void IsFinished_BlankMalformedOrColourless_IsUnfinished(string? json)
+    {
+        Assert.False(
+            ColorPalette.IsFinished(json),
+            "a palette entry without colours is a failed download, not an answer"
+        );
+    }
+
+    [Theory]
+    [InlineData("{}")]
+    [InlineData("{\"poster\":{\"dominant\":\"#abc\"}}")]
+    [InlineData("{\"poster\":{},\"backdrop\":{\"primary\":\"#def\"}}")]
+    public void IsFinished_NoImageMarkerOrAnyColour_IsFinished(string json)
+    {
+        Assert.True(ColorPalette.IsFinished(json));
+    }
 }

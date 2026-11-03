@@ -59,15 +59,17 @@ public class ColorPaletteJob : IShouldQueue
             // with Permanent: true. Treating it as pending re-ran generation on
             // every pass, wrote "{}" again, and left the row looking pending
             // forever: 50,622 images and 494 people on the dev library churned
-            // like this indefinitely. Any persisted value is terminal — transient
-            // failures throw before they can persist (see below), so a stored
-            // value only ever means "answered".
+            // like this indefinitely. A palette with colours is terminal too.
+            // What is not terminal is a colourless entry such as {"poster":{}}:
+            // older builds stored that for a failed image download, so it is a
+            // retry, not an answer. Transient failures now throw before they can
+            // persist (see below).
             string? current = await source.CurrentPaletteAsync(
                 db,
                 EntityId,
                 CancellationToken.None
             );
-            if (!string.IsNullOrEmpty(current))
+            if (ColorPalette.IsFinished(current))
                 return;
 
             // Transient failures (network, IO, timeout) propagate as exceptions so the
