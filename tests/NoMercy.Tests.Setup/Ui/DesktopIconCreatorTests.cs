@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Diagnostics;
 using NoMercy.Setup.Ui;
 
 namespace NoMercy.Tests.Setup.Ui;
@@ -97,5 +98,41 @@ public sealed class DesktopIconCreatorTests : IDisposable
         string iconPath = Path.Combine(_tempDesktop, "icon.ico");
 
         DesktopIconCreator.CreateDesktopIcon(string.Empty, appPath, iconPath, _tempDesktop);
+    }
+
+    [Fact]
+    public void BuildMacIconCommand_TargetsTheAliasFileItself_NeverAPathInsideIt()
+    {
+        // A Finder alias is a plain file, so "<alias>/Icon.icns" can never exist.
+        const string aliasPath = "/Users/me/Desktop/NoMercy MediaServer";
+        const string iconPath = "/Applications/NoMercy.app/Contents/Resources/icon.icns";
+
+        ProcessStartInfo command = DesktopIconCreator.BuildMacIconCommand(iconPath, aliasPath);
+
+        command
+            .ArgumentList.Should()
+            .NotContain(
+                argument => argument.Contains(aliasPath + "/"),
+                "the icon must be applied to the alias file itself, not copied into it as if it were a folder"
+            );
+        command.ArgumentList.Should().Contain(aliasPath);
+        command.ArgumentList.Should().Contain(iconPath);
+    }
+
+    [Fact]
+    public void BuildMacIconCommand_PassesPathsAsArguments_NotInsideTheScriptText()
+    {
+        // A quote in a path must not be able to break out of the script.
+        const string aliasPath = "/Users/o'brien/Desktop/NoMercy";
+        const string iconPath = "/tmp/icon \"x\".icns";
+
+        ProcessStartInfo command = DesktopIconCreator.BuildMacIconCommand(iconPath, aliasPath);
+
+        command.FileName.Should().Be("osascript");
+        command.ArgumentList.TakeLast(2).Should().Equal(iconPath, aliasPath);
+        command
+            .ArgumentList.SkipLast(2)
+            .Should()
+            .NotContain(argument => argument.Contains(aliasPath) || argument.Contains(iconPath));
     }
 }
