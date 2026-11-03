@@ -68,6 +68,31 @@ public sealed class ConfigurationTransferTests
         }
     }
 
+    [Fact]
+    public async Task Copy_keeps_the_app_row_when_the_key_already_exists_there()
+    {
+        string root = NewDirectory();
+        try
+        {
+            string mediaPath = Path.Combine(root, "media.db");
+            string appPath = Path.Combine(root, "app.db");
+            await CreateConfigurationTable(mediaPath);
+            await CreateConfigurationTable(appPath);
+            await InsertConfiguration(mediaPath, "auth_token", "old");
+            await InsertConfiguration(appPath, "auth_token", "newer");
+
+            await using (AppDbContext context = CreateAppContext(appPath))
+                await Transfer(context, mediaPath, appPath);
+
+            Assert.Equal("newer", await ReadSecureValue(appPath));
+        }
+        finally
+        {
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static string NewDirectory()
     {
         string path = Path.Combine(AppContext.BaseDirectory, $"config-transfer-{Guid.NewGuid():N}");

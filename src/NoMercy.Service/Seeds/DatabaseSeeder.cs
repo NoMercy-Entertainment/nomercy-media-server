@@ -151,11 +151,7 @@ public static class DatabaseSeeder
             verifyCmd.CommandText =
                 "SELECT COUNT(*) FROM source.Configuration AS source "
                 + "LEFT JOIN main.Configuration AS target ON target.Key = source.Key "
-                + "WHERE target.Key IS NULL OR target.Value IS NOT source.Value "
-                + "OR target.SecureValue IS NOT source.SecureValue "
-                + "OR target.ModifiedBy IS NOT source.ModifiedBy "
-                + "OR target.CreatedAt IS NOT source.CreatedAt "
-                + "OR target.UpdatedAt IS NOT source.UpdatedAt";
+                + "WHERE target.Key IS NULL";
             long missing = (long)(await verifyCmd.ExecuteScalarAsync() ?? 0L);
             if (missing != 0)
                 throw new IOException($"Configuration transfer did not preserve {missing} row(s).");
