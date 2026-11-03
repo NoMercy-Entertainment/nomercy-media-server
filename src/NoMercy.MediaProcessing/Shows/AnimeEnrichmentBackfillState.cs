@@ -16,7 +16,7 @@ using NoMercy.Database.Models.Common;
 namespace NoMercy.MediaProcessing.Shows;
 
 /// <summary>
-/// Reads and writes the backfill cursor and completion flag for
+/// Reads and writes the backfill cursor, unanswered-title list and completion flag for
 /// <see cref="AnimeEnrichmentBackfillJob"/> in the <see cref="AppDbContext"/>
 /// Configuration table, mirroring <c>PaletteBackfillState</c>'s pattern: a
 /// per-entity-type cursor lets the drain resume after a restart instead of
@@ -28,6 +28,9 @@ public class AnimeEnrichmentBackfillState
 
     private static string CursorKey(string entityType) =>
         $"anime_enrichment_backfill_cursor_{entityType}";
+
+    private static string UnansweredKey(string entityType) =>
+        $"anime_enrichment_backfill_unanswered_{entityType}";
 
     public static async Task<bool> IsCompleteAsync(AppDbContext db, CancellationToken ct)
     {
@@ -65,6 +68,39 @@ public class AnimeEnrichmentBackfillState
     )
     {
         await UpsertConfigAsync(db, CursorKey(entityType), cursor.ToString(), ct);
+    }
+
+    /// <summary>
+    /// Ids of the titles the providers could not answer (an outage, a timeout, a
+    /// rate limit), in ascending order. The cursor has moved past them; this list
+    /// is what keeps them from being skipped for good.
+    /// </summary>
+    public static async Task<List<int>> GetUnansweredIdsAsync(
+        AppDbContext db,
+        string entityType,
+        CancellationToken ct
+    )
+    {
+        string key = UnansweredKey(entityType);
+        string? value = await db
+            .Configuration.Where(c => c.Key == key)
+            .Select(c => c.Value)
+            .FirstOrDefaultAsync(ct);
+        if (string.IsNullOrEmpty(value))
+            return [];
+
+        return value.Split(',').Select(int.Parse).Order().ToList();
+    }
+
+    public static async Task SetUnansweredIdsAsync(
+        AppDbContext db,
+        string entityType,
+        IEnumerable<int> ids,
+        CancellationToken ct
+    )
+    {
+        string value = string.Join(',', ids.Distinct().Order());
+        await UpsertConfigAsync(db, UnansweredKey(entityType), value, ct);
     }
 
     private static async Task UpsertConfigAsync(

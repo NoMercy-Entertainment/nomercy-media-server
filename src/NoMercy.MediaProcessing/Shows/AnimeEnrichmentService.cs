@@ -32,7 +32,7 @@ public class AnimeEnrichmentService(
     // alone rather than AniList's Season+SeasonYear pair.
     private const string UnknownQuarter = "UNKNOWN";
 
-    public async Task EnrichTvAsync(
+    public async Task<bool> EnrichTvAsync(
         int tvId,
         string title,
         int? year,
@@ -53,23 +53,23 @@ public class AnimeEnrichmentService(
             await showRepository.EnsureFiledUnderLibraryTypeAsync(tvId, "anime");
 
         if (hasThemes && hasDemographics)
-            return;
+            return true;
 
         try
         {
-            await EnrichTvCoreAsync(tvId, title, year, originCountry, hasThemes, priority);
+            return await EnrichTvCoreAsync(tvId, title, year, originCountry, hasThemes, priority);
         }
         catch (Exception)
         {
             // AniList/Jikan are best-effort enrichment, not core import data - a
             // provider outage (mirrors MediaTypeClassifier.IsAnimeAsync's own
-            // per-provider try/catch) must never abort ShowManager's import or
-            // stall the backfill job's cursor. hasThemes/hasDemographics stay
-            // false, so the next pass retries automatically.
+            // per-provider try/catch) must never abort ShowManager's import.
+            // Reported as unanswered so the backfill retries the show later.
+            return false;
         }
     }
 
-    private async Task EnrichTvCoreAsync(
+    private async Task<bool> EnrichTvCoreAsync(
         int tvId,
         string title,
         int? year,
@@ -87,8 +87,11 @@ public class AnimeEnrichmentService(
             year,
             originCountry
         );
+        // Null is "the providers could not answer", not a verdict.
+        if (classification is null)
+            return false;
         if (classification != "anime")
-            return;
+            return true;
 
         // The classifier just confirmed anime, so a show sitting in any other
         // library is misfiled — whatever put it there (a pre-classifier import,
@@ -170,7 +173,7 @@ public class AnimeEnrichmentService(
                     TvId = tvId,
                 }
             );
-            return;
+            return true;
         }
 
         // Themes/season are already stored - AniList's tags/themes have
@@ -188,9 +191,10 @@ public class AnimeEnrichmentService(
                 TvId = tvId,
             }
         );
+        return true;
     }
 
-    public async Task EnrichMovieAsync(
+    public async Task<bool> EnrichMovieAsync(
         int movieId,
         string title,
         int? year,
@@ -201,20 +205,28 @@ public class AnimeEnrichmentService(
         bool hasThemes = await movieRepository.HasAnimeThemesAsync(movieId);
         bool hasDemographics = await movieRepository.HasAnimeDemographicsAsync(movieId);
         if (hasThemes && hasDemographics)
-            return;
+            return true;
 
         try
         {
-            await EnrichMovieCoreAsync(movieId, title, year, originCountry, hasThemes, priority);
+            return await EnrichMovieCoreAsync(
+                movieId,
+                title,
+                year,
+                originCountry,
+                hasThemes,
+                priority
+            );
         }
         catch (Exception)
         {
-            // See EnrichTvAsync/EnrichTvCoreAsync: a provider outage must never
-            // abort MovieManager's import or stall the backfill job's cursor.
+            // See EnrichTvAsync: a provider outage must never abort
+            // MovieManager's import; the backfill retries the movie later.
+            return false;
         }
     }
 
-    private async Task EnrichMovieCoreAsync(
+    private async Task<bool> EnrichMovieCoreAsync(
         int movieId,
         string title,
         int? year,
@@ -231,8 +243,10 @@ public class AnimeEnrichmentService(
             year,
             originCountry
         );
+        if (classification is null)
+            return false;
         if (classification != "anime")
-            return;
+            return true;
 
         if (!hasThemes)
         {
@@ -313,7 +327,7 @@ public class AnimeEnrichmentService(
                     MovieId = movieId,
                 }
             );
-            return;
+            return true;
         }
 
         // Themes/season are already stored - AniList's tags/themes have
@@ -331,6 +345,7 @@ public class AnimeEnrichmentService(
                 MovieId = movieId,
             }
         );
+        return true;
     }
 
     // Gated the same way MediaTypeClassifier.IsAnimeAsync gates its own search

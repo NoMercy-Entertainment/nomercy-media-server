@@ -355,7 +355,7 @@ public class MovieManagerTests
             .Returns(() =>
             {
                 enrichSawStoreGenresCompleted = storeGenresCompleted;
-                return Task.CompletedTask;
+                return Task.FromResult(true);
             });
 
         IStorageDriver storageDriver = new LocalStorageDriver();
