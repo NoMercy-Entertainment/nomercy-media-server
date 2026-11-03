@@ -1480,7 +1480,7 @@ public class LibraryRepository(IDbContextFactory<MediaContext> contextFactory) :
                 libraryTrack.LibraryId == libraryId
                 && track.HostFolder != null
                 && track.Filename != null
-            select new TrackHostFolderDto(track.HostFolder!, albumTrack.AlbumId)
+            select new TrackHostFolderDto(track.HostFolder!, albumTrack.AlbumId, track.FolderId)
         ).ToListAsync(ct);
     }
 }

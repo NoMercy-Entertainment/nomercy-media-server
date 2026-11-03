@@ -12,7 +12,8 @@
 namespace NoMercy.Data.DTOs;
 
 /// <summary>
-/// One music track's host folder and owning album, as tracked for a library.
-/// Used to find every folder that needs a re-run of the track matcher.
+/// One music track's host folder, owning album and library folder, as tracked for a
+/// library. Used to find every folder that needs a re-run of the track matcher, and
+/// the library folder that re-run stores under.
 /// </summary>
-public record TrackHostFolderDto(string HostFolder, Guid AlbumId);
+public record TrackHostFolderDto(string HostFolder, Guid AlbumId, Ulid FolderId);

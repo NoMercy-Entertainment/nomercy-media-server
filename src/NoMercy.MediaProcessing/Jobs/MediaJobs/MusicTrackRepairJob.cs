@@ -99,7 +99,7 @@ public class MusicTrackRepairJob : AbstractMusicFolderJob
             .Include(f => f.FolderLibraries)
                 .ThenInclude(f => f.Folder)
             .FirstAsync();
-        Folder folderLibrary = albumLibrary.FolderLibraries.First().Folder;
+        Folder folderLibrary = ResolveDestinationFolder(albumLibrary);
 
         List<(MediaFile MediaFile, AudioTagModel AudioTag)> audioFiles = [];
         await foreach ((MediaFile mediaFile, AudioTagModel audioTag) in GetAudioFiles())

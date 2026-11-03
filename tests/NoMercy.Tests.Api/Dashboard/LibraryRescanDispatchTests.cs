@@ -12,6 +12,7 @@
 using Microsoft.AspNetCore.Mvc;
 using Moq;
 using NoMercy.Api.Controllers.V1.Dashboard.Media;
+using NoMercy.Data.DTOs;
 using NoMercy.Data.Repositories;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
@@ -226,5 +227,74 @@ public class LibraryRescanDispatchTests
 
         ObjectResult objectResult = result.Should().BeOfType<ObjectResult>().Subject;
         objectResult.StatusCode.Should().Be(400);
+    }
+
+    /// <summary>
+    /// Issue #279: the repair was dispatched for the library's first folder whichever
+    /// folder the album lives in, so it re-stored the tracks of a second-folder album
+    /// under the first. Each repair now names the folder its tracks are stored under.
+    /// </summary>
+    [Fact]
+    public async Task RepairTrackMatches_DispatchesEachRepairForTheFolderItsTracksAreStoredUnder()
+    {
+        Ulid firstFolderId = Ulid.NewUlid();
+        Ulid secondFolderId = Ulid.NewUlid();
+        Library library = new()
+        {
+            Id = Ulid.NewUlid(),
+            Title = "Music",
+            Type = MediaTypes.MusicMediaType,
+        };
+        library.FolderLibraries.Add(
+            new(firstFolderId, library.Id) { Folder = new() { Id = firstFolderId } }
+        );
+        library.FolderLibraries.Add(
+            new(secondFolderId, library.Id) { Folder = new() { Id = secondFolderId } }
+        );
+        Guid albumId = Guid.NewGuid();
+        const string hostFolder = "/srv/music2/A/ABBA/[1976] Arrival";
+
+        Mock<ILibraryRepository> libraryRepository = new();
+        libraryRepository
+            .Setup(repository => repository.GetLibraryByIdAsync(library.Id))
+            .ReturnsAsync(library);
+        libraryRepository
+            .Setup(repository =>
+                repository.GetTrackHostFoldersForLibraryAsync(
+                    library.Id,
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .ReturnsAsync([new TrackHostFolderDto(hostFolder, albumId, secondFolderId)]);
+        Mock<IJobDispatcher> jobDispatcher = new();
+
+        LibrariesController controller = new(
+            libraryRepository.Object,
+            Mock.Of<IEncodingPresetRepository>(),
+            Mock.Of<IFolderRepository>(),
+            jobDispatcher.Object,
+            Mock.Of<ILanguageRepository>(),
+            Mock.Of<Microsoft.EntityFrameworkCore.IDbContextFactory<NoMercy.Database.MediaContext>>(),
+            Mock.Of<NoMercy.Data.Activity.IActivityLogger>(),
+            Mock.Of<NoMercy.MediaProcessing.Libraries.IDefaultEncodingPresetLinker>(),
+            Mock.Of<NoMercy.MediaProcessing.Files.IFileManager>(),
+            Mock.Of<NoMercy.MediaProcessing.Shows.IAnimeClassificationAuditService>(),
+            Mock.Of<Microsoft.Extensions.Logging.ILogger<LibrariesController>>(),
+            Mock.Of<NoMercy.Events.IEventBus>(),
+            new NoMercy.Api.Middleware.ServedFolderRegistry()
+        );
+
+        await controller.RepairTrackMatches(library.Id);
+
+        jobDispatcher.Verify(
+            dispatcher =>
+                dispatcher.DispatchJob<MusicTrackRepairJob>(
+                    library.Id,
+                    secondFolderId,
+                    albumId,
+                    hostFolder
+                ),
+            Times.Once
+        );
     }
 }
