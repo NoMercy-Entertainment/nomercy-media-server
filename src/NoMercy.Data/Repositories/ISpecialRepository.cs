@@ -115,6 +115,8 @@ public interface ISpecialRepository
 
     Task<List<Special>> GetAllSpecialsSortableAsync(CancellationToken ct = default);
 
+    Task ReorderSpecialsAsync(List<SpecialOrder> orders, CancellationToken ct = default);
+
     Task<List<Special>> GetAllSpecialsForRescanAsync(CancellationToken ct = default);
 
     Task<List<SpecialItem>> GetSpecialItemsAdminAsync(Ulid id, CancellationToken ct = default);
@@ -136,3 +138,5 @@ public record SpecialItemProjections(
 );
 
 public record SpecialItemReplacement(string MediaType, int MediaId, int Order);
+
+public record SpecialOrder(Ulid Id, int Order);

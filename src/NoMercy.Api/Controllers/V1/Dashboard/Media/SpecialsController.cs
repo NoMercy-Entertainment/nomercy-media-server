@@ -163,14 +163,27 @@ public class SpecialsController(
         if (specials.Count == 0)
             return NotFoundResponse("No specials exist");
 
-        return Ok(
-            new StatusResponseDto<string>
-            {
-                Status = "ok",
-                Message = "Successfully sorted specials.",
-                Args = [],
-            }
-        );
+        try
+        {
+            List<SpecialOrder> orders = request
+                .Libraries.Select(item => new SpecialOrder(item.Id, item.Order))
+                .ToList();
+
+            await specialRepository.ReorderSpecialsAsync(orders);
+
+            return Ok(
+                new StatusResponseDto<string>
+                {
+                    Status = "ok",
+                    Message = "Successfully sorted specials.",
+                    Args = [],
+                }
+            );
+        }
+        catch (Exception)
+        {
+            return InternalServerErrorResponse("Something went wrong sorting the specials");
+        }
     }
 
     [HttpPost]

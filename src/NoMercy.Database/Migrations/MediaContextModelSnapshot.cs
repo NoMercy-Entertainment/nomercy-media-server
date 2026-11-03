@@ -4446,6 +4446,9 @@ namespace NoMercy.Database.Migrations
                         .HasMaxLength(256)
                         .HasColumnType("TEXT");
 
+                    b.Property<int>("Order")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Overview")
                         .HasMaxLength(4096)
                         .HasColumnType("TEXT");

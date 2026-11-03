@@ -38,6 +38,9 @@ public class Special : ColorPaletteTimeStamps
     [JsonProperty("titleSort")]
     public string? TitleSort { get; set; }
 
+    [JsonProperty("order")]
+    public int Order { get; set; }
+
     [JsonProperty("creator")]
     public string? Creator { get; set; }
 
