@@ -505,7 +505,7 @@ internal sealed class FaultyLibNfs : ILibNfs
         return count;
     }
 
-    public long Lseek(IntPtr nfs, IntPtr fh, long offset, int whence, out ulong currentOffset)
+    public int Lseek(IntPtr nfs, IntPtr fh, long offset, int whence, out ulong currentOffset)
     {
         currentOffset = 0;
         if (TryFault(nameof(Lseek), out int rc, out _))
@@ -514,7 +514,9 @@ internal sealed class FaultyLibNfs : ILibNfs
             return -9;
         handle.Position = offset;
         currentOffset = (ulong)offset;
-        return offset;
+        // nfs_lseek returns 0 on success; the new position comes back through
+        // current_offset.
+        return 0;
     }
 
     public int Unlink(IntPtr nfs, string path)

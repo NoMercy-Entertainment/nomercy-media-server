@@ -73,7 +73,7 @@ internal sealed class LibNfsPInvoke : ILibNfs
     public int Write(IntPtr nfs, IntPtr fh, IntPtr buf, int count) =>
         LibNfs.Write(nfs, fh, buf, count);
 
-    public long Lseek(IntPtr nfs, IntPtr fh, long offset, int whence, out ulong currentOffset) =>
+    public int Lseek(IntPtr nfs, IntPtr fh, long offset, int whence, out ulong currentOffset) =>
         LibNfs.Lseek(nfs, fh, offset, whence, out currentOffset);
 
     public int Unlink(IntPtr nfs, string path) => LibNfs.Unlink(nfs, path);

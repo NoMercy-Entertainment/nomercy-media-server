@@ -142,7 +142,9 @@ internal sealed class NfsReadStream : Stream
             _ => throw new ArgumentOutOfRangeException(nameof(origin)),
         };
 
-        long rc;
+        // nfs_lseek returns a C int; reading it as anything wider loses the sign
+        // of an error code, so the failure check below would never fire.
+        int rc;
         string? err = null;
         try
         {
