@@ -202,20 +202,27 @@ public static class EncoderArgumentResolver
         };
 
     /// <summary>
-    /// Maps CRF to the correct rate control flag for the encoder.
-    /// Software encoders use -crf. Hardware encoders use -cq (NVENC), -qp (AMF/QSV),
-    /// -global_quality (Intel ICQ), or -q:v (VideoToolbox).
+    /// Emits the encoder-native quality value under the correct rate control
+    /// flag for the encoder. Software encoders use -crf. Hardware encoders use
+    /// -cq (NVENC), -qp (AMF/VAAPI), -global_quality (Intel ICQ), or -q:v
+    /// (VideoToolbox).
     ///
-    /// Returns the CRF value to pass to OutputOptions (0 if moved to extraFlags)
-    /// and populates extraFlags with the hardware-specific quality flag.
+    /// <paramref name="encoderQuality"/> is already on the encoder's native
+    /// scale: PlanStage translates the profile CRF exactly once through the
+    /// <see cref="IQualityScaler"/> chain before calling this. The value is
+    /// emitted as is — scaling it here a second time double-translated it
+    /// (av1_amf CRF 35 -> 142 -> 574, clamped to -qp 255, the worst quality).
+    ///
+    /// Returns the value to pass to OutputOptions as CRF (0 if moved to
+    /// extraFlags) and populates extraFlags with the hardware-specific flag.
     /// </summary>
     public static int ResolveQuality(
-        int profileCrf,
+        int encoderQuality,
         ResolvedCodec resolved,
         Dictionary<string, string> extraFlags
     )
     {
-        if (profileCrf <= 0)
+        if (encoderQuality <= 0)
             return 0;
 
         // Stream copy passthrough has no quality dial. Profiles that
@@ -227,15 +234,10 @@ public static class EncoderArgumentResolver
 
         bool supportsCrf = resolved.EncoderInfo.SupportedRateControl.Contains(RateControlMode.Crf);
         if (supportsCrf)
-            return profileCrf; // Software encoder — use -crf as-is
+            return encoderQuality; // Software encoder — use -crf as-is
 
         // Hardware encoder — map to the correct quality flag with rate control mode.
-        // Scale the profile's CRF value into the encoder's native quality range.
-        // Without this, a profile written in libsvtav1 terms (Crf=35 on a 0-63 scale)
-        // would reach av1_amf as "-qp 35" on its 0-255 scale (near-lossless) —
-        // same CRF number, wildly different output size.
-        int scaledQuality = ScaleQualityToEncoder(profileCrf, resolved.EncoderInfo);
-        string qualityString = scaledQuality.ToString();
+        string qualityString = encoderQuality.ToString();
 
         switch (resolved.DefaultRateControl)
         {
@@ -259,49 +261,6 @@ public static class EncoderArgumentResolver
                 break;
         }
         return 0; // Don't emit -crf
-    }
-
-    /// <summary>
-    /// Scales a profile-level CRF value (always in "software-encoder" units for
-    /// the codec) into the target encoder's native quality range. Proportional
-    /// linear mapping — perceptually it's a rough approximation (CRF vs QP
-    /// curves differ per encoder), but orders of magnitude closer than passing
-    /// raw values. Clamped to the encoder's [Min, Max] so the emitted value is
-    /// always accepted by ffmpeg.
-    /// </summary>
-    internal static int ScaleQualityToEncoder(int profileCrf, EncoderInfo encoder)
-    {
-        QualityRange range = encoder.QualityRange;
-
-        // Reference ranges — the "software encoder" scale the profile was written in.
-        // If the target encoder shares the same max, pass through to avoid
-        // floating-point drift for the common case.
-        int referenceMax = InferReferenceMax(encoder);
-        if (range.Max == referenceMax)
-            return Math.Clamp(profileCrf, range.Min, range.Max);
-
-        double ratio = (double)profileCrf / referenceMax;
-        int scaled = (int)Math.Round(ratio * range.Max);
-        return Math.Clamp(scaled, Math.Max(1, range.Min), range.Max);
-    }
-
-    /// <summary>
-    /// Returns the "reference" quality max for the codec family the encoder
-    /// belongs to. H264 / HEVC / most QSV variants use 0-51. AV1 / VP9
-    /// software uses 0-63. The profile is written in these reference units
-    /// so scaling target the same point on the quality curve.
-    /// </summary>
-    private static int InferReferenceMax(EncoderInfo encoder)
-    {
-        // Heuristic based on encoder name — the codec family determines the
-        // reference scale. Avoids taking a CodecRegistry dependency here.
-        string name = encoder.FfmpegName.ToLowerInvariant();
-        if (name.Contains("av1") || name.StartsWith("libsvtav1") || name.StartsWith("libaom"))
-            return 63;
-        if (name.Contains("vp9") || name.Contains("libvpx"))
-            return 63;
-        // H264, HEVC, and anything else — 0-51 reference.
-        return 51;
     }
 
     /// <summary>

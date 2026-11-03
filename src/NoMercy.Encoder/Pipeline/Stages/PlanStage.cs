@@ -351,6 +351,17 @@ public class PlanStage(
     }
 
     /// <summary>
+    /// The scale a profile's CRF is written in: the codec's software-encoder
+    /// range. H.264 / HEVC profiles are written in libx264 / libx265 terms
+    /// (0-51); AV1 and VP9 profiles in libsvtav1 / libvpx terms (0-63). This
+    /// is the source side of the single CRF translation — the
+    /// <see cref="IQualityScaler"/> maps from here to the encoder's native
+    /// range, and nothing downstream scales the value again.
+    /// </summary>
+    private static int ReferenceQualityMax(VideoCodecType codec) =>
+        codec is VideoCodecType.Av1 or VideoCodecType.Vp9 ? 63 : 51;
+
+    /// <summary>
     /// Downgrades an individual <see cref="VideoOutput"/> from Transcode to
     /// Copy when the source stream already satisfies the profile losslessly —
     /// re-encoding a matching lossy source can only add generation loss, never
@@ -944,12 +955,7 @@ public class PlanStage(
                                 ?? new LinearQualityScaler();
 
                             QualityRange nativeRange = encoder.QualityRange;
-                            int referenceMax = encoderHandle.Contains(
-                                "av1",
-                                StringComparison.OrdinalIgnoreCase
-                            )
-                                ? 63
-                                : 51;
+                            int referenceMax = ReferenceQualityMax(v.Codec);
 
                             CodecHint hint = new(encoderHandle, v.Codec);
                             int translatedCrf = scaler.Translate(
