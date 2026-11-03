@@ -970,7 +970,7 @@ public partial class MediaIdentificationService(
         // A scene release has no episode title: what follows the marker is the
         // release block, "1080p.AMZN.WEB-DL.DDP5.1.H.264-NTb". Compared against a
         // real title it overlaps nothing, which ruled out every correct episode.
-        // The title ends where the release vocabulary begins.
+        // The title ends at the first bracket or where the release vocabulary begins.
         Match releaseBlock = ReleaseBlockStart().Match(tail);
         if (releaseBlock.Success)
             tail = tail[..releaseBlock.Index].TrimEnd('.', ' ', '-', '_');
@@ -981,9 +981,9 @@ public partial class MediaIdentificationService(
     [GeneratedRegex(
         matchTimeoutMilliseconds: 1000,
         options: RegexOptions.IgnoreCase,
-        pattern: @"(?<![A-Za-z0-9])(?:[0-9]{3,4}[pi]|[0-9]{3,4}x[0-9]{3,4}|web[\s._-]?(?:dl|rip)|webrip|hdtv|"
-            + @"blu-?ray|bdrip|dvdrip|amzn|nf|dsnp|hmax|atvp|hulu|pcok|x26[45]|h[\s.]?26[45]|hevc|"
-            + @"repack|proper|internal)(?![A-Za-z0-9])"
+        pattern: @"[(\[{]|(?<![A-Za-z0-9])(?:[0-9]{3,4}[pi]|[0-9]{3,4}x[0-9]{3,4}|web[\s._-]?(?:dl|rip)|webrip|hdtv|"
+            + @"blu-?ray|bd|bdrip|dvdrip|amzn|nf|dsnp|hmax|atvp|hulu|pcok|x26[45]|h[\s.]?26[45]|hevc|"
+            + @"repack|proper|internal|web(?=[\s._-]+(?:[0-9]{3,4}[pi]|x26[45]|h[\s.]?26[45]|hevc)))(?![A-Za-z0-9])"
     )]
     private static partial Regex ReleaseBlockStart();
 
