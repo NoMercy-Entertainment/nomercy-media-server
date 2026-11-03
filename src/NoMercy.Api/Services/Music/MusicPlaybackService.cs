@@ -137,11 +137,11 @@ public class MusicPlaybackService
 
     internal void StartPlaybackTimer(User user)
     {
-        if (_timers.TryGetValue(user.Id, out Timer? existingTimer))
-            existingTimer.Dispose();
-
         if (!_stateManager.TryGetValue(user.Id, out MusicPlayerState? playerState))
+        {
+            RemoveTimer(user.Id);
             return;
+        }
 
         // Any (re)start of the ticking loop counts as proof of life, regardless of
         // who asked for it. Playback can be legitimately resumed remotely from any
@@ -230,7 +230,23 @@ public class MusicPlaybackService
             TimerInterval
         );
 
-        _timers[user.Id] = timer;
+        // Two starts can overlap: a hub command holds MusicHub's command lock
+        // while the tick's own auto-advance holds the state lock, so neither
+        // excludes the other. A read-dispose-overwrite here let the loser's
+        // timer fall out of the map still armed — RemoveTimer never saw it and
+        // every tick kept adding 100ms, so the position ran at double speed.
+        // Swap atomically and dispose exactly the timer this one replaced.
+        Timer? replacedTimer = null;
+        _timers.AddOrUpdate(
+            user.Id,
+            timer,
+            (_, existing) =>
+            {
+                replacedTimer = existing;
+                return timer;
+            }
+        );
+        replacedTimer?.Dispose();
     }
 
     public void RemoveTimer(Guid userId)
