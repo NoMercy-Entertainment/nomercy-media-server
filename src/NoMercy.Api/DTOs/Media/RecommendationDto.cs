@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
+using NoMercy.Data.Services.Recommendations;
 using NoMercy.Database;
 
 namespace NoMercy.Api.DTOs.Media;
@@ -55,5 +56,5 @@ public record RecommendationDto
     public int SourceCount { get; set; }
 
     [JsonIgnore]
-    public List<int> SourceIds { get; set; } = [];
+    public List<SourceKey> SourceIds { get; set; } = [];
 }

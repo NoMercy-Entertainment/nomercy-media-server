@@ -17,7 +17,7 @@ namespace NoMercy.Data.Services.Recommendations;
 public record UserAffinityProfile
 {
     public Dictionary<int, double> GenreAffinity { get; init; } = new();
-    public Dictionary<int, UserAffinitySourceDto> SourceItems { get; init; } = new();
+    public Dictionary<SourceKey, UserAffinitySourceDto> SourceItems { get; init; } = new();
     public HashSet<int> FavoritedMovieIds { get; init; } = [];
     public HashSet<int> FavoritedTvIds { get; init; } = [];
 }
@@ -32,13 +32,13 @@ public static class RecommendationScoring
     public static UserAffinityProfile BuildProfile(IEnumerable<UserAffinitySourceDto> allSources)
     {
         Dictionary<int, double> genreScores = new();
-        Dictionary<int, UserAffinitySourceDto> sourceMap = new();
+        Dictionary<SourceKey, UserAffinitySourceDto> sourceMap = new();
         HashSet<int> favMovies = [];
         HashSet<int> favTvs = [];
 
         foreach (UserAffinitySourceDto src in allSources)
         {
-            sourceMap[src.ItemId] = src;
+            sourceMap[new SourceKey(src.MediaType, src.ItemId)] = src;
             if (src.IsFavorited)
             {
                 if (src.MediaType == MediaTypes.MovieMediaType)
@@ -86,16 +86,16 @@ public static class RecommendationScoring
     /// favorited, rated 6 or higher, or watched past half.
     /// </summary>
     public static (
-        Dictionary<int, List<int>> Movie,
-        Dictionary<int, List<int>> Tv,
-        Dictionary<int, List<int>> Anime
+        Dictionary<SourceKey, List<int>> Movie,
+        Dictionary<SourceKey, List<int>> Tv,
+        Dictionary<SourceKey, List<int>> Anime
     ) HighSignalKeywordMaps(UserAffinityProfile profile)
     {
-        Dictionary<int, List<int>> movie = new();
-        Dictionary<int, List<int>> tv = new();
-        Dictionary<int, List<int>> anime = new();
+        Dictionary<SourceKey, List<int>> movie = new();
+        Dictionary<SourceKey, List<int>> tv = new();
+        Dictionary<SourceKey, List<int>> anime = new();
 
-        foreach (UserAffinitySourceDto src in profile.SourceItems.Values)
+        foreach ((SourceKey key, UserAffinitySourceDto src) in profile.SourceItems)
         {
             if (src.KeywordIds.Count == 0)
                 continue;
@@ -111,11 +111,11 @@ public static class RecommendationScoring
                 continue;
 
             if (src.MediaType == MediaTypes.MovieMediaType)
-                movie[src.ItemId] = src.KeywordIds;
+                movie[key] = src.KeywordIds;
             else if (src.MediaType == MediaTypes.AnimeMediaType)
-                anime[src.ItemId] = src.KeywordIds;
+                anime[key] = src.KeywordIds;
             else
-                tv[src.ItemId] = src.KeywordIds;
+                tv[key] = src.KeywordIds;
         }
 
         return (movie, tv, anime);
@@ -150,7 +150,7 @@ public static class RecommendationScoring
     public static double ScoreCandidate(
         RecommendationCandidateDto candidate,
         UserAffinityProfile profile,
-        Dictionary<int, List<int>> sourceGenreMap
+        Dictionary<SourceKey, List<int>> sourceGenreMap
     )
     {
         double score = 0.0;
@@ -198,9 +198,11 @@ public static class RecommendationScoring
             score += genreMatch / candidateGenreIds.Count * 2.5;
         }
 
-        // 5. Favorite source bonus — check both sets to handle cross-type candidates
+        // 5. Favorite source bonus — each source is looked up in the set of its own media type
         bool hasFavoritedSource = candidate.SourceIds.Any(id =>
-            profile.FavoritedMovieIds.Contains(id) || profile.FavoritedTvIds.Contains(id)
+            id.MediaType == MediaTypes.MovieMediaType
+                ? profile.FavoritedMovieIds.Contains(id.ItemId)
+                : profile.FavoritedTvIds.Contains(id.ItemId)
         );
         if (hasFavoritedSource)
             score += 1.0;
@@ -213,7 +215,10 @@ public static class RecommendationScoring
     /// Sources sharing a long common prefix (e.g., "Tom and Jerry: X", "Tom and Jerry: Y")
     /// are counted as one family instead of inflating the frequency score.
     /// </summary>
-    public static int CountDistinctSourceFamilies(List<int> sourceIds, UserAffinityProfile profile)
+    public static int CountDistinctSourceFamilies(
+        List<SourceKey> sourceIds,
+        UserAffinityProfile profile
+    )
     {
         List<string> titles = sourceIds
             .Where(id => profile.SourceItems.ContainsKey(id))

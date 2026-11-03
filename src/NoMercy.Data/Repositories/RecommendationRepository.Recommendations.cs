@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.EntityFrameworkCore;
+using NoMercy.Data.Services.Recommendations;
 using NoMercy.Database;
 using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Extensions;
@@ -79,7 +80,14 @@ public partial class RecommendationRepository
                                     ColorPalette = first._colorPalette.OrEmpty(),
                                     MediaType = MediaTypes.MovieMediaType,
                                     SourceCount = g.Select(r => r.MovieFromId).Distinct().Count(),
-                                    SourceIds = [.. g.Select(r => r.MovieFromId!.Value).Distinct()],
+                                    SourceIds =
+                                    [
+                                        .. g.Select(r => new SourceKey(
+                                                MediaTypes.MovieMediaType,
+                                                r.MovieFromId!.Value
+                                            ))
+                                            .Distinct(),
+                                    ],
                                 };
                             }
                         ),
@@ -149,7 +157,14 @@ public partial class RecommendationRepository
                                     ColorPalette = first._colorPalette.OrEmpty(),
                                     MediaType = MediaTypes.TvMediaType,
                                     SourceCount = g.Select(r => r.TvFromId).Distinct().Count(),
-                                    SourceIds = [.. g.Select(r => r.TvFromId!.Value).Distinct()],
+                                    SourceIds =
+                                    [
+                                        .. g.Select(r => new SourceKey(
+                                                MediaTypes.TvMediaType,
+                                                r.TvFromId!.Value
+                                            ))
+                                            .Distinct(),
+                                    ],
                                 };
                             }
                         ),
@@ -219,7 +234,14 @@ public partial class RecommendationRepository
                                     ColorPalette = first._colorPalette.OrEmpty(),
                                     MediaType = MediaTypes.AnimeMediaType,
                                     SourceCount = g.Select(r => r.TvFromId).Distinct().Count(),
-                                    SourceIds = [.. g.Select(r => r.TvFromId!.Value).Distinct()],
+                                    SourceIds =
+                                    [
+                                        .. g.Select(r => new SourceKey(
+                                                MediaTypes.AnimeMediaType,
+                                                r.TvFromId!.Value
+                                            ))
+                                            .Distinct(),
+                                    ],
                                 };
                             }
                         ),
@@ -287,7 +309,14 @@ public partial class RecommendationRepository
                                     ColorPalette = first._colorPalette.OrEmpty(),
                                     MediaType = MediaTypes.MovieMediaType,
                                     SourceCount = g.Select(s => s.MovieFromId).Distinct().Count(),
-                                    SourceIds = [.. g.Select(s => s.MovieFromId!.Value).Distinct()],
+                                    SourceIds =
+                                    [
+                                        .. g.Select(s => new SourceKey(
+                                                MediaTypes.MovieMediaType,
+                                                s.MovieFromId!.Value
+                                            ))
+                                            .Distinct(),
+                                    ],
                                 };
                             }
                         ),
@@ -357,7 +386,14 @@ public partial class RecommendationRepository
                                     ColorPalette = first._colorPalette.OrEmpty(),
                                     MediaType = MediaTypes.TvMediaType,
                                     SourceCount = g.Select(s => s.TvFromId).Distinct().Count(),
-                                    SourceIds = [.. g.Select(s => s.TvFromId!.Value).Distinct()],
+                                    SourceIds =
+                                    [
+                                        .. g.Select(s => new SourceKey(
+                                                MediaTypes.TvMediaType,
+                                                s.TvFromId!.Value
+                                            ))
+                                            .Distinct(),
+                                    ],
                                 };
                             }
                         ),
@@ -427,7 +463,14 @@ public partial class RecommendationRepository
                                     ColorPalette = first._colorPalette.OrEmpty(),
                                     MediaType = MediaTypes.AnimeMediaType,
                                     SourceCount = g.Select(s => s.TvFromId).Distinct().Count(),
-                                    SourceIds = [.. g.Select(s => s.TvFromId!.Value).Distinct()],
+                                    SourceIds =
+                                    [
+                                        .. g.Select(s => new SourceKey(
+                                                MediaTypes.AnimeMediaType,
+                                                s.TvFromId!.Value
+                                            ))
+                                            .Distinct(),
+                                    ],
                                 };
                             }
                         ),

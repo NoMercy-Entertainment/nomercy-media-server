@@ -42,7 +42,7 @@ public class RecommendationScoringTests
                     MediaId = 1,
                     MediaType = "movie",
                     SourceCount = 1,
-                    SourceIds = [10],
+                    SourceIds = [new SourceKey("movie", 10)],
                 },
             ],
             [
@@ -51,7 +51,7 @@ public class RecommendationScoringTests
                     MediaId = 1,
                     MediaType = "movie",
                     SourceCount = 2,
-                    SourceIds = [10, 11],
+                    SourceIds = [new SourceKey("movie", 10), new SourceKey("movie", 11)],
                 },
             ],
             [
@@ -60,7 +60,7 @@ public class RecommendationScoringTests
                     MediaId = 1,
                     MediaType = "tv",
                     SourceCount = 1,
-                    SourceIds = [12],
+                    SourceIds = [new SourceKey("tv", 12)],
                 },
             ]
         );
@@ -68,7 +68,9 @@ public class RecommendationScoringTests
         merged.Should().HaveCount(2);
         RecommendationCandidateDto movie = merged.Single(c => c.MediaType == "movie");
         movie.SourceCount.Should().Be(3);
-        movie.SourceIds.Should().BeEquivalentTo([10, 11]);
+        movie
+            .SourceIds.Should()
+            .BeEquivalentTo([new SourceKey("movie", 10), new SourceKey("movie", 11)]);
     }
 
     [Fact]
@@ -95,7 +97,38 @@ public class RecommendationScoringTests
         profile.GenreAffinity[18].Should().BeApproximately(1.0 / 3.0, 0.0001);
         profile.FavoritedMovieIds.Should().Equal(129);
         profile.FavoritedTvIds.Should().BeEmpty();
-        profile.SourceItems.Keys.Should().BeEquivalentTo([129, 1399]);
+        profile
+            .SourceItems.Keys.Should()
+            .BeEquivalentTo([new SourceKey("movie", 129), new SourceKey("tv", 1399)]);
+    }
+
+    [Fact]
+    public void BuildProfile_KeepsAMovieAndAShowThatShareATmdbId()
+    {
+        UserAffinityProfile profile = RecommendationScoring.BuildProfile([
+            new UserAffinitySourceDto
+            {
+                ItemId = 1399,
+                MediaType = "movie",
+                Title = "A movie",
+                IsFavorited = true,
+            },
+            new UserAffinitySourceDto
+            {
+                ItemId = 1399,
+                MediaType = "tv",
+                Title = "A show",
+                Rating = 9,
+            },
+        ]);
+
+        profile
+            .SourceItems.Keys.Should()
+            .BeEquivalentTo([new SourceKey("movie", 1399), new SourceKey("tv", 1399)]);
+        profile
+            .SourceItems.Values.Select(s => s.Title)
+            .Should()
+            .BeEquivalentTo("A movie", "A show");
     }
 
     [Fact]
@@ -126,14 +159,14 @@ public class RecommendationScoringTests
         {
             SourceItems = new()
             {
-                [1] = new()
+                [new SourceKey("movie", 1)] = new()
                 {
                     ItemId = 1,
                     MediaType = "movie",
                     IsFavorited = true,
                     KeywordIds = [100],
                 },
-                [2] = new()
+                [new SourceKey("tv", 2)] = new()
                 {
                     ItemId = 2,
                     MediaType = "tv",
@@ -141,14 +174,14 @@ public class RecommendationScoringTests
                     Duration = 100,
                     KeywordIds = [200],
                 },
-                [3] = new()
+                [new SourceKey("anime", 3)] = new()
                 {
                     ItemId = 3,
                     MediaType = "anime",
                     Rating = 7,
                     KeywordIds = [300],
                 },
-                [4] = new()
+                [new SourceKey("movie", 4)] = new()
                 {
                     ItemId = 4,
                     MediaType = "movie",
@@ -157,7 +190,7 @@ public class RecommendationScoringTests
                     Duration = 100,
                     KeywordIds = [400],
                 },
-                [5] = new()
+                [new SourceKey("movie", 5)] = new()
                 {
                     ItemId = 5,
                     MediaType = "movie",
@@ -167,13 +200,13 @@ public class RecommendationScoringTests
         };
 
         (
-            Dictionary<int, List<int>> movie,
-            Dictionary<int, List<int>> tv,
-            Dictionary<int, List<int>> anime
+            Dictionary<SourceKey, List<int>> movie,
+            Dictionary<SourceKey, List<int>> tv,
+            Dictionary<SourceKey, List<int>> anime
         ) = RecommendationScoring.HighSignalKeywordMaps(profile);
 
-        movie.Keys.Should().Equal(1);
-        tv.Keys.Should().Equal(2);
-        anime.Keys.Should().Equal(3);
+        movie.Keys.Should().Equal(new SourceKey("movie", 1));
+        tv.Keys.Should().Equal(new SourceKey("tv", 2));
+        anime.Keys.Should().Equal(new SourceKey("anime", 3));
     }
 }
