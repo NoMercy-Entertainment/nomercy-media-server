@@ -21,6 +21,7 @@ using NoMercy.Events;
 using NoMercy.Events.Library;
 using NoMercy.Events.Media;
 using NoMercy.MediaProcessing.Common;
+using NoMercy.MediaProcessing.Files;
 using NoMercy.MediaProcessing.Movies;
 using NoMercy.MediaProcessing.Shows;
 using NoMercy.Providers.AniList;
@@ -47,6 +48,26 @@ public class MovieImportJob : AbstractMediaJob
 
     public override string QueueName => "import";
     public override int Priority => 5;
+
+    /// <summary>Files picked in Add content, encoded once the import has stored the movie.</summary>
+    public List<EncodeAfterImportFile> EncodeAfterImport { get; set; } = [];
+
+    internal void DispatchEncodes(IJobDispatcher jobDispatcher)
+    {
+        foreach (EncodeAfterImportFile file in EncodeAfterImport)
+        {
+            VideoEncodeJob job = new()
+            {
+                LibraryId = LibraryId,
+                FolderId = file.FolderId,
+                Id = file.Id,
+                InputFile = file.InputFile,
+                SourceDriverId = file.SourceDriverId,
+                PresetId = file.PresetId,
+            };
+            jobDispatcher.Dispatch(job, job.QueueName, job.Priority);
+        }
+    }
 
     private bool _addedToLibrary;
 
@@ -116,6 +137,8 @@ public class MovieImportJob : AbstractMediaJob
             );
 
         jobDispatcher.DispatchJob<FileRescanJob>(Id, movieLibrary);
+
+        DispatchEncodes(jobDispatcher);
 
         Log.LogInformation(
             "Movie {Id} added to library, extra data will be added in the background",

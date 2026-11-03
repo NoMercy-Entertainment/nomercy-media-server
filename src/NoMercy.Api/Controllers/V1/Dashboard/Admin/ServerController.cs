@@ -318,6 +318,30 @@ public partial class ServerController(
                 );
             }
 
+            // A movie the server does not hold has no row to encode against: import it
+            // first and let that import queue the selected file.
+            if (library.Type == MediaTypes.MovieMediaType)
+            {
+                await using MediaContext context = new();
+                List<int> ids =
+                [
+                    .. toEncode
+                        .Select(file => int.TryParse(file.Id, out int id) ? id : 0)
+                        .Where(id => id != 0),
+                ];
+                HashSet<int> held =
+                [
+                    .. await context
+                        .Movies.IgnoreQueryFilters()
+                        .AsNoTracking()
+                        .Where(movie => ids.Contains(movie.Id))
+                        .Select(movie => movie.Id)
+                        .ToListAsync(),
+                ];
+
+                toEncode = UnheldMovieImports.Dispatch(jobDispatcher, library, toEncode, held);
+            }
+
             foreach (EncodeAfterImportFile file in toEncode)
             {
                 VideoEncodeJob job = new()

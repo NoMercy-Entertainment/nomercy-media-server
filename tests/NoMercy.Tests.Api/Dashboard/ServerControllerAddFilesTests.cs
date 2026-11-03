@@ -15,6 +15,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
+using NoMercy.Database.Models.Movies;
 using NoMercy.Tests.Api.Infrastructure;
 using Xunit;
 
@@ -71,11 +72,26 @@ public class ServerControllerAddFilesTests : IClassFixture<NoMercyApiFactory>, I
 
         ctx.Libraries.AddRange([autoEncodeLibrary, manualLibrary]);
         await ctx.SaveChangesAsync();
+
+        foreach (int movieId in HeldMovieIds)
+            ctx.Movies.Add(
+                new Movie
+                {
+                    Id = movieId,
+                    Title = $"Held Movie {movieId}",
+                    TitleSort = $"held movie {movieId}",
+                    LibraryId = _manualLibraryId,
+                }
+            );
+        await ctx.SaveChangesAsync();
     }
+
+    private static readonly int[] HeldMovieIds = [910001, 910002, 920001, 920002];
 
     public async Task DisposeAsync()
     {
         await using MediaContext ctx = new();
+        await ctx.Movies.Where(m => HeldMovieIds.Contains(m.Id)).ExecuteDeleteAsync();
         await ctx
             .Libraries.Where(l => l.Id == _autoEncodeLibraryId || l.Id == _manualLibraryId)
             .ExecuteDeleteAsync();
@@ -128,6 +144,31 @@ public class ServerControllerAddFilesTests : IClassFixture<NoMercyApiFactory>, I
                 "manual add-files is a deliberate import that always encodes the explicit source "
                     + "file — AutoEncodeOnScan gates only the automatic scan path, not this endpoint"
             );
+    }
+
+    [Fact]
+    public async Task AddFiles_MovieTheServerDoesNotHold_QueuesAMovieImportInsteadOfAnEncode()
+    {
+        object body = new
+        {
+            library_id = _manualLibraryId.ToString(),
+            folder_id = _folderId.ToString(),
+            source_driver_id = (string?)null,
+            files = new[] { new { path = "manual/Example.Movie.2026.mkv", id = "930001" } },
+        };
+
+        HttpResponseMessage response = await _authed.PostAsync(
+            "/api/v1/dashboard/server/addfiles",
+            JsonBody(body)
+        );
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        List<string> payloads = QueryPayloadsContaining(_manualLibraryId.ToString());
+
+        payloads.Should().ContainSingle();
+        payloads[0].Should().Contain("MovieImportJob").And.Contain("Example.Movie.2026.mkv");
+        payloads[0].Should().NotContain("VideoEncodeJob");
     }
 
     [Fact]
