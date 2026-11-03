@@ -108,15 +108,6 @@ public class PaletteBackfillState
         CancellationToken ct
     )
     {
-        Configuration? existing = await db.Configuration.FirstOrDefaultAsync(c => c.Key == key, ct);
-        if (existing is null)
-        {
-            db.Configuration.Add(new() { Key = key, Value = value });
-        }
-        else
-        {
-            existing.Value = value;
-        }
-        await db.SaveChangesAsync(ct);
+        await db.SetValueAsync(key, value, ct: ct);
     }
 }
