@@ -458,9 +458,9 @@ internal sealed class FaultyLibNfs : ILibNfs
 
     public int Close(IntPtr nfs, IntPtr fh)
     {
-        TryFault(nameof(Close), out _, out _);
+        bool faulted = TryFault(nameof(Close), out int rc, out _);
         _openHandles.TryRemove(fh, out _);
-        return 0;
+        return faulted ? rc : 0;
     }
 
     public int Read(IntPtr nfs, IntPtr fh, IntPtr buf, int count)
