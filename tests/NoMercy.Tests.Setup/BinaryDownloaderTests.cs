@@ -13,6 +13,9 @@ using System.Net;
 using System.Security.Cryptography;
 using System.Text;
 using Newtonsoft.Json;
+using NoMercy.Authorization;
+using NoMercy.Events;
+using NoMercy.Events.Media;
 using NoMercy.Setup.Dto;
 using NoMercy.Setup.Server;
 using NoMercy.Storage.Drivers.Local;
@@ -367,13 +370,14 @@ public class BinaryDownloaderTests : IDisposable
     // -------------------------------------------------------------------------
 
     [Fact]
-    public async Task Download_OwnedRepo_ManifestSignatureInvalid_FallsBackToDigest_Succeeds()
+    public async Task Download_OwnedRepo_PublishedSignatureFails_RefusesUpdateAndAlertsOwner()
     {
-        // A signature that does not verify (e.g. the embedded key is stale after a key
-        // rotation) must NOT brick the update path. The unverified manifest's hash is not
-        // trusted — even though it is present, the download is governed by GitHub's
-        // independent asset digest, and succeeds when that matches.
-        byte[] payload = Encoding.UTF8.GetBytes("owned payload after rotation");
+        // A release that PUBLISHES manifest.json.sig but whose signature does not verify
+        // against the embedded key is a forged or tampered release until proven otherwise.
+        // GitHub's digest only proves the bytes are the ones GitHub stored — it says
+        // nothing about who put them there — so a correct digest must not rescue the
+        // update: the asset is never fetched and the owner is alerted.
+        byte[] payload = Encoding.UTF8.GetBytes("owned payload with a forged signature");
         string correctDigest =
             "sha256:" + Convert.ToHexString(SHA256.HashData(payload)).ToLowerInvariant();
         string destPath = Path.Combine(_tempDir, "asset.bin");
@@ -381,8 +385,6 @@ public class BinaryDownloaderTests : IDisposable
         string manifestUrl = "https://example.com/manifest.json";
         string manifestSigUrl = "https://example.com/manifest.json.sig";
 
-        // Manifest hash is deliberately WRONG: if the unverified manifest were trusted
-        // this would fail, proving the fallback ignores it and uses the digest instead.
         ReleaseManifest manifest = new()
         {
             Version = "1.0",
@@ -391,7 +393,7 @@ public class BinaryDownloaderTests : IDisposable
                 new()
                 {
                     Name = "asset.bin",
-                    Sha256 = new('e', 64),
+                    Sha256 = Convert.ToHexString(SHA256.HashData(payload)),
                     Size = payload.Length,
                 },
             ],
@@ -420,78 +422,40 @@ public class BinaryDownloaderTests : IDisposable
             )
         );
 
-        Binaries binaries = BuildBinaries(handler);
-
-        string result = await binaries.DownloadWithVerificationAsync(
-            "https://api.github.com/test",
-            "asset",
-            new(assetUrl),
-            destPath,
-            release,
-            "asset.bin",
-            enforceSignedManifest: true
+        InMemoryEventBus bus = new();
+        List<UserNotifiedEvent> alerts = [];
+        using IDisposable subscription = bus.Subscribe<UserNotifiedEvent>(
+            (alert, _) =>
+            {
+                alerts.Add(alert);
+                return Task.CompletedTask;
+            }
+        );
+        UserCache users = new();
+        Guid ownerId = Guid.NewGuid();
+        users.AddUser(
+            new()
+            {
+                Id = ownerId,
+                Owner = true,
+                Name = "owner",
+            }
+        );
+        users.AddUser(
+            new()
+            {
+                Id = Guid.NewGuid(),
+                Owner = false,
+                Name = "viewer",
+            }
         );
 
-        result.Should().Be(destPath);
-        (await File.ReadAllBytesAsync(destPath)).Should().BeEquivalentTo(payload);
-    }
-
-    [Fact]
-    public async Task Download_OwnedRepo_ManifestSignatureInvalid_DigestMismatch_Throws()
-    {
-        // When the signature is bypassed, the digest integrity floor still applies —
-        // bytes that don't match GitHub's digest are rejected, so a bad signature never
-        // opens the door to a corrupted or truncated download.
-        byte[] payload = Encoding.UTF8.GetBytes("tampered owned payload");
-        string destPath = Path.Combine(_tempDir, "asset.bin");
-        string assetUrl = "https://example.com/asset.bin";
-        string manifestUrl = "https://example.com/manifest.json";
-        string manifestSigUrl = "https://example.com/manifest.json.sig";
-        string wrongDigest = "sha256:" + new string('f', 64);
-
-        ReleaseManifest manifest = new()
-        {
-            Version = "1.0",
-            Assets =
-            [
-                new()
-                {
-                    Name = "asset.bin",
-                    Sha256 = Convert.ToHexString(SHA256.HashData(payload)),
-                    Size = payload.Length,
-                },
-            ],
-        };
-
-        GithubReleaseResponse release = BuildRelease(
-            assetName: "asset.bin",
-            assetUrl: assetUrl,
-            sha256: null,
-            includeManifest: true,
-            manifestUrl: manifestUrl,
-            manifestSigUrl: manifestSigUrl,
-            digest: wrongDigest
-        );
-
-        FakeHttpHandler handler = new();
-        handler.Register(assetUrl, payload);
-        handler.Register(
-            manifestUrl,
-            Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(manifest))
-        );
-        handler.Register(
-            manifestSigUrl,
-            Encoding.ASCII.GetBytes(
-                "-----BEGIN PGP SIGNATURE-----\nnot-a-real-signature\n-----END PGP SIGNATURE-----"
-            )
-        );
-
-        Binaries binaries = BuildBinaries(handler);
+        Binaries binaries = BuildBinaries(handler, bus, users);
 
         Func<Task> act = () =>
             binaries.DownloadWithVerificationAsync(
                 "https://api.github.com/test",
-                "asset",
+                "NoMercyMediaServer Update",
                 new(assetUrl),
                 destPath,
                 release,
@@ -499,7 +463,16 @@ public class BinaryDownloaderTests : IDisposable
                 enforceSignedManifest: true
             );
 
-        await act.Should().ThrowAsync<InvalidDataException>().WithMessage("*SHA-256 mismatch*");
+        await act.Should().ThrowAsync<InvalidDataException>().WithMessage("*signature*");
+
+        handler.Requested(assetUrl).Should().BeFalse("a refused update must never be downloaded");
+        File.Exists(destPath).Should().BeFalse();
+        File.Exists(destPath + ".tmp").Should().BeFalse();
+
+        UserNotifiedEvent alert = alerts.Should().ContainSingle().Subject;
+        alert.UserId.Should().Be(ownerId, "only the owner is alerted, never ordinary users");
+        alert.Type.Should().Be("security");
+        alert.Message.Should().Contain("NoMercyMediaServer Update");
     }
 
     [Fact]
@@ -588,7 +561,28 @@ public class BinaryDownloaderTests : IDisposable
             Encoding.UTF8.GetBytes(JsonConvert.SerializeObject(manifest))
         );
 
-        Binaries binaries = BuildBinaries(handler);
+        // An owner is present so a wrongly raised security alert would be observable:
+        // a release that simply has no signature yet is not a security event.
+        InMemoryEventBus bus = new();
+        List<UserNotifiedEvent> alerts = [];
+        using IDisposable subscription = bus.Subscribe<UserNotifiedEvent>(
+            (alert, _) =>
+            {
+                alerts.Add(alert);
+                return Task.CompletedTask;
+            }
+        );
+        UserCache users = new();
+        users.AddUser(
+            new()
+            {
+                Id = Guid.NewGuid(),
+                Owner = true,
+                Name = "owner",
+            }
+        );
+
+        Binaries binaries = BuildBinaries(handler, bus, users);
 
         string result = await binaries.DownloadWithVerificationAsync(
             "https://api.github.com/test",
@@ -601,6 +595,7 @@ public class BinaryDownloaderTests : IDisposable
         );
 
         result.Should().Be(destPath);
+        alerts.Should().BeEmpty("an unsigned release during the signing rollout is not an alert");
         (await File.ReadAllBytesAsync(destPath)).Should().BeEquivalentTo(payload);
     }
 
@@ -849,13 +844,17 @@ public class BinaryDownloaderTests : IDisposable
     // Helpers
     // -------------------------------------------------------------------------
 
-    private Binaries BuildBinaries(FakeHttpHandler handler)
+    private Binaries BuildBinaries(
+        FakeHttpHandler handler,
+        IEventBus? eventBus = null,
+        IUserCache? userCache = null
+    )
     {
         LocalStorageDriver driver = new();
         StoragePathGuard guard = new([], driver);
         LocalStorage storage = new(driver, guard);
         HttpClient http = new(handler);
-        return new(driver, storage, http);
+        return new(driver, storage, http, eventBus: eventBus, userCache: userCache);
     }
 
     private static GithubReleaseResponse BuildRelease(
@@ -933,8 +932,12 @@ internal sealed class FakeHttpHandler : HttpMessageHandler
 {
     private readonly Dictionary<string, byte[]> _responses = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, Stream> _streams = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _requested = new(StringComparer.OrdinalIgnoreCase);
 
     public void Register(string url, byte[] body) => _responses[url] = body;
+
+    /// <summary>Whether any request for <paramref name="url"/> reached this handler.</summary>
+    public bool Requested(string url) => _requested.Contains(url);
 
     public void RegisterStream(string url, Stream body) => _streams[url] = body;
 
@@ -950,6 +953,7 @@ internal sealed class FakeHttpHandler : HttpMessageHandler
     )
     {
         string url = request.RequestUri?.ToString() ?? string.Empty;
+        _requested.Add(url);
         if (_streams.TryGetValue(url, out Stream? stream))
         {
             HttpResponseMessage response = new(HttpStatusCode.OK)
