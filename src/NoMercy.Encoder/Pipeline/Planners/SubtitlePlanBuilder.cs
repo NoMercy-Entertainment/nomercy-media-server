@@ -69,7 +69,11 @@ public static class SubtitlePlanBuilder
                         Policy: subProfile.Policy,
                         Variant: subtitleVariants[si],
                         ExtraFlags: subProfile.CustomArguments is not null
-                            ? new Dictionary<string, string>(subProfile.CustomArguments)
+                            ? CustomArgumentGuard.Sanitize(
+                                subProfile.CustomArguments,
+                                true,
+                                "subtitle custom arguments"
+                            )
                             : null
                     )
                 );

@@ -416,6 +416,8 @@ internal static class LiveFfmpegArgumentBuilder
             string normalizedKey = key.StartsWith('-') ? key : $"-{key}";
             if (ProfileRuleValidator.ReservedFlags.Contains(normalizedKey))
                 continue;
+            if (CustomArgumentGuard.ShouldDrop(key, value, true, "live custom arguments"))
+                continue;
 
             args.Add(normalizedKey);
             if (value.Length > 0)

@@ -1107,6 +1107,15 @@ public class PlanStage(
                                         : $"-{argKey}";
                                     if (ProfileRuleValidator.ReservedFlags.Contains(normalizedKey))
                                         continue;
+                                    if (
+                                        CustomArgumentGuard.ShouldDrop(
+                                            argKey,
+                                            argValue,
+                                            true,
+                                            "video custom arguments"
+                                        )
+                                    )
+                                        continue;
                                     extraFlags[argKey] = argValue;
                                 }
                             }
@@ -1351,7 +1360,8 @@ public class PlanStage(
 
         if (customArguments is { Count: > 0 })
             foreach ((string key, string value) in customArguments)
-                flags[key] = value;
+                if (!CustomArgumentGuard.ShouldDrop(key, value, true, "profile custom arguments"))
+                    flags[key] = value;
 
         return flags;
     }

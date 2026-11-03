@@ -79,7 +79,11 @@ public static class AudioPlanBuilder
                         PlaylistNameTemplate: audioProfile.PlaylistNameTemplate,
                         AudioFilter: audioFilter,
                         ExtraFlags: audioProfile.CustomArguments is not null
-                            ? new Dictionary<string, string>(audioProfile.CustomArguments)
+                            ? CustomArgumentGuard.Sanitize(
+                                audioProfile.CustomArguments,
+                                true,
+                                "audio custom arguments"
+                            )
                             : null,
                         SourceCodecName: stream.Codec.ToLowerInvariant(),
                         SourceStreamIndex: stream.Index,

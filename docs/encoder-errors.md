@@ -37,6 +37,7 @@ shows up below wrapped in backticks. Add a new ID → add a new bullet here in t
 
 ## Custom arguments
 - `custom_args.reserved_flag` — extra ffmpeg flag collides with an encoder-managed argument.
+- `custom_args.unsafe_flag` — extra ffmpeg flag or value can read or write local files or reach the network.
 
 ## Disc ripping
 - `disc.aacs_cert_missing` — KEYDB lacks a matching AACS certificate for this volume.

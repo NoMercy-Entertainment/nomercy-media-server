@@ -67,6 +67,7 @@ public static class EncoderRuleId
 
     // ---- Custom ffmpeg args ---------------------------------------------
     public const string CustomArgsReservedFlag = "custom_args.reserved_flag";
+    public const string CustomArgsUnsafeFlag = "custom_args.unsafe_flag";
 
     // ---- Subtitles -------------------------------------------------------
     public const string SubtitlesContainerIncompatible = "subtitles.container_incompatible";

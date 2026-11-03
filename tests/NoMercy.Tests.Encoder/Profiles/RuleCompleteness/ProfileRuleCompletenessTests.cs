@@ -67,6 +67,7 @@ public class ProfileRuleCompletenessTests
         EncoderRuleId.HdrInverseTonemapUnsupported,
         EncoderRuleId.BitDepthH26xProfilePromoted,
         EncoderRuleId.CustomArgsReservedFlag,
+        EncoderRuleId.CustomArgsUnsafeFlag,
         EncoderRuleId.DrmHttpNotHttps,
         EncoderRuleId.DrmKeyMissing,
         EncoderRuleId.DrmSchemeUnsupported,
@@ -496,6 +497,10 @@ public class ProfileRuleCompletenessTests
                 VideoTranscode(),
                 customArgs: new() { ["-c:v"] = "libx264" }
             ),
+            [EncoderRuleId.CustomArgsUnsafeFlag] = MakeProfile(
+                VideoTranscode(),
+                customArgs: new() { ["-vstats_file"] = "example.log" }
+            ),
             [EncoderRuleId.DrmHttpNotHttps] = MakeProfile(VideoTranscode()) with
             {
                 Drm = new("aes-128", new() { ["key_uri"] = "http://server/key.bin" }),
@@ -756,6 +761,10 @@ public class ProfileRuleCompletenessTests
                 VideoTranscode(),
                 customArgs: new() { ["-loglevel"] = "info" }
             ),
+            [EncoderRuleId.CustomArgsUnsafeFlag] = MakeProfile(
+                VideoTranscode(),
+                customArgs: new() { ["-loglevel"] = "info" }
+            ),
             [EncoderRuleId.DrmHttpNotHttps] = MakeProfile(VideoTranscode()) with
             {
                 Drm = new("aes-128", new() { ["key_uri"] = "https://server/key.bin" }),
@@ -803,8 +812,8 @@ public class ProfileRuleCompletenessTests
         count
             .Should()
             .Be(
-                73,
-                "EncoderRuleId currently catalogues 73 rules; "
+                74,
+                "EncoderRuleId currently holds 74 rules; "
                     + "if this count changed, update the completeness sets above and this guard"
             );
     }

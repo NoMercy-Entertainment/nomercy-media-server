@@ -65,6 +65,7 @@ public static class ProfileRuleValidator
         EmitBitDepthVp9ProfileMismatch(profile, rules);
         EmitBitDepthH26xProfilePromoted(profile, rules);
         EmitCustomArgsReservedFlag(profile, rules);
+        EmitCustomArgsUnsafeFlag(profile, rules);
         EmitDrmHttpNotHttps(profile, rules);
         EmitDrmKeyMissing(profile, rules);
         EmitDrmSchemeUnsupported(profile, rules);
@@ -1362,6 +1363,51 @@ public static class ProfileRuleValidator
                         + "validator can no longer guarantee the output matches the profile.",
                     Fix: $"Remove the '{key}' override and set the matching typed field "
                         + "(codec / container / preset / rate control / hardware preference / ladder) instead."
+                )
+            );
+        }
+    }
+
+    private static void EmitCustomArgsUnsafeFlag(EncodingProfile profile, List<EncoderRule> rules)
+    {
+        ScanUnsafeArgs("custom_arguments", profile.CustomArguments, rules);
+
+        if (profile.Video is not null)
+            ScanUnsafeArgs("video.custom_arguments", profile.Video.CustomArguments, rules);
+
+        AudioOutput[] audio = profile.Audio ?? [];
+        for (int i = 0; i < audio.Length; i++)
+            ScanUnsafeArgs($"audio[{i}].custom_arguments", audio[i].CustomArguments, rules);
+
+        SubtitleOutput[] subtitles = profile.Subtitles ?? [];
+        for (int i = 0; i < subtitles.Length; i++)
+            ScanUnsafeArgs($"subtitles[{i}].custom_arguments", subtitles[i].CustomArguments, rules);
+    }
+
+    private static void ScanUnsafeArgs(
+        string fieldPrefix,
+        Dictionary<string, string>? customArgs,
+        List<EncoderRule> rules
+    )
+    {
+        if (customArgs is null || customArgs.Count == 0)
+            return;
+
+        foreach ((string key, string value) in customArgs)
+        {
+            if (!CustomArgumentGuard.TryGetViolation(key, value, true, out string category))
+                continue;
+
+            rules.Add(
+                new(
+                    Id: EncoderRuleId.CustomArgsUnsafeFlag,
+                    Severity: EncoderRuleSeverity.Error,
+                    Field: $"{fieldPrefix}[{key}]",
+                    Message: $"CustomArgument '{key}' can read or write local files or reach the "
+                        + $"network ({category}). The encoder refuses it so a profile cannot "
+                        + "touch anything outside the encode.",
+                    Fix: $"Remove the '{key}' argument. Use the typed profile fields for "
+                        + "filters, subtitles and attachments instead."
                 )
             );
         }
