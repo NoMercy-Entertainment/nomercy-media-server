@@ -43,4 +43,6 @@ public interface IFolderRepository
     Task<int> SyncFolderLibraryAsync(FolderLibrary[] folderLibraries, List<Folder> folders);
 
     Task<List<Folder>> GetAllFoldersAsync(CancellationToken ct = default);
+
+    Task<List<Folder>> GetStorageFoldersAsync(CancellationToken ct = default);
 }

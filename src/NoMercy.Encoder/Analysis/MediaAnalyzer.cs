@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using System.Globalization;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.Infrastructure;
@@ -105,7 +106,12 @@ public class MediaAnalyzer(IProcessRunner processRunner, IStorage storage, Encod
         JObject root;
         try
         {
-            root = JObject.Parse(json);
+            using StringReader stringReader = new(json);
+            using JsonTextReader jsonReader = new(stringReader)
+            {
+                DateParseHandling = DateParseHandling.None,
+            };
+            root = JObject.Load(jsonReader);
         }
         catch (Newtonsoft.Json.JsonException ex)
         {
@@ -185,9 +191,7 @@ public class MediaAnalyzer(IProcessRunner processRunner, IStorage storage, Encod
             DolbyVision: dolbyVision,
             StereoMode: stereoMode,
             SphericalProjection: sphericalProjection,
-            // Already parsed above — retained verbatim, never re-parsed, so
-            // the reconstruction blueprint's source.ffprobe is byte-identical
-            // to what ffprobe emitted.
+            // Keep ffprobe tag strings as emitted for blueprint reconstruction.
             Ffprobe: root
         );
     }

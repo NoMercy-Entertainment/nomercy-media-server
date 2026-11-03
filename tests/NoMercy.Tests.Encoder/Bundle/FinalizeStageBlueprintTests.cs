@@ -295,4 +295,31 @@ public class FinalizeStageBlueprintTests
         // Identity + source stay shared, written once.
         blueprint.Identity.TmdbId.Should().Be(550);
     }
+
+    [Fact]
+    public async Task Blueprint_ReadPreservesFfprobeDateTagText()
+    {
+        TestStorage storage = new();
+        const string date = "2020-01-01T00:00:00.000000Z";
+        storage.Seed(
+            MediaBlueprintWriter.FileName,
+            System.Text.Encoding.UTF8.GetBytes(
+                "{\"version\":1,\"identity\":{\"type\":\"movie\",\"tmdb_id\":1,\"title\":\"Example\"},\"source\":{\"path\":\"example.mp4\",\"filename\":\"example.mp4\",\"container\":\"mp4\",\"ffprobe\":{\"format\":{\"tags\":{\"creation_time\":\""
+                    + date
+                    + "\"}}}},\"encodes\":[]}"
+            )
+        );
+
+        MediaBlueprintWriter writer = new(new MediaBlueprintBuilder());
+        MediaBlueprint? blueprint = await writer.ReadAsync(
+            storage,
+            string.Empty,
+            CancellationToken.None
+        );
+
+        blueprint!.Source.Ffprobe!["format"]!["tags"]!["creation_time"]!
+            .ToString()
+            .Should()
+            .Be(date);
+    }
 }
