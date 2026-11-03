@@ -22,8 +22,17 @@ namespace NoMercy.Tests.Api.Controllers;
 
 public class StorageControllerTests
 {
-    [Fact]
-    public async Task Storage_ReturnsUsageForLibraryFolder()
+    [Theory]
+    [InlineData("movie", "example.mp4", 66, 0, 0)]
+    [InlineData("tv", "example.mkv", 0, 66, 0)]
+    [InlineData("music", "example.flac", 0, 0, 66)]
+    public async Task Storage_ReturnsUsageForLibraryFolder(
+        string libraryType,
+        string mediaFile,
+        long movies,
+        long shows,
+        long music
+    )
     {
         Folder folder = new()
         {
@@ -34,23 +43,27 @@ public class StorageControllerTests
         Library library = new()
         {
             Id = Ulid.NewUlid(),
-            Type = "movie",
-            Title = "Movies",
+            Type = libraryType,
+            Title = "Library",
         };
         folder.FolderLibraries.Add(
             new(folder.Id, library.Id) { Folder = folder, Library = library }
         );
         Mock<IFolderRepository> folders = new();
-        folders.Setup(repository => repository.GetAllFoldersAsync(default)).ReturnsAsync([folder]);
+        folders
+            .Setup(repository => repository.GetStorageFoldersAsync(default))
+            .ReturnsAsync([folder]);
         Mock<IStorage> storage = new();
         storage
             .Setup(source => source.List(string.Empty, null, true))
-            .Returns([new("example.mp4", false, 16384, DateTimeOffset.UtcNow)]);
+            .Returns([
+                new(mediaFile, false, 16384, DateTimeOffset.UtcNow),
+                new("notes.txt", false, 8192, DateTimeOffset.UtcNow),
+            ]);
         Mock<IStorageFactory> factory = new();
         factory
             .Setup(source => source.For(folder.Id, folder.DriverId, folder.Path))
             .Returns(storage.Object);
-        StorageMonitor.Storage = [];
         ServerController controller = new(
             logger: null!,
             resourceMonitor: null!,
@@ -76,15 +89,15 @@ public class StorageControllerTests
             filenameParser: null!
         );
 
-        object action = controller.Storage();
-        IActionResult result = action is Task<IActionResult> pending
-            ? await pending
-            : (IActionResult)action;
+        IActionResult result = await controller.Storage();
 
         OkObjectResult response = Assert.IsType<OkObjectResult>(result);
         StorageDto entry = Assert.Single(Assert.IsType<List<StorageDto>>(response.Value));
         entry.Path.Should().Be(folder.Path);
-        entry.Data.Used.Should().Be(2);
-        entry.Data.Movies.Should().Be(100);
+        entry.Data.Used.Should().Be(3);
+        entry.Data.Movies.Should().Be(movies);
+        entry.Data.Shows.Should().Be(shows);
+        entry.Data.Music.Should().Be(music);
+        entry.Data.Other.Should().Be(33);
     }
 }
