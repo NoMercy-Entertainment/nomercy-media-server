@@ -69,6 +69,7 @@ using NoMercy.OpticalMedia.Composition;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Access;
+using NoMercy.PluginSdk.Hooks;
 using NoMercy.PluginSdk.Hub;
 using NoMercy.Providers.AniDb.Client;
 using NoMercy.Providers.AniList;
@@ -820,6 +821,10 @@ public static partial class ServiceConfiguration
         // Attaches and detaches a plugin's controllers as it is enabled and
         // disabled, so neither takes a restart.
         services.AddHostedService<PluginRouteSubscriber>();
+
+        // The same for a plugin's scheduled jobs: one that loads after the
+        // boot pass registered everything still gets its jobs.
+        services.AddHostedService<PluginCronSubscriber>();
 
         services.AddVideoHubServices();
         services.AddMusicHubServices();

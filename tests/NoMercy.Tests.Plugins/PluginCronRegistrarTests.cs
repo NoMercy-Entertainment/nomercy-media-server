@@ -199,13 +199,95 @@ public class PluginCronRegistrarTests
         await cronWorker.StopAsync(cts.Token);
     }
 
-    private sealed class FakeScheduledTaskPlugin(string cronExpression) : IScheduledTaskPlugin
+    /// <summary>
+    /// The boot pass and the PluginLoadedEvent path both see a plugin that
+    /// loads during boot; it must be scheduled once, not once per path.
+    /// </summary>
+    [Fact]
+    public async Task RegisterPlugin_ThenRegisterAll_SchedulesTheSameInstanceOnce()
+    {
+        FakeScheduledTaskPlugin plugin = new("*/5 * * * *");
+        FakePluginManager manager = FakePluginManager.WithScheduledTask(plugin, declaresHook: true);
+        CronWorker cronWorker = BuildCronWorker();
+        PluginCronRegistrar registrar = new(manager, cronWorker);
+
+        registrar.RegisterPlugin(plugin.Id);
+        registrar.RegisterAll();
+
+        GetCodeDefinedJobs(cronWorker)
+            .Should()
+            .ContainSingle(
+                job => job.JobType == $"plugin:{plugin.Id}",
+                "both paths saw the same instance"
+            );
+
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
+        await cronWorker.StopAsync(cts.Token);
+    }
+
+    /// <summary>
+    /// An update loads a new copy under the same id. Its jobs replace the old
+    /// copy's, including a job the new version no longer declares.
+    /// </summary>
+    [Fact]
+    public async Task RegisterPlugin_ANewInstanceForTheSameId_ReplacesTheOldInstancesJobs()
+    {
+        Ulid id = Ulid.NewUlid();
+        FakeScheduledTaskPlugin first = new("*/5 * * * *", id, [new("old", "*/5 * * * *")]);
+        FakeScheduledTaskPlugin second = new("*/5 * * * *", id, [new("new", "0 * * * *")]);
+        FakePluginManager manager = FakePluginManager.WithScheduledTask(first, declaresHook: true);
+        CronWorker cronWorker = BuildCronWorker();
+        PluginCronRegistrar registrar = new(manager, cronWorker);
+        registrar.RegisterPlugin(id);
+
+        manager.Remove(id);
+        manager.Add(second, declaresHook: true);
+        registrar.RegisterPlugin(id);
+
+        GetCodeDefinedJobs(cronWorker)
+            .Select(job => job.JobType)
+            .Should()
+            .Equal([$"plugin:{id}:new"], "the new copy's jobs replace the old copy's");
+
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
+        await cronWorker.StopAsync(cts.Token);
+    }
+
+    [Fact]
+    public async Task UnregisterPlugin_AfterTheInstanceIsGone_RemovesEveryJobItRegistered()
+    {
+        Ulid id = Ulid.NewUlid();
+        FakeScheduledTaskPlugin plugin = new(
+            "*/5 * * * *",
+            id,
+            [new("one", "*/5 * * * *"), new("two", "0 * * * *")]
+        );
+        FakePluginManager manager = FakePluginManager.WithScheduledTask(plugin, declaresHook: true);
+        CronWorker cronWorker = BuildCronWorker();
+        PluginCronRegistrar registrar = new(manager, cronWorker);
+        registrar.RegisterPlugin(id);
+
+        manager.Remove(id);
+        registrar.UnregisterPlugin(id);
+
+        GetCodeDefinedJobs(cronWorker).Should().BeEmpty("a disabled plugin's jobs are removed");
+
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(5));
+        await cronWorker.StopAsync(cts.Token);
+    }
+
+    private sealed class FakeScheduledTaskPlugin(
+        string cronExpression,
+        Ulid? id = null,
+        IReadOnlyList<PluginScheduledJob>? jobs = null
+    ) : IScheduledTaskPlugin
     {
         public string Name => "fake-scheduled";
         public string Description => "d";
-        public Ulid Id { get; } = Ulid.NewUlid();
+        public Ulid Id { get; } = id ?? Ulid.NewUlid();
         public Version Version { get; } = new(1, 0);
         public string CronExpression => cronExpression;
+        public IReadOnlyList<PluginScheduledJob> Jobs => jobs ?? [];
 
         public void Initialize(IPluginContext context) { }
 
@@ -220,6 +302,12 @@ public class PluginCronRegistrarTests
         private readonly Dictionary<Ulid, PluginCapabilities?> _capabilities = [];
 
         public static FakePluginManager Empty() => new();
+
+        public void Remove(Ulid pluginId)
+        {
+            _plugins.RemoveAll(plugin => plugin.Id == pluginId);
+            _capabilities.Remove(pluginId);
+        }
 
         public void Add(IScheduledTaskPlugin plugin, bool declaresHook)
         {

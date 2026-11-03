@@ -20,7 +20,14 @@ namespace NoMercy.PluginSdk.Hooks;
 /// <summary>
 /// Registers every active <see cref="IScheduledTaskPlugin"/> that declares the
 /// <c>scheduledTask</c> capability as a cron executor instance on
-/// <see cref="CronWorker"/>. Called once, post plugin-load.
+/// <see cref="CronWorker"/>.
+/// <para>
+/// Reached from more than one path: the boot pass, the lifecycle manager, and
+/// <see cref="PluginCronSubscriber"/> on every <c>PluginLoadedEvent</c>. A second
+/// sighting of the same instance is therefore a no-op, and a new instance for a
+/// plugin id that is already registered (an update loaded beside the old copy)
+/// replaces the old instance's jobs instead of adding to them.
+/// </para>
 /// </summary>
 public class PluginCronRegistrar(
     IPluginManager pluginManager,
@@ -29,6 +36,16 @@ public class PluginCronRegistrar(
 ) : IPluginCronRegistrar
 {
     private readonly ILogger _log = logger ?? NullLogger<PluginCronRegistrar>.Instance;
+    private readonly object _lock = new();
+
+    /// <summary>
+    /// What each plugin registered, by instance. Kept here because a plugin's
+    /// job list is read from the instance, and the instance may already be gone
+    /// when the plugin is disabled or replaced.
+    /// </summary>
+    private readonly Dictionary<Ulid, RegisteredPlugin> _registered = [];
+
+    private sealed record RegisteredPlugin(IScheduledTaskPlugin Instance, List<string> JobNames);
 
     public void RegisterAll()
     {
@@ -52,28 +69,80 @@ public class PluginCronRegistrar(
         }
     }
 
-    private void RegisterOne(IScheduledTaskPlugin plugin)
+    public void UnregisterPlugin(Ulid pluginId)
     {
-        try
+        lock (_lock)
         {
-            RegisterOneOrThrow(plugin);
-        }
-        catch (Exception exception)
-        {
-            // One plugin that cannot be scheduled must not stop the others
-            // being scheduled, and must not take startup down.
-            if (PluginStaleMemberLog.Explain(_log, plugin.Id, exception, "registering its tasks"))
-                return;
+            if (_registered.Remove(pluginId, out RegisteredPlugin? registered))
+                RemoveJobs(registered.JobNames);
 
-            _log.LogError(
-                exception,
-                "Plugin {Plugin} threw while its scheduled tasks were registered; it runs none.",
-                plugin.Id
-            );
+            // Both derived shapes as well, for an executor registered before
+            // this registrar tracked what it registered. The names come from
+            // the id alone, so removal does not need the instance.
+            cronWorker.RemoveExecutor($"plugin:{pluginId}");
+
+            foreach (
+                IScheduledTaskPlugin plugin in pluginManager.GetPluginsOfType<IScheduledTaskPlugin>()
+            )
+            {
+                if (plugin.Id != pluginId)
+                    continue;
+
+                foreach (PluginScheduledJob job in plugin.Jobs)
+                    cronWorker.RemoveExecutor($"plugin:{pluginId}:{job.Name}");
+            }
         }
     }
 
-    private void RegisterOneOrThrow(IScheduledTaskPlugin plugin)
+    private void RegisterOne(IScheduledTaskPlugin plugin)
+    {
+        lock (_lock)
+        {
+            if (_registered.TryGetValue(plugin.Id, out RegisteredPlugin? existing))
+            {
+                // The running copy is already scheduled: nothing to do.
+                if (ReferenceEquals(existing.Instance, plugin))
+                    return;
+
+                // An update loaded a new copy. Its jobs replace the old copy's,
+                // which also lets go of the old instance.
+                RemoveJobs(existing.JobNames);
+                _registered.Remove(plugin.Id);
+            }
+
+            List<string> jobNames = [];
+
+            try
+            {
+                RegisterOneOrThrow(plugin, jobNames);
+            }
+            catch (Exception exception)
+            {
+                // One plugin that cannot be scheduled must not stop the others
+                // being scheduled, and must not take startup down.
+                if (
+                    !PluginStaleMemberLog.Explain(
+                        _log,
+                        plugin.Id,
+                        exception,
+                        "registering its tasks"
+                    )
+                )
+                    _log.LogError(
+                        exception,
+                        "Plugin {Plugin} threw while its scheduled tasks were registered; it runs none.",
+                        plugin.Id
+                    );
+            }
+
+            // Recorded even after a throw, so the jobs registered before it can
+            // still be removed.
+            if (jobNames.Count > 0)
+                _registered[plugin.Id] = new(plugin, jobNames);
+        }
+    }
+
+    private void RegisterOneOrThrow(IScheduledTaskPlugin plugin, List<string> jobNames)
     {
         PluginCapabilities? capabilities = pluginManager.GetPluginInfo(plugin.Id)?.Capabilities;
 
@@ -88,31 +157,23 @@ public class PluginCronRegistrar(
 
         if (jobs.Count == 0)
         {
-            cronWorker.RegisterExecutor(new PluginCronExecutor(plugin));
+            Register(new PluginCronExecutor(plugin), jobNames);
             return;
         }
 
         foreach (PluginScheduledJob job in jobs)
-            cronWorker.RegisterExecutor(new PluginCronExecutor(plugin, job));
+            Register(new PluginCronExecutor(plugin, job), jobNames);
     }
 
-    public void UnregisterPlugin(Ulid pluginId)
+    private void Register(PluginCronExecutor executor, List<string> jobNames)
     {
-        // Both shapes, because a plugin's job list is read from the instance
-        // and the instance may already be gone by the time it is disabled. The
-        // names are derivable from the id alone, so removal does not depend on
-        // the plugin still being there to ask.
-        cronWorker.RemoveExecutor($"plugin:{pluginId}");
+        cronWorker.RegisterExecutor(executor);
+        jobNames.Add(executor.JobName);
+    }
 
-        foreach (
-            IScheduledTaskPlugin plugin in pluginManager.GetPluginsOfType<IScheduledTaskPlugin>()
-        )
-        {
-            if (plugin.Id != pluginId)
-                continue;
-
-            foreach (PluginScheduledJob job in plugin.Jobs)
-                cronWorker.RemoveExecutor($"plugin:{pluginId}:{job.Name}");
-        }
+    private void RemoveJobs(List<string> jobNames)
+    {
+        foreach (string jobName in jobNames)
+            cronWorker.RemoveExecutor(jobName);
     }
 }
