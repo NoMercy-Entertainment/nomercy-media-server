@@ -253,7 +253,10 @@ public class BuildStage(
             builder.WithGlobalExtraFlags(input.Plan.OutputPlan.GlobalExtraFlags);
 
             TimeSpan? resumeSeek = ResolveResumeSeek(input.ResumeFromMs);
-            bool useGpuResident = FilterGraphAssembler.UsesGpuResidentPath(input.Plan.OutputPlan);
+            bool useGpuResident = FilterGraphAssembler.UsesGpuResidentPath(
+                input.Plan.OutputPlan,
+                context.MediaInfo
+            );
             builder.AddInput(
                 new(
                     input.InputPath,
