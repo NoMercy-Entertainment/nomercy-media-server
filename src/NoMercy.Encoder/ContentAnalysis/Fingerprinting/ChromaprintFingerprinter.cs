@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using System.Globalization;
-using System.Text;
 using Microsoft.Extensions.Logging;
 using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.Infrastructure;
@@ -22,9 +21,12 @@ namespace NoMercy.Encoder.ContentAnalysis.Fingerprinting;
 
 /// <summary>
 /// FFmpeg-backed fingerprinter. Invokes ffmpeg with the chromaprint muxer
-/// and parses its output. Uses the <c>text</c> format which emits one
-/// decimal hash per line — easier to parse and less brittle than <c>raw</c>
-/// (raw is big-endian and has an implicit frame count we'd have to reverse).
+/// and decodes its output back into the raw hashes. The muxer has no text
+/// format: <c>raw</c> writes the hashes as binary 32-bit integers and
+/// <c>compressed</c> as binary bytes, neither of which survives being read
+/// as stdout text. <c>base64</c> is the one text-safe form, so it is
+/// requested here (as the AcoustID fingerprinter in MediaProcessing does)
+/// and <see cref="ChromaprintFingerprintDecoder"/> unpacks it.
 ///
 /// chromaprint's documented algorithm advances one hash per ~0.1858 s at
 /// its internal 11025 Hz mono rate. Users rarely need sub-second marker
@@ -110,7 +112,7 @@ public class ChromaprintFingerprinter(
             "-f",
             "chromaprint",
             "-fp_format",
-            "raw",
+            "base64",
             "-",
         ]);
 
@@ -133,59 +135,11 @@ public class ChromaprintFingerprinter(
             return Empty(window);
         }
 
-        uint[] hashes = ParseRawOutput(result.StdOut);
+        uint[] hashes = ChromaprintFingerprintDecoder.DecodeBase64(result.StdOut);
         TimeSpan startTime = window?.Start ?? TimeSpan.Zero;
 
         observer.Report(jobId, "fingerprint", 100, "done");
         return new(hashes, ChromaprintFrameDuration, startTime);
-    }
-
-    /// <summary>
-    /// chromaprint raw format: a decimal representation of unsigned 32-bit
-    /// integers separated by commas (the muxer writes them as text despite
-    /// the "raw" label — it skips the base64 encoding step, not the text
-    /// formatting step). Example: <c>"1234,5678,9012\n"</c>.
-    /// </summary>
-    internal static uint[] ParseRawOutput(string stdout)
-    {
-        if (string.IsNullOrWhiteSpace(stdout))
-            return [];
-
-        // Some ffmpeg builds prefix the line with a label like "CHROMAPRINT=".
-        int eq = stdout.IndexOf('=');
-        string payload = eq >= 0 ? stdout[(eq + 1)..] : stdout;
-
-        List<uint> hashes = [];
-        StringBuilder token = new();
-
-        foreach (char c in payload)
-        {
-            if (char.IsDigit(c) || c == '-')
-            {
-                token.Append(c);
-                continue;
-            }
-
-            if (token.Length > 0)
-            {
-                AppendToken(token, hashes);
-                token.Clear();
-            }
-        }
-
-        if (token.Length > 0)
-            AppendToken(token, hashes);
-
-        return [.. hashes];
-    }
-
-    private static void AppendToken(StringBuilder token, List<uint> hashes)
-    {
-        string s = token.ToString();
-        if (int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out int signed))
-        {
-            hashes.Add(unchecked((uint)signed));
-        }
     }
 
     private static AudioFingerprint Empty(FingerprintWindow? window) =>
