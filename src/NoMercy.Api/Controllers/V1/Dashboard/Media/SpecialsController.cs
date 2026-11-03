@@ -182,10 +182,18 @@ public class SpecialsController(
         if (specialsList.Count == 0)
             return NotFoundResponse("No specials exist");
 
-        List<string?> titles = [];
+        List<dynamic> titles = [];
+
+        foreach (Special special in specialsList)
+        {
+            LibraryLogic specialLogic = libraryLogicFactory.Create(special.Id);
+
+            if (await specialLogic.Process())
+                titles.AddRange(specialLogic.Titles);
+        }
 
         return Ok(
-            new StatusResponseDto<List<string?>>
+            new StatusResponseDto<List<dynamic>>
             {
                 Status = "ok",
                 Data = titles,
