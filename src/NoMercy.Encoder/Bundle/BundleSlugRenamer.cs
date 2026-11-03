@@ -142,7 +142,12 @@ public class BundleSlugRenamer(
         try
         {
             string json = await storage.ReadAllTextAsync(blueprintPath, ct);
-            JObject? blueprint = JsonConvert.DeserializeObject<JObject>(json);
+            using StringReader stringReader = new(json);
+            using JsonTextReader jsonReader = new(stringReader)
+            {
+                DateParseHandling = DateParseHandling.None,
+            };
+            JObject blueprint = JObject.Load(jsonReader);
             if (blueprint?["encodes"] is not JArray encodes)
                 return;
 
