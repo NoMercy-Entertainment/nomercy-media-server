@@ -158,6 +158,12 @@ public partial class CloudflareTunnelStrategy : IConnectivityStrategy, IDisposab
 
     public async Task<ConnectivityResult> TryEstablishAsync(CancellationToken ct)
     {
+        // Every failed attempt ends in StopTunnel, which raises the flag for the process it
+        // is stopping. A new attempt is a new process: without lowering the flag here, every
+        // attempt after the first ran with it still up and logged real cloudflared failures
+        // at Debug (#224).
+        _stoppingIntentionally = false;
+
         if (_checkTunnelAvailability is not null)
             await _checkTunnelAvailability();
 
