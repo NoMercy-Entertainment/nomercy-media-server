@@ -12,6 +12,7 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using NoMercy.Database;
+using NoMercy.MediaProcessing.Common;
 using NoMercy.NmSystem.Extensions;
 using NoMercyQueue;
 using NoMercyQueue.Core.Interfaces;
@@ -301,7 +302,7 @@ public class AnimeEnrichmentBackfillJob : IShouldQueue, IJobStorageInjector
             row.Id,
             row.Title,
             row.Date.ParseYear(),
-            row.OriginCountry is not null ? [row.OriginCountry] : null,
+            OriginCountries.Parse(row.OriginCountry),
             false
         );
 
@@ -310,7 +311,7 @@ public class AnimeEnrichmentBackfillJob : IShouldQueue, IJobStorageInjector
             row.Id,
             row.Title,
             row.Date.ParseYear(),
-            row.OriginCountry is not null ? [row.OriginCountry] : null,
+            OriginCountries.Parse(row.OriginCountry),
             false
         );
 

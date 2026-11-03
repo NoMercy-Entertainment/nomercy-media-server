@@ -43,6 +43,7 @@ public class AnimeEnrichmentBackfillJobTests : IDisposable
     private readonly DbContextOptions<AppDbContext> _appOptions;
     private readonly Mock<IAniListMetadataProvider> _aniList = new();
     private readonly Mock<IJikanMetadataProvider> _jikan = new();
+    private readonly Mock<IShowRepository> _showRepository = new();
 
     public AnimeEnrichmentBackfillJobTests()
     {
@@ -199,6 +200,27 @@ public class AnimeEnrichmentBackfillJobTests : IDisposable
             .BeTrue("a title the providers positively answered is done");
     }
 
+    // A US/JP co-production is stored with both countries; the backfill must
+    // hand the classifier both, as the live import does, or the JP check never
+    // sees the second one and the anime is filed as tv.
+    [Fact]
+    public async Task Backfill_CoProductionWithJapan_IsClassifiedAnime()
+    {
+        await SeedShowInATvLibraryAsync(originCountry: "US,JP");
+        ProvidersAnswerNotAnime();
+        _aniList
+            .Setup(p => p.SearchAsync(ShowTitle, It.IsAny<int?>(), It.IsAny<bool?>()))
+            .ReturnsAsync(new AniListMedia { Title = new() { Romaji = ShowTitle } });
+
+        await DrainOneRunAsync();
+
+        _showRepository.Verify(
+            r => r.EnsureFiledUnderLibraryTypeAsync(ShowId, "anime"),
+            Times.AtLeastOnce,
+            "Japan is one of the show's origin countries, so the AniList match stands"
+        );
+    }
+
     private void ProvidersAreDown()
     {
         _aniList
@@ -248,7 +270,7 @@ public class AnimeEnrichmentBackfillJobTests : IDisposable
             new MediaTypeClassifier(_aniList.Object, _jikan.Object),
             _aniList.Object,
             _jikan.Object,
-            Mock.Of<IShowRepository>(),
+            _showRepository.Object,
             Mock.Of<IMovieRepository>()
         );
 
@@ -265,7 +287,7 @@ public class AnimeEnrichmentBackfillJobTests : IDisposable
         return await AnimeEnrichmentBackfillState.IsCompleteAsync(appDb, CancellationToken.None);
     }
 
-    private async Task SeedShowInATvLibraryAsync()
+    private async Task SeedShowInATvLibraryAsync(string? originCountry = null)
     {
         await using MediaContext context = new(_mediaOptions);
         Ulid libraryId = Ulid.NewUlid();
@@ -283,6 +305,7 @@ public class AnimeEnrichmentBackfillJobTests : IDisposable
                 Id = ShowId,
                 Title = ShowTitle,
                 LibraryId = libraryId,
+                OriginCountry = originCountry,
             }
         );
         await context.SaveChangesAsync();

@@ -110,8 +110,7 @@ public class ShowManager(
                 showAppends.EpisodeRunTime?.Length > 0
                     ? (int?)showAppends.EpisodeRunTime?.Average()
                     : 0,
-            OriginCountry =
-                showAppends.OriginCountry.Length > 0 ? showAppends.OriginCountry[0] : null,
+            OriginCountry = OriginCountries.Join(showAppends.OriginCountry),
             SpokenLanguages =
                 showAppends.SpokenLanguages.Length > 0 ? showAppends.SpokenLanguages[0].Name : null,
             Trailer =
