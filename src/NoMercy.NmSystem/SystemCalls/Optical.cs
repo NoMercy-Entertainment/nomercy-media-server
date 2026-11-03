@@ -41,10 +41,8 @@ public static class Optical
     {
         if (Software.IsWindows)
             return OpenWindowsOpticalDrives(drivePath);
-        if (Software.IsLinux)
-            return OpenLinuxOpticalDrives(drivePath);
-        if (Software.IsMac)
-            return OpenMacOpticalDrives(drivePath);
+        if (Software.IsLinux || Software.IsMac)
+            return UnixTray().Open(drivePath);
 
         throw new PlatformNotSupportedException("Unsupported OS.");
     }
@@ -53,13 +51,13 @@ public static class Optical
     {
         if (Software.IsWindows)
             return CloseWindowsOpticalDrives(drivePath);
-        if (Software.IsLinux)
-            return CloseLinuxOpticalDrives(drivePath);
-        if (Software.IsMac)
-            return CloseMacOpticalDrives(drivePath);
+        if (Software.IsLinux || Software.IsMac)
+            return UnixTray().Close(drivePath);
 
         throw new PlatformNotSupportedException("Unsupported OS.");
     }
+
+    private static UnixTrayCommands UnixTray() => new(_commandRunner, Software.IsMac);
 
     #region Windows Optical Drive Control
 
@@ -135,74 +133,6 @@ public static class Optical
     {
         DriveInfo driveInfo = new(drivePath);
         return driveInfo.DriveType == DriveType.CDRom;
-    }
-
-    #endregion
-
-    #region Linux Optical Drive Control
-
-    private static bool OpenLinuxOpticalDrives(string drivePath)
-    {
-        try
-        {
-            Shell.ExecSync("eject", [drivePath]);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Logger.Error($"[ERROR] Failed to open Linux optical drive '{drivePath}': {ex.Message}");
-            return false;
-        }
-    }
-
-    private static bool CloseLinuxOpticalDrives(string drivePath)
-    {
-        try
-        {
-            Shell.ExecSync("eject", ["-t", drivePath]);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(
-                $"[ERROR] Failed to close Linux optical drive '{drivePath}': {ex.Message}"
-            );
-            return false;
-        }
-    }
-
-    #endregion
-
-    #region macOS Optical Drive Control
-
-    private static bool OpenMacOpticalDrives(string drivePath)
-    {
-        try
-        {
-            Shell.ExecSync("drutil", ["eject", drivePath]);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Logger.Error($"[ERROR] Failed to open macOS optical drive '{drivePath}': {ex.Message}");
-            return false;
-        }
-    }
-
-    private static bool CloseMacOpticalDrives(string drivePath)
-    {
-        try
-        {
-            Shell.ExecSync("drutil", ["tray", "close", drivePath]);
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Logger.Error(
-                $"[ERROR] Failed to close macOS optical drive '{drivePath}': {ex.Message}"
-            );
-            return false;
-        }
     }
 
     #endregion

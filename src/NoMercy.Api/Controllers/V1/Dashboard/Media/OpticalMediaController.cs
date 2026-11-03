@@ -21,7 +21,6 @@ using NoMercy.Encoder.Analysis;
 using NoMercy.Encoder.LiveTranscode;
 using NoMercy.NmSystem.Dto;
 using NoMercy.NmSystem.Information;
-using NoMercy.NmSystem.SystemCalls;
 using NoMercy.OpticalMedia.Drives;
 using NoMercy.OpticalMedia.Live;
 using NoMercy.OpticalMedia.Metadata;
@@ -44,6 +43,7 @@ public class OpticalMediaController(
     DiscSourceFactory discSourceFactory,
     DiscIdentificationService identificationService,
     IDriveMonitor driveMonitor,
+    IDriveTray driveTray,
     IStorageDriver localStorageDriver,
     ILiveDiscSession liveDiscSession,
     ILiveStreamingService liveStreamingService,
@@ -144,7 +144,7 @@ public class OpticalMediaController(
         if (string.IsNullOrWhiteSpace(drivePath))
             return BadRequestResponse("Drive path is required");
 
-        bool success = Optical.OpenDrive(drivePath);
+        bool success = driveTray.Open(drivePath);
 
         if (!success)
             return BadRequestResponse("Failed to open drive");
@@ -159,7 +159,7 @@ public class OpticalMediaController(
         if (string.IsNullOrWhiteSpace(drivePath))
             return BadRequestResponse("Drive path is required");
 
-        bool success = Optical.CloseDrive(drivePath);
+        bool success = driveTray.Close(drivePath);
 
         if (!success)
             return BadRequestResponse("Failed to close drive");
