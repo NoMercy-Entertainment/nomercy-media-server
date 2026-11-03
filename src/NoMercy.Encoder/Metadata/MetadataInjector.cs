@@ -76,18 +76,22 @@ public class MetadataInjector : IMetadataInjector
         }
     }
 
+    /// <summary>
+    /// Always writes the disposition, including an explicit <c>0</c> when the
+    /// track is neither default nor forced. In copy mode ffmpeg keeps the
+    /// source disposition unless told otherwise, so leaving the flag out would
+    /// let a source "default" survive a library that says the track is not
+    /// default (issue #349).
+    /// </summary>
     private static void EmitDisposition(List<string> args, TrackMetadata track)
     {
-        if (track is { IsDefault: false, IsForced: false })
-            return;
-
         string dispSpec = DispositionSpec(track.Kind, track.OutputIndex);
         string value = (track.IsDefault, track.IsForced) switch
         {
             (true, true) => "default+forced",
             (true, false) => "default",
             (false, true) => "forced",
-            _ => string.Empty,
+            (false, false) => "0",
         };
 
         args.Add(dispSpec);
