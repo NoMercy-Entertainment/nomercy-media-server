@@ -48,7 +48,10 @@ public class EncoderProfilesControllerTests
         public EncodingPresetRepository Repository { get; }
         public EncoderProfilesController Controller { get; }
 
-        public Harness()
+        /// <param name="remoteProfileJson">
+        /// When set, every HTTPS fetch the import performs answers 200 with this body.
+        /// </param>
+        public Harness(string? remoteProfileJson = null)
         {
             _connection = new("DataSource=:memory:");
             _connection.Open();
@@ -61,10 +64,15 @@ public class EncoderProfilesControllerTests
 
             Repository = new(Context);
 
+            Mock<IHttpClientFactory> httpClientFactory = new();
+            httpClientFactory
+                .Setup(factory => factory.CreateClient(It.IsAny<string>()))
+                .Returns(() => new(new StubHttpMessageHandler(remoteProfileJson ?? string.Empty)));
+
             EncoderProfileService service = new(
                 Repository,
                 Mock.Of<IActivityLogger>(),
-                Mock.Of<IHttpClientFactory>(),
+                httpClientFactory.Object,
                 Context,
                 NullLogger<EncoderProfileService>.Instance
             );
@@ -97,6 +105,30 @@ public class EncoderProfilesControllerTests
             _connection.Dispose();
         }
     }
+
+    private sealed class StubHttpMessageHandler(string body) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken
+        ) =>
+            Task.FromResult(
+                new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(body),
+                }
+            );
+    }
+
+    private static readonly string ValidProfileJson =
+        "{\"Id\":\""
+        + Ulid.NewUlid()
+        + "\",\"Name\":\"Imported\",\"Container\":\"HlsTs\",\"Video\":null,"
+        + "\"Audio\":[{\"Policy\":\"Transcode\",\"Codec\":\"Aac\",\"BitrateKbps\":192,"
+        + "\"Channels\":2,\"SampleRateHz\":48000,\"AllowedLanguages\":[],"
+        + "\"DefaultLanguage\":null,\"Loudness\":null,\"Downmix\":null,"
+        + "\"SegmentNameTemplate\":\"audio\",\"PlaylistNameTemplate\":\"audio\"}],"
+        + "\"Subtitles\":[],\"SegmentDurationSeconds\":6}";
 
     private static EncodingPreset Preset(string name, string? tags = null) =>
         new()
@@ -187,6 +219,56 @@ public class EncoderProfilesControllerTests
 
         response.Should().BeOfType<ContentResult>();
         ExportedFileName(harness.Controller).Should().Be($"{preset.Id}.json");
+    }
+
+    // -------------------------------------------------------------------------
+    // Import
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task Import_SameProfileTwice_RefusesTheDuplicateNameAndKeepsOnePreset()
+    {
+        using Harness harness = new();
+        ImportProfileRequest request = new(ValidProfileJson, Url: null);
+
+        IActionResult first = await harness.Controller.Import(request, trust_unsigned: true);
+        IActionResult second = await harness.Controller.Import(request, trust_unsigned: true);
+
+        first.Should().BeOfType<CreatedAtActionResult>();
+        ObjectResult conflict = second.Should().BeAssignableTo<ObjectResult>().Subject;
+        conflict
+            .StatusCode.Should()
+            .Be(
+                StatusCodes.Status409Conflict,
+                "importing a profile whose name already exists must be refused like create refuses it"
+            );
+        conflict
+            .Value.Should()
+            .BeOfType<ProblemDetails>()
+            .Which.Detail.Should()
+            .Contain("Imported");
+        (await harness.Repository.GetTotalCountAsync())
+            .Should()
+            .Be(1, "the duplicate import must not store a second preset");
+    }
+
+    [Fact]
+    public async Task Import_FromUrl_RefusesANameThatAlreadyExists()
+    {
+        using Harness harness = new(remoteProfileJson: ValidProfileJson);
+        await harness.Repository.CreateAsync(Preset("Imported"));
+
+        IActionResult response = await harness.Controller.Import(
+            new(ProfileJson: null, Url: "https://example.com/profile.json"),
+            trust_unsigned: true
+        );
+
+        response
+            .Should()
+            .BeAssignableTo<ObjectResult>()
+            .Which.StatusCode.Should()
+            .Be(StatusCodes.Status409Conflict, "a URL import follows the same unique-name rule");
+        (await harness.Repository.GetTotalCountAsync()).Should().Be(1);
     }
 
     private static string ExportedFileName(EncoderProfilesController controller)

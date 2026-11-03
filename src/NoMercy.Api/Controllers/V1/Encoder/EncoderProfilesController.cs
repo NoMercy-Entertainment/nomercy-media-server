@@ -441,6 +441,9 @@ public class EncoderProfilesController(
         if (result.ValidationError is not null)
             return UnprocessableEntity(result.ValidationError);
 
+        if (result.IsConflict)
+            return ConflictResponse(result.ErrorMessage!);
+
         return CreatedAtAction(
             nameof(Import),
             new { id = result.Saved!.Id.ToString() },
