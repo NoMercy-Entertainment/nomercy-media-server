@@ -289,6 +289,34 @@ public class MusicHubActiveDeviceDisconnectTests : IClassFixture<NoMercyApiFacto
         }
     }
 
+    // Same guard as VideoHub: an unknown user's disconnect must still unregister
+    // the connection, or the device lingers in every device list.
+    [Fact]
+    public async Task MissingCachedUser_StillRemovesConnectionFromConnectedClients()
+    {
+        Guid userId = Guid.NewGuid();
+        string connectionId = Guid.NewGuid().ToString();
+        ConnectedClients connectedClients = _factory.GetConnectedClients();
+        connectedClients.Clients[connectionId] = MakeClient(userId, $"ghost-{Guid.NewGuid()}");
+
+        try
+        {
+            MusicHub hub = CreateHub(connectionId, userId);
+            await hub.OnDisconnectedAsync(null);
+
+            connectedClients
+                .Clients.Should()
+                .NotContainKey(
+                    connectionId,
+                    "the base hub cleanup must run even when the user is not cached"
+                );
+        }
+        finally
+        {
+            connectedClients.Clients.TryRemove(connectionId, out _);
+        }
+    }
+
     [Fact]
     public async Task LastConnectionOfActiveDevice_Disconnects_WhilePaused_OtherDeviceConnected_ReleasesActive_ButSessionSurvives()
     {
