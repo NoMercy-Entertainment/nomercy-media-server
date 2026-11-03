@@ -125,9 +125,9 @@ public class PluginBootScanTests : IDisposable
         if (File.Exists(manifestSrc))
             File.Copy(manifestSrc, Path.Combine(_echoPluginDir, "plugin.json"), overwrite: true);
 
-        // Recorded as an install records it, for the tests that load the
-        // folder without the boot scan, which records an unrecorded folder itself.
-        PluginFileManifest.WriteAsync(_echoPluginDir).GetAwaiter().GetResult();
+        // Recorded as an install records it: a folder the server never
+        // recorded is a manual drop, and the boot scan holds it for the owner.
+        InstalledPluginFolder.Record(_tempPluginsDir, _echoPluginDir);
     }
 
     [Fact]

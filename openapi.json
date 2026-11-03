@@ -4276,6 +4276,28 @@
         }
       }
     },
+    "/api/v1/dashboard/plugins/{id}/approve": {
+      "post": {
+        "tags": [
+          "Dashboard Server Plugins"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/dashboard/plugins/{id}/enable": {
       "post": {
         "tags": [

@@ -24,6 +24,7 @@ using NoMercy.NmSystem.Configuration;
 using NoMercy.NmSystem.Information;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Access;
+using NoMercy.PluginSdk.Approval;
 using NoMercy.PluginSdk.Browser;
 using NoMercy.PluginSdk.Capabilities;
 using NoMercy.PluginSdk.Dependencies;
@@ -590,6 +591,13 @@ public static class PluginServiceCollectionExtensions
             PlatformConfiguration(sp, pluginsPath)
         ));
 
+        // And so do the owner's approvals of hand-dropped plugin folders, for
+        // the same reason: whoever can write the folder must not be able to
+        // write its approval.
+        services.AddSingleton<IPluginApprovalStore>(sp => new ConfigPluginApprovalStore(
+            PlatformConfiguration(sp, pluginsPath)
+        ));
+
         // The library contracts default to the null objects declared in this
         // project. The host replaces them with the real ones — see
         // AddPluginLibraryAccess, called from the composition root, which is the
@@ -689,7 +697,8 @@ public static class PluginServiceCollectionExtensions
                 pluginId => sp.GetService<IPluginCronRegistrar>()?.RegisterPlugin(pluginId),
                 sp.GetRequiredService<PluginSideloadPolicy>(),
                 sp.GetRequiredService<PluginGuestInstaller>(),
-                sp.GetRequiredService<IPluginRegistry>()
+                sp.GetRequiredService<IPluginRegistry>(),
+                sp.GetRequiredService<IPluginApprovalStore>()
             );
         });
 

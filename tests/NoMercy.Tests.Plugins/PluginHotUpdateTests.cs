@@ -150,9 +150,9 @@ public class PluginHotUpdateTests : IDisposable
 
         File.WriteAllText(Path.Combine(_echoPluginDir, "plugin.json"), Manifest("1.0.0"));
 
-        // Recorded as an install records it: a load of an unrecorded folder is
-        // refused, and these tests are about what happens after the load.
-        PluginFileManifest.WriteAsync(_echoPluginDir).GetAwaiter().GetResult();
+        // Recorded as an install records it: an unrecorded folder is held for
+        // the owner, and these tests are about what happens after the load.
+        InstalledPluginFolder.Record(_pluginsDir, _echoPluginDir);
     }
 
     /// <summary>

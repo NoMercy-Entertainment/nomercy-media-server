@@ -29,6 +29,17 @@ public class PluginInfo
     /// </summary>
     public string? Malfunction { get; set; }
 
+    /// <summary>
+    /// Why this plugin waits for the owner's approval before it is loaded, in
+    /// the words the owner is shown. Null when nothing is waiting.
+    /// <para>
+    /// A plugin folder the server did not install itself, or one whose files
+    /// changed after the owner approved them, is registered but never mapped
+    /// into the process until the owner says so from the dashboard.
+    /// </para>
+    /// </summary>
+    public string? ApprovalReason { get; set; }
+
     public string? Author { get; init; }
     public string? ProjectUrl { get; init; }
 

@@ -154,9 +154,9 @@ public class PluginLoaderFailureFixtureTests : IDisposable
         foreach (string file in Directory.EnumerateFiles(binDir, "*.deps.json"))
             File.Copy(file, Path.Combine(pluginDir, Path.GetFileName(file)), overwrite: true);
 
-        // Recorded as an install records it, or the load refuses the folder
-        // before it reaches the failure a test stages.
-        PluginFileManifest.WriteAsync(pluginDir).GetAwaiter().GetResult();
+        // Recorded as an install records it, or the boot scan holds the folder
+        // for the owner before it reaches the failure a test stages.
+        InstalledPluginFolder.Record(_tempPluginsDir, pluginDir);
 
         return Path.Combine(pluginDir, "NoMercy.Plugin.Samples.Failures.dll");
     }
@@ -178,7 +178,7 @@ public class PluginLoaderFailureFixtureTests : IDisposable
             dest,
             overwrite: true
         );
-        PluginFileManifest.WriteAsync(pluginDir).GetAwaiter().GetResult();
+        InstalledPluginFolder.Record(_tempPluginsDir, pluginDir);
         return dest;
     }
 
@@ -617,6 +617,7 @@ public class PluginLoaderFailureFixtureTests : IDisposable
             }
             """
         );
+        await InstalledPluginFolder.RecordAsync(_tempPluginsDir, pluginDir);
 
         List<PluginErrorOccurredEvent> errors = [];
         _eventBus.Subscribe<PluginErrorOccurredEvent>(
@@ -672,6 +673,7 @@ public class PluginLoaderFailureFixtureTests : IDisposable
             }
             """
         );
+        await InstalledPluginFolder.RecordAsync(_tempPluginsDir, pluginDir);
 
         List<PluginErrorOccurredEvent> errors = [];
         _eventBus.Subscribe<PluginErrorOccurredEvent>(

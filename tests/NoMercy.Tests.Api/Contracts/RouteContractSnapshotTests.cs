@@ -406,6 +406,7 @@ public class RouteContractSnapshotTests : IClassFixture<NoMercyApiFactory>
         "POST api/v{version:apiVersion}/dashboard/plugins/{id:ulid}/capabilities [PluginCapability.Store]",
         "POST api/v{version:apiVersion}/dashboard/plugins/{id:ulid}/lan-devices [PluginLanDevice.Store]",
         "POST api/v{version:apiVersion}/plugins/{id:ulid}/view [PluginUi.Submit]",
+        "POST api/v{version:apiVersion}/dashboard/plugins/{id:ulid}/approve [Plugin.Approve]",
         "POST api/v{version:apiVersion}/dashboard/plugins/{id:ulid}/consent [Plugin.Consent]",
         "POST api/v{version:apiVersion}/dashboard/plugins/{id:ulid}/disable [Plugin.Disable]",
         "POST api/v{version:apiVersion}/dashboard/plugins/{id:ulid}/enable [Plugin.Enable]",
