@@ -2483,8 +2483,13 @@ namespace NoMercy.Database.Migrations
 
                     b.HasIndex("TvId");
 
-                    b.HasIndex("WatchProviderId", "CountryCode", "ProviderType", "MovieId", "TvId")
-                        .IsUnique();
+                    b.HasIndex("WatchProviderId", "CountryCode", "ProviderType", "MovieId")
+                        .IsUnique()
+                        .HasFilter("MovieId IS NOT NULL AND TvId IS NULL");
+
+                    b.HasIndex("WatchProviderId", "CountryCode", "ProviderType", "TvId")
+                        .IsUnique()
+                        .HasFilter("TvId IS NOT NULL AND MovieId IS NULL");
 
                     b.ToTable("WatchProviderMedia", t =>
                         {

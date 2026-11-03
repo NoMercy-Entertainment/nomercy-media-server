@@ -466,28 +466,17 @@ public class MovieRepository(MediaContext context) : IMovieRepository
             .RunAsync();
     }
 
-    public Task StoreWatchProviderMedias(List<WatchProviderMedia> watchProviderMedias)
+    public async Task StoreWatchProviderMedias(List<WatchProviderMedia> watchProviderMedias)
     {
-        return context
-            .WatchProviderMedia.UpsertRange(watchProviderMedias)
-            .On(v => new
-            {
-                v.WatchProviderId,
-                v.CountryCode,
-                v.ProviderType,
-                v.MovieId,
-                v.TvId,
-            })
-            .WhenMatched(
-                (ts, ti) =>
-                    new()
-                    {
-                        WatchProviderId = ti.WatchProviderId,
-                        MovieId = ti.MovieId,
-                        CountryCode = ti.CountryCode,
-                        ProviderType = ti.ProviderType,
-                    }
-            )
-            .RunAsync();
+        foreach (WatchProviderMedia row in watchProviderMedias)
+            await context.Database.ExecuteSqlAsync(
+                $"""
+                INSERT INTO WatchProviderMedia
+                    (Id, WatchProviderId, CountryCode, ProviderType, MovieId, Link)
+                VALUES
+                    ({row.Id.ToString()}, {row.WatchProviderId}, {row.CountryCode}, {row.ProviderType}, {row.MovieId}, {row.Link})
+                ON CONFLICT DO UPDATE SET Link = excluded.Link
+                """
+            );
     }
 }

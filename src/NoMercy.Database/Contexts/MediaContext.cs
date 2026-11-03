@@ -86,6 +86,30 @@ public class MediaContext : DbContext
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder
+            .Entity<WatchProviderMedia>()
+            .HasIndex(row => new
+            {
+                row.WatchProviderId,
+                row.CountryCode,
+                row.ProviderType,
+                row.MovieId,
+            })
+            .IsUnique()
+            .HasFilter("MovieId IS NOT NULL AND TvId IS NULL");
+
+        modelBuilder
+            .Entity<WatchProviderMedia>()
+            .HasIndex(row => new
+            {
+                row.WatchProviderId,
+                row.CountryCode,
+                row.ProviderType,
+                row.TvId,
+            })
+            .IsUnique()
+            .HasFilter("TvId IS NOT NULL AND MovieId IS NULL");
+
         modelBuilder.HasDbFunction(
             typeof(MediaContext).GetMethod(nameof(NormalizeSearch), [typeof(string)])!
         );
