@@ -169,6 +169,13 @@ public record ArtistResponseItemDto
                 .DistinctBy(artistTrack => artistTrack.Id)
                 .OrderBy(artistTrack => artistTrack.AlbumName)
                 .ThenBy(artistTrack => artistTrack.Disc)
+                .ThenBy(artistTrack => artistTrack.Track)
+                .GroupBy(artistTrack => UniqueNameKey(artistTrack.Name))
+                .Select(group =>
+                    group.FirstOrDefault(artistTrack => artistTrack.Favorite) ?? group.First()
+                )
+                .OrderBy(artistTrack => artistTrack.AlbumName)
+                .ThenBy(artistTrack => artistTrack.Disc)
                 .ThenBy(artistTrack => artistTrack.Track),
         ];
 
@@ -182,5 +189,14 @@ public record ArtistResponseItemDto
                 .ArtistTrack.Where(artistTrack => artistTrack.Track.TrackUser.Count > 0)
                 .Select(artistTrack => new FavoriteTrackDto(artistTrack, country!)),
         ];
+    }
+
+    // Letters and digits of any script, lowercased; falls back to the trimmed name
+    // when nothing is left so two different symbol-only names stay apart.
+    private static string UniqueNameKey(string name)
+    {
+        string key = new string(name.Where(char.IsLetterOrDigit).ToArray()).ToLowerInvariant();
+
+        return key.Length > 0 ? key : name.Trim().ToLowerInvariant();
     }
 }
