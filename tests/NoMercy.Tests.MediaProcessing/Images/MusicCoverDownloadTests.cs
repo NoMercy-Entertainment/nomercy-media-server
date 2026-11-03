@@ -155,15 +155,24 @@ public sealed class MusicCoverDownloadTests : IDisposable
         group.AlbumReleaseGroup.Add(new() { AlbumId = second.Id, Album = second });
         await _context.SaveChangesAsync();
         FanArtImagesJob job = new() { CoverFiles = new StubCoverFiles(downloadable: []) };
+        FanArtAlbum fanArt = FanArtAlbumFor(group.Id, "cover.jpg");
+        fanArt.Albums[group.Id].CdArt = [FanArtImage("disc.png")];
 
-        await job.StoreReleaseImages(_context, FanArtAlbumFor(group.Id, "cover.jpg"), group.Id);
+        await job.StoreReleaseImages(_context, fanArt, group.Id);
 
-        List<Guid?> albumIds = await _context
+        List<(string Type, Guid? AlbumId)> images = await _context
             .Images.AsNoTracking()
-            .Where(image => image.Type == "cover")
-            .Select(image => image.AlbumId)
+            .Where(image => image.Type == "cover" || image.Type == "cdArt")
+            .Select(image => new ValueTuple<string, Guid?>(image.Type, image.AlbumId))
             .ToListAsync();
-        albumIds.Should().BeEquivalentTo([first.Id, second.Id]);
+        images
+            .Should()
+            .BeEquivalentTo([
+                ("cover", first.Id),
+                ("cover", second.Id),
+                ("cdArt", first.Id),
+                ("cdArt", second.Id),
+            ]);
     }
 
     [Fact]
