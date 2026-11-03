@@ -14496,6 +14496,25 @@
           },
           "task_type": {
             "$ref": "#/components/schemas/EncodeTaskType"
+          },
+          "input_path": {
+            "type": "string",
+            "nullable": true
+          },
+          "source_duration_seconds": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "time_range_start_seconds": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
+          },
+          "time_range_duration_seconds": {
+            "type": "number",
+            "format": "double",
+            "nullable": true
           }
         },
         "additionalProperties": false
@@ -16315,6 +16334,14 @@
           },
           "discType": {
             "$ref": "#/components/schemas/OpticalDiscType"
+          },
+          "discLabel": {
+            "type": "string",
+            "nullable": true
+          },
+          "discTitle": {
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false
