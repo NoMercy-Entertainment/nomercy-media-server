@@ -35,19 +35,7 @@ public class EncodingPresetRepository(MediaContext context) : IEncodingPresetRep
         if (pageIndex < 0)
             pageIndex = 0;
 
-        IQueryable<EncodingPreset> query = context.EncodingPresets.AsNoTracking();
-
-        if (!string.IsNullOrWhiteSpace(tagFilter))
-        {
-            // Tags are stored as a comma-separated string (see model). Matching
-            // on substring is fine for now — the tag list is small and the
-            // column isn't indexed anyway. If the preset library grows past
-            // a few hundred entries we'd normalize into a join table.
-            string normalized = tagFilter.Trim().ToLower();
-            query = query.Where(p => p.Tags != null && p.Tags.ToLower().Contains(normalized));
-        }
-
-        return query
+        return ApplyTagFilter(context.EncodingPresets.AsNoTracking(), tagFilter)
             .OrderBy(p => p.IsBuiltIn ? 0 : 1)
             .ThenBy(p => p.Name)
             .ThenBy(p => p.Id)
@@ -130,5 +118,22 @@ public class EncodingPresetRepository(MediaContext context) : IEncodingPresetRep
     public Task<bool> HasChildrenAsync(Ulid id, CancellationToken ct = default) =>
         context.EncodingPresets.AsNoTracking().AnyAsync(p => p.ParentPresetId == id, ct);
 
-    public Task<int> GetTotalCountAsync() => context.EncodingPresets.CountAsync();
+    public Task<int> GetTotalCountAsync(string? tagFilter = null) =>
+        ApplyTagFilter(context.EncodingPresets.AsNoTracking(), tagFilter).CountAsync();
+
+    private static IQueryable<EncodingPreset> ApplyTagFilter(
+        IQueryable<EncodingPreset> query,
+        string? tagFilter
+    )
+    {
+        if (string.IsNullOrWhiteSpace(tagFilter))
+            return query;
+
+        // Tags are stored as a comma-separated string (see model). Matching
+        // on substring is fine for now — the tag list is small and the
+        // column isn't indexed anyway. If the preset library grows past
+        // a few hundred entries we'd normalize into a join table.
+        string normalized = tagFilter.Trim().ToLower();
+        return query.Where(p => p.Tags != null && p.Tags.ToLower().Contains(normalized));
+    }
 }

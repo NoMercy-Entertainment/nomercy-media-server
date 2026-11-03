@@ -151,6 +151,18 @@ public class EncodingPresetRepositoryTests : IDisposable
         Assert.Equal(before + 3, count);
     }
 
+    [Fact]
+    public async Task GetTotalCountAsync_WithTagFilter_CountsOnlyMatchingRows()
+    {
+        await _repository.CreateAsync(Build(name: "a", tags: "anime,1080p"));
+        await _repository.CreateAsync(Build(name: "b", tags: "archival"));
+        await _repository.CreateAsync(Build(name: "c"));
+
+        int count = await _repository.GetTotalCountAsync("anime");
+
+        Assert.Equal(1, count);
+    }
+
     public void Dispose()
     {
         _context.Dispose();
