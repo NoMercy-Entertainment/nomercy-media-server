@@ -136,6 +136,58 @@ public sealed class WatchProviderUniquenessMigrationTests
         Assert.Equal(1, await after.WatchProviderMedia.CountAsync());
     }
 
+    [Fact]
+    public async Task FailureAfterTheTableIsDroppedRollsBackToTheOldTable()
+    {
+        await using SqliteConnection connection = new("Data Source=:memory:");
+        await connection.OpenAsync();
+        DbContextOptions<MediaContext> options = new DbContextOptionsBuilder<MediaContext>()
+            .UseSqlite(connection)
+            .Options;
+
+        await using MediaContext context = new(options);
+        await context.GetService<IMigrator>().MigrateAsync(PreviousMigration);
+        Library library = new()
+        {
+            Id = Ulid.NewUlid(),
+            Title = "Library",
+            Type = "movie",
+        };
+        context.Libraries.Add(library);
+        context.Movies.Add(new Movie { Id = 1, Title = "Movie", LibraryId = library.Id });
+        context.WatchProviders.Add(new WatchProvider { Id = 7, Name = "Provider" });
+        await context.SaveChangesAsync();
+        await InsertRow(context, 1, null, "old");
+        await InsertRow(context, 1, null, "new");
+
+        // Taken by another table, so the last index create fails after the old table is gone.
+        await context.Database.ExecuteSqlRawAsync(
+            "CREATE INDEX IX_WatchProviderMedia_WatchProviderId_CountryCode_ProviderType_TvId ON WatchProviders (Name)"
+        );
+
+        await Assert.ThrowsAsync<SqliteException>(() => context.Database.MigrateAsync());
+
+        Assert.Equal(2, await context.WatchProviderMedia.CountAsync());
+        Assert.DoesNotContain("WatchProviderMedia_new", await TableNames(context));
+        Assert.DoesNotContain(
+            "20261103222056_FixWatchProviderUniqueness",
+            await context.Database.GetAppliedMigrationsAsync()
+        );
+    }
+
+    private static async Task<List<string>> TableNames(MediaContext context)
+    {
+        await using System.Data.Common.DbCommand command = context
+            .Database.GetDbConnection()
+            .CreateCommand();
+        command.CommandText = "SELECT name FROM sqlite_master WHERE type = 'table'";
+        List<string> names = [];
+        await using System.Data.Common.DbDataReader reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+            names.Add(reader.GetString(0));
+        return names;
+    }
+
     private static async Task<List<string>> IndexNames(MediaContext context)
     {
         await using System.Data.Common.DbCommand command = context
