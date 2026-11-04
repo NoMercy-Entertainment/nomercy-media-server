@@ -50,6 +50,10 @@ public class PluginHub(
         if (!Ulid.TryParse(pluginId, out Ulid id) || id == Ulid.Empty)
             return HubCommandResult.Invalid("Plugin id is invalid.");
 
+        PluginAccess granted = access.Resolve(id, Context.User.UserId());
+        if (granted == PluginAccess.None)
+            return HubCommandResult.Forbidden("Caller has no access to this plugin.");
+
         try
         {
             await Groups.AddToGroupAsync(Context.ConnectionId, GroupFor(id));

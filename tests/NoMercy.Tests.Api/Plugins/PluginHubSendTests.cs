@@ -89,6 +89,54 @@ public class PluginHubSendTests
     }
 
     [Fact]
+    public async Task A_caller_without_access_cannot_subscribe_to_plugin_events()
+    {
+        Mock<IGroupManager> groups = new();
+        PluginHub hub = Hub(
+            new CapturingRouter(),
+            PluginAccess.None,
+            new Mock<ISingleClientProxy>(),
+            groups
+        );
+
+        HubCommandResult result = await hub.Subscribe(Plugin.ToString());
+
+        result.Ok.Should().BeFalse();
+        result.ErrorCode.Should().Be("forbidden");
+        groups.Verify(
+            group =>
+                group.AddToGroupAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Never
+        );
+    }
+
+    [Theory]
+    [InlineData(PluginAccess.Owned)]
+    [InlineData(PluginAccess.Shared)]
+    public async Task A_caller_with_access_can_subscribe_to_plugin_events(PluginAccess granted)
+    {
+        Mock<IGroupManager> groups = new();
+        PluginHub hub = Hub(new CapturingRouter(), granted, new Mock<ISingleClientProxy>(), groups);
+
+        HubCommandResult result = await hub.Subscribe(Plugin.ToString());
+
+        result.Ok.Should().BeTrue();
+        groups.Verify(
+            group =>
+                group.AddToGroupAsync(
+                    "connection-1",
+                    PluginHub.GroupFor(Plugin),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Once
+        );
+    }
+
+    [Fact]
     public async Task The_message_carries_the_access_the_resolver_gave()
     {
         CapturingRouter router = new();
@@ -105,7 +153,8 @@ public class PluginHubSendTests
     private static PluginHub Hub(
         IPluginHubRouter router,
         PluginAccess access,
-        Mock<ISingleClientProxy> client
+        Mock<ISingleClientProxy> client,
+        Mock<IGroupManager>? groups = null
     )
     {
         Mock<IPluginAccessResolver> resolver = new();
@@ -149,6 +198,7 @@ public class PluginHubSendTests
         Mock<IHubCallerClients> clients = new();
         clients.Setup(c => c.Caller).Returns(client.Object);
         hub.Clients = clients.Object;
+        hub.Groups = (groups ?? new Mock<IGroupManager>()).Object;
 
         return hub;
     }
