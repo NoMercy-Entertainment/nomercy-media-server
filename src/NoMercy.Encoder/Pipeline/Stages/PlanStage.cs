@@ -929,6 +929,8 @@ public class PlanStage(
         );
 
         // Audio-only: skip video planning entirely when source has no video streams
+        (int displayWidth, int displayHeight) =
+            media.VideoStreams.Count > 0 ? media.VideoStreams[0].GetDisplayDimensions() : (0, 0);
         VideoOutputPlan[] videoPlan =
             media.VideoStreams.Count > 0 && videoOutputs.Length > 0
                 ? videoOutputs
@@ -941,8 +943,8 @@ public class PlanStage(
                             (int outputWidth, int outputHeight) =
                                 EncoderArgumentResolver.ResolveDimensions(
                                     v,
-                                    media.VideoStreams[0].Width,
-                                    media.VideoStreams[0].Height
+                                    displayWidth,
+                                    displayHeight
                                 );
 
                             Dictionary<string, string> extraFlags = new(

@@ -93,7 +93,9 @@ public static class AutoLadderExpander
                 .. ladder.Select(v => new LadderRung(
                     // v.Width null (or legacy 0) means "keep source width" —
                     // a ladder rung always carries a concrete resolution.
-                    Width: v.Width is int w and > 0 ? w : media.VideoStreams[0].Width,
+                    Width: v.Width is int w and > 0
+                        ? w
+                        : media.VideoStreams[0].GetDisplayDimensions().Width,
                     Height: v.Height ?? 0,
                     Codec: v.Codec,
                     BitrateKbps: v.BitrateKbps,

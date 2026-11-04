@@ -78,7 +78,8 @@ public sealed class DeviceBusRegistry(
             await BroadcastChange(owner.Value);
     }
 
-    public bool IsOnline(Ulid deviceId) => _live.ContainsKey(deviceId);
+    public bool IsOnline(Ulid deviceId) =>
+        _live.TryGetValue(deviceId, out WebSocket? ws) && ws.State == WebSocketState.Open;
 
     public async Task<bool> SendAsync(Ulid deviceId, object payload, CancellationToken ct = default)
     {
@@ -93,7 +94,11 @@ public sealed class DeviceBusRegistry(
 
     public void ForceClose(Ulid deviceId)
     {
-        if (_live.TryRemove(deviceId, out WebSocket? ws) && ws.State == WebSocketState.Open)
+        if (!_live.TryRemove(deviceId, out WebSocket? ws))
+            return;
+
+        _status.TryRemove(deviceId, out _);
+        if (ws.State == WebSocketState.Open)
             ws.Abort();
     }
 

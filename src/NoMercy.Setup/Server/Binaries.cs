@@ -50,6 +50,7 @@ public enum ServerUpdateResult
     UseContainerImage,
     RestartNeeded,
     NoAssetFound,
+    UsePackageManager,
 }
 
 public class Binaries
@@ -72,6 +73,8 @@ public class Binaries
     private readonly HashSet<string> _refusedSignatureAlerts = new(StringComparer.Ordinal);
 
     internal TimeSpan DownloadIdleTimeout { get; set; } = TimeSpan.FromMinutes(1);
+
+    internal string RunningDirectory { get; set; } = AppContext.BaseDirectory;
 
     private const string GithubMediaServerApiUrl =
         "https://api.github.com/repos/NoMercy-Entertainment/nomercy-media-server/releases/latest";
@@ -1366,6 +1369,14 @@ public class Binaries
                 $"Server update available: {currentVersion} -> {latestVersion} (pull the new container image to apply it)"
             );
             return ServerUpdateResult.UseContainerImage;
+        }
+
+        if (ServerUpdateStaging.IsPackageInstall(RunningDirectory))
+        {
+            Logger.Setup(
+                $"Server update available: {currentVersion} -> {latestVersion} (use the package manager to update)"
+            );
+            return ServerUpdateResult.UsePackageManager;
         }
 
         // Installer deployment: the installer handles updates, don't download to binaries path

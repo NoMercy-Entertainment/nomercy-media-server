@@ -53,7 +53,7 @@ public class LiveQualitySelectorTests
     // Helpers
     // ──────────────────────────────────────────────────────────────────────────
 
-    private static MediaInfo MakeMedia(int width, int height) =>
+    private static MediaInfo MakeMedia(int width, int height, int rotation = 0) =>
         new(
             FilePath: "/media/test.mkv",
             Format: "matroska,webm",
@@ -74,7 +74,8 @@ public class LiveQualitySelectorTests
                     ColorTransfer: "bt709",
                     ColorSpace: "bt709",
                     IsDefault: true,
-                    BitRateKbps: 15000
+                    BitRateKbps: 15000,
+                    Rotation: rotation
                 ),
             ],
             AudioStreams: [],
@@ -213,6 +214,30 @@ public class LiveQualitySelectorTests
         LiveQuality[] qualities = _gpuSelector.GetAvailableQualities(media, client, speeds, budget);
 
         qualities.Should().NotContain(q => q.Width > 1280);
+    }
+
+    [Theory]
+    [InlineData(1920, 1080, -90)]
+    [InlineData(1080, 1920, 0)]
+    public void PortraitSource_UsesPortraitQualityTiers(int width, int height, int rotation)
+    {
+        IHardwareCapabilities hardware = MakeGpuHardware();
+        MediaInfo media = MakeMedia(width, height, rotation);
+        ClientCapabilities client = MakeClient(maxWidth: 1920, maxHeight: 1080);
+        SpeedIndex speeds = MakeFastGpuSpeedIndex();
+        IResourceBudget budget = MakeBudget(hardware);
+
+        LiveQuality[] qualities = _gpuSelector.GetAvailableQualities(media, client, speeds, budget);
+        LiveQuality optimal = _gpuSelector.SelectOptimal(media, client, speeds, budget);
+
+        qualities.Should().OnlyContain(q => q.Width < q.Height);
+        qualities
+            .Should()
+            .Contain(q =>
+                q.Width == 1080 && q.Height == 1920 && q.Id == "1080p" && q.BitrateKbps == 8000
+            );
+        optimal.Width.Should().Be(1080);
+        optimal.Height.Should().Be(1920);
     }
 
     [Fact]

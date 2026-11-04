@@ -87,8 +87,7 @@ public static class FilterGraphAssembler
         if (mediaInfo is null || mediaInfo.VideoStreams.Count == 0)
             return null;
 
-        int sourceWidth = mediaInfo.VideoStreams[0].Width;
-        int sourceHeight = mediaInfo.VideoStreams[0].Height;
+        (int sourceWidth, int sourceHeight) = mediaInfo.VideoStreams[0].GetDisplayDimensions();
         bool sourceIs10Bit = mediaInfo.VideoStreams[0].BitDepth > 8;
         bool hasThumbnails = plan.Thumbnails is not null;
         bool sourceIsHdr = mediaInfo.VideoStreams[0].IsHdr;

@@ -284,9 +284,50 @@ public class MediaAnalyzer(IProcessRunner processRunner, IStorage storage, Encod
             BitRateKbps: ParseStreamBitrateKbps(stream),
             AverageFrameRate: avgFrameRate,
             RealFrameRate: realFrameRate,
+            Rotation: ParseRotation(stream),
             FieldOrder: stream.Value<string>("field_order"),
             SampleAspectRatio: stream.Value<string>("sample_aspect_ratio")
         );
+    }
+
+    private static int ParseRotation(JToken stream)
+    {
+        if (stream["side_data_list"] is JArray sideData)
+        {
+            foreach (JToken entry in sideData)
+            {
+                if (
+                    entry.Value<string>("side_data_type") == "Display Matrix"
+                    && TryParseRotation(entry["rotation"], out int rotation)
+                )
+                    return rotation;
+            }
+        }
+
+        return TryParseRotation(stream["tags"]?["rotate"], out int taggedRotation)
+            ? taggedRotation
+            : 0;
+    }
+
+    private static bool TryParseRotation(JToken? token, out int rotation)
+    {
+        rotation = 0;
+        if (
+            token is null
+            || !double.TryParse(
+                token.ToString(),
+                NumberStyles.Float,
+                CultureInfo.InvariantCulture,
+                out double angle
+            )
+            || !double.IsFinite(angle)
+            || angle < int.MinValue
+            || angle > int.MaxValue
+        )
+            return false;
+
+        rotation = (int)Math.Round(angle);
+        return true;
     }
 
     /// <summary>

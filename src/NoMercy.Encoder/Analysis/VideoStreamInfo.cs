@@ -31,6 +31,9 @@ public record VideoStreamInfo(
     string? SampleAspectRatio = null
 )
 {
+    public (int Width, int Height) GetDisplayDimensions() =>
+        Math.Abs(Rotation % 180) == 90 ? (Height, Width) : (Width, Height);
+
     // ffprobe reports sample_aspect_ratio as "num:den". Anamorphic content has
     // non-square pixels (SAR != 1:1) that MUST be squared on transcode or the
     // picture comes out stretched/squished. "0:1" is ffprobe's "unknown" and is
