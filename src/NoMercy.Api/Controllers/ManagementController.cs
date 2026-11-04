@@ -266,7 +266,8 @@ public class ManagementController(
                 Software.GetReleaseVersion(),
                 tempPath,
                 AppFiles.ServerExePath,
-                path => Software.GetFileVersion(storageDriver, path)
+                path => Software.GetFileVersion(storageDriver, path),
+                AppContext.BaseDirectory
             );
 
             if (check.DiscardedStaleVersion is not null)
@@ -301,6 +302,8 @@ public class ManagementController(
         {
             case StagingState.ContainerImage:
                 return Ok(ContainerImageResponse());
+            case StagingState.PackageManager:
+                return Ok(PackageManagerResponse());
 
             case StagingState.AlreadyStaged:
                 logger.LogInformation("Update already staged, skipping download.");
@@ -339,6 +342,9 @@ public class ManagementController(
 
             case ServerUpdateResult.UseContainerImage:
                 return Ok(ContainerImageResponse());
+
+            case ServerUpdateResult.UsePackageManager:
+                return Ok(PackageManagerResponse());
 
             case ServerUpdateResult.UseInstaller:
                 return Ok(
@@ -404,6 +410,15 @@ public class ManagementController(
             message = "This server runs in a container. Pull the new image to update it — "
                 + "a binary swap here cannot take effect.",
             use_container_image = true,
+            latest_version = updateStatus.LatestVersion,
+        };
+
+    private object PackageManagerResponse() =>
+        new
+        {
+            status = "ok",
+            message = "This is a package installation. Use your package manager to update.",
+            use_installer = true,
             latest_version = updateStatus.LatestVersion,
         };
 

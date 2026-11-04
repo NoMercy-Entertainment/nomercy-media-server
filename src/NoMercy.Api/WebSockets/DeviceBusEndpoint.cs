@@ -133,6 +133,7 @@ public sealed class DeviceBusEndpoint(
             && se.ValueKind == JsonValueKind.True;
 
         registry.UpdateStatus(device.Id, foreground, screenOn);
+        await deviceStateRepository.RefreshPresenceAsync(device.Id);
         if (device.OwnerUserId is not null)
             await registry.BroadcastChange(device.OwnerUserId.Value);
     }

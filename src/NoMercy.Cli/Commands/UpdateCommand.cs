@@ -95,10 +95,7 @@ internal static class UpdateCommand
                 }
 
                 if (downloadResponse.UseInstaller)
-                {
-                    Console.WriteLine("Run the installer to apply this update.");
                     return (int)ExitCode.Success;
-                }
 
                 string tempPath = AppFiles.ServerTempExePath;
                 string currentPath = AppFiles.ServerExePath;

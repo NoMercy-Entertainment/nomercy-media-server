@@ -141,6 +141,19 @@ public sealed class ServerUpdateDecisionTests : IDisposable
     }
 
     [Fact]
+    public async Task DownloadServerUpdate_PackageInstall_DefersToPackageManager()
+    {
+        Software.Version = new(1, 0, 0);
+        Binaries binaries = BuildBinaries(WithReleaseThen("v9.9.9", ServerAssets()));
+        binaries.RunningDirectory = "/opt/nomercy/";
+
+        ServerUpdateResult result = await binaries.DownloadServerUpdate();
+
+        result.Should().Be(ServerUpdateResult.UsePackageManager);
+        StagedBinaryExists().Should().BeFalse("a package install cannot run a staged binary");
+    }
+
+    [Fact]
     public async Task DownloadServerUpdate_NewerReleaseAvailable_DownloadsAndStages()
     {
         // The happy path: a genuinely newer release on a standalone deployment is fetched,

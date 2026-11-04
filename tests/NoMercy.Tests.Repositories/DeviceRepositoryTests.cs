@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Net.WebSockets;
 using FluentAssertions;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Data.Sqlite;
@@ -231,7 +232,10 @@ public class DeviceRepositoryTests : IDisposable
             Mock.Of<ICastMdnsRegistry>()
         );
 
-        await registry.Register(onlineDevice.Id, null!);
+        await registry.Register(
+            onlineDevice.Id,
+            Mock.Of<WebSocket>(socket => socket.State == WebSocketState.Open)
+        );
 
         await using MediaContext queryCtx = OpenContext();
         DeviceRepository repo = BuildRepo(queryCtx);

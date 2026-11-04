@@ -38,6 +38,8 @@ public interface IDeviceStateRepository
         string deviceType
     );
 
+    Task RefreshPresenceAsync(Ulid deviceId);
+
     /// <summary>
     /// Retires the unreachable rows an earlier identity of <paramref name="device"/> left
     /// behind. Returns true when any row was retired.
