@@ -27,6 +27,7 @@ public class MediaBlueprintWriter(IMediaBlueprintBuilder builder) : IMediaBluepr
     private static readonly JsonSerializerSettings SerializerSettings = new()
     {
         Formatting = Formatting.Indented,
+        DateParseHandling = DateParseHandling.None,
     };
 
     public async Task WriteAsync(

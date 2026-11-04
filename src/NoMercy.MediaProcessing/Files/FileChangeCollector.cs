@@ -179,6 +179,9 @@ public sealed partial class FileChangeCollector(
         string? oldFullPath = null
     )
     {
+        if (!library.Realtime)
+            return;
+
         // A download or upload finishing renames its temp file into place: new content.
         if (
             type == WatcherChangeTypes.Renamed
@@ -221,6 +224,12 @@ public sealed partial class FileChangeCollector(
             DateTimeOffset now = clock.GetUtcNow();
             foreach ((string folder, Pending pending) in _pending.ToList())
             {
+                if (!pending.Group.Library.Realtime)
+                {
+                    _pending.Remove(folder);
+                    continue;
+                }
+
                 if (now - pending.LastEvent < quiet)
                     continue;
 
@@ -270,6 +279,9 @@ public sealed partial class FileChangeCollector(
 
     private async Task PublishSafe(FileChangeGroup group)
     {
+        if (!group.Library.Realtime)
+            return;
+
         try
         {
             await publish(group);

@@ -128,6 +128,30 @@ internal static class RenameTestHelpers
 public class BundleSlugRenamerTests
 {
     [Fact]
+    public async Task Rename_PreservesFfprobeDateTagText()
+    {
+        TestStorage storage = new();
+        using MediaContext context = RenameTestHelpers.BuildInMemoryContext();
+        const string path = "Movie/.nomercy.json";
+        const string date = "2020-01-01T00:00:00.000000Z";
+        storage.Seed(
+            path,
+            Encoding.UTF8.GetBytes(
+                "{\"source\":{\"ffprobe\":{\"format\":{\"tags\":{\"creation_time\":\""
+                    + date
+                    + "\"}}}},\"encodes\":[{\"preset_slug\":\"old\"}]}"
+            )
+        );
+
+        await RenameTestHelpers
+            .BuildRenamer(new() { ["old"] = "new" }, storage, context)
+            .RunAsync();
+
+        string? rewritten = storage.ReadString(path);
+        rewritten.Should().Contain(date);
+    }
+
+    [Fact]
     public async Task HappyPath_RewritesPresetSlugInBlueprint()
     {
         TestStorage storage = new();

@@ -58,6 +58,12 @@ public static class FilterGraphAssembler
         // the GPU-resident path has no crop stage, so any cropped rung disqualifies it.
         && plan.VideoOutputs.All(v => string.IsNullOrWhiteSpace(v.CropFilter));
 
+    internal static bool UsesGpuResidentPath(OutputPlan plan, MediaInfo? mediaInfo) =>
+        UsesGpuResidentPath(plan)
+        && mediaInfo is { VideoStreams.Count: > 0 }
+        && !mediaInfo.VideoStreams[0].IsInterlaced
+        && !mediaInfo.VideoStreams[0].IsAnamorphic;
+
     public static string? BuildFilterGraph(
         OutputPlan plan,
         MediaInfo? mediaInfo,
@@ -161,7 +167,7 @@ public static class FilterGraphAssembler
         // the input) and scaled on the GPU. Eligibility guarantees no tonemap /
         // crop / burn-in, so every branch is just a GPU scale. Sprites need a CPU
         // download, so this path is skipped when thumbnails are requested.
-        if (UsesGpuResidentPath(plan) && !sourceIsInterlaced && !sourceIsAnamorphic)
+        if (UsesGpuResidentPath(plan, mediaInfo))
         {
             string scaleFilter = plan.GpuAccel!.ScaleFilter;
             if (videoOutputs.Length == 1)

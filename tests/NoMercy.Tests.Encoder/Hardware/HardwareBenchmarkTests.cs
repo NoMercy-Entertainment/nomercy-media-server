@@ -358,6 +358,30 @@ public class HardwareBenchmarkTests
     }
 
     [Fact]
+    public void BuildCalibrationArguments_IntelVaapi_InitializesDeviceAndUploadsFrames()
+    {
+        EncoderInfo vaapi = MakeSoftwareH264() with
+        {
+            FfmpegName = "h264_vaapi",
+            RequiredVendor = GpuVendor.Intel,
+        };
+
+        string[] args = CalibrationArgumentBuilder.BuildCalibrationArguments(
+            HardwareTarget(vaapi, "Intel GPU", vendorIndex: 0),
+            1920,
+            1080
+        );
+
+        int deviceIndex = Array.IndexOf(args, "-vaapi_device");
+        deviceIndex.Should().BeGreaterThan(-1);
+        args[deviceIndex + 1].Should().Be("/dev/dri/renderD128");
+        deviceIndex.Should().BeLessThan(Array.IndexOf(args, "-i"));
+        int filterIndex = Array.IndexOf(args, "-vf");
+        filterIndex.Should().BeGreaterThan(-1);
+        args[filterIndex + 1].Should().Be("format=nv12,hwupload");
+    }
+
+    [Fact]
     public void BuildCalibrationArguments_Software_DoesNotEmitHwInit()
     {
         string[] args = CalibrationArgumentBuilder.BuildCalibrationArguments(

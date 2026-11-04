@@ -338,7 +338,7 @@ public sealed partial class InboxClassifier
                 {
                     DetectedType = "movie",
                     Confidence = "high",
-                    Candidates = RankCandidates(movieHits),
+                    Candidates = [movieHits[0], .. RankCandidates([.. movieHits.Skip(1)])],
                 };
             }
 
@@ -368,7 +368,7 @@ public sealed partial class InboxClassifier
                 {
                     DetectedType = "tv",
                     Confidence = "high",
-                    Candidates = RankCandidates(tvHits),
+                    Candidates = [tvHits[0], .. RankCandidates([.. tvHits.Skip(1)])],
                 };
             }
 

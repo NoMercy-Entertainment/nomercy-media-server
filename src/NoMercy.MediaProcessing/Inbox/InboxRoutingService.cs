@@ -113,7 +113,7 @@ public class InboxRoutingService
         };
 
         bool isHighConfidence = classification.Confidence == "high";
-        bool hasSingleCandidate = classification.Candidates.Length >= 1;
+        bool hasSingleCandidate = classification.Candidates.Length == 1;
         bool hasSingleDestination = destinations.Count == 1;
 
         if (isHighConfidence && hasSingleCandidate && hasSingleDestination)
@@ -140,7 +140,7 @@ public class InboxRoutingService
     /// Carries out the auto-route: moves the source file into the destination folder,
     /// dispatches the matching import job, and updates InboxItem status.
     /// Same driver => MoveAsync within one IStorage scope.
-    /// Different driver => CopyAsync then verify then DeleteAsync.
+    /// Different driver => stream copy, verify size, then delete the source.
     /// Does NOT dispatch VideoEncodeJob — AutoEncodeSubscriber handles encoding
     /// after the import emits MediaFilesScannedEvent.
     /// </summary>
@@ -184,7 +184,20 @@ public class InboxRoutingService
         CancellationToken ct
     )
     {
-        item.Status = "Routing";
+        int? externalId = item.DetectedType switch
+        {
+            "movie" or "tv" or "anime" => int.Parse(match.ExternalId),
+            "music" => null,
+            _ => throw new InvalidOperationException(
+                $"No import job defined for detected type '{item.DetectedType}'"
+            ),
+        };
+
+        string previousStatus = item.Status;
+        Ulid? previousLibraryId = item.TargetLibraryId;
+        Ulid? previousFolderId = item.TargetFolderId;
+        Ulid? previousProfileId = item.TargetProfileId;
+        CandidateMatch? previousMatch = item.SelectedMatch;
 
         string fileName = GetFileName(item.SourcePath);
 
@@ -196,55 +209,78 @@ public class InboxRoutingService
             destination.FolderPath
         );
 
-        if (item.DriverId == destination.DriverId)
+        bool sameDriver = item.DriverId == destination.DriverId;
+        bool sourceMoved = false;
+        bool destinationWritten = false;
+        IStorage? sourceStorage = null;
+        string? destAbsolute = null;
+
+        try
         {
-            // Same driver: both paths are on the same filesystem. Use GetFullPath to
-            // obtain the absolute destination path, then move via the driver directly.
-            // item.SourcePath is already an absolute OS path; fileName is the leaf name
-            // that ResolveAgainstScopedRoot will join to the scoped root.
-            string destAbsolute = destStorage.GetFullPath(fileName);
-            string? destParent = Path.GetDirectoryName(destAbsolute);
-            if (!string.IsNullOrEmpty(destParent))
-                destStorage.Driver.CreateDirectory(destParent);
-            destStorage.Driver.MoveFile(item.SourcePath, destAbsolute);
+            if (sameDriver)
+            {
+                destAbsolute = destStorage.GetFullPath(fileName);
+                string? destParent = Path.GetDirectoryName(destAbsolute);
+                if (!string.IsNullOrEmpty(destParent))
+                    destStorage.Driver.CreateDirectory(destParent);
+                destStorage.Driver.MoveFile(item.SourcePath, destAbsolute);
+                sourceMoved = true;
+            }
+            else
+            {
+                sourceStorage = _storageFactory.For(Ulid.Empty, item.DriverId, string.Empty);
+                await using Stream source = await sourceStorage.OpenReadAsync(item.SourcePath, ct);
+                await using (Stream target = await destStorage.OpenWriteAsync(fileName, true, ct))
+                {
+                    destinationWritten = true;
+                    await source.CopyToAsync(target, ct);
+                }
+
+                long writtenSize = await destStorage.SizeAsync(fileName, ct);
+                long sourceSize = await sourceStorage.SizeAsync(item.SourcePath, ct);
+                if (writtenSize != sourceSize)
+                    throw new InvalidOperationException(
+                        $"Cross-driver copy size mismatch: source={sourceSize} destination={writtenSize}"
+                    );
+            }
+
+            string movedPath = destination.FolderPath.TrimEnd('/') + "/" + fileName;
+            DispatchImportJob(item.DetectedType, externalId, destination, movedPath);
+
+            item.Status = "Imported";
+            item.TargetLibraryId = destination.LibraryId;
+            item.TargetFolderId = destination.FolderId;
+            item.TargetProfileId =
+                destination.ProfileId == Ulid.Empty ? null : destination.ProfileId;
+            item.SelectedMatch = match;
+
+            if (context.Entry(item).State == EntityState.Detached)
+                context.InboxItems.Add(item);
+
+            await context.SaveChangesAsync(ct);
         }
-        else
+        catch
         {
-            IStorage sourceStorage = _storageFactory.For(Ulid.Empty, item.DriverId, string.Empty);
+            if (sourceMoved && destAbsolute is not null)
+                destStorage.Driver.MoveFile(destAbsolute, item.SourcePath);
+            if (destinationWritten)
+                await destStorage.DeleteAsync(fileName, CancellationToken.None);
 
-            byte[] bytes = await sourceStorage.ReadAsync(item.SourcePath, ct);
-            await destStorage.WriteAsync(fileName, bytes, ct);
+            item.Status = previousStatus;
+            item.TargetLibraryId = previousLibraryId;
+            item.TargetFolderId = previousFolderId;
+            item.TargetProfileId = previousProfileId;
+            item.SelectedMatch = previousMatch;
+            throw;
+        }
 
-            long writtenSize = await destStorage.SizeAsync(fileName, ct);
-            long sourceSize = await sourceStorage.SizeAsync(item.SourcePath, ct);
-
-            if (writtenSize != sourceSize)
-                throw new InvalidOperationException(
-                    $"Cross-driver copy size mismatch: source={sourceSize} destination={writtenSize}"
-                );
-
+        if (sourceStorage is not null)
             await sourceStorage.DeleteAsync(item.SourcePath, ct);
-        }
-
-        string movedPath = destination.FolderPath.TrimEnd('/') + "/" + fileName;
-
-        DispatchImportJob(item.DetectedType, match, destination, movedPath);
-
-        item.Status = "Imported";
-        item.TargetLibraryId = destination.LibraryId;
-        item.TargetFolderId = destination.FolderId;
-        item.TargetProfileId = destination.ProfileId == Ulid.Empty ? null : destination.ProfileId;
-        item.SelectedMatch = match;
-
-        if (context.Entry(item).State == EntityState.Detached)
-            context.InboxItems.Add(item);
-
-        await context.SaveChangesAsync(ct);
     }
 
     private void DispatchImportJob(
         string detectedType,
-        CandidateMatch topCandidate,
+        int? externalId,
         InboxDestination destination,
         string movedPath
     )
@@ -253,17 +289,14 @@ public class InboxRoutingService
         {
             case "movie":
                 _jobDispatcher.DispatchJob<MovieImportJob>(
-                    int.Parse(topCandidate.ExternalId),
+                    externalId!.Value,
                     destination.LibraryId
                 );
                 break;
 
             case "tv":
             case "anime":
-                _jobDispatcher.DispatchJob<ShowImportJob>(
-                    int.Parse(topCandidate.ExternalId),
-                    destination.LibraryId
-                );
+                _jobDispatcher.DispatchJob<ShowImportJob>(externalId!.Value, destination.LibraryId);
                 break;
 
             case "music":

@@ -138,6 +138,15 @@ public class FolderRepository(MediaContext context) : IFolderRepository
         return context.Folders.AsNoTracking().ToListAsync(ct);
     }
 
+    public Task<List<Folder>> GetStorageFoldersAsync(CancellationToken ct = default)
+    {
+        return context
+            .Folders.Include(folder => folder.FolderLibraries)
+                .ThenInclude(link => link.Library)
+            .AsNoTracking()
+            .ToListAsync(ct);
+    }
+
     /// <summary>
     /// Replaces the edited library's links to <paramref name="folders"/>.
     /// <para>

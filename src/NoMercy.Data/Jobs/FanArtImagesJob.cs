@@ -267,45 +267,49 @@ public class FanArtImagesJob : IShouldQueue, IJobStorageInjector
         Guid releaseGroupId
     )
     {
-        List<Image> covers = [];
-        List<Image> cdArts = [];
-        foreach ((Guid albumId, Albums albums) in fanArt.Albums)
-        {
-            covers.AddRange(
-                albums.Cover.Select(image => new Image
-                {
-                    AspectRatio = 1,
-                    Type = "cover",
-                    VoteCount = image.Likes,
-                    FilePath = "/" + image.Url.FileName(),
-                    AlbumId = albumId,
-                    Site = image.Url.BasePath(),
-                    Name = fanArt.Name,
-                })
-            );
-
-            cdArts.AddRange(
-                albums.CdArt.Select(image => new Image
-                {
-                    AspectRatio = 1,
-                    Type = "cdArt",
-                    VoteCount = image.Likes,
-                    FilePath = "/" + image.Url.FileName(),
-                    AlbumId = albumId,
-                    Site = image.Url.BasePath(),
-                    Name = fanArt.Name,
-                })
-            );
-        }
-
         ReleaseGroup dbRelease = await mediaContext
             .ReleaseGroups.Include(a => a.AlbumReleaseGroup)
                 .ThenInclude(a => a.Album)
             .FirstAsync(a => a.Id == releaseGroupId);
 
-        IEnumerable<Image> images = covers
-            .Concat(cdArts)
-            .Where(image => dbRelease.AlbumReleaseGroup.Any(ar => ar.AlbumId == image.AlbumId));
+        List<Image> covers = [];
+        List<Image> cdArts = [];
+        foreach ((Guid groupId, Albums albums) in fanArt.Albums)
+        {
+            if (groupId != releaseGroupId)
+                continue;
+
+            foreach (AlbumReleaseGroup albumRelease in dbRelease.AlbumReleaseGroup)
+            {
+                covers.AddRange(
+                    albums.Cover.Select(image => new Image
+                    {
+                        AspectRatio = 1,
+                        Type = "cover",
+                        VoteCount = image.Likes,
+                        FilePath = "/" + image.Url.FileName(),
+                        AlbumId = albumRelease.AlbumId,
+                        Site = image.Url.BasePath(),
+                        Name = fanArt.Name,
+                    })
+                );
+
+                cdArts.AddRange(
+                    albums.CdArt.Select(image => new Image
+                    {
+                        AspectRatio = 1,
+                        Type = "cdArt",
+                        VoteCount = image.Likes,
+                        FilePath = "/" + image.Url.FileName(),
+                        AlbumId = albumRelease.AlbumId,
+                        Site = image.Url.BasePath(),
+                        Name = fanArt.Name,
+                    })
+                );
+            }
+        }
+
+        IEnumerable<Image> images = covers.Concat(cdArts);
 
         string? albumCover = await CoverFiles.StoreFirstFanArtAsync(
             fanArt.Albums.Values.SelectMany(album => album.Cover).Select(image => image.Url)

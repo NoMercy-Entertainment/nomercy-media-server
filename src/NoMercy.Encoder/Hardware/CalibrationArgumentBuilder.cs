@@ -126,6 +126,13 @@ internal static class CalibrationArgumentBuilder
                     args.Add("-filter_hw_device");
                     args.Add("hw");
                 }
+                else if (
+                    target.Encoder.FfmpegName.Contains("_vaapi", StringComparison.OrdinalIgnoreCase)
+                )
+                {
+                    args.Add("-vaapi_device");
+                    args.Add("/dev/dri/renderD128");
+                }
                 break;
             case GpuVendor.Amd:
                 // AMF on Windows runs on CPU-side frames natively; on Linux
@@ -151,6 +158,11 @@ internal static class CalibrationArgumentBuilder
                     "_qsv",
                     StringComparison.OrdinalIgnoreCase
                 ) => "format=nv12,hwupload=extra_hw_frames=16",
+            GpuVendor.Intel
+                when target.Encoder.FfmpegName.Contains(
+                    "_vaapi",
+                    StringComparison.OrdinalIgnoreCase
+                ) => "format=nv12,hwupload",
             _ => null,
         };
 

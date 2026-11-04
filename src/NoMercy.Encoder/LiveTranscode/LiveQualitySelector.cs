@@ -138,14 +138,16 @@ public class LiveQualitySelector(ICodecResolver codecResolver, IHardwareCapabili
 
         // Filter by client capabilities
         IEnumerable<LiveQuality> allowed = candidates.Where(q =>
-            q.Width <= (client.MaxWidth ?? int.MaxValue)
-            && q.Height <= (client.MaxHeight ?? int.MaxValue)
-            && (
-                allowedCodecs is null
-                || allowedCodecs.Length == 0
-                || allowedCodecs.Contains(q.Codec)
-            )
-        );
+        {
+            VideoCodecCapability? capability = client.Video.FirstOrDefault(v => v.Codec == q.Codec);
+            return q.Width <= (capability?.MaxWidth ?? client.MaxWidth ?? int.MaxValue)
+                && q.Height <= (capability?.MaxHeight ?? client.MaxHeight ?? int.MaxValue)
+                && (
+                    allowedCodecs is null
+                    || allowedCodecs.Length == 0
+                    || allowedCodecs.Contains(q.Codec)
+                );
+        });
 
         // Pick highest CanRealtime quality
         LiveQuality? optimal = allowed

@@ -302,6 +302,52 @@ public class BuildStageFilterGraphTests
         filterValue.Should().NotContain("scale=1280:-2", "no CPU scale on the GPU-resident path");
     }
 
+    [Theory]
+    [InlineData("tt", null)]
+    [InlineData(null, "4:3")]
+    public async Task BuildStage_GpuPlanWithCpuSourceFilters_DecodesOnCpu(
+        string? fieldOrder,
+        string? sampleAspectRatio
+    )
+    {
+        OutputPlan outputPlan = new(
+            Format: OutputFormat.Hls,
+            VideoOutputs: [BuildVideoOutput(1280, 720, "[v0]", "h264_nvenc")],
+            AudioOutputs: [BuildAudioOutput()],
+            SubtitleOutputs: [],
+            Thumbnails: null,
+            GpuAccel: new("cuda", "cuda", "scale_cuda")
+        );
+        BuildInput input = new(
+            BuildPlan(outputPlan),
+            "/movies/test.mkv",
+            "/tmp/nmtest-output/test",
+            "Test.NoMercy"
+        );
+        MediaInfo mediaInfo = BuildMediaInfo(1920, 1080);
+        mediaInfo = mediaInfo with
+        {
+            VideoStreams =
+            [
+                mediaInfo.VideoStreams[0] with
+                {
+                    FieldOrder = fieldOrder,
+                    SampleAspectRatio = sampleAspectRatio,
+                },
+            ],
+        };
+        EncodingContext context = new(EncodingContext.Create().CorrelationId, mediaInfo);
+
+        StageResult result = await _stage.ExecuteAsync(input, context, default);
+
+        result.Should().BeOfType<StageSuccess<FfmpegCommand[]>>();
+        string[] args = ((StageSuccess<FfmpegCommand[]>)result).Value[0].Arguments;
+        args.Should().NotContain("-hwaccel");
+        args.Should().NotContain("-hwaccel_output_format");
+        string filter = args[Array.IndexOf(args, "-filter_complex") + 1];
+        filter.Should().NotContain("scale_cuda");
+    }
+
     // ------------------------------------------------------------------
     // Test 6: HDR source, one SDR rung + thumbnails → tonemap exactly once
     // (single full-res SDR intermediate feeds both the rung and the sprite)

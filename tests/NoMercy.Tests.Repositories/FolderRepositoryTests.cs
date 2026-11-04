@@ -393,6 +393,18 @@ public class FolderRepositoryTests : IDisposable
         result.Should().Contain(f => f.Path == "/media/movies");
     }
 
+    [Fact]
+    public async Task GetStorageFoldersAsync_LoadsLinkedLibraryTypes()
+    {
+        List<Folder> result = await _repository.GetStorageFoldersAsync();
+
+        Folder folder = result.Single(f => f.Path == "/media/movies");
+        folder.FolderLibraries.Should().NotBeEmpty();
+        folder
+            .FolderLibraries.Should()
+            .OnlyContain(link => !string.IsNullOrEmpty(link.Library.Type));
+    }
+
     // #414: a folder shared by two libraries. Saving the TV library used to
     // delete the folder's links of every library, so the movie library lost
     // the folder.

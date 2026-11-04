@@ -40,7 +40,35 @@ public sealed class FileChangeCollectorTests
     private readonly List<FileChangeGroup> _published = [];
     private readonly Dictionary<string, FileSignature?> _disk = new();
     private readonly FileChangeCollector _collector;
-    private readonly Library _movies = new() { Type = MediaTypes.MovieMediaType };
+    private readonly Library _movies = new() { Type = MediaTypes.MovieMediaType, Realtime = true };
+
+    [Fact]
+    public async Task Realtime_disabled_ignores_file_changes()
+    {
+        string file = Folder + "/Synthetic Movie.mkv";
+        _movies.Realtime = false;
+        Write(file, 5000);
+        _collector.Observe(_movies, WatcherChangeTypes.Created, file);
+
+        _clock.Advance(Quiet);
+        await _collector.TickAsync();
+
+        _published.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Turning_realtime_off_drops_a_pending_change()
+    {
+        string file = Folder + "/Synthetic Movie.mkv";
+        Write(file, 5000);
+        _collector.Observe(_movies, WatcherChangeTypes.Created, file);
+        _movies.Realtime = false;
+
+        _clock.Advance(Quiet);
+        await _collector.TickAsync();
+
+        _published.Should().BeEmpty();
+    }
 
     public FileChangeCollectorTests()
     {

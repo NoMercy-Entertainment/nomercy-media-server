@@ -142,6 +142,40 @@ public sealed class MusicCoverDownloadTests : IDisposable
         };
 
     [Fact]
+    public async Task FanArtJob_ReleaseGroupArt_CreatesCoverForEachRelease()
+    {
+        (ReleaseGroup group, Album first) = await SeedReleaseAsync(null);
+        Album second = new()
+        {
+            Id = Guid.NewGuid(),
+            Name = "Second release",
+            Library = null!,
+            LibraryFolder = null!,
+        };
+        group.AlbumReleaseGroup.Add(new() { AlbumId = second.Id, Album = second });
+        await _context.SaveChangesAsync();
+        FanArtImagesJob job = new() { CoverFiles = new StubCoverFiles(downloadable: []) };
+        FanArtAlbum fanArt = FanArtAlbumFor(group.Id, "cover.jpg");
+        fanArt.Albums[group.Id].CdArt = [FanArtImage("disc.png")];
+
+        await job.StoreReleaseImages(_context, fanArt, group.Id);
+
+        List<(string Type, Guid? AlbumId)> images = await _context
+            .Images.AsNoTracking()
+            .Where(image => image.Type == "cover" || image.Type == "cdArt")
+            .Select(image => new ValueTuple<string, Guid?>(image.Type, image.AlbumId))
+            .ToListAsync();
+        images
+            .Should()
+            .BeEquivalentTo([
+                ("cover", first.Id),
+                ("cover", second.Id),
+                ("cdArt", first.Id),
+                ("cdArt", second.Id),
+            ]);
+    }
+
+    [Fact]
     public async Task FanArtJob_Artist_FailedDownload_LeavesCoverUnchanged()
     {
         Artist artist = await SeedArtistAsync("/old.jpg");

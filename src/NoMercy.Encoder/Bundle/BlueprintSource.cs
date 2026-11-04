@@ -16,7 +16,7 @@ namespace NoMercy.Encoder.Bundle;
 
 /// <summary>
 /// The source's mux assembly spec — see spec Part 2. <see cref="Ffprobe"/> is
-/// stored verbatim and every <see cref="BlueprintTrack"/> joins into it by
+/// stored with its original JSON values, and every <see cref="BlueprintTrack"/> joins into it by
 /// <c>source_stream_index</c>.
 /// </summary>
 public record BlueprintSource(

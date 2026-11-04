@@ -18,6 +18,18 @@ namespace NoMercy.Tests.Encoder.Analysis;
 
 public class MediaAnalyzerTests
 {
+    [Fact]
+    public void ParseFfprobeJson_PreservesDateTagText()
+    {
+        const string date = "2020-01-01T00:00:00.000000Z";
+        MediaInfo info = MediaAnalyzer.ParseFfprobeJson(
+            "{\"streams\":[],\"format\":{\"tags\":{\"creation_time\":\"" + date + "\"}}}",
+            "/media/test.mp4"
+        );
+
+        info.Ffprobe!["format"]!["tags"]!["creation_time"]!.ToString().Should().Be(date);
+    }
+
     private static string LoadFixture(string name)
     {
         string path = Path.Combine(AppContext.BaseDirectory, "Analysis", "Fixtures", name);

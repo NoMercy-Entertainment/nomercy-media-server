@@ -137,7 +137,7 @@ public partial class ServerController(
 
     [HttpPost]
     [Route("stop")]
-    [Authorize(Policy = "Moderator")]
+    [Authorize(Policy = "Owner")]
     public IActionResult StopServer()
     {
         ApplicationLifetime.StopApplication();
@@ -162,7 +162,7 @@ public partial class ServerController(
 
     [HttpPost]
     [Route("restart")]
-    [Authorize(Policy = "Moderator")]
+    [Authorize(Policy = "Owner")]
     public IActionResult RestartServer()
     {
         return NotImplementedResponse("Restarting the server via the API is not implemented.");
@@ -176,7 +176,7 @@ public partial class ServerController(
 
     [HttpPost]
     [Route("shutdown")]
-    [Authorize(Policy = "Moderator")]
+    [Authorize(Policy = "Owner")]
     public IActionResult Shutdown()
     {
         ApplicationLifetime.StopApplication();
@@ -697,12 +697,90 @@ public partial class ServerController(
     [HttpGet]
     [Route("storage")]
     [Authorize(Policy = "Moderator")]
-    public IActionResult Storage()
+    public async Task<IActionResult> Storage()
     {
-        // StorageJob storageJob = new(StorageMonitor.Storage);
-        // JobDispatcher.Dispatch(storageJob, "data", 1000);
+        List<Folder> folders = await folderRepository.GetStorageFoldersAsync();
+        List<StorageDto> storage = [];
 
-        return Ok(StorageMonitor.Storage);
+        foreach (Folder folder in folders.Where(folder => folder.FolderLibraries.Count > 0))
+        {
+            List<StorageEntry> files;
+            try
+            {
+                IStorage folderStorage = storageFactory.For(
+                    folder.Id,
+                    folder.DriverId,
+                    folder.Path
+                );
+                files = folderStorage
+                    .List(string.Empty, pattern: null, recursive: true)
+                    .Where(entry => !entry.IsDirectory)
+                    .ToList();
+            }
+            catch (Exception exception)
+            {
+                logger.LogWarning(
+                    exception,
+                    "Could not read storage usage for {Folder}",
+                    folder.Path
+                );
+                continue;
+            }
+
+            string[] types = folder
+                .FolderLibraries.Select(link => link.Library.Type)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+            long used = files.Sum(entry => entry.SizeBytes);
+            long mediaBytes = 0;
+            if (types.Length == 1)
+            {
+                switch (types[0])
+                {
+                    case MediaTypes.MovieMediaType:
+                    case MediaTypes.TvMediaType:
+                    case MediaTypes.AnimeMediaType:
+                        mediaBytes = files
+                            .Where(entry =>
+                                Path.GetExtension(entry.Path).ToLowerInvariant()
+                                    is ".mp4"
+                                        or ".mkv"
+                                        or ".avi"
+                                        or ".webm"
+                                        or ".mov"
+                                        or ".m3u8"
+                            )
+                            .Sum(entry => entry.SizeBytes);
+                        break;
+                    case MediaTypes.MusicMediaType:
+                        mediaBytes = files
+                            .Where(entry =>
+                                Path.GetExtension(entry.Path).ToLowerInvariant()
+                                    is ".mp3"
+                                        or ".flac"
+                                        or ".opus"
+                                        or ".wav"
+                                        or ".m4a"
+                            )
+                            .Sum(entry => entry.SizeBytes);
+                        break;
+                }
+            }
+            Usage usage = new()
+            {
+                Used = used,
+                Movies = types is [MediaTypes.MovieMediaType] ? mediaBytes : 0,
+                Shows = types is [MediaTypes.TvMediaType] or [MediaTypes.AnimeMediaType]
+                    ? mediaBytes
+                    : 0,
+                Music = types is [MediaTypes.MusicMediaType] ? mediaBytes : 0,
+                Other = used - mediaBytes,
+            };
+
+            storage.Add(new() { Path = folder.Path, Data = usage });
+        }
+
+        return Ok(storage);
     }
 
     [HttpPost]
