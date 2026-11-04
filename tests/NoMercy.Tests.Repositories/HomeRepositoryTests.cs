@@ -14,6 +14,7 @@ using Microsoft.EntityFrameworkCore;
 using NoMercy.Data.Repositories;
 using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
+using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.Users;
 using NoMercy.Tests.Repositories.Infrastructure;
 
@@ -32,6 +33,34 @@ public class HomeRepositoryTests : IDisposable
         _context = TestMediaContextFactory.CreateSeededContext();
         (_factory, _factoryConnection) = TestMediaContextFactory.CreateFactory();
         _repository = new(_context, _factory);
+    }
+
+    [Fact]
+    public async Task GetScreensaverImagesAsync_IncludesLogoWithoutPalette()
+    {
+        _context.Images.AddRange(
+            new Image
+            {
+                MovieId = 129,
+                Type = "backdrop",
+                FilePath = "/backdrop.jpg",
+                Height = 1080,
+                ColorPalette = new() { Image = new() { Dominant = "#123456" } },
+            },
+            new Image
+            {
+                MovieId = 129,
+                Type = "logo",
+                Iso6391 = "en",
+                FilePath = "/logo.png",
+            }
+        );
+        await _context.SaveChangesAsync();
+
+        HashSet<Image> images = await _repository.GetScreensaverImagesAsync(SeedConstants.UserId);
+
+        Assert.Contains(images, image => image.Type == "backdrop");
+        Assert.Contains(images, image => image.Type == "logo" && image.ColorPalette is null);
     }
 
     [Fact]

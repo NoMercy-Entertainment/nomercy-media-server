@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
+using NoMercy.Database;
 
 namespace NoMercy.Api.DTOs.Media;
 
@@ -20,4 +21,7 @@ public record LogoDto
 
     [JsonProperty("src")]
     public string Src { get; set; } = string.Empty;
+
+    [JsonProperty("color_palette")]
+    public ColorPalette? ColorPalette { get; set; }
 }
