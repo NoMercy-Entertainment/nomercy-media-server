@@ -15,20 +15,19 @@ using Microsoft.Extensions.Logging;
 using NoMercy.Database;
 using NoMercy.MediaProcessing.Jobs;
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
-using NoMercy.NmSystem.Domain;
 
 namespace NoMercy.MediaProcessing.Libraries;
 
 /// <summary>
-/// Scans every music library once after the server has started, so files that another
-/// machine moved or removed while this server was down reach the Track rows. The scan
-/// is the same one a manual rescan runs; nothing repeats on a timer.
+/// Scans every library of every type once after the server has started, so files that
+/// another machine added, moved or removed while this server was down reach the database.
+/// The scan is the same one a manual rescan runs; nothing repeats on a timer.
 /// </summary>
-public sealed class MusicLibraryStartupScanService(
+public sealed class LibraryStartupScanService(
     IHostApplicationLifetime lifetime,
     IDbContextFactory<MediaContext> contextFactory,
     JobDispatcher jobDispatcher,
-    ILogger<MusicLibraryStartupScanService> logger
+    ILogger<LibraryStartupScanService> logger
 ) : BackgroundService
 {
     internal static readonly TimeSpan InitialGrace = TimeSpan.FromSeconds(30);
@@ -44,7 +43,7 @@ public sealed class MusicLibraryStartupScanService(
         catch (OperationCanceledException) { }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Startup scan of the music libraries failed");
+            logger.LogError(ex, "Startup scan of the libraries failed");
         }
     }
 
@@ -55,14 +54,13 @@ public sealed class MusicLibraryStartupScanService(
         );
         List<Ulid> libraryIds = await context
             .Libraries.AsNoTracking()
-            .Where(library => library.Type == MediaTypes.MusicMediaType)
             .Select(library => library.Id)
             .ToListAsync(cancellationToken);
 
         foreach (Ulid libraryId in libraryIds)
             jobDispatcher.DispatchJob<LibraryScanJob>(libraryId);
 
-        logger.LogInformation("Queued a startup scan for {Count} music library(ies)", libraryIds.Count);
+        logger.LogInformation("Queued a startup scan for {Count} library(ies)", libraryIds.Count);
     }
 
     private async Task WaitForApplicationStartedAsync(CancellationToken cancellationToken)
@@ -74,7 +72,8 @@ public sealed class MusicLibraryStartupScanService(
         await using CancellationTokenRegistration startedRegistration =
             lifetime.ApplicationStarted.Register(() => started.TrySetResult());
         await using CancellationTokenRegistration cancelRegistration = cancellationToken.Register(
-            () => started.TrySetCanceled(cancellationToken)
+            () =>
+                started.TrySetCanceled(cancellationToken)
         );
         await started.Task;
     }

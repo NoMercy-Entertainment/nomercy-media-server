@@ -342,7 +342,7 @@ public static partial class ServiceConfiguration
         // Update checker + periodic background check
         services.AddSingleton<IUpdateChecker, UpdateChecker>();
         services.AddHostedService<PeriodicUpdateCheckService>();
-        services.AddHostedService<MusicLibraryStartupScanService>();
+        services.AddHostedService<LibraryStartupScanService>();
         services.AddLibraryFileWatcher();
 
         // Connectivity manager (replaces ServerRegistrationService + CloudflareTunnelService).
@@ -638,6 +638,12 @@ public static partial class ServiceConfiguration
         // (validate), so its state must outlive any request scope.
         services.AddSingleton<ILiveIngestKeyStore, LiveIngestKeyStore>();
         services.AddScoped<ILiveTranscodeService, LiveTranscodeService>();
+        // Singleton: it remembers each live session's start across requests so
+        // the end entry, written when any teardown path fires, can match it.
+        services.AddSingleton<ILiveSessionActivity, LiveSessionActivityRecorder>();
+        services.AddSingleton<NoMercy.Encoder.LiveTranscode.ILiveSessionEndObserver>(sp =>
+            sp.GetRequiredService<ILiveSessionActivity>()
+        );
 
         // Palette pipeline — contract-based DI, dispatched by EntityType
         services.AddScoped<IPaletteSource, MoviePaletteSource>();
