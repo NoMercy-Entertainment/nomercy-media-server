@@ -28,7 +28,8 @@ public class LiveStreamingService(
     IStorage storage,
     ILiveSegmentInventory segmentInventory,
     ILiveSessionTransport? transport = null,
-    ISessionManager? sessionManager = null
+    ISessionManager? sessionManager = null,
+    ILiveSessionEndObserver? endObserver = null
 ) : ILiveStreamingService, IAsyncDisposable, IDisposable
 {
     private readonly ConcurrentDictionary<string, LiveRuntimeSession> _runtimes = new();
@@ -139,6 +140,18 @@ public class LiveStreamingService(
             if (_runtimes.TryRemove(sessionId, out LiveRuntimeSession? runtime))
             {
                 logger.LogInformation("Live session {SessionId} ended", sessionId);
+
+                if (endObserver is not null)
+                {
+                    try
+                    {
+                        await endObserver.OnSessionEndedAsync(sessionId).ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        logger.LogWarning(ex, "End observer failed for live session {SessionId}", sessionId);
+                    }
+                }
 
                 // Cascade to the per-language audio children so switching audio
                 // never outlives the video session it belongs to.
