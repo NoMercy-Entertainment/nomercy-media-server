@@ -499,6 +499,12 @@ public static class DatabaseSeeder
                 LogEventLevel.Verbose
             );
 
+            if (pendingMigrations.Contains("20261103222056_FixWatchProviderUniqueness"))
+                Logger.Setup(
+                    $"{contextName}: Upgrading the database: removing duplicate watch-provider rows. "
+                        + "This can take a few minutes on a large library; do not stop the server."
+                );
+
             string? dbPath = context.Database.GetDbConnection().DataSource;
             if (!string.IsNullOrEmpty(dbPath))
                 DatabaseBackupService.BackupBeforeMigration(dbPath, pendingMigrations.Count);
