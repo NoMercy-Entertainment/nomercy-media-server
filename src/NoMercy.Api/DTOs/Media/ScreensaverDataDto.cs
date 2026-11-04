@@ -37,7 +37,12 @@ public record ScreensaverDataDto
         Meta = new()
         {
             Logo = logo is not null
-                ? new LogoDto { AspectRatio = logo.AspectRatio, Src = logo.FilePath }
+                ? new LogoDto
+                {
+                    AspectRatio = logo.AspectRatio,
+                    Src = logo.FilePath,
+                    ColorPalette = logo.ColorPalette,
+                }
                 : null,
         };
     }

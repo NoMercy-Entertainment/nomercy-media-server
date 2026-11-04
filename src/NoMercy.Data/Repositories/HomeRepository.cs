@@ -562,7 +562,7 @@ public class HomeRepository(MediaContext context, IDbContextFactory<MediaContext
                 image.Movie!.Library.LibraryUsers.Any(u => u.UserId == userId)
                 || image.Tv!.Library.LibraryUsers.Any(u => u.UserId == userId)
             )
-            .Where(image => image._colorPalette != "")
+            .Where(image => image.Type == "logo" || image._colorPalette != "")
             .Where(image =>
                 (
                     image.Type == "backdrop"
