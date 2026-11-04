@@ -730,18 +730,26 @@ public record InfoResponseItemDto
 
         PeopleDto[] cast =
         [
-            .. collection
-                .CollectionMovies.SelectMany(collectionMovie => collectionMovie.Movie.Cast)
-                .Where(cast => cast.Person.Adult == false)
-                .Select(cast => new PeopleDto(cast)),
+            .. ByCreditOrder(
+                    collection
+                        .CollectionMovies.SelectMany(collectionMovie => collectionMovie.Movie.Cast)
+                        .Where(cast => cast.Person.Adult == false)
+                        .Select(cast => new PeopleDto(cast))
+                )
+                .GroupBy(people => people.Id)
+                .Select(group => group.First()),
         ];
 
         PeopleDto[] crew =
         [
-            .. collection
-                .CollectionMovies.SelectMany(collectionMovie => collectionMovie.Movie.Crew)
-                .Where(crew => crew.Person.Adult == false)
-                .Select(crew => new PeopleDto(crew)),
+            .. ByCreditOrder(
+                    collection
+                        .CollectionMovies.SelectMany(collectionMovie => collectionMovie.Movie.Crew)
+                        .Where(crew => crew.Person.Adult == false)
+                        .Select(crew => new PeopleDto(crew))
+                )
+                .GroupBy(people => people.Id)
+                .Select(group => group.First()),
         ];
 
         Cast = cast;
