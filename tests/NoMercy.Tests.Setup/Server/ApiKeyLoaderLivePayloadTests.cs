@@ -39,6 +39,7 @@ namespace NoMercy.Tests.Setup.Server;
 /// that nothing between the HTTP response and the store drops the value.
 /// </remarks>
 [Trait("Category", "Unit")]
+[Collection(ProcessWideSetupStateCollection.Name)]
 public sealed class ApiKeyLoaderLivePayloadTests : IDisposable
 {
     private readonly LocalStorageDriver _driver = new();
