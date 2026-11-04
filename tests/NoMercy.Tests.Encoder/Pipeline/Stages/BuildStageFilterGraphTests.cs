@@ -63,7 +63,7 @@ public class BuildStageFilterGraphTests
             OutputPlan: outputPlan
         );
 
-    private static MediaInfo BuildMediaInfo(int width, int height) =>
+    private static MediaInfo BuildMediaInfo(int width, int height, int rotation = 0) =>
         new(
             FilePath: "/movies/test.mkv",
             Format: "matroska",
@@ -84,7 +84,8 @@ public class BuildStageFilterGraphTests
                     ColorTransfer: null,
                     ColorSpace: null,
                     IsDefault: true,
-                    BitRateKbps: 6000
+                    BitRateKbps: 6000,
+                    Rotation: rotation
                 ),
             ],
             AudioStreams: [],
@@ -156,6 +157,34 @@ public class BuildStageFilterGraphTests
 
         string filterValue = commands[0].Arguments[filterComplexIdx + 1];
         filterValue.Should().Contain("copy");
+    }
+
+    [Fact]
+    public async Task BuildStage_RotatedSourceAtDisplayResolution_DoesNotScale()
+    {
+        OutputPlan outputPlan = new(
+            Format: OutputFormat.Hls,
+            VideoOutputs: [BuildVideoOutput(1080, 1920, "[v0]")],
+            AudioOutputs: [BuildAudioOutput()],
+            SubtitleOutputs: [],
+            Thumbnails: null
+        );
+
+        ExecutionPlan plan = BuildPlan(outputPlan);
+        BuildInput input = new(plan, "/movies/test.mkv", "/tmp/nmtest-output/test", "Test.NoMercy");
+        EncodingContext context = new(
+            EncodingContext.Create().CorrelationId,
+            BuildMediaInfo(1920, 1080, rotation: -90)
+        );
+
+        StageResult result = await _stage.ExecuteAsync(input, context, default);
+
+        StageSuccess<FfmpegCommand[]> success = Assert.IsType<StageSuccess<FfmpegCommand[]>>(
+            result
+        );
+        int filterIndex = Array.IndexOf(success.Value[0].Arguments, "-filter_complex");
+        string filterValue = success.Value[0].Arguments[filterIndex + 1];
+        filterValue.Should().Contain("copy").And.NotContain("scale=");
     }
 
     // ------------------------------------------------------------------

@@ -55,6 +55,8 @@ public class AbrLadderGenerator : IAbrLadderGenerator
             return [];
 
         VideoStreamInfo source = media.VideoStreams[0];
+        (int displayWidth, int displayHeight) = source.GetDisplayDimensions();
+        source = source with { Width = displayWidth, Height = displayHeight };
         double aspect = (double)source.Width / source.Height;
         double complexityScale = ComputeComplexityScale(source);
 
@@ -113,6 +115,8 @@ public class AbrLadderGenerator : IAbrLadderGenerator
             return [];
 
         VideoStreamInfo source = media.VideoStreams[0];
+        (int displayWidth, int displayHeight) = source.GetDisplayDimensions();
+        source = source with { Width = displayWidth, Height = displayHeight };
 
         // Source-rung injection: when the source's width doesn't match any named
         // tier and falls below the ladder's top tier, inject a source-sized rung.
