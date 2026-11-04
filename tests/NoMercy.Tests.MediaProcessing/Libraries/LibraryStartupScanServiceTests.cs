@@ -23,14 +23,14 @@ using NoMercy.NmSystem.Domain;
 
 namespace NoMercy.Tests.MediaProcessing.Libraries;
 
-/// <summary>The server scans each music library once at start, and no other library.</summary>
+/// <summary>The server scans every library once at start, not only the music ones.</summary>
 [Trait("Category", "Unit")]
-public sealed class MusicLibraryStartupScanServiceTests : IDisposable
+public sealed class LibraryStartupScanServiceTests : IDisposable
 {
     private readonly SqliteConnection _connection;
     private readonly DbContextOptions<MediaContext> _options;
 
-    public MusicLibraryStartupScanServiceTests()
+    public LibraryStartupScanServiceTests()
     {
         _connection = new("Data Source=:memory:");
         _connection.Open();
@@ -42,13 +42,35 @@ public sealed class MusicLibraryStartupScanServiceTests : IDisposable
     public void Dispose() => _connection.Dispose();
 
     [Fact]
-    public async Task Only_the_music_libraries_are_queued_for_a_scan()
+    public async Task Every_library_type_is_queued_for_a_scan()
     {
-        Library music = new() { Id = Ulid.NewUlid(), Title = "Music", Type = MediaTypes.MusicMediaType };
-        Library movies = new() { Id = Ulid.NewUlid(), Title = "Movies", Type = MediaTypes.MovieMediaType };
+        Library music = new()
+        {
+            Id = Ulid.NewUlid(),
+            Title = "Music",
+            Type = MediaTypes.MusicMediaType,
+        };
+        Library movies = new()
+        {
+            Id = Ulid.NewUlid(),
+            Title = "Movies",
+            Type = MediaTypes.MovieMediaType,
+        };
+        Library tv = new()
+        {
+            Id = Ulid.NewUlid(),
+            Title = "TV Shows",
+            Type = MediaTypes.TvMediaType,
+        };
+        Library anime = new()
+        {
+            Id = Ulid.NewUlid(),
+            Title = "Anime",
+            Type = MediaTypes.AnimeMediaType,
+        };
         await using (MediaContext context = new(_options))
         {
-            context.Libraries.AddRange(music, movies);
+            context.Libraries.AddRange(music, movies, tv, anime);
             await context.SaveChangesAsync();
         }
 
@@ -58,16 +80,18 @@ public sealed class MusicLibraryStartupScanServiceTests : IDisposable
             .ReturnsAsync(() => new(_options));
         Mock<JobDispatcher> dispatcher = new();
 
-        MusicLibraryStartupScanService service = new(
+        LibraryStartupScanService service = new(
             new Mock<IHostApplicationLifetime>().Object,
             factory.Object,
             dispatcher.Object,
-            NullLogger<MusicLibraryStartupScanService>.Instance
+            NullLogger<LibraryStartupScanService>.Instance
         );
 
         await service.DispatchScansAsync(CancellationToken.None);
 
         dispatcher.Verify(d => d.DispatchJob<LibraryScanJob>(music.Id), Times.Once);
-        dispatcher.Verify(d => d.DispatchJob<LibraryScanJob>(movies.Id), Times.Never);
+        dispatcher.Verify(d => d.DispatchJob<LibraryScanJob>(movies.Id), Times.Once);
+        dispatcher.Verify(d => d.DispatchJob<LibraryScanJob>(tv.Id), Times.Once);
+        dispatcher.Verify(d => d.DispatchJob<LibraryScanJob>(anime.Id), Times.Once);
     }
 }

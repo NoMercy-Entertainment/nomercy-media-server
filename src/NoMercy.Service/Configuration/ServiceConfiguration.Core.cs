@@ -342,7 +342,7 @@ public static partial class ServiceConfiguration
         // Update checker + periodic background check
         services.AddSingleton<IUpdateChecker, UpdateChecker>();
         services.AddHostedService<PeriodicUpdateCheckService>();
-        services.AddHostedService<MusicLibraryStartupScanService>();
+        services.AddHostedService<LibraryStartupScanService>();
         services.AddLibraryFileWatcher();
 
         // Connectivity manager (replaces ServerRegistrationService + CloudflareTunnelService).
