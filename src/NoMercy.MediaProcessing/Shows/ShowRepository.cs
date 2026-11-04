@@ -542,28 +542,17 @@ public class ShowRepository(MediaContext context) : IShowRepository
             .RunAsync();
     }
 
-    public Task StoreWatchProviderMedias(List<WatchProviderMedia> watchProviderMedias)
+    public async Task StoreWatchProviderMedias(List<WatchProviderMedia> watchProviderMedias)
     {
-        return context
-            .WatchProviderMedia.UpsertRange(watchProviderMedias.ToArray())
-            .On(v => new
-            {
-                v.WatchProviderId,
-                v.CountryCode,
-                v.ProviderType,
-                v.MovieId,
-                v.TvId,
-            })
-            .WhenMatched(
-                (ts, ti) =>
-                    new()
-                    {
-                        WatchProviderId = ti.WatchProviderId,
-                        TvId = ti.TvId,
-                        ProviderType = ti.ProviderType,
-                        CountryCode = ti.CountryCode,
-                    }
-            )
-            .RunAsync();
+        foreach (WatchProviderMedia row in watchProviderMedias)
+            await context.Database.ExecuteSqlAsync(
+                $"""
+                INSERT INTO WatchProviderMedia
+                    (Id, WatchProviderId, CountryCode, ProviderType, TvId, Link)
+                VALUES
+                    ({row.Id.ToString()}, {row.WatchProviderId}, {row.CountryCode}, {row.ProviderType}, {row.TvId}, {row.Link})
+                ON CONFLICT DO UPDATE SET Link = excluded.Link
+                """
+            );
     }
 }
