@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.Api.DTOs.Media;
+using NoMercy.Database.Models.Common;
 using NoMercy.Database.Models.Movies;
 using NoMercy.Database.Models.People;
 using NoMercy.Database.Models.TvShows;
@@ -185,5 +186,52 @@ public class InfoResponseItemDtoTests
 
         Assert.Equal([11, 12, 10], dto.Cast.Select(people => people.Id).ToArray());
         Assert.Equal([21, 22, 20], dto.Crew.Select(people => people.Id).ToArray());
+    }
+
+    private static Movie BuildCollectionMemberMovie(int movieId, Cast[] cast, Crew[] crew)
+    {
+        return new()
+        {
+            Id = movieId,
+            Title = $"Movie {movieId}",
+            ReleaseDate = new(2020, 1, 1),
+            Cast = cast,
+            Crew = crew,
+            CertificationMovies =
+            [
+                new()
+                {
+                    Certification = new() { Iso31661 = "US", Rating = "PG-13" },
+                },
+            ],
+        };
+    }
+
+    [Fact]
+    public void Ctor_FromCollection_SortsAndDeduplicatesCastAndCrewAcrossMovies()
+    {
+        Movie movieA = BuildCollectionMemberMovie(
+            1,
+            [BuildCast(100, 5), BuildCast(101, 1)],
+            [BuildCrew(200, 5), BuildCrew(201, 1)]
+        );
+
+        Movie movieB = BuildCollectionMemberMovie(
+            2,
+            [BuildCast(100, 0), BuildCast(102, 2)],
+            [BuildCrew(200, 0), BuildCrew(202, 2)]
+        );
+
+        Collection collection = new()
+        {
+            Id = 1,
+            Title = "Collection",
+            CollectionMovies = [new() { Movie = movieA }, new() { Movie = movieB }],
+        };
+
+        InfoResponseItemDto dto = new(collection, "US");
+
+        Assert.Equal([100, 101, 102], dto.Cast.Select(people => people.Id).ToArray());
+        Assert.Equal([200, 201, 202], dto.Crew.Select(people => people.Id).ToArray());
     }
 }
