@@ -12,6 +12,8 @@
 using System.Text;
 using Newtonsoft.Json;
 using NoMercy.Encoder.Bundle;
+using NoMercy.Encoder.Codecs;
+using NoMercy.Encoder.Codecs.Definitions;
 using NoMercy.Encoder.Decomposition;
 using NoMercy.Encoder.PostProcess;
 using NoMercy.Encoder.Profiles;
@@ -87,9 +89,9 @@ public class EncodeReconciler : IEncodeReconciler
             );
 
         List<EncodeTaskKind> missingKinds = [];
-        if (desiredVideo && !HasValidUnder(existing.BundleFiles, "video_"))
+        if (desiredVideo && !HasValidVideoForProfile(profile, existing.BundleFiles))
             missingKinds.Add(EncodeTaskKind.Video);
-        if (desiredAudio && !HasValidUnder(existing.BundleFiles, "audio_"))
+        if (desiredAudio && !HasValidAudioForProfile(profile, existing.BundleFiles))
             missingKinds.Add(EncodeTaskKind.Audio);
         if (desiredSubtitle && !HasValidDeclaredSubtitle(existing.BundleFiles))
             missingKinds.Add(EncodeTaskKind.Subtitle);
@@ -363,6 +365,66 @@ public class EncodeReconciler : IEncodeReconciler
         files.Any(f =>
             f.IsValid && f.RelativePath.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
         );
+
+    /// <summary>Scopes the video check to this profile's own frame size(s);
+    /// falls back to the bare prefix when none is known statically (a "keep
+    /// source" CRF preset, or an Auto ladder).</summary>
+    private static bool HasValidVideoForProfile(
+        EncodingProfile profile,
+        IReadOnlyCollection<ExistingOutputEntry> files
+    )
+    {
+        List<string> frameSizes = ExpectedVideoFrameSizes(profile);
+        return frameSizes.Count == 0
+            ? HasValidUnder(files, "video_")
+            : frameSizes.Any(size => HasValidUnder(files, $"video_{size}"));
+    }
+
+    private static List<string> ExpectedVideoFrameSizes(EncodingProfile profile)
+    {
+        List<string> sizes = [];
+        if (profile.Video is { Width: int w, Height: int h })
+            sizes.Add($"{w}x{h}");
+
+        if (profile.Ladder?.Rungs is { Length: > 0 } rungs)
+            sizes.AddRange(rungs.Select(r => $"{r.Width}x{r.Height}"));
+
+        return sizes;
+    }
+
+    /// <summary>Scoped only where the codec is statically known (Transcode);
+    /// a Copy output resolves to the SOURCE codec at encode time, so two
+    /// presets copying the same source deliberately share one rendition.</summary>
+    private static bool HasValidAudioForProfile(
+        EncodingProfile profile,
+        IReadOnlyCollection<ExistingOutputEntry> files
+    ) =>
+        profile.Audio.Any(audio =>
+            audio.Policy == StreamPolicy.Copy
+                ? HasValidUnder(files, "audio_")
+                : HasValidAudioRendition(files, AudioCodecToken(audio.Codec))
+        );
+
+    /// <summary>Mirrors <c>OutputPlan.CodecToken</c> for a Transcode-policy
+    /// output, whose codec is fixed by the profile rather than the source.</summary>
+    private static string AudioCodecToken(AudioCodecType codec) =>
+        AudioCodecDefinitions
+            .GetEncoder(codec)
+            .FfmpegName.Replace("libfdk_", "")
+            .Replace("lib", "");
+
+    private static bool HasValidAudioRendition(
+        IReadOnlyCollection<ExistingOutputEntry> files,
+        string codecToken
+    ) => files.Any(f => f.IsValid && FirstSegmentEndsWithCodec(f.RelativePath, codecToken));
+
+    private static bool FirstSegmentEndsWithCodec(string relativePath, string codecToken)
+    {
+        int slash = relativePath.IndexOf('/');
+        string firstSegment = slash < 0 ? relativePath : relativePath[..slash];
+        return firstSegment.StartsWith("audio_", StringComparison.OrdinalIgnoreCase)
+            && firstSegment.EndsWith($"_{codecToken}", StringComparison.OrdinalIgnoreCase);
+    }
 
     /// <summary>Whether the subtitle pass produced anything at all. An OCR
     /// sidecar is indistinguishable from a declared one by name (deliberately —

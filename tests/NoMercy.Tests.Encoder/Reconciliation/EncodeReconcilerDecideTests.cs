@@ -453,9 +453,96 @@ public class EncodeReconcilerDecideTests
             );
     }
 
+    // Two presets on one file share the same ExistingOutputSnapshot; a bare
+    // "video_" prefix match satisfied either preset from the other's files.
+
+    [Fact]
+    public void Decide_ReturnsFull_WhenOnlyASiblingPresetsVideoSurvivesOnTheSharedRoot()
+    {
+        EncodingProfile preset1080p = MakeLibraryProfile("1080p HEVC 10-bit", 1920, 1080);
+
+        // Only the 4K sibling preset's own rung, audio, and playlist are left
+        // on disk — exactly Stoney's report: the 1080p rendition was deleted
+        // by hand, but the shared root still carries the 4K preset's output.
+        List<ExistingOutputEntry> sharedRootFiles =
+        [
+            new("web-1080p_master.m3u8", 500),
+            new("video_3840x2160/video_3840x2160.m3u8", 300),
+            new("audio_eng_aac/audio_eng_aac.m3u8", 200),
+        ];
+        ExistingOutputSnapshot existing = new(
+            ProfileFingerprint.Compute(preset1080p),
+            sharedRootFiles,
+            ValidOcrSidecarCount: 0
+        );
+
+        ReconciliationDecision decision = _reconciler.Decide(
+            new(preset1080p, IsSingleFileOutput: false, BitmapSubtitleStreamCount: 0, existing)
+        );
+
+        decision
+            .Action.Should()
+            .NotBe(
+                ReconciliationAction.Skip,
+                "the 1080p preset's own rung is missing — the 4K sibling's leftovers must not satisfy it"
+            );
+        decision.MissingKinds.Should().Contain(EncodeTaskKind.Video);
+    }
+
+    [Fact]
+    public void Decide_ReturnsSkip_ForTheSiblingPreset_WhenItsOwnOutputReallyIsComplete_RegressionGuard()
+    {
+        // Counterpart to the test above, on the same shared-root snapshot: the
+        // 4K preset's own rung really is present, so its reconciliation must
+        // still Skip. The fix must narrow the match, not break it.
+        EncodingProfile preset4k = MakeLibraryProfile("4K HDR HEVC 10-bit", 3840, 2160);
+
+        List<ExistingOutputEntry> sharedRootFiles =
+        [
+            new("web-1080p_master.m3u8", 500),
+            new("video_3840x2160/video_3840x2160.m3u8", 300),
+            new("audio_eng_aac/audio_eng_aac.m3u8", 200),
+        ];
+        ExistingOutputSnapshot existing = new(
+            ProfileFingerprint.Compute(preset4k),
+            sharedRootFiles,
+            ValidOcrSidecarCount: 0
+        );
+
+        ReconciliationDecision decision = _reconciler.Decide(
+            new(preset4k, IsSingleFileOutput: false, BitmapSubtitleStreamCount: 0, existing)
+        );
+
+        decision.Action.Should().Be(ReconciliationAction.Skip);
+        decision.MissingKinds.Should().BeEmpty();
+    }
+
     // ------------------------------------------------------------------
     // Fixtures
     // ------------------------------------------------------------------
+
+    private static EncodingProfile MakeLibraryProfile(string name, int width, int height) =>
+        new(
+            Id: Ulid.NewUlid(),
+            Name: name,
+            Container: Container.HlsFmp4,
+            Video: MakeVideoOutput() with
+            {
+                Width = width,
+                Height = height,
+            },
+            Audio: [MakeAudioOutput()],
+            Subtitles: []
+        )
+        {
+            Thumbnails = null,
+            HlsDerivatives = new()
+            {
+                GenerateSpriteVtt = false,
+                GenerateMasterPlaylist = false,
+                GenerateChapters = false,
+            },
+        };
 
     private static List<ExistingOutputEntry> FilesWithoutChapters() =>
         [.. AllPresentFiles().Where(f => f.RelativePath != "chapters.vtt")];
