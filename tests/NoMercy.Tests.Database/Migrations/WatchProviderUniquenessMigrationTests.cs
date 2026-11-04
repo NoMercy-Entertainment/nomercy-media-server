@@ -79,6 +79,77 @@ public sealed class WatchProviderUniquenessMigrationTests
         await Assert.ThrowsAsync<SqliteException>(() => InsertRow(after, null, 2, "duplicate"));
     }
 
+    [Fact]
+    public async Task UpgradeLosesNoOtherRowAndKeepsTheTableShape()
+    {
+        await using SqliteConnection connection = new("Data Source=:memory:");
+        await connection.OpenAsync();
+        DbContextOptions<MediaContext> options = new DbContextOptionsBuilder<MediaContext>()
+            .UseSqlite(connection)
+            .Options;
+
+        await using (MediaContext before = new(options))
+        {
+            await before.GetService<IMigrator>().MigrateAsync(PreviousMigration);
+            Library library = new()
+            {
+                Id = Ulid.NewUlid(),
+                Title = "Library",
+                Type = "movie",
+            };
+            before.Libraries.Add(library);
+            before.Movies.Add(new Movie { Id = 1, Title = "Movie", LibraryId = library.Id });
+            before.Tvs.Add(new Tv { Id = 2, Title = "Show", LibraryId = library.Id });
+            before.WatchProviders.Add(new WatchProvider { Id = 7, Name = "Provider" });
+            await before.SaveChangesAsync();
+
+            await InsertRow(before, 1, null, "old");
+            await InsertRow(before, 1, null, "new");
+            await InsertRow(before, null, 2, "show");
+            await InsertRow(before, 1, 2, "both");
+            await before.Database.ExecuteSqlAsync(
+                $"""
+                INSERT INTO WatchProviderMedia (Id, WatchProviderId, CountryCode, ProviderType, MovieId, TvId, Link)
+                VALUES ({Ulid.NewUlid().ToString()}, {7}, {"NL"}, {"flatrate"}, {1}, {null as int?}, {"other country"})
+                """
+            );
+        }
+
+        await using MediaContext after = new(options);
+        await after.Database.MigrateAsync();
+
+        List<string?> links = (await after.WatchProviderMedia.AsNoTracking().ToListAsync())
+            .Select(row => row.Link)
+            .Order()
+            .ToList();
+        Assert.Equal(new string?[] { "both", "new", "other country", "show" }, links);
+
+        List<string> indexes = await IndexNames(after);
+        Assert.Contains("IX_WatchProviderMedia_MovieId", indexes);
+        Assert.Contains("IX_WatchProviderMedia_TvId", indexes);
+        Assert.Equal(
+            2,
+            indexes.Count(name => name.Contains("ProviderType_", StringComparison.Ordinal))
+        );
+
+        await after.Database.ExecuteSqlAsync($"DELETE FROM Movies WHERE Id = {1}");
+        Assert.Equal(1, await after.WatchProviderMedia.CountAsync());
+    }
+
+    private static async Task<List<string>> IndexNames(MediaContext context)
+    {
+        await using System.Data.Common.DbCommand command = context
+            .Database.GetDbConnection()
+            .CreateCommand();
+        command.CommandText =
+            "SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = 'WatchProviderMedia' AND name LIKE 'IX_%'";
+        List<string> names = [];
+        await using System.Data.Common.DbDataReader reader = await command.ExecuteReaderAsync();
+        while (await reader.ReadAsync())
+            names.Add(reader.GetString(0));
+        return names;
+    }
+
     private static Task<int> InsertRow(
         MediaContext context,
         int? movieId,

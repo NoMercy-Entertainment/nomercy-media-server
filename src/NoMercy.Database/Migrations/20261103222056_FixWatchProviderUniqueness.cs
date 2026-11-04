@@ -20,28 +20,61 @@ namespace NoMercy.Database.Migrations
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
         {
+            // Rebuild instead of DELETE: a live install holds millions of duplicates.
             migrationBuilder.Sql(
                 """
-                DELETE FROM WatchProviderMedia
-                WHERE MovieId IS NOT NULL AND TvId IS NULL
-                  AND rowid NOT IN (
-                      SELECT MAX(rowid) FROM WatchProviderMedia
-                      WHERE MovieId IS NOT NULL AND TvId IS NULL
-                      GROUP BY WatchProviderId, CountryCode, ProviderType, MovieId
-                  );
-                DELETE FROM WatchProviderMedia
-                WHERE TvId IS NOT NULL AND MovieId IS NULL
-                  AND rowid NOT IN (
-                      SELECT MAX(rowid) FROM WatchProviderMedia
-                      WHERE TvId IS NOT NULL AND MovieId IS NULL
-                      GROUP BY WatchProviderId, CountryCode, ProviderType, TvId
-                  );
+                CREATE TABLE "WatchProviderMedia_new" (
+                    "Id" TEXT NOT NULL CONSTRAINT "PK_WatchProviderMedia" PRIMARY KEY,
+                    "CountryCode" TEXT NOT NULL,
+                    "CreatedAt" TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
+                    "Link" TEXT NULL,
+                    "MovieId" INTEGER NULL,
+                    "ProviderType" TEXT NOT NULL,
+                    "TvId" INTEGER NULL,
+                    "UpdatedAt" TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
+                    "WatchProviderId" INTEGER NOT NULL,
+                    CONSTRAINT "FK_WatchProviderMedia_Movies_MovieId" FOREIGN KEY ("MovieId") REFERENCES "Movies" ("Id") ON DELETE CASCADE,
+                    CONSTRAINT "FK_WatchProviderMedia_Tvs_TvId" FOREIGN KEY ("TvId") REFERENCES "Tvs" ("Id") ON DELETE CASCADE,
+                    CONSTRAINT "FK_WatchProviderMedia_WatchProviders_WatchProviderId" FOREIGN KEY ("WatchProviderId") REFERENCES "WatchProviders" ("Id") ON DELETE RESTRICT
+                );
+                INSERT INTO "WatchProviderMedia_new"
+                    (Id, CountryCode, CreatedAt, Link, MovieId, ProviderType, TvId, UpdatedAt, WatchProviderId)
+                SELECT Id, CountryCode, CreatedAt, Link, MovieId, ProviderType, TvId, UpdatedAt, WatchProviderId
+                FROM WatchProviderMedia
+                WHERE rowid IN (
+                    SELECT MAX(rowid) FROM WatchProviderMedia
+                    WHERE MovieId IS NOT NULL AND TvId IS NULL
+                    GROUP BY WatchProviderId, CountryCode, ProviderType, MovieId
+                );
+                INSERT INTO "WatchProviderMedia_new"
+                    (Id, CountryCode, CreatedAt, Link, MovieId, ProviderType, TvId, UpdatedAt, WatchProviderId)
+                SELECT Id, CountryCode, CreatedAt, Link, MovieId, ProviderType, TvId, UpdatedAt, WatchProviderId
+                FROM WatchProviderMedia
+                WHERE rowid IN (
+                    SELECT MAX(rowid) FROM WatchProviderMedia
+                    WHERE TvId IS NOT NULL AND MovieId IS NULL
+                    GROUP BY WatchProviderId, CountryCode, ProviderType, TvId
+                );
+                INSERT INTO "WatchProviderMedia_new"
+                    (Id, CountryCode, CreatedAt, Link, MovieId, ProviderType, TvId, UpdatedAt, WatchProviderId)
+                SELECT Id, CountryCode, CreatedAt, Link, MovieId, ProviderType, TvId, UpdatedAt, WatchProviderId
+                FROM WatchProviderMedia
+                WHERE (MovieId IS NULL) = (TvId IS NULL);
+                DROP TABLE "WatchProviderMedia";
+                ALTER TABLE "WatchProviderMedia_new" RENAME TO "WatchProviderMedia";
                 """
             );
 
-            migrationBuilder.DropIndex(
-                name: "IX_WatchProviderMedia_WatchProviderId_CountryCode_ProviderType_MovieId_TvId",
-                table: "WatchProviderMedia"
+            migrationBuilder.CreateIndex(
+                name: "IX_WatchProviderMedia_MovieId",
+                table: "WatchProviderMedia",
+                column: "MovieId"
+            );
+
+            migrationBuilder.CreateIndex(
+                name: "IX_WatchProviderMedia_TvId",
+                table: "WatchProviderMedia",
+                column: "TvId"
             );
 
             migrationBuilder.CreateIndex(
