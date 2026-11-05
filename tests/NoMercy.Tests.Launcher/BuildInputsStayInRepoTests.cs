@@ -127,6 +127,34 @@ public partial class BuildInputsStayInRepoTests
     }
 
     [Fact]
+    public void EveryVendoredNfsBinaryShipsInAPublishedBuildToo()
+    {
+        XDocument storage = XDocument.Load(
+            RepoPaths.At("src", "NoMercy.Storage", "NoMercy.Storage.csproj")
+        );
+
+        List<string> missingCopyToPublish = storage
+            .Descendants()
+            .Where(element =>
+                (string?)element.Attribute("Include") is { } include
+                && include.Contains("$(LibNfsDir)")
+            )
+            .Where(element =>
+                (string?)element.Element("CopyToPublishDirectory") is not { } value
+                || value == "Never"
+            )
+            .Select(element => (string)element.Attribute("Include")!)
+            .ToList();
+
+        missingCopyToPublish
+            .Should()
+            .BeEmpty(
+                "dotnet publish only reads CopyToPublishDirectory, so a None item without it "
+                    + "never enters the publish output even with IncludeAllContentForSelfExtract"
+            );
+    }
+
+    [Fact]
     public void SmbLibraryComesFromThePublishedPackage()
     {
         foreach (

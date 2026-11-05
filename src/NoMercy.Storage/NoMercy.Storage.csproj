@@ -33,35 +33,28 @@
     <LibNfsDir>$(MSBuildThisFileDirectory)../../libs/nfs</LibNfsDir>
   </PropertyGroup>
   <ItemGroup>
-    <None
-      Include="$(LibNfsDir)/win-x64/libnfs.dll"
-      Link="runtimes/win-x64/native/nfs.dll"
-    >
+    <None Include="$(LibNfsDir)/win-x64/libnfs.dll" Link="runtimes/win-x64/native/nfs.dll">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </None>
-    <None
-      Include="$(LibNfsDir)/linux-x64/libnfs.so"
-      Link="runtimes/linux-x64/native/libnfs.so"
-    >
+    <None Include="$(LibNfsDir)/linux-x64/libnfs.so" Link="runtimes/linux-x64/native/libnfs.so">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </None>
-    <None
-      Include="$(LibNfsDir)/linux-arm64/libnfs.so"
-      Link="runtimes/linux-arm64/native/libnfs.so"
-    >
+    <None Include="$(LibNfsDir)/linux-arm64/libnfs.so" Link="runtimes/linux-arm64/native/libnfs.so">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </None>
-    <None
-      Include="$(LibNfsDir)/osx-x64/libnfs.dylib"
-      Link="runtimes/osx-x64/native/libnfs.dylib"
-    >
+    <None Include="$(LibNfsDir)/osx-x64/libnfs.dylib" Link="runtimes/osx-x64/native/libnfs.dylib">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </None>
     <None
       Include="$(LibNfsDir)/osx-arm64/libnfs.dylib"
       Link="runtimes/osx-arm64/native/libnfs.dylib"
     >
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <CopyToPublishDirectory>PreserveNewest</CopyToPublishDirectory>
     </None>
   </ItemGroup>
 </Project>
