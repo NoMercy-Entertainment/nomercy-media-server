@@ -48,6 +48,9 @@ public partial class QuickTunnelStrategy : IConnectivityStrategy, IDisposable
     private string? _startedFromStamp;
     private volatile bool _stoppingIntentionally;
     private bool _disposed;
+    private string? _assignedUrl;
+    private bool _registeredOnce;
+    private TaskCompletionSource<bool>? _registered;
 
     private static readonly TimeSpan RegistrationTimeout = TimeSpan.FromSeconds(45);
     private static readonly TimeSpan PublicationGrace = TimeSpan.FromSeconds(5);
@@ -75,6 +78,18 @@ public partial class QuickTunnelStrategy : IConnectivityStrategy, IDisposable
         matchTimeoutMilliseconds: 1000
     )]
     private static partial Regex FailurePattern();
+
+    // cloudflared loops this forever with the OS process alive; checked only once
+    // registered, so a normal not-yet-connected retry never trips it.
+    [GeneratedRegex(
+        @"Register tunnel error from server side.*Unauthorized.*Tunnel not found",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex UnrecoverablePostRegistrationFailurePattern();
+
+    internal static bool IsUnrecoverableAfterRegistration(string line) =>
+        UnrecoverablePostRegistrationFailurePattern().IsMatch(line);
 
     public QuickTunnelStrategy(
         ILogger<QuickTunnelStrategy> logger,
@@ -130,6 +145,33 @@ public partial class QuickTunnelStrategy : IConnectivityStrategy, IDisposable
     internal static bool IsConnectionRegistered(string line) =>
         ConnectionRegisteredPattern().IsMatch(line);
 
+    // Logs the line, resolves registration, and self-stops on the stuck-looping
+    // unauthorized rejection so SuperviseAsync's own IsStillEstablished check notices.
+    internal void Watch(string? line)
+    {
+        if (string.IsNullOrEmpty(line))
+            return;
+
+        if (!_stoppingIntentionally && FailurePattern().IsMatch(line))
+            _logger.LogWarning("cloudflared: {Line}", line);
+        else
+            _logger.LogDebug("cloudflared: {Line}", line);
+
+        _assignedUrl ??= AssignedUrlIn(line);
+
+        if (IsConnectionRegistered(line))
+        {
+            _registeredOnce = true;
+            if (_assignedUrl is not null)
+                _registered?.TrySetResult(true);
+        }
+        else if (_registeredOnce && IsUnrecoverableAfterRegistration(line))
+            StopTunnel();
+    }
+
+    // Test seam: lets a test drive Watch/StopTunnel against a trivial real process.
+    internal void AttachProcessForTests(Process process) => _process = process;
+
     public async Task<ConnectivityResult> TryEstablishAsync(CancellationToken ct)
     {
         if (!_binaryExists())
@@ -142,10 +184,10 @@ public partial class QuickTunnelStrategy : IConnectivityStrategy, IDisposable
         }
 
         _stoppingIntentionally = false;
-        string? assignedUrl = null;
-        TaskCompletionSource<bool> registered = new(
-            TaskCreationOptions.RunContinuationsAsynchronously
-        );
+        _assignedUrl = null;
+        _registeredOnce = false;
+        _registered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource<bool> registered = _registered;
 
         // A quick tunnel from a run that ended without TeardownAsync keeps a dead server's
         // name registered and, once its image is renamed by an upgrade, pins the backup.
@@ -173,22 +215,6 @@ public partial class QuickTunnelStrategy : IConnectivityStrategy, IDisposable
                 },
                 EnableRaisingEvents = true,
             };
-
-            void Watch(string? line)
-            {
-                if (string.IsNullOrEmpty(line))
-                    return;
-
-                if (!_stoppingIntentionally && FailurePattern().IsMatch(line))
-                    _logger.LogWarning("cloudflared: {Line}", line);
-                else
-                    _logger.LogDebug("cloudflared: {Line}", line);
-
-                assignedUrl ??= AssignedUrlIn(line);
-
-                if (assignedUrl is not null && IsConnectionRegistered(line))
-                    registered.TrySetResult(true);
-            }
 
             _process.OutputDataReceived += (_, args) => Watch(args.Data);
             _process.ErrorDataReceived += (_, args) => Watch(args.Data);
@@ -228,7 +254,7 @@ public partial class QuickTunnelStrategy : IConnectivityStrategy, IDisposable
                 );
             }
 
-            if (!connected || assignedUrl is null)
+            if (!connected || _assignedUrl is null)
             {
                 StopTunnel();
                 return ConnectivityResult.Failed();
@@ -236,7 +262,7 @@ public partial class QuickTunnelStrategy : IConnectivityStrategy, IDisposable
 
             // Advertising the name before Cloudflare publishes it hands clients a name
             // that does not exist yet, and their resolvers remember that for 30 minutes.
-            string host = new Uri(assignedUrl).Host;
+            string host = new Uri(_assignedUrl).Host;
             if (!await WaitUntilPublishedAsync(host, ct))
             {
                 _logger.LogWarning(
@@ -247,9 +273,9 @@ public partial class QuickTunnelStrategy : IConnectivityStrategy, IDisposable
                 return ConnectivityResult.Failed();
             }
 
-            _connectivityStatus.PublicUrl = assignedUrl;
+            _connectivityStatus.PublicUrl = _assignedUrl;
             _connectivityStatus.NatStatus = NatStatus.Tunneled;
-            _logger.LogInformation("Quick tunnel is up at {Url}", assignedUrl);
+            _logger.LogInformation("Quick tunnel is up at {Url}", _assignedUrl);
             return ConnectivityResult.Verified();
         }
         catch (Exception ex)
