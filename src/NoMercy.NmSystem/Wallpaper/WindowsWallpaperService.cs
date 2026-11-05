@@ -170,7 +170,7 @@ public class WindowsWallpaperService : IWallpaperService
         SetSysColors(elements.Length, elements, colors);
 
         using RegistryKey? key = Registry.CurrentUser.OpenSubKey(DesktopRegColor, true);
-        key?.SetValue("Background", hexColor);
+        key?.SetValue("Background", WallpaperColor.ToRegistryRgb(hexColor));
     }
 
     private static void ApplyStyle(WallpaperStyle style)
