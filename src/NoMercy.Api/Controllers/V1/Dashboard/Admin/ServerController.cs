@@ -45,6 +45,7 @@ using NoMercy.NmSystem.SystemCalls;
 using NoMercy.NmSystem.Wallpaper;
 using NoMercy.Providers.AcoustId;
 using NoMercy.Providers.Helpers;
+using NoMercy.Providers.TMDB.Client;
 using NoMercy.Storage;
 using NoMercyQueue;
 using Serilog.Events;
@@ -801,6 +802,31 @@ public partial class ServerController(
             "original",
             wallpaper.FilePath.Replace("/", "")
         );
+
+        // The originals cache fills on demand, like the image route does. A
+        // missing file made Windows show only the background color while this
+        // endpoint still answered success.
+        if (!System.IO.File.Exists(path))
+        {
+            try
+            {
+                using MagickImage? _ = await (
+                    TmdbImageClient.Download(wallpaper.FilePath)
+                    ?? Task.FromResult<MagickImage?>(null)
+                );
+            }
+            catch (Exception exception)
+            {
+                logger.LogWarning(
+                    exception,
+                    "Could not download wallpaper {Path}",
+                    wallpaper.FilePath
+                );
+            }
+
+            if (!System.IO.File.Exists(path))
+                return NotFoundResponse("Wallpaper image could not be downloaded");
+        }
 
         string color;
         if (string.IsNullOrWhiteSpace(request.Color))
