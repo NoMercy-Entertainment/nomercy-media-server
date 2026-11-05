@@ -9,6 +9,8 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Networking.Connectivity;
@@ -22,6 +24,18 @@ namespace NoMercy.Tests.Networking;
 [Trait("Category", "Unit")]
 public sealed class CloudflareTunnelStrategyTests
 {
+    // See QuickTunnelStrategyTests.StartLongRunningProcess: a real process is needed
+    // because IsStillEstablished reads Process.HasExited.
+    private static Process StartLongRunningProcess()
+    {
+        ProcessStartInfo info = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+            ? new("ping", "-n 30 127.0.0.1")
+            : new("sleep", "30");
+        info.UseShellExecute = false;
+        info.CreateNoWindow = true;
+        return Process.Start(info)!;
+    }
+
     /// <summary>
     /// Records every level a call was logged at. NullLogger cannot answer "did this go out as
     /// a Warning or a Debug" — the exact question the shutdown-noise fix lives or dies on.
@@ -430,5 +444,54 @@ public sealed class CloudflareTunnelStrategyTests
         );
 
         Assert.Equal([LogLevel.Warning], logger.Levels);
+    }
+
+    // ── Self-heal on a stuck-looping post-registration rejection ────────────────────────
+
+    // A real process is attached so IsStillEstablished reflects an actual kill, not a
+    // trivially-false null process.
+    [Fact]
+    public void Watch_RegisteredThenStuckUnauthorized_SelfStopsSoNoLongerEstablished()
+    {
+        using Process process = StartLongRunningProcess();
+        CloudflareTunnelStrategy strategy = BuildStrategy(new());
+        strategy.AttachProcessForTests(process);
+
+        Assert.True(strategy.IsStillEstablished);
+
+        strategy.Watch(
+            "2026-11-05T02:00:00Z INF Registered tunnel connection connIndex=0 connection=e051694c location=ams17 protocol=http2"
+        );
+        for (int i = 0; i < 3; i++)
+            strategy.Watch(
+                "2026-11-05T02:01:00Z ERR Register tunnel error from server side error=\"Unauthorized: Tunnel not found\" connIndex=0"
+            );
+
+        Assert.False(strategy.IsStillEstablished);
+    }
+
+    [Fact]
+    public void Watch_TransientErrorLineAfterRegistration_DoesNotSelfStop()
+    {
+        using Process process = StartLongRunningProcess();
+        try
+        {
+            CloudflareTunnelStrategy strategy = BuildStrategy(new());
+            strategy.AttachProcessForTests(process);
+
+            strategy.Watch(
+                "2026-11-05T02:00:00Z INF Registered tunnel connection connIndex=0 connection=e051694c location=ams17 protocol=http2"
+            );
+            strategy.Watch(
+                "2026-11-05T02:00:05Z ERR error=\"Unable to reach the origin service.\" connIndex=0"
+            );
+
+            Assert.True(strategy.IsStillEstablished);
+        }
+        finally
+        {
+            if (!process.HasExited)
+                process.Kill(true);
+        }
     }
 }

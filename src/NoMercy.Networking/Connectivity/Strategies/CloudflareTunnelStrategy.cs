@@ -31,6 +31,8 @@ public partial class CloudflareTunnelStrategy : IConnectivityStrategy, IDisposab
     private Process? _tunnelProcess;
     private string? _startedFromStamp;
     private bool _disposed;
+    private bool _registeredOnce;
+    private TaskCompletionSource<bool>? _registered;
 
     /// <summary>
     /// Set the moment a graceful shutdown is requested. cloudflared keeps forwarding
@@ -61,6 +63,18 @@ public partial class CloudflareTunnelStrategy : IConnectivityStrategy, IDisposab
         matchTimeoutMilliseconds: 1000
     )]
     private static partial Regex FailurePattern();
+
+    // cloudflared loops this forever with the OS process alive; checked only once
+    // registered, so a normal not-yet-connected retry never trips it.
+    [GeneratedRegex(
+        @"Register tunnel error from server side.*Unauthorized.*Tunnel not found",
+        RegexOptions.IgnoreCase,
+        matchTimeoutMilliseconds: 1000
+    )]
+    private static partial Regex UnrecoverablePostRegistrationFailurePattern();
+
+    internal static bool IsUnrecoverableAfterRegistration(string line) =>
+        UnrecoverablePostRegistrationFailurePattern().IsMatch(line);
 
     /// <summary>
     /// cloudflared logs a client that walks away at ERR: a browser navigating off a page
@@ -103,6 +117,27 @@ public partial class CloudflareTunnelStrategy : IConnectivityStrategy, IDisposab
         else
             _logger.LogDebug("cloudflared: {Line}", line);
     }
+
+    // Logs the line, resolves registration, and self-stops on the stuck-looping
+    // unauthorized rejection so SuperviseAsync's own IsStillEstablished check notices.
+    internal void Watch(string? line)
+    {
+        if (string.IsNullOrEmpty(line))
+            return;
+
+        LogProcessLine(line);
+
+        if (ConnectionRegisteredPattern().IsMatch(line))
+        {
+            _registeredOnce = true;
+            _registered?.TrySetResult(true);
+        }
+        else if (_registeredOnce && IsUnrecoverableAfterRegistration(line))
+            StopTunnel();
+    }
+
+    // Test seam: lets a test drive Watch/StopTunnel against a trivial real process.
+    internal void AttachProcessForTests(Process process) => _tunnelProcess = process;
 
     /// <summary>
     /// cloudflared exits on a revoked token, a clock skew, or a network drop. Nothing noticed
@@ -163,6 +198,7 @@ public partial class CloudflareTunnelStrategy : IConnectivityStrategy, IDisposab
         // attempt after the first ran with it still up and logged real cloudflared failures
         // at Debug (#224).
         _stoppingIntentionally = false;
+        _registeredOnce = false;
 
         if (_checkTunnelAvailability is not null)
             await _checkTunnelAvailability();
@@ -257,20 +293,8 @@ public partial class CloudflareTunnelStrategy : IConnectivityStrategy, IDisposab
             // A started process is not a working tunnel. cloudflared exits non-fatally on a
             // revoked token, a clock skew or no egress, and reporting success on Start()
             // left the server advertising a tunnel address nothing was listening on.
-            TaskCompletionSource<bool> registered = new(
-                TaskCreationOptions.RunContinuationsAsynchronously
-            );
-
-            void Watch(string? line)
-            {
-                if (string.IsNullOrEmpty(line))
-                    return;
-
-                LogProcessLine(line);
-
-                if (ConnectionRegisteredPattern().IsMatch(line))
-                    registered.TrySetResult(true);
-            }
+            _registered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+            TaskCompletionSource<bool> registered = _registered;
 
             _tunnelProcess.OutputDataReceived += (_, args) => Watch(args.Data);
             _tunnelProcess.ErrorDataReceived += (_, args) => Watch(args.Data);

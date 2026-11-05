@@ -9,6 +9,8 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Text.Json;
 using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Networking.Connectivity;
@@ -21,6 +23,19 @@ namespace NoMercy.Tests.Networking;
 [Trait("Category", "Unit")]
 public sealed class QuickTunnelStrategyTests
 {
+    // A real, long-running, harmless process. Needed because IsStillEstablished reads
+    // Process.HasExited, so proving the self-heal requires a process that is actually alive
+    // until the fix kills it, not a null process (already "not established" either way).
+    private static Process StartLongRunningProcess()
+    {
+        ProcessStartInfo info = RuntimeInformation.IsOSPlatform(OSPlatform.Windows)
+            ? new("ping", "-n 30 127.0.0.1")
+            : new("sleep", "30");
+        info.UseShellExecute = false;
+        info.CreateNoWindow = true;
+        return Process.Start(info)!;
+    }
+
     [Fact]
     public void AssignedUrlIn_FindsTheNameInsideCloudflaredsBanner()
     {
@@ -128,5 +143,59 @@ public sealed class QuickTunnelStrategyTests
 
         // A name from a run that is over must not stay advertised by anything.
         Assert.Null(status.PublicUrl);
+    }
+
+    // The OS process stays alive while cloudflared loops a rejection after registering
+    // once; a real process proves IsStillEstablished reflects an actual kill, not a
+    // trivially-false null process.
+    [Fact]
+    public void Watch_RegisteredThenStuckUnauthorized_SelfStopsSoNoLongerEstablished()
+    {
+        using Process process = StartLongRunningProcess();
+        QuickTunnelStrategy strategy = new(
+            NullLogger<QuickTunnelStrategy>.Instance,
+            new ConnectivityStatus()
+        );
+        strategy.AttachProcessForTests(process);
+
+        Assert.True(strategy.IsStillEstablished);
+
+        strategy.Watch(
+            "2026-11-05T02:00:00Z INF Registered tunnel connection connIndex=0 connection=e051694c location=ams17 protocol=http2"
+        );
+        for (int i = 0; i < 3; i++)
+            strategy.Watch(
+                "2026-11-05T02:01:00Z ERR Register tunnel error from server side error=\"Unauthorized: Tunnel not found\" connIndex=0"
+            );
+
+        Assert.False(strategy.IsStillEstablished);
+    }
+
+    [Fact]
+    public void Watch_TransientErrorLineAfterRegistration_DoesNotSelfStop()
+    {
+        using Process process = StartLongRunningProcess();
+        try
+        {
+            QuickTunnelStrategy strategy = new(
+                NullLogger<QuickTunnelStrategy>.Instance,
+                new ConnectivityStatus()
+            );
+            strategy.AttachProcessForTests(process);
+
+            strategy.Watch(
+                "2026-11-05T02:00:00Z INF Registered tunnel connection connIndex=0 connection=e051694c location=ams17 protocol=http2"
+            );
+            strategy.Watch(
+                "2026-11-05T02:00:05Z ERR error=\"Unable to reach the origin service.\" connIndex=0"
+            );
+
+            Assert.True(strategy.IsStillEstablished);
+        }
+        finally
+        {
+            if (!process.HasExited)
+                process.Kill(true);
+        }
     }
 }
