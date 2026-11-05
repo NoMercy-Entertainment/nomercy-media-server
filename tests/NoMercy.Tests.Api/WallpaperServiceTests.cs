@@ -173,6 +173,41 @@ public class WindowsHexToColorTests
     }
 }
 
+public class WallpaperColorTests
+{
+    [Theory]
+    [InlineData("rgb(31 123 107)", "#1F7B6B")] // what the web app sends
+    [InlineData("rgb(31, 123, 107)", "#1F7B6B")]
+    [InlineData("rgba(31, 123, 107, 0.5)", "#1F7B6B")]
+    [InlineData("#1f7b6b", "#1F7B6B")]
+    [InlineData("1F7B6B", "#1F7B6B")]
+    [InlineData("#fff", "#FFFFFF")]
+    [InlineData("  #000000  ", "#000000")]
+    public void ToHex_AcceptsCssAndHexColors(string input, string expected)
+    {
+        Assert.Equal(expected, WallpaperColor.ToHex(input));
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("rgb(300 0 0)")]
+    [InlineData("rgb(a b c)")]
+    [InlineData("#12345")]
+    [InlineData("#GGGGGG")]
+    [InlineData("blue")]
+    public void ToHex_ReturnsNullForAnythingElse(string input)
+    {
+        Assert.Null(WallpaperColor.ToHex(input));
+    }
+
+    [Fact]
+    public void ToRegistryRgb_IsDecimalTriplet()
+    {
+        Assert.Equal("31 123 107", WallpaperColor.ToRegistryRgb("#1F7B6B"));
+    }
+}
+
 public class WallpaperDiRegistrationTests
 {
     [Fact]

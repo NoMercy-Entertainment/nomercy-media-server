@@ -802,7 +802,18 @@ public partial class ServerController(
             wallpaper.FilePath.Replace("/", "")
         );
 
-        string color = request.Color ?? await GetDominantColorAsync(path);
+        string color;
+        if (string.IsNullOrWhiteSpace(request.Color))
+        {
+            color = WallpaperColor.ToHex(await GetDominantColorAsync(path)) ?? "#000000";
+        }
+        else
+        {
+            string? parsed = WallpaperColor.ToHex(request.Color);
+            if (parsed is null)
+                return BadRequestResponse("Color must be a hex color or rgb()");
+            color = parsed;
+        }
 
         bool applied = wallpaperService.SetSilent(path, request.Style, color);
         if (!applied)
