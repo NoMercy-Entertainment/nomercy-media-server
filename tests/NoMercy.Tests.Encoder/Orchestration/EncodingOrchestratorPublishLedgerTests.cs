@@ -86,4 +86,67 @@ public sealed class EncodingOrchestratorPublishLedgerTests : IDisposable
             .Should()
             .BeFalse();
     }
+
+    // 2026-11-07: an episode with 18,062 output files published to an SMB library at
+    // 18 files a minute, because every file paid its round trips one after another.
+    [Fact]
+    public async Task PublishTempDirAsync_copies_files_side_by_side_and_creates_each_folder_once()
+    {
+        string tempDir = Path.Combine(_root, "cache", "Synthetic Episode");
+        for (int i = 0; i < 40; i++)
+        {
+            string folder = Path.Combine(tempDir, i % 2 == 0 ? "video" : "subtitles");
+            Directory.CreateDirectory(folder);
+            File.WriteAllText(Path.Combine(folder, $"segment-{i:D3}.ts"), "data");
+        }
+
+        int createDirectoryCalls = 0;
+        int openWrites = 0;
+        int peakOpenWrites = 0;
+        Mock<IStorage> destination = new() { DefaultValue = DefaultValue.Mock };
+        destination
+            .Setup(d => d.GetParent(It.IsAny<string>()))
+            .Returns<string>(path => path[..path.LastIndexOf('/')]);
+        destination
+            .Setup(d => d.CreateDirectory(It.IsAny<string>()))
+            .Callback(() => Interlocked.Increment(ref createDirectoryCalls));
+        destination
+            .Setup(d => d.OpenWriteAsync(It.IsAny<string>(), true, It.IsAny<CancellationToken>()))
+            .Returns(async () =>
+            {
+                int now = Interlocked.Increment(ref openWrites);
+                InterlockedMax(ref peakOpenWrites, now);
+                await Task.Delay(20);
+                return new CountingStream(() => Interlocked.Decrement(ref openWrites));
+            });
+        destination
+            .Setup(d => d.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(false);
+
+        await Build()
+            .PublishTempDirAsync(tempDir, "Synthetic Episode", destination.Object, null, default);
+
+        destination.Verify(
+            d => d.MoveAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Exactly(40)
+        );
+        createDirectoryCalls.Should().Be(2);
+        peakOpenWrites.Should().BeGreaterThan(1);
+    }
+
+    private static void InterlockedMax(ref int target, int value)
+    {
+        int current;
+        while (value > (current = Volatile.Read(ref target)))
+            Interlocked.CompareExchange(ref target, value, current);
+    }
+
+    private sealed class CountingStream(Action onDispose) : MemoryStream
+    {
+        protected override void Dispose(bool disposing)
+        {
+            onDispose();
+            base.Dispose(disposing);
+        }
+    }
 }
