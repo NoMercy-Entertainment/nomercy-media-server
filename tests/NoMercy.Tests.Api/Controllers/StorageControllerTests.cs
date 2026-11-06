@@ -86,7 +86,8 @@ public class StorageControllerTests
             authTokenStore: null!,
             audioFingerprinter: null!,
             activityLogger: null!,
-            filenameParser: null!
+            filenameParser: null!,
+            storageUsage: new(TimeSpan.FromMinutes(10))
         );
 
         IActionResult result = await controller.Storage();

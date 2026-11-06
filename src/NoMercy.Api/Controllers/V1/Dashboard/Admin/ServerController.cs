@@ -21,6 +21,7 @@ using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Api.DTOs.Dashboard;
+using NoMercy.Api.Services;
 using NoMercy.Authorization;
 using NoMercy.Data.Repositories;
 using NoMercy.Database;
@@ -82,7 +83,8 @@ public partial class ServerController(
     IAuthTokenStore authTokenStore,
     IAudioFingerprinter audioFingerprinter,
     IActivityLogger activityLogger,
-    IFilenameParserPipeline filenameParser
+    IFilenameParserPipeline filenameParser,
+    SingleFlightCache<List<StorageDto>>? storageUsage = null
 ) : BaseController
 {
     private IHostApplicationLifetime ApplicationLifetime { get; } = appLifetime;
@@ -700,6 +702,23 @@ public partial class ServerController(
     [Authorize(Policy = "Moderator")]
     public async Task<IActionResult> Storage()
     {
+        // One recursive walk of every library at a time, reused for ten minutes.
+        // Each dashboard refresh used to start its own walk; over SMB nine ran at
+        // once, held ~200k folder handles and starved every other share access.
+        List<StorageDto> storage = await (storageUsage ?? SharedStorageUsage).GetAsync(() =>
+            Task.Run(ComputeStorageUsageAsync)
+        );
+        return Ok(storage);
+    }
+
+    // Controllers are created per request, so the default cache lives for the
+    // process; a test passes its own.
+    private static readonly SingleFlightCache<List<StorageDto>> SharedStorageUsage = new(
+        TimeSpan.FromMinutes(10)
+    );
+
+    private async Task<List<StorageDto>> ComputeStorageUsageAsync()
+    {
         List<Folder> folders = await folderRepository.GetStorageFoldersAsync();
         List<StorageDto> storage = [];
 
@@ -781,7 +800,7 @@ public partial class ServerController(
             storage.Add(new() { Path = folder.Path, Data = usage });
         }
 
-        return Ok(storage);
+        return storage;
     }
 
     [HttpPost]
