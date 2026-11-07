@@ -417,7 +417,19 @@ public sealed class MusicTrackReconcilerTests : IDisposable
         Directory.CreateDirectory(target);
         File.Move(original, Path.Combine(target, "01 Renamed.flac"));
 
+        // Any other new file has no known recording. Without this default the mock
+        // answers null, and the listing order (it differs on Linux) decides whether
+        // "02 Other.flac" is identified before the moved file.
         Mock<IRecordingIdentifier> identifier = new();
+        identifier
+            .Setup(i =>
+                i.IdentifyAsync(
+                    It.IsAny<IStorageDriver>(),
+                    It.IsAny<string>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .ReturnsAsync(Array.Empty<Guid>());
         identifier
             .Setup(i =>
                 i.IdentifyAsync(

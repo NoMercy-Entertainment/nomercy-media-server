@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Collections.Concurrent;
 using System.Diagnostics;
 using Microsoft.Extensions.Logging;
 using NoMercy.Encoder.Codecs;
@@ -444,12 +445,12 @@ public class EncodingOrchestrator(
         double megabits = megaBytes * 8; // megabits per second
         logger.LogInformation(
             message: "Staged source for encoding: {Backend} {MB:F0} MB in {Seconds:F1}s "
-                     + "({megaBytes:F0} MB/s, {megabits:F0} Mbps) before ffmpeg start [{Input}]", 
-                sourceStorage.Driver.BackendLabel, 
-            bytes / 1_000_000.0, 
-            seconds, 
-            megaBytes, 
-            megabits, 
+                     + "({megaBytes:F0} MB/s, {megabits:F0} Mbps) before ffmpeg start [{Input}]",
+                sourceStorage.Driver.BackendLabel,
+            bytes / 1_000_000.0,
+            seconds,
+            megaBytes,
+            megabits,
             inputPath
         );
     }
@@ -709,6 +710,8 @@ public class EncodingOrchestrator(
     }
 
     // Tells the library file watcher the publish is the server's own output.
+    private const int PublishParallelism = 8;
+
     private static IDisposable? HoldDestination(IStorage dest, string outputDirectory)
     {
         if (dest is not LocalStorage)
@@ -773,13 +776,17 @@ public class EncodingOrchestrator(
         Stopwatch stageWatch = Stopwatch.StartNew();
         try
         {
-            foreach (
-                string localFile in Directory.EnumerateFiles(
+            // Over SMB every file costs several round trips; doing them one file
+            // at a time held an 18,062-file episode at 18 files a minute.
+            ConcurrentDictionary<string, byte> createdParents = new(StringComparer.Ordinal);
+            await Parallel.ForEachAsync(
+                Directory.EnumerateFiles(
                     path: tempDir,
                     searchPattern: "*",
                     searchOption: SearchOption.AllDirectories
-                )
-            )
+                ),
+                new ParallelOptions { MaxDegreeOfParallelism = PublishParallelism, CancellationToken = ct },
+                async (localFile, _) =>
             {
                 string rel = Path.GetRelativePath(relativeTo: tempDir, path: localFile).Replace(oldChar: '\\', newChar: '/');
                 string remoteDest = string.Join(
@@ -803,11 +810,11 @@ public class EncodingOrchestrator(
                     }
 
                     if (moved)
-                        continue;
+                        return;
                 }
 
                 string? remoteParent = destinationStorage.GetParent(path: remoteDest);
-                if (!string.IsNullOrEmpty(value: remoteParent))
+                if (!string.IsNullOrEmpty(value: remoteParent) && createdParents.TryAdd(remoteParent, 0))
                     destinationStorage.CreateDirectory(path: remoteParent);
 
                 // Publish through a sibling temp file, then swap into place. A
@@ -867,7 +874,7 @@ public class EncodingOrchestrator(
 
                     throw;
                 }
-            }
+            });
             stageWatch.Stop();
             progress?.OnStageCompleted(stageName: stageName, duration: stageWatch.Elapsed);
         }
