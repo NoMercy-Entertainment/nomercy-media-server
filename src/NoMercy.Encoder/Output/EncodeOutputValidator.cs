@@ -40,6 +40,45 @@ public static class EncodeOutputValidator
         return problems;
     }
 
+    /// <summary>Flags video and audio renditions whose length differs from the source.</summary>
+    public static IReadOnlyList<string> ValidateDurations(string directory, double expectedSeconds)
+    {
+        List<string> problems = [];
+        if (expectedSeconds <= 0)
+            return problems;
+
+        double tolerance = Math.Max(5.0, expectedSeconds * 0.01);
+
+        foreach (string playlist in Directory.EnumerateFiles(directory, "*.m3u8", SearchOption.AllDirectories))
+        {
+            string folder = Path.GetFileName(Path.GetDirectoryName(playlist) ?? string.Empty);
+            if (!folder.StartsWith("video_", StringComparison.OrdinalIgnoreCase)
+                && !folder.StartsWith("audio_", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            double total = 0;
+            bool any = false;
+            foreach (string line in File.ReadLines(playlist))
+            {
+                if (!line.StartsWith("#EXTINF:", StringComparison.Ordinal))
+                    continue;
+                string value = line["#EXTINF:".Length..].Split(',')[0];
+                if (double.TryParse(value, System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture, out double seconds))
+                {
+                    total += seconds;
+                    any = true;
+                }
+            }
+
+            if (any && Math.Abs(total - expectedSeconds) > tolerance)
+                problems.Add(
+                    $"{Path.GetRelativePath(directory, playlist).Replace('\\', '/')} lasts {total:F1} s, the source lasts {expectedSeconds:F1} s");
+        }
+
+        return problems;
+    }
+
     private static void CheckPlaylist(string file, string rel, List<string> problems)
     {
         string[] lines = File.ReadAllLines(file);

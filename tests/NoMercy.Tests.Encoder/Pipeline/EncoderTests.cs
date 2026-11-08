@@ -207,7 +207,7 @@ public class EncoderTests : IDisposable
         File.WriteAllBytes(Path.Combine(variantDirectory, $"{name}_00000.ts"), new byte[120_000]);
         File.WriteAllText(
             Path.Combine(variantDirectory, $"{name}.m3u8"),
-            $"#EXTM3U\n#EXTINF:6.000000,\n{name}_00000.ts\n#EXT-X-ENDLIST\n"
+            $"#EXTM3U\n#EXTINF:7200.000000,\n{name}_00000.ts\n#EXT-X-ENDLIST\n"
         );
     }
 
