@@ -26,13 +26,12 @@ public static class AudioPlanBuilder
     public static AudioOutputPlan[] Build(EncodingProfile profile, MediaInfo media)
     {
         List<AudioOutputPlan> audioPlans = [];
-        foreach (AudioOutput audioProfile in profile.Audio)
+        foreach (AudioOutput declared in profile.Audio)
         {
-            string encoderName = AudioCodecDefinitions.GetEncoder(audioProfile.Codec).FfmpegName;
             HashSet<string> allowed =
-                audioProfile.AllowedLanguages.Length > 0
+                declared.AllowedLanguages.Length > 0
                     ? new HashSet<string>(
-                        audioProfile.AllowedLanguages,
+                        declared.AllowedLanguages,
                         StringComparer.OrdinalIgnoreCase
                     )
                     : [];
@@ -41,6 +40,9 @@ public static class AudioPlanBuilder
             {
                 AudioStreamInfo stream = media.AudioStreams[si];
                 string streamLang = stream.Language ?? "und";
+
+                AudioOutput audioProfile = CarryableOrTranscoded(declared, stream, profile.Container);
+                string encoderName = AudioCodecDefinitions.GetEncoder(audioProfile.Codec).FfmpegName;
 
                 if (allowed.Count > 0 && !allowed.Contains(streamLang))
                     continue;
@@ -105,6 +107,47 @@ public static class AudioPlanBuilder
             .. PlanStageDisambiguation.DisambiguateAudio(audioPlans),
         ];
         return AppendAacFallback(disambiguated, profile, media);
+    }
+
+    // ffmpeg's MP4 muxer refuses these without -strict -2, and no HLS player decodes
+    // them from MP4 anyway: copying one fails the whole encode.
+    private static readonly HashSet<string> NotCarriedByMp4 = new(
+        ["truehd", "mlp"],
+        StringComparer.OrdinalIgnoreCase
+    );
+
+    // A "keep the source audio" output meets a codec the output container cannot carry:
+    // plan a transcode instead (E-AC-3 for surround, AAC for stereo).
+    private static AudioOutput CarryableOrTranscoded(
+        AudioOutput output,
+        AudioStreamInfo stream,
+        Container container
+    )
+    {
+        if (
+            output.Policy != StreamPolicy.Copy
+            || !NotCarriedByMp4.Contains(stream.Codec)
+            || ContainerCompatibility.SupportsAudio(container, AudioCodecType.TrueHd)
+        )
+            return output;
+
+        return stream.Channels > 2
+            ? output with
+            {
+                Policy = StreamPolicy.Transcode,
+                Codec = AudioCodecType.Eac3,
+                BitrateKbps = 640,
+                Channels = Math.Min(stream.Channels, 6),
+                SampleRateHz = 48000,
+            }
+            : output with
+            {
+                Policy = StreamPolicy.Transcode,
+                Codec = AudioCodecType.Aac,
+                BitrateKbps = 192,
+                Channels = stream.Channels,
+                SampleRateHz = 48000,
+            };
     }
 
     private static readonly HashSet<string> DolbyFamilyTokens = new(
