@@ -370,6 +370,51 @@ public class CropDetectorTests
         Assert.Contains(args.Value!, a => a.Contains("cropdetect") && a.Contains("limit=24"));
     }
 
+    [Fact]
+    public async Task Detect_SameSourceAcrossBundles_ScansOnce_UntilTheFileChanges()
+    {
+        // Every bundle of one encode re-ran the 3-minute cropdetect scan over the
+        // network share. A shared cache keyed on path, size and modified time
+        // makes it run once per source.
+        string path = Path.Combine(Path.GetTempPath(), $"crop-cache-{Guid.NewGuid():N}.mkv");
+        await File.WriteAllBytesAsync(path, new byte[2048]);
+        try
+        {
+            SetupStderr([.. Enumerable.Repeat("crop=1920:1040:0:20", 10)], exitCode: 0);
+            CropResultCache cache = new();
+
+            CropDetector Make() =>
+                new(
+                    _options,
+                    _processRunner.Object,
+                    TestStorageFactory.CreateLocal(),
+                    NullLogger<CropDetector>.Instance,
+                    resultCache: cache
+                );
+
+            CropResult first = await Make().DetectAsync(path, CancellationToken.None);
+            CropResult second = await Make().DetectAsync(path, CancellationToken.None);
+
+            second.Should().BeEquivalentTo(first);
+            first.ShouldCrop.Should().BeTrue();
+            ScanCount().Should().Be(1, "the second bundle reuses the first scan");
+
+            File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddMinutes(-30));
+            await Make().DetectAsync(path, CancellationToken.None);
+
+            ScanCount().Should().Be(2, "a changed file is scanned again");
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    private int ScanCount() =>
+        _processRunner.Invocations.Count(i =>
+            i.Method.Name == "RunAsync" && i.Arguments[1] is string[] args && args.Contains("-vf")
+        );
+
     private CropDetector NewDetector() =>
         new(
             _options,
