@@ -743,6 +743,18 @@ public class EncodingOrchestrator(
         CancellationToken ct
     )
     {
+        IReadOnlyList<string> problems = EncodeOutputValidator.Validate(tempDir);
+        if (problems.Count > 0)
+        {
+            logger.LogError(
+                "Encode output failed validation, nothing published: {Problems}",
+                string.Join("; ", problems.Take(10))
+            );
+            throw new InvalidDataException(
+                $"Encode output is corrupt ({problems.Count} problem(s)): {problems[0]}"
+            );
+        }
+
         bool isLocalDest = destinationStorage is LocalStorage;
         bool sameVolume = false;
         using IDisposable? hold = HoldDestination(dest: destinationStorage, outputDirectory: outputDirectory);

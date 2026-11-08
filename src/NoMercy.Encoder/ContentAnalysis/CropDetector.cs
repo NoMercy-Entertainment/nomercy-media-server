@@ -32,9 +32,12 @@ public partial class CropDetector(
     IProcessRunner processRunner,
     IStorage storage,
     ILogger<CropDetector> logger,
-    IAnalysisProgressObserver? progress = null
+    IAnalysisProgressObserver? progress = null,
+    CropResultCache? resultCache = null
 ) : ICropDetector
 {
+    private readonly CropResultCache _resultCache = resultCache ?? new();
+
     // Minimum number of observations before we trust a crop value. Protects
     // against one-off black frames producing spurious crops.
     private const int MinObservations = 5;
@@ -76,6 +79,44 @@ public partial class CropDetector(
     ) => DetectAsync(inputPath, sourceVideoFileId, sourceIsHdr: false, ct);
 
     public async Task<CropResult> DetectAsync(
+        string inputPath,
+        Guid? sourceVideoFileId,
+        bool? sourceIsHdr,
+        CancellationToken ct
+    )
+    {
+        CropCacheKey? key = TryCacheKey(inputPath, sourceIsHdr);
+        if (key is { } known && _resultCache.TryGet(known, out CropResult? cached))
+        {
+            logger.LogDebug("cropdetect reused for {Input}", inputPath);
+            return cached! with { SourceVideoFileId = sourceVideoFileId };
+        }
+
+        CropResult fresh = await ScanAsync(inputPath, sourceVideoFileId, sourceIsHdr, ct)
+            .ConfigureAwait(false);
+
+        if (key is { } storeKey && fresh.Confidence > 0)
+            _resultCache.Set(storeKey, fresh);
+
+        return fresh;
+    }
+
+    private CropCacheKey? TryCacheKey(string inputPath, bool? sourceIsHdr)
+    {
+        try
+        {
+            long size = storage.SizeOrZero(inputPath);
+            return size > 0
+                ? new(inputPath, size, storage.LastModified(inputPath).UtcTicks, sourceIsHdr)
+                : null;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private async Task<CropResult> ScanAsync(
         string inputPath,
         Guid? sourceVideoFileId,
         bool? sourceIsHdr,

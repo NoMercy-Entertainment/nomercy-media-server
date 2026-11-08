@@ -67,6 +67,50 @@ public class WebVttSegmenterTests
     }
 
     // ----------------------------------------------------------------
+    // Whole-track mode → one segment, not one file per time window
+    // ----------------------------------------------------------------
+
+    [Fact]
+    public void SliceWhole_ManyCuesAcrossAFortyFiveMinuteTrack_IsOneSegmentWithEveryCue()
+    {
+        // 45 minutes of cues, one every 10 s. Per-window slicing at 6 s gave
+        // ~457 files per language; the whole track must be one segment.
+        string[] cues =
+        [
+            .. Enumerable
+                .Range(0, 270)
+                .Select(i =>
+                    Cue(
+                        TimeSpan.FromSeconds(i * 10).ToString(@"hh\:mm\:ss") + ".000",
+                        TimeSpan.FromSeconds((i * 10) + 2).ToString(@"hh\:mm\:ss") + ".000",
+                        $"line {i}"
+                    )
+                ),
+        ];
+
+        IReadOnlyList<WebVttSegment> segments = _sut.SliceWhole(Vtt(cues));
+
+        segments.Should().HaveCount(1, "a subtitle track is one segment, not one file per window");
+        segments[0].Index.Should().Be(0);
+        segments[0].StartTime.Should().Be(TimeSpan.Zero);
+        segments[0].EndTime.Should().BeGreaterThanOrEqualTo(TimeSpan.FromSeconds((269 * 10) + 2));
+        segments[0].Content.Should().Contain("line 0").And.Contain("line 269");
+        segments[0]
+            .Content.Split("-->")
+            .Length.Should()
+            .Be(271, "every cue appears exactly once (no boundary duplication)");
+    }
+
+    [Fact]
+    public void SliceWhole_NoCues_IsOneEmptySegment()
+    {
+        IReadOnlyList<WebVttSegment> segments = _sut.SliceWhole(Vtt());
+
+        segments.Should().HaveCount(1);
+        segments[0].Content.Should().StartWith("WEBVTT");
+    }
+
+    // ----------------------------------------------------------------
     // Cue straddling a boundary → duplicated into both segments
     // ----------------------------------------------------------------
 

@@ -266,6 +266,7 @@ public static class ServiceCollectionExtensions
         services.AddTransient<ISubtitleOcrEngine, SubtitleOcrEngine>();
         services.AddSingleton<ISubtitleRouter, SubtitleRouter>();
         services.AddTransient<IWhisperTranscriber, WhisperTranscriber>();
+        services.AddSingleton<CropResultCache>();
         services.AddTransient<ICropDetector, CropDetector>();
         services.AddTransient<IEncodeYieldProbe, EncodeYieldProbe>();
 

@@ -52,6 +52,16 @@ public sealed partial class WebVttSegmenter
     /// Same as <see cref="Slice(string,TimeSpan)"/> but works on an already-
     /// loaded string — used by tests without a real file.
     /// </summary>
+    /// <summary>
+    /// The whole track as ONE segment, [0, last cue end rounded up to a second).
+    /// </summary>
+    public IReadOnlyList<WebVttSegment> SliceWhole(string vttContent)
+    {
+        (_, List<ParsedCue> cues) = Parse(vttContent);
+        double seconds = cues.Count == 0 ? 1 : Math.Ceiling(cues.Max(c => c.End).TotalSeconds);
+        return SliceContent(vttContent, TimeSpan.FromSeconds(Math.Max(1, seconds)));
+    }
+
     public IReadOnlyList<WebVttSegment> SliceContent(string vttContent, TimeSpan segmentDuration)
     {
         if (segmentDuration <= TimeSpan.Zero)

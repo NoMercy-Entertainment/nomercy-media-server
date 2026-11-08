@@ -176,7 +176,8 @@ public class AutoEncodeSubscriberLifecycleTests
             NullLogger<AutoEncodeSubscriber>.Instance,
             NoOpStorage(),
             factory,
-            dispatcher.Object
+            dispatcher.Object,
+            batchQuietPeriod: TimeSpan.Zero
         );
         await subscriber.StartAsync(CancellationToken.None);
 

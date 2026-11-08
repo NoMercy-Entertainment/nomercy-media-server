@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using Microsoft.Extensions.Logging;
 using Moq;
 using NoMercy.Encoder.Codecs;
 using NoMercy.Encoder.Hardware;
@@ -159,6 +160,44 @@ public class ResourceBudgetTests
         lease.Should().BeNull();
         budget.AvailableGpuEncoderSlots(TestGpu.Name).Should().Be(3);
         budget.AvailableCpuThreads().Should().Be(8);
+    }
+
+    [Fact]
+    public void TryAcquire_WhenHeadroomDenied_LogsTheReasonOncePerMinuteAtInformation()
+    {
+        // The queue worker probes with a zero timeout every 5 s. A denial used
+        // to be silent there, so an encoder waiting on CPU looked like a stall.
+        Mock<IResourceMonitor> monitor = new();
+        monitor.Setup(m => m.GetSystemCpuUsagePercent()).Returns(90.0);
+        monitor.Setup(m => m.GetGpuEncodeUtilization(It.IsAny<string>())).Returns(0);
+        monitor.Setup(m => m.GetAvailableMemoryMb()).Returns(8192);
+        Mock<ILogger<ResourceBudget>> logger = new();
+
+        ResourceBudget budget = new(
+            [TestGpu],
+            cpuCores: 8,
+            monitor.Object,
+            new(CpuHeadroomPercent: 75, GpuHeadroomPercent: 80, MinFreeMemoryMb: 1024),
+            logger.Object
+        );
+
+        for (int probe = 0; probe < 4; probe++)
+            budget.TryAcquire(new(GpuDeviceKey: null, GpuSlots: 0, CpuThreads: 1), TimeSpan.Zero);
+
+        logger.Verify(
+            l =>
+                l.Log(
+                    LogLevel.Information,
+                    It.IsAny<EventId>(),
+                    It.Is<It.IsAnyType>((state, _) =>
+                        state.ToString()!.Contains("Headroom gate denied")
+                        && state.ToString()!.Contains("system CPU")
+                    ),
+                    null,
+                    It.IsAny<Func<It.IsAnyType, Exception?, string>>()
+                ),
+            Times.Once
+        );
     }
 
     [Fact]

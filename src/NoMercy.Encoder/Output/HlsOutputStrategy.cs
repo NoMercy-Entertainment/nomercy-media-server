@@ -395,10 +395,6 @@ public partial class HlsOutputStrategy(IStorage storage) : IOutputStrategy
         if (vttFiles.Length == 0)
             return;
 
-        int segmentDurationSeconds =
-            plan.SegmentDurationSeconds > 0 ? plan.SegmentDurationSeconds : 6;
-        TimeSpan segmentDuration = TimeSpan.FromSeconds(segmentDurationSeconds);
-
         WebVttSegmenter segmenter = new();
 
         foreach (SubtitleOutputPlan sub in webVttSubs)
@@ -435,10 +431,12 @@ public partial class HlsOutputStrategy(IStorage storage) : IOutputStrategy
                 continue;
 
             string vttContent = Encoding.UTF8.GetString(storage.Read(sourceVttPath));
-            IReadOnlyList<WebVttSegment> segments = segmenter.SliceContent(
-                vttContent,
-                segmentDuration
-            );
+            // One segment per track, not one per video-segment window: the
+            // windowed form wrote ~450 files per language and held the encoder
+            // worker for ~10 minutes per episode publishing them.
+            IReadOnlyList<WebVttSegment> segments = segmenter.SliceWhole(vttContent);
+            int trackDurationSeconds = (int)
+                Math.Ceiling(segments.Max(segment => segment.EndTime).TotalSeconds);
 
             // Chunks land in a per-language subfolder so a season with 20+
             // tracks doesn't dump 800 segment files into the root subtitles/
@@ -458,7 +456,7 @@ public partial class HlsOutputStrategy(IStorage storage) : IOutputStrategy
             string playlist = PlaylistGenerator.GenerateSubtitleMediaPlaylist(
                 sub,
                 segments,
-                segmentDurationSeconds
+                trackDurationSeconds
             );
             string playlistPath = storage.CombinePath(languageDir, $"{variant}.m3u8");
             await storage.WriteAsync(playlistPath, Encoding.UTF8.GetBytes(playlist), ct);

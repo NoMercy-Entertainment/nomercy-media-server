@@ -53,10 +53,78 @@ public class AutoEncodeSubscriber(
     ILogger<AutoEncodeSubscriber> logger,
     IStorage storage,
     IDbContextFactory<MediaContext> contextFactory,
-    IJobDispatcher dispatcher
+    IJobDispatcher dispatcher,
+    TimeSpan? batchQuietPeriod = null
 ) : IHostedService
 {
     private readonly List<IDisposable> _subscriptions = [];
+
+    private static readonly TimeSpan DefaultQuietPeriod = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan MaxHold = TimeSpan.FromMinutes(2);
+
+    private readonly Lock _holdLock = new();
+    private readonly List<(string SortKey, VideoEncodeJob Job)> _held = [];
+    private Timer? _flushTimer;
+    private DateTime _firstHeldAt;
+
+    // Scans of one season finish in worker order, not episode order. Holding the
+    // jobs briefly and queueing them sorted keeps the queue's Priority, Id order
+    // equal to episode order. A zero quiet period dispatches at once.
+    private void Submit(VideoEncodeJob job, string sortKey)
+    {
+        TimeSpan quiet = batchQuietPeriod ?? DefaultQuietPeriod;
+        if (quiet <= TimeSpan.Zero)
+        {
+            dispatcher.Dispatch(job, job.QueueName, job.Priority);
+            return;
+        }
+
+        lock (_holdLock)
+        {
+            if (_held.Count == 0)
+                _firstHeldAt = DateTime.UtcNow;
+            _held.Add((sortKey, job));
+
+            TimeSpan untilMaxHold = _firstHeldAt + MaxHold - DateTime.UtcNow;
+            TimeSpan due = untilMaxHold < quiet ? untilMaxHold : quiet;
+            _flushTimer ??= new(_ => FlushHeld(), null, Timeout.Infinite, Timeout.Infinite);
+            _flushTimer.Change(due < TimeSpan.Zero ? TimeSpan.Zero : due, Timeout.InfiniteTimeSpan);
+        }
+    }
+
+    private void FlushHeld()
+    {
+        try
+        {
+            FlushAsync().GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning(ex, "Auto-encode could not queue its held jobs");
+        }
+    }
+
+    public Task FlushAsync()
+    {
+        List<(string SortKey, VideoEncodeJob Job)> batch;
+        lock (_holdLock)
+        {
+            batch = [.. _held];
+            _held.Clear();
+            _flushTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+        }
+
+        foreach ((_, VideoEncodeJob job) in batch.OrderBy(e => e.SortKey, NaturalStringComparer.Instance))
+            dispatcher.Dispatch(job, job.QueueName, job.Priority);
+
+        if (batch.Count > 0)
+            logger.LogInformation(
+                "Auto-encode queued {Count} held VideoEncodeJob(s) in episode order",
+                batch.Count
+            );
+
+        return Task.CompletedTask;
+    }
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
@@ -81,7 +149,9 @@ public class AutoEncodeSubscriber(
             }
         }
         _subscriptions.Clear();
-        return Task.CompletedTask;
+        _flushTimer?.Dispose();
+        _flushTimer = null;
+        return FlushAsync();
     }
 
     private async Task HandleAsync(MediaFilesScannedEvent evt, CancellationToken ct)
@@ -189,7 +259,7 @@ public class AutoEncodeSubscriber(
                     InputFile = filePath,
                     PresetId = library.EncodePresetId.Value,
                 };
-                dispatcher.Dispatch(job, job.QueueName, job.Priority);
+                Submit(job, bestSource.HostFolder.TrimEnd('/') + "/" + bestSource.Filename);
                 dispatched++;
             }
 
