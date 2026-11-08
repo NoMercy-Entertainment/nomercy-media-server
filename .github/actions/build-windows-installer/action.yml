@@ -38,11 +38,25 @@ runs:
         $InnoUrl = "https://github.com/jrsoftware/issrc/releases/download/$InnoTag/$InnoAsset"
         $InstallerPath = "$env:TEMP\innosetup.exe"
 
-        Write-Host "Downloading $InnoAsset ($InnoTag)..."
-        Invoke-WebRequest -Uri $InnoUrl -OutFile $InstallerPath -UseBasicParsing
+        for ($attempt = 1; $attempt -le 3 -and -not (Test-Path "C:\InnoSetup\ISCC.exe"); $attempt++) {
+          Write-Host "Attempt ${attempt}: downloading $InnoAsset ($InnoTag)..."
+          try {
+            Invoke-WebRequest -Uri $InnoUrl -OutFile $InstallerPath -UseBasicParsing -TimeoutSec 90
+            Write-Host "Downloaded $((Get-Item $InstallerPath).Length) bytes. Installing Inno Setup..."
+            $proc = Start-Process -FilePath $InstallerPath -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-', '/DIR=C:\InnoSetup' -PassThru
+            if (-not $proc.WaitForExit(180000)) { $proc.Kill(); Write-Host "Installer timed out" }
+            else { Write-Host "Installer exit code $($proc.ExitCode)" }
+          } catch {
+            Write-Host "Attempt $attempt failed: $_"
+          }
+        }
 
-        Write-Host "Installing Inno Setup..."
-        Start-Process -FilePath $InstallerPath -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/DIR=C:\InnoSetup' -Wait -NoNewWindow
+        if (-not (Test-Path "C:\InnoSetup\ISCC.exe")) {
+          Write-Host "Falling back to Chocolatey"
+          choco install innosetup -y --no-progress
+          $found = Get-ChildItem 'C:\Program Files*\Inno Setup*\ISCC.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($found) { New-Item -ItemType Directory -Force C:\InnoSetup | Out-Null; Copy-Item (Join-Path (Split-Path $found.FullName) '*') C:\InnoSetup -Recurse -Force }
+        }
 
         if (Test-Path "C:\InnoSetup\ISCC.exe") {
           Write-Host "Inno Setup installed successfully"
