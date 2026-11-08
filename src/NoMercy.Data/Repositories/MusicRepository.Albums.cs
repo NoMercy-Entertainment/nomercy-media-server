@@ -287,6 +287,9 @@ public partial class MusicRepository
         return await mediaContext
             .AlbumUser.AsNoTracking()
             .Where(albumUser => albumUser.UserId == userId)
+            .Where(albumUser =>
+                albumUser.Album.AlbumTrack.AsQueryable().Any(TrackAvailability.AlbumTrackIsPlayable)
+            )
             .OrderBy(albumUser => albumUser.Album.Name)
             .ThenBy(albumUser => albumUser.Album.Id)
             .Select(albumUser => new AlbumCardDto
@@ -321,6 +324,9 @@ public partial class MusicRepository
         return await mediaContext
             .Albums.AsNoTracking()
             .Where(album => albumIds.Contains(album.Id))
+            .Where(album =>
+                album.AlbumTrack.AsQueryable().Any(TrackAvailability.AlbumTrackIsPlayable)
+            )
             .Select(album => new AlbumCardDto
             {
                 Id = album.Id,

@@ -366,6 +366,9 @@ public partial class MusicRepository
             .MusicPlays.AsNoTracking()
             .Where(mp => mp.UserId == userId)
             .SelectMany(mp => mp.Track.ArtistTrack)
+            .Where(at =>
+                at.Artist.ArtistTrack.AsQueryable().Any(TrackAvailability.ArtistTrackIsPlayable)
+            )
             .GroupBy(at => new
             {
                 at.Artist.Id,
@@ -392,6 +395,9 @@ public partial class MusicRepository
             .MusicPlays.AsNoTracking()
             .Where(mp => mp.UserId == userId)
             .SelectMany(mp => mp.Track.AlbumTrack)
+            .Where(at =>
+                at.Album.AlbumTrack.AsQueryable().Any(TrackAvailability.AlbumTrackIsPlayable)
+            )
             .GroupBy(at => new
             {
                 at.Album.Id,
@@ -447,6 +453,11 @@ public partial class MusicRepository
         return ctx
             .ArtistUser.AsNoTracking()
             .Where(artistUser => artistUser.UserId == userId)
+            .Where(artistUser =>
+                artistUser
+                    .Artist.ArtistTrack.AsQueryable()
+                    .Any(TrackAvailability.ArtistTrackIsPlayable)
+            )
             .OrderBy(artistUser => artistUser.Artist.Name)
             .ThenBy(artistUser => artistUser.Artist.Id)
             .Select(artistUser => new ArtistCardDto
@@ -478,6 +489,9 @@ public partial class MusicRepository
         return ctx
             .AlbumUser.AsNoTracking()
             .Where(albumUser => albumUser.UserId == userId)
+            .Where(albumUser =>
+                albumUser.Album.AlbumTrack.AsQueryable().Any(TrackAvailability.AlbumTrackIsPlayable)
+            )
             .OrderBy(albumUser => albumUser.Album.Name)
             .ThenBy(albumUser => albumUser.Album.Id)
             .Select(albumUser => new AlbumCardDto

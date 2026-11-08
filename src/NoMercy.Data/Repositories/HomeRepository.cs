@@ -257,7 +257,7 @@ public class HomeRepository(MediaContext context, IDbContextFactory<MediaContext
             // the two container shapes (Collection, Special) continue-watching
             // also carries.
             .Where(ud =>
-                (ud.Movie != null && ud.Movie.VideoFiles.Any())
+                (ud.Movie != null && ud.Movie.VideoFiles.Any(v => v.Folder != null))
                 || (
                     ud.Tv != null
                     && ud.Tv.Episodes.Any(e =>
@@ -266,13 +266,18 @@ public class HomeRepository(MediaContext context, IDbContextFactory<MediaContext
                 )
                 || (
                     ud.Collection != null
-                    && ud.Collection.CollectionMovies.Any(cm => cm.Movie.VideoFiles.Any())
+                    && ud.Collection.CollectionMovies.Any(cm =>
+                        cm.Movie.VideoFiles.Any(v => v.Folder != null)
+                    )
                 )
                 || (
                     ud.Special != null
                     && ud.Special.Items.Any(item =>
-                        (item.Movie != null && item.Movie.VideoFiles.Any())
-                        || (item.Episode != null && item.Episode.VideoFiles.Any())
+                        (item.Movie != null && item.Movie.VideoFiles.Any(v => v.Folder != null))
+                        || (
+                            item.Episode != null
+                            && item.Episode.VideoFiles.Any(v => v.Folder != null)
+                        )
                     )
                 )
             )
@@ -489,7 +494,11 @@ public class HomeRepository(MediaContext context, IDbContextFactory<MediaContext
         List<Collection> collections = await db
             .Collections.AsNoTracking()
             .Where(collection => collection.CollectionUser.Any(cu => cu.UserId == userId))
-            .Where(collection => collection.CollectionMovies.Any(cm => cm.Movie.VideoFiles.Any()))
+            .Where(collection =>
+                collection.CollectionMovies.Any(cm =>
+                    cm.Movie.VideoFiles.Any(v => v.Folder != null)
+                )
+            )
             .Include(collection => collection.Translations.Where(t => t.Iso6391 == language))
             .Include(collection =>
                 collection
@@ -521,8 +530,8 @@ public class HomeRepository(MediaContext context, IDbContextFactory<MediaContext
             .Where(special => special.SpecialUser.Any(su => su.UserId == userId))
             .Where(special =>
                 special.Items.Any(item =>
-                    (item.Movie != null && item.Movie.VideoFiles.Any())
-                    || (item.Episode != null && item.Episode.VideoFiles.Any())
+                    (item.Movie != null && item.Movie.VideoFiles.Any(v => v.Folder != null))
+                    || (item.Episode != null && item.Episode.VideoFiles.Any(v => v.Folder != null))
                 )
             )
             .Include(special => special.Items)

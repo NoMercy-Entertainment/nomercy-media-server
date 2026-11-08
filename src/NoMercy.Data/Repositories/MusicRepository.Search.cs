@@ -28,6 +28,9 @@ public partial class MusicRepository
         return await mediaContext
             .Artists.AsNoTracking()
             .Where(artist => MediaContext.NormalizeSearch(artist.Name).Contains(normalizedQuery))
+            .Where(artist =>
+                artist.ArtistTrack.AsQueryable().Any(TrackAvailability.ArtistTrackIsPlayable)
+            )
             .OrderBy(artist => artist.Name)
             .ThenBy(artist => artist.Id)
             .Select(artist => artist.Id)
@@ -43,6 +46,9 @@ public partial class MusicRepository
         return await mediaContext
             .Albums.AsNoTracking()
             .Where(album => MediaContext.NormalizeSearch(album.Name).Contains(normalizedQuery))
+            .Where(album =>
+                album.AlbumTrack.AsQueryable().Any(TrackAvailability.AlbumTrackIsPlayable)
+            )
             .OrderBy(album => album.Name)
             .ThenBy(album => album.Id)
             .Select(album => album.Id)
