@@ -120,6 +120,28 @@ public sealed class EncodeOutputValidatorTests : IDisposable
     }
 
     [Fact]
+    public void TruncatedVideoRendition_IsReported()
+    {
+        Write("video_1920x1080_SDR/video_1920x1080_SDR.m3u8", Media);
+        Write("video_1920x1080_SDR/seg0.ts", "x");
+        Write("video_1920x1080_SDR/seg1.ts", "x");
+
+        IReadOnlyList<string> problems = EncodeOutputValidator.ValidateDurations(_root, 7450);
+
+        Assert.Contains(problems, p => p.Contains("video_1920x1080_SDR") && p.Contains("12"));
+    }
+
+    [Fact]
+    public void FullLengthRenditionsAndSubtitles_HaveNoDurationProblems()
+    {
+        Write("video_a/video_a.m3u8", Media);
+        Write("audio_eng_aac/audio_eng_aac.m3u8", Media);
+        Write("subtitles/sub_eng.m3u8", Media);
+
+        Assert.Empty(EncodeOutputValidator.ValidateDurations(_root, 12.3));
+    }
+
+    [Fact]
     public async Task Publish_OfCorruptOutput_ThrowsAndMovesNothing()
     {
         string tempDir = Path.Combine(_root, "cache");

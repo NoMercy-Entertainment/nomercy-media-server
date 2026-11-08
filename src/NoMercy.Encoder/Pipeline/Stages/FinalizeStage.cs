@@ -201,6 +201,18 @@ public class FinalizeStage(
                     context.CorrelationId
                 );
 
+            if (context.MediaInfo is not null && Directory.Exists(input.OutputDirectory))
+            {
+                IReadOnlyList<string> short_ = EncodeOutputValidator.ValidateDurations(
+                    input.OutputDirectory,
+                    context.MediaInfo.Duration.TotalSeconds
+                );
+                if (short_.Count > 0)
+                    throw new InvalidDataException(
+                        $"Encode output is truncated ({short_.Count} rendition(s)): {string.Join("; ", short_)}"
+                    );
+            }
+
             IReadOnlyList<StorageEntry> allEntries = effectiveStorage.List(
                 input.OutputDirectory,
                 "*",
