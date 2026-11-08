@@ -31,7 +31,8 @@ public class ResourceBudget : IResourceBudget
     private readonly IResourceMonitor? _monitor;
     private readonly ResourceBudgetOptions _options;
     private readonly ILogger<ResourceBudget>? _logger;
-    private bool _headroomDenialLogged;
+    private static readonly TimeSpan DenialLogInterval = TimeSpan.FromMinutes(1);
+    private DateTime _lastDenialLoggedAt = DateTime.MinValue;
 
     // Live source of truth for GPUs. Held through IHardwareCapabilities so
     // we re-read it on every lookup — HardwareInitializationService finishes
@@ -341,7 +342,7 @@ public class ResourceBudget : IResourceBudget
         // hardware limits, but the count we can actually sustain depends on
         // current load. Refuse the lease when the host is saturated; the
         // worker retries every BudgetRetryDelay so we re-check as load drops.
-        if (!HasHeadroom(requirement, timeoutMs > 0))
+        if (!HasHeadroom(requirement))
             return null;
 
         SemaphoreSlim? gpuSemaphore = null;
@@ -436,20 +437,10 @@ public class ResourceBudget : IResourceBudget
         return new(leaseId, requirement.GpuDeviceKey, requirement.GpuSlots, requirement.CpuThreads);
     }
 
-    private bool HasHeadroom(ResourceRequirement requirement, bool logIfDenied)
-    {
-        bool hasHeadroom =
-            HasCpuHeadroom(logIfDenied)
-            && HasGpuHeadroom(requirement, logIfDenied)
-            && HasMemoryHeadroom(logIfDenied);
+    private bool HasHeadroom(ResourceRequirement requirement) =>
+        HasCpuHeadroom() && HasGpuHeadroom(requirement) && HasMemoryHeadroom();
 
-        if (hasHeadroom)
-            _headroomDenialLogged = false;
-
-        return hasHeadroom;
-    }
-
-    private bool HasCpuHeadroom(bool logIfDenied)
+    private bool HasCpuHeadroom()
     {
         if (_monitor is null || _options.CpuHeadroomPercent <= 0)
             return true;
@@ -458,7 +449,7 @@ public class ResourceBudget : IResourceBudget
         if (systemCpu < _options.CpuHeadroomPercent)
             return true;
 
-        LogHeadroomDenied("system CPU", systemCpu, _options.CpuHeadroomPercent, logIfDenied);
+        LogHeadroomDenied("system CPU", systemCpu, _options.CpuHeadroomPercent);
         return false;
     }
 
@@ -468,7 +459,7 @@ public class ResourceBudget : IResourceBudget
     /// The estimate keeps concurrent encodes counted where nothing measures the
     /// encoder, which is every non-NVIDIA host and the first seconds after boot.
     /// </summary>
-    private bool HasGpuHeadroom(ResourceRequirement requirement, bool logIfDenied)
+    private bool HasGpuHeadroom(ResourceRequirement requirement)
     {
         if (
             _options.GpuHeadroomPercent <= 0
@@ -487,13 +478,12 @@ public class ResourceBudget : IResourceBudget
         LogHeadroomDenied(
             $"GPU encode '{requirement.GpuDeviceKey}'",
             gpuLoad,
-            _options.GpuHeadroomPercent,
-            logIfDenied
+            _options.GpuHeadroomPercent
         );
         return false;
     }
 
-    private bool HasMemoryHeadroom(bool logIfDenied)
+    private bool HasMemoryHeadroom()
     {
         if (_monitor is null || _options.MinFreeMemoryMb <= 0)
             return true;
@@ -506,7 +496,6 @@ public class ResourceBudget : IResourceBudget
             "free memory MB",
             freeMb,
             _options.MinFreeMemoryMb,
-            logIfDenied,
             invert: true
         );
         return false;
@@ -518,20 +507,21 @@ public class ResourceBudget : IResourceBudget
             ? capacity - semaphore.CurrentCount
             : 0;
 
+    // Information, once a minute: a wait on this gate is otherwise invisible.
     private void LogHeadroomDenied(
         string signal,
         double current,
         double threshold,
-        bool emit,
         bool invert = false
     )
     {
-        if (!emit || _headroomDenialLogged)
+        DateTime now = DateTime.UtcNow;
+        if (now - _lastDenialLoggedAt < DenialLogInterval)
             return;
 
-        _headroomDenialLogged = true;
+        _lastDenialLoggedAt = now;
         string comparison = invert ? "below" : "above";
-        _logger?.LogDebug(
+        _logger?.LogInformation(
             "Headroom gate denied lease — {Signal} at {Current:F1} is {Cmp} threshold {Threshold:F1}",
             signal,
             current,
