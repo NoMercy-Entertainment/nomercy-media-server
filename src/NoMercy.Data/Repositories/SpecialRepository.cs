@@ -72,6 +72,12 @@ public class SpecialRepository(MediaContext context, IDbContextFactory<MediaCont
         return context
             .Specials.AsNoTracking()
             .AsSingleQuery()
+            .Where(special =>
+                special.Items.Any(item =>
+                    (item.Movie != null && item.Movie.VideoFiles.Any(v => v.Folder != null))
+                    || (item.Episode != null && item.Episode.VideoFiles.Any(v => v.Folder != null))
+                )
+            )
             .OrderBy(special => special.Order)
             .ThenBy(special => special.TitleSort)
             .ThenBy(special => special.Id)
@@ -125,6 +131,12 @@ public class SpecialRepository(MediaContext context, IDbContextFactory<MediaCont
         return await db
             .Specials.AsNoTracking()
             .AsSingleQuery()
+            .Where(special =>
+                special.Items.Any(item =>
+                    (item.Movie != null && item.Movie.VideoFiles.Any(v => v.Folder != null))
+                    || (item.Episode != null && item.Episode.VideoFiles.Any(v => v.Folder != null))
+                )
+            )
             .OrderBy(special => special.Order)
             .ThenBy(special => special.TitleSort)
             .ThenBy(special => special.Id)

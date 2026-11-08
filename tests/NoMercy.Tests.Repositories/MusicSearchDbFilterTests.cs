@@ -248,6 +248,22 @@ public class MusicSearchDbFilterTests : IDisposable
         );
 
         context.SaveChanges();
+
+        // Search only returns artists and albums that have a playable track.
+        Guid playableTrackId = Guid.Parse("c0000001-0000-0000-0000-000000000001");
+        for (int number = 1; number <= 5; number++)
+        {
+            context.ArtistTrack.Add(
+                new(Guid.Parse($"a0000001-0000-0000-0000-00000000000{number}"), playableTrackId)
+            );
+        }
+        for (int number = 1; number <= 2; number++)
+        {
+            context.AlbumTrack.Add(
+                new(Guid.Parse($"b0000001-0000-0000-0000-00000000000{number}"), playableTrackId)
+            );
+        }
+        context.SaveChanges();
     }
 
     [Fact]

@@ -12,10 +12,12 @@
 using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using NoMercy.Data.DTOs.Specials;
 using NoMercy.Data.Repositories;
 using NoMercy.Database;
 using NoMercy.Database.Models;
 using NoMercy.Database.Models.Libraries;
+using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.Movies;
 using NoMercy.Database.Models.TvShows;
 using NoMercy.Database.Models.Users;
@@ -179,6 +181,256 @@ public class MediaAvailabilityGateTests : IDisposable
 
         shows.Should().BeEquivalentTo(new[] { SeasonOneShow });
         movies.Should().BeEquivalentTo(new[] { MovieWithFile });
+    }
+
+    [Fact]
+    public async Task LibraryMovies_DropAMovieWhoseOnlyFileHasNoFolder()
+    {
+        await SeedAsync();
+        await SeedCardShapesAsync();
+        LibraryRepository repository = new(new Factory(_options));
+        await using MediaContext context = new(_options);
+
+        List<int> listed = [];
+        await foreach (
+            Movie movie in repository.GetLibraryMovies(
+                context,
+                UserId,
+                LibraryId,
+                "en",
+                take: 50,
+                skip: 0,
+                orderByExpression: null,
+                direction: null
+            )
+        )
+        {
+            listed.Add(movie.Id);
+        }
+
+        listed.Should().BeEquivalentTo(new[] { MovieWithFile, SecondMovieWithFile });
+    }
+
+    [Fact]
+    public async Task ContinueWatching_DropsFolderlessMovieCollectionAndSpecialShapes()
+    {
+        await SeedAsync();
+        await SeedCardShapesAsync();
+        HomeRepository repository = new(new MediaContext(_options), new Factory(_options));
+
+        HashSet<UserData> rows = await repository.GetContinueWatchingAsync(UserId, "en", "US");
+
+        rows.Where(row => row.MovieId is not null)
+            .Select(row => row.MovieId)
+            .Should()
+            .BeEquivalentTo(new int?[] { MovieWithFile });
+        rows.Where(row => row.CollectionId is not null)
+            .Select(row => row.CollectionId)
+            .Should()
+            .BeEquivalentTo(new int?[] { PlayableCollection });
+        rows.Where(row => row.SpecialId is not null)
+            .Select(row => row.SpecialId)
+            .Should()
+            .BeEquivalentTo(new Ulid?[] { PlayableSpecial, SeasonZeroSpecial });
+    }
+
+    [Fact]
+    public async Task Favorites_DropFolderlessCollectionAndSpecialShapes()
+    {
+        await SeedAsync();
+        await SeedCardShapesAsync();
+        HomeRepository repository = new(new MediaContext(_options), new Factory(_options));
+
+        FavoritesData favorites = await repository.GetFavoritesAsync(UserId, "en", "US");
+
+        favorites
+            .Collections.Select(c => c.Id)
+            .Should()
+            .BeEquivalentTo(new[] { PlayableCollection });
+        favorites
+            .Specials.Select(s => s.Id)
+            .Should()
+            .BeEquivalentTo(new[] { PlayableSpecial, SeasonZeroSpecial });
+    }
+
+    [Fact]
+    public async Task SpecialCards_FilterBeforeThePageIsCut_AndKeepASeasonZeroSpecial()
+    {
+        await SeedAsync();
+        await SeedCardShapesAsync();
+        await using MediaContext context = new(_options);
+        SpecialRepository repository = new(context, new Factory(_options));
+
+        List<SpecialCardDto> cards = await repository.GetSpecialCardsAsync(UserId, "en", 2, 0);
+        List<SpecialCardDto> itemCards = await repository.GetSpecialItemCardsAsync(
+            UserId,
+            "en",
+            "US",
+            2,
+            0
+        );
+
+        cards.Select(c => c.Id).Should().Equal(PlayableSpecial, SeasonZeroSpecial);
+        itemCards.Select(c => c.Id).Should().Equal(PlayableSpecial, SeasonZeroSpecial);
+    }
+
+    [Fact]
+    public async Task VideoSearch_DropsTitlesWithNoPlayableFile()
+    {
+        await SeedAsync();
+        await SeedCardShapesAsync();
+        LibraryRepository repository = new(new Factory(_options));
+
+        VideoSearchResults results = await repository.SearchVideoByTitleAsync("");
+
+        results.Tvs.Select(tv => tv.Id).Should().BeEquivalentTo(new[] { SeasonOneShow });
+        results
+            .Movies.Select(movie => movie.Id)
+            .Should()
+            .BeEquivalentTo(new[] { MovieWithFile, SecondMovieWithFile });
+    }
+
+    private const int SecondMovieWithFile = 204;
+    private const int FolderlessMovie = 203;
+    private const int PlayableCollection = 301;
+    private const int FolderlessCollection = 302;
+    private static readonly Ulid FolderlessSpecial = Ulid.NewUlid();
+    private static readonly Ulid EmptySpecial = Ulid.NewUlid();
+    private static readonly Ulid PlayableSpecial = Ulid.NewUlid();
+    private static readonly Ulid SeasonZeroSpecial = Ulid.NewUlid();
+
+    private async Task SeedCardShapesAsync()
+    {
+        await using MediaContext context = new(_options);
+
+        foreach (int id in new[] { FolderlessMovie, SecondMovieWithFile })
+        {
+            context.Movies.Add(
+                new()
+                {
+                    Id = id,
+                    Title = $"Movie {id}",
+                    TitleSort = $"movie {id}",
+                    LibraryId = LibraryId,
+                }
+            );
+        }
+        foreach (int id in new[] { PlayableCollection, FolderlessCollection })
+        {
+            context.Collections.Add(
+                new()
+                {
+                    Id = id,
+                    Title = $"Collection {id}",
+                    LibraryId = LibraryId,
+                }
+            );
+        }
+        (Ulid Id, int Order, string Title)[] specials =
+        [
+            (FolderlessSpecial, 0, "Special A"),
+            (EmptySpecial, 1, "Special B"),
+            (PlayableSpecial, 2, "Special C"),
+            (SeasonZeroSpecial, 3, "Special D"),
+        ];
+        foreach ((Ulid id, int order, string title) in specials)
+        {
+            context.Specials.Add(
+                new()
+                {
+                    Id = id,
+                    Order = order,
+                    Title = title,
+                    TitleSort = title,
+                }
+            );
+            context.SpecialUser.Add(new(id, UserId));
+        }
+        await context.SaveChangesAsync();
+
+        Ulid folderlessFileId = Ulid.NewUlid();
+        Ulid secondFileId = Ulid.NewUlid();
+        context.VideoFiles.AddRange(
+            new VideoFile
+            {
+                Id = folderlessFileId,
+                MovieId = FolderlessMovie,
+                Folder = null,
+                Filename = "gone.mkv",
+                Share = "local",
+            },
+            new VideoFile
+            {
+                Id = secondFileId,
+                MovieId = SecondMovieWithFile,
+                Folder = "/Movies/Second",
+                Filename = "second.mkv",
+                Share = "local",
+            }
+        );
+        context.CollectionMovie.AddRange(
+            new(PlayableCollection, MovieWithFile),
+            new(FolderlessCollection, FolderlessMovie)
+        );
+        context.CollectionUser.AddRange(
+            new(PlayableCollection, UserId),
+            new(FolderlessCollection, UserId)
+        );
+        context.SpecialItems.AddRange(
+            new() { SpecialId = FolderlessSpecial, MovieId = FolderlessMovie },
+            new() { SpecialId = PlayableSpecial, MovieId = MovieWithFile },
+            new() { SpecialId = SeasonZeroSpecial, EpisodeId = 1 }
+        );
+        await context.SaveChangesAsync();
+
+        Ulid playableFileId = (
+            await context.VideoFiles.AsNoTracking().FirstAsync(v => v.MovieId == MovieWithFile)
+        ).Id;
+        context.UserData.AddRange(
+            new UserData
+            {
+                UserId = UserId,
+                MovieId = FolderlessMovie,
+                VideoFileId = folderlessFileId,
+                LastPlayedDate = "2026-01-02",
+            },
+            new UserData
+            {
+                UserId = UserId,
+                CollectionId = PlayableCollection,
+                VideoFileId = playableFileId,
+                LastPlayedDate = "2026-01-02",
+            },
+            new UserData
+            {
+                UserId = UserId,
+                CollectionId = FolderlessCollection,
+                VideoFileId = folderlessFileId,
+                LastPlayedDate = "2026-01-02",
+            },
+            new UserData
+            {
+                UserId = UserId,
+                SpecialId = FolderlessSpecial,
+                VideoFileId = folderlessFileId,
+                LastPlayedDate = "2026-01-02",
+            },
+            new UserData
+            {
+                UserId = UserId,
+                SpecialId = PlayableSpecial,
+                VideoFileId = playableFileId,
+                LastPlayedDate = "2026-01-02",
+            },
+            new UserData
+            {
+                UserId = UserId,
+                SpecialId = SeasonZeroSpecial,
+                VideoFileId = playableFileId,
+                LastPlayedDate = "2026-01-02",
+            }
+        );
+        await context.SaveChangesAsync();
     }
 
     private sealed class Factory(DbContextOptions<MediaContext> options)

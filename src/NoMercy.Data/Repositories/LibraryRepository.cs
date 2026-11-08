@@ -311,7 +311,7 @@ public class LibraryRepository(IDbContextFactory<MediaContext> contextFactory) :
                 .Movies.AsNoTracking()
                 .Where(movie => movie.Library.Id == libraryId)
                 .Where(movie => movie.Library.LibraryUsers.Any(u => u.UserId.Equals(userId)))
-                .Where(libraryMovie => libraryMovie.VideoFiles.Any())
+                .Where(MediaAvailability.MovieIsAvailable)
                 .Include(movie => movie.VideoFiles)
                 .Include(movie =>
                     movie.Media.Where(media => media.Iso6391 == language || media.Iso6391 == "en")
@@ -956,6 +956,7 @@ public class LibraryRepository(IDbContextFactory<MediaContext> contextFactory) :
                 await using MediaContext ctx = await contextFactory.CreateDbContextAsync(ct);
                 return await ctx
                     .Tvs.Where(tv => tv.Title.ToLower().Contains(normalizedQuery))
+                    .Where(MediaAvailability.TvIsAvailable)
                     .ToListAsync(ct);
             },
             ct
@@ -967,6 +968,7 @@ public class LibraryRepository(IDbContextFactory<MediaContext> contextFactory) :
                 await using MediaContext ctx = await contextFactory.CreateDbContextAsync(ct);
                 return await ctx
                     .Movies.Where(movie => movie.Title.ToLower().Contains(normalizedQuery))
+                    .Where(MediaAvailability.MovieIsAvailable)
                     .ToListAsync(ct);
             },
             ct

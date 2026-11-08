@@ -37,10 +37,22 @@ public partial class MusicRepository
             .Include(artist => artist.ArtistUser.Where(au => au.UserId == userId))
             .Include(artist => artist.Translations)
             .Include(artist => artist.Images)
-            .Include(artist => artist.AlbumArtist)
+            .Include(artist =>
+                artist.AlbumArtist.Where(albumArtist =>
+                    albumArtist
+                        .Album.AlbumTrack.AsQueryable()
+                        .Any(TrackAvailability.AlbumTrackIsPlayable)
+                )
+            )
                 .ThenInclude(albumArtist => albumArtist.Album)
                     .ThenInclude(album => album.AlbumUser.Where(au => au.UserId == userId))
-            .Include(artist => artist.AlbumArtist)
+            .Include(artist =>
+                artist.AlbumArtist.Where(albumArtist =>
+                    albumArtist
+                        .Album.AlbumTrack.AsQueryable()
+                        .Any(TrackAvailability.AlbumTrackIsPlayable)
+                )
+            )
                 .ThenInclude(albumArtist => albumArtist.Album)
                     .ThenInclude(album => album.Images)
             .Include(artist =>
@@ -290,6 +302,11 @@ public partial class MusicRepository
         return await mediaContext
             .ArtistUser.AsNoTracking()
             .Where(artistUser => artistUser.UserId == userId)
+            .Where(artistUser =>
+                artistUser
+                    .Artist.ArtistTrack.AsQueryable()
+                    .Any(TrackAvailability.ArtistTrackIsPlayable)
+            )
             .OrderBy(artistUser => artistUser.Artist.Name)
             .ThenBy(artistUser => artistUser.Artist.Id)
             .Select(artistUser => new ArtistCardDto
@@ -323,6 +340,9 @@ public partial class MusicRepository
         return await mediaContext
             .Artists.AsNoTracking()
             .Where(artist => artistIds.Contains(artist.Id))
+            .Where(artist =>
+                artist.ArtistTrack.AsQueryable().Any(TrackAvailability.ArtistTrackIsPlayable)
+            )
             .Select(artist => new ArtistCardDto
             {
                 Id = artist.Id,
