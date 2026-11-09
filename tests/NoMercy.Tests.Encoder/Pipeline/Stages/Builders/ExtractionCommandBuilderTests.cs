@@ -253,13 +253,10 @@ public class ExtractionCommandBuilderTests : IDisposable
         command.Should().BeNull();
     }
 
-    // ------------------------------------------------------------------
-    // Gating: text-based subtitle streams stay out of this command — they
-    // are muxed into the main command via AddTextSubtitleOutputs instead.
-    // ------------------------------------------------------------------
+    // Text subtitles are extracted here, never beside the encode outputs.
 
     [Fact]
-    public void BuildCommand_TextSubtitleStream_IsExcluded()
+    public void BuildCommand_TextSubtitleStream_EmitsWebVttOutput()
     {
         SubtitleOutputPlan textPlan = new(
             OutputCodec: SubtitleCodecType.WebVtt,
@@ -282,7 +279,42 @@ public class ExtractionCommandBuilderTests : IDisposable
 
         FfmpegCommand? command = BuildCommand(plan, mediaInfo, []);
 
-        command.Should().BeNull();
+        command.Should().NotBeNull();
+        List<string> args = [.. command!.Arguments];
+        args.Count(a => a == "-i").Should().Be(1);
+        args.Should().ContainInOrder("-map", "0:s:0", "-c:s", "webvtt");
+        args.Should().Contain(a => a.EndsWith(".vtt", StringComparison.Ordinal));
+        args.Should().NotContain("matroska");
+        args.Should().NotContain("null");
+    }
+
+    [Fact]
+    public void BuildCommand_AssSubtitleStream_EmitsAssOutput()
+    {
+        SubtitleOutputPlan assPlan = new(
+            OutputCodec: SubtitleCodecType.Copy,
+            Action: StreamAction.Copy,
+            Language: "en",
+            SourceIndex: 0,
+            MapLabel: "0:s:0"
+        );
+        MediaInfo mediaInfo = MakeMediaInfo(
+            new SubtitleStreamInfo(
+                Index: 0,
+                Codec: "ass",
+                Language: "en",
+                IsDefault: true,
+                IsForced: false,
+                Title: null
+            )
+        );
+
+        FfmpegCommand? command = BuildCommand(MakePlan(assPlan), mediaInfo, []);
+
+        command.Should().NotBeNull();
+        List<string> args = [.. command!.Arguments];
+        args.Should().ContainInOrder("-map", "0:s:0", "-c:s", "ass");
+        args.Should().Contain(a => a.EndsWith(".ass", StringComparison.Ordinal));
     }
 
     // ------------------------------------------------------------------
