@@ -710,7 +710,7 @@ public class EncodingOrchestrator(
     }
 
     // Tells the library file watcher the publish is the server's own output.
-    private const int PublishParallelism = 8;
+    private const int PublishParallelism = 16;
 
     private static IDisposable? HoldDestination(IStorage dest, string outputDirectory)
     {
