@@ -246,6 +246,84 @@ public class PlaybackDecisionEngineTests
         decision.Reason.Should().Contain("Audio");
     }
 
+    private static MediaInfo MakeMediaWithAudios(
+        string format,
+        VideoStreamInfo video,
+        params AudioStreamInfo[] audios
+    ) =>
+        new(
+            FilePath: "/media/test.file",
+            Format: format,
+            Duration: TimeSpan.FromMinutes(90),
+            OverallBitRateKbps: 10000,
+            FileSizeBytes: 1_000_000_000L,
+            VideoStreams: [video],
+            AudioStreams: [.. audios],
+            SubtitleStreams: [],
+            Chapters: []
+        );
+
+    [Fact]
+    public void Eac3ThenAac_ToAacOnlyClient_DirectPlay()
+    {
+        MediaInfo media = MakeMediaWithAudios(
+            "hls,applehttp",
+            MakeVideo("h264"),
+            MakeAudio("eac3"),
+            MakeAudio("aac")
+        );
+
+        ClientCapabilities client = MakeClient(
+            [VideoCodecType.H264],
+            [AudioCodecType.Aac],
+            ["hls"]
+        );
+
+        PlaybackDecision decision = _engine.Decide(media, client);
+
+        decision.Action.Should().Be(PlaybackAction.DirectPlay);
+    }
+
+    [Fact]
+    public void Eac3ThenDts_ToAacOnlyClient_TranscodeAudio()
+    {
+        MediaInfo media = MakeMediaWithAudios(
+            "hls,applehttp",
+            MakeVideo("h264"),
+            MakeAudio("eac3"),
+            MakeAudio("dts")
+        );
+
+        ClientCapabilities client = MakeClient(
+            [VideoCodecType.H264],
+            [AudioCodecType.Aac],
+            ["hls"]
+        );
+
+        PlaybackDecision decision = _engine.Decide(media, client);
+
+        decision.Action.Should().Be(PlaybackAction.TranscodeAudio);
+    }
+
+    [Fact]
+    public void AudioOnly_Eac3ThenAac_ToAacOnlyClient_DirectPlay()
+    {
+        MediaInfo media = MakeMedia("mp4", audio: MakeAudio("eac3")) with
+        {
+            AudioStreams = [MakeAudio("eac3"), MakeAudio("aac")],
+        };
+
+        ClientCapabilities client = MakeClient(
+            [VideoCodecType.H264],
+            [AudioCodecType.Aac],
+            ["mp4"]
+        );
+
+        PlaybackDecision decision = _engine.Decide(media, client);
+
+        decision.Action.Should().Be(PlaybackAction.DirectPlay);
+    }
+
     // ──────────────────────────────────────────────────────────────────────────
     // TranscodeVideo
     // ──────────────────────────────────────────────────────────────────────────

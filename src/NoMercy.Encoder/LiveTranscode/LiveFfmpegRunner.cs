@@ -40,12 +40,15 @@ public class LiveFfmpegRunner(
     internal const string SegmentPrefix = "seg_";
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(500);
 
+    internal TimeSpan LeaseWaitTimeout { get; init; } = TimeSpan.FromSeconds(30);
+
     public async Task RunAsync(LiveRunInput input, LiveSession session, CancellationToken ct)
     {
         // Enforce NVENC concurrent session cap before spawning FFmpeg.
         // Hardware-accelerated live encodes use the first GPU device name for
         // the error message; software encodes skip the check.
-        bool requiresGpu = input.Quality.IsHardwareAccelerated;
+        bool requiresGpu =
+            input.Quality.IsHardwareAccelerated && LiveFfmpegArgumentBuilder.EncodesVideo(input);
         string gpuName = hardware.Gpus.Count > 0 ? hardware.Gpus[0].Name : "GPU";
 
         try
@@ -85,7 +88,49 @@ public class LiveFfmpegRunner(
 
         try
         {
-            lease = await resourceBudget.AcquireAsync(requirement, ct).ConfigureAwait(false);
+            logger.LogInformation(
+                "Live FFmpeg waiting for resource lease: session {SessionId} GpuSlots={GpuSlots} CpuThreads={CpuThreads}",
+                session.SessionId,
+                requirement.GpuSlots,
+                requirement.CpuThreads
+            );
+
+            long waitStart = Environment.TickCount64;
+            using CancellationTokenSource leaseTimeout =
+                CancellationTokenSource.CreateLinkedTokenSource(ct);
+            leaseTimeout.CancelAfter(LeaseWaitTimeout);
+
+            try
+            {
+                lease = await resourceBudget
+                    .AcquireAsync(requirement, leaseTimeout.Token)
+                    .ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                logger.LogError(
+                    "Live FFmpeg gave up waiting for a resource lease after {Seconds} s: session {SessionId} GpuSlots={GpuSlots} CpuThreads={CpuThreads}",
+                    LeaseWaitTimeout.TotalSeconds,
+                    session.SessionId,
+                    requirement.GpuSlots,
+                    requirement.CpuThreads
+                );
+                session.SetState(LiveSessionState.Error);
+                await PushTranscodeErrorAsync(
+                        session.SessionId,
+                        "Timed out waiting for encoder resources"
+                    )
+                    .ConfigureAwait(false);
+                return;
+            }
+
+            logger.LogInformation(
+                "Live FFmpeg got resource lease after {ElapsedMs} ms: session {SessionId} GpuSlots={GpuSlots} CpuThreads={CpuThreads}",
+                Environment.TickCount64 - waitStart,
+                session.SessionId,
+                requirement.GpuSlots,
+                requirement.CpuThreads
+            );
 
             storage.CreateDirectory(input.OutputDirectory);
 
