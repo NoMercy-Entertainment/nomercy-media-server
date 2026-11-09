@@ -24,9 +24,12 @@ namespace NoMercy.Api.Middleware;
 public class DynamicStaticFilesMiddleware(
     RequestDelegate next,
     IServedFolderRegistry folders,
-    ILogger<DynamicStaticFilesMiddleware> logger
+    ILogger<DynamicStaticFilesMiddleware> logger,
+    PlaybackFileCache? playbackCache = null
 )
 {
+    private readonly PlaybackFileCache _playbackCache = playbackCache ?? new PlaybackFileCache();
+
     // Define streamable media file extensions
     private static readonly HashSet<string> StreamableExtensions = new(
         StringComparer.OrdinalIgnoreCase
@@ -119,7 +122,7 @@ public class DynamicStaticFilesMiddleware(
             // Time-to-first-byte on the server: everything before the stream loop
             // (factory resolve + Exists + presigned probe + Size + OpenRead).
             resolvedAtMs = stopwatch.ElapsedMilliseconds;
-            await ServeFile(context, storage, relativeWithinFolder);
+            await ServeFile(context, storage, folderId, relativeWithinFolder);
             stopwatch.Stop();
 
             LogServeTiming(
@@ -289,9 +292,28 @@ public class DynamicStaticFilesMiddleware(
             );
     }
 
-    private async Task ServeFile(HttpContext context, IStorage storage, string relativePath)
+    private async Task ServeFile(
+        HttpContext context,
+        IStorage storage,
+        Ulid folderId,
+        string relativePath
+    )
     {
-        long fileLength = storage.Size(relativePath);
+        byte[]? cachedBytes = PlaybackFileCache.IsCacheable(relativePath)
+            ? _playbackCache.Load(storage, folderId, relativePath)
+            : null;
+        long fileLength = cachedBytes?.Length ?? storage.Size(relativePath);
+
+        if (
+            cachedBytes is not null
+            && relativePath.EndsWith(".m3u8", StringComparison.OrdinalIgnoreCase)
+        )
+            _ = _playbackCache.WarmReferencedPlaylistsAsync(
+                storage,
+                folderId,
+                relativePath,
+                cachedBytes
+            );
 
         // Surface storage-reported zero — empty bodies on m3u8 / vtt /
         // fonts.json requests almost always trace back to either an encoder
@@ -330,7 +352,7 @@ public class DynamicStaticFilesMiddleware(
         {
             context.Response.Headers.AcceptRanges = "bytes";
             context.Response.ContentLength = fileLength;
-            await using Stream wholeStream = storage.OpenRead(relativePath);
+            await using Stream wholeStream = OpenForServe(storage, relativePath, cachedBytes);
             await wholeStream.CopyToAsync(context.Response.Body);
             return;
         }
@@ -363,9 +385,18 @@ public class DynamicStaticFilesMiddleware(
         context.Response.Headers.AcceptRanges = "bytes";
         context.Response.ContentLength = length;
 
-        await using Stream fs = storage.OpenRead(relativePath);
+        await using Stream fs = OpenForServe(storage, relativePath, cachedBytes);
         await CopyRangeAsync(fs, context, start, length);
     }
+
+    private static Stream OpenForServe(
+        IStorage storage,
+        string relativePath,
+        byte[]? cachedBytes
+    ) =>
+        cachedBytes is null
+            ? storage.OpenRead(relativePath)
+            : new MemoryStream(cachedBytes, writable: false);
 
     /// <summary>
     /// The byte range to answer a <c>Range</c> header with, clamped to the file;

@@ -45,7 +45,10 @@ public static partial class ServiceConfiguration
         });
     }
 
-    private static void ConfigureCors(IServiceCollection services)
+    // Without this a browser repeats the OPTIONS round trip for every media URL it fetches.
+    private static readonly TimeSpan PreflightMaxAge = TimeSpan.FromHours(24);
+
+    internal static void ConfigureCors(IServiceCollection services)
     {
         // Configure CORS
         services.AddCors(options =>
@@ -64,6 +67,7 @@ public static partial class ServiceConfiguration
                     if (Config.IsDev)
                     {
                         builder
+                            .SetPreflightMaxAge(PreflightMaxAge)
                             .SetIsOriginAllowed(_ => true)
                             .AllowAnyMethod()
                             .AllowCredentials()
@@ -72,6 +76,7 @@ public static partial class ServiceConfiguration
                     }
 
                     builder
+                        .SetPreflightMaxAge(PreflightMaxAge)
                         .WithOrigins(
                             "https://nomercy.tv",
                             "https://*.nomercy.tv",

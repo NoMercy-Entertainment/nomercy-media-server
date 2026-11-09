@@ -60,6 +60,7 @@ public static partial class ServiceConfiguration
         // pushes never leak across accounts.
         services.AddSingleton<IUserIdProvider, Api.Hubs.NoMercyUserIdProvider>();
         services.AddSingleton<IServedFolderRegistry, ServedFolderRegistry>();
+        services.AddSingleton<PlaybackFileCache>();
 
         services
             .AddSignalR(o =>
