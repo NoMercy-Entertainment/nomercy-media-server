@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Globalization;
 using NoMercy.Encoder.Analysis;
 using NoMercy.Encoder.BuildingBlocks;
 using NoMercy.Encoder.Commands;
@@ -20,8 +21,8 @@ using NoMercy.Storage;
 namespace NoMercy.Encoder.Pipeline.Stages;
 
 /// <summary>
-/// Builds ONE ffmpeg command that covers both font-attachment dumping and
-/// bitmap-subtitle copying for a single input. Sources typically live on
+/// Builds ONE ffmpeg command that covers font-attachment dumping and every
+/// subtitle file (text and bitmap) for a single input. Sources typically live on
 /// remote storage (NFS/SMB/S3), so every extra "-i" re-reads the whole
 /// multi-GB file over the network — merging what used to be N+1 separate
 /// commands (one per bitmap subtitle stream, plus one for font attachments)
@@ -57,7 +58,8 @@ public static class ExtractionCommandBuilder
         ISubtitleExtractor subtitleExtractor,
         IFontExtractor fontExtractor,
         IStorage storage,
-        IReadOnlyList<AttachmentInfo> attachments
+        IReadOnlyList<AttachmentInfo> attachments,
+        TimeSpan? durationLimit = null
     )
     {
         List<string> args = ["-y", "-hide_banner"];
@@ -65,22 +67,31 @@ public static class ExtractionCommandBuilder
         if (attachments.Count > 0)
             AddAttachmentDumpArgs(args, outputDirectory, attachments, fontExtractor, storage);
 
-        List<(string OutputPath, int SourceIndex)> bitmapOutputs = ResolveBitmapSubtitleOutputs(
-            plan,
-            mediaInfo,
-            outputDirectory,
-            mediaTitle,
-            subtitleExtractor,
-            storage
-        );
+        List<(string OutputPath, string Codec, int SourceIndex)> subtitleOutputs =
+            ResolveSubtitleOutputs(
+                plan,
+                mediaInfo,
+                outputDirectory,
+                mediaTitle,
+                subtitleExtractor,
+                storage
+            );
 
-        if (attachments.Count == 0 && bitmapOutputs.Count == 0)
+        if (attachments.Count == 0 && subtitleOutputs.Count == 0)
             return null;
+
+        // Preview runs cap the source read; a resume seek is deliberately not
+        // applied so the extracted files always cover the whole title.
+        if (durationLimit.HasValue)
+        {
+            args.Add("-t");
+            args.Add(durationLimit.Value.TotalSeconds.ToString("F3", CultureInfo.InvariantCulture));
+        }
 
         args.Add("-i");
         args.Add(inputPath);
 
-        if (bitmapOutputs.Count == 0)
+        if (subtitleOutputs.Count == 0)
         {
             // Attachments only — no real stream output, so ffmpeg needs a
             // sink to write to. Matches the previous font-only extraction.
@@ -90,20 +101,20 @@ public static class ExtractionCommandBuilder
         }
         else
         {
-            AddBitmapSubtitleOutputArgs(args, bitmapOutputs);
+            AddSubtitleOutputArgs(args, subtitleOutputs);
         }
 
         return new(ffmpegPath, args.ToArray(), outputDirectory);
     }
 
     /// <summary>
-    /// True when this input has bitmap subtitles to copy out, which means a
+    /// True when this input has subtitle files to extract, which means a
     /// dedicated extraction command already exists to carry the attachment
     /// dump. When false the dump has no run to ride along with here, and
     /// <see cref="InjectAttachmentDumpArgs"/> folds it into the encode instead
     /// of spawning a source read that produces nothing but fonts.
     /// </summary>
-    public static bool HasBitmapSubtitleOutputs(
+    public static bool HasSubtitleOutputs(
         OutputPlan plan,
         MediaInfo mediaInfo,
         string outputDirectory,
@@ -111,7 +122,7 @@ public static class ExtractionCommandBuilder
         ISubtitleExtractor subtitleExtractor,
         IStorage storage
     ) =>
-        ResolveBitmapSubtitleOutputs(
+        ResolveSubtitleOutputs(
             plan,
             mediaInfo,
             outputDirectory,
@@ -180,28 +191,31 @@ public static class ExtractionCommandBuilder
         }
     }
 
-    private static void AddBitmapSubtitleOutputArgs(
+    private static void AddSubtitleOutputArgs(
         List<string> args,
-        List<(string OutputPath, int SourceIndex)> bitmapOutputs
+        List<(string OutputPath, string Codec, int SourceIndex)> outputs
     )
     {
-        foreach ((string outputPath, int sourceIndex) in bitmapOutputs)
+        foreach ((string outputPath, string codec, int sourceIndex) in outputs)
         {
             args.Add("-map");
             args.Add($"0:s:{sourceIndex}");
             args.Add("-c:s");
-            args.Add("copy");
-            // Must specify -f matroska explicitly — FFmpeg doesn't auto-detect .mks.
-            args.Add("-f");
-            args.Add("matroska");
+            args.Add(codec);
+            if (outputPath.EndsWith(".mks", StringComparison.OrdinalIgnoreCase))
+            {
+                // Must specify -f matroska explicitly — FFmpeg doesn't auto-detect .mks.
+                args.Add("-f");
+                args.Add("matroska");
+            }
             args.Add(outputPath);
         }
     }
 
     // Bitmap subs (dvd_subtitle, PGS) can't be muxed to .sub+.idx in a
-    // multi-output command. They're extracted as MKS (Matroska subtitle
-    // container), which preserves the original format.
-    private static List<(string OutputPath, int SourceIndex)> ResolveBitmapSubtitleOutputs(
+    // multi-output command, so they go to MKS. Text subs (WebVTT, ASS, SRT)
+    // keep their extractor-resolved codec and path.
+    private static List<(string OutputPath, string Codec, int SourceIndex)> ResolveSubtitleOutputs(
         OutputPlan plan,
         MediaInfo mediaInfo,
         string outputDirectory,
@@ -210,7 +224,7 @@ public static class ExtractionCommandBuilder
         IStorage storage
     )
     {
-        List<(string OutputPath, int SourceIndex)> outputs = [];
+        List<(string OutputPath, string Codec, int SourceIndex)> outputs = [];
 
         foreach (SubtitleOutputPlan subPlan in plan.SubtitleOutputs)
         {
@@ -225,11 +239,6 @@ public static class ExtractionCommandBuilder
 
             SubtitleStreamInfo stream = mediaInfo.SubtitleStreams[subPlan.SourceIndex];
 
-            // Text subtitles are muxed into the main command via
-            // AddTextSubtitleOutputs — only bitmap subs are handled here.
-            if (stream.IsTextBased)
-                continue;
-
             SubtitleOutputInfo info = subtitleExtractor.ResolveOutput(
                 subPlan,
                 stream,
@@ -242,10 +251,16 @@ public static class ExtractionCommandBuilder
             if (parentDir is not null)
                 storage.CreateDirectory(storage.CombinePath(outputDirectory, parentDir));
 
+            if (stream.IsTextBased)
+            {
+                outputs.Add((info.OutputPath, info.FfmpegCodec, info.SourceIndex));
+                continue;
+            }
+
             // Use MKS (Matroska) container for bitmap subs.
             string outputPath = Path.ChangeExtension(info.OutputPath, ".mks");
 
-            outputs.Add((outputPath, info.SourceIndex));
+            outputs.Add((outputPath, "copy", info.SourceIndex));
         }
 
         return outputs;

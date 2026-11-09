@@ -14,6 +14,7 @@ using NoMercy.Encoder.Analysis;
 using NoMercy.Encoder.Codecs;
 using NoMercy.Encoder.Commands;
 using NoMercy.Encoder.Composition;
+using NoMercy.Encoder.Decomposition;
 using NoMercy.Encoder.Output;
 using NoMercy.Encoder.Pipeline;
 using NoMercy.Encoder.Pipeline.Optimizer;
@@ -61,19 +62,23 @@ public class BuildStageAttachmentDumpTests
     }
 
     // ------------------------------------------------------------------
-    // Text/ASS subtitles are muxed by the encode command, so nothing else
-    // reads the source — the dump rides on the encode and no separate
-    // attachments-only command is emitted. This is the anime case.
+    // Text/ASS subtitles are pulled out by the dedicated extraction command
+    // (never beside the encode outputs), so that command exists anyway and
+    // the dump rides on it. This is the anime case.
     // ------------------------------------------------------------------
 
     [Fact]
-    public async Task TextSubtitlesWithAttachments_DumpRidesOnTheEncodeCommand()
+    public async Task TextSubtitlesWithAttachments_DumpRidesOnTheExtractionCommand()
     {
         FfmpegCommand[] commands = await BuildAsync(TextSubtitlePlan(), TextSubtitleStream());
 
-        FfmpegCommand main = commands[0];
-        main.Arguments.Should().Contain("-dump_attachment:3");
-        main.Arguments.Should().Contain("-dump_attachment:4");
+        FfmpegCommand extraction = commands[^1];
+        extraction.Arguments.Should().Contain("-dump_attachment:3");
+        extraction.Arguments.Should().Contain("-dump_attachment:4");
+
+        commands[0]
+            .Arguments.Should()
+            .NotContain(a => a.StartsWith("-dump_attachment", StringComparison.Ordinal));
 
         // No command exists whose only output is the null sink — that shape is
         // the pointless second source read this replaced.
@@ -84,12 +89,124 @@ public class BuildStageAttachmentDumpTests
             );
     }
 
+    // A text subtitle output beside encode outputs cuts them short in ffmpeg.
+
+    [Fact]
+    public async Task TextSubtitles_NeverShareACommandWithEncodeOutputs()
+    {
+        FfmpegCommand[] commands = await BuildAsync(TextSubtitlePlan(), TextSubtitleStream());
+
+        commands[0].Arguments.Should().NotContain("webvtt");
+        commands[0]
+            .Arguments.Should()
+            .NotContain(a =>
+                a.EndsWith(".vtt", StringComparison.Ordinal) && a.Contains("subtitles")
+            );
+
+        FfmpegCommand extraction = commands[^1];
+        extraction.Arguments.Should().Contain("webvtt");
+        extraction.Arguments.Should().Contain("0:s:0");
+        extraction.Arguments.Should().NotContain("libx264");
+        extraction.Arguments.Count(a => a == "-i").Should().Be(1);
+    }
+
+    [Fact]
+    public async Task AssSubtitles_NeverShareACommandWithEncodeOutputs()
+    {
+        FfmpegCommand[] commands = await BuildAsync(
+            AssSubtitlePlan(),
+            AssSubtitleStream(),
+            attachments: []
+        );
+
+        commands[0].Arguments.Should().NotContain("ass");
+        commands[^1].Arguments.Should().Contain("-c:s");
+        commands[^1].Arguments.Should().Contain("ass");
+    }
+
+    [Fact]
+    public async Task SubtitleTask_ProducesTheTextSubtitlesExactlyOnce_AsTheOnlyCommand()
+    {
+        FfmpegCommand[] commands = await BuildAsync(
+            TextSubtitlePlan(),
+            TextSubtitleStream(),
+            attachments: [],
+            taskFilter: Task(EncodeTaskKind.Subtitle)
+        );
+
+        commands.Should().ContainSingle();
+        commands[0].Arguments.Count(a => a == "webvtt").Should().Be(1);
+        commands[0].Arguments.Should().NotContain("libx264");
+    }
+
+    [Fact]
+    public async Task VideoTask_CarriesNoTextSubtitleOutputs()
+    {
+        FfmpegCommand[] commands = await BuildAsync(
+            TextSubtitlePlan(),
+            TextSubtitleStream(),
+            attachments: [],
+            taskFilter: Task(EncodeTaskKind.Video)
+        );
+
+        commands.Should().ContainSingle();
+        commands[0].Arguments.Should().NotContain("webvtt");
+    }
+
+    [Fact]
+    public async Task BundleWithoutSubtitleSlice_CarriesNoTextSubtitleOutputs()
+    {
+        FfmpegCommand[] commands = await BuildAsync(
+            TextSubtitlePlan(),
+            TextSubtitleStream(),
+            attachments: [],
+            taskFilter: Task(EncodeTaskKind.Whole) with
+            {
+                SubtitleSliceIndexes = [],
+            }
+        );
+
+        commands.Should().ContainSingle();
+        commands[0].Arguments.Should().NotContain("webvtt");
+    }
+
+    [Fact]
+    public async Task ExtractionCommand_HonorsDurationLimit()
+    {
+        FfmpegCommand[] commands = await BuildAsync(
+            TextSubtitlePlan(),
+            TextSubtitleStream(),
+            attachments: [],
+            durationLimit: TimeSpan.FromSeconds(30)
+        );
+
+        List<string> args = [.. commands[^1].Arguments];
+        int limit = args.IndexOf("-t");
+        limit.Should().BeGreaterThanOrEqualTo(0);
+        limit.Should().BeLessThan(args.IndexOf("-i"));
+        args[limit + 1].Should().Be("30.000");
+    }
+
+    [Fact]
+    public async Task ExtractionCommand_IgnoresResumeSeek()
+    {
+        FfmpegCommand[] commands = await BuildAsync(
+            TextSubtitlePlan(),
+            TextSubtitleStream(),
+            attachments: [],
+            resumeFromMs: 600_000
+        );
+
+        commands[0].Arguments.Should().Contain("-ss");
+        commands[^1].Arguments.Should().NotContain("-ss");
+    }
+
     [Fact]
     public async Task TextSubtitlesWithAttachments_DumpFlagsPrecedeTheInput()
     {
         FfmpegCommand[] commands = await BuildAsync(TextSubtitlePlan(), TextSubtitleStream());
 
-        List<string> args = [.. commands[0].Arguments];
+        List<string> args = [.. commands[^1].Arguments];
 
         int dumpFlag = args.IndexOf("-dump_attachment:3");
         int inputFlag = args.IndexOf("-i");
@@ -155,7 +272,10 @@ public class BuildStageAttachmentDumpTests
     private async Task<FfmpegCommand[]> BuildAsync(
         SubtitleOutputPlan subtitlePlan,
         SubtitleStreamInfo subtitleStream,
-        IReadOnlyList<AttachmentInfo>? attachments = null
+        IReadOnlyList<AttachmentInfo>? attachments = null,
+        DecomposedTask? taskFilter = null,
+        TimeSpan? durationLimit = null,
+        long? resumeFromMs = null
     )
     {
         ExecutionPlan plan = MakePlan(subtitlePlan);
@@ -173,7 +293,15 @@ public class BuildStageAttachmentDumpTests
             InputPath = InputPath,
         };
 
-        BuildInput input = new(plan, InputPath, _outputDirectory, "Test.NoMercy");
+        BuildInput input = new(
+            plan,
+            InputPath,
+            _outputDirectory,
+            "Test.NoMercy",
+            DurationLimit: durationLimit,
+            TaskFilter: taskFilter,
+            ResumeFromMs: resumeFromMs
+        );
 
         StageResult result = await _stage.ExecuteAsync(input, context, default);
 
@@ -189,6 +317,28 @@ public class BuildStageAttachmentDumpTests
             SourceIndex: 0,
             MapLabel: "0:s:0"
         );
+
+    private static DecomposedTask Task(EncodeTaskKind kind) =>
+        new(
+            TaskId: "t0",
+            ParentJobId: 0,
+            GroupTag: "g",
+            Kind: kind,
+            OutputIndex: 0,
+            Resources: null
+        );
+
+    private static SubtitleOutputPlan AssSubtitlePlan() =>
+        new(
+            OutputCodec: SubtitleCodecType.Copy,
+            Action: StreamAction.Extract,
+            Language: "en",
+            SourceIndex: 0,
+            MapLabel: "0:s:0"
+        );
+
+    private static SubtitleStreamInfo AssSubtitleStream() =>
+        new(Index: 0, Codec: "ass", Language: "en", IsDefault: true, IsForced: false, Title: null);
 
     private static SubtitleOutputPlan BitmapSubtitlePlan() =>
         new(
