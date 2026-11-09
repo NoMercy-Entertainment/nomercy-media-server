@@ -202,7 +202,7 @@ public static class ExtractionCommandBuilder
             args.Add($"0:s:{sourceIndex}");
             args.Add("-c:s");
             args.Add(codec);
-            if (codec == "copy")
+            if (outputPath.EndsWith(".mks", StringComparison.OrdinalIgnoreCase))
             {
                 // Must specify -f matroska explicitly — FFmpeg doesn't auto-detect .mks.
                 args.Add("-f");

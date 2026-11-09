@@ -317,6 +317,36 @@ public class ExtractionCommandBuilderTests : IDisposable
         args.Should().Contain(a => a.EndsWith(".ass", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void BuildCommand_CopiedSrtTrack_KeepsItsOwnContainer()
+    {
+        SubtitleOutputPlan srtPlan = new(
+            OutputCodec: SubtitleCodecType.Copy,
+            Action: StreamAction.Copy,
+            Language: "en",
+            SourceIndex: 0,
+            MapLabel: "0:s:0"
+        );
+        MediaInfo mediaInfo = MakeMediaInfo(
+            new SubtitleStreamInfo(
+                Index: 0,
+                Codec: "subrip",
+                Language: "en",
+                IsDefault: true,
+                IsForced: false,
+                Title: null
+            )
+        );
+
+        FfmpegCommand? command = BuildCommand(MakePlan(srtPlan), mediaInfo, []);
+
+        command.Should().NotBeNull();
+        List<string> args = [.. command!.Arguments];
+        args.Should().ContainInOrder("-map", "0:s:0", "-c:s", "copy");
+        args.Should().Contain(a => a.EndsWith(".srt", StringComparison.Ordinal));
+        args.Should().NotContain("matroska");
+    }
+
     // ------------------------------------------------------------------
     // Gating: a SourceIndex beyond the known subtitle streams is excluded
     // (defensive — plan/media-info drift should never crash the build).
