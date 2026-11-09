@@ -162,7 +162,7 @@ public class PlaylistGeneratorCodecHandlingTests
 
         string master = Generate(plan);
 
-        master.Should().Contain("CODECS=\"mp4a.40.2\"");
+        master.Should().NotContain("CODECS=");
         master.Should().NotContain("avc1");
         master.Should().NotContain("hvc1");
         master.Should().NotContain("av01");

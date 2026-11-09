@@ -397,9 +397,11 @@ public class PlaylistGenerator : IPlaylistGenerator
     /// </summary>
     private static string BuildCodecsAttribute(string? videoCodec, string? audioCodec)
     {
-        List<string> parts = [];
-        if (videoCodec is not null)
-            parts.Add(videoCodec);
+        // A variant listing audio alone reads as a stream without video.
+        if (videoCodec is null)
+            return string.Empty;
+
+        List<string> parts = [videoCodec];
         if (audioCodec is not null)
             parts.Add(audioCodec);
 

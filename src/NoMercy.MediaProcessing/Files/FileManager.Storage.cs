@@ -624,13 +624,15 @@ public partial class FileManager
         try
         {
             string master = await storage.ReadAllTextAsync(masterPath, CancellationToken.None);
-            string repaired = HlsMasterSubtitleGroupRepair.DropDanglingSubtitleGroups(master);
+            string repaired = HlsMasterAudioOnlyCodecsRepair.DropAudioOnlyCodecs(
+                HlsMasterSubtitleGroupRepair.DropDanglingSubtitleGroups(master)
+            );
             if (ReferenceEquals(repaired, master))
                 return;
 
             await storage.WriteAllTextAsync(masterPath, repaired, CancellationToken.None);
             Logger.App(
-                $"[MasterRepair] {masterTitle}: dropped a subtitle group reference the master never defined",
+                $"[MasterRepair] {masterTitle}: removed a dangling subtitle group or an audio-only CODECS value",
                 LogEventLevel.Information
             );
         }
