@@ -717,6 +717,116 @@ public class MusicHubDeviceCommandsTests : IClassFixture<NoMercyApiFactory>
     }
 
     // =========================================================================
+    // ChangeDeviceCommand — a device id names only the caller's own clients
+    // =========================================================================
+
+    [Fact]
+    public async Task ChangeDeviceCommand_OtherUsersDeviceId_IsRefusedAndLeavesBothUsersUntouched()
+    {
+        Guid ownerId = Guid.NewGuid();
+        Guid intruderId = Guid.NewGuid();
+        User owner = SeedTestUser(ownerId);
+        User intruder = SeedTestUser(intruderId);
+        string ownerConnectionId = Guid.NewGuid().ToString();
+        string intruderConnectionId = Guid.NewGuid().ToString();
+        string ownerDeviceId = $"phone-{Guid.NewGuid()}";
+        string intruderDeviceId = $"web-{Guid.NewGuid()}";
+
+        ConnectedClients connectedClients = _factory.GetConnectedClients();
+        (Client ownerClient, _) = MakeClientWithProxy(ownerId, ownerDeviceId, "web");
+        (Client intruderClient, _) = MakeClientWithProxy(intruderId, intruderDeviceId, "web");
+        connectedClients.Clients[ownerConnectionId] = ownerClient;
+        connectedClients.Clients[intruderConnectionId] = intruderClient;
+
+        MusicPlayerStateManager stateManager =
+            _factory.Services.GetRequiredService<MusicPlayerStateManager>();
+        MusicActiveDeviceRegistry registry =
+            _factory.Services.GetRequiredService<MusicActiveDeviceRegistry>();
+        registry.Set(ownerId, ownerClient);
+        MusicPlayerState intruderState = new() { DeviceId = intruderDeviceId, PlayState = true };
+        stateManager.UpdateState(intruderId, intruderState);
+
+        try
+        {
+            MusicHub hub = CreateHub(intruderConnectionId, intruderId);
+
+            HubCommandResult result = await hub.ChangeDeviceCommand(ownerDeviceId);
+
+            result.Ok.Should().BeFalse();
+            registry.TryGet(ownerId, out Device? ownerActive).Should().BeTrue();
+            ownerActive.Should().BeSameAs(ownerClient);
+            intruderState.DeviceId.Should().Be(intruderDeviceId);
+            registry.TryGet(intruderId, out Device? intruderActive);
+            intruderActive.Should().NotBeSameAs(ownerClient);
+        }
+        finally
+        {
+            Cleanup(ownerId, owner, ownerConnectionId);
+            Cleanup(intruderId, intruder, intruderConnectionId);
+        }
+    }
+
+    /// Device ids are client-chosen: a TV registered under another user's id
+    /// passes the owned-device gate, so the transfer must match on Sub too.
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ChangeDeviceCommand_SpoofedDeviceId_NeverPointsRegistryAtAnotherUsersClient(
+        bool intruderHasPlayerState
+    )
+    {
+        Guid ownerId = Guid.NewGuid();
+        Guid intruderId = Guid.NewGuid();
+        User owner = SeedTestUser(ownerId);
+        User intruder = SeedTestUser(intruderId);
+        string ownerConnectionId = Guid.NewGuid().ToString();
+        string intruderConnectionId = Guid.NewGuid().ToString();
+        string sharedDeviceId = $"tv-{Guid.NewGuid()}";
+        string intruderDeviceId = $"web-{Guid.NewGuid()}";
+
+        IDbContextFactory<MediaContext> contextFactory = _factory.Services.GetRequiredService<
+            IDbContextFactory<MediaContext>
+        >();
+        await SeedOwnedTvAsync(contextFactory, intruderId, sharedDeviceId);
+
+        ConnectedClients connectedClients = _factory.GetConnectedClients();
+        (Client ownerClient, _) = MakeClientWithProxy(ownerId, sharedDeviceId, "tv");
+        (Client intruderClient, _) = MakeClientWithProxy(intruderId, intruderDeviceId, "web");
+        connectedClients.Clients[ownerConnectionId] = ownerClient;
+        connectedClients.Clients[intruderConnectionId] = intruderClient;
+
+        MusicPlayerStateManager stateManager =
+            _factory.Services.GetRequiredService<MusicPlayerStateManager>();
+        MusicActiveDeviceRegistry registry =
+            _factory.Services.GetRequiredService<MusicActiveDeviceRegistry>();
+        registry.Set(ownerId, ownerClient);
+        if (intruderHasPlayerState)
+            stateManager.UpdateState(
+                intruderId,
+                new() { DeviceId = intruderDeviceId, PlayState = true }
+            );
+
+        try
+        {
+            MusicHub hub = CreateHub(intruderConnectionId, intruderId);
+
+            await hub.ChangeDeviceCommand(sharedDeviceId);
+
+            registry.TryGet(intruderId, out Device? intruderActive);
+            intruderActive
+                .Should()
+                .NotBeSameAs(ownerClient, "a transfer may only land on a client the caller owns");
+            registry.TryGet(ownerId, out Device? ownerActive).Should().BeTrue();
+            ownerActive.Should().BeSameAs(ownerClient);
+        }
+        finally
+        {
+            Cleanup(ownerId, owner, ownerConnectionId);
+            Cleanup(intruderId, intruder, intruderConnectionId);
+        }
+    }
+
+    // =========================================================================
     // SetDeviceVolumeCommand / ChangeVolumeCommand
     // =========================================================================
 

@@ -219,10 +219,8 @@ public partial class MusicHub
         bool targetIsLive =
             connectedDevices.Any(d =>
                 d.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase)
-                && ConnectedClients.Clients.Values.Any(c =>
-                    c.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase)
-                    && c.Endpoint.Contains("musicHub", StringComparison.OrdinalIgnoreCase)
-                )
+                && OwnedClients(user.Id, deviceId)
+                    .Any(c => c.Endpoint.Contains("musicHub", StringComparison.OrdinalIgnoreCase))
             ) && (targetTv is null || _busRegistry.GetStatus(targetTv.Id).Foreground);
 
         if (targetTv is not null)
@@ -325,9 +323,7 @@ public partial class MusicHub
             // instead of the caller who just explicitly asked for this device.
             // Reported live, 2026-09-10: tapping play on the phone started the
             // track on the living-room TV over the video it was casting.
-            Device? earlyTargetClient = ConnectedClients.Clients.Values.FirstOrDefault(c =>
-                c.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase)
-            );
+            Device? earlyTargetClient = OwnedClients(user.Id, deviceId).FirstOrDefault();
             if (earlyTargetClient is not null)
                 _activeDeviceRegistry.Set(user.Id, earlyTargetClient);
             return;
@@ -338,9 +334,7 @@ public partial class MusicHub
         // themselves (e.g. the web client that initiated this ChangeDevice), while
         // playerState says TV — and downstream calls that consult the registry
         // would see a stale active.
-        Device? targetClient = ConnectedClients.Clients.Values.FirstOrDefault(c =>
-            c.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase)
-        );
+        Device? targetClient = OwnedClients(user.Id, deviceId).FirstOrDefault();
         if (targetClient is not null)
             _activeDeviceRegistry.Set(user.Id, targetClient);
 
@@ -501,9 +495,14 @@ public partial class MusicHub
         if (string.IsNullOrEmpty(deviceId))
             return _activeDeviceRegistry.TryGet(userId, out Device? active) ? active : null;
 
-        return ConnectedClients.Clients.Values.FirstOrDefault(client =>
+        return OwnedClients(userId, deviceId).FirstOrDefault();
+    }
+
+    // Device ids are client-chosen, so a lookup by id alone can land on
+    // another user's client; every target lookup is scoped to the caller.
+    private IEnumerable<Client> OwnedClients(Guid userId, string deviceId) =>
+        ConnectedClients.Clients.Values.Where(client =>
             client.Sub.Equals(userId)
             && client.DeviceId.Equals(deviceId, StringComparison.OrdinalIgnoreCase)
         );
-    }
 }
