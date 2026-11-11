@@ -18,11 +18,11 @@ using Xunit;
 namespace NoMercy.Tests.Queue;
 
 /// <summary>
-/// Pins <see cref="MediaPlaybackActivityGate"/>: only "library" and "file"
-/// (the queues that walk the filesystem/NAS directly) defer while
-/// <see cref="MediaActivityMonitor.IsActive"/> is true, and only up to a
-/// capped trickle window — they can never be starved indefinitely. "import"
-/// and "extras" (API/DB-only work), plus the encoder and music queues, must
+/// Pins <see cref="MediaPlaybackActivityGate"/>: "library", "file" and
+/// "encoder" defer while
+/// <see cref="MediaActivityMonitor.IsActive"/> is true. Scans get a capped
+/// trickle window; encoder jobs wait for playback to go idle. "import"
+/// and "extras" (API/DB-only work), plus the music queues, must
 /// never defer, active or not.
 /// </summary>
 public class MediaPlaybackActivityGateTests
@@ -39,6 +39,23 @@ public class MediaPlaybackActivityGateTests
         gate.ShouldDefer(queueName: queueName).Should().BeTrue();
     }
 
+    [Fact]
+    public void ShouldDefer_EncoderQueue_WhilePlaybackIsActive()
+    {
+        MediaActivityMonitor monitor = new();
+        monitor.Touch();
+        DateTime now = new(year: 2026, month: 1, day: 1);
+        MediaPlaybackActivityGate gate = new(
+            monitor: monitor,
+            maxDeferInterval: TimeSpan.FromSeconds(30),
+            utcNow: () => now
+        );
+
+        gate.ShouldDefer("encoder").Should().BeTrue();
+        now = now.AddMinutes(1);
+        gate.ShouldDefer("encoder").Should().BeTrue();
+    }
+
     [Theory]
     [InlineData(data: "library")]
     [InlineData(data: "file")]
@@ -53,7 +70,6 @@ public class MediaPlaybackActivityGateTests
     [Theory]
     [InlineData(data: "import")]
     [InlineData(data: "extras")]
-    [InlineData(data: "encoder")]
     [InlineData(data: "music")]
     public void ShouldDefer_ApiDbOnlyOrNonNasQueue_WhenActive_ReturnsFalse(string queueName)
     {

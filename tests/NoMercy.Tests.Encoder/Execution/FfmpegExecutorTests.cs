@@ -16,6 +16,7 @@ using NoMercy.Encoder.Errors;
 using NoMercy.Encoder.Execution;
 using NoMercy.Encoder.Infrastructure;
 using NoMercy.Encoder.Progress;
+using NoMercy.NmSystem.Monitoring;
 
 namespace NoMercy.Tests.Encoder.Execution;
 
@@ -156,6 +157,71 @@ public class FfmpegExecutorTests
         );
 
         result.Error!.Kind.Should().Be(EncodingErrorKind.DiskFull);
+    }
+
+    [Fact]
+    public async Task LivePlayback_SuspendsRunningEncode_ThenResumesIt()
+    {
+        const int processId = 1234;
+        using CancellationTokenSource capacityReleased = new();
+        MediaActivityMonitor activityMonitor = new();
+        Mock<IProcessSuspender> suspender = new();
+        ProcessThrottle throttle = new(NullLogger<ProcessThrottle>.Instance, suspender.Object);
+        TaskCompletionSource<ProcessResult> completion = new(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
+        _processRunner
+            .Setup(r =>
+                r.RunAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string[]>(),
+                    It.IsAny<Action<string>?>(),
+                    It.IsAny<Action<string>?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<Action<int>?>()
+                )
+            )
+            .Returns(
+                (
+                    string _,
+                    string[] _,
+                    Action<string>? _,
+                    Action<string>? _,
+                    string? _,
+                    CancellationToken _,
+                    CancellationToken _,
+                    Action<int>? onStarted
+                ) =>
+                {
+                    onStarted?.Invoke(processId);
+                    return completion.Task;
+                }
+            );
+
+        FfmpegExecutor executor = new(
+            _processRunner.Object,
+            NullLogger<FfmpegExecutor>.Instance,
+            () => !capacityReleased.IsCancellationRequested,
+            activityMonitor,
+            throttle,
+            TimeSpan.FromMilliseconds(10)
+        );
+        Task<ExecutionResult> encode = executor.ExecuteAsync(
+            BuildSimpleCommand(),
+            TimeSpan.FromMinutes(1)
+        );
+
+        throttle.IsSuspended(processId).Should().BeTrue();
+        activityMonitor.IsActive.Should().BeTrue();
+
+        capacityReleased.Cancel();
+        SpinWait.SpinUntil(() => !throttle.IsSuspended(processId), 1000).Should().BeTrue();
+        completion.SetResult(new ProcessResult(0, "", "", TimeSpan.FromSeconds(1)));
+        (await encode).Success.Should().BeTrue();
+        suspender.Verify(s => s.Suspend(processId), Times.Once);
+        suspender.Verify(s => s.Resume(processId), Times.Once);
     }
 
     private void SetupSuccess()

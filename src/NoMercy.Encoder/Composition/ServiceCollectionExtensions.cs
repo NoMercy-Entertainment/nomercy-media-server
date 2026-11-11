@@ -236,7 +236,24 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IProfileSignatureVerifier, ProfileSignatureVerifier>();
 
         // Execution
-        services.AddTransient<IFfmpegExecutor, FfmpegExecutor>();
+        services.AddTransient<IFfmpegExecutor>(sp => new FfmpegExecutor(
+            sp.GetRequiredService<IProcessRunner>(),
+            sp.GetRequiredService<ILogger<FfmpegExecutor>>(),
+            () =>
+            {
+                ILiveStreamingService? live = sp.GetService<ILiveStreamingService>();
+                return live?.ActiveSessionIds.Any(sessionId =>
+                        live.TryGetRuntime(sessionId, out LiveRuntimeSession runtime)
+                        && !runtime.IsAudioRenditionChild
+                        && !runtime.IsComplete
+                        && runtime.Session.State
+                            is not (LiveSessionState.Error or LiveSessionState.Ended)
+                        && runtime.Session.BufferAhead < TimeSpan.FromSeconds(5)
+                    ) == true;
+            },
+            sp.GetRequiredService<NmSystem.Monitoring.MediaActivityMonitor>(),
+            sp.GetRequiredService<ProcessThrottle>()
+        ));
         services.AddTransient<ProgressParser>();
         // ProcessThrottle holds the set of suspended pids; must be Singleton so
         // suspend/resume operations across different callers see the same state.
