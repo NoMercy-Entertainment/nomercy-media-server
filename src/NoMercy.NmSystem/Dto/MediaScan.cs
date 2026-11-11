@@ -19,6 +19,7 @@ using NoMercy.NmSystem.FFProbe;
 using NoMercy.NmSystem.SystemCalls;
 using NoMercy.Storage;
 using NoMercy.Storage.Drivers.Local;
+using NoMercy.Storage.Drivers.Smb;
 using Serilog.Events;
 
 namespace NoMercy.NmSystem.Dto;
@@ -136,10 +137,20 @@ public partial class MediaScan : IDisposable, IAsyncDisposable
             IOrderedEnumerable<string>? directories = null;
             try
             {
-                directories = _driver
-                    .EnumerateFileSystemEntries(folderPath, "*", SearchOption.TopDirectoryOnly)
-                    .Where(e => _driver.DirectoryExists(e))
-                    .OrderBy(f => f);
+                directories = (
+                    _driver is SmbStorageDriver
+                        ? _driver
+                            .EnumerateEntries(folderPath, "*", SearchOption.TopDirectoryOnly)
+                            .Where(entry => entry.IsDirectory)
+                            .Select(entry => entry.Path)
+                        : _driver
+                            .EnumerateFileSystemEntries(
+                                folderPath,
+                                "*",
+                                SearchOption.TopDirectoryOnly
+                            )
+                            .Where(entry => _driver.DirectoryExists(entry))
+                ).OrderBy(f => f);
             }
             catch (Exception e)
             {
@@ -379,9 +390,26 @@ public partial class MediaScan : IDisposable, IAsyncDisposable
         ConcurrentBag<MediaFile> files = [];
         try
         {
-            IEnumerable<string> entries = _driver
-                .EnumerateFileSystemEntries(folderPath, "*", SearchOption.TopDirectoryOnly)
-                .Where(e => _driver.FileExists(e));
+            // SMB's directory response already tells us which entries are files.
+            // Reopening each name just to classify it is especially costly in
+            // folders containing thousands of HLS subtitle segments.
+            IEnumerable<string> entries = (
+                _driver is SmbStorageDriver
+                    ? _driver
+                        .EnumerateEntries(folderPath, "*", SearchOption.TopDirectoryOnly)
+                        .Where(entry => !entry.IsDirectory)
+                        .Select(entry => entry.Path)
+                    : _driver.EnumerateFileSystemEntries(
+                        folderPath,
+                        "*",
+                        SearchOption.TopDirectoryOnly
+                    )
+            ).Where(entry =>
+                _extensionFilter.Length == 0
+                || _extensionFilter.Contains(Path.GetExtension(entry).ToLowerInvariant())
+            );
+            if (_driver is not SmbStorageDriver)
+                entries = entries.Where(_driver.FileExists);
 
             await Parallel.ForEachAsync(
                 entries,

@@ -426,7 +426,18 @@ public sealed class SmbStorageDriver : IStorageDriver, IDisposable
         SearchOption option
     )
     {
-        List<string> results = [];
+        List<StorageEntryInfo> results = [];
+        CollectEntries(directory, searchPattern, option, results);
+        return results.Select(entry => entry.Path).ToList();
+    }
+
+    public IEnumerable<StorageEntryInfo> EnumerateEntries(
+        string directory,
+        string searchPattern,
+        SearchOption option
+    )
+    {
+        List<StorageEntryInfo> results = [];
         CollectEntries(directory, searchPattern, option, results);
         return results;
     }
@@ -435,69 +446,80 @@ public sealed class SmbStorageDriver : IStorageDriver, IDisposable
         string directory,
         string searchPattern,
         SearchOption option,
-        List<string> results
+        List<StorageEntryInfo> results
     )
     {
         string dirRel = (directory ?? string.Empty).Replace('\\', '/').Trim('/');
-        List<(string Name, bool IsDir)> children = WithSession(s =>
-        {
-            string smbDir = ToSmbPath(dirRel);
-            NTStatus st = s.Store.CreateFile(
-                out object handle,
-                out FileStatus _,
-                smbDir,
-                AccessMask.GENERIC_READ,
-                FileAttributes.Directory,
-                ShareAccess.Read | ShareAccess.Write,
-                CreateDisposition.FILE_OPEN,
-                CreateOptions.FILE_DIRECTORY_FILE,
-                null
-            );
-            // Enumerating a missing directory yields nothing, like the other
-            // drivers — not an error.
-            if (
-                st is NTStatus.STATUS_OBJECT_NAME_NOT_FOUND or NTStatus.STATUS_OBJECT_PATH_NOT_FOUND
-            )
-                return [];
-            SmbStatus.EnsureSuccess(st, $"open-dir '{directory}'");
-            try
+        List<(string Name, bool IsDir, long Size, DateTime LastWriteUtc)> children = WithSession(
+            s =>
             {
-                // The server applies the search pattern to folder names too, so
-                // a filtered query hides every folder the pattern does not name
-                // and the recursion below would never reach the files in them
-                // (and a folder with no match at all answers STATUS_NO_SUCH_FILE).
-                // List everything and match names here, like the other drivers.
-                NTStatus qst = s.Store.QueryDirectory(
-                    out List<QueryDirectoryFileInformation> entries,
-                    handle,
-                    "*",
-                    FileInformationClass.FileDirectoryInformation
+                string smbDir = ToSmbPath(dirRel);
+                NTStatus st = s.Store.CreateFile(
+                    out object handle,
+                    out FileStatus _,
+                    smbDir,
+                    AccessMask.GENERIC_READ,
+                    FileAttributes.Directory,
+                    ShareAccess.Read | ShareAccess.Write,
+                    CreateDisposition.FILE_OPEN,
+                    CreateOptions.FILE_DIRECTORY_FILE,
+                    null
                 );
-                if (qst != NTStatus.STATUS_SUCCESS && qst != NTStatus.STATUS_NO_MORE_FILES)
-                    SmbStatus.EnsureSuccess(qst, $"list '{directory}'");
-
-                List<(string, bool)> found = [];
-                foreach (QueryDirectoryFileInformation entry in entries)
+                // Enumerating a missing directory yields nothing, like the other
+                // drivers — not an error.
+                if (
+                    st
+                    is NTStatus.STATUS_OBJECT_NAME_NOT_FOUND
+                        or NTStatus.STATUS_OBJECT_PATH_NOT_FOUND
+                )
+                    return [];
+                SmbStatus.EnsureSuccess(st, $"open-dir '{directory}'");
+                try
                 {
-                    FileDirectoryInformation info = (FileDirectoryInformation)entry;
-                    if (info.FileName is "." or "..")
-                        continue;
-                    bool isDir = info.FileAttributes.HasFlag(FileAttributes.Directory);
-                    found.Add((info.FileName, isDir));
-                }
-                return found;
-            }
-            finally
-            {
-                s.Store.CloseFile(handle);
-            }
-        });
+                    // The server applies the search pattern to folder names too, so
+                    // a filtered query hides every folder the pattern does not name
+                    // and the recursion below would never reach the files in them
+                    // (and a folder with no match at all answers STATUS_NO_SUCH_FILE).
+                    // List everything and match names here, like the other drivers.
+                    NTStatus qst = s.Store.QueryDirectory(
+                        out List<QueryDirectoryFileInformation> entries,
+                        handle,
+                        "*",
+                        FileInformationClass.FileDirectoryInformation
+                    );
+                    if (qst != NTStatus.STATUS_SUCCESS && qst != NTStatus.STATUS_NO_MORE_FILES)
+                        SmbStatus.EnsureSuccess(qst, $"list '{directory}'");
 
-        foreach ((string name, bool isDir) in children)
+                    List<(string, bool, long, DateTime)> found = [];
+                    foreach (QueryDirectoryFileInformation entry in entries)
+                    {
+                        FileDirectoryInformation info = (FileDirectoryInformation)entry;
+                        if (info.FileName is "." or "..")
+                            continue;
+                        bool isDir = info.FileAttributes.HasFlag(FileAttributes.Directory);
+                        found.Add(
+                            (
+                                info.FileName,
+                                isDir,
+                                isDir ? 0L : info.EndOfFile,
+                                info.LastWriteTime.ToUniversalTime()
+                            )
+                        );
+                    }
+                    return found;
+                }
+                finally
+                {
+                    s.Store.CloseFile(handle);
+                }
+            }
+        );
+
+        foreach ((string name, bool isDir, long size, DateTime lastWriteUtc) in children)
         {
             string childRel = dirRel.Length == 0 ? name : $"{dirRel}/{name}";
             if (StoragePatternMatcher.Matches(name, searchPattern))
-                results.Add("/" + childRel);
+                results.Add(new("/" + childRel, isDir, size, lastWriteUtc));
             if (option == SearchOption.AllDirectories && isDir)
                 CollectEntries(childRel, searchPattern, option, results);
         }
