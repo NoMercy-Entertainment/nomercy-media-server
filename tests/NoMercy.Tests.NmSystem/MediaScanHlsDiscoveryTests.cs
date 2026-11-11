@@ -10,7 +10,9 @@
 // -----------------------------------------------------------------------------
 
 using System.Collections.Concurrent;
+using Moq;
 using NoMercy.NmSystem.Dto;
+using NoMercy.Storage;
 using NoMercy.Storage.Drivers.Local;
 
 namespace NoMercy.Tests.NmSystem;
@@ -36,6 +38,23 @@ public class MediaScanHlsDiscoveryTests : IDisposable
     private const string HensukiName =
         "Hensuki.Are.You.Willing.to.Fall.in.Love.With.a.Pervert,.As.Long.As.She's.a.Cutie.(2019)";
     private const string CleanName = "One.Piece.(1999)";
+
+    [Fact]
+    public async Task Process_does_not_stat_excluded_subtitle_segments_as_video_candidates()
+    {
+        string[] segments = [.. Enumerable.Range(0, 1000).Select(i => $"root/subtitle_{i}.vtt")];
+        Mock<IStorageDriver> driver = new();
+        driver.Setup(d => d.GetFullPath(It.IsAny<string>())).Returns((string path) => path);
+        driver.Setup(d => d.DirectoryExists("root")).Returns(true);
+        driver
+            .Setup(d => d.EnumerateFileSystemEntries("root", "*", SearchOption.TopDirectoryOnly))
+            .Returns(segments);
+
+        await using MediaScan scan = new(driver.Object);
+        await scan.EnableFileListing().FilterByMediaType("tv").Process("root", 0);
+
+        driver.Verify(d => d.FileExists(It.IsAny<string>()), Times.Never);
+    }
 
     [Theory]
     [InlineData(

@@ -83,4 +83,24 @@ public sealed class SmbCollectEntriesTests
 
         entries.Should().BeEquivalentTo("/A", "/A/B", "/A/B/movie.mkv");
     }
+
+    [Fact]
+    public void EnumerateEntries_uses_directory_listing_metadata_without_opening_each_child()
+    {
+        FakeSmbFileStore store = new();
+        store.SeedDirectory("Season 1");
+        store.SeedFile("movie.mkv");
+        for (int i = 0; i < 1000; i++)
+            store.SeedFile($"subtitle_{i}.vtt");
+        using SmbStorageDriver driver = DriverOver(store);
+
+        List<StorageEntryInfo> entries =
+        [
+            .. ((IStorageDriver)driver).EnumerateEntries("/", "*", SearchOption.TopDirectoryOnly),
+        ];
+
+        entries.Should().HaveCount(1002);
+        entries.Should().ContainSingle(e => e.Path == "/Season 1" && e.IsDirectory);
+        entries.Should().ContainSingle(e => e.Path == "/movie.mkv" && !e.IsDirectory);
+    }
 }
