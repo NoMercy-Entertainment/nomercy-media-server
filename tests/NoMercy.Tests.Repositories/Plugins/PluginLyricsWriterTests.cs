@@ -204,6 +204,46 @@ public sealed class PluginLyricsWriterTests : IDisposable
         result.Refusal.Should().StartWith(PluginLyricsRefusal.InvalidLines);
     }
 
+    /// <summary>
+    /// The library stores a duration as whole seconds: "03:45" for a track
+    /// that really runs 225.6 s. A line that starts inside that last fraction
+    /// of a second is inside the track, and refusing it refused the whole
+    /// write with it.
+    /// </summary>
+    [Theory]
+    [InlineData(225.0)]
+    [InlineData(225.05)]
+    [InlineData(225.99)]
+    public async Task Write_AcceptsALineThatStartsInTheLastFractionOfASecond(double start)
+    {
+        PluginLyricsWrite write = new(
+            [new("one", 1.0, null), new("last", start, null)],
+            LyricsSources.Lrclib,
+            0
+        );
+
+        PluginWriteResult result = await Writer().WriteAsync(_plainText, write);
+
+        result.Refusal.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData(226.0)]
+    [InlineData(226.5)]
+    public async Task Write_RefusesALineThatStartsAWholeSecondPastTheStoredDuration(double start)
+    {
+        PluginLyricsWrite write = new(
+            [new("one", 1.0, null), new("late", start, null)],
+            LyricsSources.Lrclib,
+            0
+        );
+
+        PluginWriteResult result = await Writer().WriteAsync(_plainText, write);
+
+        result.Refusal.Should().StartWith(PluginLyricsRefusal.InvalidLines);
+        result.Refusal.Should().Contain("starts after the track ends");
+    }
+
     [Fact]
     public async Task Write_WithoutAKnownDuration_SkipsTheUpperBound()
     {
