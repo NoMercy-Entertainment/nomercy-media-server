@@ -196,11 +196,19 @@ public sealed class DeviceHub : ConnectionHub
     // Statuses: cast_sent, invalid_input, not_owned, forbidden, not_found, no_route.
     public async Task<HubCommandResult> CastToNearby(string deviceId, NearbyCastRequest request)
     {
+        bool hasMusic =
+            request is not null
+            && !string.IsNullOrWhiteSpace(request.ListType)
+            && !string.IsNullOrWhiteSpace(request.ListId);
+        bool hasVideo =
+            request is not null
+            && !string.IsNullOrWhiteSpace(request.MediaType)
+            && !string.IsNullOrWhiteSpace(request.MediaId);
         if (
             !Ulid.TryParse(deviceId, out Ulid id)
             || id == Ulid.Empty
-            || string.IsNullOrWhiteSpace(request?.MediaType)
-            || string.IsNullOrWhiteSpace(request.MediaId)
+            || request is null
+            || (!hasMusic && !hasVideo)
         )
             return HubCommandResult.FromWakeStatus("invalid_input");
 
@@ -226,15 +234,22 @@ public sealed class DeviceHub : ConnectionHub
                 LanIp = hit.Ip,
                 Type = "chromecast",
             };
-            CastIntent intent = CastIntent.PlayVideo(
-                request.MediaType,
-                request.MediaId,
-                request.ResumeAt,
-                request.AudioLanguage,
-                request.SubtitleLanguage,
-                request.SubtitleType,
-                request.SubtitleCodec
-            );
+            CastIntent intent = hasMusic
+                ? CastIntent.PlayMusic(
+                    request.ListType!,
+                    request.ListId!,
+                    request.TrackId,
+                    request.ResumeAt
+                )
+                : CastIntent.PlayVideo(
+                    request.MediaType!,
+                    request.MediaId!,
+                    request.ResumeAt,
+                    request.AudioLanguage,
+                    request.SubtitleLanguage,
+                    request.SubtitleType,
+                    request.SubtitleCodec
+                );
 
             // Web Receiver: the NoMercy app may not be installed on a TV we never registered.
             bool dispatched = await _castWaker.WakeAsync(

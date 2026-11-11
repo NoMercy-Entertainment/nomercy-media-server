@@ -16,6 +16,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using Newtonsoft.Json;
 using NoMercy.Api.Hubs;
 using NoMercy.Api.Services.Cast;
 using NoMercy.Api.WebSockets;
@@ -146,6 +147,57 @@ public class DeviceHubNearbyCastTests : IClassFixture<NoMercyApiFactory>
         Assert.Equal("en", intent.SubtitleLanguage);
         Assert.Equal("full", intent.SubtitleType);
         Assert.Equal("ass", intent.SubtitleCodec);
+        Assert.Null(intent.ListType);
+        Assert.Null(intent.ListId);
+        Assert.Null(intent.TrackId);
+        Assert.DoesNotContain("list_type", JsonConvert.SerializeObject(Request()));
+        Assert.DoesNotContain("list_id", JsonConvert.SerializeObject(Request()));
+        Assert.DoesNotContain("track_id", JsonConvert.SerializeObject(Request()));
+    }
+
+    [Fact]
+    public async Task CastToNearby_MusicList_LaunchesPlayMusic()
+    {
+        RecordingWaker waker = new();
+        DeviceHub hub = CreateHub(TestAuthHandler.DefaultUserId, waker);
+        Ulid id = DeviceListComposer.DeterministicId(CastId);
+        NearbyCastRequest request = JsonConvert.DeserializeObject<NearbyCastRequest>(
+            """{"list_type":"playlist","list_id":"list-123","track_id":"track-4","resume_at":30}"""
+        )!;
+
+        HubCommandResult result = await hub.CastToNearby(id.ToString(), request);
+
+        Assert.True(result.Ok);
+        Assert.Equal("cast_sent", result.Status);
+        (Device tv, Guid userId, CastIntent intent, bool androidReceiver) = Assert.Single(
+            waker.Calls
+        );
+        Assert.Equal(id, tv.Id);
+        Assert.Equal(NearbyIp, tv.LanIp);
+        Assert.Equal(TestAuthHandler.DefaultUserId, userId);
+        Assert.False(androidReceiver);
+        Assert.Equal("play_music", intent.Type);
+        Assert.Equal("playlist", intent.ListType);
+        Assert.Equal("list-123", intent.ListId);
+        Assert.Equal("track-4", intent.TrackId);
+        Assert.Equal(30, intent.ResumeAt);
+        Assert.Null(intent.MediaType);
+        Assert.Null(intent.MediaId);
+    }
+
+    [Fact]
+    public async Task CastToNearby_WithoutVideoOrMusic_IsInvalidInput()
+    {
+        RecordingWaker waker = new();
+        DeviceHub hub = CreateHub(TestAuthHandler.DefaultUserId, waker);
+        Ulid id = DeviceListComposer.DeterministicId(CastId);
+        NearbyCastRequest request = JsonConvert.DeserializeObject<NearbyCastRequest>("{}")!;
+
+        HubCommandResult result = await hub.CastToNearby(id.ToString(), request);
+
+        Assert.False(result.Ok);
+        Assert.Equal("invalid_input", result.ErrorCode);
+        Assert.Empty(waker.Calls);
     }
 
     [Fact]
