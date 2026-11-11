@@ -146,7 +146,8 @@ public class DevicesController(
         if (device is null)
             return NotFoundResponse("Device not found");
 
-        busRegistry.ForceClose(device.Id);
+        await deviceRepository.RevokeDeviceAsync(device, busRegistry.GetSessionId(device.Id));
+        await busRegistry.ForceCloseRevokedAsync(device.Id);
         RemoveConnectedClientEntries(device.Id);
 
         await deviceRepository.DeleteDeviceWithLogsAsync(device.Id);

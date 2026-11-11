@@ -21,6 +21,9 @@ public interface IDeviceRepository
 
     Task DeleteDeviceAsync(Device device);
 
+    /// <summary>Records that the owner forgot this device, so it cannot register again until a fresh sign-in.</summary>
+    Task RevokeDeviceAsync(Device device, string? sessionId = null);
+
     Task<Device?> GetOwnerDeviceAsync(Ulid deviceId, Guid ownerUserId);
 
     Task<List<Device>> GetOwnerDevicesAsync(Guid ownerUserId);

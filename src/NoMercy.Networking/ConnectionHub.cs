@@ -149,6 +149,19 @@ public class ConnectionHub : Hub
         if (!string.IsNullOrEmpty(client.DeviceId))
         {
             await using MediaContext mediaContext = await _contextFactory.CreateDbContextAsync();
+            if (
+                await mediaContext.IsRevokedAsync(
+                    user.Id,
+                    client.DeviceId,
+                    Context.User.AuthTime(),
+                    Context.User.Sid()
+                )
+            )
+            {
+                Context.Abort();
+                return;
+            }
+
             await mediaContext
                 .Devices.Upsert(client)
                 .On(x => x.DeviceId)

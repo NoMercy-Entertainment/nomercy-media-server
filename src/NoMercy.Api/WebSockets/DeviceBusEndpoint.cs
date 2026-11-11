@@ -221,14 +221,24 @@ public sealed class DeviceBusEndpoint(
             ? typeEl.GetString() ?? "tv"
             : "tv";
 
-        (Device device, Guid? previousOwner) = await deviceStateRepository.ClaimAsync(
+        (Device? claimed, Guid? previousOwner) = await deviceStateRepository.ClaimAsync(
             fingerprint,
             user.Id,
             deviceName,
-            deviceType
+            deviceType,
+            HttpContext.User.AuthTime(),
+            HttpContext.User.Sid()
         );
 
-        await registry.Register(device.Id, ws);
+        if (claimed is null)
+        {
+            await DeviceBusRegistry.CloseRevokedAsync(ws);
+            return null;
+        }
+
+        Device device = claimed;
+
+        await registry.Register(device.Id, ws, HttpContext.User.Sid());
 
         await RetireSupersededRowsAsync(device, user.Id);
 

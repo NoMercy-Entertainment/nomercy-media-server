@@ -28,6 +28,32 @@ public class DeviceRepository(MediaContext context) : IDeviceRepository
         await context.SaveChangesAsync();
     }
 
+    public async Task RevokeDeviceAsync(Device device, string? sessionId = null)
+    {
+        if (device.OwnerUserId is not { } owner)
+            return;
+
+        RevokedDevice? existing = await context.RevokedDevices.FirstOrDefaultAsync(r =>
+            r.OwnerUserId == owner && r.DeviceId == device.DeviceId
+        );
+        if (existing is null)
+            context.RevokedDevices.Add(
+                new()
+                {
+                    DeviceId = device.DeviceId,
+                    OwnerUserId = owner,
+                    SessionId = sessionId,
+                }
+            );
+        else
+        {
+            existing.RevokedAt = DateTime.UtcNow;
+            existing.SessionId = sessionId;
+        }
+
+        await context.SaveChangesAsync();
+    }
+
     public Task DeleteDeviceAsync(Device device)
     {
         context.Devices.Remove(device);

@@ -5040,6 +5040,34 @@ namespace NoMercy.Database.Migrations
                         });
                 });
 
+            modelBuilder.Entity("NoMercy.Database.Models.Users.RevokedDevice", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("DeviceId")
+                        .IsRequired()
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.Property<Guid>("OwnerUserId")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("RevokedAt")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SessionId")
+                        .HasMaxLength(256)
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("OwnerUserId", "DeviceId")
+                        .IsUnique();
+
+                    b.ToTable("RevokedDevices");
+                });
+
             modelBuilder.Entity("NoMercy.Database.Models.Users.User", b =>
                 {
                     b.Property<Guid>("Id")

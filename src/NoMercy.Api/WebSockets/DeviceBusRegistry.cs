@@ -44,9 +44,18 @@ public sealed class DeviceBusRegistry(
     public (bool Foreground, bool ScreenOn) GetStatus(Ulid deviceId) =>
         _status.TryGetValue(deviceId, out (bool Foreground, bool ScreenOn) s) ? s : (false, false);
 
-    public async Task Register(Ulid deviceId, WebSocket ws)
+    private readonly ConcurrentDictionary<Ulid, string> _sessions = new();
+
+    public string? GetSessionId(Ulid deviceId) =>
+        _sessions.TryGetValue(deviceId, out string? sid) ? sid : null;
+
+    public async Task Register(Ulid deviceId, WebSocket ws, string? sessionId = null)
     {
         _live[deviceId] = ws;
+        if (sessionId is not null)
+            _sessions[deviceId] = sessionId;
+        else
+            _sessions.TryRemove(deviceId, out _);
 
         if (await deviceStateRepository.GetOwnerAsync(deviceId) is { } owner)
             await BroadcastChange(owner);
@@ -90,6 +99,40 @@ public sealed class DeviceBusRegistry(
         byte[] bytes = Encoding.UTF8.GetBytes(json);
         await ws.SendAsync(bytes, WebSocketMessageType.Text, true, ct);
         return true;
+    }
+
+    public const int RevokedCloseCode = 4403;
+    public const string RevokedCloseReason = "device_forgotten";
+
+    public static async Task CloseRevokedAsync(WebSocket ws)
+    {
+        if (ws.State != WebSocketState.Open)
+            return;
+
+        try
+        {
+            byte[] frame = Encoding.UTF8.GetBytes("{\"type\":\"revoked\"}");
+            await ws.SendAsync(frame, WebSocketMessageType.Text, true, CancellationToken.None);
+            await ws.CloseAsync(
+                (WebSocketCloseStatus)RevokedCloseCode,
+                RevokedCloseReason,
+                CancellationToken.None
+            );
+        }
+        catch (WebSocketException)
+        {
+            ws.Abort();
+        }
+    }
+
+    public async Task ForceCloseRevokedAsync(Ulid deviceId)
+    {
+        if (!_live.TryRemove(deviceId, out WebSocket? ws))
+            return;
+
+        _status.TryRemove(deviceId, out _);
+        _sessions.TryRemove(deviceId, out _);
+        await CloseRevokedAsync(ws);
     }
 
     public void ForceClose(Ulid deviceId)
