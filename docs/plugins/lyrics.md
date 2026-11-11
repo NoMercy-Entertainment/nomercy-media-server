@@ -163,6 +163,7 @@ the graph runs:
 | `{stemsModel}` | the stemsplit model's file name |
 | `{whisperModel}` | the whisper model's file name |
 | `{vadModel}` | the silero VAD model's file name |
+| `{alignModel}` | the lyricsalign model's file name (ABI 12.8) |
 | `{pluginFile:<relative path>}` | an absolute path inside the plugin's own data folder, escaped for both filtergraph levels, so a Windows drive colon is written as `\\:` |
 
 The model tokens are bare file names because ffmpeg runs with the ffmpeg
@@ -175,6 +176,54 @@ filter's stdout, not `pipe:1`, whose colon would need escaping.
 `PluginAudioRunOptions.Timeout` is how long the run may take: null is the
 server's ten minutes, anything above sixty is clamped to sixty. A five-minute
 track through whisper large-v3 on a CPU takes about twelve.
+
+## Aligning a text the server already has
+
+When `GetTextCandidatesAsync` returned a text, placing that text on the audio
+is faster and far more accurate than transcribing it. The server's ffmpeg has
+a `lyricsalign` filter for it (nomercy-ffmpeg v1.0.46 and later), and its
+model is the `{alignModel}` token, from ABI 12.8:
+
+```csharp
+// The text goes into the plugin's own folder, one lyric line per line.
+await using (Stream file = await context.Storage.Private.OpenWriteAsync("lyrics/track.txt", true, ct))
+    await file.WriteAsync(Encoding.UTF8.GetBytes(string.Join('\n', lines)), ct);
+
+PluginFilterGraph graph = new(
+    "[0:a]stemsplit=model={stemsModel}:stem=all[v][b];"
+        + "[v][b]lyricsalign=model={alignModel}"
+        + ":text_file={pluginFile:lyrics/track.txt}:language=en:threads=0:destination=-",
+    Complex: true
+);
+PluginAudioRunResult run = await context.AudioTools.RunFilterGraphAsync(
+    PluginAudioInput.Track(trackId.ToString()),
+    graph,
+    onStdOut: line => jsonLines.Add(line),   // one header object, then one object per text line
+    onStdErr: null,
+    new PluginAudioRunOptions(TimeSpan.FromMinutes(30)),
+    ct
+);
+```
+
+Three things have to be on the server for that graph, and a graph that names
+`{alignModel}` is refused up front, in words the plugin can show, while one is
+missing:
+
+| refusal | what it means | what to do |
+|---|---|---|
+| `"this server's ffmpeg has no lyricsalign filter; it needs nomercy-ffmpeg v1.0.46 or later"` | the server's ffmpeg is older than the release that has the filter | nothing a plugin can fix; the server updates its ffmpeg by itself, so try again after its next start |
+| `"the lyricsalign model is not installed yet; the server has started downloading it, ask again in a few minutes"` | the model is not on this server yet | keep the track queued and ask again; see below |
+| `"the lyricsalign model is not installed"` | the same, on a host that cannot fetch it | fall back to whisper |
+| `"the espeak-ng data is missing from the ffmpeg folder; it ships with nomercy-ffmpeg v1.0.46 and later"` | the phoneme tables the filter reads next to the ffmpeg binary are not there | as for the filter: an ffmpeg update brings them |
+
+**The model is fetched on first use, not at setup.** It is 600 MB and only a
+plugin that aligns lyrics reads it, so a server nobody aligns lyrics on never
+downloads it. The first graph that names `{alignModel}` is what asks for it:
+that run is refused with the second line above and the download starts in the
+background. A plugin should treat that refusal as "later", not as a failure of
+the track. Once the model is there the server keeps it current like its other
+models. There is no `{espeakData}` token: the filter finds the data next to
+the ffmpeg binary by itself.
 
 ## Writing the timing
 

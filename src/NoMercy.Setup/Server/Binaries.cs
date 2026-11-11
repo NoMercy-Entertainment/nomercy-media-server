@@ -86,6 +86,8 @@ public class Binaries
         "https://api.github.com/repos/NoMercy-Entertainment/nomercy-whisper-models/releases/latest";
     private const string GithubStemsplitModelApiUrl =
         "https://api.github.com/repos/NoMercy-Entertainment/nomercy-stemsplit-models/releases/latest";
+    private const string GithubLyricsAlignModelApiUrl =
+        "https://api.github.com/repos/NoMercy-Entertainment/nomercy-lyricsalign-models/releases/latest";
 
     private const string GithubYtdlpApiUrl =
         "https://api.github.com/repos/yt-dlp/yt-dlp/releases/latest";
@@ -372,7 +374,10 @@ public class Binaries
             {
                 try
                 {
-                    expectedSha256 = (await _httpClient.GetStringAsync(sidecarUrl)).Trim();
+                    expectedSha256 = BinaryVerification.ReadSha256Sidecar(
+                        await _httpClient.GetStringAsync(sidecarUrl),
+                        assetName
+                    );
                     sha256Source = "sidecar";
                 }
                 catch (Exception ex)
@@ -652,6 +657,17 @@ public class Binaries
                     "stemsplit model",
                     () => DownloadStemsplitModel(AppFiles.StemsplitModel)
                 );
+                // The lyricsalign model is fetched the first time a plugin's
+                // graph names it (LyricsAlignModelInstaller), not here: it is
+                // 600 MB and most servers never use it. A server that has it
+                // is kept current like every other model.
+                if (_driver.FileExists(AppFiles.LyricsAlignModelPath))
+                {
+                    await AttemptDownload(
+                        "lyricsalign model",
+                        () => DownloadLyricsAlignModel(AppFiles.LyricsAlignModel)
+                    );
+                }
 
                 List<string> tesseractLanguages = ["eng", "jpn"];
                 if (!CultureInfo.CurrentCulture.Equals(CultureInfo.InvariantCulture))
@@ -1694,6 +1710,8 @@ public class Binaries
                     _driver.DeleteFile(backupPath);
 
             await Downloader.DeleteSourceDownload(_storage, path);
+
+            WarnWhenEspeakDataIsMissing();
         }
         finally
         {
@@ -2179,23 +2197,62 @@ public class Binaries
     /// single-asset branch: unlike whisper's largest models, the stemsplit model always
     /// ships as exactly one ~39 MB asset, so there is no multi-part concatenation path here.
     /// </summary>
-    internal async Task DownloadStemsplitModel(string modelName = "spleeter-2stems-f16")
+    internal Task DownloadStemsplitModel(string modelName = "spleeter-2stems-f16") =>
+        DownloadGgufModelAsync(
+            GithubStemsplitModelApiUrl,
+            "nomercy-stemsplit-models",
+            modelName,
+            "Stemsplit"
+        );
+
+    /// <summary>
+    /// Downloads and verifies the lyricsalign GGUF model (wav2vec2 XLSR-53 with
+    /// espeak phonemes) that the ffmpeg <c>lyricsalign</c> filter places a known
+    /// lyric text on the audio with, from the dedicated nomercy-lyricsalign-models
+    /// release. One 600 MB asset, taken through the path every model takes.
+    /// <para>
+    /// Not part of <see cref="DownloadAll"/> for a server that does not have
+    /// it yet: <see cref="LyricsAlignModelInstaller"/> calls this the first
+    /// time a plugin's graph names the model.
+    /// </para>
+    /// </summary>
+    internal Task DownloadLyricsAlignModel(
+        string modelName = "wav2vec2-xlsr-53-espeak-cv-ft-f16"
+    ) =>
+        DownloadGgufModelAsync(
+            GithubLyricsAlignModelApiUrl,
+            "nomercy-lyricsalign-models",
+            modelName,
+            "Lyricsalign"
+        );
+
+    /// <summary>
+    /// The download every model that ships as one <c>.gguf</c> asset shares:
+    /// find the asset by the model's name, verify it, and put it beside ffmpeg.
+    /// A release without assets, or without this model, is logged and left
+    /// alone; a file that is already current is not downloaded again.
+    /// </summary>
+    /// <param name="repository">The release's repository, as the log and the verification name it.</param>
+    /// <param name="reportName">The model's name in the binary report and in the log.</param>
+    private async Task DownloadGgufModelAsync(
+        string apiUrl,
+        string repository,
+        string modelName,
+        string reportName
+    )
     {
         string destinationPath = Path.Combine(AppFiles.FfmpegFolder, modelName + ".gguf");
 
-        GithubReleaseResponse releaseInfo = await GetLatestReleaseInfo(GithubStemsplitModelApiUrl);
+        GithubReleaseResponse releaseInfo = await GetLatestReleaseInfo(apiUrl);
         if (releaseInfo.Assets.Length == 0)
         {
-            Logger.Setup(
-                "No assets found for nomercy-stemsplit-models release.",
-                LogEventLevel.Warning
-            );
+            Logger.Setup($"No assets found for {repository} release.", LogEventLevel.Warning);
             return;
         }
 
         if (CheckLocalVersion(releaseInfo, destinationPath, out string version))
         {
-            _binaryReport.Add($"Stemsplit = {version}");
+            _binaryReport.Add($"{reportName} = {version}");
             return;
         }
 
@@ -2207,7 +2264,7 @@ public class Binaries
         if (asset is null)
         {
             Logger.Setup(
-                $"No asset found for model {modelName} in nomercy-stemsplit-models release.",
+                $"No asset found for model {modelName} in {repository} release.",
                 LogEventLevel.Warning
             );
             return;
@@ -2215,8 +2272,8 @@ public class Binaries
 
         string partDestPath = Path.Combine(AppFiles.DependenciesPath, asset.Name);
         string downloadedPath = await DownloadWithVerificationAsync(
-            GithubStemsplitModelApiUrl,
-            "nomercy-stemsplit-models",
+            apiUrl,
+            repository,
             asset.BrowserDownloadUrl,
             partDestPath,
             releaseInfo,
@@ -2228,7 +2285,26 @@ public class Binaries
             downloadedPath,
             destinationPath,
             releaseInfo.PublishedAt,
-            "Stemsplit model"
+            $"{reportName} model"
+        );
+    }
+
+    /// <summary>
+    /// The lyricsalign filter reads its phoneme tables from an
+    /// <c>espeak-ng-data</c> folder next to the ffmpeg binary. The archive
+    /// carries that folder from v1.0.46 on, and the install above puts every
+    /// file of the archive in place with its relative path, so it lands where
+    /// the filter looks. Said out loud when it did not: the filter's own
+    /// error for it names a path, not what to do about it.
+    /// </summary>
+    private void WarnWhenEspeakDataIsMissing()
+    {
+        if (_driver.FileExists(AppFiles.EspeakDataMarkerPath))
+            return;
+
+        Logger.Setup(
+            "The installed ffmpeg has no espeak-ng-data folder next to it; the lyricsalign filter needs nomercy-ffmpeg v1.0.46 or later.",
+            LogEventLevel.Warning
         );
     }
 

@@ -187,6 +187,31 @@ public class PluginGraphTokensTests
     }
 
     [Fact]
+    public void The_align_model_token_becomes_the_bare_file_name()
+    {
+        ResolvedGraphText resolved = PluginGraphTokens.Resolve(
+            "[v][b]lyricsalign=model={alignModel}:language=en:destination=-",
+            Folder
+        );
+
+        resolved.Refusal.Should().BeNull();
+        resolved
+            .Text.Should()
+            .Be(
+                $"[v][b]lyricsalign=model={AppFiles.LyricsAlignModel}.gguf:language=en:destination=-"
+            );
+        AppFiles.LyricsAlignModel.Should().Be("wav2vec2-xlsr-53-espeak-cv-ft-f16");
+        PluginFilterGraphTokens.AlignModel.Should().Be("{alignModel}");
+    }
+
+    [Fact]
+    public void Only_text_with_the_align_token_uses_the_align_model()
+    {
+        PluginGraphTokens.UsesAlignModel("lyricsalign=model={alignModel}").Should().BeTrue();
+        PluginGraphTokens.UsesAlignModel("whisper=model={whisperModel}").Should().BeFalse();
+    }
+
+    [Fact]
     public void Text_without_tokens_is_left_alone()
     {
         PluginGraphTokens

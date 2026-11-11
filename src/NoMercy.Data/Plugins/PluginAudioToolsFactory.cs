@@ -38,6 +38,7 @@ namespace NoMercy.Data.Plugins;
 /// <param name="storage">The default, library-scoped storage: track files, and the ffmpeg binary's own presence.</param>
 /// <param name="derivedStorage">Scoped to the derived-audio root, for stem scratch files and derived inputs.</param>
 /// <param name="quotas">The plugin platform's disk meter, which a render's files are counted against. Null on a host that meters nothing.</param>
+/// <param name="alignModelInstaller">Fetches the lyricsalign model the first time a graph names it. Null on a host that installs nothing.</param>
 public class PluginAudioToolsFactory(
     EncoderOptions options,
     IProcessRunner processRunner,
@@ -49,7 +50,8 @@ public class PluginAudioToolsFactory(
     IDbContextFactory<MediaContext> contextFactory,
     IFfmpegCapabilityProbe capabilityProbe,
     ILogger<PluginAudioTools> logger,
-    PluginQuotaMeter? quotas = null
+    PluginQuotaMeter? quotas = null,
+    ILyricsAlignModelInstaller? alignModelInstaller = null
 ) : IPluginAudioToolsFactory
 {
     private readonly ConcurrentDictionary<Ulid, PluginAudioTools> _perPlugin = new();
@@ -70,7 +72,8 @@ public class PluginAudioToolsFactory(
                 capabilityProbe,
                 logger,
                 dataFolderPath,
-                quotas
+                quotas,
+                alignModelInstaller
             )
         );
 }

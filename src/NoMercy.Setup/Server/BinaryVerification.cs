@@ -129,6 +129,25 @@ public static class BinaryVerification
     }
 
     /// <summary>
+    /// Reads the SHA-256 out of a per-asset <c>.sha256</c> sidecar, in either form a
+    /// release publishes it: the bare hex digest, or the line <c>sha256sum</c> prints,
+    /// <c>"&lt;hex&gt; *&lt;filename&gt;"</c>.
+    /// <para>
+    /// The whole sidecar used to be taken as the digest. That holds for the bare form
+    /// and fails for the other: the lyricsalign model's sidecar is a <c>sha256sum</c>
+    /// line, and compared whole it could never match the file it describes, so the
+    /// model would have been refused as tampered on every download.
+    /// </para>
+    /// </summary>
+    /// <returns>
+    /// The digest of <paramref name="assetName"/> when the sidecar names files; otherwise
+    /// the sidecar's trimmed content, which a sidecar that is neither form then fails
+    /// verification on rather than passing it.
+    /// </returns>
+    public static string ReadSha256Sidecar(string sidecarContent, string assetName) =>
+        ParseSha256Sums(sidecarContent, assetName) ?? sidecarContent.Trim();
+
+    /// <summary>
     /// Finds the SHA-256 for <paramref name="targetFileName"/> inside the content of a
     /// coreutils-style checksum file (e.g. yt-dlp's <c>SHA2-256SUMS</c>), where each
     /// line is <c>"&lt;hex&gt;  &lt;filename&gt;"</c>. A leading <c>'*'</c> binary marker

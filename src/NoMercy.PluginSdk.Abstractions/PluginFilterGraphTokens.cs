@@ -28,6 +28,17 @@ public static class PluginFilterGraphTokens
     public const string VadModel = "{vadModel}";
 
     /// <summary>
+    /// The lyricsalign model's file name, for the <c>lyricsalign</c> filter's
+    /// <c>model</c> option: the CTC model that places a known text on the
+    /// audio. Refused while the model is not installed, or while the server's
+    /// ffmpeg is older than the release that has the filter. The model is
+    /// large and only fetched once a graph names this token, so the first
+    /// such graph is refused and the server starts the download. Added in
+    /// ABI 12.8.
+    /// </summary>
+    public const string AlignModel = "{alignModel}";
+
+    /// <summary>
     /// A file in the calling plugin's own data folder, by relative path. The
     /// host resolves it to an absolute path escaped for both filtergraph
     /// levels, so a Windows drive colon is written as <c>\:</c>. A path that

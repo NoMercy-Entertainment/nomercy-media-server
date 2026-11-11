@@ -655,6 +655,43 @@ public sealed class BinariesDownloadMethodsTests : IDisposable
         );
     }
 
+    /// <summary>
+    /// The lyricsalign filter reads its phoneme tables from an espeak-ng-data
+    /// folder next to the binary. The archive carries the folder, so it has
+    /// to land in the ffmpeg folder with its own structure, not flattened and
+    /// not left behind in the staging directory.
+    /// </summary>
+    [Fact]
+    public async Task DownloadFfmpeg_PutsTheEspeakDataFolderNextToTheBinary()
+    {
+        byte[] zipBytes = BuildFfmpegZip("espeak-ng-data/phontab", "espeak-ng-data/lang/gmw/en");
+        string assetUrl = "https://example.com/ffmpeg-windows-x86_64.zip";
+
+        FakeHttpHandler handler = new();
+        handler.Register(assetUrl, zipBytes);
+        handler.RegisterReleaseInfo(
+            "https://api.github.com/repos/NoMercy-Entertainment/nomercy-ffmpeg/releases/latest",
+            ReleaseWithAssets([
+                MakeAsset("ffmpeg-windows-x86_64.zip", assetUrl, zipBytes),
+                MakeAsset("ffmpeg-linux-x86_64.zip", assetUrl, zipBytes),
+            ])
+        );
+
+        await BuildBinaries(handler).DownloadFfmpeg();
+
+        Assert.True(File.Exists(AppFiles.EspeakDataMarkerPath));
+        Assert.Equal(
+            Path.Combine(AppFiles.FfmpegFolder, "espeak-ng-data", "phontab"),
+            AppFiles.EspeakDataMarkerPath
+        );
+        Assert.Equal(
+            "fake binary content for espeak-ng-data/lang/gmw/en",
+            await File.ReadAllTextAsync(
+                Path.Combine(AppFiles.FfmpegFolder, "espeak-ng-data", "lang", "gmw", "en")
+            )
+        );
+    }
+
     /// <summary>Builds a minimal real .zip archive containing the three executables
     /// and a companion file to check that extraction installs every archive entry.
     /// DownloadFfmpeg expects to find after extraction. ExtractArchive writes the
@@ -662,7 +699,7 @@ public sealed class BinariesDownloadMethodsTests : IDisposable
     /// the entry names have to carry the running platform's executable suffix — the
     /// real per-platform release archives do the same (ffmpeg.exe on Windows, bare
     /// ffmpeg on the Linux CI runner).</summary>
-    private static byte[] BuildFfmpegZip()
+    private static byte[] BuildFfmpegZip(params string[] extraEntries)
     {
         using MemoryStream stream = new();
         using (
@@ -679,6 +716,7 @@ public sealed class BinariesDownloadMethodsTests : IDisposable
                 "ffprobe" + Info.ExecSuffix,
                 "ffplay" + Info.ExecSuffix,
                 "preset.txt",
+                .. extraEntries,
             ];
 
             foreach (string name in entryNames)
@@ -1044,6 +1082,133 @@ public sealed class BinariesDownloadMethodsTests : IDisposable
     // DownloadStemsplitModel — single-asset, mirrors DownloadWhisperModels'
     // single-asset branch (no multi-part concatenation for this model).
     // -------------------------------------------------------------------------
+
+    // -------------------------------------------------------------------------
+    // DownloadLyricsAlignModel — the one model fetched on first use. Its release
+    // carries the .gguf and a sidecar in the form sha256sum prints, and nothing
+    // else: no manifest, no signature.
+    // -------------------------------------------------------------------------
+
+    private const string LyricsAlignApiUrl =
+        "https://api.github.com/repos/NoMercy-Entertainment/nomercy-lyricsalign-models/releases/latest";
+    private const string AlignModel = "wav2vec2-xlsr-53-espeak-cv-ft-f16";
+    private const string AlignAssetUrl = "https://example.com/align-model.gguf";
+    private const string AlignSidecarUrl = "https://example.com/align-model.gguf.sha256";
+
+    private static string AlignDestination =>
+        Path.Combine(AppFiles.FfmpegFolder, AlignModel + ".gguf");
+
+    private static string Sha256Hex(byte[] bytes) =>
+        Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
+
+    /// <summary>The release as it is published: the model, its sidecar, and a file that is not the model.</summary>
+    private static FakeHttpHandler AlignRelease(byte[] payload, string sidecar)
+    {
+        FakeHttpHandler handler = new();
+        handler.Register(AlignAssetUrl, payload);
+        handler.Register(AlignSidecarUrl, Encoding.ASCII.GetBytes(sidecar));
+        handler.RegisterReleaseInfo(
+            LyricsAlignApiUrl,
+            ReleaseWithAssets(
+                MakeAsset("NOTICE.md", "https://example.com/notice"),
+                MakeAsset(AlignModel + ".gguf", AlignAssetUrl),
+                MakeAsset(AlignModel + ".gguf.sha256", AlignSidecarUrl)
+            )
+        );
+        return handler;
+    }
+
+    /// <summary>
+    /// The published sidecar is the line sha256sum prints, digest and file
+    /// name. Read whole as a digest it never matched the file it describes,
+    /// and the model was refused as tampered on every download.
+    /// </summary>
+    [Fact]
+    public async Task DownloadLyricsAlignModel_PicksTheAssetByName_AndVerifiesItAgainstTheSha256SumSidecar()
+    {
+        byte[] payload = [.. "lyricsalign-model-bytes"u8];
+        FakeHttpHandler handler = AlignRelease(
+            payload,
+            $"{Sha256Hex(payload)} *{AlignModel}.gguf\n"
+        );
+
+        await BuildBinaries(handler).DownloadLyricsAlignModel(AlignModel);
+
+        Assert.True(File.Exists(AlignDestination));
+        Assert.Equal(payload, await File.ReadAllBytesAsync(AlignDestination));
+        Assert.Equal(1, handler.RequestCountFor(AlignSidecarUrl));
+        Assert.Equal(0, handler.RequestCountFor("https://example.com/notice"));
+        Assert.False(
+            File.Exists(Path.Combine(AppFiles.DependenciesPath, AlignModel + ".gguf")),
+            "the staging download must be moved, not left behind"
+        );
+    }
+
+    [Fact]
+    public async Task DownloadLyricsAlignModel_ABareDigestSidecar_VerifiesAsItAlwaysDid()
+    {
+        byte[] payload = [.. "lyricsalign-model-bytes"u8];
+        FakeHttpHandler handler = AlignRelease(payload, Sha256Hex(payload) + "\n");
+
+        await BuildBinaries(handler).DownloadLyricsAlignModel(AlignModel);
+
+        Assert.Equal(payload, await File.ReadAllBytesAsync(AlignDestination));
+    }
+
+    [Theory]
+    [InlineData("0000000000000000000000000000000000000000000000000000000000000000 *{0}.gguf")]
+    [InlineData("0000000000000000000000000000000000000000000000000000000000000000")]
+    [InlineData("{1} *another-model.gguf")]
+    public async Task DownloadLyricsAlignModel_ASidecarThatDoesNotMatch_ThrowsAndLeavesNoFile(
+        string sidecarFormat
+    )
+    {
+        byte[] payload = [.. "lyricsalign-model-bytes"u8];
+        FakeHttpHandler handler = AlignRelease(
+            payload,
+            string.Format(sidecarFormat, AlignModel, Sha256Hex(payload))
+        );
+
+        await Assert.ThrowsAsync<InvalidDataException>(() =>
+            BuildBinaries(handler).DownloadLyricsAlignModel(AlignModel)
+        );
+
+        Assert.False(File.Exists(AlignDestination));
+        string staged = Path.Combine(AppFiles.DependenciesPath, AlignModel + ".gguf");
+        Assert.False(File.Exists(staged));
+        Assert.False(File.Exists(staged + ".tmp"));
+    }
+
+    [Fact]
+    public async Task DownloadLyricsAlignModel_NoMatchingAsset_ReturnsWithoutThrowing()
+    {
+        FakeHttpHandler handler = new();
+        handler.RegisterReleaseInfo(
+            LyricsAlignApiUrl,
+            ReleaseWithAssets(MakeAsset("another-model.gguf", "https://example.com/other"))
+        );
+
+        await BuildBinaries(handler).DownloadLyricsAlignModel(AlignModel);
+
+        Assert.False(File.Exists(AlignDestination));
+        Assert.Equal(0, handler.RequestCountFor("https://example.com/other"));
+    }
+
+    [Fact]
+    public async Task DownloadLyricsAlignModel_AlreadyCurrent_IsNotDownloadedAgain()
+    {
+        byte[] payload = [.. "lyricsalign-model-bytes"u8];
+        FakeHttpHandler handler = AlignRelease(
+            payload,
+            $"{Sha256Hex(payload)} *{AlignModel}.gguf\n"
+        );
+        Binaries binaries = BuildBinaries(handler);
+
+        await binaries.DownloadLyricsAlignModel(AlignModel);
+        await binaries.DownloadLyricsAlignModel(AlignModel);
+
+        Assert.Equal(1, handler.RequestCountFor(AlignAssetUrl));
+    }
 
     [Fact]
     public async Task DownloadStemsplitModel_NoAssetsInRelease_DoesNotThrow()

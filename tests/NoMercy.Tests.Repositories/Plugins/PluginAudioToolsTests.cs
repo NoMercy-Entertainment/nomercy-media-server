@@ -333,7 +333,8 @@ public class PluginAudioToolsTests : IDisposable
     private static CapabilityReport Report(
         bool stemsplitModelPresent,
         bool whisperModelPresent = true,
-        bool vadModelPresent = true
+        bool vadModelPresent = true,
+        bool lyricsAlignFilterPresent = true
     ) =>
         new(
             BluRayProtocol: true,
@@ -347,12 +348,14 @@ public class PluginAudioToolsTests : IDisposable
             TesseractEngTraineddataPresent: true,
             TesseractModelsDirectory: null,
             Issues: [],
-            VadModelPresent: vadModelPresent
+            VadModelPresent: vadModelPresent,
+            LyricsAlignFilterPresent: lyricsAlignFilterPresent
         );
 
     private PluginAudioTools CreateTools(
         TimeSpan? runTimeout = null,
-        TimeSpan? exitGracePeriod = null
+        TimeSpan? exitGracePeriod = null,
+        ILyricsAlignModelInstaller? alignModelInstaller = null
     )
     {
         Mock<IDbContextFactory<MediaContext>> contextFactory = new();
@@ -371,7 +374,8 @@ public class PluginAudioToolsTests : IDisposable
             _writerFactory.Object,
             contextFactory.Object,
             _probe.Object,
-            dataFolderPath: Path.Combine(Path.GetTempPath(), "nm-plugin-data")
+            dataFolderPath: Path.Combine(Path.GetTempPath(), "nm-plugin-data"),
+            alignModelInstaller: alignModelInstaller
         )
         {
             RunTimeout = runTimeout ?? TimeSpan.FromMinutes(10),
@@ -1481,5 +1485,148 @@ public class PluginAudioToolsTests : IDisposable
         int statsPeriodIndex = Array.IndexOf(_capturedArguments, "-stats_period");
         statsPeriodIndex.Should().BeLessThan(inputIndex);
         _capturedArguments[statsPeriodIndex + 1].Should().Be("5");
+    }
+
+    // --- {alignModel}: the lyricsalign filter, its model, its phoneme tables ---
+
+    /// <summary>The graph the lyrics aligner runs: stems first, then the known text placed on them.</summary>
+    private static readonly PluginFilterGraph AlignGraph = new(
+        "[0:a]stemsplit=model={stemsModel}:stem=all[v][b];"
+            + "[v][b]lyricsalign=model={alignModel}:language=en:threads=0:destination=-",
+        Complex: true
+    );
+
+    private Task<PluginAudioRunResult> RunAlignGraph(
+        ILyricsAlignModelInstaller? alignModelInstaller = null
+    ) =>
+        CreateTools(alignModelInstaller: alignModelInstaller)
+            .RunFilterGraphAsync(
+                PluginAudioInput.Track(_trackId.ToString()),
+                AlignGraph,
+                null,
+                null
+            );
+
+    [Fact]
+    public async Task RunFilterGraph_WithTheAlignModel_ReplacesTheTokenAndRuns()
+    {
+        PluginAudioRunResult result = await RunAlignGraph();
+
+        result.Refusal.Should().BeNull();
+        ArgumentAfter("-filter_complex")
+            .Should()
+            .Contain($"lyricsalign=model={AppFiles.LyricsAlignModel}.gguf:")
+            .And.NotContain("{alignModel}");
+    }
+
+    [Fact]
+    public async Task RunFilterGraph_RefusesTheAlignModel_OnAnFfmpegWithoutTheFilter_NamingTheRelease()
+    {
+        _probe
+            .Setup(probe => probe.GetCachedReport())
+            .Returns(Report(stemsplitModelPresent: true, lyricsAlignFilterPresent: false));
+
+        PluginAudioRunResult result = await RunAlignGraph();
+
+        result
+            .Refusal.Should()
+            .Be(
+                "this server's ffmpeg has no lyricsalign filter; it needs nomercy-ffmpeg v1.0.46 or later"
+            );
+        _runCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task RunFilterGraph_RefusesTheAlignModel_WhileTheFileIsAbsent()
+    {
+        _storage.Setup(storage => storage.Exists(AppFiles.LyricsAlignModelPath)).Returns(false);
+
+        PluginAudioRunResult result = await RunAlignGraph();
+
+        result.Refusal.Should().Be("the lyricsalign model is not installed");
+        _runCount.Should().Be(0);
+    }
+
+    /// <summary>
+    /// The model is not fetched at setup: it is 600 MB and only a plugin
+    /// that aligns lyrics reads it. The first graph that names it is what
+    /// asks for it - refused, with the download started.
+    /// </summary>
+    [Fact]
+    public async Task RunFilterGraph_AsksForTheAlignModel_TheFirstTimeAGraphNamesIt()
+    {
+        _storage.Setup(storage => storage.Exists(AppFiles.LyricsAlignModelPath)).Returns(false);
+        Mock<ILyricsAlignModelInstaller> installer = new();
+
+        PluginAudioRunResult result = await RunAlignGraph(installer.Object);
+
+        result
+            .Refusal.Should()
+            .Be(
+                "the lyricsalign model is not installed yet; the server has started downloading it, ask again in a few minutes"
+            );
+        installer.Verify(i => i.RequestInstall(), Times.Once);
+        _runCount.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task RunFilterGraph_DoesNotAskForTheAlignModel_WhenItIsThere_OrWhenNoGraphNamesIt()
+    {
+        Mock<ILyricsAlignModelInstaller> installer = new();
+
+        (await RunAlignGraph(installer.Object)).Refusal.Should().BeNull();
+
+        _storage.Setup(storage => storage.Exists(AppFiles.LyricsAlignModelPath)).Returns(false);
+        PluginAudioRunResult plain = await CreateTools(alignModelInstaller: installer.Object)
+            .RunFilterGraphAsync(
+                PluginAudioInput.Track(_trackId.ToString()),
+                new PluginFilterGraph("volume=1", Complex: false),
+                null,
+                null
+            );
+
+        plain.Refusal.Should().BeNull("a graph that does not name the model does not need it");
+        installer.Verify(i => i.RequestInstall(), Times.Never);
+    }
+
+    [Fact]
+    public async Task RunFilterGraph_RefusesTheAlignModel_WithoutTheEspeakData()
+    {
+        _storage.Setup(storage => storage.Exists(AppFiles.EspeakDataMarkerPath)).Returns(false);
+
+        PluginAudioRunResult result = await RunAlignGraph();
+
+        result
+            .Refusal.Should()
+            .Be(
+                "the espeak-ng data is missing from the ffmpeg folder; it ships with nomercy-ffmpeg v1.0.46 and later"
+            );
+        _runCount.Should().Be(0);
+    }
+
+    /// <summary>
+    /// The probe runs once, some minutes after start, and the model arrives
+    /// long after it. Neither a missing report nor a stale one may refuse a
+    /// graph whose files are on disk.
+    /// </summary>
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task RunFilterGraph_WithTheAlignModel_TrustsTheDiskOverTheReport(bool staleReport)
+    {
+        _probe
+            .Setup(probe => probe.GetCachedReport())
+            .Returns(
+                staleReport
+                    ? Report(stemsplitModelPresent: true) with
+                    {
+                        LyricsAlignModelPresent = false,
+                        EspeakDataPresent = false,
+                    }
+                    : null
+            );
+
+        (await RunAlignGraph()).Refusal.Should().BeNull();
+        _runCount.Should().Be(1);
     }
 }

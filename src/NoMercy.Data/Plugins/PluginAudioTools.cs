@@ -60,7 +60,8 @@ public sealed class PluginAudioTools(
     IFfmpegCapabilityProbe capabilityProbe,
     ILogger<PluginAudioTools>? logger = null,
     string? dataFolderPath = null,
-    PluginQuotaMeter? quotas = null
+    PluginQuotaMeter? quotas = null,
+    ILyricsAlignModelInstaller? alignModelInstaller = null
 ) : IPluginAudioTools
 {
     /// <summary>
@@ -120,6 +121,13 @@ public sealed class PluginAudioTools(
     private const string StemsplitModelMissing = "the stemsplit model is not installed";
     private const string WhisperModelMissing = "the whisper model is not installed";
     private const string VadModelMissing = "the VAD model is not installed";
+    private const string AlignFilterMissing =
+        "this server's ffmpeg has no lyricsalign filter; it needs nomercy-ffmpeg v1.0.46 or later";
+    private const string AlignModelMissing = "the lyricsalign model is not installed";
+    private const string AlignModelOnItsWay =
+        "the lyricsalign model is not installed yet; the server has started downloading it, ask again in a few minutes";
+    private const string EspeakDataMissing =
+        "the espeak-ng data is missing from the ffmpeg folder; it ships with nomercy-ffmpeg v1.0.46 and later";
     private const string RunInProgress = "another ffmpeg run of this plugin is still in progress";
     private const string NoStemOutput = "stemsplit produced no output";
 
@@ -1106,7 +1114,46 @@ public sealed class PluginAudioTools(
             return VadModelMissing;
         }
 
-        return null;
+        return PluginGraphTokens.UsesAlignModel(graphText) ? MissingForLyricsAlign() : null;
+    }
+
+    /// <summary>
+    /// What a graph that names <c>{alignModel}</c> still lacks on this
+    /// server, or null: the filter, the model, or the phoneme tables the
+    /// filter reads next to ffmpeg.
+    /// <para>
+    /// The model is the one file here that is not fetched at setup. It is
+    /// 600 MB and only a plugin that aligns lyrics uses it, so the first
+    /// graph that names it is what asks for it: that graph is refused, the
+    /// download starts, and a later one runs.
+    /// </para>
+    /// </summary>
+    private string? MissingForLyricsAlign()
+    {
+        // Only a probe can say the filter is not there. Before the first
+        // report the graph is let through, and an ffmpeg without the filter
+        // says so itself.
+        if (capabilityProbe.GetCachedReport() is { LyricsAlignFilterPresent: false })
+        {
+            return AlignFilterMissing;
+        }
+
+        // Asked of the disk and not of the report: the probe runs once, at
+        // start, and this file arrives long after it.
+        if (!FilePresent(options.LyricsAlignModelPath, AppFiles.LyricsAlignModelPath))
+        {
+            if (alignModelInstaller is null)
+            {
+                return AlignModelMissing;
+            }
+
+            alignModelInstaller.RequestInstall();
+            return AlignModelOnItsWay;
+        }
+
+        return FilePresent(options.EspeakDataMarkerPath, AppFiles.EspeakDataMarkerPath)
+            ? null
+            : EspeakDataMissing;
     }
 
     private bool ModelPresent(
@@ -1121,15 +1168,21 @@ public sealed class PluginAudioTools(
             return fromReport(report);
         }
 
-        string? modelPath = configuredPath;
-        if (string.IsNullOrWhiteSpace(modelPath))
-        {
-            modelPath = fallbackPath;
-        }
+        return FilePresent(configuredPath, fallbackPath);
+    }
+
+    /// <summary>
+    /// Whether a file the server provisions is on this machine: at the
+    /// configured path, or at <paramref name="fallbackPath" /> when nothing
+    /// was configured. An unreadable path is an absent file.
+    /// </summary>
+    private bool FilePresent(string? configuredPath, string fallbackPath)
+    {
+        string path = string.IsNullOrWhiteSpace(configuredPath) ? fallbackPath : configuredPath;
 
         try
         {
-            return storage.Exists(modelPath);
+            return storage.Exists(path);
         }
         catch (Exception)
         {

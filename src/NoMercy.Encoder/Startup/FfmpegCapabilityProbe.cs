@@ -96,6 +96,13 @@ public sealed class FfmpegCapabilityProbe(
 
         bool stemsplitModelPresent = ProbeStemsplitModel();
 
+        // What a plugin's lyrics alignment needs: the filter, its model and
+        // the phoneme tables. None of the three is an issue on the list
+        // below - a server nobody aligns lyrics on is not missing anything.
+        bool lyricsAlignFilterPresent = await ProbeLyricsAlignFilterAsync(ct).ConfigureAwait(false);
+        bool lyricsAlignModelPresent = ProbeModel(options.LyricsAlignModelPath);
+        bool espeakDataPresent = ProbeModel(options.EspeakDataMarkerPath);
+
         (bool tesseractPresent, string? tesseractDir) = ProbeTesseract();
 
         List<EncoderRule> issues = BuildIssues(
@@ -117,11 +124,14 @@ public sealed class FfmpegCapabilityProbe(
             TesseractEngTraineddataPresent: tesseractPresent,
             TesseractModelsDirectory: tesseractDir,
             Issues: issues,
-            VadModelPresent: vadModelPresent
+            VadModelPresent: vadModelPresent,
+            LyricsAlignFilterPresent: lyricsAlignFilterPresent,
+            LyricsAlignModelPresent: lyricsAlignModelPresent,
+            EspeakDataPresent: espeakDataPresent
         );
 
         logger.LogInformation(
-            "Capability probe complete — BluRay={BluRay}, DvdRead={DvdRead}, MissingFilters={FilterCount}, MissingMuxers={MuxerCount}, fpcalc={Fpcalc}, WhisperModel={Whisper}, StemsplitModel={Stemsplit}, Tesseract={Tesseract}",
+            "Capability probe complete — BluRay={BluRay}, DvdRead={DvdRead}, MissingFilters={FilterCount}, MissingMuxers={MuxerCount}, fpcalc={Fpcalc}, WhisperModel={Whisper}, StemsplitModel={Stemsplit}, Tesseract={Tesseract}, LyricsAlignFilter={LyricsAlignFilter}, LyricsAlignModel={LyricsAlignModel}, EspeakData={EspeakData}",
             bluRay,
             dvdRead,
             missingFilters.Count,
@@ -129,7 +139,10 @@ public sealed class FfmpegCapabilityProbe(
             fpcalcPresent,
             whisperModelPresent,
             stemsplitModelPresent,
-            tesseractPresent
+            tesseractPresent,
+            lyricsAlignFilterPresent,
+            lyricsAlignModelPresent,
+            espeakDataPresent
         );
     }
 
@@ -157,6 +170,38 @@ public sealed class FfmpegCapabilityProbe(
         }
 
         return available;
+    }
+
+    /// <summary>
+    /// Whether this ffmpeg has the lyricsalign filter a plugin's graph is
+    /// written against: the one that takes a text file, which nomercy-ffmpeg
+    /// v1.0.46 ships. Read from the filter's own help and not from the filter
+    /// list, because the name alone does not say which options it takes.
+    /// <para>
+    /// Never fails the probe: a server that cannot answer this one question
+    /// still has every other answer worth reporting.
+    /// </para>
+    /// </summary>
+    private async Task<bool> ProbeLyricsAlignFilterAsync(CancellationToken ct)
+    {
+        try
+        {
+            ProcessResult result = await processRunner
+                .RunAsync(
+                    AppFiles.FfmpegPath,
+                    ["-hide_banner", "-h", "filter=lyricsalign"],
+                    null,
+                    ct
+                )
+                .ConfigureAwait(false);
+
+            return result.StdOut.Contains("text_file", StringComparison.Ordinal);
+        }
+        catch (Exception exception) when (exception is not OperationCanceledException)
+        {
+            logger.LogDebug(exception, "Could not ask ffmpeg about its lyricsalign filter");
+            return false;
+        }
     }
 
     private bool ProbeWhisperModel() => ProbeModel(options.WhisperModelPath);

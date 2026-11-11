@@ -49,5 +49,8 @@ public sealed record CapabilityReport(
     bool TesseractEngTraineddataPresent,
     string? TesseractModelsDirectory,
     IReadOnlyList<EncoderRule> Issues,
-    bool VadModelPresent = false
+    bool VadModelPresent = false,
+    bool LyricsAlignFilterPresent = false,
+    bool LyricsAlignModelPresent = false,
+    bool EspeakDataPresent = false
 );

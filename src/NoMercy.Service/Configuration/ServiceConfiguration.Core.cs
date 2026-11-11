@@ -672,6 +672,13 @@ public static partial class ServiceConfiguration
         ));
         services.AddSingleton<ICredentialResolver, CredentialResolver>();
 
+        // The one model that is not fetched at setup: a plugin's graph asks
+        // for it the first time it names {alignModel}.
+        services.AddSingleton<ILyricsAlignModelInstaller>(sp => new LyricsAlignModelInstaller(
+            sp.GetRequiredService<IStorageDriver>(),
+            sp.GetRequiredService<IStorage>()
+        ));
+
         services.AddNoMercyEncoder(opts =>
         {
             opts.FfmpegPathOverride = AppFiles.FfmpegPath;
@@ -680,6 +687,8 @@ public static partial class ServiceConfiguration
             opts.WhisperModelPath = AppFiles.WhisperModelPath;
             opts.VadModelPath = AppFiles.VadModelPath;
             opts.StemsplitModelPath = AppFiles.StemsplitModelPath;
+            opts.LyricsAlignModelPath = AppFiles.LyricsAlignModelPath;
+            opts.EspeakDataMarkerPath = AppFiles.EspeakDataMarkerPath;
             // Without this the JsonSpeedIndexStore silently no-ops on Save
             // ("No SpeedIndexCachePath configured — skipping save"), and every
             // reboot triggers a fresh ~20 min hardware benchmark calibration.
