@@ -81,6 +81,23 @@ context.Events.Subscribe<PluginLyricsRequested>(
 );
 ```
 
+The event carries the track id and nothing else. The track itself (its length,
+title and artist) is one call away, from ABI 12.8:
+
+```csharp
+if (context.Music is not { } music)
+    return;   // a host that wired no music library
+
+IReadOnlyList<PluginTrack> tracks = await music.GetTracksByIdAsync([trackId], ct);
+PluginTrack? track = tracks.FirstOrDefault();   // absent: unknown, or its file is gone
+double? seconds = track?.DurationSeconds;
+```
+
+A track comes back exactly as a page of `GetTracksAsync` shows it, once per
+library it is in. Do the read in the worker that takes the track off the queue
+and not in the handler: the server awaits the handler inside the client's own
+request for the lyrics.
+
 ## Getting the text
 
 ```csharp
