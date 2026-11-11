@@ -37,7 +37,9 @@ public class MacOsMinimumSystemVersionTests
         {
             var match = Regex.Match(
                 contents,
-                @"<key>LSMinimumSystemVersion</key>\s*<string>([^<]+)</string>"
+                @"<key>LSMinimumSystemVersion</key>\s*<string>([^<]+)</string>",
+                RegexOptions.None,
+                TimeSpan.FromSeconds(1)
             );
             match.Success.Should().BeTrue("the macOS bundle must declare a minimum version");
             return match.Groups[1].Value;
