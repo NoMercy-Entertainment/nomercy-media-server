@@ -37,6 +37,18 @@ public interface IPluginLyrics
     /// the file's own tags. Provider calls run inside the host's rate limits
     /// and backoff, and the answer is kept for a day, so a plugin may ask
     /// freely. Empty when nothing was found or the track is unknown.
+    /// <para>
+    /// An answer whose <see cref="PluginLyricsText.IsComplete" /> is false
+    /// is not the last word: a provider failed or is backed off, or the host
+    /// itself failed, so a text that exists may be missing from the list.
+    /// What was found is still in it - the lyrics embedded in the file are
+    /// never left out because a provider is backed off. Ask again after
+    /// <see cref="PluginLyricsText.AskAgainAfter" /> before treating the
+    /// track as having no text; when that is null the host cannot say when.
+    /// A complete answer, empty or not, is final for the day it is kept.
+    /// Both properties were added in ABI 12.8; before it every answer read
+    /// as complete.
+    /// </para>
     /// </summary>
     Task<PluginLyricsText> GetTextCandidatesAsync(Guid trackId, CancellationToken ct = default);
 

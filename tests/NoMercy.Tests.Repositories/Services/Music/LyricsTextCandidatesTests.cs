@@ -103,6 +103,8 @@ public sealed class LyricsTextCandidatesTests : IDisposable
         first.Candidates[1].Lines.Should().Equal("lrc one", "lrc two");
         first.Candidates[1].WasSynced.Should().BeTrue();
         first.Candidates[2].Source.Should().Be(LyricsSources.Musixmatch);
+        first.IsComplete.Should().BeTrue();
+        first.AskAgainAfter.Should().BeNull();
         second.Should().BeSameAs(first, "the answer is kept for a day");
         _aggregator.Verify(a => a.SearchCandidatesAsync(It.IsAny<Track>()), Times.Once);
     }
@@ -123,12 +125,135 @@ public sealed class LyricsTextCandidatesTests : IDisposable
 
         PluginLyricsText first = await service.GetAsync(_trackId);
         PluginLyricsText duringBackoff = await service.GetAsync(_trackId);
+        _aggregator.Verify(
+            a => a.SearchCandidatesAsync(It.IsAny<Track>()),
+            Times.Once,
+            "inside the backoff nothing is fetched"
+        );
         await Task.Delay(TimeSpan.FromMilliseconds(150));
         await service.GetAsync(_trackId);
 
         first.Candidates.Should().ContainSingle(c => c.Source == LyricsSources.Embedded);
-        duringBackoff.Candidates.Should().BeEmpty("inside the backoff nothing is fetched");
+        duringBackoff.Should().BeSameAs(first, "the partial answer is kept next to the backoff");
         _aggregator.Verify(a => a.SearchCandidatesAsync(It.IsAny<Track>()), Times.Exactly(2));
+    }
+
+    /// <summary>
+    /// "No text exists" is final and kept for a day. A plugin that reads an
+    /// empty answer has to be able to tell it from the three below.
+    /// </summary>
+    [Fact]
+    public async Task No_text_and_no_provider_error_is_an_empty_complete_answer_that_is_kept()
+    {
+        _aggregator
+            .Setup(a => a.SearchCandidatesAsync(It.IsAny<Track>()))
+            .ReturnsAsync(new LyricsCandidatesResult([], false));
+        LyricsTextCandidates service = Service(TimeSpan.FromHours(24), TimeSpan.FromMinutes(2));
+
+        PluginLyricsText first = await service.GetAsync(_trackId);
+        PluginLyricsText second = await service.GetAsync(_trackId);
+
+        first.Candidates.Should().BeEmpty();
+        first.IsComplete.Should().BeTrue();
+        first.AskAgainAfter.Should().BeNull();
+        second.Should().BeSameAs(first);
+        _aggregator.Verify(a => a.SearchCandidatesAsync(It.IsAny<Track>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task A_provider_error_without_embedded_lyrics_is_empty_incomplete_and_says_when_to_ask_again()
+    {
+        _aggregator
+            .Setup(a => a.SearchCandidatesAsync(It.IsAny<Track>()))
+            .ReturnsAsync(LyricsCandidatesResult.TransientFailure);
+        TimeSpan backoff = TimeSpan.FromMinutes(2);
+        LyricsTextCandidates service = Service(TimeSpan.FromHours(24), backoff);
+
+        DateTimeOffset before = DateTimeOffset.UtcNow;
+        PluginLyricsText text = await service.GetAsync(_trackId);
+        DateTimeOffset after = DateTimeOffset.UtcNow;
+
+        text.Candidates.Should().BeEmpty();
+        text.IsComplete.Should().BeFalse("a provider that failed may have had the text");
+        text.AskAgainAfter.Should().NotBeNull();
+        text.AskAgainAfter!.Value.Should().BeOnOrAfter(before + backoff);
+        text.AskAgainAfter!.Value.Should().BeOnOrBefore(after + backoff);
+        text.AskAgainAfter!.Value.Offset.Should().Be(TimeSpan.Zero);
+    }
+
+    [Fact]
+    public async Task A_provider_error_with_embedded_lyrics_returns_the_embedded_text_incomplete()
+    {
+        _embedded
+            .Setup(r => r.ReadAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmbeddedLyrics(["embedded one"], false, "en"));
+        _aggregator
+            .Setup(a => a.SearchCandidatesAsync(It.IsAny<Track>()))
+            .ReturnsAsync(LyricsCandidatesResult.TransientFailure);
+        LyricsTextCandidates service = Service(TimeSpan.FromHours(24), TimeSpan.FromMinutes(2));
+
+        PluginLyricsText text = await service.GetAsync(_trackId);
+
+        text.Candidates.Should().ContainSingle(c => c.Source == LyricsSources.Embedded);
+        text.IsComplete.Should().BeFalse();
+        text.AskAgainAfter.Should().NotBeNull();
+    }
+
+    /// <summary>
+    /// A track with embedded lyrics never gets an empty answer only because a
+    /// provider is backed off: for those two minutes the answer used to be
+    /// the empty list, embedded text left out with the rest.
+    /// </summary>
+    [Fact]
+    public async Task Inside_the_backoff_the_answer_is_incomplete_and_still_carries_the_embedded_text()
+    {
+        _embedded
+            .Setup(r => r.ReadAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new EmbeddedLyrics(["embedded one"], false, "en"));
+        _aggregator
+            .Setup(a => a.SearchCandidatesAsync(It.IsAny<Track>()))
+            .ReturnsAsync(LyricsCandidatesResult.TransientFailure);
+        LyricsTextCandidates service = Service(TimeSpan.FromHours(24), TimeSpan.FromMinutes(2));
+
+        PluginLyricsText failedFetch = await service.GetAsync(_trackId);
+        PluginLyricsText duringBackoff = await service.GetAsync(_trackId);
+
+        duringBackoff.IsComplete.Should().BeFalse();
+        duringBackoff.AskAgainAfter.Should().Be(failedFetch.AskAgainAfter);
+        duringBackoff.Candidates.Should().ContainSingle(c => c.Source == LyricsSources.Embedded);
+        duringBackoff.Candidates[0].Lines.Should().Equal("embedded one");
+        _embedded.Verify(
+            r => r.ReadAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()),
+            Times.Once,
+            "the file is not read again inside the backoff either"
+        );
+    }
+
+    [Fact]
+    public async Task After_the_backoff_a_provider_that_answers_makes_the_answer_complete_again()
+    {
+        _aggregator
+            .SetupSequence(a => a.SearchCandidatesAsync(It.IsAny<Track>()))
+            .ReturnsAsync(LyricsCandidatesResult.TransientFailure)
+            .ReturnsAsync(
+                new LyricsCandidatesResult(
+                    [new(LyricsSources.Lrclib, Candidate("lrc one", "lrc two", synced: true))],
+                    false
+                )
+            );
+        LyricsTextCandidates service = Service(
+            TimeSpan.FromHours(24),
+            TimeSpan.FromMilliseconds(50)
+        );
+
+        PluginLyricsText failed = await service.GetAsync(_trackId);
+        await Task.Delay(TimeSpan.FromMilliseconds(150));
+        PluginLyricsText answered = await service.GetAsync(_trackId);
+
+        failed.IsComplete.Should().BeFalse();
+        answered.IsComplete.Should().BeTrue();
+        answered.AskAgainAfter.Should().BeNull();
+        answered.Candidates.Should().ContainSingle(c => c.Source == LyricsSources.Lrclib);
     }
 
     [Fact]
@@ -136,7 +261,10 @@ public sealed class LyricsTextCandidatesTests : IDisposable
     {
         LyricsTextCandidates service = Service(TimeSpan.FromHours(24), TimeSpan.FromMinutes(2));
 
-        (await service.GetAsync(Guid.NewGuid())).Candidates.Should().BeEmpty();
+        PluginLyricsText text = await service.GetAsync(Guid.NewGuid());
+
+        text.Candidates.Should().BeEmpty();
+        text.IsComplete.Should().BeTrue("no later ask will find a track that is not there");
         _aggregator.Verify(a => a.SearchCandidatesAsync(It.IsAny<Track>()), Times.Never);
     }
 

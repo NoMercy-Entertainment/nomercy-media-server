@@ -310,10 +310,53 @@ public sealed class PluginLyricsWriterTests : IDisposable
         (await writer.GetTextCandidatesAsync(_plainText)).Should().BeSameAs(text);
     }
 
+    /// <summary>
+    /// A host wired without the candidates service can find nothing, and
+    /// asking again will not change that: the empty answer is complete.
+    /// </summary>
     [Fact]
     public async Task GetTextCandidates_WithoutTheService_AnswersNothingRatherThanThrowing()
     {
-        (await Writer().GetTextCandidatesAsync(_plainText)).Candidates.Should().BeEmpty();
+        PluginLyricsText text = await Writer().GetTextCandidatesAsync(_plainText);
+
+        text.Candidates.Should().BeEmpty();
+        text.IsComplete.Should().BeTrue();
+        text.AskAgainAfter.Should().BeNull();
+    }
+
+    /// <summary>
+    /// A failure inside the server is not "no text exists". The plugin gets
+    /// an empty answer it knows may be missing something, with no time to
+    /// ask again because the host cannot say when it will be better.
+    /// </summary>
+    [Fact]
+    public async Task GetTextCandidates_WhenTheServiceFails_AnswersEmptyAndIncomplete()
+    {
+        Mock<ILyricsTextCandidates> candidates = new();
+        candidates
+            .Setup(c => c.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new IOException("the mount went away"));
+        PluginLyricsWriter writer = new(_pluginId, ContextFactory(), candidates.Object);
+
+        PluginLyricsText text = await writer.GetTextCandidatesAsync(_plainText);
+
+        text.Candidates.Should().BeEmpty();
+        text.IsComplete.Should().BeFalse();
+        text.AskAgainAfter.Should().BeNull();
+    }
+
+    /// <summary>
+    /// Both properties are init-only and not constructor parameters, so every
+    /// <c>new PluginLyricsText(candidates)</c> written before them still
+    /// compiles and still means a complete answer.
+    /// </summary>
+    [Fact]
+    public void ALyricsText_IsCompleteUnlessToldOtherwise()
+    {
+        PluginLyricsText text = new([]);
+
+        text.IsComplete.Should().BeTrue();
+        text.AskAgainAfter.Should().BeNull();
     }
 
     private PluginLyricsWriter Writer() => new(_pluginId, ContextFactory());

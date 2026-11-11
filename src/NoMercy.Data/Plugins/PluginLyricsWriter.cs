@@ -44,6 +44,7 @@ public class PluginLyricsWriter(
 ) : IPluginLyrics
 {
     private static readonly PluginLyricsText NoText = new([]);
+    private static readonly PluginLyricsText CouldNotAsk = new([]) { IsComplete = false };
 
     // A word is "where its line starts" within a millisecond: alignment
     // produces floating point, and a plugin that rounds differently from the
@@ -72,6 +73,10 @@ public class PluginLyricsWriter(
 
     // A host wired without the candidates service answers "nothing found"
     // rather than throwing: the plugin can still write what it transcribed.
+    // That answer is complete, because asking again will not change it. A
+    // failure inside the service is the other kind of empty: something may
+    // well exist, so the fallback says the answer is incomplete, and carries
+    // no time to ask again because nothing here knows when it will be better.
     public Task<PluginLyricsText> GetTextCandidatesAsync(
         Guid trackId,
         CancellationToken ct = default
@@ -80,7 +85,7 @@ public class PluginLyricsWriter(
             pluginId.ToString(),
             nameof(GetTextCandidatesAsync),
             () => textCandidates?.GetAsync(trackId, ct) ?? Task.FromResult(NoText),
-            NoText,
+            CouldNotAsk,
             _logger
         );
 

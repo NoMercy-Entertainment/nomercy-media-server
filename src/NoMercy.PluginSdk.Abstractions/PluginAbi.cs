@@ -29,7 +29,9 @@ public static class PluginAbi
     // PluginAudioRunResult.Outputs. Additive: the member is a default member, and the three
     // existing records grew a property each, not a constructor parameter, so the
     // constructors a plugin was compiled against are still there.
-    // 12.8 added IPluginMusicQuery.GetTracksByIdAsync. Default member.
+    // 12.8 added IPluginMusicQuery.GetTracksByIdAsync (a default member) and
+    // PluginLyricsText.IsComplete and AskAgainAfter (two init-only properties, so every
+    // new PluginLyricsText(candidates) written before them still means a complete answer).
     public static Version Current { get; } = new(12, 8);
 
     /// <summary>

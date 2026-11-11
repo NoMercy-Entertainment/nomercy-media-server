@@ -113,6 +113,31 @@ inside the server's rate limits and its two-minute backoff after a provider
 hiccup, and the answer is kept per track for a day, so a plugin may ask as
 often as it likes. The plugin never sees a file path.
 
+An empty list does not always mean the track has no text. From ABI 12.8 the
+answer says which it is:
+
+```csharp
+if (text.Candidates.Count == 0 && !text.IsComplete)
+{
+    // A provider failed or is backed off, or the server failed: ask again
+    // before treating the track as having no text.
+    DateTimeOffset retryAt = text.AskAgainAfter ?? DateTimeOffset.UtcNow.AddMinutes(5);
+    await queue.PostponeAsync(trackId, retryAt, ct);
+    return;
+}
+```
+
+| `IsComplete` | `AskAgainAfter` | meaning |
+|---|---|---|
+| `true` | `null` | final for the day it is kept: these are all the texts there are, and an empty list is a track without text (or an unknown track) |
+| `false` | a time | a provider failed or is backed off; the list holds what was found, the embedded lyrics included, and the same question after that time may find more |
+| `false` | `null` | the server itself failed to answer; the list is empty and nothing says when it will be better |
+
+The lyrics embedded in the file are never left out because a provider is
+backed off: for those two minutes the answer is the partial one, not an empty
+list. A plugin built against 12.6 or 12.7 does not read the two properties and
+sees what it saw before.
+
 ## Running whisper
 
 ```csharp
