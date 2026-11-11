@@ -99,6 +99,33 @@ public class PluginQuotaMeterTests
     }
 
     [Fact]
+    public void Asking_whether_bytes_would_fit_counts_nothing()
+    {
+        // ffmpeg writes a render's files itself, so the server can only look
+        // at what has landed so far. Looking must not use anything up.
+        (PluginQuotaMeter meter, _) = Build(diskMb: 10);
+        meter.AccountDisk(Plugin, 4 * Megabyte);
+
+        meter.CheckDisk(Plugin, 6 * Megabyte).Should().BeNull("it exactly fills the allowance");
+        meter.CheckDisk(Plugin, 6 * Megabyte).Should().BeNull("asking twice is still asking");
+
+        meter.DiskUsed(Plugin).Should().Be(4 * Megabyte);
+    }
+
+    [Fact]
+    public void Asking_about_bytes_that_would_not_fit_is_refused_and_counted_as_a_refusal()
+    {
+        (PluginQuotaMeter meter, _, RecordingCounter counter) = BuildCounted(diskMb: 10);
+        meter.AccountDisk(Plugin, 4 * Megabyte);
+
+        PluginRefusal? refusal = meter.CheckDisk(Plugin, 7 * Megabyte);
+
+        refusal!.Code.Should().Be(PluginRefusalCodes.QuotaDiskExceeded);
+        counter.Codes.Should().Equal(PluginRefusalCodes.QuotaDiskExceeded);
+        meter.DiskUsed(Plugin).Should().Be(4 * Megabyte);
+    }
+
+    [Fact]
     public void A_write_that_exactly_fills_the_allowance_is_allowed()
     {
         (PluginQuotaMeter meter, _) = Build(diskMb: 10);

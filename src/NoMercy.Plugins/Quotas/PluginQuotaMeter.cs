@@ -48,25 +48,40 @@ public class PluginQuotaMeter(
     /// </summary>
     public PluginRefusal? AccountDisk(Ulid pluginId, long bytes)
     {
-        PluginQuota quota = quotas.For(pluginId);
-        long after = DiskUsed(pluginId) + bytes;
-
-        if (after > quota.DiskBytes)
-            return Counted(
-                pluginId,
-                new(
-                    PluginRefusalCodes.QuotaDiskExceeded,
-                    pluginId.ToString(),
-                    $"The plugin has used all {quota.DiskBytes / 1024 / 1024} MB of the disk this server allows it.",
-                    "Its next write would go past that, so the server refused it rather than filling the disk.",
-                    "Raise the plugin's disk allowance on its page, or remove what it no longer needs.",
-                    PluginRefusalSeverity.Blocked
-                )
-            );
+        if (CheckDisk(pluginId, bytes) is { } refusal)
+            return refusal;
 
         _disk.AddOrUpdate(pluginId, bytes, (_, used) => used + bytes);
 
         return null;
+    }
+
+    /// <summary>
+    /// Null while that many more bytes would still fit. Nothing is counted
+    /// yet: this is for a writer the server does not hand the bytes to, such
+    /// as ffmpeg encoding into the plugin's folder, where the server can only
+    /// look at what has landed so far and end the run once it no longer fits.
+    /// What is kept is counted with <see cref="AccountDisk" /> afterwards.
+    /// </summary>
+    public PluginRefusal? CheckDisk(Ulid pluginId, long bytes)
+    {
+        PluginQuota quota = quotas.For(pluginId);
+        long after = DiskUsed(pluginId) + bytes;
+
+        if (after <= quota.DiskBytes)
+            return null;
+
+        return Counted(
+            pluginId,
+            new(
+                PluginRefusalCodes.QuotaDiskExceeded,
+                pluginId.ToString(),
+                $"The plugin has used all {quota.DiskBytes / 1024 / 1024} MB of the disk this server allows it.",
+                "Its next write would go past that, so the server refused it rather than filling the disk.",
+                "Raise the plugin's disk allowance on its page, or remove what it no longer needs.",
+                PluginRefusalSeverity.Blocked
+            )
+        );
     }
 
     /// <summary>Bytes a plugin gave back, so a delete makes room for a write.</summary>

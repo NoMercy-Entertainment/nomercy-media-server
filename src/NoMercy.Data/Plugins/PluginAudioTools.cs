@@ -9,7 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -23,6 +22,7 @@ using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Information;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Quotas;
 using NoMercy.Storage;
 
 namespace NoMercy.Data.Plugins;
@@ -59,7 +59,8 @@ public sealed class PluginAudioTools(
     IDbContextFactory<MediaContext> contextFactory,
     IFfmpegCapabilityProbe capabilityProbe,
     ILogger<PluginAudioTools>? logger = null,
-    string? dataFolderPath = null
+    string? dataFolderPath = null,
+    PluginQuotaMeter? quotas = null
 ) : IPluginAudioTools
 {
     /// <summary>
@@ -84,6 +85,23 @@ public sealed class PluginAudioTools(
     /// </para>
     /// </summary>
     internal TimeSpan ExitGracePeriod { get; init; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>
+    /// How often a render's files are measured against the plugin's disk
+    /// quota while ffmpeg is still writing them. ffmpeg writes the bytes
+    /// itself, so the server cannot refuse one before it lands the way it
+    /// does for a write through the storage facade; it can only look, and
+    /// this is how long a run that outgrew the quota keeps writing at most.
+    /// <para>Init-only for the same reason as <see cref="RunTimeout" />.</para>
+    /// </summary>
+    internal TimeSpan QuotaCheckInterval { get; init; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>
+    /// The shortest stall limit a render is held to, whatever the plugin
+    /// asked for - see <see cref="PluginAudioRunLimits.ShortestStall" />.
+    /// <para>Init-only for the same reason as <see cref="RunTimeout" />.</para>
+    /// </summary>
+    internal TimeSpan ShortestStallLimit { get; init; } = PluginAudioRunLimits.ShortestStall;
 
     /// <summary>The derived store's own scratch folder; its eviction sweep also cleans it.</summary>
     private const string TempFolder = "tmp";
@@ -168,22 +186,9 @@ public sealed class PluginAudioTools(
             return PluginAudioRunResult.Refused(FfmpegMissing);
         }
 
-        // Each filter exists in the build whether or not its model was ever
-        // downloaded, so ffmpeg would start, read the whole input and only
-        // then fail. Cheaper, and far clearer, to say so up front.
-        if (graph.Text.Contains("stemsplit", StringComparison.Ordinal) && !StemsplitModelPresent())
+        if (MissingModel(graph.Text, everyStemsplitNeedsTheServersModel: true) is { } missingModel)
         {
-            return PluginAudioRunResult.Refused(StemsplitModelMissing);
-        }
-
-        if (PluginGraphTokens.UsesWhisperModel(graph.Text) && !WhisperModelPresent())
-        {
-            return PluginAudioRunResult.Refused(WhisperModelMissing);
-        }
-
-        if (PluginGraphTokens.UsesVadModel(graph.Text) && !VadModelPresent())
-        {
-            return PluginAudioRunResult.Refused(VadModelMissing);
+            return PluginAudioRunResult.Refused(missingModel);
         }
 
         ResolvedGraphText resolvedText = PluginGraphTokens.Resolve(graph.Text, dataFolderPath);
@@ -224,7 +229,7 @@ public sealed class PluginAudioTools(
             // did start - the plugin's graph was accepted and its callbacks
             // saw whatever ffmpeg managed to print before the clock ran out.
             return result is null
-                ? new PluginAudioRunResult(-2, null)
+                ? new PluginAudioRunResult(PluginAudioRunResult.TimedOutExitCode, null)
                 : new PluginAudioRunResult(result.ExitCode, null);
         }
         finally
@@ -232,6 +237,337 @@ public sealed class PluginAudioTools(
             _oneRunAtATime.Release();
         }
     }
+
+    public Task<PluginAudioRunResult> RenderAsync(
+        PluginAudioRender render,
+        Action<string>? onStdOut,
+        Action<string>? onStdErr,
+        PluginAudioRunOptions options,
+        CancellationToken ct = default
+    ) =>
+        PluginCallGuard.RunAsync(
+            pluginId.ToString(),
+            nameof(RenderAsync),
+            () => RenderCoreAsync(render, onStdOut, onStdErr, options, ct),
+            PluginAudioRunResult.Refused,
+            _logger
+        );
+
+    private async Task<PluginAudioRunResult> RenderCoreAsync(
+        PluginAudioRender render,
+        Action<string>? onStdOut,
+        Action<string>? onStdErr,
+        PluginAudioRunOptions? options,
+        CancellationToken ct
+    )
+    {
+        string? ffmpegPath = ResolveFfmpegPath();
+        if (ffmpegPath is null)
+        {
+            return PluginAudioRunResult.Refused(FfmpegMissing);
+        }
+
+        // Everything the request itself can be refused for is settled here,
+        // before the lock is taken, a file is opened or a folder is made: a
+        // path that leaves the plugin's folder never gets as far as ffmpeg.
+        PluginAudioRenderPlan plan = PluginAudioRenderPlan.Build(
+            render,
+            dataFolderPath,
+            storageDriver
+        );
+        if (plan.Refusal is not null)
+        {
+            return PluginAudioRunResult.Refused(plan.Refusal);
+        }
+
+        if (
+            MissingModel(render.GraphText, everyStemsplitNeedsTheServersModel: false) is
+            { } missingModel
+        )
+        {
+            return PluginAudioRunResult.Refused(missingModel);
+        }
+
+        ResolvedGraphText graphText = PluginGraphTokens.Resolve(render.GraphText, dataFolderPath);
+        if (graphText.Refusal is not null)
+        {
+            return PluginAudioRunResult.Refused(graphText.Refusal);
+        }
+
+        if (!await _oneRunAtATime.WaitAsync(0, ct))
+        {
+            return PluginAudioRunResult.Refused(RunInProgress);
+        }
+
+        try
+        {
+            return await RenderInsideTheLockAsync(
+                ffmpegPath,
+                render,
+                plan,
+                graphText.Text,
+                onStdOut,
+                onStdErr,
+                options,
+                ct
+            );
+        }
+        finally
+        {
+            _oneRunAtATime.Release();
+        }
+    }
+
+    /// <summary>
+    /// The render itself, with the one-ffmpeg-per-plugin lock already held:
+    /// open the inputs, run ffmpeg into temporary files, and keep those files
+    /// only when the run exited 0 and they fit the plugin's quota.
+    /// </summary>
+    private async Task<PluginAudioRunResult> RenderInsideTheLockAsync(
+        string ffmpegPath,
+        PluginAudioRender render,
+        PluginAudioRenderPlan plan,
+        string graphText,
+        Action<string>? onStdOut,
+        Action<string>? onStdErr,
+        PluginAudioRunOptions? options,
+        CancellationToken ct
+    )
+    {
+        PluginAudioRenderFiles files = new(
+            pluginId,
+            dataFolderPath!,
+            plan.Targets,
+            storageDriver,
+            _logger
+        );
+        List<LocalPathLease> leases = [];
+
+        try
+        {
+            List<PluginAudioRenderInput> inputs = [];
+            foreach (PluginAudioSource source in render.Inputs)
+            {
+                InputResolution resolved = await ResolveInputAsync(source.Input, ct);
+                if (resolved.Refusal is not null)
+                {
+                    return PluginAudioRunResult.Refused(resolved.Refusal);
+                }
+
+                leases.Add(resolved.Lease!);
+                inputs.Add(new(resolved.Lease!.Path, source.Start, source.Duration));
+            }
+
+            files.Prepare();
+
+            // Every reason this run can be ended for goes through one token,
+            // the caller's own cancellation included: whatever ends it, the
+            // process has to be gone before its files are removed below.
+            PluginAudioRunLimits limits = PluginAudioRunLimits.ForRender(
+                options,
+                RunTimeout,
+                ShortestStallLimit
+            );
+            using PluginAudioRunWatch watch = new(limits);
+            using CancellationTokenSource pastQuota = new();
+            using CancellationTokenSource endRun = CancellationTokenSource.CreateLinkedTokenSource(
+                ct,
+                watch.Stalled,
+                watch.TimedOut,
+                pastQuota.Token
+            );
+            using CancellationTokenSource runIsOver = new();
+
+            void ObserveStdOut(string line)
+            {
+                watch.Observe(line);
+                onStdOut?.Invoke(line);
+            }
+
+            Task<PluginRefusal?> quotaWatch = WatchDiskQuotaAsync(
+                files,
+                pastQuota,
+                runIsOver.Token
+            );
+            ProcessResult? result;
+            PluginRefusal? quotaRefusal;
+
+            try
+            {
+                watch.Start();
+                result = await RunFfmpegAsync(
+                    ffmpegPath,
+                    PluginAudioArguments.Render(inputs, graphText, plan.Targets),
+                    ObserveStdOut,
+                    onStdErr,
+                    ct,
+                    watchForExitMarker: true,
+                    // The watch keeps this run's total, next to its stall
+                    // limit, so both end it the same way.
+                    timeout: Timeout.InfiniteTimeSpan,
+                    endRun: endRun.Token
+                );
+            }
+            finally
+            {
+                // Awaited on every way out, a cancellation included: the
+                // watch holds the token sources this method is about to
+                // dispose, and must be done with them first.
+                await runIsOver.CancelAsync();
+                quotaRefusal = await quotaWatch;
+            }
+
+            if (quotaRefusal is not null)
+            {
+                return PluginAudioRunResult.Refused(PastTheQuota(quotaRefusal));
+            }
+
+            // Null is the host ending the run. Not a refusal either way,
+            // because the run did start: the plugin's graph was accepted and
+            // its callbacks saw whatever ffmpeg printed until then.
+            if (result is null)
+            {
+                if (!watch.HasStalled)
+                {
+                    _logger.LogWarning(
+                        "plugin {PluginId}: render timed out after {Seconds}s",
+                        pluginId,
+                        limits.Total.TotalSeconds
+                    );
+                    return new(PluginAudioRunResult.TimedOutExitCode, null);
+                }
+
+                _logger.LogWarning(
+                    "plugin {PluginId}: render made no progress for {Seconds}s and was ended",
+                    pluginId,
+                    limits.Stall?.TotalSeconds
+                );
+                return new(PluginAudioRunResult.StalledExitCode, null);
+            }
+
+            return result.ExitCode == 0
+                ? KeepRenderedFiles(files)
+                : new PluginAudioRunResult(result.ExitCode, null);
+        }
+        finally
+        {
+            // Every way out that did not keep the files would otherwise leave
+            // one that looks finished. After a kept run there is nothing left
+            // under a temporary name, and this finds nothing to do.
+            files.Cleanup();
+
+            foreach (LocalPathLease lease in leases)
+            {
+                await lease.DisposeAsync();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Gives the files of a run that exited 0 their real names, once they
+    /// are all there and fit the plugin's disk quota.
+    /// </summary>
+    private PluginAudioRunResult KeepRenderedFiles(PluginAudioRenderFiles files)
+    {
+        if (files.PadWithoutAFile() is { } pad)
+        {
+            _logger.LogWarning(
+                "plugin {PluginId}: render exited 0 but wrote no file for pad {Pad}",
+                pluginId,
+                pad
+            );
+            return PluginAudioRunResult.Refused($"the render wrote no file for pad '{pad}'");
+        }
+
+        // Counted before the files get their names, so a render that does not
+        // fit is refused while nothing in the folder has changed yet. A render
+        // that replaces more than it writes gives the difference back instead.
+        long net = files.NetBytes();
+        if (net > 0 && quotas?.AccountDisk(pluginId, net) is { } refusal)
+        {
+            return PluginAudioRunResult.Refused(PastTheQuota(refusal));
+        }
+
+        try
+        {
+            files.Commit();
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            if (net > 0)
+            {
+                quotas?.ReleaseDisk(pluginId, net);
+            }
+
+            _logger.LogWarning(
+                exception,
+                "plugin {PluginId}: render finished but its files could not be put in place",
+                pluginId
+            );
+            return PluginAudioRunResult.Refused(
+                "the rendered files could not be put in place; a file they replace may still be open"
+            );
+        }
+
+        if (net < 0)
+        {
+            quotas?.ReleaseDisk(pluginId, -net);
+        }
+
+        return new(0, null) { Outputs = files.Rendered() };
+    }
+
+    /// <summary>
+    /// Looks at what a running render has written so far, and ends the run
+    /// once that no longer fits the plugin's disk quota. Returns the refusal
+    /// when it did, null when the run ended inside the quota or the host
+    /// meters no disk at all.
+    /// <para>
+    /// A graph can write far faster than it reads - a generator has no input
+    /// to wait for - so a quota that was only asked about afterwards would
+    /// let one run fill the disk first.
+    /// </para>
+    /// </summary>
+    private async Task<PluginRefusal?> WatchDiskQuotaAsync(
+        PluginAudioRenderFiles files,
+        CancellationTokenSource pastQuota,
+        CancellationToken runIsOver
+    )
+    {
+        if (quotas is null)
+        {
+            return null;
+        }
+
+        using PeriodicTimer timer = new(QuotaCheckInterval);
+
+        try
+        {
+            while (await timer.WaitForNextTickAsync(runIsOver))
+            {
+                if (quotas.CheckDisk(pluginId, files.NetBytes()) is not { } refusal)
+                {
+                    continue;
+                }
+
+                _logger.LogWarning(
+                    "plugin {PluginId}: render outgrew the plugin's disk quota and was ended",
+                    pluginId
+                );
+                await pastQuota.CancelAsync();
+                return refusal;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            // The run is over; there is nothing left to watch.
+        }
+
+        return null;
+    }
+
+    private static string PastTheQuota(PluginRefusal refusal) =>
+        $"the render does not fit the plugin's disk quota. {refusal.Fix}";
 
     public Task<PluginStemSplitResult> SplitStemsAsync(
         string trackId,
@@ -517,7 +853,8 @@ public sealed class PluginAudioTools(
 
     /// <summary>
     /// One ffmpeg run with the host's own timeout on top of the caller's
-    /// token. Null means the timeout fired; the caller decides what that is
+    /// token. Null means the host ended it - the timeout fired, or
+    /// <paramref name="endRun" /> did - and the caller decides what that is
     /// worth to it.
     /// <para>
     /// The Windows ffmpeg build links ggml (stemsplit, whisper) against GCC's
@@ -541,7 +878,14 @@ public sealed class PluginAudioTools(
     /// Stem split only. A plugin's own filter-graph text can print anything,
     /// "progress=end" included, on purpose or by coincidence - the marker
     /// watch would end a run the plugin never asked to end, so
-    /// <see cref="RunFilterGraphCoreAsync" /> never sets this.
+    /// <see cref="RunFilterGraphCoreAsync" /> never sets this. A render does:
+    /// it asks for the same progress report the stem split does.
+    /// </param>
+    /// <param name="endRun">
+    /// A reason of the caller's own to end the run early, such as a render
+    /// that stopped making progress. Ends it at once, through the runner's
+    /// kill signal, and the run comes back as null whatever the process had
+    /// to say on its way out.
     /// </param>
     private async Task<ProcessResult?> RunFfmpegAsync(
         string ffmpegPath,
@@ -550,16 +894,38 @@ public sealed class PluginAudioTools(
         Action<string>? onStdErr,
         CancellationToken ct,
         bool watchForExitMarker = false,
-        TimeSpan? timeout = null
+        TimeSpan? timeout = null,
+        CancellationToken endRun = default
     )
     {
         TimeSpan runTimeout = timeout ?? RunTimeout;
-        using CancellationTokenSource runCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        using CancellationTokenSource runCts = CancellationTokenSource.CreateLinkedTokenSource(
+            ct,
+            endRun
+        );
         runCts.CancelAfter(runTimeout);
 
         // Disposed after the run has returned, as FfmpegExecutor does - never
         // through a `using`.
-        CancellationTokenSource killCts = new();
+        //
+        // endRun drives this kill signal as well as the cancellation above.
+        // On the cancellation alone the runner gives ffmpeg its five-second
+        // grace period first and, where that runs out, returns without
+        // waiting for the process to be gone: five more seconds of writing
+        // for a run that was ended for outgrowing a quota, and files the
+        // caller cannot remove because ffmpeg still holds them open. The
+        // kill signal ends the process at once, and the cancellation path
+        // then only waits for a process that is already on its way out.
+        CancellationTokenSource killCts = CancellationTokenSource.CreateLinkedTokenSource(endRun);
+        bool finishedItsOutputs = false;
+
+        // Read after the run, where both mean the same thing: the grace
+        // timer is what ended it, not the caller.
+        bool EndedAtExit() =>
+            finishedItsOutputs
+            && killCts.IsCancellationRequested
+            && !endRun.IsCancellationRequested
+            && !ct.IsCancellationRequested;
 
         void ObserveStdOut(string line)
         {
@@ -572,13 +938,14 @@ public sealed class PluginAudioTools(
                     pluginId,
                     ExitGracePeriod.TotalSeconds
                 );
+                finishedItsOutputs = true;
                 killCts.CancelAfter(ExitGracePeriod);
             }
         }
 
         try
         {
-            return await processRunner.RunAsync(
+            ProcessResult result = await processRunner.RunAsync(
                 ffmpegPath,
                 arguments,
                 ObserveStdOut,
@@ -587,9 +954,20 @@ public sealed class PluginAudioTools(
                 runCts.Token,
                 killCts.Token
             );
+
+            if (!endRun.IsCancellationRequested)
+            {
+                return result;
+            }
+
+            // The runner reports a process its kill signal ended as exit 0.
+            // For the exit hang that is the truth; for a run the caller
+            // ended it is not, and when what ended it was the caller's own
+            // cancellation, that is what the caller gets back.
+            ct.ThrowIfCancellationRequested();
+            return null;
         }
-        catch (OperationCanceledException)
-            when (killCts.IsCancellationRequested && !ct.IsCancellationRequested)
+        catch (OperationCanceledException) when (EndedAtExit())
         {
             // A runner that surfaces the grace-period kill as a thrown
             // cancellation instead of returning normally - the way the real
@@ -602,11 +980,18 @@ public sealed class PluginAudioTools(
         }
         catch (OperationCanceledException) when (!ct.IsCancellationRequested)
         {
-            _logger.LogWarning(
-                "plugin {PluginId}: ffmpeg run timed out after {Seconds}s",
-                pluginId,
-                runTimeout.TotalSeconds
-            );
+            // The caller that passed endRun knows why it ended the run and
+            // says so itself; calling that a timeout would send the owner
+            // looking for the wrong thing.
+            if (!endRun.IsCancellationRequested)
+            {
+                _logger.LogWarning(
+                    "plugin {PluginId}: ffmpeg run timed out after {Seconds}s",
+                    pluginId,
+                    runTimeout.TotalSeconds
+                );
+            }
+
             return null;
         }
         finally
@@ -616,7 +1001,7 @@ public sealed class PluginAudioTools(
             // was still stuck once it elapsed. The owner reads this line to
             // judge the ffmpeg root fix (GGML_OPENMP=OFF): once that ships,
             // it should stop appearing.
-            if (killCts.IsCancellationRequested && !ct.IsCancellationRequested)
+            if (EndedAtExit())
             {
                 _logger.LogDebug(
                     "plugin {PluginId}: ffmpeg finished its outputs but did not exit; ended it after {Grace}s",
@@ -687,6 +1072,43 @@ public sealed class PluginAudioTools(
     private bool VadModelPresent() =>
         ModelPresent(report => report.VadModelPresent, options.VadModelPath, AppFiles.VadModelPath);
 
+    /// <summary>
+    /// The refusal for the first model a graph needs and this machine lacks,
+    /// or null. Each filter exists in the build whether or not its model was
+    /// ever downloaded, so ffmpeg would start, read the whole input and only
+    /// then fail. Cheaper, and far clearer, to say so up front.
+    /// </summary>
+    /// <param name="everyStemsplitNeedsTheServersModel">
+    /// True for a filter-graph run, which asks for the server's model the
+    /// moment its text says "stemsplit", as it always has. False for a
+    /// render, which asks only when the graph names that model: a render may
+    /// run stemsplit on a model file of the plugin's own, or on one of the
+    /// filter's own presets, and neither needs anything the server installs.
+    /// </param>
+    private string? MissingModel(string graphText, bool everyStemsplitNeedsTheServersModel)
+    {
+        bool needsStemsModel = everyStemsplitNeedsTheServersModel
+            ? graphText.Contains("stemsplit", StringComparison.Ordinal)
+            : PluginGraphTokens.UsesStemsModel(graphText);
+
+        if (needsStemsModel && !StemsplitModelPresent())
+        {
+            return StemsplitModelMissing;
+        }
+
+        if (PluginGraphTokens.UsesWhisperModel(graphText) && !WhisperModelPresent())
+        {
+            return WhisperModelMissing;
+        }
+
+        if (PluginGraphTokens.UsesVadModel(graphText) && !VadModelPresent())
+        {
+            return VadModelMissing;
+        }
+
+        return null;
+    }
+
     private bool ModelPresent(
         Func<CapabilityReport, bool> fromReport,
         string? configuredPath,
@@ -721,6 +1143,11 @@ public sealed class PluginAudioTools(
         CancellationToken ct
     )
     {
+        if (input.PluginFilePath is not null)
+        {
+            return ResolvePluginFileInput(input);
+        }
+
         if (input.StorageKey is not null)
         {
             // Checked before the store is asked anything: answering about a key
@@ -775,6 +1202,46 @@ public sealed class PluginAudioTools(
     }
 
     /// <summary>
+    /// A file in the plugin's own data folder as an input. Through the same
+    /// checks a <c>{pluginFile:…}</c> token gets, and refused in the same
+    /// words.
+    /// </summary>
+    private InputResolution ResolvePluginFileInput(PluginAudioInput input)
+    {
+        if (input.TrackId is not null || input.StorageKey is not null)
+        {
+            return new(null, "the input names more than one source");
+        }
+
+        ResolvedPluginPath path = PluginGraphTokens.ResolvePluginPath(
+            input.PluginFilePath,
+            dataFolderPath,
+            "a plugin file input"
+        );
+        if (path.Refusal is not null)
+        {
+            return new(null, path.Refusal);
+        }
+
+        if (PluginGraphTokens.PassesThroughALink(dataFolderPath!, path.FullPath, storageDriver))
+        {
+            return new(
+                null,
+                $"plugin file '{input.PluginFilePath}' leaves the plugin's data folder"
+            );
+        }
+
+        if (!storageDriver.FileExists(path.FullPath))
+        {
+            return new(null, $"plugin file '{input.PluginFilePath}' does not exist");
+        }
+
+        // Already a local file, and the plugin's own: nothing to stage and
+        // nothing to clean up, so the lease only carries the path.
+        return new(new LocalPathLease(path.FullPath), null);
+    }
+
+    /// <summary>
     /// A track's file and duration, or null when the library has no file for
     /// it - an unknown id and a track the scan never found a file for are the
     /// same absence to a caller that wanted to run ffmpeg over it.
@@ -824,16 +1291,16 @@ public sealed class PluginAudioTools(
         if (coverage == PluginStemCoverage.MixIn)
         {
             double end = duration * MixInShare;
-            return new(["-t", Seconds(end)], 0, Milliseconds(end));
+            return new(["-t", PluginAudioArguments.Seconds(end)], 0, Milliseconds(end));
         }
 
         double start = duration * MixOutStart;
-        return new(["-ss", Seconds(start)], Milliseconds(start), Milliseconds(duration));
+        return new(
+            ["-ss", PluginAudioArguments.Seconds(start)],
+            Milliseconds(start),
+            Milliseconds(duration)
+        );
     }
-
-    /// <summary>Seconds as ffmpeg reads them: invariant, and no decimal tail when there is none.</summary>
-    private static string Seconds(double value) =>
-        value.ToString("0.###", CultureInfo.InvariantCulture);
 
     private static int Milliseconds(double seconds) => (int)Math.Round(seconds * 1000);
 

@@ -12,6 +12,7 @@
 using System.Text.RegularExpressions;
 using NoMercy.NmSystem.Information;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.Storage;
 
 namespace NoMercy.Data.Plugins;
 
@@ -33,6 +34,11 @@ internal static partial class PluginGraphTokens
 
     /// <summary>The silero VAD model file's own name.</summary>
     internal static string VadModelFileName => AppFiles.VadModel + ".bin";
+
+    /// <summary>Whether the text names the server's stemsplit model, by its token or by the file name the token stands for.</summary>
+    internal static bool UsesStemsModel(string text) =>
+        text.Contains(PluginFilterGraphTokens.StemsModel, StringComparison.Ordinal)
+        || text.Contains(StemsModelFileName, StringComparison.Ordinal);
 
     /// <summary>Whether the text names the whisper model, so the host can check it is installed before ffmpeg reads the whole input.</summary>
     internal static bool UsesWhisperModel(string text) =>
@@ -84,14 +90,40 @@ internal static partial class PluginGraphTokens
 
     private static ResolvedGraphText ResolvePluginFile(string relativePath, string? dataFolderPath)
     {
+        ResolvedPluginPath path = ResolvePluginPath(
+            relativePath,
+            dataFolderPath,
+            "a plugin file token"
+        );
+
+        return path.Refusal is null
+            ? new(EscapeForFilterGraph(path.FullPath), null)
+            : new(string.Empty, path.Refusal);
+    }
+
+    /// <summary>
+    /// The full path of a file in the plugin's own data folder, or the reason
+    /// it is not one. The one check every path a plugin hands to ffmpeg goes
+    /// through: a token in a graph, an input, an output.
+    /// </summary>
+    /// <param name="subject">
+    /// What the path is, for the two refusals that have no path to name:
+    /// "a plugin file token", "an output path".
+    /// </param>
+    internal static ResolvedPluginPath ResolvePluginPath(
+        string? relativePath,
+        string? dataFolderPath,
+        string subject
+    )
+    {
         if (dataFolderPath is null)
             return new(
                 string.Empty,
-                "a plugin file token needs the plugin's data folder, which this host did not provide"
+                $"{subject} needs the plugin's data folder, which this host did not provide"
             );
 
         if (string.IsNullOrWhiteSpace(relativePath))
-            return new(string.Empty, "a plugin file token names no file");
+            return new(string.Empty, $"{subject} names no file");
 
         // Checked the same way on every platform: a Windows drive letter is
         // not rooted to a Linux host, but it is still not a relative path.
@@ -124,7 +156,38 @@ internal static partial class PluginGraphTokens
                 $"plugin file '{relativePath}' leaves the plugin's data folder"
             );
 
-        return new(EscapeForFilterGraph(full), null);
+        return new(full, null);
+    }
+
+    /// <summary>
+    /// Whether anything between the data folder and <paramref name="fullPath" />
+    /// is a link. A link inside the folder can point anywhere, and the
+    /// string check above cannot see where: ffmpeg would follow it and read
+    /// or write a file outside the folder. The server's own file links refuse
+    /// the same way, so a file reached through a link could never be served
+    /// either.
+    /// </summary>
+    internal static bool PassesThroughALink(
+        string dataFolderPath,
+        string fullPath,
+        IStorageDriver driver
+    )
+    {
+        string root = Path.GetFullPath(dataFolderPath);
+        string current = root;
+
+        foreach (
+            string segment in Path.GetRelativePath(root, fullPath)
+                .Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+        )
+        {
+            current = Path.Combine(current, segment);
+
+            if (driver.ResolveLinkTarget(current) is not null)
+                return true;
+        }
+
+        return false;
     }
 
     /// <summary>

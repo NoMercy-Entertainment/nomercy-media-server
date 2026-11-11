@@ -23,7 +23,13 @@ public static class PluginAbi
     // 12.5 added IPluginPortMap.ProbeAsync and PluginPortReachability. Default member.
     // 12.6 added IPluginContext.Lyrics (IPluginLyrics, the lyricsWrite hook) and
     // Lyric.Words. Default member.
-    public static Version Current { get; } = new(12, 6);
+    // 12.7 added IPluginAudioTools.RenderAsync with PluginAudioRender, PluginAudioSource,
+    // PluginAudioOutput, PluginAudioCodec and PluginAudioRenderedFile, plus
+    // PluginAudioInput.PluginFile, PluginAudioRunOptions.StallTimeout and
+    // PluginAudioRunResult.Outputs. Additive: the member is a default member, and the three
+    // existing records grew a property each, not a constructor parameter, so the
+    // constructors a plugin was compiled against are still there.
+    public static Version Current { get; } = new(12, 7);
 
     /// <summary>
     /// The oldest major this server can load at all.

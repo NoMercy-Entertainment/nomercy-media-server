@@ -122,6 +122,31 @@ public class PluginContextFactoryTests
         _analysisWriterFactory.Verify(f => f.CreateFor(It.IsAny<Ulid>()), Times.Never);
     }
 
+    /// <summary>
+    /// A render writes files and runs an arbitrary graph over library audio.
+    /// It rides on the consent an owner already gives for
+    /// <c>audioTools</c>, so a plugin whose manifest does not declare that
+    /// hook is refused the whole facade: there is nothing to call
+    /// <see cref="IPluginAudioTools.RenderAsync" /> on, whatever other hooks
+    /// it holds.
+    /// </summary>
+    [Fact]
+    public void Create_WithoutTheAudioToolsHook_ThereIsNothingToRenderWith()
+    {
+        PluginCapabilities capabilities = new()
+        {
+            Hooks = ["derivedAudio", "musicAnalysisWrite", "lyricsWrite", "scheduledTask"],
+        };
+
+        IPluginContext context = Create(capabilities);
+
+        Assert.Null(context.AudioTools);
+        _audioToolsFactory.Verify(
+            f => f.CreateFor(It.IsAny<Ulid>(), It.IsAny<string>()),
+            Times.Never
+        );
+    }
+
     [Fact]
     public void Create_OnlyAudioToolsHookDeclared_OnlyAudioToolsNonNull()
     {
