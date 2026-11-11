@@ -19,6 +19,7 @@ using NoMercy.Database.Models.Libraries;
 using NoMercy.Events;
 using NoMercy.Events.Media;
 using NoMercy.MediaProcessing.Music;
+using NoMercy.NmSystem.Monitoring;
 using NoMercy.Providers.AcoustId;
 using NoMercy.Storage;
 using NoMercyQueue.Core.Interfaces;
@@ -31,6 +32,8 @@ namespace NoMercy.MediaProcessing.Jobs.MediaJobs;
 [Serializable]
 public abstract class AbstractMusicFolderJob : IShouldQueue, IJobAttemptReceiver
 {
+    private static readonly TimeSpan PlaybackWait = TimeSpan.FromSeconds(30);
+    private readonly MediaActivityMonitor? _activityMonitor;
     private int _attempt = 1;
     private int _maxAttempts = 1;
 
@@ -42,11 +45,21 @@ public abstract class AbstractMusicFolderJob : IShouldQueue, IJobAttemptReceiver
         IAudioFingerprinter audioFingerprinter,
         ILoggerFactory loggerFactory
     )
+        : this(storageFactory, storageDriver, audioFingerprinter, loggerFactory, null) { }
+
+    protected AbstractMusicFolderJob(
+        IStorageFactory storageFactory,
+        IStorageDriver storageDriver,
+        IAudioFingerprinter audioFingerprinter,
+        ILoggerFactory loggerFactory,
+        MediaActivityMonitor? activityMonitor
+    )
     {
         StorageFactory = storageFactory;
         StorageDriver = storageDriver;
         AudioFingerprinter = audioFingerprinter;
         LoggerFactory = loggerFactory;
+        _activityMonitor = activityMonitor;
     }
 
     public string InputFolder { get; set; } = string.Empty;
@@ -73,6 +86,12 @@ public abstract class AbstractMusicFolderJob : IShouldQueue, IJobAttemptReceiver
     public abstract int Priority { get; }
 
     public abstract Task Handle();
+
+    // A running import cannot be deferred by the queue's pre-reservation gate.
+    // Let at most one unit of work through every 30 seconds during playback.
+    internal Task ThrottleForPlaybackAsync(TimeSpan? maxWait = null) =>
+        _activityMonitor?.WaitForIdleAsync(maxWait ?? PlaybackWait, CancellationToken.None)
+        ?? Task.CompletedTask;
 
     /// <summary>
     /// The library folder this job stores its tracks under: the folder it was dispatched
