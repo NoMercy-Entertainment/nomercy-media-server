@@ -12,9 +12,11 @@ using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using NoMercy.Api.Controllers.V1.Streaming.Dtos;
 using NoMercy.Api.Services;
 using NoMercy.Authorization;
+using NoMercy.Encoder.LiveTranscode;
 
 namespace NoMercy.Api.Controllers.V1.Streaming;
 
@@ -28,7 +30,21 @@ public class LiveTranscodeController(ILiveTranscodeService service) : BaseContro
     [HttpGet("sessions")]
     public IActionResult ListSessions()
     {
-        return Ok(service.ListSessions(User.UserId(), includeAll: AuthPolicy.IsModerator(User)));
+        Guid userId = User.UserId();
+        bool isOwner = AuthPolicy.IsOwner(User);
+        bool isModerator = AuthPolicy.IsModerator(User);
+        IReadOnlyList<LiveSessionDto> sessions = service.ListSessions(
+            userId,
+            includeAll: isOwner || isModerator
+        );
+        if (
+            isModerator
+            && !isOwner
+            && sessions.Any(session => !CallerOwnsSession(userId, session.SessionId))
+        )
+            return UnauthorizedResponse("Session does not belong to the caller.");
+
+        return Ok(sessions);
     }
 
     [HttpPost("sessions")]
@@ -86,7 +102,8 @@ public class LiveTranscodeController(ILiveTranscodeService service) : BaseContro
     [HttpPost("sessions/{sessionId}/position")]
     public IActionResult ReportPosition(string sessionId, [FromBody] ReportPositionRequest request)
     {
-        return MapResult(service.ReportPosition(User.UserId(), sessionId, request));
+        IActionResult? denied = AuthorizeControl(sessionId, out Guid userId);
+        return denied ?? MapResult(service.ReportPosition(userId, sessionId, request));
     }
 
     /// <summary>
@@ -100,7 +117,8 @@ public class LiveTranscodeController(ILiveTranscodeService service) : BaseContro
         [FromBody] ReportBufferHealthRequest request
     )
     {
-        return MapResult(service.ReportBufferHealth(User.UserId(), sessionId, request));
+        IActionResult? denied = AuthorizeControl(sessionId, out Guid userId);
+        return denied ?? MapResult(service.ReportBufferHealth(userId, sessionId, request));
     }
 
     [HttpPost("sessions/{sessionId}/quality")]
@@ -110,7 +128,9 @@ public class LiveTranscodeController(ILiveTranscodeService service) : BaseContro
         CancellationToken ct = default
     )
     {
-        return MapResult(await service.ChangeQualityAsync(User.UserId(), sessionId, request, ct));
+        IActionResult? denied = AuthorizeControl(sessionId, out Guid userId);
+        return denied
+            ?? MapResult(await service.ChangeQualityAsync(userId, sessionId, request, ct));
     }
 
     [HttpPost("sessions/{sessionId}/seek")]
@@ -120,14 +140,19 @@ public class LiveTranscodeController(ILiveTranscodeService service) : BaseContro
         CancellationToken ct = default
     )
     {
-        return MapResult(await service.SeekAsync(User.UserId(), sessionId, request, ct));
+        IActionResult? denied = AuthorizeControl(sessionId, out Guid userId);
+        return denied ?? MapResult(await service.SeekAsync(userId, sessionId, request, ct));
     }
 
     [HttpDelete("sessions/{sessionId}")]
     public async Task<IActionResult> EndSession(string sessionId)
     {
+        IActionResult? denied = AuthorizeControl(sessionId, out Guid userId);
+        if (denied is not null)
+            return denied;
+
         LiveResult result = await service.EndSessionAsync(
-            User.UserId(),
+            userId,
             sessionId,
             HttpContext.RequestAborted
         );
@@ -135,6 +160,34 @@ public class LiveTranscodeController(ILiveTranscodeService service) : BaseContro
             return MapResult(result);
 
         return NoContent();
+    }
+
+    private ISessionManager SessionManager =>
+        HttpContext.RequestServices.GetRequiredService<ISessionManager>();
+
+    private bool CallerOwnsSession(Guid userId, string sessionId) =>
+        string.Equals(
+            SessionManager.GetOwnerUserId(sessionId),
+            userId.ToString(),
+            StringComparison.OrdinalIgnoreCase
+        );
+
+    private IActionResult? AuthorizeControl(string sessionId, out Guid serviceUserId)
+    {
+        serviceUserId = User.UserId();
+        string? sessionOwner = SessionManager.GetOwnerUserId(sessionId);
+        if (!Guid.TryParse(sessionOwner, out Guid ownerId) || ownerId == serviceUserId)
+            return null;
+
+        if (AuthPolicy.IsOwner(User))
+        {
+            serviceUserId = ownerId;
+            return null;
+        }
+
+        return AuthPolicy.IsModerator(User)
+            ? UnauthorizedResponse("Session does not belong to the caller.")
+            : null;
     }
 
     private IActionResult MapResult(LiveResult result) =>
