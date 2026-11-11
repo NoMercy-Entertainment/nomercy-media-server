@@ -131,6 +131,36 @@ public class DeviceOwnershipTests
         // previousOwner == caller, so HandleHello skips the previous-owner refresh
         previousOwner.Should().Be(userA);
     }
+
+    [Fact]
+    public async Task ForgottenDevice_CannotRegisterAgainWhileStillSignedIn()
+    {
+        await using MediaContext ctx = MakeContext();
+        Guid owner = Guid.NewGuid();
+        Device device = new()
+        {
+            DeviceId = "forgotten-tv",
+            Fingerprint = "forgotten-tv",
+            OwnerUserId = owner,
+            Name = "Guest TV",
+            Type = "tv",
+        };
+        ctx.Devices.Add(device);
+        await ctx.SaveChangesAsync();
+
+        ctx.Devices.Remove(device);
+        await ctx.SaveChangesAsync();
+
+        await DeviceStateRepository.ResolveOwnedDeviceAsync(
+            ctx,
+            "forgotten-tv",
+            owner,
+            "Guest TV",
+            "tv"
+        );
+
+        (await ctx.Devices.CountAsync(d => d.DeviceId == "forgotten-tv")).Should().Be(0);
+    }
 }
 
 /// <summary>
