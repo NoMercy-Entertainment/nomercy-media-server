@@ -62,6 +62,48 @@ public interface IPluginAudioTools
     ) => RunFilterGraphAsync(input, graph, onStdOut, onStdErr, ct);
 
     /// <summary>
+    /// Runs one complex filter graph over one or more inputs and encodes its
+    /// labelled output pads to files in the plugin's own data folder.
+    /// <para>
+    /// This is how a plugin keeps audio it derived - a normalised copy, a
+    /// preview clip, stems from another model - and how two sources meet in
+    /// one graph without the plugin ever being given a library path. The host
+    /// writes the whole command line; the plugin supplies the graph and names
+    /// the pads. A finished file can go straight to
+    /// <c>Media.Proxy.MintFileAsync</c>.
+    /// </para>
+    /// <para>
+    /// Each file is written under a temporary name and takes its real name
+    /// only once ffmpeg has exited 0, all of them together, so a run that
+    /// failed, timed out or was cancelled leaves nothing behind and a file
+    /// that was already there stays as it was. The files count against the
+    /// plugin's disk quota, and a run that would go past it is ended and
+    /// refused. One run per plugin at a time, shared with
+    /// <see cref="RunFilterGraphAsync(PluginAudioInput, PluginFilterGraph, Action{string}?, Action{string}?, CancellationToken)" />
+    /// and <see cref="SplitStemsAsync" />.
+    /// </para>
+    /// <para>
+    /// stdout carries ffmpeg's progress report next to whatever the graph
+    /// prints: <c>key=value</c> lines every five seconds, closed by
+    /// <c>progress=end</c>, which the host reads as the files being complete:
+    /// a graph must not print that line itself. Pass
+    /// <see cref="PluginAudioRunOptions.StallTimeout" /> for a run that may
+    /// take longer than sixty minutes.
+    /// </para>
+    /// <para>
+    /// Default-implemented as a refusal so an implementer written against an
+    /// older ABI keeps compiling. Added in ABI 12.7.
+    /// </para>
+    /// </summary>
+    Task<PluginAudioRunResult> RenderAsync(
+        PluginAudioRender render,
+        Action<string>? onStdOut,
+        Action<string>? onStdErr,
+        PluginAudioRunOptions options,
+        CancellationToken ct = default
+    ) => Task.FromResult(PluginAudioRunResult.Refused("this host cannot render audio to a file"));
+
+    /// <summary>
     /// Coverage Full splits the whole track; MixIn or MixOut split that
     /// window (first 20 % / last 25 %, computed by the host from the track
     /// duration). Stems land in the derived store and in the stem register.

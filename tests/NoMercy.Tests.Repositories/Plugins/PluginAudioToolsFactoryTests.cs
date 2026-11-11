@@ -23,7 +23,9 @@ using NoMercy.Encoder.Startup;
 using NoMercy.MediaProcessing.DerivedAudio;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Quotas;
 using NoMercy.Storage;
+using NoMercy.Storage.Drivers.Local;
 
 namespace NoMercy.Tests.Repositories.Plugins;
 
@@ -68,6 +70,103 @@ public class PluginAudioToolsFactoryTests
         IPluginAudioTools tools = factory.CreateFor(Ulid.NewUlid(), "data");
 
         tools.Should().NotBeNull();
+    }
+
+    /// <summary>
+    /// The disk meter is an optional parameter, which is exactly the kind a
+    /// factory can forget to hand on: every test that builds the tools by
+    /// hand would stay green while no render on a real server was ever
+    /// counted. So this renders through tools the real factory built, out of
+    /// a container that holds the meter, and expects the quota to bite.
+    /// </summary>
+    [Fact]
+    public async Task TheRealFactory_HandsTheDiskMeterToTheToolsItBuilds()
+    {
+        string dataFolder = Path.Combine(Path.GetTempPath(), $"nm-factory-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(dataFolder);
+        File.WriteAllBytes(Path.Combine(dataFolder, "in.wav"), new byte[16]);
+
+        try
+        {
+            Mock<IStorage> storage = new();
+            storage.Setup(s => s.Exists(It.IsAny<string>())).Returns(true);
+
+            Mock<IProcessRunner> runner = new();
+            runner
+                .Setup(r =>
+                    r.RunAsync(
+                        It.IsAny<string>(),
+                        It.IsAny<string[]>(),
+                        It.IsAny<Action<string>?>(),
+                        It.IsAny<Action<string>?>(),
+                        It.IsAny<string?>(),
+                        It.IsAny<CancellationToken>(),
+                        It.IsAny<CancellationToken>(),
+                        It.IsAny<Action<int>?>()
+                    )
+                )
+                .Returns(
+                    (
+                        string _,
+                        string[] arguments,
+                        Action<string>? _,
+                        Action<string>? _,
+                        string? _,
+                        CancellationToken _,
+                        CancellationToken _,
+                        Action<int>? _
+                    ) =>
+                    {
+                        // ffmpeg's part: a kilobyte into the one output.
+                        File.WriteAllBytes(arguments[^1], new byte[1024]);
+                        return Task.FromResult(
+                            new ProcessResult(0, string.Empty, string.Empty, TimeSpan.Zero)
+                        );
+                    }
+                );
+
+            ServiceCollection services = new();
+            services.AddSingleton(new EncoderOptions { FfmpegPathOverride = "ffmpeg" });
+            services.AddSingleton(runner.Object);
+            services.AddSingleton(storage.Object);
+            services.AddSingleton<IStorageDriver>(new LocalStorageDriver());
+            services.AddKeyedSingleton("derived-audio", new Mock<IStorage>().Object);
+            services.AddSingleton(new Mock<IDerivedAudioStore>().Object);
+            services.AddSingleton(new Mock<IFfmpegCapabilityProbe>().Object);
+            services.AddSingleton(new Mock<IPluginMusicAnalysisWriterFactory>().Object);
+            services.AddSingleton(new Mock<IDbContextFactory<MediaContext>>().Object);
+            services.AddSingleton<ILogger<PluginAudioTools>>(NullLogger<PluginAudioTools>.Instance);
+            services.AddSingleton(new PluginQuotaMeter(new HalfAKilobyte(), TimeProvider.System));
+            services.AddSingleton<IPluginAudioToolsFactory, PluginAudioToolsFactory>();
+            await using ServiceProvider provider = services.BuildServiceProvider();
+
+            IPluginAudioTools tools = provider
+                .GetRequiredService<IPluginAudioToolsFactory>()
+                .CreateFor(Ulid.NewUlid(), dataFolder);
+
+            PluginAudioRunResult result = await tools.RenderAsync(
+                new(
+                    [new(PluginAudioInput.PluginFile("in.wav"))],
+                    "[0:a]anull[out]",
+                    [new("out", "out.wav", PluginAudioCodec.Wav)]
+                ),
+                null,
+                null,
+                new(null)
+            );
+
+            result.Refusal.Should().StartWith("the render does not fit the plugin's disk quota.");
+            File.Exists(Path.Combine(dataFolder, "out.wav")).Should().BeFalse();
+        }
+        finally
+        {
+            Directory.Delete(dataFolder, recursive: true);
+        }
+    }
+
+    private sealed class HalfAKilobyte : IPluginQuotaSource
+    {
+        public PluginQuota For(Ulid pluginId) => new(50, 512 * 1024 * 1024, 512, long.MaxValue);
     }
 
     /// <summary>

@@ -20,6 +20,7 @@ using NoMercy.Encoder.Startup;
 using NoMercy.MediaProcessing.DerivedAudio;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Quotas;
 using NoMercy.Storage;
 
 namespace NoMercy.Data.Plugins;
@@ -36,6 +37,7 @@ namespace NoMercy.Data.Plugins;
 /// </summary>
 /// <param name="storage">The default, library-scoped storage: track files, and the ffmpeg binary's own presence.</param>
 /// <param name="derivedStorage">Scoped to the derived-audio root, for stem scratch files and derived inputs.</param>
+/// <param name="quotas">The plugin platform's disk meter, which a render's files are counted against. Null on a host that meters nothing.</param>
 public class PluginAudioToolsFactory(
     EncoderOptions options,
     IProcessRunner processRunner,
@@ -46,7 +48,8 @@ public class PluginAudioToolsFactory(
     IPluginMusicAnalysisWriterFactory writerFactory,
     IDbContextFactory<MediaContext> contextFactory,
     IFfmpegCapabilityProbe capabilityProbe,
-    ILogger<PluginAudioTools> logger
+    ILogger<PluginAudioTools> logger,
+    PluginQuotaMeter? quotas = null
 ) : IPluginAudioToolsFactory
 {
     private readonly ConcurrentDictionary<Ulid, PluginAudioTools> _perPlugin = new();
@@ -66,7 +69,8 @@ public class PluginAudioToolsFactory(
                 contextFactory,
                 capabilityProbe,
                 logger,
-                dataFolderPath
+                dataFolderPath,
+                quotas
             )
         );
 }

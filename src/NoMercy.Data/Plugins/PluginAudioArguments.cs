@@ -9,7 +9,9 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Globalization;
 using NoMercy.NmSystem.Information;
+using NoMercy.PluginSdk.Abstractions;
 
 namespace NoMercy.Data.Plugins;
 
@@ -127,6 +129,84 @@ internal static class PluginAudioArguments
             "48000",
             accompanimentPath,
         ];
+
+    /// <summary>
+    /// One complex graph over one or more inputs, each labelled output pad
+    /// encoded to a file of its own.
+    /// <para>
+    /// Progress goes to stdout the way it does for <see cref="StemSplit" />,
+    /// and for the same two reasons: its closing "progress=end" is what ends
+    /// a run that finished its files but hangs at exit, and its position is
+    /// what a stall limit judges the run by.
+    /// </para>
+    /// <para>
+    /// A window goes BEFORE its own <c>-i</c>, as an input option, for the
+    /// reason given on <see cref="StemSplit" />: placed after the inputs it
+    /// would bind to the first output alone. Each output is closed by its
+    /// path, so the codec options written before it bind to that file and
+    /// no other.
+    /// </para>
+    /// </summary>
+    internal static string[] Render(
+        IReadOnlyList<PluginAudioRenderInput> inputs,
+        string graphText,
+        IReadOnlyList<PluginAudioRenderTarget> outputs
+    )
+    {
+        List<string> arguments =
+        [
+            "-nostdin",
+            "-nostats",
+            "-progress",
+            "pipe:1",
+            "-stats_period",
+            "5",
+        ];
+
+        foreach (PluginAudioRenderInput input in inputs)
+        {
+            if (input.Start is { } start)
+                arguments.AddRange(["-ss", Seconds(start.TotalSeconds)]);
+
+            if (input.Duration is { } duration)
+                arguments.AddRange(["-t", Seconds(duration.TotalSeconds)]);
+
+            arguments.AddRange(["-i", input.Path]);
+        }
+
+        arguments.AddRange(["-vn", "-sn", "-dn", "-filter_complex", graphText]);
+
+        foreach (PluginAudioRenderTarget output in outputs)
+        {
+            arguments.AddRange(["-map", $"[{output.Pad}]", "-c:a", Encoder(output.Codec)]);
+
+            if (output.BitrateKbps is { } bitrate)
+                arguments.AddRange(["-b:a", $"{bitrate.ToString(CultureInfo.InvariantCulture)}k"]);
+
+            if (output.SampleRate is { } sampleRate)
+                arguments.AddRange(["-ar", sampleRate.ToString(CultureInfo.InvariantCulture)]);
+
+            arguments.Add(output.TempPath);
+        }
+
+        return [.. arguments];
+    }
+
+    /// <summary>
+    /// The ffmpeg encoder behind each codec. WAV is 16-bit PCM, the one form
+    /// of it every tool opens.
+    /// </summary>
+    internal static string Encoder(PluginAudioCodec codec) =>
+        codec switch
+        {
+            PluginAudioCodec.Opus => "libopus",
+            PluginAudioCodec.Flac => "flac",
+            _ => "pcm_s16le",
+        };
+
+    /// <summary>Seconds as ffmpeg reads them: invariant, and no decimal tail when there is none.</summary>
+    internal static string Seconds(double value) =>
+        value.ToString("0.###", CultureInfo.InvariantCulture);
 
     /// <summary>
     /// The build token out of ffmpeg's own banner - the first line it writes

@@ -56,8 +56,10 @@ if (context.AudioTools is not { } audioTools)
 
 ## `IPluginAudioTools` — running ffmpeg
 
-Two members: `RunFilterGraphAsync` for a measurement pass that produces no
-file, and `SplitStemsAsync` for a stem split that does.
+Three members: `RunFilterGraphAsync` for a measurement pass that produces no
+file, `SplitStemsAsync` for the server's own stem split, and `RenderAsync`
+(ABI 12.7) for a graph whose output the plugin keeps as files in its own data
+folder.
 
 ### `RunFilterGraphAsync` and the complex-graph rule
 
@@ -107,7 +109,8 @@ if (!result.Ran)
   audio; it returns only the exit code and whatever `onStdOut` / `onStdErr`
   read live.
 - Reading a stem already written to the derived store as input, instead of a
-  library track: `PluginAudioInput.Derived(storageKey)`.
+  library track: `PluginAudioInput.Derived(storageKey)`. A file in the plugin's
+  own data folder: `PluginAudioInput.PluginFile(relativePath)` (ABI 12.7).
 - One ffmpeg run at a time per plugin; a second call while one is running is
   refused rather than queued. A 10-minute timeout applies on top of your own
   cancellation token.
@@ -149,6 +152,114 @@ there is no separate `RegisterStemAsync` call to make for it (that member
 exists for `IPluginMusicAnalysisWriter`'s own callers, described below).
 `stemSet` is `PluginStemSet.Two` today (vocals + accompaniment);
 `PluginStemSet.Four` is reserved and currently refused.
+
+### `RenderAsync` — keeping the audio a graph produces
+
+`RunFilterGraphAsync` throws its audio away and `SplitStemsAsync` is fixed to
+one model, one codec and the server's own store. `RenderAsync` (ABI 12.7) is
+the general call: one complex graph over one to eight inputs, each labelled
+output pad encoded to a file in the plugin's own data folder
+(`context.Storage.Private`, which is also `DataFolderPath`). It needs the same
+`audioTools` hook and nothing more.
+
+```csharp
+PluginAudioRunResult result = await audioTools.RenderAsync(
+    new PluginAudioRender(
+        Inputs:
+        [
+            // The last thirty seconds of one track and the first thirty of the next.
+            new PluginAudioSource(
+                PluginAudioInput.Track(outgoingId.ToString()),
+                Start: TimeSpan.FromSeconds(210),
+                Duration: TimeSpan.FromSeconds(30)
+            ),
+            new PluginAudioSource(
+                PluginAudioInput.Track(incomingId.ToString()),
+                Duration: TimeSpan.FromSeconds(30)
+            ),
+        ],
+        GraphText: "[0:a][1:a]acrossfade=d=8[mix]",
+        Outputs: [new PluginAudioOutput("mix", "transitions/a-to-b.opus", PluginAudioCodec.Opus, BitrateKbps: 160)]
+    ),
+    onStdOut: null,
+    onStdErr: line => context.Logger.LogTrace("{Line}", line),
+    new PluginAudioRunOptions(Timeout: null),
+    ct
+);
+
+if (result is { Ran: true, ExitCode: 0 })
+{
+    // result.Outputs: [{ RelativePath: "transitions/a-to-b.opus", Bytes: … }]
+    PluginMediaUrl url = await context.Media.Proxy.MintFileAsync("transitions/a-to-b.opus", ct);
+}
+```
+
+- **The host writes the command line.** The plugin supplies the graph and names
+  the pads; it never writes an ffmpeg argument and never learns a library path.
+  Inputs are addressed by position in the graph: `[0:a]`, `[1:a]`, and so on.
+  A window (`Start`, `Duration`) trims that one input before the graph sees it,
+  with an exact seek.
+- **The graph is always a complex graph**, so its inputs and outputs are
+  labelled. `Pad` is an output label without the brackets, and each output takes
+  a pad of its own. The tokens `{stemsModel}`, `{whisperModel}`, `{vadModel}`
+  and `{pluginFile:…}` are replaced as they are for `RunFilterGraphAsync`.
+- **Three codecs**, and the codec decides the container whatever the file is
+  called: `Opus` (Ogg, for something a listener hears; `BitrateKbps` 6 to 510,
+  and only at 8000, 12000, 16000, 24000 or 48000 Hz), `Flac` and `Wav` (16-bit
+  PCM) for an intermediate.
+- **Paths stay inside the data folder.** An output path and a
+  `PluginAudioInput.PluginFile` path go through the checks a `{pluginFile:…}`
+  token gets, and are refused in the same words, before ffmpeg starts. Folders
+  on the way to an output are created.
+- **Nothing half-written is left.** Each output is written under a temporary
+  name (it starts with `.nomercy-render-`; leave those alone) and takes its
+  real name only once ffmpeg has exited 0, all outputs together. A run that
+  failed, timed out or was cancelled leaves no file and no folder it made, and
+  a file that was already at the output path stays as it was.
+- **The disk quota applies.** The files count against the plugin's disk
+  allowance like anything else it writes. A run whose files outgrow it is
+  ended while it is still writing, and refused.
+- **One run per plugin at a time**, shared with the other two members.
+- **`onStdOut` carries ffmpeg's progress report** next to whatever the graph
+  itself prints: `key=value` lines (`out_time_us=…`, `total_size=…`,
+  `progress=continue`) every five seconds, closed by `progress=end`. The host
+  reads that closing line as the run having finished its files, so a graph
+  must not print a line of its own that reads exactly `progress=end`.
+
+The exit code says how a run that started ended:
+
+| `ExitCode` | meaning |
+|---|---|
+| `0` | finished; `Outputs` lists the files and their sizes |
+| above `0`, or ffmpeg's own negative code | ffmpeg failed; nothing was kept, read `onStdErr` for the reason |
+| `PluginAudioRunResult.TimedOutExitCode` (`-2`) | the host ended it at its total timeout |
+| `PluginAudioRunResult.StalledExitCode` (`-3`) | the host ended it because it made no progress for `StallTimeout` |
+| `PluginAudioRunResult.RefusedExitCode` (`-1`) | never started, or its result was not kept; `Refusal` says why |
+
+#### Runs longer than an hour: `StallTimeout`
+
+`PluginAudioRunOptions.Timeout` is the total a run may take: ten minutes by
+default, sixty at most. Some filters run slower than real time on a CPU (a
+RoFormer stem split, whisper), so no fixed total holds every track. For those,
+set `StallTimeout`:
+
+```csharp
+new PluginAudioRunOptions(Timeout: null) { StallTimeout = TimeSpan.FromMinutes(5) }
+```
+
+The run is then judged by its progress: it may take as long as it needs while
+it keeps moving, and is ended with `StalledExitCode` once it has made no
+progress for that long. With a stall limit, `Timeout` is no longer clamped to
+sixty minutes, and `null` for it means no total limit at all.
+
+Progress is ffmpeg's own report moving on: a later `out_time_us`, or a larger
+`total_size`. ffmpeg prints that report every five seconds whether or not
+anything moved, so a report that repeats the last position does not count. The
+clock starts with the run, so the limit has to cover loading a model and the
+longest stretch a filter works before it hands anything on. A stall limit under
+ten seconds is raised to ten, twice the time between two reports, and one above
+sixty minutes is clamped to sixty. `RunFilterGraphAsync` ignores `StallTimeout`:
+that run prints no progress report to judge it by.
 
 ## `IPluginDerivedAudio` — the derived-audio store
 
@@ -383,9 +494,33 @@ touching the rest of the result.
 | `"track {id} has no file"` | the id did not parse as a `Guid`, the track is unknown, or the library scan never recorded a file for it | skip the track, or mark it failed — there is nothing to run ffmpeg against |
 | `"track {id} has no duration"` | `SplitStemsAsync` was asked for `MixIn` or `MixOut` on a track the library never timed | fall back to `PluginStemCoverage.Full`, or wait for a rescan to record a duration |
 | `"storage key {key} is not in the derived store"` | `PluginAudioInput.Derived(key)` named a key nothing wrote, or the key is empty | double-check the key came from a `PutAsync` or `SplitStemsAsync` call that actually succeeded |
-| `"the input names neither a track nor a derived file"` | a `PluginAudioInput` was built with neither field set | always build inputs through `PluginAudioInput.Track(...)` or `PluginAudioInput.Derived(...)`, never the constructor directly |
+| `"the input names neither a track nor a derived file"` | a `PluginAudioInput` was built with no field set | always build inputs through `PluginAudioInput.Track(...)`, `PluginAudioInput.Derived(...)` or `PluginAudioInput.PluginFile(...)`, never the constructor directly |
+| `"the input names more than one source"` | a `PluginAudioInput` names a plugin file and a track or derived file at once | build it through one of the three factory methods |
 | `"stemsplit timed out after 600 seconds"` | ffmpeg did not finish inside the host's 10-minute timeout (a stalled mount is the usual cause) | mark the track failed and retry on a later sweep; this is not something to retry immediately |
 | `"stemsplit exited with {code}"` | ffmpeg ran and returned non-zero | read the `onStdErr` lines you captured for the real reason before deciding whether to retry |
+
+`RenderAsync` adds these, every one of them before ffmpeg starts unless it says
+otherwise:
+
+| refusal | what it means | what to do |
+|---|---|---|
+| `"plugin file '{path}' leaves the plugin's data folder"` | an output path or a plugin-file input has a `..` segment, resolves outside the folder, or is reached through a link | name a path inside `context.Storage.Private` |
+| `"plugin file '{path}' is an absolute path; only a path inside the plugin's data folder is allowed"` | the path is rooted or starts with a drive letter | pass the path relative to the data folder |
+| `"plugin file '{path}' does not exist"` | a `PluginAudioInput.PluginFile` names a file that is not there | write the file first |
+| `"an output path names no file"` / `"a plugin file input names no file"` | the path is empty | give the output or the input a path |
+| `"a render needs at least one input"` / `"…at least one output"` | an empty list | a render reads 1 to 8 inputs and writes 1 to 8 outputs |
+| `"a render reads at most 8 inputs; this one names {n}"` / `"a render writes at most 8 outputs; this one names {n}"` | more than eight | split the work over several renders |
+| `"input {n} starts before the beginning of its file"` / `"input {n} has a duration that is not above zero"` | a negative `Start`, or a `Duration` of zero or less | pass `null` for no window |
+| `"the graph is empty"` | `GraphText` is blank | supply the graph |
+| `"output '{path}' names no pad"` / `"pad '{pad}' is written without brackets"` / `"pad '{pad}' feeds more than one output"` | the pad is missing, was written as `[pad]`, or is used twice | name each output's pad once, without brackets; use `asplit` to feed two files from one signal |
+| `"output '{path}' is named more than once"` / `"output '{path}' is a folder"` | two outputs share a path (case does not tell them apart), or the path is an existing folder | give each output a file path of its own |
+| `"output '{path}' sets a bitrate, which only Opus has"` / `"output '{path}' asks for {n} kbit/s; Opus takes 6 to 510"` | a bitrate on FLAC or WAV, or one outside what Opus encodes | leave `BitrateKbps` null for a lossless codec |
+| `"output '{path}' asks for {n} Hz; Opus encodes at 8000, 12000, 16000, 24000, 48000 Hz only"` | a sample rate libopus cannot encode | use 48000, or leave `SampleRate` null and resample in the graph |
+| `"the whisper model is not installed"` / `"the VAD model is not installed"` / `"the stemsplit model is not installed"` | the graph names a model through its token and that model is missing. Unlike `RunFilterGraphAsync`, a render only asks for the server's stemsplit model when the graph names it, so `stemsplit` on a model file of the plugin's own runs without it | tell the owner to install the model |
+| `"the render wrote no file for pad '{pad}'"` | after the run: ffmpeg exited 0 but a pad produced no file | check the graph really feeds that pad |
+| `"the render does not fit the plugin's disk quota. …"` | during or after the run: the files would take the plugin past its disk allowance; none was kept | free space in the plugin's folder, or have the owner raise the allowance |
+| `"the rendered files could not be put in place; a file they replace may still be open"` | after the run: a file at an output path could not be replaced; nothing changed | close the file and render again |
+| `"this host cannot render audio to a file"` | the host implements an ABI older than 12.7 | check `PluginAbi.Current` before relying on it |
 
 ### `IPluginMusicAnalysisWriter.UpsertDjAnalysisAsync`
 
