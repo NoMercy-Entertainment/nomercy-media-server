@@ -53,6 +53,17 @@ public class ServerReadinessGateTests
         public void StopApplication() { }
     }
 
+    /// <summary>
+    /// How long a test waits for the gate to resolve. What is asserted is
+    /// that it resolves, not how fast: between the start signal and the
+    /// waiter the gate takes half a dozen thread-pool hops, and on a runner
+    /// that has every test project going at once the pool hands out threads
+    /// slowly enough for five seconds to run out (a red pipeline on
+    /// 2026-11-11 with nothing wrong in the gate). A gate that never
+    /// resolves still fails here, a minute later.
+    /// </summary>
+    private static readonly TimeSpan Patience = TimeSpan.FromSeconds(60);
+
     [Fact]
     public async Task WaitForReadyAsync_ResolvesOnceHostStartedSignalCompletes()
     {
@@ -65,7 +76,7 @@ public class ServerReadinessGateTests
 
         lifetime.FireStarted();
 
-        await waiter.WaitAsync(TimeSpan.FromSeconds(5));
+        await waiter.WaitAsync(Patience);
         waiter.IsCompletedSuccessfully.Should().BeTrue();
     }
 
@@ -87,7 +98,7 @@ public class ServerReadinessGateTests
 
         extraSignal.SetResult();
 
-        await waiter.WaitAsync(TimeSpan.FromSeconds(5));
+        await waiter.WaitAsync(Patience);
         waiter.IsCompletedSuccessfully.Should().BeTrue();
     }
 
@@ -107,7 +118,7 @@ public class ServerReadinessGateTests
 
         Task waiter = gate.WaitForReadyAsync(CancellationToken.None);
 
-        await waiter.WaitAsync(TimeSpan.FromSeconds(5));
+        await waiter.WaitAsync(Patience);
         waiter
             .IsCompletedSuccessfully.Should()
             .BeTrue("a signal added after sealing must be ignored, not awaited");
@@ -120,7 +131,7 @@ public class ServerReadinessGateTests
         ServerReadinessGate gate = new(lifetime, NullLogger<ServerReadinessGate>.Instance);
 
         lifetime.FireStarted();
-        await gate.WaitForReadyAsync(CancellationToken.None).WaitAsync(TimeSpan.FromSeconds(5));
+        await gate.WaitForReadyAsync(CancellationToken.None).WaitAsync(Patience);
 
         // Gate is now fully resolved. A signal added at this point must be a
         // silent no-op — no exception, and it must not reopen resolution for
@@ -130,7 +141,7 @@ public class ServerReadinessGateTests
         act.Should().NotThrow();
 
         Task secondWaiter = gate.WaitForReadyAsync(CancellationToken.None);
-        await secondWaiter.WaitAsync(TimeSpan.FromSeconds(5));
+        await secondWaiter.WaitAsync(Patience);
         secondWaiter.IsCompletedSuccessfully.Should().BeTrue();
     }
 
@@ -152,7 +163,7 @@ public class ServerReadinessGateTests
 
         extraSignal.SetResult();
 
-        await Task.WhenAll(waiterA, waiterB).WaitAsync(TimeSpan.FromSeconds(5));
+        await Task.WhenAll(waiterA, waiterB).WaitAsync(Patience);
         waiterA.IsCompletedSuccessfully.Should().BeTrue();
         waiterB.IsCompletedSuccessfully.Should().BeTrue();
     }
@@ -169,7 +180,7 @@ public class ServerReadinessGateTests
 
         Task waiter = gate.WaitForReadyAsync(CancellationToken.None);
 
-        await waiter.WaitAsync(TimeSpan.FromSeconds(5));
+        await waiter.WaitAsync(Patience);
         waiter.IsCompletedSuccessfully.Should().BeTrue();
     }
 
