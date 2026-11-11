@@ -81,6 +81,23 @@ context.Events.Subscribe<PluginLyricsRequested>(
 );
 ```
 
+The event carries the track id and nothing else. The track itself (its length,
+title and artist) is one call away, from ABI 12.8:
+
+```csharp
+if (context.Music is not { } music)
+    return;   // a host that wired no music library
+
+IReadOnlyList<PluginTrack> tracks = await music.GetTracksByIdAsync([trackId], ct);
+PluginTrack? track = tracks.FirstOrDefault();   // absent: unknown, or its file is gone
+double? seconds = track?.DurationSeconds;
+```
+
+A track comes back exactly as a page of `GetTracksAsync` shows it, once per
+library it is in. Do the read in the worker that takes the track off the queue
+and not in the handler: the server awaits the handler inside the client's own
+request for the lyrics.
+
 ## Getting the text
 
 ```csharp
@@ -95,6 +112,31 @@ USLT and SYLT, Vorbis `LYRICS` and `UNSYNCEDLYRICS`, MP4 lyrics). Each
 inside the server's rate limits and its two-minute backoff after a provider
 hiccup, and the answer is kept per track for a day, so a plugin may ask as
 often as it likes. The plugin never sees a file path.
+
+An empty list does not always mean the track has no text. From ABI 12.8 the
+answer says which it is:
+
+```csharp
+if (text.Candidates.Count == 0 && !text.IsComplete)
+{
+    // A provider failed or is backed off, or the server failed: ask again
+    // before treating the track as having no text.
+    DateTimeOffset retryAt = text.AskAgainAfter ?? DateTimeOffset.UtcNow.AddMinutes(5);
+    await queue.PostponeAsync(trackId, retryAt, ct);
+    return;
+}
+```
+
+| `IsComplete` | `AskAgainAfter` | meaning |
+|---|---|---|
+| `true` | `null` | final for the day it is kept: these are all the texts there are, and an empty list is a track without text (or an unknown track) |
+| `false` | a time | a provider failed or is backed off; the list holds what was found, the embedded lyrics included, and the same question after that time may find more |
+| `false` | `null` | the server itself failed to answer; the list is empty and nothing says when it will be better |
+
+The lyrics embedded in the file are never left out because a provider is
+backed off: for those two minutes the answer is the partial one, not an empty
+list. A plugin built against 12.6 or 12.7 does not read the two properties and
+sees what it saw before.
 
 ## Running whisper
 
@@ -121,6 +163,7 @@ the graph runs:
 | `{stemsModel}` | the stemsplit model's file name |
 | `{whisperModel}` | the whisper model's file name |
 | `{vadModel}` | the silero VAD model's file name |
+| `{alignModel}` | the lyricsalign model's file name (ABI 12.8) |
 | `{pluginFile:<relative path>}` | an absolute path inside the plugin's own data folder, escaped for both filtergraph levels, so a Windows drive colon is written as `\\:` |
 
 The model tokens are bare file names because ffmpeg runs with the ffmpeg
@@ -133,6 +176,54 @@ filter's stdout, not `pipe:1`, whose colon would need escaping.
 `PluginAudioRunOptions.Timeout` is how long the run may take: null is the
 server's ten minutes, anything above sixty is clamped to sixty. A five-minute
 track through whisper large-v3 on a CPU takes about twelve.
+
+## Aligning a text the server already has
+
+When `GetTextCandidatesAsync` returned a text, placing that text on the audio
+is faster and far more accurate than transcribing it. The server's ffmpeg has
+a `lyricsalign` filter for it (nomercy-ffmpeg v1.0.46 and later), and its
+model is the `{alignModel}` token, from ABI 12.8:
+
+```csharp
+// The text goes into the plugin's own folder, one lyric line per line.
+await using (Stream file = await context.Storage.Private.OpenWriteAsync("lyrics/track.txt", true, ct))
+    await file.WriteAsync(Encoding.UTF8.GetBytes(string.Join('\n', lines)), ct);
+
+PluginFilterGraph graph = new(
+    "[0:a]stemsplit=model={stemsModel}:stem=all[v][b];"
+        + "[v][b]lyricsalign=model={alignModel}"
+        + ":text_file={pluginFile:lyrics/track.txt}:language=en:threads=0:destination=-",
+    Complex: true
+);
+PluginAudioRunResult run = await context.AudioTools.RunFilterGraphAsync(
+    PluginAudioInput.Track(trackId.ToString()),
+    graph,
+    onStdOut: line => jsonLines.Add(line),   // one header object, then one object per text line
+    onStdErr: null,
+    new PluginAudioRunOptions(TimeSpan.FromMinutes(30)),
+    ct
+);
+```
+
+Three things have to be on the server for that graph, and a graph that names
+`{alignModel}` is refused up front, in words the plugin can show, while one is
+missing:
+
+| refusal | what it means | what to do |
+|---|---|---|
+| `"this server's ffmpeg has no lyricsalign filter; it needs nomercy-ffmpeg v1.0.46 or later"` | the server's ffmpeg is older than the release that has the filter | nothing a plugin can fix; the server updates its ffmpeg by itself, so try again after its next start |
+| `"the lyricsalign model is not installed yet; the server has started downloading it, ask again in a few minutes"` | the model is not on this server yet | keep the track queued and ask again; see below |
+| `"the lyricsalign model is not installed"` | the same, on a host that cannot fetch it | fall back to whisper |
+| `"the espeak-ng data is missing from the ffmpeg folder; it ships with nomercy-ffmpeg v1.0.46 and later"` | the phoneme tables the filter reads next to the ffmpeg binary are not there | as for the filter: an ffmpeg update brings them |
+
+**The model is fetched on first use, not at setup.** It is 600 MB and only a
+plugin that aligns lyrics reads it, so a server nobody aligns lyrics on never
+downloads it. The first graph that names `{alignModel}` is what asks for it:
+that run is refused with the second line above and the download starts in the
+background. A plugin should treat that refusal as "later", not as a failure of
+the track. Once the model is there the server keeps it current like its other
+models. There is no `{espeakData}` token: the filter finds the data next to
+the ffmpeg binary by itself.
 
 ## Writing the timing
 

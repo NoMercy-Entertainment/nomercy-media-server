@@ -131,6 +131,19 @@ public class EncoderOptions
     public string? StemsplitModelPath { get; set; }
 
     /// <summary>
+    /// Path to the lyricsalign GGUF model, the CTC model a plugin's
+    /// <c>{alignModel}</c> token stands for. A plugin graph that names the
+    /// token is refused while the file is missing.
+    /// </summary>
+    public string? LyricsAlignModelPath { get; set; }
+
+    /// <summary>
+    /// Path to one file of the espeak-ng data folder the lyricsalign filter
+    /// reads next to the ffmpeg binary; its presence stands for the folder.
+    /// </summary>
+    public string? EspeakDataMarkerPath { get; set; }
+
+    /// <summary>
     /// Webhook URLs that receive a JSON POST for each encoder lifecycle event
     /// (started / completed / failed). Empty by default. Each URL is retried up
     /// to 3 times with exponential backoff; failures are logged and swallowed

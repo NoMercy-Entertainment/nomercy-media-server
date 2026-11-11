@@ -201,8 +201,9 @@ if (result is { Ran: true, ExitCode: 0 })
   with an exact seek.
 - **The graph is always a complex graph**, so its inputs and outputs are
   labelled. `Pad` is an output label without the brackets, and each output takes
-  a pad of its own. The tokens `{stemsModel}`, `{whisperModel}`, `{vadModel}`
-  and `{pluginFile:…}` are replaced as they are for `RunFilterGraphAsync`.
+  a pad of its own. The tokens `{stemsModel}`, `{whisperModel}`, `{vadModel}`,
+  `{alignModel}` and `{pluginFile:…}` are replaced as they are for
+  `RunFilterGraphAsync`.
 - **Three codecs**, and the codec decides the container whatever the file is
   called: `Opus` (Ogg, for something a listener hears; `BitrateKbps` 6 to 510,
   and only at 8000, 12000, 16000, 24000 or 48000 Hz), `Flac` and `Wav` (16-bit

@@ -44,6 +44,7 @@ public class PluginLyricsWriter(
 ) : IPluginLyrics
 {
     private static readonly PluginLyricsText NoText = new([]);
+    private static readonly PluginLyricsText CouldNotAsk = new([]) { IsComplete = false };
 
     // A word is "where its line starts" within a millisecond: alignment
     // produces floating point, and a plugin that rounds differently from the
@@ -72,6 +73,10 @@ public class PluginLyricsWriter(
 
     // A host wired without the candidates service answers "nothing found"
     // rather than throwing: the plugin can still write what it transcribed.
+    // That answer is complete, because asking again will not change it. A
+    // failure inside the service is the other kind of empty: something may
+    // well exist, so the fallback says the answer is incomplete, and carries
+    // no time to ask again because nothing here knows when it will be better.
     public Task<PluginLyricsText> GetTextCandidatesAsync(
         Guid trackId,
         CancellationToken ct = default
@@ -80,7 +85,7 @@ public class PluginLyricsWriter(
             pluginId.ToString(),
             nameof(GetTextCandidatesAsync),
             () => textCandidates?.GetAsync(trackId, ct) ?? Task.FromResult(NoText),
-            NoText,
+            CouldNotAsk,
             _logger
         );
 
@@ -233,7 +238,9 @@ public class PluginLyricsWriter(
     /// <summary>
     /// Why the lines are not a timeline the player can follow, or null when
     /// they are. <paramref name="durationSeconds" /> is 0 when the library
-    /// never recorded a duration; the upper bound is skipped then.
+    /// never recorded a duration; the upper bound is skipped then. It is the
+    /// stored duration, rounded down to whole seconds, so the bound is the
+    /// end of the second after it.
     /// </summary>
     internal static string? ValidateLines(IReadOnlyList<PluginLyricLine> lines, int durationSeconds)
     {
@@ -247,7 +254,10 @@ public class PluginLyricsWriter(
             if (line.Start < 0)
                 return $"line {i} starts before the track ({line.Start} s)";
 
-            if (durationSeconds > 0 && line.Start > durationSeconds)
+            // The stored duration is whole seconds with the fraction cut off,
+            // so the track really ends somewhere inside the next second. A
+            // line that starts in that fraction is still inside the track.
+            if (durationSeconds > 0 && line.Start >= durationSeconds + 1)
                 return $"line {i} starts after the track ends ({line.Start} s of {durationSeconds} s)";
 
             if (i > 0 && line.Start < lines[i - 1].Start)

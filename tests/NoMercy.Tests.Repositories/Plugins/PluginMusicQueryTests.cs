@@ -651,6 +651,207 @@ public class PluginMusicQueryTests : IDisposable
         first.Select(track => track.Id).Should().NotIntersectWith(second.Select(track => track.Id));
     }
 
+    // --- GetTracksByIdAsync -----------------------------------------------
+
+    /// <summary>
+    /// A plugin that hears <c>music.lyrics.requested</c> holds a track id and
+    /// nothing else. One call has to give it what a page of the library
+    /// would: the length, the title, the artist.
+    /// </summary>
+    [Fact]
+    public async Task GetTracksByIdAsync_ReturnsTheTrackExactlyAsAPageWouldShowIt()
+    {
+        Guid albumId = Guid.NewGuid();
+        Guid artistId = Guid.NewGuid();
+        using (MediaContext context = new(_options))
+        {
+            context.Albums.Add(
+                new Album
+                {
+                    Id = albumId,
+                    Name = "The Album",
+                    LibraryId = _libraryId,
+                    Library = null!,
+                }
+            );
+            context.AlbumTrack.Add(
+                new AlbumTrack { AlbumId = albumId, TrackId = _analyzedTrackId }
+            );
+            context.Artists.Add(
+                new Artist
+                {
+                    Id = artistId,
+                    Name = "The Artist",
+                    HostFolder = "/library/the-artist",
+                }
+            );
+            context.ArtistTrack.Add(
+                new ArtistTrack { ArtistId = artistId, TrackId = _analyzedTrackId }
+            );
+            context.SaveChanges();
+        }
+
+        PluginMusicQuery query = CreateQuery();
+
+        IReadOnlyList<PluginTrack> byId = await query.GetTracksByIdAsync([_analyzedTrackId]);
+
+        PluginTrack track = byId.Should().ContainSingle().Subject;
+        track
+            .Should()
+            .Be(
+                new PluginTrack(
+                    _analyzedTrackId,
+                    "Analyzed",
+                    "The Album",
+                    "The Artist",
+                    3,
+                    1,
+                    225.0,
+                    _libraryId.ToString()
+                )
+            );
+
+        IReadOnlyList<PluginTrack> page = await query.GetTracksAsync(_libraryId.ToString());
+        track.Should().Be(page.Single(listed => listed.Id == _analyzedTrackId));
+    }
+
+    [Fact]
+    public async Task GetTracksByIdAsync_LeavesOutAnIdItDoesNotKnow()
+    {
+        PluginMusicQuery query = CreateQuery();
+
+        (await query.GetTracksByIdAsync([Guid.NewGuid()])).Should().BeEmpty();
+
+        IReadOnlyList<PluginTrack> mixed = await query.GetTracksByIdAsync([
+            Guid.NewGuid(),
+            _failedTrackId,
+            Guid.NewGuid(),
+            _unanalyzedTrackId,
+        ]);
+        mixed
+            .Select(track => track.Id)
+            .Should()
+            .BeEquivalentTo([_failedTrackId, _unanalyzedTrackId]);
+    }
+
+    /// <summary>
+    /// A track whose file has gone stays in the database but leaves every
+    /// list. A plugin must not be handed one to run ffmpeg over.
+    /// </summary>
+    [Fact]
+    public async Task GetTracksByIdAsync_LeavesOutATrackThatIsNotPlayable()
+    {
+        Guid missingId = Guid.NewGuid();
+        using (MediaContext context = new(_options))
+        {
+            context.Tracks.Add(
+                new Track
+                {
+                    Id = missingId,
+                    Name = "Gone",
+                    MissingSince = DateTime.UtcNow,
+                }
+            );
+            context.LibraryTrack.Add(
+                new LibraryTrack { LibraryId = _libraryId, TrackId = missingId }
+            );
+            context.SaveChanges();
+        }
+
+        IReadOnlyList<PluginTrack> tracks = await CreateQuery()
+            .GetTracksByIdAsync([missingId, _analyzedTrackId]);
+
+        tracks.Select(track => track.Id).Should().Equal(_analyzedTrackId);
+    }
+
+    [Fact]
+    public async Task GetTracksByIdAsync_ReturnsNothingForAnEmptyRequest()
+    {
+        (await CreateQuery().GetTracksByIdAsync([])).Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task GetTracksByIdAsync_ReturnsATrackOncePerLibrary_HoweverOftenItIsAsked()
+    {
+        PluginMusicQuery query = CreateQuery();
+
+        (await query.GetTracksByIdAsync([_analyzedTrackId, _analyzedTrackId, _analyzedTrackId]))
+            .Should()
+            .ContainSingle();
+
+        // In a second library as well: once per library, as a page lists it.
+        using (MediaContext context = new(_options))
+        {
+            context.LibraryTrack.Add(
+                new LibraryTrack { LibraryId = _djLibraryId, TrackId = _analyzedTrackId }
+            );
+            context.SaveChanges();
+        }
+
+        IReadOnlyList<PluginTrack> inBoth = await query.GetTracksByIdAsync([
+            _analyzedTrackId,
+            _analyzedTrackId,
+        ]);
+
+        inBoth.Should().HaveCount(2);
+        inBoth.Should().OnlyContain(track => track.Id == _analyzedTrackId);
+        inBoth
+            .Select(track => track.LibraryId)
+            .Should()
+            .BeEquivalentTo([_libraryId.ToString(), _djLibraryId.ToString()]);
+    }
+
+    [Fact]
+    public async Task GetTracksByIdAsync_OrdersByTrackId_AsAPageDoes()
+    {
+        PluginMusicQuery query = CreateQuery();
+        List<Guid> pageOrder = (await query.GetTracksAsync(_libraryId.ToString()))
+            .Select(track => track.Id)
+            .ToList();
+
+        IReadOnlyList<PluginTrack> reversed = await query.GetTracksByIdAsync(
+            pageOrder.AsEnumerable().Reverse().ToList()
+        );
+
+        reversed.Select(track => track.Id).Should().Equal(pageOrder);
+    }
+
+    /// <summary>
+    /// The same cap a page has: a plugin handing over a hundred thousand ids
+    /// reads the first thousand of them, not the whole library in one hop.
+    /// </summary>
+    [Fact]
+    public async Task GetTracksByIdAsync_ReadsAtMostAPageOfIds()
+    {
+        const int page = 1000;
+        List<Guid> strangers = Enumerable.Range(0, page).Select(_ => Guid.NewGuid()).ToList();
+        PluginMusicQuery query = CreateQuery();
+
+        IReadOnlyList<PluginTrack> pastTheCap = await query.GetTracksByIdAsync([
+            .. strangers,
+            _analyzedTrackId,
+        ]);
+        IReadOnlyList<PluginTrack> insideTheCap = await query.GetTracksByIdAsync([
+            .. strangers.Take(page - 1),
+            _analyzedTrackId,
+        ]);
+
+        pastTheCap.Should().BeEmpty();
+        insideTheCap.Select(track => track.Id).Should().Equal(_analyzedTrackId);
+    }
+
+    /// <summary>
+    /// The member is default-implemented, so a host or a test double written
+    /// against an older ABI keeps compiling. That fallback knows no track.
+    /// </summary>
+    [Fact]
+    public async Task GetTracksByIdAsync_OnAnImplementerThatPredatesIt_KnowsNoTrack()
+    {
+        IPluginMusicQuery older = new Mock<IPluginMusicQuery> { CallBase = true }.Object;
+
+        (await older.GetTracksByIdAsync([_analyzedTrackId])).Should().BeEmpty();
+    }
+
     [Fact]
     public async Task GetAnalysisAsync_ReturnsTheMeasurements()
     {

@@ -20,7 +20,8 @@ namespace NoMercy.PluginSdk.Abstractions;
 /// The filter chain itself, in ffmpeg's own syntax - for example
 /// <c>"stereotools=mlev=0"</c>. The tokens in
 /// <see cref="PluginFilterGraphTokens" /> - <c>{stemsModel}</c>,
-/// <c>{whisperModel}</c>, <c>{vadModel}</c> and <c>{pluginFile:…}</c> - are
+/// <c>{whisperModel}</c>, <c>{vadModel}</c>, <c>{alignModel}</c> and
+/// <c>{pluginFile:…}</c> - are
 /// replaced by the host with the file's name or path before the graph runs,
 /// so a plugin never hard-codes a path that only exists on the machine
 /// running the server. For the whisper filter's stdout use

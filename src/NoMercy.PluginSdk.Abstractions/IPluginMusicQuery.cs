@@ -46,6 +46,30 @@ public interface IPluginMusicQuery
     );
 
     /// <summary>
+    /// The given tracks, for the ones the host knows and can play. A track
+    /// that is unknown or not playable is absent from the result rather than
+    /// returned empty. At most as many ids are read as
+    /// <see cref="GetTracksAsync" /> returns in one page.
+    /// <para>
+    /// For a plugin that holds an id and nothing else, such as the one
+    /// <see cref="PluginLyricsRequested" /> carries: one call gives it the
+    /// length, the title and the artist, exactly as a page of
+    /// <see cref="GetTracksAsync" /> would show them. A track that is in more
+    /// than one library comes back once per library, as it does there.
+    /// Ordered by track id.
+    /// </para>
+    /// <para>
+    /// Default-implemented so an implementer written against an older ABI
+    /// keeps compiling; that fallback knows no track and answers empty.
+    /// Added in ABI 12.8.
+    /// </para>
+    /// </summary>
+    Task<IReadOnlyList<PluginTrack>> GetTracksByIdAsync(
+        IReadOnlyList<Guid> trackIds,
+        CancellationToken ct = default
+    ) => Task.FromResult<IReadOnlyList<PluginTrack>>([]);
+
+    /// <summary>
     /// What analysis measured, for the tracks that have it.
     /// <para>
     /// A second call rather than a member of <see cref="PluginTrack" />: most

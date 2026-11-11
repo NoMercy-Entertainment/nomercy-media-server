@@ -369,4 +369,138 @@ public class FfmpegCapabilityProbeTests
         report!.BluRayProtocol.Should().BeTrue();
         report.DvdReadProtocol.Should().BeTrue();
     }
+
+    // -------------------------------------------------------------------------
+    // lyricsalign: the filter, its model and the espeak data
+    // -------------------------------------------------------------------------
+
+    private static void SetupLyricsAlignHelp(Mock<IProcessRunner> runner, string stdout)
+    {
+        runner
+            .Setup(r =>
+                r.RunAsync(
+                    It.IsAny<string>(),
+                    It.Is<string[]>(a =>
+                        a.Length == 3
+                        && a[0] == "-hide_banner"
+                        && a[1] == "-h"
+                        && a[2] == "filter=lyricsalign"
+                    ),
+                    null,
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .ReturnsAsync(new ProcessResult(0, stdout, "", TimeSpan.Zero));
+    }
+
+    private const string LyricsAlignHelp = """
+        Filter lyricsalign
+          Align a known lyric text to audio.
+            Inputs:
+               #0: vocals (audio)
+               #1: backing (audio)
+        lyricsalign AVOptions:
+           model             <string>     ..F.A...... path to the GGUF model
+           text_file         <string>     ..F.A...... file with one lyric line per line
+           language          <string>     ..F.A...... espeak voice
+        """;
+
+    [Fact]
+    public async Task ProbeAsync_ReportsTheLyricsAlignFilterModelAndEspeakData_WhenAllArePresent()
+    {
+        Mock<IFfmpegCapabilities> caps = CapsWithProtocol(bluray: false, dvdread: false);
+        Mock<IProcessRunner> runner = new();
+        SetupMuxerOutput(runner, AllMuxersOutput());
+        SetupLyricsAlignHelp(runner, LyricsAlignHelp);
+        Mock<IStorage> storage = new();
+        storage.Setup(s => s.Exists("/ffmpeg/align.gguf")).Returns(true);
+        storage.Setup(s => s.Exists("/ffmpeg/espeak-ng-data/phontab")).Returns(true);
+
+        FfmpegCapabilityProbe probe = BuildProbe(
+            caps,
+            runner,
+            storage,
+            new EncoderOptions
+            {
+                LyricsAlignModelPath = "/ffmpeg/align.gguf",
+                EspeakDataMarkerPath = "/ffmpeg/espeak-ng-data/phontab",
+            }
+        );
+        await probe.ProbeAsync();
+
+        CapabilityReport report = probe.GetCachedReport()!;
+        report.LyricsAlignFilterPresent.Should().BeTrue();
+        report.LyricsAlignModelPresent.Should().BeTrue();
+        report.EspeakDataPresent.Should().BeTrue();
+    }
+
+    [Theory]
+    [InlineData("Unknown filter 'lyricsalign'.")]
+    [InlineData("Filter lyricsalign\n  an older build of the filter, without a text file option")]
+    public async Task ProbeAsync_ReportsNoLyricsAlignFilter_OnABuildThatLacksTheOneThatTakesAText(
+        string help
+    )
+    {
+        Mock<IFfmpegCapabilities> caps = CapsWithProtocol(bluray: false, dvdread: false);
+        Mock<IProcessRunner> runner = new();
+        SetupMuxerOutput(runner, AllMuxersOutput());
+        SetupLyricsAlignHelp(runner, help);
+
+        FfmpegCapabilityProbe probe = BuildProbe(caps, runner, new Mock<IStorage>());
+        await probe.ProbeAsync();
+
+        CapabilityReport report = probe.GetCachedReport()!;
+        report.LyricsAlignFilterPresent.Should().BeFalse();
+        report.LyricsAlignModelPresent.Should().BeFalse("no path was configured");
+        report.EspeakDataPresent.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ProbeAsync_StillReportsEverythingElse_WhenTheLyricsAlignQuestionFails()
+    {
+        Mock<IFfmpegCapabilities> caps = CapsWithProtocol(bluray: true, dvdread: false);
+        Mock<IProcessRunner> runner = new();
+        SetupMuxerOutput(runner, AllMuxersOutput());
+        runner
+            .Setup(r =>
+                r.RunAsync(
+                    It.IsAny<string>(),
+                    It.Is<string[]>(a => a.Length == 3 && a[2] == "filter=lyricsalign"),
+                    null,
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .ThrowsAsync(new InvalidOperationException("ffmpeg would not start"));
+
+        FfmpegCapabilityProbe probe = BuildProbe(caps, runner, new Mock<IStorage>());
+        await probe.ProbeAsync();
+
+        CapabilityReport report = probe.GetCachedReport()!;
+        report.LyricsAlignFilterPresent.Should().BeFalse();
+        report.BluRayProtocol.Should().BeTrue();
+        report.MissingMuxers.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// A server nobody aligns lyrics on is not missing anything: the three
+    /// answers are reported, and none of them is an issue on the owner's list.
+    /// </summary>
+    [Fact]
+    public async Task ProbeAsync_DoesNotListAMissingLyricsAlignModelAsAnIssue()
+    {
+        Mock<IFfmpegCapabilities> caps = CapsWithProtocol(bluray: false, dvdread: false);
+        Mock<IProcessRunner> runner = new();
+        SetupMuxerOutput(runner, AllMuxersOutput());
+
+        FfmpegCapabilityProbe probe = BuildProbe(caps, runner, new Mock<IStorage>());
+        await probe.ProbeAsync();
+
+        probe
+            .GetCachedReport()!
+            .Issues.Should()
+            .NotContain(issue =>
+                issue.Message.Contains("lyricsalign", StringComparison.OrdinalIgnoreCase)
+                || issue.Message.Contains("espeak", StringComparison.OrdinalIgnoreCase)
+            );
+    }
 }

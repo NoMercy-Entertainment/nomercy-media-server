@@ -204,6 +204,46 @@ public sealed class PluginLyricsWriterTests : IDisposable
         result.Refusal.Should().StartWith(PluginLyricsRefusal.InvalidLines);
     }
 
+    /// <summary>
+    /// The library stores a duration as whole seconds: "03:45" for a track
+    /// that really runs 225.6 s. A line that starts inside that last fraction
+    /// of a second is inside the track, and refusing it refused the whole
+    /// write with it.
+    /// </summary>
+    [Theory]
+    [InlineData(225.0)]
+    [InlineData(225.05)]
+    [InlineData(225.99)]
+    public async Task Write_AcceptsALineThatStartsInTheLastFractionOfASecond(double start)
+    {
+        PluginLyricsWrite write = new(
+            [new("one", 1.0, null), new("last", start, null)],
+            LyricsSources.Lrclib,
+            0
+        );
+
+        PluginWriteResult result = await Writer().WriteAsync(_plainText, write);
+
+        result.Refusal.Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData(226.0)]
+    [InlineData(226.5)]
+    public async Task Write_RefusesALineThatStartsAWholeSecondPastTheStoredDuration(double start)
+    {
+        PluginLyricsWrite write = new(
+            [new("one", 1.0, null), new("late", start, null)],
+            LyricsSources.Lrclib,
+            0
+        );
+
+        PluginWriteResult result = await Writer().WriteAsync(_plainText, write);
+
+        result.Refusal.Should().StartWith(PluginLyricsRefusal.InvalidLines);
+        result.Refusal.Should().Contain("starts after the track ends");
+    }
+
     [Fact]
     public async Task Write_WithoutAKnownDuration_SkipsTheUpperBound()
     {
@@ -310,10 +350,53 @@ public sealed class PluginLyricsWriterTests : IDisposable
         (await writer.GetTextCandidatesAsync(_plainText)).Should().BeSameAs(text);
     }
 
+    /// <summary>
+    /// A host wired without the candidates service can find nothing, and
+    /// asking again will not change that: the empty answer is complete.
+    /// </summary>
     [Fact]
     public async Task GetTextCandidates_WithoutTheService_AnswersNothingRatherThanThrowing()
     {
-        (await Writer().GetTextCandidatesAsync(_plainText)).Candidates.Should().BeEmpty();
+        PluginLyricsText text = await Writer().GetTextCandidatesAsync(_plainText);
+
+        text.Candidates.Should().BeEmpty();
+        text.IsComplete.Should().BeTrue();
+        text.AskAgainAfter.Should().BeNull();
+    }
+
+    /// <summary>
+    /// A failure inside the server is not "no text exists". The plugin gets
+    /// an empty answer it knows may be missing something, with no time to
+    /// ask again because the host cannot say when it will be better.
+    /// </summary>
+    [Fact]
+    public async Task GetTextCandidates_WhenTheServiceFails_AnswersEmptyAndIncomplete()
+    {
+        Mock<ILyricsTextCandidates> candidates = new();
+        candidates
+            .Setup(c => c.GetAsync(It.IsAny<Guid>(), It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new IOException("the mount went away"));
+        PluginLyricsWriter writer = new(_pluginId, ContextFactory(), candidates.Object);
+
+        PluginLyricsText text = await writer.GetTextCandidatesAsync(_plainText);
+
+        text.Candidates.Should().BeEmpty();
+        text.IsComplete.Should().BeFalse();
+        text.AskAgainAfter.Should().BeNull();
+    }
+
+    /// <summary>
+    /// Both properties are init-only and not constructor parameters, so every
+    /// <c>new PluginLyricsText(candidates)</c> written before them still
+    /// compiles and still means a complete answer.
+    /// </summary>
+    [Fact]
+    public void ALyricsText_IsCompleteUnlessToldOtherwise()
+    {
+        PluginLyricsText text = new([]);
+
+        text.IsComplete.Should().BeTrue();
+        text.AskAgainAfter.Should().BeNull();
     }
 
     private PluginLyricsWriter Writer() => new(_pluginId, ContextFactory());

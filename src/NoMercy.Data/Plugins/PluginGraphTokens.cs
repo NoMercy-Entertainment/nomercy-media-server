@@ -35,6 +35,9 @@ internal static partial class PluginGraphTokens
     /// <summary>The silero VAD model file's own name.</summary>
     internal static string VadModelFileName => AppFiles.VadModel + ".bin";
 
+    /// <summary>The lyricsalign model file's own name.</summary>
+    internal static string AlignModelFileName => AppFiles.LyricsAlignModel + ".gguf";
+
     /// <summary>Whether the text names the server's stemsplit model, by its token or by the file name the token stands for.</summary>
     internal static bool UsesStemsModel(string text) =>
         text.Contains(PluginFilterGraphTokens.StemsModel, StringComparison.Ordinal)
@@ -47,6 +50,10 @@ internal static partial class PluginGraphTokens
     /// <summary>Whether the text names the VAD model.</summary>
     internal static bool UsesVadModel(string text) =>
         text.Contains(PluginFilterGraphTokens.VadModel, StringComparison.Ordinal);
+
+    /// <summary>Whether the text names the lyricsalign model.</summary>
+    internal static bool UsesAlignModel(string text) =>
+        text.Contains(PluginFilterGraphTokens.AlignModel, StringComparison.Ordinal);
 
     /// <summary>
     /// The text with every token replaced, or the reason one could not be.
@@ -65,7 +72,12 @@ internal static partial class PluginGraphTokens
                 WhisperModelFileName,
                 StringComparison.Ordinal
             )
-            .Replace(PluginFilterGraphTokens.VadModel, VadModelFileName, StringComparison.Ordinal);
+            .Replace(PluginFilterGraphTokens.VadModel, VadModelFileName, StringComparison.Ordinal)
+            .Replace(
+                PluginFilterGraphTokens.AlignModel,
+                AlignModelFileName,
+                StringComparison.Ordinal
+            );
 
         string? refusal = null;
         resolved = PluginFileToken()

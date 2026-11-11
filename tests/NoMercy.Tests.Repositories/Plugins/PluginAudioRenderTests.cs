@@ -21,6 +21,7 @@ using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.Infrastructure;
 using NoMercy.Encoder.Startup;
 using NoMercy.MediaProcessing.DerivedAudio;
+using NoMercy.NmSystem.Information;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Quotas;
@@ -219,7 +220,8 @@ public class PluginAudioRenderTests : IDisposable
             TesseractEngTraineddataPresent: true,
             TesseractModelsDirectory: null,
             Issues: [],
-            VadModelPresent: true
+            VadModelPresent: true,
+            LyricsAlignFilterPresent: true
         );
 
     private PluginAudioTools CreateTools(
@@ -1662,5 +1664,26 @@ public class PluginAudioRenderTests : IDisposable
             PluginStemSet stemSet,
             CancellationToken ct = default
         ) => Task.FromResult(PluginStemSplitResult.Refused("not here"));
+    }
+
+    [Fact]
+    public async Task Render_RefusesAGraphThatNamesTheAlignModel_WhileItIsNotInstalled()
+    {
+        _storage.Setup(storage => storage.Exists(AppFiles.LyricsAlignModelPath)).Returns(false);
+
+        PluginAudioRunResult result = await CreateTools()
+            .RenderAsync(
+                new(
+                    [TrackA()],
+                    "[0:a]lyricsalign=model={alignModel}:destination=-[out]",
+                    [new("out", "out.wav", PluginAudioCodec.Wav)]
+                ),
+                null,
+                null,
+                DefaultOptions
+            );
+
+        result.Refusal.Should().Be("the lyricsalign model is not installed");
+        _runs.Should().BeEmpty();
     }
 }

@@ -31,6 +31,13 @@ namespace NoMercy.Data.Services.Music;
 /// retried on the very next call, the same two rules <see cref="LyricsResolver" />
 /// applies to the winner. Concurrent asks for one track share one fetch.
 /// </para>
+/// <para>
+/// An answer made while a provider failed says so: it is marked incomplete
+/// and carries the end of the backoff, and it is what every ask inside the
+/// backoff gets back. A plugin can then tell "this track has no text", which
+/// is final, from "ask again in two minutes", and the lyrics embedded in the
+/// file are not withheld for those two minutes along with the rest.
+/// </para>
 /// </summary>
 public class LyricsTextCandidates(
     IDbContextFactory<MediaContext> contextFactory,
@@ -47,7 +54,12 @@ public class LyricsTextCandidates(
     private readonly ConcurrentDictionary<Guid, Lazy<Task<PluginLyricsText>>> _inFlight = new();
     private readonly ConcurrentDictionary<Guid, (DateTime At, PluginLyricsText Text)> _cache =
         new();
-    private readonly ConcurrentDictionary<Guid, DateTime> _transientBackoffUntil = new();
+
+    // The answer of a fetch a provider failed in, kept until the backoff
+    // ends. It replaces a bare "until": the time alone meant an empty list
+    // for two minutes, even for a file with lyrics in its own tags.
+    private readonly ConcurrentDictionary<Guid, (DateTime Until, PluginLyricsText Text)> _heldOff =
+        new();
     private readonly TimeSpan _cacheWindow = DefaultCacheWindow;
     private readonly TimeSpan _transientBackoff = DefaultTransientBackoff;
     private readonly ILogger<LyricsTextCandidates> _logger =
@@ -77,11 +89,11 @@ public class LyricsTextCandidates(
         )
             return Task.FromResult(cached.Text);
 
-        if (_transientBackoffUntil.TryGetValue(trackId, out DateTime until))
+        if (_heldOff.TryGetValue(trackId, out (DateTime Until, PluginLyricsText Text) held))
         {
-            if (DateTime.UtcNow < until)
-                return Task.FromResult(Nothing);
-            _transientBackoffUntil.TryRemove(trackId, out _);
+            if (DateTime.UtcNow < held.Until)
+                return Task.FromResult(held.Text);
+            _heldOff.TryRemove(trackId, out _);
         }
 
         return _inFlight.GetOrAdd(trackId, _ => new(() => FetchAsync(trackId, ct))).Value;
@@ -130,14 +142,21 @@ public class LyricsTextCandidates(
 
             // A provider that failed is not "no text anywhere": the embedded
             // lyrics, if any, are still handed back, but the answer is not
-            // kept for a day, only held off for the backoff.
+            // kept for a day, only held off for the backoff, and it says so.
             if (providers.IsTransientError)
             {
-                _transientBackoffUntil[trackId] = DateTime.UtcNow.Add(_transientBackoff);
-                return text;
+                DateTime until = DateTime.UtcNow.Add(_transientBackoff);
+                PluginLyricsText incomplete = text with
+                {
+                    IsComplete = false,
+                    AskAgainAfter = new DateTimeOffset(until, TimeSpan.Zero),
+                };
+
+                _heldOff[trackId] = (until, incomplete);
+                return incomplete;
             }
 
-            _transientBackoffUntil.TryRemove(trackId, out _);
+            _heldOff.TryRemove(trackId, out _);
             _cache[trackId] = (DateTime.UtcNow, text);
             return text;
         }

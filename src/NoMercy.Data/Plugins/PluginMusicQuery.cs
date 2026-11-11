@@ -60,12 +60,54 @@ public class PluginMusicQuery(
             libraryTracks = libraryTracks.Where(libraryTrack => libraryTrack.LibraryId == only);
         }
 
+        return await ReadTracksAsync(
+            libraryTracks
+                // Ordered because a page without one is a page that can repeat
+                // or skip rows between calls.
+                .OrderBy(libraryTrack => libraryTrack.TrackId)
+                .Skip(Math.Max(0, skip))
+                .Take(Math.Clamp(take, 1, MaxPageSize)),
+            ct
+        );
+    }
+
+    public async Task<IReadOnlyList<PluginTrack>> GetTracksByIdAsync(
+        IReadOnlyList<Guid> trackIds,
+        CancellationToken ct = default
+    )
+    {
+        if (trackIds.Count == 0)
+        {
+            return [];
+        }
+
+        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+
+        Guid[] ids = trackIds.Distinct().Take(MaxPageSize).ToArray();
+
+        return await ReadTracksAsync(
+            context
+                .LibraryTrack.AsNoTracking()
+                .Playable()
+                .Where(libraryTrack => ids.Contains(libraryTrack.TrackId))
+                // By track as a page is, then by library, so a track that is
+                // in two libraries comes back in the same order every time.
+                .OrderBy(libraryTrack => libraryTrack.TrackId)
+                .ThenBy(libraryTrack => libraryTrack.LibraryId),
+            ct
+        );
+    }
+
+    /// <summary>
+    /// The one projection both track readers share, so a track read by its id
+    /// is the track a page of the library shows, field for field.
+    /// </summary>
+    private static async Task<IReadOnlyList<PluginTrack>> ReadTracksAsync(
+        IQueryable<LibraryTrack> libraryTracks,
+        CancellationToken ct
+    )
+    {
         List<TrackRow> rows = await libraryTracks
-            // Ordered because a page without one is a page that can repeat or
-            // skip rows between calls.
-            .OrderBy(libraryTrack => libraryTrack.TrackId)
-            .Skip(Math.Max(0, skip))
-            .Take(Math.Clamp(take, 1, MaxPageSize))
             .Select(libraryTrack => new TrackRow(
                 libraryTrack.Track.Id,
                 libraryTrack.Track.Name,

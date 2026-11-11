@@ -130,6 +130,41 @@ public class BinaryVerificationTests : IDisposable
         BinaryVerification.ParseSha256Sums(sums, "yt-dlp_macos").Should().Be("deadbeef");
     }
 
+    // -------------------------------------------------------------------------
+    // Per-asset .sha256 sidecars, in the two forms releases publish them
+    // -------------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("deadbeef\n", "deadbeef")]
+    [InlineData("  deadbeef  \r\n", "deadbeef")]
+    [InlineData("deadbeef *model.gguf\n", "deadbeef")]
+    [InlineData("deadbeef  model.gguf\n", "deadbeef")]
+    [InlineData("deadbeef *MODEL.GGUF", "deadbeef")]
+    public void ReadSha256Sidecar_ReadsTheDigest_BareOrAsASha256SumLine(
+        string sidecar,
+        string digest
+    )
+    {
+        BinaryVerification.ReadSha256Sidecar(sidecar, "model.gguf").Should().Be(digest);
+    }
+
+    /// <summary>
+    /// A sidecar that describes another file is not turned into a digest for
+    /// this one. What comes back is not a digest at all, so the verification
+    /// that follows fails instead of passing on somebody else's checksum.
+    /// </summary>
+    [Fact]
+    public void ReadSha256Sidecar_ForAnotherFile_YieldsNothingThatCanVerify()
+    {
+        string read = BinaryVerification.ReadSha256Sidecar(
+            "deadbeef *another.gguf\n",
+            "model.gguf"
+        );
+
+        read.Should().Be("deadbeef *another.gguf");
+        read.Should().NotBe("deadbeef");
+    }
+
     [Fact]
     public void ParseSha256Sums_NoMatch_ReturnsNull()
     {

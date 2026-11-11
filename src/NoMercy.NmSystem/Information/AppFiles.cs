@@ -156,6 +156,22 @@ public static class AppFiles
     // colon in an absolute path splits the filter argument.
     public static string StemsplitModelPath => Path.Combine(FfmpegFolder, StemsplitModel + ".gguf");
 
+    // The CTC model the ffmpeg lyricsalign filter places a known lyric text on
+    // the audio with. Beside ffmpeg like the other models, so a bare file name
+    // resolves. Unlike them it is not fetched at setup: it is 600 MB and only a
+    // plugin that aligns lyrics uses it, so it arrives the first time a plugin's
+    // graph names it.
+    public static string LyricsAlignModel { get; set; } = "wav2vec2-xlsr-53-espeak-cv-ft-f16";
+
+    public static string LyricsAlignModelPath =>
+        Path.Combine(FfmpegFolder, LyricsAlignModel + ".gguf");
+
+    // The phoneme tables the lyricsalign filter turns a text into sounds with.
+    // The ffmpeg archive carries the folder next to the binary, which is where
+    // the filter looks; this one file stands for the folder being there.
+    public static string EspeakDataMarkerPath =>
+        Path.Combine(FfmpegFolder, "espeak-ng-data", "phontab");
+
     public static string CloudflareDPath =>
         Path.Combine(DependenciesPath, "cloudflared" + Info.ExecSuffix);
 
