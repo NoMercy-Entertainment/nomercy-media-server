@@ -9,7 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using Microsoft.EntityFrameworkCore;
 using NoMercy.Database;
 using NoMercy.NmSystem.SystemCalls;
 using NoMercy.Storage;
@@ -20,12 +19,9 @@ namespace NoMercy.Service.Seeds;
 public static class UsersSeed
 {
     /// <summary>
-    /// First-boot seed only: populates an empty Users table from the current
-    /// server-users list. Ongoing reconciliation (invites accepted after this
-    /// server already has users, revocation of removed/declined users) is
-    /// nomercy-tv's PushServerUserJob, notifying this server directly as each
-    /// grant changes — this seed intentionally never re-runs once any user
-    /// exists locally.
+    /// Reconciles the current server-users list at authenticated startup.
+    /// The sync service grants seed libraries only to newly inserted users,
+    /// leaving existing users' library choices untouched.
     /// </summary>
     public static async Task Init(
         this MediaContext dbContext,
@@ -36,10 +32,6 @@ public static class UsersSeed
     {
         try
         {
-            bool hasUsers = await dbContext.Users.AnyAsync();
-            if (hasUsers)
-                return;
-
             Logger.Setup("Adding Users", LogEventLevel.Verbose);
 
             IServerUserSyncService service =

@@ -137,6 +137,12 @@ public class ServerUserSyncService(IServerUserApiClient apiClient) : IServerUser
             return new(false, incomingUsers.Length, 0);
         }
 
+        HashSet<Guid> existingUserIds = await dbContext
+            .Users.AsNoTracking()
+            .Select(user => user.Id)
+            .ToHashSetAsync(cancellationToken);
+        User[] newUsers = incomingUsers.Where(user => !existingUserIds.Contains(user.Id)).ToArray();
+
         await dbContext
             .Users.UpsertRange(incomingUsers)
             .On(v => new { v.Id })
@@ -164,7 +170,7 @@ public class ServerUserSyncService(IServerUserApiClient apiClient) : IServerUser
 
         int revokedCount = await RevokeStaleUsersAsync(dbContext, incomingUsers, cancellationToken);
 
-        await SeedLibraryAccessAsync(dbContext, storage, incomingUsers, cancellationToken);
+        await SeedLibraryAccessAsync(dbContext, storage, newUsers, cancellationToken);
 
         return new(true, incomingUsers.Length, revokedCount);
     }

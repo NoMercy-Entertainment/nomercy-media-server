@@ -12,18 +12,18 @@
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Database;
+using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.Users;
+using NoMercy.NmSystem.Information;
 using NoMercy.Service.Seeds;
+using NoMercy.Service.Seeds.Dto;
 using NoMercy.Storage;
 
 namespace NoMercy.Tests.Setup.Seeds;
 
 /// <summary>
-/// <see cref="UsersSeed"/> is now a thin first-boot wrapper around
-/// <see cref="ServerUserSyncService"/> — these tests confirm boot-time
-/// behavior is unchanged: it still seeds an empty Users table, and still
-/// never re-runs once any user exists. Ongoing sync after first boot is
-/// nomercy-tv's PushServerUserJob, not a recurring poll on this side.
+/// Authenticated startup syncs server users and grants seed libraries only to
+/// newly inserted users. Existing library choices remain authoritative.
 /// </summary>
 [Trait("Category", "Unit")]
 public class UsersSeedTests : IDisposable
@@ -48,6 +48,181 @@ public class UsersSeedTests : IDisposable
     private MediaContext CreateContext() => new(_options);
 
     private static readonly Guid OwnerId = Guid.Parse("33333333-3333-3333-3333-333333333333");
+    private static readonly Ulid LibraryId = Ulid.Parse("01ARZ3NDEKTSV4RRFFQ69G5FAV");
+
+    private static Guid UserId(int number) =>
+        Guid.Parse($"00000000-0000-4000-8000-{number:000000000000}");
+
+    private static Mock<IStorage> LibrariesStorage()
+    {
+        Mock<IStorage> storage = new();
+        storage.Setup(s => s.Exists(AppFiles.LibrariesSeedFile)).Returns(true);
+        storage
+            .Setup(s =>
+                s.ReadAllTextAsync(AppFiles.LibrariesSeedFile, It.IsAny<CancellationToken>())
+            )
+            .ReturnsAsync($"[{{\"id\":\"{LibraryId}\",\"title\":\"Test\",\"type\":\"movie\"}}]");
+        return storage;
+    }
+
+    [Fact]
+    public async Task Init_150UpstreamUsers_GrantsSeedLibraryToAll50NewUsers()
+    {
+        await using MediaContext seedCtx = CreateContext();
+        seedCtx.Libraries.Add(
+            new Library
+            {
+                Id = LibraryId,
+                Title = "Test",
+                Type = "movie",
+            }
+        );
+
+        for (int number = 1; number <= 100; number++)
+        {
+            Guid id = UserId(number);
+            seedCtx.Users.Add(
+                new User
+                {
+                    Id = id,
+                    Email = $"user{number}@example.com",
+                    Name = $"User {number}",
+                    Allowed = true,
+                    Owner = number == 1,
+                }
+            );
+            seedCtx.LibraryUser.Add(new LibraryUser(LibraryId, id));
+        }
+
+        await seedCtx.SaveChangesAsync();
+
+        ServerUserDtoData[] upstreamUsers = Enumerable
+            .Range(1, 150)
+            .Select(number => new ServerUserDtoData
+            {
+                UserId = UserId(number).ToString(),
+                Email = $"user{number}@example.com",
+                Name = $"User {number}",
+                IsOwner = number == 1,
+                Enabled = true,
+            })
+            .ToArray();
+        FakeServerUserApiClient api = new(upstreamUsers);
+        ServerUserSyncService syncService = new(api);
+        Mock<IStorage> storage = LibrariesStorage();
+
+        await using MediaContext runCtx = CreateContext();
+        await runCtx.Init(storage.Object, "valid-token", syncService);
+
+        await using MediaContext assertCtx = CreateContext();
+        Assert.Equal(150, await assertCtx.LibraryUser.CountAsync(lu => lu.LibraryId == LibraryId));
+    }
+
+    [Fact]
+    public async Task Init_RepairsNewUserAccess_LeavesExistingUserWithNoLibrariesAlone()
+    {
+        await using MediaContext seedCtx = CreateContext();
+        seedCtx.Libraries.Add(
+            new Library
+            {
+                Id = LibraryId,
+                Title = "Test",
+                Type = "movie",
+            }
+        );
+        seedCtx.Users.AddRange(
+            new User
+            {
+                Id = UserId(1),
+                Email = "user1@example.com",
+                Name = "Owner",
+                Allowed = true,
+                Owner = true,
+            },
+            new User
+            {
+                Id = UserId(2),
+                Email = "user2@example.com",
+                Name = "Existing user",
+                Allowed = true,
+            }
+        );
+        seedCtx.LibraryUser.Add(new LibraryUser(LibraryId, UserId(1)));
+        await seedCtx.SaveChangesAsync();
+
+        FakeServerUserApiClient api = new([
+            new()
+            {
+                UserId = UserId(1).ToString(),
+                Email = "user1@example.com",
+                Name = "Owner",
+                IsOwner = true,
+            },
+            new()
+            {
+                UserId = UserId(2).ToString(),
+                Email = "user2@example.com",
+                Name = "Existing user",
+            },
+            new()
+            {
+                UserId = UserId(3).ToString(),
+                Email = "user3@example.com",
+                Name = "New user",
+            },
+        ]);
+        ServerUserSyncService syncService = new(api);
+        Mock<IStorage> storage = LibrariesStorage();
+
+        await using MediaContext runCtx = CreateContext();
+        await runCtx.Init(storage.Object, "valid-token", syncService);
+
+        await using MediaContext assertCtx = CreateContext();
+        Assert.Equal(1, await assertCtx.LibraryUser.CountAsync(lu => lu.UserId == UserId(1)));
+        Assert.Equal(0, await assertCtx.LibraryUser.CountAsync(lu => lu.UserId == UserId(2)));
+        Assert.Equal(1, await assertCtx.LibraryUser.CountAsync(lu => lu.UserId == UserId(3)));
+    }
+
+    [Fact]
+    public async Task Init_RunningTwice_DoesNotAddLibraryAccessAgain()
+    {
+        await using MediaContext seedCtx = CreateContext();
+        seedCtx.Libraries.Add(
+            new Library
+            {
+                Id = LibraryId,
+                Title = "Test",
+                Type = "movie",
+            }
+        );
+        await seedCtx.SaveChangesAsync();
+
+        FakeServerUserApiClient api = new([
+            new()
+            {
+                UserId = UserId(1).ToString(),
+                Email = "user1@example.com",
+                Name = "Owner",
+                IsOwner = true,
+            },
+        ]);
+        ServerUserSyncService syncService = new(api);
+        Mock<IStorage> storage = LibrariesStorage();
+
+        await using (MediaContext firstRun = CreateContext())
+            await firstRun.Init(storage.Object, "valid-token", syncService);
+
+        await using (MediaContext secondRun = CreateContext())
+            await secondRun.Init(storage.Object, "valid-token", syncService);
+
+        await using MediaContext assertCtx = CreateContext();
+        Assert.Equal(1, await assertCtx.LibraryUser.CountAsync());
+        Assert.Equal(1, await assertCtx.Users.CountAsync());
+        storage.Verify(
+            s => s.ReadAllTextAsync(AppFiles.LibrariesSeedFile, It.IsAny<CancellationToken>()),
+            Times.Once
+        );
+    }
 
     [Fact]
     public async Task Init_EmptyUsersTable_SeedsFromUpstream()
@@ -74,7 +249,7 @@ public class UsersSeedTests : IDisposable
     }
 
     [Fact]
-    public async Task Init_NonEmptyUsersTable_NeverCallsSyncService()
+    public async Task Init_NonEmptyUsersTable_CallsSyncService()
     {
         await using MediaContext seedCtx = CreateContext();
         seedCtx.Users.Add(
@@ -89,14 +264,22 @@ public class UsersSeedTests : IDisposable
         );
         await seedCtx.SaveChangesAsync();
 
-        FakeServerUserApiClient api = new([]);
+        FakeServerUserApiClient api = new([
+            new()
+            {
+                UserId = OwnerId.ToString(),
+                Name = "Owner",
+                Email = "owner@example.com",
+                IsOwner = true,
+                Enabled = true,
+            },
+        ]);
         ServerUserSyncService realSyncService = new(api);
 
         await using MediaContext ctx = CreateContext();
         await ctx.Init(NoLibrariesStorage.Object, "valid-token", realSyncService);
 
-        // The one-shot seed must stay gated — ongoing sync is the cron job's job.
-        Assert.False(api.WasCalled);
+        Assert.True(api.WasCalled);
     }
 
     [Fact]
