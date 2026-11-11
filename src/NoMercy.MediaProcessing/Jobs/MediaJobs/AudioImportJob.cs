@@ -29,6 +29,7 @@ using NoMercy.MediaProcessing.ReleaseGroups;
 using NoMercy.MediaProcessing.Releases;
 using NoMercy.NmSystem.Dto;
 using NoMercy.NmSystem.Extensions;
+using NoMercy.NmSystem.Monitoring;
 using NoMercy.Providers.AcoustId;
 using NoMercy.Providers.AcoustId.Client;
 using NoMercy.Providers.AcoustId.Models;
@@ -51,6 +52,16 @@ public class AudioImportJob : AbstractMusicFolderJob
     )
         : base(storageFactory, storageDriver, audioFingerprinter, loggerFactory) { }
 
+    public AudioImportJob(
+        IStorageFactory storageFactory,
+        IStorageDriver storageDriver,
+        IAudioFingerprinter audioFingerprinter,
+        ILoggerFactory loggerFactory,
+        MediaActivityMonitor activityMonitor
+    )
+        : base(storageFactory, storageDriver, audioFingerprinter, loggerFactory, activityMonitor)
+    { }
+
     public override string QueueName => "import";
 
     // Below Movie/Show/PersonRefresh (5): the queue reserves by priority DESC,
@@ -63,6 +74,7 @@ public class AudioImportJob : AbstractMusicFolderJob
 
     public override async Task Handle()
     {
+        await ThrottleForPlaybackAsync();
         if (InputFolder.Contains("[Singles]"))
         {
             await ImportSingles();
@@ -197,6 +209,7 @@ public class AudioImportJob : AbstractMusicFolderJob
             > processedSingles = new();
             await foreach ((MediaFile mediaFile, AudioTagModel audioTag) in audioFilesFactory())
             {
+                await ThrottleForPlaybackAsync();
                 if (await ResolveReleaseIdAsync(mediaFile, audioTag) is null)
                     continue;
 
@@ -329,6 +342,7 @@ public class AudioImportJob : AbstractMusicFolderJob
 
             await foreach ((MediaFile mediaFile, AudioTagModel audioTag) in audioFilesFactory())
             {
+                await ThrottleForPlaybackAsync();
                 Guid? resolvedReleaseId = null;
 
                 if (await ResolveReleaseIdAsync(mediaFile, audioTag) is not null)
@@ -536,6 +550,7 @@ public class AudioImportJob : AbstractMusicFolderJob
 
         foreach (MusicBrainzTrack musicBrainzTrack in allTracks)
         {
+            await ThrottleForPlaybackAsync();
             if (!resolvedFileByTrackId.TryGetValue(musicBrainzTrack.Id, out MediaFile? mediaFile))
                 continue;
 
@@ -810,6 +825,7 @@ public class AudioImportJob : AbstractMusicFolderJob
 
         foreach (MediaFile mediaFile in files)
         {
+            await ThrottleForPlaybackAsync();
             AudioTagModel audioTagModel = await AudioTagModel.Create(mediaFile);
             bag.Add((mediaFile, audioTagModel));
         }

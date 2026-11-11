@@ -25,16 +25,15 @@ namespace NoMercy.Queue.MediaServer;
 /// (recursive directory scans, ffprobe against real media bytes) — those are
 /// the only queues that genuinely compete with a stream for NAS I/O. "import"
 /// and "extras" are overwhelmingly API/DB work (TMDB fetch + EF writes) and
-/// must always be free to run, playback or not — a user adding a show/movie
-/// while watching something else isn't putting any load on the server. The
-/// encoder and music queues are likewise never deferred.
+/// must always be free to run. The video encoder also competes for CPU/GPU
+/// capacity, so new video jobs defer while playback is active. Music remains free.
 /// </para>
 ///
 /// <para>
-/// Even for library/file, deferral is capped: a queue is only held back for
+/// For library/file, deferral is capped: a queue is only held back for
 /// <see cref="MaxDeferIntervalDefault"/> before one poll is let through
-/// regardless of playback. A long-running viewing session must never fully
-/// starve a scan — it should just trickle instead of running at full speed.
+/// regardless of playback. Scans trickle during a long viewing session;
+/// video encoding waits until playback goes idle.
 /// </para>
 /// </summary>
 public class MediaPlaybackActivityGate : IWorkerActivityGate
@@ -82,7 +81,13 @@ public class MediaPlaybackActivityGate : IWorkerActivityGate
 
     public bool ShouldDefer(string queueName)
     {
-        if (!_monitor.IsActive || !NasReadHeavyQueues.Contains(item: queueName))
+        if (!_monitor.IsActive)
+            return false;
+
+        if (queueName == "encoder")
+            return true;
+
+        if (!NasReadHeavyQueues.Contains(item: queueName))
             return false;
 
         DateTime now = _utcNow();

@@ -9,7 +9,13 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Moq;
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
+using NoMercy.NmSystem.Monitoring;
+using NoMercy.Providers.AcoustId;
+using NoMercy.Storage;
 using Xunit;
 
 namespace NoMercy.Tests.MediaProcessing.Jobs;
@@ -25,5 +31,39 @@ public class ImportQueuePriorityTests
         Assert.True(audio < new MovieImportJob().Priority);
         Assert.True(audio < new ShowImportJob().Priority);
         Assert.True(audio < new PersonRefreshJob().Priority);
+    }
+
+    [Fact]
+    public void MusicTrackRepairJob_priority_is_below_audio_and_video_imports()
+    {
+        int repair = new MusicTrackRepairJob().Priority;
+
+        Assert.True(repair < new AudioImportJob().Priority);
+        Assert.True(repair < new MovieImportJob().Priority);
+        Assert.True(repair < new ShowImportJob().Priority);
+    }
+
+    [Fact]
+    public async Task Music_file_jobs_wait_when_playback_is_active()
+    {
+        MediaActivityMonitor monitor = new();
+        monitor.Touch();
+        ServiceCollection services = new();
+        services.AddSingleton(monitor);
+        services.AddSingleton(Mock.Of<IStorageFactory>());
+        services.AddSingleton(Mock.Of<IStorageDriver>());
+        services.AddSingleton(Mock.Of<IAudioFingerprinter>());
+        services.AddSingleton(Mock.Of<ILoggerFactory>());
+        using ServiceProvider provider = services.BuildServiceProvider();
+
+        foreach (Type jobType in new[] { typeof(AudioImportJob), typeof(MusicTrackRepairJob) })
+        {
+            AbstractMusicFolderJob job = (AbstractMusicFolderJob)
+                ActivatorUtilities.CreateInstance(provider, jobType);
+            Task pause = job.ThrottleForPlaybackAsync(TimeSpan.FromMilliseconds(100));
+
+            Assert.False(pause.IsCompleted);
+            await pause.WaitAsync(TimeSpan.FromSeconds(2));
+        }
     }
 }

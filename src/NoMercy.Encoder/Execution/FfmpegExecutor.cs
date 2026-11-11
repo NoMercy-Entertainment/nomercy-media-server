@@ -16,14 +16,44 @@ using NoMercy.Encoder.Commands;
 using NoMercy.Encoder.Errors;
 using NoMercy.Encoder.Infrastructure;
 using NoMercy.Encoder.Progress;
+using NoMercy.NmSystem.Monitoring;
 
 namespace NoMercy.Encoder.Execution;
 
-public class FfmpegExecutor(IProcessRunner processRunner, ILogger<FfmpegExecutor> logger)
-    : IFfmpegExecutor
+public class FfmpegExecutor : IFfmpegExecutor
 {
     private static readonly TimeSpan ProgressThrottleInterval = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan ExitGracePeriod = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan PlaybackPollInterval = TimeSpan.FromSeconds(1);
+
+    private readonly IProcessRunner _processRunner;
+    private readonly ILogger<FfmpegExecutor> _logger;
+    private readonly Func<bool>? _livePlaybackNeedsCapacity;
+    private readonly MediaActivityMonitor? _activityMonitor;
+    private readonly ProcessThrottle? _processThrottle;
+    private readonly TimeSpan _playbackPollInterval = PlaybackPollInterval;
+
+    public FfmpegExecutor(IProcessRunner processRunner, ILogger<FfmpegExecutor> logger)
+    {
+        _processRunner = processRunner;
+        _logger = logger;
+    }
+
+    internal FfmpegExecutor(
+        IProcessRunner processRunner,
+        ILogger<FfmpegExecutor> logger,
+        Func<bool> livePlaybackNeedsCapacity,
+        MediaActivityMonitor activityMonitor,
+        ProcessThrottle processThrottle,
+        TimeSpan? playbackPollInterval = null
+    )
+        : this(processRunner, logger)
+    {
+        _livePlaybackNeedsCapacity = livePlaybackNeedsCapacity;
+        _activityMonitor = activityMonitor;
+        _processThrottle = processThrottle;
+        _playbackPollInterval = playbackPollInterval ?? PlaybackPollInterval;
+    }
 
     public async Task<ExecutionResult> ExecuteAsync(
         FfmpegCommand command,
@@ -50,8 +80,10 @@ public class FfmpegExecutor(IProcessRunner processRunner, ILogger<FfmpegExecutor
         CancellationTokenSource killCts = new();
         bool hasProgressPipe = command.Arguments.Contains("pipe:1");
         int ffmpegPid = 0;
+        using CancellationTokenSource playbackMonitorCts = new();
+        Task? playbackMonitorTask = null;
 
-        logger.LogDebug(
+        _logger.LogDebug(
             "[{CorrelationId}] Executing: {Executable} {Args}",
             correlationId,
             command.Executable,
@@ -78,7 +110,7 @@ public class FfmpegExecutor(IProcessRunner processRunner, ILogger<FfmpegExecutor
             if (snapshot.IsEnd && hasProgressPipe)
             {
                 lastTotalSize = snapshot.TotalSizeBytes;
-                logger.LogDebug(
+                _logger.LogDebug(
                     "[{CorrelationId}] progress=end received, starting {Grace}s exit grace period",
                     correlationId,
                     ExitGracePeriod.TotalSeconds
@@ -142,7 +174,7 @@ public class FfmpegExecutor(IProcessRunner processRunner, ILogger<FfmpegExecutor
 
         try
         {
-            ProcessResult result = await processRunner.RunAsync(
+            ProcessResult result = await _processRunner.RunAsync(
                 command.Executable,
                 command.Arguments,
                 OnStdOut,
@@ -150,7 +182,12 @@ public class FfmpegExecutor(IProcessRunner processRunner, ILogger<FfmpegExecutor
                 command.WorkingDirectory,
                 ct,
                 killCts.Token,
-                pid => ffmpegPid = pid
+                pid =>
+                {
+                    ffmpegPid = pid;
+                    if (_livePlaybackNeedsCapacity is not null && _processThrottle is not null)
+                        playbackMonitorTask = MonitorPlaybackAsync(pid, playbackMonitorCts.Token);
+                }
             );
 
             stopwatch.Stop();
@@ -165,7 +202,7 @@ public class FfmpegExecutor(IProcessRunner processRunner, ILogger<FfmpegExecutor
                     TotalSizeBytes: lastTotalSize
                 );
 
-                logger.LogInformation(
+                _logger.LogInformation(
                     "[{CorrelationId}] FFmpeg completed in {Duration} (avg {Speed:F2}x, {Fps:F1} fps)",
                     correlationId,
                     stopwatch.Elapsed,
@@ -185,7 +222,7 @@ public class FfmpegExecutor(IProcessRunner processRunner, ILogger<FfmpegExecutor
 
             // ClassifyError still reads the whole stream; only the log is bounded.
             EncodingError error = ClassifyError(result.StdErr, result.ExitCode);
-            logger.LogError(
+            _logger.LogError(
                 "[{CorrelationId}] FFmpeg failed: exit={ExitCode} error={ErrorKind}\nstderr: {StdErr}",
                 correlationId,
                 result.ExitCode,
@@ -203,7 +240,48 @@ public class FfmpegExecutor(IProcessRunner processRunner, ILogger<FfmpegExecutor
         }
         finally
         {
+            await playbackMonitorCts.CancelAsync().ConfigureAwait(false);
+            if (playbackMonitorTask is not null)
+                await playbackMonitorTask.ConfigureAwait(false);
             killCts.Dispose();
+        }
+    }
+
+    private async Task MonitorPlaybackAsync(int processId, CancellationToken ct)
+    {
+        try
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                bool needsCapacity = _livePlaybackNeedsCapacity!();
+                if (needsCapacity)
+                {
+                    _activityMonitor?.Touch();
+                    _processThrottle!.Suspend(processId);
+                }
+                else
+                {
+                    _processThrottle!.Resume(processId);
+                }
+
+                await Task.Delay(_playbackPollInterval, ct).ConfigureAwait(false);
+            }
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested) { }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Could not yield background encode to live playback");
+        }
+        finally
+        {
+            try
+            {
+                _processThrottle!.Resume(processId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not resume background encode {ProcessId}", processId);
+            }
         }
     }
 

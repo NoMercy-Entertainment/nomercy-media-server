@@ -19,6 +19,7 @@ using NoMercy.MediaProcessing.Jobs.Dto;
 using NoMercy.MediaProcessing.MusicGenres;
 using NoMercy.MediaProcessing.Recordings;
 using NoMercy.NmSystem.Dto;
+using NoMercy.NmSystem.Monitoring;
 using NoMercy.Providers.AcoustId;
 using NoMercy.Providers.AcoustId.Client;
 using NoMercy.Providers.AcoustId.Models;
@@ -56,11 +57,22 @@ public class MusicTrackRepairJob : AbstractMusicFolderJob
     )
         : base(storageFactory, storageDriver, audioFingerprinter, loggerFactory) { }
 
+    public MusicTrackRepairJob(
+        IStorageFactory storageFactory,
+        IStorageDriver storageDriver,
+        IAudioFingerprinter audioFingerprinter,
+        ILoggerFactory loggerFactory,
+        MediaActivityMonitor activityMonitor
+    )
+        : base(storageFactory, storageDriver, audioFingerprinter, loggerFactory, activityMonitor)
+    { }
+
     public override string QueueName => "import";
-    public override int Priority => 6;
+    public override int Priority => 3;
 
     public override async Task Handle()
     {
+        await ThrottleForPlaybackAsync();
         await using MediaContext mediaContext = new();
 
         using MusicBrainzReleaseClient musicBrainzReleaseClient = new(ReleaseId);
@@ -143,6 +155,7 @@ public class MusicTrackRepairJob : AbstractMusicFolderJob
         int repaired = 0;
         foreach (MusicBrainzTrack track in allTracks)
         {
+            await ThrottleForPlaybackAsync();
             if (!resolvedFileByTrackId.TryGetValue(track.Id, out MediaFile? mediaFile))
                 continue;
 
@@ -205,6 +218,7 @@ public class MusicTrackRepairJob : AbstractMusicFolderJob
 
         foreach ((MediaFile mediaFile, AudioTagModel audioTag) in audioFiles)
         {
+            await ThrottleForPlaybackAsync();
             bool alreadyIdentified =
                 (audioTag.MusicBrainz?.ReleaseTrackId ?? Guid.Empty) != Guid.Empty
                 || (audioTag.MusicBrainz?.RecordingId ?? Guid.Empty) != Guid.Empty;
@@ -260,6 +274,9 @@ public class MusicTrackRepairJob : AbstractMusicFolderJob
         );
 
         foreach (MediaFile mediaFile in files)
+        {
+            await ThrottleForPlaybackAsync();
             yield return (mediaFile, await AudioTagModel.Create(mediaFile));
+        }
     }
 }
