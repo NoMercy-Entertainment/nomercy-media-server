@@ -52,7 +52,13 @@ public class ProcessRunner(ILogger<ProcessRunner> logger) : IProcessRunner
     // filter-init + actual error are well under this on every real-world
     // failure mode) without retaining megabytes of per-frame logspam over a
     // multi-hour encode.
-    private const int StdErrMaxBytes = 256 * 1024;
+    internal const int StdErrMaxBytes = 256 * 1024;
+
+    // What is kept of stdout once a caller reads it line by line through a
+    // callback: the same tail stderr keeps, for a log line or a debugger. The
+    // whole text is only built for a caller that passes no callback, because
+    // the joined text is then the only way it can read its process at all.
+    internal const int StdOutTailMaxBytes = 256 * 1024;
 
     public Task<ProcessResult> RunAsync(
         string executable,
@@ -167,7 +173,14 @@ public class ProcessRunner(ILogger<ProcessRunner> logger) : IProcessRunner
     )
     {
         Stopwatch stopwatch = Stopwatch.StartNew();
+
+        // A caller with a stdout callback has read every line by the time the
+        // process exits, so only the tail is kept for it. An analysis filter
+        // prints megabytes per track that way, and the joined copy of it was
+        // held, and copied twice more on exit, for a result nobody read.
+        bool keepWholeStdOut = onStdOut is null;
         StringBuilder stdOutBuilder = new();
+        BoundedLineBuffer stdOutTail = new(StdOutTailMaxBytes);
         BoundedLineBuffer stdErrBuilder = new(StdErrMaxBytes);
 
         // Working directories on Windows must exist before Process.Start —
@@ -222,7 +235,10 @@ public class ProcessRunner(ILogger<ProcessRunner> logger) : IProcessRunner
         {
             if (e.Data is null)
                 return;
-            stdOutBuilder.AppendLine(e.Data);
+            if (keepWholeStdOut)
+                stdOutBuilder.AppendLine(e.Data);
+            else
+                stdOutTail.AppendLine(e.Data);
             onStdOut?.Invoke(e.Data);
         };
 
@@ -359,7 +375,7 @@ public class ProcessRunner(ILogger<ProcessRunner> logger) : IProcessRunner
 
         ProcessResult result = new(
             ExitCode: exitCode,
-            StdOut: stdOutBuilder.ToString().TrimEnd(),
+            StdOut: (keepWholeStdOut ? stdOutBuilder.ToString() : stdOutTail.ToString()).TrimEnd(),
             StdErr: stdErrBuilder.ToString().TrimEnd(),
             Duration: stopwatch.Elapsed,
             ProcessId: process.Id

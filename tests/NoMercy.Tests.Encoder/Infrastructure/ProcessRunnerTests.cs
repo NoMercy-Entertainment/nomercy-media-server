@@ -115,7 +115,6 @@ public class ProcessRunnerTests
 
         result.IsSuccess.Should().BeTrue();
         captured.Should().NotBeEmpty("at least one line should have been streamed");
-        // Builder also accumulated.
         string joined = string.Join("\n", captured);
         joined.Should().NotBeNullOrWhiteSpace();
     }
@@ -141,6 +140,197 @@ public class ProcessRunnerTests
         );
 
         capturedPid.Should().BeGreaterThan(0);
+    }
+
+    // ── what is kept of stdout ─────────────────────────────────────────────
+
+    // Forty thousand lines of a hundred-odd characters: a little over four
+    // megabytes, sixteen times what the runner may keep of a stream that was
+    // read line by line.
+    private const int ManyLines = 40_000;
+
+    private static readonly string Padding = new('x', 96);
+
+    private static string NumberedLine(int number) => $"line {number} {Padding}";
+
+    /// <summary>
+    /// A shell that prints <paramref name="lines" /> numbered lines to stdout
+    /// (or stderr) and nothing else, on whichever platform the suite runs.
+    /// </summary>
+    private static (string Shell, string[] Arguments) PrintLines(int lines, bool toStdErr = false)
+    {
+        if (OperatingSystem.IsWindows())
+        {
+            string redirect = toStdErr ? " 1>&2" : string.Empty;
+            return (
+                "cmd",
+                ["/c", $"for /L %i in (1,1,{lines}) do @echo line %i {Padding}{redirect}"]
+            );
+        }
+
+        string target = toStdErr ? " > \"/dev/stderr\"" : string.Empty;
+        return (
+            "awk",
+            [$"BEGIN {{ for (i = 1; i <= {lines}; i++) print \"line \" i \" {Padding}\"{target} }}"]
+        );
+    }
+
+    [Fact]
+    public async Task ProcessRunner_WithAStdOutCallback_HandsOverEveryLineInOrder_AndKeepsOnlyTheTail()
+    {
+        // A caller that reads stdout line by line has already taken what it
+        // wanted. Keeping every line as well made a plugin's analysis run hold
+        // megabytes per track that nothing ever read.
+        ProcessRunner runner = new(NullLogger<ProcessRunner>.Instance);
+        (string shell, string[] arguments) = PrintLines(ManyLines);
+        List<string> captured = new(ManyLines);
+
+        ProcessResult result = await runner.RunAsync(
+            shell,
+            arguments,
+            onStdOut: captured.Add,
+            onStdErr: null,
+            workingDirectory: null,
+            cancellationToken: CancellationToken.None
+        );
+
+        result.IsSuccess.Should().BeTrue();
+        captured.Should().HaveCount(ManyLines);
+        captured
+            .Select(line => line.TrimEnd())
+            .Should()
+            .Equal(Enumerable.Range(1, ManyLines).Select(NumberedLine));
+
+        long printed = captured.Sum(line => (long)line.Length + 1);
+        printed.Should().BeGreaterThan(4 * 1024 * 1024, "the test must print several megabytes");
+
+        result.StdOut.Length.Should().BeLessThanOrEqualTo(ProcessRunner.StdOutTailMaxBytes);
+        result
+            .StdOut.Should()
+            .EndWith(NumberedLine(ManyLines), "what is kept is the end of the stream");
+    }
+
+    [Fact]
+    public async Task ProcessRunner_WithoutAStdOutCallback_ReturnsTheWholeOutput()
+    {
+        // ffprobe's JSON, the capability probes and the fingerprinter have no
+        // other way to read their process than the joined text, however long.
+        ProcessRunner runner = new(NullLogger<ProcessRunner>.Instance);
+        (string shell, string[] arguments) = PrintLines(ManyLines);
+
+        ProcessResult result = await runner.RunAsync(shell, arguments, (string?)null);
+
+        result.IsSuccess.Should().BeTrue();
+        string[] lines = result.StdOut.Split('\n');
+        lines.Should().HaveCount(ManyLines);
+        lines
+            .Select(line => line.TrimEnd())
+            .Should()
+            .Equal(Enumerable.Range(1, ManyLines).Select(NumberedLine));
+        result.StdOut.Length.Should().BeGreaterThan(ProcessRunner.StdOutTailMaxBytes);
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task ProcessRunner_KeepsTheTailOfStdErr_WithOrWithoutAStdOutCallback(
+        bool withStdOutCallback
+    )
+    {
+        ProcessRunner runner = new(NullLogger<ProcessRunner>.Instance);
+        (string shell, string[] arguments) = PrintLines(ManyLines, toStdErr: true);
+        List<string> stdOutLines = [];
+        List<string> stdErrLines = new(ManyLines);
+
+        ProcessResult result = await runner.RunAsync(
+            shell,
+            arguments,
+            onStdOut: withStdOutCallback ? stdOutLines.Add : null,
+            onStdErr: stdErrLines.Add,
+            workingDirectory: null,
+            cancellationToken: CancellationToken.None
+        );
+
+        result.IsSuccess.Should().BeTrue();
+        stdOutLines.Should().BeEmpty();
+        result.StdOut.Should().BeEmpty();
+
+        stdErrLines.Should().HaveCount(ManyLines);
+        stdErrLines
+            .Select(line => line.TrimEnd())
+            .Should()
+            .Equal(Enumerable.Range(1, ManyLines).Select(NumberedLine));
+        result.StdErr.Length.Should().BeLessThanOrEqualTo(ProcessRunner.StdErrMaxBytes);
+        result.StdErr.Should().EndWith(NumberedLine(ManyLines));
+    }
+
+    [Fact]
+    public async Task ProcessRunner_WithAStdOutCallback_StillReturnsAShortOutputWhole()
+    {
+        // Under the bound nothing is dropped, so a caller that passes a
+        // callback and reads the text as well sees what it saw before.
+        ProcessRunner runner = new(NullLogger<ProcessRunner>.Instance);
+        (string shell, string[] arguments) = PrintLines(3);
+        List<string> captured = [];
+
+        ProcessResult result = await runner.RunAsync(
+            shell,
+            arguments,
+            onStdOut: captured.Add,
+            onStdErr: null,
+            workingDirectory: null,
+            cancellationToken: CancellationToken.None
+        );
+
+        result
+            .StdOut.Split('\n')
+            .Select(line => line.TrimEnd())
+            .Should()
+            .Equal(NumberedLine(1), NumberedLine(2), NumberedLine(3));
+        captured
+            .Select(line => line.TrimEnd())
+            .Should()
+            .Equal(result.StdOut.Split('\n').Select(line => line.TrimEnd()));
+    }
+
+    [Fact]
+    public async Task ProcessRunner_WithAStdOutCallback_StillShowsTheMarkerLineAKillSignalWaitsFor()
+    {
+        // The plugin stem split ends a run that printed "progress=end" and
+        // then hangs at exit. That only works while the callback still sees
+        // the line the moment it is printed, whatever is kept of the stream.
+        ProcessRunner runner = new(NullLogger<ProcessRunner>.Instance);
+        bool isWindows = OperatingSystem.IsWindows();
+        string shell = isWindows ? "cmd" : "sh";
+        string[] arguments = isWindows
+            ? ["/c", "echo progress=end& ping -n 60 127.0.0.1 >nul"]
+            : ["-c", "echo progress=end; sleep 60"];
+        using CancellationTokenSource killSignal = new();
+        List<string> captured = [];
+
+        Stopwatch clock = Stopwatch.StartNew();
+        ProcessResult result = await runner.RunAsync(
+            shell,
+            arguments,
+            onStdOut: line =>
+            {
+                captured.Add(line);
+                if (line.Trim() == "progress=end")
+                    killSignal.Cancel();
+            },
+            onStdErr: null,
+            workingDirectory: null,
+            cancellationToken: CancellationToken.None,
+            killSignal: killSignal.Token
+        );
+        clock.Stop();
+
+        captured.Select(line => line.Trim()).Should().Contain("progress=end");
+        result.ExitCode.Should().Be(0, "a run ended by its kill signal is a finished run");
+        result.StdOut.Should().Contain("progress=end");
+        clock
+            .Elapsed.Should()
+            .BeLessThan(TimeSpan.FromSeconds(30), "the kill must not wait for the sleeper");
     }
 
     // ── working directory ─────────────────────────────────────────────────

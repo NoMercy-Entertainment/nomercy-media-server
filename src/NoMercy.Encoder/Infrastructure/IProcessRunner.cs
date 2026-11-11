@@ -11,6 +11,16 @@
 
 namespace NoMercy.Encoder.Infrastructure;
 
+/// <summary>
+/// Runs a child process and reports what became of it.
+/// <para>
+/// An overload called without a stdout callback returns everything the
+/// process printed in <see cref="ProcessResult.StdOut" />. One called with a
+/// callback hands every line to it as it arrives and keeps only the tail of
+/// the stream in the result, so a run that prints megabytes does not hold
+/// them a second time. stderr is kept as a tail either way.
+/// </para>
+/// </summary>
 public interface IProcessRunner
 {
     Task<ProcessResult> RunAsync(
