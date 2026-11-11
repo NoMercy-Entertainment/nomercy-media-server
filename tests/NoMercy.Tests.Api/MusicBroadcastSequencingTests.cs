@@ -305,6 +305,55 @@ public class MusicBroadcastSequencingTests
     }
 
     [Fact]
+    public async Task UpdatePlaybackState_DoesNotCoalesce_WhenVolumeDiffers()
+    {
+        (MusicPlaybackService service, _, Mock<IClientMessenger> messenger) = MakeService();
+        User user = new() { Id = Guid.NewGuid(), Name = "Test User" };
+        MusicPlayerState state = new()
+        {
+            CurrentItem = MakeTrack(),
+            CurrentList = new("", UriKind.Relative),
+            PlayState = true,
+            Time = 1_500,
+            VolumePercentage = 40,
+        };
+
+        await service.UpdatePlaybackState(user, state);
+        state.VolumePercentage = 60; // a slider drag lands inside the window
+        await service.UpdatePlaybackState(user, state);
+
+        messenger.Verify(
+            m => m.SendTo("MusicPlayerState", "musicHub", user.Id, It.IsAny<object>()),
+            Times.Exactly(2)
+        );
+    }
+
+    [Fact]
+    public async Task UpdatePlaybackState_DoesNotCoalesce_WhenAPassiveDeviceVolumeDiffers()
+    {
+        (MusicPlaybackService service, _, Mock<IClientMessenger> messenger) = MakeService();
+        User user = new() { Id = Guid.NewGuid(), Name = "Test User" };
+        MusicPlayerState state = new()
+        {
+            CurrentItem = MakeTrack(),
+            CurrentList = new("", UriKind.Relative),
+            PlayState = true,
+            Time = 1_500,
+            DeviceId = "device-a",
+        };
+        state.DeviceVolumes["device-b"] = 20;
+
+        await service.UpdatePlaybackState(user, state);
+        state.DeviceVolumes["device-b"] = 70; // controller moves the passive device
+        await service.UpdatePlaybackState(user, state);
+
+        messenger.Verify(
+            m => m.SendTo("MusicPlayerState", "musicHub", user.Id, It.IsAny<object>()),
+            Times.Exactly(2)
+        );
+    }
+
+    [Fact]
     public async Task UpdatePlaybackState_DoesNotCoalesce_WhenTimeBucketDiffers()
     {
         (MusicPlaybackService service, _, Mock<IClientMessenger> messenger) = MakeService();
