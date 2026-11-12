@@ -62,14 +62,20 @@ public class TranscodeRootOrphanSweeper : IHostedService
     private readonly string _root;
     private readonly bool _sweepAllChildren;
     private readonly TimeSpan _minOrphanAge;
+    private readonly IEncoderTempDirectoryOwners? _owners;
 
-    public TranscodeRootOrphanSweeper(ILogger<TranscodeRootOrphanSweeper> logger, IStorage storage)
+    public TranscodeRootOrphanSweeper(
+        ILogger<TranscodeRootOrphanSweeper> logger,
+        IStorage storage,
+        IEncoderTempDirectoryOwners? owners = null
+    )
         : this(
             logger,
             storage,
             StoragePaths.TranscodeRoot,
             IsDedicatedEncoderCache(StoragePaths.TranscodeRoot),
-            MinOrphanAge
+            MinOrphanAge,
+            owners
         ) { }
 
     internal TranscodeRootOrphanSweeper(
@@ -77,7 +83,8 @@ public class TranscodeRootOrphanSweeper : IHostedService
         IStorage storage,
         string root,
         bool sweepAllChildren,
-        TimeSpan minOrphanAge
+        TimeSpan minOrphanAge,
+        IEncoderTempDirectoryOwners? owners = null
     )
     {
         _logger = logger;
@@ -85,9 +92,10 @@ public class TranscodeRootOrphanSweeper : IHostedService
         _root = root;
         _sweepAllChildren = sweepAllChildren;
         _minOrphanAge = minOrphanAge;
+        _owners = owners;
     }
 
-    public Task StartAsync(CancellationToken cancellationToken)
+    public async Task StartAsync(CancellationToken cancellationToken)
     {
         if (!_storage.Exists(_root))
         {
@@ -95,7 +103,25 @@ public class TranscodeRootOrphanSweeper : IHostedService
                 "TranscodeRootOrphanSweeper: transcode root {Dir} does not exist, nothing to sweep",
                 _root
             );
-            return Task.CompletedTask;
+            return;
+        }
+
+        IReadOnlyCollection<string> ownedDirs = [];
+        if (_owners is not null)
+        {
+            try
+            {
+                ownedDirs = await _owners.GetOwnedTempDirectoriesAsync(cancellationToken);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "TranscodeRootOrphanSweeper: could not read the encoder queue, "
+                        + "keeping every working dir rather than risk deleting a live job's output"
+                );
+                return;
+            }
         }
 
         string pattern = _sweepAllChildren ? "*" : EncWorkingDirPrefix + "*";
@@ -111,13 +137,22 @@ public class TranscodeRootOrphanSweeper : IHostedService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "TranscodeRootOrphanSweeper: could not enumerate {Dir}", _root);
-            return Task.CompletedTask;
+            return;
         }
 
         DateTimeOffset cutoff = DateTimeOffset.UtcNow - _minOrphanAge;
 
         foreach (StorageEntry entry in orphans)
         {
+            if (IsOwned(entry.Path, ownedDirs))
+            {
+                _logger.LogInformation(
+                    "TranscodeRootOrphanSweeper: {Dir} belongs to a queued encoder job, keeping it",
+                    entry.Path
+                );
+                continue;
+            }
+
             DateTimeOffset? newestWrite = NewestWriteTime(entry.Path);
             if (newestWrite is { } newest && newest > cutoff)
             {
@@ -148,11 +183,29 @@ public class TranscodeRootOrphanSweeper : IHostedService
                 );
             }
         }
-
-        return Task.CompletedTask;
     }
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    private static bool IsOwned(string entryPath, IReadOnlyCollection<string> ownedDirs)
+    {
+        StringComparison comparison = OperatingSystem.IsWindows()
+            ? StringComparison.OrdinalIgnoreCase
+            : StringComparison.Ordinal;
+        string entryFull = Path.TrimEndingDirectorySeparator(Path.GetFullPath(entryPath));
+
+        foreach (string owned in ownedDirs)
+        {
+            string ownedFull = Path.TrimEndingDirectorySeparator(Path.GetFullPath(owned));
+            if (
+                ownedFull.Equals(entryFull, comparison)
+                || ownedFull.StartsWith(entryFull + Path.DirectorySeparatorChar, comparison)
+            )
+                return true;
+        }
+
+        return false;
+    }
 
     /// <summary>
     /// The most recent write time among every file under <paramref name="path"/>,

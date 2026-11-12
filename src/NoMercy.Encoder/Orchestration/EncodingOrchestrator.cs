@@ -150,13 +150,7 @@ public class EncodingOrchestrator(
                              + "OutputDirectory must resolve to a path under the transcode root — "
                              + "check for a rooted path or '..' traversal."
                 );
-            string relativeOutputPath = rawOutputDirectory.Replace(oldChar: '\\', newChar: '/').Trim(trimChar: '/');
-            string tempDir = string.IsNullOrEmpty(value: relativeOutputPath)
-                ? Path.Combine(path1: StoragePaths.TranscodeRoot, path2: $"nomercy-enc-{Ulid.NewUlid()}")
-                : Path.Combine(
-                    path1: StoragePaths.TranscodeRoot,
-                    path2: relativeOutputPath.Replace(oldChar: '/', newChar: Path.DirectorySeparatorChar)
-                );
+            string tempDir = EncoderTempDirectory.Resolve(outputDirectory: rawOutputDirectory);
             // request.OutputDirectory is documented as relative, but nothing
             // structurally enforces that beyond the rootedness check above: a
             // "../.." traversal escapes TranscodeRoot just as easily as a

@@ -28,6 +28,7 @@ using NoMercy.Data.Security;
 using NoMercy.Data.Services;
 using NoMercy.Database;
 using NoMercy.Encoder.Composition;
+using NoMercy.Encoder.Orchestration;
 using NoMercy.Encoder.Startup;
 using NoMercy.Encoder.Subtitles;
 using NoMercy.Events;
@@ -785,6 +786,7 @@ public static partial class ServiceConfiguration
             MediaProcessing.Images.MusicCoverStore
         >();
         services.AddTransient<IOrphanCheckpointLookup, EncoderOrphanCheckpointLookup>();
+        services.AddSingleton<IEncoderTempDirectoryOwners, QueuedEncoderTempDirectoryOwners>();
 
         services.AddHostedService<EncodingNotificationSubscriber>();
         services.AddHostedService<AutoEncodeSubscriber>();
