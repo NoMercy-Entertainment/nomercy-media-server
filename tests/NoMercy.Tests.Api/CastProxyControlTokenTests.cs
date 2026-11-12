@@ -169,4 +169,26 @@ public class CastProxyControlTokenTests
 
         Assert.Equal("Bearer user-keycloak-token", forward.Headers.Authorization!.ToString());
     }
+
+    [Fact]
+    public async Task CapableTv_WhenTheMintThrows_FallsBackToTheUserBearer()
+    {
+        using HttpClient client = new(
+            new StubHandler(HttpStatusCode.OK, """{"auth":["tv-control-token"]}""")
+        );
+
+        string? control = await CastProxyController.ResolveControlTokenAsync(
+            client,
+            Host,
+            Port,
+            () => throw new System.Security.Cryptography.CryptographicException("planted")
+        );
+        using HttpRequestMessage forward = CastProxyController.BuildForward(
+            UserContext(),
+            $"http://{Host}:{Port}/v1/launch",
+            control
+        );
+
+        Assert.Equal("Bearer user-keycloak-token", forward.Headers.Authorization!.ToString());
+    }
 }

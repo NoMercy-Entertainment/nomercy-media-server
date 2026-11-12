@@ -35,8 +35,8 @@ namespace NoMercy.Api.Controllers.V1;
 /// forwards the request LAN-side to the TV and relays the reply back. This lets
 /// the web reuse the exact <c>/v1</c> control surface the Android/KMP app uses
 /// natively — <c>launch</c>, <c>session</c> polling, <c>session/transport/*</c>.
-/// The caller's own bearer token is forwarded: the TV validates the same
-/// Keycloak user token the phone presents and auto-pairs the owner by subject.
+/// A TV that lists "tv-control-token" in its /v1/info gets a short control token;
+/// every other TV gets the caller's own bearer, as the phone presents it.
 /// </summary>
 [ApiController]
 [ApiVersion(1.0)]
@@ -141,10 +141,21 @@ public class CastProxyController(
                         a.ValueKind == JsonValueKind.String
                         && a.GetString() == ControlTokenCapability
                     );
-            return capable ? mint() : null;
+            if (!capable)
+                return null;
         }
         catch (Exception ex)
             when (ex is HttpRequestException or JsonException or OperationCanceledException)
+        {
+            return null;
+        }
+
+        // Any mint failure, thrown or null, keeps today's user-bearer forward.
+        try
+        {
+            return mint();
+        }
+        catch (Exception)
         {
             return null;
         }
