@@ -399,7 +399,10 @@ public class MusicRepositoryTests : IDisposable
     [Fact]
     public async Task AlbumCards_CarryTheirArtist()
     {
-        List<AlbumCardDto> cards = await _repository.GetAlbumCardsByIdsAsync([AlbumId1]);
+        List<AlbumCardDto> cards = await _repository.GetAlbumCardsByIdsAsync(
+            [AlbumId1],
+            SeedConstants.UserId
+        );
         MusicStartPageData start = await _repository.GetMusicStartPageAsync(SeedConstants.UserId);
 
         Assert.Equal("Arctic Monkeys", Assert.Single(cards).ArtistName);

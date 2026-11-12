@@ -191,8 +191,8 @@ public class MusicCardPlayableFilterTests : IDisposable
     [Fact]
     public async Task Search_ids_drop_an_artist_and_an_album_with_no_playable_track()
     {
-        List<Guid> artists = await _repository.SearchArtistIdsAsync("artist");
-        List<Guid> albums = await _repository.SearchAlbumIdsAsync("album");
+        List<Guid> artists = await _repository.SearchArtistIdsAsync("artist", SeedConstants.UserId);
+        List<Guid> albums = await _repository.SearchAlbumIdsAsync("album", SeedConstants.UserId);
 
         artists.Should().Equal(_playableArtist);
         albums.Should().Equal(_playableAlbum);
@@ -201,14 +201,14 @@ public class MusicCardPlayableFilterTests : IDisposable
     [Fact]
     public async Task Cards_by_ids_drop_an_artist_and_an_album_with_no_playable_track()
     {
-        List<ArtistCardDto> artists = await _repository.GetArtistCardsByIdsAsync([
-            _playableArtist,
-            _ghostArtist,
-        ]);
-        List<AlbumCardDto> albums = await _repository.GetAlbumCardsByIdsAsync([
-            _playableAlbum,
-            _ghostAlbum,
-        ]);
+        List<ArtistCardDto> artists = await _repository.GetArtistCardsByIdsAsync(
+            [_playableArtist, _ghostArtist],
+            SeedConstants.UserId
+        );
+        List<AlbumCardDto> albums = await _repository.GetAlbumCardsByIdsAsync(
+            [_playableAlbum, _ghostAlbum],
+            SeedConstants.UserId
+        );
 
         artists.Select(a => a.Id).Should().Equal(_playableArtist);
         albums.Select(a => a.Id).Should().Equal(_playableAlbum);

@@ -43,4 +43,14 @@ public static class QueryableExtensions
     {
         return query.Where(artist => artist.Library.LibraryUsers.Any(u => u.UserId == userId));
     }
+
+    /// <summary>
+    /// Filters tracks to only those linked to a library the user has access to.
+    /// </summary>
+    public static IQueryable<Track> ForUser(this IQueryable<Track> query, Guid userId)
+    {
+        return query.Where(track =>
+            track.LibraryTrack.Any(link => link.Library.LibraryUsers.Any(u => u.UserId == userId))
+        );
+    }
 }

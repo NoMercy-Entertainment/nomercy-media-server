@@ -17,6 +17,7 @@ using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
 using NoMercy.Api.DTOs.Media.Components;
 using NoMercy.Api.DTOs.Music;
+using NoMercy.Authorization;
 using NoMercy.Data.Repositories;
 using NoMercy.Database.Models.Movies;
 using NoMercy.Database.Models.Music;
@@ -206,25 +207,34 @@ public class SearchController : BaseController
         List<Track> Songs
     )> FetchMusicSearchResultsAsync(string normalizedQuery, CancellationToken ct)
     {
+        Guid userId = User.UserId();
         // Step 1: Get IDs sequentially (MusicRepository uses a single scoped DbContext, not thread-safe).
         // Cap each category: a broad query otherwise fans thousands of full entity graphs through
         // SearchMusicFullDataAsync. Only the top result, six tracks, and the carousels render.
         const int resultCap = UiLimits.SearchResultsPerCategory;
         List<Guid> artistIds =
         [
-            .. (await _musicRepository.SearchArtistIdsAsync(normalizedQuery, ct)).Take(resultCap),
+            .. (await _musicRepository.SearchArtistIdsAsync(normalizedQuery, userId, ct)).Take(
+                resultCap
+            ),
         ];
         List<Guid> albumIds =
         [
-            .. (await _musicRepository.SearchAlbumIdsAsync(normalizedQuery, ct)).Take(resultCap),
+            .. (await _musicRepository.SearchAlbumIdsAsync(normalizedQuery, userId, ct)).Take(
+                resultCap
+            ),
         ];
         List<Guid> playlistIds =
         [
-            .. (await _musicRepository.SearchPlaylistIdsAsync(normalizedQuery, ct)).Take(resultCap),
+            .. (await _musicRepository.SearchPlaylistIdsAsync(normalizedQuery, userId, ct)).Take(
+                resultCap
+            ),
         ];
         List<Guid> trackIds =
         [
-            .. (await _musicRepository.SearchTrackIdsAsync(normalizedQuery, ct)).Take(resultCap),
+            .. (await _musicRepository.SearchTrackIdsAsync(normalizedQuery, userId, ct)).Take(
+                resultCap
+            ),
         ];
 
         // Step 2: Query full data using the IDs in parallel (repository owns the fan-out)

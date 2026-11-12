@@ -114,13 +114,29 @@ public interface IMusicRepository
         CancellationToken ct = default
     );
 
-    Task<List<Guid>> SearchArtistIdsAsync(string normalizedQuery, CancellationToken ct = default);
+    Task<List<Guid>> SearchArtistIdsAsync(
+        string normalizedQuery,
+        Guid userId,
+        CancellationToken ct = default
+    );
 
-    Task<List<Guid>> SearchAlbumIdsAsync(string normalizedQuery, CancellationToken ct = default);
+    Task<List<Guid>> SearchAlbumIdsAsync(
+        string normalizedQuery,
+        Guid userId,
+        CancellationToken ct = default
+    );
 
-    Task<List<Guid>> SearchPlaylistIdsAsync(string normalizedQuery, CancellationToken ct = default);
+    Task<List<Guid>> SearchPlaylistIdsAsync(
+        string normalizedQuery,
+        Guid userId,
+        CancellationToken ct = default
+    );
 
-    Task<List<Guid>> SearchTrackIdsAsync(string normalizedQuery, CancellationToken ct = default);
+    Task<List<Guid>> SearchTrackIdsAsync(
+        string normalizedQuery,
+        Guid userId,
+        CancellationToken ct = default
+    );
 
     Task<List<Artist>> GetArtistsByIdsAsync(List<Guid> artistIds, CancellationToken ct = default);
 
@@ -186,6 +202,7 @@ public interface IMusicRepository
 
     Task<List<ArtistCardDto>> GetArtistCardsByIdsAsync(
         List<Guid> artistIds,
+        Guid userId,
         CancellationToken ct = default
     );
 
@@ -215,6 +232,7 @@ public interface IMusicRepository
 
     Task<List<AlbumCardDto>> GetAlbumCardsByIdsAsync(
         List<Guid> albumIds,
+        Guid userId,
         CancellationToken ct = default
     );
 
@@ -226,6 +244,7 @@ public interface IMusicRepository
 
     Task<List<PlaylistCardDto>> GetPlaylistCardsByIdsAsync(
         List<Guid> playlistIds,
+        Guid userId,
         CancellationToken ct = default
     );
 

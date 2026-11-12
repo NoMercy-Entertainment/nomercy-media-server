@@ -140,7 +140,7 @@ public class DiContextInjectionTests : IDisposable
             Year = 2020,
             Tracks = 1,
             HostFolder = "/media/music/Test Artist/Test Album",
-            LibraryId = SeedConstants.MovieLibraryId,
+            Library = musicLibrary,
             FolderId = SeedConstants.MovieFolderId,
             LibraryFolder = null!,
         };
@@ -188,6 +188,9 @@ public class DiContextInjectionTests : IDisposable
         context.ArtistLibrary.Add(
             new(Guid.Parse("11111111-1111-1111-1111-111111111111"), SeedConstants.MovieLibraryId)
         );
+        context.LibraryTrack.Add(
+            new(SeedConstants.MovieLibraryId, Guid.Parse("33333333-3333-3333-3333-333333333333"))
+        );
         context.AlbumLibrary.Add(
             new(Guid.Parse("22222222-2222-2222-2222-222222222222"), SeedConstants.MovieLibraryId)
         );
@@ -220,7 +223,7 @@ public class DiContextInjectionTests : IDisposable
         // Verify MusicRepository queries use the injected factory by checking data is accessible
         MusicRepository repository = new(CreateFactory());
 
-        List<Guid> artistIds = await repository.SearchArtistIdsAsync("test");
+        List<Guid> artistIds = await repository.SearchArtistIdsAsync("test", SeedConstants.UserId);
         Assert.Single(artistIds);
         Assert.Equal(Guid.Parse("11111111-1111-1111-1111-111111111111"), artistIds[0]);
     }
@@ -230,7 +233,7 @@ public class DiContextInjectionTests : IDisposable
     {
         MusicRepository repository = new(CreateFactory());
 
-        List<Guid> albumIds = await repository.SearchAlbumIdsAsync("test");
+        List<Guid> albumIds = await repository.SearchAlbumIdsAsync("test", SeedConstants.UserId);
         Assert.Single(albumIds);
         Assert.Equal(Guid.Parse("22222222-2222-2222-2222-222222222222"), albumIds[0]);
     }
@@ -240,7 +243,7 @@ public class DiContextInjectionTests : IDisposable
     {
         MusicRepository repository = new(CreateFactory());
 
-        List<Guid> trackIds = await repository.SearchTrackIdsAsync("test");
+        List<Guid> trackIds = await repository.SearchTrackIdsAsync("test", SeedConstants.UserId);
         Assert.Single(trackIds);
         Assert.Equal(Guid.Parse("33333333-3333-3333-3333-333333333333"), trackIds[0]);
     }
@@ -250,7 +253,10 @@ public class DiContextInjectionTests : IDisposable
     {
         MusicRepository repository = new(CreateFactory());
 
-        List<Guid> playlistIds = await repository.SearchPlaylistIdsAsync("test");
+        List<Guid> playlistIds = await repository.SearchPlaylistIdsAsync(
+            "test",
+            SeedConstants.UserId
+        );
         Assert.Single(playlistIds);
         Assert.Equal(Guid.Parse("44444444-4444-4444-4444-444444444444"), playlistIds[0]);
     }
@@ -328,10 +334,13 @@ public class DiContextInjectionTests : IDisposable
 
         MusicRepository repository = new(new TestDbContextFactory(options));
 
-        List<Guid> artistIds = await repository.SearchArtistIdsAsync("test");
-        List<Guid> albumIds = await repository.SearchAlbumIdsAsync("test");
-        List<Guid> trackIds = await repository.SearchTrackIdsAsync("test");
-        List<Guid> playlistIds = await repository.SearchPlaylistIdsAsync("test");
+        List<Guid> artistIds = await repository.SearchArtistIdsAsync("test", SeedConstants.UserId);
+        List<Guid> albumIds = await repository.SearchAlbumIdsAsync("test", SeedConstants.UserId);
+        List<Guid> trackIds = await repository.SearchTrackIdsAsync("test", SeedConstants.UserId);
+        List<Guid> playlistIds = await repository.SearchPlaylistIdsAsync(
+            "test",
+            SeedConstants.UserId
+        );
 
         Assert.Empty(artistIds);
         Assert.Empty(albumIds);

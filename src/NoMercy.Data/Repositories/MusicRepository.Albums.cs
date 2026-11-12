@@ -317,12 +317,14 @@ public partial class MusicRepository
 
     public async Task<List<AlbumCardDto>> GetAlbumCardsByIdsAsync(
         List<Guid> albumIds,
+        Guid userId,
         CancellationToken ct = default
     )
     {
         await using MediaContext mediaContext = await contextFactory.CreateDbContextAsync(ct);
         return await mediaContext
             .Albums.AsNoTracking()
+            .ForUser(userId)
             .Where(album => albumIds.Contains(album.Id))
             .Where(album =>
                 album.AlbumTrack.AsQueryable().Any(TrackAvailability.AlbumTrackIsPlayable)

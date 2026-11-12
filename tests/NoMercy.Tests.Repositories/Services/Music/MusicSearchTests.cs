@@ -26,13 +26,17 @@ public class MusicSearchTests
     public MusicSearchTests()
     {
         _repository
-            .Setup(r => r.SearchArtistIdsAsync(It.IsAny<string>(), default))
+            .Setup(r => r.SearchArtistIdsAsync(It.IsAny<string>(), UserId, default))
             .ReturnsAsync([]);
-        _repository.Setup(r => r.SearchAlbumIdsAsync(It.IsAny<string>(), default)).ReturnsAsync([]);
         _repository
-            .Setup(r => r.SearchPlaylistIdsAsync(It.IsAny<string>(), default))
+            .Setup(r => r.SearchAlbumIdsAsync(It.IsAny<string>(), UserId, default))
             .ReturnsAsync([]);
-        _repository.Setup(r => r.SearchTrackIdsAsync(It.IsAny<string>(), default)).ReturnsAsync([]);
+        _repository
+            .Setup(r => r.SearchPlaylistIdsAsync(It.IsAny<string>(), UserId, default))
+            .ReturnsAsync([]);
+        _repository
+            .Setup(r => r.SearchTrackIdsAsync(It.IsAny<string>(), UserId, default))
+            .ReturnsAsync([]);
     }
 
     [Fact]
@@ -47,7 +51,7 @@ public class MusicSearchTests
 
         cards.IsEmpty.Should().BeTrue();
         _repository.Verify(
-            r => r.GetArtistCardsByIdsAsync(It.IsAny<List<Guid>>(), default),
+            r => r.GetArtistCardsByIdsAsync(It.IsAny<List<Guid>>(), UserId, default),
             Times.Never
         );
     }
@@ -58,7 +62,7 @@ public class MusicSearchTests
         Guid trackId = Guid.NewGuid();
         Guid artistId = Guid.NewGuid();
         Guid albumId = Guid.NewGuid();
-        _repository.Setup(r => r.SearchTrackIdsAsync("q", default)).ReturnsAsync([trackId]);
+        _repository.Setup(r => r.SearchTrackIdsAsync("q", UserId, default)).ReturnsAsync([trackId]);
         _repository
             .Setup(r =>
                 r.GetArtistIdsFromTracksAsync(
@@ -76,10 +80,10 @@ public class MusicSearchTests
             )
             .ReturnsAsync([albumId]);
         _repository
-            .Setup(r => r.GetArtistCardsByIdsAsync(It.IsAny<List<Guid>>(), default))
+            .Setup(r => r.GetArtistCardsByIdsAsync(It.IsAny<List<Guid>>(), UserId, default))
             .ReturnsAsync([new ArtistCardDto()]);
         _repository
-            .Setup(r => r.GetAlbumCardsByIdsAsync(It.IsAny<List<Guid>>(), default))
+            .Setup(r => r.GetAlbumCardsByIdsAsync(It.IsAny<List<Guid>>(), UserId, default))
             .ReturnsAsync([new AlbumCardDto()]);
         _repository
             .Setup(r => r.SearchTrackCardsAsync(It.IsAny<List<Guid>>(), UserId, "NL", default))
@@ -101,6 +105,7 @@ public class MusicSearchTests
             r =>
                 r.GetArtistCardsByIdsAsync(
                     It.Is<List<Guid>>(ids => ids.SequenceEqual(new[] { artistId })),
+                    UserId,
                     default
                 ),
             Times.Once
@@ -109,6 +114,7 @@ public class MusicSearchTests
             r =>
                 r.GetAlbumCardsByIdsAsync(
                     It.Is<List<Guid>>(ids => ids.SequenceEqual(new[] { albumId })),
+                    UserId,
                     default
                 ),
             Times.Once
