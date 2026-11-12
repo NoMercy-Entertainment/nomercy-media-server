@@ -11,6 +11,7 @@
 
 using System.Net;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.Notifications;
@@ -126,8 +127,10 @@ public class WebhookNotificationDispatcherTests
     [Fact]
     public async Task Notify_OneUrlFails_OtherStillGetsNotified()
     {
-        EncoderOptions options = BuildOptions(["https://bad.example/hook", "https://good.example/hook"]
-        );
+        EncoderOptions options = BuildOptions([
+            "https://bad.example/hook",
+            "https://good.example/hook",
+        ]);
         PerUrlHandler handler = new(
             new Dictionary<string, HttpStatusCode>
             {
@@ -161,6 +164,41 @@ public class WebhookNotificationDispatcherTests
 
         // First attempt short-circuits before the request starts.
         Assert.Empty(handler.Requests);
+    }
+
+    [Fact]
+    public async Task Notify_FailingWebhook_LogsHostOnlyNeverThePath()
+    {
+        const string secretPath = "/hooks/placeholder-token-0000";
+        EncoderOptions options = BuildOptions($"https://example.test{secretPath}");
+        CapturingHandler handler = new() { StatusCode = HttpStatusCode.InternalServerError };
+        CapturingLogger logger = new();
+        WebhookNotificationDispatcher dispatcher = new(options, new(handler), logger);
+
+        using CancellationTokenSource cts = new(TimeSpan.FromSeconds(2));
+        await dispatcher.NotifyStartedAsync(new(1, "/in", "/out", "HLS"), cts.Token);
+
+        Assert.NotEmpty(logger.Messages);
+        Assert.All(logger.Messages, message => Assert.DoesNotContain(secretPath, message));
+        Assert.Contains(logger.Messages, message => message.Contains("example.test"));
+    }
+
+    private sealed class CapturingLogger : ILogger<WebhookNotificationDispatcher>
+    {
+        public List<string> Messages { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter
+        ) => Messages.Add(formatter(state, exception));
     }
 
     private static EncoderOptions BuildOptions(params string[] urls)

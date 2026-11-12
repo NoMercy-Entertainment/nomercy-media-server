@@ -105,6 +105,9 @@ public class WebhookNotificationDispatcher(
 
     private async Task PostWithRetryAsync(string url, string body, CancellationToken ct)
     {
+        // Chat webhook URLs carry their secret in the path; logs name the host only.
+        string host = Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) ? uri.Host : "<invalid>";
+
         for (int attempt = 1; attempt <= MaxRetries; attempt++)
         {
             if (ct.IsCancellationRequested)
@@ -118,7 +121,8 @@ public class WebhookNotificationDispatcher(
                     return;
 
                 logger.LogWarning(
-                    "Webhook {Url} returned {Status} on attempt {Attempt}/{Max}", [url, (int)response.StatusCode, attempt, MaxRetries]
+                    "Webhook {Host} returned {Status} on attempt {Attempt}/{Max}",
+                    [host, (int)response.StatusCode, attempt, MaxRetries]
                 );
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -129,7 +133,8 @@ public class WebhookNotificationDispatcher(
             {
                 logger.LogWarning(
                     ex,
-                    "Webhook {Url} threw on attempt {Attempt}/{Max}", [url, attempt, MaxRetries]
+                    "Webhook {Host} threw on attempt {Attempt}/{Max}",
+                    [host, attempt, MaxRetries]
                 );
             }
 
@@ -147,6 +152,6 @@ public class WebhookNotificationDispatcher(
             }
         }
 
-        logger.LogWarning("Webhook {Url} exhausted {Max} retries — giving up", [url, MaxRetries]);
+        logger.LogWarning("Webhook {Host} exhausted {Max} retries — giving up", [host, MaxRetries]);
     }
 }
