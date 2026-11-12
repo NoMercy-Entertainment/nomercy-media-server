@@ -21,12 +21,19 @@ namespace NoMercy.MediaProcessing.Music;
 /// A forced listing (manual refresh or rescan) always enumerates: a file edited in place
 /// changes its own size and time, not its folder's.
 /// </summary>
-public sealed class MusicListingCache
+public sealed class MusicListingCache(TimeProvider? clock = null)
 {
     public static MusicListingCache Shared { get; } = new();
 
+    private readonly TimeProvider _clock = clock ?? TimeProvider.System;
+
+    // Folder times come from a coarse clock: a folder that changed this close to its
+    // listing can change again with no new time, so that listing is not reused.
+    internal static readonly TimeSpan TrustAfter = TimeSpan.FromSeconds(2);
+
     private sealed record DirectorySnapshot(
         DateTime LastWriteUtc,
+        DateTime ListedUtc,
         List<TrackFileEntry> Files,
         List<string> SubDirectories
     );
@@ -85,8 +92,11 @@ public sealed class MusicListingCache
             !force
             && _directories.TryGetValue(directory, out DirectorySnapshot? known)
             && known.LastWriteUtc == lastWrite
+            && known.ListedUtc - lastWrite >= TrustAfter
         )
             return known;
+
+        DateTime listedUtc = _clock.GetUtcNow().UtcDateTime;
 
         List<TrackFileEntry> files = [];
         List<string> subDirectories = [];
@@ -114,7 +124,7 @@ public sealed class MusicListingCache
                 );
         }
 
-        DirectorySnapshot snapshot = new(lastWrite, files, subDirectories);
+        DirectorySnapshot snapshot = new(lastWrite, listedUtc, files, subDirectories);
         _directories[directory] = snapshot;
         return snapshot;
     }
