@@ -60,11 +60,12 @@ public class SubtitleDownloadSsrfTests : IClassFixture<NoMercyApiFactory>
     [InlineData("en us")]
     [InlineData("en;x")]
     [InlineData("a")]
+    [InlineData("en\n")]
     public async Task Download_RejectsLanguageThatIsNotALanguageCode(string language)
     {
         string payload =
             "{\"type\":\"movie\",\"id\":1,\"download_url\":\"https://example.com/subs.srt\",\"language\":\""
-            + language.Replace("\\", "\\\\")
+            + language.Replace("\\", "\\\\").Replace("\n", "\\n")
             + "\"}";
         StringContent body = new(payload, Encoding.UTF8, "application/json");
 

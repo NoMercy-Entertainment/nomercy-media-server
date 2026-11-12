@@ -277,7 +277,7 @@ public partial class SubtitlesController(
         return null;
     }
 
-    [GeneratedRegex(@"^[A-Za-z0-9-]{2,16}$", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    [GeneratedRegex(@"^[A-Za-z0-9-]{2,16}\z", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex LanguageCodePattern();
 
     private async Task<(IActionResult? Failed, string? VttContent)> DownloadAsVttAsync(
