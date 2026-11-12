@@ -23,7 +23,7 @@ jobs:
           fetch-tags: false
 
       - name: "TODO to Issue"
-        uses: alstr/todo-to-issue-action@v5
+        uses: alstr/todo-to-issue-action@37bb7b56e58569ef273b60678048030a7f0c261a # v5.1.15
         with:
           INSERT_ISSUE_URLS: "true"
           CLOSE_ISSUES: "true"
