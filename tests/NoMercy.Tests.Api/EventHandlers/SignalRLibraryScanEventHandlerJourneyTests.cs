@@ -34,7 +34,9 @@ public class SignalRLibraryScanEventHandlerJourneyTests
         List<Capture> calls = [];
         Mock<IClientMessenger> messengerMock = new(MockBehavior.Loose);
         messengerMock
-            .Setup(m => m.SendToAll(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object>()))
+            .Setup(m =>
+                m.SendToModerators(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object>())
+            )
             .Callback<string, string, object>(
                 (method, hub, payload) => calls.Add(new(method, hub, payload))
             )
@@ -313,7 +315,9 @@ public class LibraryScanCompletedFanOutJourneyTests
         List<string> signalRCalls = [];
         Mock<IClientMessenger> messengerMock = new(MockBehavior.Loose);
         messengerMock
-            .Setup(m => m.SendToAll(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object>()))
+            .Setup(m =>
+                m.SendToModerators(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object>())
+            )
             .Callback<string, string, object>((method, _, _) => signalRCalls.Add(method))
             .Returns(Task.CompletedTask);
 

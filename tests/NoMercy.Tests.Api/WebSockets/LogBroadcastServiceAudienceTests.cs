@@ -12,7 +12,7 @@
 using Moq;
 using NoMercy.Api.WebSockets;
 using NoMercy.Networking.Messaging;
-using NoMercy.NmSystem.SystemCalls;
+using NoMercy.NmSystem.Dto;
 using Xunit;
 
 namespace NoMercy.Tests.Api.WebSockets;
@@ -25,15 +25,7 @@ public class LogBroadcastServiceAudienceTests
         Mock<IClientMessenger> messenger = new();
         LogBroadcastService service = new(messenger.Object);
 
-        service.Start();
-        try
-        {
-            Logger.App($"audience-probe-{Guid.NewGuid()}");
-        }
-        finally
-        {
-            service.Stop();
-        }
+        service.OnLogEmitted(new LogEntry { Type = "App" });
 
         messenger.Verify(
             m => m.SendToAll("NewLog", It.IsAny<string>(), It.IsAny<object?>()),

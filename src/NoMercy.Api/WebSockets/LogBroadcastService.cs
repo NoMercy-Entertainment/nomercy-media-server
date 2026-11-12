@@ -43,7 +43,7 @@ public class LogBroadcastService(IClientMessenger clientMessenger) : ILogBroadca
         }
     }
 
-    private void OnLogEmitted(LogEntry entry)
+    internal void OnLogEmitted(LogEntry entry)
     {
         // Fire-and-forget: Logger.LogEmitted is a sync delegate; broadcasting is best-effort.
         _ = clientMessenger.SendToModerators("NewLog", "dashboardHub", entry);

@@ -38,7 +38,7 @@ public class SignalRLibraryScanEventHandler : EventSubscriber
 
     internal async Task OnScanStarted(LibraryScanStartedEvent @event, CancellationToken ct)
     {
-        await _clientMessenger.SendToAll(
+        await _clientMessenger.SendToModerators(
             "LibraryScanStarted",
             "dashboardHub",
             new
@@ -54,7 +54,7 @@ public class SignalRLibraryScanEventHandler : EventSubscriber
 
     internal async Task OnScanCompleted(LibraryScanCompletedEvent @event, CancellationToken ct)
     {
-        await _clientMessenger.SendToAll(
+        await _clientMessenger.SendToModerators(
             "LibraryScanCompleted",
             "dashboardHub",
             new
@@ -75,7 +75,7 @@ public class SignalRLibraryScanEventHandler : EventSubscriber
 
     internal async Task OnMediaAdded(MediaAddedEvent @event, CancellationToken ct)
     {
-        await _clientMessenger.SendToAll(
+        await _clientMessenger.SendToModerators(
             "MediaAdded",
             "dashboardHub",
             new
@@ -91,7 +91,7 @@ public class SignalRLibraryScanEventHandler : EventSubscriber
 
     internal async Task OnMediaRemoved(MediaRemovedEvent @event, CancellationToken ct)
     {
-        await _clientMessenger.SendToAll(
+        await _clientMessenger.SendToModerators(
             "MediaRemoved",
             "dashboardHub",
             new

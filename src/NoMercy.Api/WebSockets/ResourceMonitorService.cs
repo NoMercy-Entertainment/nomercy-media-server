@@ -87,7 +87,11 @@ public class ResourceMonitorService(
             try
             {
                 Resource resourceData = resourceMonitor.Monitor();
-                await clientMessenger.SendToAll("ResourceUpdate", "dashboardHub", resourceData);
+                await clientMessenger.SendToModerators(
+                    "ResourceUpdate",
+                    "dashboardHub",
+                    resourceData
+                );
             }
             catch (OperationCanceledException)
             {

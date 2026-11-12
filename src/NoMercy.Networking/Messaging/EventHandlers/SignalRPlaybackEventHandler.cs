@@ -36,7 +36,7 @@ public class SignalRPlaybackEventHandler : EventSubscriber
 
     internal async Task OnPlaybackStarted(PlaybackStartedEvent @event, CancellationToken ct)
     {
-        await _clientMessenger.SendToAll(
+        await _clientMessenger.SendToModerators(
             "PlaybackStarted",
             "dashboardHub",
             new
@@ -62,7 +62,7 @@ public class SignalRPlaybackEventHandler : EventSubscriber
     )
     {
         // Progress events are high-frequency; broadcast but don't log to avoid noise
-        await _clientMessenger.SendToAll(
+        await _clientMessenger.SendToModerators(
             "PlaybackProgress",
             "dashboardHub",
             new
@@ -78,7 +78,7 @@ public class SignalRPlaybackEventHandler : EventSubscriber
 
     internal async Task OnPlaybackCompleted(PlaybackCompletedEvent @event, CancellationToken ct)
     {
-        await _clientMessenger.SendToAll(
+        await _clientMessenger.SendToModerators(
             "PlaybackCompleted",
             "dashboardHub",
             new
