@@ -595,6 +595,7 @@ public class NoMercyApiFactory : WebApplicationFactory<Startup>
             Tracks = 2,
             HostFolder = "/media/music/Test Artist/Test Album",
             LibraryId = MusicLibraryId,
+            Library = null!,
             FolderId = MusicFolderId,
             LibraryFolder = null!,
         };
