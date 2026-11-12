@@ -341,26 +341,30 @@ internal static class Program
             ),
             new(
                 "search        SearchTrackIdsAsync",
-                async () => await new MusicRepository(factory).SearchTrackIdsAsync(searchTerm)
+                async () =>
+                    await new MusicRepository(factory).SearchTrackIdsAsync(searchTerm, userId)
             ),
             new(
                 "search        SearchArtistIdsAsync",
-                async () => await new MusicRepository(factory).SearchArtistIdsAsync(searchTerm)
+                async () =>
+                    await new MusicRepository(factory).SearchArtistIdsAsync(searchTerm, userId)
             ),
             new(
                 "search        SearchAlbumIdsAsync",
-                async () => await new MusicRepository(factory).SearchAlbumIdsAsync(searchTerm)
+                async () =>
+                    await new MusicRepository(factory).SearchAlbumIdsAsync(searchTerm, userId)
             ),
             new(
                 "search        SearchPlaylistIdsAsync",
-                async () => await new MusicRepository(factory).SearchPlaylistIdsAsync(searchTerm)
+                async () =>
+                    await new MusicRepository(factory).SearchPlaylistIdsAsync(searchTerm, userId)
             ),
             new(
                 "search        SearchTrackCards(uncapped)",
                 async () =>
                 {
                     MusicRepository repo = new(factory);
-                    List<Guid> t = await repo.SearchTrackIdsAsync(searchTerm);
+                    List<Guid> t = await repo.SearchTrackIdsAsync(searchTerm, userId);
                     return await repo.SearchTrackCardsAsync(t, userId, country);
                 }
             ),
@@ -369,7 +373,10 @@ internal static class Program
                 async () =>
                 {
                     MusicRepository repo = new(factory);
-                    List<Guid> t = [.. (await repo.SearchTrackIdsAsync(searchTerm)).Take(50)];
+                    List<Guid> t =
+                    [
+                        .. (await repo.SearchTrackIdsAsync(searchTerm, userId)).Take(50),
+                    ];
                     return await repo.SearchTrackCardsAsync(t, userId, country);
                 }
             ),
@@ -378,10 +385,10 @@ internal static class Program
                 async () =>
                 {
                     MusicRepository repo = new(factory);
-                    List<Guid> a = await repo.SearchArtistIdsAsync(searchTerm);
-                    List<Guid> al = await repo.SearchAlbumIdsAsync(searchTerm);
-                    List<Guid> p = await repo.SearchPlaylistIdsAsync(searchTerm);
-                    List<Guid> t = await repo.SearchTrackIdsAsync(searchTerm);
+                    List<Guid> a = await repo.SearchArtistIdsAsync(searchTerm, userId);
+                    List<Guid> al = await repo.SearchAlbumIdsAsync(searchTerm, userId);
+                    List<Guid> p = await repo.SearchPlaylistIdsAsync(searchTerm, userId);
+                    List<Guid> t = await repo.SearchTrackIdsAsync(searchTerm, userId);
                     return await repo.SearchMusicFullDataAsync(a, al, p, t);
                 }
             ),

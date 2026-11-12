@@ -22,6 +22,7 @@ namespace NoMercy.Tests.Setup.Cast;
 /// A cast session token is minted for the user who casts: the exchange subject is the
 /// caller's bearer, failures mint nothing, mints are rate limited, logs hold no token.
 /// </summary>
+[Collection(ProcessWideSetupStateCollection.Name)]
 [Trait("Category", "Unit")]
 public sealed class CastSessionTokenServiceTests
 {

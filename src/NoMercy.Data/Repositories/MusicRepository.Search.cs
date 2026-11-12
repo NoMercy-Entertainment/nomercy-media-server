@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.EntityFrameworkCore;
+using NoMercy.Data.Extensions;
 using NoMercy.Database;
 using NoMercy.Database.Models.Music;
 
@@ -21,12 +22,14 @@ public partial class MusicRepository
 
     public async Task<List<Guid>> SearchArtistIdsAsync(
         string normalizedQuery,
+        Guid userId,
         CancellationToken ct = default
     )
     {
         await using MediaContext mediaContext = await contextFactory.CreateDbContextAsync(ct);
         return await mediaContext
             .Artists.AsNoTracking()
+            .ForUser(userId)
             .Where(artist => MediaContext.NormalizeSearch(artist.Name).Contains(normalizedQuery))
             .Where(artist =>
                 artist.ArtistTrack.AsQueryable().Any(TrackAvailability.ArtistTrackIsPlayable)
@@ -39,12 +42,14 @@ public partial class MusicRepository
 
     public async Task<List<Guid>> SearchAlbumIdsAsync(
         string normalizedQuery,
+        Guid userId,
         CancellationToken ct = default
     )
     {
         await using MediaContext mediaContext = await contextFactory.CreateDbContextAsync(ct);
         return await mediaContext
             .Albums.AsNoTracking()
+            .ForUser(userId)
             .Where(album => MediaContext.NormalizeSearch(album.Name).Contains(normalizedQuery))
             .Where(album =>
                 album.AlbumTrack.AsQueryable().Any(TrackAvailability.AlbumTrackIsPlayable)
@@ -57,12 +62,14 @@ public partial class MusicRepository
 
     public async Task<List<Guid>> SearchPlaylistIdsAsync(
         string normalizedQuery,
+        Guid userId,
         CancellationToken ct = default
     )
     {
         await using MediaContext mediaContext = await contextFactory.CreateDbContextAsync(ct);
         return await mediaContext
             .Playlists.AsNoTracking()
+            .Where(playlist => playlist.UserId == userId)
             .Where(playlist =>
                 MediaContext.NormalizeSearch(playlist.Name).Contains(normalizedQuery)
             )
@@ -74,12 +81,14 @@ public partial class MusicRepository
 
     public async Task<List<Guid>> SearchTrackIdsAsync(
         string normalizedQuery,
+        Guid userId,
         CancellationToken ct = default
     )
     {
         await using MediaContext mediaContext = await contextFactory.CreateDbContextAsync(ct);
         return await mediaContext
             .Tracks.AsNoTracking()
+            .ForUser(userId)
             .Playable()
             .Where(track => MediaContext.NormalizeSearch(track.Name).Contains(normalizedQuery))
             .OrderBy(track => track.Name)
@@ -262,6 +271,7 @@ public partial class MusicRepository
         await using MediaContext mediaContext = await contextFactory.CreateDbContextAsync(ct);
         return await mediaContext
             .Tracks.AsNoTracking()
+            .ForUser(userId)
             .Playable()
             .Where(track => trackIds.Contains(track.Id))
             .Select(track => new SearchTrackCardDto

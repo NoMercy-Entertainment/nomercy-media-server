@@ -47,6 +47,25 @@ public class ClientMessenger(ConnectedClients connectedClients, ILogger<ClientMe
         );
     }
 
+    public async Task SendToModerators(string name, string endpoint, object? data = null)
+    {
+        List<KeyValuePair<string, Client>> targets =
+        [
+            .. connectedClients.Clients.Where(client =>
+                client.Value.IsModerator && client.Value.Endpoint == "/" + endpoint
+            ),
+        ];
+
+        logger.LogDebug(
+            "SendToModerators({Name}, {Endpoint}): {Count} target connection(s)",
+            [name, endpoint, targets.Count]
+        );
+
+        await Task.WhenAll(
+            targets.Select(target => SendOneAsync(name, target.Key, target.Value, data))
+        );
+    }
+
     public async Task SendTo(string name, string endpoint, Guid userId, object? data = null)
     {
         List<KeyValuePair<string, Client>> targets = connectedClients.ConnectionsFor(

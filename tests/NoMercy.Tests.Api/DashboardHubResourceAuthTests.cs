@@ -161,6 +161,44 @@ public class DashboardHubResourceAuthTests : IClassFixture<NoMercyApiFactory>
         logBroadcastService.Verify(s => s.Stop(), Times.Never);
     }
 
+    private static void StubConnectionPlumbing(DashboardHub hub)
+    {
+        hub.Groups = Mock.Of<IGroupManager>();
+        Mock<IHubCallerClients> clients = new();
+        clients.Setup(c => c.User(It.IsAny<string>())).Returns(Mock.Of<IClientProxy>());
+        hub.Clients = clients.Object;
+    }
+
+    [Fact]
+    public async Task OnConnectedAsync_DoesNotStartLogBroadcast_WhenCallerIsNonModerator()
+    {
+        DashboardHub hub = CreateHub(
+            TestAuthHandler.SecondaryUserId,
+            out _,
+            out Mock<ILogBroadcastService> logBroadcastService
+        );
+        StubConnectionPlumbing(hub);
+
+        await hub.OnConnectedAsync();
+
+        logBroadcastService.Verify(s => s.Start(), Times.Never);
+    }
+
+    [Fact]
+    public async Task OnConnectedAsync_StartsLogBroadcast_WhenCallerIsModerator()
+    {
+        DashboardHub hub = CreateHub(
+            TestAuthHandler.DefaultUserId,
+            out _,
+            out Mock<ILogBroadcastService> logBroadcastService
+        );
+        StubConnectionPlumbing(hub);
+
+        await hub.OnConnectedAsync();
+
+        logBroadcastService.Verify(s => s.Start(), Times.Once);
+    }
+
     // Minimal IHttpContextAccessor stand-in — the real implementation is an
     // AsyncLocal-backed singleton unsuited to constructing an isolated
     // HttpContext per test.

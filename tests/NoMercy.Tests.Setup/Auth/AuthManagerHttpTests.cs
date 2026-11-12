@@ -31,8 +31,9 @@ namespace NoMercy.Tests.Setup.Auth;
 /// correctly against the real Keycloak token endpoint contract — success stores
 /// tokens and signals auth-ready, an <c>invalid_grant</c> response permanently clears
 /// the refresh token (forcing re-auth through /setup rather than retrying forever),
-/// and any other failure clears the access token without touching the refresh token
-/// so a transient Keycloak hiccup can still recover on the next attempt.
+/// and any other failure keeps an unexpired access token (an expired or unreadable
+/// one is cleared) without touching the refresh token, so a transient Keycloak
+/// hiccup can still recover on the next attempt.
 /// </summary>
 /// <remarks>
 /// AuthManager builds its own <c>new HttpClient()</c> pointed at
@@ -41,6 +42,7 @@ namespace NoMercy.Tests.Setup.Auth;
 /// loopback <see cref="LoopbackHttpServer"/> exercises the actual HTTP round trip without
 /// touching the live internet or a real Keycloak.
 /// </remarks>
+[Collection(ProcessWideSetupStateCollection.Name)]
 [Trait("Category", "Unit")]
 public sealed class AuthManagerHttpTests : IDisposable
 {
@@ -192,6 +194,92 @@ public sealed class AuthManagerHttpTests : IDisposable
             string.IsNullOrEmpty(refreshRow?.SecureValue),
             "invalid_grant must permanently clear the refresh token"
         );
+    }
+
+    [Fact]
+    public async Task RefreshAsync_TransientServerError_UnexpiredAccessToken_KeepsAccessToken()
+    {
+        await SeedRefreshToken("still-valid-refresh-token");
+        string unexpired = CreateJwt(DateTime.UtcNow.AddMinutes(10));
+        _authTokenStore.SetAccessToken(unexpired);
+
+        using LoopbackHttpServer server = new();
+        server.Handler = _ => new(503, "service unavailable");
+        using ExternalServicesConfigScope scope = new(authBaseUrl: server.BaseUrl);
+
+        await _authManager.RefreshAsync();
+
+        Assert.Equal(unexpired, _authTokenStore.AccessToken);
+        Configuration? refreshRow = await ReadConfig("auth_refresh_token");
+        Assert.Equal("still-valid-refresh-token", refreshRow?.SecureValue);
+    }
+
+    [Fact]
+    public async Task RefreshAsync_NetworkUnreachable_UnexpiredAccessToken_KeepsAccessToken()
+    {
+        await SeedRefreshToken("some-refresh-token");
+        string unexpired = CreateJwt(DateTime.UtcNow.AddMinutes(10));
+        _authTokenStore.SetAccessToken(unexpired);
+        using ExternalServicesConfigScope scope = new(authBaseUrl: "http://127.0.0.1:1/");
+
+        await _authManager.RefreshAsync();
+
+        Assert.Equal(unexpired, _authTokenStore.AccessToken);
+    }
+
+    [Fact]
+    public async Task RefreshAsync_TransientServerError_ExpiredAccessToken_ClearsAccessToken()
+    {
+        await SeedRefreshToken("still-valid-refresh-token");
+        _authTokenStore.SetAccessToken(CreateJwt(DateTime.UtcNow.AddMinutes(-1)));
+
+        using LoopbackHttpServer server = new();
+        server.Handler = _ => new(503, "service unavailable");
+        using ExternalServicesConfigScope scope = new(authBaseUrl: server.BaseUrl);
+
+        await _authManager.RefreshAsync();
+
+        Assert.Null(_authTokenStore.AccessToken);
+    }
+
+    [Fact]
+    public async Task RefreshAsync_InvalidGrant_UnexpiredAccessToken_ClearsAccessToken()
+    {
+        await SeedRefreshToken("dead-refresh-token");
+        _authTokenStore.SetAccessToken(CreateJwt(DateTime.UtcNow.AddMinutes(10)));
+
+        using LoopbackHttpServer server = new();
+        server.Handler = _ => new(400, "{\"error\":\"invalid_grant\"}");
+        using ExternalServicesConfigScope scope = new(authBaseUrl: server.BaseUrl);
+
+        await _authManager.RefreshAsync();
+
+        Assert.Null(_authTokenStore.AccessToken);
+    }
+
+    [Fact]
+    public async Task ScheduleBackgroundRefresh_TransientFailure_KeepsTokenAndWaitsBeforeRetry()
+    {
+        await SeedRefreshToken("bg-refresh-token");
+        // Inside the 60s refresh window, so the loop refreshes at once.
+        string nearExpiry = CreateJwt(DateTime.UtcNow.AddSeconds(40));
+        _authTokenStore.SetAccessToken(nearExpiry);
+
+        using LoopbackHttpServer server = new();
+        server.Handler = _ => new(503, "service unavailable");
+        using ExternalServicesConfigScope scope = new(authBaseUrl: server.BaseUrl);
+
+        using CancellationTokenSource cts = new();
+        _authManager.ScheduleBackgroundRefresh(cts.Token);
+
+        DateTime deadline = DateTime.UtcNow.AddSeconds(5);
+        while (server.RequestCount == 0 && DateTime.UtcNow < deadline)
+            await Task.Delay(50);
+        await Task.Delay(1500);
+        cts.Cancel();
+
+        Assert.Equal(nearExpiry, _authTokenStore.AccessToken);
+        Assert.Equal(1, server.RequestCount);
     }
 
     [Fact]

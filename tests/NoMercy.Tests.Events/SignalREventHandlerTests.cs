@@ -32,6 +32,9 @@ public class SignalREventHandlerTests
         public Task SendToAll(string name, string endpoint, object? data = null) =>
             Task.CompletedTask;
 
+        public Task SendToModerators(string name, string endpoint, object? data = null) =>
+            Task.CompletedTask;
+
         public Task SendTo(string name, string endpoint, Guid userId, object? data = null) =>
             Task.CompletedTask;
     }

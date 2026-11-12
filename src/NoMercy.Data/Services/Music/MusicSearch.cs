@@ -44,10 +44,18 @@ public static class MusicSearch
         // the id lists keeps the rendered first-N identical and drops only the tail.
         const int resultCap = UiLimits.SearchResultsPerCategory;
 
-        List<Guid> artistIds = Cap(await musicRepository.SearchArtistIdsAsync(normalizedQuery));
-        List<Guid> albumIds = Cap(await musicRepository.SearchAlbumIdsAsync(normalizedQuery));
-        List<Guid> playlistIds = Cap(await musicRepository.SearchPlaylistIdsAsync(normalizedQuery));
-        List<Guid> trackIds = Cap(await musicRepository.SearchTrackIdsAsync(normalizedQuery));
+        List<Guid> artistIds = Cap(
+            await musicRepository.SearchArtistIdsAsync(normalizedQuery, userId)
+        );
+        List<Guid> albumIds = Cap(
+            await musicRepository.SearchAlbumIdsAsync(normalizedQuery, userId)
+        );
+        List<Guid> playlistIds = Cap(
+            await musicRepository.SearchPlaylistIdsAsync(normalizedQuery, userId)
+        );
+        List<Guid> trackIds = Cap(
+            await musicRepository.SearchTrackIdsAsync(normalizedQuery, userId)
+        );
 
         List<Guid> additionalArtistIds = [];
         if (albumIds.Count > 0)
@@ -73,11 +81,13 @@ public static class MusicSearch
 
         return new(
             allArtistIds.Count > 0
-                ? await musicRepository.GetArtistCardsByIdsAsync(allArtistIds)
+                ? await musicRepository.GetArtistCardsByIdsAsync(allArtistIds, userId)
                 : [],
-            allAlbumIds.Count > 0 ? await musicRepository.GetAlbumCardsByIdsAsync(allAlbumIds) : [],
+            allAlbumIds.Count > 0
+                ? await musicRepository.GetAlbumCardsByIdsAsync(allAlbumIds, userId)
+                : [],
             playlistIds.Count > 0
-                ? await musicRepository.GetPlaylistCardsByIdsAsync(playlistIds)
+                ? await musicRepository.GetPlaylistCardsByIdsAsync(playlistIds, userId)
                 : [],
             trackIds.Count > 0
                 ? await musicRepository.SearchTrackCardsAsync(trackIds, userId, country)

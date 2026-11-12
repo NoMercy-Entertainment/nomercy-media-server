@@ -411,12 +411,14 @@ public partial class MusicRepository
 
     public async Task<List<PlaylistCardDto>> GetPlaylistCardsByIdsAsync(
         List<Guid> playlistIds,
+        Guid userId,
         CancellationToken ct = default
     )
     {
         await using MediaContext mediaContext = await contextFactory.CreateDbContextAsync(ct);
         List<PlaylistCardDto> playlists = await mediaContext
             .Playlists.AsNoTracking()
+            .Where(playlist => playlist.UserId == userId)
             .Where(playlist => playlistIds.Contains(playlist.Id))
             .Select(playlist => new PlaylistCardDto
             {

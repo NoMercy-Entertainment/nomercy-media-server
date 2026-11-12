@@ -20,4 +20,5 @@ public class Client : Device
     public int? Ping { get; set; }
     public ISingleClientProxy Socket { get; set; } = null!;
     public string Endpoint { get; set; } = string.Empty;
+    public bool IsModerator { get; set; }
 }

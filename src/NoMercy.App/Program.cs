@@ -46,9 +46,11 @@ internal class Program
         // non-JSON value like a Chromium flag string throws an uncaught simdjson_error and
         // terminates the whole process. Remote-debugging-via-flag is Windows/WebView2-only
         // here, so only pass it there; every other platform gets null (native no-op).
-        string? browserControlInitParameters = OperatingSystem.IsWindows()
-            ? "--remote-debugging-port=9222"
-            : null;
+        string? browserControlInitParameters = BrowserControlParameters.Resolve(
+            OperatingSystem.IsWindows(),
+            Debugger.IsAttached,
+            Environment.GetEnvironmentVariable(BrowserControlParameters.RemoteDebugOptInVariable)
+        );
 
         IInfiniFrameWindowBuilder window = builder
             .Window.SetTemporaryFilesPath(browserDataPath)

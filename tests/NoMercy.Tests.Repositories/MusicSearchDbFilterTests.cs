@@ -94,6 +94,7 @@ public class MusicSearchDbFilterTests : IDisposable
             Order = 1,
         };
         context.Libraries.Add(library);
+        context.LibraryUser.Add(new(SeedConstants.MovieLibraryId, SeedConstants.UserId));
 
         Driver systemLocalDriver = new()
         {
@@ -251,6 +252,7 @@ public class MusicSearchDbFilterTests : IDisposable
 
         // Search only returns artists and albums that have a playable track.
         Guid playableTrackId = Guid.Parse("c0000001-0000-0000-0000-000000000001");
+        context.LibraryTrack.Add(new(SeedConstants.MovieLibraryId, playableTrackId));
         for (int number = 1; number <= 5; number++)
         {
             context.ArtistTrack.Add(
@@ -272,7 +274,7 @@ public class MusicSearchDbFilterTests : IDisposable
         MusicRepository repository = new(CreateFactory());
 
         // "beyonce" should find "Beyoncé" via accent normalization
-        List<Guid> ids = await repository.SearchArtistIdsAsync("beyonce");
+        List<Guid> ids = await repository.SearchArtistIdsAsync("beyonce", SeedConstants.UserId);
         Assert.Single(ids);
         Assert.Equal(Guid.Parse("a0000001-0000-0000-0000-000000000001"), ids[0]);
     }
@@ -283,7 +285,7 @@ public class MusicSearchDbFilterTests : IDisposable
         MusicRepository repository = new(CreateFactory());
 
         // "motley crue" should find "Mötley Crüe"
-        List<Guid> ids = await repository.SearchArtistIdsAsync("motley crue");
+        List<Guid> ids = await repository.SearchArtistIdsAsync("motley crue", SeedConstants.UserId);
         Assert.Single(ids);
         Assert.Equal(Guid.Parse("a0000001-0000-0000-0000-000000000002"), ids[0]);
     }
@@ -294,7 +296,7 @@ public class MusicSearchDbFilterTests : IDisposable
         MusicRepository repository = new(CreateFactory());
 
         // "twenty-one" should find "Twenty—One Pilots" (em dash normalized to hyphen)
-        List<Guid> ids = await repository.SearchArtistIdsAsync("twenty-one");
+        List<Guid> ids = await repository.SearchArtistIdsAsync("twenty-one", SeedConstants.UserId);
         Assert.Single(ids);
         Assert.Equal(Guid.Parse("a0000001-0000-0000-0000-000000000004"), ids[0]);
     }
@@ -305,7 +307,10 @@ public class MusicSearchDbFilterTests : IDisposable
         MusicRepository repository = new(CreateFactory());
 
         // "rolling stones" should find "The Rolling Stones"
-        List<Guid> ids = await repository.SearchArtistIdsAsync("rolling stones");
+        List<Guid> ids = await repository.SearchArtistIdsAsync(
+            "rolling stones",
+            SeedConstants.UserId
+        );
         Assert.Single(ids);
         Assert.Equal(Guid.Parse("a0000001-0000-0000-0000-000000000005"), ids[0]);
     }
@@ -315,7 +320,10 @@ public class MusicSearchDbFilterTests : IDisposable
     {
         MusicRepository repository = new(CreateFactory());
 
-        List<Guid> ids = await repository.SearchArtistIdsAsync("nonexistent artist");
+        List<Guid> ids = await repository.SearchArtistIdsAsync(
+            "nonexistent artist",
+            SeedConstants.UserId
+        );
         Assert.Empty(ids);
     }
 
@@ -325,7 +333,7 @@ public class MusicSearchDbFilterTests : IDisposable
         MusicRepository repository = new(CreateFactory());
 
         // "resume" should find "Résumé"
-        List<Guid> ids = await repository.SearchAlbumIdsAsync("resume");
+        List<Guid> ids = await repository.SearchAlbumIdsAsync("resume", SeedConstants.UserId);
         Assert.Single(ids);
         Assert.Equal(Guid.Parse("b0000001-0000-0000-0000-000000000001"), ids[0]);
     }
@@ -336,7 +344,7 @@ public class MusicSearchDbFilterTests : IDisposable
         MusicRepository repository = new(CreateFactory());
 
         // "deja vu" should find "Déjà Vu"
-        List<Guid> ids = await repository.SearchTrackIdsAsync("deja vu");
+        List<Guid> ids = await repository.SearchTrackIdsAsync("deja vu", SeedConstants.UserId);
         Assert.Single(ids);
         Assert.Equal(Guid.Parse("c0000001-0000-0000-0000-000000000001"), ids[0]);
     }
@@ -347,7 +355,7 @@ public class MusicSearchDbFilterTests : IDisposable
         MusicRepository repository = new(CreateFactory());
 
         // "cafe" should find "Café Vibes"
-        List<Guid> ids = await repository.SearchPlaylistIdsAsync("cafe");
+        List<Guid> ids = await repository.SearchPlaylistIdsAsync("cafe", SeedConstants.UserId);
         Assert.Single(ids);
         Assert.Equal(Guid.Parse("d0000001-0000-0000-0000-000000000001"), ids[0]);
     }
@@ -383,7 +391,7 @@ public class MusicSearchDbFilterTests : IDisposable
         MusicRepository repository = new(new TestDbContextFactory(options));
         interceptor.Clear();
 
-        await repository.SearchArtistIdsAsync("test");
+        await repository.SearchArtistIdsAsync("test", SeedConstants.UserId);
 
         // Verify SQL contains normalize_search function call in WHERE clause
         string capturedSql = string.Join(" ", interceptor.CapturedSql);
@@ -397,8 +405,78 @@ public class MusicSearchDbFilterTests : IDisposable
         MusicRepository repository = new(CreateFactory());
 
         // "e" should match multiple artists (Beyoncé, Mötley Crüe, Twenty—One Pilots, The Rolling Stones)
-        List<Guid> ids = await repository.SearchArtistIdsAsync("e");
+        List<Guid> ids = await repository.SearchArtistIdsAsync("e", SeedConstants.UserId);
         Assert.True(ids.Count > 1, "Partial match 'e' should match multiple artists");
+    }
+
+    // AUD-1229: search lists only the user's own playlists and accessible libraries.
+    [Theory]
+    [InlineData("playlist-ids")]
+    [InlineData("playlist-cards")]
+    [InlineData("album-ids")]
+    [InlineData("album-cards")]
+    [InlineData("artist-ids")]
+    [InlineData("artist-cards")]
+    [InlineData("track-ids")]
+    [InlineData("track-cards")]
+    public async Task Search_ReturnsNothingOutsideTheUsersPlaylistsAndLibraries(string kind)
+    {
+        MusicRepository repository = new(CreateFactory());
+        Guid otherUser = SeedConstants.OtherUserId;
+        Guid playlistId = Guid.Parse("d0000001-0000-0000-0000-000000000001");
+        Guid albumId = Guid.Parse("b0000001-0000-0000-0000-000000000001");
+        Guid artistId = Guid.Parse("a0000001-0000-0000-0000-000000000001");
+        Guid trackId = Guid.Parse("c0000001-0000-0000-0000-000000000001");
+
+        int found = kind switch
+        {
+            "playlist-ids" => (await repository.SearchPlaylistIdsAsync("cafe", otherUser)).Count,
+            "playlist-cards" => (
+                await repository.GetPlaylistCardsByIdsAsync([playlistId], otherUser)
+            ).Count,
+            "album-ids" => (await repository.SearchAlbumIdsAsync("resume", otherUser)).Count,
+            "album-cards" => (await repository.GetAlbumCardsByIdsAsync([albumId], otherUser)).Count,
+            "artist-ids" => (await repository.SearchArtistIdsAsync("beyonce", otherUser)).Count,
+            "artist-cards" => (
+                await repository.GetArtistCardsByIdsAsync([artistId], otherUser)
+            ).Count,
+            "track-ids" => (await repository.SearchTrackIdsAsync("deja vu", otherUser)).Count,
+            "track-cards" => (
+                await repository.SearchTrackCardsAsync([trackId], otherUser, "NL")
+            ).Count,
+            _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+        };
+        int own = kind switch
+        {
+            "playlist-ids" => (
+                await repository.SearchPlaylistIdsAsync("cafe", SeedConstants.UserId)
+            ).Count,
+            "playlist-cards" => (
+                await repository.GetPlaylistCardsByIdsAsync([playlistId], SeedConstants.UserId)
+            ).Count,
+            "album-ids" => (
+                await repository.SearchAlbumIdsAsync("resume", SeedConstants.UserId)
+            ).Count,
+            "album-cards" => (
+                await repository.GetAlbumCardsByIdsAsync([albumId], SeedConstants.UserId)
+            ).Count,
+            "artist-ids" => (
+                await repository.SearchArtistIdsAsync("beyonce", SeedConstants.UserId)
+            ).Count,
+            "artist-cards" => (
+                await repository.GetArtistCardsByIdsAsync([artistId], SeedConstants.UserId)
+            ).Count,
+            "track-ids" => (
+                await repository.SearchTrackIdsAsync("deja vu", SeedConstants.UserId)
+            ).Count,
+            "track-cards" => (
+                await repository.SearchTrackCardsAsync([trackId], SeedConstants.UserId, "NL")
+            ).Count,
+            _ => throw new ArgumentOutOfRangeException(nameof(kind)),
+        };
+
+        Assert.Equal(0, found);
+        Assert.Equal(1, own);
     }
 
     public void Dispose()

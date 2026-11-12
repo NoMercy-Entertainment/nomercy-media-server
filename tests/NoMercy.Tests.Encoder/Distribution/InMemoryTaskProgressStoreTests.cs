@@ -130,14 +130,36 @@ public class InMemoryTaskProgressStoreTests
     }
 
     [Fact]
-    public void Update_OverMaxEntries_KeepsRecentEntries()
+    public void Update_PastMaxEntries_StaysBoundedWithFreshEntries()
     {
-        // If all entries are within the freshness window, none are evicted
-        // even when count exceeds MaxEntries — they all stay.
         InMemoryTaskProgressStore store = new();
-        for (int i = 0; i < 501; i++)
+        for (int i = 0; i < 1000; i++)
             store.Update($"task-{i}", Snap($"task-{i}"));
 
-        store.GetAll().Count.Should().BeGreaterThan(500);
+        store.GetAll().Count.Should().BeLessThanOrEqualTo(500);
+    }
+
+    [Fact]
+    public void Update_PastMaxEntries_DropsOldestAndKeepsNewest()
+    {
+        InMemoryTaskProgressStore store = new();
+        for (int i = 0; i < 1000; i++)
+            store.Update($"task-{i}", Snap($"task-{i}"));
+
+        store.Get("task-0").Should().BeNull();
+        store.Get("task-999").Should().NotBeNull();
+    }
+
+    [Fact]
+    public void Update_ExistingTaskAtCap_DoesNotEvictOthers()
+    {
+        InMemoryTaskProgressStore store = new();
+        for (int i = 0; i < 500; i++)
+            store.Update($"task-{i}", Snap($"task-{i}"));
+
+        store.Update("task-0", Snap("task-0", percent: 99));
+
+        store.GetAll().Count.Should().Be(500);
+        store.Get("task-0")!.PercentComplete.Should().Be(99);
     }
 }

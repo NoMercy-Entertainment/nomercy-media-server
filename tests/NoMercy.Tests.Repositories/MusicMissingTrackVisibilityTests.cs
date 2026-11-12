@@ -143,6 +143,10 @@ public class MusicMissingTrackVisibilityTests : IDisposable
             MissingSince = DateTime.UtcNow.AddDays(-1),
         };
         _context.Tracks.AddRange([present, missing]);
+        _context.LibraryTrack.AddRange([
+            new(library.Id, _presentTrackId),
+            new(library.Id, _missingTrackId),
+        ]);
         _context.SaveChanges();
 
         _context.AlbumTrack.AddRange([
@@ -185,7 +189,7 @@ public class MusicMissingTrackVisibilityTests : IDisposable
     [Fact]
     public async Task Track_search_leaves_out_a_track_whose_file_is_missing()
     {
-        List<Guid> ids = await _repository.SearchTrackIdsAsync("zebra");
+        List<Guid> ids = await _repository.SearchTrackIdsAsync("zebra", SeedConstants.UserId);
 
         Assert.Equal([_presentTrackId], ids);
     }
@@ -213,7 +217,10 @@ public class MusicMissingTrackVisibilityTests : IDisposable
     [Fact]
     public async Task Album_cards_count_only_tracks_whose_file_is_present()
     {
-        List<AlbumCardDto> byIds = await _repository.GetAlbumCardsByIdsAsync([_albumId]);
+        List<AlbumCardDto> byIds = await _repository.GetAlbumCardsByIdsAsync(
+            [_albumId],
+            SeedConstants.UserId
+        );
         List<AlbumCardDto> all = await _repository.GetAllAlbumCardsAsync(
             SeedConstants.UserId,
             "en"
