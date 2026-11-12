@@ -134,6 +134,11 @@ public static partial class ServiceConfiguration
         services.AddSingleton<BootOrchestrator>();
         services.AddSingleton<CastSessionTokenService>();
         services.AddSingleton<
+            Api.Services.Cast.ICastControlKeyStore,
+            Api.Services.Cast.CastControlKeyStore
+        >();
+        services.AddSingleton<Api.Services.Cast.CastControlTokenService>();
+        services.AddSingleton<
             Api.Services.Cast.IServerCastWaker,
             Api.Services.Cast.ServerCastWaker
         >();

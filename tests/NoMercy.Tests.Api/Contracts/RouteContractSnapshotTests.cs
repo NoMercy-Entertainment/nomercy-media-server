@@ -342,6 +342,7 @@ public class RouteContractSnapshotTests : IClassFixture<NoMercyApiFactory>
         "PATCH api/v{version:apiVersion}/music/playlists/{id:guid} [Playlists.Edit]",
         "PATCH api/v{version:apiVersion}/music/tracks/{id:guid}/lyrics-offset [Tracks.LyricsOffset]",
         "PATCH api/v{version:apiVersion}/playlists/{id:guid} [UserPlaylists.Edit]",
+        "POST api/v{version:apiVersion}/cast/{deviceId}/token [CastToken.Mint]",
         "POST api/v{version:apiVersion}/collection/{id:int}/add [Collections.Add]",
         "POST api/v{version:apiVersion}/collection/{id:int}/like [Collections.Like]",
         "POST api/v{version:apiVersion}/collection/{id:int}/refresh [Collections.Refresh]",
