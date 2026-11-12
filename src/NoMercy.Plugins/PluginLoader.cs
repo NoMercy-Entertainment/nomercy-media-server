@@ -253,6 +253,57 @@ internal sealed class PluginLoader(
                 )
             );
 
+    // The consent rule and the run gate, asked the same way before a plugin
+    // starts in this process or in its own (AUD-9884).
+    private async Task<bool> MayStartAsync(
+        PluginManifest manifest,
+        string assemblyPath,
+        string manifestPath,
+        PluginVerificationResult verification,
+        CancellationToken ct
+    )
+    {
+        // An elevated plugin stays Disabled until the owner grants consent.
+        // Where it came from does not answer that: see PluginAutoEnable.
+        bool mayStart = PluginAutoEnable.Allows(manifest, _consentService);
+
+        // Asked before the registry holds the plugin: a gate asked about a
+        // plugin the server already started cannot stop one from starting.
+        PluginRefusal? refused = RunRefusal(manifest, assemblyPath, manifestPath, verification);
+
+        if (refused is not null)
+        {
+            mayStart = false;
+
+            _logger.LogWarning(
+                "Plugin {PluginName} did not start: {Why} {Fix}",
+                [manifest.Name, refused.Why, refused.Fix]
+            );
+        }
+
+        // A manifest that widened past what the owner approved must not ride
+        // the old consent to Active.
+        if (PluginAutoEnable.NeedsReConsent(manifest, _consentService))
+        {
+            _logger.LogWarning(
+                "Plugin {PluginName} widened its capabilities past its recorded consent and was disabled pending re-consent.",
+                [manifest.Name]
+            );
+
+            await _eventBus.PublishAsync(
+                new PluginConsentRequiredEvent
+                {
+                    PluginId = manifest.Id.ToString(),
+                    PluginName = manifest.Name,
+                    Reason = "capabilities-widened",
+                },
+                ct
+            );
+        }
+
+        return mayStart;
+    }
+
     // The revocation of the plugin listed at this path, which is left off.
     // A bare assembly has no identity until it loads, so only a listed one matches.
     private PluginRefusal? RevokedAt(string absoluteAssemblyPath)
@@ -447,6 +498,26 @@ internal sealed class PluginLoader(
             // reason so the dashboard can say what to do.
             if (_remote?.IsolationFor(manifest.Id.Value) == PluginIsolation.OutOfProcess)
             {
+                // Asked before the other process starts: starting it runs the plugin.
+                if (!await MayStartAsync(manifest, assemblyPath, manifestPath, verification, ct))
+                {
+                    _registry[manifest.Id.Value] = new(
+                        PluginManifestParser.ToPluginInfo(
+                            manifest,
+                            assemblyPath,
+                            PluginStatus.Disabled,
+                            manifestPath,
+                            verification.Verified,
+                            verification.Trusted,
+                            PluginSideloadMarker.IsMarked(manifestPath)
+                        ),
+                        null,
+                        null
+                    );
+
+                    return;
+                }
+
                 IPlugin? elsewhere = await _remote.LoadAsync(
                     new PluginDescription(
                         manifest.Id.Value,
@@ -541,55 +612,13 @@ internal sealed class PluginLoader(
                         continue;
                     }
 
-                    // An elevated plugin (declares network/rest/ws/auth capabilities)
-                    // must not silently start reaching the network or claims pipeline
-                    // on first install — it loads but stays Disabled until the owner
-                    // grants consent from the dashboard. Where it came from does
-                    // not answer that question: see PluginAutoEnable.
-                    bool mayAutoEnable = PluginAutoEnable.Allows(manifest, _consentService);
-
-                    // And the four questions the server asks before anything
-                    // runs: revoked, unpaid, missing a dependency, unanswered.
-                    // Asked here rather than after the registry, because a
-                    // gate that can only be asked about a plugin the server
-                    // already started cannot stop one from starting.
-                    PluginRefusal? refused = RunRefusal(
+                    bool mayAutoEnable = await MayStartAsync(
                         manifest,
                         assemblyPath,
                         manifestPath,
-                        verification
+                        verification,
+                        ct
                     );
-
-                    if (refused is not null)
-                    {
-                        mayAutoEnable = false;
-
-                        _logger.LogWarning(
-                            "Plugin {PluginName} did not start: {Why} {Fix}",
-                            [manifest.Name, refused.Why, refused.Fix]
-                        );
-                    }
-
-                    // A manifest that widened past what the owner already
-                    // approved must not ride the old consent to Active — the
-                    // owner said yes to a smaller request than this one.
-                    if (PluginAutoEnable.NeedsReConsent(manifest, _consentService))
-                    {
-                        _logger.LogWarning(
-                            "Plugin {PluginName} widened its capabilities past its recorded consent and was disabled pending re-consent.",
-                            [manifest.Name]
-                        );
-
-                        await _eventBus.PublishAsync(
-                            new PluginConsentRequiredEvent
-                            {
-                                PluginId = manifest.Id.ToString(),
-                                PluginName = manifest.Name,
-                                Reason = "capabilities-widened",
-                            },
-                            ct
-                        );
-                    }
 
                     PluginStatus initialStatus = mayAutoEnable
                         ? PluginStatus.Active
