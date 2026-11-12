@@ -168,6 +168,9 @@ public static class PluginServiceCollectionExtensions
                 sp.GetRequiredService<ILogger<PluginEntitlementClient>>()
             )
         );
+        services.AddSingleton<IPluginRevocationEnforcer>(sp =>
+            (PluginManager)sp.GetRequiredService<IPluginManager>()
+        );
         services.AddSingleton<PluginRevocationStartupRefresh>(sp =>
             new(
                 sp.GetRequiredService<PluginMarketplaceKeyClient>(),

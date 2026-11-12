@@ -21,13 +21,14 @@ using NoMercy.PluginSdk.Capabilities;
 using NoMercy.PluginSdk.Guests;
 using NoMercy.PluginSdk.Hub;
 using NoMercy.PluginSdk.OutOfProcess;
+using NoMercy.PluginSdk.Revocation;
 using NoMercy.PluginSdk.Sideload;
 using NoMercy.PluginSdk.Verification;
 using NoMercy.Storage;
 
 namespace NoMercy.PluginSdk;
 
-public class PluginManager : IPluginManager, IDisposable
+public class PluginManager : IPluginManager, IPluginRevocationEnforcer, IDisposable
 {
     private readonly IEventBus _eventBus;
     private readonly IServiceProvider _serviceProvider;
@@ -1187,6 +1188,11 @@ public class PluginManager : IPluginManager, IDisposable
     public Task EnablePluginAsync(Ulid pluginId, CancellationToken ct = default)
     {
         return _lifecycle.EnablePluginAsync(pluginId, ct);
+    }
+
+    public Task StopRevokedAsync(CancellationToken ct = default)
+    {
+        return _lifecycle.StopRevokedAsync(ct);
     }
 
     public Task DisablePluginAsync(Ulid pluginId, CancellationToken ct = default)

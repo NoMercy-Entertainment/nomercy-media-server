@@ -24,6 +24,7 @@ public class PluginLoader : IPluginLoader
     private readonly PluginApplicationPartRegistrar _partRegistrar;
     private readonly IPluginRepository _repository;
     private readonly PluginRevocationStartupRefresh _revocations;
+    private readonly IPluginRevocationEnforcer _enforcer;
 
     public PluginLoader(
         ILogger<PluginLoader> logger,
@@ -31,9 +32,11 @@ public class PluginLoader : IPluginLoader
         IPluginCronRegistrar cronRegistrar,
         PluginApplicationPartRegistrar partRegistrar,
         IPluginRepository repository,
-        PluginRevocationStartupRefresh revocations
+        PluginRevocationStartupRefresh revocations,
+        IPluginRevocationEnforcer enforcer
     )
     {
+        _enforcer = enforcer;
         _revocations = revocations;
         _logger = logger;
         _pluginManager = pluginManager;
@@ -59,6 +62,9 @@ public class PluginLoader : IPluginLoader
         await _revocations.RefreshBeforeLoadAsync(ct);
 
         IReadOnlyList<PluginLoadResult> loadedPlugins = await _pluginManager.LoadAllAsync(ct);
+
+        // A list saved while the load ran is read once more (AUD-1134).
+        await _enforcer.StopRevokedAsync(ct);
 
         foreach (PluginLoadResult pluginResult in loadedPlugins)
         {
