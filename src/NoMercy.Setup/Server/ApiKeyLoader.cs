@@ -262,7 +262,14 @@ public class ApiKeyLoader : IApiKeyLoader
                         return;
                     }
 
+                    // A loop stopped during its wait or its fetch neither asks nor writes.
+                    if (ct.IsCancellationRequested)
+                        return;
+
                     ApiInfoResponse? fresh = await TryFetchFromNetwork();
+                    if (ct.IsCancellationRequested)
+                        return;
+
                     if (fresh is not null)
                     {
                         ApplyKeys(fresh);
