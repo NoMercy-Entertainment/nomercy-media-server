@@ -18,7 +18,17 @@ public static class EncodeOutputValidator
 {
     private static readonly HashSet<string> MediaExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".ts", ".m4s", ".mp4", ".mkv", ".webm", ".mp3", ".aac", ".m4a", ".flac", ".opus", ".ogg",
+        ".ts",
+        ".m4s",
+        ".mp4",
+        ".mkv",
+        ".webm",
+        ".mp3",
+        ".aac",
+        ".m4a",
+        ".flac",
+        ".opus",
+        ".ogg",
     };
 
     /// <summary>Returns one line per problem; empty means the output is sound.</summary>
@@ -26,7 +36,9 @@ public static class EncodeOutputValidator
     {
         List<string> problems = [];
 
-        foreach (string file in Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories))
+        foreach (
+            string file in Directory.EnumerateFiles(directory, "*", SearchOption.AllDirectories)
+        )
         {
             string rel = Path.GetRelativePath(directory, file).Replace('\\', '/');
             string extension = Path.GetExtension(file);
@@ -49,11 +61,19 @@ public static class EncodeOutputValidator
 
         double tolerance = Math.Max(5.0, expectedSeconds * 0.01);
 
-        foreach (string playlist in Directory.EnumerateFiles(directory, "*.m3u8", SearchOption.AllDirectories))
+        foreach (
+            string playlist in Directory.EnumerateFiles(
+                directory,
+                "*.m3u8",
+                SearchOption.AllDirectories
+            )
+        )
         {
             string folder = Path.GetFileName(Path.GetDirectoryName(playlist) ?? string.Empty);
-            if (!folder.StartsWith("video_", StringComparison.OrdinalIgnoreCase)
-                && !folder.StartsWith("audio_", StringComparison.OrdinalIgnoreCase))
+            if (
+                !folder.StartsWith("video_", StringComparison.OrdinalIgnoreCase)
+                && !folder.StartsWith("audio_", StringComparison.OrdinalIgnoreCase)
+            )
                 continue;
 
             double total = 0;
@@ -63,8 +83,14 @@ public static class EncodeOutputValidator
                 if (!line.StartsWith("#EXTINF:", StringComparison.Ordinal))
                     continue;
                 string value = line["#EXTINF:".Length..].Split(',')[0];
-                if (double.TryParse(value, System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.InvariantCulture, out double seconds))
+                if (
+                    double.TryParse(
+                        value,
+                        System.Globalization.NumberStyles.Float,
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        out double seconds
+                    )
+                )
                 {
                     total += seconds;
                     any = true;
@@ -73,7 +99,11 @@ public static class EncodeOutputValidator
 
             if (any && Math.Abs(total - expectedSeconds) > tolerance)
                 problems.Add(
-                    $"{Path.GetRelativePath(directory, playlist).Replace('\\', '/')} lasts {total:F1} s, the source lasts {expectedSeconds:F1} s");
+                    string.Create(
+                        System.Globalization.CultureInfo.InvariantCulture,
+                        $"{Path.GetRelativePath(directory, playlist).Replace('\\', '/')} lasts {total:F1} s, the source lasts {expectedSeconds:F1} s"
+                    )
+                );
         }
 
         return problems;
@@ -97,7 +127,11 @@ public static class EncodeOutputValidator
         foreach (string line in lines)
         {
             string uri = line.Trim();
-            if (uri.Length == 0 || uri.StartsWith('#') || uri.Contains("://", StringComparison.Ordinal))
+            if (
+                uri.Length == 0
+                || uri.StartsWith('#')
+                || uri.Contains("://", StringComparison.Ordinal)
+            )
                 continue;
 
             string target = Path.Combine(folder, uri.Split('?')[0]);

@@ -70,7 +70,8 @@ public class MediaAnalyzer(IProcessRunner processRunner, IStorage storage, Encod
                 $"ffprobe failed for '{filePath}': {result.StdErr}"
             );
 
-        return ParseFfprobeJson(result.StdOut, filePath);
+        MediaInfo info = ParseFfprobeJson(result.StdOut, filePath);
+        return await ProbeVideoTailAsync(info, [.. extraInputArgs ?? [], filePath], ct);
     }
 
     public async Task<MediaInfo> AnalyzeAsync(
@@ -93,7 +94,86 @@ public class MediaAnalyzer(IProcessRunner processRunner, IStorage storage, Encod
                 $"ffprobe failed for '{filePath}': {result.StdErr}"
             );
 
-        return ParseFfprobeJson(result.StdOut, filePath);
+        MediaInfo info = ParseFfprobeJson(result.StdOut, filePath);
+        return await ProbeVideoTailAsync(info, [inputLease.Path], ct);
+    }
+
+    // A remuxed mkv often has no per-stream duration; the video's last packets
+    // are then the only source of where it ends (#647).
+    private async Task<MediaInfo> ProbeVideoTailAsync(
+        MediaInfo info,
+        string[] inputArgs,
+        CancellationToken ct
+    )
+    {
+        if (info.VideoDuration is not null || !info.HasVideo || info.Duration.TotalSeconds <= 0)
+            return info;
+
+        double from = Math.Max(0, info.Duration.TotalSeconds - TailProbeSeconds);
+        string[] arguments =
+        [
+            "-v",
+            "quiet",
+            "-print_format",
+            "json",
+            "-select_streams",
+            "v:0",
+            "-read_intervals",
+            from.ToString("F0", CultureInfo.InvariantCulture) + "%",
+            "-show_entries",
+            "packet=pts_time,duration_time",
+            .. inputArgs,
+        ];
+        ProcessResult result = await processRunner.RunAsync(
+            options.FfprobePath,
+            arguments,
+            null,
+            ct
+        );
+        if (!result.IsSuccess)
+            return info;
+
+        double? end = ParseLastVideoPacketEnd(result.StdOut);
+        return end is null ? info : info with { VideoDuration = TimeSpan.FromSeconds(end.Value) };
+    }
+
+    private const double TailProbeSeconds = 30;
+
+    internal static double? ParseLastVideoPacketEnd(string json)
+    {
+        JObject root;
+        try
+        {
+            root = JObject.Parse(json);
+        }
+        catch (Newtonsoft.Json.JsonException)
+        {
+            return null;
+        }
+
+        double? end = null;
+        foreach (JToken packet in root["packets"] as JArray ?? [])
+        {
+            double pts = ParseDouble(packet, "pts_time");
+            double length = ParseDouble(packet, "duration_time");
+            if (pts <= 0)
+                continue;
+            double packetEnd = pts + Math.Max(0, length);
+            if (end is null || packetEnd > end)
+                end = packetEnd;
+        }
+
+        return end;
+    }
+
+    private static double ParseDouble(JToken token, string key)
+    {
+        string? val = token.Value<string>(key);
+        return
+            val is not null
+            && double.TryParse(val, NumberStyles.Float, CultureInfo.InvariantCulture, out double d)
+            ? d
+            : 0;
     }
 
     internal static MediaInfo ParseFfprobeJson(string json, string filePath)
@@ -169,6 +249,7 @@ public class MediaAnalyzer(IProcessRunner processRunner, IStorage storage, Encod
         }
 
         double durationSeconds = format.Value<double>("duration");
+        double? videoSeconds = videoStreams.FirstOrDefault()?.DurationSeconds;
         long bitRate = ParseLong(format, "bit_rate");
         long fileSize = ParseLong(format, "size");
         string formatName = format.Value<string>("format_name") ?? "unknown";
@@ -192,7 +273,8 @@ public class MediaAnalyzer(IProcessRunner processRunner, IStorage storage, Encod
             StereoMode: stereoMode,
             SphericalProjection: sphericalProjection,
             // Keep ffprobe tag strings as emitted for blueprint reconstruction.
-            Ffprobe: root
+            Ffprobe: root,
+            VideoDuration: videoSeconds is > 0 ? TimeSpan.FromSeconds(videoSeconds.Value) : null
         );
     }
 
@@ -286,8 +368,23 @@ public class MediaAnalyzer(IProcessRunner processRunner, IStorage storage, Encod
             RealFrameRate: realFrameRate,
             Rotation: ParseRotation(stream),
             FieldOrder: stream.Value<string>("field_order"),
-            SampleAspectRatio: stream.Value<string>("sample_aspect_ratio")
+            SampleAspectRatio: stream.Value<string>("sample_aspect_ratio"),
+            DurationSeconds: ParseStreamDurationSeconds(stream)
         );
+    }
+
+    private static double? ParseStreamDurationSeconds(JToken stream)
+    {
+        double declared = ParseDouble(stream, "duration");
+        if (declared > 0)
+            return declared;
+
+        JToken? tags = stream["tags"];
+        if (tags is null)
+            return null;
+
+        double tagged = ParseTagDurationSeconds(tags, "DURATION");
+        return tagged > 0 ? tagged : null;
     }
 
     private static int ParseRotation(JToken stream)

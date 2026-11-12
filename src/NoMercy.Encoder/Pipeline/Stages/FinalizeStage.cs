@@ -205,7 +205,7 @@ public class FinalizeStage(
             {
                 IReadOnlyList<string> short_ = EncodeOutputValidator.ValidateDurations(
                     input.OutputDirectory,
-                    context.MediaInfo.Duration.TotalSeconds
+                    context.MediaInfo.EncodedVideoDuration.TotalSeconds
                 );
                 if (short_.Count > 0)
                     throw new InvalidDataException(

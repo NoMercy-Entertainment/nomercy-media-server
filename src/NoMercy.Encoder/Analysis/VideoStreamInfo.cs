@@ -28,7 +28,10 @@ public record VideoStreamInfo(
     double? RealFrameRate = null,
     int Rotation = 0,
     string? FieldOrder = null,
-    string? SampleAspectRatio = null
+    string? SampleAspectRatio = null,
+    // The stream's own length (ffprobe stream.duration or the mkv DURATION tag);
+    // null when the container records none.
+    double? DurationSeconds = null
 )
 {
     public (int Width, int Height) GetDisplayDimensions() =>
