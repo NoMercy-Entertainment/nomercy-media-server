@@ -50,6 +50,7 @@ public class ServerCastWaker(
         Device tv,
         Guid userId,
         CastIntent intent,
+        string? callerBearer,
         bool useAndroidReceiver = true
     )
     {
@@ -85,6 +86,7 @@ public class ServerCastWaker(
             useAndroidReceiver: useAndroidReceiver,
             resolveLaunchData: () =>
                 tokens.MintAsync(
+                    callerBearer: callerBearer,
                     userId: userId,
                     serverId: Info.DeviceId.ToString(),
                     serverUrl: serverUrl,

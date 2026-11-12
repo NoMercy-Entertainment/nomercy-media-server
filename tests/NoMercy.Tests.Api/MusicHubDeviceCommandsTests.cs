@@ -155,7 +155,6 @@ public class MusicHubDeviceCommandsTests : IClassFixture<NoMercyApiFactory>
             _factory.Services.GetRequiredService<MusicPlaybackCommandHandler>();
         MusicActiveDeviceRegistry activeDeviceRegistry =
             _factory.Services.GetRequiredService<MusicActiveDeviceRegistry>();
-        AuthManager authManager = _factory.Services.GetRequiredService<AuthManager>();
 
         // CastPanelWakeLauncher is DI-registered against its OWN
         // IChromeCastService — independent of the chromeCast passed here, which
@@ -172,7 +171,7 @@ public class MusicHubDeviceCommandsTests : IClassFixture<NoMercyApiFactory>
             Mock.Of<IHubContext<DeviceHub>>(),
             Mock.Of<ICastMdnsRegistry>()
         );
-        CastSessionTokenService castTokenService = new(authManager, new AuthTokenStore());
+        CastSessionTokenService castTokenService = new();
 
         DefaultHttpContext httpContext = new() { RequestServices = null! };
         httpContext.Request.Path = "/musicHub";
@@ -418,8 +417,9 @@ public class MusicHubDeviceCommandsTests : IClassFixture<NoMercyApiFactory>
         registry.Set(userId, tvClient);
 
         // Album tracks follow the caller's library access (#417), so this user needs the album's library.
-        IDbContextFactory<MediaContext> contextFactory =
-            _factory.Services.GetRequiredService<IDbContextFactory<MediaContext>>();
+        IDbContextFactory<MediaContext> contextFactory = _factory.Services.GetRequiredService<
+            IDbContextFactory<MediaContext>
+        >();
         await GrantAlbumLibraryAsync(contextFactory, userId, NoMercyApiFactory.AlbumId1);
 
         try
@@ -448,9 +448,7 @@ public class MusicHubDeviceCommandsTests : IClassFixture<NoMercyApiFactory>
         finally
         {
             await using MediaContext ctx = await contextFactory.CreateDbContextAsync();
-            await ctx
-                .LibraryUser.Where(lu => lu.UserId == userId)
-                .ExecuteDeleteAsync();
+            await ctx.LibraryUser.Where(lu => lu.UserId == userId).ExecuteDeleteAsync();
             Cleanup(userId, user, tvConnectionId, phoneConnectionId);
         }
     }

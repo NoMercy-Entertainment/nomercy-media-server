@@ -189,7 +189,12 @@ public sealed class DeviceHub : ConnectionHub
         // job back to whichever client happened to ask. `cast_fallback` made the
         // feature only as reliable as the weakest sender on the network — and left
         // any client without a Cast SDK unable to wake a TV at all.
-        bool dispatched = await _castWaker.WakeAsync(device, user.Id, CastIntent.Idle());
+        bool dispatched = await _castWaker.WakeAsync(
+            device,
+            user.Id,
+            CastIntent.Idle(),
+            CallerBearer.From(Context)
+        );
         return HubCommandResult.FromWakeStatus(dispatched ? "wake_sent" : "no_route");
     }
 
@@ -258,6 +263,7 @@ public sealed class DeviceHub : ConnectionHub
                 nearby,
                 user.Id,
                 intent,
+                CallerBearer.From(Context),
                 useAndroidReceiver: false
             );
             return dispatched

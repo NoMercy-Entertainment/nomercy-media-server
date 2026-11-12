@@ -9,8 +9,11 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 using NoMercy.Api.Hubs.Shared;
+using NoMercy.Api.Services.Cast;
 using NoMercy.Api.Services.Music;
 using NoMercy.Authorization;
 using NoMercy.Database.Models.Users;
@@ -251,6 +254,7 @@ public partial class MusicHub
             );
             CastIntent intent = ResolveMusicIntent(user.Id);
             bool apkOnline = _busRegistry.IsOnline(targetUlid);
+            string? callerBearer = CallerBearer.From(Context);
 
             _ = Task.Run(() =>
                 _castPanelWakeLauncher.LaunchIfColdAsync(
@@ -259,6 +263,7 @@ public partial class MusicHub
                     apkOnline,
                     () =>
                         _castTokenService.MintAsync(
+                            callerBearer: callerBearer,
                             userId: user.Id,
                             serverId: serverIdString,
                             serverUrl: serverUrl,

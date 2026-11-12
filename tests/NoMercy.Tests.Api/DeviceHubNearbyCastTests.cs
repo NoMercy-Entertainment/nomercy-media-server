@@ -56,13 +56,13 @@ public class DeviceHubNearbyCastTests : IClassFixture<NoMercyApiFactory>
             Guid UserId,
             CastIntent Intent,
             bool AndroidReceiver
-        )> Calls
-        { get; } = [];
+        )> Calls { get; } = [];
 
         public Task<bool> WakeAsync(
             Device tv,
             Guid userId,
             CastIntent intent,
+            string? callerBearer,
             bool useAndroidReceiver = true
         )
         {
