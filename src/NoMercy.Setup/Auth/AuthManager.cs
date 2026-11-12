@@ -46,6 +46,8 @@ public class AuthManager
     );
     private CancellationTokenSource? _refreshCts;
 
+    private static readonly TimeSpan TransientRefreshRetryDelay = TimeSpan.FromSeconds(15);
+
     private readonly IAuthTokenStore _authTokenStore;
 
     public AuthManager(
@@ -202,11 +204,37 @@ public class AuthManager
         }
 
         bool success = await TryRefreshToken(refreshToken);
-        if (!success)
+        if (success)
+            return;
+
+        // A dead refresh token already cleared the store, so this is a transient failure.
+        if (IsUnexpiredAccessToken(_authTokenStore.AccessToken))
         {
-            Logger.Auth("Background refresh failed — clearing access token", LogEventLevel.Warning);
-            _authTokenStore.SetAccessToken(null);
-            ResetAuthReady();
+            Logger.Auth(
+                "Background refresh failed — keeping the unexpired access token and retrying",
+                LogEventLevel.Warning
+            );
+            return;
+        }
+
+        Logger.Auth("Background refresh failed — clearing access token", LogEventLevel.Warning);
+        _authTokenStore.SetAccessToken(null);
+        ResetAuthReady();
+    }
+
+    private static bool IsUnexpiredAccessToken(string? accessToken)
+    {
+        if (string.IsNullOrEmpty(accessToken))
+            return false;
+
+        try
+        {
+            JwtSecurityTokenHandler handler = new();
+            return handler.ReadJwtToken(accessToken).ValidTo > DateTime.UtcNow;
+        }
+        catch
+        {
+            return false;
         }
     }
 
@@ -261,6 +289,13 @@ public class AuthManager
 
                         Logger.Auth("Proactive token refresh", LogEventLevel.Verbose);
                         await RefreshAsync();
+
+                        // A kept token is still inside the refresh window: pace the retry.
+                        if (
+                            !string.IsNullOrEmpty(accessToken)
+                            && _authTokenStore.AccessToken == accessToken
+                        )
+                            await Task.Delay(TransientRefreshRetryDelay, linked);
                     }
                     catch (OperationCanceledException)
                     {
