@@ -23,6 +23,7 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using NoMercy.Api.Services;
 using NoMercy.Authorization;
 using NoMercy.Database;
 using NoMercy.Database.Models.Common;
@@ -126,6 +127,15 @@ public class NoMercyApiFactory : WebApplicationFactory<Startup>
             // the controller to construct, not to fingerprint audio.
             services.RemoveAll<IAudioFingerprinter>();
             services.AddTransient<IAudioFingerprinter>(_ => Mock.Of<IAudioFingerprinter>());
+
+            // The real restarter spawns a process and stops the host: never in a test.
+            // This callback runs after a WithWebHostBuilder override, so keep a test's own fake.
+            ServiceDescriptor? realRestarter = services.FirstOrDefault(descriptor =>
+                descriptor.ImplementationType == typeof(ServerRestarter)
+            );
+            if (realRestarter is not null)
+                services.Remove(realRestarter);
+            services.TryAddSingleton<IServerRestarter>(new RecordingServerRestarter());
 
             // RecommendationsController's /{type}/{id} detail route calls straight through
             // to the real TMDB HTTP client for movie/tv metadata. Tests must never reach

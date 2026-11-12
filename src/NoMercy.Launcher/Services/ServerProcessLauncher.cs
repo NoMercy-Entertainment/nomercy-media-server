@@ -13,13 +13,20 @@ using System.Diagnostics;
 using System.Reflection;
 using NoMercy.NmSystem.FileSystem;
 using NoMercy.NmSystem.Information;
+using NoMercy.NmSystem.SystemCalls;
 
 namespace NoMercy.Launcher.Services;
 
 public class ServerProcessLauncher
 {
+    private static readonly TimeSpan ServerProbeTimeout = TimeSpan.FromSeconds(2);
+
+    private readonly Func<Task<bool>> _serverAnswers;
+    private readonly Func<ProcessStartInfo, Task<bool>> _spawnServer;
+
     private Process? _serverProcess;
     private Process? _appProcess;
+    private ProcessStartInfo? _serverStartInfo;
 
     public bool IsServerProcessRunning => _serverProcess is { HasExited: false };
 
@@ -27,10 +34,26 @@ public class ServerProcessLauncher
 
     public Process? ServerProcess => _serverProcess;
 
-    public Task<bool> StartServerAsync(string? extraArguments = null)
+    public ServerProcessLauncher()
+        : this(null, null) { }
+
+    internal ServerProcessLauncher(
+        Func<Task<bool>>? serverAnswers,
+        Func<ProcessStartInfo, Task<bool>>? spawnServer
+    )
+    {
+        _serverAnswers = serverAnswers ?? ServerAnswersAsync;
+        _spawnServer = spawnServer ?? StartServerProcessAsync;
+    }
+
+    public async Task<bool> StartServerAsync(string? extraArguments = null)
     {
         if (IsServerProcessRunning)
-            return Task.FromResult(false);
+            return false;
+
+        // A server this Launcher does not track holds the ports; a second one cannot bind them.
+        if (await _serverAnswers())
+            return false;
 
         // Wipe stale log files so the new run's logs aren't buried under
         // the previous execution's. Best-effort: any file held by another
@@ -47,8 +70,19 @@ public class ServerProcessLauncher
             ?? CreateDotnetRunStartInfo();
 
         if (startInfo is null)
-            return Task.FromResult(false);
+            return false;
 
+        PrepareServerStartInfo(startInfo, extraArguments, GetInstallDirectory());
+
+        return await LaunchServerAsync(startInfo);
+    }
+
+    internal static void PrepareServerStartInfo(
+        ProcessStartInfo startInfo,
+        string? extraArguments,
+        string? installDir
+    )
+    {
         // Append user-configured startup arguments
         if (!string.IsNullOrWhiteSpace(extraArguments))
         {
@@ -58,11 +92,37 @@ public class ServerProcessLauncher
 
         // Tell the server it's running from an installed deployment so it
         // skips binary downloads (the installer handles updates)
-        string? installDir = GetInstallDirectory();
         if (installDir is not null)
             startInfo.Environment["NOMERCY_INSTALL_DIR"] = installDir;
 
-        return StartServerProcessAsync(startInfo);
+        // The server then exits with the restart code instead of relaunching itself.
+        startInfo.Environment[ServerRestartPlan.SupervisorVariable] =
+            ServerRestartPlan.LauncherSupervisor;
+    }
+
+    internal Task<bool> LaunchServerAsync(ProcessStartInfo startInfo)
+    {
+        _serverStartInfo = startInfo;
+        return _spawnServer(startInfo);
+    }
+
+    internal Task<bool> RestartAfterExitAsync(int exitCode)
+    {
+        if (exitCode != ServerRestartPlan.RestartExitCode)
+            return Task.FromResult(false);
+
+        if (_serverStartInfo is not { } startInfo || IsServerProcessRunning)
+            return Task.FromResult(false);
+
+        LauncherLog.Info("Server asked for a restart; starting it again");
+        return LaunchServerAsync(startInfo);
+    }
+
+    private static async Task<bool> ServerAnswersAsync()
+    {
+        using CancellationTokenSource cts = new(ServerProbeTimeout);
+        using ServerConnection connection = new();
+        return await connection.ConnectAsync(cts.Token);
     }
 
     internal Task<bool> StartServerProcessAsync(ProcessStartInfo startInfo)
@@ -174,8 +234,24 @@ public class ServerProcessLauncher
 
     private void OnServerProcessExited(object? sender)
     {
-        if (sender is Process exitedProcess)
-            Interlocked.CompareExchange(ref _serverProcess, null, exitedProcess);
+        if (sender is not Process exitedProcess)
+            return;
+
+        // A stale exit (the process was replaced or force-killed) never restarts.
+        if (Interlocked.CompareExchange(ref _serverProcess, null, exitedProcess) != exitedProcess)
+            return;
+
+        int exitCode;
+        try
+        {
+            exitCode = exitedProcess.ExitCode;
+        }
+        catch (InvalidOperationException)
+        {
+            return;
+        }
+
+        _ = RestartAfterExitAsync(exitCode);
     }
 
     private void OnAppProcessExited(object? sender)

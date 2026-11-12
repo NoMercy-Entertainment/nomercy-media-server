@@ -638,23 +638,6 @@ public class DashboardEndpointSnapshotTests : IClassFixture<NoMercyApiFactory>
     }
 
     [Fact]
-    public async Task Server_Restart_ReturnsNotImplemented()
-    {
-        // Server restart requires OS-level supervision — the process cannot restart
-        // itself. The endpoint intentionally returns 501 until a supervisor protocol
-        // is in place.
-        HttpResponseMessage response = await _client.PostAsync(
-            "/api/v1/dashboard/server/restart",
-            JsonBody(new { })
-        );
-
-        Assert.True(
-            response.StatusCode == HttpStatusCode.NotImplemented,
-            $"Expected NotImplemented (501), got {(int)response.StatusCode}"
-        );
-    }
-
-    [Fact]
     public async Task Server_CheckForUpdate_ReturnsUpdateStatus()
     {
         HttpResponseMessage response = await _client.GetAsync(

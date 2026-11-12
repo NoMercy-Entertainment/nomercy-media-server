@@ -22,11 +22,12 @@ public sealed class ServerPowerAuthorizationTests
     [InlineData(nameof(ServerController.StopServer))]
     [InlineData(nameof(ServerController.RestartServer))]
     [InlineData(nameof(ServerController.Shutdown))]
+    [InlineData("GetActivity")]
     public void Power_action_requires_owner(string methodName)
     {
         AuthorizeAttribute? authorization = typeof(ServerController)
-            .GetMethod(methodName)!
-            .GetCustomAttributes(typeof(AuthorizeAttribute), true)
+            .GetMethod(methodName)
+            ?.GetCustomAttributes(typeof(AuthorizeAttribute), true)
             .Cast<AuthorizeAttribute>()
             .SingleOrDefault();
 

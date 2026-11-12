@@ -43,6 +43,7 @@ jobs:
       IMAGE_NAME: nomercy-entertainment/nomercymediaserver
       VERSION: ${{ inputs.version }}
       ROLLBACK_TO: ${{ inputs.rollback_to }}
+      REASON: ${{ inputs.reason }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # This job has no checkout, so gh has no git remote to infer the
       # repository from. Named here so a gh failure cannot be read as "no such
@@ -127,7 +128,7 @@ jobs:
             exit 0
           fi
           notice=$(printf '> [!CAUTION]\n> **RETRACTED %s.** %s\n>\n> Roll back to v%s. Moving Docker tags (`latest`, `stable` and their `-nvidia`, `-intel`, `-amd` forms) now point at v%s.\n\n' \
-            "$tag" "${{ inputs.reason }}" "$ROLLBACK_TO" "$ROLLBACK_TO")
+            "$tag" "$REASON" "$ROLLBACK_TO" "$ROLLBACK_TO")
           body=$(gh release view "$tag" --json body --jq .body)
           if [ "${{ inputs.dry_run }}" = "true" ]; then
             echo "dry run: would prepend"
@@ -163,7 +164,7 @@ jobs:
             echo "## Retracted v${VERSION}"
             echo
             echo "- Rolled moving tags back to **v${ROLLBACK_TO}**"
-            echo "- Reason: ${{ inputs.reason }}"
+            echo "- Reason: $REASON"
             echo "- Dry run: ${{ inputs.dry_run }}"
             echo
             echo "Immutable tag \`:${VERSION}\` is intentionally left published so pinned users keep booting."
