@@ -42,8 +42,14 @@ public sealed class ApiKeyLoaderTests : IDisposable
     private readonly ApiKeyStore _apiKeyStore = new();
     private readonly AuthTokenStore _authTokenStore = new();
 
+    // Every loop a test starts stops with the test, before its cache file is removed.
+    private readonly CancellationTokenSource _stop = new();
+
     public void Dispose()
     {
+        _stop.Cancel();
+        _stop.Dispose();
+
         if (_driver.FileExists(NoMercy.NmSystem.Information.AppFiles.ApiKeysFile))
             _driver.DeleteFile(NoMercy.NmSystem.Information.AppFiles.ApiKeysFile);
     }
@@ -90,7 +96,7 @@ public sealed class ApiKeyLoaderTests : IDisposable
         using ExternalServicesConfigScope scope = new(apiBaseUrl: server.BaseUrl);
 
         ApiKeyLoader loader = BuildLoader();
-        await loader.LoadKeys();
+        await loader.LoadKeys(_stop.Token);
 
         Assert.True(_apiKeyStore.KeysLoaded);
         Assert.Equal("fresh-tmdb-token", _apiKeyStore.TmdbToken);
@@ -105,7 +111,7 @@ public sealed class ApiKeyLoaderTests : IDisposable
         using ExternalServicesConfigScope scope = new(apiBaseUrl: server.BaseUrl);
 
         ApiKeyLoader loader = BuildLoader();
-        await loader.LoadKeys();
+        await loader.LoadKeys(_stop.Token);
 
         Assert.False(_apiKeyStore.KeysLoaded);
     }
@@ -117,7 +123,7 @@ public sealed class ApiKeyLoaderTests : IDisposable
         using ExternalServicesConfigScope scope = new(apiBaseUrl: server.BaseUrl);
 
         ApiKeyLoader loader = BuildLoader();
-        await loader.LoadKeys();
+        await loader.LoadKeys(_stop.Token);
 
         Assert.False(_apiKeyStore.KeysLoaded);
     }
@@ -172,7 +178,7 @@ public sealed class ApiKeyLoaderTests : IDisposable
         using LoopbackHttpServer server = FastFailingServer();
         using ExternalServicesConfigScope scope = new(apiBaseUrl: server.BaseUrl);
         ApiKeyLoader loader = BuildLoader();
-        await loader.LoadKeys();
+        await loader.LoadKeys(_stop.Token);
 
         Assert.False(_apiKeyStore.KeysLoaded);
     }
@@ -185,7 +191,7 @@ public sealed class ApiKeyLoaderTests : IDisposable
         using LoopbackHttpServer server = FastFailingServer();
         using ExternalServicesConfigScope scope = new(apiBaseUrl: server.BaseUrl);
         ApiKeyLoader loader = BuildLoader();
-        await loader.LoadKeys();
+        await loader.LoadKeys(_stop.Token);
 
         Assert.False(_apiKeyStore.KeysLoaded);
     }
@@ -204,7 +210,7 @@ public sealed class ApiKeyLoaderTests : IDisposable
         using LoopbackHttpServer server = FastFailingServer();
         using ExternalServicesConfigScope scope = new(apiBaseUrl: server.BaseUrl);
         ApiKeyLoader loader = BuildLoader();
-        await loader.LoadKeys();
+        await loader.LoadKeys(_stop.Token);
 
         Assert.False(_apiKeyStore.KeysLoaded);
     }
@@ -222,7 +228,7 @@ public sealed class ApiKeyLoaderTests : IDisposable
         using LoopbackHttpServer server = FastFailingServer();
         using ExternalServicesConfigScope scope = new(apiBaseUrl: server.BaseUrl);
         ApiKeyLoader loader = BuildLoader();
-        await loader.LoadKeys();
+        await loader.LoadKeys(_stop.Token);
 
         Assert.False(_apiKeyStore.KeysLoaded);
     }
@@ -243,10 +249,10 @@ public sealed class ApiKeyLoaderTests : IDisposable
         using ExternalServicesConfigScope scope = new(apiBaseUrl: server.BaseUrl);
 
         ApiKeyLoader loader = BuildLoader();
-        await loader.LoadKeys();
+        await loader.LoadKeys(_stop.Token);
         Assert.Equal(1, requestCount);
 
-        await loader.LoadKeys();
+        await loader.LoadKeys(_stop.Token);
 
         Assert.Equal(1, requestCount);
         Assert.Equal("fresh-tmdb-token", _apiKeyStore.TmdbToken);
@@ -263,7 +269,7 @@ public sealed class ApiKeyLoaderTests : IDisposable
             _driver.DeleteFile(NoMercy.NmSystem.Information.AppFiles.ApiKeysFile);
 
         ApiKeyLoader loader = BuildLoader();
-        await loader.LoadKeys();
+        await loader.LoadKeys(_stop.Token);
 
         Assert.True(_driver.FileExists(NoMercy.NmSystem.Information.AppFiles.ApiKeysFile));
     }
@@ -326,6 +332,47 @@ public sealed class ApiKeyLoaderTests : IDisposable
 
         // No assertion beyond "did not throw / did not hang" — this locks the
         // cancellation-during-wait branch inside the background refresh loop.
+    }
+
+    [Fact]
+    public async Task A_cancelled_background_refresh_never_fetches_or_writes_the_cache()
+    {
+        TaskCompletionSource waiting = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource release = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using CancellationTokenSource cts = new();
+
+        using (LoopbackHttpServer down = FastFailingServer())
+        using (new ExternalServicesConfigScope(apiBaseUrl: down.BaseUrl))
+        {
+            // A wait that ends on its own just as the owner stops the loop.
+            ApiKeyLoader loader = BuildLoader(
+                delay: async (_, _) =>
+                {
+                    waiting.TrySetResult();
+                    await release.Task;
+                }
+            );
+            await loader.LoadKeys(cts.Token);
+        }
+
+        await waiting.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        cts.Cancel();
+
+        // The address now belongs to someone else, as it does for the next test.
+        int asked = 0;
+        using LoopbackHttpServer later = new();
+        later.Handler = _ =>
+        {
+            Interlocked.Increment(ref asked);
+            return new(200, ApiInfoJson("someone-elses-token"));
+        };
+        using ExternalServicesConfigScope scope = new(apiBaseUrl: later.BaseUrl);
+
+        release.TrySetResult();
+        await Task.Delay(TimeSpan.FromSeconds(1));
+
+        Assert.Equal(0, asked);
+        Assert.False(_driver.FileExists(NoMercy.NmSystem.Information.AppFiles.ApiKeysFile));
     }
 
     private async Task SeedCacheFile(string content)
