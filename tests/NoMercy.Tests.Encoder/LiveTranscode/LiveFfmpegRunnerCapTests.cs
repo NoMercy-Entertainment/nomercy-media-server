@@ -18,6 +18,7 @@ using NoMercy.Encoder.Hardware;
 using NoMercy.Encoder.Infrastructure;
 using NoMercy.Encoder.LiveTranscode;
 using NoMercy.Encoder.LiveTranscode.Protocol;
+using NoMercy.Resources;
 using NoMercy.Storage;
 using NoMercy.Tests.Encoder.Storage;
 
@@ -194,6 +195,198 @@ public class LiveFfmpegRunnerCapTests
             .Single();
         message.Reason.Should().Be(QualityChangeReason.GpuFallbackToCpu);
         message.NewQuality.Encoder.Should().Be("libx264");
+    }
+
+    // #646: the GPU lease wait is bounded; a viewer falls back to CPU.
+    private static readonly TimeSpan LeaseDeadline = TimeSpan.FromSeconds(3);
+
+    private static Mock<IResourceBudget> MakeBudget(bool gpuGrantable, bool cpuGrantable)
+    {
+        Mock<IResourceBudget> budget = new();
+        int next = 0;
+        budget
+            .Setup(b =>
+                b.AcquireAsync(It.IsAny<ResourceRequirement>(), It.IsAny<CancellationToken>())
+            )
+            .Returns(
+                async (ResourceRequirement req, CancellationToken token) =>
+                {
+                    bool grantable = req.GpuSlots > 0 ? gpuGrantable : cpuGrantable;
+                    if (!grantable)
+                        await Task.Delay(Timeout.Infinite, token);
+
+                    return new ResourceLease(
+                        $"lease-{Interlocked.Increment(ref next)}",
+                        req.GpuDeviceKey,
+                        req.GpuSlots,
+                        req.CpuThreads
+                    );
+                }
+            );
+        budget.Setup(b => b.Release(It.IsAny<ResourceLease>()));
+        return budget;
+    }
+
+    private static LiveFfmpegRunner BuildBudgetRunner(
+        IResourceBudget budget,
+        IProcessRunner processRunner,
+        ILiveSessionTransport transport
+    ) =>
+        new(
+            processRunner,
+            new EncoderOptions { FfmpegPathOverride = "ffmpeg", FfprobePathOverride = "ffprobe" },
+            NullLogger<LiveFfmpegRunner>.Instance,
+            MakeNoopStorage(),
+            new Mock<INvencSessionCap>().Object,
+            new HardwareCapabilities([], Environment.ProcessorCount),
+            new CodecResolver(new CodecRegistry()),
+            budget,
+            transport
+        );
+
+    private static (Mock<ILiveSessionTransport> Mock, List<object> Pushed) MakeTransport()
+    {
+        List<object> pushed = [];
+        Mock<ILiveSessionTransport> mock = new();
+        mock.Setup(t =>
+                t.SendToClientAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<object>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .Callback<string, object, CancellationToken>((_, message, _) => pushed.Add(message))
+            .Returns(Task.CompletedTask);
+        return (mock, pushed);
+    }
+
+    [Fact]
+    public async Task RunAsync_GpuLeaseNeverGranted_FallsBackToCpuAndHoldsCpuLease()
+    {
+        Mock<IResourceBudget> budget = MakeBudget(gpuGrantable: false, cpuGrantable: true);
+        (Mock<ILiveSessionTransport> transport, List<object> pushed) = MakeTransport();
+        Mock<IProcessRunner> process = new();
+        process
+            .Setup(r =>
+                r.RunAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string[]>(),
+                    It.IsAny<Action<string>?>(),
+                    It.IsAny<Action<string>?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .ReturnsAsync(new ProcessResult(0, "", "", TimeSpan.Zero));
+
+        LiveFfmpegRunner runner = BuildBudgetRunner(budget.Object, process.Object, transport.Object);
+        LiveQuality hw = MakeHwQuality();
+        LiveSession session = new("lease-fallback-001", hw);
+        string dir = Path.Combine(Path.GetTempPath(), "lease-fb-" + Ulid.NewUlid());
+
+        await runner
+            .RunAsync(MakeInput(hw, dir), session, CancellationToken.None)
+            .WaitAsync(LeaseDeadline);
+
+        session.CurrentQuality.IsHardwareAccelerated.Should().BeFalse();
+        pushed
+            .OfType<QualityChangedMessage>()
+            .Should()
+            .ContainSingle(m => m.Reason == QualityChangeReason.GpuFallbackToCpu);
+        budget.Verify(
+            b =>
+                b.AcquireAsync(
+                    It.Is<ResourceRequirement>(r =>
+                        r.GpuSlots == 0 && r.CpuThreads == EncodeThreadBudget.SoftwareEncode
+                    ),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Once
+        );
+        process.Verify(
+            r =>
+                r.RunAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string[]>(),
+                    It.IsAny<Action<string>?>(),
+                    It.IsAny<Action<string>?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Once
+        );
+        budget.Verify(
+            b => b.Release(It.Is<ResourceLease>(l => l.GpuSlots == 0 && l.CpuThreads > 0)),
+            Times.Once
+        );
+    }
+
+    [Fact]
+    public async Task RunAsync_NothingGrantable_SendsRecoverableResourceExhausted()
+    {
+        Mock<IResourceBudget> budget = MakeBudget(gpuGrantable: false, cpuGrantable: false);
+        (Mock<ILiveSessionTransport> transport, List<object> pushed) = MakeTransport();
+        Mock<IProcessRunner> process = new();
+
+        LiveFfmpegRunner runner = BuildBudgetRunner(budget.Object, process.Object, transport.Object);
+        LiveQuality hw = MakeHwQuality();
+        LiveSession session = new("lease-exhausted-001", hw);
+        string dir = Path.Combine(Path.GetTempPath(), "lease-ex-" + Ulid.NewUlid());
+
+        await runner
+            .RunAsync(MakeInput(hw, dir), session, CancellationToken.None)
+            .WaitAsync(LeaseDeadline);
+
+        TranscodeErrorMessage error = pushed.OfType<TranscodeErrorMessage>().Single();
+        error.Kind.Should().Be(EncodingErrorKind.ResourceExhausted);
+        error.Recoverable.Should().BeTrue();
+        session.State.Should().Be(LiveSessionState.Error);
+        process.Verify(
+            r =>
+                r.RunAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string[]>(),
+                    It.IsAny<Action<string>?>(),
+                    It.IsAny<Action<string>?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Never
+        );
+    }
+
+    [Fact]
+    public async Task RunAsync_GpuLeaseGrantedAtOnce_KeepsGpuEncodeWithoutFallback()
+    {
+        Mock<IResourceBudget> budget = MakeBudget(gpuGrantable: true, cpuGrantable: true);
+        (Mock<ILiveSessionTransport> transport, List<object> pushed) = MakeTransport();
+
+        LiveFfmpegRunner runner = BuildBudgetRunner(
+            budget.Object,
+            MakeInstantProcessRunner(),
+            transport.Object
+        );
+        LiveQuality hw = MakeHwQuality();
+        LiveSession session = new("lease-gpu-001", hw);
+        string dir = Path.Combine(Path.GetTempPath(), "lease-gpu-" + Ulid.NewUlid());
+
+        await runner
+            .RunAsync(MakeInput(hw, dir), session, CancellationToken.None)
+            .WaitAsync(LeaseDeadline);
+
+        session.CurrentQuality.IsHardwareAccelerated.Should().BeTrue();
+        pushed.Should().BeEmpty();
+        budget.Verify(
+            b =>
+                b.AcquireAsync(
+                    It.Is<ResourceRequirement>(r =>
+                        r.GpuSlots == 1 && r.CpuThreads == EncodeThreadBudget.GpuEncodeWithCpuFilters
+                    ),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Once
+        );
+        budget.Verify(b => b.Release(It.Is<ResourceLease>(l => l.GpuSlots == 1)), Times.Once);
     }
 
     // ──────────────────────────────────────────────────────────────────────────

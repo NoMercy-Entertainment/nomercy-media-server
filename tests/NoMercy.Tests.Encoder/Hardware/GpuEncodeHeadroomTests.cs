@@ -33,6 +33,30 @@ public class GpuEncodeHeadroomTests
     );
 
     [Fact]
+    public async Task HostCpuAboveThreshold_QueueIsRefused_LiveAcquireAsyncStillGranted()
+    {
+        Mock<IResourceMonitor> monitor = new();
+        monitor.Setup(m => m.GetSystemCpuUsagePercent()).Returns(96);
+        ResourceBudget budget = new(
+            [Nvidia],
+            cpuCores: 8,
+            monitor.Object,
+            new(
+                CpuHeadroomPercent: 75,
+                GpuHeadroomPercent: 0,
+                MinFreeMemoryMb: 0,
+                GpuEncodePercentPerLease: 0
+            )
+        );
+        ResourceRequirement gpu = new("h264_nvenc", GpuSlots: 1, CpuThreads: 2);
+
+        budget.TryAcquire(gpu, TimeSpan.Zero).Should().BeNull();
+
+        ResourceLease live = await budget.AcquireAsync(gpu).WaitAsync(TimeSpan.FromSeconds(3));
+        live.GpuSlots.Should().Be(1);
+    }
+
+    [Fact]
     public async Task ProductionSampler_ReportingABusyEncoder_HoldsBackTheNextGpuLease()
     {
         NvmlGpuSampler sampler = new(

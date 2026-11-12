@@ -39,6 +39,8 @@ public class LiveFfmpegRunner(
     internal const string PlaylistFileName = "index.m3u8";
     internal const string SegmentPrefix = "seg_";
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan GpuLeaseWait = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan CpuLeaseWait = TimeSpan.FromMilliseconds(500);
 
     public async Task RunAsync(LiveRunInput input, LiveSession session, CancellationToken ct)
     {
@@ -85,7 +87,44 @@ public class LiveFfmpegRunner(
 
         try
         {
-            lease = await resourceBudget.AcquireAsync(requirement, ct).ConfigureAwait(false);
+            if (requiresGpu)
+            {
+                lease = await AcquireWithinAsync(requirement, GpuLeaseWait, ct)
+                    .ConfigureAwait(false);
+
+                if (lease is null && !ct.IsCancellationRequested)
+                {
+                    // A queued encode holds the GPU; a viewer must not wait for it.
+                    input = await FallBackToSoftwareAsync(input, session, ct)
+                        .ConfigureAwait(false);
+                    requirement = new(null, GpuSlots: 0, CpuThreads: EncodeThreadBudget.SoftwareEncode);
+                    lease = await AcquireWithinAsync(requirement, CpuLeaseWait, ct)
+                        .ConfigureAwait(false);
+
+                    if (lease is null && !ct.IsCancellationRequested)
+                    {
+                        logger.LogWarning(
+                            "No GPU or CPU lease for live session {SessionId}",
+                            session.SessionId
+                        );
+                        session.SetState(LiveSessionState.Error);
+                        await PushTranscodeErrorAsync(
+                                session.SessionId,
+                                "No encoder capacity is free right now",
+                                EncodingErrorKind.ResourceExhausted,
+                                recoverable: true
+                            )
+                            .ConfigureAwait(false);
+                        return;
+                    }
+                }
+
+                ct.ThrowIfCancellationRequested();
+            }
+            else
+            {
+                lease = await resourceBudget.AcquireAsync(requirement, ct).ConfigureAwait(false);
+            }
 
             storage.CreateDirectory(input.OutputDirectory);
 
@@ -253,7 +292,7 @@ public class LiveFfmpegRunner(
         session.SetQuality(fallbackQuality);
 
         logger.LogWarning(
-            "GPU session cap exhausted for session {SessionId} — falling back to {Encoder}",
+            "GPU unavailable for session {SessionId} — falling back to {Encoder}",
             session.SessionId,
             fallbackQuality.Encoder
         );
@@ -460,15 +499,39 @@ public class LiveFfmpegRunner(
     private static string Truncate(string value, int max) =>
         value.Length > max ? value[..max] : value;
 
-    private async Task PushTranscodeErrorAsync(string sessionId, string message)
+    private async Task<ResourceLease?> AcquireWithinAsync(
+        ResourceRequirement requirement,
+        TimeSpan wait,
+        CancellationToken ct
+    )
+    {
+        using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(wait);
+
+        try
+        {
+            return await resourceBudget.AcquireAsync(requirement, timeout.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return null;
+        }
+    }
+
+    private async Task PushTranscodeErrorAsync(
+        string sessionId,
+        string message,
+        EncodingErrorKind kind = EncodingErrorKind.ProcessCrashed,
+        bool recoverable = false
+    )
     {
         if (transport is null)
             return;
 
         TranscodeErrorMessage errorMessage = new(
-            Kind: EncodingErrorKind.ProcessCrashed,
+            Kind: kind,
             Message: message,
-            Recoverable: false
+            Recoverable: recoverable
         );
 
         try
