@@ -102,4 +102,35 @@ public sealed class MusicListingCacheTests
             Times.Once
         );
     }
+
+    [Fact]
+    public void A_folder_listed_within_the_clock_tick_of_its_last_change_is_listed_again()
+    {
+        // The folder changed 0.5 s before the first listing: a change in that same tick
+        // leaves its time as it is, so the first listing cannot be trusted later.
+        MusicListingCache cache = new(new FixedClock(Written.AddMilliseconds(500)));
+        cache.List(_driver.Object, "/m");
+        _fileSize = 99;
+
+        (_, IReadOnlyList<TrackFileEntry> current) = cache.List(_driver.Object, "/m");
+
+        current.Should().ContainSingle().Which.SizeBytes.Should().Be(99);
+    }
+
+    [Fact]
+    public void A_folder_listed_well_after_its_last_change_is_reused()
+    {
+        MusicListingCache cache = new(new FixedClock(Written.AddMinutes(5)));
+        cache.List(_driver.Object, "/m");
+        _fileSize = 99;
+
+        (_, IReadOnlyList<TrackFileEntry> current) = cache.List(_driver.Object, "/m");
+
+        current.Should().ContainSingle().Which.SizeBytes.Should().Be(10);
+    }
+
+    private sealed class FixedClock(DateTime nowUtc) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => new(nowUtc);
+    }
 }
