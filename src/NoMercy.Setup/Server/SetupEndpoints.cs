@@ -457,7 +457,7 @@ public class SetupEndpoints
             context.Response.StatusCode = StatusCodes.Status400BadRequest;
             await WriteJsonResponse(
                 context.Response,
-                new { status = "error", message = ex.DescribeConnectionFailure() }
+                new { status = "error", message = ex.DescribeConnectionFailureForUser() }
             );
         }
     }
@@ -609,10 +609,10 @@ public class SetupEndpoints
             // Transition first: TransitionTo clears ErrorMessage, so setting the error
             // before it wiped the message the /setup/status poll surfaces to the user.
             _state.TransitionTo(SetupPhase.Unauthenticated);
-            _state.SetError($"Sign in failed: {ex.DescribeConnectionFailure()}");
+            _state.SetError($"Sign in failed. {ex.DescribeConnectionFailureForUser()}");
 
             responseTitle = "Authentication Failed";
-            responseMessage = $"Sign in failed: {ex.DescribeConnectionFailure()}";
+            responseMessage = $"Sign in failed. {ex.DescribeConnectionFailureForUser()}";
             responseIsError = true;
 
             RegeneratePkce();
@@ -644,7 +644,7 @@ public class SetupEndpoints
                         LogEventLevel.Error
                     );
                     _state.SetError(
-                        $"Could not connect your server: {ex.DescribeConnectionFailure()}"
+                        $"Could not connect your server. {ex.DescribeConnectionFailureForUser()}"
                     );
                 }
             });
@@ -746,13 +746,17 @@ public class SetupEndpoints
         }
         catch (Exception ex)
         {
+            Logger.Setup(
+                $"Device login start failed: {ex.GetType().Name} — {ex.DescribeConnectionFailure()}",
+                LogEventLevel.Error
+            );
             context.Response.StatusCode = StatusCodes.Status500InternalServerError;
             await WriteJsonResponse(
                 context.Response,
                 new
                 {
                     error = true,
-                    message = $"Failed to initiate device login: {ex.DescribeConnectionFailure()}",
+                    message = $"Failed to initiate device login. {ex.DescribeConnectionFailureForUser()}",
                 }
             );
         }
@@ -802,7 +806,7 @@ public class SetupEndpoints
                         LogEventLevel.Error
                     );
                     _state.SetError(
-                        $"Could not connect your server: {ex.DescribeConnectionFailure()}"
+                        $"Could not connect your server. {ex.DescribeConnectionFailureForUser()}"
                     );
                 }
             });
@@ -938,7 +942,7 @@ public class SetupEndpoints
             bool isCooldown = ex is InvalidOperationException && ex.Message.Contains("cooldown");
             string displayMessage = isCooldown
                 ? "Registration is briefly paused after a recent attempt. Retrying shortly — you can also retry now."
-                : $"Could not connect your server: {ex.DescribeConnectionFailure()}";
+                : $"Could not connect your server. {ex.DescribeConnectionFailureForUser()}";
 
             Logger.Setup(
                 $"Post-auth registration failed: {ex.GetType().Name} — {ex.DescribeConnectionFailure()}",
@@ -1085,8 +1089,14 @@ public class SetupEndpoints
                 // failure streak/code expiry gives up on its own.
                 if (consecutiveTransientFailures >= maxConsecutiveTransientFailures)
                 {
+                    Logger.Setup(
+                        $"Device poll gave up after {consecutiveTransientFailures} failures: {ex.GetType().Name} — {ex.DescribeConnectionFailure()}",
+                        LogEventLevel.Error
+                    );
                     _state.TransitionTo(SetupPhase.Unauthenticated);
-                    _state.SetError($"Device login error: {ex.DescribeConnectionFailure()}");
+                    _state.SetError(
+                        $"Device login failed. {ex.DescribeConnectionFailureForUser()}"
+                    );
                     return;
                 }
 

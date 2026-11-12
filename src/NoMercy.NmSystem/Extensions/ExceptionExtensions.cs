@@ -105,6 +105,12 @@ public static class ExceptionExtensions
         return advice is null ? chain : $"{chain} {advice}";
     }
 
+    /// <summary>Setup-page text for a failed connection: the likely cause or one plain
+    /// sentence; the exception chain is log-only (#584).</summary>
+    public static string DescribeConnectionFailureForUser(this Exception ex) =>
+        ex.ConnectionAdvice()
+        ?? "The request did not complete. Check this machine's network connection; the server log has the details.";
+
     private static bool HasInChain<T>(Exception ex)
         where T : Exception
     {

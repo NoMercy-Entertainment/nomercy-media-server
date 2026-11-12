@@ -447,9 +447,14 @@ public class BootOrchestrator
             bool isCooldown = ex is InvalidOperationException && ex.Message.Contains("cooldown");
             string displayMessage = isCooldown
                 ? "Registration is briefly paused after a recent attempt. Retrying shortly — you can also retry now."
-                : $"Registration failed: {ex.DescribeConnectionFailure()}";
+                : $"Registration failed. {ex.DescribeConnectionFailureForUser()}";
 
-            Logger.Setup(displayMessage, LogEventLevel.Error);
+            Logger.Setup(
+                isCooldown
+                    ? displayMessage
+                    : $"Registration failed: {ex.GetType().Name} — {ex.DescribeConnectionFailure()}",
+                LogEventLevel.Error
+            );
 
             // Don't block — DegradedModeRecovery will retry. Mark Registered as
             // complete so workers don't block forever on a known-degraded boot —
