@@ -42,6 +42,7 @@ namespace NoMercy.Tests.Setup.Auth;
 /// loopback <see cref="LoopbackHttpServer"/> exercises the actual HTTP round trip without
 /// touching the live internet or a real Keycloak.
 /// </remarks>
+[Collection(ProcessWideSetupStateCollection.Name)]
 [Trait("Category", "Unit")]
 public sealed class AuthManagerHttpTests : IDisposable
 {

@@ -56,6 +56,7 @@ namespace NoMercy.Tests.Setup.Integration;
 /// If any link in this chain regresses, this test fails; it must never be weakened
 /// to pass.
 /// </summary>
+[Collection(ProcessWideSetupStateCollection.Name)]
 [Trait("Category", "Integration")]
 public sealed class FirstBootOnboardingChainTests : IDisposable
 {

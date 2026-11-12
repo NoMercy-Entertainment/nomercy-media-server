@@ -39,6 +39,7 @@ namespace NoMercy.Tests.Setup.Auth;
 /// since the real backoff schedule (2s/5s/15s/30s/60s) uses genuine <see cref="Task.Delay"/>
 /// with no injectable clock.
 /// </remarks>
+[Collection(ProcessWideSetupStateCollection.Name)]
 [Trait("Category", "Unit")]
 public sealed class ServerRegistrationServiceHttpTests : IDisposable
 {
