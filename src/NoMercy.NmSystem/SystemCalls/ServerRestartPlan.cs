@@ -30,6 +30,7 @@ public static class ServerRestartPlan
     private const string SystemdInvocationVariable = "INVOCATION_ID";
     private const string ContainerVariable = "DOTNET_RUNNING_IN_CONTAINER";
     private const string LaunchdJobVariable = "XPC_SERVICE_NAME";
+    private const string LaunchdJobLabel = "tv.nomercy.mediaserver";
 
     public static readonly TimeSpan WaitCap = TimeSpan.FromSeconds(60);
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(250);
@@ -46,9 +47,10 @@ public static class ServerRestartPlan
         if (getEnvironmentVariable(ContainerVariable) is "true" or "1")
             return true;
 
-        // launchd names the job it runs; a Terminal session carries "0".
+        // Only our own launchd job (MacStartupManager, packaging/macos): apps that
+        // Finder or Terminal start carry another name or "0" and restart nothing.
         string? launchdJob = getEnvironmentVariable(LaunchdJobVariable);
-        if (!string.IsNullOrEmpty(launchdJob) && launchdJob != "0")
+        if (launchdJob?.StartsWith(LaunchdJobLabel, StringComparison.Ordinal) == true)
             return true;
 
         return getEnvironmentVariable(SupervisorVariable) == LauncherSupervisor;
