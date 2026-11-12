@@ -24,8 +24,8 @@ namespace NoMercy.PluginSdk.Revocation;
 /// prevent. Nothing is uninstalled and nothing the owner approved is lost.
 /// </para>
 /// <para>
-/// Under a warn-only <see cref="PluginTrustMode"/> both refusals are logged
-/// and the plugin runs.
+/// A revoked build is refused in every <see cref="PluginTrustMode"/>. Under
+/// warn-only, the stale-list pause alone is logged and the plugin runs.
 /// </para>
 /// </summary>
 public class PluginRevocationGate(
@@ -39,24 +39,28 @@ public class PluginRevocationGate(
     private readonly PluginTrustMode _mode = mode ?? PluginTrustMode.Enforcing;
 
     /// <param name="packageHash">The hash stored at install, or null when none was.</param>
-    public PluginRefusal? Check(Ulid pluginId, string? packageHash, Version installedVersion) =>
-        _mode.Apply(Refusal(pluginId, packageHash, installedVersion));
-
-    private PluginRefusal? Refusal(Ulid pluginId, string? packageHash, Version installedVersion)
+    public PluginRefusal? Check(Ulid pluginId, string? packageHash, Version installedVersion)
     {
         PluginRevocationList list = store.Current;
         PluginRevocationEntry? revoked = list.Find(pluginId, packageHash, installedVersion);
 
-        if (revoked is not null)
-            return new(
-                PluginRefusalCodes.Revoked,
-                pluginId.ToString(),
-                "The plugin stopped because this build was revoked.",
-                $"NoMercy revoked this build: {revoked.Reason}.",
-                "Install the newest version. A revocation names one build, so the publisher's next release installs normally.",
-                PluginRefusalSeverity.Blocked
-            );
+        if (revoked is null)
+            return _mode.Apply(Stale(pluginId, list));
 
+        _mode.Refused(pluginId.ToString(), PluginRefusalCodes.Revoked, revoked.Describe());
+
+        return new(
+            PluginRefusalCodes.Revoked,
+            pluginId.ToString(),
+            "The plugin stopped because this build was revoked.",
+            $"NoMercy revoked this build: {revoked.Reason}.",
+            "Install the newest version. A revocation names one build, so the publisher's next release installs normally.",
+            PluginRefusalSeverity.Blocked
+        );
+    }
+
+    private PluginRefusal? Stale(Ulid pluginId, PluginRevocationList list)
+    {
         if (clock.GetUtcNow() - list.IssuedAt <= TimeSpan.FromDays(StaleAfterDays))
             return null;
 

@@ -36,13 +36,23 @@ public sealed record PluginRevocationEntry(
         return Version is not null && SameVersion(Version, installedVersion);
     }
 
-    /// <summary>1.2 and 1.2.0.0 are one version; a pre-release or build label is not compared.</summary>
+    /// <summary>Names this revocation in a log line: the listing, then the version and hash it carries.</summary>
+    public string Describe() =>
+        $"listing {PluginId}"
+        + (Version is null ? string.Empty : $" version {Version}")
+        + (Sha256 is null ? string.Empty : $" sha256 {Sha256}");
+
+    /// <summary>1, 1.2 and 1.2.0.0 are one version; a pre-release or build label is not compared.</summary>
     private static bool SameVersion(string published, Version installed)
     {
         int label = published.IndexOfAny(['-', '+']);
-        string numbers = label < 0 ? published : published[..label];
+        string numbers = (label < 0 ? published : published[..label]).Trim();
 
-        return System.Version.TryParse(numbers.Trim(), out Version? revoked)
+        // System.Version needs two numbers, so a lone major gets its minor.
+        if (!numbers.Contains('.'))
+            numbers += ".0";
+
+        return System.Version.TryParse(numbers, out Version? revoked)
             && revoked.Major == installed.Major
             && revoked.Minor == installed.Minor
             && Math.Max(revoked.Build, 0) == Math.Max(installed.Build, 0)

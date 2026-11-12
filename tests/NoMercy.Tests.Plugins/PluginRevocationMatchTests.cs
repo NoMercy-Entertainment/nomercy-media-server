@@ -192,6 +192,14 @@ public class PluginRevocationMatchTests : IDisposable
     }
 
     [Fact]
+    public void A_published_version_of_one_number_revokes_the_matching_installed_version()
+    {
+        Decide(Published(Listing, "1", null), Installed("1.0.0", OtherHash))!
+            .Code.Should()
+            .Be(PluginRefusalCodes.Revoked);
+    }
+
+    [Fact]
     public void A_published_entry_without_a_hash_or_a_version_revokes_the_whole_listing()
     {
         Decide(Published(Listing, null, null), Installed("3.4.5", OtherHash))!

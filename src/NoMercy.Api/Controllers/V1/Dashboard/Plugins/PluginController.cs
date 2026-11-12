@@ -40,7 +40,8 @@ public class PluginController(
     IPluginGrantStore grantStore,
     IPluginRestartAdvisor restartAdvisor,
     IStorageDriver storageDriver,
-    IPluginDeveloperModeSource developerMode
+    IPluginDeveloperModeSource developerMode,
+    IPluginRunGate? runGate = null
 ) : BaseController
 {
     private const long MaximumUploadBytes = 64L * 1024 * 1024;
@@ -195,7 +196,8 @@ public class PluginController(
             plugin,
             restartAdvisor.Evaluate(plugin, PluginOperation.Enable),
             awaiting,
-            consentService.ConsentedCapabilities(plugin.Id)
+            consentService.ConsentedCapabilities(plugin.Id),
+            runGate?.LastRefusal(plugin.Id)
         );
     }
 
