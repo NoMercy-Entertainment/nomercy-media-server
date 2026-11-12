@@ -47,6 +47,50 @@ public class ClientMessengerTests
     }
 
     [Fact]
+    public async Task SendToModerators_ReachesOnlyModeratorConnectionsOnThatHub()
+    {
+        ConnectedClients connectedClients = new();
+        Mock<ISingleClientProxy> moderatorProxy = new();
+        Mock<ISingleClientProxy> guestProxy = new();
+        Mock<ISingleClientProxy> otherHubProxy = new();
+
+        Client moderator = MakeClient(Guid.NewGuid(), "/dashboardHub", moderatorProxy);
+        moderator.IsModerator = true;
+        Client otherHub = MakeClient(Guid.NewGuid(), "/musicHub", otherHubProxy);
+        otherHub.IsModerator = true;
+        connectedClients.Clients["mod"] = moderator;
+        connectedClients.Clients["guest"] = MakeClient(Guid.NewGuid(), "/dashboardHub", guestProxy);
+        connectedClients.Clients["other"] = otherHub;
+
+        ClientMessenger messenger = new(connectedClients, NullLogger<ClientMessenger>.Instance);
+
+        await messenger.SendToModerators("NewLog", "dashboardHub", "entry");
+
+        moderatorProxy.Verify(
+            p => p.SendCoreAsync("NewLog", It.IsAny<object?[]>(), It.IsAny<CancellationToken>()),
+            Times.Once
+        );
+        guestProxy.Verify(
+            p =>
+                p.SendCoreAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<object?[]>(),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Never
+        );
+        otherHubProxy.Verify(
+            p =>
+                p.SendCoreAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<object?[]>(),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Never
+        );
+    }
+
+    [Fact]
     public async Task SendTo_DispatchesConcurrently_SlowConnectionDoesNotDelayFastOne()
     {
         ConnectedClients connectedClients = new();

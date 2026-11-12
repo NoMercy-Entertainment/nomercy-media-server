@@ -40,7 +40,7 @@ public class SignalREncodingEventHandler : EventSubscriber
 
     internal async Task OnEncodingStarted(EncodingStartedEvent @event, CancellationToken ct)
     {
-        await _clientMessenger.SendToAll(
+        await _clientMessenger.SendToModerators(
             "EncodingStarted",
             "dashboardHub",
             new EncodingStartedDto
@@ -63,7 +63,7 @@ public class SignalREncodingEventHandler : EventSubscriber
         CancellationToken ct
     )
     {
-        await _clientMessenger.SendToAll(
+        await _clientMessenger.SendToModerators(
             "EncodingProgress",
             "dashboardHub",
             new EncodingProgressDto
@@ -81,7 +81,7 @@ public class SignalREncodingEventHandler : EventSubscriber
 
     internal async Task OnEncodingCompleted(EncodingCompletedEvent @event, CancellationToken ct)
     {
-        await _clientMessenger.SendToAll(
+        await _clientMessenger.SendToModerators(
             "EncodingCompleted",
             "dashboardHub",
             new EncodingCompletedDto
@@ -97,7 +97,7 @@ public class SignalREncodingEventHandler : EventSubscriber
 
     internal async Task OnEncodingFailed(EncodingFailedEvent @event, CancellationToken ct)
     {
-        await _clientMessenger.SendToAll(
+        await _clientMessenger.SendToModerators(
             "EncodingFailed",
             "dashboardHub",
             new EncodingFailedDto
@@ -120,7 +120,7 @@ public class SignalREncodingEventHandler : EventSubscriber
         CancellationToken ct
     )
     {
-        await _clientMessenger.SendToAll(
+        await _clientMessenger.SendToModerators(
             "encoder-progress",
             "dashboardHub",
             new EncodingStageChangedDto
@@ -145,6 +145,10 @@ public class SignalREncodingEventHandler : EventSubscriber
         CancellationToken ct
     )
     {
-        await _clientMessenger.SendToAll("encoder-progress", "dashboardHub", @event.ProgressData);
+        await _clientMessenger.SendToModerators(
+            "encoder-progress",
+            "dashboardHub",
+            @event.ProgressData
+        );
     }
 }

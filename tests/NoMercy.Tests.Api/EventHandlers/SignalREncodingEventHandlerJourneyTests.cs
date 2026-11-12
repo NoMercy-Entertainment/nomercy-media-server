@@ -31,7 +31,9 @@ public class SignalREncodingEventHandlerJourneyTests
         InMemoryEventBus bus = new();
         Mock<IClientMessenger> messengerMock = new(MockBehavior.Strict);
         messengerMock
-            .Setup(m => m.SendToAll(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object>()))
+            .Setup(m =>
+                m.SendToModerators(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object>())
+            )
             .Returns(Task.CompletedTask);
         SignalREncodingEventHandler handler = new(
             NullLogger<SignalREncodingEventHandler>.Instance,
@@ -39,6 +41,32 @@ public class SignalREncodingEventHandlerJourneyTests
             messengerMock.Object
         );
         return (bus, messengerMock, handler);
+    }
+
+    [Fact]
+    public async Task EncodingEvents_AreNotSentToEveryDashboardConnection()
+    {
+        (
+            InMemoryEventBus bus,
+            Mock<IClientMessenger> messengerMock,
+            SignalREncodingEventHandler handler
+        ) = BuildChain();
+        using SignalREncodingEventHandler _ = handler;
+
+        await bus.PublishAsync(
+            new EncodingStartedEvent
+            {
+                JobId = 7,
+                InputPath = "/input/movie.mkv",
+                OutputPath = "/output/movie/",
+                ProfileName = "HLS-1080p",
+            }
+        );
+
+        messengerMock.Verify(
+            m => m.SendToAll(It.IsAny<string>(), "dashboardHub", It.IsAny<object>()),
+            Times.Never
+        );
     }
 
     [Fact]
@@ -63,7 +91,7 @@ public class SignalREncodingEventHandlerJourneyTests
 
         messengerMock.Verify(
             m =>
-                m.SendToAll(
+                m.SendToModerators(
                     "EncodingStarted",
                     "dashboardHub",
                     It.Is<EncodingStartedDto>(dto =>
@@ -102,7 +130,7 @@ public class SignalREncodingEventHandlerJourneyTests
 
         messengerMock.Verify(
             m =>
-                m.SendToAll(
+                m.SendToModerators(
                     "EncodingProgress",
                     "dashboardHub",
                     It.Is<EncodingProgressDto>(dto =>
@@ -140,7 +168,7 @@ public class SignalREncodingEventHandlerJourneyTests
 
         messengerMock.Verify(
             m =>
-                m.SendToAll(
+                m.SendToModerators(
                     "EncodingCompleted",
                     "dashboardHub",
                     It.Is<EncodingCompletedDto>(dto =>
@@ -175,7 +203,7 @@ public class SignalREncodingEventHandlerJourneyTests
 
         messengerMock.Verify(
             m =>
-                m.SendToAll(
+                m.SendToModerators(
                     "EncodingFailed",
                     "dashboardHub",
                     It.Is<EncodingFailedDto>(dto =>
@@ -222,7 +250,7 @@ public class SignalREncodingEventHandlerJourneyTests
 
         messengerMock.Verify(
             m =>
-                m.SendToAll(
+                m.SendToModerators(
                     "encoder-progress",
                     "dashboardHub",
                     It.Is<EncodingStageChangedDto>(dto =>
@@ -260,7 +288,7 @@ public class SignalREncodingEventHandlerJourneyTests
         await bus.PublishAsync(publishedEvent);
 
         messengerMock.Verify(
-            m => m.SendToAll("encoder-progress", "dashboardHub", progressData),
+            m => m.SendToModerators("encoder-progress", "dashboardHub", progressData),
             Times.Once
         );
     }
@@ -327,23 +355,23 @@ public class SignalREncodingEventHandlerJourneyTests
         );
 
         messengerMock.Verify(
-            m => m.SendToAll("EncodingStarted", "dashboardHub", It.IsAny<object>()),
+            m => m.SendToModerators("EncodingStarted", "dashboardHub", It.IsAny<object>()),
             Times.Once
         );
         messengerMock.Verify(
-            m => m.SendToAll("EncodingProgress", "dashboardHub", It.IsAny<object>()),
+            m => m.SendToModerators("EncodingProgress", "dashboardHub", It.IsAny<object>()),
             Times.Once
         );
         messengerMock.Verify(
-            m => m.SendToAll("EncodingCompleted", "dashboardHub", It.IsAny<object>()),
+            m => m.SendToModerators("EncodingCompleted", "dashboardHub", It.IsAny<object>()),
             Times.Once
         );
         messengerMock.Verify(
-            m => m.SendToAll("EncodingFailed", "dashboardHub", It.IsAny<object>()),
+            m => m.SendToModerators("EncodingFailed", "dashboardHub", It.IsAny<object>()),
             Times.Once
         );
         messengerMock.Verify(
-            m => m.SendToAll("encoder-progress", "dashboardHub", It.IsAny<object>()),
+            m => m.SendToModerators("encoder-progress", "dashboardHub", It.IsAny<object>()),
             Times.Exactly(2)
         );
     }
@@ -354,7 +382,9 @@ public class SignalREncodingEventHandlerJourneyTests
         InMemoryEventBus bus = new();
         Mock<IClientMessenger> messengerMock = new(MockBehavior.Strict);
         messengerMock
-            .Setup(m => m.SendToAll(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object>()))
+            .Setup(m =>
+                m.SendToModerators(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object>())
+            )
             .Returns(Task.CompletedTask);
 
         SignalREncodingEventHandler handler = new(
@@ -374,7 +404,7 @@ public class SignalREncodingEventHandlerJourneyTests
         );
 
         messengerMock.Verify(
-            m => m.SendToAll("EncodingStarted", "dashboardHub", It.IsAny<object>()),
+            m => m.SendToModerators("EncodingStarted", "dashboardHub", It.IsAny<object>()),
             Times.Once
         );
 
@@ -391,7 +421,7 @@ public class SignalREncodingEventHandlerJourneyTests
         );
 
         messengerMock.Verify(
-            m => m.SendToAll("EncodingStarted", "dashboardHub", It.IsAny<object>()),
+            m => m.SendToModerators("EncodingStarted", "dashboardHub", It.IsAny<object>()),
             Times.Once
         );
     }
@@ -403,7 +433,9 @@ public class SignalREncodingEventHandlerJourneyTests
         List<object?> capturedPayloads = [];
         Mock<IClientMessenger> messengerMock = new(MockBehavior.Strict);
         messengerMock
-            .Setup(m => m.SendToAll(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object>()))
+            .Setup(m =>
+                m.SendToModerators(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object>())
+            )
             .Callback<string, string, object?>((_, _, payload) => capturedPayloads.Add(payload))
             .Returns(Task.CompletedTask);
         using SignalREncodingEventHandler handler = new(
@@ -451,7 +483,7 @@ public class SignalREncodingEventHandlerJourneyTests
 
         messengerMock.Verify(
             m =>
-                m.SendToAll(
+                m.SendToModerators(
                     "EncodingProgress",
                     "dashboardHub",
                     It.Is<EncodingProgressDto>(dto =>

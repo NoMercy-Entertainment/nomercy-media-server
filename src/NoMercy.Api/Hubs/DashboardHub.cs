@@ -16,6 +16,7 @@ using NoMercy.Api.WebSockets;
 using NoMercy.Data.Activity;
 using NoMercy.Database;
 using NoMercy.Networking;
+using NoMercy.Networking.Http;
 using NoMercy.Networking.Messaging;
 
 namespace NoMercy.Api.Hubs;
@@ -52,10 +53,13 @@ public class DashboardHub : ConnectionHub
         if (AuthPolicy.IsModerator(Context.User))
         {
             await Groups.AddToGroupAsync(Context.ConnectionId, "moderators");
+            if (ConnectedClients.Clients.TryGetValue(Context.ConnectionId, out Client? client))
+                client.IsModerator = true;
+
+            _logBroadcastService.Start();
         }
 
         _logger.LogDebug("Dashboard client connected");
-        _logBroadcastService.Start();
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
