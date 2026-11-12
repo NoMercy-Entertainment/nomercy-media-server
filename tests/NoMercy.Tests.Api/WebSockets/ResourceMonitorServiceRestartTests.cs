@@ -33,7 +33,7 @@ public class ResourceMonitorServiceRestartTests
         );
         Mock<IClientMessenger> clientMessenger = new();
         clientMessenger
-            .Setup(x => x.SendToAll("ResourceUpdate", "dashboardHub", It.IsAny<object>()))
+            .Setup(x => x.SendToModerators("ResourceUpdate", "dashboardHub", It.IsAny<object>()))
             .Returns(() =>
             {
                 if (Volatile.Read(ref stopReturned))

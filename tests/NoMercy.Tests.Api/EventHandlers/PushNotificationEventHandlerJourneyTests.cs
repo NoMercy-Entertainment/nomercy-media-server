@@ -520,7 +520,11 @@ public class PushNotificationEventHandlerJourneyTests
         );
         messengerMock
             .Setup(messenger =>
-                messenger.SendToAll(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<object>())
+                messenger.SendToModerators(
+                    It.IsAny<string>(),
+                    It.IsAny<string>(),
+                    It.IsAny<object>()
+                )
             )
             .Returns(Task.CompletedTask);
 
@@ -534,7 +538,7 @@ public class PushNotificationEventHandlerJourneyTests
 
         messengerMock.Verify(
             messenger =>
-                messenger.SendToAll("EncodingCompleted", "dashboardHub", It.IsAny<object>()),
+                messenger.SendToModerators("EncodingCompleted", "dashboardHub", It.IsAny<object>()),
             Times.Once
         );
 
