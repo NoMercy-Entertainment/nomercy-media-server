@@ -16,6 +16,9 @@ using NoMercy.Providers.TMDB.Client;
 using NoMercy.Providers.TMDB.Models.Movies;
 using NoMercy.Providers.TMDB.Models.Shared;
 using NoMercy.Providers.TMDB.Models.TV;
+using NoMercy.Providers.TVDB.Client;
+using NoMercy.Providers.TVDB.Models.Search;
+using NoMercy.Providers.TVDB.Models.Shared;
 
 namespace NoMercy.MediaProcessing.Inbox;
 
@@ -31,7 +34,7 @@ public sealed class TmdbMusicBrainzMetadataProbe : IInboxMetadataProbe
         TmdbPaginatedResponse<TmdbMovie>? response = await client.Movie(title, year?.ToString());
 
         if (response?.Results is null || response.Results.Count == 0)
-            return [];
+            return await SearchTvdbAsync(title, year, isTv: false);
 
         return
         [
@@ -55,7 +58,7 @@ public sealed class TmdbMusicBrainzMetadataProbe : IInboxMetadataProbe
         TmdbPaginatedResponse<TmdbTvShow>? response = await client.TvShow(title, year?.ToString());
 
         if (response?.Results is null || response.Results.Count == 0)
-            return [];
+            return await SearchTvdbAsync(title, year, isTv: true);
 
         return
         [
@@ -98,6 +101,53 @@ public sealed class TmdbMusicBrainzMetadataProbe : IInboxMetadataProbe
             PosterPath = null,
             Score = 1.0,
         };
+    }
+
+    private static async Task<CandidateMatch[]> SearchTvdbAsync(string title, int? year, bool isTv)
+    {
+        using TvdbSearchClient client = new();
+        TvdbSearchResponse? response = isTv
+            ? await client.Series(title, year)
+            : await client.Movie(title, year);
+
+        if (response?.Data is null)
+            return [];
+
+        List<CandidateMatch> matches = [];
+        foreach (TvdbSearchResult result in response.Data)
+        {
+            // Import jobs still require TMDB ids. A TVDB-only id must never be
+            // handed to them as if it belonged to TMDB.
+            TvdbRemoteId? tmdb = result.RemoteIds?.FirstOrDefault(remote =>
+                (
+                    remote.SourceName?.Contains("themoviedb", StringComparison.OrdinalIgnoreCase)
+                    ?? false
+                ) || string.Equals(remote.SourceName, "tmdb", StringComparison.OrdinalIgnoreCase)
+            );
+            if (tmdb is null || !int.TryParse(tmdb.Id, out int tmdbId) || tmdbId <= 0)
+                continue;
+
+            if (string.IsNullOrWhiteSpace(result.Name))
+                continue;
+
+            matches.Add(
+                new()
+                {
+                    Provider = "tmdb",
+                    ExternalId = tmdbId.ToString(),
+                    Title = result.Name,
+                    Year = int.TryParse(result.Year, out int resultYear) ? resultYear : null,
+                    // TVDB images are absolute URLs; the existing poster path is TMDB-relative.
+                    PosterPath = null,
+                    // A cross-reference identifies the work but carries no TMDB ranking signal.
+                    Score = 0.49,
+                }
+            );
+            if (matches.Count == 5)
+                break;
+        }
+
+        return [.. matches];
     }
 
     private static double NormalizePopularity(double popularity, double voteAverage)
