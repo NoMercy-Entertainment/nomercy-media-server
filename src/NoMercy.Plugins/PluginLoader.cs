@@ -44,6 +44,9 @@ internal sealed class PluginLoader(
     IPluginRemoteLoader? remote = null
 )
 {
+    internal const string CannotRunElsewhere =
+        "Out-of-process was chosen for this plugin, but this install cannot run it there. The plugin was not loaded. Choose in-process, or install the plugin host.";
+
     private readonly IEventBus _eventBus = eventBus;
     private readonly IServiceProvider _serviceProvider = serviceProvider;
     private readonly ILogger _logger = logger;
@@ -82,36 +85,36 @@ internal sealed class PluginLoader(
     /// always did.
     /// </para>
     /// </summary>
-    private async Task RegisterRemoteAsync(
-        IPlugin plugin,
-        PluginManifest manifest,
-        string assemblyPath,
-        string manifestPath,
-        PluginVerificationResult verification,
-        CancellationToken ct
-    )
+    internal async Task<bool> StartElsewhereAsync(PluginInfo info, CancellationToken ct)
     {
-        PluginInfo info = PluginManifestParser.ToPluginInfo(
-            manifest,
-            assemblyPath,
-            PluginStatus.Active,
-            manifestPath,
-            verification.Verified,
-            verification.Trusted
-        );
+        IPlugin? elsewhere = _remote is null
+            ? null
+            : await _remote.LoadAsync(new(info.Id, info.Name, info.Description, info.Version), ct);
 
-        _registry[manifest.Id.Value] = new LoadedPlugin(info, plugin, null);
+        // False leaves the registry as it was: the caller says what a failure means.
+        if (elsewhere is null)
+        {
+            return false;
+        }
+
+        info.Status = PluginStatus.Active;
+        _registry[info.Id] = new LoadedPlugin(info, elsewhere, null);
 
         await _eventBus.PublishAsync(
             new PluginLoadedEvent
             {
-                PluginId = manifest.Id.ToString(),
-                PluginName = manifest.Name,
-                Version = manifest.Version,
+                PluginId = info.Id.ToString(),
+                PluginName = info.Name,
+                Version = info.Version.ToString(),
             },
             ct
         );
+
+        return true;
     }
+
+    internal bool RunsElsewhere(Ulid pluginId) =>
+        _remote?.IsolationFor(pluginId) == PluginIsolation.OutOfProcess;
 
     /// <summary>
     /// Records a plugin whose manifest parsed but whose assembly never mapped
@@ -496,7 +499,7 @@ internal sealed class PluginLoader(
             // process boundary, and loading the assembly here is the one thing
             // that choice forbids. The plugin is held as malfunctioned with the
             // reason so the dashboard can say what to do.
-            if (_remote?.IsolationFor(manifest.Id.Value) == PluginIsolation.OutOfProcess)
+            if (RunsElsewhere(manifest.Id.Value))
             {
                 // Asked before the other process starts: starting it runs the plugin.
                 if (!await MayStartAsync(manifest, assemblyPath, manifestPath, verification, ct))
@@ -518,33 +521,21 @@ internal sealed class PluginLoader(
                     return;
                 }
 
-                IPlugin? elsewhere = await _remote.LoadAsync(
-                    new PluginDescription(
-                        manifest.Id.Value,
-                        manifest.Name,
-                        manifest.Description,
-                        Version.TryParse(manifest.Version, out Version? declared)
-                            ? declared
-                            : new Version(0, 0)
-                    ),
-                    ct
+                PluginInfo elsewhere = PluginManifestParser.ToPluginInfo(
+                    manifest,
+                    assemblyPath,
+                    PluginStatus.Disabled,
+                    manifestPath,
+                    verification.Verified,
+                    verification.Trusted
                 );
 
-                if (elsewhere is not null)
+                if (await StartElsewhereAsync(elsewhere, ct))
                 {
-                    await RegisterRemoteAsync(
-                        elsewhere,
-                        manifest,
-                        assemblyPath,
-                        manifestPath,
-                        verification,
-                        ct
-                    );
                     return;
                 }
 
-                const string reason =
-                    "Out-of-process was chosen for this plugin, but this install cannot run it there. The plugin was not loaded. Choose in-process, or install the plugin host.";
+                const string reason = CannotRunElsewhere;
 
                 _logger.LogError(
                     "Plugin {PluginName} is set to run in its own process and this install cannot do that. The plugin was not loaded.",

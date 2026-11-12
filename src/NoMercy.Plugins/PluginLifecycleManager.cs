@@ -109,14 +109,18 @@ internal sealed class PluginLifecycleManager(
             );
         }
 
-        // A revoked build stays off in every trust mode (AUD-1134).
+        // A revoked build stays off in every trust mode (AUD-1134). Every other
+        // refusal stops an enable too, except unanswered consent: enabling is
+        // the owner's answer to it (AUD-9884).
         if (
             _serviceProvider.GetService<IPluginRunGate>()?.MayRun(loaded.Info) is
-            { Code: PluginRefusalCodes.Revoked }
+            { Code: not PluginRefusalCodes.CapabilityNotConsented } refused
         )
         {
             throw new InvalidOperationException(
-                $"Plugin {loaded.Info.Name} was revoked and cannot be enabled. Install the newest version."
+                refused.Code == PluginRefusalCodes.Revoked
+                    ? $"Plugin {loaded.Info.Name} was revoked and cannot be enabled. Install the newest version."
+                    : $"Plugin {loaded.Info.Name} cannot be enabled: {refused.Why} {refused.Fix}"
             );
         }
 
@@ -127,6 +131,19 @@ internal sealed class PluginLifecycleManager(
         if (!_consentService.IsBaseline(loaded.Info.Capabilities))
         {
             _consentService.GrantConsent(pluginId, loaded.Info.Capabilities, loaded.Info.Version);
+        }
+
+        // The owner's isolation choice holds on enable as it does on load.
+        if (loaded.Instance is null && _loader.RunsElsewhere(pluginId))
+        {
+            if (!await _loader.StartElsewhereAsync(loaded.Info, ct))
+            {
+                throw new InvalidOperationException(PluginLoader.CannotRunElsewhere);
+            }
+
+            _registerScheduledWork?.Invoke(pluginId);
+
+            return;
         }
 
         if (loaded.Instance is null && loaded.Info.AssemblyPath is not null)
