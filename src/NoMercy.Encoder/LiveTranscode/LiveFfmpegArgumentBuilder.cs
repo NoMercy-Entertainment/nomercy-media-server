@@ -182,6 +182,34 @@ internal static class LiveFfmpegArgumentBuilder
             : decision.Action;
     }
 
+    // True only when the argv re-encodes video; copy runs need no GPU slot.
+    internal static bool EncodesVideo(LiveRunInput input)
+    {
+        if (input.AudioRenditionOnly)
+            return false;
+
+        bool hasVideo = input.SourceInfo is null || input.SourceInfo.HasVideo;
+        if (!hasVideo)
+            return false;
+
+        return DetermineAction(input, hasVideo)
+            is not (PlaybackAction.Remux or PlaybackAction.TranscodeAudio);
+    }
+
+    private static bool SelectedAudioPlayable(LiveRunInput input)
+    {
+        IReadOnlyList<AudioStreamInfo>? streams = input.SourceInfo?.AudioStreams;
+        if (streams is null || input.Client is null)
+            return false;
+
+        return input.AudioStreamIndex >= 0
+            && input.AudioStreamIndex < streams.Count
+            && PlaybackDecisionEngine.IsAudioPlayable(
+                streams[input.AudioStreamIndex],
+                input.Client
+            );
+    }
+
     private static void AppendVideo(List<string> args, LiveRunInput input, PlaybackAction action)
     {
         args.Add("-map");
@@ -302,7 +330,9 @@ internal static class LiveFfmpegArgumentBuilder
         args.Add("-map");
         args.Add($"0:a:{input.AudioStreamIndex.ToString(CultureInfo.InvariantCulture)}?");
 
-        if (action == PlaybackAction.Remux)
+        // The decision accepts any playable audio stream, so the selected one
+        // may still be a codec the client cannot decode: copy only a playable one.
+        if (action == PlaybackAction.Remux && SelectedAudioPlayable(input))
         {
             args.Add("-c:a");
             args.Add("copy");

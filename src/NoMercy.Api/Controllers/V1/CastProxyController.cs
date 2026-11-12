@@ -12,15 +12,18 @@
 using System.Net;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
+using System.Text.Json;
 using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using NoMercy.Api.Services.Cast;
 using NoMercy.Authorization;
 using NoMercy.Data.Repositories;
 using NoMercy.Database.Models.Users;
 using NoMercy.Networking.Http;
+using NoMercy.NmSystem.Information;
 
 namespace NoMercy.Api.Controllers.V1;
 
@@ -32,8 +35,8 @@ namespace NoMercy.Api.Controllers.V1;
 /// forwards the request LAN-side to the TV and relays the reply back. This lets
 /// the web reuse the exact <c>/v1</c> control surface the Android/KMP app uses
 /// natively — <c>launch</c>, <c>session</c> polling, <c>session/transport/*</c>.
-/// The caller's own bearer token is forwarded: the TV validates the same
-/// Keycloak user token the phone presents and auto-pairs the owner by subject.
+/// A TV that lists "tv-control-token" in its /v1/info gets a short control token;
+/// every other TV gets the caller's own bearer, as the phone presents it.
 /// </summary>
 [ApiController]
 [ApiVersion(1.0)]
@@ -42,6 +45,7 @@ namespace NoMercy.Api.Controllers.V1;
 public class CastProxyController(
     IDeviceRepository deviceRepository,
     IHttpClientFactory httpClientFactory,
+    CastControlTokenService controlTokens,
     ILogger<CastProxyController> logger
 ) : BaseController
 {
@@ -103,7 +107,65 @@ public class CastProxyController(
                 .Select(unicast => unicast.Address),
         ];
 
-    internal static HttpRequestMessage BuildForward(HttpContext context, string targetUrl)
+    private const string ControlTokenCapability = "tv-control-token";
+
+    // A TV lists what it accepts in the public /v1/info "auth" array. Any failure to
+    // ask or to mint means the TV gets the user bearer, exactly as before.
+    internal static async Task<string?> ResolveControlTokenAsync(
+        HttpClient client,
+        string host,
+        int port,
+        Func<string?> mint
+    )
+    {
+        string targetHost = host.Contains(':') ? $"[{host}]" : host;
+        try
+        {
+            using CancellationTokenSource timeout = new(TimeSpan.FromSeconds(3));
+            using HttpResponseMessage response = await client.GetAsync(
+                $"http://{targetHost}:{port}/v1/info",
+                timeout.Token
+            );
+            if (!response.IsSuccessStatusCode)
+                return null;
+
+            using JsonDocument info = JsonDocument.Parse(
+                await response.Content.ReadAsStringAsync(timeout.Token)
+            );
+            bool capable =
+                info.RootElement.ValueKind == JsonValueKind.Object
+                && info.RootElement.TryGetProperty("auth", out JsonElement auth)
+                && auth.ValueKind == JsonValueKind.Array
+                && auth.EnumerateArray()
+                    .Any(a =>
+                        a.ValueKind == JsonValueKind.String
+                        && a.GetString() == ControlTokenCapability
+                    );
+            if (!capable)
+                return null;
+        }
+        catch (Exception ex)
+            when (ex is HttpRequestException or JsonException or OperationCanceledException)
+        {
+            return null;
+        }
+
+        // Any mint failure, thrown or null, keeps today's user-bearer forward.
+        try
+        {
+            return mint();
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    internal static HttpRequestMessage BuildForward(
+        HttpContext context,
+        string targetUrl,
+        string? controlToken = null
+    )
     {
         HttpRequest request = context.Request;
         HttpRequestMessage forward = new(new HttpMethod(request.Method), targetUrl);
@@ -116,9 +178,11 @@ public class CastProxyController(
             forward.Content = content;
         }
 
-        // Forward the caller's own bearer token verbatim — the TV's /v1 accepts
-        // the same Keycloak user token the phone uses; no re-mint needed.
-        string? authorization = request.Headers.Authorization.FirstOrDefault();
+        // An older TV accepts the caller's own bearer verbatim; a TV that advertises
+        // tv-control-token gets a short control token instead.
+        string? authorization = string.IsNullOrEmpty(controlToken)
+            ? request.Headers.Authorization.FirstOrDefault()
+            : $"Bearer {controlToken}";
         if (!string.IsNullOrEmpty(authorization))
             forward.Headers.TryAddWithoutValidation("Authorization", authorization);
 
@@ -185,10 +249,21 @@ public class CastProxyController(
         string targetUrl = $"http://{targetHost}:{port}/{path}{query}";
         logger.LogInformation("[CastProxy] forwarding to {TargetUrl}", targetUrl);
 
-        using HttpRequestMessage forward = BuildForward(HttpContext, targetUrl);
-
         HttpClient client = httpClientFactory.CreateClient();
         client.Timeout = TimeSpan.FromSeconds(10);
+
+        string? controlToken = await ResolveControlTokenAsync(
+            client,
+            host,
+            port,
+            () =>
+                string.IsNullOrWhiteSpace(tv.Fingerprint)
+                    ? null
+                    : controlTokens
+                        .Mint(Info.DeviceId.ToString(), userId, tv.DeviceId, tv.Fingerprint)
+                        .Token
+        );
+        using HttpRequestMessage forward = BuildForward(HttpContext, targetUrl, controlToken);
 
         try
         {

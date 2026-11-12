@@ -39,13 +39,18 @@ public class LiveFfmpegRunner(
     internal const string PlaylistFileName = "index.m3u8";
     internal const string SegmentPrefix = "seg_";
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan GpuLeaseWait = TimeSpan.FromSeconds(2);
+    private static readonly TimeSpan CpuLeaseWait = TimeSpan.FromMilliseconds(500);
+
+    internal TimeSpan LeaseWaitTimeout { get; init; } = TimeSpan.FromSeconds(30);
 
     public async Task RunAsync(LiveRunInput input, LiveSession session, CancellationToken ct)
     {
         // Enforce NVENC concurrent session cap before spawning FFmpeg.
         // Hardware-accelerated live encodes use the first GPU device name for
         // the error message; software encodes skip the check.
-        bool requiresGpu = input.Quality.IsHardwareAccelerated;
+        bool requiresGpu =
+            input.Quality.IsHardwareAccelerated && LiveFfmpegArgumentBuilder.EncodesVideo(input);
         string gpuName = hardware.Gpus.Count > 0 ? hardware.Gpus[0].Name : "GPU";
 
         try
@@ -85,7 +90,85 @@ public class LiveFfmpegRunner(
 
         try
         {
-            lease = await resourceBudget.AcquireAsync(requirement, ct).ConfigureAwait(false);
+            logger.LogInformation(
+                "Live FFmpeg waiting for resource lease: session {SessionId} GpuSlots={GpuSlots} CpuThreads={CpuThreads}",
+                session.SessionId,
+                requirement.GpuSlots,
+                requirement.CpuThreads
+            );
+
+            long waitStart = Environment.TickCount64;
+
+            if (requiresGpu)
+            {
+                lease = await AcquireWithinAsync(requirement, GpuLeaseWait, ct)
+                    .ConfigureAwait(false);
+
+                if (lease is null && !ct.IsCancellationRequested)
+                {
+                    // A queued encode holds the GPU; a viewer must not wait for it.
+                    input = await FallBackToSoftwareAsync(input, session, ct).ConfigureAwait(false);
+                    requirement = new(
+                        null,
+                        GpuSlots: 0,
+                        CpuThreads: EncodeThreadBudget.SoftwareEncode
+                    );
+                    lease = await AcquireWithinAsync(requirement, CpuLeaseWait, ct)
+                        .ConfigureAwait(false);
+
+                    if (lease is null && !ct.IsCancellationRequested)
+                    {
+                        logger.LogWarning(
+                            "No GPU or CPU lease for live session {SessionId}",
+                            session.SessionId
+                        );
+                        session.SetState(LiveSessionState.Error);
+                        await PushTranscodeErrorAsync(
+                                session.SessionId,
+                                "No encoder capacity is free right now",
+                                EncodingErrorKind.ResourceExhausted,
+                                recoverable: true
+                            )
+                            .ConfigureAwait(false);
+                        return;
+                    }
+                }
+
+                ct.ThrowIfCancellationRequested();
+            }
+            else
+            {
+                lease = await AcquireWithinAsync(requirement, LeaseWaitTimeout, ct)
+                    .ConfigureAwait(false);
+
+                if (lease is null && !ct.IsCancellationRequested)
+                {
+                    logger.LogError(
+                        "Live FFmpeg gave up waiting for a resource lease after {Seconds} s: session {SessionId} GpuSlots={GpuSlots} CpuThreads={CpuThreads}",
+                        LeaseWaitTimeout.TotalSeconds,
+                        session.SessionId,
+                        requirement.GpuSlots,
+                        requirement.CpuThreads
+                    );
+                    session.SetState(LiveSessionState.Error);
+                    await PushTranscodeErrorAsync(
+                            session.SessionId,
+                            "Timed out waiting for encoder resources",
+                            EncodingErrorKind.ResourceExhausted,
+                            recoverable: true
+                        )
+                        .ConfigureAwait(false);
+                    return;
+                }
+            }
+
+            logger.LogInformation(
+                "Live FFmpeg got resource lease after {ElapsedMs} ms: session {SessionId} GpuSlots={GpuSlots} CpuThreads={CpuThreads}",
+                Environment.TickCount64 - waitStart,
+                session.SessionId,
+                requirement.GpuSlots,
+                requirement.CpuThreads
+            );
 
             storage.CreateDirectory(input.OutputDirectory);
 
@@ -253,7 +336,7 @@ public class LiveFfmpegRunner(
         session.SetQuality(fallbackQuality);
 
         logger.LogWarning(
-            "GPU session cap exhausted for session {SessionId} — falling back to {Encoder}",
+            "GPU unavailable for session {SessionId} — falling back to {Encoder}",
             session.SessionId,
             fallbackQuality.Encoder
         );
@@ -460,15 +543,41 @@ public class LiveFfmpegRunner(
     private static string Truncate(string value, int max) =>
         value.Length > max ? value[..max] : value;
 
-    private async Task PushTranscodeErrorAsync(string sessionId, string message)
+    private async Task<ResourceLease?> AcquireWithinAsync(
+        ResourceRequirement requirement,
+        TimeSpan wait,
+        CancellationToken ct
+    )
+    {
+        using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeout.CancelAfter(wait);
+
+        try
+        {
+            return await resourceBudget
+                .AcquireAsync(requirement, timeout.Token)
+                .ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return null;
+        }
+    }
+
+    private async Task PushTranscodeErrorAsync(
+        string sessionId,
+        string message,
+        EncodingErrorKind kind = EncodingErrorKind.ProcessCrashed,
+        bool recoverable = false
+    )
     {
         if (transport is null)
             return;
 
         TranscodeErrorMessage errorMessage = new(
-            Kind: EncodingErrorKind.ProcessCrashed,
+            Kind: kind,
             Message: message,
-            Recoverable: false
+            Recoverable: recoverable
         );
 
         try

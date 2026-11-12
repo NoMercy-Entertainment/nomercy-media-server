@@ -11,7 +11,7 @@
 
 using System.Net;
 
-namespace NoMercy.Api.Security;
+namespace NoMercy.Networking.Http;
 
 /// <summary>
 /// A CIDR range, or a single address written without a prefix.

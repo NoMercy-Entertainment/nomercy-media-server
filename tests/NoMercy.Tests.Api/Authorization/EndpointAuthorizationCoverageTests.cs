@@ -51,6 +51,9 @@ public sealed class EndpointAuthorizationCoverageTests(
         // Setup-state probe the apps poll before they have a token.
         // SetupController.cs: [AllowAnonymous] on the action, 30 s response cache.
         "GET /status",
+        // Public key a TV checks a cast control token against; holds no secret.
+        // CastTokenController.cs: [AllowAnonymous] on the action.
+        "GET /api/v{version:apiVersion}/cast/keys",
         // Local management plane for the launcher/CLI. ManagementController.cs:
         // [AllowAnonymous] + [LocalhostOnly] on the class, so only loopback reaches it.
         "GET /manage/activity",

@@ -42,4 +42,7 @@ public interface IDeviceRepository
     /// The device a user owns with this client-reported device id and type, or null.
     /// </summary>
     Task<Device?> GetOwnedDeviceAsync(string deviceId, Guid ownerUserId, string type);
+
+    /// <summary>The device registered under a client device id, whoever owns it.</summary>
+    Task<Device?> GetByClientDeviceIdAsync(string deviceId);
 }

@@ -132,4 +132,30 @@ public class ExceptionExtensionsTests
 
         ex.DescribeConnectionFailure().Should().Be("Token exchange failed (400): invalid_grant");
     }
+
+    [Fact]
+    public void DescribeConnectionFailureForUser_WithAdvice_IsTheAdviceWithoutTheChain()
+    {
+        string result = SslFailure("errors in the certificate chain: UntrustedRoot")
+            .DescribeConnectionFailureForUser();
+
+        result.Should().StartWith("Likely cause:");
+        result.Should().NotContain("UntrustedRoot");
+        result.Should().NotContain(" -> ");
+    }
+
+    [Fact]
+    public void DescribeConnectionFailureForUser_WithoutAdvice_IsOnePlainSentence()
+    {
+        HttpRequestException ex = new(
+            "An error occurred while sending the request.",
+            new SocketException((int)SocketError.ConnectionReset)
+        );
+
+        string result = ex.DescribeConnectionFailureForUser();
+
+        result.Should().NotContain("error occurred while sending");
+        result.Should().NotContain(" -> ");
+        result.Should().Contain("server log");
+    }
 }

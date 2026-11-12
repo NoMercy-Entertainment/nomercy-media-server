@@ -157,7 +157,19 @@ public static class ClientIpResolver
             || normalized.IsIPv6SiteLocal;
     }
 
-    private static bool IsTrustedProxy(IPAddress? address) => IsPrivateNetwork(address);
+    /// <summary>Operator-listed relays, hydrated at boot from the row
+    /// <see cref="TrustedProxyList.ConfigKey"/>; empty keeps the private-range rule.</summary>
+    public static IReadOnlyList<IpRange> TrustedProxies { get; set; } = [];
+
+    private static bool IsTrustedProxy(IPAddress? address)
+    {
+        IReadOnlyList<IpRange> trusted = TrustedProxies;
+        if (trusted.Count == 0)
+            return IsPrivateNetwork(address);
+
+        IPAddress? normalized = Normalize(address);
+        return normalized is not null && trusted.Any(range => range.Contains(normalized));
+    }
 
     private static IPAddress? Normalize(IPAddress? address)
     {

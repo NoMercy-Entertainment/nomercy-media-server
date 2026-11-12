@@ -22,6 +22,7 @@ using NoMercy.Networking.Certificate;
 using NoMercy.NmSystem.Auth;
 using NoMercy.NmSystem.Configuration;
 using NoMercy.NmSystem.Security;
+using NoMercy.NmSystem.SystemCalls;
 using NoMercy.Setup.Auth;
 using NoMercy.Setup.Boot;
 using NoMercy.Setup.Dto;
@@ -777,6 +778,58 @@ public sealed class SetupEndpointsTests : IDisposable
     }
 
     // ── /sso-callback ─────────────────────────────────────────────────────────
+
+    [Fact]
+    public async Task HandleSsoCallback_ConnectionFailure_UserSeesPlainTextAndLogGetsTheChain()
+    {
+        // A closed loopback port: the token exchange throws HttpRequestException
+        // with an inner SocketException, the shape #584 reported.
+        string deadBaseUrl;
+        using (LoopbackHttpServer server = new())
+            deadBaseUrl = server.BaseUrl;
+        using ExternalServicesConfigScope scope = new(authBaseUrl: deadBaseUrl);
+
+        List<string> logged = [];
+        object gate = new();
+        Action<NoMercy.NmSystem.Dto.LogEntry> capture = entry =>
+        {
+            lock (gate)
+                logged.Add(entry.Message);
+        };
+        Logger.LogEmitted += capture;
+        try
+        {
+            SetupEndpoints endpoints = BuildEndpoints();
+            DefaultHttpContext context = BuildContext(
+                "GET",
+                "/sso-callback",
+                queryString: "?code=abc"
+            );
+
+            await endpoints.HandleRequestAsync(context);
+
+            string body = ReadBody(context);
+            string stateError = _setupState.ErrorMessage ?? string.Empty;
+            foreach (string userText in new[] { stateError, body })
+            {
+                Assert.DoesNotContain("Exception", userText);
+                Assert.DoesNotContain(" -> ", userText);
+                Assert.DoesNotContain("127.0.0.1", userText);
+            }
+            Assert.StartsWith("Sign in failed.", stateError);
+
+            string[] chainLines;
+            lock (gate)
+                chainLines = logged
+                    .Where(m => m.StartsWith("Token exchange failed:") && m.Contains("127.0.0.1"))
+                    .ToArray();
+            Assert.NotEmpty(chainLines);
+        }
+        finally
+        {
+            Logger.LogEmitted -= capture;
+        }
+    }
 
     [Fact]
     public async Task HandleSsoCallback_Post_Returns405()

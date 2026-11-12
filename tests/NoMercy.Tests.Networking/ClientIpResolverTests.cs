@@ -165,4 +165,105 @@ public class ClientIpResolverTests
     {
         ClientIpResolver.IsPrivateNetwork(null).Should().BeFalse();
     }
+
+    // ── trusted proxy list (#125) ──────────────────────────────────────────
+
+    private static void WithTrustedProxies(string raw, Action body)
+    {
+        IReadOnlyList<IpRange> previous = ClientIpResolver.TrustedProxies;
+        ClientIpResolver.TrustedProxies = TrustedProxyList.Parse(raw, out _);
+        try
+        {
+            body();
+        }
+        finally
+        {
+            ClientIpResolver.TrustedProxies = previous;
+        }
+    }
+
+    [Fact]
+    public void ClientIp_UnsetList_StillTrustsPrivatePeerAsRelay()
+    {
+        WithTrustedProxies(
+            "",
+            () =>
+            {
+                DefaultHttpContext context = ContextFrom(
+                    "192.168.1.2",
+                    ("X-Forwarded-For", "203.0.113.9")
+                );
+
+                context.ClientIp().Should().Be(IPAddress.Parse("203.0.113.9"));
+                context.IsProxied().Should().BeTrue();
+            }
+        );
+    }
+
+    [Fact]
+    public void ClientIp_SetList_TrustsListedPeer_ByRangeAndBySingleAddress()
+    {
+        WithTrustedProxies(
+            "203.0.113.0/24, 2001:db8::1",
+            () =>
+            {
+                DefaultHttpContext fromRange = ContextFrom(
+                    "203.0.113.5",
+                    ("X-Forwarded-For", "198.51.100.7")
+                );
+                DefaultHttpContext fromSingle = ContextFrom(
+                    "2001:db8::1",
+                    ("X-Real-IP", "198.51.100.8")
+                );
+
+                fromRange.ClientIp().Should().Be(IPAddress.Parse("198.51.100.7"));
+                fromRange.IsProxied().Should().BeTrue();
+                fromSingle.ClientIp().Should().Be(IPAddress.Parse("198.51.100.8"));
+                fromSingle.IsProxied().Should().BeTrue();
+            }
+        );
+    }
+
+    [Fact]
+    public void ClientIp_SetList_IgnoresHeaderFromUnlistedPrivatePeer()
+    {
+        WithTrustedProxies(
+            "203.0.113.0/24",
+            () =>
+            {
+                DefaultHttpContext context = ContextFrom(
+                    "192.168.1.2",
+                    ("X-Forwarded-For", "198.51.100.7"),
+                    ("CF-Connecting-IP", "198.51.100.7")
+                );
+
+                context.ClientIp().Should().Be(IPAddress.Parse("192.168.1.2"));
+                context.IsProxied().Should().BeFalse();
+            }
+        );
+    }
+
+    [Fact]
+    public void TrustedProxyList_SkipsInvalidEntries_AndReportsThem()
+    {
+        IReadOnlyList<IpRange> parsed = TrustedProxyList.Parse(
+            "198.51.100.0/24; not-an-address, 192.0.2.1, 2001:db8::/129",
+            out List<string> rejected
+        );
+
+        parsed.Should().HaveCount(2);
+        parsed.Should().Contain(network => network.Contains(IPAddress.Parse("198.51.100.200")));
+        parsed.Should().Contain(network => network.Contains(IPAddress.Parse("192.0.2.1")));
+        rejected.Should().BeEquivalentTo("not-an-address", "2001:db8::/129");
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("  , ; ")]
+    public void TrustedProxyList_EmptyValue_IsAnEmptyList(string? raw)
+    {
+        TrustedProxyList.Parse(raw, out List<string> rejected).Should().BeEmpty();
+        rejected.Should().BeEmpty();
+    }
 }

@@ -159,6 +159,13 @@ public class BufferAdaptiveService(
         )
             action = BufferAction.None;
 
+        // Nothing produced yet: a lower quality only restarts the same stall.
+        if (
+            action is BufferAction.DropQuality or BufferAction.EmergencyDropQuality
+            && runtime.HighestSegmentIndex < 0
+        )
+            action = BufferAction.None;
+
         switch (action)
         {
             case BufferAction.Suspend:
@@ -250,7 +257,7 @@ public class BufferAdaptiveService(
             ResetRaiseSweepCount(session.SessionId);
 
             LiveQuality lowest = available[^1];
-            if (lowest.Id == current.Id)
+            if (lowest.Id == current.Id || runtime.HighestSegmentIndex < 0)
                 return false;
 
             logger.LogInformation(
@@ -279,7 +286,7 @@ public class BufferAdaptiveService(
         // Higher index = lower resolution tier (available is ordered high→low),
         // so a fit index below the current tier means the downlink no longer
         // sustains it.
-        if (fitIndex > currentIndex)
+        if (fitIndex > currentIndex && runtime.HighestSegmentIndex >= 0)
         {
             ResetRaiseSweepCount(session.SessionId);
 

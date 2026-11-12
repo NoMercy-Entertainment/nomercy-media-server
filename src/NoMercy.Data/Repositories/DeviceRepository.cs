@@ -111,6 +111,11 @@ public class DeviceRepository(MediaContext context) : IDeviceRepository
         return context.ActivityLogs.ExecuteDeleteAsync();
     }
 
+    public Task<Device?> GetByClientDeviceIdAsync(string deviceId)
+    {
+        return context.Devices.AsNoTracking().FirstOrDefaultAsync(d => d.DeviceId == deviceId);
+    }
+
     public Task<Device?> GetOwnedDeviceAsync(string deviceId, Guid ownerUserId, string type)
     {
         return context

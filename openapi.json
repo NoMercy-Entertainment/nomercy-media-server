@@ -529,6 +529,40 @@
         }
       }
     },
+    "/api/v1/cast/keys": {
+      "get": {
+        "tags": [
+          "CastToken"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/v1/cast/{deviceId}/token": {
+      "post": {
+        "tags": [
+          "CastToken"
+        ],
+        "parameters": [
+          {
+            "name": "deviceId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/dashboard/configuration": {
       "get": {
         "tags": [
@@ -17263,6 +17297,9 @@
     },
     {
       "name": "CastProxy"
+    },
+    {
+      "name": "CastToken"
     },
     {
       "name": "Dashboard Configuration"
