@@ -14,6 +14,7 @@ using NoMercy.PluginSdk.Capabilities;
 using NoMercy.PluginSdk.Dependencies;
 using NoMercy.PluginSdk.Entitlements;
 using NoMercy.PluginSdk.Revocation;
+using NoMercy.PluginSdk.Verification;
 
 namespace NoMercy.PluginSdk;
 
@@ -36,7 +37,12 @@ public sealed class PluginRevocationRunCheck(
         if (store.Current.IssuedAt == DateTimeOffset.MinValue)
             return null;
 
-        return gate.Check(plugin.Id, plugin.AssemblyPath ?? string.Empty);
+        // The path only locates the folder the install wrote the hash into.
+        string? packageHash = PluginPackageHashMarker.Read(
+            plugin.ManifestPath ?? plugin.AssemblyPath
+        );
+
+        return gate.Check(plugin.Id, packageHash, plugin.Version);
     }
 }
 

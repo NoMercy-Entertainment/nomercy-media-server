@@ -266,6 +266,7 @@ public class PluginManager : IPluginManager, IDisposable
                 && await TrySwapResidentAssemblyAsync(pluginId, fullPath, destPath, ct)
             )
             {
+                PluginPackageHashMarker.Clear(pluginDir);
                 await RecordFilesAsync(pluginDir, ct);
                 await LoadPluginAssemblyAsync(destPath, ct);
                 _registerScheduledWork?.Invoke(pluginId);
@@ -294,6 +295,8 @@ public class PluginManager : IPluginManager, IDisposable
             throw new PluginUpdatePendingRestartException(pluginName);
         }
 
+        // A bare assembly is not the package an earlier install was hashed from.
+        PluginPackageHashMarker.Clear(pluginDir);
         await RecordFilesAsync(pluginDir, ct);
         await LoadPluginAssemblyAsync(destPath, ct);
     }
@@ -473,6 +476,10 @@ public class PluginManager : IPluginManager, IDisposable
             _driver.CreateDirectory(staging);
 
             await ExtractAsync(archive, manifest, staging, ct);
+            PluginPackageHashMarker.Write(
+                staging,
+                await PluginPackageChecksum.OfAsync(fullPath, ct)
+            );
 
             // The record is of the verified content, taken here before anything
             // else can touch it; it travels with the folder through every path
@@ -814,7 +821,7 @@ public class PluginManager : IPluginManager, IDisposable
                 ? !staged.Contains(relative)
                     && relative != PluginSideloadMarker.FileName
                     && !relative.EndsWith(RollbackSuffix, StringComparison.Ordinal)
-                : relative == PluginFileManifest.FileName;
+                : relative is PluginFileManifest.FileName or PluginPackageHashMarker.FileName;
 
             if (leftover)
             {
@@ -1229,6 +1236,8 @@ public class PluginManager : IPluginManager, IDisposable
         // Recorded as an install records it, so a change from here on is a
         // change from what the owner approved; and the yes itself names the
         // content, outside the folder, so nothing in the folder can renew it.
+        // A package hash found in a dropped folder is not one the server computed.
+        PluginPackageHashMarker.Clear(folder);
         await RecordFilesAsync(folder, ct);
         _approvals.Approve(
             Path.GetFileName(folder),

@@ -13,6 +13,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using FluentAssertions;
+using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Entitlements;
 using NoMercy.PluginSdk.Offline;
@@ -232,6 +233,57 @@ public class PluginOfflineBundleImporterTests
 
         importer.Import(bundle).Should().BeNull();
         importer.Import(bundle).Should().BeNull();
+    }
+
+    private static PluginInfo Installed(string version) =>
+        new()
+        {
+            Id = Ulid.Parse("01J9ZK5V8Y0000000000000099"),
+            Name = "Sample",
+            Description = "A sample plugin.",
+            Version = Version.Parse(version),
+            Status = PluginStatus.Active,
+        };
+
+    private static PluginRefusal? RunCheck(RecordingRevocationStore revocations, string version) =>
+        new PluginRevocationRunCheck(
+            new PluginRevocationGate(revocations, new StubClock(Now)),
+            revocations
+        ).Check(Installed(version));
+
+    /// <summary>AUD-1134: a bundle is matched by the rule the fetched list is matched by.</summary>
+    [Fact]
+    public void A_bundle_in_the_published_shape_revokes_by_listing_and_version()
+    {
+        RecordingRevocationStore revocations = new();
+
+        Importer(new(), revocations)
+            .Import(
+                Body(
+                    revocations: """{"issued_at":"2026-09-20T11:00:00+00:00","entries":[{"listing_id":"01J9ZK5V8Y0000000000000099","version":"1.2.0","sha256":null,"severity":"critical","reason":"plugins.revoked.security"}]}"""
+                )
+            )
+            .Should()
+            .BeNull();
+
+        RunCheck(revocations, "1.2.0")!.Code.Should().Be(PluginRefusalCodes.Revoked);
+        RunCheck(revocations, "1.3.0").Should().BeNull();
+    }
+
+    [Fact]
+    public void A_bundle_in_the_earlier_shape_names_one_package_rather_than_the_listing()
+    {
+        RecordingRevocationStore revocations = new();
+
+        Importer(new(), revocations)
+            .Import(Body(revocations: Revocations("2026-09-20T11:00:00+00:00", withdrawn: true)))
+            .Should()
+            .BeNull();
+
+        revocations.Saved!.Entries.Should().ContainSingle();
+        RunCheck(revocations, "1.2.0")
+            .Should()
+            .BeNull("the entry names a package hash, and this install has none to compare");
     }
 
     private static string Entitlements(string issuedAt) =>

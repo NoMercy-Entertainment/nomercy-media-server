@@ -20,9 +20,9 @@ public sealed record PluginRevocationList(
     /// <summary>A server that has never reached nomercy.tv. Reads as infinitely stale.</summary>
     public static PluginRevocationList None { get; } = new(DateTimeOffset.MinValue, []);
 
-    public PluginRevocationEntry? Find(Ulid pluginId, string packageHash) =>
-        Entries.FirstOrDefault(entry =>
-            entry.PluginId == pluginId
-            && entry.Hash.Equals(packageHash, StringComparison.OrdinalIgnoreCase)
-        );
+    public PluginRevocationEntry? Find(
+        Ulid pluginId,
+        string? packageHash,
+        Version installedVersion
+    ) => Entries.FirstOrDefault(entry => entry.Matches(pluginId, packageHash, installedVersion));
 }

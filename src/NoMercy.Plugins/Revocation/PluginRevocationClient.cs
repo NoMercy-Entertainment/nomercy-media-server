@@ -74,26 +74,18 @@ public class PluginRevocationClient(
             if (!PluginSignedEnvelope.Verifies(root, trustedKeys, "issued_at", "entries"))
                 return false;
 
-            JsonElement issuedAt = root.GetProperty("issued_at");
-            JsonElement entries = root.GetProperty("entries");
-
-            list = new(
-                issuedAt.GetDateTimeOffset(),
-                [
-                    .. entries
-                        .EnumerateArray()
-                        .Select(entry => new PluginRevocationEntry(
-                            Ulid.Parse(entry.GetProperty("plugin_id").GetString()!),
-                            entry.GetProperty("hash").GetString() ?? string.Empty,
-                            entry.GetProperty("reason").GetString() ?? string.Empty
-                        )),
-                ]
-            );
+            list = PluginRevocationListReader.Read(root);
 
             return true;
         }
         catch (Exception exception)
-            when (exception is JsonException or KeyNotFoundException or FormatException)
+            when (exception
+                    is JsonException
+                        or KeyNotFoundException
+                        or FormatException
+                        or InvalidOperationException
+                        or ArgumentException
+            )
         {
             return false;
         }

@@ -93,12 +93,11 @@ public class PluginOfflineBundleImporter(
                 Json
             );
 
-            PluginRevocationList? withdrawn = JsonSerializer.Deserialize<PluginRevocationList>(
-                root.GetProperty("revocations").GetRawText(),
-                Json
+            PluginRevocationList withdrawn = PluginRevocationListReader.Read(
+                root.GetProperty("revocations")
             );
 
-            if (held is null || withdrawn is null)
+            if (held is null)
                 return NotSigned();
 
             if (
@@ -117,7 +116,13 @@ public class PluginOfflineBundleImporter(
             return null;
         }
         catch (Exception exception)
-            when (exception is JsonException or KeyNotFoundException or FormatException)
+            when (exception
+                    is JsonException
+                        or KeyNotFoundException
+                        or FormatException
+                        or InvalidOperationException
+                        or ArgumentException
+            )
         {
             return NotSigned();
         }

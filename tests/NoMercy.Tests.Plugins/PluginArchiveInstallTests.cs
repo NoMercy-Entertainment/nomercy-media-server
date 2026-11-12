@@ -211,6 +211,24 @@ public class PluginArchiveInstallTests : IDisposable
             .BeTrue("everything the plugin shipped with comes across, not a chosen subset");
     }
 
+    /// <summary>AUD-1134: the package hash is kept so a revocation can name this build.</summary>
+    [Fact]
+    public async Task PublishedArchive_StoresThePackageHashWithTheInstalledPlugin()
+    {
+        string archive = PublishedArchive();
+
+        await Install(archive);
+
+        string stored = Path.Combine(
+            _pluginsDir,
+            "NoMercy.Plugin.InternetRadio",
+            ".package.sha256"
+        );
+
+        File.Exists(stored).Should().BeTrue("the zip is not kept, so its hash has to be");
+        File.ReadAllText(stored).Trim().Should().Be(Sha256Of(archive));
+    }
+
     [Fact]
     public async Task PublishedArchive_StripsTheWrappingFolderRatherThanNestingIt()
     {

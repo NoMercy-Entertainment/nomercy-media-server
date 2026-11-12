@@ -38,13 +38,14 @@ public class PluginRevocationGate(
 
     private readonly PluginTrustMode _mode = mode ?? PluginTrustMode.Enforcing;
 
-    public PluginRefusal? Check(Ulid pluginId, string packageHash) =>
-        _mode.Apply(Refusal(pluginId, packageHash));
+    /// <param name="packageHash">The hash stored at install, or null when none was.</param>
+    public PluginRefusal? Check(Ulid pluginId, string? packageHash, Version installedVersion) =>
+        _mode.Apply(Refusal(pluginId, packageHash, installedVersion));
 
-    private PluginRefusal? Refusal(Ulid pluginId, string packageHash)
+    private PluginRefusal? Refusal(Ulid pluginId, string? packageHash, Version installedVersion)
     {
         PluginRevocationList list = store.Current;
-        PluginRevocationEntry? revoked = list.Find(pluginId, packageHash);
+        PluginRevocationEntry? revoked = list.Find(pluginId, packageHash, installedVersion);
 
         if (revoked is not null)
             return new(

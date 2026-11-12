@@ -29,6 +29,7 @@ public class PluginTrustWarnOnlyTests
     private static readonly Ulid Torrent = Ulid.Parse("01J9ZK5V8Y0000000000000001");
     private static readonly Guid Owner = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private const string Hash = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";
+    private static readonly Version Installed = new(1, 0, 0);
     private static readonly DateTimeOffset Now = new(2026, 9, 26, 12, 0, 0, TimeSpan.Zero);
 
     private static PluginRevocationGate RevocationGate(
@@ -59,10 +60,10 @@ public class PluginTrustWarnOnlyTests
         ListLogger logger = new();
         PluginRevocationList list = new(
             Now,
-            [new PluginRevocationEntry(Torrent, Hash, "plugins.revoked.security")]
+            [new PluginRevocationEntry(Torrent, null, Hash, "plugins.revoked.security")]
         );
 
-        RevocationGate(list, new(false, logger)).Check(Torrent, Hash).Should().BeNull();
+        RevocationGate(list, new(false, logger)).Check(Torrent, Hash, Installed).Should().BeNull();
 
         logger
             .Entries.Should()
@@ -79,7 +80,7 @@ public class PluginTrustWarnOnlyTests
         ListLogger logger = new();
 
         RevocationGate(new(Now.AddDays(-30), []), new(false, logger))
-            .Check(Torrent, Hash)
+            .Check(Torrent, Hash, Installed)
             .Should()
             .BeNull();
 
@@ -94,9 +95,9 @@ public class PluginTrustWarnOnlyTests
         ListLogger logger = new();
         PluginRevocationGate gate = RevocationGate(new(Now.AddDays(-30), []), new(false, logger));
 
-        gate.Check(Torrent, Hash);
-        gate.Check(Torrent, Hash);
-        gate.Check(Torrent, Hash);
+        gate.Check(Torrent, Hash, Installed);
+        gate.Check(Torrent, Hash, Installed);
+        gate.Check(Torrent, Hash, Installed);
 
         logger.Entries.Should().HaveCount(1);
     }
@@ -107,7 +108,7 @@ public class PluginTrustWarnOnlyTests
         ListLogger logger = new();
 
         RevocationGate(new(Now.AddDays(-30), []), new(true, logger))
-            .Check(Torrent, Hash)!
+            .Check(Torrent, Hash, Installed)!
             .Severity.Should()
             .Be(PluginRefusalSeverity.Blocked);
 

@@ -27,6 +27,7 @@ public class PluginRevocationGateTests
     private static readonly Ulid Radio = Ulid.Parse("01J9ZK5V8Y0000000000000000");
     private static readonly Ulid Torrent = Ulid.Parse("01J9ZK5V8Y0000000000000001");
     private const string Hash = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";
+    private static readonly Version Installed = new(1, 0, 0);
 
     private static readonly DateTimeOffset Now = new(2026, 9, 20, 12, 0, 0, TimeSpan.Zero);
 
@@ -39,16 +40,16 @@ public class PluginRevocationGateTests
     [Fact]
     public void A_fresh_list_naming_nothing_allows()
     {
-        Gate(Aged(0.04)).Check(Radio, Hash).Should().BeNull();
+        Gate(Aged(0.04)).Check(Radio, Hash, Installed).Should().BeNull();
     }
 
     [Fact]
     public void A_revoked_build_is_refused_and_told_what_to_do()
     {
         PluginRefusal? refusal = Gate(
-                Aged(0, new PluginRevocationEntry(Torrent, Hash, "plugins.revoked.security"))
+                Aged(0, new PluginRevocationEntry(Torrent, null, Hash, "plugins.revoked.security"))
             )
-            .Check(Torrent, Hash);
+            .Check(Torrent, Hash, Installed);
 
         refusal!.Code.Should().Be(PluginRefusalCodes.Revoked);
         refusal.Severity.Should().Be(PluginRefusalSeverity.Blocked);
@@ -59,8 +60,8 @@ public class PluginRevocationGateTests
     [Fact]
     public void Another_build_of_the_same_plugin_still_runs()
     {
-        Gate(Aged(0, new PluginRevocationEntry(Torrent, Hash, "plugins.revoked.security")))
-            .Check(Torrent, "a-different-hash")
+        Gate(Aged(0, new PluginRevocationEntry(Torrent, null, Hash, "plugins.revoked.security")))
+            .Check(Torrent, "a-different-hash", Installed)
             .Should()
             .BeNull("a publisher who ships a fix should not need the revocation lifted first");
     }
@@ -68,8 +69,8 @@ public class PluginRevocationGateTests
     [Fact]
     public void The_same_build_under_another_plugins_id_still_runs()
     {
-        Gate(Aged(0, new PluginRevocationEntry(Torrent, Hash, "plugins.revoked.security")))
-            .Check(Radio, Hash)
+        Gate(Aged(0, new PluginRevocationEntry(Torrent, null, Hash, "plugins.revoked.security")))
+            .Check(Radio, Hash, Installed)
             .Should()
             .BeNull();
     }
@@ -77,8 +78,8 @@ public class PluginRevocationGateTests
     [Fact]
     public void The_hash_is_read_without_regard_to_case()
     {
-        Gate(Aged(0, new PluginRevocationEntry(Torrent, Hash.ToUpperInvariant(), "k")))
-            .Check(Torrent, Hash)
+        Gate(Aged(0, new PluginRevocationEntry(Torrent, null, Hash.ToUpperInvariant(), "k")))
+            .Check(Torrent, Hash, Installed)
             .Should()
             .NotBeNull("hex is the same build whichever case the publisher wrote it in");
     }
@@ -86,13 +87,13 @@ public class PluginRevocationGateTests
     [Fact]
     public void A_list_six_days_old_still_allows()
     {
-        Gate(Aged(6)).Check(Radio, Hash).Should().BeNull();
+        Gate(Aged(6)).Check(Radio, Hash, Installed).Should().BeNull();
     }
 
     [Fact]
     public void A_list_eight_days_old_pauses_every_plugin_including_free_ones()
     {
-        PluginRefusal? refusal = Gate(Aged(8)).Check(Radio, Hash);
+        PluginRefusal? refusal = Gate(Aged(8)).Check(Radio, Hash, Installed);
 
         refusal!.Code.Should().Be(PluginRefusalCodes.RevocationListStale);
         refusal.Why.Should().Contain("7 days");
@@ -103,7 +104,7 @@ public class PluginRevocationGateTests
     public void A_list_exactly_seven_days_old_still_allows()
     {
         Gate(Aged(7))
-            .Check(Radio, Hash)
+            .Check(Radio, Hash, Installed)
             .Should()
             .BeNull("the window is seven days, so the last moment of it is inside");
     }
@@ -112,7 +113,7 @@ public class PluginRevocationGateTests
     public void A_server_that_has_never_heard_pauses()
     {
         Gate(PluginRevocationList.None)
-            .Check(Radio, Hash)!
+            .Check(Radio, Hash, Installed)!
             .Code.Should()
             .Be(PluginRefusalCodes.RevocationListStale);
     }
@@ -120,8 +121,8 @@ public class PluginRevocationGateTests
     [Fact]
     public void A_revoked_build_is_refused_even_when_the_list_is_stale()
     {
-        Gate(Aged(30, new PluginRevocationEntry(Torrent, Hash, "plugins.revoked.security")))
-            .Check(Torrent, Hash)!
+        Gate(Aged(30, new PluginRevocationEntry(Torrent, null, Hash, "plugins.revoked.security")))
+            .Check(Torrent, Hash, Installed)!
             .Code.Should()
             .Be(
                 PluginRefusalCodes.Revoked,
