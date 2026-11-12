@@ -124,7 +124,7 @@ public class CencDrmProcessor(
 
         logger.LogInformation(
             "Running shaka-packager for CENC packaging: {Args}",
-            string.Join(" ", args)
+            string.Join(" ", args.Select(RedactKey))
         );
 
         ProcessResult result = await processRunner
@@ -193,6 +193,13 @@ public class CencDrmProcessor(
         args.Add(mpdOutputPath);
 
         return args;
+    }
+
+    // The content key is a secret; the log keeps the label and key id only.
+    internal static string RedactKey(string arg)
+    {
+        int keyAt = arg.IndexOf(":key=", StringComparison.Ordinal);
+        return keyAt < 0 ? arg : string.Concat(arg.AsSpan(0, keyAt), ":key=<redacted>");
     }
 }
 
