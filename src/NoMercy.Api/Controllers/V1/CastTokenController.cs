@@ -23,9 +23,8 @@ using NoMercy.NmSystem.Information;
 namespace NoMercy.Api.Controllers.V1;
 
 /// <summary>
-/// Hands a phone a short token scoped to one TV, so the phone stops sending its full
-/// Keycloak token to a LAN host. The literal <c>{deviceId}/token</c> route wins over
-/// the proxy's <c>{deviceId}/{**path}</c> catch-all.
+/// A short token scoped to one TV, so a phone stops sending its Keycloak token to a LAN
+/// host. These literal routes win over the proxy's <c>{deviceId}/{**path}</c>.
 /// </summary>
 [ApiController]
 [ApiVersion(1.0)]
@@ -37,6 +36,11 @@ public class CastTokenController(
     CastControlTokenService tokens
 ) : BaseController
 {
+    // Public like /info: the TV holds no Keycloak token for this server's users.
+    [AllowAnonymous]
+    [HttpGet("keys")]
+    public ContentResult Keys() => Content(tokens.PublicJwksJson(), "application/json");
+
     [HttpPost("{deviceId}/token")]
     public async Task<IActionResult> Mint(string deviceId)
     {

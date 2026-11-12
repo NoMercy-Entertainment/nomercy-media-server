@@ -103,6 +103,7 @@ public class RouteContractSnapshotTests : IClassFixture<NoMercyApiFactory>
         "GET api/v{version:apiVersion}/anime/themes [AnimeThemes.Themes]",
         "GET api/v{version:apiVersion}/anime/themes/{themeId} [AnimeThemes.Theme]",
         "GET api/v{version:apiVersion}/collection [Collections.Collections]",
+        "GET api/v{version:apiVersion}/cast/keys [CastToken.Keys]",
         "GET api/v{version:apiVersion}/collection/{id:int} [Collections.Collection]",
         "GET api/v{version:apiVersion}/collection/{id:int}/available [Collections.Available]",
         "GET api/v{version:apiVersion}/collection/{id:int}/watch [Collections.Watch]",

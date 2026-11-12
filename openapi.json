@@ -529,6 +529,18 @@
         }
       }
     },
+    "/api/v1/cast/keys": {
+      "get": {
+        "tags": [
+          "CastToken"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/cast/{deviceId}/token": {
       "post": {
         "tags": [
