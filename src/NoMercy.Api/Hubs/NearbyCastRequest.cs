@@ -24,5 +24,7 @@ public sealed record NearbyCastRequest(
     [property: JsonProperty("subtitle_codec")] string? SubtitleCodec = null,
     [property: JsonProperty("list_type", NullValueHandling = NullValueHandling.Ignore)] string? ListType = null,
     [property: JsonProperty("list_id", NullValueHandling = NullValueHandling.Ignore)] string? ListId = null,
-    [property: JsonProperty("track_id", NullValueHandling = NullValueHandling.Ignore)] string? TrackId = null
+    [property: JsonProperty("track_id", NullValueHandling = NullValueHandling.Ignore)] string? TrackId = null,
+    [property: JsonProperty("season", NullValueHandling = NullValueHandling.Ignore)] int? Season = null,
+    [property: JsonProperty("episode", NullValueHandling = NullValueHandling.Ignore)] int? Episode = null
 );

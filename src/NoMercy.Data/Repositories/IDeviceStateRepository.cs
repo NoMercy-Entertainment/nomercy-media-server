@@ -29,13 +29,16 @@ public interface IDeviceStateRepository
 
     /// <summary>
     /// The device row for <paramref name="fingerprint"/>, owned by <paramref name="userId"/>
-    /// from now on, with the owner it had before (null for a new device).
+    /// from now on, with the owner it had before (null for a new device). The device is
+    /// null when the owner forgot it and <paramref name="authTime"/> is not a later sign-in.
     /// </summary>
-    Task<(Device Device, Guid? PreviousOwner)> ClaimAsync(
+    Task<(Device? Device, Guid? PreviousOwner)> ClaimAsync(
         string fingerprint,
         Guid userId,
         string deviceName,
-        string deviceType
+        string deviceType,
+        DateTime? authTime = null,
+        string? sessionId = null
     );
 
     Task RefreshPresenceAsync(Ulid deviceId);

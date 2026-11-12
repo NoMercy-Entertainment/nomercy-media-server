@@ -11,10 +11,13 @@
 
 using System.Globalization;
 using System.Security.Claims;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json.Linq;
 using NoMercy.Api.DTOs.Media;
 using NoMercy.Api.Hubs.Shared;
+using NoMercy.Api.Services.Cast;
 using NoMercy.Api.Services.Video;
 using NoMercy.Authorization;
 using NoMercy.Database.Models.Media;
@@ -625,6 +628,7 @@ public partial class VideoHub
                 _httpContextAccessor.HttpContext?.Request.Headers.AcceptLanguage.ToString()
             );
             CastIntent intent = ResolveVideoIntent(user.Id);
+            string? callerBearer = CallerBearer.From(Context);
 
             // A handoff always wakes the panel, so the target is treated as cold.
             _ = _castPanelWakeLauncher.LaunchIfColdAsync(
@@ -633,6 +637,7 @@ public partial class VideoHub
                 useAndroidReceiver: _busRegistry.IsOnline(targetUlid),
                 () =>
                     _castTokenService.MintAsync(
+                        callerBearer: callerBearer,
                         userId: user.Id,
                         serverId: serverIdString,
                         serverUrl: serverUrl,

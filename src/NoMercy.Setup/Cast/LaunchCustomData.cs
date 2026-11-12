@@ -30,9 +30,9 @@ public class LaunchCustomData
     [JsonProperty("access_token")]
     public string AccessToken { get; set; } = null!;
 
-    /// <summary>Refresh JWT — receiver swaps for new access tokens for ~7 days.</summary>
-    [JsonProperty("refresh_token")]
-    public string RefreshToken { get; set; } = null!;
+    /// <summary>Never set by the server any more; kept so an old payload still parses.</summary>
+    [JsonProperty("refresh_token", NullValueHandling = NullValueHandling.Ignore)]
+    public string? RefreshToken { get; set; }
 
     /// <summary>NoMercy user ID (Keycloak sub).</summary>
     [JsonProperty("user_id")]

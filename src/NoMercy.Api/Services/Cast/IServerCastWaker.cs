@@ -20,5 +20,11 @@ namespace NoMercy.Api.Services.Cast;
 public interface IServerCastWaker
 {
     /// <inheritdoc cref="ServerCastWaker.WakeAsync" />
-    Task<bool> WakeAsync(Device tv, Guid userId, CastIntent intent, bool useAndroidReceiver = true);
+    Task<bool> WakeAsync(
+        Device tv,
+        Guid userId,
+        CastIntent intent,
+        string? callerBearer,
+        bool useAndroidReceiver = true
+    );
 }

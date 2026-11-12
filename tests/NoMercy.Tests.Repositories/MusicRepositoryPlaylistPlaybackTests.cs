@@ -779,6 +779,96 @@ public class MusicRepositoryPlaylistPlaybackTests : IDisposable
         Assert.NotEmpty(target.Track.TrackUser);
     }
 
+    [Fact]
+    public async Task GetAlbumTracksAsync_FollowsTheCallersLibraryAccess()
+    {
+        (Library library, Folder folder) = SeedLibraryAndFolder(_context, SeedConstants.UserId);
+
+        Album album = new()
+        {
+            Id = Guid.NewGuid(),
+            Name = "OK Computer",
+            LibraryId = library.Id,
+            FolderId = folder.Id,
+            HostFolder = "/media/music/Radiohead/OK Computer",
+            Library = library,
+            LibraryFolder = folder,
+        };
+        _context.Albums.Add(album);
+
+        Track track = new()
+        {
+            Id = Guid.NewGuid(),
+            Name = "Airbag",
+            TrackNumber = 1,
+            DiscNumber = 1,
+            FolderId = folder.Id,
+            LibraryFolder = folder,
+        };
+        _context.Tracks.Add(track);
+        _context.SaveChanges();
+
+        _context.AlbumTrack.Add(new AlbumTrack(album.Id, track.Id));
+        _context.SaveChanges();
+
+        List<AlbumTrack> withAccess = await _repository.GetAlbumTracksAsync(
+            SeedConstants.UserId,
+            album.Id
+        );
+        List<AlbumTrack> withoutAccess = await _repository.GetAlbumTracksAsync(
+            OtherUserId,
+            album.Id
+        );
+
+        Assert.Single(withAccess);
+        Assert.Empty(withoutAccess);
+    }
+
+    [Fact]
+    public async Task GetArtistTracksAsync_FollowsTheCallersLibraryAccess()
+    {
+        (Library library, Folder folder) = SeedLibraryAndFolder(_context, SeedConstants.UserId);
+
+        Artist artist = new()
+        {
+            Id = Guid.NewGuid(),
+            Name = "Radiohead",
+            LibraryId = library.Id,
+            FolderId = folder.Id,
+            HostFolder = "/media/music/Radiohead",
+            Library = library,
+            LibraryFolder = folder,
+        };
+        _context.Artists.Add(artist);
+
+        Track track = new()
+        {
+            Id = Guid.NewGuid(),
+            Name = "Airbag",
+            TrackNumber = 1,
+            DiscNumber = 1,
+            FolderId = folder.Id,
+            LibraryFolder = folder,
+        };
+        _context.Tracks.Add(track);
+        _context.SaveChanges();
+
+        _context.ArtistTrack.Add(new ArtistTrack(artist.Id, track.Id));
+        _context.SaveChanges();
+
+        List<ArtistTrack> withAccess = await _repository.GetArtistTracksAsync(
+            SeedConstants.UserId,
+            artist.Id
+        );
+        List<ArtistTrack> withoutAccess = await _repository.GetArtistTracksAsync(
+            OtherUserId,
+            artist.Id
+        );
+
+        Assert.Single(withAccess);
+        Assert.Empty(withoutAccess);
+    }
+
     /// <summary>
     /// Reproduces the exact shape of the pre-fix query directly against this harness's real
     /// SQLite + real EF Core: rooted at AlbumTrack, revisiting AlbumTrack via Album.AlbumTrack.

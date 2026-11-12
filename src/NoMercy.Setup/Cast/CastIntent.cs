@@ -72,6 +72,14 @@ public class CastIntent
     [JsonProperty("subtitle_codec", NullValueHandling = NullValueHandling.Ignore)]
     public string? SubtitleCodec { get; set; }
 
+    /// <summary>The season of the episode to open (0 = specials). Left out for a movie.</summary>
+    [JsonProperty("season", NullValueHandling = NullValueHandling.Ignore)]
+    public int? Season { get; set; }
+
+    /// <summary>The episode to open, from 1. Left out for a movie.</summary>
+    [JsonProperty("episode", NullValueHandling = NullValueHandling.Ignore)]
+    public int? Episode { get; set; }
+
     /// <summary>Vue Router target — only set when <see cref="Type"/> = "navigate".</summary>
     [JsonProperty("route", NullValueHandling = NullValueHandling.Ignore)]
     public string? Route { get; set; }
@@ -85,11 +93,15 @@ public class CastIntent
         string? audioLanguage = null,
         string? subtitleLanguage = null,
         string? subtitleType = null,
-        string? subtitleCodec = null
+        string? subtitleCodec = null,
+        int? season = null,
+        int? episode = null
     ) =>
         new()
         {
             Type = "play_video",
+            Season = season is >= 0 ? season : null,
+            Episode = episode is >= 1 ? episode : null,
             MediaType = mediaType,
             MediaId = mediaId,
             ResumeAt = resumeAt,

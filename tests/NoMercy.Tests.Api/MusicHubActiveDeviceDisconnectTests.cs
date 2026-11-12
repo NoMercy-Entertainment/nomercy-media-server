@@ -127,7 +127,6 @@ public class MusicHubActiveDeviceDisconnectTests : IClassFixture<NoMercyApiFacto
             _factory.Services.GetRequiredService<MusicActiveDeviceRegistry>();
         CastPanelWakeLauncher castPanelWakeLauncher =
             _factory.Services.GetRequiredService<CastPanelWakeLauncher>();
-        AuthManager authManager = _factory.Services.GetRequiredService<AuthManager>();
 
         MusicPlaylistManager musicPlaylistManager = new(new MusicRepository(contextFactory));
         DeviceBusRegistry busRegistry = new(
@@ -135,7 +134,7 @@ public class MusicHubActiveDeviceDisconnectTests : IClassFixture<NoMercyApiFacto
             Mock.Of<IHubContext<DeviceHub>>(),
             Mock.Of<ICastMdnsRegistry>()
         );
-        CastSessionTokenService castTokenService = new(authManager, new AuthTokenStore());
+        CastSessionTokenService castTokenService = new();
 
         DefaultHttpContext httpContext = new() { RequestServices = null! };
         httpContext.Request.Path = "/musicHub";

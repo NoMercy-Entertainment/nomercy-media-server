@@ -26,6 +26,17 @@ public static class ClaimsPrincipalExtensions
         return Guid.TryParse(userId, out Guid parsedUserId) ? parsedUserId : Guid.Empty;
     }
 
+    public static DateTime? AuthTime(this ClaimsPrincipal? principal)
+    {
+        string? value = principal?.FindFirst("auth_time")?.Value;
+        return long.TryParse(value, out long seconds)
+            ? DateTimeOffset.FromUnixTimeSeconds(seconds).UtcDateTime
+            : null;
+    }
+
+    public static string? Sid(this ClaimsPrincipal? principal) =>
+        (principal?.FindFirst("sid") ?? principal?.FindFirst(ClaimTypes.Sid))?.Value;
+
     public static string Role(this ClaimsPrincipal? principal) =>
         principal?.FindFirst(ClaimTypes.Role)?.Value ?? string.Empty;
 

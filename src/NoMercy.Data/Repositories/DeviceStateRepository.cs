@@ -47,15 +47,25 @@ public class DeviceStateRepository(IDbContextFactory<MediaContext> contextFactor
             .ToListAsync();
     }
 
-    public async Task<(Device Device, Guid? PreviousOwner)> ClaimAsync(
+    public async Task<(Device? Device, Guid? PreviousOwner)> ClaimAsync(
         string fingerprint,
         Guid userId,
         string deviceName,
-        string deviceType
+        string deviceType,
+        DateTime? authTime = null,
+        string? sessionId = null
     )
     {
         await using MediaContext context = await contextFactory.CreateDbContextAsync();
-        return await ResolveOwnedDeviceAsync(context, fingerprint, userId, deviceName, deviceType);
+        return await ResolveOwnedDeviceAsync(
+            context,
+            fingerprint,
+            userId,
+            deviceName,
+            deviceType,
+            authTime,
+            sessionId
+        );
     }
 
     public async Task RefreshPresenceAsync(Ulid deviceId)
@@ -198,14 +208,19 @@ public class DeviceStateRepository(IDbContextFactory<MediaContext> contextFactor
     /// Ownership deliberately follows the session: a device logged into a new
     /// account must stop surfacing on the account that paired it first.
     /// </summary>
-    public static async Task<(Device device, Guid? previousOwner)> ResolveOwnedDeviceAsync(
+    public static async Task<(Device? device, Guid? previousOwner)> ResolveOwnedDeviceAsync(
         MediaContext ctx,
         string fingerprint,
         Guid userId,
         string deviceName,
-        string deviceType
+        string deviceType,
+        DateTime? authTime = null,
+        string? sessionId = null
     )
     {
+        if (await ctx.IsRevokedAsync(userId, fingerprint, authTime, sessionId))
+            return (null, null);
+
         // DeviceId is globally unique (== ANDROID_ID for Android clients); the
         // Fingerprint fallback matches legacy device-bus rows that pre-date the ID
         // alignment. The lookup is intentionally NOT scoped by owner so a device

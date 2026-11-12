@@ -55,10 +55,11 @@ public sealed class ForgetDeviceController : BaseController
 
         Guid ownerUserId = user.Id;
 
+        await _deviceRepository.RevokeDeviceAsync(device, _registry.GetSessionId(id));
         await _deviceRepository.DeleteDeviceAsync(device);
 
-        // Force-close the WS if still alive (best-effort); device is already gone from DB.
-        _registry.ForceClose(id);
+        // Tell a live socket it was forgotten (best-effort); the row is already gone.
+        await _registry.ForceCloseRevokedAsync(id);
 
         // Broadcast updated device list to all the user's other clients.
         await _registry.BroadcastChange(ownerUserId);

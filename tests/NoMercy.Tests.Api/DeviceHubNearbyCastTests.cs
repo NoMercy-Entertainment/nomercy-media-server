@@ -62,6 +62,7 @@ public class DeviceHubNearbyCastTests : IClassFixture<NoMercyApiFactory>
             Device tv,
             Guid userId,
             CastIntent intent,
+            string? callerBearer,
             bool useAndroidReceiver = true
         )
         {
@@ -153,6 +154,24 @@ public class DeviceHubNearbyCastTests : IClassFixture<NoMercyApiFactory>
         Assert.DoesNotContain("list_type", JsonConvert.SerializeObject(Request()));
         Assert.DoesNotContain("list_id", JsonConvert.SerializeObject(Request()));
         Assert.DoesNotContain("track_id", JsonConvert.SerializeObject(Request()));
+    }
+
+    [Fact]
+    public async Task CastToNearby_SeasonAndEpisode_TravelInThePlayIntent()
+    {
+        RecordingWaker waker = new();
+        DeviceHub hub = CreateHub(TestAuthHandler.DefaultUserId, waker);
+        Ulid id = DeviceListComposer.DeterministicId(CastId);
+        NearbyCastRequest request = JsonConvert.DeserializeObject<NearbyCastRequest>(
+            """{"media_type":"tv","media_id":"placeholder-media-id","resume_at":90,"season":1,"episode":3}"""
+        )!;
+
+        HubCommandResult result = await hub.CastToNearby(id.ToString(), request);
+
+        Assert.True(result.Ok);
+        (Device _, Guid _, CastIntent intent, bool _) = Assert.Single(waker.Calls);
+        Assert.Equal(1, intent.Season);
+        Assert.Equal(3, intent.Episode);
     }
 
     [Fact]

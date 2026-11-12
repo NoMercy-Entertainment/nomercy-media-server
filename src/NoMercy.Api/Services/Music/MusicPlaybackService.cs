@@ -639,7 +639,14 @@ public class MusicPlaybackService
             state.PlayState,
             state.DeviceId,
             state.Time / BroadcastTimeBucketMs,
-            nowMs
+            nowMs,
+            state.VolumePercentage,
+            string.Join(
+                ',',
+                state.DeviceVolumes
+                    .OrderBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase)
+                    .Select(pair => $"{pair.Key.ToLowerInvariant()}={pair.Value}")
+            )
         );
 
         if (
@@ -651,6 +658,8 @@ public class MusicPlaybackService
             && previousFingerprint.PlayState == fingerprint.PlayState
             && previousFingerprint.DeviceId == fingerprint.DeviceId
             && previousFingerprint.TimeBucket == fingerprint.TimeBucket
+            && previousFingerprint.Volume == fingerprint.Volume
+            && previousFingerprint.DeviceVolumes == fingerprint.DeviceVolumes
             && nowMs - previousFingerprint.AtMs < BroadcastCoalesceWindowMs
         )
             return true;
@@ -674,7 +683,9 @@ public class MusicPlaybackService
         bool PlayState,
         string? DeviceId,
         int TimeBucket,
-        long AtMs
+        long AtMs,
+        int Volume,
+        string DeviceVolumes
     );
 
     internal async Task PublishStartedEventAsync(Guid userId, MusicPlayerState state)

@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using System.Diagnostics;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NoMercy.Encoder.BuildingBlocks.Drm;
@@ -62,12 +63,7 @@ public class CencDrmProcessorTests
                     It.IsAny<CancellationToken>()
                 ) == Task.FromResult(new ProcessResult(0, "", "", TimeSpan.Zero))
             );
-        return new(
-            opts,
-            processRunner,
-            NullLogger<CencDrmProcessor>.Instance,
-            MakeStorage()
-        );
+        return new(opts, processRunner, NullLogger<CencDrmProcessor>.Instance, MakeStorage());
     }
 
     // ── BuildPackagerArguments (pure, no I/O) ─────────────────────────────
@@ -158,6 +154,59 @@ public class CencDrmProcessorTests
 
         int count = args.Count(a => a == "--keys");
         count.Should().Be(2, "one --keys flag per key entry");
+    }
+
+    [Fact]
+    public async Task PackageAsync_LogsPackagerArgumentsWithoutTheContentKey()
+    {
+        string keyHex = Convert.ToHexString(FakeKey()).ToLowerInvariant();
+        string keyIdHex = Convert.ToHexString(FakeKeyId()).ToLowerInvariant();
+        CapturingLogger logger = new();
+        EncoderOptions opts = new()
+        {
+            FfmpegPathOverride = "/fake/ffmpeg",
+            ShakaPackagerPathOverride = "/fake/packager",
+        };
+        IProcessRunner runner = Mock.Of<IProcessRunner>(r =>
+            r.RunAsync(
+                It.IsAny<string>(),
+                It.IsAny<string[]>(),
+                It.IsAny<string>(),
+                It.IsAny<CancellationToken>()
+            ) == Task.FromResult(new ProcessResult(0, "", "", TimeSpan.Zero))
+        );
+        IStorage storage = Mock.Of<IStorage>(s => s.Exists(It.IsAny<string>()) == true);
+        CencDrmProcessor sut = new(opts, runner, logger, storage);
+
+        await sut.PackageAsync(
+            "/out",
+            [new("/out/v.mp4", "video", "/out/v_enc.mp4", "SD")],
+            CencConfig(),
+            "/out/manifest.mpd",
+            CancellationToken.None
+        );
+
+        logger.Messages.Should().NotBeEmpty();
+        logger.Messages.Should().AllSatisfy(message => message.Should().NotContain(keyHex));
+        logger.Messages.Should().Contain(message => message.Contains($"key_id={keyIdHex}"));
+    }
+
+    private sealed class CapturingLogger : ILogger<CencDrmProcessor>
+    {
+        public List<string> Messages { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter
+        ) => Messages.Add(formatter(state, exception));
     }
 
     // ── PrepareAsync — must be a no-op for CENC ───────────────────────────

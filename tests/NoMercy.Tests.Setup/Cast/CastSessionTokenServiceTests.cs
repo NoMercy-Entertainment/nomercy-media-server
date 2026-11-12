@@ -10,401 +10,232 @@
 // -----------------------------------------------------------------------------
 
 using System.IdentityModel.Tokens.Jwt;
-using Microsoft.AspNetCore.DataProtection;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json;
-using NoMercy.Database;
 using NoMercy.NmSystem.Auth;
-using NoMercy.NmSystem.Security;
-using NoMercy.Setup.Auth;
 using NoMercy.Setup.Cast;
 using NoMercy.Setup.Dto;
-using NoMercy.Storage.Drivers.Local;
 using NoMercy.Tests.Setup.Infrastructure;
 
 namespace NoMercy.Tests.Setup.Cast;
 
 /// <summary>
-/// Requirement: minting a cast-session token bundle must refuse to proceed without a
-/// server access token, must never mint against a subject token issued by a different
-/// Keycloak realm than the one currently configured (a stale/foreign JWT must not be
-/// exchanged for cast-receiver-scoped tokens), and must return null — never throw —
-/// on every failure so a cast launch degrades to "no session" instead of crashing.
+/// A cast session token is minted for the user who casts: the exchange subject is the
+/// caller's bearer, failures mint nothing, mints are rate limited, logs hold no token.
 /// </summary>
-/// <remarks>
-/// <see cref="CastSessionTokenService.MintAsync"/> unconditionally calls
-/// <see cref="AuthManager.RefreshAsync"/> first (production behavior — it keeps the
-/// subject token fresh before exchanging it), which itself hits the SAME Keycloak token
-/// endpoint. Every test here seeds a DB refresh token and routes the loopback server by
-/// <c>grant_type</c> in the request body so the refresh leg and the token-exchange leg
-/// can be scripted independently, mirroring the two real HTTP calls MintAsync makes.
-/// </remarks>
 [Trait("Category", "Unit")]
-public sealed class CastSessionTokenServiceTests : IDisposable
+public sealed class CastSessionTokenServiceTests
 {
-    private readonly AppDbContext _appContext;
-    private readonly AuthManager _authManager;
-    private readonly AuthTokenStore _authTokenStore = new();
-
-    public CastSessionTokenServiceTests()
-    {
-        ServiceCollection services = new();
-        services.AddDataProtection().UseEphemeralDataProtectionProvider();
-        ServiceProvider provider = services.BuildServiceProvider();
-        TokenStore.Initialize(provider);
-
-        DbContextOptionsBuilder<AppDbContext> optionsBuilder = new();
-        optionsBuilder.UseSqlite("Data Source=:memory:");
-        _appContext = new(optionsBuilder.Options);
-        _appContext.Database.OpenConnection();
-        _appContext.Database.EnsureCreated();
-
-        _authManager = new(_appContext, new LocalStorageDriver(), _authTokenStore);
-    }
-
-    public void Dispose()
-    {
-        _appContext.Database.CloseConnection();
-        _appContext.Dispose();
-        _authTokenStore.SetAccessToken(null);
-    }
-
-    private async Task SeedRefreshToken(string value)
-    {
-        // Must go through EF's Add/SaveChanges so the SecureValue column's encrypt
-        // value-converter runs — a raw INSERT would leave plaintext where LoadSecureValue
-        // expects ciphertext, and TokenStore.DecryptToken would fail to unprotect it,
-        // silently reading back as "no refresh token" instead of the seeded value.
-        _appContext.Configuration.Add(
-            new()
-            {
-                Key = "auth_refresh_token",
-                Value = string.Empty,
-                SecureValue = value,
-            }
-        );
-        await _appContext.SaveChangesAsync();
-    }
-
     private static string CreateJwt(
-        string issuer = "https://auth.nomercy.tv/realms/NoMercyTV",
-        DateTime? validTo = null,
-        string azp = "nomercy-server"
+        string issuer,
+        Guid sub,
+        string? azp = "nomercy-ui",
+        string marker = "caller"
     )
     {
-        JwtSecurityTokenHandler handler = new();
+        List<System.Security.Claims.Claim> claims =
+        [
+            new("sub", sub.ToString()),
+            new("marker", marker),
+        ];
+        if (azp is not null)
+            claims.Add(new("azp", azp));
+
         JwtSecurityToken token = new(
             issuer: issuer,
             audience: "nomercy-server",
-            claims: [new("sub", Guid.NewGuid().ToString()), new("azp", azp)],
+            claims: claims,
             notBefore: DateTime.UtcNow.AddMinutes(-5),
-            expires: validTo ?? DateTime.UtcNow.AddHours(1)
+            expires: DateTime.UtcNow.AddHours(1)
         );
-        return handler.WriteToken(token);
+        return new JwtSecurityTokenHandler().WriteToken(token);
     }
 
-    /// <summary>Dispatches the shared token endpoint by grant_type in the form body.</summary>
-    private static LoopbackResponse RouteByGrantType(
-        LoopbackRequest req,
-        Func<LoopbackRequest, LoopbackResponse>? onRefresh = null,
-        Func<LoopbackRequest, LoopbackResponse>? onExchange = null
-    )
-    {
-        bool isExchange = req.Body.Contains("token-exchange");
-        return isExchange
-            ? onExchange?.Invoke(req) ?? new(404, "no exchange handler configured")
-            : onRefresh?.Invoke(req) ?? new(404, "no refresh handler configured");
-    }
-
-    private static string RefreshSuccessJson(
-        string accessToken,
-        string refreshToken = "new-refresh"
-    ) =>
+    private static string ExchangeJson(string? refreshToken = null) =>
         JsonConvert.SerializeObject(
             new AuthResponse
             {
-                AccessToken = accessToken,
+                AccessToken = "exchanged-access-token",
                 RefreshToken = refreshToken,
                 TokenType = "Bearer",
                 ExpiresIn = 3600,
             }
         );
 
-    [Fact]
-    public async Task MintAsync_NoServerAccessToken_ReturnsNull()
-    {
-        CastSessionTokenService service = new(_authManager, _authTokenStore);
-
-        LaunchCustomData? result = await service.MintAsync(
-            Guid.NewGuid(),
+    private static Task<LaunchCustomData?> Mint(
+        CastSessionTokenService service,
+        string? bearer,
+        Guid userId,
+        Ulid? deviceId = null
+    ) =>
+        service.MintAsync(
+            bearer,
+            userId,
             "server-1",
             "https://server1.nomercy.app",
-            Ulid.NewUlid(),
+            deviceId ?? Ulid.NewUlid(),
             CastIntent.Idle()
         );
 
-        Assert.Null(result);
+    [Fact]
+    public async Task MintAsync_NoCallerBearer_ReturnsNull()
+    {
+        Assert.Null(await Mint(new(), null, Guid.NewGuid()));
+        Assert.Null(await Mint(new(), "  ", Guid.NewGuid()));
     }
 
     [Fact]
-    public async Task MintAsync_RefreshDropsAccessToken_ReturnsNull()
+    public async Task MintAsync_ExchangeBody_SubjectIsTheCallersTokenAndNeverTheServers()
     {
-        // No refresh token in the DB: RefreshAsync's own no-refresh-token branch clears
-        // the access token — MintAsync's second guard must catch that and return null.
-        _authTokenStore.SetAccessToken(CreateJwt());
-
-        CastSessionTokenService service = new(_authManager, _authTokenStore);
-
-        LaunchCustomData? result = await service.MintAsync(
-            Guid.NewGuid(),
-            "server-1",
-            "https://server1.nomercy.app",
-            Ulid.NewUlid(),
-            CastIntent.Idle()
-        );
-
-        Assert.Null(result);
-    }
-
-    [Fact]
-    public async Task MintAsync_IssuerMismatch_ReturnsNullWithoutCallingExchange()
-    {
-        await SeedRefreshToken("some-refresh-token");
-        string foreignJwt = CreateJwt(issuer: "https://auth.example.com/realms/Other");
-        // MintAsync's first guard requires a non-empty CURRENT access token before it
-        // even attempts a refresh — the placeholder here is immediately overwritten by
-        // the mocked refresh response below, but must be non-empty to reach that call.
-        _authTokenStore.SetAccessToken("placeholder-pre-refresh-token");
-
-        bool exchangeCalled = false;
         using LoopbackHttpServer server = new();
+        Guid callerId = Guid.NewGuid();
+        string callerJwt = CreateJwt(server.BaseUrl, callerId, azp: "nomercy-ui");
+        string serverJwt = CreateJwt(server.BaseUrl, Guid.NewGuid(), "nomercy-server", "server");
+        new AuthTokenStore().SetAccessToken(serverJwt);
+
+        string? body = null;
         server.Handler = req =>
-            RouteByGrantType(
-                req,
-                onRefresh: _ => new(200, RefreshSuccessJson(foreignJwt)),
-                onExchange: _ =>
-                {
-                    exchangeCalled = true;
-                    return new(200, "{}");
-                }
-            );
+        {
+            body = req.Body;
+            return new(200, ExchangeJson());
+        };
         using ExternalServicesConfigScope scope = new(authBaseUrl: server.BaseUrl);
 
-        CastSessionTokenService service = new(_authManager, _authTokenStore);
+        LaunchCustomData? result = await Mint(new(), callerJwt, callerId);
 
-        LaunchCustomData? result = await service.MintAsync(
-            Guid.NewGuid(),
-            "server-1",
-            "https://server1.nomercy.app",
-            Ulid.NewUlid(),
-            CastIntent.Idle()
-        );
-
-        Assert.Null(result);
-        Assert.False(
-            exchangeCalled,
-            "a foreign-issuer subject token must never reach token-exchange"
-        );
+        Assert.NotNull(result);
+        Assert.NotNull(body);
+        Dictionary<string, string> form = ParseForm(body);
+        Assert.Equal(callerJwt, form["subject_token"]);
+        Assert.DoesNotContain(serverJwt, body);
+        Assert.Equal("nomercy-ui", form["client_id"]);
+        Assert.Equal("urn:ietf:params:oauth:token-type:access_token", form["requested_token_type"]);
+        Assert.Equal("nomercy-cast-receiver", form["audience"]);
     }
 
     [Fact]
-    public async Task MintAsync_TokenExchangeSucceeds_ReturnsPopulatedBundle()
+    public async Task MintAsync_Success_CarriesAnAccessTokenAndNoRefreshToken()
     {
-        await SeedRefreshToken("some-refresh-token");
-        _authTokenStore.SetAccessToken("placeholder-pre-refresh-token");
-
         using LoopbackHttpServer server = new();
-        // The refreshed subject token's issuer must match the CONFIGURED realm — which
-        // the scope below repoints at this loopback server — so the exchange leg is
-        // actually reached (a real Keycloak issuer would never equal a loopback URL).
-        string subjectJwt = CreateJwt(issuer: server.BaseUrl);
-        server.Handler = req =>
-            RouteByGrantType(
-                req,
-                onRefresh: _ => new(200, RefreshSuccessJson(subjectJwt)),
-                onExchange: _ =>
-                    new(
-                        200,
-                        RefreshSuccessJson(
-                            "exchanged-access-token",
-                            refreshToken: "exchanged-refresh-token"
-                        )
-                    )
-            );
+        Guid callerId = Guid.NewGuid();
+        server.Handler = _ => new(200, ExchangeJson(refreshToken: "must-not-leak"));
         using ExternalServicesConfigScope scope = new(authBaseUrl: server.BaseUrl);
-
-        CastSessionTokenService service = new(_authManager, _authTokenStore);
-        Guid userId = Guid.NewGuid();
         Ulid deviceId = Ulid.NewUlid();
 
-        LaunchCustomData? result = await service.MintAsync(
-            userId,
-            "server-42",
-            "https://server42.nomercy.app",
-            deviceId,
-            CastIntent.PlayVideo("movie", "603"),
-            clientLocale: "nl-NL"
+        LaunchCustomData? result = await Mint(
+            new(),
+            CreateJwt(server.BaseUrl, callerId),
+            callerId,
+            deviceId
         );
 
         Assert.NotNull(result);
-        Assert.Equal("exchanged-access-token", result!.AccessToken);
-        Assert.Equal("exchanged-refresh-token", result.RefreshToken);
-        Assert.Equal(userId.ToString(), result.UserId);
-        Assert.Equal("server-42", result.ServerId);
-        Assert.Equal("https://server42.nomercy.app", result.ServerUrl);
+        Assert.Equal("exchanged-access-token", result.AccessToken);
+        Assert.Null(result.RefreshToken);
+        Assert.Equal(callerId.ToString(), result.UserId);
         Assert.Equal(deviceId.ToString(), result.DeviceId);
-        Assert.Equal("nl-NL", result.ClientLocale);
-        Assert.Equal("play_video", result.Intent.Type);
         Assert.NotEmpty(result.CastSessionId);
     }
 
     [Fact]
-    public async Task MintAsync_TokenExchangeReturnsNoRefreshToken_ReturnsNull()
+    public async Task MintAsync_ExchangeFailsOrAborts_MintsNothing()
     {
-        await SeedRefreshToken("some-refresh-token");
-        _authTokenStore.SetAccessToken("placeholder-pre-refresh-token");
-
         using LoopbackHttpServer server = new();
-        string subjectJwt = CreateJwt(issuer: server.BaseUrl);
-        server.Handler = req =>
-            RouteByGrantType(
-                req,
-                onRefresh: _ => new(200, RefreshSuccessJson(subjectJwt)),
-                onExchange: _ =>
-                    new(
-                        200,
-                        JsonConvert.SerializeObject(
-                            new AuthResponse { AccessToken = "exchanged", RefreshToken = null }
-                        )
-                    )
-            );
+        Guid callerId = Guid.NewGuid();
+        string jwt = CreateJwt(server.BaseUrl, callerId);
         using ExternalServicesConfigScope scope = new(authBaseUrl: server.BaseUrl);
 
-        CastSessionTokenService service = new(_authManager, _authTokenStore);
+        server.Handler = _ => new(403, "{\"error\":\"not_allowed\"}");
+        Assert.Null(await Mint(new(), jwt, callerId));
 
-        LaunchCustomData? result = await service.MintAsync(
-            Guid.NewGuid(),
-            "server-1",
-            "https://server1.nomercy.app",
-            Ulid.NewUlid(),
-            CastIntent.Idle()
-        );
+        server.Handler = _ => LoopbackResponse.Aborted();
+        Assert.Null(await Mint(new(), jwt, callerId));
 
-        Assert.Null(result);
+        server.Handler = _ => new(200, JsonConvert.SerializeObject(new AuthResponse()));
+        Assert.Null(await Mint(new(), jwt, callerId));
+    }
+
+    [Theory]
+    [InlineData("issuer")]
+    [InlineData("azp")]
+    [InlineData("sub")]
+    [InlineData("garbage")]
+    public async Task MintAsync_UnusableCallerToken_NeverReachesTheExchange(string defect)
+    {
+        using LoopbackHttpServer server = new();
+        Guid callerId = Guid.NewGuid();
+        int exchanges = 0;
+        server.Handler = _ =>
+        {
+            exchanges++;
+            return new(200, ExchangeJson());
+        };
+        using ExternalServicesConfigScope scope = new(authBaseUrl: server.BaseUrl);
+
+        string bearer = defect switch
+        {
+            "issuer" => CreateJwt("https://auth.example.com/realms/Other", callerId),
+            "azp" => CreateJwt(server.BaseUrl, callerId, azp: null),
+            "sub" => CreateJwt(server.BaseUrl, Guid.NewGuid()),
+            _ => "not-a-jwt-at-all",
+        };
+
+        Assert.Null(await Mint(new(), bearer, callerId));
+        Assert.Equal(0, exchanges);
     }
 
     [Fact]
-    public async Task MintAsync_TokenExchangeHttpFailure_ReturnsNull()
+    public async Task MintAsync_BurstFromOneUser_IsRefusedAfterTheLimit()
     {
-        await SeedRefreshToken("some-refresh-token");
-        _authTokenStore.SetAccessToken("placeholder-pre-refresh-token");
-
         using LoopbackHttpServer server = new();
-        string subjectJwt = CreateJwt(issuer: server.BaseUrl);
-        server.Handler = req =>
-            RouteByGrantType(
-                req,
-                onRefresh: _ => new(200, RefreshSuccessJson(subjectJwt)),
-                onExchange: _ => new(403, "{\"error\":\"not_allowed\"}")
-            );
+        Guid callerId = Guid.NewGuid();
+        int exchanges = 0;
+        server.Handler = _ =>
+        {
+            Interlocked.Increment(ref exchanges);
+            return new(200, ExchangeJson());
+        };
         using ExternalServicesConfigScope scope = new(authBaseUrl: server.BaseUrl);
+        string jwt = CreateJwt(server.BaseUrl, callerId);
+        CastSessionTokenService service = new();
 
-        CastSessionTokenService service = new(_authManager, _authTokenStore);
+        for (int i = 0; i < CastSessionTokenService.MaxMintsPerWindow; i++)
+            Assert.NotNull(await Mint(service, jwt, callerId));
 
-        LaunchCustomData? result = await service.MintAsync(
-            Guid.NewGuid(),
-            "server-1",
-            "https://server1.nomercy.app",
-            Ulid.NewUlid(),
-            CastIntent.Idle()
-        );
+        Assert.Null(await Mint(service, jwt, callerId));
+        Assert.Equal(CastSessionTokenService.MaxMintsPerWindow, exchanges);
 
-        Assert.Null(result);
+        Guid other = Guid.NewGuid();
+        Assert.NotNull(await Mint(service, CreateJwt(server.BaseUrl, other), other));
     }
 
     [Fact]
-    public async Task MintAsync_ExchangeConnectionAborted_ReturnsNullWithoutThrowing()
+    public async Task MintAsync_LogLine_NamesTheSessionAndHoldsNoTokenText()
     {
-        // The refresh leg must succeed (so the exchange leg is actually reached) while
-        // the exchange leg itself hits a real network-level failure — exercising
-        // RequestTokenExchangeAsync's own catch(Exception) branch specifically, distinct
-        // from a well-formed non-2xx response (see MintAsync_TokenExchangeHttpFailure).
-        await SeedRefreshToken("some-refresh-token");
-        _authTokenStore.SetAccessToken("placeholder-pre-refresh-token");
-
         using LoopbackHttpServer server = new();
-        string subjectJwt = CreateJwt(issuer: server.BaseUrl);
-        server.Handler = req =>
-            RouteByGrantType(
-                req,
-                onRefresh: _ => new(200, RefreshSuccessJson(subjectJwt)),
-                onExchange: _ => LoopbackResponse.Aborted()
-            );
+        Guid callerId = Guid.NewGuid();
+        string jwt = CreateJwt(server.BaseUrl, callerId, azp: "nomercy-ui");
+        server.Handler = _ => new(200, ExchangeJson(refreshToken: "refresh-secret"));
         using ExternalServicesConfigScope scope = new(authBaseUrl: server.BaseUrl);
+        List<string> lines = [];
+        CastSessionTokenService service = new() { MintLog = lines.Add };
+        Ulid deviceId = Ulid.NewUlid();
 
-        CastSessionTokenService service = new(_authManager, _authTokenStore);
+        LaunchCustomData? result = await Mint(service, jwt, callerId, deviceId);
 
-        LaunchCustomData? result = await service.MintAsync(
-            Guid.NewGuid(),
-            "server-1",
-            "https://server1.nomercy.app",
-            Ulid.NewUlid(),
-            CastIntent.Idle()
-        );
-
-        Assert.Null(result);
+        Assert.NotNull(result);
+        string line = Assert.Single(lines);
+        Assert.Contains($"sub={callerId}", line);
+        Assert.Contains("azp=nomercy-ui", line);
+        Assert.Contains($"device_id={deviceId}", line);
+        Assert.Contains($"cast_session_id={result.CastSessionId}", line);
+        Assert.DoesNotContain(jwt, line);
+        Assert.DoesNotContain("exchanged-access-token", line);
+        Assert.DoesNotContain("refresh-secret", line);
+        Assert.DoesNotContain("eyJ", line);
     }
 
-    [Fact]
-    public async Task MintAsync_RefreshLegNetworkUnreachable_ReturnsNullWithoutThrowing()
-    {
-        // A refresh token exists in the DB (so RefreshAsync actually attempts the HTTP
-        // call) but the endpoint is entirely unreachable — proves the whole MintAsync
-        // pipeline degrades to null through AuthManager's own exception handling too,
-        // not just CastSessionTokenService's.
-        await SeedRefreshToken("some-refresh-token");
-        _authTokenStore.SetAccessToken(CreateJwt());
-
-        using ExternalServicesConfigScope scope = new(authBaseUrl: "http://127.0.0.1:1/");
-
-        CastSessionTokenService service = new(_authManager, _authTokenStore);
-
-        LaunchCustomData? result = await service.MintAsync(
-            Guid.NewGuid(),
-            "server-1",
-            "https://server1.nomercy.app",
-            Ulid.NewUlid(),
-            CastIntent.Idle()
-        );
-
-        Assert.Null(result);
-    }
-
-    [Fact]
-    public async Task MintAsync_UnparsableSubjectToken_FailsClosedWithoutThrowing()
-    {
-        // A subject token that isn't a real JWT: ResolveRequestingClientId/
-        // IssuerMatchesConfiguredRealm both catch and fall back (empty issuer never
-        // matches the configured realm) — the mint must still fail closed, not throw.
-        await SeedRefreshToken("some-refresh-token");
-        _authTokenStore.SetAccessToken("placeholder-pre-refresh-token");
-
-        using LoopbackHttpServer server = new();
-        server.Handler = req =>
-            RouteByGrantType(req, onRefresh: _ => new(200, RefreshSuccessJson("not-a-jwt-at-all")));
-        using ExternalServicesConfigScope scope = new(authBaseUrl: server.BaseUrl);
-
-        CastSessionTokenService service = new(_authManager, _authTokenStore);
-
-        LaunchCustomData? result = await service.MintAsync(
-            Guid.NewGuid(),
-            "server-1",
-            "https://server1.nomercy.app",
-            Ulid.NewUlid(),
-            CastIntent.Idle()
-        );
-
-        Assert.Null(result);
-    }
+    private static Dictionary<string, string> ParseForm(string body) =>
+        body.Split('&')
+            .Select(pair => pair.Split('=', 2))
+            .ToDictionary(p => p[0], p => Uri.UnescapeDataString(p[1].Replace('+', ' ')));
 }

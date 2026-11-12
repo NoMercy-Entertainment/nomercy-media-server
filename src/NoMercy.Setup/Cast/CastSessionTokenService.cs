@@ -9,13 +9,12 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Collections.Concurrent;
 using System.IdentityModel.Tokens.Jwt;
-using NoMercy.NmSystem.Auth;
 using Newtonsoft.Json;
-using NoMercy.NmSystem.Extensions;
 using NoMercy.NmSystem.Configuration;
+using NoMercy.NmSystem.Extensions;
 using NoMercy.NmSystem.SystemCalls;
-using NoMercy.Setup.Auth;
 using NoMercy.Setup.Dto;
 using Serilog.Events;
 
@@ -23,30 +22,27 @@ namespace NoMercy.Setup.Cast;
 
 /// <summary>
 /// Mints LaunchCustomData bundles for cast sessions. Calls Keycloak's
-/// token-exchange grant against the nomercy-cast-receiver client to issue
-/// audience-scoped access + refresh tokens.
+/// token-exchange grant against the nomercy-cast-receiver client with the
+/// CALLER's own validated bearer as the subject, so the receiver gets a token
+/// that belongs to the user who casts. The server's own token is never the subject.
 ///
-/// The server's own access token (authTokenStore.AccessToken) is the subject;
-/// requested_subject names the target user. This requires the Keycloak realm
-/// to grant the server's auth client token-exchange permission to
-/// nomercy-cast-receiver — configured once via the admin console after
-/// importing cast-receiver-client.json.
-///
-/// Per-session metadata (device_id, server_id, cast_session_id, intent) rides
-/// on the customData JSON alongside the tokens. Standard Keycloak
-/// token-exchange does not support injecting custom session-bound claims
-/// into the issued JWT without a custom SPI; v1 keeps the receiver's
-/// session metadata in customData fields and uses the JWT for audience +
-/// subject only.
+/// Access token only: no refresh token ever leaves the server for a receiver.
+/// Any failure returns null so the receiver keeps the sender-token path.
 /// </summary>
-public class CastSessionTokenService(AuthManager authManager, IAuthTokenStore authTokenStore)
+public class CastSessionTokenService
 {
     private const string CastReceiverClientId = "nomercy-cast-receiver";
     private const string TokenExchangeGrantType = "urn:ietf:params:oauth:grant-type:token-exchange";
     private const string AccessTokenType = "urn:ietf:params:oauth:token-type:access_token";
-    private const string RefreshTokenType = "urn:ietf:params:oauth:token-type:refresh_token";
+    internal const int MaxMintsPerWindow = 10;
+    internal static readonly TimeSpan MintWindow = TimeSpan.FromMinutes(1);
+
+    private readonly ConcurrentDictionary<Guid, Queue<DateTime>> _recentMints = new();
+
+    internal Action<string> MintLog { get; set; } = line => Logger.Auth(line);
 
     public async Task<LaunchCustomData?> MintAsync(
+        string? callerBearer,
         Guid userId,
         string serverId,
         string serverUrl,
@@ -55,42 +51,68 @@ public class CastSessionTokenService(AuthManager authManager, IAuthTokenStore au
         string clientLocale = "en-US"
     )
     {
-        if (string.IsNullOrEmpty(authTokenStore.AccessToken))
+        if (string.IsNullOrWhiteSpace(callerBearer))
         {
             Logger.Auth(
-                "CastSessionTokenService: server access token not available — cannot mint cast bundle",
+                "CastSessionTokenService: no caller bearer at hand — not minting a cast bundle",
+                LogEventLevel.Debug
+            );
+            return null;
+        }
+
+        JwtSecurityToken? caller = ReadCaller(callerBearer);
+        string? azp = caller is null ? null : ClaimOf(caller, "azp");
+        if (
+            caller is null
+            || string.IsNullOrEmpty(azp)
+            || !Guid.TryParse(caller.Subject, out Guid subject)
+            || subject != userId
+        )
+        {
+            Logger.Auth(
+                "CastSessionTokenService: caller bearer has no azp or does not belong to the user — not minting",
                 LogEventLevel.Warning
             );
             return null;
         }
 
-        await authManager.RefreshAsync();
-
-        if (string.IsNullOrEmpty(authTokenStore.AccessToken))
+        if (!IssuerMatchesConfiguredRealm(caller))
         {
             Logger.Auth(
-                "CastSessionTokenService: refresh dropped the access token — cannot mint cast bundle",
+                $"CastSessionTokenService: caller token issuer doesn't match configured realm {ExternalServicesConfig.Current.AuthBaseUrl} — not minting",
                 LogEventLevel.Warning
             );
             return null;
         }
 
-        AuthResponse? exchanged = await RequestTokenExchangeAsync(userId);
-        if (exchanged?.AccessToken is null || string.IsNullOrEmpty(exchanged.RefreshToken))
+        if (!TryTakeMintSlot(userId))
         {
             Logger.Auth(
-                "CastSessionTokenService: token-exchange returned no usable tokens",
+                $"CastSessionTokenService: mint rate limit reached for sub={userId} — not minting",
+                LogEventLevel.Warning
+            );
+            return null;
+        }
+
+        AuthResponse? exchanged = await RequestTokenExchangeAsync(callerBearer, azp, caller);
+        if (string.IsNullOrEmpty(exchanged?.AccessToken))
+        {
+            Logger.Auth(
+                "CastSessionTokenService: token-exchange returned no usable token",
                 LogEventLevel.Warning
             );
             return null;
         }
 
         string castSessionId = Guid.NewGuid().ToString();
+        MintLog(
+            $"Cast session minted sub={userId} azp={azp} device_id={deviceId} cast_session_id={castSessionId}"
+        );
 
         return new()
         {
             AccessToken = exchanged.AccessToken,
-            RefreshToken = exchanged.RefreshToken,
+            RefreshToken = null,
             UserId = userId.ToString(),
             ServerId = serverId,
             ServerUrl = serverUrl,
@@ -102,28 +124,38 @@ public class CastSessionTokenService(AuthManager authManager, IAuthTokenStore au
         };
     }
 
-    private async Task<AuthResponse?> RequestTokenExchangeAsync(Guid userId)
+    private bool TryTakeMintSlot(Guid userId)
     {
-        string tokenEndpoint = $"{ExternalServicesConfig.Current.AuthBaseUrl}protocol/openid-connect/token";
-        string requestingClientId = ResolveRequestingClientId(authTokenStore.AccessToken!);
-
-        if (!IssuerMatchesConfiguredRealm(authTokenStore.AccessToken!))
+        Queue<DateTime> mints = _recentMints.GetOrAdd(userId, _ => new());
+        lock (mints)
         {
-            Logger.Auth(
-                $"CastSessionTokenService: subject token issuer doesn't match configured realm {ExternalServicesConfig.Current.AuthBaseUrl} — re-auth required against the active realm before cast tokens can be minted",
-                LogEventLevel.Warning
-            );
-            return null;
+            DateTime now = DateTime.UtcNow;
+            while (mints.Count > 0 && now - mints.Peek() > MintWindow)
+                mints.Dequeue();
+            if (mints.Count >= MaxMintsPerWindow)
+                return false;
+            mints.Enqueue(now);
+            return true;
         }
+    }
+
+    private static async Task<AuthResponse?> RequestTokenExchangeAsync(
+        string callerBearer,
+        string requestingClientId,
+        JwtSecurityToken caller
+    )
+    {
+        string tokenEndpoint =
+            $"{ExternalServicesConfig.Current.AuthBaseUrl}protocol/openid-connect/token";
 
         List<KeyValuePair<string, string>> body =
         [
             new("grant_type", TokenExchangeGrantType),
             new("client_id", requestingClientId),
-            new("subject_token", authTokenStore.AccessToken!),
+            new("subject_token", callerBearer),
             new("subject_token_type", AccessTokenType),
             new("audience", CastReceiverClientId),
-            new("requested_token_type", RefreshTokenType),
+            new("requested_token_type", AccessTokenType),
             new("scope", "openid"),
         ];
 
@@ -141,9 +173,8 @@ public class CastSessionTokenService(AuthManager authManager, IAuthTokenStore au
 
             if (!response.IsSuccessStatusCode)
             {
-                string subjectInfo = DescribeSubjectToken(authTokenStore.AccessToken!);
                 Logger.Auth(
-                    $"Cast token-exchange failed ({(int)response.StatusCode}): {content} | endpoint: {tokenEndpoint} | subject: {subjectInfo} | requesting_client: {requestingClientId} target_audience: {CastReceiverClientId}",
+                    $"Cast token-exchange failed ({(int)response.StatusCode}) | endpoint: {tokenEndpoint} | subject: {DescribeSubjectToken(caller)} | requesting_client: {requestingClientId} target_audience: {CastReceiverClientId}",
                     LogEventLevel.Warning
                 );
                 return null;
@@ -158,73 +189,36 @@ public class CastSessionTokenService(AuthManager authManager, IAuthTokenStore au
         }
     }
 
-    private static string ResolveRequestingClientId(string accessToken)
+    private static JwtSecurityToken? ReadCaller(string bearer)
     {
         try
         {
-            JwtSecurityTokenHandler handler = new();
-            JwtSecurityToken jwt = handler.ReadJwtToken(accessToken);
-            if (
-                jwt.Payload.TryGetValue("azp", out object? azp)
-                && azp is string s
-                && !string.IsNullOrEmpty(s)
-            )
-                return s;
+            return new JwtSecurityTokenHandler().ReadJwtToken(bearer);
         }
         catch
         {
-            // fall through
-        }
-        return CastReceiverClientId;
-    }
-
-    private static bool IssuerMatchesConfiguredRealm(string accessToken)
-    {
-        try
-        {
-            JwtSecurityTokenHandler handler = new();
-            JwtSecurityToken jwt = handler.ReadJwtToken(accessToken);
-            string issuer = jwt.Issuer ?? string.Empty;
-            string configured = ExternalServicesConfig.Current.AuthBaseUrl.TrimEnd('/');
-            return issuer.TrimEnd('/').Equals(configured, StringComparison.OrdinalIgnoreCase);
-        }
-        catch
-        {
-            return false;
+            return null;
         }
     }
 
-    private static bool NeedsRefresh(string accessToken)
+    private static string? ClaimOf(JwtSecurityToken jwt, string name) =>
+        jwt.Payload.TryGetValue(name, out object? value) && value is string s ? s : null;
+
+    private static bool IssuerMatchesConfiguredRealm(JwtSecurityToken jwt)
     {
-        try
-        {
-            JwtSecurityTokenHandler handler = new();
-            JwtSecurityToken jwt = handler.ReadJwtToken(accessToken);
-            return jwt.ValidTo <= DateTime.UtcNow.AddSeconds(60);
-        }
-        catch
-        {
-            return true;
-        }
+        string issuer = jwt.Issuer ?? string.Empty;
+        string configured = ExternalServicesConfig.Current.AuthBaseUrl.TrimEnd('/');
+        return issuer.TrimEnd('/').Equals(configured, StringComparison.OrdinalIgnoreCase);
     }
 
-    private static string DescribeSubjectToken(string accessToken)
+    private static string DescribeSubjectToken(JwtSecurityToken jwt)
     {
-        try
-        {
-            JwtSecurityTokenHandler handler = new();
-            JwtSecurityToken jwt = handler.ReadJwtToken(accessToken);
-            string issuer = jwt.Issuer ?? "?";
-            string azp = jwt.Payload.TryGetValue("azp", out object? a) ? a?.ToString() ?? "?" : "?";
-            string aud = string.Join(",", jwt.Audiences);
-            string sub = jwt.Subject ?? "?";
-            DateTime exp = jwt.ValidTo;
-            TimeSpan remaining = exp - DateTime.UtcNow;
-            return $"iss={issuer} azp={azp} aud=[{aud}] sub={sub} exp={exp:O} remaining={remaining.TotalSeconds:F0}s";
-        }
-        catch (Exception ex)
-        {
-            return $"unparseable JWT: {ex.Message}";
-        }
+        string issuer = jwt.Issuer ?? "?";
+        string azp = ClaimOf(jwt, "azp") ?? "?";
+        string aud = string.Join(",", jwt.Audiences);
+        string sub = jwt.Subject ?? "?";
+        DateTime exp = jwt.ValidTo;
+        TimeSpan remaining = exp - DateTime.UtcNow;
+        return $"iss={issuer} azp={azp} aud=[{aud}] sub={sub} exp={exp:O} remaining={remaining.TotalSeconds:F0}s";
     }
 }
