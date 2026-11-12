@@ -13,6 +13,8 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Api.Plugins;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Hooks;
+using NoMercy.PluginSdk.Revocation;
+using NoMercy.PluginSdk.Verification;
 using NoMercy.Service.Hosting;
 
 namespace NoMercy.Tests.Service.Hosting;
@@ -34,6 +36,75 @@ public class PluginLoaderTests
     private static PluginApplicationPartRegistrar PartRegistrar() =>
         new(new(), new(), NullLogger<PluginApplicationPartRegistrar>.Instance);
 
+    private static readonly Uri RevocationsAddress = new("https://example.test/revocations.json");
+
+    /// <summary>The start-up refresh over a fake client that records each address asked.</summary>
+    private static PluginRevocationStartupRefresh Refresh(List<string>? steps = null)
+    {
+        HttpClient http = new(new RecordingHandler(steps ?? []));
+
+        return new(
+            new(
+                http,
+                new(new Dictionary<string, string>()),
+                NullLogger<PluginMarketplaceKeyClient>.Instance
+            ),
+            new(
+                http,
+                Mock.Of<IPluginRevocationStore>(),
+                Mock.Of<IPluginTrustedKeys>(),
+                NullLogger<PluginRevocationClient>.Instance
+            ),
+            new(
+                new("https://example.test/keys.json"),
+                RevocationsAddress,
+                () => new("https://example.test/entitlements")
+            ),
+            NullLogger<PluginRevocationStartupRefresh>.Instance
+        );
+    }
+
+    private sealed class RecordingHandler(List<string> steps) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken
+        )
+        {
+            steps.Add(request.RequestUri!.ToString());
+
+            return Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.NotFound));
+        }
+    }
+
+    [Fact]
+    public async Task LoadPlugins_AsksForTheRevocationListBeforeTheLoad()
+    {
+        List<string> steps = [];
+        Mock<IPluginManager> pluginManager = new();
+        pluginManager
+            .Setup(m => m.LoadAllAsync(It.IsAny<CancellationToken>()))
+            .Callback(() => steps.Add("load"))
+            .ReturnsAsync([]);
+
+        PluginLoader loader = new(
+            NullLogger<PluginLoader>.Instance,
+            pluginManager.Object,
+            Mock.Of<IPluginCronRegistrar>(),
+            PartRegistrar(),
+            Mock.Of<IPluginRepository>(),
+            Refresh(steps)
+        );
+
+        await loader.LoadPlugins(CancellationToken.None);
+
+        steps.Should().Contain(RevocationsAddress.ToString());
+        steps
+            .IndexOf(RevocationsAddress.ToString())
+            .Should()
+            .BeLessThan(steps.IndexOf("load"), "the load reads the list asked for at start-up");
+    }
+
     [Fact]
     public async Task LoadPlugins_ReturnsWhatPluginManagerLoads()
     {
@@ -49,7 +120,8 @@ public class PluginLoaderTests
             pluginManager.Object,
             cronRegistrar.Object,
             PartRegistrar(),
-            Mock.Of<IPluginRepository>()
+            Mock.Of<IPluginRepository>(),
+            Refresh()
         );
 
         IReadOnlyList<PluginLoadResult> result = await loader.LoadPlugins(CancellationToken.None);
@@ -69,7 +141,8 @@ public class PluginLoaderTests
             pluginManager.Object,
             cronRegistrar.Object,
             PartRegistrar(),
-            Mock.Of<IPluginRepository>()
+            Mock.Of<IPluginRepository>(),
+            Refresh()
         );
 
         IReadOnlyList<PluginLoadResult> result = await loader.LoadPlugins(CancellationToken.None);
@@ -92,7 +165,8 @@ public class PluginLoaderTests
             pluginManager.Object,
             cronRegistrar.Object,
             PartRegistrar(),
-            Mock.Of<IPluginRepository>()
+            Mock.Of<IPluginRepository>(),
+            Refresh()
         );
         await loader.LoadPlugins(CancellationToken.None);
 
@@ -110,7 +184,8 @@ public class PluginLoaderTests
             pluginManager.Object,
             cronRegistrar.Object,
             PartRegistrar(),
-            Mock.Of<IPluginRepository>()
+            Mock.Of<IPluginRepository>(),
+            Refresh()
         );
         using CancellationTokenSource cts = new();
 
@@ -143,7 +218,8 @@ public class PluginLoaderTests
             pluginManager.Object,
             Mock.Of<IPluginCronRegistrar>(),
             PartRegistrar(),
-            repository.Object
+            repository.Object,
+            Refresh()
         );
 
         Task<IReadOnlyList<PluginLoadResult>> loading = loader.LoadPlugins(CancellationToken.None);
@@ -170,7 +246,8 @@ public class PluginLoaderTests
             pluginManager.Object,
             Mock.Of<IPluginCronRegistrar>(),
             PartRegistrar(),
-            repository.Object
+            repository.Object,
+            Refresh()
         );
 
         Func<Task> act = () => loader.LoadPlugins(CancellationToken.None);

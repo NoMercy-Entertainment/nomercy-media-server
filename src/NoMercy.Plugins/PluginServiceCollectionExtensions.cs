@@ -168,6 +168,14 @@ public static class PluginServiceCollectionExtensions
                 sp.GetRequiredService<ILogger<PluginEntitlementClient>>()
             )
         );
+        services.AddSingleton<PluginRevocationStartupRefresh>(sp =>
+            new(
+                sp.GetRequiredService<PluginMarketplaceKeyClient>(),
+                sp.GetRequiredService<PluginRevocationClient>(),
+                sp.GetRequiredService<PluginTrustAddresses>(),
+                sp.GetRequiredService<ILogger<PluginRevocationStartupRefresh>>()
+            )
+        );
         services.AddHostedService<PluginTrustRefreshService>();
 
         // The two answers a server needs about a plugin before it runs: is

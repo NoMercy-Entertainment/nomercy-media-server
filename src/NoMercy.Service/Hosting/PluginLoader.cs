@@ -12,6 +12,7 @@
 using NoMercy.Api.Plugins;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Hooks;
+using NoMercy.PluginSdk.Revocation;
 
 namespace NoMercy.Service.Hosting;
 
@@ -22,15 +23,18 @@ public class PluginLoader : IPluginLoader
     private readonly IPluginCronRegistrar _cronRegistrar;
     private readonly PluginApplicationPartRegistrar _partRegistrar;
     private readonly IPluginRepository _repository;
+    private readonly PluginRevocationStartupRefresh _revocations;
 
     public PluginLoader(
         ILogger<PluginLoader> logger,
         IPluginManager pluginManager,
         IPluginCronRegistrar cronRegistrar,
         PluginApplicationPartRegistrar partRegistrar,
-        IPluginRepository repository
+        IPluginRepository repository,
+        PluginRevocationStartupRefresh revocations
     )
     {
+        _revocations = revocations;
         _logger = logger;
         _pluginManager = pluginManager;
         _cronRegistrar = cronRegistrar;
@@ -50,6 +54,9 @@ public class PluginLoader : IPluginLoader
         // Beside the boot, not in it: a server that cannot reach the index must
         // still start, on the catalogue LoadAsync read from the last refresh.
         _ = Task.Run(() => RefreshCatalogueAsync(ct), CancellationToken.None);
+
+        // Asked before the load, so a build revoked while the server was off stays off (AUD-1134).
+        await _revocations.RefreshBeforeLoadAsync(ct);
 
         IReadOnlyList<PluginLoadResult> loadedPlugins = await _pluginManager.LoadAllAsync(ct);
 

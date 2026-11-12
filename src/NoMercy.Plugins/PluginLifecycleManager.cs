@@ -266,6 +266,49 @@ internal sealed class PluginLifecycleManager(
         );
     }
 
+    // Stops every running plugin the revocation list names now and holds it
+    // Disabled, the state the loader gives a revoked build at load (AUD-1134).
+    public async Task StopRevokedAsync(CancellationToken ct = default)
+    {
+        if (_serviceProvider.GetService<IPluginRunGate>() is not { } gate)
+        {
+            return;
+        }
+
+        foreach (LoadedPlugin loaded in _registry.Values.ToList())
+        {
+            if (
+                loaded.Info.Status != PluginStatus.Active
+                || gate.MayRun(loaded.Info) is not { Code: PluginRefusalCodes.Revoked } revoked
+            )
+            {
+                continue;
+            }
+
+            try
+            {
+                await DisablePluginAsync(loaded.Info.Id, ct);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // A stop that failed still leaves the plugin off and unlisted as running.
+                loaded.Instance = null;
+                loaded.Info.Status = PluginStatus.Disabled;
+
+                _logger.LogError(
+                    exception,
+                    "Plugin {PluginName} did not stop cleanly after its revocation.",
+                    loaded.Info.Name
+                );
+            }
+
+            _logger.LogWarning(
+                "Plugin {PluginName} was stopped: {Why} {Fix}",
+                [loaded.Info.Name, revoked.Why, revoked.Fix]
+            );
+        }
+    }
+
     /// <summary>
     /// Takes a plugin out of the process so its files can be replaced, and
     /// leaves everything on disk exactly where it is.

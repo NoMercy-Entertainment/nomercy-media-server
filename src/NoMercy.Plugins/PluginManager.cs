@@ -14,6 +14,7 @@ using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Logging;
 using NoMercy.Events;
+using NoMercy.Events.Plugins;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Approval;
 using NoMercy.PluginSdk.Capabilities;
@@ -44,6 +45,9 @@ public class PluginManager : IPluginManager, IDisposable
     private readonly PluginDropGate _dropGate;
     private readonly PluginLoader _loader;
     private readonly PluginLifecycleManager _lifecycle;
+
+    // A gate's answer changed: a saved revocation list stops what it names (AUD-1134).
+    private readonly IDisposable? _accessChanged;
 
     // Held because an install has to know whether the copy it would replace is
     // still resident, and the answer decides whether the update lands now or on
@@ -159,6 +163,9 @@ public class PluginManager : IPluginManager, IDisposable
             assemblyTracker,
             releaseScheduledWork,
             registerScheduledWork
+        );
+        _accessChanged = _eventBus.Subscribe<PluginAccessChangedEvent>(
+            (_, changed) => _lifecycle.StopRevokedAsync(changed)
         );
     }
 
@@ -1626,6 +1633,8 @@ public class PluginManager : IPluginManager, IDisposable
 
     public void Dispose()
     {
+        _accessChanged?.Dispose();
+
         foreach (LoadedPlugin loaded in _registry.Values)
         {
             loaded.Instance?.Dispose();
