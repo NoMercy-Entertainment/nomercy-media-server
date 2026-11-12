@@ -87,6 +87,8 @@ public class StorageControllerTests
             audioFingerprinter: null!,
             activityLogger: null!,
             filenameParser: null!,
+            serverRestarter: null!,
+            serverWorkload: null!,
             storageUsage: new(TimeSpan.FromMinutes(10))
         );
 

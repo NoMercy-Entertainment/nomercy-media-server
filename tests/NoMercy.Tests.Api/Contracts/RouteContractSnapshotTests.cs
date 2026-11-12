@@ -173,6 +173,7 @@ public class RouteContractSnapshotTests : IClassFixture<NoMercyApiFactory>
         "GET api/v{version:apiVersion}/dashboard/security/blocklist-url [Security.BlocklistUrl]",
         "GET api/v{version:apiVersion}/dashboard/security/settings [Security.Settings]",
         "GET api/v{version:apiVersion}/dashboard/server [Server.Index]",
+        "GET api/v{version:apiVersion}/dashboard/server/activity [Server.GetActivity]",
         "GET api/v{version:apiVersion}/dashboard/server/files/{depth:int}/{*path} [Server.Files]",
         "GET api/v{version:apiVersion}/dashboard/server/info [Server.ServerInfo]",
         "GET api/v{version:apiVersion}/dashboard/server/paths [Server.ServerPaths]",

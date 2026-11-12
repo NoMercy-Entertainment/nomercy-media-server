@@ -778,6 +778,8 @@ public static partial class ServiceConfiguration
         // from QueueRunner/SessionManager. AddSingleton after AddNoMercyEncoder
         // overrides the TryAddSingleton the encoder registered.
         services.AddSingleton<IEncoderActivityProbe, EncoderActivityProbe>();
+        services.AddSingleton<IServerWorkloadReader, ServerWorkloadReader>();
+        services.AddSingleton<IServerRestarter, ServerRestarter>();
         services.AddSingleton<
             MediaProcessing.Images.IMusicCoverStore,
             MediaProcessing.Images.MusicCoverStore
