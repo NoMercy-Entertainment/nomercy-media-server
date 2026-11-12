@@ -26,6 +26,7 @@ using NoMercy.Authorization;
 using NoMercy.Data.Activity;
 using NoMercy.Data.Repositories;
 using NoMercy.Database;
+using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.Music;
 using NoMercy.Database.Models.Users;
 using NoMercy.Networking.Cast;
@@ -416,6 +417,11 @@ public class MusicHubDeviceCommandsTests : IClassFixture<NoMercyApiFactory>
         // MusicPlayerState for this user yet.
         registry.Set(userId, tvClient);
 
+        // Album tracks follow the caller's library access (#417), so this user needs the album's library.
+        IDbContextFactory<MediaContext> contextFactory =
+            _factory.Services.GetRequiredService<IDbContextFactory<MediaContext>>();
+        await GrantAlbumLibraryAsync(contextFactory, userId, NoMercyApiFactory.AlbumId1);
+
         try
         {
             MusicHub hub = CreateHub(phoneConnectionId, userId);
@@ -441,8 +447,38 @@ public class MusicHubDeviceCommandsTests : IClassFixture<NoMercyApiFactory>
         }
         finally
         {
+            await using MediaContext ctx = await contextFactory.CreateDbContextAsync();
+            await ctx
+                .LibraryUser.Where(lu => lu.UserId == userId)
+                .ExecuteDeleteAsync();
             Cleanup(userId, user, tvConnectionId, phoneConnectionId);
         }
+    }
+
+    // Grants the album's stored library, not MusicLibraryId: the fixture's album keeps
+    // its Library = new() default, so EF saves it under a separate library.
+    private static async Task GrantAlbumLibraryAsync(
+        IDbContextFactory<MediaContext> contextFactory,
+        Guid userId,
+        Guid albumId
+    )
+    {
+        await using MediaContext ctx = await contextFactory.CreateDbContextAsync();
+        Ulid libraryId = await ctx
+            .Albums.Where(album => album.Id == albumId)
+            .Select(album => album.LibraryId)
+            .SingleAsync();
+        if (await ctx.Users.FindAsync(userId) is null)
+            ctx.Users.Add(
+                new()
+                {
+                    Id = userId,
+                    Email = $"{userId}@nomercy.tv",
+                    Name = "Device Commands Test User",
+                }
+            );
+        ctx.LibraryUser.Add(new LibraryUser(libraryId, userId));
+        await ctx.SaveChangesAsync();
     }
 
     [Fact]
