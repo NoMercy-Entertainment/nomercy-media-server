@@ -37,12 +37,10 @@ public class LiveTranscodeController(ILiveTranscodeService service) : BaseContro
             userId,
             includeAll: isOwner || isModerator
         );
-        if (
-            isModerator
-            && !isOwner
-            && sessions.Any(session => !CallerOwnsSession(userId, session.SessionId))
-        )
-            return UnauthorizedResponse("Session does not belong to the caller.");
+        if (isModerator && !isOwner)
+            return Ok(
+                sessions.Where(session => CallerOwnsSession(userId, session.SessionId)).ToList()
+            );
 
         return Ok(sessions);
     }

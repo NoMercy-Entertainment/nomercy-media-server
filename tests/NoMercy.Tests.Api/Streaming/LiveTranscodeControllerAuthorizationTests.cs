@@ -27,6 +27,10 @@ public sealed class LiveTranscodeControllerAuthorizationTests
     private static readonly Guid Moderator = Guid.Parse("44444444-4444-4444-4444-444444444444");
     private const string SessionId = "someone-elses-session";
 
+    private const string OwnSessionId = "the-callers-own-session";
+
+    private static LiveSessionDto OwnSession => Session with { SessionId = OwnSessionId };
+
     private static LiveSessionDto Session =>
         new(
             SessionId,
@@ -92,6 +96,7 @@ public sealed class LiveTranscodeControllerAuthorizationTests
             .ReturnsAsync(LiveResult.Ok(null));
 
         Mock<ISessionManager> sessions = new();
+        sessions.Setup(s => s.GetOwnerUserId(OwnSessionId)).Returns(caller.ToString());
         sessions
             .Setup(s => s.GetOwnerUserId(SessionId))
             .Returns((sessionOwner ?? SessionUser).ToString());
@@ -126,20 +131,11 @@ public sealed class LiveTranscodeControllerAuthorizationTests
     [Theory]
     [InlineData("manager")]
     [InlineData("moderator")]
-    public void ListSessions_RefusesOtherUsersSession(string role)
+    public void ListSessions_ModeratorSeesOnlyOwnSessions(string role)
     {
         Guid caller = role == "manager" ? Manager : Moderator;
-        (LiveTranscodeController controller, _) = Build(caller);
-
-        IActionResult result = controller.ListSessions();
-
-        result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(403);
-    }
-
-    [Fact]
-    public void ListSessions_AllowsServerOwner()
-    {
-        (LiveTranscodeController controller, _) = Build(ServerOwner);
+        (LiveTranscodeController controller, Mock<ILiveTranscodeService> service) = Build(caller);
+        service.Setup(s => s.ListSessions(It.IsAny<Guid>(), true)).Returns([Session, OwnSession]);
 
         controller
             .ListSessions()
@@ -148,7 +144,28 @@ public sealed class LiveTranscodeControllerAuthorizationTests
             .Which.Value.Should()
             .BeAssignableTo<IReadOnlyList<LiveSessionDto>>()
             .Which.Should()
-            .ContainSingle(s => s.SessionId == SessionId);
+            .ContainSingle()
+            .Which.SessionId.Should()
+            .Be(OwnSessionId);
+    }
+
+    [Fact]
+    public void ListSessions_ServerOwnerSeesAllSessions()
+    {
+        (LiveTranscodeController controller, Mock<ILiveTranscodeService> service) = Build(
+            ServerOwner
+        );
+        service.Setup(s => s.ListSessions(It.IsAny<Guid>(), true)).Returns([Session, OwnSession]);
+
+        controller
+            .ListSessions()
+            .Should()
+            .BeOfType<OkObjectResult>()
+            .Which.Value.Should()
+            .BeAssignableTo<IReadOnlyList<LiveSessionDto>>()
+            .Which.Select(s => s.SessionId)
+            .Should()
+            .BeEquivalentTo(SessionId, OwnSessionId);
     }
 
     [Fact]
