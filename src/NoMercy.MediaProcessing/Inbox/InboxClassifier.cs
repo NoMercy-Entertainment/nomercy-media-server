@@ -21,18 +21,6 @@ namespace NoMercy.MediaProcessing.Inbox;
 
 public sealed partial class InboxClassifier
 {
-    private static readonly string[] AudioExtensions = [".mp3", ".flac", ".opus", ".wav", ".m4a"];
-
-    private static readonly string[] VideoExtensions =
-    [
-        ".mp4",
-        ".mkv",
-        ".avi",
-        ".webm",
-        ".mov",
-        ".m3u8",
-    ];
-
     // SxxExx e.g. S01E01, S1E1
     [GeneratedRegex(@"[Ss]\d{1,2}[Ee]\d{1,2}", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex SeasonEpisodePattern();
@@ -114,10 +102,10 @@ public sealed partial class InboxClassifier
     {
         string ext = Path.GetExtension(path).ToLowerInvariant();
 
-        if (AudioExtensions.Contains(ext))
+        if (MediaFileExtensions.Audio.Contains(ext))
             return "music";
 
-        if (VideoExtensions.Contains(ext))
+        if (MediaFileExtensions.Video.Contains(ext))
             return "video";
 
         return "unknown";

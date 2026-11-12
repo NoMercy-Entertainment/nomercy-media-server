@@ -142,4 +142,49 @@ public sealed class FileManagerGetFilesTests : IDisposable
 
         result.Should().ContainSingle(f => f.Path == _tempRoot);
     }
+
+    [Fact]
+    public async Task GetFiles_InboxLibrary_UsesZeroDepth_StillReturnsRootEntry()
+    {
+        Folder folder = BuildFolderOnRealStorage(out IStorage storage);
+        Mock<IStorageFactory> factoryMock = new();
+        factoryMock.Setup(f => f.For(folder.Id, folder.DriverId, string.Empty)).Returns(storage);
+
+        FileManager manager = BuildManager(factoryMock.Object);
+        Library library = new() { Id = Ulid.NewUlid(), Type = MediaTypes.InboxMediaType };
+
+        ConcurrentBag<MediaFolderExtend> result = await InvokeGetFiles(manager, library, folder);
+
+        result.Should().ContainSingle(f => f.Path == _tempRoot);
+    }
+
+    [Fact]
+    public async Task FindFiles_InboxLibrary_StopsBeforeTheScan_AndStoresNothing()
+    {
+        // Empty: the probe fails with or without the ffprobe binary.
+        File.WriteAllBytes(Path.Combine(_tempRoot, "A.Movie.2020.mkv"), []);
+        Folder folder = BuildFolderOnRealStorage(out IStorage storage);
+        Mock<IStorageFactory> factoryMock = new();
+        factoryMock.Setup(f => f.For(folder.Id, folder.DriverId, string.Empty)).Returns(storage);
+        Mock<IFileRepository> repoMock = new();
+        Mock<IMediaAnalyzer> mediaAnalyzerMock = new();
+        FileManager manager = new(
+            repoMock.Object,
+            factoryMock.Object,
+            mediaAnalyzerMock.Object,
+            TestFilenameParser.Default
+        );
+        Library library = new()
+        {
+            Id = Ulid.NewUlid(),
+            Type = MediaTypes.InboxMediaType,
+            FolderLibraries = [new() { FolderId = folder.Id, Folder = folder }],
+        };
+
+        bool found = await manager.FindFiles(1, library);
+
+        found.Should().BeFalse("an inbox file is the classifier's, never a title's");
+        repoMock.Invocations.Should().BeEmpty();
+        factoryMock.Invocations.Should().BeEmpty();
+    }
 }

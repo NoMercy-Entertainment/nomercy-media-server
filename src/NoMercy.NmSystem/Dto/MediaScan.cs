@@ -40,7 +40,14 @@ public partial class MediaScan : IDisposable, IAsyncDisposable
     )]
     private static partial Regex FolderNameRegex();
 
+    // A title library lists fewer formats than the watcher accepts; an inbox scan
+    // swaps in the shared lists so it lists what the watcher and classifier take.
+    private static readonly string[] TitleVideoExtensions = [".mp4", ".avi", ".mkv", ".m3u8"];
+    private static readonly string[] TitleAudioExtensions = [".mp3", ".flac", ".wav", ".m4a"];
+
     private string[] _extensionFilter = [];
+    private string[] _videoExtensions = TitleVideoExtensions;
+    private string[] _audioExtensions = TitleAudioExtensions;
     private string _libraryType = MediaTypes.TvMediaType;
 
     public MediaScan(IStorageDriver driver)
@@ -67,16 +74,18 @@ public partial class MediaScan : IDisposable, IAsyncDisposable
         if (mediaType is "anime" or MediaTypes.TvMediaType or MediaTypes.MovieMediaType)
             _libraryType = mediaType;
 
+        if (mediaType is MediaTypes.InboxMediaType)
+        {
+            _videoExtensions = MediaFileExtensions.Video;
+            _audioExtensions = MediaFileExtensions.Audio;
+        }
+
         _extensionFilter = mediaType switch
         {
             "anime" or MediaTypes.TvMediaType or MediaTypes.MovieMediaType or "video" =>
-            [
-                ".mp4",
-                ".avi",
-                ".mkv",
-                ".m3u8",
-            ],
-            "music" => [".mp3", ".flac", ".wav", ".m4a"],
+                TitleVideoExtensions,
+            "music" => TitleAudioExtensions,
+            MediaTypes.InboxMediaType => MediaFileExtensions.Inbox,
             "subtitle" => [".srt", ".vtt", ".ass"],
             _ => throw new ArgumentOutOfRangeException(nameof(mediaType), mediaType, null),
         };
@@ -427,8 +436,8 @@ public partial class MediaScan : IDisposable, IAsyncDisposable
                     if (_extensionFilter.Length > 0 && !_extensionFilter.Contains(extension))
                         return;
 
-                    bool isVideoFile = extension is ".mp4" or ".avi" or ".mkv" or ".m3u8";
-                    bool isAudioFile = extension is ".mp3" or ".flac" or ".wav" or ".m4a";
+                    bool isVideoFile = _videoExtensions.Contains(extension);
+                    bool isAudioFile = _audioExtensions.Contains(extension);
                     bool isSubtitleFile = extension is ".srt" or ".vtt" or ".ass" or ".sub";
 
                     if (!isVideoFile && !isAudioFile && !isSubtitleFile)

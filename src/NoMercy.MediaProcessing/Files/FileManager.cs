@@ -229,6 +229,10 @@ public partial class FileManager(
 
     public async Task<bool> FindFiles(int id, Library library)
     {
+        // An inbox file belongs to the classifier (InboxClassifierEventHandler), never to a title.
+        if (library.Type == MediaTypes.InboxMediaType)
+            return false;
+
         Id = id;
         _itemOriginFolder.Clear();
         _storedVideoFileKeys.Clear();
