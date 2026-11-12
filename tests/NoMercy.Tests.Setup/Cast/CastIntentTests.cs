@@ -90,6 +90,30 @@ public class CastIntentTests
     }
 
     [Fact]
+    public void PlayVideo_CarriesSeasonAndEpisodeWithTheirWireNames()
+    {
+        CastIntent intent = CastIntent.PlayVideo("tv", "1399", 90, season: 1, episode: 3);
+
+        string json = Newtonsoft.Json.JsonConvert.SerializeObject(intent);
+        Assert.Contains("\"season\":1", json);
+        Assert.Contains("\"episode\":3", json);
+    }
+
+    [Fact]
+    public void PlayVideo_WithoutSeasonAndEpisode_SerializesAsBefore()
+    {
+        CastIntent intent = CastIntent.PlayVideo("movie", "603", 90);
+
+        string json = Newtonsoft.Json.JsonConvert.SerializeObject(intent);
+        Assert.DoesNotContain("season", json);
+        Assert.DoesNotContain("episode", json);
+        Assert.Equal(
+            "{\"type\":\"play_video\",\"media_type\":\"movie\",\"media_id\":\"603\",\"resume_at\":90}",
+            json
+        );
+    }
+
+    [Fact]
     public void PlayMusic_SetsListTypeAndListId()
     {
         CastIntent intent = CastIntent.PlayMusic("album", "abc-123");

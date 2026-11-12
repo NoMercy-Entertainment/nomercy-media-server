@@ -109,6 +109,8 @@ public partial class VideoHub : ConnectionHub
         string? audioLanguage = state.CurrentAudio?.Language;
         // The caption travels the same way: the television keeps its own pick.
         ISubtitle? caption = state.CurrentCaption;
+        // Movies in a collection reuse Season/Episode as an index, so only a show carries them.
+        bool isEpisode = mediaType == "tv";
         return CastIntent.PlayVideo(
             mediaType,
             mediaId,
@@ -116,7 +118,9 @@ public partial class VideoHub : ConnectionHub
             audioLanguage,
             caption?.Language,
             caption?.Type,
-            caption?.Codec
+            caption?.Codec,
+            isEpisode ? state.CurrentItem.Season : null,
+            isEpisode ? state.CurrentItem.Episode : null
         );
     }
 

@@ -248,7 +248,9 @@ public sealed class DeviceHub : ConnectionHub
                     request.AudioLanguage,
                     request.SubtitleLanguage,
                     request.SubtitleType,
-                    request.SubtitleCodec
+                    request.SubtitleCodec,
+                    request.Season,
+                    request.Episode
                 );
 
             // Web Receiver: the NoMercy app may not be installed on a TV we never registered.
