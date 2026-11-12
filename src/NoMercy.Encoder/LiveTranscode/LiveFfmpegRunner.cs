@@ -78,8 +78,13 @@ public class LiveFfmpegRunner(
         // queued software encode start alongside a live session and stall it.
         int cpuThreads = input.AudioRenditionOnly ? 1 : 2;
         ResourceRequirement requirement = requiresGpu
-            ? new(gpuName, GpuSlots: 1, CpuThreads: EncodeThreadBudget.GpuEncodeWithCpuFilters)
-            : new ResourceRequirement(null, GpuSlots: 0, CpuThreads: cpuThreads);
+            ? new(
+                gpuName,
+                GpuSlots: 1,
+                CpuThreads: EncodeThreadBudget.GpuEncodeWithCpuFilters,
+                Interactive: true
+            )
+            : new ResourceRequirement(null, GpuSlots: 0, CpuThreads: cpuThreads, Interactive: true);
 
         // Declared outside the try so the outer finally can always see whether
         // a lease was actually granted. Acquisition now happens INSIDE the try
@@ -111,7 +116,8 @@ public class LiveFfmpegRunner(
                     requirement = new(
                         null,
                         GpuSlots: 0,
-                        CpuThreads: EncodeThreadBudget.SoftwareEncode
+                        CpuThreads: EncodeThreadBudget.SoftwareEncode,
+                        Interactive: true
                     );
                     lease = await AcquireWithinAsync(requirement, CpuLeaseWait, ct)
                         .ConfigureAwait(false);

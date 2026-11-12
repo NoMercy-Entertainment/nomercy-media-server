@@ -16,4 +16,9 @@ namespace NoMercyQueue.Core.Resources;
 /// <see cref="GpuDeviceKey"/> is the canonical name string from
 /// <c>GpuDevice.Name</c>; null means CPU-only.
 /// </summary>
-public record ResourceRequirement(string? GpuDeviceKey, int GpuSlots, int CpuThreads);
+public record ResourceRequirement(
+    string? GpuDeviceKey,
+    int GpuSlots,
+    int CpuThreads,
+    bool Interactive = false
+);
