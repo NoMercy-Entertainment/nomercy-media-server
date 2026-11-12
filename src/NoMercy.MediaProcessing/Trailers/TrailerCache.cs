@@ -8,6 +8,9 @@
 //
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
+using System.ComponentModel;
+using System.Diagnostics;
+using System.Text;
 using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using NoMercy.Encoder.Trailers;
@@ -26,9 +29,8 @@ public partial class TrailerCache(IStorage transcodeStorage, ILogger<TrailerCach
     private const string FirstSegmentFileName = "video_00002.ts";
     private static readonly TimeSpan FirstSegmentTimeout = TimeSpan.FromSeconds(30);
 
-    // YouTube video ids are exactly 11 chars of [A-Za-z0-9_-]. The id flows into
-    // shell command strings (yt-dlp/ffmpeg) and filesystem paths, so a strict match
-    // is the trust boundary that blocks command injection and path traversal.
+    // YouTube video ids are exactly 11 chars of [A-Za-z0-9_-]. The id also
+    // reaches filesystem paths, so keep this guard at the download sink.
     [GeneratedRegex("^[A-Za-z0-9_-]{11}$", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex TrailerIdRegex();
 
@@ -90,7 +92,7 @@ public partial class TrailerCache(IStorage transcodeStorage, ILogger<TrailerCach
         if (await transcodeStorage.ExistsAsync(firstSegmentPath, ct))
             return;
 
-        _ = Task.Run(() => Download(trailerId, language), ct);
+        _ = Task.Run(() => DownloadAsync(trailerId, language), ct);
 
         using CancellationTokenSource timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
         timeout.CancelAfter(FirstSegmentTimeout);
@@ -121,11 +123,67 @@ public partial class TrailerCache(IStorage transcodeStorage, ILogger<TrailerCach
         }
     }
 
-    private void Download(string trailerId, string language)
+    internal static (ProcessStartInfo YtDlp, ProcessStartInfo Ffmpeg) CreateDownloadStartInfo(
+        string ytdlpPath,
+        string ffmpegPath,
+        string workingDirectory,
+        string trailerId,
+        string? language
+    )
     {
-        // The id reaches a shell here. Every controller already checks it, but a
-        // guard next to the sink is the one that cannot be forgotten by a new
-        // caller, and it is what makes the shape of this string provable.
+        ProcessStartInfo ytdlp = new()
+        {
+            FileName = ytdlpPath,
+            WorkingDirectory = workingDirectory,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        foreach (string argument in new[]
+                 {
+                     "-f", "bestvideo+bestaudio", "--extractor-args", "youtube:player_client=default",
+                 })
+            ytdlp.ArgumentList.Add(argument);
+
+        if (TrailerCommandBuilder.IsSafeLanguage(language))
+        {
+            ytdlp.ArgumentList.Add("-o");
+            ytdlp.ArgumentList.Add($"subtitle:{language}.%(ext)s");
+            ytdlp.ArgumentList.Add("--sub-langs");
+            ytdlp.ArgumentList.Add("all");
+            ytdlp.ArgumentList.Add("--write-subs");
+        }
+
+        ytdlp.ArgumentList.Add($"https://youtube.com/watch?v={trailerId}");
+        ytdlp.ArgumentList.Add("-o");
+        ytdlp.ArgumentList.Add("-");
+
+        ProcessStartInfo ffmpeg = new()
+        {
+            FileName = ffmpegPath,
+            WorkingDirectory = workingDirectory,
+            UseShellExecute = false,
+            CreateNoWindow = true,
+            RedirectStandardInput = true,
+            StandardInputEncoding = new UTF8Encoding(false),
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+        };
+        foreach (string argument in new[]
+                 {
+                     "-i", "pipe:", "-map", "0:0", "-map", "0:1", "-c:v", "libx264",
+                     "-c:a", "aac", "-ac", "2", "-preset", "ultrafast", "-segment_list_type",
+                     "m3u8", "-hls_playlist_type", "event", "-hls_init_time", "4", "-hls_time",
+                     "4", "-hls_segment_filename", "video_%05d.ts", "video.m3u8",
+                 })
+            ffmpeg.ArgumentList.Add(argument);
+
+        return (ytdlp, ffmpeg);
+    }
+
+    private async Task DownloadAsync(string trailerId, string language)
+    {
         if (!IsValidId(trailerId))
         {
             logger.LogError("Refused a trailer download for a malformed id");
@@ -134,38 +192,56 @@ public partial class TrailerCache(IStorage transcodeStorage, ILogger<TrailerCach
 
         string workingDirectory = Path.Combine(AppFiles.TranscodePath, trailerId);
 
+        (ProcessStartInfo ytdlpInfo, ProcessStartInfo ffmpegInfo) = CreateDownloadStartInfo(
+            AppFiles.YtdlpPath,
+            AppFiles.FfmpegPath,
+            workingDirectory,
+            trailerId,
+            language
+        );
+        using Process ytdlp = new() { StartInfo = ytdlpInfo };
+        using Process ffmpeg = new() { StartInfo = ffmpegInfo };
+        bool ytdlpStarted = false;
+        bool ffmpegStarted = false;
+
         try
         {
-            string command = TrailerCommandBuilder.Build(
-                AppFiles.YtdlpPath,
-                AppFiles.FfmpegPath,
-                trailerId,
-                language
-            );
+            ffmpeg.Start();
+            ffmpegStarted = true;
+            Shell.ChildProcessManager.Attach(ffmpeg);
+            ytdlp.Start();
+            ytdlpStarted = true;
+            Shell.ChildProcessManager.Attach(ytdlp);
 
-            if (Software.IsWindows)
+            Task<string> ytdlpError = ytdlp.StandardError.ReadToEndAsync();
+            Task<string> ffmpegError = ffmpeg.StandardError.ReadToEndAsync();
+            Task ffmpegOutput = ffmpeg.StandardOutput.BaseStream.CopyToAsync(Stream.Null);
+
+            try
             {
-                // cmd needs the raw `/c "<command>"` form: it strips only the outer
-                // quote pair and keeps the quoted tool paths inside intact.
-                logger.LogDebug("cmd -c \"{Command}\"", command);
-                Shell.ExecSync(
-                    "cmd",
-                    $"/c \"{command}\"",
-                    new() { WorkingDirectory = workingDirectory }
-                );
+                await ytdlp.StandardOutput.BaseStream.CopyToAsync(ffmpeg.StandardInput.BaseStream);
             }
-            else
+            finally
             {
-                // bash gets the command as one argv token. Through the raw argument
-                // string, the runtime's own argv parser would split it at the quoted
-                // tool paths before bash ever saw it.
-                logger.LogDebug("/bin/bash -c \"{Command}\"", command);
-                Shell.ExecSync(
-                    "/bin/bash",
-                    ["-c", command],
-                    new() { WorkingDirectory = workingDirectory }
-                );
+                ffmpeg.StandardInput.Close();
             }
+
+            await Task.WhenAll(
+                ytdlp.WaitForExitAsync(),
+                ffmpeg.WaitForExitAsync(),
+                ffmpegOutput,
+                ytdlpError,
+                ffmpegError
+            );
+            if (ytdlp.ExitCode != 0 || ffmpeg.ExitCode != 0)
+                logger.LogError(
+                    "Trailer download failed for {TrailerId}: yt-dlp ({YtDlpExitCode}) {YtDlpError}; ffmpeg ({FfmpegExitCode}) {FfmpegError}",
+                    trailerId,
+                    ytdlp.ExitCode,
+                    await ytdlpError,
+                    ffmpeg.ExitCode,
+                    await ffmpegError
+                );
         }
         catch (Exception ex)
         {
@@ -175,5 +251,24 @@ public partial class TrailerCache(IStorage transcodeStorage, ILogger<TrailerCach
                 ex.Message
             );
         }
+        finally
+        {
+            KillIfRunning(ytdlp, ytdlpStarted);
+            KillIfRunning(ffmpeg, ffmpegStarted);
+        }
+    }
+
+    private static void KillIfRunning(Process process, bool started)
+    {
+        if (!started)
+            return;
+
+        try
+        {
+            if (!process.HasExited)
+                process.Kill(entireProcessTree: true);
+        }
+        catch (InvalidOperationException) { }
+        catch (Win32Exception) { }
     }
 }

@@ -15,13 +15,8 @@ using System.Text.RegularExpressions;
 namespace NoMercy.Encoder.Trailers;
 
 /// <summary>
-/// Builds the yt-dlp | ffmpeg shell command used to fetch and remux a trailer.
-/// The command string is executed through a shell (<c>cmd /c</c> / <c>bash -c</c>),
-/// so every interpolated value is a trust boundary. The trailer id is validated by
-/// the caller (<c>HomeController.TrailerIdRegex</c>); the subtitle language comes from
-/// the client's <c>Accept-Language</c> header and is validated here — anything that is
-/// not a plain BCP-47-shaped locale token is dropped rather than passed to the shell,
-/// closing the command-injection vector.
+/// Retains the trailer command string for existing callers. The download path
+/// starts yt-dlp and ffmpeg directly instead. Locale tokens are validated here.
 /// </summary>
 public static partial class TrailerCommandBuilder
 {
@@ -54,7 +49,7 @@ public static partial class TrailerCommandBuilder
         if (IsSafeLanguage(language))
             sb.Append($" -o \"subtitle:{language}.%(ext)s\" --sub-langs all --write-subs ");
 
-        sb.Append(trailerId);
+        sb.Append($"https://youtube.com/watch?v={trailerId}");
 
         sb.Append(" -o - ");
         sb.Append(
