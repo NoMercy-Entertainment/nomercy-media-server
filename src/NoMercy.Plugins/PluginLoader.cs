@@ -253,6 +253,33 @@ internal sealed class PluginLoader(
                 )
             );
 
+    // The revocation of the plugin listed at this path, which is left off.
+    // A bare assembly has no identity until it loads, so only a listed one matches.
+    private PluginRefusal? RevokedAt(string absoluteAssemblyPath)
+    {
+        LoadedPlugin? known = _registry.Values.FirstOrDefault(loaded =>
+            loaded.Info.AssemblyPath is not null
+            && ToLocalAssemblyPath(loaded.Info.AssemblyPath)
+                .Equals(absoluteAssemblyPath, StringComparison.OrdinalIgnoreCase)
+        );
+
+        if (
+            known is null
+            || _serviceProvider.GetService<IPluginRunGate>()?.MayRun(known.Info)
+                is not { Code: PluginRefusalCodes.Revoked } revoked
+        )
+        {
+            return null;
+        }
+
+        if (known.Instance is null)
+        {
+            known.Info.Status = PluginStatus.Disabled;
+        }
+
+        return revoked;
+    }
+
     /// <summary>
     /// The files a plugin's load context may load: every file of the shadow
     /// copy, subfolders included, because native code sits under
@@ -375,6 +402,35 @@ internal sealed class PluginLoader(
                         ExceptionType = nameof(PluginVerificationException),
                     },
                     ct
+                );
+
+                return;
+            }
+
+            // A revoked build is refused before its assembly is loaded, here
+            // or in another process: loading it runs its code (AUD-1134).
+            if (
+                RunRefusal(manifest, assemblyPath, manifestPath, verification) is
+                { Code: PluginRefusalCodes.Revoked } revoked
+            )
+            {
+                _registry[manifest.Id.Value] = new(
+                    PluginManifestParser.ToPluginInfo(
+                        manifest,
+                        assemblyPath,
+                        PluginStatus.Disabled,
+                        manifestPath,
+                        verification.Verified,
+                        verification.Trusted,
+                        PluginSideloadMarker.IsMarked(manifestPath)
+                    ),
+                    null,
+                    null
+                );
+
+                _logger.LogWarning(
+                    "Plugin {PluginName} was not loaded: {Why} {Fix}",
+                    [manifest.Name, revoked.Why, revoked.Fix]
                 );
 
                 return;
@@ -752,6 +808,17 @@ internal sealed class PluginLoader(
     internal async Task LoadPluginAssemblyAsync(string assemblyPath, CancellationToken ct = default)
     {
         string absoluteAssemblyPath = ToLocalAssemblyPath(assemblyPath);
+
+        if (RevokedAt(absoluteAssemblyPath) is { } revoked)
+        {
+            _logger.LogWarning(
+                "Plugin assembly {AssemblyPath} was not loaded: {Why} {Fix}",
+                [assemblyPath, revoked.Why, revoked.Fix]
+            );
+
+            return;
+        }
+
         PluginLoadContext loadContext;
         string loadPath;
         string shadowDir;

@@ -109,6 +109,17 @@ internal sealed class PluginLifecycleManager(
             );
         }
 
+        // A revoked build stays off in every trust mode (AUD-1134).
+        if (
+            _serviceProvider.GetService<IPluginRunGate>()?.MayRun(loaded.Info) is
+            { Code: PluginRefusalCodes.Revoked }
+        )
+        {
+            throw new InvalidOperationException(
+                $"Plugin {loaded.Info.Name} was revoked and cannot be enabled. Install the newest version."
+            );
+        }
+
         // Turning a plugin on is the owner answering the consent question, so
         // the answer is written down here. Left unrecorded, the next start read
         // the plugin as never consented and disabled it again, and the owner
