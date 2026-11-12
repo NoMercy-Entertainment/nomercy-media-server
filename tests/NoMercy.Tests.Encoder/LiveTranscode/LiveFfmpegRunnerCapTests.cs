@@ -279,7 +279,11 @@ public class LiveFfmpegRunnerCapTests
             )
             .ReturnsAsync(new ProcessResult(0, "", "", TimeSpan.Zero));
 
-        LiveFfmpegRunner runner = BuildBudgetRunner(budget.Object, process.Object, transport.Object);
+        LiveFfmpegRunner runner = BuildBudgetRunner(
+            budget.Object,
+            process.Object,
+            transport.Object
+        );
         LiveQuality hw = MakeHwQuality();
         LiveSession session = new("lease-fallback-001", hw);
         string dir = Path.Combine(Path.GetTempPath(), "lease-fb-" + Ulid.NewUlid());
@@ -328,7 +332,11 @@ public class LiveFfmpegRunnerCapTests
         (Mock<ILiveSessionTransport> transport, List<object> pushed) = MakeTransport();
         Mock<IProcessRunner> process = new();
 
-        LiveFfmpegRunner runner = BuildBudgetRunner(budget.Object, process.Object, transport.Object);
+        LiveFfmpegRunner runner = BuildBudgetRunner(
+            budget.Object,
+            process.Object,
+            transport.Object
+        );
         LiveQuality hw = MakeHwQuality();
         LiveSession session = new("lease-exhausted-001", hw);
         string dir = Path.Combine(Path.GetTempPath(), "lease-ex-" + Ulid.NewUlid());
@@ -380,13 +388,138 @@ public class LiveFfmpegRunnerCapTests
             b =>
                 b.AcquireAsync(
                     It.Is<ResourceRequirement>(r =>
-                        r.GpuSlots == 1 && r.CpuThreads == EncodeThreadBudget.GpuEncodeWithCpuFilters
+                        r.GpuSlots == 1
+                        && r.CpuThreads == EncodeThreadBudget.GpuEncodeWithCpuFilters
                     ),
                     It.IsAny<CancellationToken>()
                 ),
             Times.Once
         );
         budget.Verify(b => b.Release(It.Is<ResourceLease>(l => l.GpuSlots == 1)), Times.Once);
+    }
+
+    private static ResourceBudget MakeRealBudget(int gpuSlots) =>
+        new(
+            [new GpuDevice(GpuVendor.Nvidia, "GPU", 8192, gpuSlots, [VideoCodecType.H264])],
+            cpuCores: 32
+        );
+
+    private static LiveFfmpegRunner BuildRealBudgetRunner(
+        ResourceBudget budget,
+        List<ResourceLease> grantedLeases
+    )
+    {
+        Mock<IProcessRunner> process = new();
+        process
+            .Setup(r =>
+                r.RunAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string[]>(),
+                    It.IsAny<Action<string>?>(),
+                    It.IsAny<Action<string>?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .Returns(() =>
+            {
+                grantedLeases.Add(new("probe", null, 0, 32 - budget.AvailableCpuThreads()));
+                return Task.FromResult(new ProcessResult(0, "", "", TimeSpan.Zero));
+            });
+        (Mock<ILiveSessionTransport> transport, _) = MakeTransport();
+        return BuildBudgetRunner(budget, process.Object, transport.Object);
+    }
+
+    [Fact]
+    public async Task RunAsync_QueueHoldsCpuAndEveryGpuSlot_LiveViewerStillGetsCpuLease()
+    {
+        ResourceBudget budget = MakeRealBudget(gpuSlots: 1);
+        budget.Acquire(new ResourceRequirement("GPU", 1, 0));
+        budget.Acquire(new ResourceRequirement(null, 0, 31));
+        List<ResourceLease> seen = [];
+        LiveFfmpegRunner runner = BuildRealBudgetRunner(budget, seen);
+        LiveQuality hw = MakeHwQuality();
+        LiveSession session = new("lease-overcommit-001", hw);
+        string dir = Path.Combine(Path.GetTempPath(), "lease-oc-" + Ulid.NewUlid());
+
+        await runner
+            .RunAsync(MakeInput(hw, dir), session, CancellationToken.None)
+            .WaitAsync(LeaseDeadline);
+
+        session.State.Should().NotBe(LiveSessionState.Error);
+        session.CurrentQuality.IsHardwareAccelerated.Should().BeFalse();
+        seen.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task RunAsync_QueueHoldsCpuAndAGpuSlotIsFree_LiveViewerGetsGpuLease()
+    {
+        ResourceBudget budget = MakeRealBudget(gpuSlots: 2);
+        budget.Acquire(new ResourceRequirement("GPU", 1, 0));
+        budget.Acquire(new ResourceRequirement(null, 0, 31));
+        List<ResourceLease> seen = [];
+        LiveFfmpegRunner runner = BuildRealBudgetRunner(budget, seen);
+        LiveQuality hw = MakeHwQuality();
+        LiveSession session = new("lease-overcommit-002", hw);
+        string dir = Path.Combine(Path.GetTempPath(), "lease-oc-" + Ulid.NewUlid());
+
+        await runner
+            .RunAsync(MakeInput(hw, dir), session, CancellationToken.None)
+            .WaitAsync(LeaseDeadline);
+
+        session.CurrentQuality.IsHardwareAccelerated.Should().BeTrue();
+        seen.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task AcquireAsync_InteractiveOverCommit_ReleaseRestoresExactCpuCount()
+    {
+        ResourceBudget budget = MakeRealBudget(gpuSlots: 1);
+        ResourceLease queue = budget.Acquire(new ResourceRequirement(null, 0, 31));
+        budget.AvailableCpuThreads().Should().Be(1);
+
+        ResourceLease live = await budget.AcquireAsync(
+            new ResourceRequirement(null, 0, 8, Interactive: true)
+        );
+        budget.AvailableCpuThreads().Should().Be(0);
+
+        budget.Release(live);
+        budget.AvailableCpuThreads().Should().Be(1);
+        budget.Release(queue);
+        budget.AvailableCpuThreads().Should().Be(32);
+    }
+
+    [Fact]
+    public async Task AcquireAsync_InteractiveOverCommit_QueueTryAcquireSeesLiveLoad()
+    {
+        ResourceBudget budget = MakeRealBudget(gpuSlots: 1);
+        ResourceLease queue = budget.Acquire(new ResourceRequirement(null, 0, 31));
+        ResourceLease live = await budget.AcquireAsync(
+            new ResourceRequirement(null, 0, 8, Interactive: true)
+        );
+        budget.Release(queue);
+
+        budget.AvailableCpuThreads().Should().Be(24);
+        budget.TryAcquire(new ResourceRequirement(null, 0, 25), TimeSpan.Zero).Should().BeNull();
+        ResourceLease? fits = budget.TryAcquire(
+            new ResourceRequirement(null, 0, 24),
+            TimeSpan.Zero
+        );
+        fits.Should().NotBeNull();
+
+        budget.Release(fits!);
+        budget.Release(live);
+        budget.AvailableCpuThreads().Should().Be(32);
+    }
+
+    [Fact]
+    public void TryAcquire_NoLiveSession_BehavesAsBefore()
+    {
+        ResourceBudget budget = MakeRealBudget(gpuSlots: 1);
+        budget.Acquire(new ResourceRequirement(null, 0, 31));
+
+        budget.TryAcquire(new ResourceRequirement(null, 0, 2), TimeSpan.Zero).Should().BeNull();
+        budget.TryAcquire(new ResourceRequirement(null, 0, 1), TimeSpan.Zero).Should().NotBeNull();
     }
 
     // ──────────────────────────────────────────────────────────────────────────

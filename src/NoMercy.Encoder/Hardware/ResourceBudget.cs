@@ -28,6 +28,10 @@ public class ResourceBudget : IResourceBudget
     // tell how many GPU slots are leased right now (capacity - CurrentCount).
     private readonly ConcurrentDictionary<SemaphoreSlim, int> _gpuCapacities = new();
     private readonly SemaphoreSlim _cpuSemaphore;
+
+    // CPU threads handed to interactive leases beyond what the semaphore had.
+    private readonly ConcurrentDictionary<string, int> _overcommitByLease = new();
+    private int _cpuOvercommit;
     private readonly IResourceMonitor? _monitor;
     private readonly ResourceBudgetOptions _options;
     private readonly ILogger<ResourceBudget>? _logger;
@@ -192,7 +196,7 @@ public class ResourceBudget : IResourceBudget
 
     public int AvailableCpuThreads()
     {
-        return _cpuSemaphore.CurrentCount;
+        return Math.Max(0, _cpuSemaphore.CurrentCount - Volatile.Read(ref _cpuOvercommit));
     }
 
     // Unlike AcquireAsync (cancellable) and TryAcquire (caller-supplied
@@ -286,6 +290,7 @@ public class ResourceBudget : IResourceBudget
         int acquiredGpuSlots = 0;
         SemaphoreSlim? gpuSemaphore = null;
         int acquiredCpuThreads = 0;
+        int overcommitted = 0;
 
         try
         {
@@ -306,7 +311,17 @@ public class ResourceBudget : IResourceBudget
                 );
             }
 
-            if (requirement.CpuThreads > 0)
+            if (requirement is { Interactive: true, CpuThreads: > 0 })
+            {
+                // A live viewer never waits for CPU threads: take what is free
+                // and over-commit the rest, tracked so Release returns exactly
+                // what came from the semaphore.
+                while (acquiredCpuThreads < requirement.CpuThreads && _cpuSemaphore.Wait(0))
+                    acquiredCpuThreads++;
+
+                overcommitted = requirement.CpuThreads - acquiredCpuThreads;
+            }
+            else if (requirement.CpuThreads > 0)
             {
                 for (int threadIndex = 0; threadIndex < requirement.CpuThreads; threadIndex++)
                 {
@@ -329,6 +344,17 @@ public class ResourceBudget : IResourceBudget
 
         string leaseId = Ulid.NewUlid().ToString();
 
+        if (overcommitted > 0)
+        {
+            _overcommitByLease[leaseId] = overcommitted;
+            Interlocked.Add(ref _cpuOvercommit, overcommitted);
+            _logger?.LogInformation(
+                "Interactive lease {LeaseId} over-committed {Threads} CPU thread(s)",
+                leaseId,
+                overcommitted
+            );
+        }
+
         _logger?.LogDebug("Lease {LeaseId} granted via AcquireAsync", leaseId);
 
         return new(leaseId, requirement.GpuDeviceKey, requirement.GpuSlots, requirement.CpuThreads);
@@ -343,6 +369,10 @@ public class ResourceBudget : IResourceBudget
         // current load. Refuse the lease when the host is saturated; the
         // worker retries every BudgetRetryDelay so we re-check as load drops.
         if (!HasHeadroom(requirement))
+            return null;
+
+        // A live session over-committed CPU threads: queue work sees that load.
+        if (requirement.CpuThreads > AvailableCpuThreads() && Volatile.Read(ref _cpuOvercommit) > 0)
             return null;
 
         SemaphoreSlim? gpuSemaphore = null;
@@ -492,12 +522,7 @@ public class ResourceBudget : IResourceBudget
         if (freeMb <= 0 || freeMb >= _options.MinFreeMemoryMb)
             return true;
 
-        LogHeadroomDenied(
-            "free memory MB",
-            freeMb,
-            _options.MinFreeMemoryMb,
-            invert: true
-        );
+        LogHeadroomDenied("free memory MB", freeMb, _options.MinFreeMemoryMb, invert: true);
         return false;
     }
 
@@ -547,7 +572,12 @@ public class ResourceBudget : IResourceBudget
 
         if (lease.CpuThreads > 0)
         {
-            _cpuSemaphore.Release(lease.CpuThreads);
+            int over = 0;
+            if (_overcommitByLease.TryRemove(lease.LeaseId, out over))
+                Interlocked.Add(ref _cpuOvercommit, -over);
+
+            if (lease.CpuThreads - over > 0)
+                _cpuSemaphore.Release(lease.CpuThreads - over);
 
             _logger?.LogDebug(
                 "Released {CpuThreads} CPU thread(s) for lease {LeaseId}",

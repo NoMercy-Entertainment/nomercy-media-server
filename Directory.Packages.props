@@ -167,7 +167,7 @@
     <!-- WebDAV -->
     <PackageVersion Include="WebDav.Client" Version="2.9.0" />
     <!-- NoMercy fork of SMBLibrary with a public Connect(address, transport, port); source github.com/NoMercy-Entertainment/nomercy-smblibrary. -->
-    <PackageVersion Include="NoMercy.SMBLibrary" Version="1.5.7-nomercy.1" />
+    <PackageVersion Include="NoMercy.SMBLibrary" Version="1.5.7-nomercy.2" />
     <!-- Testing -->
     <PackageVersion Include="coverlet.collector" Version="10.0.1" />
     <PackageVersion Include="Testcontainers" Version="4.13.0" />
