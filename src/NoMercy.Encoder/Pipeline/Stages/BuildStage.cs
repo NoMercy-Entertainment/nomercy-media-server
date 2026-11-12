@@ -484,22 +484,9 @@ public class BuildStage(
                 }
             }
 
-            // Text subtitles go in the main command (single-pass). Bitmap
-            // subtitles (and, when this task owns font extraction, font
-            // attachments) are pulled out into ExtractionCommandBuilder below.
-            if (input.Plan.OutputPlan.SubtitleOutputs.Length > 0 && context.MediaInfo is not null)
-            {
-                SubtitleCommandBuilder.AddTextSubtitleOutputs(
-                    builder,
-                    input.Plan.OutputPlan,
-                    context.MediaInfo,
-                    input.OutputDirectory,
-                    input.MediaTitle,
-                    subtitleExtractor,
-                    effectiveStorage
-                );
-            }
-
+            // Subtitle files never share a command with video/audio outputs: a
+            // text output beside them cuts the decoded outputs short in ffmpeg.
+            // They are extracted by ExtractionCommandBuilder below.
             // A decomposed bundle can leave the main builder with nothing to write:
             // a Thumbnails-only task has no video or audio rung, and its sprite is
             // emitted as its own command below. ffmpeg rejects an output-less
@@ -532,18 +519,16 @@ public class BuildStage(
                     ? context.MediaInfo.Attachments
                     : [];
 
-            // With bitmap subtitles in the plan there is already a dedicated
+            // With subtitle files in the plan there is already a dedicated
             // extraction command reading the source, and the dump rides on that.
             // Without them, an attachments-only extraction command would be a
             // second full read of a multi-GB source that emits nothing but fonts —
-            // so the dump rides on the encode's own read instead. Text/ASS
-            // subtitles are muxed by the main command, which makes this the
-            // ordinary case for subtitled anime.
+            // so the dump rides on the encode's own read instead.
             bool dumpRidesOnEncode =
                 attachmentsToExtract.Count > 0
                 && builder.HasOutputs
                 && context.MediaInfo is not null
-                && !ExtractionCommandBuilder.HasBitmapSubtitleOutputs(
+                && !ExtractionCommandBuilder.HasSubtitleOutputs(
                     input.Plan.OutputPlan,
                     context.MediaInfo,
                     input.OutputDirectory,
@@ -597,11 +582,11 @@ public class BuildStage(
 
             allCommands.AddRange(spriteCommands);
 
-            // Bitmap subtitles, plus font attachments when the encode command did
+            // Subtitle files, plus font attachments when the encode command did
             // not already carry them, are pulled out into ONE dedicated ffmpeg
             // command. input.InputPath is frequently a remote source (NFS/SMB/S3),
             // so every extra "-i" is a full network re-read of a multi-GB file —
-            // merging what used to be one command per bitmap subtitle stream plus
+            // merging what used to be one command per subtitle stream plus
             // one for fonts turns N+1 network reads into exactly one. Kept separate
             // from the main encode command so a subtitle extraction failure never
             // sinks an otherwise successful, hours-long encode.
@@ -627,7 +612,8 @@ public class BuildStage(
                     subtitleExtractor,
                     fontExtractor,
                     effectiveStorage,
-                    attachmentsForExtractionCommand
+                    attachmentsForExtractionCommand,
+                    input.DurationLimit
                 );
 
                 if (extractionCommand is not null)

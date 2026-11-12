@@ -26,7 +26,7 @@ public class PlaybackDecisionEngine : IPlaybackDecisionEngine
         // Audio-only path
         if (!media.HasVideo)
         {
-            if (media.HasAudio && IsAudioCompatible(media.AudioStreams[0], client))
+            if (media.HasAudio && media.AudioStreams.Any(a => IsAudioCompatible(a, client)))
                 return new(PlaybackAction.DirectPlay, null, null);
 
             return new(PlaybackAction.TranscodeAudio, "Audio codec not supported", null);
@@ -68,7 +68,8 @@ public class PlaybackDecisionEngine : IPlaybackDecisionEngine
             client.MaxBitrateKbps <= 0 || video.BitRateKbps <= client.MaxBitrateKbps;
         bool bitrateOk = codecBitrateOk && globalBitrateOk;
 
-        bool audioCodecOk = !media.HasAudio || IsAudioCompatible(media.AudioStreams[0], client);
+        bool audioCodecOk =
+            !media.HasAudio || media.AudioStreams.Any(a => IsAudioCompatible(a, client));
         bool containerOk = IsContainerCompatible(media.Format, client);
 
         // Video needs transcode — codec, resolution, bit-depth, profile, framerate, or HDR incompatible
@@ -182,6 +183,9 @@ public class PlaybackDecisionEngine : IPlaybackDecisionEngine
             _ => null,
         };
     }
+
+    internal static bool IsAudioPlayable(AudioStreamInfo audio, ClientCapabilities client) =>
+        IsAudioCompatible(audio, ResolveVideo(client));
 
     private static bool IsAudioCompatible(AudioStreamInfo audio, ClientCapabilities client)
     {

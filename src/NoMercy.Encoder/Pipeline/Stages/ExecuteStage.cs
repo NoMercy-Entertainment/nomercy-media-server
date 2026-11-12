@@ -106,10 +106,11 @@ public class ExecuteStage(
                     }
 
                     logger.LogWarning(
-                        "[{CorrelationId}] Post-process command {Index} failed (non-fatal): exit={ExitCode}",
+                        "[{CorrelationId}] Post-process command {Index} failed (non-fatal; its subtitle, font or sprite files may be missing): exit={ExitCode} stderr={StdErr}",
                         context.CorrelationId,
                         i,
-                        result.ExitCode
+                        result.ExitCode,
+                        TailStderr(result.StdErr)
                     );
                 }
             }
