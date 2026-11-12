@@ -14,9 +14,9 @@ using System.Collections.Concurrent;
 namespace NoMercy.Encoder.Distribution;
 
 /// <summary>
-/// Thread-safe in-memory store. LRU eviction after <see cref="MaxEntries"/>
-/// and age-based eviction after <see cref="StaleAfter"/> keep the map
-/// bounded when workers disconnect mid-task.
+/// Thread-safe in-memory store. A hard cap of <see cref="MaxEntries"/> drops the
+/// oldest task first, and <see cref="StaleAfter"/> hides old snapshots from
+/// <see cref="GetAll"/>.
 /// </summary>
 public class InMemoryTaskProgressStore : ITaskProgressStore
 {
@@ -24,16 +24,20 @@ public class InMemoryTaskProgressStore : ITaskProgressStore
     private static readonly TimeSpan StaleAfter = TimeSpan.FromMinutes(15);
 
     private readonly ConcurrentDictionary<string, TaskProgressSnapshot> _snapshots = new();
+    private readonly ConcurrentQueue<string> _order = new();
 
     public void Update(string taskId, TaskProgressSnapshot snapshot)
     {
-        _snapshots[taskId] = snapshot;
+        if (!_snapshots.TryAdd(taskId, snapshot))
+        {
+            _snapshots[taskId] = snapshot;
+            return;
+        }
 
-        // Evict stale entries lazily on every write to avoid a background
-        // cleanup thread. Cheap: bounded-size concurrent dict + one linq
-        // pass per update.
-        if (_snapshots.Count > MaxEntries)
-            EvictStale();
+        // Hard cap by count: drop the oldest-inserted task, no scan of the map.
+        _order.Enqueue(taskId);
+        while (_snapshots.Count > MaxEntries && _order.TryDequeue(out string? oldest))
+            _snapshots.TryRemove(oldest, out _);
     }
 
     public TaskProgressSnapshot? Get(string taskId) =>
@@ -43,18 +47,5 @@ public class InMemoryTaskProgressStore : ITaskProgressStore
     {
         DateTime cutoff = DateTime.UtcNow - StaleAfter;
         return _snapshots.Values.Where(s => s.ReceivedAtUtc >= cutoff).ToArray();
-    }
-
-    private void EvictStale()
-    {
-        DateTime cutoff = DateTime.UtcNow - StaleAfter;
-        foreach (
-            KeyValuePair<string, TaskProgressSnapshot> kvp in _snapshots
-                .Where(kvp => kvp.Value.ReceivedAtUtc < cutoff)
-                .ToArray()
-        )
-        {
-            _snapshots.TryRemove(kvp.Key, out _);
-        }
     }
 }
