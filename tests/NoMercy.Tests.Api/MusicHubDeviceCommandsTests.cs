@@ -511,7 +511,8 @@ public class MusicHubDeviceCommandsTests : IClassFixture<NoMercyApiFactory>
         string methodName
     )
     {
-        for (int attempt = 0; attempt < 20; attempt++)
+        // The launch runs in the background; a busy CI runner needs seconds, not one.
+        for (int attempt = 0; attempt < 100; attempt++)
         {
             if (chromeCast.Invocations.Any(i => i.Method.Name == methodName))
                 return true;
