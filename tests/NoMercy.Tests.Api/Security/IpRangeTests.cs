@@ -10,7 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using System.Net;
-using NoMercy.Api.Security;
+using NoMercy.Networking.Http;
 using Xunit;
 
 namespace NoMercy.Tests.Api.Security;

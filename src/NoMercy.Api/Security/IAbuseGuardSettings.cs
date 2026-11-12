@@ -9,6 +9,8 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using NoMercy.Networking.Http;
+
 namespace NoMercy.Api.Security;
 
 public interface IAbuseGuardSettings

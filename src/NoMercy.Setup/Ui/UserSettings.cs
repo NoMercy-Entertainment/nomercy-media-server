@@ -12,6 +12,7 @@
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Database;
 using NoMercy.Database.Models.Common;
+using NoMercy.Networking.Http;
 using NoMercy.NmSystem.Configuration;
 using NoMercy.NmSystem.Dto;
 using NoMercy.NmSystem.Extensions;
@@ -350,6 +351,17 @@ public static class UserSettings
                     else
                         Logger.App(
                             $"UserSettings: skipping unknown 'updateChannel' value '{setting.Value}' — staying on {RuntimeServerSettings.Current.UpdateChannel}",
+                            LogEventLevel.Warning
+                        );
+                    break;
+                case TrustedProxyList.ConfigKey:
+                    ClientIpResolver.TrustedProxies = TrustedProxyList.Parse(
+                        setting.Value,
+                        out List<string> rejectedProxies
+                    );
+                    foreach (string rejected in rejectedProxies)
+                        Logger.App(
+                            $"UserSettings: skipping invalid '{TrustedProxyList.ConfigKey}' entry '{rejected}' — not an IP address or CIDR range",
                             LogEventLevel.Warning
                         );
                     break;

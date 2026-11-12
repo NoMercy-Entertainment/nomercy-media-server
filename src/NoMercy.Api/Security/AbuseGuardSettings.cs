@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using NoMercy.Networking.Http;
 using NoMercyQueue.Core.Interfaces;
 
 namespace NoMercy.Api.Security;
