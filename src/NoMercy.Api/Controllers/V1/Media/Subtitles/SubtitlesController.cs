@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using System.Text;
+using System.Text.RegularExpressions;
 using Asp.Versioning;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
@@ -45,7 +46,7 @@ namespace NoMercy.Api.Controllers.V1.Media.Subtitles;
 [ApiVersion(1.0)]
 [Authorize]
 [Route("api/v{version:apiVersion}/subtitles")]
-public class SubtitlesController(
+public partial class SubtitlesController(
     VideoPlaylistManager videoPlaylistManager,
     IVideoFileRepository videoFileRepository,
     IFileRepository fileRepository,
@@ -254,6 +255,16 @@ public class SubtitlesController(
         if (string.IsNullOrWhiteSpace(request.DownloadUrl))
             return BadRequestResponse("downloadUrl is required");
 
+        // The language lands in the sidecar file name and the stored Subtitles
+        // JSON, so only a language-code shape (letters, digits, '-') may pass.
+        if (string.IsNullOrWhiteSpace(request.Language))
+            return BadRequestResponse("language is required");
+
+        if (!LanguageCodePattern().IsMatch(request.Language))
+            return BadRequestResponse(
+                "language must be a language code of letters, digits and '-' (2 to 16 characters)."
+            );
+
         // download_url is the opaque token from subtitles/search, but nothing forces
         // that: it is fetched server-side, so an authenticated user could point it at
         // loopback/LAN/cloud-metadata (SSRF). Reject any URL that is not an http(s)
@@ -263,11 +274,11 @@ public class SubtitlesController(
                 "download_url must be an absolute http(s) URL that resolves to a public host."
             );
 
-        if (string.IsNullOrWhiteSpace(request.Language))
-            return BadRequestResponse("language is required");
-
         return null;
     }
+
+    [GeneratedRegex(@"^[A-Za-z0-9-]{2,16}$", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    private static partial Regex LanguageCodePattern();
 
     private async Task<(IActionResult? Failed, string? VttContent)> DownloadAsVttAsync(
         SubtitleDownloadRequestDto request,

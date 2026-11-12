@@ -51,4 +51,27 @@ public class SubtitleDownloadSsrfTests : IClassFixture<NoMercyApiFactory>
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
+
+    /// The language goes into the sidecar file name and the stored Subtitles
+    /// JSON, so only a language-code shape may pass.
+    [Theory]
+    [InlineData("../x")]
+    [InlineData("a/b")]
+    [InlineData("en us")]
+    [InlineData("en;x")]
+    [InlineData("a")]
+    public async Task Download_RejectsLanguageThatIsNotALanguageCode(string language)
+    {
+        string payload =
+            "{\"type\":\"movie\",\"id\":1,\"download_url\":\"https://example.com/subs.srt\",\"language\":\""
+            + language.Replace("\\", "\\\\")
+            + "\"}";
+        StringContent body = new(payload, Encoding.UTF8, "application/json");
+
+        HttpResponseMessage response = await _authed.PostAsync("/api/v1/subtitles/download", body);
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        string text = await response.Content.ReadAsStringAsync();
+        text.Should().Contain("language");
+    }
 }
