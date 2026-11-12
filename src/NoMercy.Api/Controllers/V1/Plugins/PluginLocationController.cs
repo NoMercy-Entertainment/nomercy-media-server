@@ -35,6 +35,7 @@ namespace NoMercy.Api.Controllers.V1.Plugins;
 public class PluginLocationController(IPluginFolderCatalog catalog) : BaseController
 {
     [HttpGet("api/v{version:apiVersion}/plugins/locations")]
+    [Authorize(Policy = "Owner")]
     public async Task<IActionResult> Locations(CancellationToken ct)
     {
         IReadOnlyList<PluginStorageLocation> locations = await catalog.LocationsAsync(ct);
@@ -62,6 +63,7 @@ public class PluginLocationController(IPluginFolderCatalog catalog) : BaseContro
     /// </para>
     /// </summary>
     [HttpGet("api/v{version:apiVersion}/plugins/locations/{locationId}/files")]
+    [Authorize(Policy = "Owner")]
     public async Task<IActionResult> Files(
         string locationId,
         [FromQuery] string? path,
