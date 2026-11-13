@@ -335,6 +335,69 @@ public class SubtitleOcrEngineOcrAsyncTests
         );
     }
 
+    // AUD-1174: a track tag never leaves the output folder.
+    [Theory]
+    [InlineData("../../x", "x")]
+    [InlineData("..\\..\\x", "x")]
+    [InlineData("..", "und")]
+    public async Task Sidecar_language_with_path_segments_stays_in_the_subtitles_folder(
+        string language,
+        string expected
+    )
+    {
+        Mock<IStorage> storage = StorageMock();
+        SubtitleOcrEngine engine = new(
+            Options(),
+            SuccessProcess().Object,
+            ModelManagerMock().Object,
+            storage.Object,
+            NullLogger<SubtitleOcrEngine>.Instance
+        );
+
+        SubtitleTrack track = await engine.OcrAsync(
+            InputPath,
+            streamIndex: 2,
+            language: language,
+            outputFormat: SubtitleCodecType.WebVtt,
+            ct: default,
+            sidecar: Sidecar(storage.Object, "full")
+        );
+
+        track
+            .FilePath.Should()
+            .Be($"/encoded/Show.S01E01/subtitles/Show.S01E01.NoMercy.{expected}.full.vtt");
+    }
+
+    [Theory]
+    [InlineData("../../x", "x")]
+    [InlineData("..\\..\\x", "x")]
+    [InlineData("..", "und")]
+    public async Task Next_to_input_language_with_path_segments_stays_next_to_the_input(
+        string language,
+        string expected
+    )
+    {
+        SubtitleOcrEngine engine = new(
+            Options(),
+            SuccessProcess().Object,
+            ModelManagerMock().Object,
+            StorageMock().Object,
+            NullLogger<SubtitleOcrEngine>.Instance
+        );
+
+        SubtitleTrack track = await engine.OcrAsync(
+            InputPath,
+            0,
+            language,
+            SubtitleCodecType.WebVtt,
+            default
+        );
+
+        track
+            .FilePath.Should()
+            .Be(Path.Combine(Path.GetDirectoryName(InputPath)!, $"{expected}_ocr.vtt"));
+    }
+
     private static OcrSidecarTarget Sidecar(IStorage storage, string variant) =>
         new(storage, "/encoded/Show.S01E01", "Show.S01E01.NoMercy", variant);
 

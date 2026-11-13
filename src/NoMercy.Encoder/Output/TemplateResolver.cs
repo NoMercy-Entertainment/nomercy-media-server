@@ -9,8 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Text;
-
 namespace NoMercy.Encoder.Output;
 
 /// <summary>
@@ -69,7 +67,7 @@ public static class TemplateResolver
         int channels
     )
     {
-        string safeLanguage = SafeLanguageSegment(language);
+        string safeLanguage = LanguagePathSegment.From(language);
         return new()
         {
             ["type"] = "audio",
@@ -87,7 +85,7 @@ public static class TemplateResolver
         string filename
     )
     {
-        string safeLanguage = SafeLanguageSegment(language);
+        string safeLanguage = LanguagePathSegment.From(language);
         return new()
         {
             ["language"] = safeLanguage,
@@ -100,22 +98,5 @@ public static class TemplateResolver
             ["type"] = variant,
             ["filename"] = filename,
         };
-    }
-
-    // AUD-1174: a track tag never leaves the output folder. The language comes
-    // raw from the source file, so only ASCII letters, digits, '-' and '_' reach a path.
-    private static string SafeLanguageSegment(string language)
-    {
-        StringBuilder builder = new(language.Length);
-        foreach (char character in language)
-        {
-            if (
-                character is '-' or '_'
-                || (char.IsAscii(character) && char.IsLetterOrDigit(character))
-            )
-                builder.Append(character);
-        }
-
-        return builder.Length == 0 ? "und" : builder.ToString();
     }
 }
