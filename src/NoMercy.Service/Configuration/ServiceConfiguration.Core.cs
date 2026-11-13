@@ -856,6 +856,7 @@ public static partial class ServiceConfiguration
         services.AddSingleton<DatabaseActivity.IActivityLogger>(sp =>
             sp.GetRequiredService<IActivityLogger>()
         );
+        services.AddSingleton<PlaybackFailureReportLimiter>();
         services.AddSignalREventHandlers();
 
         services.TryAddSingleton(TimeProvider.System);
