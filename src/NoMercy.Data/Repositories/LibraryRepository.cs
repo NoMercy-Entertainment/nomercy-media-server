@@ -79,13 +79,24 @@ public class LibraryRepository(IDbContextFactory<MediaContext> contextFactory) :
         "0",
     ];
 
-    public async Task<List<Library>> GetLibraries(Guid userId, CancellationToken ct = default)
+    public Task<List<Library>> GetLibraries(Guid userId, CancellationToken ct = default) =>
+        QueryLibraries(userId, includeInbox: false, ct);
+
+    // The dashboard manages an Inbox library; every browse path keeps hiding it.
+    public Task<List<Library>> GetDashboardLibraries(Guid userId, CancellationToken ct = default) =>
+        QueryLibraries(userId, includeInbox: true, ct);
+
+    private async Task<List<Library>> QueryLibraries(
+        Guid userId,
+        bool includeInbox,
+        CancellationToken ct
+    )
     {
         await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
         return await context
             .Libraries.AsNoTracking()
             .ForUser(userId)
-            .Where(library => library.Type != MediaTypes.InboxMediaType)
+            .Where(library => includeInbox || library.Type != MediaTypes.InboxMediaType)
             .Include(library => library.FolderLibraries)
                 .ThenInclude(fl => fl.Folder)
                     .ThenInclude(f => f.Driver)
