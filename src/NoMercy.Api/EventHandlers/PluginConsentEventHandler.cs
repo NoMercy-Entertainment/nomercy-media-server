@@ -44,10 +44,11 @@ public class PluginConsentEventHandler : EventSubscriber
             new UserNotifiedEvent
             {
                 Title = "Plugin needs your approval",
-                Message = $"{@event.PluginName} now asks for more access than you approved. Review it in the dashboard.",
+                Message =
+                    $"{@event.PluginName} now asks for more access than you approved. Review it in the dashboard.",
                 Type = "warning",
                 UserId = owner.Id,
-                Route = "/dashboard/plugins",
+                Route = $"/dashboard/plugins/manage/{@event.PluginId}",
             },
             ct
         );
