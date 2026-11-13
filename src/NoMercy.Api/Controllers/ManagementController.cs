@@ -59,7 +59,8 @@ public class ManagementController(
     IUpdateStatus updateStatus,
     IConnectivityManager connectivityManager,
     IConnectivityStatus connectivityStatus,
-    RuntimeServerSettings runtimeSettings
+    RuntimeServerSettings runtimeSettings,
+    IServerRestarter serverRestarter
 ) : BaseController
 {
     [HttpGet("status")]
@@ -229,7 +230,18 @@ public class ManagementController(
     [HttpPost("restart")]
     public IActionResult Restart()
     {
-        appLifetime.StopApplication();
+        ServerRestartOutcome outcome = serverRestarter.Begin();
+        if (outcome.Error is not null)
+            return InternalServerErrorResponse(
+                $"The server could not restart and keeps running: {outcome.Error}"
+            );
+
+        Response.OnCompleted(() =>
+        {
+            serverRestarter.Complete(outcome);
+            return Task.CompletedTask;
+        });
+
         return Ok(new { status = "ok", message = "Server is restarting" });
     }
 
