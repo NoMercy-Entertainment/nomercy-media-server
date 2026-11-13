@@ -40,6 +40,7 @@ public class PluginRevocationListTransportTests : IDisposable
 
     private static readonly Ulid Torrent = Ulid.Parse("01J9ZK5V8Y0000000000000001");
     private const string Hash = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";
+    private static readonly Version Installed = new(1, 0, 0);
 
     private readonly string _publicKey;
     private readonly Ed25519PrivateKeyParameters _privateKey;
@@ -119,7 +120,7 @@ public class PluginRevocationListTransportTests : IDisposable
             .BeTrue();
 
         list!.Entries.Should().ContainSingle();
-        list.Find(Torrent, Hash)!.Reason.Should().Be("plugins.revoked.security");
+        list.Find(Torrent, Hash, Installed)!.Reason.Should().Be("plugins.revoked.security");
         list.IssuedAt.Should().Be(new DateTimeOffset(2026, 9, 20, 12, 0, 0, TimeSpan.Zero));
     }
 
@@ -191,13 +192,13 @@ public class PluginRevocationListTransportTests : IDisposable
         written.Save(
             new(
                 new DateTimeOffset(2026, 9, 20, 12, 0, 0, TimeSpan.Zero),
-                [new PluginRevocationEntry(Torrent, Hash, "plugins.revoked.security")]
+                [new PluginRevocationEntry(Torrent, null, Hash, "plugins.revoked.security")]
             )
         );
 
         PluginRevocationList reopened = new PluginRevocationStore(_folder).Current;
 
-        reopened.Find(Torrent, Hash).Should().NotBeNull();
+        reopened.Find(Torrent, Hash, Installed).Should().NotBeNull();
         reopened.IssuedAt.Should().Be(new DateTimeOffset(2026, 9, 20, 12, 0, 0, TimeSpan.Zero));
     }
 

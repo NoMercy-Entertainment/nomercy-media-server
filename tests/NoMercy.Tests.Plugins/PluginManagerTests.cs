@@ -955,8 +955,14 @@ public class PluginManagerTests : IDisposable
 
         File.Exists(sideFile).Should().BeTrue("the install records what it unpacked");
         string[] lines = await File.ReadAllLinesAsync(sideFile);
-        lines.Should().HaveCount(2, "every extracted file is listed, and only those");
-        lines.Should().ContainMatch($"*  {Echo}.dll").And.ContainMatch("*  plugin.json");
+        lines
+            .Should()
+            .HaveCount(3, "every extracted file and the package hash are listed, and only those");
+        lines
+            .Should()
+            .ContainMatch($"*  {Echo}.dll")
+            .And.ContainMatch("*  plugin.json")
+            .And.ContainMatch($"*  {PluginPackageHashMarker.FileName}");
         lines.Should().AllSatisfy(line => line[..64].Should().MatchRegex("^[0-9a-f]{64}$"));
     }
 

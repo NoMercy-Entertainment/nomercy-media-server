@@ -9,10 +9,13 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Collections.Concurrent;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.MediaProcessing.Files;
 using NoMercy.NmSystem.Domain;
+using NoMercy.NmSystem.Dto;
 using NoMercy.Storage;
+using NoMercy.Storage.Drivers.Local;
 
 namespace NoMercy.Tests.MediaProcessing.Files;
 
@@ -219,5 +222,66 @@ public sealed class FileChangeCollectorTests
                 .IsAllowedExtension(libraryType, Folder + "/" + name)
                 .Should()
                 .BeFalse(name);
+    }
+
+    [Fact]
+    public async Task An_inbox_scan_lists_exactly_the_files_the_inbox_watcher_accepts()
+    {
+        string root = Path.Combine(Path.GetTempPath(), $"nm-inbox-parity-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        try
+        {
+            string[] names =
+            [
+                "sample.mp4",
+                "sample.mkv",
+                "sample.avi",
+                "sample.webm",
+                "sample.mov",
+                "sample.m3u8",
+                "sample.mp3",
+                "sample.flac",
+                "sample.opus",
+                "sample.wav",
+                "sample.m4a",
+                "sample.ogg",
+                "sample.flv",
+                "sample.srt",
+                "sample.vtt",
+                "sample.jpg",
+                "sample.txt",
+            ];
+            // Empty files: the probe fails with or without the ffprobe binary.
+            foreach (string name in names)
+                File.WriteAllBytes(Path.Combine(root, name), []);
+
+            string[] accepted =
+            [
+                .. names.Where(name =>
+                    FileChangeCollector.IsAllowedExtension(
+                        MediaTypes.InboxMediaType,
+                        Path.Combine(root, name)
+                    )
+                ),
+            ];
+
+            await using MediaScan mediaScan = new(new LocalStorageDriver());
+            ConcurrentBag<MediaFolderExtend> folders = await mediaScan
+                .EnableFileListing()
+                .DisableRegexFilter()
+                .FilterByMediaType(MediaTypes.InboxMediaType)
+                .Process(root, 0);
+
+            accepted.Should().NotBeEmpty();
+            folders
+                .SelectMany(folder => folder.Files ?? [])
+                .Select(file => file.Name)
+                .Should()
+                .BeEquivalentTo(accepted);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
     }
 }

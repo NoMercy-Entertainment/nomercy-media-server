@@ -62,6 +62,12 @@ public sealed class ServerBootstrapper
 
         options.ApplySettings();
 
+        // A restart relaunched this process: the old server still holds the ports.
+        if (!ServerRestartPlan.WaitForPreviousServer())
+            Logger.App(
+                $"The previous server did not exit within {ServerRestartPlan.WaitCap.TotalSeconds:0} seconds"
+            );
+
         Version version = Assembly.GetExecutingAssembly().GetName().Version ?? new Version(0, 0, 0);
         Software.Version = version;
         Logger.App(

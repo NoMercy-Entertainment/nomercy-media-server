@@ -49,13 +49,19 @@ public class PluginRevocationStore(string? folder = null, IEventBus? events = nu
 
             try
             {
-                _cached =
-                    JsonSerializer.Deserialize<PluginRevocationList>(
-                        System.IO.File.ReadAllText(File),
-                        Json
-                    ) ?? PluginRevocationList.None;
+                // Through the shared reader, so a file saved before entries
+                // carried a version still names the one package it named.
+                using JsonDocument saved = JsonDocument.Parse(System.IO.File.ReadAllText(File));
+                _cached = PluginRevocationListReader.Read(saved.RootElement);
             }
-            catch (JsonException)
+            catch (Exception exception)
+                when (exception
+                        is JsonException
+                            or KeyNotFoundException
+                            or FormatException
+                            or InvalidOperationException
+                            or ArgumentException
+                )
             {
                 // A file we cannot read is a server that has not heard, which
                 // pauses. Treating it as an empty list would say "nothing is

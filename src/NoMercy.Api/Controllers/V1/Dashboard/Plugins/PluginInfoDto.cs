@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
+using NoMercy.Api.Plugins;
 using NoMercy.PluginSdk.Abstractions;
 
 namespace NoMercy.Api.Controllers.V1.Dashboard.Plugins;
@@ -90,15 +91,21 @@ public record PluginInfoDto
     [JsonProperty("restart_reasons")]
     public IReadOnlyList<string> RestartReasons { get; init; } = [];
 
+    /// <summary>Why the last run check refused this plugin; null when it passed.</summary>
+    [JsonProperty("refusal")]
+    public PluginRefusalDto? Refusal { get; init; }
+
     public PluginInfoDto() { }
 
     public PluginInfoDto(
         PluginInfo info,
         PluginRestartRequirement? restart = null,
         bool awaitingConsent = false,
-        PluginCapabilities? consentedCapabilities = null
+        PluginCapabilities? consentedCapabilities = null,
+        PluginRefusal? refusal = null
     )
     {
+        Refusal = refusal is null ? null : PluginRefusalDto.From(refusal);
         Capabilities = info.Capabilities;
         AwaitingConsent = awaitingConsent;
         AwaitingApproval = info.ApprovalReason is not null;

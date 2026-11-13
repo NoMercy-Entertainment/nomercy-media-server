@@ -14,19 +14,21 @@ using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Logging;
 using NoMercy.Events;
+using NoMercy.Events.Plugins;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Approval;
 using NoMercy.PluginSdk.Capabilities;
 using NoMercy.PluginSdk.Guests;
 using NoMercy.PluginSdk.Hub;
 using NoMercy.PluginSdk.OutOfProcess;
+using NoMercy.PluginSdk.Revocation;
 using NoMercy.PluginSdk.Sideload;
 using NoMercy.PluginSdk.Verification;
 using NoMercy.Storage;
 
 namespace NoMercy.PluginSdk;
 
-public class PluginManager : IPluginManager, IDisposable
+public class PluginManager : IPluginManager, IPluginRevocationEnforcer, IDisposable
 {
     private readonly IEventBus _eventBus;
     private readonly IServiceProvider _serviceProvider;
@@ -44,6 +46,9 @@ public class PluginManager : IPluginManager, IDisposable
     private readonly PluginDropGate _dropGate;
     private readonly PluginLoader _loader;
     private readonly PluginLifecycleManager _lifecycle;
+
+    // A gate's answer changed: a saved revocation list stops what it names (AUD-1134).
+    private readonly IDisposable? _accessChanged;
 
     // Held because an install has to know whether the copy it would replace is
     // still resident, and the answer decides whether the update lands now or on
@@ -160,6 +165,9 @@ public class PluginManager : IPluginManager, IDisposable
             releaseScheduledWork,
             registerScheduledWork
         );
+        _accessChanged = _eventBus.Subscribe<PluginAccessChangedEvent>(
+            (_, changed) => _lifecycle.StopRevokedAsync(changed)
+        );
     }
 
     private PluginConfiguration PlatformConfiguration() =>
@@ -266,6 +274,7 @@ public class PluginManager : IPluginManager, IDisposable
                 && await TrySwapResidentAssemblyAsync(pluginId, fullPath, destPath, ct)
             )
             {
+                PluginPackageHashMarker.Clear(pluginDir);
                 await RecordFilesAsync(pluginDir, ct);
                 await LoadPluginAssemblyAsync(destPath, ct);
                 _registerScheduledWork?.Invoke(pluginId);
@@ -294,6 +303,8 @@ public class PluginManager : IPluginManager, IDisposable
             throw new PluginUpdatePendingRestartException(pluginName);
         }
 
+        // A bare assembly is not the package an earlier install was hashed from.
+        PluginPackageHashMarker.Clear(pluginDir);
         await RecordFilesAsync(pluginDir, ct);
         await LoadPluginAssemblyAsync(destPath, ct);
     }
@@ -473,6 +484,10 @@ public class PluginManager : IPluginManager, IDisposable
             _driver.CreateDirectory(staging);
 
             await ExtractAsync(archive, manifest, staging, ct);
+            PluginPackageHashMarker.Write(
+                staging,
+                await PluginPackageChecksum.OfAsync(fullPath, ct)
+            );
 
             // The record is of the verified content, taken here before anything
             // else can touch it; it travels with the folder through every path
@@ -814,7 +829,7 @@ public class PluginManager : IPluginManager, IDisposable
                 ? !staged.Contains(relative)
                     && relative != PluginSideloadMarker.FileName
                     && !relative.EndsWith(RollbackSuffix, StringComparison.Ordinal)
-                : relative == PluginFileManifest.FileName;
+                : relative is PluginFileManifest.FileName or PluginPackageHashMarker.FileName;
 
             if (leftover)
             {
@@ -1175,6 +1190,11 @@ public class PluginManager : IPluginManager, IDisposable
         return _lifecycle.EnablePluginAsync(pluginId, ct);
     }
 
+    public Task StopRevokedAsync(CancellationToken ct = default)
+    {
+        return _lifecycle.StopRevokedAsync(ct);
+    }
+
     public Task DisablePluginAsync(Ulid pluginId, CancellationToken ct = default)
     {
         return _lifecycle.DisablePluginAsync(pluginId, ct);
@@ -1229,6 +1249,8 @@ public class PluginManager : IPluginManager, IDisposable
         // Recorded as an install records it, so a change from here on is a
         // change from what the owner approved; and the yes itself names the
         // content, outside the folder, so nothing in the folder can renew it.
+        // A package hash found in a dropped folder is not one the server computed.
+        PluginPackageHashMarker.Clear(folder);
         await RecordFilesAsync(folder, ct);
         _approvals.Approve(
             Path.GetFileName(folder),
@@ -1617,6 +1639,8 @@ public class PluginManager : IPluginManager, IDisposable
 
     public void Dispose()
     {
+        _accessChanged?.Dispose();
+
         foreach (LoadedPlugin loaded in _registry.Values)
         {
             loaded.Instance?.Dispose();

@@ -21,6 +21,7 @@ using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Api.DTOs.Dashboard;
+using NoMercy.Api.DTOs.Management;
 using NoMercy.Api.Services;
 using NoMercy.Authorization;
 using NoMercy.Data.Repositories;
@@ -84,6 +85,8 @@ public partial class ServerController(
     IAudioFingerprinter audioFingerprinter,
     IActivityLogger activityLogger,
     IFilenameParserPipeline filenameParser,
+    IServerRestarter serverRestarter,
+    IServerWorkloadReader serverWorkload,
     SingleFlightCache<List<StorageDto>>? storageUsage = null
 ) : BaseController
 {
@@ -166,9 +169,35 @@ public partial class ServerController(
     [HttpPost]
     [Route("restart")]
     [Authorize(Policy = "Owner")]
+    [ProducesResponseType(typeof(ServerRestartResponseDto), StatusCodes.Status202Accepted)]
     public IActionResult RestartServer()
     {
-        return NotImplementedResponse("Restarting the server via the API is not implemented.");
+        ServerRestartOutcome outcome = serverRestarter.Begin();
+        if (outcome.Error is not null)
+        {
+            logger.LogError("Server restart refused: {Reason}", outcome.Error);
+            return InternalServerErrorResponse(
+                $"The server could not restart and keeps running: {outcome.Error}"
+            );
+        }
+
+        // Stop only after the response is sent, so the caller gets its answer.
+        Response.OnCompleted(() =>
+        {
+            serverRestarter.Complete(outcome);
+            return Task.CompletedTask;
+        });
+
+        return Accepted(new ServerRestartResponseDto { Mode = outcome.Mode });
+    }
+
+    [HttpGet]
+    [Route("activity")]
+    [Authorize(Policy = "Owner")]
+    [ProducesResponseType(typeof(ManagementActivityDto), StatusCodes.Status200OK)]
+    public IActionResult GetActivity()
+    {
+        return Ok(serverWorkload.Read());
     }
 
     [HttpGet("update/check")]

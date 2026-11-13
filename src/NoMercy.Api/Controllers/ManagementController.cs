@@ -18,8 +18,8 @@ using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using NoMercy.Api.DTOs.Management;
 using NoMercy.Api.Filters;
+using NoMercy.Api.Services;
 using NoMercy.Data.Repositories;
-using NoMercy.Encoder.LiveTranscode;
 using NoMercy.Monitoring;
 using NoMercy.Networking.Connectivity;
 using NoMercy.Networking.Discovery;
@@ -51,7 +51,7 @@ public class ManagementController(
     AppProcessManager appProcessManager,
     SetupState setupState,
     INetworkDiscovery networkDiscovery,
-    ISessionManager sessionManager,
+    IServerWorkloadReader serverWorkload,
     IStorageDriver storageDriver,
     IStorage storage,
     IQueueTaskRepository queueTaskRepository,
@@ -216,25 +216,7 @@ public class ManagementController(
     [ProducesResponseType(typeof(ManagementActivityDto), StatusCodes.Status200OK)]
     public IActionResult GetActivity()
     {
-        int activeStreams = sessionManager.ActiveSessionCount;
-
-        IReadOnlyDictionary<string, Thread> activeThreads = queueRunner.GetActiveWorkerThreads();
-        int activeEncodes = activeThreads.Count(t =>
-            t.Key.StartsWith("encoder", StringComparison.OrdinalIgnoreCase)
-        );
-
-        // All encode jobs in V3 are split/resumable, so killing mid-encode is safe.
-        // Streams are never "safe to interrupt" — stopping one ends playback for that user.
-        bool canInterruptSafely = activeStreams == 0;
-
-        return Ok(
-            new ManagementActivityDto
-            {
-                ActiveStreams = activeStreams,
-                ActiveEncodes = activeEncodes,
-                CanInterruptSafely = canInterruptSafely,
-            }
-        );
+        return Ok(serverWorkload.Read());
     }
 
     [HttpPost("stop")]

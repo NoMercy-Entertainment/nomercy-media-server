@@ -49,6 +49,20 @@ public sealed class PluginTrustMode(bool enforce, ILogger logger)
         return null;
     }
 
+    /// <summary>A refusal no trust mode softens, logged once per plugin and cause.</summary>
+    public void Refused(string plugin, string code, string cause)
+    {
+        if (!_logged.TryAdd($"refused|{plugin}|{code}|{cause}", 0))
+            return;
+
+        logger.LogWarning(
+            "Plugin trust: refused plugin {Plugin}: {Code} by {Cause}. It does not run in any trust mode.",
+            plugin,
+            code,
+            cause
+        );
+    }
+
     /// <summary>
     /// Logged once per plugin and reason. A gate is asked every time a plugin
     /// starts, and a line repeated on every start is a line nobody reads.

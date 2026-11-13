@@ -17,6 +17,7 @@ using NoMercy.Events.Plugins;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Capabilities;
+using NoMercy.PluginSdk.OutOfProcess;
 using NoMercy.PluginSdk.Verification;
 using NoMercy.Storage;
 using Xunit;
@@ -251,6 +252,109 @@ public class PluginLifecycleManagerTests : IDisposable
         await act.Should().NotThrowAsync();
     }
 
+    // Enabling follows the rules of loading: same place, same run gate (AUD-9884).
+    private PluginLifecycleManager Lifecycle(
+        IPluginRunGate? gate = null,
+        IPluginRemoteLoader? remote = null
+    ) =>
+        new(
+            _eventBus,
+            new MinimalServiceProvider(gate),
+            NullLogger.Instance,
+            _tempDir,
+            TestStorageHelper.CreateStorage(_tempDir),
+            _registry,
+            new PluginLoader(
+                _eventBus,
+                new MinimalServiceProvider(gate),
+                NullLogger.Instance,
+                _tempDir,
+                TestStorageHelper.CreateStorage(_tempDir),
+                _registry,
+                new PluginVerifier(),
+                new PluginConsentService(_consentStore),
+                TestPluginPlatform.ContextFactory(
+                    _eventBus,
+                    TestStorageHelper.CreateStorage(_tempDir)
+                ),
+                hostOptions: null,
+                remote: remote
+            ),
+            TestPluginPlatform.ContextFactory(_eventBus, TestStorageHelper.CreateStorage(_tempDir)),
+            DataPurge(_tempDir),
+            new PluginConsentService(_consentStore)
+        );
+
+    [Fact]
+    public async Task EnablePluginAsync_OutOfProcessPlugin_StartsItElsewhereAndNotHere()
+    {
+        Ulid id = Ulid.NewUlid();
+        string assemblyPath = Path.Combine(_tempDir, "missing-plugin.dll");
+        _registry[id] = new(Info(id, PluginStatus.Disabled, assemblyPath), null, null);
+        FakeRemoteLoader remote = new(answers: true);
+
+        await Lifecycle(remote: remote).EnablePluginAsync(id);
+
+        _registry.TryGetValue(id, out LoadedPlugin? afterward).Should().BeTrue();
+        afterward!.Instance.Should().BeSameAs(remote.Handed).And.NotBeNull();
+        afterward.LoadContext.Should().BeNull("nothing may be mapped into this process");
+        afterward.Info.Status.Should().Be(PluginStatus.Active);
+    }
+
+    [Fact]
+    public async Task EnablePluginAsync_OutOfProcessPluginTheInstallCannotRun_ThrowsAndStaysDisabled()
+    {
+        Ulid id = Ulid.NewUlid();
+        string assemblyPath = Path.Combine(_tempDir, "missing-plugin.dll");
+        LoadedPlugin held = new(Info(id, PluginStatus.Disabled, assemblyPath), null, null);
+        _registry[id] = held;
+
+        Func<Task> act = () =>
+            Lifecycle(remote: new FakeRemoteLoader(answers: false)).EnablePluginAsync(id);
+
+        (await act.Should().ThrowAsync<InvalidOperationException>()).WithMessage(
+            "*cannot run it there*"
+        );
+        _registry.TryGetValue(id, out LoadedPlugin? afterward).Should().BeTrue();
+        afterward.Should().BeSameAs(held);
+        held.Info.Status.Should().Be(PluginStatus.Disabled);
+    }
+
+    [Fact]
+    public async Task EnablePluginAsync_RefusedByTheRunGate_ThrowsTheReasonAndStaysDisabled()
+    {
+        Ulid id = Ulid.NewUlid();
+        FakePlugin plugin = new();
+        LoadedPlugin held = new(Info(id, PluginStatus.Disabled), plugin, null);
+        _registry[id] = held;
+
+        Func<Task> act = () =>
+            Lifecycle(new RefusingGate(PluginRefusalCodes.EntitlementMissing))
+                .EnablePluginAsync(id);
+
+        (await act.Should().ThrowAsync<InvalidOperationException>()).WithMessage(
+            "*This server may not run it yet.*"
+        );
+        plugin.InitializeCallCount.Should().Be(0);
+        held.Info.Status.Should().Be(PluginStatus.Disabled);
+    }
+
+    // Enabling is the owner's answer, so the unanswered-consent refusal does not stop it.
+    [Fact]
+    public async Task EnablePluginAsync_OnlyConsentUnanswered_StillEnables()
+    {
+        Ulid id = Ulid.NewUlid();
+        FakePlugin plugin = new();
+        LoadedPlugin held = new(Info(id, PluginStatus.Disabled), plugin, null);
+        _registry[id] = held;
+
+        await Lifecycle(new RefusingGate(PluginRefusalCodes.CapabilityNotConsented))
+            .EnablePluginAsync(id);
+
+        plugin.InitializeCallCount.Should().Be(1);
+        held.Info.Status.Should().Be(PluginStatus.Active);
+    }
+
     [Fact]
     public async Task EnablePluginAsync_DeletedStatusWithInstance_RethrowsInvalidOperationWithoutMalfunctioning()
     {
@@ -333,7 +437,10 @@ public class PluginLifecycleManagerTests : IDisposable
         reported.ErrorMessage.Should().Contain("get_EventBus", "the author needs the member named");
         reported
             .ErrorMessage.Should()
-            .Contain(PluginAbi.Current.ToString(), "and the version to rebuild against, which the runtime never says");
+            .Contain(
+                PluginAbi.Current.ToString(),
+                "and the version to rebuild against, which the runtime never says"
+            );
         reported.ErrorMessage.Should().Contain("/nomercy-plugins/migration");
     }
 
@@ -871,8 +978,42 @@ public class PluginLifecycleManagerTests : IDisposable
         public void Dispose() { }
     }
 
-    private sealed class MinimalServiceProvider : IServiceProvider
+    private sealed class MinimalServiceProvider(IPluginRunGate? gate = null) : IServiceProvider
     {
-        public object? GetService(Type serviceType) => null;
+        public object? GetService(Type serviceType) =>
+            serviceType == typeof(IPluginRunGate) ? gate : null;
+    }
+
+    private sealed class RefusingGate(string code) : IPluginRunGate
+    {
+        public PluginRefusal? MayRun(PluginInfo plugin) =>
+            new(
+                code,
+                plugin.Name,
+                "The plugin did not start.",
+                "This server may not run it yet.",
+                "Open the plugin's page.",
+                PluginRefusalSeverity.Blocked
+            );
+
+        public PluginRefusal? MayRun(Ulid pluginId) => null;
+
+        public PluginRefusal? LastRefusal(Ulid pluginId) => null;
+    }
+
+    private sealed class FakeRemoteLoader(bool answers) : IPluginRemoteLoader
+    {
+        public FakePlugin? Handed { get; private set; }
+
+        public PluginIsolation IsolationFor(Ulid pluginId) => PluginIsolation.OutOfProcess;
+
+        public Task<IPlugin?> LoadAsync(
+            PluginDescription description,
+            CancellationToken ct = default
+        )
+        {
+            Handed = answers ? new() : null;
+            return Task.FromResult<IPlugin?>(Handed);
+        }
     }
 }

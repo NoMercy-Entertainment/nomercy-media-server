@@ -13,8 +13,11 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NoMercy.Api.DTOs.Encoding;
 using NoMercy.Api.EventHandlers;
+using NoMercy.Authorization;
+using NoMercy.Database.Models.Users;
 using NoMercy.Events;
 using NoMercy.Events.Encoding;
+using NoMercy.Events.Media;
 using NoMercy.Networking.Messaging;
 using Xunit;
 
@@ -179,6 +182,49 @@ public class SignalREncodingEventHandlerJourneyTests
                 ),
             Times.Once
         );
+    }
+
+    [Fact]
+    public async Task A_failed_encode_reaches_the_owners_bell_with_the_incomplete_encodes_page()
+    {
+        InMemoryEventBus bus = new();
+        Mock<IClientMessenger> messenger = new();
+        Guid ownerId = Guid.NewGuid();
+        Mock<IUserCache> users = new();
+        users
+            .SetupGet(cache => cache.Users)
+            .Returns([new User { Id = Guid.NewGuid() }, new User { Id = ownerId, Owner = true }]);
+
+        List<UserNotifiedEvent> notices = [];
+        using IDisposable listening = bus.Subscribe<UserNotifiedEvent>(
+            (notice, _) =>
+            {
+                notices.Add(notice);
+                return Task.CompletedTask;
+            }
+        );
+        using SignalREncodingEventHandler handler = new(
+            NullLogger<SignalREncodingEventHandler>.Instance,
+            bus,
+            messenger.Object,
+            users.Object
+        );
+
+        await bus.PublishAsync(
+            new EncodingFailedEvent
+            {
+                JobId = 7,
+                InputPath = "/input/example.mkv",
+                ErrorMessage = "invalid codec",
+                ExceptionType = "InvalidOperationException",
+            }
+        );
+
+        UserNotifiedEvent sent = Assert.Single(notices);
+        Assert.Equal(ownerId, sent.UserId);
+        Assert.Equal("error", sent.Type);
+        Assert.Equal("/dashboard/incomplete-encodes", sent.Route);
+        Assert.Contains("example.mkv", sent.Message);
     }
 
     [Fact]

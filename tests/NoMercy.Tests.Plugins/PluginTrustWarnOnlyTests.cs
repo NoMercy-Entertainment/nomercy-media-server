@@ -11,6 +11,7 @@
 
 using FluentAssertions;
 using Microsoft.Extensions.Logging;
+using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Entitlements;
 using NoMercy.PluginSdk.Revocation;
@@ -29,6 +30,7 @@ public class PluginTrustWarnOnlyTests
     private static readonly Ulid Torrent = Ulid.Parse("01J9ZK5V8Y0000000000000001");
     private static readonly Guid Owner = Guid.Parse("11111111-1111-1111-1111-111111111111");
     private const string Hash = "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08";
+    private static readonly Version Installed = new(1, 0, 0);
     private static readonly DateTimeOffset Now = new(2026, 9, 26, 12, 0, 0, TimeSpan.Zero);
 
     private static PluginRevocationGate RevocationGate(
@@ -53,23 +55,65 @@ public class PluginTrustWarnOnlyTests
             FromMarketplace = true,
         };
 
-    [Fact]
-    public void Warn_only_lets_a_revoked_build_run_and_logs_what_it_would_refuse()
+    private static PluginRevocationList Revoking() =>
+        new(Now, [new PluginRevocationEntry(Torrent, "1.0.0", Hash, "plugins.revoked.security")]);
+
+    private static readonly PluginInfo TorrentPlugin = new()
+    {
+        Id = Torrent,
+        Name = "Sample",
+        Description = "d",
+        Version = Installed,
+        Status = PluginStatus.Active,
+    };
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_revoked_build_is_refused_in_every_trust_mode(bool enforce)
+    {
+        PluginRefusal? refusal = RevocationGate(Revoking(), new(enforce, new ListLogger()))
+            .Check(Torrent, Hash, Installed);
+
+        refusal.Should().NotBeNull("a revocation is not a warning (AUD-1134)");
+        refusal!.Code.Should().Be(PluginRefusalCodes.Revoked);
+        refusal.Severity.Should().Be(PluginRefusalSeverity.Blocked);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_revoked_plugin_does_not_pass_the_run_gate_in_any_trust_mode(bool enforce)
+    {
+        StubRevocationStore store = new(Revoking());
+        PluginRunGate runGate = new([
+            new PluginRevocationRunCheck(
+                new(store, new StubClock(Now), new(enforce, new ListLogger())),
+                store
+            ),
+        ]);
+
+        runGate.MayRun(TorrentPlugin)!.Code.Should().Be(PluginRefusalCodes.Revoked);
+        runGate.LastRefusal(Torrent)!.Code.Should().Be(PluginRefusalCodes.Revoked);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void A_revocation_refusal_is_logged_with_the_plugin_and_the_revocation(bool enforce)
     {
         ListLogger logger = new();
-        PluginRevocationList list = new(
-            Now,
-            [new PluginRevocationEntry(Torrent, Hash, "plugins.revoked.security")]
-        );
 
-        RevocationGate(list, new(false, logger)).Check(Torrent, Hash).Should().BeNull();
+        RevocationGate(Revoking(), new(enforce, logger)).Check(Torrent, Hash, Installed);
 
         logger
             .Entries.Should()
             .ContainSingle(entry =>
                 entry.Level == LogLevel.Warning
-                && entry.Message.StartsWith(PluginTrustMode.LogPrefix)
                 && entry.Message.Contains(PluginRefusalCodes.Revoked)
+                && entry.Message.Contains($"plugin {Torrent}")
+                && entry.Message.Contains($"listing {Torrent} version 1.0.0 sha256 {Hash}")
+                && !entry.Message.StartsWith(PluginTrustMode.LogPrefix)
             );
     }
 
@@ -79,7 +123,7 @@ public class PluginTrustWarnOnlyTests
         ListLogger logger = new();
 
         RevocationGate(new(Now.AddDays(-30), []), new(false, logger))
-            .Check(Torrent, Hash)
+            .Check(Torrent, Hash, Installed)
             .Should()
             .BeNull();
 
@@ -94,9 +138,9 @@ public class PluginTrustWarnOnlyTests
         ListLogger logger = new();
         PluginRevocationGate gate = RevocationGate(new(Now.AddDays(-30), []), new(false, logger));
 
-        gate.Check(Torrent, Hash);
-        gate.Check(Torrent, Hash);
-        gate.Check(Torrent, Hash);
+        gate.Check(Torrent, Hash, Installed);
+        gate.Check(Torrent, Hash, Installed);
+        gate.Check(Torrent, Hash, Installed);
 
         logger.Entries.Should().HaveCount(1);
     }
@@ -107,7 +151,7 @@ public class PluginTrustWarnOnlyTests
         ListLogger logger = new();
 
         RevocationGate(new(Now.AddDays(-30), []), new(true, logger))
-            .Check(Torrent, Hash)!
+            .Check(Torrent, Hash, Installed)!
             .Severity.Should()
             .Be(PluginRefusalSeverity.Blocked);
 

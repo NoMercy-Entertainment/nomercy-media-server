@@ -21,6 +21,19 @@ public class EchoEncoderPlugin : IEncoderPlugin
     public Ulid Id { get; } = Ulid.Parse("01ECH000000000000000000000");
     public Version Version { get; } = new(0, 1, 0);
 
+    static EchoEncoderPlugin() => MarkForTest("echo-type-initialized.marker");
+
+    public EchoEncoderPlugin() => MarkForTest("echo-constructed.marker");
+
+    // Test-only, like the disposal marker below: proves this type ran. The
+    // one test that sets the variable runs with no other test beside it.
+    private static void MarkForTest(string fileName)
+    {
+        string? root = Environment.GetEnvironmentVariable("NOMERCY_TEST_ECHO_CONSTRUCTION_ROOT");
+        if (root is not null)
+            File.WriteAllText(Path.Combine(root, fileName), "ran");
+    }
+
     public void Initialize(IPluginContext context)
     {
         context.Logger.LogInformation("Echo plugin initialized");

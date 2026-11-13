@@ -44,6 +44,9 @@ internal sealed class PluginLoader(
     IPluginRemoteLoader? remote = null
 )
 {
+    internal const string CannotRunElsewhere =
+        "Out-of-process was chosen for this plugin, but this install cannot run it there. The plugin was not loaded. Choose in-process, or install the plugin host.";
+
     private readonly IEventBus _eventBus = eventBus;
     private readonly IServiceProvider _serviceProvider = serviceProvider;
     private readonly ILogger _logger = logger;
@@ -82,36 +85,36 @@ internal sealed class PluginLoader(
     /// always did.
     /// </para>
     /// </summary>
-    private async Task RegisterRemoteAsync(
-        IPlugin plugin,
-        PluginManifest manifest,
-        string assemblyPath,
-        string manifestPath,
-        PluginVerificationResult verification,
-        CancellationToken ct
-    )
+    internal async Task<bool> StartElsewhereAsync(PluginInfo info, CancellationToken ct)
     {
-        PluginInfo info = PluginManifestParser.ToPluginInfo(
-            manifest,
-            assemblyPath,
-            PluginStatus.Active,
-            manifestPath,
-            verification.Verified,
-            verification.Trusted
-        );
+        IPlugin? elsewhere = _remote is null
+            ? null
+            : await _remote.LoadAsync(new(info.Id, info.Name, info.Description, info.Version), ct);
 
-        _registry[manifest.Id.Value] = new LoadedPlugin(info, plugin, null);
+        // False leaves the registry as it was: the caller says what a failure means.
+        if (elsewhere is null)
+        {
+            return false;
+        }
+
+        info.Status = PluginStatus.Active;
+        _registry[info.Id] = new LoadedPlugin(info, elsewhere, null);
 
         await _eventBus.PublishAsync(
             new PluginLoadedEvent
             {
-                PluginId = manifest.Id.ToString(),
-                PluginName = manifest.Name,
-                Version = manifest.Version,
+                PluginId = info.Id.ToString(),
+                PluginName = info.Name,
+                Version = info.Version.ToString(),
             },
             ct
         );
+
+        return true;
     }
+
+    internal bool RunsElsewhere(Ulid pluginId) =>
+        _remote?.IsolationFor(pluginId) == PluginIsolation.OutOfProcess;
 
     /// <summary>
     /// Records a plugin whose manifest parsed but whose assembly never mapped
@@ -253,6 +256,84 @@ internal sealed class PluginLoader(
                 )
             );
 
+    // The consent rule and the run gate, asked the same way before a plugin
+    // starts in this process or in its own (AUD-9884).
+    private async Task<bool> MayStartAsync(
+        PluginManifest manifest,
+        string assemblyPath,
+        string manifestPath,
+        PluginVerificationResult verification,
+        CancellationToken ct
+    )
+    {
+        // An elevated plugin stays Disabled until the owner grants consent.
+        // Where it came from does not answer that: see PluginAutoEnable.
+        bool mayStart = PluginAutoEnable.Allows(manifest, _consentService);
+
+        // Asked before the registry holds the plugin: a gate asked about a
+        // plugin the server already started cannot stop one from starting.
+        PluginRefusal? refused = RunRefusal(manifest, assemblyPath, manifestPath, verification);
+
+        if (refused is not null)
+        {
+            mayStart = false;
+
+            _logger.LogWarning(
+                "Plugin {PluginName} did not start: {Why} {Fix}",
+                [manifest.Name, refused.Why, refused.Fix]
+            );
+        }
+
+        // A manifest that widened past what the owner approved must not ride
+        // the old consent to Active.
+        if (PluginAutoEnable.NeedsReConsent(manifest, _consentService))
+        {
+            _logger.LogWarning(
+                "Plugin {PluginName} widened its capabilities past its recorded consent and was disabled pending re-consent.",
+                [manifest.Name]
+            );
+
+            await _eventBus.PublishAsync(
+                new PluginConsentRequiredEvent
+                {
+                    PluginId = manifest.Id.ToString(),
+                    PluginName = manifest.Name,
+                    Reason = "capabilities-widened",
+                },
+                ct
+            );
+        }
+
+        return mayStart;
+    }
+
+    // The revocation of the plugin listed at this path, which is left off.
+    // A bare assembly has no identity until it loads, so only a listed one matches.
+    private PluginRefusal? RevokedAt(string absoluteAssemblyPath)
+    {
+        LoadedPlugin? known = _registry.Values.FirstOrDefault(loaded =>
+            loaded.Info.AssemblyPath is not null
+            && ToLocalAssemblyPath(loaded.Info.AssemblyPath)
+                .Equals(absoluteAssemblyPath, StringComparison.OrdinalIgnoreCase)
+        );
+
+        if (
+            known is null
+            || _serviceProvider.GetService<IPluginRunGate>()?.MayRun(known.Info)
+                is not { Code: PluginRefusalCodes.Revoked } revoked
+        )
+        {
+            return null;
+        }
+
+        if (known.Instance is null)
+        {
+            known.Info.Status = PluginStatus.Disabled;
+        }
+
+        return revoked;
+    }
+
     /// <summary>
     /// The files a plugin's load context may load: every file of the shadow
     /// copy, subfolders included, because native code sits under
@@ -380,6 +461,35 @@ internal sealed class PluginLoader(
                 return;
             }
 
+            // A revoked build is refused before its assembly is loaded, here
+            // or in another process: loading it runs its code (AUD-1134).
+            if (
+                RunRefusal(manifest, assemblyPath, manifestPath, verification) is
+                { Code: PluginRefusalCodes.Revoked } revoked
+            )
+            {
+                _registry[manifest.Id.Value] = new(
+                    PluginManifestParser.ToPluginInfo(
+                        manifest,
+                        assemblyPath,
+                        PluginStatus.Disabled,
+                        manifestPath,
+                        verification.Verified,
+                        verification.Trusted,
+                        PluginSideloadMarker.IsMarked(manifestPath)
+                    ),
+                    null,
+                    null
+                );
+
+                _logger.LogWarning(
+                    "Plugin {PluginName} was not loaded: {Why} {Fix}",
+                    [manifest.Name, revoked.Why, revoked.Fix]
+                );
+
+                return;
+            }
+
             // The owner's isolation choice, asked before an assembly is mapped
             // into this process. Asked afterwards it would mean nothing: the
             // code is already here, and unloading it is the thing a separate
@@ -389,35 +499,43 @@ internal sealed class PluginLoader(
             // process boundary, and loading the assembly here is the one thing
             // that choice forbids. The plugin is held as malfunctioned with the
             // reason so the dashboard can say what to do.
-            if (_remote?.IsolationFor(manifest.Id.Value) == PluginIsolation.OutOfProcess)
+            if (RunsElsewhere(manifest.Id.Value))
             {
-                IPlugin? elsewhere = await _remote.LoadAsync(
-                    new PluginDescription(
-                        manifest.Id.Value,
-                        manifest.Name,
-                        manifest.Description,
-                        Version.TryParse(manifest.Version, out Version? declared)
-                            ? declared
-                            : new Version(0, 0)
-                    ),
-                    ct
-                );
-
-                if (elsewhere is not null)
+                // Asked before the other process starts: starting it runs the plugin.
+                if (!await MayStartAsync(manifest, assemblyPath, manifestPath, verification, ct))
                 {
-                    await RegisterRemoteAsync(
-                        elsewhere,
-                        manifest,
-                        assemblyPath,
-                        manifestPath,
-                        verification,
-                        ct
+                    _registry[manifest.Id.Value] = new(
+                        PluginManifestParser.ToPluginInfo(
+                            manifest,
+                            assemblyPath,
+                            PluginStatus.Disabled,
+                            manifestPath,
+                            verification.Verified,
+                            verification.Trusted,
+                            PluginSideloadMarker.IsMarked(manifestPath)
+                        ),
+                        null,
+                        null
                     );
+
                     return;
                 }
 
-                const string reason =
-                    "Out-of-process was chosen for this plugin, but this install cannot run it there. The plugin was not loaded. Choose in-process, or install the plugin host.";
+                PluginInfo elsewhere = PluginManifestParser.ToPluginInfo(
+                    manifest,
+                    assemblyPath,
+                    PluginStatus.Disabled,
+                    manifestPath,
+                    verification.Verified,
+                    verification.Trusted
+                );
+
+                if (await StartElsewhereAsync(elsewhere, ct))
+                {
+                    return;
+                }
+
+                const string reason = CannotRunElsewhere;
 
                 _logger.LogError(
                     "Plugin {PluginName} is set to run in its own process and this install cannot do that. The plugin was not loaded.",
@@ -485,55 +603,13 @@ internal sealed class PluginLoader(
                         continue;
                     }
 
-                    // An elevated plugin (declares network/rest/ws/auth capabilities)
-                    // must not silently start reaching the network or claims pipeline
-                    // on first install — it loads but stays Disabled until the owner
-                    // grants consent from the dashboard. Where it came from does
-                    // not answer that question: see PluginAutoEnable.
-                    bool mayAutoEnable = PluginAutoEnable.Allows(manifest, _consentService);
-
-                    // And the four questions the server asks before anything
-                    // runs: revoked, unpaid, missing a dependency, unanswered.
-                    // Asked here rather than after the registry, because a
-                    // gate that can only be asked about a plugin the server
-                    // already started cannot stop one from starting.
-                    PluginRefusal? refused = RunRefusal(
+                    bool mayAutoEnable = await MayStartAsync(
                         manifest,
                         assemblyPath,
                         manifestPath,
-                        verification
+                        verification,
+                        ct
                     );
-
-                    if (refused is not null)
-                    {
-                        mayAutoEnable = false;
-
-                        _logger.LogWarning(
-                            "Plugin {PluginName} did not start: {Why} {Fix}",
-                            [manifest.Name, refused.Why, refused.Fix]
-                        );
-                    }
-
-                    // A manifest that widened past what the owner already
-                    // approved must not ride the old consent to Active — the
-                    // owner said yes to a smaller request than this one.
-                    if (PluginAutoEnable.NeedsReConsent(manifest, _consentService))
-                    {
-                        _logger.LogWarning(
-                            "Plugin {PluginName} widened its capabilities past its recorded consent and was disabled pending re-consent.",
-                            [manifest.Name]
-                        );
-
-                        await _eventBus.PublishAsync(
-                            new PluginConsentRequiredEvent
-                            {
-                                PluginId = manifest.Id.ToString(),
-                                PluginName = manifest.Name,
-                                Reason = "capabilities-widened",
-                            },
-                            ct
-                        );
-                    }
 
                     PluginStatus initialStatus = mayAutoEnable
                         ? PluginStatus.Active
@@ -752,6 +828,17 @@ internal sealed class PluginLoader(
     internal async Task LoadPluginAssemblyAsync(string assemblyPath, CancellationToken ct = default)
     {
         string absoluteAssemblyPath = ToLocalAssemblyPath(assemblyPath);
+
+        if (RevokedAt(absoluteAssemblyPath) is { } revoked)
+        {
+            _logger.LogWarning(
+                "Plugin assembly {AssemblyPath} was not loaded: {Why} {Fix}",
+                [assemblyPath, revoked.Why, revoked.Fix]
+            );
+
+            return;
+        }
+
         PluginLoadContext loadContext;
         string loadPath;
         string shadowDir;
