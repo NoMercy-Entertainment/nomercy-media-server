@@ -229,6 +229,10 @@ public partial class FileManager(
 
     public async Task<bool> FindFiles(int id, Library library)
     {
+        // An inbox file belongs to the classifier (InboxClassifierEventHandler), never to a title.
+        if (library.Type == MediaTypes.InboxMediaType)
+            return false;
+
         Id = id;
         _itemOriginFolder.Clear();
         _storedVideoFileKeys.Clear();
@@ -306,6 +310,14 @@ public partial class FileManager(
                 Logger.App(
                     $"[FindFiles] {Type} id={id}: nothing resolved but the registered media is "
                         + "still readable — preserving records (resolution failed, the media did not)",
+                    LogEventLevel.Warning
+                );
+            }
+            else if (await ReasonToKeepRecords(library) is { } reasonToKeep)
+            {
+                Logger.App(
+                    $"[FindFiles] {Type} id={id} '{Movie?.Title ?? Show?.Title}': not removed — "
+                        + reasonToKeep,
                     LogEventLevel.Warning
                 );
             }

@@ -11,6 +11,7 @@
 
 using System.Collections.Concurrent;
 using Moq;
+using NoMercy.NmSystem.Domain;
 using NoMercy.NmSystem.Dto;
 using NoMercy.Storage;
 using NoMercy.Storage.Drivers.Local;
@@ -114,6 +115,38 @@ public class MediaScanHlsDiscoveryTests : IDisposable
 
         rawFileCount.Should().Be(3, "each of the 3 episode folders holds one .NoMercy.m3u8 master");
         hasCandidates.Should().BeTrue("the discovered m3u8 masters must be parseable candidates");
+    }
+
+    [Fact]
+    public async Task An_inbox_scan_lists_video_and_audio_files()
+    {
+        Directory.CreateDirectory(_root);
+        // Empty files: the probe fails with or without the ffprobe binary.
+        foreach (
+            string name in new[]
+            {
+                "clip.mkv",
+                "clip.webm",
+                "song.flac",
+                "song.opus",
+                "notes.txt",
+                "subtitle.srt",
+            }
+        )
+            File.WriteAllBytes(Path.Combine(_root, name), []);
+
+        await using MediaScan mediaScan = new(new LocalStorageDriver());
+        ConcurrentBag<MediaFolderExtend> folders = await mediaScan
+            .EnableFileListing()
+            .DisableRegexFilter()
+            .FilterByMediaType(MediaTypes.InboxMediaType)
+            .Process(_root, 0);
+
+        folders
+            .SelectMany(folder => folder.Files ?? [])
+            .Select(file => file.Name)
+            .Should()
+            .BeEquivalentTo("clip.mkv", "clip.webm", "song.flac", "song.opus");
     }
 
     public void Dispose()

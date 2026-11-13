@@ -153,24 +153,13 @@ public sealed partial class FileChangeCollector(
         string[] extensions = libraryType switch
         {
             MediaTypes.MovieMediaType or MediaTypes.TvMediaType or MediaTypes.AnimeMediaType =>
-                VideoExtensions,
-            MediaTypes.MusicMediaType => AudioExtensions,
-            MediaTypes.InboxMediaType => [.. VideoExtensions, .. AudioExtensions],
+                MediaFileExtensions.Video,
+            MediaTypes.MusicMediaType => MediaFileExtensions.Audio,
+            MediaTypes.InboxMediaType => MediaFileExtensions.Inbox,
             _ => [],
         };
         return extensions.Contains(Path.GetExtension(path), StringComparer.OrdinalIgnoreCase);
     }
-
-    private static readonly string[] VideoExtensions =
-    [
-        ".mp4",
-        ".mkv",
-        ".avi",
-        ".webm",
-        ".mov",
-        ".m3u8",
-    ];
-    private static readonly string[] AudioExtensions = [".mp3", ".flac", ".opus", ".wav", ".m4a"];
 
     public void Observe(
         Library library,

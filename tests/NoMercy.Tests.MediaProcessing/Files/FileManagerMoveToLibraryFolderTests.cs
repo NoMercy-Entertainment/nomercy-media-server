@@ -155,6 +155,14 @@ public sealed class FileManagerMoveToLibraryFolderTests : IDisposable
                 repository.GetRecordedVideoFileLocationsByTvIdAsync(It.IsAny<int>())
             )
             .ReturnsAsync([]);
+        repoMock
+            .Setup(repository =>
+                repository.GetRecordedVideoFileLocationsByLibraryAsync(
+                    It.IsAny<Ulid>(),
+                    It.IsAny<string>()
+                )
+            )
+            .ReturnsAsync([]);
 
         return new(repoMock.Object, factory, mediaAnalyzerMock.Object, TestFilenameParser.Default);
     }
