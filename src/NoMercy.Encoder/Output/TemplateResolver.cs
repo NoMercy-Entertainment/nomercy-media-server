@@ -9,6 +9,8 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Text;
+
 namespace NoMercy.Encoder.Output;
 
 /// <summary>
@@ -67,12 +69,13 @@ public static class TemplateResolver
         int channels
     )
     {
+        string safeLanguage = SafeLanguageSegment(language);
         return new()
         {
             ["type"] = "audio",
-            ["language"] = language,
+            ["language"] = safeLanguage,
             // {lang} is the brace-style alias for language.
-            ["lang"] = language,
+            ["lang"] = safeLanguage,
             ["codec"] = codecName,
             ["channels"] = channels.ToString(),
         };
@@ -84,10 +87,11 @@ public static class TemplateResolver
         string filename
     )
     {
+        string safeLanguage = SafeLanguageSegment(language);
         return new()
         {
-            ["language"] = language,
-            ["lang"] = language,
+            ["language"] = safeLanguage,
+            ["lang"] = safeLanguage,
             ["variant"] = variant,
             // {type} alias for subtitle templates — the spec uses
             // "subtitles/{filename}.{lang}.{type}" where {type} is the variant
@@ -96,5 +100,22 @@ public static class TemplateResolver
             ["type"] = variant,
             ["filename"] = filename,
         };
+    }
+
+    // AUD-1174: a track tag never leaves the output folder. The language comes
+    // raw from the source file, so only ASCII letters, digits, '-' and '_' reach a path.
+    private static string SafeLanguageSegment(string language)
+    {
+        StringBuilder builder = new(language.Length);
+        foreach (char character in language)
+        {
+            if (
+                character is '-' or '_'
+                || (char.IsAscii(character) && char.IsLetterOrDigit(character))
+            )
+                builder.Append(character);
+        }
+
+        return builder.Length == 0 ? "und" : builder.ToString();
     }
 }

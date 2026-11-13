@@ -183,6 +183,44 @@ public class SubtitleExtractorTests
     }
 
     // ------------------------------------------------------------------
+    // AUD-1174: a track tag never leaves the output folder
+    // ------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("../../x")]
+    [InlineData("..\\..\\x")]
+    [InlineData("/x")]
+    [InlineData("..")]
+    public void ResolveOutput_LanguageWithPathSegments_StaysInsideSubtitlesFolder(string language)
+    {
+        SubtitleOutputPlan plan = MakePlan(0, "und");
+        SubtitleStreamInfo stream = MakeStream(0, "subrip", language);
+
+        SubtitleOutputInfo info = _extractor.ResolveOutput(plan, stream, OutputDir, MediaTitle);
+
+        AssertStaysInsideSubtitlesFolder(info.OutputPath);
+        // The stored value stays raw; only the path segment is cleaned.
+        info.Language.Should().Be(language);
+    }
+
+    [Theory]
+    [InlineData("../../x")]
+    [InlineData("..\\..\\x")]
+    [InlineData("/x")]
+    [InlineData("..")]
+    public void ResolvePlaylistUri_LanguageWithPathSegments_StaysInsideSubtitlesFolder(
+        string language
+    )
+    {
+        SubtitleOutputPlan plan = MakePlan(0, "und");
+        SubtitleStreamInfo stream = MakeStream(0, "subrip", language);
+
+        string uri = _extractor.ResolvePlaylistUri(plan, stream, MediaTitle);
+
+        AssertStaysInsideSubtitlesFolder(uri);
+    }
+
+    // ------------------------------------------------------------------
     // Playlist URI resolution
     // ------------------------------------------------------------------
 
@@ -201,6 +239,17 @@ public class SubtitleExtractorTests
     // ------------------------------------------------------------------
     // Helpers
     // ------------------------------------------------------------------
+
+    private static void AssertStaysInsideSubtitlesFolder(string relativePath)
+    {
+        relativePath.Should().StartWith("subtitles/");
+        string fileName = relativePath["subtitles/".Length..];
+        fileName.Should().NotContain("/").And.NotContain("\\").And.NotContain("..");
+
+        string root = Path.GetFullPath(Path.Combine(Path.GetTempPath(), "aud-1174-output"));
+        string resolved = Path.GetFullPath(Path.Combine(root, relativePath));
+        resolved.Should().StartWith(Path.Combine(root, "subtitles") + Path.DirectorySeparatorChar);
+    }
 
     private static SubtitleOutputPlan MakePlan(int sourceIndex, string language)
     {
