@@ -10,8 +10,10 @@
 // -----------------------------------------------------------------------------
 using Microsoft.Extensions.Logging;
 using NoMercy.Api.DTOs.Encoding;
+using NoMercy.Authorization;
 using NoMercy.Events;
 using NoMercy.Events.Encoding;
+using NoMercy.Events.Media;
 using NoMercy.Networking.Messaging;
 
 namespace NoMercy.Api.EventHandlers;
@@ -21,15 +23,20 @@ public class SignalREncodingEventHandler : EventSubscriber
     private readonly IClientMessenger _clientMessenger;
 
     private readonly ILogger<SignalREncodingEventHandler> _logger;
+    private readonly IEventBus _eventBus;
+    private readonly IUserCache? _userCache;
 
     public SignalREncodingEventHandler(
         ILogger<SignalREncodingEventHandler> logger,
         IEventBus eventBus,
-        IClientMessenger clientMessenger
+        IClientMessenger clientMessenger,
+        IUserCache? userCache = null
     )
     {
         _logger = logger;
         _clientMessenger = clientMessenger;
+        _eventBus = eventBus;
+        _userCache = userCache;
         Track(eventBus.Subscribe<EncodingStartedEvent>(OnEncodingStarted));
         Track(eventBus.Subscribe<EncodingProgressUpdatedEvent>(OnEncodingProgress));
         Track(eventBus.Subscribe<EncodingCompletedEvent>(OnEncodingCompleted));
@@ -112,6 +119,24 @@ public class SignalREncodingEventHandler : EventSubscriber
         _logger.LogInformation(
             "Encoding failed: Job={JobId}, Error={ErrorMessage}",
             [@event.JobId, @event.ErrorMessage]
+        );
+
+        // The dashboard hub reaches moderators on the dashboard only; the owner's bell
+        // hears of a failed encode wherever they are.
+        if (_userCache?.Users.FirstOrDefault(u => u.Owner) is not { } owner)
+            return;
+
+        await _eventBus.PublishAsync(
+            new UserNotifiedEvent
+            {
+                Title = "Encoding failed",
+                Message =
+                    $"{Path.GetFileName(@event.InputPath)} could not be encoded: {@event.ErrorMessage}",
+                Type = "error",
+                UserId = owner.Id,
+                Route = "/dashboard/incomplete-encodes",
+            },
+            ct
         );
     }
 

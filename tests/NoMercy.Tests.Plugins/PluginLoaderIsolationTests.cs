@@ -39,6 +39,7 @@ public class PluginLoaderIsolationTests : IDisposable
     private readonly string _pluginsDir;
     private readonly InMemoryEventBus _eventBus = new();
     private readonly PluginRegistry _registry = new();
+    private readonly PluginConsentService _consent = new(new InMemoryConsentStore());
 
     public PluginLoaderIsolationTests()
     {
@@ -59,7 +60,7 @@ public class PluginLoaderIsolationTests : IDisposable
         catch (Exception) { }
     }
 
-    private string StageEchoPlugin()
+    private string StageEchoPlugin(bool asksForRest = false)
     {
         string testBin = Path.GetDirectoryName(
             typeof(PluginLoaderIsolationTests).Assembly.Location
@@ -93,7 +94,7 @@ public class PluginLoaderIsolationTests : IDisposable
               "version": "1.2.0",
               "description": "echoes",
               "assembly": "NoMercy.Plugin.Samples.Echo.dll",
-              "autoEnabled": true
+              "autoEnabled": true{{(asksForRest ? """, "capabilities": { "rest": true }""" : "")}}
             }
             """
         );
@@ -105,16 +106,16 @@ public class PluginLoaderIsolationTests : IDisposable
         return manifestPath;
     }
 
-    private PluginLoader Loader(IPluginRemoteLoader? remote) =>
+    private PluginLoader Loader(IPluginRemoteLoader? remote, IPluginRunGate? gate = null) =>
         new(
             _eventBus,
-            new MinimalServiceProvider(),
+            new MinimalServiceProvider(gate),
             NullLogger.Instance,
             _pluginsDir,
             TestStorageHelper.CreateStorage(_pluginsDir),
             _registry,
             new PluginVerifier(),
-            new PluginConsentService(new InMemoryConsentStore()),
+            _consent,
             TestPluginPlatform.ContextFactory(
                 _eventBus,
                 TestStorageHelper.CreateStorage(_pluginsDir)
@@ -228,9 +229,71 @@ public class PluginLoaderIsolationTests : IDisposable
         loaded!.LoadContext.Should().NotBeNull();
     }
 
-    private sealed class MinimalServiceProvider : IServiceProvider
+    // The run gate and the consent rule also hold for a plugin that runs elsewhere (AUD-9884).
+    [Fact]
+    public async Task APluginTheRunGateRefusesDoesNotStartElsewhere()
     {
-        public object? GetService(Type serviceType) => null;
+        FakeRemoteLoader remote = new(PluginIsolation.OutOfProcess, answers: true);
+
+        await Loader(remote, new RefusingGate()).LoadPluginFromManifestAsync(StageEchoPlugin());
+
+        remote.Asked.Should().Be(0);
+        _registry.TryGetValue(PluginId, out LoadedPlugin? loaded).Should().BeTrue();
+        loaded!.Info.Status.Should().Be(PluginStatus.Disabled);
+        loaded.Instance.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task APluginWithoutTheOwnersConsentDoesNotStartElsewhere()
+    {
+        FakeRemoteLoader remote = new(PluginIsolation.OutOfProcess, answers: true);
+
+        await Loader(remote).LoadPluginFromManifestAsync(StageEchoPlugin(asksForRest: true));
+
+        remote.Asked.Should().Be(0);
+        _registry.TryGetValue(PluginId, out LoadedPlugin? loaded).Should().BeTrue();
+        loaded!.Info.Status.Should().Be(PluginStatus.Disabled);
+        loaded.Instance.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task APluginTheOwnerConsentedToAndNoGateRefusesStartsElsewhere()
+    {
+        FakeRemoteLoader remote = new(PluginIsolation.OutOfProcess, answers: true);
+        _consent.GrantConsent(PluginId, new() { Rest = true }, new Version(1, 2, 0));
+
+        await Loader(remote, new RefusingGate(refuses: false))
+            .LoadPluginFromManifestAsync(StageEchoPlugin(asksForRest: true));
+
+        remote.Asked.Should().Be(1);
+        _registry.TryGetValue(PluginId, out LoadedPlugin? loaded).Should().BeTrue();
+        loaded!.Info.Status.Should().Be(PluginStatus.Active);
+        loaded.Instance.Should().BeSameAs(remote.Handed);
+    }
+
+    private sealed class MinimalServiceProvider(IPluginRunGate? gate) : IServiceProvider
+    {
+        public object? GetService(Type serviceType) =>
+            serviceType == typeof(IPluginRunGate) ? gate : null;
+    }
+
+    private sealed class RefusingGate(bool refuses = true) : IPluginRunGate
+    {
+        public PluginRefusal? MayRun(PluginInfo plugin) =>
+            refuses
+                ? new(
+                    PluginRefusalCodes.EntitlementMissing,
+                    plugin.Name,
+                    "The plugin did not start.",
+                    "This server holds no entitlement for it.",
+                    "Get the plugin from the marketplace.",
+                    PluginRefusalSeverity.Blocked
+                )
+                : null;
+
+        public PluginRefusal? MayRun(Ulid pluginId) => null;
+
+        public PluginRefusal? LastRefusal(Ulid pluginId) => null;
     }
 
     private sealed class FakeRemoteLoader(PluginIsolation isolation, bool answers)

@@ -14,19 +14,21 @@ using System.Text.Json;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.Extensions.Logging;
 using NoMercy.Events;
+using NoMercy.Events.Plugins;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Approval;
 using NoMercy.PluginSdk.Capabilities;
 using NoMercy.PluginSdk.Guests;
 using NoMercy.PluginSdk.Hub;
 using NoMercy.PluginSdk.OutOfProcess;
+using NoMercy.PluginSdk.Revocation;
 using NoMercy.PluginSdk.Sideload;
 using NoMercy.PluginSdk.Verification;
 using NoMercy.Storage;
 
 namespace NoMercy.PluginSdk;
 
-public class PluginManager : IPluginManager, IDisposable
+public class PluginManager : IPluginManager, IPluginRevocationEnforcer, IDisposable
 {
     private readonly IEventBus _eventBus;
     private readonly IServiceProvider _serviceProvider;
@@ -44,6 +46,9 @@ public class PluginManager : IPluginManager, IDisposable
     private readonly PluginDropGate _dropGate;
     private readonly PluginLoader _loader;
     private readonly PluginLifecycleManager _lifecycle;
+
+    // A gate's answer changed: a saved revocation list stops what it names (AUD-1134).
+    private readonly IDisposable? _accessChanged;
 
     // Held because an install has to know whether the copy it would replace is
     // still resident, and the answer decides whether the update lands now or on
@@ -159,6 +164,9 @@ public class PluginManager : IPluginManager, IDisposable
             assemblyTracker,
             releaseScheduledWork,
             registerScheduledWork
+        );
+        _accessChanged = _eventBus.Subscribe<PluginAccessChangedEvent>(
+            (_, changed) => _lifecycle.StopRevokedAsync(changed)
         );
     }
 
@@ -1182,6 +1190,11 @@ public class PluginManager : IPluginManager, IDisposable
         return _lifecycle.EnablePluginAsync(pluginId, ct);
     }
 
+    public Task StopRevokedAsync(CancellationToken ct = default)
+    {
+        return _lifecycle.StopRevokedAsync(ct);
+    }
+
     public Task DisablePluginAsync(Ulid pluginId, CancellationToken ct = default)
     {
         return _lifecycle.DisablePluginAsync(pluginId, ct);
@@ -1626,6 +1639,8 @@ public class PluginManager : IPluginManager, IDisposable
 
     public void Dispose()
     {
+        _accessChanged?.Dispose();
+
         foreach (LoadedPlugin loaded in _registry.Values)
         {
             loaded.Instance?.Dispose();
