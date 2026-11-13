@@ -1020,6 +1020,39 @@ public class FileRepository(MediaContext context, IStorageDriver storageDriver) 
             .ToListAsync();
     }
 
+    public async Task<
+        Dictionary<int, List<RecordedVideoFileLocation>>
+    > GetRecordedVideoFileLocationsByLibraryAsync(Ulid libraryId, string libraryType)
+    {
+        // Flat rows, grouped in memory: SQLite has no APPLY for a grouped projection.
+        List<KeyValuePair<int, RecordedVideoFileLocation>> rows = libraryType switch
+        {
+            MediaTypes.MovieMediaType => await (
+                from videoFile in context.VideoFiles.AsNoTracking().IgnoreQueryFilters()
+                join movie in context.Movies on videoFile.MovieId equals (int?)movie.Id
+                where movie.LibraryId == libraryId
+                select new KeyValuePair<int, RecordedVideoFileLocation>(
+                    movie.Id,
+                    new(videoFile.Share, videoFile.HostFolder, videoFile.Filename)
+                )
+            ).ToListAsync(),
+            MediaTypes.TvMediaType or MediaTypes.AnimeMediaType => await (
+                from videoFile in context.VideoFiles.AsNoTracking().IgnoreQueryFilters()
+                join episode in context.Episodes on videoFile.EpisodeId equals (int?)episode.Id
+                join show in context.Tvs on episode.TvId equals show.Id
+                where show.LibraryId == libraryId
+                select new KeyValuePair<int, RecordedVideoFileLocation>(
+                    show.Id,
+                    new(videoFile.Share, videoFile.HostFolder, videoFile.Filename)
+                )
+            ).ToListAsync(),
+            _ => [],
+        };
+
+        return rows.GroupBy(row => row.Key)
+            .ToDictionary(group => group.Key, group => group.Select(row => row.Value).ToList());
+    }
+
     public async Task DeleteVideoFilesAndMetadataByMovieIdAsync(int movieId)
     {
         List<Ulid> metadataIds = await context

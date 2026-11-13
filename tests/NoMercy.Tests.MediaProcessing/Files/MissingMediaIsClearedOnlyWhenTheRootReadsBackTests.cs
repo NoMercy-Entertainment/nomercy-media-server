@@ -152,6 +152,14 @@ public sealed class MissingMediaIsClearedOnlyWhenTheRootReadsBackTests : IDispos
                 repository.GetRecordedVideoFileLocationsByMovieIdAsync(It.IsAny<int>())
             )
             .ReturnsAsync([]);
+        repoMock
+            .Setup(repository =>
+                repository.GetRecordedVideoFileLocationsByLibraryAsync(
+                    It.IsAny<Ulid>(),
+                    It.IsAny<string>()
+                )
+            )
+            .ReturnsAsync([]);
         return repoMock;
     }
 

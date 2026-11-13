@@ -313,6 +313,14 @@ public partial class FileManager(
                     LogEventLevel.Warning
                 );
             }
+            else if (await ReasonToKeepRecords(library) is { } reasonToKeep)
+            {
+                Logger.App(
+                    $"[FindFiles] {Type} id={id} '{Movie?.Title ?? Show?.Title}': not removed — "
+                        + reasonToKeep,
+                    LogEventLevel.Warning
+                );
+            }
             else
             {
                 Logger.App(

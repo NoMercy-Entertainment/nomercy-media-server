@@ -267,6 +267,10 @@ public partial class MediaScan : IDisposable, IAsyncDisposable
             IOrderedEnumerable<string> directories = _driver
                 .EnumerateFileSystemEntries(folderPath, "*", SearchOption.TopDirectoryOnly)
                 .Where(e => _driver.DirectoryExists(e))
+                // A ".back" folder is the original kept during a re-encode, never a title.
+                .Where(e =>
+                    !e.TrimEnd('/', '\\').EndsWith(".back", StringComparison.OrdinalIgnoreCase)
+                )
                 .OrderBy(f => f);
 
             Parallel.ForEach(

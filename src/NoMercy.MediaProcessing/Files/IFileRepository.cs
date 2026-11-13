@@ -125,6 +125,11 @@ public interface IFileRepository
     /// <inheritdoc cref="GetRecordedVideoFileLocationsByMovieIdAsync"/>
     Task<List<RecordedVideoFileLocation>> GetRecordedVideoFileLocationsByTvIdAsync(int tvId);
 
+    /// <summary>Registered paths per movie or show id; a title with no file has no entry.</summary>
+    Task<
+        Dictionary<int, List<RecordedVideoFileLocation>>
+    > GetRecordedVideoFileLocationsByLibraryAsync(Ulid libraryId, string libraryType);
+
     Task<List<VideoFile>> SearchVideoFilesAsync(
         string? query,
         int limit,
