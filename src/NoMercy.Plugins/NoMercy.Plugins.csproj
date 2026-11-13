@@ -13,6 +13,7 @@
   <ItemGroup>
     <PackageReference Include="BouncyCastle.Cryptography" />
     <InternalsVisibleTo Include="NoMercy.Tests.Plugins" />
+    <InternalsVisibleTo Include="NoMercy.Tests.Service" />
   </ItemGroup>
 
   <ItemGroup>

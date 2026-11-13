@@ -109,14 +109,18 @@ internal sealed class PluginLifecycleManager(
             );
         }
 
-        // A revoked build stays off in every trust mode (AUD-1134).
+        // A revoked build stays off in every trust mode (AUD-1134). Every other
+        // refusal stops an enable too, except unanswered consent: enabling is
+        // the owner's answer to it (AUD-9884).
         if (
             _serviceProvider.GetService<IPluginRunGate>()?.MayRun(loaded.Info) is
-            { Code: PluginRefusalCodes.Revoked }
+            { Code: not PluginRefusalCodes.CapabilityNotConsented } refused
         )
         {
             throw new InvalidOperationException(
-                $"Plugin {loaded.Info.Name} was revoked and cannot be enabled. Install the newest version."
+                refused.Code == PluginRefusalCodes.Revoked
+                    ? $"Plugin {loaded.Info.Name} was revoked and cannot be enabled. Install the newest version."
+                    : $"Plugin {loaded.Info.Name} cannot be enabled: {refused.Why} {refused.Fix}"
             );
         }
 
@@ -127,6 +131,19 @@ internal sealed class PluginLifecycleManager(
         if (!_consentService.IsBaseline(loaded.Info.Capabilities))
         {
             _consentService.GrantConsent(pluginId, loaded.Info.Capabilities, loaded.Info.Version);
+        }
+
+        // The owner's isolation choice holds on enable as it does on load.
+        if (loaded.Instance is null && _loader.RunsElsewhere(pluginId))
+        {
+            if (!await _loader.StartElsewhereAsync(loaded.Info, ct))
+            {
+                throw new InvalidOperationException(PluginLoader.CannotRunElsewhere);
+            }
+
+            _registerScheduledWork?.Invoke(pluginId);
+
+            return;
         }
 
         if (loaded.Instance is null && loaded.Info.AssemblyPath is not null)
@@ -247,6 +264,49 @@ internal sealed class PluginLifecycleManager(
             },
             ct
         );
+    }
+
+    // Stops every running plugin the revocation list names now and holds it
+    // Disabled, the state the loader gives a revoked build at load (AUD-1134).
+    public async Task StopRevokedAsync(CancellationToken ct = default)
+    {
+        if (_serviceProvider.GetService<IPluginRunGate>() is not { } gate)
+        {
+            return;
+        }
+
+        foreach (LoadedPlugin loaded in _registry.Values.ToList())
+        {
+            if (
+                loaded.Info.Status != PluginStatus.Active
+                || gate.MayRun(loaded.Info) is not { Code: PluginRefusalCodes.Revoked } revoked
+            )
+            {
+                continue;
+            }
+
+            try
+            {
+                await DisablePluginAsync(loaded.Info.Id, ct);
+            }
+            catch (Exception exception) when (exception is not OperationCanceledException)
+            {
+                // A stop that failed still leaves the plugin off and unlisted as running.
+                loaded.Instance = null;
+                loaded.Info.Status = PluginStatus.Disabled;
+
+                _logger.LogError(
+                    exception,
+                    "Plugin {PluginName} did not stop cleanly after its revocation.",
+                    loaded.Info.Name
+                );
+            }
+
+            _logger.LogWarning(
+                "Plugin {PluginName} was stopped: {Why} {Fix}",
+                [loaded.Info.Name, revoked.Why, revoked.Fix]
+            );
+        }
     }
 
     /// <summary>
