@@ -6,6 +6,7 @@
 	},
 	"workspaceFolder": "/workspaces/NoMercyMediaServer",
 	"workspaceMount": "source=${localWorkspaceFolder},target=/workspaces/NoMercyMediaServer,type=bind,consistency=cached",
+	"initializeCommand": "(mkdir \"${localEnv:HOME}${localEnv:LOCALAPPDATA}/NoMercy_dev\" || cd \"${localEnv:HOME}${localEnv:LOCALAPPDATA}/NoMercy_dev\") && (mkdir \"${localEnv:HOME}${localEnv:LOCALAPPDATA}/NoMercy_dev/config\" || cd \"${localEnv:HOME}${localEnv:LOCALAPPDATA}/NoMercy_dev/config\")",
 
 	// Temporarily disabled due to SQLite I/O issues with WSL2 bind mounts
 	// "mounts": [
@@ -16,7 +17,7 @@
 	// Mount host NoMercy_dev config (tokens, encoder profiles) - only config dir to avoid SQLite I/O issues
 	"mounts": [
 		"source=${localEnv:HOME}${localEnv:USERPROFILE}/.claude,target=/home/vscode/.claude,type=bind,consistency=cached",
-		"source=${localEnv:LOCALAPPDATA}/NoMercy_dev/config,target=/home/vscode/.local/share/NoMercy_dev/config,type=bind,consistency=cached"
+		"source=${localEnv:HOME}${localEnv:LOCALAPPDATA}/NoMercy_dev/config,target=/home/vscode/.local/share/NoMercy_dev/config,type=bind,consistency=cached"
 	],
 
 	// Use 'forwardPorts' to make a list of ports inside the container available locally.
