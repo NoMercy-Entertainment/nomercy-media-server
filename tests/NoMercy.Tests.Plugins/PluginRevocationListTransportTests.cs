@@ -203,6 +203,67 @@ public class PluginRevocationListTransportTests : IDisposable
     }
 
     [Fact]
+    public async Task An_older_signed_list_does_not_replace_the_newer_one_Aud1061()
+    {
+        PluginRevocationStore store = new(_folder);
+        DateTimeOffset newer = new(2026, 9, 20, 12, 0, 0, TimeSpan.Zero);
+        store.Save(
+            new(newer, [new PluginRevocationEntry(Torrent, null, Hash, "plugins.revoked.security")])
+        );
+
+        await ClientAnswering(store, Body(issuedAt: "2026-09-01T12:00:00+00:00", entries: "[]"))
+            .RefreshAsync(new("https://example.invalid/revocations"));
+
+        store.Current.IssuedAt.Should().Be(newer);
+        store.Current.Entries.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task A_list_issued_at_the_same_time_as_the_stored_one_still_saves()
+    {
+        PluginRevocationStore store = new(_folder);
+        store.Save(new(new DateTimeOffset(2026, 9, 20, 12, 0, 0, TimeSpan.Zero), []));
+
+        await ClientAnswering(store, Body())
+            .RefreshAsync(new("https://example.invalid/revocations"));
+
+        store.Current.Entries.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task A_first_list_saves_on_a_server_with_no_file()
+    {
+        PluginRevocationStore store = new(_folder);
+
+        await ClientAnswering(store, Body())
+            .RefreshAsync(new("https://example.invalid/revocations"));
+
+        store.Current.Entries.Should().ContainSingle();
+    }
+
+    private PluginRevocationClient ClientAnswering(IPluginRevocationStore store, string body) =>
+        new(
+            new HttpClient(new FixedHandler(body)),
+            store,
+            new PluginTrustedKeys(new Dictionary<string, string> { ["nomercy-1"] = _publicKey }),
+            NullLogger<PluginRevocationClient>.Instance
+        );
+
+    private sealed class FixedHandler(string body) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken
+        ) =>
+            Task.FromResult(
+                new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new StringContent(body),
+                }
+            );
+    }
+
+    [Fact]
     public void A_server_with_no_file_has_never_heard()
     {
         new PluginRevocationStore(_folder).Current.IssuedAt.Should().Be(DateTimeOffset.MinValue);

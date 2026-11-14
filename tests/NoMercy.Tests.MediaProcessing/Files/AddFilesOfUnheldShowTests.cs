@@ -18,6 +18,7 @@ using Moq;
 using MovieFileLibrary;
 using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
+using NoMercy.Database.Models.TvShows;
 using NoMercy.MediaProcessing.Files;
 using NoMercy.MediaProcessing.Files.Parsing;
 using NoMercy.MediaProcessing.Files.Parsing.Adapters;
@@ -172,7 +173,7 @@ public class AddFilesOfUnheldShowTests : ProviderHttpHarness
             .Setup(d => d.Dispatch(It.IsAny<IShouldQueue>(), It.IsAny<string>(), It.IsAny<int>()))
             .Callback<IShouldQueue, string, int>((job, _, _) => queued.Add(job));
 
-        import.DispatchEncodes(dispatcher.Object);
+        import.DispatchEncodes(dispatcher.Object, []);
 
         queued.Should().HaveCount(10).And.AllBeOfType<VideoEncodeJob>();
         queued
@@ -188,7 +189,7 @@ public class AddFilesOfUnheldShowTests : ProviderHttpHarness
         ShowImportJob import = new() { Id = ShowId, LibraryId = Ulid.NewUlid() };
         Mock<IJobDispatcher> dispatcher = new();
 
-        import.DispatchEncodes(dispatcher.Object);
+        import.DispatchEncodes(dispatcher.Object, []);
 
         dispatcher.Verify(
             d => d.Dispatch(It.IsAny<IShouldQueue>(), It.IsAny<string>(), It.IsAny<int>()),
@@ -256,5 +257,120 @@ public class AddFilesOfUnheldShowTests : ProviderHttpHarness
         result.Success.Should().BeFalse();
         warnings.Should().ContainSingle();
         warnings[0].Should().Contain("424242").And.Contain("/downloads/The.Ark.S01E01.mkv");
+    }
+
+    private static readonly Episode[] StoredEpisodes =
+    [
+        new()
+        {
+            Id = 4241,
+            SeasonNumber = 1,
+            EpisodeNumber = 1,
+        },
+        new()
+        {
+            Id = 4242,
+            SeasonNumber = 1,
+            EpisodeNumber = 2,
+        },
+        new()
+        {
+            Id = 4252,
+            SeasonNumber = 2,
+            EpisodeNumber = 2,
+        },
+    ];
+
+    private static EncodeAfterImportFile NamePlacedFile(int? season, int? episode) =>
+        new()
+        {
+            Id = "0",
+            InputFile = $"/downloads/{ReleaseFolder}/{FileName(2)}",
+            FolderId = Ulid.NewUlid(),
+            SeasonNumber = season,
+            EpisodeNumber = episode,
+        };
+
+    private static ShowImportJob ImportOf(EncodeAfterImportFile file, List<string> warnings)
+    {
+        Mock<ILoggerFactory> loggerFactory = new();
+        loggerFactory
+            .Setup(f => f.CreateLogger(It.IsAny<string>()))
+            .Returns(new CapturingLogger(warnings));
+        return new(null!, null!, loggerFactory.Object)
+        {
+            Id = ShowId,
+            LibraryId = Ulid.NewUlid(),
+            EncodeAfterImport = [file],
+        };
+    }
+
+    private static Mock<IJobDispatcher> Capturing(List<IShouldQueue> queued)
+    {
+        Mock<IJobDispatcher> dispatcher = new();
+        dispatcher
+            .Setup(d => d.Dispatch(It.IsAny<IShouldQueue>(), It.IsAny<string>(), It.IsAny<int>()))
+            .Callback<IShouldQueue, string, int>((job, _, _) => queued.Add(job));
+        return dispatcher;
+    }
+
+    [Fact]
+    public void A_name_placed_file_is_encoded_under_its_stored_episode_id()
+    {
+        List<string> warnings = [];
+        List<IShouldQueue> queued = [];
+        ShowImportJob import = ImportOf(NamePlacedFile(1, 2), warnings);
+
+        import.DispatchEncodes(Capturing(queued).Object, StoredEpisodes);
+
+        queued.Should().ContainSingle().Which.Should().BeOfType<VideoEncodeJob>();
+        ((VideoEncodeJob)queued[0]).Id.Should().Be("4242");
+        warnings.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData(1, 9)]
+    [InlineData(null, null)]
+    public void A_name_placed_file_with_no_stored_episode_queues_no_encode_and_warns(
+        int? season,
+        int? episode
+    )
+    {
+        List<string> warnings = [];
+        List<IShouldQueue> queued = [];
+        EncodeAfterImportFile file = NamePlacedFile(season, episode);
+        ShowImportJob import = ImportOf(file, warnings);
+
+        import.DispatchEncodes(Capturing(queued).Object, StoredEpisodes);
+
+        queued.Should().BeEmpty();
+        warnings.Should().ContainSingle().Which.Should().Contain(file.InputFile);
+    }
+
+    [Fact]
+    public async Task Files_grouped_under_an_unheld_show_carry_their_season_and_episode()
+    {
+        ScriptTmdb();
+        Library library = new() { Id = Ulid.NewUlid(), Type = MediaTypes.TvMediaType };
+        Mock<IJobDispatcher> dispatcher = new();
+        List<ShowImportJob> imports = [];
+        dispatcher
+            .Setup(d => d.DispatchJob(It.IsAny<ShowImportJob>()))
+            .Callback<ShowImportJob>(imports.Add);
+
+        await UnheldShowImports.DispatchAsync(
+            dispatcher.Object,
+            Pipeline(),
+            library,
+            TenFiles(Ulid.NewUlid()),
+            new HashSet<int>()
+        );
+
+        imports
+            .Should()
+            .ContainSingle()
+            .Which.EncodeAfterImport.Select(file => (file.SeasonNumber, file.EpisodeNumber))
+            .Should()
+            .Equal(Enumerable.Range(1, 10).Select(number => ((int?)1, (int?)number)));
     }
 }
