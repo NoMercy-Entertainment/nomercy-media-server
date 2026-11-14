@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using NoMercy.PluginSdk.Abstractions;
@@ -78,7 +79,18 @@ public class PluginEntitlementClient(
             return false;
         }
 
-        store.Save(bundle!);
+        if (bundle!.IssuedAt < store.Current.IssuedAt)
+        {
+            logger.LogWarning(
+                "Plugin entitlements: the bundle was issued {Offered}, before the one on this server ({Held}), so it was not saved.",
+                bundle.IssuedAt.ToString("O", CultureInfo.InvariantCulture),
+                store.Current.IssuedAt.ToString("O", CultureInfo.InvariantCulture)
+            );
+
+            return false;
+        }
+
+        store.Save(bundle);
 
         return true;
     }
