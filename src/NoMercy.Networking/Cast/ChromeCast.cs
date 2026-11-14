@@ -974,19 +974,16 @@ public class ChromeCastService : IChromeCastService
             return;
         }
 
-        int connectId = Interlocked.Increment(ref _androidLaunchRequestId);
+        // The overload with a request id waits up to 30 s for a reply; CONNECT and the handover get none.
         await client.SendAsync(
             logger: null,
             ns: "urn:x-cast:com.google.cast.tp.connection",
-            messageRequestId: connectId,
             messagePayload: JsonConvert.SerializeObject(new { type = "CONNECT" }),
             destinationId: transport
         );
-        int handoverId = Interlocked.Increment(ref _androidLaunchRequestId);
         await client.SendAsync(
             logger: null,
             ns: NoMercyGeneralNamespace,
-            messageRequestId: handoverId,
             messagePayload: BuildLaunchHandoverJson(customData),
             destinationId: transport
         );
