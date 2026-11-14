@@ -98,6 +98,12 @@ public class PluginNetworkAllowlistHandler : DelegatingHandler
             }
 
             Uri target = location.IsAbsoluteUri ? location : new(current.RequestUri!, location);
+            if (
+                current.RequestUri!.Scheme == Uri.UriSchemeHttps
+                && target.Scheme == Uri.UriSchemeHttp
+            )
+                return response;
+
             current = Follow(current, response.StatusCode, target);
             response.Dispose();
         }

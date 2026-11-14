@@ -171,6 +171,20 @@ public class PluginNetworkAllowlistHandlerTests
     }
 
     [Fact]
+    public async Task A_redirect_from_https_to_http_is_not_followed_Aud1055()
+    {
+        ScriptedHandler inner = new(_ =>
+            Redirect(HttpStatusCode.Found, "http://a.example.com/next")
+        );
+        HttpClient client = RedirectClient(inner, "a.example.com");
+
+        HttpResponseMessage response = await client.GetAsync("https://a.example.com/start");
+
+        Assert.Equal(HttpStatusCode.Found, response.StatusCode);
+        Assert.Single(inner.Seen);
+    }
+
+    [Fact]
     public async Task An_eleventh_redirect_hop_throws_Aud1055()
     {
         ScriptedHandler inner = new(_ =>
