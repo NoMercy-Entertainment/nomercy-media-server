@@ -1123,23 +1123,27 @@ public class PluginAudioRenderTests : IDisposable
     [Fact]
     public async Task Render_WithAStallLimit_DoesNotEndARunThatKeepsMoving_PastItsTotalAndItsStallLimit()
     {
-        // Two and a half seconds of steady progress: more than twice the
-        // stall limit, and many times the total a run without one would get.
-        _ffmpeg = async call =>
+        // 25 s of steady progress on the fake clock: many times the stall
+        // limit and the total a run without one would get.
+        FakeTimeProvider clock = new();
+        _ffmpeg = call =>
         {
             for (int report = 1; report <= 50; report++)
             {
                 call.StdOut?.Invoke($"out_time_us={report * 5_000_000L}");
                 call.StdOut?.Invoke("progress=continue");
-                await Task.Delay(50, call.Cancelled);
+                clock.Advance(TimeSpan.FromMilliseconds(500));
             }
 
             call.WriteOutputs(1000);
             call.StdOut?.Invoke("progress=end");
-            return Exited(0);
+            return Task.FromResult(Exited(0));
         };
 
-        PluginAudioRunResult result = await CreateTools(runTimeout: TimeSpan.FromMilliseconds(200))
+        PluginAudioRunResult result = await CreateTools(
+                runTimeout: TimeSpan.FromMilliseconds(200),
+                clock: clock
+            )
             .RenderAsync(
                 OneOutput(),
                 null,
