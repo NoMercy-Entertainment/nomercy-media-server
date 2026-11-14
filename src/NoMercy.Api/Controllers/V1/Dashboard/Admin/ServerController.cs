@@ -301,12 +301,25 @@ public partial class ServerController(
             // gates only the automatic file-watcher path (AutoEncodeSubscriber),
             // never this manual import. A configured EncodePresetId narrows the
             // encode to that one preset; a null value keeps the folder's presets.
+
+            bool isShowLibrary =
+                library.Type is MediaTypes.TvMediaType or MediaTypes.AnimeMediaType;
+            ILookup<bool, AddFile> byMatch = request.Files.ToLookup(file => HasMatch(file.Id));
+            List<string> unmatched = [];
+
             // One file per episode: see EpisodeClaims for why a declared episode wins.
             (List<AddFile> selected, List<string> collided) = EpisodeClaims.PickOnePerEpisode(
-                request.Files,
+                byMatch[true],
                 file => $"{file.Id}",
                 file => file.Path
             );
+
+            // A show file without an id claims no episode, and its name can still place it.
+            // A movie file without an id has no movie to import or encode against.
+            if (isShowLibrary)
+                selected.AddRange(byMatch[false]);
+            else
+                unmatched.AddRange(byMatch[false].Select(file => Path.GetFileName(file.Path)));
 
             List<EncodeAfterImportFile> toEncode =
             [
@@ -323,7 +336,7 @@ public partial class ServerController(
 
             // A show the server does not hold has no episode rows to encode against.
             // Import it once per show and let that import queue the selected files.
-            if (library.Type is MediaTypes.TvMediaType or MediaTypes.AnimeMediaType)
+            if (isShowLibrary)
             {
                 await using MediaContext context = new();
                 List<int> ids =
@@ -348,6 +361,14 @@ public partial class ServerController(
                     toEncode,
                     held
                 );
+
+                // A file the name could not place has no episode to encode against.
+                unmatched.AddRange(
+                    toEncode
+                        .Where(file => !HasMatch(file.Id))
+                        .Select(file => Path.GetFileName(file.InputFile))
+                );
+                toEncode.RemoveAll(file => !HasMatch(file.Id));
             }
 
             // A movie the server does not hold has no row to encode against: import it
@@ -400,6 +421,15 @@ public partial class ServerController(
                 );
             }
 
+            if (unmatched.Count > 0)
+            {
+                logger.LogWarning(
+                    "Add files: {Count} file(s) skipped because they have no match — {Files}",
+                    unmatched.Count,
+                    string.Join(", ", unmatched)
+                );
+            }
+
             // Logged as its own type rather than the watcher's, because the question the
             // activity log gets asked about a new file is "did someone add that, or did the
             // server find it".
@@ -417,6 +447,9 @@ public partial class ServerController(
             return BadRequestResponse(e.Message);
         }
     }
+
+    // The picker sends id 0 for a file it found no match for.
+    private static bool HasMatch(string? id) => int.TryParse(id, out int number) && number > 0;
 
     [HttpPost]
     [Route("directorytree")]

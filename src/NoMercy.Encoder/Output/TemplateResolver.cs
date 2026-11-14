@@ -67,12 +67,13 @@ public static class TemplateResolver
         int channels
     )
     {
+        string safeLanguage = LanguagePathSegment.From(language);
         return new()
         {
             ["type"] = "audio",
-            ["language"] = language,
+            ["language"] = safeLanguage,
             // {lang} is the brace-style alias for language.
-            ["lang"] = language,
+            ["lang"] = safeLanguage,
             ["codec"] = codecName,
             ["channels"] = channels.ToString(),
         };
@@ -84,10 +85,11 @@ public static class TemplateResolver
         string filename
     )
     {
+        string safeLanguage = LanguagePathSegment.From(language);
         return new()
         {
-            ["language"] = language,
-            ["lang"] = language,
+            ["language"] = safeLanguage,
+            ["lang"] = safeLanguage,
             ["variant"] = variant,
             // {type} alias for subtitle templates — the spec uses
             // "subtitles/{filename}.{lang}.{type}" where {type} is the variant

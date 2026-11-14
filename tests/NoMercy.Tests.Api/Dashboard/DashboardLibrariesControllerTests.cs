@@ -512,6 +512,47 @@ public class DashboardLibrariesControllerTests : IClassFixture<NoMercyApiFactory
         return libraryId;
     }
 
+    // app-web#230: an Inbox library left the dashboard list once saved, so it could not be edited or deleted.
+    [Fact]
+    public async Task GetLibraries_ListsAnInboxLibrary_SoItCanBeManaged()
+    {
+        Ulid inboxId = await SeedInboxLibraryAsync();
+
+        string body = await _authed.GetStringAsync("/api/v1/dashboard/libraries");
+
+        body.Should().Contain(inboxId.ToString(), "the owner manages an Inbox library from the dashboard list");
+    }
+
+    [Fact]
+    public async Task MemberLibraries_StillHideAnInboxLibrary()
+    {
+        Ulid inboxId = await SeedInboxLibraryAsync();
+
+        string body = await _authed.GetStringAsync("/api/v1/libraries");
+
+        body.Should().NotContain(inboxId.ToString(), "an Inbox library holds unsorted files, never a browsable library");
+    }
+
+    private static async Task<Ulid> SeedInboxLibraryAsync()
+    {
+        Ulid libraryId = Ulid.NewUlid();
+
+        await using MediaContext mediaContext = new();
+        mediaContext.Libraries.Add(
+            new()
+            {
+                Id = libraryId,
+                Title = $"Inbox {libraryId}",
+                Type = "inbox",
+                Order = 99,
+            }
+        );
+        mediaContext.LibraryUser.Add(new(libraryId, TestAuthHandler.DefaultUserId));
+        await mediaContext.SaveChangesAsync();
+
+        return libraryId;
+    }
+
     private static async Task<Ulid> SeedEncodingPresetAsync()
     {
         Ulid presetId = Ulid.NewUlid();

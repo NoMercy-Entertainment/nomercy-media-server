@@ -198,6 +198,11 @@ public class UsersController(
         if (user is null)
             return NotFoundResponse("User not found");
 
+        if (!CanManagePermissionsOf(user))
+            return UnauthorizedResponse(
+                "You do not have permission to manage this user's permissions"
+            );
+
         return Ok(new DataResponseDto<UserPermissionRequest> { Data = new(user) });
     }
 
@@ -220,6 +225,11 @@ public class UsersController(
 
         if (existing is null)
             return NotFoundResponse("User not found");
+
+        if (!CanManagePermissionsOf(existing))
+            return UnauthorizedResponse(
+                "You do not have permission to manage this user's permissions"
+            );
 
         bool? manage = AuthPolicy.IsOwner(User) ? request.Manage : null;
 
@@ -263,4 +273,8 @@ public class UsersController(
 
         return NotImplementedResponse("Notification settings are not implemented yet.");
     }
+
+    // AUD-1112: only the owner manages the owner's or a moderator's permissions.
+    private bool CanManagePermissionsOf(User target) =>
+        !target.Owner && (!target.Manage || AuthPolicy.IsOwner(User));
 }

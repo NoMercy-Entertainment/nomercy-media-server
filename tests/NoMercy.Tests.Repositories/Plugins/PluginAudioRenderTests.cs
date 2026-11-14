@@ -13,6 +13,7 @@ using FluentAssertions;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
 using Moq;
 using NoMercy.Data.Plugins;
 using NoMercy.Database;
@@ -228,7 +229,8 @@ public class PluginAudioRenderTests : IDisposable
         TimeSpan? runTimeout = null,
         TimeSpan? exitGracePeriod = null,
         TimeSpan? quotaCheckInterval = null,
-        PluginQuotaMeter? quotas = null
+        PluginQuotaMeter? quotas = null,
+        TimeProvider? clock = null
     )
     {
         Mock<IDbContextFactory<MediaContext>> contextFactory = new();
@@ -257,6 +259,7 @@ public class PluginAudioRenderTests : IDisposable
             // No floor under the stall limit here, so a test can prove the
             // limit in milliseconds. The floor itself is proven on the limits.
             ShortestStallLimit = TimeSpan.Zero,
+            Clock = clock ?? TimeProvider.System,
         };
     }
 
@@ -906,15 +909,19 @@ public class PluginAudioRenderTests : IDisposable
     {
         // "progress=end" stops both clocks: the files are complete, and what
         // is left is the exit hang the grace period deals with.
+        FakeTimeProvider clock = new();
+        TaskCompletionSource reportClosed = new(TaskCreationOptions.RunContinuationsAsynchronously);
         _ffmpeg = call =>
         {
             call.WriteOutputs(1000);
             call.StdOut?.Invoke("progress=end");
+            reportClosed.SetResult();
             return call.HangAsync();
         };
 
-        PluginAudioRunResult result = await CreateTools(
-                exitGracePeriod: TimeSpan.FromMilliseconds(600)
+        Task<PluginAudioRunResult> render = CreateTools(
+                exitGracePeriod: TimeSpan.FromMilliseconds(600),
+                clock: clock
             )
             .RenderAsync(
                 OneOutput(),
@@ -925,6 +932,12 @@ public class PluginAudioRenderTests : IDisposable
                     StallTimeout = TimeSpan.FromMilliseconds(100),
                 }
             );
+
+        // Past the stall limit and the total, still inside the grace period.
+        await reportClosed.Task;
+        clock.Advance(TimeSpan.FromMilliseconds(500));
+        clock.Advance(TimeSpan.FromMilliseconds(100));
+        PluginAudioRunResult result = await render;
 
         result.ExitCode.Should().Be(0);
         result.Outputs.Should().Equal(new PluginAudioRenderedFile("out.wav", 1000));

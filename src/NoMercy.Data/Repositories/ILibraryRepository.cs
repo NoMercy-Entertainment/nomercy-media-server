@@ -23,6 +23,9 @@ public interface ILibraryRepository
 {
     Task<List<Library>> GetLibraries(Guid userId, CancellationToken ct = default);
 
+    /// <summary>The user's libraries including Inbox libraries, for the dashboard that manages them.</summary>
+    Task<List<Library>> GetDashboardLibraries(Guid userId, CancellationToken ct = default);
+
     Task<List<Library>> GetLibrariesLite(Guid userId, CancellationToken ct = default);
 
     /// <summary>Every library row, whoever can see it.</summary>

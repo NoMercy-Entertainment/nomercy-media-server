@@ -119,6 +119,56 @@ public class TemplateResolverTests
         tokens["channels"].Should().Be("6");
     }
 
+    // AUD-1174: a track tag never leaves the output folder.
+    [Theory]
+    [InlineData("../../x", "x")]
+    [InlineData("..\\..\\x", "x")]
+    [InlineData("/x", "x")]
+    [InlineData("a.b", "ab")]
+    [InlineData("..", "und")]
+    [InlineData("", "und")]
+    [InlineData("eng", "eng")]
+    [InlineData("pt-BR", "pt-BR")]
+    [InlineData("zh_Hans", "zh_Hans")]
+    public void AudioTokens_LanguageWithPathSegments_IsReducedToASafeSegment(
+        string language,
+        string expected
+    )
+    {
+        Dictionary<string, string> tokens = TemplateResolver.AudioTokens(language, "aac", 2);
+
+        tokens["language"].Should().Be(expected);
+        tokens["lang"].Should().Be(expected);
+        TemplateResolver
+            .Resolve("audio_{lang}_{codec}/audio_{lang}_{codec}", tokens)
+            .Should()
+            .Be($"audio_{expected}_aac/audio_{expected}_aac");
+    }
+
+    [Theory]
+    [InlineData("../../x", "x")]
+    [InlineData("..\\..\\x", "x")]
+    [InlineData("/x", "x")]
+    [InlineData("a.b", "ab")]
+    [InlineData("..", "und")]
+    [InlineData("", "und")]
+    [InlineData("eng", "eng")]
+    [InlineData("pt-BR", "pt-BR")]
+    public void SubtitleTokens_LanguageWithPathSegments_IsReducedToASafeSegment(
+        string language,
+        string expected
+    )
+    {
+        Dictionary<string, string> tokens = TemplateResolver.SubtitleTokens(
+            language,
+            "full",
+            "movie"
+        );
+
+        tokens["language"].Should().Be(expected);
+        tokens["lang"].Should().Be(expected);
+    }
+
     [Fact]
     public void SubtitleTokens_IncludesVariantAndFilename()
     {

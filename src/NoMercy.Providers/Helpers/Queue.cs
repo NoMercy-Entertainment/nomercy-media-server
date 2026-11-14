@@ -191,19 +191,17 @@ public class Queue(QueueOptions options)
                             }
                             catch (Exception ex)
                             {
-                                tcs.SetException(ex);
-                                if (IsExpectedTransport(ex))
-                                    return;
-                                if (IsUnreachable(ex))
+                                // Log first: SetException resumes the caller, which
+                                // may stop listening before a later log line is written.
+                                try
                                 {
-                                    Logger.App(
-                                        $"Provider unreachable: {url}",
-                                        LogEventLevel.Verbose
-                                    );
-                                    return;
+                                    LogFailure(ex, url);
+                                }
+                                finally
+                                {
+                                    tcs.SetException(ex);
                                 }
 
-                                Logger.App($"Url failed: {url} {ex.Message}", LogEventLevel.Debug);
                                 return;
                             }
                         }
@@ -297,6 +295,20 @@ public class Queue(QueueOptions options)
     }
 
     private bool IsEmpty => Size == 0;
+
+    private static void LogFailure(Exception ex, string? url)
+    {
+        if (IsExpectedTransport(ex))
+            return;
+
+        if (IsUnreachable(ex))
+        {
+            Logger.App($"Provider unreachable: {url}", LogEventLevel.Verbose);
+            return;
+        }
+
+        Logger.App($"Url failed: {url} {ex.Message}", LogEventLevel.Debug);
+    }
 
     // The caller gets the exception and decides how loudly to report it; an
     // offline provider is not worth a log line per request.

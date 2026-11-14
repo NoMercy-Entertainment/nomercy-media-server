@@ -352,6 +352,7 @@ public class RouteContractSnapshotTests : IClassFixture<NoMercyApiFactory>
         "POST api/v{version:apiVersion}/collection/{id:int}/watch-list [Collections.AddToWatchList]",
         "POST api/v{version:apiVersion}/content-segments [ContentSegments.Create]",
         "POST api/v{version:apiVersion}/dashboard/activity [ServerActivity.Create]",
+        "POST api/v{version:apiVersion}/dashboard/activity/playback-failure [ServerActivity.ReportPlaybackFailure]",
         "POST api/v{version:apiVersion}/dashboard/configuration [Configuration.Store]",
         "POST api/v{version:apiVersion}/dashboard/content-analysis/intro/{seasonId:int} [ContentAnalysis.DetectIntroForSeason]",
         "POST api/v{version:apiVersion}/dashboard/content-analysis/ocr/{videoFileId} [ContentAnalysis.OcrBitmapSubtitle]",

@@ -16,6 +16,7 @@ using Microsoft.EntityFrameworkCore;
 using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.Movies;
+using NoMercy.Database.Models.TvShows;
 using NoMercy.Tests.Api.Infrastructure;
 using Xunit;
 
@@ -42,6 +43,7 @@ public class ServerControllerAddFilesTests : IClassFixture<NoMercyApiFactory>, I
 
     private readonly Ulid _autoEncodeLibraryId = Ulid.NewUlid();
     private readonly Ulid _manualLibraryId = Ulid.NewUlid();
+    private readonly Ulid _tvLibraryId = Ulid.NewUlid();
     private readonly Ulid _folderId = Ulid.NewUlid();
     private readonly Ulid _presetId = Ulid.NewUlid();
 
@@ -84,16 +86,60 @@ public class ServerControllerAddFilesTests : IClassFixture<NoMercyApiFactory>, I
                 }
             );
         await ctx.SaveChangesAsync();
+
+        ctx.Libraries.Add(
+            new Library
+            {
+                Id = _tvLibraryId,
+                Title = "Manual Shows",
+                Type = "tv",
+            }
+        );
+        ctx.Tvs.Add(
+            new Tv
+            {
+                Id = HeldShowId,
+                Title = "Held Show",
+                LibraryId = _tvLibraryId,
+            }
+        );
+        ctx.Seasons.Add(
+            new Season
+            {
+                Id = HeldSeasonId,
+                TvId = HeldShowId,
+                SeasonNumber = 1,
+            }
+        );
+        ctx.Episodes.Add(
+            new Episode
+            {
+                Id = HeldEpisodeId,
+                TvId = HeldShowId,
+                SeasonId = HeldSeasonId,
+                SeasonNumber = 1,
+                EpisodeNumber = 1,
+            }
+        );
+        await ctx.SaveChangesAsync();
     }
 
     private static readonly int[] HeldMovieIds = [910001, 910002, 920001, 920002];
+    private const int HeldShowId = 940001;
+    private const int HeldSeasonId = 940002;
+    private const int HeldEpisodeId = 940003;
 
     public async Task DisposeAsync()
     {
         await using MediaContext ctx = new();
+        await ctx.Episodes.Where(e => e.Id == HeldEpisodeId).ExecuteDeleteAsync();
+        await ctx.Seasons.Where(s => s.Id == HeldSeasonId).ExecuteDeleteAsync();
+        await ctx.Tvs.Where(t => t.Id == HeldShowId).ExecuteDeleteAsync();
         await ctx.Movies.Where(m => HeldMovieIds.Contains(m.Id)).ExecuteDeleteAsync();
         await ctx
-            .Libraries.Where(l => l.Id == _autoEncodeLibraryId || l.Id == _manualLibraryId)
+            .Libraries.Where(l =>
+                l.Id == _autoEncodeLibraryId || l.Id == _manualLibraryId || l.Id == _tvLibraryId
+            )
             .ExecuteDeleteAsync();
     }
 
@@ -169,6 +215,145 @@ public class ServerControllerAddFilesTests : IClassFixture<NoMercyApiFactory>, I
         payloads.Should().ContainSingle();
         payloads[0].Should().Contain("MovieImportJob").And.Contain("Example.Movie.2026.mkv");
         payloads[0].Should().NotContain("VideoEncodeJob");
+    }
+
+    // #656: the picker sends id 0 for a file it found no match for.
+    [Theory]
+    [InlineData("0")]
+    [InlineData("")]
+    [InlineData("-5")]
+    [InlineData("no-match")]
+    public async Task AddFiles_MovieFileWithoutAMatch_IsNotQueuedAndTheMatchedFileStillIs(
+        string unmatchedId
+    )
+    {
+        object body = new
+        {
+            library_id = _manualLibraryId.ToString(),
+            folder_id = _folderId.ToString(),
+            source_driver_id = (string?)null,
+            files = new[]
+            {
+                new { path = "manual/Held Movie.mkv", id = "910001" },
+                new { path = "manual/Unmatched Home Video.mkv", id = unmatchedId },
+            },
+        };
+
+        HttpResponseMessage response = await _authed.PostAsync(
+            "/api/v1/dashboard/server/addfiles",
+            JsonBody(body)
+        );
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        List<string> payloads = QueryPayloadsContaining(_manualLibraryId.ToString());
+
+        payloads.Should().ContainSingle("only the matched file is queued");
+        payloads[0].Should().Contain("VideoEncodeJob").And.Contain("Held Movie.mkv");
+        payloads
+            .Should()
+            .NotContain(
+                p => p.Contains("Unmatched Home Video"),
+                "a file without a match has no movie to import or encode against"
+            );
+    }
+
+    [Fact]
+    public async Task AddFiles_ShowFileWithoutAMatch_IsNotQueuedAndTheMatchedFileStillIs()
+    {
+        object body = new
+        {
+            library_id = _tvLibraryId.ToString(),
+            folder_id = _folderId.ToString(),
+            source_driver_id = (string?)null,
+            files = new[]
+            {
+                new { path = "manual/Held Show - S01E01.mkv", id = HeldEpisodeId.ToString() },
+                new { path = "manual/Unmatched Home Video.mkv", id = "0" },
+            },
+        };
+
+        HttpResponseMessage response = await _authed.PostAsync(
+            "/api/v1/dashboard/server/addfiles",
+            JsonBody(body)
+        );
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        List<string> payloads = QueryPayloadsContaining(_tvLibraryId.ToString());
+
+        payloads.Should().ContainSingle("only the matched file is queued");
+        payloads[0].Should().Contain("VideoEncodeJob").And.Contain("Held Show - S01E01.mkv");
+        payloads
+            .Should()
+            .NotContain(
+                p => p.Contains("Unmatched Home Video"),
+                "a file without a match has no episode to import or encode against"
+            );
+    }
+
+    // The [tmdb-N] hint names the show, so the locator needs no search.
+    [Fact]
+    public async Task AddFiles_ShowFileWithoutAnIdWhoseNameNamesTheShow_QueuesAShowImport()
+    {
+        object body = new
+        {
+            library_id = _tvLibraryId.ToString(),
+            folder_id = _folderId.ToString(),
+            source_driver_id = (string?)null,
+            files = new[]
+            {
+                new { path = "manual/[tmdb-950001]Example Show - S01E02.mkv", id = "0" },
+            },
+        };
+
+        HttpResponseMessage response = await _authed.PostAsync(
+            "/api/v1/dashboard/server/addfiles",
+            JsonBody(body)
+        );
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        List<string> payloads = QueryPayloadsContaining(_tvLibraryId.ToString());
+
+        payloads.Should().ContainSingle("the show is found from the file name");
+        payloads[0].Should().Contain("ShowImportJob").And.Contain("Example Show - S01E02.mkv");
+        payloads[0].Should().NotContain("VideoEncodeJob");
+    }
+
+    [Fact]
+    public async Task AddFiles_TwoShowFilesWithoutAnIdForDifferentEpisodes_AreBothKept()
+    {
+        object body = new
+        {
+            library_id = _tvLibraryId.ToString(),
+            folder_id = _folderId.ToString(),
+            source_driver_id = (string?)null,
+            files = new[]
+            {
+                new { path = "manual/[tmdb-950001]Example Show - S01E02.mkv", id = "0" },
+                new { path = "manual/[tmdb-950001]Example Show - S01E03.mkv", id = "0" },
+            },
+        };
+
+        HttpResponseMessage response = await _authed.PostAsync(
+            "/api/v1/dashboard/server/addfiles",
+            JsonBody(body)
+        );
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        List<string> payloads = QueryPayloadsContaining(_tvLibraryId.ToString());
+
+        payloads.Should().ContainSingle("one import carries every file of the show");
+        payloads[0]
+            .Should()
+            .Contain("ShowImportJob")
+            .And.Contain("Example Show - S01E02.mkv")
+            .And.Contain(
+                "Example Show - S01E03.mkv",
+                "two files without an id are two episodes, not one episode claimed twice"
+            );
     }
 
     [Fact]

@@ -471,6 +471,48 @@ public class QueueProcessorTests
             logged.Should().ContainSingle(entry => entry.Message.Contains(url));
     }
 
+    [Fact]
+    public async Task Queue_UnexpectedFailure_LogsTheUrlBeforeTheCallerSeesTheFailure()
+    {
+        string url = $"ordered-{Guid.NewGuid():N}";
+        using ManualResetEventSlim callAssigned = new();
+        Task<int>? call = null;
+        bool? callerSawTheFailureFirst = null;
+        void Capture(LogEntry entry)
+        {
+            if (entry.Message.Contains(url))
+                callerSawTheFailureFirst = call!.IsCompleted;
+        }
+
+        Logger.LogEmitted += Capture;
+        try
+        {
+            ProviderQueue queue = new(new() { Concurrent = 1, Interval = 1 });
+
+            // Off the xunit context the caller resumes inline on the queue thread,
+            // so the order of "log" and "fail the caller" is the same on every run.
+            await Task.Run(async () =>
+            {
+                call = queue.Enqueue<int>(
+                    () =>
+                    {
+                        callAssigned.Wait(TimeSpan.FromSeconds(10));
+                        throw new InvalidOperationException("boom");
+                    },
+                    url
+                );
+                callAssigned.Set();
+                await Assert.ThrowsAsync<InvalidOperationException>(() => call);
+            });
+        }
+        finally
+        {
+            Logger.LogEmitted -= Capture;
+        }
+
+        callerSawTheFailureFirst.Should().BeFalse();
+    }
+
     private sealed class StubHandler(Func<HttpResponseMessage> send) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(

@@ -69,7 +69,7 @@ public class LibrariesController(
         if (!AuthPolicy.IsAllowed(User))
             return UnauthorizedResponse("You do not have permission to view libraries");
 
-        IEnumerable<Library> libraries = await libraryRepository.GetLibraries(userId);
+        IEnumerable<Library> libraries = await libraryRepository.GetDashboardLibraries(userId);
 
         return Ok(
             new LibrariesDto

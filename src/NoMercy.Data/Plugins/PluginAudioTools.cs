@@ -104,6 +104,9 @@ public sealed class PluginAudioTools(
     /// </summary>
     internal TimeSpan ShortestStallLimit { get; init; } = PluginAudioRunLimits.ShortestStall;
 
+    /// <summary>The clock a render's limits and its exit grace period count on.</summary>
+    internal TimeProvider Clock { get; init; } = TimeProvider.System;
+
     /// <summary>The derived store's own scratch folder; its eviction sweep also cleans it.</summary>
     private const string TempFolder = "tmp";
 
@@ -376,7 +379,7 @@ public sealed class PluginAudioTools(
                 RunTimeout,
                 ShortestStallLimit
             );
-            using PluginAudioRunWatch watch = new(limits);
+            using PluginAudioRunWatch watch = new(limits, Clock);
             using CancellationTokenSource pastQuota = new();
             using CancellationTokenSource endRun = CancellationTokenSource.CreateLinkedTokenSource(
                 ct,
@@ -924,7 +927,11 @@ public sealed class PluginAudioTools(
         // caller cannot remove because ffmpeg still holds them open. The
         // kill signal ends the process at once, and the cancellation path
         // then only waits for a process that is already on its way out.
-        CancellationTokenSource killCts = CancellationTokenSource.CreateLinkedTokenSource(endRun);
+        CancellationTokenSource graceCts = new(Timeout.InfiniteTimeSpan, Clock);
+        CancellationTokenSource killCts = CancellationTokenSource.CreateLinkedTokenSource(
+            endRun,
+            graceCts.Token
+        );
         bool finishedItsOutputs = false;
 
         // Read after the run, where both mean the same thing: the grace
@@ -947,7 +954,7 @@ public sealed class PluginAudioTools(
                     ExitGracePeriod.TotalSeconds
                 );
                 finishedItsOutputs = true;
-                killCts.CancelAfter(ExitGracePeriod);
+                graceCts.CancelAfter(ExitGracePeriod);
             }
         }
 
@@ -1019,6 +1026,7 @@ public sealed class PluginAudioTools(
             }
 
             killCts.Dispose();
+            graceCts.Dispose();
         }
     }
 
