@@ -136,6 +136,27 @@ public class PluginBrowserHostTests
     }
 
     [Fact]
+    public async Task ThePageServerKeepsServingAfterAClientDropsItsConnection()
+    {
+        // Chrome opens spare connections and drops them; the next page load
+        // must still be answered, and disposing the server must not throw.
+        LocalPageServer server = new();
+        using (TcpClient dropped = new())
+        {
+            await dropped.ConnectAsync(IPAddress.Loopback, server.Page.Port);
+            // Half a request, then a reset: the server is mid-read when it dies.
+            await dropped.GetStream().WriteAsync(Encoding.ASCII.GetBytes("GET / HTTP/1.1\r\n"));
+            dropped.LingerState = new(true, 0);
+        }
+
+        using HttpClient http = new() { Timeout = TimeSpan.FromSeconds(10) };
+        string page = await http.GetStringAsync(server.Page);
+
+        page.Should().Contain("solver-ready");
+        server.Invoking(s => s.Dispose()).Should().NotThrow();
+    }
+
+    [Fact]
     public void ChromesStderrTailKeepsOnlyTheLastTwentyLines()
     {
         string path = Path.Combine(Path.GetTempPath(), "nomercy-stderr-" + Ulid.NewUlid());
@@ -297,26 +318,35 @@ public class PluginBrowserHostTests
                 while (!_stop.IsCancellationRequested)
                 {
                     using TcpClient client = await _listener.AcceptTcpClientAsync(_stop.Token);
-                    await using NetworkStream stream = client.GetStream();
-                    using StreamReader reader = new(stream, Encoding.ASCII, leaveOpen: true);
-                    string? first = await reader.ReadLineAsync(_stop.Token);
-                    string? line;
-                    while (!string.IsNullOrEmpty(line = await reader.ReadLineAsync(_stop.Token)))
-                    { }
-
-                    bool data = first?.Contains(" /data ", StringComparison.Ordinal) == true;
-                    string body = data
-                        ? "{\"ok\":true}"
-                        : "<html><body><main>solver-ready</main></body></html>";
-                    byte[] bytes = Encoding.UTF8.GetBytes(body);
-                    string header =
-                        $"HTTP/1.1 200 OK\r\nContent-Type: {(data ? "application/json" : "text/html")}; charset=utf-8\r\nContent-Length: {bytes.Length}\r\nSet-Cookie: cf_clearance=test; Path=/\r\nConnection: close\r\n\r\n";
-                    await stream.WriteAsync(Encoding.ASCII.GetBytes(header), _stop.Token);
-                    await stream.WriteAsync(bytes, _stop.Token);
+                    try
+                    {
+                        await AnswerAsync(client);
+                    }
+                    // A client that drops its connection ends only that connection.
+                    catch (IOException) when (!_stop.IsCancellationRequested) { }
                 }
             }
             catch (OperationCanceledException) { }
             catch (SocketException) when (_stop.IsCancellationRequested) { }
+        }
+
+        private async Task AnswerAsync(TcpClient client)
+        {
+            await using NetworkStream stream = client.GetStream();
+            using StreamReader reader = new(stream, Encoding.ASCII, leaveOpen: true);
+            string? first = await reader.ReadLineAsync(_stop.Token);
+            string? line;
+            while (!string.IsNullOrEmpty(line = await reader.ReadLineAsync(_stop.Token))) { }
+
+            bool data = first?.Contains(" /data ", StringComparison.Ordinal) == true;
+            string body = data
+                ? "{\"ok\":true}"
+                : "<html><body><main>solver-ready</main></body></html>";
+            byte[] bytes = Encoding.UTF8.GetBytes(body);
+            string header =
+                $"HTTP/1.1 200 OK\r\nContent-Type: {(data ? "application/json" : "text/html")}; charset=utf-8\r\nContent-Length: {bytes.Length}\r\nSet-Cookie: cf_clearance=test; Path=/\r\nConnection: close\r\n\r\n";
+            await stream.WriteAsync(Encoding.ASCII.GetBytes(header), _stop.Token);
+            await stream.WriteAsync(bytes, _stop.Token);
         }
 
         public void Dispose()
