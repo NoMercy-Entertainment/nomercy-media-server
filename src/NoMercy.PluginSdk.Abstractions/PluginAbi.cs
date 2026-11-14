@@ -33,7 +33,10 @@ public static class PluginAbi
     // PluginLyricsText.IsComplete and AskAgainAfter (two init-only properties, so every
     // new PluginLyricsText(candidates) written before them still means a complete answer)
     // and PluginFilterGraphTokens.AlignModel (a new constant).
-    public static Version Current { get; } = new(12, 8);
+    // 12.9 added PluginIndexSignature, the optional signature fields of PluginRepositoryEntry
+    // and PluginVersionEntry, and an optional indexSignature parameter on
+    // IPluginManager.InstallPluginArchiveAsync (a default member no plugin calls).
+    public static Version Current { get; } = new(12, 9);
 
     /// <summary>
     /// The oldest major this server can load at all.
