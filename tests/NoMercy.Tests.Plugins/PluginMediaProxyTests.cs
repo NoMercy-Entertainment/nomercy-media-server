@@ -362,6 +362,39 @@ public class PluginMediaProxyTests
         body.Should().NotContain("#EXT-X-KEY", "the whole tag line goes with its refused address");
     }
 
+    // An orphan tag would give its duration or range to the next segment.
+    [Fact]
+    public async Task A_dropped_playlist_child_takes_its_segment_tags_with_it_Aud1059()
+    {
+        string body = await Rewritten(
+            Minter(),
+            new ListLogger(),
+            "#EXTM3U\n#EXT-X-DISCONTINUITY\n#EXT-X-PROGRAM-DATE-TIME:2026-01-01T00:00:00Z\n#EXTINF:4,\n#EXT-X-BYTERANGE:100@0\n#EXT-X-GAP\nhttps://cdn.example.com/seg1.ts\n#EXTINF:6,\nseg2.ts\n"
+        );
+
+        string[] lines = body.Split('\n');
+
+        lines.Should().HaveCount(5);
+        lines[..3].Should().Equal("#EXTM3U", "#EXT-X-DISCONTINUITY", "#EXTINF:6,");
+        lines[3].Should().StartWith($"/api/v1/plugins/{Radio}/media/");
+    }
+
+    [Fact]
+    public async Task A_dropped_variant_takes_its_stream_tag_with_it_Aud1059()
+    {
+        string body = await Rewritten(
+            Minter(),
+            new ListLogger(),
+            "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=800000\nhttps://cdn.example.com/low.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=2000000\nhigh.m3u8\n"
+        );
+
+        string[] lines = body.Split('\n');
+
+        lines.Should().HaveCount(4);
+        lines[..2].Should().Equal("#EXTM3U", "#EXT-X-STREAM-INF:BANDWIDTH=2000000");
+        lines[2].Should().StartWith($"/api/v1/plugins/{Radio}/media/");
+    }
+
     [Fact]
     public async Task Dropped_playlist_children_are_warned_about_once_per_playlist_Aud1059()
     {

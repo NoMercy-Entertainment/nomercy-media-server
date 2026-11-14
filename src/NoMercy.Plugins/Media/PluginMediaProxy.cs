@@ -65,6 +65,14 @@ public partial class PluginMediaProxy(
         "video/mp2t",
     ];
 
+    private static readonly string[] NextChildTags =
+    [
+        "#EXTINF:",
+        "#EXT-X-BYTERANGE:",
+        "#EXT-X-PROGRAM-DATE-TIME:",
+        "#EXT-X-STREAM-INF:",
+    ];
+
     private static readonly byte[] PlaylistMarker = "#EXTM3U"u8.ToArray();
 
     public static TimeSpan TicketLifetime { get; } = TimeSpan.FromMinutes(15);
@@ -464,10 +472,17 @@ public partial class PluginMediaProxy(
 
             // Dropped whole, never passed on: the raw line would hand the
             // client the upstream address this proxy exists to keep from it.
-            if (refused)
-                dropped++;
-            else
+            if (!refused)
+            {
                 rewritten.Add(written);
+                continue;
+            }
+
+            dropped++;
+
+            // An orphan tag would give its duration or range to the next child.
+            while (!trimmed.StartsWith('#') && rewritten.Count > 0 && IsForNextChild(rewritten[^1]))
+                rewritten.RemoveAt(rewritten.Count - 1);
         }
 
         if (dropped > 0)
@@ -485,6 +500,16 @@ public partial class PluginMediaProxy(
         response.Dispose();
 
         return new(status) { Content = new StringContent(text, Encoding.UTF8, mediaType) };
+    }
+
+    // Tags for the one address line after them (RFC 8216 4.3.2, 4.3.4.2).
+    // EXT-X-DISCONTINUITY, EXT-X-KEY and EXT-X-MAP reach past that line.
+    private static bool IsForNextChild(string line)
+    {
+        string tag = line.Trim();
+
+        return tag == "#EXT-X-GAP"
+            || NextChildTags.Any(name => tag.StartsWith(name, StringComparison.Ordinal));
     }
 
     /// <summary>
