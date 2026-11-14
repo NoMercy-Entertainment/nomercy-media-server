@@ -113,6 +113,27 @@ public class BufferAdaptiveServiceTests
         );
     }
 
+    // The drainer moves a pushed segment into the runtime on its own task; a
+    // sweep that runs before it sees no segment and skips every quality drop.
+    private static async Task PushBufferedSegmentAsync(
+        LiveStreamingService streamingService,
+        LiveSession session,
+        Segment segment
+    )
+    {
+        session.PushSegment(segment);
+        streamingService
+            .TryGetRuntime(session.SessionId, out LiveRuntimeSession runtime)
+            .Should()
+            .BeTrue();
+        DateTime deadline = DateTime.UtcNow.AddSeconds(10);
+        while (runtime.HighestSegmentIndex < segment.Index && DateTime.UtcNow < deadline)
+            await Task.Delay(5);
+        runtime
+            .HighestSegmentIndex.Should()
+            .BeGreaterThanOrEqualTo(segment.Index, "the drainer buffers the pushed segment");
+    }
+
     private static BufferAdaptiveService BuildService(
         ILiveStreamingService streamingService,
         ILiveQualitySelector? qualitySelector = null,
@@ -151,7 +172,11 @@ public class BufferAdaptiveServiceTests
         streamingService.Register(session, TimeSpan.FromSeconds(4));
 
         // Simulate 40 s transcoded, 0 s reported — buffer = 40 s (above suspend threshold of 30)
-        session.PushSegment(new(0, TimeSpan.Zero, TimeSpan.FromSeconds(40), "/tmp/seg0.ts", 1000));
+        await PushBufferedSegmentAsync(
+            streamingService,
+            session,
+            new(0, TimeSpan.Zero, TimeSpan.FromSeconds(40), "/tmp/seg0.ts", 1000)
+        );
 
         BufferAdaptiveService service = BuildService(streamingService);
 
@@ -174,13 +199,19 @@ public class BufferAdaptiveServiceTests
         streamingService.Register(session, TimeSpan.FromSeconds(4));
 
         // Simulate 10 s transcoded, 0 s reported — buffer = 10 s (below resume threshold of 15)
-        session.PushSegment(new(0, TimeSpan.Zero, TimeSpan.FromSeconds(10), "/tmp/seg0.ts", 1000));
+        await PushBufferedSegmentAsync(
+            streamingService,
+            session,
+            new(0, TimeSpan.Zero, TimeSpan.FromSeconds(10), "/tmp/seg0.ts", 1000)
+        );
 
-        bool runnerSpawned = false;
+        TaskCompletionSource runnerSpawned = new(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
         session.AttachRunnerFactory(
             (_, _) =>
             {
-                runnerSpawned = true;
+                runnerSpawned.TrySetResult();
                 return Task.CompletedTask;
             }
         );
@@ -189,11 +220,9 @@ public class BufferAdaptiveServiceTests
 
         await service.EvaluateAllAsync(CancellationToken.None);
 
-        // State flips synchronously; the fire-and-forget runner needs a moment.
-        await Task.Delay(100);
-
         session.State.Should().Be(LiveSessionState.Transcoding);
-        runnerSpawned.Should().BeTrue();
+        // The runner starts on its own task; wait for it, not for a fixed time.
+        await runnerSpawned.Task.WaitAsync(TimeSpan.FromSeconds(10));
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -219,7 +248,11 @@ public class BufferAdaptiveServiceTests
         );
 
         // Simulate 4 s of buffer — triggers DropQuality (below 5 s threshold)
-        session.PushSegment(new(0, TimeSpan.Zero, TimeSpan.FromSeconds(4), "/tmp/seg0.ts", 1000));
+        await PushBufferedSegmentAsync(
+            streamingService,
+            session,
+            new(0, TimeSpan.Zero, TimeSpan.FromSeconds(4), "/tmp/seg0.ts", 1000)
+        );
         // Report 0 position so BufferAhead = 4 s
 
         Mock<ILiveQualitySelector> selectorMock = new();
@@ -257,7 +290,11 @@ public class BufferAdaptiveServiceTests
         streamingService.Register(session, TimeSpan.FromSeconds(4));
 
         // 20 s buffered — within the healthy range
-        session.PushSegment(new(0, TimeSpan.Zero, TimeSpan.FromSeconds(20), "/tmp/seg0.ts", 1000));
+        await PushBufferedSegmentAsync(
+            streamingService,
+            session,
+            new(0, TimeSpan.Zero, TimeSpan.FromSeconds(20), "/tmp/seg0.ts", 1000)
+        );
 
         BufferAdaptiveService service = BuildService(streamingService);
 
@@ -280,7 +317,11 @@ public class BufferAdaptiveServiceTests
         streamingService.Register(session, TimeSpan.FromSeconds(4));
 
         // Mark as complete so it drains
-        session.PushSegment(new(0, TimeSpan.Zero, TimeSpan.FromSeconds(40), "/tmp/seg0.ts", 1000));
+        await PushBufferedSegmentAsync(
+            streamingService,
+            session,
+            new(0, TimeSpan.Zero, TimeSpan.FromSeconds(40), "/tmp/seg0.ts", 1000)
+        );
         session.Complete();
 
         if (streamingService.TryGetRuntime(session.SessionId, out LiveRuntimeSession runtime))
@@ -355,7 +396,11 @@ public class BufferAdaptiveServiceTests
 
         // Encoder-lead buffer is 40 s — above SuspendAboveSeconds (30) — so the
         // encoder-capacity axis alone would suspend this session.
-        session.PushSegment(new(0, TimeSpan.Zero, TimeSpan.FromSeconds(40), "/tmp/seg0.ts", 1000));
+        await PushBufferedSegmentAsync(
+            streamingService,
+            session,
+            new(0, TimeSpan.Zero, TimeSpan.FromSeconds(40), "/tmp/seg0.ts", 1000)
+        );
 
         // Fresh client health: healthy download buffer (not near-stall) but a
         // downlink that only fits the lowest tier.
@@ -371,7 +416,6 @@ public class BufferAdaptiveServiceTests
         BufferAdaptiveService service = BuildService(streamingService, selectorMock.Object);
 
         await service.EvaluateAllAsync(CancellationToken.None);
-        await Task.Delay(50);
 
         session.CurrentQuality.Id.Should().Be("480p");
         session.State.Should().NotBe(LiveSessionState.Buffered);
@@ -403,7 +447,11 @@ public class BufferAdaptiveServiceTests
 
         // Encoder-lead buffer is healthy (15 s) — the encoder-capacity axis
         // would not act on its own.
-        session.PushSegment(new(0, TimeSpan.Zero, TimeSpan.FromSeconds(15), "/tmp/seg0.ts", 1000));
+        await PushBufferedSegmentAsync(
+            streamingService,
+            session,
+            new(0, TimeSpan.Zero, TimeSpan.FromSeconds(15), "/tmp/seg0.ts", 1000)
+        );
 
         // Client's download buffer is draining toward a stall (below the 2 s
         // default emergency threshold) — bandwidth itself is irrelevant here.
@@ -419,7 +467,6 @@ public class BufferAdaptiveServiceTests
         BufferAdaptiveService service = BuildService(streamingService, selectorMock.Object);
 
         await service.EvaluateAllAsync(CancellationToken.None);
-        await Task.Delay(50);
 
         session.CurrentQuality.Id.Should().Be("480p");
     }
@@ -449,7 +496,11 @@ public class BufferAdaptiveServiceTests
         );
 
         // Encoder-lead buffer stays in the healthy "no action" band across sweeps.
-        session.PushSegment(new(0, TimeSpan.Zero, TimeSpan.FromSeconds(15), "/tmp/seg0.ts", 1000));
+        await PushBufferedSegmentAsync(
+            streamingService,
+            session,
+            new(0, TimeSpan.Zero, TimeSpan.FromSeconds(15), "/tmp/seg0.ts", 1000)
+        );
 
         // Downlink comfortably fits the top tier and the client buffer is
         // healthy — sustained across every sweep below.
@@ -475,7 +526,6 @@ public class BufferAdaptiveServiceTests
         // Third consecutive eligible sweep meets the hysteresis count — raises
         // exactly ONE tier up (720p), not straight to the bandwidth-fitting 1080p.
         await service.EvaluateAllAsync(CancellationToken.None);
-        await Task.Delay(50);
         session.CurrentQuality.Id.Should().Be("720p");
     }
 
@@ -497,7 +547,11 @@ public class BufferAdaptiveServiceTests
         // Old client never calls ReportClientBufferHealth — ClientBufferedAhead
         // and ObservedBandwidthKbps stay at their defaults, and
         // HasFreshClientHealth stays false, exactly as for a pre-upgrade client.
-        session.PushSegment(new(0, TimeSpan.Zero, TimeSpan.FromSeconds(40), "/tmp/seg0.ts", 1000));
+        await PushBufferedSegmentAsync(
+            streamingService,
+            session,
+            new(0, TimeSpan.Zero, TimeSpan.FromSeconds(40), "/tmp/seg0.ts", 1000)
+        );
 
         BufferAdaptiveService service = BuildService(streamingService);
 
@@ -520,7 +574,11 @@ public class BufferAdaptiveServiceTests
         session.ReportClientBufferHealth(TimeSpan.FromSeconds(1), 1000);
         await Task.Delay(50);
 
-        session.PushSegment(new(0, TimeSpan.Zero, TimeSpan.FromSeconds(40), "/tmp/seg0.ts", 1000));
+        await PushBufferedSegmentAsync(
+            streamingService,
+            session,
+            new(0, TimeSpan.Zero, TimeSpan.FromSeconds(40), "/tmp/seg0.ts", 1000)
+        );
 
         LiveSessionLimits limits = new();
         limits.Buffer.ClientHealthStalenessSeconds = 0;
