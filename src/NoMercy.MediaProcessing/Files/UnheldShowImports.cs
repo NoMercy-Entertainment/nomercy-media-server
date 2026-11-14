@@ -63,7 +63,13 @@ public static class UnheldShowImports
 
             if (!unheld.TryGetValue(located.Value.ShowId, out List<EncodeAfterImportFile>? group))
                 unheld[located.Value.ShowId] = group = [];
-            group.Add(file);
+            group.Add(
+                file with
+                {
+                    SeasonNumber = located.Value.Season,
+                    EpisodeNumber = located.Value.Episode,
+                }
+            );
         }
 
         foreach ((int showId, List<EncodeAfterImportFile> group) in unheld)
