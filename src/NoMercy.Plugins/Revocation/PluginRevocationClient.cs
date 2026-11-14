@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Globalization;
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using NoMercy.PluginSdk.Verification;
@@ -46,7 +47,18 @@ public class PluginRevocationClient(
                 return;
             }
 
-            store.Save(list!);
+            if (list!.IssuedAt < store.Current.IssuedAt)
+            {
+                logger.LogWarning(
+                    "Plugin revocations: the list was issued {Offered}, before the one on this server ({Held}), so it was not saved.",
+                    list.IssuedAt.ToString("O", CultureInfo.InvariantCulture),
+                    store.Current.IssuedAt.ToString("O", CultureInfo.InvariantCulture)
+                );
+
+                return;
+            }
+
+            store.Save(list);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {

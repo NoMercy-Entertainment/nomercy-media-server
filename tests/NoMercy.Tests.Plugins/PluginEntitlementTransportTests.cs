@@ -246,6 +246,31 @@ public class PluginEntitlementTransportTests : IDisposable
     }
 
     [Fact]
+    public void An_older_signed_bundle_does_not_replace_the_newer_one_Aud1061()
+    {
+        PluginEntitlementStore store = new(_folder);
+        DateTimeOffset newer = new(2026, 9, 25, 11, 0, 0, TimeSpan.Zero);
+        store.Save(new(Ulid.Parse(ServerId), newer, newer.AddDays(1), []));
+
+        Client(store).Accept(Body()).Should().BeFalse();
+
+        store.Current.IssuedAt.Should().Be(newer);
+        store.Current.Entitlements.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_bundle_issued_at_the_same_time_as_the_stored_one_still_saves()
+    {
+        PluginEntitlementStore store = new(_folder);
+        DateTimeOffset same = new(2026, 9, 20, 11, 0, 0, TimeSpan.Zero);
+        store.Save(new(Ulid.Parse(ServerId), same, same.AddDays(1), []));
+
+        Client(store).Accept(Body()).Should().BeTrue();
+
+        store.Current.Entitlements.Should().ContainSingle();
+    }
+
+    [Fact]
     public void A_saved_bundle_is_read_back_by_a_server_that_starts_offline()
     {
         PluginEntitlementStore written = new(_folder);
