@@ -33,7 +33,7 @@ public static class PluginHttpClientFactory
         // the user agent stamped on the way past.
         PluginUserAgentHandler userAgent = new(pluginId, pluginName, pluginVersion)
         {
-            InnerHandler = new SocketsHttpHandler(),
+            InnerHandler = new SocketsHttpHandler { AllowAutoRedirect = false },
         };
 
         PluginNetworkAllowlistHandler handler = new(hosts, grantedHosts)

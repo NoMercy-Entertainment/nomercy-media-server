@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Net;
 using System.Text.RegularExpressions;
 using NoMercy.PluginSdk.Capabilities;
 
@@ -68,15 +69,91 @@ public class PluginNetworkAllowlistHandler : DelegatingHandler
         return PluginScopeGlob.AnyMatches(granted, host);
     }
 
-    protected override Task<HttpResponseMessage> SendAsync(
+    private const int MaxRedirects = 10;
+
+    // Redirects are followed here, not by the socket handler, so every hop
+    // passes the same host check as the first request.
+    protected override async Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request,
         CancellationToken cancellationToken
     )
     {
-        string host = request.RequestUri?.Host ?? string.Empty;
-        if (!IsAllowed(host))
-            throw new PluginNetworkDeniedException(host);
+        HttpRequestMessage current = request;
+        for (int hop = 0; ; hop++)
+        {
+            string host = current.RequestUri?.Host ?? string.Empty;
+            if (!IsAllowed(host))
+                throw new PluginNetworkDeniedException(host);
 
-        return base.SendAsync(request, cancellationToken);
+            HttpResponseMessage response = await base.SendAsync(current, cancellationToken);
+            response.RequestMessage = current;
+
+            if (!IsRedirect(response.StatusCode) || response.Headers.Location is not { } location)
+                return response;
+
+            if (hop >= MaxRedirects)
+            {
+                response.Dispose();
+                throw new HttpRequestException($"Too many redirects (limit {MaxRedirects}).");
+            }
+
+            Uri target = location.IsAbsoluteUri ? location : new(current.RequestUri!, location);
+            current = Follow(current, response.StatusCode, target);
+            response.Dispose();
+        }
+    }
+
+    private static bool IsRedirect(HttpStatusCode status) =>
+        status
+            is HttpStatusCode.MovedPermanently
+                or HttpStatusCode.Found
+                or HttpStatusCode.SeeOther
+                or HttpStatusCode.TemporaryRedirect
+                or HttpStatusCode.PermanentRedirect;
+
+    private static HttpRequestMessage Follow(
+        HttpRequestMessage previous,
+        HttpStatusCode status,
+        Uri target
+    )
+    {
+        bool toGet =
+            status == HttpStatusCode.SeeOther
+            || (
+                status is HttpStatusCode.MovedPermanently or HttpStatusCode.Found
+                && previous.Method == HttpMethod.Post
+            );
+        bool hostChanged = !string.Equals(
+            previous.RequestUri?.Host,
+            target.Host,
+            StringComparison.OrdinalIgnoreCase
+        );
+
+        HttpRequestMessage next = new(toGet ? HttpMethod.Get : previous.Method, target)
+        {
+            Version = previous.Version,
+            VersionPolicy = previous.VersionPolicy,
+        };
+        if (!toGet)
+            next.Content = previous.Content;
+
+        foreach (KeyValuePair<string, IEnumerable<string>> header in previous.Headers)
+        {
+            if (
+                hostChanged
+                && (
+                    header.Key.Equals("Authorization", StringComparison.OrdinalIgnoreCase)
+                    || header.Key.Equals("Cookie", StringComparison.OrdinalIgnoreCase)
+                )
+            )
+                continue;
+
+            next.Headers.TryAddWithoutValidation(header.Key, header.Value);
+        }
+
+        foreach (KeyValuePair<string, object?> option in previous.Options)
+            next.Options.Set(new(option.Key), option.Value);
+
+        return next;
     }
 }
