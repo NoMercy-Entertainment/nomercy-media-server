@@ -301,9 +301,19 @@ public partial class ServerController(
             // gates only the automatic file-watcher path (AutoEncodeSubscriber),
             // never this manual import. A configured EncodePresetId narrows the
             // encode to that one preset; a null value keeps the folder's presets.
+
+            // A file without a match has no movie or episode to import or encode against.
+            ILookup<bool, AddFile> byMatch = request.Files.ToLookup(file =>
+                int.TryParse(file.Id, out int id) && id > 0
+            );
+            List<string> unmatched =
+            [
+                .. byMatch[false].Select(file => Path.GetFileName(file.Path)),
+            ];
+
             // One file per episode: see EpisodeClaims for why a declared episode wins.
             (List<AddFile> selected, List<string> collided) = EpisodeClaims.PickOnePerEpisode(
-                request.Files,
+                byMatch[true],
                 file => $"{file.Id}",
                 file => file.Path
             );
@@ -397,6 +407,15 @@ public partial class ServerController(
                     "Add files: {Count} file(s) skipped because another selected file already claimed the same episode — {Files}",
                     collided.Count,
                     string.Join(", ", collided)
+                );
+            }
+
+            if (unmatched.Count > 0)
+            {
+                logger.LogWarning(
+                    "Add files: {Count} file(s) skipped because they have no match — {Files}",
+                    unmatched.Count,
+                    string.Join(", ", unmatched)
                 );
             }
 
