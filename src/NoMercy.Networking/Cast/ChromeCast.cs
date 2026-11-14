@@ -905,13 +905,50 @@ public class ChromeCastService : IChromeCastService
         int requestId = Interlocked.Increment(ref _androidLaunchRequestId);
         await SendLaunchAsync(client, requestId, BuildStopJson(requestId, staleSession));
 
-        for (int waited = 0; waited < 3000; waited += 250)
+        await WaitForReceiverStatusAsync(
+            client,
+            status => FindNoMercySessionId(status) is null,
+            3000
+        );
+    }
+
+    // Plain GET_STATUS sends, replies read from ReceiverStatusChanged: awaiting
+    // GetChromecastStatusAsync right after a LAUNCH timed out on a real TV (2026-11-14).
+    private async Task<ChromecastStatus?> WaitForReceiverStatusAsync(
+        ChromecastClient client,
+        Func<ChromecastStatus?, bool> done,
+        int timeoutMs
+    )
+    {
+        ChromecastStatus? latest = client.ChromecastStatus;
+        if (done(latest))
+            return latest;
+
+        EventHandler<ChromecastStatus> onStatus = (_, status) => latest = status;
+        client.ReceiverChannel.ReceiverStatusChanged += onStatus;
+        try
         {
-            await Task.Delay(250);
-            await client.ReceiverChannel.GetChromecastStatusAsync();
-            if (FindNoMercySessionId(client.ChromecastStatus) is null)
-                return;
+            for (int waited = 0; waited < timeoutMs; waited += 500)
+            {
+                int requestId = Interlocked.Increment(ref _androidLaunchRequestId);
+                await SendLaunchAsync(
+                    client,
+                    requestId,
+                    JsonConvert.SerializeObject(new { type = "GET_STATUS", requestId })
+                );
+                await Task.Delay(500);
+                if (done(latest))
+                    return latest;
+                if (done(client.ChromecastStatus))
+                    return client.ChromecastStatus;
+            }
         }
+        finally
+        {
+            client.ReceiverChannel.ReceiverStatusChanged -= onStatus;
+        }
+
+        return null;
     }
 
     // CAF gives a web receiver no LAUNCH customData, so the launch data follows on our own namespace.
@@ -921,13 +958,12 @@ public class ChromeCastService : IChromeCastService
         string target
     )
     {
-        string? transport = null;
-        for (int waited = 0; transport is null && waited < 15000; waited += 500)
-        {
-            await Task.Delay(500);
-            await client.ReceiverChannel.GetChromecastStatusAsync();
-            transport = FindHandoverTransport(client.ChromecastStatus);
-        }
+        ChromecastStatus? ready = await WaitForReceiverStatusAsync(
+            client,
+            status => FindHandoverTransport(status) is not null,
+            15000
+        );
+        string? transport = FindHandoverTransport(ready);
 
         if (transport is null)
         {
