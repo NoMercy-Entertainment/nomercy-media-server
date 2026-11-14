@@ -426,24 +426,57 @@ public partial class PluginMediaProxy(
     {
         Uri baseUri = response.RequestMessage?.RequestUri ?? address;
 
-        IEnumerable<string> rewritten = body.Split('\n')
-            .Select(line =>
-            {
-                string trimmed = line.Trim();
+        // One answer per host for the whole playlist: a thousand segments on
+        // one refused host are one refusal, not a thousand.
+        Dictionary<string, bool> hosts = new(StringComparer.OrdinalIgnoreCase);
+        List<string> rewritten = [];
+        int dropped = 0;
 
-                if (trimmed.Length == 0)
-                    return line;
+        foreach (string line in body.Split('\n'))
+        {
+            string trimmed = line.Trim();
+            bool refused = false;
+            string written = line;
 
-                if (trimmed.StartsWith('#'))
-                    return UriAttribute()
-                        .Replace(
-                            line,
-                            match =>
-                                $"URI=\"{ChildTicket(request, answered, baseUri, match.Groups[1].Value) ?? match.Groups[1].Value}\""
-                        );
+            if (trimmed.StartsWith('#'))
+                written = UriAttribute()
+                    .Replace(
+                        line,
+                        match =>
+                        {
+                            string reference = match.Groups[1].Value;
+                            string? ticket = ChildTicket(
+                                request,
+                                answered,
+                                baseUri,
+                                reference,
+                                hosts,
+                                out bool outside
+                            );
+                            refused |= outside;
 
-                return ChildTicket(request, answered, baseUri, trimmed) ?? line;
-            });
+                            return $"URI=\"{ticket ?? reference}\"";
+                        }
+                    );
+            else if (trimmed.Length > 0)
+                written =
+                    ChildTicket(request, answered, baseUri, trimmed, hosts, out refused) ?? line;
+
+            // Dropped whole, never passed on: the raw line would hand the
+            // client the upstream address this proxy exists to keep from it.
+            if (refused)
+                dropped++;
+            else
+                rewritten.Add(written);
+        }
+
+        if (dropped > 0)
+            logger.LogWarning(
+                "Plugin {PluginId}: dropped {Dropped} playlist line(s) naming a host outside its media.proxy scope: {Hosts}.",
+                pluginId,
+                dropped,
+                string.Join(", ", hosts.Where(host => !host.Value).Select(host => host.Key))
+            );
 
         string text = string.Join('\n', rewritten);
         HttpStatusCode status = response.StatusCode;
@@ -460,18 +493,36 @@ public partial class PluginMediaProxy(
     /// http or https address, such as a FairPlay skd:// key or a data: URI,
     /// which the server has nothing to fetch for and leaves as it is.
     /// </summary>
+    /// <param name="refused">The host is outside the media.proxy scope (AUD-1059).</param>
     private string? ChildTicket(
         PluginProxyRequest request,
         PluginProxyLink answered,
         Uri baseUri,
-        string reference
+        string reference,
+        Dictionary<string, bool> hosts,
+        out bool refused
     )
     {
+        refused = false;
+
         if (!Uri.TryCreate(baseUri, reference, out Uri? resolved))
             return null;
 
         if (resolved.Scheme != Uri.UriSchemeHttp && resolved.Scheme != Uri.UriSchemeHttps)
             return null;
+
+        if (!hosts.TryGetValue(resolved.Host, out bool inScope))
+        {
+            inScope =
+                broker.Check(pluginId, PluginCapabilityNames.MediaProxy, resolved.Host) is null;
+            hosts[resolved.Host] = inScope;
+        }
+
+        if (!inScope)
+        {
+            refused = true;
+            return null;
+        }
 
         PluginProxyRequest child = request with
         {
