@@ -51,7 +51,9 @@ public class PluginRepositoryController(
     IPluginManager pluginManager,
     IStorageDriver storageDriver,
     IHttpClientFactory httpClientFactory,
-    PluginDependencyResolver dependencies
+    PluginDependencyResolver dependencies,
+    IPluginRepositoryOrigin origin,
+    IPluginRepositoryInstaller installer
 ) : BaseController
 {
     [HttpGet]
@@ -193,6 +195,10 @@ public class PluginRepositoryController(
         if (entry is null)
             return NotFoundResponse("No repository offers this plugin");
 
+        // Read with the entry, before the download: a refresh replaces the
+        // entries, and the rule belongs to the one this install uses.
+        bool fromOfficialMarketplace = origin.IsFromOfficialMarketplace(entry);
+
         // AUD-1046: the name becomes the staged file and the installed plugin
         // name. Refused, never cleaned: a cleaned name is a different plugin.
         if (!IsPlainFileName(entry.Name))
@@ -251,12 +257,12 @@ public class PluginRepositoryController(
             // The checksum the catalogue published, enforced before anything is
             // copied into the plugins folder. A repository that publishes none
             // installs unverified, and the dashboard says so before you pick it.
-            await pluginManager.InstallPluginArchiveAsync(
+            await installer.InstallFromRepositoryAsync(
                 stagedPath,
                 target.Checksum,
-                ct,
-                fromMarketplace: true,
-                indexSignature: PluginIndexSignature.From(entry, target)
+                PluginIndexSignature.From(entry, target),
+                fromOfficialMarketplace,
+                ct
             );
         }
         // Not a failure: the new version is unpacked and verified, and the next

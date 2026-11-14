@@ -36,7 +36,8 @@ public class PluginVerifier : IPluginVerifier
         string? expectedChecksum,
         string? packagePath = null,
         bool fromMarketplace = false,
-        PluginIndexSignature? indexSignature = null
+        PluginIndexSignature? indexSignature = null,
+        bool fromOfficialMarketplace = false
     )
     {
         PluginVerificationContext context = new()
@@ -48,6 +49,7 @@ public class PluginVerifier : IPluginVerifier
             Signature = manifest.Signature,
             IndexSignature = indexSignature,
             FromMarketplace = fromMarketplace,
+            FromOfficialMarketplace = fromOfficialMarketplace,
         };
 
         List<string> failures = [];

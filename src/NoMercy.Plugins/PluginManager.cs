@@ -28,7 +28,11 @@ using NoMercy.Storage;
 
 namespace NoMercy.PluginSdk;
 
-public class PluginManager : IPluginManager, IPluginRevocationEnforcer, IDisposable
+public class PluginManager
+    : IPluginManager,
+        IPluginRevocationEnforcer,
+        IPluginRepositoryInstaller,
+        IDisposable
 {
     private readonly IEventBus _eventBus;
     private readonly IServiceProvider _serviceProvider;
@@ -380,13 +384,49 @@ public class PluginManager : IPluginManager, IPluginRevocationEnforcer, IDisposa
     /// <summary>Suffix a backed-up assembly carries while an update is in flight.</summary>
     internal const string RollbackSuffix = ".rollback";
 
-    public async Task InstallPluginArchiveAsync(
+    public Task InstallPluginArchiveAsync(
         string archivePath,
         string? expectedChecksum = null,
         CancellationToken ct = default,
         bool fromMarketplace = false,
         Guid? forUser = null,
         PluginIndexSignature? indexSignature = null
+    ) =>
+        InstallArchiveAsync(
+            archivePath,
+            expectedChecksum,
+            fromMarketplace,
+            forUser,
+            indexSignature,
+            fromOfficialMarketplace: false,
+            ct
+        );
+
+    public Task InstallFromRepositoryAsync(
+        string archivePath,
+        string? expectedChecksum,
+        PluginIndexSignature? indexSignature,
+        bool fromOfficialMarketplace,
+        CancellationToken ct = default
+    ) =>
+        InstallArchiveAsync(
+            archivePath,
+            expectedChecksum,
+            fromMarketplace: true,
+            forUser: null,
+            indexSignature,
+            fromOfficialMarketplace,
+            ct
+        );
+
+    private async Task InstallArchiveAsync(
+        string archivePath,
+        string? expectedChecksum,
+        bool fromMarketplace,
+        Guid? forUser,
+        PluginIndexSignature? indexSignature,
+        bool fromOfficialMarketplace,
+        CancellationToken ct
     )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(archivePath);
@@ -424,7 +464,8 @@ public class PluginManager : IPluginManager, IPluginRevocationEnforcer, IDisposa
             expectedChecksum: null,
             packagePath: fullPath,
             fromMarketplace: fromMarketplace,
-            indexSignature: indexSignature
+            indexSignature: indexSignature,
+            fromOfficialMarketplace: fromOfficialMarketplace
         );
 
         if (!signature.Verified)

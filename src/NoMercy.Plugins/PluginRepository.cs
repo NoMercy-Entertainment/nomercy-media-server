@@ -16,7 +16,7 @@ using NoMercy.Storage;
 
 namespace NoMercy.PluginSdk;
 
-public class PluginRepository : IPluginRepository
+public class PluginRepository : IPluginRepository, IPluginRepositoryOrigin
 {
     private readonly HttpClient _httpClient;
     private readonly ILogger _logger;
@@ -246,6 +246,25 @@ public class PluginRepository : IPluginRepository
         lock (_lock)
         {
             return _trustedPluginIds.Contains(pluginId);
+        }
+    }
+
+    // By instance: the same id listed by another repository is another entry.
+    public bool IsFromOfficialMarketplace(PluginRepositoryEntry entry)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+
+        lock (_lock)
+        {
+            return _repositories.Any(repository =>
+                repository.Enabled
+                && repository.Url == DefaultRepositoryUrl
+                && _pluginsByRepository.TryGetValue(
+                    repository.Name,
+                    out List<PluginRepositoryEntry>? plugins
+                )
+                && plugins.Any(listed => ReferenceEquals(listed, entry))
+            );
         }
     }
 

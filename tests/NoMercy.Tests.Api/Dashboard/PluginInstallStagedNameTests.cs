@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Moq;
 using NoMercy.Api.Controllers.V1.Dashboard.Plugins;
+using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Capabilities;
 using NoMercy.PluginSdk.Dependencies;
@@ -83,10 +84,22 @@ public class PluginInstallStagedNameTests
     {
         public List<string> OpenedForWrite { get; } = [];
         public Mock<IPluginManager> Manager { get; } = new();
+        public Mock<IPluginRepositoryInstaller> Installer { get; } = new();
         public PluginRepositoryController Controller { get; }
 
-        public Harness(string entryName, string downloadUrl = "https://example.com/a.zip")
+        public Harness(
+            string entryName,
+            string downloadUrl = "https://example.com/a.zip",
+            bool listedByTheOfficialMarketplace = false
+        )
         {
+            Mock<IPluginRepositoryOrigin> origin = new();
+            origin
+                .Setup(source =>
+                    source.IsFromOfficialMarketplace(It.IsAny<PluginRepositoryEntry>())
+                )
+                .Returns(listedByTheOfficialMarketplace);
+
             // CallBase keeps the interface's own CombinePath, the join under test.
             Mock<IStorageDriver> storage = new() { CallBase = true };
             storage
@@ -110,7 +123,9 @@ public class PluginInstallStagedNameTests
                 Manager.Object,
                 storage.Object,
                 http.Object,
-                new(new PluginRepositoryCatalogue(repository), Mock.Of<IPluginManifestSource>())
+                new(new PluginRepositoryCatalogue(repository), Mock.Of<IPluginManifestSource>()),
+                origin.Object,
+                Installer.Object
             )
             {
                 ControllerContext = new() { HttpContext = new DefaultHttpContext() },
@@ -139,7 +154,7 @@ public class PluginInstallStagedNameTests
         ObjectResult problem = result.Should().BeOfType<ObjectResult>().Subject;
         problem.StatusCode.Should().Be(422);
         ((ProblemDetails)problem.Value!).Detail.Should().Contain("not a plain file name");
-        harness.Manager.Invocations.Should().BeEmpty();
+        harness.Installer.Invocations.Should().BeEmpty();
     }
 
     [Theory]
@@ -160,15 +175,41 @@ public class PluginInstallStagedNameTests
         result.Should().BeOfType<OkObjectResult>();
         string staged = harness.OpenedForWrite.Should().ContainSingle().Subject;
         staged.Should().EndWith("/Example.Plugin.zip");
-        harness.Manager.Verify(
-            manager =>
-                manager.InstallPluginArchiveAsync(
+        harness.Installer.Verify(
+            installer =>
+                installer.InstallFromRepositoryAsync(
                     staged,
                     null,
-                    It.IsAny<CancellationToken>(),
-                    true,
-                    It.IsAny<Guid?>(),
-                    It.IsAny<PluginIndexSignature?>()
+                    It.IsAny<PluginIndexSignature?>(),
+                    false,
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Once
+        );
+    }
+
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task The_install_carries_whether_the_official_marketplace_listed_the_entry(
+        bool listedByTheOfficialMarketplace
+    )
+    {
+        Harness harness = new(
+            "Example.Plugin",
+            listedByTheOfficialMarketplace: listedByTheOfficialMarketplace
+        );
+
+        await harness.Controller.Install(EntryId, version: null, CancellationToken.None);
+
+        harness.Installer.Verify(
+            installer =>
+                installer.InstallFromRepositoryAsync(
+                    It.IsAny<string>(),
+                    null,
+                    It.IsAny<PluginIndexSignature?>(),
+                    listedByTheOfficialMarketplace,
+                    It.IsAny<CancellationToken>()
                 ),
             Times.Once
         );
@@ -191,6 +232,6 @@ public class PluginInstallStagedNameTests
         ObjectResult problem = result.Should().BeOfType<ObjectResult>().Subject;
         problem.StatusCode.Should().Be(422);
         ((ProblemDetails)problem.Value!).Detail.Should().Contain(".zip");
-        harness.Manager.Invocations.Should().BeEmpty();
+        harness.Installer.Invocations.Should().BeEmpty();
     }
 }
