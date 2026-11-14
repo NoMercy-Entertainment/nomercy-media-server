@@ -22,7 +22,10 @@ namespace NoMercy.Tests.Encoder.Output;
 
 public sealed class EncodeOutputValidatorTests : IDisposable
 {
-    private readonly string _root = Path.Combine(Path.GetTempPath(), $"nm-validate-{Guid.NewGuid():N}");
+    private readonly string _root = Path.Combine(
+        Path.GetTempPath(),
+        $"nm-validate-{Guid.NewGuid():N}"
+    );
 
     public EncodeOutputValidatorTests() => Directory.CreateDirectory(_root);
 
@@ -132,6 +135,28 @@ public sealed class EncodeOutputValidatorTests : IDisposable
     }
 
     [Fact]
+    public void TruncationMessage_UsesTheInvariantCulture()
+    {
+        Write("video_a/video_a.m3u8", Media);
+        System.Globalization.CultureInfo previous = Thread.CurrentThread.CurrentCulture;
+        Thread.CurrentThread.CurrentCulture = new("nl-NL");
+        try
+        {
+            IReadOnlyList<string> problems = EncodeOutputValidator.ValidateDurations(_root, 7450);
+
+            problems
+                .Should()
+                .ContainSingle()
+                .Which.Should()
+                .Contain("lasts 12.0 s, the source lasts 7450.0 s");
+        }
+        finally
+        {
+            Thread.CurrentThread.CurrentCulture = previous;
+        }
+    }
+
+    [Fact]
     public void FullLengthRenditionsAndSubtitles_HaveNoDurationProblems()
     {
         Write("video_a/video_a.m3u8", Media);
@@ -150,7 +175,10 @@ public sealed class EncodeOutputValidatorTests : IDisposable
         File.WriteAllText(Path.Combine(tempDir, "video.m3u8"), Media);
         File.WriteAllBytes(Path.Combine(tempDir, "seg0.ts"), new byte[100]);
 
-        IStorage storage = new LocalStorage(new LocalStorageDriver(), new([], new LocalStorageDriver()));
+        IStorage storage = new LocalStorage(
+            new LocalStorageDriver(),
+            new([], new LocalStorageDriver())
+        );
         EncodingOrchestrator orchestrator = new(
             new Mock<IStrategyResolver>().Object,
             storage,
@@ -158,7 +186,8 @@ public sealed class EncodeOutputValidatorTests : IDisposable
             NullLogger<EncodingOrchestrator>.Instance
         );
 
-        Func<Task> publish = () => orchestrator.PublishTempDirAsync(tempDir, library, storage, null, default);
+        Func<Task> publish = () =>
+            orchestrator.PublishTempDirAsync(tempDir, library, storage, null, default);
 
         await publish.Should().ThrowAsync<InvalidDataException>();
         Directory.Exists(library).Should().BeFalse();

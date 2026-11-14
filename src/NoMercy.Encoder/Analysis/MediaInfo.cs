@@ -53,9 +53,13 @@ public record MediaInfo(
     // (see .claude/specs/reconstruction-blueprint/SPEC.md). Null when the
     // caller constructs MediaInfo without going through the analyzer (unit
     // tests using minimal stubs).
-    JObject? Ffprobe = null
+    JObject? Ffprobe = null,
+    // Length of the video stream itself. Duration is the container's, which ends
+    // with its longest stream (audio or subtitles can run past the video, #647).
+    TimeSpan? VideoDuration = null
 )
 {
+    public TimeSpan EncodedVideoDuration => VideoDuration ?? Duration;
     public IReadOnlyList<AttachmentInfo> Attachments { get; init; } = Attachments ?? [];
     public bool HasVideo => VideoStreams.Count > 0;
     public bool HasAudio => AudioStreams.Count > 0;

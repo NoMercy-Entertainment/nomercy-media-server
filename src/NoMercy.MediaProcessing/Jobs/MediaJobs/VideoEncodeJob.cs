@@ -1016,13 +1016,7 @@ public class VideoEncodeJob
         // never retries it), which makes it safe to delete the shared
         // tempDir here instead of leaving it for the boot-only orphan
         // sweeper to eventually reclaim.
-        string relativeOutputPath = (fileMetadata.Path ?? string.Empty)
-            .Replace('\\', '/')
-            .Trim('/');
-        string tempDir = Path.Combine(
-            StoragePaths.TranscodeRoot,
-            relativeOutputPath.Replace('/', Path.DirectorySeparatorChar)
-        );
+        string tempDir = EncoderTempDirectory.Resolve(fileMetadata.Path);
 
         if (failedCount > 0)
         {

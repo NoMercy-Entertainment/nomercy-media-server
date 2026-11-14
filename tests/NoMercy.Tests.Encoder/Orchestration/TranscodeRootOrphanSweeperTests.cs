@@ -32,9 +32,24 @@ public class TranscodeRootOrphanSweeperTests : IDisposable
     private static IStorage MakeStorage() =>
         new LocalStorage(new LocalStorageDriver(), new([], new LocalStorageDriver()));
 
+    private sealed class FakeOwners(params string[] owned) : IEncoderTempDirectoryOwners
+    {
+        public Task<IReadOnlyCollection<string>> GetOwnedTempDirectoriesAsync(
+            CancellationToken ct
+        ) => Task.FromResult<IReadOnlyCollection<string>>(owned);
+    }
+
+    private sealed class ThrowingOwners : IEncoderTempDirectoryOwners
+    {
+        public Task<IReadOnlyCollection<string>> GetOwnedTempDirectoriesAsync(
+            CancellationToken ct
+        ) => throw new InvalidOperationException("queue database unavailable");
+    }
+
     private TranscodeRootOrphanSweeper BuildSweeper(
         bool sweepAllChildren,
-        TimeSpan? minOrphanAge = null
+        TimeSpan? minOrphanAge = null,
+        IEncoderTempDirectoryOwners? owners = null
     ) =>
         new(
             NullLogger<TranscodeRootOrphanSweeper>.Instance,
@@ -45,7 +60,8 @@ public class TranscodeRootOrphanSweeperTests : IDisposable
             // on prefix/pattern selection and write their fixture files immediately
             // before StartAsync runs, so any positive grace window would make every
             // one of them look "recent" and never reach the delete branch at all.
-            minOrphanAge ?? TimeSpan.Zero
+            minOrphanAge ?? TimeSpan.Zero,
+            owners
         );
 
     [Fact]
@@ -123,6 +139,60 @@ public class TranscodeRootOrphanSweeperTests : IDisposable
             .Exists(liveShow)
             .Should()
             .BeTrue("a directory written to inside the grace window is not an orphan");
+    }
+
+    [Fact]
+    public async Task StartAsync_DirOwnedByAQueuedJob_SurvivesTheSweep()
+    {
+        // A queued job whose ffmpeg has not written for over an hour (waiting, or
+        // suspended by the throttle) still owns its folder: the mtime grace alone
+        // would delete it.
+        Directory.CreateDirectory(_root);
+        string ownedShow = Path.Combine(_root, "Frieren.(2023)");
+        string ownedEpisode = Path.Combine(ownedShow, "Frieren.S01E01");
+        string unownedShow = Path.Combine(_root, "Crashed.Show.(2020)");
+        Directory.CreateDirectory(ownedEpisode);
+        Directory.CreateDirectory(unownedShow);
+        string ownedFile = Path.Combine(ownedEpisode, "video_00000.ts");
+        string unownedFile = Path.Combine(unownedShow, "video_00000.ts");
+        await File.WriteAllTextAsync(ownedFile, "segment");
+        await File.WriteAllTextAsync(unownedFile, "segment");
+        File.SetLastWriteTimeUtc(ownedFile, DateTime.UtcNow - TimeSpan.FromHours(1));
+        File.SetLastWriteTimeUtc(unownedFile, DateTime.UtcNow - TimeSpan.FromHours(1));
+
+        TranscodeRootOrphanSweeper sweeper = BuildSweeper(
+            sweepAllChildren: true,
+            minOrphanAge: TimeSpan.FromMinutes(15),
+            owners: new FakeOwners(ownedEpisode)
+        );
+        await sweeper.StartAsync(CancellationToken.None);
+
+        Directory.Exists(ownedEpisode).Should().BeTrue("a queued job owns this folder");
+        File.Exists(ownedFile).Should().BeTrue();
+        Directory.Exists(unownedShow).Should().BeFalse("no job owns it and it is stale");
+    }
+
+    [Fact]
+    public async Task StartAsync_OwnerLookupFails_KeepsEveryDir()
+    {
+        Directory.CreateDirectory(_root);
+        string staleShow = Path.Combine(_root, "Crashed.Show.(2020)");
+        Directory.CreateDirectory(staleShow);
+        string staleFile = Path.Combine(staleShow, "video_00000.ts");
+        await File.WriteAllTextAsync(staleFile, "segment");
+        File.SetLastWriteTimeUtc(staleFile, DateTime.UtcNow - TimeSpan.FromHours(1));
+
+        TranscodeRootOrphanSweeper sweeper = BuildSweeper(
+            sweepAllChildren: true,
+            minOrphanAge: TimeSpan.FromMinutes(15),
+            owners: new ThrowingOwners()
+        );
+        await sweeper.StartAsync(CancellationToken.None);
+
+        Directory
+            .Exists(staleShow)
+            .Should()
+            .BeTrue("without the queue's answer the sweep cannot tell an orphan from a live job");
     }
 
     [Fact]
