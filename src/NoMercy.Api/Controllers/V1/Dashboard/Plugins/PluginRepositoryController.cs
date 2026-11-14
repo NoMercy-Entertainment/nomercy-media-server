@@ -256,7 +256,8 @@ public class PluginRepositoryController(
                     stagedPath,
                     target.Checksum,
                     ct,
-                    fromMarketplace: true
+                    fromMarketplace: true,
+                    indexSignature: PluginIndexSignature.From(entry, target)
                 );
             else
                 await pluginManager.InstallPluginAsync(stagedPath, target.Checksum, ct);

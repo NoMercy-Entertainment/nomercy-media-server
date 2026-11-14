@@ -31,11 +31,13 @@ public interface IPluginVerifier
     /// file in themselves. Signatures are enforced only for the first: the
     /// second is the owner's own decision about their own server.
     /// </param>
+    /// <param name="indexSignature">The index's signature; checked instead of the manifest's.</param>
     PluginVerificationResult Verify(
         PluginManifest manifest,
         string assemblyPath,
         string? expectedChecksum,
         string? packagePath = null,
-        bool fromMarketplace = false
+        bool fromMarketplace = false,
+        PluginIndexSignature? indexSignature = null
     );
 }

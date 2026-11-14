@@ -385,7 +385,8 @@ public class PluginManager : IPluginManager, IPluginRevocationEnforcer, IDisposa
         string? expectedChecksum = null,
         CancellationToken ct = default,
         bool fromMarketplace = false,
-        Guid? forUser = null
+        Guid? forUser = null,
+        PluginIndexSignature? indexSignature = null
     )
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(archivePath);
@@ -422,7 +423,8 @@ public class PluginManager : IPluginManager, IPluginRevocationEnforcer, IDisposa
             _storage.CombinePath(fullPath, manifest.AssemblyFileName),
             expectedChecksum: null,
             packagePath: fullPath,
-            fromMarketplace: fromMarketplace
+            fromMarketplace: fromMarketplace,
+            indexSignature: indexSignature
         );
 
         if (!signature.Verified)

@@ -9,6 +9,9 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Text;
+using NoMercy.PluginSdk.Abstractions;
+
 namespace NoMercy.PluginSdk.Verification;
 
 /// <summary>
@@ -75,6 +78,9 @@ public class SignatureVerificationStage(
                 "This server holds no publisher keys yet, so the signature was not checked."
             );
 
+        if (context.IndexSignature is { } index)
+            return CheckIndex(context, index);
+
         if (context.Signature is null)
             return (
                 PluginStageOutcome.Fail,
@@ -112,5 +118,61 @@ public class SignatureVerificationStage(
                 PluginStageOutcome.Fail,
                 "The signature does not match the package. Either the file changed after it was signed, or it was not signed by the key it names."
             );
+    }
+
+    // The signed subject holds the sha256, so the package is tied to the
+    // signature through that hash rather than through its own bytes.
+    private (PluginStageOutcome Outcome, string? Message) CheckIndex(
+        PluginVerificationContext context,
+        PluginIndexSignature index
+    )
+    {
+        if (MissingField(index) is { } missing)
+            return (
+                PluginStageOutcome.Fail,
+                $"The repository index signs this version but leaves out {missing}, which is part of what was signed, so the signature cannot be checked. Refresh the repositories; if it stays this way the repository has to publish {missing}."
+            );
+
+        string? publicKey = trustedKeys.Find(index.KeyId!);
+
+        if (publicKey is null)
+            return (
+                PluginStageOutcome.Fail,
+                $"The signature names key {index.KeyId}, which this server does not trust. A key it has never seen is not a key it can vouch for."
+            );
+
+        if (context.PackagePath is null || !File.Exists(context.PackagePath))
+            return (PluginStageOutcome.Fail, "There is no package to check the signature against.");
+
+        byte[] subject = Encoding.UTF8.GetBytes(PluginSignatureSubject.Build(index));
+
+        if (!PluginEd25519.Verify(subject, index.Signature, publicKey))
+            return (
+                PluginStageOutcome.Fail,
+                "The signature in the repository index does not match what the index says about this version. Its id, version, checksum, publisher, tier or capabilities changed after it was signed, or it was not signed by the key it names. Refresh the repositories and install again."
+            );
+
+        string actual = PluginPackageChecksum.Of(context.PackagePath);
+
+        return string.Equals(actual, index.Sha256!.Trim(), StringComparison.OrdinalIgnoreCase)
+            ? (PluginStageOutcome.Pass, null)
+            : (
+                PluginStageOutcome.Fail,
+                $"The downloaded package is not the one that was signed. It hashes to {actual} and the signed sha256 is {index.Sha256.Trim()}. Install it again; if it still differs, the repository is serving a different file than it signed."
+            );
+    }
+
+    private static string? MissingField(PluginIndexSignature index)
+    {
+        if (string.IsNullOrWhiteSpace(index.KeyId))
+            return "kid";
+        if (string.IsNullOrWhiteSpace(index.PublisherId))
+            return "publisherId";
+        if (string.IsNullOrWhiteSpace(index.Tier))
+            return "tier";
+        if (string.IsNullOrWhiteSpace(index.Sha256))
+            return "checksum";
+
+        return null;
     }
 }

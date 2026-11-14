@@ -38,6 +38,10 @@ public class PluginRepositoryEntry
     [JsonPropertyName("tier")]
     public PluginTier Tier { get; init; } = PluginTier.Free;
 
+    /// <summary>The publisher's id, which the signature covers; a display name can change.</summary>
+    [JsonPropertyName("publisherId")]
+    public string? PublisherId { get; init; }
+
     [JsonPropertyName("versions")]
     public required List<PluginVersionEntry> Versions { get; init; }
 }
@@ -69,4 +73,15 @@ public class PluginVersionEntry
     /// </summary>
     [JsonPropertyName("dependencies")]
     public List<PluginDependency> Dependencies { get; init; } = [];
+
+    /// <summary>The marketplace's base64 signature over this version's canonical subject.</summary>
+    [JsonPropertyName("signature")]
+    public string? Signature { get; init; }
+
+    [JsonPropertyName("kid")]
+    public string? KeyId { get; init; }
+
+    /// <summary>What the marketplace signed off for this version, in its order.</summary>
+    [JsonPropertyName("capabilities")]
+    public List<string> Capabilities { get; init; } = [];
 }
