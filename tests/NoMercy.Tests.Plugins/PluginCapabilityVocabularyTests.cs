@@ -20,7 +20,7 @@ public class PluginCapabilityVocabularyTests
     [Fact]
     public void All_CarriesEveryCapability()
     {
-        PluginCapabilityVocabulary.All.Should().HaveCount(54);
+        PluginCapabilityVocabulary.All.Should().HaveCount(55);
     }
 
     [Fact]

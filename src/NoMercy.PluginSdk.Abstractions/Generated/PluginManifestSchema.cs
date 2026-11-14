@@ -154,6 +154,7 @@ public static class PluginManifestSchema
                     "audio.tools",
                     "music.analysis.read",
                     "music.analysis.write",
+                    "lyrics.write",
                     "player.source",
                     "player.control",
                     "player.state",

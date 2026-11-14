@@ -27,6 +27,7 @@
   { "name": "audio.tools",           "scope": "(always)",         "trust": "low",    "reversible": true,  "facade": "IPluginContext.AudioTools",           "summary": "ffmpeg filter graphs and stem splitting" },
   { "name": "music.analysis.read",   "scope": "(always)",         "trust": "low",    "reversible": true,  "facade": "IPluginContext.Music",                "summary": "read the BPM, key and stems the server analyzed" },
   { "name": "music.analysis.write",  "scope": "(always)",         "trust": "low",    "reversible": true,  "facade": "IPluginContext.MusicAnalysisWriter",  "summary": "write DJ analysis and stems back to the server" },
+  { "name": "lyrics.write",          "scope": "(always)",         "trust": "low",    "reversible": true,  "facade": "IPluginContext.Lyrics",               "summary": "write generated lyric timings for a track" },
   { "name": "player.source",         "scope": "host glob",        "trust": "low",    "reversible": true,  "facade": "IPluginContext.Player.PlayAsync",     "summary": "play or enqueue a URL on the caller's player" },
   { "name": "player.control",        "scope": "(always)",         "trust": "low",    "reversible": true,  "facade": "IPluginContext.Player.Control",       "summary": "play, pause, skip, seek and volume on the caller's player" },
   { "name": "player.state",          "scope": "(always)",         "trust": "low",    "reversible": true,  "facade": "IPluginContext.Player.StateAsync",    "summary": "read what the caller is playing now" },

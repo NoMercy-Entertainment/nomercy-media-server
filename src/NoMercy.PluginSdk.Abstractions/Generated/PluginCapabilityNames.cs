@@ -44,6 +44,7 @@ public static class PluginCapabilityNames
     public const string AudioTools = "audio.tools";
     public const string MusicAnalysisRead = "music.analysis.read";
     public const string MusicAnalysisWrite = "music.analysis.write";
+    public const string LyricsWrite = "lyrics.write";
     public const string PlayerSource = "player.source";
     public const string PlayerControl = "player.control";
     public const string PlayerState = "player.state";
