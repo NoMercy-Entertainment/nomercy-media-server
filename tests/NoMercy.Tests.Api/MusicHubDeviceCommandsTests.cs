@@ -453,8 +453,7 @@ public class MusicHubDeviceCommandsTests : IClassFixture<NoMercyApiFactory>
         }
     }
 
-    // Grants the album's stored library, not MusicLibraryId: the fixture's album keeps
-    // its Library = new() default, so EF saves it under a separate library.
+    // Grants the seeded album's library to this test user.
     private static async Task GrantAlbumLibraryAsync(
         IDbContextFactory<MediaContext> contextFactory,
         Guid userId,

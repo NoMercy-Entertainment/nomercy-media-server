@@ -9,7 +9,9 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Diagnostics;
 using NoMercy.Encoder.Trailers;
+using NoMercy.MediaProcessing.Trailers;
 using Xunit;
 
 namespace NoMercy.Tests.Api.Media;
@@ -19,6 +21,49 @@ public class TrailerCommandBuilderTests
     private const string Ytdlp = "/opt/yt-dlp";
     private const string Ffmpeg = "/opt/ffmpeg";
     private const string TrailerId = "dQw4w9WgXcQ";
+
+    [Fact]
+    public void Build_IdStartingWithDash_IsOnlyPassedInsideWatchUrl()
+    {
+        const string optionShapedId = "--config-lo";
+
+        string command = TrailerCommandBuilder.Build(Ytdlp, Ffmpeg, optionShapedId, null);
+
+        command.Should().Contain(" https://youtube.com/watch?v=--config-lo ");
+        command.Should().NotContain(" --config-lo ");
+    }
+
+    [Fact]
+    public void CreateDownloadStartInfo_UsesDirectProcessesAndOnlyUrlContainsOptionShapedId()
+    {
+        const string optionShapedId = "--config-lo";
+        const string ytdlp = @"C:\Program Files\yt-dlp.exe";
+        const string ffmpeg = @"C:\Program Files\ffmpeg.exe";
+
+        TrailerCache.IsValidId(optionShapedId).Should().BeTrue();
+        (ProcessStartInfo ytdlpInfo, ProcessStartInfo ffmpegInfo) =
+            TrailerCache.CreateDownloadStartInfo(
+                ytdlp,
+                ffmpeg,
+                "trailer dir",
+                optionShapedId,
+                "en-US"
+            );
+
+        ytdlpInfo.FileName.Should().Be(ytdlp);
+        ffmpegInfo.FileName.Should().Be(ffmpeg);
+        ytdlpInfo.UseShellExecute.Should().BeFalse();
+        ffmpegInfo.UseShellExecute.Should().BeFalse();
+        ytdlpInfo.RedirectStandardOutput.Should().BeTrue();
+        ffmpegInfo.RedirectStandardInput.Should().BeTrue();
+        ytdlpInfo.ArgumentList.Should().Contain("https://youtube.com/watch?v=--config-lo");
+        ytdlpInfo.ArgumentList.Should().NotContain(optionShapedId);
+        ytdlpInfo
+            .ArgumentList.Should()
+            .ContainInOrder("-o", "subtitle:en-US.%(ext)s", "--sub-langs", "all", "--write-subs");
+        ffmpegInfo.ArgumentList.Should().ContainInOrder("-i", "pipe:", "-map", "0:0");
+        ffmpegInfo.ArgumentList.Should().EndWith("video.m3u8");
+    }
 
     [Fact]
     public void Build_MaliciousAcceptLanguage_IsNotInterpolatedIntoTheCommand()
