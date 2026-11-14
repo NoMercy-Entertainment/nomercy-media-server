@@ -14,6 +14,7 @@
 // ---------------------------------------------------------------------------------------------------------------------
 
 using System.Collections.Concurrent;
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 using NoMercy.Database;
@@ -71,21 +72,57 @@ public class ShowImportJob : AbstractMediaJob
     public List<EncodeAfterImportFile> EncodeAfterImport { get; set; } = [];
 
     /// <summary>Queues one encode per file carried by this import.</summary>
-    internal void DispatchEncodes(IJobDispatcher jobDispatcher)
+    internal void DispatchEncodes(
+        IJobDispatcher jobDispatcher,
+        IReadOnlyCollection<Episode> storedEpisodes
+    )
     {
         foreach (EncodeAfterImportFile file in EncodeAfterImport)
         {
+            string? episodeId = EpisodeIdOf(file, storedEpisodes);
+            if (episodeId is null)
+            {
+                Log.LogWarning(
+                    "[ShowImportJob] No stored episode for {InputFile} (show {ShowId}, season {Season}, episode {Episode}): no encode queued",
+                    file.InputFile,
+                    Id,
+                    file.SeasonNumber,
+                    file.EpisodeNumber
+                );
+                continue;
+            }
+
             VideoEncodeJob job = new()
             {
                 LibraryId = LibraryId,
                 FolderId = file.FolderId,
-                Id = file.Id,
+                Id = episodeId,
                 InputFile = file.InputFile,
                 SourceDriverId = file.SourceDriverId,
                 PresetId = file.PresetId,
             };
             jobDispatcher.Dispatch(job, job.QueueName, job.Priority);
         }
+    }
+
+    // A file placed by its name carries no episode id (the web sends "0"), so it takes
+    // the id of the episode this import stored for its season and episode number.
+    private static string? EpisodeIdOf(
+        EncodeAfterImportFile file,
+        IReadOnlyCollection<Episode> storedEpisodes
+    )
+    {
+        if (int.TryParse(file.Id, out int id) && id > 0)
+            return file.Id;
+        if (file.SeasonNumber is null || file.EpisodeNumber is null)
+            return null;
+
+        return storedEpisodes
+            .FirstOrDefault(episode =>
+                episode.SeasonNumber == file.SeasonNumber
+                && episode.EpisodeNumber == file.EpisodeNumber
+            )
+            ?.Id.ToString(CultureInfo.InvariantCulture);
     }
 
     private bool _addedToLibrary;
@@ -180,7 +217,7 @@ public class ShowImportJob : AbstractMediaJob
 
         jobDispatcher.DispatchJob<FileRescanJob>(Id, tvLibrary);
 
-        DispatchEncodes(jobDispatcher);
+        DispatchEncodes(jobDispatcher, episodes);
 
         if (EventBusProvider.IsConfigured)
         {

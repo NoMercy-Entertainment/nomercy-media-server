@@ -23,4 +23,8 @@ public record EncodeAfterImportFile
     public Ulid FolderId { get; set; }
     public Ulid? SourceDriverId { get; set; }
     public Ulid? PresetId { get; set; }
+
+    /// <summary>Set when the file was placed by its name; null in older queued payloads.</summary>
+    public int? SeasonNumber { get; set; }
+    public int? EpisodeNumber { get; set; }
 }
