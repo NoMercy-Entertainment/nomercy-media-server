@@ -945,6 +945,69 @@ public class PluginManagerTests : IDisposable
             Assembly = $"{Echo}.dll",
         };
 
+    // AUD-1248: the manifest names the plugin's folder and files by plain file names only.
+    [Theory]
+    [InlineData("...dll")]
+    [InlineData("..dll")]
+    [InlineData("../x.dll")]
+    public async Task InstallRefusesAManifestWhoseAssemblyIsNotAPlainFileName(string assembly)
+    {
+        string otherDir = Path.Combine(_tempPluginsDir, "Other");
+        Directory.CreateDirectory(otherDir);
+        string otherFile = Path.Combine(otherDir, "Other.dll");
+        await File.WriteAllTextAsync(otherFile, "other plugin");
+
+        string dll = CodeScanVerificationStageTests.SampleDllPath(Echo);
+        string path = Path.Combine(_tempPluginsDir, "..", $"bad-{Ulid.NewUlid()}.zip");
+        using (ZipArchive archive = ZipFile.Open(path, ZipArchiveMode.Create))
+        {
+            archive.CreateEntryFromFile(dll, "Bad/" + assembly.Replace("../", ""));
+            using StreamWriter manifest = new(archive.CreateEntry("Bad/plugin.json").Open());
+            manifest.Write(EchoManifest().Replace($"{Echo}.dll", assembly));
+        }
+
+        Func<Task> install = () => _manager.InstallPluginArchiveAsync(path);
+
+        await install.Should().ThrowAsync<PluginVerificationException>();
+        File.Exists(otherFile).Should().BeTrue("a refused install touches no other plugin");
+        File.ReadAllText(otherFile).Should().Be("other plugin");
+    }
+
+    [Fact]
+    public async Task TranslationsAreReadOnlyFromInsideThePluginFolder()
+    {
+        string outside = Path.Combine(_tempPluginsDir, "outside");
+        Directory.CreateDirectory(outside);
+        await File.WriteAllTextAsync(Path.Combine(outside, "en.json"), """{"k":"outside"}""");
+
+        string dll = CodeScanVerificationStageTests.SampleDllPath(Echo);
+        string path = Path.Combine(_tempPluginsDir, "..", $"tr-{Ulid.NewUlid()}.zip");
+        using (ZipArchive archive = ZipFile.Open(path, ZipArchiveMode.Create))
+        {
+            archive.CreateEntryFromFile(dll, $"Echo/{Echo}.dll");
+            using StreamWriter manifest = new(archive.CreateEntry("Echo/plugin.json").Open());
+            manifest.Write(
+                EchoManifest()
+                    .Replace(
+                        "\"autoEnabled\": true",
+                        "\"autoEnabled\": true, \"translations\": "
+                            + "{\"source\":\"en\",\"locales\":[\"en\"],\"path\":\"../outside\"}"
+                    )
+            );
+        }
+
+        await _manager.InstallPluginArchiveAsync(path);
+        PluginInfo installed = _manager.GetInstalledPlugins().Single();
+
+        Dictionary<string, string>? strings = await _manager.ReadTranslationsAsync(
+            installed.Id,
+            "en",
+            CancellationToken.None
+        );
+
+        strings.Should().BeNull("a translation path may not leave the plugin folder");
+    }
+
     [Fact]
     public async Task InstallWritesTheFileManifest()
     {

@@ -1136,7 +1136,22 @@ internal sealed class PluginLoader(
         if (manifest.Translations is null)
             return;
 
-        string directory = Path.Combine(pluginDir, manifest.Translations.Path);
+        // AUD-1248: a translation folder outside the plugin is never read; the
+        // plugin still loads, without its translations.
+        string directory = Path.GetFullPath(Path.Combine(pluginDir, manifest.Translations.Path));
+        string root = Path.GetFullPath(pluginDir).TrimEnd(Path.DirectorySeparatorChar);
+        if (
+            directory != root
+            && !directory.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+        )
+        {
+            _logger.LogWarning(
+                "Plugin manifest {ManifestPath} names a translation folder outside its plugin folder; translations are ignored.",
+                [manifestPath]
+            );
+            return;
+        }
+
         Dictionary<string, string?> files = new();
 
         foreach (

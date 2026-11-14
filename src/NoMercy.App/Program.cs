@@ -15,8 +15,6 @@ using InfiniFrame;
 using InfiniFrame.Js.MessageHandlers;
 using InfiniFrame.WebServer;
 using NoMercy.App.EmbeddedStaticAssets;
-using NoMercy.NmSystem.Auth;
-using NoMercy.Setup.Auth;
 
 namespace NoMercy.App;
 
@@ -105,74 +103,6 @@ internal class Program
         InfiniFrameWebApplication application = builder.Build();
 
         application.UseAutoServerClose();
-
-        // Add /sso-callback handler for PKCE browser flow (non-setup mode)
-        application.WebApp.Use(
-            async (context, next) =>
-            {
-                if (
-                    context.Request.Path.Value?.Equals(
-                        "/sso-callback",
-                        StringComparison.OrdinalIgnoreCase
-                    ) == true
-                )
-                {
-                    string? code = context.Request.Query["code"];
-                    string? state = context.Request.Query["state"];
-                    string? error = context.Request.Query["error"];
-                    string? errorDescription = context.Request.Query["error_description"];
-
-                    int port = context.Request.Host.Port ?? 7625;
-                    string redirectUri = $"http://localhost:{port}/sso-callback";
-
-                    if (!string.IsNullOrEmpty(error))
-                    {
-                        // The Keycloak callback carries attacker-controllable error /
-                        // error_description params; HTML-encode before reflecting them.
-                        string msg = !string.IsNullOrEmpty(errorDescription)
-                            ? $"Authorization failed: {System.Net.WebUtility.HtmlEncode(errorDescription)}"
-                            : $"Authorization failed: {System.Net.WebUtility.HtmlEncode(error)}";
-                        await context.Response.WriteAsync(
-                            $"<html><body><h2>Authorization Failed</h2><p>{msg}</p></body></html>"
-                        );
-                        return;
-                    }
-
-                    if (string.IsNullOrEmpty(code) || string.IsNullOrEmpty(state))
-                    {
-                        await context.Response.WriteAsync(
-                            "<html><body><h2>Missing code or state</h2></body></html>"
-                        );
-                        return;
-                    }
-
-                    // Use the DI container from the web app if possible, but this is a middleware.
-                    // For now, keep it simple as this is a separate process.
-                    // Actually, AuthManager might need to be resolved from DI.
-
-                    bool ok = await AuthManager.TryCompletePkceFromCallbackAsync(
-                        code,
-                        state,
-                        redirectUri,
-                        context.RequestServices.GetService<IAuthTokenStore>()
-                    );
-                    if (ok)
-                    {
-                        await context.Response.WriteAsync(
-                            "<html><body><h2>Authentication Successful</h2><p>You may close this tab.</p><script>try{window.close();}catch(e){}</script></body></html>"
-                        );
-                    }
-                    else
-                    {
-                        await context.Response.WriteAsync(
-                            "<html><body><h2>Authentication Failed</h2><p>Could not complete login. Please try again.</p></body></html>"
-                        );
-                    }
-                    return;
-                }
-                await next();
-            }
-        );
 
         // Use custom embedded static assets middleware with optimizations
         // (compression, caching, ETags) - replaces MapStaticAssets for embedded resources

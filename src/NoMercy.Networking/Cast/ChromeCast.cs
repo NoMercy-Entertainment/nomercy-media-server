@@ -686,6 +686,22 @@ public class ChromeCastService : IChromeCastService
             }
         }
 
+        if (!useAndroidReceiver)
+        {
+            try
+            {
+                await StopStaleNoMercySessionAsync(client, target);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogInformation(
+                    "Ending the old receiver session on {Target} failed: {Message}",
+                    target,
+                    ex.Message
+                );
+            }
+        }
+
         int requestId = Interlocked.Increment(ref _androidLaunchRequestId);
         string json = BuildLaunchJson(requestId, customData, useAndroidReceiver);
 
@@ -760,6 +776,9 @@ public class ChromeCastService : IChromeCastService
                 string retryJson = BuildLaunchJson(retryRequestId, customData, useAndroidReceiver);
                 await SendLaunchAsync(client, retryRequestId, retryJson);
             }
+
+            if (!useAndroidReceiver && customData is not null)
+                await HandOverLaunchDataAsync(client, customData, target);
         }
         catch (Exception ex)
         {
@@ -837,6 +856,138 @@ public class ChromeCastService : IChromeCastService
                 customData,
             };
         return JsonConvert.SerializeObject(payloadWithCustomData);
+    }
+
+    internal const string NoMercyAppId = "925B4C3C";
+    internal const string NoMercyGeneralNamespace = "urn:x-cast:tv.nomercy.app";
+
+    internal static string? FindNoMercySessionId(ChromecastStatus? status) =>
+        status
+            ?.Applications?.FirstOrDefault(app =>
+                string.Equals(app.AppId, NoMercyAppId, StringComparison.OrdinalIgnoreCase)
+            )
+            ?.SessionId;
+
+    // The page registers its namespaces in context.start(); a message sent before that is dropped.
+    internal static string? FindHandoverTransport(ChromecastStatus? status) =>
+        status
+            ?.Applications?.FirstOrDefault(app =>
+                string.Equals(app.AppId, NoMercyAppId, StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrEmpty(app.TransportId)
+                && app.Namespaces?.Any(ns => ns.Name == NoMercyGeneralNamespace) == true
+            )
+            ?.TransportId;
+
+    internal static string BuildStopJson(int requestId, string sessionId) =>
+        JsonConvert.SerializeObject(
+            new
+            {
+                type = "STOP",
+                requestId,
+                sessionId,
+            }
+        );
+
+    internal static string BuildLaunchHandoverJson(object customData) =>
+        JsonConvert.SerializeObject(new { launch = customData });
+
+    // A running NoMercy web receiver swallows a new LAUNCH (CAF ready fires once per page), so end it first.
+    private async Task StopStaleNoMercySessionAsync(ChromecastClient client, string target)
+    {
+        string? staleSession = FindNoMercySessionId(client.ChromecastStatus);
+        if (staleSession is null)
+            return;
+
+        _logger.LogInformation(
+            "Ending the running NoMercy receiver session on {Target} before a fresh launch",
+            target
+        );
+        int requestId = Interlocked.Increment(ref _androidLaunchRequestId);
+        await SendLaunchAsync(client, requestId, BuildStopJson(requestId, staleSession));
+
+        await WaitForReceiverStatusAsync(
+            client,
+            status => FindNoMercySessionId(status) is null,
+            3000
+        );
+    }
+
+    // Plain GET_STATUS sends, replies read from ReceiverStatusChanged: awaiting
+    // GetChromecastStatusAsync right after a LAUNCH timed out on a real TV (2026-11-14).
+    private async Task<ChromecastStatus?> WaitForReceiverStatusAsync(
+        ChromecastClient client,
+        Func<ChromecastStatus?, bool> done,
+        int timeoutMs
+    )
+    {
+        ChromecastStatus? latest = client.ChromecastStatus;
+        if (done(latest))
+            return latest;
+
+        EventHandler<ChromecastStatus> onStatus = (_, status) => latest = status;
+        client.ReceiverChannel.ReceiverStatusChanged += onStatus;
+        try
+        {
+            for (int waited = 0; waited < timeoutMs; waited += 500)
+            {
+                int requestId = Interlocked.Increment(ref _androidLaunchRequestId);
+                await SendLaunchAsync(
+                    client,
+                    requestId,
+                    JsonConvert.SerializeObject(new { type = "GET_STATUS", requestId })
+                );
+                await Task.Delay(500);
+                if (done(latest))
+                    return latest;
+                if (done(client.ChromecastStatus))
+                    return client.ChromecastStatus;
+            }
+        }
+        finally
+        {
+            client.ReceiverChannel.ReceiverStatusChanged -= onStatus;
+        }
+
+        return null;
+    }
+
+    // CAF gives a web receiver no LAUNCH customData, so the launch data follows on our own namespace.
+    private async Task HandOverLaunchDataAsync(
+        ChromecastClient client,
+        object customData,
+        string target
+    )
+    {
+        ChromecastStatus? ready = await WaitForReceiverStatusAsync(
+            client,
+            status => FindHandoverTransport(status) is not null,
+            15000
+        );
+        string? transport = FindHandoverTransport(ready);
+
+        if (transport is null)
+        {
+            _logger.LogInformation(
+                "Launch handover to {Target}: the receiver never listened on its namespace",
+                target
+            );
+            return;
+        }
+
+        // The overload with a request id waits up to 30 s for a reply; CONNECT and the handover get none.
+        await client.SendAsync(
+            logger: null,
+            ns: "urn:x-cast:com.google.cast.tp.connection",
+            messagePayload: JsonConvert.SerializeObject(new { type = "CONNECT" }),
+            destinationId: transport
+        );
+        await client.SendAsync(
+            logger: null,
+            ns: NoMercyGeneralNamespace,
+            messagePayload: BuildLaunchHandoverJson(customData),
+            destinationId: transport
+        );
+        _logger.LogInformation("Launch handover sent to {Target}", target);
     }
 
     private async Task SendLaunchAsync(ChromecastClient client, int requestId, string json)

@@ -1083,11 +1083,16 @@ public class PluginManager : IPluginManager, IPluginRevocationEnforcer, IDisposa
         using (Stream stream = entry.Open())
         using (StreamReader reader = new(stream))
         {
-            parsed =
-                PluginManifestParser.Parse(reader.ReadToEnd())
-                ?? throw new PluginVerificationException(
-                    $"Plugin archive has an unreadable plugin.json: {Path.GetFileName(archivePath)}"
+            try
+            {
+                parsed = PluginManifestParser.Parse(reader.ReadToEnd());
+            }
+            catch (Exception ex) when (ex is InvalidOperationException or JsonException)
+            {
+                throw new PluginVerificationException(
+                    $"Plugin archive has an unusable plugin.json ({Path.GetFileName(archivePath)}): {ex.Message}"
                 );
+            }
         }
 
         if (string.IsNullOrWhiteSpace(parsed.Assembly))
@@ -1582,6 +1587,21 @@ public class PluginManager : IPluginManager, IPluginRevocationEnforcer, IDisposa
         // language a plugin does not ship should read it in the language it was
         // written in, never in empty labels.
         string wanted = declared.Locales.Contains(locale) ? locale : declared.Source;
+
+        string fullRoot = Path.GetFullPath(root);
+        string localeFile = Path.GetFullPath(
+            _storage.CombinePath(_storage.CombinePath(root, declared.Path), $"{wanted}.json")
+        );
+        if (
+            !localeFile.StartsWith(fullRoot + Path.DirectorySeparatorChar, StringComparison.Ordinal)
+        )
+        {
+            _logger.LogWarning(
+                "Plugin {PluginId} names a translation file outside its folder; ignored.",
+                [pluginId]
+            );
+            return null;
+        }
 
         return await ReadLocaleFileAsync(_storage.CombinePath(root, declared.Path), wanted, ct);
     }

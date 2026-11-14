@@ -95,6 +95,34 @@ public class PluginManifestParserTests : IDisposable
         manifest.AutoEnabled.Should().BeTrue();
     }
 
+    [Theory]
+    [InlineData("..dll")]
+    [InlineData("...dll")]
+    [InlineData("../x.dll")]
+    [InlineData("..\\x.dll")]
+    [InlineData("sub/x.dll")]
+    [InlineData("x.exe")]
+    [InlineData(".dll")]
+    [InlineData("x.")]
+    public void Parse_AssemblyThatIsNotAPlainFileName_IsRefused(string assembly)
+    {
+        string json = CreateValidManifestJson(assembly: assembly);
+
+        Action parse = () => PluginManifestParser.Parse(json);
+
+        parse.Should().Throw<InvalidOperationException>().WithMessage("*assembly*");
+    }
+
+    [Fact]
+    public void Parse_PlainDllFileName_IsAccepted()
+    {
+        PluginManifest manifest = PluginManifestParser.Parse(
+            CreateValidManifestJson(assembly: "Example.Plugin.dll")
+        );
+
+        manifest.Assembly.Should().Be("Example.Plugin.dll");
+    }
+
     [Fact]
     public void Parse_IdWrittenAsAGuid_LoadsAsTheEquivalentUlid()
     {
