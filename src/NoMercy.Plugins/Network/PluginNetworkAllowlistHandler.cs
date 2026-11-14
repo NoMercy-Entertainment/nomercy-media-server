@@ -85,6 +85,7 @@ public class PluginNetworkAllowlistHandler : DelegatingHandler
             if (!IsAllowed(host))
                 throw new PluginNetworkDeniedException(host);
 
+            // Owned by the caller once returned; a redirect hop disposes it here.
             HttpResponseMessage response = await base.SendAsync(current, cancellationToken);
             response.RequestMessage = current;
 
@@ -104,8 +105,9 @@ public class PluginNetworkAllowlistHandler : DelegatingHandler
             )
                 return response;
 
-            current = Follow(current, response.StatusCode, target);
+            HttpStatusCode status = response.StatusCode;
             response.Dispose();
+            current = Follow(current, status, target);
         }
     }
 
