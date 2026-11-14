@@ -290,6 +290,8 @@ public class VideoHubPlaybackTests : IClassFixture<NoMercyApiFactory>
             Id = movieId,
             Title = "SetTime Isolated Test Movie",
             TitleSort = "setTime isolated test movie",
+            // A real library: an unset LibraryId only passed while a phantom library existed.
+            LibraryId = NoMercyApiFactory.MovieLibraryId,
         };
         ctx.Users.Add(user);
         ctx.Movies.Add(movie);
