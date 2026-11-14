@@ -64,7 +64,8 @@ public class PluginTrustDoesNotConsentTests : IDisposable
             string assemblyPath,
             string? expectedChecksum,
             string? packagePath = null,
-            bool fromMarketplace = false
+            bool fromMarketplace = false,
+            PluginIndexSignature? indexSignature = null
         ) => new() { Verified = true, Trusted = true };
     }
 

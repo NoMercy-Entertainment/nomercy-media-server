@@ -33,6 +33,9 @@ public class PluginVerificationContext
     /// </summary>
     public PluginSignatureBlock? Signature { get; init; }
 
+    /// <summary>The index's signature for this version; checked instead of the manifest's.</summary>
+    public PluginIndexSignature? IndexSignature { get; init; }
+
     /// <summary>
     /// Whether this install came from a repository. A marketplace package must
     /// be signed; a file the owner dropped in themselves is their own decision

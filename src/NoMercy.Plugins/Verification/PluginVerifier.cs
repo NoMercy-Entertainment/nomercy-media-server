@@ -35,7 +35,8 @@ public class PluginVerifier : IPluginVerifier
         string assemblyPath,
         string? expectedChecksum,
         string? packagePath = null,
-        bool fromMarketplace = false
+        bool fromMarketplace = false,
+        PluginIndexSignature? indexSignature = null
     )
     {
         PluginVerificationContext context = new()
@@ -45,6 +46,7 @@ public class PluginVerifier : IPluginVerifier
             ExpectedChecksum = expectedChecksum,
             PackagePath = packagePath,
             Signature = manifest.Signature,
+            IndexSignature = indexSignature,
             FromMarketplace = fromMarketplace,
         };
 
