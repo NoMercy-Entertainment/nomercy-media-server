@@ -118,16 +118,16 @@ public partial class LocalizationMiddlewareTests
             return seen;
         }
 
-        string[] seen = await Task.WhenAll(Request("nl-NL"), Request("de-DE"));
+        string[] seen = await Task.WhenAll(Request("nl-NL"), Request("en-US"));
 
-        Assert.Equal(["nl", "de"], seen);
+        Assert.Equal(["nl", "en"], seen);
     }
 
     [Fact]
     public async Task InvokeAsync_ReusesCachedLocalizer_ForSameLanguage()
     {
-        ILocalizer first = await InsideRequest("de-DE", () => LocalizationHelper.CurrentLocalizer);
-        ILocalizer second = await InsideRequest("de-DE", () => LocalizationHelper.CurrentLocalizer);
+        ILocalizer first = await InsideRequest("nl-NL", () => LocalizationHelper.CurrentLocalizer);
+        ILocalizer second = await InsideRequest("nl-NL", () => LocalizationHelper.CurrentLocalizer);
 
         Assert.Same(first, second);
     }
@@ -135,13 +135,37 @@ public partial class LocalizationMiddlewareTests
     [Fact]
     public async Task InvokeAsync_CreatesDifferentLocalizer_ForDifferentLanguage()
     {
-        ILocalizer french = await InsideRequest("fr-FR", () => LocalizationHelper.CurrentLocalizer);
-        ILocalizer spanish = await InsideRequest(
-            "es-ES",
+        ILocalizer english = await InsideRequest(
+            "en-US",
             () => LocalizationHelper.CurrentLocalizer
         );
+        ILocalizer dutch = await InsideRequest("nl-NL", () => LocalizationHelper.CurrentLocalizer);
 
-        Assert.NotSame(french, spanish);
+        Assert.NotSame(english, dutch);
+    }
+
+    [Fact]
+    public async Task InvokeAsync_UnsupportedLanguages_ShareOneLocalizer_Aud1084()
+    {
+        ILocalizer english = await InsideRequest("en", () => LocalizationHelper.CurrentLocalizer);
+
+        for (int i = 0; i < 1000; i++)
+        {
+            ILocalizer seen = await InsideRequest(
+                $"xq{i}-ZZ",
+                () => LocalizationHelper.CurrentLocalizer
+            );
+            Assert.Same(english, seen);
+        }
+    }
+
+    [Fact]
+    public async Task InvokeAsync_LanguageCase_ShareOneLocalizer_Aud1084()
+    {
+        ILocalizer lower = await InsideRequest("nl", () => LocalizationHelper.CurrentLocalizer);
+        ILocalizer mixed = await InsideRequest("NL-nl", () => LocalizationHelper.CurrentLocalizer);
+
+        Assert.Same(lower, mixed);
     }
 
     [Fact]
