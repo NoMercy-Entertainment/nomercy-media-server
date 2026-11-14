@@ -128,5 +128,30 @@ public static class PluginManifestParser
         {
             throw new InvalidOperationException("Plugin manifest 'assembly' is required.");
         }
+
+        if (!IsPlainAssemblyFileName(manifest.Assembly))
+        {
+            throw new InvalidOperationException(
+                $"Plugin manifest 'assembly' must be a plain .dll file name: '{manifest.Assembly}'."
+            );
+        }
+    }
+
+    // The assembly names the plugin's folder and its file, so it may not name a path.
+    private static bool IsPlainAssemblyFileName(string assembly)
+    {
+        if (
+            assembly != Path.GetFileName(assembly)
+            || assembly.Contains('/')
+            || assembly.Contains('\\')
+            || assembly.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0
+            || !assembly.EndsWith(".dll", StringComparison.OrdinalIgnoreCase)
+        )
+        {
+            return false;
+        }
+
+        string name = assembly[..^".dll".Length];
+        return name.Length > 0 && name is not ("." or "..") && !name.EndsWith('.');
     }
 }
