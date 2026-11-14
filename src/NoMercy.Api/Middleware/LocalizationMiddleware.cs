@@ -21,6 +21,10 @@ public class LocalizationMiddleware
 {
     private readonly RequestDelegate _next;
     private static readonly ConcurrentDictionary<string, Localizer> LocalizerCache = new();
+    private static readonly HashSet<string> SupportedLanguages = new(
+        ["en", "nl"],
+        StringComparer.OrdinalIgnoreCase
+    );
     private static readonly Assembly ResourceAssembly = typeof(LocalizationMiddleware).Assembly;
 
     public LocalizationMiddleware(RequestDelegate next)
@@ -62,6 +66,9 @@ public class LocalizationMiddleware
         string language = langParts.FirstOrDefault() ?? "en";
         if (string.IsNullOrEmpty(language))
             language = "en";
+
+        // AUD-1084: only supported languages reach the cache.
+        language = SupportedLanguages.Contains(language) ? language.ToLowerInvariant() : "en";
 
         Localizer localizer = LocalizerCache.GetOrAdd(language, LoadLocalizer);
 
