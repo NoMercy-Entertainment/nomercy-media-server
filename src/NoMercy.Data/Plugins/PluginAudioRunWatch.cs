@@ -30,14 +30,16 @@ namespace NoMercy.Data.Plugins;
 /// not a run that ran out of time.
 /// </para>
 /// </summary>
-internal sealed class PluginAudioRunWatch(PluginAudioRunLimits limits) : IDisposable
+internal sealed class PluginAudioRunWatch(PluginAudioRunLimits limits, TimeProvider clock)
+    : IDisposable
 {
     private const string PositionKey = "out_time_us=";
     private const string SizeKey = "total_size=";
     private const string ReportClosed = "progress=end";
 
-    private readonly CancellationTokenSource _stalled = new();
-    private readonly CancellationTokenSource _timedOut = new();
+    // Built on the clock, so CancelAfter counts that clock's time.
+    private readonly CancellationTokenSource _stalled = new(Timeout.InfiniteTimeSpan, clock);
+    private readonly CancellationTokenSource _timedOut = new(Timeout.InfiniteTimeSpan, clock);
     private readonly Lock _gate = new();
 
     private long _position = long.MinValue;
