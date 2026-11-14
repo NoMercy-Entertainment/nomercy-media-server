@@ -212,6 +212,13 @@ public class PluginRepositoryController(
         if (target is null)
             return NotFoundResponse("The catalogue does not carry that version");
 
+        // AUD-1249: a repository package is a .zip, so it meets the signature,
+        // the verifier and the owner's approval. Local install-from-path stays.
+        if (!IsZipPackage(target.DownloadUrl))
+            return UnprocessableEntityResponse(
+                "The catalog links this plugin to a file that is not a .zip package, so it cannot be installed from a repository."
+            );
+
         // The free dependencies first, so pressing install once leaves a
         // plugin that runs. A paid one is never in the plan: a purchase made
         // by pressing install on something else is a purchase nobody made,
@@ -228,14 +235,7 @@ public class PluginRepositoryController(
             AppFiles.TempPath,
             $"plugin-fetch-{Ulid.NewUlid():N}"
         );
-        // The catalogue names the artifact, and a plugin that ships more than a
-        // single assembly publishes an archive. Staging it under the wrong
-        // extension would hand a zip to the assembly loader.
-        bool isArchive = target.DownloadUrl.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
-        string stagedPath = storageDriver.CombinePath(
-            stagingDirectory,
-            $"{entry.Name}{(isArchive ? ".zip" : ".dll")}"
-        );
+        string stagedPath = storageDriver.CombinePath(stagingDirectory, $"{entry.Name}.zip");
 
         try
         {
@@ -251,16 +251,13 @@ public class PluginRepositoryController(
             // The checksum the catalogue published, enforced before anything is
             // copied into the plugins folder. A repository that publishes none
             // installs unverified, and the dashboard says so before you pick it.
-            if (isArchive)
-                await pluginManager.InstallPluginArchiveAsync(
-                    stagedPath,
-                    target.Checksum,
-                    ct,
-                    fromMarketplace: true,
-                    indexSignature: PluginIndexSignature.From(entry, target)
-                );
-            else
-                await pluginManager.InstallPluginAsync(stagedPath, target.Checksum, ct);
+            await pluginManager.InstallPluginArchiveAsync(
+                stagedPath,
+                target.Checksum,
+                ct,
+                fromMarketplace: true,
+                indexSignature: PluginIndexSignature.From(entry, target)
+            );
         }
         // Not a failure: the new version is unpacked and verified, and the next
         // start applies it. Updating a plugin that is running is the ordinary
@@ -341,6 +338,11 @@ public class PluginRepositoryController(
 
     private static PluginVersionEntry? Newest(PluginRepositoryEntry entry) =>
         entry.Versions.OrderByDescending(Sortable).FirstOrDefault();
+
+    // The path decides, so a signed link with a query string still counts.
+    private static bool IsZipPackage(string downloadUrl) =>
+        Uri.TryCreate(downloadUrl, UriKind.Absolute, out Uri? uri)
+        && uri.AbsolutePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// A version that does not parse sorts below every one that does, rather

@@ -848,7 +848,7 @@ public class PluginRepositoryTests : IDisposable
                 Id = droppedId,
                 Name = entryName,
                 Description = "A made-up entry",
-                Versions = [new() { Version = "1.0.0", DownloadUrl = "https://example.com/a.dll" }],
+                Versions = [new() { Version = "1.0.0", DownloadUrl = "https://example.com/a.zip" }],
             }
         );
         ListLogger logger = new();
