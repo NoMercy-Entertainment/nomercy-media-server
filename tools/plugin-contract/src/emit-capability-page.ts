@@ -40,7 +40,7 @@ ${sentence(capability.summary)}
 | | |
 | --- | --- |
 | Facade | \`${capability.facade}\` |
-| Scope | ${capability.scope} |
+| Scope | ${capability.scope === UNSCOPED ? 'none' : capability.scope} |
 | Trust | ${capability.trust} |
 | Revocable while the plugin runs | ${capability.reversible ? 'yes' : 'no'} |
 
@@ -57,12 +57,12 @@ Name it in the manifest:
 \`\`\`json
 {
   "capabilities": [
-    { "name": "${capability.name}", "scope": "${scopeExample(capability)}" }
+    ${manifestEntry(capability)}
   ]
 }
 \`\`\`
 
-The scope is ${capability.scope}. A call outside it is refused with the grant's own name in the message, so the author reads which scope to widen rather than that something went wrong.
+${scopeSentence(capability)}
 
 ${refusalSection(mine)}
 ${analyzerSection(rules)}
@@ -79,13 +79,50 @@ function sentence(summary: string): string {
   return first.endsWith('.') ? first : `${first}.`;
 }
 
-function scopeExample(capability: Capability): string {
-  if (capability.scope === 'host glob') return '*.example.com';
-  if (capability.scope === 'port or range') return '8000-8100';
-  if (capability.scope === 'protocol') return 'mdns';
-  if (capability.scope.includes('path')) return 'D:/media/films';
+const UNSCOPED = '(always)';
 
-  return '*';
+const SCOPE_EXAMPLE: Record<string, string> = {
+  'host glob': '*.example.com',
+  'port or range': '8000-8100',
+  'protocol': 'mdns',
+  'library id': 'library-123',
+  'library id or *': 'library-123',
+  'folder id': 'folder-123',
+  'quota': '104857600',
+  'provider or *': 'tmdb',
+  'media type': 'movie',
+  'job kind': 'transcode',
+  'topic': 'library.updated',
+  'binary name': 'ffmpeg',
+  'kind': 'dashboard',
+  'origin': 'https://example.com',
+};
+
+function manifestEntry(capability: Capability): string {
+  if (capability.scope === UNSCOPED) {
+    return `{ "name": "${capability.name}" }`;
+  }
+
+  return `{ "name": "${capability.name}", "scope": "${scopeExample(capability)}" }`;
+}
+
+function scopeSentence(capability: Capability): string {
+  if (capability.scope === UNSCOPED) {
+    return 'No scope is needed for this capability.';
+  }
+
+  return `The scope is ${capability.scope}. A call outside it is refused with the grant's own name in the message, so the author reads which scope to widen rather than that something went wrong.`;
+}
+
+// A wildcard fallback would be pasted and refused, so a new scope kind has to
+// bring its own sample.
+function scopeExample(capability: Capability): string {
+  const example: string | undefined = SCOPE_EXAMPLE[capability.scope];
+  if (example === undefined) {
+    throw new Error(`No manifest scope sample for scope kind "${capability.scope}" (${capability.name}).`);
+  }
+
+  return example;
 }
 
 function refusalSection(refusals: Refusal[]): string {
