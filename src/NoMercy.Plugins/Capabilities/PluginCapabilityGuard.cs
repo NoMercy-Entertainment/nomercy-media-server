@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Network;
 
 namespace NoMercy.PluginSdk.Capabilities;
 
@@ -86,8 +87,25 @@ public static class PluginCapabilityGuard
 
         List<string> consentedHosts = consented?.Network?.Hosts ?? [];
         List<string> currentHosts = current.Network?.Hosts ?? [];
-        return currentHosts.Any(host =>
-            !consentedHosts.Contains(host, StringComparer.OrdinalIgnoreCase)
-        );
+        if (
+            currentHosts.Any(host =>
+                !consentedHosts.Contains(host, StringComparer.OrdinalIgnoreCase)
+            )
+        )
+            return true;
+
+        List<string> consentedProtocols = consented?.Network?.Protocols ?? [];
+        if (
+            (current.Network?.Protocols ?? []).Any(protocol =>
+                !consentedProtocols.Contains(protocol, StringComparer.OrdinalIgnoreCase)
+            )
+        )
+            return true;
+
+        // Ports are read as the broker reads them, so a wider range widens too.
+        List<string> consentedPorts = consented?.Network?.Ports ?? [];
+        return PluginPortRange
+            .Ports(current.Network?.Ports)
+            .Any(port => !PluginPortRange.Contains(consentedPorts, port));
     }
 }

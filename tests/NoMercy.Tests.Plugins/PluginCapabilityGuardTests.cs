@@ -205,6 +205,54 @@ public class PluginCapabilityGuardTests
     }
 
     [Fact]
+    public void HasWidened_NewDiscoveryProtocol_IsTrue_Aud1127()
+    {
+        PluginCapabilities consented = new()
+        {
+            Hooks = ["ui"],
+            Network = new() { Protocols = ["_a._tcp"] },
+        };
+        PluginCapabilities current = new()
+        {
+            Hooks = ["ui"],
+            Network = new() { Protocols = ["_a._tcp", "_b._tcp"] },
+        };
+        Assert.True(PluginCapabilityGuard.HasWidened(consented, current));
+    }
+
+    [Fact]
+    public void HasWidened_SameDiscoveryProtocolOtherCase_IsFalse_Aud1127()
+    {
+        PluginCapabilities consented = new() { Network = new() { Protocols = ["_a._tcp"] } };
+        PluginCapabilities current = new() { Network = new() { Protocols = ["_A._TCP"] } };
+        Assert.False(PluginCapabilityGuard.HasWidened(consented, current));
+    }
+
+    [Fact]
+    public void HasWidened_NewListenPort_IsTrue_Aud1127()
+    {
+        PluginCapabilities consented = new() { Network = new() { Ports = ["6881-6889"] } };
+        PluginCapabilities current = new() { Network = new() { Ports = ["6881-6889", "7000"] } };
+        Assert.True(PluginCapabilityGuard.HasWidened(consented, current));
+    }
+
+    [Fact]
+    public void HasWidened_WiderPortRange_IsTrue_Aud1127()
+    {
+        PluginCapabilities consented = new() { Network = new() { Ports = ["6881-6889"] } };
+        PluginCapabilities current = new() { Network = new() { Ports = ["6881-6890"] } };
+        Assert.True(PluginCapabilityGuard.HasWidened(consented, current));
+    }
+
+    [Fact]
+    public void HasWidened_PortsInsideConsentedRange_IsFalse_Aud1127()
+    {
+        PluginCapabilities consented = new() { Network = new() { Ports = ["6881-6889"] } };
+        PluginCapabilities current = new() { Network = new() { Ports = ["6883,6885-6886"] } };
+        Assert.False(PluginCapabilityGuard.HasWidened(consented, current));
+    }
+
+    [Fact]
     public void HasWidened_NullConsented_ElevatedCurrent_IsTrue()
     {
         PluginCapabilities current = new() { Hooks = ["auth"] };
