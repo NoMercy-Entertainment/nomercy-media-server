@@ -292,6 +292,70 @@ public class ServerControllerAddFilesTests : IClassFixture<NoMercyApiFactory>, I
             );
     }
 
+    // The [tmdb-N] hint names the show, so the locator needs no search.
+    [Fact]
+    public async Task AddFiles_ShowFileWithoutAnIdWhoseNameNamesTheShow_QueuesAShowImport()
+    {
+        object body = new
+        {
+            library_id = _tvLibraryId.ToString(),
+            folder_id = _folderId.ToString(),
+            source_driver_id = (string?)null,
+            files = new[]
+            {
+                new { path = "manual/[tmdb-950001]Example Show - S01E02.mkv", id = "0" },
+            },
+        };
+
+        HttpResponseMessage response = await _authed.PostAsync(
+            "/api/v1/dashboard/server/addfiles",
+            JsonBody(body)
+        );
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        List<string> payloads = QueryPayloadsContaining(_tvLibraryId.ToString());
+
+        payloads.Should().ContainSingle("the show is found from the file name");
+        payloads[0].Should().Contain("ShowImportJob").And.Contain("Example Show - S01E02.mkv");
+        payloads[0].Should().NotContain("VideoEncodeJob");
+    }
+
+    [Fact]
+    public async Task AddFiles_TwoShowFilesWithoutAnIdForDifferentEpisodes_AreBothKept()
+    {
+        object body = new
+        {
+            library_id = _tvLibraryId.ToString(),
+            folder_id = _folderId.ToString(),
+            source_driver_id = (string?)null,
+            files = new[]
+            {
+                new { path = "manual/[tmdb-950001]Example Show - S01E02.mkv", id = "0" },
+                new { path = "manual/[tmdb-950001]Example Show - S01E03.mkv", id = "0" },
+            },
+        };
+
+        HttpResponseMessage response = await _authed.PostAsync(
+            "/api/v1/dashboard/server/addfiles",
+            JsonBody(body)
+        );
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        List<string> payloads = QueryPayloadsContaining(_tvLibraryId.ToString());
+
+        payloads.Should().ContainSingle("one import carries every file of the show");
+        payloads[0]
+            .Should()
+            .Contain("ShowImportJob")
+            .And.Contain("Example Show - S01E02.mkv")
+            .And.Contain(
+                "Example Show - S01E03.mkv",
+                "two files without an id are two episodes, not one episode claimed twice"
+            );
+    }
+
     [Fact]
     public async Task AddFiles_TwoFilesResolvedToTheSameEpisode_QueuesOnlyTheFirst()
     {

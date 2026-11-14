@@ -302,14 +302,10 @@ public partial class ServerController(
             // never this manual import. A configured EncodePresetId narrows the
             // encode to that one preset; a null value keeps the folder's presets.
 
-            // A file without a match has no movie or episode to import or encode against.
-            ILookup<bool, AddFile> byMatch = request.Files.ToLookup(file =>
-                int.TryParse(file.Id, out int id) && id > 0
-            );
-            List<string> unmatched =
-            [
-                .. byMatch[false].Select(file => Path.GetFileName(file.Path)),
-            ];
+            bool isShowLibrary =
+                library.Type is MediaTypes.TvMediaType or MediaTypes.AnimeMediaType;
+            ILookup<bool, AddFile> byMatch = request.Files.ToLookup(file => HasMatch(file.Id));
+            List<string> unmatched = [];
 
             // One file per episode: see EpisodeClaims for why a declared episode wins.
             (List<AddFile> selected, List<string> collided) = EpisodeClaims.PickOnePerEpisode(
@@ -317,6 +313,13 @@ public partial class ServerController(
                 file => $"{file.Id}",
                 file => file.Path
             );
+
+            // A show file without an id claims no episode, and its name can still place it.
+            // A movie file without an id has no movie to import or encode against.
+            if (isShowLibrary)
+                selected.AddRange(byMatch[false]);
+            else
+                unmatched.AddRange(byMatch[false].Select(file => Path.GetFileName(file.Path)));
 
             List<EncodeAfterImportFile> toEncode =
             [
@@ -333,7 +336,7 @@ public partial class ServerController(
 
             // A show the server does not hold has no episode rows to encode against.
             // Import it once per show and let that import queue the selected files.
-            if (library.Type is MediaTypes.TvMediaType or MediaTypes.AnimeMediaType)
+            if (isShowLibrary)
             {
                 await using MediaContext context = new();
                 List<int> ids =
@@ -358,6 +361,14 @@ public partial class ServerController(
                     toEncode,
                     held
                 );
+
+                // A file the name could not place has no episode to encode against.
+                unmatched.AddRange(
+                    toEncode
+                        .Where(file => !HasMatch(file.Id))
+                        .Select(file => Path.GetFileName(file.InputFile))
+                );
+                toEncode.RemoveAll(file => !HasMatch(file.Id));
             }
 
             // A movie the server does not hold has no row to encode against: import it
@@ -436,6 +447,9 @@ public partial class ServerController(
             return BadRequestResponse(e.Message);
         }
     }
+
+    // The picker sends id 0 for a file it found no match for.
+    private static bool HasMatch(string? id) => int.TryParse(id, out int number) && number > 0;
 
     [HttpPost]
     [Route("directorytree")]
