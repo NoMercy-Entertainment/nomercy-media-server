@@ -12,6 +12,7 @@
 using System.Net;
 using System.Text;
 using FluentAssertions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Capabilities;
@@ -314,6 +315,135 @@ public class PluginMediaProxyTests
             .Count(line => line.Contains($"/api/v1/plugins/{Radio}/media/"))
             .Should()
             .Be(2, "a child left alone sends the client to the provider for the segments");
+    }
+
+    // AUD-1059: the media.proxy scope covers every host the server fetches
+    // for a plugin, the hosts a playlist names included.
+    [Fact]
+    public async Task A_playlist_child_outside_the_media_proxy_scope_gets_no_ticket_Aud1059()
+    {
+        PluginMediaTicketMinter minter = Minter();
+
+        string body = await Rewritten(
+            minter,
+            new ListLogger(),
+            "#EXTM3U\n#EXTINF:6,\nhttps://cdn.example.com/seg1.ts\n#EXTINF:6,\nseg2.ts\n"
+        );
+
+        string[] tickets =
+        [
+            .. body.Split('\n').Where(line => line.Contains($"/api/v1/plugins/{Radio}/media/")),
+        ];
+
+        tickets.Should().ContainSingle("only the child inside the scope gets a ticket");
+        Upstream(minter, tickets[0]).Should().Be(new Uri("https://stream.example.com/seg2.ts"));
+        body.Should().NotContain("cdn.example.com", "a refused child is dropped, never passed on");
+    }
+
+    [Fact]
+    public async Task A_uri_attribute_outside_the_media_proxy_scope_drops_its_tag_line_Aud1059()
+    {
+        PluginMediaTicketMinter minter = Minter();
+
+        string body = await Rewritten(
+            minter,
+            new ListLogger(),
+            "#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI=\"https://cdn.example.com/key\"\n#EXTINF:6,\nseg1.ts\n"
+        );
+
+        string[] tickets =
+        [
+            .. body.Split('\n').Where(line => line.Contains($"/api/v1/plugins/{Radio}/media/")),
+        ];
+
+        tickets.Should().ContainSingle();
+        Upstream(minter, tickets[0]).Should().Be(new Uri("https://stream.example.com/seg1.ts"));
+        body.Should().NotContain("cdn.example.com");
+        body.Should().NotContain("#EXT-X-KEY", "the whole tag line goes with its refused address");
+    }
+
+    // An orphan tag would give its duration or range to the next segment.
+    [Fact]
+    public async Task A_dropped_playlist_child_takes_its_segment_tags_with_it_Aud1059()
+    {
+        string body = await Rewritten(
+            Minter(),
+            new ListLogger(),
+            "#EXTM3U\n#EXT-X-DISCONTINUITY\n#EXT-X-PROGRAM-DATE-TIME:2026-01-01T00:00:00Z\n#EXTINF:4,\n#EXT-X-BYTERANGE:100@0\n#EXT-X-GAP\nhttps://cdn.example.com/seg1.ts\n#EXTINF:6,\nseg2.ts\n"
+        );
+
+        string[] lines = body.Split('\n');
+
+        lines.Should().HaveCount(5);
+        lines[..3].Should().Equal("#EXTM3U", "#EXT-X-DISCONTINUITY", "#EXTINF:6,");
+        lines[3].Should().StartWith($"/api/v1/plugins/{Radio}/media/");
+    }
+
+    [Fact]
+    public async Task A_dropped_variant_takes_its_stream_tag_with_it_Aud1059()
+    {
+        string body = await Rewritten(
+            Minter(),
+            new ListLogger(),
+            "#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=800000\nhttps://cdn.example.com/low.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=2000000\nhigh.m3u8\n"
+        );
+
+        string[] lines = body.Split('\n');
+
+        lines.Should().HaveCount(4);
+        lines[..2].Should().Equal("#EXTM3U", "#EXT-X-STREAM-INF:BANDWIDTH=2000000");
+        lines[2].Should().StartWith($"/api/v1/plugins/{Radio}/media/");
+    }
+
+    [Fact]
+    public async Task Dropped_playlist_children_are_warned_about_once_per_playlist_Aud1059()
+    {
+        ListLogger logger = new();
+
+        await Rewritten(
+            Minter(),
+            logger,
+            "#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI=\"https://cdn.example.com/key\"\nhttps://cdn.example.com/seg1.ts\nhttps://cdn.example.com/seg2.ts\nseg3.ts\n"
+        );
+
+        string warning = logger
+            .Entries.Where(entry => entry.Level == LogLevel.Warning)
+            .Should()
+            .ContainSingle()
+            .Which.Message;
+
+        warning.Should().Contain(Radio.ToString());
+        warning.Should().Contain("cdn.example.com");
+        warning.Should().Contain("3");
+    }
+
+    /// <summary>A playlist fetched from stream.example.com, with cdn.example.com outside the scope.</summary>
+    private static async Task<string> Rewritten(
+        PluginMediaTicketMinter minter,
+        ListLogger logger,
+        string playlist
+    )
+    {
+        PluginMediaProxy proxy = new(
+            Radio,
+            new StubCaller(Listener),
+            new HostBroker("cdn.example.com"),
+            minter,
+            new HttpClient(
+                new StubHandler(_ =>
+                    Answer(Encoding.UTF8.GetBytes(playlist), "application/vnd.apple.mpegurl")
+                )
+            ),
+            logger
+        );
+
+        HttpResponseMessage response = await proxy.FetchAsync(
+            Request("https://stream.example.com/live.m3u8"),
+            null,
+            default
+        );
+
+        return await response.Content.ReadAsStringAsync();
     }
 
     [Fact]
@@ -826,6 +956,22 @@ public class PluginMediaProxyTests
     {
         public PluginRefusal? Check(Ulid pluginId, string capability, string? scope = null) =>
             refusal;
+    }
+
+    /// <summary>Refuses one host and allows every other.</summary>
+    private sealed class HostBroker(string refusedHost) : IPluginCapabilityBroker
+    {
+        public PluginRefusal? Check(Ulid pluginId, string capability, string? scope = null) =>
+            string.Equals(scope, refusedHost, StringComparison.OrdinalIgnoreCase)
+                ? new(
+                    PluginRefusalCodes.CapabilityScopeRefused,
+                    pluginId.ToString(),
+                    "what",
+                    "why",
+                    "fix",
+                    PluginRefusalSeverity.Blocked
+                )
+                : null;
     }
 
     private sealed class CountingBroker : IPluginCapabilityBroker
