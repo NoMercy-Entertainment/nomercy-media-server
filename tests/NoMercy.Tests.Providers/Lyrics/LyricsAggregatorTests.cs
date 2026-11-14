@@ -52,7 +52,19 @@ public class LyricsAggregatorTests : IDisposable
         GC.SuppressFinalize(this);
     }
 
-    private void OnLogEmitted(LogEntry entry) => _logs.Add(entry);
+    // Other test classes log from other threads at the same time. An unlocked
+    // Add can throw inside Logger.LogEmitted and cut off the later subscribers.
+    private void OnLogEmitted(LogEntry entry)
+    {
+        lock (_logs)
+            _logs.Add(entry);
+    }
+
+    private List<LogEntry> LogsSnapshot()
+    {
+        lock (_logs)
+            return [.. _logs];
+    }
 
     private static Track MakeTrack(string title, string artist, string album, int durationSeconds)
     {
@@ -219,7 +231,7 @@ public class LyricsAggregatorTests : IDisposable
             .Should()
             .Be(0, "a synced /get hit is authoritative and must skip Musixmatch entirely");
 
-        _logs
+        LogsSnapshot()
             .Should()
             .Contain(entry =>
                 entry.Type == "lyrics"
