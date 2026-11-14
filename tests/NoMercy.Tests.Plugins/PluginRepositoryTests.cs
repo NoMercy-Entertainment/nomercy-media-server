@@ -791,10 +791,54 @@ public class PluginRepositoryTests : IDisposable
         PluginRepository repo = MakeRepo(client);
 
         List<PluginRepositoryEntry> plugins = await repo.FetchRepositoryPluginsAsync(
+            "example-repo",
             "https://example.com/repo.json"
         );
 
         plugins.Should().BeEmpty();
+    }
+
+    [Theory]
+    [InlineData("../../probe")]
+    [InlineData("..\\..\\probe")]
+    [InlineData("sub/probe")]
+    [InlineData("..")]
+    [InlineData(" ")]
+    public async Task An_entry_whose_name_is_not_a_plain_file_name_is_dropped_from_the_fetched_catalog_Aud1046(
+        string entryName
+    )
+    {
+        PluginRepositoryManifest manifest = CreateTestManifest(pluginCount: 1);
+        Ulid droppedId = Ulid.Parse("01JDDDDDDDDDDDDDDDDDDDDDDD");
+        manifest.Plugins.Add(
+            new()
+            {
+                Id = droppedId,
+                Name = entryName,
+                Description = "A made-up entry",
+                Versions = [new() { Version = "1.0.0", DownloadUrl = "https://example.com/a.dll" }],
+            }
+        );
+        ListLogger logger = new();
+        IStorageDriver driver = TestStorageHelper.CreateBackend();
+        PluginRepository repo = new(
+            CreateMockHttpClient(manifest),
+            logger,
+            _tempDir,
+            new LocalStorage(driver, new([_tempDir], driver))
+        );
+
+        await repo.AddRepositoryAsync("example-repo", "https://example.com/repo.json");
+
+        repo.GetAvailablePlugins().Should().ContainSingle().Which.Name.Should().Be("Plugin0");
+        repo.FindPlugin(droppedId).Should().BeNull();
+        logger
+            .Entries.Should()
+            .ContainSingle(entry =>
+                entry.Level == Microsoft.Extensions.Logging.LogLevel.Warning
+                && entry.Message.Contains("example-repo")
+                && entry.Message.Contains(droppedId.ToString())
+            );
     }
 
     /// <summary>

@@ -211,7 +211,7 @@ public class PluginRepository : IPluginRepository
         {
             try
             {
-                refreshed[repo.Name] = await FetchRepositoryPluginsAsync(repo.Url, ct);
+                refreshed[repo.Name] = await FetchRepositoryPluginsAsync(repo.Name, repo.Url, ct);
             }
             catch (Exception ex)
             {
@@ -277,6 +277,7 @@ public class PluginRepository : IPluginRepository
     }
 
     internal async Task<List<PluginRepositoryEntry>> FetchRepositoryPluginsAsync(
+        string name,
         string url,
         CancellationToken ct = default
     )
@@ -295,14 +296,40 @@ public class PluginRepository : IPluginRepository
             return [];
         }
 
-        return manifest.Plugins;
+        // AUD-1046: an entry's name becomes a file name at install, so an
+        // entry that is not a plain file name never reaches the catalog.
+        List<PluginRepositoryEntry> plugins = [];
+        foreach (PluginRepositoryEntry entry in manifest.Plugins)
+        {
+            if (IsPlainFileName(entry.Name))
+            {
+                plugins.Add(entry);
+                continue;
+            }
+
+            _logger.LogWarning(
+                "Repository '{Name}' ({Url}) lists plugin {Id} under a name that is not a plain file name; the entry is dropped",
+                [name, url, entry.Id]
+            );
+        }
+
+        return plugins;
     }
+
+    // Both separators by hand: Path.GetInvalidFileNameChars is shorter on Linux.
+    private static bool IsPlainFileName(string? name) =>
+        !string.IsNullOrWhiteSpace(name)
+        && name is not ("." or "..")
+        && name == Path.GetFileName(name)
+        && !name.Contains('/')
+        && !name.Contains('\\')
+        && name.IndexOfAny(Path.GetInvalidFileNameChars()) < 0;
 
     private async Task RefreshRepositoryAsync(string name, string url, CancellationToken ct)
     {
         try
         {
-            List<PluginRepositoryEntry> plugins = await FetchRepositoryPluginsAsync(url, ct);
+            List<PluginRepositoryEntry> plugins = await FetchRepositoryPluginsAsync(name, url, ct);
 
             lock (_lock)
             {

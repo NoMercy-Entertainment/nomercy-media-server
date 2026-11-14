@@ -193,6 +193,13 @@ public class PluginRepositoryController(
         if (entry is null)
             return NotFoundResponse("No repository offers this plugin");
 
+        // AUD-1046: the name becomes the staged file and the installed plugin
+        // name. Refused, never cleaned: a cleaned name is a different plugin.
+        if (!IsPlainFileName(entry.Name))
+            return UnprocessableEntityResponse(
+                "The catalog entry name is not a plain file name, so this plugin cannot be installed."
+            );
+
         PluginVersionEntry? target = string.IsNullOrWhiteSpace(version)
             ? Newest(entry)
             : repository.FindVersion(pluginId, version);
@@ -296,6 +303,15 @@ public class PluginRepositoryController(
             }
         );
     }
+
+    // Both separators by hand: Path.GetInvalidFileNameChars is shorter on Linux.
+    private static bool IsPlainFileName(string? name) =>
+        !string.IsNullOrWhiteSpace(name)
+        && name is not ("." or "..")
+        && name == Path.GetFileName(name)
+        && !name.Contains('/')
+        && !name.Contains('\\')
+        && name.IndexOfAny(Path.GetInvalidFileNameChars()) < 0;
 
     private static PluginCatalogueEntryDto Describe(
         PluginRepositoryEntry entry,
