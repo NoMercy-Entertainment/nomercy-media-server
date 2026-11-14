@@ -190,6 +190,40 @@ public class MediaBlueprintBuilderBuildEncodeTests
             completedAt: new DateTime(2026, 1, 1, 0, 10, 0, DateTimeKind.Utc)
         );
 
+    // AUD-1174: a track tag never leaves the output folder, and the track
+    // still finds its file under the cleaned name.
+    [Theory]
+    [InlineData("../../x", "x")]
+    [InlineData("..\\..\\x", "x")]
+    [InlineData("..", "und")]
+    public void PreservedSubtitle_LanguageWithPathSegments_IsFoundByItsCleanedFileName(
+        string language,
+        string expected
+    )
+    {
+        MediaInfo source = MakeSource();
+        source = source with
+        {
+            SubtitleStreams = [source.SubtitleStreams[0] with { Language = language }],
+        };
+        string preserved = $"subtitles/Show.S01E01.NoMercy.{expected}.full.mks";
+
+        BlueprintEncode encode = _builder.BuildEncode(
+            source,
+            MakePlan(),
+            MakeLayout(),
+            [preserved],
+            outputLocation: "Anime/Show/Season 01/Show S01E01",
+            encoderVersion: "1.2.3",
+            profileFingerprint: "fingerprint-abc",
+            createdAt: new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc),
+            completedAt: new DateTime(2026, 1, 1, 0, 10, 0, DateTimeKind.Utc)
+        );
+
+        BlueprintTrack subtitle = encode.Tracks.Single(t => t.SourceStreamIndex == SubtitleIndex);
+        subtitle.Files.Should().ContainSingle().Which.Should().Be(preserved);
+    }
+
     [Fact]
     public void EverySourceStream_AppearsExactlyOnce_TheCompletenessInvariant()
     {

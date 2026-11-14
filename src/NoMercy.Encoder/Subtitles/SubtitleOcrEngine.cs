@@ -16,6 +16,7 @@ using Microsoft.Extensions.Logging;
 using NoMercy.Encoder.Codecs;
 using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.Infrastructure;
+using NoMercy.Encoder.Output;
 using NoMercy.Encoder.Progress;
 using NoMercy.Resources;
 using NoMercy.Storage;
@@ -280,10 +281,11 @@ public partial class SubtitleOcrEngine(
         string extension
     )
     {
+        string safeLanguage = LanguagePathSegment.From(language);
         if (sidecar is null)
         {
             return Path.ChangeExtension(
-                Path.Combine(Path.GetDirectoryName(inputPath)!, $"{language}_ocr"),
+                Path.Combine(Path.GetDirectoryName(inputPath)!, $"{safeLanguage}_ocr"),
                 extension
             );
         }
@@ -293,7 +295,7 @@ public partial class SubtitleOcrEngine(
         // therefore a track the library scan pairs and the player lists.
         // Forward slashes: this is a storage key, not a local path.
         return $"{sidecar.OutputDirectory.TrimEnd('/')}/subtitles/"
-            + $"{sidecar.MediaTitle}.{language}.{sidecar.Variant}{extension}";
+            + $"{sidecar.MediaTitle}.{safeLanguage}.{sidecar.Variant}{extension}";
     }
 
     private static async Task WriteWebVttAsync(
@@ -375,7 +377,11 @@ public partial class SubtitleOcrEngine(
         return lines.Length <= 5 ? stdErr : string.Join('\n', lines[^5..]);
     }
 
-    [GeneratedRegex(@"pts_time:(?<pts>\d+(?:\.\d+)?)", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    [GeneratedRegex(
+        @"pts_time:(?<pts>\d+(?:\.\d+)?)",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex PtsTimeRegex();
 
     public record SubtitleCue(double StartSeconds, double EndSeconds, string Text);

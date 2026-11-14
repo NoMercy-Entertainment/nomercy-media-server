@@ -397,7 +397,8 @@ public class MediaBlueprintBuilder : IMediaBlueprintBuilder
             : isAss ? ["ass"]
             : ["srt"]; // Copy-policy extraction of an already-text SRT source.
 
-        string language = stream.Language ?? matched.Language ?? "und";
+        // The file name carries the cleaned language, so the match uses it too.
+        string language = LanguagePathSegment.From(stream.Language ?? matched.Language);
         List<string> files = FindSubtitleSidecars(
             outputFiles,
             language,
