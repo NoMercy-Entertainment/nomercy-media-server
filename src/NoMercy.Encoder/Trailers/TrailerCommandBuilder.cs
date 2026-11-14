@@ -15,7 +15,7 @@ using System.Text.RegularExpressions;
 namespace NoMercy.Encoder.Trailers;
 
 /// <summary>
-/// Retains the trailer command string for existing callers. The download path
+/// Builds the trailer command string, which only tests call. The download path
 /// starts yt-dlp and ffmpeg directly instead. Locale tokens are validated here.
 /// </summary>
 public static partial class TrailerCommandBuilder
@@ -23,7 +23,11 @@ public static partial class TrailerCommandBuilder
     // Locale tokens only: "en", "en-US", "pt-BR", "zh-Hans". No quotes, spaces,
     // shell metacharacters, path separators, or length that could break out of the
     // quoted "-o subtitle:..." argument.
-    [GeneratedRegex("^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8}){0,3}$", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    [GeneratedRegex(
+        "^[A-Za-z]{2,3}(-[A-Za-z0-9]{1,8}){0,3}$",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex SafeLanguageRegex();
 
     public static bool IsSafeLanguage(string? language) =>

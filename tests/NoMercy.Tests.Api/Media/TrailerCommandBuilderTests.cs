@@ -42,7 +42,13 @@ public class TrailerCommandBuilderTests
 
         TrailerCache.IsValidId(optionShapedId).Should().BeTrue();
         (ProcessStartInfo ytdlpInfo, ProcessStartInfo ffmpegInfo) =
-            TrailerCache.CreateDownloadStartInfo(ytdlp, ffmpeg, "trailer dir", optionShapedId, "en-US");
+            TrailerCache.CreateDownloadStartInfo(
+                ytdlp,
+                ffmpeg,
+                "trailer dir",
+                optionShapedId,
+                "en-US"
+            );
 
         ytdlpInfo.FileName.Should().Be(ytdlp);
         ffmpegInfo.FileName.Should().Be(ffmpeg);
@@ -52,7 +58,9 @@ public class TrailerCommandBuilderTests
         ffmpegInfo.RedirectStandardInput.Should().BeTrue();
         ytdlpInfo.ArgumentList.Should().Contain("https://youtube.com/watch?v=--config-lo");
         ytdlpInfo.ArgumentList.Should().NotContain(optionShapedId);
-        ytdlpInfo.ArgumentList.Should().ContainInOrder("-o", "subtitle:en-US.%(ext)s", "--sub-langs", "all", "--write-subs");
+        ytdlpInfo
+            .ArgumentList.Should()
+            .ContainInOrder("-o", "subtitle:en-US.%(ext)s", "--sub-langs", "all", "--write-subs");
         ffmpegInfo.ArgumentList.Should().ContainInOrder("-i", "pipe:", "-map", "0:0");
         ffmpegInfo.ArgumentList.Should().EndWith("video.m3u8");
     }

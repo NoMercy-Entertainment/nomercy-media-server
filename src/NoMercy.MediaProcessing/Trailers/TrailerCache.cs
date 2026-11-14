@@ -140,10 +140,15 @@ public partial class TrailerCache(IStorage transcodeStorage, ILogger<TrailerCach
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
-        foreach (string argument in new[]
-                 {
-                     "-f", "bestvideo+bestaudio", "--extractor-args", "youtube:player_client=default",
-                 })
+        foreach (
+            string argument in new[]
+            {
+                "-f",
+                "bestvideo+bestaudio",
+                "--extractor-args",
+                "youtube:player_client=default",
+            }
+        )
             ytdlp.ArgumentList.Add(argument);
 
         if (TrailerCommandBuilder.IsSafeLanguage(language))
@@ -170,13 +175,36 @@ public partial class TrailerCache(IStorage transcodeStorage, ILogger<TrailerCach
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
-        foreach (string argument in new[]
-                 {
-                     "-i", "pipe:", "-map", "0:0", "-map", "0:1", "-c:v", "libx264",
-                     "-c:a", "aac", "-ac", "2", "-preset", "ultrafast", "-segment_list_type",
-                     "m3u8", "-hls_playlist_type", "event", "-hls_init_time", "4", "-hls_time",
-                     "4", "-hls_segment_filename", "video_%05d.ts", "video.m3u8",
-                 })
+        foreach (
+            string argument in new[]
+            {
+                "-i",
+                "pipe:",
+                "-map",
+                "0:0",
+                "-map",
+                "0:1",
+                "-c:v",
+                "libx264",
+                "-c:a",
+                "aac",
+                "-ac",
+                "2",
+                "-preset",
+                "ultrafast",
+                "-segment_list_type",
+                "m3u8",
+                "-hls_playlist_type",
+                "event",
+                "-hls_init_time",
+                "4",
+                "-hls_time",
+                "4",
+                "-hls_segment_filename",
+                "video_%05d.ts",
+                "video.m3u8",
+            }
+        )
             ffmpeg.ArgumentList.Add(argument);
 
         return (ytdlp, ffmpeg);
