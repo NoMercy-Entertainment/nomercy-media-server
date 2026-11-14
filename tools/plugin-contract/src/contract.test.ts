@@ -10,7 +10,7 @@ describe('the capability vocabulary', () => {
   const contract = loadContract();
 
   it('carries every capability the design lists', () => {
-    expect(contract.capabilities).toHaveLength(54);
+    expect(contract.capabilities).toHaveLength(55);
   });
 
   it('names each capability once', () => {

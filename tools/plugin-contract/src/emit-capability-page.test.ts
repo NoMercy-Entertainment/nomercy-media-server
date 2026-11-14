@@ -21,6 +21,15 @@ const listen = {
   summary: 'listening sockets',
 };
 
+const lyricsWrite = {
+  name: 'lyrics.write',
+  scope: '(always)',
+  trust: 'low' as const,
+  reversible: true,
+  facade: 'IPluginContext.Lyrics',
+  summary: 'write generated lyric timings for a track',
+};
+
 describe('a capability page', () => {
   it('carries the title the sidebar and search read', () => {
     const page = emitCapabilityPage(fetchCapability, [], []);
@@ -51,6 +60,29 @@ describe('a capability page', () => {
 
     expect(page).toContain('"scope": "*.example.com"');
     expect(page).not.toContain('"scope": "host glob"');
+  });
+
+  // A capability that is always whole takes no scope in the manifest, so a
+  // sample with one teaches an entry the docs' own scope guard rejects.
+  it('shows no scope for a capability that takes none', () => {
+    const page = emitCapabilityPage(lyricsWrite, [], []);
+
+    expect(page).toContain('{ "name": "lyrics.write" }');
+    expect(page).toContain('| Scope | none |');
+    expect(page).toContain('No scope is needed for this capability.');
+    expect(page).not.toContain('"scope":');
+    expect(page).not.toContain('The scope is (always)');
+  });
+
+  it('never samples a wildcard or the scope kind for any declared capability', () => {
+    const contract = loadContract();
+
+    for (const capability of contract.capabilities) {
+      const page = emitCapabilityPage(capability, contract.refusals, contract.analyzers);
+
+      expect(page, capability.name).not.toContain('"scope": "*"');
+      expect(page, capability.name).not.toContain(`"scope": "${capability.scope}"`);
+    }
   });
 
   it('lists only the refusals that belong to this capability', () => {

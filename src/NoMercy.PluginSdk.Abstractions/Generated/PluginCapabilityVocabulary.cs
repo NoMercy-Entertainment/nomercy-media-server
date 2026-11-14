@@ -271,6 +271,15 @@ public static class PluginCapabilityVocabulary
             "/nomercy-plugins/capabilities/music-analysis-write"
         ),
         new(
+            "lyrics.write",
+            "(always)",
+            PluginTrust.Low,
+            true,
+            "IPluginContext.Lyrics",
+            "write generated lyric timings for a track",
+            "/nomercy-plugins/capabilities/lyrics-write"
+        ),
+        new(
             "player.source",
             "host glob",
             PluginTrust.Low,

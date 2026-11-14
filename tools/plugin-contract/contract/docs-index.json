@@ -141,6 +141,11 @@
       "url": "/nomercy-plugins/capabilities/music-analysis-write"
     },
     {
+      "name": "lyrics.write",
+      "slug": "lyrics-write",
+      "url": "/nomercy-plugins/capabilities/lyrics-write"
+    },
+    {
       "name": "player.source",
       "slug": "player-source",
       "url": "/nomercy-plugins/capabilities/player-source"

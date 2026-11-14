@@ -15,7 +15,7 @@ export function emitCapabilityNav(capabilities: Capability[]): string {
 
   return `// Generated from server/nomercy-media-server/tools/plugin-contract/contract/capabilities.json. Do not edit.
 //
-// A capability page without a manifest entry fails \`npm run check:nav\`, so this
+// A capability page without a manifest entry fails \`yarn check:nav\`, so this
 // is generated beside the pages rather than kept by hand.
 
 import type { NavGroupDef } from './nav-structure';

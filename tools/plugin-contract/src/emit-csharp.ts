@@ -289,7 +289,7 @@ export function emitSlotVocabulary(slots: Slot[]): string {
     '{',
     ...constants,
     '    public static IReadOnlyList<string> All { get; } =',
-    `    [${distinct.map(slot => memberOf(slot)).join(', ')}];`,
+    ...wrapAtWidth('    ', '[', distinct.map(slot => memberOf(slot)), '];', true),
     '',
     '    private static readonly Dictionary<string, string[]> ByKind = new()',
     '    {',
@@ -312,6 +312,30 @@ export function emitSlotVocabulary(slots: Slot[]): string {
   ].join('\n');
 }
 
+const CSHARPIER_WIDTH = 100;
+
+// Emits a list the way CSharpier leaves it, on one line while it fits and one
+// item per line once it does not, so the drift check compares like with like.
+function wrapAtWidth(
+  indent: string,
+  open: string,
+  items: string[],
+  close: string,
+  trailingComma: boolean,
+): string[] {
+  const oneLine: string = `${indent}${open}${items.join(', ')}${close}`;
+  if (oneLine.length <= CSHARPIER_WIDTH) {
+    return [oneLine];
+  }
+
+  return [
+    `${indent}${open}`,
+    ...items.map((item, index) =>
+      `${indent}    ${item}${trailingComma || index < items.length - 1 ? ',' : ''}`),
+    `${indent}${close}`,
+  ];
+}
+
 /**
  * The analyzer rules, as a C# table.
  *
@@ -319,9 +343,14 @@ export function emitSlotVocabulary(slots: Slot[]): string {
  * an author meets one wording in the editor and the same one at run time.
  */
 export function emitAnalyzerDescriptors(rules: AnalyzerRule[]): string {
-  const rows: string[] = rules.map(
-    rule =>
-      `        new("${rule.id}", ${JSON.stringify(rule.title)}, ${rule.capability === null ? 'null' : `"${rule.capability}"`}),`,
+  const rows: string[] = rules.flatMap(rule =>
+    wrapAtWidth(
+      '        ',
+      'new(',
+      [`"${rule.id}"`, JSON.stringify(rule.title), rule.capability === null ? 'null' : `"${rule.capability}"`],
+      '),',
+      false,
+    ),
   );
 
   return [

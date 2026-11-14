@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { emitCapabilityNames, emitCapabilityVocabulary } from './emit-csharp.js';
+import { loadContract } from './contract.js';
+import {
+  emitAnalyzerDescriptors,
+  emitCapabilityNames,
+  emitCapabilityVocabulary,
+  emitSlotVocabulary,
+} from './emit-csharp.js';
 
 const capabilities = [
   { name: 'network.fetch', scope: 'host glob', trust: 'low', reversible: true, facade: 'IPluginContext.Http', summary: 'outbound HTTP through context.Http' },
@@ -34,6 +40,24 @@ describe('the generated C# vocabulary', () => {
 
     expect(source).toContain('public const string NetworkFetch = "network.fetch";');
     expect(source).toContain('public const string ProcessSpawn = "process.spawn";');
+  });
+
+  // The drift check compares the emitted text with the file CSharpier has
+  // formatted, so a row CSharpier would wrap is a drift nobody caused.
+  it('wraps a row CSharpier would wrap at its 100 column width', () => {
+    const contract = loadContract();
+    const sources: string[] = [
+      emitAnalyzerDescriptors(contract.analyzers),
+      emitSlotVocabulary(contract.slots),
+    ];
+
+    for (const source of sources) {
+      const unwrapped: string[] = source
+        .split('\n')
+        .filter(line => line.length > 100 && /^\s*(new\(|\[)/.test(line));
+
+      expect(unwrapped).toEqual([]);
+    }
   });
 
   it('carries the license header and never the word var', () => {
