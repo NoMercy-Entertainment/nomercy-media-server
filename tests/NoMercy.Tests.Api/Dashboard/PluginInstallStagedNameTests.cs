@@ -30,14 +30,14 @@ public class PluginInstallStagedNameTests
 {
     private static readonly Ulid EntryId = Ulid.Parse("01JCCCCCCCCCCCCCCCCCCCCCCC");
 
-    private sealed class OneEntryCatalog(string name) : IPluginRepository
+    private sealed class OneEntryCatalog(string name, string downloadUrl) : IPluginRepository
     {
         private readonly PluginRepositoryEntry _entry = new()
         {
             Id = EntryId,
             Name = name,
             Description = "A made-up entry",
-            Versions = [new() { Version = "1.0.0", DownloadUrl = "https://example.com/a.dll" }],
+            Versions = [new() { Version = "1.0.0", DownloadUrl = downloadUrl }],
         };
 
         public IReadOnlyList<PluginRepositoryInfo> GetRepositories() => [];
@@ -85,7 +85,7 @@ public class PluginInstallStagedNameTests
         public Mock<IPluginManager> Manager { get; } = new();
         public PluginRepositoryController Controller { get; }
 
-        public Harness(string entryName)
+        public Harness(string entryName, string downloadUrl = "https://example.com/a.zip")
         {
             // CallBase keeps the interface's own CombinePath, the join under test.
             Mock<IStorageDriver> storage = new() { CallBase = true };
@@ -103,7 +103,7 @@ public class PluginInstallStagedNameTests
             http.Setup(factory => factory.CreateClient(It.IsAny<string>()))
                 .Returns(() => new(new FewBytesHandler()));
 
-            OneEntryCatalog repository = new(entryName);
+            OneEntryCatalog repository = new(entryName, downloadUrl);
 
             Controller = new(
                 repository,
@@ -142,10 +142,14 @@ public class PluginInstallStagedNameTests
         harness.Manager.Invocations.Should().BeEmpty();
     }
 
-    [Fact]
-    public async Task Installing_an_entry_with_a_plain_name_still_installs_Aud1046()
+    [Theory]
+    [InlineData("https://example.com/a.zip")]
+    [InlineData("https://example.com/a.zip?expires=1&sig=abc")]
+    public async Task Installing_an_entry_with_a_plain_name_still_installs_Aud1046(
+        string downloadUrl
+    )
     {
-        Harness harness = new("Example.Plugin");
+        Harness harness = new("Example.Plugin", downloadUrl);
 
         IActionResult result = await harness.Controller.Install(
             EntryId,
@@ -155,10 +159,38 @@ public class PluginInstallStagedNameTests
 
         result.Should().BeOfType<OkObjectResult>();
         string staged = harness.OpenedForWrite.Should().ContainSingle().Subject;
-        staged.Should().EndWith("/Example.Plugin.dll");
+        staged.Should().EndWith("/Example.Plugin.zip");
         harness.Manager.Verify(
-            manager => manager.InstallPluginAsync(staged, null, It.IsAny<CancellationToken>()),
+            manager =>
+                manager.InstallPluginArchiveAsync(
+                    staged,
+                    null,
+                    It.IsAny<CancellationToken>(),
+                    true,
+                    It.IsAny<Guid?>(),
+                    It.IsAny<PluginIndexSignature?>()
+                ),
             Times.Once
         );
+    }
+
+    [Theory]
+    [InlineData("https://example.com/a.dll")]
+    [InlineData("https://example.com/download?id=1")]
+    public async Task A_repository_download_that_is_not_a_zip_package_is_refused(string downloadUrl)
+    {
+        Harness harness = new("Example.Plugin", downloadUrl);
+
+        IActionResult result = await harness.Controller.Install(
+            EntryId,
+            version: null,
+            CancellationToken.None
+        );
+
+        harness.OpenedForWrite.Should().BeEmpty();
+        ObjectResult problem = result.Should().BeOfType<ObjectResult>().Subject;
+        problem.StatusCode.Should().Be(422);
+        ((ProblemDetails)problem.Value!).Detail.Should().Contain(".zip");
+        harness.Manager.Invocations.Should().BeEmpty();
     }
 }
