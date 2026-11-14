@@ -83,5 +83,6 @@ public class PluginVersionEntry
 
     /// <summary>What the marketplace signed off for this version, in its order.</summary>
     [JsonPropertyName("capabilities")]
+    [JsonConverter(typeof(PluginCapabilityListJsonConverter))]
     public List<string> Capabilities { get; init; } = [];
 }

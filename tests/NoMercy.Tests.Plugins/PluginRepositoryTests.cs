@@ -783,6 +783,38 @@ public class PluginRepositoryTests : IDisposable
         repo.GetAvailablePlugins().Should().BeEmpty();
     }
 
+    // The live marketplace index served "capabilities":[true] on 2026-11-14; the
+    // contract is a list of names. Neither shape may take the whole catalog down.
+    [Theory]
+    [InlineData("[true]", new[] { "true" })]
+    [InlineData("[\"network.fetch\",\"media.proxy\"]", new[] { "network.fetch", "media.proxy" })]
+    [InlineData("[]", new string[0])]
+    public async Task An_index_lists_its_plugins_whatever_shape_its_capabilities_have(
+        string capabilities,
+        string[] expected
+    )
+    {
+        string json = $$"""
+            {"name":"Example Marketplace","url":"https://example.com/index.json","plugins":[{
+              "id":"01J0000000000000000000000A","name":"ExamplePlugin","description":"d",
+              "author":"a","tier":"free","publisherId":"00000000-0000-4000-8000-0000000000aa",
+              "versions":[{"version":"1.0.0","downloadUrl":"https://example.com/p/1.0.0.zip",
+                "checksum":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                "signature":"c2ln","kid":"mk_test","capabilities":{{capabilities}}}]}]}
+            """;
+        MockHttpHandler handler = new(json, HttpStatusCode.OK);
+        PluginRepository repo = MakeRepo(new HttpClient(handler));
+
+        List<PluginRepositoryEntry> plugins = await repo.FetchRepositoryPluginsAsync(
+            "example-repo",
+            "https://example.com/index.json"
+        );
+
+        PluginRepositoryEntry plugin = plugins.Should().ContainSingle().Subject;
+        plugin.Name.Should().Be("ExamplePlugin");
+        plugin.Versions.Single().Capabilities.Should().Equal(expected);
+    }
+
     [Fact]
     public async Task FetchRepositoryPluginsAsync_ResponseBodyIsJsonNull_ReturnsEmptyList()
     {
