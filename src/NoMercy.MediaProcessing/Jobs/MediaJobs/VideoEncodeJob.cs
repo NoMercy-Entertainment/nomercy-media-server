@@ -940,6 +940,31 @@ public class VideoEncodeJob
                 state.OutputDirectory
             );
 
+            string? previousError = currentOutcomes
+                .Where(outcome => !outcome.Success)
+                .Select(outcome => outcome.ErrorMessage)
+                .FirstOrDefault();
+
+            // The same renditions end at the same second twice: a third run
+            // would only burn encode time. Finalize fails the run for good.
+            if (!success && IsRepeatedTruncationFailure(previousError, error))
+            {
+                string reason = RepeatedTruncationStopReason(error!);
+                Log.LogError(
+                    "[VideoEncodeJob] Bundle '{TaskId}': {Reason}",
+                    current.TaskId,
+                    reason
+                );
+                await WriteBundleOutcomeAsync(
+                    current,
+                    success: false,
+                    error: reason,
+                    artifacts: []
+                );
+                ReEnqueueSelf(state with { Phase = CoordinatorPhase.Finalize }, TimeSpan.Zero);
+                return false;
+            }
+
             if (!success)
             {
                 throw new InvalidOperationException(
@@ -1499,6 +1524,34 @@ public class VideoEncodeJob
             ?? string.Empty;
 
         return string.IsNullOrWhiteSpace(leaf) ? fallbackFileName : leaf;
+    }
+
+    private const string TruncationMarker = "Encode output is truncated";
+
+    // Same renditions, same durations: the truncation is deterministic.
+    internal static bool IsRepeatedTruncationFailure(string? previousError, string? currentError)
+    {
+        string? previous = TruncationDetail(previousError);
+        string? current = TruncationDetail(currentError);
+
+        return previous is not null
+            && current is not null
+            && string.Equals(previous, current, StringComparison.Ordinal);
+    }
+
+    internal static string RepeatedTruncationStopReason(string error)
+    {
+        return "Stopped retrying: the encode failed the same way twice, so another run "
+            + $"would give the same result. {error}";
+    }
+
+    private static string? TruncationDetail(string? error)
+    {
+        if (string.IsNullOrEmpty(error))
+            return null;
+
+        int start = error.IndexOf(TruncationMarker, StringComparison.Ordinal);
+        return start < 0 ? null : error[start..];
     }
 
     internal static (IReadOnlyList<string> descriptors, string? lastError) SummarizeFailures(
