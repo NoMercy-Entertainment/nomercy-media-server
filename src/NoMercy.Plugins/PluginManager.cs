@@ -247,6 +247,9 @@ public class PluginManager
             await _storage.CreateDirectoryAsync(pluginDir, ct);
         }
 
+        // A bare file is always the owner's own supply, never a repository's.
+        PluginSideloadMarker.Mark(LocalPath(pluginDir));
+
         string destPath = _storage.CombinePath(pluginDir, Path.GetFileName(fullPath));
 
         // The destination may be a running plugin's own assembly: on Windows a
@@ -264,24 +267,24 @@ public class PluginManager
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            Ulid? residentId = _registry
+            PluginInfo? resident = _registry
                 .Values.FirstOrDefault(loaded =>
                     loaded.Info.AssemblyPath is not null
                     && _driver
                         .GetFullPath(loaded.Info.AssemblyPath)
                         .Equals(_driver.GetFullPath(destPath), StringComparison.OrdinalIgnoreCase)
                 )
-                ?.Info.Id;
+                ?.Info;
 
             if (
-                residentId is { } pluginId
-                && await TrySwapResidentAssemblyAsync(pluginId, fullPath, destPath, ct)
+                resident is not null
+                && await TrySwapResidentAssemblyAsync(resident, fullPath, destPath, ct)
             )
             {
                 PluginPackageHashMarker.Clear(pluginDir);
                 await RecordFilesAsync(pluginDir, ct);
-                await LoadPluginAssemblyAsync(destPath, ct);
-                _registerScheduledWork?.Invoke(pluginId);
+                await LoadPluginAssemblyAsync(destPath, ct, resident, newContent: true);
+                _registerScheduledWork?.Invoke(resident.Id);
                 return;
             }
 
@@ -310,7 +313,7 @@ public class PluginManager
         // A bare assembly is not the package an earlier install was hashed from.
         PluginPackageHashMarker.Clear(pluginDir);
         await RecordFilesAsync(pluginDir, ct);
-        await LoadPluginAssemblyAsync(destPath, ct);
+        await LoadPluginAssemblyAsync(destPath, ct, newContent: true);
     }
 
     /// <summary>
@@ -321,12 +324,13 @@ public class PluginManager
     /// when the file does not free up inside <see cref="UnloadWaitBudget"/>.
     /// </summary>
     private async Task<bool> TrySwapResidentAssemblyAsync(
-        Ulid pluginId,
+        PluginInfo resident,
         string sourcePath,
         string destPath,
         CancellationToken ct
     )
     {
+        Ulid pluginId = resident.Id;
         bool wasLoaded = await _lifecycle.UnloadForUpdateAsync(pluginId, ct);
 
         string rollbackPath = destPath + RollbackSuffix;
@@ -342,7 +346,7 @@ public class PluginManager
             // let the caller fall back to staging for the next start.
             if (wasLoaded)
             {
-                await LoadPluginAssemblyAsync(destPath, ct);
+                await LoadPluginAssemblyAsync(destPath, ct, resident);
                 _registerScheduledWork?.Invoke(pluginId);
             }
 
@@ -359,7 +363,7 @@ public class PluginManager
 
             if (wasLoaded)
             {
-                await LoadPluginAssemblyAsync(destPath, ct);
+                await LoadPluginAssemblyAsync(destPath, ct, resident);
                 _registerScheduledWork?.Invoke(pluginId);
             }
 
@@ -537,6 +541,20 @@ public class PluginManager
             // that applies the staged copy, now or on the next start.
             await RecordFilesAsync(staging, ct);
 
+            // How this arrived, written beside it and not taken from the
+            // manifest. In the staged copy, so it lands with every way the
+            // update is applied, now or on the next start (AUD-1017).
+            // A marketplace update never clears it: the folder stays what it was.
+            if (
+                !fromMarketplace
+                || PluginSideloadMarker.IsMarked(
+                    Path.Combine(LocalPath(pluginDir), "plugin.json")
+                )
+            )
+            {
+                PluginSideloadMarker.Mark(staging);
+            }
+
             // A resident plugin is unloaded and swapped live: the owner asked for an
             // update, not a server restart, and the assembly lock that used to force
             // one only lasts for the moment between Unload() and the GC actually
@@ -559,14 +577,6 @@ public class PluginManager
             }
 
             ApplyStaged(staging, pluginDir);
-
-            // A fact about how this arrived, written beside it rather than taken
-            // from the manifest: anything a plugin says about itself is not
-            // something the server can rely on.
-            if (!fromMarketplace)
-            {
-                PluginSideloadMarker.Mark(pluginDir);
-            }
 
             await LoadPluginFromManifestAsync(_storage.CombinePath(pluginDir, "plugin.json"), ct);
 
@@ -1573,9 +1583,14 @@ public class PluginManager
         return _loader.LoadPluginFromManifestAsync(manifestPath, ct);
     }
 
-    internal Task LoadPluginAssemblyAsync(string assemblyPath, CancellationToken ct = default)
+    internal Task LoadPluginAssemblyAsync(
+        string assemblyPath,
+        CancellationToken ct = default,
+        PluginInfo? previous = null,
+        bool newContent = false
+    )
     {
-        return _loader.LoadPluginAssemblyAsync(assemblyPath, ct);
+        return _loader.LoadPluginAssemblyAsync(assemblyPath, ct, previous, newContent);
     }
 
     public IPlugin? GetPluginInstance(Ulid pluginId)

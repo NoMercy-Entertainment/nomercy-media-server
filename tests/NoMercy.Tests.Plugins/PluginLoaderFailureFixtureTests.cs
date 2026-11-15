@@ -199,6 +199,10 @@ public class PluginLoaderFailureFixtureTests : IDisposable
         );
         PluginCapabilities declared = new() { Network = new() { Hosts = ["**"] } };
 
+        // An enable records the owner's consent before it reloads (AUD-1016).
+        PluginConsentService consent = new(new InMemoryConsentStore());
+        consent.GrantConsent(ServiceRegistratorPluginId, declared, new(1, 0, 0));
+
         registry[ServiceRegistratorPluginId] = new(
             new()
             {
@@ -221,7 +225,7 @@ public class PluginLoaderFailureFixtureTests : IDisposable
             TestStorageHelper.CreateStorage(_tempPluginsDir),
             registry,
             new PluginVerifier(),
-            new PluginConsentService(new InMemoryConsentStore()),
+            consent,
             factory
         );
 
