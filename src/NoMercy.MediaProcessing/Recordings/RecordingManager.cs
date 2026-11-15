@@ -594,7 +594,16 @@ public partial class RecordingManager(
             string displacedName =
                 $".repair-displaced-{Guid.NewGuid():N}{Path.GetExtension(scopedTo)}";
             string displaced = $"{StoragePathHelpers.GetParent(scopedTo)}/{displacedName}";
-            await libraryStorage.MoveAsync(scopedTo, displaced, CancellationToken.None);
+            try
+            {
+                await libraryStorage.MoveAsync(scopedTo, displaced, CancellationToken.None);
+            }
+            catch (Exception ex) when (IsWriteRefusal(ex))
+            {
+                LogLeftInPlace(currentRelativePath, trackAppends.Title, ex);
+                return;
+            }
+
             logger.LogInformation(
                 "Displaced occupant of '{Path}' to '{Displaced}' to make room for {Track}",
                 scopedTo,
@@ -611,7 +620,16 @@ public partial class RecordingManager(
         }
 
         string sourcePath = mediaFile.Path;
-        await libraryStorage.MoveAsync(scopedFrom, scopedTo, CancellationToken.None);
+        try
+        {
+            await libraryStorage.MoveAsync(scopedFrom, scopedTo, CancellationToken.None);
+        }
+        catch (Exception ex) when (IsWriteRefusal(ex))
+        {
+            LogLeftInPlace(currentRelativePath, trackAppends.Title, ex);
+            return;
+        }
+
         placedPath = await ResolveStoredPath(libraryStorage, scopedTo, placedPath, comparison);
 
         logger.LogInformation(
@@ -624,6 +642,23 @@ public partial class RecordingManager(
         mediaFile.Path = placedPath;
         await RepointTrackRows(sourcePath, placedPath, libraryFolder, libraryRoot);
     }
+
+    // A read-only library (a Docker ":ro" volume, a read-only share) refuses the move.
+    // A source or target folder that is gone is another failure and still throws.
+    private static bool IsWriteRefusal(Exception exception) =>
+        exception
+            is UnauthorizedAccessException
+                or IOException
+                and not FileNotFoundException
+                and not DirectoryNotFoundException;
+
+    private void LogLeftInPlace(string path, string track, Exception refusal) =>
+        logger.LogWarning(
+            "Leaving '{Path}' in place as {Track}: the library refused the move ({Reason})",
+            path,
+            track,
+            refusal.Message
+        );
 
     // A host can store the moved file under a name with replaced characters. Rows must
     // address the stored name, and the next organize pass then leaves the file alone.
