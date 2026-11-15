@@ -56,6 +56,11 @@ public class PluginRepositoryController(
     IPluginRepositoryInstaller installer
 ) : BaseController
 {
+    private const string NotAPluginFile = "The download was not a plugin file";
+
+    // "PK\x03\x04", the local file header every zip with an entry starts with.
+    private static readonly byte[] ZipMagic = [0x50, 0x4B, 0x03, 0x04];
+
     [HttpGet]
     public IActionResult Index() =>
         Ok(
@@ -247,10 +252,32 @@ public class PluginRepositoryController(
         {
             storageDriver.CreateDirectory(stagingDirectory);
 
+            Uri requested = new(target.DownloadUrl);
             HttpClient client = httpClientFactory.CreateClient();
-            await using (Stream source = await client.GetStreamAsync(target.DownloadUrl, ct))
+            using HttpResponseMessage response = await client.GetAsync(
+                requested,
+                HttpCompletionOption.ResponseHeadersRead,
+                ct
+            );
+            response.EnsureSuccessStatusCode();
+
+            await using Stream source = await response.Content.ReadAsStreamAsync(ct);
+            byte[] header = new byte[ZipMagic.Length];
+            int read = await source.ReadAtLeastAsync(
+                header,
+                header.Length,
+                throwOnEndOfStream: false,
+                ct
+            );
+
+            // Before the checksum and before a byte is staged: a sign-in page
+            // behind a redirect is a download that worked and is not a plugin.
+            if (!IsPluginPackage(requested, response, header.AsSpan(0, read)))
+                return UnprocessableEntityResponse(NotAPluginFile);
+
             await using (Stream destination = storageDriver.OpenWrite(stagedPath, overwrite: true))
             {
+                await destination.WriteAsync(header, ct);
                 await source.CopyToAsync(destination, ct);
             }
 
@@ -349,6 +376,21 @@ public class PluginRepositoryController(
     private static bool IsZipPackage(string downloadUrl) =>
         Uri.TryCreate(downloadUrl, UriKind.Absolute, out Uri? uri)
         && uri.AbsolutePath.EndsWith(".zip", StringComparison.OrdinalIgnoreCase);
+
+    // Same host as the catalog link, not a web page, and a zip by its first bytes.
+    private static bool IsPluginPackage(
+        Uri requested,
+        HttpResponseMessage response,
+        ReadOnlySpan<byte> header
+    )
+    {
+        Uri endedOn = response.RequestMessage?.RequestUri ?? requested;
+        string? mediaType = response.Content.Headers.ContentType?.MediaType;
+
+        return string.Equals(endedOn.Host, requested.Host, StringComparison.OrdinalIgnoreCase)
+            && !string.Equals(mediaType, "text/html", StringComparison.OrdinalIgnoreCase)
+            && header.SequenceEqual(ZipMagic);
+    }
 
     /// <summary>
     /// A version that does not parse sorts below every one that does, rather
