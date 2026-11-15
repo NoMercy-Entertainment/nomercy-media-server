@@ -519,8 +519,7 @@ public class LibraryRepository(IDbContextFactory<MediaContext> contextFactory) :
         return await GetLibraryMovieCardsAsync(context, userId, libraryId, country, take, skip, ct);
     }
 
-    public Task<List<MovieCardDto>> GetLibraryMovieCardsAsync(
-        MediaContext mediaContext,
+    public async Task<List<MovieCardDto>> GetLibraryMovieCardsByTitleAsync(
         Guid userId,
         Ulid libraryId,
         string country,
@@ -529,13 +528,64 @@ public class LibraryRepository(IDbContextFactory<MediaContext> contextFactory) :
         CancellationToken ct = default
     )
     {
-        return mediaContext
+        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+        return await LibraryMovieCardsAsync(
+            context,
+            userId,
+            libraryId,
+            country,
+            take,
+            skip,
+            byTitle: true,
+            ct
+        );
+    }
+
+    public Task<List<MovieCardDto>> GetLibraryMovieCardsAsync(
+        MediaContext mediaContext,
+        Guid userId,
+        Ulid libraryId,
+        string country,
+        int take,
+        int skip,
+        CancellationToken ct = default
+    ) =>
+        LibraryMovieCardsAsync(
+            mediaContext,
+            userId,
+            libraryId,
+            country,
+            take,
+            skip,
+            byTitle: false,
+            ct
+        );
+
+    // The order is applied before the page is taken, so a title-ordered page is the
+    // first titles A to Z rather than the newest ones re-sorted.
+    private static Task<List<MovieCardDto>> LibraryMovieCardsAsync(
+        MediaContext mediaContext,
+        Guid userId,
+        Ulid libraryId,
+        string country,
+        int take,
+        int skip,
+        bool byTitle,
+        CancellationToken ct
+    )
+    {
+        IQueryable<Movie> movies = mediaContext
             .Movies.AsNoTracking()
             .Where(movie => movie.Library.Id == libraryId)
             .ForUser(userId)
             .Where(movie => movie.VideoFiles.Any(v => v.Folder != null))
-            .Include(tv => tv.Images.Where(i => i.Type == "logo" && i.Iso6391 == "en"))
-            .OrderByDescending(movie => movie.CreatedAt)
+            .Include(tv => tv.Images.Where(i => i.Type == "logo" && i.Iso6391 == "en"));
+
+        IOrderedQueryable<Movie> ordered = byTitle
+            ? movies.OrderBy(movie => movie.TitleSort)
+            : movies.OrderByDescending(movie => movie.CreatedAt);
+
+        return ordered
             .ThenBy(movie => movie.Id)
             .Skip(skip)
             .Take(take)
@@ -585,8 +635,7 @@ public class LibraryRepository(IDbContextFactory<MediaContext> contextFactory) :
         return await GetLibraryTvCardsAsync(context, userId, libraryId, country, take, skip, ct);
     }
 
-    public Task<List<TvCardDto>> GetLibraryTvCardsAsync(
-        MediaContext mediaContext,
+    public async Task<List<TvCardDto>> GetLibraryTvCardsByTitleAsync(
         Guid userId,
         Ulid libraryId,
         string country,
@@ -595,13 +644,62 @@ public class LibraryRepository(IDbContextFactory<MediaContext> contextFactory) :
         CancellationToken ct = default
     )
     {
-        return mediaContext
+        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+        return await LibraryTvCardsAsync(
+            context,
+            userId,
+            libraryId,
+            country,
+            take,
+            skip,
+            byTitle: true,
+            ct
+        );
+    }
+
+    public Task<List<TvCardDto>> GetLibraryTvCardsAsync(
+        MediaContext mediaContext,
+        Guid userId,
+        Ulid libraryId,
+        string country,
+        int take,
+        int skip,
+        CancellationToken ct = default
+    ) =>
+        LibraryTvCardsAsync(
+            mediaContext,
+            userId,
+            libraryId,
+            country,
+            take,
+            skip,
+            byTitle: false,
+            ct
+        );
+
+    private static Task<List<TvCardDto>> LibraryTvCardsAsync(
+        MediaContext mediaContext,
+        Guid userId,
+        Ulid libraryId,
+        string country,
+        int take,
+        int skip,
+        bool byTitle,
+        CancellationToken ct
+    )
+    {
+        IQueryable<Tv> shows = mediaContext
             .Tvs.AsNoTracking()
             .Where(tv => tv.Library.Id == libraryId)
             .ForUser(userId)
             .ListedInLibrary()
-            .Include(tv => tv.Images.Where(i => i.Type == "logo" && i.Iso6391 == "en"))
-            .OrderByDescending(tv => tv.CreatedAt)
+            .Include(tv => tv.Images.Where(i => i.Type == "logo" && i.Iso6391 == "en"));
+
+        IOrderedQueryable<Tv> ordered = byTitle
+            ? shows.OrderBy(tv => tv.TitleSort)
+            : shows.OrderByDescending(tv => tv.CreatedAt);
+
+        return ordered
             .ThenBy(tv => tv.Id)
             .Skip(skip)
             .Take(take)

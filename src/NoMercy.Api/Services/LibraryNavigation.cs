@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 using NoMercy.Api.DTOs.Media;
 using NoMercy.Database.Models.Libraries;
+using NoMercy.NmSystem.Extensions;
 
 namespace NoMercy.Api.Services;
 
@@ -52,14 +53,16 @@ public static class LibraryNavigation
         ),
     ];
 
-    private static readonly LibraryNavigationEntryDto[] MusicPages =
-    [
-        Page("MusicStart", "Start", "folder", "/music/start", "music"),
-        Page("MusicArtists", "Artists", "speaker", "/music/artists", "music"),
-        Page("MusicAlbums", "Albums", "disk", "/music/albums", "music"),
-        Page("MusicGenres", "Genres", "noteClefTreble", "/music/genres", "music"),
-        Page("MusicFavorites", "Songs you like", "heart", "/music/tracks", "music"),
-    ];
+    // Built per request: these labels are text, translated here, where the video
+    // pages above carry a key the client translates.
+    private static LibraryNavigationEntryDto[] MusicPages() =>
+        [
+            Page("MusicStart", "Start".Localize(), "folder", "/music/start", "music"),
+            Page("MusicArtists", "Artists".Localize(), "speaker", "/music/artists", "music"),
+            Page("MusicAlbums", "Albums".Localize(), "disk", "/music/albums", "music"),
+            Page("MusicGenres", "Genres".Localize(), "noteClefTreble", "/music/genres", "music"),
+            Page("MusicFavorites", "Songs you like".Localize(), "heart", "/music/tracks", "music"),
+        ];
 
     public static bool HasVideo(IEnumerable<Library> libraries) =>
         libraries.Any(library => library.Type != "music");
@@ -91,7 +94,7 @@ public static class LibraryNavigation
         }
 
         entries.AddRange(videoPluginEntries);
-        entries.AddRange(MusicPages);
+        entries.AddRange(MusicPages());
         entries.AddRange(musicPluginEntries);
         return entries;
     }

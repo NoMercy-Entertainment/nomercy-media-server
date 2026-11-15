@@ -90,7 +90,27 @@ public interface ILibraryRepository
         CancellationToken ct = default
     );
 
+    /// <summary>A page of the library's movies in title order, for the library grid.</summary>
+    Task<List<MovieCardDto>> GetLibraryMovieCardsByTitleAsync(
+        Guid userId,
+        Ulid libraryId,
+        string country,
+        int take,
+        int skip,
+        CancellationToken ct = default
+    );
+
     Task<List<TvCardDto>> GetLibraryTvCardsAsync(
+        Guid userId,
+        Ulid libraryId,
+        string country,
+        int take,
+        int skip,
+        CancellationToken ct = default
+    );
+
+    /// <summary>A page of the library's shows in title order, for the library grid.</summary>
+    Task<List<TvCardDto>> GetLibraryTvCardsByTitleAsync(
         Guid userId,
         Ulid libraryId,
         string country,

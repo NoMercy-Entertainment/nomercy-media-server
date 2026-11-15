@@ -330,7 +330,7 @@ public class LolomoPageTests
         Mock<ILibraryRepository> repository = new();
         repository
             .Setup(r =>
-                r.GetLibraryMovieCardsAsync(
+                r.GetLibraryMovieCardsByTitleAsync(
                     It.IsAny<Guid>(),
                     It.IsAny<Ulid>(),
                     It.IsAny<string>(),
@@ -355,7 +355,7 @@ public class LolomoPageTests
             ]);
         repository
             .Setup(r =>
-                r.GetLibraryTvCardsAsync(
+                r.GetLibraryTvCardsByTitleAsync(
                     It.IsAny<Guid>(),
                     It.IsAny<Ulid>(),
                     It.IsAny<string>(),

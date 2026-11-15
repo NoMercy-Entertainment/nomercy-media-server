@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Api.DTOs.Media;
 using NoMercy.Api.DTOs.Media.Components;
@@ -105,7 +106,7 @@ public class HomeService(
                 .OrderByDescending(r => r.library.Order)
                 .Select(r => new GenreRowDto<GenreRowItemDto>
                 {
-                    Title = "Latest in " + r.library.Title,
+                    Title = LatestInTitle(r.library.Title),
                     MoreLink = new($"/libraries/{r.library.Id}", UriKind.Relative),
                     Items = r
                         .movies.Select(movie => new GenreRowItemDto(movie, country))
@@ -431,10 +432,13 @@ public class HomeService(
     ) =>
         [
             .. carousels.Libraries.Select(library =>
-                ($"library_{library.Id}", $"Latest in {library.Title}", library)
+                ($"library_{library.Id}", LatestInTitle(library.Title), library)
             ),
             .. carousels.Genres.Select(genre => ($"genre_{genre.Id}", genre.Title, genre)),
         ];
+
+    private static string LatestInTitle(string libraryTitle) =>
+        string.Format(CultureInfo.InvariantCulture, "Latest in {0}".Localize(), libraryTitle);
 
     /// <summary>
     /// A random carousel's worth of titles per genre, and every movie and show id
