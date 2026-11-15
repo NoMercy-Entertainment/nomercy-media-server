@@ -32,12 +32,14 @@ public interface IPluginVerifier
     /// second is the owner's own decision about their own server.
     /// </param>
     /// <param name="indexSignature">The index's signature; checked instead of the manifest's.</param>
+    /// <param name="fromOfficialMarketplace">The official index listed the entry; its signature is always enforced.</param>
     PluginVerificationResult Verify(
         PluginManifest manifest,
         string assemblyPath,
         string? expectedChecksum,
         string? packagePath = null,
         bool fromMarketplace = false,
-        PluginIndexSignature? indexSignature = null
+        PluginIndexSignature? indexSignature = null,
+        bool fromOfficialMarketplace = false
     );
 }

@@ -21,6 +21,7 @@ using NoMercy.Events;
 using NoMercy.NmSystem.Logging;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Revocation;
 using NoMercy.PluginSdk.Verification;
 using Xunit;
 
@@ -70,6 +71,34 @@ public class PluginDiIntegrationTests : IDisposable
         manager1.Should().BeOfType<PluginManager>();
 
         (manager1 as IDisposable)?.Dispose();
+    }
+
+    [Fact]
+    public void AddPluginSystem_AStaleRevocationListOnlyWarnsByDefault()
+    {
+        ServiceCollection services = new();
+        services.AddSingleton<IEventBus, InMemoryEventBus>();
+        services.AddLogging();
+        services.AddSingleton(TestStorageHelper.CreateBackend());
+        services.AddPluginSystem(_tempPluginsDir);
+        ServiceProvider provider = BuildProvider(services);
+
+        PluginRevocationGate gate = new(
+            new StaleRevocationStore(),
+            TimeProvider.System,
+            provider.GetRequiredService<PluginTrustMode>()
+        );
+
+        gate.Check(Ulid.NewUlid(), packageHash: null, new(1, 0, 0))
+            .Should()
+            .BeNull("only official marketplace signatures are enforced by default");
+    }
+
+    private sealed class StaleRevocationStore : IPluginRevocationStore
+    {
+        public PluginRevocationList Current => new(DateTimeOffset.UtcNow.AddDays(-30), []);
+
+        public void Save(PluginRevocationList replacement) { }
     }
 
     [Fact]

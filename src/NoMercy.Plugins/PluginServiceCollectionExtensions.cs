@@ -171,6 +171,14 @@ public static class PluginServiceCollectionExtensions
         services.AddSingleton<IPluginRevocationEnforcer>(sp =>
             (PluginManager)sp.GetRequiredService<IPluginManager>()
         );
+        services.AddSingleton<IPluginRepositoryInstaller>(sp =>
+            sp.GetRequiredService<IPluginManager>() as IPluginRepositoryInstaller
+            ?? new NothingInstallsFromARepository()
+        );
+        services.AddSingleton<IPluginRepositoryOrigin>(sp =>
+            sp.GetRequiredService<IPluginRepository>() as IPluginRepositoryOrigin
+            ?? new NoOfficialMarketplace()
+        );
         services.AddSingleton<PluginRevocationStartupRefresh>(sp =>
             new(
                 sp.GetRequiredService<PluginMarketplaceKeyClient>(),
@@ -851,6 +859,25 @@ public static class PluginServiceCollectionExtensions
 internal sealed class NobodyIsListening : IPluginAccessHub
 {
     public void Send(Guid userId, Ulid pluginId, string access) { }
+}
+
+// A host whose manager cannot carry the origin refuses, instead of
+// installing an official entry without the signature rule.
+internal sealed class NothingInstallsFromARepository : IPluginRepositoryInstaller
+{
+    public Task InstallFromRepositoryAsync(
+        string archivePath,
+        string? expectedChecksum,
+        PluginIndexSignature? indexSignature,
+        bool fromOfficialMarketplace,
+        CancellationToken ct = default
+    ) => throw new NotSupportedException("This plugin manager cannot install from a repository.");
+}
+
+// The official index is a fact of the built-in repository; another one has none.
+internal sealed class NoOfficialMarketplace : IPluginRepositoryOrigin
+{
+    public bool IsFromOfficialMarketplace(PluginRepositoryEntry entry) => false;
 }
 
 internal sealed class NobodyIsAMember : IPluginMembership

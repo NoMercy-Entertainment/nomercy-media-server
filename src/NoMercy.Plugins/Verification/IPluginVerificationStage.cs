@@ -42,6 +42,9 @@ public class PluginVerificationContext
     /// and is not held to that.
     /// </summary>
     public bool FromMarketplace { get; init; }
+
+    /// <summary>The official marketplace index listed the entry; its signature is always enforced.</summary>
+    public bool FromOfficialMarketplace { get; init; }
 }
 
 public enum PluginStageOutcome

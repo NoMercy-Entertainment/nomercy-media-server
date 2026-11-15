@@ -31,6 +31,7 @@ namespace NoMercy.PluginSdk.Verification;
 /// <para>
 /// Under a warn-only <see cref="PluginTrustMode"/> a signature that would
 /// fail is logged and the package is trusted instead, with the same message.
+/// An entry the official marketplace index listed is refused in every mode.
 /// </para>
 /// </summary>
 public class SignatureVerificationStage(
@@ -51,7 +52,9 @@ public class SignatureVerificationStage(
     {
         (PluginStageOutcome outcome, string? message) = Check(context);
 
-        if (outcome != PluginStageOutcome.Fail || _mode.Enforce)
+        // The official marketplace signs every version it lists, so a failure
+        // there is never the owner's own unsigned repository: no trust mode softens it.
+        if (outcome != PluginStageOutcome.Fail || _mode.Enforce || context.FromOfficialMarketplace)
             return (outcome, message);
 
         _mode.WouldRefuse(
