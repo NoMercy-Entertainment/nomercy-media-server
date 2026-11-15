@@ -141,7 +141,8 @@ public class AuthTokenRequestTests
     public void DeviceCodeBody_DoesNotContainClientSecret()
     {
         List<KeyValuePair<string, string>> body = AuthManager.BuildDeviceCodeRequestBody(
-            "my-client"
+            "my-client",
+            "challenge-abc"
         );
 
         Dictionary<string, string> dict = ToDictionary(body);
@@ -152,12 +153,44 @@ public class AuthTokenRequestTests
     public void DeviceCodeBody_ContainsClientIdAndScope()
     {
         List<KeyValuePair<string, string>> body = AuthManager.BuildDeviceCodeRequestBody(
-            "my-client"
+            "my-client",
+            "challenge-abc"
         );
 
         Dictionary<string, string> dict = ToDictionary(body);
         Assert.Equal("my-client", dict["client_id"]);
         Assert.Contains("openid", dict["scope"]);
+    }
+
+    [Fact]
+    public void DeviceCodeBody_CarriesS256Challenge()
+    {
+        string verifier = AuthManager.GenerateCodeVerifier();
+        string challenge = AuthManager.GenerateCodeChallenge(verifier);
+
+        List<KeyValuePair<string, string>> body = AuthManager.BuildDeviceCodeRequestBody(
+            "my-client",
+            challenge
+        );
+
+        Dictionary<string, string> dict = ToDictionary(body);
+        Assert.Equal(challenge, dict["code_challenge"]);
+        Assert.Equal("S256", dict["code_challenge_method"]);
+    }
+
+    [Fact]
+    public void DeviceTokenBody_CarriesCodeVerifier()
+    {
+        string verifier = AuthManager.GenerateCodeVerifier();
+
+        List<KeyValuePair<string, string>> body = AuthManager.BuildDeviceTokenBody(
+            "my-client",
+            "device-code-xyz",
+            verifier
+        );
+
+        Dictionary<string, string> dict = ToDictionary(body);
+        Assert.Equal(verifier, dict["code_verifier"]);
     }
 
     // --- Device Token Body ---
@@ -167,7 +200,8 @@ public class AuthTokenRequestTests
     {
         List<KeyValuePair<string, string>> body = AuthManager.BuildDeviceTokenBody(
             "my-client",
-            "device-code-xyz"
+            "device-code-xyz",
+            "verifier-abc"
         );
 
         Dictionary<string, string> dict = ToDictionary(body);
@@ -179,7 +213,8 @@ public class AuthTokenRequestTests
     {
         List<KeyValuePair<string, string>> body = AuthManager.BuildDeviceTokenBody(
             "my-client",
-            "device-code-xyz"
+            "device-code-xyz",
+            "verifier-abc"
         );
 
         Dictionary<string, string> dict = ToDictionary(body);
@@ -191,7 +226,8 @@ public class AuthTokenRequestTests
     {
         List<KeyValuePair<string, string>> body = AuthManager.BuildDeviceTokenBody(
             "my-client",
-            "device-code-xyz"
+            "device-code-xyz",
+            "verifier-abc"
         );
 
         Dictionary<string, string> dict = ToDictionary(body);

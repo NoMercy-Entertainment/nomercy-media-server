@@ -684,9 +684,11 @@ public class SetupEndpoints
 
         try
         {
+            string deviceVerifier = AuthManager.GenerateCodeVerifier();
             List<KeyValuePair<string, string>> deviceCodeBody =
                 AuthManager.BuildDeviceCodeRequestBody(
-                    ExternalServicesConfig.Current.TokenClientId
+                    ExternalServicesConfig.Current.TokenClientId,
+                    AuthManager.GenerateCodeChallenge(deviceVerifier)
                 );
 
             string deviceCodeEndpoint =
@@ -741,7 +743,7 @@ public class SetupEndpoints
 
             _ = Task.Run(async () =>
             {
-                await PollDeviceGrant(deviceData);
+                await PollDeviceGrant(deviceData, deviceVerifier);
             });
         }
         catch (Exception ex)
@@ -955,7 +957,7 @@ public class SetupEndpoints
 
     // ── Device grant polling ────────────────────────────────────────────────
 
-    private async Task PollDeviceGrant(DeviceAuthResponse deviceData)
+    private async Task PollDeviceGrant(DeviceAuthResponse deviceData, string codeVerifier)
     {
         if (string.IsNullOrEmpty(ExternalServicesConfig.Current.TokenClientId))
             return;
@@ -969,7 +971,8 @@ public class SetupEndpoints
 
         List<KeyValuePair<string, string>> tokenBody = AuthManager.BuildDeviceTokenBody(
             ExternalServicesConfig.Current.TokenClientId,
-            deviceData.DeviceCode
+            deviceData.DeviceCode,
+            codeVerifier
         );
 
         string tokenEndpoint =

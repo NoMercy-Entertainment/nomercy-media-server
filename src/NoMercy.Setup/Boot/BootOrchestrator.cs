@@ -236,8 +236,10 @@ public class BootOrchestrator
             HttpClient client = _httpClientFactory.CreateClient(
                 ExternalServicesConfig.KeycloakHttpClientName
             );
+            string codeVerifier = AuthManager.GenerateCodeVerifier();
             List<KeyValuePair<string, string>> body = AuthManager.BuildDeviceCodeRequestBody(
-                ExternalServicesConfig.Current.TokenClientId
+                ExternalServicesConfig.Current.TokenClientId,
+                AuthManager.GenerateCodeChallenge(codeVerifier)
             );
 
             using HttpResponseMessage response = await client.PostAsync(
@@ -281,7 +283,7 @@ public class BootOrchestrator
             if (string.IsNullOrEmpty(deviceCode))
                 return DeviceCodeOutcome.Unreachable;
 
-            return await PollDeviceGrant(deviceCode, interval, ct);
+            return await PollDeviceGrant(deviceCode, codeVerifier, interval, ct);
         }
         catch (OperationCanceledException)
         {
@@ -511,6 +513,7 @@ public class BootOrchestrator
     /// </summary>
     private async Task<DeviceCodeOutcome> PollDeviceGrant(
         string deviceCode,
+        string codeVerifier,
         int interval,
         CancellationToken ct
     )
@@ -529,7 +532,8 @@ public class BootOrchestrator
                 );
                 List<KeyValuePair<string, string>> body = AuthManager.BuildDeviceTokenBody(
                     ExternalServicesConfig.Current.TokenClientId,
-                    deviceCode
+                    deviceCode,
+                    codeVerifier
                 );
 
                 using HttpResponseMessage response = await client.PostAsync(

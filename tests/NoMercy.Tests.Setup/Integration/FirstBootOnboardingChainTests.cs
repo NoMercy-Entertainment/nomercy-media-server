@@ -296,7 +296,8 @@ public sealed class FirstBootOnboardingChainTests : IDisposable
         // ── Stage 1: device-code grant over the recorded endpoints ──────────
         using HttpClient deviceClient = new();
         List<KeyValuePair<string, string>> deviceBody = AuthManager.BuildDeviceCodeRequestBody(
-            "nomercy-server"
+            "nomercy-server",
+            "challenge-abc"
         );
         Assert.Contains(deviceBody, p => p.Key == "client_id" && p.Value == "nomercy-server");
 
@@ -312,7 +313,8 @@ public sealed class FirstBootOnboardingChainTests : IDisposable
 
         List<KeyValuePair<string, string>> tokenBody = AuthManager.BuildDeviceTokenBody(
             "nomercy-server",
-            device.DeviceCode
+            device.DeviceCode,
+            "verifier-abc"
         );
         Assert.Contains(
             tokenBody,
