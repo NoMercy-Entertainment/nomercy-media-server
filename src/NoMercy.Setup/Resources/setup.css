@@ -434,6 +434,18 @@ body {
 
 .error-box.visible { display: block; }
 
+/* Floats over the page so it never moves the layout; the tint sits on a solid surface. */
+.lan-notice {
+    position: fixed;
+    bottom: 16px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: min(560px, calc(100% - 32px));
+    margin: 0;
+    z-index: 10;
+    background: linear-gradient(var(--error-bg), var(--error-bg)), var(--bg);
+}
+
 /* ── Small screens ──────────────────────────────────── */
 
 @media (max-width: 480px) {

@@ -73,6 +73,12 @@ public class ServerRunner : IServerRunner
         foreach (string line in setupAddress.Lines)
             _logger.LogInformation("{SetupAddressLine}", line);
 
+        _ = Task.Run(async () =>
+        {
+            if (await LanReach.CheckMacOsAsync(setupAddress))
+                _logger.LogWarning("{LanBlockedStep}", LanReach.MacOsStep);
+        });
+
         // Try to open the browser automatically if running interactively.
         if (!options.RunAsService && AuthManager.IsDesktopEnvironment())
         {
