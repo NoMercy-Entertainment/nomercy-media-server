@@ -76,6 +76,27 @@ public class BaseController : Controller
         return StatusCode(statusCode, problemDetails);
     }
 
+    /// <summary>Logs the exception with the trace id and returns the plain detail to send.</summary>
+    protected string LogUnexpectedFailure(
+        Exception exception,
+        string plainDetail,
+        [System.Runtime.CompilerServices.CallerMemberName] string caller = ""
+    )
+    {
+        HttpContext
+            ?.RequestServices?.GetService<ILoggerFactory>()
+            ?.CreateLogger("NoMercy.Api.ServerError")
+            .LogError(
+                exception,
+                "[{TraceId}] {Caller} failed for {Path}",
+                HttpContext?.TraceIdentifier,
+                caller,
+                HttpContext?.Request.Path.Value
+            );
+
+        return plainDetail;
+    }
+
     protected IActionResult UnauthenticatedResponse(string detail)
     {
         return ProblemWithTrace(

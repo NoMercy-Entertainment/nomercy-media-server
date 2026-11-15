@@ -299,6 +299,71 @@ public class ReclaimControllerTests : IClassFixture<NoMercyApiFactory>
         body.Should().Contain("currently served copy");
     }
 
+    // ── unexpected failures never show exception text ─────────────────────
+
+    [Fact]
+    public async Task SweepPartials_UnexpectedFailure_ReturnsPlainDetailWithTraceIdAndNoExceptionText()
+    {
+        FakeReclaimScanService fakeService = new()
+        {
+            SweepPartialsHandler = (_) =>
+                throw new IOException("disk /srv/example/secret-path exploded"),
+        };
+        HttpClient client = BuildClient(fakeService).AsAuthenticated();
+
+        HttpResponseMessage response = await client.PostAsync(
+            "/api/v1/dashboard/reclaim/sweep-partials",
+            null
+        );
+
+        string body = await response.Content.ReadAsStringAsync();
+        response.StatusCode.Should().Be(HttpStatusCode.InternalServerError, body);
+        body.Should().NotContain("exploded").And.NotContain("secret-path");
+
+        using JsonDocument doc = JsonDocument.Parse(body);
+        doc.RootElement.GetProperty("detail").GetString().Should().NotBeNullOrWhiteSpace();
+        doc.RootElement.GetProperty("traceId").GetString().Should().NotBeNullOrWhiteSpace();
+    }
+
+    [Fact]
+    public async Task DeleteItem_UnexpectedFailure_ReturnsPlainDetailWithNoExceptionText()
+    {
+        FakeReclaimScanService fakeService = new()
+        {
+            DeleteItemHandler = (_, _) =>
+                throw new IOException("disk /srv/example/secret-path exploded"),
+        };
+        HttpClient client = BuildClient(fakeService).AsAuthenticated();
+
+        HttpResponseMessage response = await client.DeleteAsync(
+            "/api/v1/dashboard/reclaim/items/some-id"
+        );
+
+        string body = await response.Content.ReadAsStringAsync();
+        response.StatusCode.Should().Be(HttpStatusCode.InternalServerError, body);
+        body.Should().NotContain("exploded").And.NotContain("secret-path");
+    }
+
+    [Fact]
+    public async Task SweepPartials_DomainConflict_StillShowsItsOwnMessage()
+    {
+        FakeReclaimScanService fakeService = new()
+        {
+            SweepPartialsHandler = (_) =>
+                throw new InvalidOperationException("A scan is running right now."),
+        };
+        HttpClient client = BuildClient(fakeService).AsAuthenticated();
+
+        HttpResponseMessage response = await client.PostAsync(
+            "/api/v1/dashboard/reclaim/sweep-partials",
+            null
+        );
+
+        string body = await response.Content.ReadAsStringAsync();
+        response.StatusCode.Should().Be(HttpStatusCode.Conflict, body);
+        body.Should().Contain("A scan is running right now.");
+    }
+
     // ── fake service ───────────────────────────────────────────────────────
 
     private sealed class FakeReclaimScanService : IReclaimScanService

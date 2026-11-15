@@ -295,7 +295,7 @@ public class CastProxyController(
                 "[CastProxy] could not reach TV '{Name}' ({Ip}): {Message}",
                 [tv.Name, host, ex.Message]
             );
-            return ServiceUnavailableResponse($"Could not reach TV '{tv.Name}': {ex.Message}");
+            return ServiceUnavailableResponse($"Could not reach TV '{tv.Name}'.");
         }
     }
 }
