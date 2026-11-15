@@ -1044,4 +1044,16 @@
     <Key>Fall</Key>
     <Value lang="nl">Herfst</Value>
   </Entry>
+  <Entry>
+    <Key>Latest in {0}</Key>
+    <Value lang="nl">Nieuw in {0}</Value>
+  </Entry>
+  <Entry>
+    <Key>Start</Key>
+    <Value lang="nl">Start</Value>
+  </Entry>
+  <Entry>
+    <Key>Songs you like</Key>
+    <Value lang="nl">Nummers die je leuk vindt</Value>
+  </Entry>
 </I18N>
