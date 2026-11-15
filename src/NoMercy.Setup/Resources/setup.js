@@ -22,6 +22,13 @@
 
     function el(id) { return document.getElementById(id); }
 
+    function showLanNotice(data) {
+        if (!data || !data.lan_blocked_step) return;
+        var box = el("lan-notice");
+        box.textContent = data.lan_blocked_step;
+        box.classList.add("visible");
+    }
+
     function drawQrCode(container, url) {
         var img = document.createElement("img");
         img.src = "/setup/qr?data=" + encodeURIComponent(url);
@@ -284,6 +291,7 @@
     }
 
     function handleStatusData(data) {
+        showLanNotice(data);
         updateProgress(data);
 
         if (data.phase === "Complete") {
@@ -399,6 +407,7 @@
             .then(function(r) { return r.json(); })
             .then(function(data) {
                 config = data;
+                showLanNotice(data);
 
                 if (data.phase === "Complete") {
                     show("step-complete");

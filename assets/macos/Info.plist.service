@@ -26,6 +26,8 @@
         <true/>
         <key>LSUIElement</key>
         <true/>
+        <key>NSLocalNetworkUsageDescription</key>
+        <string>NoMercy MediaServer streams your library to the devices on your network.</string>
         <key>NSHumanReadableCopyright</key>
         <string>Copyright &#169; 2025 NoMercy Entertainment. All rights reserved.</string>
     </dict>

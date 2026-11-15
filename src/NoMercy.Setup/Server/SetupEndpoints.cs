@@ -212,6 +212,7 @@ public class SetupEndpoints
             pkce_state = pkceState,
             is_first_boot = !Start.Certificate!.HasValidCertificate(),
             browser_login_allowed = TrustedSetupHost.IsTrusted(context.Request.Host),
+            lan_blocked_step = LanReach.Step,
         };
 
         await WriteJsonResponse(context.Response, response);
@@ -284,6 +285,7 @@ public class SetupEndpoints
             // The server's own origin serves the API (Swagger at /), not the client,
             // so finishing setup has to hand off to the app instead of to ServerUrl.
             app_url = ExternalServicesConfig.Current.AppBaseUrl,
+            lan_blocked_step = LanReach.Step,
         };
     }
 

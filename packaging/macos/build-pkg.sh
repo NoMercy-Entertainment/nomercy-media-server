@@ -70,6 +70,8 @@ cat > "${SERVER_ROOT}/Applications/NoMercy MediaServer.app/Contents/Info.plist" 
     <string>12.0</string>
     <key>LSUIElement</key>
     <true/>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>NoMercy MediaServer streams your library to the devices on your network.</string>
 </dict>
 </plist>
 PLIST
