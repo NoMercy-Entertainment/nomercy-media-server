@@ -538,6 +538,14 @@ public class PluginManager
             // that applies the staged copy, now or on the next start.
             await RecordFilesAsync(staging, ct);
 
+            // How this arrived, written beside it and not taken from the
+            // manifest. In the staged copy, so it lands with every way the
+            // update is applied, now or on the next start (AUD-1017).
+            if (!fromMarketplace)
+            {
+                PluginSideloadMarker.Mark(staging);
+            }
+
             // A resident plugin is unloaded and swapped live: the owner asked for an
             // update, not a server restart, and the assembly lock that used to force
             // one only lasts for the moment between Unload() and the GC actually
@@ -560,14 +568,6 @@ public class PluginManager
             }
 
             ApplyStaged(staging, pluginDir);
-
-            // A fact about how this arrived, written beside it rather than taken
-            // from the manifest: anything a plugin says about itself is not
-            // something the server can rely on.
-            if (!fromMarketplace)
-            {
-                PluginSideloadMarker.Mark(pluginDir);
-            }
 
             await LoadPluginFromManifestAsync(_storage.CombinePath(pluginDir, "plugin.json"), ct);
 

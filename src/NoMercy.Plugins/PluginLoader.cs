@@ -252,9 +252,14 @@ internal sealed class PluginLoader(
                     manifestPath,
                     verification.Verified,
                     verification.Trusted,
-                    PluginSideloadMarker.IsMarked(manifestPath)
+                    IsSideloaded(manifestPath)
                 )
             );
+
+    // The boot scan hands over a path relative to the plugins root, and the
+    // marker is looked up on the real disk (AUD-1017).
+    private bool IsSideloaded(string manifestPath) =>
+        PluginSideloadMarker.IsMarked(ToLocalAssemblyPath(manifestPath));
 
     // The consent rule and the run gate, asked the same way before a plugin
     // starts in this process or in its own (AUD-9884).
@@ -476,7 +481,7 @@ internal sealed class PluginLoader(
                         manifestPath,
                         verification.Verified,
                         verification.Trusted,
-                        PluginSideloadMarker.IsMarked(manifestPath)
+                        IsSideloaded(manifestPath)
                     ),
                     null,
                     null
@@ -512,7 +517,7 @@ internal sealed class PluginLoader(
                             manifestPath,
                             verification.Verified,
                             verification.Trusted,
-                            PluginSideloadMarker.IsMarked(manifestPath)
+                            IsSideloaded(manifestPath)
                         ),
                         null,
                         null
@@ -694,7 +699,7 @@ internal sealed class PluginLoader(
                         manifestPath,
                         verification.Verified,
                         verification.Trusted,
-                        PluginSideloadMarker.IsMarked(manifestPath)
+                        IsSideloaded(manifestPath)
                     );
 
                     // Decides whether enabling this later can take full effect
@@ -1042,7 +1047,10 @@ internal sealed class PluginLoader(
                         Tier = before?.Tier ?? PluginTier.Free,
                         Verified = before?.Verified ?? false,
                         Trusted = before?.Trusted ?? false,
-                        Sideloaded = before?.Sideloaded ?? false,
+                        // The folder's marker outlives a reload that lost the entry (AUD-1017).
+                        Sideloaded =
+                            (before?.Sideloaded ?? false)
+                            || PluginSideloadMarker.IsMarked(absoluteAssemblyPath),
                         ContributesServices = before?.ContributesServices ?? false,
                     };
 
