@@ -93,6 +93,51 @@ public class PluginSideloadMarkerUpdateTests : IDisposable
     }
 
     [Fact]
+    public async Task A_bare_assembly_installed_from_a_file_is_marked()
+    {
+        StageEcho(marked: false);
+        string upload = Path.Combine(_pluginsDir, "upload", AssemblyName);
+        Directory.CreateDirectory(Path.GetDirectoryName(upload)!);
+        File.Copy(Path.Combine(_echoPluginDir, AssemblyName), upload);
+        Directory.Delete(_echoPluginDir, recursive: true);
+
+        await UpdateAsync(() => _manager.InstallPluginAsync(upload));
+
+        File.Exists(Path.Combine(_echoPluginDir, PluginSideloadMarker.FileName)).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task A_bare_assembly_update_does_not_keep_the_old_verification()
+    {
+        StageEcho(marked: false);
+        await _manager.LoadPluginsFromDirectoryAsync();
+        Installed().Verified.Should().BeTrue();
+
+        string upload = Path.Combine(_pluginsDir, "upload", AssemblyName);
+        Directory.CreateDirectory(Path.GetDirectoryName(upload)!);
+        File.Copy(Path.Combine(_echoPluginDir, AssemblyName), upload);
+
+        await _manager.InstallPluginAsync(upload);
+
+        Installed().Verified.Should().BeFalse();
+        Installed().Trusted.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task A_marketplace_update_over_a_sideloaded_plugin_keeps_the_marker()
+    {
+        StageEcho(marked: true);
+        await _manager.LoadPluginsFromDirectoryAsync();
+
+        await UpdateAsync(() =>
+            _manager.InstallPluginArchiveAsync(BuildUpdateArchive(), fromMarketplace: true)
+        );
+
+        File.Exists(Path.Combine(_echoPluginDir, PluginSideloadMarker.FileName)).Should().BeTrue();
+        Installed().Sideloaded.Should().BeTrue();
+    }
+
+    [Fact]
     public async Task A_marketplace_install_of_a_new_plugin_is_not_marked()
     {
         StageEcho(marked: false);

@@ -867,11 +867,13 @@ internal sealed class PluginLoader(
     }
 
     // previous: what the registry held before an update unloaded the plugin,
-    // so the reload still knows it.
+    // so the reload still knows it. newContent: the file is not what was
+    // verified or trusted before, so those two marks do not carry over.
     internal async Task LoadPluginAssemblyAsync(
         string assemblyPath,
         CancellationToken ct = default,
-        PluginInfo? previous = null
+        PluginInfo? previous = null,
+        bool newContent = false
     )
     {
         string absoluteAssemblyPath = ToLocalAssemblyPath(assemblyPath);
@@ -1045,8 +1047,8 @@ internal sealed class PluginLoader(
                         Settings = before?.Settings ?? [],
                         Dependencies = before?.Dependencies ?? [],
                         Tier = before?.Tier ?? PluginTier.Free,
-                        Verified = before?.Verified ?? false,
-                        Trusted = before?.Trusted ?? false,
+                        Verified = !newContent && (before?.Verified ?? false),
+                        Trusted = !newContent && (before?.Trusted ?? false),
                         // The folder's marker outlives a reload that lost the entry (AUD-1017).
                         Sideloaded =
                             (before?.Sideloaded ?? false)

@@ -247,6 +247,9 @@ public class PluginManager
             await _storage.CreateDirectoryAsync(pluginDir, ct);
         }
 
+        // A bare file is always the owner's own supply, never a repository's.
+        PluginSideloadMarker.Mark(LocalPath(pluginDir));
+
         string destPath = _storage.CombinePath(pluginDir, Path.GetFileName(fullPath));
 
         // The destination may be a running plugin's own assembly: on Windows a
@@ -280,7 +283,7 @@ public class PluginManager
             {
                 PluginPackageHashMarker.Clear(pluginDir);
                 await RecordFilesAsync(pluginDir, ct);
-                await LoadPluginAssemblyAsync(destPath, ct, resident);
+                await LoadPluginAssemblyAsync(destPath, ct, resident, newContent: true);
                 _registerScheduledWork?.Invoke(resident.Id);
                 return;
             }
@@ -310,7 +313,7 @@ public class PluginManager
         // A bare assembly is not the package an earlier install was hashed from.
         PluginPackageHashMarker.Clear(pluginDir);
         await RecordFilesAsync(pluginDir, ct);
-        await LoadPluginAssemblyAsync(destPath, ct);
+        await LoadPluginAssemblyAsync(destPath, ct, newContent: true);
     }
 
     /// <summary>
@@ -541,7 +544,13 @@ public class PluginManager
             // How this arrived, written beside it and not taken from the
             // manifest. In the staged copy, so it lands with every way the
             // update is applied, now or on the next start (AUD-1017).
-            if (!fromMarketplace)
+            // A marketplace update never clears it: the folder stays what it was.
+            if (
+                !fromMarketplace
+                || PluginSideloadMarker.IsMarked(
+                    Path.Combine(LocalPath(pluginDir), "plugin.json")
+                )
+            )
             {
                 PluginSideloadMarker.Mark(staging);
             }
@@ -1577,10 +1586,11 @@ public class PluginManager
     internal Task LoadPluginAssemblyAsync(
         string assemblyPath,
         CancellationToken ct = default,
-        PluginInfo? previous = null
+        PluginInfo? previous = null,
+        bool newContent = false
     )
     {
-        return _loader.LoadPluginAssemblyAsync(assemblyPath, ct, previous);
+        return _loader.LoadPluginAssemblyAsync(assemblyPath, ct, previous, newContent);
     }
 
     public IPlugin? GetPluginInstance(Ulid pluginId)
