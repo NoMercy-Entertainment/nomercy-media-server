@@ -12,11 +12,13 @@
 using System.Net;
 using Microsoft.Extensions.Logging;
 using Moq;
+using NoMercy.Api.DTOs.Security;
 using NoMercy.Api.Security;
 using NoMercy.Authorization;
 using NoMercy.Database.Activity;
 using NoMercy.Database.Models.Security;
 using NoMercy.Events;
+using NoMercy.Networking.Discovery;
 using Xunit;
 
 namespace NoMercy.Tests.Api.Security;
@@ -31,7 +33,8 @@ public class AbuseGuardTests
     private static AbuseGuard CreateGuard(
         TestTimeProvider time,
         InMemoryIpBanRepository repository,
-        IAbuseGuardSettings? settings = null
+        IAbuseGuardSettings? settings = null,
+        INetworkDiscovery? discovery = null
     ) =>
         new(
             repository,
@@ -40,8 +43,175 @@ public class AbuseGuardTests
             Mock.Of<IEventBus>(),
             Mock.Of<ILogger<AbuseGuard>>(),
             time,
-            UserCache.Current
+            UserCache.Current,
+            discovery ?? Mock.Of<INetworkDiscovery>()
         );
+
+    private static RequestOutcome Miss(int attempt) => new($"/admin-{attempt}", false, 401, false);
+
+    private static async Task RecordMissesAsync(AbuseGuard guard, IPAddress address, int count)
+    {
+        for (int attempt = 0; attempt < count; attempt++)
+            await guard.RecordAsync(address, Miss(attempt), CancellationToken.None);
+    }
+
+    [Fact]
+    public async Task RecordAsync_FiftyMissesFromTheServersOwnExternalAddress_NeverBan()
+    {
+        TestTimeProvider time = new(Start);
+        InMemoryIpBanRepository repository = new();
+        INetworkDiscovery discovery = Mock.Of<INetworkDiscovery>(d => d.ExternalIp == "192.0.2.10");
+        AbuseGuard guard = CreateGuard(time, repository, discovery: discovery);
+        IPAddress home = IPAddress.Parse("192.0.2.10");
+
+        await RecordMissesAsync(guard, home, 50);
+
+        (await guard.IsBannedAsync(home, CancellationToken.None)).Should().BeFalse();
+        repository.Rows.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task RecordAsync_TheServersOwnExternalIpv6Address_IsNeverBanned()
+    {
+        TestTimeProvider time = new(Start);
+        InMemoryIpBanRepository repository = new();
+        INetworkDiscovery discovery = Mock.Of<INetworkDiscovery>(d =>
+            d.ExternalIp == "0.0.0.0" && d.ExternalIpV6 == "2001:db8::10"
+        );
+        AbuseGuard guard = CreateGuard(time, repository, discovery: discovery);
+        IPAddress home = IPAddress.Parse("2001:db8::10");
+
+        await RecordMissesAsync(guard, home, 50);
+
+        (await guard.IsBannedAsync(home, CancellationToken.None)).Should().BeFalse();
+        repository.Rows.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task RecordAsync_AfterTheExternalAddressChanges_OnlyTheNewOneIsExempt()
+    {
+        TestTimeProvider time = new(Start);
+        Mock<INetworkDiscovery> discovery = new();
+        discovery.SetupGet(d => d.ExternalIp).Returns("192.0.2.10");
+        AbuseGuard guard = CreateGuard(time, new(), discovery: discovery.Object);
+        IPAddress earlier = IPAddress.Parse("192.0.2.10");
+        IPAddress current = IPAddress.Parse("192.0.2.11");
+
+        discovery.SetupGet(d => d.ExternalIp).Returns("192.0.2.11");
+        await RecordMissesAsync(guard, earlier, 50);
+        await RecordMissesAsync(guard, current, 50);
+
+        (await guard.IsBannedAsync(earlier, CancellationToken.None)).Should().BeTrue();
+        (await guard.IsBannedAsync(current, CancellationToken.None)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task IsBannedAsync_ABanAlreadyStoredForTheServersOwnAddress_IsNotEnforced()
+    {
+        TestTimeProvider time = new(Start);
+        InMemoryIpBanRepository repository = new();
+        repository.Rows.Add(
+            new()
+            {
+                Address = "192.0.2.10",
+                Reason = "Suspicious",
+                OffenceCount = 10,
+                BanNumber = 1,
+                BannedAt = time.GetUtcNow().UtcDateTime,
+                ExpiresAt = DateTime.MaxValue,
+            }
+        );
+        INetworkDiscovery discovery = Mock.Of<INetworkDiscovery>(d => d.ExternalIp == "192.0.2.10");
+        AbuseGuard guard = CreateGuard(time, repository, discovery: discovery);
+
+        await guard.RefreshAsync(CancellationToken.None);
+
+        (await guard.IsBannedAsync(IPAddress.Parse("192.0.2.10"), CancellationToken.None))
+            .Should()
+            .BeFalse();
+    }
+
+    [Fact]
+    public async Task RecordAsync_ABanMadeOnlyOfUnroutedMisses_ExpiresAfterTheBanDuration()
+    {
+        TestTimeProvider time = new(Start);
+        InMemoryIpBanRepository repository = new();
+        AbuseGuard guard = CreateGuard(time, repository);
+        IPAddress client = IPAddress.Parse("203.0.113.90");
+
+        await RecordMissesAsync(guard, client, 10);
+        IpBan ban = repository.Rows.Single();
+
+        ban.Reason.Should().Be("Suspicious");
+        ban.ExpiresAt.Should().Be(time.GetUtcNow().UtcDateTime.AddHours(1));
+        (await guard.IsBannedAsync(client, CancellationToken.None)).Should().BeTrue();
+
+        time.Advance(TimeSpan.FromMinutes(61));
+
+        (await guard.IsBannedAsync(client, CancellationToken.None)).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task RecordAsync_ARepeatedMissOnlyBan_LastsTwiceAsLong()
+    {
+        TestTimeProvider time = new(Start);
+        InMemoryIpBanRepository repository = new();
+        AbuseGuard guard = CreateGuard(time, repository);
+        IPAddress client = IPAddress.Parse("203.0.113.91");
+
+        await RecordMissesAsync(guard, client, 10);
+        time.Advance(TimeSpan.FromMinutes(61));
+        await RecordMissesAsync(guard, client, 10);
+        IpBan second = repository.Rows.Single();
+
+        second.BanNumber.Should().Be(2);
+        second.ExpiresAt.Should().Be(time.GetUtcNow().UtcDateTime.AddHours(2));
+    }
+
+    [Fact]
+    public async Task RecordAsync_ARepeatedMissOnlyBan_NeverExceedsTheConfiguredMaximum()
+    {
+        FakeConfigurationStore store = new();
+        store.SetValue(AbuseGuardSettings.MaxBanMinutesKey, "90");
+        TestTimeProvider time = new(Start);
+        InMemoryIpBanRepository repository = new();
+        AbuseGuard guard = CreateGuard(time, repository, new AbuseGuardSettings(store));
+        IPAddress client = IPAddress.Parse("203.0.113.92");
+
+        await RecordMissesAsync(guard, client, 10);
+        time.Advance(TimeSpan.FromMinutes(61));
+        await RecordMissesAsync(guard, client, 10);
+
+        repository.Rows.Single().ExpiresAt.Should().Be(time.GetUtcNow().UtcDateTime.AddMinutes(90));
+    }
+
+    [Fact]
+    public async Task RecordAsync_AKnownProbeAmongTheMisses_KeepsTheBanPermanent()
+    {
+        TestTimeProvider time = new(Start);
+        InMemoryIpBanRepository repository = new();
+        AbuseGuard guard = CreateGuard(time, repository);
+        IPAddress scanner = IPAddress.Parse("203.0.113.93");
+
+        await guard.RecordAsync(scanner, WpLogin, CancellationToken.None);
+        await RecordMissesAsync(guard, scanner, 5);
+        IpBan ban = repository.Rows.Single();
+
+        ban.Reason.Should().Be("KnownProbe");
+        ban.ExpiresAt.Should().Be(DateTime.MaxValue);
+    }
+
+    [Fact]
+    public async Task RecordAsync_ABan_KeepsTheLastPathForTheDashboard()
+    {
+        TestTimeProvider time = new(Start);
+        InMemoryIpBanRepository repository = new();
+        AbuseGuard guard = CreateGuard(time, repository);
+
+        await RecordMissesAsync(guard, IPAddress.Parse("203.0.113.94"), 10);
+
+        IpBanDto.From(repository.Rows.Single()).LastPath.Should().Be("/admin-9");
+    }
 
     [Fact]
     public async Task RecordAsync_TwoKnownProbes_CrossesTheThresholdAndBans()
