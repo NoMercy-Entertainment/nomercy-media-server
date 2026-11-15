@@ -63,6 +63,7 @@ public record RelatedDto
     public RelatedDto(Recommendation recommendation, string type, Tv[]? recommendations = null)
     {
         Id = recommendation.MediaId;
+        Adult = recommendation.Adult;
         Overview = recommendation.Overview;
         Poster = recommendation.Poster;
         Backdrop = recommendation.Backdrop;
