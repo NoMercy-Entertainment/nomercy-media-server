@@ -114,7 +114,8 @@ public class PluginEntitlementTransportTests : IDisposable
                     new Dictionary<string, string> { ["nomercy-1"] = _publicKey }
                 )
                 : PluginTrustedKeys.None,
-            NullLogger<PluginEntitlementClient>.Instance
+            NullLogger<PluginEntitlementClient>.Instance,
+            Ulid.Parse(ServerId)
         );
 
     [Fact]
@@ -256,6 +257,32 @@ public class PluginEntitlementTransportTests : IDisposable
 
         store.Current.IssuedAt.Should().Be(newer);
         store.Current.Entitlements.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_signed_bundle_for_another_server_is_not_saved()
+    {
+        PluginEntitlementStore store = new(_folder);
+        DateTimeOffset held = new(2026, 9, 19, 11, 0, 0, TimeSpan.Zero);
+        store.Save(new(Ulid.Parse(ServerId), held, held.AddDays(1), []));
+
+        Client(store)
+            .Accept(Body(serverId: "01J9ZK5V8Y000000000000000Y"))
+            .Should()
+            .BeFalse();
+
+        store.Current.IssuedAt.Should().Be(held);
+        store.Current.Entitlements.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void A_first_bundle_for_this_server_saves_when_none_is_stored()
+    {
+        PluginEntitlementStore store = new(_folder);
+
+        Client(store).Accept(Body()).Should().BeTrue();
+
+        store.Current.Entitlements.Should().ContainSingle();
     }
 
     [Fact]

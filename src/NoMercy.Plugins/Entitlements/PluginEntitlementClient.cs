@@ -29,7 +29,8 @@ public class PluginEntitlementClient(
     HttpClient http,
     IPluginEntitlementStore store,
     IPluginTrustedKeys trustedKeys,
-    ILogger<PluginEntitlementClient> logger
+    ILogger<PluginEntitlementClient> logger,
+    Ulid? ownServerId = null
 )
 {
     /// <summary>
@@ -74,6 +75,15 @@ public class PluginEntitlementClient(
         {
             logger.LogWarning(
                 "Plugin entitlements: the bundle did not verify, so the one already on this server was kept."
+            );
+
+            return false;
+        }
+
+        if (ownServerId is { } own && bundle!.ServerId != own)
+        {
+            logger.LogWarning(
+                "Plugin entitlements: the bundle was issued for another server, so it was not saved."
             );
 
             return false;

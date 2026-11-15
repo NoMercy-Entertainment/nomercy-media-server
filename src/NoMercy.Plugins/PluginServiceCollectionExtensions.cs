@@ -165,7 +165,8 @@ public static class PluginServiceCollectionExtensions
                 TrustClient(),
                 sp.GetRequiredService<IPluginEntitlementStore>(),
                 sp.GetRequiredService<IPluginTrustedKeys>(),
-                sp.GetRequiredService<ILogger<PluginEntitlementClient>>()
+                sp.GetRequiredService<ILogger<PluginEntitlementClient>>(),
+                new Ulid(Info.DeviceId)
             )
         );
         services.AddSingleton<IPluginRevocationEnforcer>(sp =>
