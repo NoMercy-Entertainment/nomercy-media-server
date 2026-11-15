@@ -115,7 +115,14 @@ public partial class MediaIdentificationService(
         else
         {
             shows = await searchClient.TvShow(parsed.Title.OrEmpty(), parsed.Year.OrEmpty(), true);
-            show = shows?.Results.FirstOrDefault();
+            show = TitleMatchScorer.PickBest(
+                shows?.Results ?? [],
+                result => result.Name,
+                result => result.OriginalName,
+                result => result.FirstAirDate,
+                parsed.Title.OrEmpty(),
+                parsed.Year.OrEmpty()
+            );
         }
 
         if (show == null)
@@ -501,7 +508,14 @@ public partial class MediaIdentificationService(
                 parsed.Year.OrEmpty(),
                 true
             );
-            movie = movies?.Results.FirstOrDefault();
+            movie = TitleMatchScorer.PickBest(
+                movies?.Results ?? [],
+                result => result.Title,
+                result => result.OriginalTitle,
+                result => result.ReleaseDate,
+                parsed.Title.OrEmpty(),
+                parsed.Year.OrEmpty()
+            );
         }
 
         if (movie == null)

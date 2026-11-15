@@ -156,7 +156,7 @@ public class InboxController(
         catch (Exception ex)
         {
             return InternalServerErrorResponse(
-                $"Failed to assign inbox item: {ex.GetType().Name}: {ex.Message}"
+                LogUnexpectedFailure(ex, "Failed to assign the inbox item.")
             );
         }
 

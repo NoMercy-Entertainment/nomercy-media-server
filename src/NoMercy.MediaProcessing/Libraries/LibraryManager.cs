@@ -537,12 +537,18 @@ public class LibraryManager(
         if (paginatedMovieResponse?.Results.Count <= 0)
             return;
 
-        // List<Movie> res = FuzzyMatcher.SortByMatchPercentage(paginatedMovieResponse?.Results, m => m.Title, folder.Parsed.Title);
-        IEnumerable<TmdbMovie> res = paginatedMovieResponse?.Results ?? [];
-        if (res.Count() is 0)
+        TmdbMovie? movie = TitleMatchScorer.PickBest(
+            paginatedMovieResponse?.Results ?? [],
+            result => result.Title,
+            result => result.OriginalTitle,
+            result => result.ReleaseDate,
+            folderExtend.Parsed.Title!,
+            folderExtend.Parsed.Year
+        );
+        if (movie is null)
             return;
 
-        DispatchImport(new MovieImportJob { Id = res.First().Id, LibraryId = _library.Id });
+        DispatchImport(new MovieImportJob { Id = movie.Id, LibraryId = _library.Id });
     }
 
     private async Task ProcessTvFolder(MediaFolderExtend folderExtend)
@@ -561,12 +567,18 @@ public class LibraryManager(
         if (paginatedTvShowResponse?.Results.Count <= 0)
             return;
 
-        // List<TvShow> res = FuzzyMatcher.SortByMatchPercentage(paginatedTvShowResponse.Results, m => m.Name, folder.Parsed.Title);
-        IEnumerable<TmdbTvShow> res = paginatedTvShowResponse?.Results ?? [];
-        if (!res.Any())
+        TmdbTvShow? show = TitleMatchScorer.PickBest(
+            paginatedTvShowResponse?.Results ?? [],
+            result => result.Name,
+            result => result.OriginalName,
+            result => result.FirstAirDate,
+            folderExtend.Parsed.Title!,
+            folderExtend.Parsed.Year
+        );
+        if (show is null)
             return;
 
-        DispatchImport(new ShowImportJob { Id = res.First().Id, LibraryId = _library.Id });
+        DispatchImport(new ShowImportJob { Id = show.Id, LibraryId = _library.Id });
     }
 
     private void ProcessMusicFolder(MediaFolderExtend baseFolderExtend)

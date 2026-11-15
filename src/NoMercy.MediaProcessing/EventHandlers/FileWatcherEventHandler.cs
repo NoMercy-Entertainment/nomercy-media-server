@@ -513,19 +513,15 @@ public class FileWatcherEventHandler : IDisposable
             return;
         }
 
-        TmdbMovie? movie = response.Results.MaxBy(result =>
-            ScoreCandidate(
-                result.Title,
-                result.ReleaseDate,
-                mediaFolder.Parsed.Title,
-                mediaFolder.Parsed.Year
-            )
+        TmdbMovie? movie = TitleMatchScorer.PickBest(
+            response.Results,
+            result => result.Title,
+            result => result.OriginalTitle,
+            result => result.ReleaseDate,
+            mediaFolder.Parsed.Title,
+            mediaFolder.Parsed.Year
         );
-        if (
-            movie is null
-            || FuzzyMatcher.MatchPercentage(movie.Title, mediaFolder.Parsed.Title)
-                < MinMatchConfidence
-        )
+        if (movie is null)
         {
             _logger.LogWarning(
                 "FileWatcher: No confident TMDB match for movie '{Title}'",
@@ -571,19 +567,15 @@ public class FileWatcherEventHandler : IDisposable
             return;
         }
 
-        TmdbTvShow? show = response.Results.MaxBy(result =>
-            ScoreCandidate(
-                result.Name,
-                result.FirstAirDate,
-                mediaFolder.Parsed.Title,
-                mediaFolder.Parsed.Year
-            )
+        TmdbTvShow? show = TitleMatchScorer.PickBest(
+            response.Results,
+            result => result.Name,
+            result => result.OriginalName,
+            result => result.FirstAirDate,
+            mediaFolder.Parsed.Title,
+            mediaFolder.Parsed.Year
         );
-        if (
-            show is null
-            || FuzzyMatcher.MatchPercentage(show.Name, mediaFolder.Parsed.Title)
-                < MinMatchConfidence
-        )
+        if (show is null)
         {
             _logger.LogWarning(
                 "FileWatcher: No confident TMDB match for TV show '{Title}'",
@@ -636,21 +628,6 @@ public class FileWatcherEventHandler : IDisposable
             folderLibrary.FolderId,
             directoryPath
         );
-    }
-
-    private const double MinMatchConfidence = 50.0;
-
-    private static double ScoreCandidate(
-        string candidateTitle,
-        DateTime? candidateDate,
-        string parsedTitle,
-        string? parsedYear
-    )
-    {
-        double score = FuzzyMatcher.MatchPercentage(candidateTitle, parsedTitle);
-        if (int.TryParse(parsedYear, out int year) && candidateDate?.Year == year)
-            score += 25;
-        return score;
     }
 
     public void Dispose()

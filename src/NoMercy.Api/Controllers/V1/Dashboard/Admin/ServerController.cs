@@ -654,7 +654,9 @@ public partial class ServerController(
         }
         catch (Exception e)
         {
-            return UnprocessableEntityResponse("Server name could not be updated: " + e.Message);
+            return UnprocessableEntityResponse(
+                LogUnexpectedFailure(e, "Server name could not be updated.")
+            );
         }
     }
 

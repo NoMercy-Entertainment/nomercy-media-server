@@ -354,7 +354,9 @@ public class EncodingPresetsController(
         }
         catch (Exception ex)
         {
-            return BadRequestResponse($"Could not fetch or parse preset from URL: {ex.Message}");
+            return BadRequestResponse(
+                LogUnexpectedFailure(ex, "Could not fetch or parse the preset from that URL.")
+            );
         }
 
         if (export is null || string.IsNullOrWhiteSpace(export.Name))

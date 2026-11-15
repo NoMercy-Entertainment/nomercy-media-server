@@ -128,7 +128,7 @@ public class ReclaimController(IReclaimScanService reclaimScanService) : BaseCon
         catch (Exception ex)
         {
             return InternalServerErrorResponse(
-                $"Failed to delete reclaimable item '{id}': {ex.Message}"
+                LogUnexpectedFailure(ex, $"Failed to delete reclaimable item '{id}'.")
             );
         }
     }
@@ -155,7 +155,9 @@ public class ReclaimController(IReclaimScanService reclaimScanService) : BaseCon
         }
         catch (Exception ex)
         {
-            return InternalServerErrorResponse($"Failed to sweep partial junk: {ex.Message}");
+            return InternalServerErrorResponse(
+                LogUnexpectedFailure(ex, "Failed to sweep partial junk.")
+            );
         }
     }
 }
