@@ -42,6 +42,7 @@ public static class TitleMatchScorer
     public static T? PickBest<T>(
         IEnumerable<T> candidates,
         Func<T, string> title,
+        Func<T, string?> originalTitle,
         Func<T, DateTime?> date,
         string parsedTitle,
         string? parsedYear
@@ -49,12 +50,19 @@ public static class TitleMatchScorer
         where T : class
     {
         T? best = candidates.MaxBy(candidate =>
-            Score(title(candidate), date(candidate), parsedTitle, parsedYear)
+            Math.Max(
+                Score(title(candidate), date(candidate), parsedTitle, parsedYear),
+                Score(originalTitle(candidate) ?? string.Empty, date(candidate), parsedTitle, parsedYear)
+            )
         );
 
-        if (best is null || FuzzyMatcher.MatchPercentage(title(best), parsedTitle) < MinConfidence)
+        if (best is null)
             return null;
 
-        return best;
+        double similarity = Math.Max(
+            FuzzyMatcher.MatchPercentage(title(best), parsedTitle),
+            FuzzyMatcher.MatchPercentage(originalTitle(best) ?? string.Empty, parsedTitle)
+        );
+        return similarity < MinConfidence ? null : best;
     }
 }

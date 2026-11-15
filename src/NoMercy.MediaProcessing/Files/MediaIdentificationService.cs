@@ -118,6 +118,7 @@ public partial class MediaIdentificationService(
             show = TitleMatchScorer.PickBest(
                 shows?.Results ?? [],
                 result => result.Name,
+                result => result.OriginalName,
                 result => result.FirstAirDate,
                 parsed.Title.OrEmpty(),
                 parsed.Year.OrEmpty()
@@ -510,6 +511,7 @@ public partial class MediaIdentificationService(
             movie = TitleMatchScorer.PickBest(
                 movies?.Results ?? [],
                 result => result.Title,
+                result => result.OriginalTitle,
                 result => result.ReleaseDate,
                 parsed.Title.OrEmpty(),
                 parsed.Year.OrEmpty()

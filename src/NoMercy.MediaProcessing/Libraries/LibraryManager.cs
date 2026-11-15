@@ -540,6 +540,7 @@ public class LibraryManager(
         TmdbMovie? movie = TitleMatchScorer.PickBest(
             paginatedMovieResponse?.Results ?? [],
             result => result.Title,
+            result => result.OriginalTitle,
             result => result.ReleaseDate,
             folderExtend.Parsed.Title!,
             folderExtend.Parsed.Year
@@ -569,6 +570,7 @@ public class LibraryManager(
         TmdbTvShow? show = TitleMatchScorer.PickBest(
             paginatedTvShowResponse?.Results ?? [],
             result => result.Name,
+            result => result.OriginalName,
             result => result.FirstAirDate,
             folderExtend.Parsed.Title!,
             folderExtend.Parsed.Year

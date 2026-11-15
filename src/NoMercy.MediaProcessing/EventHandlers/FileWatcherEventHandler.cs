@@ -516,6 +516,7 @@ public class FileWatcherEventHandler : IDisposable
         TmdbMovie? movie = TitleMatchScorer.PickBest(
             response.Results,
             result => result.Title,
+            result => result.OriginalTitle,
             result => result.ReleaseDate,
             mediaFolder.Parsed.Title,
             mediaFolder.Parsed.Year
@@ -569,6 +570,7 @@ public class FileWatcherEventHandler : IDisposable
         TmdbTvShow? show = TitleMatchScorer.PickBest(
             response.Results,
             result => result.Name,
+            result => result.OriginalName,
             result => result.FirstAirDate,
             mediaFolder.Parsed.Title,
             mediaFolder.Parsed.Year

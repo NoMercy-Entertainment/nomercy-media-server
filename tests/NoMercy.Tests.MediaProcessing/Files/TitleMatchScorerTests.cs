@@ -18,7 +18,7 @@ public class TitleMatchScorerTests
     private sealed record Candidate(int Id, string Title, DateTime? Date);
 
     private static Candidate? Pick(string parsedTitle, string? parsedYear, params Candidate[] all) =>
-        TitleMatchScorer.PickBest(all, c => c.Title, c => c.Date, parsedTitle, parsedYear);
+        TitleMatchScorer.PickBest(all, c => c.Title, c => null, c => c.Date, parsedTitle, parsedYear);
 
     [Fact]
     public void An_exact_title_is_chosen_over_an_earlier_longer_title()

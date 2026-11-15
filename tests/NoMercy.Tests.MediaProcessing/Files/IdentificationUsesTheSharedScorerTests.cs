@@ -134,6 +134,36 @@ public class IdentificationUsesTheSharedScorerTests : ProviderHttpHarness
     }
 
     [Fact]
+    public async Task A_folder_named_by_the_original_title_matches_a_translated_title()
+    {
+        Handler.WhenGet(
+            "/search/movie",
+            MockResponse.Json(
+                HttpStatusCode.OK,
+                $$"""
+                {"page":1,"total_pages":1,"total_results":1,"results":[
+                  {"id":{{WantedId}},"title":"Zebra Quarry","original_title":"Harbor Lights","release_date":"2026-05-01"}
+                ]}
+                """
+            )
+        );
+        Handler.WhenGet(
+            $"/movie/{WantedId}",
+            MockResponse.Json(
+                HttpStatusCode.OK,
+                $$"""
+                {"id":{{WantedId}},"title":"Zebra Quarry","original_title":"Harbor Lights","overview":"","poster_path":"/p.jpg","imdb_id":"tt0000002","release_date":"2026-05-01"}
+                """
+            )
+        );
+
+        (MovieOrEpisode match, string? imdbId)? result = await Identify();
+
+        result.Should().NotBeNull();
+        ((int)result!.Value.match.Id).Should().Be(WantedId);
+    }
+
+    [Fact]
     public async Task A_best_candidate_that_does_not_look_like_the_file_is_refused()
     {
         ScriptSearch("Zebra Quarry", "Mountain Pass");
