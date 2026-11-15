@@ -130,6 +130,15 @@ public interface IFileRepository
         Dictionary<int, List<RecordedVideoFileLocation>>
     > GetRecordedVideoFileLocationsByLibraryAsync(Ulid libraryId, string libraryType);
 
+    /// <summary>The original, alternative and translated titles of a movie or show.</summary>
+    Task<List<string>> GetOtherKnownTitlesAsync(int mediaId, bool isMovie);
+
+    /// <summary>Whether another movie or show already has this folder name stored.</summary>
+    Task<bool> IsFolderOfAnotherTitleAsync(int mediaId, bool isMovie, string folderName);
+
+    /// <param name="folder">The folder as the importer stores it: <c>"/Title.(Year)"</c>.</param>
+    Task<int> UpdateTitleFolderAsync(int mediaId, bool isMovie, string folder);
+
     Task<List<VideoFile>> SearchVideoFilesAsync(
         string? query,
         int limit,

@@ -242,6 +242,8 @@ public partial class FileManager(
         await MediaType(id, library);
 
         Folders = Paths(library, Movie, Show);
+        if (Folders.Count == 0)
+            Folders = await PathsUnderAnotherKnownTitle(library);
 
         foreach (Folder folder in Folders)
         {
