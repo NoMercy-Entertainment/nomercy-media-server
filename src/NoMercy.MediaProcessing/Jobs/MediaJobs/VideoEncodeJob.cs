@@ -1050,18 +1050,18 @@ public class VideoEncodeJob
                 failedCount
             );
 
+            (IReadOnlyList<string> failedDescriptors, string? lastError) = SummarizeFailures(
+                outcomes.Where(o => !o.Success).ToList()
+            );
+
             await EncoderCardTerminator.PublishFailedAsync(
                 fileMetadata.Id,
                 fileMetadata.Title,
                 InputFile,
-                $"{failedCount} rung(s) failed",
+                PlainFailureReason(failedCount, failedDescriptors),
                 "FinalizeChildFailed",
                 fileMetadata.PosterPath,
                 fileMetadata.ImgPath
-            );
-
-            (IReadOnlyList<string> failedDescriptors, string? lastError) = SummarizeFailures(
-                outcomes.Where(o => !o.Success).ToList()
             );
 
             await new IncompleteEncodeRecorder().RecordFailureAsync(
@@ -1552,6 +1552,13 @@ public class VideoEncodeJob
 
         int start = error.IndexOf(TruncationMarker, StringComparison.Ordinal);
         return start < 0 ? null : error[start..];
+    }
+
+    internal static string PlainFailureReason(int failedCount, IReadOnlyList<string> descriptors)
+    {
+        string steps = failedCount == 1 ? "step" : "steps";
+        string which = descriptors.Count > 0 ? $" ({string.Join(", ", descriptors)})" : string.Empty;
+        return $"The encode did not finish: {failedCount} {steps} failed{which}. You can retry it.";
     }
 
     internal static (IReadOnlyList<string> descriptors, string? lastError) SummarizeFailures(
