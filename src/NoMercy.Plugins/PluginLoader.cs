@@ -825,7 +825,49 @@ internal sealed class PluginLoader(
         }
     }
 
-    internal async Task LoadPluginAssemblyAsync(string assemblyPath, CancellationToken ct = default)
+    // What a first load asks before a start, asked of a plugin the registry
+    // already knows: the run gate and the owner's consent (AUD-1016).
+    private bool MayRestart(PluginInfo known)
+    {
+        PluginRefusal? refused = _serviceProvider.GetService<IPluginRunGate>()?.MayRun(known);
+
+        if (refused is not null)
+        {
+            _logger.LogWarning(
+                "Plugin {PluginName} did not start: {Why} {Fix}",
+                [known.Name, refused.Why, refused.Fix]
+            );
+
+            return false;
+        }
+
+        if (
+            _consentService.IsBaseline(known.Capabilities)
+            || _consentService.ConsentCoversCapabilities(
+                known.Id,
+                known.Capabilities,
+                known.Version
+            )
+        )
+        {
+            return true;
+        }
+
+        _logger.LogWarning(
+            "Plugin {PluginName} did not start: it waits for the owner's consent.",
+            [known.Name]
+        );
+
+        return false;
+    }
+
+    // previous: what the registry held before an update unloaded the plugin,
+    // so the reload still knows it.
+    internal async Task LoadPluginAssemblyAsync(
+        string assemblyPath,
+        CancellationToken ct = default,
+        PluginInfo? previous = null
+    )
     {
         string absoluteAssemblyPath = ToLocalAssemblyPath(assemblyPath);
 
@@ -907,6 +949,8 @@ internal sealed class PluginLoader(
                 assembly
             );
 
+            int refusedTypes = 0;
+
             foreach (Type pluginType in pluginTypes)
             {
                 // Isolate each plugin type: a single malfunctioning plugin —
@@ -949,11 +993,29 @@ internal sealed class PluginLoader(
                     // manifest names the hosts it needs.
                     _registry.TryGetValue(instance.Id, out LoadedPlugin? known);
 
+                    PluginInfo? before =
+                        known?.Info ?? (previous?.Id == instance.Id ? previous : null);
+
+                    // A reload does not start what a first load would hold (AUD-1016).
+                    if (before is not null && !MayRestart(before))
+                    {
+                        instance.Dispose();
+                        refusedTypes++;
+
+                        if (known is null)
+                        {
+                            before.Status = PluginStatus.Disabled;
+                            _registry[instance.Id] = new(before, null, null);
+                        }
+
+                        continue;
+                    }
+
                     IPluginContext context = _contextFactory.Create(
                         instance.Id,
                         dataFolder,
                         _logger,
-                        known?.Info.Capabilities,
+                        before?.Capabilities,
                         instance.Name,
                         instance.Version
                     );
@@ -968,10 +1030,20 @@ internal sealed class PluginLoader(
                         Version = instance.Version,
                         Status = PluginStatus.Active,
                         AssemblyPath = assemblyPath,
-                        Capabilities = known?.Info.Capabilities,
-                        Author = known?.Info.Author,
-                        ProjectUrl = known?.Info.ProjectUrl,
-                        TargetAbi = known?.Info.TargetAbi,
+                        Capabilities = before?.Capabilities,
+                        Author = before?.Author,
+                        ProjectUrl = before?.ProjectUrl,
+                        TargetAbi = before?.TargetAbi,
+                        ManifestPath = before?.ManifestPath,
+                        License = before?.License,
+                        Docs = before?.Docs,
+                        Settings = before?.Settings ?? [],
+                        Dependencies = before?.Dependencies ?? [],
+                        Tier = before?.Tier ?? PluginTier.Free,
+                        Verified = before?.Verified ?? false,
+                        Trusted = before?.Trusted ?? false,
+                        Sideloaded = before?.Sideloaded ?? false,
+                        ContributesServices = before?.ContributesServices ?? false,
                     };
 
                     LoadedPlugin loaded = new(
@@ -1051,8 +1123,9 @@ internal sealed class PluginLoader(
                 }
             }
 
-            if (pluginTypes.Count == 0)
+            if (refusedTypes == pluginTypes.Count)
             {
+                pluginServices?.Dispose();
                 loadContext.Unload();
                 PluginShadowCopy.TryDelete(shadowDir);
             }

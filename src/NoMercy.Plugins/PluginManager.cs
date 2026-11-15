@@ -264,24 +264,24 @@ public class PluginManager
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            Ulid? residentId = _registry
+            PluginInfo? resident = _registry
                 .Values.FirstOrDefault(loaded =>
                     loaded.Info.AssemblyPath is not null
                     && _driver
                         .GetFullPath(loaded.Info.AssemblyPath)
                         .Equals(_driver.GetFullPath(destPath), StringComparison.OrdinalIgnoreCase)
                 )
-                ?.Info.Id;
+                ?.Info;
 
             if (
-                residentId is { } pluginId
-                && await TrySwapResidentAssemblyAsync(pluginId, fullPath, destPath, ct)
+                resident is not null
+                && await TrySwapResidentAssemblyAsync(resident, fullPath, destPath, ct)
             )
             {
                 PluginPackageHashMarker.Clear(pluginDir);
                 await RecordFilesAsync(pluginDir, ct);
-                await LoadPluginAssemblyAsync(destPath, ct);
-                _registerScheduledWork?.Invoke(pluginId);
+                await LoadPluginAssemblyAsync(destPath, ct, resident);
+                _registerScheduledWork?.Invoke(resident.Id);
                 return;
             }
 
@@ -321,12 +321,13 @@ public class PluginManager
     /// when the file does not free up inside <see cref="UnloadWaitBudget"/>.
     /// </summary>
     private async Task<bool> TrySwapResidentAssemblyAsync(
-        Ulid pluginId,
+        PluginInfo resident,
         string sourcePath,
         string destPath,
         CancellationToken ct
     )
     {
+        Ulid pluginId = resident.Id;
         bool wasLoaded = await _lifecycle.UnloadForUpdateAsync(pluginId, ct);
 
         string rollbackPath = destPath + RollbackSuffix;
@@ -342,7 +343,7 @@ public class PluginManager
             // let the caller fall back to staging for the next start.
             if (wasLoaded)
             {
-                await LoadPluginAssemblyAsync(destPath, ct);
+                await LoadPluginAssemblyAsync(destPath, ct, resident);
                 _registerScheduledWork?.Invoke(pluginId);
             }
 
@@ -359,7 +360,7 @@ public class PluginManager
 
             if (wasLoaded)
             {
-                await LoadPluginAssemblyAsync(destPath, ct);
+                await LoadPluginAssemblyAsync(destPath, ct, resident);
                 _registerScheduledWork?.Invoke(pluginId);
             }
 
@@ -1573,9 +1574,13 @@ public class PluginManager
         return _loader.LoadPluginFromManifestAsync(manifestPath, ct);
     }
 
-    internal Task LoadPluginAssemblyAsync(string assemblyPath, CancellationToken ct = default)
+    internal Task LoadPluginAssemblyAsync(
+        string assemblyPath,
+        CancellationToken ct = default,
+        PluginInfo? previous = null
+    )
     {
-        return _loader.LoadPluginAssemblyAsync(assemblyPath, ct);
+        return _loader.LoadPluginAssemblyAsync(assemblyPath, ct, previous);
     }
 
     public IPlugin? GetPluginInstance(Ulid pluginId)
