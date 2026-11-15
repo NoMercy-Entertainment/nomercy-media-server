@@ -112,6 +112,16 @@ public class PluginEntitlementClient(
     private static Ulid ServerId(string value) =>
         Guid.TryParse(value, out Guid uuid) ? new(uuid) : Ulid.Parse(value);
 
+    // A status this server cannot name refuses the whole bundle: guessing
+    // "active" would run a plugin whose purchase nomercy.tv did not confirm.
+    private static PluginEntitlementStatus Status(string? value) =>
+        value switch
+        {
+            "active" => PluginEntitlementStatus.Active,
+            "suspended" => PluginEntitlementStatus.Suspended,
+            _ => throw new FormatException("The entitlement status is not one this server knows."),
+        };
+
     public bool TryRead(string body, out PluginEntitlementBundle? bundle)
     {
         bundle = null;
@@ -153,7 +163,8 @@ public class PluginEntitlementClient(
                             entitlement.TryGetProperty("valid_until", out JsonElement expires)
                             && expires.ValueKind == JsonValueKind.String
                                 ? expires.GetDateTimeOffset()
-                                : null
+                                : null,
+                            Status(entitlement.GetProperty("status").GetString())
                         )),
                 ]
             );

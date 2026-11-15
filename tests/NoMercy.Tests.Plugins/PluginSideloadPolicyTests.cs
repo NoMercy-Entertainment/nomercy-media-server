@@ -55,7 +55,7 @@ public class PluginSideloadPolicyTests
         );
 
     private static PluginEntitlement Held(Guid? user = null, DateTimeOffset? expiresAt = null) =>
-        new(Radio, user ?? Owner, PluginTier.Paid, null, expiresAt);
+        new(Radio, user ?? Owner, PluginTier.Paid, null, expiresAt, PluginEntitlementStatus.Active);
 
     [Fact]
     public void With_developer_mode_off_a_file_install_is_refused()

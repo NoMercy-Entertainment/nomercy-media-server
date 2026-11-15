@@ -263,7 +263,16 @@ public class PluginDependencyGateTests
                     Ulid.Empty,
                     Noon,
                     Noon.AddDays(30),
-                    [new(Dependency, Owner, PluginTier.Paid, null, null)]
+                    [
+                        new(
+                            Dependency,
+                            Owner,
+                            PluginTier.Paid,
+                            null,
+                            null,
+                            PluginEntitlementStatus.Active
+                        ),
+                    ]
                 )
                 : PluginEntitlementBundle.None;
 
