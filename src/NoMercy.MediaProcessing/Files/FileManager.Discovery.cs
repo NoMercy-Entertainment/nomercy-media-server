@@ -107,61 +107,117 @@ public partial class FileManager
             if (TryExists(folderStorage, rootFolder.Path))
                 AnyLibraryRootReadable = true;
 
-            // Stay in scope-relative space: rootFolder.Path is the storage key
-            // as the facade wants it (e.g. "Marvels/TV.Shows"), and the facade
-            // Exists / List / downstream scan all reject absolute paths. Do NOT
-            // resolve to an OS/mount-absolute path here — GetFullPath (facade
-            // OR driver) produces "/mnt/vault/..." which StoragePathGuard then
-            // rejects as a scope-relative key.
-            string path = folderStorage.CombinePath(rootFolder.Path, folder);
-
-            // Treat a transport-level failure from any single backend as
-            // "not in this folder" rather than aborting the whole rescan. The
-            // job is idempotent on its successful folders, and one transient
-            // S3 502 should not trigger queue-level retries.
-            bool exists = TryExists(folderStorage, path);
-
-            if (!exists)
-            {
-                // FindMatchingDirectory walks the raw driver (DirectoryExists /
-                // EnumerateFileSystemEntries), so it needs the driver-absolute
-                // root and returns a driver-absolute directory. Convert that hit
-                // back to a scope-relative key before storing / re-checking, so
-                // the facade and the downstream scan keep working in one space.
-                string resolvedRoot = ResolveBackendPath(folderStorage, rootFolder.Path);
-                string? match = TryFindMatchingDirectory(
-                    folderStorage.Driver,
-                    resolvedRoot,
-                    folder
-                );
-                if (match != null)
-                {
-                    // match is the driver-absolute hit EnumerateFileSystemEntries
-                    // returned — OS-separated (backslash on Windows). GetName splits
-                    // on '/' only (Rule 2), so an un-normalized match reads as having
-                    // no separator at all and comes back unchanged, doubling the path
-                    // when combined with rootFolder.Path below.
-                    path = folderStorage.CombinePath(
-                        rootFolder.Path,
-                        folderStorage.GetName(match.Replace('\\', '/'))
-                    );
-                    exists = TryExists(folderStorage, path);
-                }
-            }
-
-            if (exists)
-                folders.Add(
-                    new()
-                    {
-                        Path = path,
-                        Id = rootFolder.Id,
-                        DriverId = rootFolder.DriverId,
-                        Driver = rootFolder.Driver,
-                    }
-                );
+            Folder? titleFolder = ResolveTitleFolder(folderStorage, rootFolder, folder);
+            if (titleFolder is not null)
+                folders.Add(titleFolder);
         }
 
         return folders;
+    }
+
+    /// <summary>
+    /// Finds the folder under another title it is known by, and stores the folder found.
+    /// </summary>
+    private async Task<List<Folder>> PathsUnderAnotherKnownTitle(Library library)
+    {
+        bool isMovie = library.Type == MediaTypes.MovieMediaType;
+        int? mediaId = isMovie ? Movie?.Id : Show?.Id;
+        string? storedFolder = isMovie ? Movie?.Folder : Show?.Folder;
+        if (mediaId is null || storedFolder is null)
+            return [];
+
+        if (
+            await fileRepository.GetOtherKnownTitlesAsync(mediaId.Value, isMovie)
+            is not { Count: > 0 } titles
+        )
+            return [];
+
+        int year = (isMovie ? Movie?.ReleaseDate : Show?.FirstAirDate).ParseYear();
+        string storedKey = storedFolder.Replace("/", "").NormalizeForComparison();
+
+        IEnumerable<string> folderNames = titles
+            .Select(title => string.Concat(title, ".(", year, ")").CleanFileName())
+            .Where(name => name.NormalizeForComparison() is { Length: > 0 } key && key != storedKey)
+            .DistinctBy(name => name.NormalizeForComparison());
+
+        foreach (string folderName in folderNames)
+        {
+            List<Folder> found =
+            [
+                .. LibraryRootFolders
+                    .Select(root => ResolveTitleFolder(StorageFor(root), root, folderName))
+                    .OfType<Folder>(),
+            ];
+            if (found.Count == 0)
+                continue;
+
+            string newFolder = "/" + StorageFor(found[0]).GetName(found[0].Path);
+            if (await fileRepository.IsFolderOfAnotherTitleAsync(mediaId.Value, isMovie, newFolder))
+                continue;
+
+            await fileRepository.UpdateTitleFolderAsync(mediaId.Value, isMovie, newFolder);
+            if (isMovie)
+                Movie!.Folder = newFolder;
+            else
+                Show!.Folder = newFolder;
+
+            Logger.App(
+                $"[FindFiles] {Type} id={mediaId}: stored folder '{storedFolder}' is not on disk, "
+                    + $"found it as '{newFolder}' and stored that",
+                LogEventLevel.Information
+            );
+            return found;
+        }
+
+        return [];
+    }
+
+    /// <summary>The folder called <paramref name="folderName"/> under a library root, or null.</summary>
+    private static Folder? ResolveTitleFolder(
+        IStorage folderStorage,
+        Folder rootFolder,
+        string folderName
+    )
+    {
+        // Stay scope-relative (e.g. "Marvels/TV.Shows"): the facade and the scan
+        // reject the absolute path GetFullPath would give.
+        string path = folderStorage.CombinePath(rootFolder.Path, folderName);
+
+        // A backend that fails to answer means "not in this folder", so one
+        // transient S3 502 does not abort the rescan and retry the job.
+        bool exists = TryExists(folderStorage, path);
+
+        if (!exists)
+        {
+            // FindMatchingDirectory walks the raw driver: it takes the
+            // driver-absolute root and returns a driver-absolute directory.
+            string resolvedRoot = ResolveBackendPath(folderStorage, rootFolder.Path);
+            string? match = TryFindMatchingDirectory(
+                folderStorage.Driver,
+                resolvedRoot,
+                folderName
+            );
+            if (match != null)
+            {
+                // The hit is OS-separated and GetName splits on '/' only: without
+                // the replace the whole path comes back and doubles below.
+                path = folderStorage.CombinePath(
+                    rootFolder.Path,
+                    folderStorage.GetName(match.Replace('\\', '/'))
+                );
+                exists = TryExists(folderStorage, path);
+            }
+        }
+
+        return exists
+            ? new()
+            {
+                Path = path,
+                Id = rootFolder.Id,
+                DriverId = rootFolder.DriverId,
+                Driver = rootFolder.Driver,
+            }
+            : null;
     }
 
     /// <summary>

@@ -992,6 +992,82 @@ public class FileRepository(MediaContext context, IStorageDriver storageDriver) 
         return changed;
     }
 
+    public async Task<List<string>> GetOtherKnownTitlesAsync(int mediaId, bool isMovie)
+    {
+        List<string?> titles = await context
+            .AlternativeTitles.AsNoTracking()
+            .Where(title => isMovie ? title.MovieId == mediaId : title.TvId == mediaId)
+            .Select(title => title.Title)
+            .ToListAsync();
+
+        titles.AddRange(
+            await context
+                .Translations.AsNoTracking()
+                .Where(translation =>
+                    isMovie ? translation.MovieId == mediaId : translation.TvId == mediaId
+                )
+                .Select(translation => translation.Title)
+                .ToListAsync()
+        );
+
+        if (isMovie)
+            titles.AddRange(
+                await context
+                    .Movies.AsNoTracking()
+                    .IgnoreQueryFilters()
+                    .Where(movie => movie.Id == mediaId)
+                    .Select(movie => movie.OriginalTitle)
+                    .ToListAsync()
+            );
+
+        return
+        [
+            .. titles
+                .Where(title => !string.IsNullOrWhiteSpace(title))
+                .Select(title => title!)
+                .Distinct(),
+        ];
+    }
+
+    public async Task<bool> IsFolderOfAnotherTitleAsync(
+        int mediaId,
+        bool isMovie,
+        string folderName
+    )
+    {
+        List<string?> folders = isMovie
+            ? await context
+                .Movies.AsNoTracking()
+                .IgnoreQueryFilters()
+                .Where(movie => movie.Id != mediaId)
+                .Select(movie => movie.Folder)
+                .ToListAsync()
+            : await context
+                .Tvs.AsNoTracking()
+                .IgnoreQueryFilters()
+                .Where(show => show.Id != mediaId)
+                .Select(show => show.Folder)
+                .ToListAsync();
+
+        string key = folderName.Replace("/", "").NormalizeForComparison();
+        return folders.Any(folder =>
+            folder is not null && folder.Replace("/", "").NormalizeForComparison() == key
+        );
+    }
+
+    public async Task<int> UpdateTitleFolderAsync(int mediaId, bool isMovie, string folder)
+    {
+        return isMovie
+            ? await context
+                .Movies.IgnoreQueryFilters()
+                .Where(movie => movie.Id == mediaId)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(movie => movie.Folder, folder))
+            : await context
+                .Tvs.IgnoreQueryFilters()
+                .Where(show => show.Id == mediaId)
+                .ExecuteUpdateAsync(setters => setters.SetProperty(show => show.Folder, folder));
+    }
+
     public async Task<List<RecordedVideoFileLocation>> GetRecordedVideoFileLocationsByMovieIdAsync(
         int movieId
     )
