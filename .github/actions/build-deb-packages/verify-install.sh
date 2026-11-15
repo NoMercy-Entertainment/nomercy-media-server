@@ -19,9 +19,9 @@ for image in "${IMAGES[@]}"; do
     # runner can keep an older build in the pool, so test the newest version only.
     deb="$(find /pkg -maxdepth 1 -name "*.deb" ! -name "*_latest_*" | sort -V | tail -n 1)"
     [ -n "${deb}" ] || { echo "no deb in the folder" >&2; exit 1; }
-    dpkg-deb -f "${deb}" Depends Recommends | grep libicu > /dev/null || { echo "the deb declares no ICU package" >&2; exit 1; }
+    dpkg-deb -f "${deb}" Depends | grep libicu > /dev/null || { echo "the deb does not depend on an ICU package" >&2; exit 1; }
     apt-get update -qq
-    apt-get install -y -qq "${deb}" > /dev/null
+    apt-get install -y -qq --no-install-recommends "${deb}" > /dev/null
     /opt/nomercy/nomercy --help > /dev/null
     echo "nomercy installs and the CLI starts on $(. /etc/os-release && echo "${PRETTY_NAME}")"
   '
