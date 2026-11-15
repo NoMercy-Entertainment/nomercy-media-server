@@ -10,19 +10,30 @@
 // -----------------------------------------------------------------------------
 
 using System.IdentityModel.Tokens.Jwt;
+using System.Reflection;
 using System.Security.Claims;
 using System.Security.Cryptography;
+using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.IdentityModel.Tokens;
+using NoMercy.Networking.Certificate;
+using NoMercy.NmSystem.Auth;
+using NoMercy.NmSystem.Configuration;
 using NoMercy.NmSystem.Information;
 using NoMercy.Setup.Auth;
+using NoMercy.Setup.Boot;
+using NoMercy.Setup.Server;
+using NoMercy.Storage.Drivers.Local;
 using NoMercy.Tests.Common;
+using NoMercy.Tests.Setup.Infrastructure;
 
 namespace NoMercy.Tests.Setup;
 
 [Trait("Category", "Unit")]
+[Collection(ProcessWideSetupStateCollection.Name)]
 public class OfflineTokenValidationTests : IDisposable
 {
     private readonly string _testAuthKeysFile;
+    private readonly string _originalAuthBaseUrl = ExternalServicesConfig.Current.AuthBaseUrl;
 
     public OfflineTokenValidationTests()
     {
@@ -36,12 +47,123 @@ public class OfflineTokenValidationTests : IDisposable
         // Clean up any previous test cache
         if (File.Exists(_testAuthKeysFile))
             File.Delete(_testAuthKeysFile);
+        if (File.Exists(AppFiles.JwksCacheFile))
+            File.Delete(AppFiles.JwksCacheFile);
     }
 
     public void Dispose()
     {
+        ExternalServicesConfig.Current.AuthBaseUrl = _originalAuthBaseUrl;
         if (File.Exists(_testAuthKeysFile))
             File.Delete(_testAuthKeysFile);
+        if (File.Exists(AppFiles.JwksCacheFile))
+            File.Delete(AppFiles.JwksCacheFile);
+        GC.SuppressFinalize(this);
+    }
+
+    private sealed class StubHandler(Func<HttpRequestMessage, HttpResponseMessage> respond)
+        : HttpMessageHandler
+    {
+        public List<string> Requests { get; } = [];
+
+        protected override Task<HttpResponseMessage> SendAsync(
+            HttpRequestMessage request,
+            CancellationToken cancellationToken
+        )
+        {
+            Requests.Add(request.RequestUri!.ToString());
+            return Task.FromResult(respond(request));
+        }
+    }
+
+    private sealed class StubHttpClientFactory(HttpMessageHandler handler) : IHttpClientFactory
+    {
+        public HttpClient CreateClient(string name) => new(handler, disposeHandler: false);
+    }
+
+    private static string TwoKeyJwks(string kid1, string kid2)
+    {
+        string Key(string kid)
+        {
+            using RSA rsa = RSA.Create(2048);
+            RSAParameters p = rsa.ExportParameters(false);
+            return $$"""
+                {"kid":"{{kid}}","kty":"RSA","alg":"RS256","use":"sig","n":"{{Base64UrlEncoder.Encode(p.Modulus!)}}","e":"{{Base64UrlEncoder.Encode(p.Exponent!)}}"}
+                """;
+        }
+
+        return $$"""{"keys":[{{Key(kid1)}},{{Key(kid2)}}]}""";
+    }
+
+    private static HttpResponseMessage Json(string body) =>
+        new(System.Net.HttpStatusCode.OK) { Content = new StringContent(body) };
+
+    private static BootOrchestrator BuildOrchestrator(HttpMessageHandler handler) =>
+        new(
+            new SetupState(),
+            new AuthManager(new(), new LocalStorageDriver(), new AuthTokenStore()),
+            Mock.Of<IApiKeyLoader>(),
+            Mock.Of<IDegradedModeRecovery>(),
+            Mock.Of<IServerRegistrationService>(),
+            new AuthTokenStore(),
+            new CertificateService(NullLogger<CertificateService>.Instance, null!),
+            new StubHttpClientFactory(handler)
+        );
+
+    private static bool HasKey(string kid) =>
+        OfflineJwksCache.CachedSigningKeys.Any(k => k.KeyId == kid);
+
+    [Fact]
+    public async Task OnlineBootCheck_CachesEveryRealmSigningKey()
+    {
+        ExternalServicesConfig.Current.AuthBaseUrl = "https://auth.example.test/realms/Test/";
+        string jwks = TwoKeyJwks("kid-one", "kid-two");
+        StubHandler handler = new(request =>
+            Json(request.RequestUri!.AbsolutePath.EndsWith("/certs") ? jwks : "{}")
+        );
+
+        MethodInfo check =
+            typeof(BootOrchestrator).GetMethod(
+                "CheckKeycloakReachabilityAsync",
+                BindingFlags.NonPublic | BindingFlags.Instance
+            ) ?? throw new MissingMethodException("CheckKeycloakReachabilityAsync");
+        await (Task)check.Invoke(BuildOrchestrator(handler), null)!;
+
+        Assert.Contains(
+            "https://auth.example.test/realms/Test/protocol/openid-connect/certs",
+            handler.Requests
+        );
+        Assert.True(File.Exists(AppFiles.JwksCacheFile), "the JWKS cache file should exist");
+        Assert.True(HasKey("kid-one"));
+        Assert.True(HasKey("kid-two"));
+    }
+
+    [Fact]
+    public void CachedJwks_LoadsEveryKeyByKid_WithoutNetwork()
+    {
+        ExternalServicesConfig.Current.AuthBaseUrl = "https://auth.example.test/realms/Test/";
+        File.WriteAllText(AppFiles.JwksCacheFile, TwoKeyJwks("kid-a", "kid-b"));
+
+        bool loaded = OfflineJwksCache.LoadCachedPublicKey();
+
+        Assert.True(loaded);
+        Assert.True(HasKey("kid-a"));
+        Assert.True(HasKey("kid-b"));
+    }
+
+    [Fact]
+    public async Task Refresh_RefusesAPlainHttpRealm_AndFetchesNothing()
+    {
+        ExternalServicesConfig.Current.AuthBaseUrl = "http://auth.example.test/realms/Test/";
+        StubHandler handler = new(_ => Json(TwoKeyJwks("kid-http-1", "kid-http-2")));
+        using HttpClient client = new(handler, disposeHandler: false);
+
+        bool refreshed = await OfflineJwksCache.RefreshAsync(client);
+
+        Assert.False(refreshed);
+        Assert.Empty(handler.Requests);
+        Assert.False(File.Exists(AppFiles.JwksCacheFile));
+        Assert.False(HasKey("kid-http-1"));
     }
 
     [Fact]

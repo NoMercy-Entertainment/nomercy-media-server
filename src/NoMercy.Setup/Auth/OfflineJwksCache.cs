@@ -45,6 +45,11 @@ public static class OfflineJwksCache
         }
     }
 
+    public static IReadOnlyList<SecurityKey> CachedSigningKeys => [];
+
+    public static Task<bool> RefreshAsync(HttpClient client, CancellationToken ct = default) =>
+        Task.FromResult(false);
+
     public static void CachePublicKey(string publicKeyBase64)
     {
         try
