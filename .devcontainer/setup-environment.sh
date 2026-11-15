@@ -18,8 +18,12 @@ curl -fsSL https://claude.ai/install.sh | bash
 # Add Claude CLI to PATH for current session
 export PATH="${HOME}/.local/bin:${PATH}"
 
-chmod +x ./.claude/ralph-once.sh
-chmod +x ./.claude/afk-ralph.sh
+# These helpers are untracked local files, so a fresh clone does not have them.
+for helper in ./.claude/ralph-once.sh ./.claude/afk-ralph.sh; do
+    if [ -f "$helper" ]; then
+        chmod +x "$helper"
+    fi
+done
 
 # Check if there's an exported config to import
 if [ -d ".devcontainer/config" ]; then
