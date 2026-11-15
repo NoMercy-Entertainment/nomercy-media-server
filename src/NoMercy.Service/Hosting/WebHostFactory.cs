@@ -78,7 +78,7 @@ public static class WebHostFactory
         builder.Services.AddSingleton<IShutdownCoordinator, ShutdownCoordinator>();
         builder.Services.AddSingleton<IServerRunner, ServerRunner>();
         builder.Services.AddSingleton<IPluginLoader, PluginLoader>();
-        builder.Services.AddSingleton<IApiKeyStore, ApiKeyStore>();
+        builder.Services.AddSingleton<IApiKeyStore>(_ => ApiKeyStore.ForHost());
         builder.Services.AddSingleton<IApiKeyLoader, ApiKeyLoader>();
 
         builder.Services.Configure<ServerConfiguration>(builder.Configuration.GetSection("Server"));

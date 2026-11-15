@@ -196,7 +196,7 @@ public static partial class ServiceConfiguration
         services.AddSingleton(auditLog);
         EventBusProvider.Configure(eventBus);
 
-        services.AddSingleton<IApiKeyStore, ApiKeyStore>();
+        services.AddSingleton<IApiKeyStore>(_ => ApiKeyStore.ForHost());
         services.AddSingleton<IAniDbService, AniDbService>();
         int aniListRequestIntervalMs = configuration.GetValue(
             "Providers:AniList:RequestIntervalMs",

@@ -25,6 +25,11 @@ public class ApiKeyStore : IApiKeyStore
         _instance = this;
     }
 
+    // Keys are per process, not per host: a host rebuilt after setup or a port
+    // conflict reuses the loaded store instead of starting empty (#663).
+    public static IApiKeyStore ForHost() =>
+        _instance is { KeysLoaded: true } loaded ? loaded : new ApiKeyStore();
+
     public string AcousticIdKey { get; internal set; } = string.Empty;
     public string FanArtApiKey { get; internal set; } = string.Empty;
     public string FanArtClientKey { get; internal set; } = string.Empty;
