@@ -25,8 +25,9 @@ breaking changes do.
    a commit without a successful CI run, a stable that was never a beta, and a
    stable older than the current one. The rules and their tests are in
    `.github/scripts/promote-gate.sh` and `promote-gate.test.sh`.
-3. Run it again with `dry_run` off. The `release-promotion` environment asks
-   a reviewer to approve.
+3. Run it again with `dry_run` off. The `release-promotion` environment has
+   no required reviewer: the release lead promotes a stable only after the
+   full stable checklist below passes.
 4. Stable only: `skip_beta` is for the first stable and for an urgent security
    fix. Say why in the release notes.
 
