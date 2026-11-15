@@ -149,6 +149,10 @@ public static partial class ServiceConfiguration
                     if (cachedKey is not null && keys.All(k => k != cachedKey))
                         keys.Add(cachedKey);
 
+                    foreach (SecurityKey jwksKey in OfflineJwksCache.CachedSigningKeys)
+                        if (keys.All(k => k.KeyId != jwksKey.KeyId))
+                            keys.Add(jwksKey);
+
                     return keys;
                 };
 

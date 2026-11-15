@@ -12,6 +12,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using Microsoft.IdentityModel.Tokens;
+using NoMercy.NmSystem.Configuration;
 using NoMercy.NmSystem.Information;
 using NoMercy.NmSystem.SystemCalls;
 using NoMercy.Storage;
@@ -45,6 +46,57 @@ public static class OfflineJwksCache
         }
     }
 
+    private static volatile IReadOnlyList<SecurityKey> _jwksKeys = [];
+
+    public static IReadOnlyList<SecurityKey> CachedSigningKeys => _jwksKeys;
+
+    // Fetches only from the configured realm over https; a failure keeps the old cache.
+    public static async Task<bool> RefreshAsync(HttpClient client, CancellationToken ct = default)
+    {
+        string certsUrl =
+            $"{ExternalServicesConfig.Current.AuthBaseUrl}protocol/openid-connect/certs";
+        try
+        {
+            if (
+                !Uri.TryCreate(certsUrl, UriKind.Absolute, out Uri? uri)
+                || uri.Scheme != Uri.UriSchemeHttps
+            )
+            {
+                Logger.Auth(
+                    $"Refusing to fetch the realm JWKS over a non-https URL: {certsUrl}",
+                    LogEventLevel.Warning
+                );
+                return false;
+            }
+
+            using HttpResponseMessage response = await client.GetAsync(uri, ct);
+            response.EnsureSuccessStatusCode();
+            Uri? finalUri = response.RequestMessage?.RequestUri;
+            if (finalUri is not null && finalUri.Scheme != Uri.UriSchemeHttps)
+                throw new InvalidOperationException("the JWKS request ended on a non-https URL");
+
+            string json = await response.Content.ReadAsStringAsync(ct);
+            List<SecurityKey> keys = [.. new JsonWebKeySet(json).GetSigningKeys()];
+            if (keys.Count == 0)
+                throw new InvalidOperationException("the realm JWKS holds no signing keys");
+
+            using Stream stream = Backend.OpenWrite(AppFiles.JwksCacheFile, overwrite: true);
+            using StreamWriter writer = new(stream, Encoding.UTF8, leaveOpen: true);
+            writer.Write(json);
+            _jwksKeys = keys;
+            Logger.Auth($"Cached {keys.Count} realm signing keys for offline use");
+            return true;
+        }
+        catch (Exception e)
+        {
+            Logger.Auth(
+                $"Failed to refresh the realm JWKS, keeping the cached keys: {e.Message}",
+                LogEventLevel.Warning
+            );
+            return false;
+        }
+    }
+
     public static void CachePublicKey(string publicKeyBase64)
     {
         try
@@ -65,8 +117,9 @@ public static class OfflineJwksCache
     {
         try
         {
+            bool jwksLoaded = LoadCachedJwks();
             if (!Backend.FileExists(AppFiles.AuthKeysFile))
-                return false;
+                return jwksLoaded;
 
             string publicKeyBase64;
             using (StreamReader reader = new(Backend.OpenRead(AppFiles.AuthKeysFile)))
@@ -85,6 +138,29 @@ public static class OfflineJwksCache
                 $"Failed to load cached auth public key: {e.Message}",
                 LogEventLevel.Warning
             );
+            return false;
+        }
+    }
+
+    private static bool LoadCachedJwks()
+    {
+        try
+        {
+            if (!Backend.FileExists(AppFiles.JwksCacheFile))
+                return false;
+
+            using StreamReader reader = new(Backend.OpenRead(AppFiles.JwksCacheFile));
+            List<SecurityKey> keys = [.. new JsonWebKeySet(reader.ReadToEnd()).GetSigningKeys()];
+            if (keys.Count == 0)
+                return false;
+
+            _jwksKeys = keys;
+            Logger.Auth($"Loaded {keys.Count} cached realm signing keys for offline validation");
+            return true;
+        }
+        catch (Exception e)
+        {
+            Logger.Auth($"Failed to load cached realm JWKS: {e.Message}", LogEventLevel.Warning);
             return false;
         }
     }
