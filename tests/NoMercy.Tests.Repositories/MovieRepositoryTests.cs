@@ -138,6 +138,52 @@ public class MovieRepositoryTests : IDisposable
         Assert.Null(movieUser);
     }
 
+    [Fact]
+    public async Task GetMovieDetailAsync_RecommendsOnlyOwnedPlayableNotAdultMovies()
+    {
+        Ulid closedLibraryId = Ulid.NewUlid();
+        _context.Libraries.Add(
+            new()
+            {
+                Id = closedLibraryId,
+                Title = "Closed",
+                Type = "movie",
+            }
+        );
+        _context.Movies.Add(
+            new()
+            {
+                Id = 900002,
+                Title = "In a closed library",
+                TitleSort = "in a closed library",
+                LibraryId = closedLibraryId,
+            }
+        );
+        _context.VideoFiles.Add(
+            new()
+            {
+                Id = Ulid.NewUlid(),
+                Filename = "closed.mkv",
+                Folder = "/media/closed",
+                HostFolder = "/media/closed",
+                Languages = "en",
+                Quality = "1080p",
+                Share = "movies",
+                MovieId = 900002,
+            }
+        );
+        // 680 is owned with a file; 900001 is not on the server; 900002 is in a closed library.
+        foreach (int relatedId in new[] { 680, 900001, 900002 })
+            _context.Recommendations.Add(new() { MediaId = relatedId, MovieFromId = 129 });
+        await _context.SaveChangesAsync();
+
+        Movie? movie = await _repository.GetMovieDetailAsync(SeedConstants.UserId, 129, "en", "US");
+
+        Assert.NotNull(movie);
+        Assert.Equal([680], movie.RecommendationFrom.Select(related => related.MediaId));
+        Assert.All(movie.RecommendationFrom, related => Assert.False(related.Adult));
+    }
+
     public void Dispose()
     {
         _context.Database.EnsureDeleted();

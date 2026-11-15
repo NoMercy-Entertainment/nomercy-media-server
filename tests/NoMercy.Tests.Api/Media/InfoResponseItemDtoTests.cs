@@ -234,4 +234,24 @@ public class InfoResponseItemDtoTests
         Assert.Equal([100, 101, 102], dto.Cast.Select(people => people.Id).ToArray());
         Assert.Equal([200, 201, 202], dto.Crew.Select(people => people.Id).ToArray());
     }
+
+    [Fact]
+    public void Ctor_FromMovie_ShowsOwnedNotAdultRecommendations_AndHidesUnknownAdult()
+    {
+        Movie movie = new()
+        {
+            Id = 1,
+            Title = "Movie",
+            RecommendationFrom =
+            [
+                new() { MediaId = 10, Poster = "/ten.jpg", Adult = false },
+                new() { MediaId = 11, Poster = "/eleven.jpg", Adult = null },
+                new() { MediaId = 12, Poster = "/twelve.jpg", Adult = true },
+            ],
+        };
+
+        InfoResponseItemDto dto = new(movie, "US");
+
+        Assert.Equal([10], dto.Recommendations.Select(related => related.Id).ToArray());
+    }
 }

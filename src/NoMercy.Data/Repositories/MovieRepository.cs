@@ -148,7 +148,29 @@ public class MovieRepository(
     )
     {
         await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
-        return await GetMovieDetailAsyncQuery(context, userId, id, language, country);
+        Movie? movie = await GetMovieDetailAsyncQuery(context, userId, id, language, country);
+        if (movie is null)
+            return null;
+
+        // A stored relation has no adult flag. Only owned, playable titles that are
+        // not adult are offered, and they get the flag from the owned row.
+        int[] relatedIds = [.. movie.RecommendationFrom.Select(related => related.MediaId)];
+        List<int> ownedIds = await context
+            .Movies.AsNoTracking()
+            .ForUser(userId)
+            .Where(related => relatedIds.Contains(related.Id) && !related.Adult)
+            .Where(related => related.VideoFiles.Any(file => file.Folder != null))
+            .Select(related => related.Id)
+            .ToListAsync(ct);
+
+        movie.RecommendationFrom =
+        [
+            .. movie.RecommendationFrom.Where(related => ownedIds.Contains(related.MediaId)),
+        ];
+        foreach (Recommendation related in movie.RecommendationFrom)
+            related.Adult = false;
+
+        return movie;
     }
 
     public async Task<bool> GetMovieAvailableAsync(

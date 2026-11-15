@@ -44,6 +44,11 @@ public class Recommendation : ColorPaletteTimeStamps
     [JsonProperty("mediaId")]
     public int MediaId { get; set; }
 
+    // Not stored: set from the owned title; unset (unknown) stays hidden.
+    [NotMapped]
+    [JsonIgnore]
+    public bool? Adult { get; set; }
+
     [ForeignKey("TvFromId")]
     public int? TvFromId { get; set; }
 
