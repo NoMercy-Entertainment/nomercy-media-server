@@ -348,6 +348,7 @@ public static partial class ServiceConfiguration
         // Update checker + periodic background check
         services.AddSingleton<IUpdateChecker, UpdateChecker>();
         services.AddHostedService<PeriodicUpdateCheckService>();
+        services.AddHostedService<JwksRefreshService>();
         services.AddHostedService<LibraryStartupScanService>();
         services.AddLibraryFileWatcher();
 

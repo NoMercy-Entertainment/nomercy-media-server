@@ -316,6 +316,7 @@ public class BootOrchestrator
             if (response.IsSuccessStatusCode)
             {
                 Logger.Setup($"Keycloak reachable at {ExternalServicesConfig.Current.AuthBaseUrl}");
+                await OfflineJwksCache.RefreshAsync(client);
             }
             else
             {
@@ -327,7 +328,9 @@ public class BootOrchestrator
         }
         catch (Exception ex)
         {
-            bool hasCachedKey = OfflineJwksCache.CachedSigningKey is not null;
+            bool hasCachedKey =
+                OfflineJwksCache.CachedSigningKey is not null
+                || OfflineJwksCache.CachedSigningKeys.Count > 0;
 
             if (hasCachedKey)
             {
