@@ -678,14 +678,24 @@ public class AuthManager
         ];
     }
 
-    public static List<KeyValuePair<string, string>> BuildDeviceCodeRequestBody(string clientId)
+    public static List<KeyValuePair<string, string>> BuildDeviceCodeRequestBody(
+        string clientId,
+        string codeChallenge
+    )
     {
-        return [new("client_id", clientId), new("scope", "openid offline_access email profile")];
+        return
+        [
+            new("client_id", clientId),
+            new("scope", "openid offline_access email profile"),
+            new("code_challenge", codeChallenge),
+            new("code_challenge_method", "S256"),
+        ];
     }
 
     public static List<KeyValuePair<string, string>> BuildDeviceTokenBody(
         string clientId,
-        string deviceCode
+        string deviceCode,
+        string codeVerifier
     )
     {
         return
@@ -693,6 +703,7 @@ public class AuthManager
             new("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
             new("client_id", clientId),
             new("device_code", deviceCode),
+            new("code_verifier", codeVerifier),
         ];
     }
 
