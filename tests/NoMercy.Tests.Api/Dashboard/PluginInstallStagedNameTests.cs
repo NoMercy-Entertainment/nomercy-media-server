@@ -66,23 +66,39 @@ public class PluginInstallStagedNameTests
             FindPlugin(pluginId)?.Versions.FirstOrDefault(entry => entry.Version == version);
     }
 
-    private sealed class FewBytesHandler : HttpMessageHandler
+    private static readonly byte[] ZipPackage = [0x50, 0x4B, 0x03, 0x04, 1, 2, 3];
+
+    private const string SignInPage = "<!DOCTYPE html><html><body>Sign in</body></html>";
+
+    /// <summary>Answers every request with one body, as the URL the client ended on.</summary>
+    private sealed class CannedDownload(
+        byte[] body,
+        string contentType = "application/zip",
+        string? endedOn = null
+    ) : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(
             HttpRequestMessage request,
             CancellationToken cancellationToken
-        ) =>
-            Task.FromResult(
+        )
+        {
+            ByteArrayContent content = new(body);
+            content.Headers.ContentType = new(contentType);
+
+            return Task.FromResult(
                 new HttpResponseMessage(HttpStatusCode.OK)
                 {
-                    Content = new ByteArrayContent([1, 2, 3]),
+                    Content = content,
+                    RequestMessage = endedOn is null ? request : new(HttpMethod.Get, endedOn),
                 }
             );
+        }
     }
 
     private sealed class Harness
     {
         public List<string> OpenedForWrite { get; } = [];
+        public List<MemoryStream> Staged { get; } = [];
         public Mock<IPluginManager> Manager { get; } = new();
         public Mock<IPluginRepositoryInstaller> Installer { get; } = new();
         public PluginRepositoryController Controller { get; }
@@ -90,7 +106,8 @@ public class PluginInstallStagedNameTests
         public Harness(
             string entryName,
             string downloadUrl = "https://example.com/a.zip",
-            bool listedByTheOfficialMarketplace = false
+            bool listedByTheOfficialMarketplace = false,
+            HttpMessageHandler? download = null
         )
         {
             Mock<IPluginRepositoryOrigin> origin = new();
@@ -108,13 +125,15 @@ public class PluginInstallStagedNameTests
                     (string path, bool _) =>
                     {
                         OpenedForWrite.Add(path);
-                        return new MemoryStream();
+                        MemoryStream staged = new();
+                        Staged.Add(staged);
+                        return staged;
                     }
                 );
 
             Mock<IHttpClientFactory> http = new();
             http.Setup(factory => factory.CreateClient(It.IsAny<string>()))
-                .Returns(() => new(new FewBytesHandler()));
+                .Returns(() => new(download ?? new CannedDownload(ZipPackage)));
 
             OneEntryCatalog repository = new(entryName, downloadUrl);
 
@@ -175,6 +194,7 @@ public class PluginInstallStagedNameTests
         result.Should().BeOfType<OkObjectResult>();
         string staged = harness.OpenedForWrite.Should().ContainSingle().Subject;
         staged.Should().EndWith("/Example.Plugin.zip");
+        harness.Staged.Should().ContainSingle().Which.ToArray().Should().Equal(ZipPackage);
         harness.Installer.Verify(
             installer =>
                 installer.InstallFromRepositoryAsync(
@@ -233,5 +253,76 @@ public class PluginInstallStagedNameTests
         problem.StatusCode.Should().Be(422);
         ((ProblemDetails)problem.Value!).Detail.Should().Contain(".zip");
         harness.Installer.Invocations.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_download_redirected_to_a_sign_in_page_is_refused_before_the_checksum()
+    {
+        Harness harness = new(
+            "Example.Plugin",
+            download: new CannedDownload(
+                System.Text.Encoding.UTF8.GetBytes(SignInPage),
+                "text/html",
+                endedOn: "https://example.com/login"
+            )
+        );
+
+        await ShouldRefuseAsNotAPluginFile(harness);
+    }
+
+    [Fact]
+    public async Task A_download_that_ends_on_another_host_is_refused()
+    {
+        Harness harness = new(
+            "Example.Plugin",
+            download: new CannedDownload(ZipPackage, endedOn: "https://elsewhere.example/a.zip")
+        );
+
+        await ShouldRefuseAsNotAPluginFile(harness);
+    }
+
+    [Fact]
+    public async Task A_web_page_carrying_zip_bytes_is_refused()
+    {
+        Harness harness = new(
+            "Example.Plugin",
+            download: new CannedDownload(ZipPackage, "text/html")
+        );
+
+        await ShouldRefuseAsNotAPluginFile(harness);
+    }
+
+    [Theory]
+    [InlineData("<!DOCTYPE html><html></html>")]
+    [InlineData("MZ\u0090\u0000\u0003")]
+    [InlineData("PK")]
+    [InlineData("")]
+    public async Task A_download_whose_bytes_are_not_a_zip_archive_is_refused(string body)
+    {
+        Harness harness = new(
+            "Example.Plugin",
+            download: new CannedDownload(
+                System.Text.Encoding.Latin1.GetBytes(body),
+                "application/octet-stream"
+            )
+        );
+
+        await ShouldRefuseAsNotAPluginFile(harness);
+    }
+
+    private static async Task ShouldRefuseAsNotAPluginFile(Harness harness)
+    {
+        IActionResult result = await harness.Controller.Install(
+            EntryId,
+            version: null,
+            CancellationToken.None
+        );
+
+        ObjectResult problem = result.Should().BeOfType<ObjectResult>().Subject;
+        problem.StatusCode.Should().Be(422);
+        ((ProblemDetails)problem.Value!).Detail.Should().Be("The download was not a plugin file");
+        harness.OpenedForWrite.Should().BeEmpty();
+        harness.Installer.Invocations.Should().BeEmpty();
+        harness.Manager.Invocations.Should().BeEmpty();
     }
 }

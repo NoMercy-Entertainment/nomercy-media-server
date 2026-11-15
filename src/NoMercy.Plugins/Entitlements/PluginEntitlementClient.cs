@@ -141,16 +141,16 @@ public class PluginEntitlementClient(
                     .. root.GetProperty("entitlements")
                         .EnumerateArray()
                         .Select(entitlement => new PluginEntitlement(
-                            Ulid.Parse(entitlement.GetProperty("plugin_id").GetString()!),
+                            Ulid.Parse(entitlement.GetProperty("listing_id").GetString()!),
                             entitlement.GetProperty("user_id").GetGuid(),
                             entitlement.GetProperty("tier").GetString() == "paid"
                                 ? PluginTier.Paid
                                 : PluginTier.Free,
-                            entitlement.TryGetProperty("seats", out JsonElement seats)
+                            entitlement.TryGetProperty("max_shared_seats", out JsonElement seats)
                             && seats.ValueKind == JsonValueKind.Number
                                 ? seats.GetInt32()
                                 : null,
-                            entitlement.TryGetProperty("expires_at", out JsonElement expires)
+                            entitlement.TryGetProperty("valid_until", out JsonElement expires)
                             && expires.ValueKind == JsonValueKind.String
                                 ? expires.GetDateTimeOffset()
                                 : null

@@ -79,31 +79,37 @@ public class PluginEntitlementTransportTests : IDisposable
     private const string IssuedAt = "2026-09-20T11:00:00+00:00";
     private const string RefreshBy = "2026-09-21T11:00:00+00:00";
 
+    // The shape nomercy-tv publishes (EntitlementBundle.php), field for field.
     private const string Entitlements =
-        """[{"plugin_id":"01J9ZK5V8Y0000000000000002","user_id":"11111111-1111-1111-1111-111111111111","tier":"paid","seats":5,"expires_at":null}]""";
+        """[{"user_id":"11111111-1111-1111-1111-111111111111","listing_id":"01J9ZK5V8Y0000000000000002","tier":"paid","status":"active","source":"purchase","valid_until":null,"shareable":true,"max_shared_seats":5}]""";
 
     private string Body(
         string? signedEntitlements = null,
         string keyId = "nomercy-1",
-        string serverId = ServerId
-    ) =>
-        JsonSerializer.Serialize(
+        string serverId = ServerId,
+        string entitlements = Entitlements
+    )
+    {
+        JsonElement sent = JsonDocument.Parse(entitlements).RootElement;
+
+        return JsonSerializer.Serialize(
             new
             {
                 server_id = serverId,
                 issued_at = IssuedAt,
                 refresh_by = RefreshBy,
-                entitlements = JsonDocument.Parse(Entitlements).RootElement,
+                entitlements = sent,
                 signature = new
                 {
                     kid = keyId,
                     alg = "ed25519",
                     value = Sign(
-                        $"{serverId}{IssuedAt}{RefreshBy}{signedEntitlements ?? Entitlements}"
+                        $"{serverId}{IssuedAt}{RefreshBy}{signedEntitlements ?? JsonSerializer.Serialize(sent)}"
                     ),
                 },
             }
         );
+    }
 
     private PluginEntitlementClient Client(IPluginEntitlementStore store, bool trusted = true) =>
         new(
@@ -133,6 +139,38 @@ public class PluginEntitlementTransportTests : IDisposable
         held.Seats.Should().Be(5);
         held.ExpiresAt.Should().BeNull();
         bundle.RefreshBy.Should().Be(new DateTimeOffset(2026, 9, 21, 11, 0, 0, TimeSpan.Zero));
+    }
+
+    [Fact]
+    public void An_entitlement_that_names_plugin_id_instead_of_listing_id_is_refused()
+    {
+        string earlierShape = Entitlements.Replace("\"listing_id\"", "\"plugin_id\"");
+
+        Client(new PluginEntitlementStore(_folder))
+            .TryRead(Body(entitlements: earlierShape), out PluginEntitlementBundle? bundle)
+            .Should()
+            .BeFalse("the published field is listing_id, and nothing else names the plugin");
+
+        bundle.Should().BeNull();
+    }
+
+    [Fact]
+    public void A_subscription_lapses_at_the_published_valid_until()
+    {
+        string subscription = Entitlements.Replace(
+            "\"valid_until\":null",
+            "\"valid_until\":\"2026-10-01T00:00:00+00:00\""
+        );
+
+        Client(new PluginEntitlementStore(_folder))
+            .TryRead(Body(entitlements: subscription), out PluginEntitlementBundle? bundle)
+            .Should()
+            .BeTrue();
+
+        DateTimeOffset lapse = new(2026, 10, 1, 0, 0, 0, TimeSpan.Zero);
+        bundle!.Entitlements.Should().ContainSingle().Which.ExpiresAt.Should().Be(lapse);
+        bundle.For(Paid, Owner, lapse.AddSeconds(-1)).Should().NotBeNull();
+        bundle.For(Paid, Owner, lapse.AddSeconds(1)).Should().BeNull();
     }
 
     [Fact]
@@ -266,10 +304,7 @@ public class PluginEntitlementTransportTests : IDisposable
         DateTimeOffset held = new(2026, 9, 19, 11, 0, 0, TimeSpan.Zero);
         store.Save(new(Ulid.Parse(ServerId), held, held.AddDays(1), []));
 
-        Client(store)
-            .Accept(Body(serverId: "01J9ZK5V8Y000000000000000Y"))
-            .Should()
-            .BeFalse();
+        Client(store).Accept(Body(serverId: "01J9ZK5V8Y000000000000000Y")).Should().BeFalse();
 
         store.Current.IssuedAt.Should().Be(held);
         store.Current.Entitlements.Should().BeEmpty();
