@@ -525,7 +525,7 @@ public class LibrariesController(
         string country = Country();
 
         // Fetch movies and shows in parallel; each repository call opens its own context.
-        Task<List<MovieCardDto>> moviesTask = libraryRepository.GetLibraryMovieCardsAsync(
+        Task<List<MovieCardDto>> moviesTask = libraryRepository.GetLibraryMovieCardsByTitleAsync(
             userId,
             libraryId,
             country,
@@ -533,7 +533,7 @@ public class LibrariesController(
             request.Page * request.Take,
             ct
         );
-        Task<List<TvCardDto>> showsTask = libraryRepository.GetLibraryTvCardsAsync(
+        Task<List<TvCardDto>> showsTask = libraryRepository.GetLibraryTvCardsByTitleAsync(
             userId,
             libraryId,
             country,

@@ -17,7 +17,9 @@ using NoMercy.Data.Repositories;
 using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.Media;
+using NoMercy.Database.Models.Movies;
 using NoMercy.Database.Models.Storage;
+using NoMercy.Database.Models.TvShows;
 using NoMercy.NmSystem.Domain;
 using NoMercy.Tests.Repositories.Infrastructure;
 
@@ -279,6 +281,132 @@ public class LibraryRepositoryTests : IDisposable
             0
         );
         Assert.Single(limitedCards);
+    }
+
+    [Fact]
+    public async Task GetLibraryMovieCardsByTitleAsync_With301Titles_TakesThePageInTitleOrder()
+    {
+        Ulid libraryId = Ulid.NewUlid();
+        _context.Libraries.Add(
+            new Library
+            {
+                Id = libraryId,
+                Title = "Large movies",
+                Type = "movie",
+            }
+        );
+        _context.LibraryUser.Add(new(libraryId, SeedConstants.UserId));
+        for (int index = 0; index < 301; index++)
+        {
+            int id = 900000 + index;
+            _context.Movies.Add(
+                new Movie
+                {
+                    Id = id,
+                    Title = $"Title {index:D3}",
+                    TitleSort = $"title {index:D3}",
+                    LibraryId = libraryId,
+                }
+            );
+            _context.VideoFiles.Add(
+                new VideoFile
+                {
+                    Id = Ulid.NewUlid(),
+                    Filename = $"title.{index:D3}.mkv",
+                    Folder = $"/media/large/title {index:D3}",
+                    HostFolder = $"/media/large/title {index:D3}",
+                    Languages = "en",
+                    Quality = "1080p",
+                    Share = "movies",
+                    MovieId = id,
+                }
+            );
+        }
+        await _context.SaveChangesAsync();
+        // The first title is the oldest one, so a newest-first page cuts it.
+        await _context.Database.ExecuteSqlRawAsync(
+            "UPDATE Movies SET CreatedAt = '2000-01-01 00:00:00' WHERE Id = 900000"
+        );
+
+        List<MovieCardDto> page = await _repository.GetLibraryMovieCardsByTitleAsync(
+            SeedConstants.UserId,
+            libraryId,
+            "US",
+            300,
+            0
+        );
+        List<MovieCardDto> rest = await _repository.GetLibraryMovieCardsByTitleAsync(
+            SeedConstants.UserId,
+            libraryId,
+            "US",
+            300,
+            300
+        );
+
+        Assert.Equal(300, page.Count);
+        Assert.Equal("title 000", page[0].TitleSort);
+        Assert.Equal(
+            page.Select(card => card.TitleSort).Order(StringComparer.Ordinal),
+            page.Select(card => card.TitleSort)
+        );
+        Assert.Equal("title 300", Assert.Single(rest).TitleSort);
+    }
+
+    [Fact]
+    public async Task GetLibraryTvCardsByTitleAsync_With301Titles_TakesThePageInTitleOrder()
+    {
+        Ulid libraryId = Ulid.NewUlid();
+        _context.Libraries.Add(
+            new Library
+            {
+                Id = libraryId,
+                Title = "Large shows",
+                Type = "tv",
+            }
+        );
+        _context.LibraryUser.Add(new(libraryId, SeedConstants.UserId));
+        for (int index = 0; index < 301; index++)
+        {
+            int id = 900000 + index;
+            _context.Tvs.Add(
+                new Tv
+                {
+                    Id = id,
+                    Title = $"Title {index:D3}",
+                    TitleSort = $"title {index:D3}",
+                    LibraryId = libraryId,
+                }
+            );
+            _context.LibraryTv.Add(new(libraryId, id, LibraryLinkOrigin.Manual));
+        }
+        await _context.SaveChangesAsync();
+        // The first title is the oldest one, so a newest-first page cuts it.
+        await _context.Database.ExecuteSqlRawAsync(
+            "UPDATE Tvs SET CreatedAt = '2000-01-01 00:00:00' WHERE Id = 900000"
+        );
+
+        List<TvCardDto> page = await _repository.GetLibraryTvCardsByTitleAsync(
+            SeedConstants.UserId,
+            libraryId,
+            "US",
+            300,
+            0
+        );
+        List<TvCardDto> rest = await _repository.GetLibraryTvCardsByTitleAsync(
+            SeedConstants.UserId,
+            libraryId,
+            "US",
+            300,
+            300
+        );
+
+        Assert.Equal(300, page.Count);
+        Assert.Equal("title 000", page[0].TitleSort);
+        Assert.Equal(
+            page.Select(card => card.TitleSort).Order(StringComparer.Ordinal),
+            page.Select(card => card.TitleSort)
+        );
+        Assert.Equal("title 300", Assert.Single(rest).TitleSort);
     }
 
     [Fact]
