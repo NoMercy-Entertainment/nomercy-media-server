@@ -59,8 +59,14 @@ jobs:
           try {
             Install-Server 'install-fresh.log'
             Wait-ServiceRunning 'fresh install'
+            # Recreate an install made by the old installer: a bare binPath without --service.
+            sc.exe stop NoMercyMediaServer | Out-Null
+            Start-Sleep -Seconds 5
+            sc.exe config NoMercyMediaServer binPath= "`"$installDir\NoMercyMediaServer.exe`""
             Install-Server 'install-upgrade.log'
-            Wait-ServiceRunning 'install over existing'
+            Wait-ServiceRunning 'upgrade over an old install'
+            $qc = sc.exe qc NoMercyMediaServer | Out-String
+            if ($qc -notmatch '--service') { Write-Host $qc; Write-Error 'upgrade left the old binPath'; exit 1 }
           } finally {
             $unins = Get-ChildItem $installDir -Filter 'unins*.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
             if ($unins) {
