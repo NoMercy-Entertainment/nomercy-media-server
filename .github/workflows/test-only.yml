@@ -88,15 +88,19 @@ jobs:
 
       - name: Run FULL test suite (all categories, all projects)
         id: fulltest
+        env:
+          VSTEST_ARTIFACTS_DIRECTORY: ${{ github.workspace }}/testresults
         run: |
           set +e
+          mkdir -p testresults
           dotnet test NoMercy.Server.sln \
             --settings tests/default.runsettings \
             --configuration Debug \
             --verbosity minimal \
             --logger "trx" \
             --results-directory ./testresults \
-            --blame-hang-timeout 10m
+            --blame-hang-timeout 10m \
+            --blame-hang-dump-type mini
           echo "exit_code=$?" >> "$GITHUB_OUTPUT"
 
       - name: Surface failed tests as annotations
@@ -130,6 +134,7 @@ jobs:
         with:
           name: churn-test-results
           path: ./testresults
+          retention-days: 7
 
       - name: Fail job if any test failed
         if: steps.fulltest.outputs.exit_code != '0'
