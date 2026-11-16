@@ -59,6 +59,31 @@ public class CastControlTokenMintTests : IClassFixture<NoMercyApiFactory>
         return deviceId;
     }
 
+    private static async Task<(Ulid RowId, string DeviceId)> SeedTvWithRowIdAsync(
+        Guid? owner,
+        string? fingerprint,
+        string type = "tv"
+    )
+    {
+        string deviceId = "cast-token-" + Guid.NewGuid().ToString("N");
+        Ulid rowId = Ulid.NewUlid();
+        await using MediaContext db = new();
+        db.Devices.Add(
+            new()
+            {
+                Id = rowId,
+                DeviceId = deviceId,
+                Type = type,
+                Name = "Placeholder TV",
+                OwnerUserId = owner,
+                Fingerprint = fingerprint,
+                LanIp = "203.0.113.10",
+            }
+        );
+        await db.SaveChangesAsync();
+        return (rowId, deviceId);
+    }
+
     private static JsonElement Part(string jws, int index)
     {
         string[] parts = jws.Split('.');
@@ -250,6 +275,93 @@ public class CastControlTokenMintTests : IClassFixture<NoMercyApiFactory>
         string token = await MintAsync(deviceId);
 
         Assert.Equal(3, token.Split('.').Length);
+    }
+
+    [Fact]
+    public async Task TvNamedByItsRowId_GetsTheSameTokenFields_AsByItsClientDeviceId()
+    {
+        string fp = "placeholder-fp-row-" + Guid.NewGuid().ToString("N");
+        (Ulid rowId, string deviceId) = await SeedTvWithRowIdAsync(
+            TestAuthHandler.DefaultUserId,
+            fp
+        );
+        HttpClient owner = _factory.CreateClient().AsAuthenticated();
+
+        HttpResponseMessage byRow = await owner.PostAsync(Url(rowId.ToString()), null);
+        HttpResponseMessage byClient = await owner.PostAsync(Url(deviceId), null);
+
+        Assert.Equal(HttpStatusCode.OK, byClient.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, byRow.StatusCode);
+        JsonElement body = JsonDocument.Parse(await byRow.Content.ReadAsStringAsync()).RootElement;
+        Assert.Equal(deviceId, body.GetProperty("device_id").GetString());
+        JsonElement claims = Part(body.GetProperty("token").GetString()!, 1);
+        Assert.Equal(deviceId, claims.GetProperty("device_id").GetString());
+        Assert.Equal(fp, claims.GetProperty("fp").GetString());
+        Assert.Equal(
+            TestAuthHandler.DefaultUserId.ToString(),
+            claims.GetProperty("sub").GetString()
+        );
+    }
+
+    [Fact]
+    public async Task RowId_OfAnotherUsersTv_IsForbidden()
+    {
+        (Ulid rowId, _) = await SeedTvWithRowIdAsync(
+            TestAuthHandler.DefaultUserId,
+            "placeholder-fp-r1"
+        );
+
+        HttpResponseMessage response = await _factory
+            .CreateClient()
+            .AsSecondaryUser()
+            .PostAsync(Url(rowId.ToString()), null);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task RowId_OfADeviceThatIsNotATv_IsForbidden()
+    {
+        (Ulid rowId, _) = await SeedTvWithRowIdAsync(
+            TestAuthHandler.DefaultUserId,
+            "placeholder-fp-r2",
+            "phone"
+        );
+
+        HttpResponseMessage response = await _factory
+            .CreateClient()
+            .AsAuthenticated()
+            .PostAsync(Url(rowId.ToString()), null);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task UnknownWellFormedRowId_IsNotFound()
+    {
+        HttpResponseMessage response = await _factory
+            .CreateClient()
+            .AsAuthenticated()
+            .PostAsync(Url(Ulid.NewUlid().ToString()), null);
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task RowId_OfATvWithoutAFingerprint_IsAConflict()
+    {
+        (Ulid rowId, _) = await SeedTvWithRowIdAsync(TestAuthHandler.DefaultUserId, null);
+
+        HttpResponseMessage response = await _factory
+            .CreateClient()
+            .AsAuthenticated()
+            .PostAsync(Url(rowId.ToString()), null);
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+        JsonElement body = JsonDocument
+            .Parse(await response.Content.ReadAsStringAsync())
+            .RootElement;
+        Assert.Equal("device_fingerprint_unknown", body.GetProperty("error").GetString());
     }
 
     [Fact]
