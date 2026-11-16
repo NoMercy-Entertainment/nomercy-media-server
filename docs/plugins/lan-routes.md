@@ -67,11 +67,27 @@ The server checks, in this order, and refuses with one and the same `403`
 which part was wrong:
 
 1. The device connected to the server itself, from a private address (RFC
-   1918, link-local, CGNAT, IPv6 unique-local or link-local), with no relay in
+   1918, IPv4 link-local, IPv6 unique-local or link-local), with no relay in
    between. Loopback is refused, and so is any request that carries a
    forwarding header (`X-Forwarded-*`, `Forwarded`, `X-Real-IP`, `Via`,
    `CF-*`): that is where tunnels and reverse proxies deliver callers from
-   anywhere. Point the device at the server's LAN address, not `localhost`.
+   anywhere. `100.64.0.0/10` (carrier-grade NAT, and overlays such as
+   Tailscale) is refused too: it is a provider's or an overlay's network,
+   not the owner's house. Point the device at the server's LAN address, not
+   `localhost`.
+   Two setups this rules out, on purpose:
+   - **A reverse proxy in front of the server on the LAN.** The server only
+     believes "this came from the LAN" when nothing sits in between. A proxy
+     must add a forwarding header so the server can tell its callers apart,
+     and a request with one is refused here. Point LAN devices at the server
+     itself, not at the proxy.
+   - **A Docker published port.** Depending on the network mode, Docker can
+     present its bridge gateway (such as `172.17.0.1`) as the peer for every
+     caller, including callers from the internet, when it forwards through
+     its userland proxy. That address is private, so the server cannot tell
+     them apart, and the credential is then the only guard. Run the server
+     with host networking, or make sure published ports keep the caller's
+     own address, if devices use LAN routes.
 2. The credential belongs to this device on this plugin and was not revoked
    (compared in fixed time).
 3. The method is `GET`.

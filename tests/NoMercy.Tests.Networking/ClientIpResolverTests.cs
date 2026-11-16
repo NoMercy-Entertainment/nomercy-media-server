@@ -281,6 +281,17 @@ public class ClientIpResolverTests
     [InlineData("::1", false)]
     [InlineData("81.171.28.44", false)]
     [InlineData("172.32.0.1", false)]
+    [InlineData("8.8.8.8", false)]
+    [InlineData("::ffff:192.168.1.5", true)]
+    [InlineData("::ffff:8.8.8.8", false)]
+    [InlineData("fd12:3456::1", true)]
+    [InlineData("fe80::1", true)]
+    [InlineData("2001:4860:4860::8888", false)]
+    [InlineData("100.64.0.1", false)]
+    [InlineData("100.100.100.100", false)]
+    [InlineData("100.127.255.254", false)]
+    [InlineData("100.63.255.255", false)]
+    [InlineData("100.128.0.1", false)]
     public void IsDirectLanCaller_AnswersOnlyAPrivatePeerThatIsNotThisMachine(
         string peer,
         bool expected
@@ -302,6 +313,16 @@ public class ClientIpResolverTests
     public void IsDirectLanCaller_RefusesARequestThatCameThroughARelay(string header, string value)
     {
         ContextFrom("192.168.1.20", (header, value)).IsDirectLanCaller().Should().BeFalse();
+    }
+
+    /// <summary>
+    /// The shared range stays private for everything else, such as not
+    /// banning a Tailscale peer; only the LAN gate leaves it out.
+    /// </summary>
+    [Fact]
+    public void IsPrivateNetwork_StillCountsTheSharedRangeForItsOtherCallers()
+    {
+        ClientIpResolver.IsPrivateNetwork(IPAddress.Parse("100.64.0.1")).Should().BeTrue();
     }
 
     [Fact]

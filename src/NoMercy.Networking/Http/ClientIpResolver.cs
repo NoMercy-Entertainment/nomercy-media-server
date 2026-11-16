@@ -75,17 +75,38 @@ public static class ClientIpResolver
     /// address, and a television on the owner's network does not send one.
     /// Loopback is refused too, because loopback is where a tunnel or a relay
     /// on this machine delivers callers from anywhere, usually without saying
-    /// so in any header.
+    /// so in any header. So is 100.64.0.0/10, which is a provider's or an
+    /// overlay's network rather than the owner's.
     /// </para>
     /// </summary>
     public static bool IsDirectLanCaller(this HttpContext context)
     {
         IPAddress? peer = Normalize(context.Connection.RemoteIpAddress);
 
-        if (peer is null || IPAddress.IsLoopback(peer) || !IsPrivateNetwork(peer))
+        if (
+            peer is null
+            || IPAddress.IsLoopback(peer)
+            || IsSharedAddressSpace(peer)
+            || !IsPrivateNetwork(peer)
+        )
             return false;
 
         return !context.Request.Headers.Keys.Any(IsRelayHeader);
+    }
+
+    /// <summary>
+    /// 100.64.0.0/10, the carrier-grade NAT range. Private enough that a ban
+    /// would be wrong about it, but not the owner's house: it is a provider's
+    /// shared network, or an overlay such as Tailscale that reaches devices
+    /// anywhere.
+    /// </summary>
+    private static bool IsSharedAddressSpace(IPAddress address)
+    {
+        if (address.AddressFamily is not AddressFamily.InterNetwork)
+            return false;
+
+        byte[] octets = address.GetAddressBytes();
+        return octets[0] == 100 && octets[1] is >= 64 and <= 127;
     }
 
     /// <summary>
