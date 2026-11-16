@@ -15,11 +15,13 @@ namespace NoMercy.Setup.Server;
 
 /// <summary>
 /// Loads the API keys when a host starts. Boot loads them before the first host runs,
-/// but a host rebuilt after setup or a port conflict has its own loader, and the
-/// first host's retry loop stops with that host. Without this, a first load that
-/// failed (no bearer yet on a first boot, or the API down with no cache) left the
-/// rebuilt host without keys until a restart (#665). When the keys are already
-/// loaded, <see cref="IApiKeyLoader.LoadKeys"/> returns at once.
+/// but a host rebuilt after setup or a port conflict has its own loader, and the first
+/// host's loader stops its retry loop when that host's container is disposed. Without
+/// this, a first load that failed (no bearer yet on a first boot, or the API down with
+/// no cache) left the rebuilt host without keys, and keys the first host only had from
+/// the cache were never refreshed, until a restart (#665). Keys already fetched from the
+/// API make <see cref="IApiKeyLoader.LoadKeys"/> return at once; keys from the cache
+/// make it start this host's refresh loop.
 /// </summary>
 public sealed class ApiKeyStartupService(IApiKeyLoader apiKeyLoader) : BackgroundService
 {
