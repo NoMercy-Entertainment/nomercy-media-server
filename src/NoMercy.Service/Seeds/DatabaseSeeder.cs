@@ -18,6 +18,7 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Migrations.Operations;
 using NoMercy.Authorization;
+using NoMercy.Data.ServerBackups;
 using NoMercy.Database;
 using NoMercy.Database.Maintenance;
 using NoMercy.Database.Models.Libraries;
@@ -39,13 +40,13 @@ public static class DatabaseSeeder
     /// Phase 1: Create database schema (migrations + EnsureCreated).
     /// Does NOT require authentication — safe to call before auth.
     /// </summary>
-    public static async Task InitSchema(IStorage storage)
+    public static async Task InitSchema(IStorage storage, IPreMigrationBackup preMigrationBackup)
     {
         Logger.Setup("Initializing database schemas...");
 
         // 1. AppDbContext first — auth tokens live here, needed before content DB
         AppDbContext appDbContext = new();
-        await Migrate(appDbContext);
+        await Migrate(appDbContext, preMigrationBackup);
         await EnsureDatabaseCreated(appDbContext);
 
         // Migrate Configuration data from media.db to app.db (one-time on update)
@@ -69,12 +70,12 @@ public static class DatabaseSeeder
 
         // 2. MediaContext — content and metadata
         MediaContext mediaDbContext = new();
-        await Migrate(mediaDbContext);
+        await Migrate(mediaDbContext, preMigrationBackup);
         await EnsureDatabaseCreated(mediaDbContext);
 
         // 3. QueueContext — background jobs
         QueueContext queueDbContext = new();
-        await Migrate(queueDbContext);
+        await Migrate(queueDbContext, preMigrationBackup);
         await EnsureDatabaseCreated(queueDbContext);
 
         CronWorker.SignalDatabaseReady();
@@ -441,7 +442,7 @@ public static class DatabaseSeeder
         }
     }
 
-    private static Task Migrate(DbContext context)
+    private static Task Migrate(DbContext context, IPreMigrationBackup? preMigrationBackup)
     {
         string contextName = context.GetType().Name;
 
@@ -507,7 +508,7 @@ public static class DatabaseSeeder
 
             string? dbPath = context.Database.GetDbConnection().DataSource;
             if (!string.IsNullOrEmpty(dbPath))
-                DatabaseBackupService.BackupBeforeMigration(dbPath, pendingMigrations.Count);
+                preMigrationBackup?.BackupBeforeMigration(dbPath, pendingMigrations.Count);
 
             // Rows whose parent was deleted before cascade rules existed make EF's
             // SQLite table-rebuild migrations throw "FOREIGN KEY constraint failed"

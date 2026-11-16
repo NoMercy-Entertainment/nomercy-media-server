@@ -9,46 +9,46 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.NmSystem.Information;
-using NoMercy.Service.Seeds;
+using NoMercy.Data.ServerBackups;
 using NoMercyQueue.Core;
 using NoMercyQueue.Core.Interfaces;
 
 namespace NoMercy.Service.Jobs;
 
 /// <summary>
-/// Takes a daily snapshot of every SQLite database under the data root,
-/// independent of <see cref="DatabaseBackupService.BackupBeforeMigration"/> —
-/// that path only fires when a migration is pending, which on a stable install
-/// can be months apart. Without this job, corruption between migrations (a
-/// crash, an unclean shutdown) has no recent recovery point to fall back to.
+/// Takes a daily backup set (every database plus the settings folder), independent
+/// of the copy taken before a migration: that one only fires when a migration is
+/// pending, which on a stable install can be months apart. Without this job,
+/// corruption between migrations (a crash, an unclean shutdown) has no recent
+/// recovery point to fall back to. The backup service keeps the newest five.
 /// </summary>
-public class DatabaseBackupCronJob : ICronJobExecutor
+public class DatabaseBackupCronJob(ILogger<DatabaseBackupCronJob> logger, IBackupService backups)
+    : ICronJobExecutor
 {
-    private readonly ILogger<DatabaseBackupCronJob> _logger;
-    private readonly string[] _dbPaths;
+    public const string Reason = "daily scheduled backup";
 
     public string CronExpression => new CronExpressionBuilder().Daily(4);
     public string JobName => "Daily Database Backup";
 
-    public DatabaseBackupCronJob(ILogger<DatabaseBackupCronJob> logger, string[]? dbPaths = null)
+    public async Task ExecuteAsync(string parameters, CancellationToken cancellationToken = default)
     {
-        _logger = logger;
-        _dbPaths =
-            dbPaths ?? [AppFiles.MediaDatabase, AppFiles.QueueDatabase, AppFiles.AppDatabase];
-    }
-
-    public Task ExecuteAsync(string parameters, CancellationToken cancellationToken = default)
-    {
-        int backedUp = 0;
-        foreach (string dbPath in _dbPaths)
-            if (DatabaseBackupService.BackupNow(dbPath, "daily scheduled backup"))
-                backedUp++;
-
-        _logger.LogInformation(
-            "Daily database backup complete: {BackedUp}/{Total} databases backed up", [backedUp, _dbPaths.Length]
-        );
-
-        return Task.CompletedTask;
+        // A failed backup must not fail the cron worker; the next day tries again.
+        try
+        {
+            BackupSetSummary backup = await backups.CreateAsync(Reason, cancellationToken);
+            logger.LogInformation(
+                "Daily backup complete: {BackupId}, {SizeBytes} bytes",
+                backup.Id,
+                backup.SizeBytes
+            );
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            throw;
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(exception, "Daily backup failed: {Reason}", exception.Message);
+        }
     }
 }

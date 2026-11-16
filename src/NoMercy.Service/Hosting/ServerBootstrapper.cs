@@ -11,6 +11,7 @@
 
 using System.Diagnostics;
 using System.Reflection;
+using NoMercy.Data.ServerBackups;
 using NoMercy.Networking.Cast;
 using NoMercy.Networking.Certificate;
 using NoMercy.Networking.Discovery;
@@ -98,7 +99,16 @@ public sealed class ServerBootstrapper
 
         // Create a database schema before anything else can query it.
         // This does NOT require auth — only migrations + EnsureCreated.
-        await DatabaseSeeder.InitSchema(preBootStorage);
+        await DatabaseSeeder.InitSchema(
+            preBootStorage,
+            new PreMigrationBackup(
+                preBootBackend,
+                new SqliteFileOperations(),
+                BackupOptions.ForAppFiles(),
+                TimeProvider.System,
+                new SetupLogger<PreMigrationBackup>()
+            )
+        );
 
         // Phase 1 (UserSettings, CreateAppFolders, ApiInfo) — fast, no network
         await Start.InitEssential();
