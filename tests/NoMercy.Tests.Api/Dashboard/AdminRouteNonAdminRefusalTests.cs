@@ -40,7 +40,6 @@ public class AdminRouteNonAdminRefusalTests : IClassFixture<NoMercyApiFactory>
         };
 
     [Theory]
-    [InlineData("GET", "/api/v1/dashboard/server/update/check")]
     [InlineData("POST", "/api/v1/dashboard/server/start")]
     [InlineData("POST", "/api/v1/dashboard/encoderprofiles")]
     [InlineData("POST", "/api/v1/dashboard/encoding/presets/preview")]

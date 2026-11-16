@@ -20,7 +20,15 @@ namespace NoMercy.NmSystem.SystemCalls;
 
 public interface IUpdateChecker
 {
+    /// <summary>Asks GitHub now and stores the answer in <see cref="IUpdateStatus"/>.</summary>
     Task<bool> IsUpdateAvailableAsync();
+
+    /// <summary>
+    /// A refresh someone asked for: asks GitHub only when the last check, scheduled or
+    /// asked for, is at least <see cref="UpdateChecker.MinimumRefreshInterval"/> old, and
+    /// otherwise returns the last known answer.
+    /// </summary>
+    Task<bool> RefreshAsync();
 }
 
 public class UpdateChecker : IUpdateChecker
@@ -28,31 +36,44 @@ public class UpdateChecker : IUpdateChecker
     private const string GithubReleasesUrl =
         "https://api.github.com/repos/NoMercy-Entertainment/nomercy-media-server/releases/latest";
 
+    /// <summary>The shortest time between two checks that someone asked for.</summary>
+    public static readonly TimeSpan MinimumRefreshInterval = TimeSpan.FromMinutes(10);
+
     private static readonly HttpClient SharedHttpClient = CreateHttpClient();
 
     private readonly IUpdateStatus _updateStatus;
     private readonly RuntimeServerSettings _settings;
     private readonly HttpClient _httpClient;
+    private readonly TimeProvider _timeProvider;
+    private readonly SemaphoreSlim _refreshGate = new(1, 1);
+
+    // UTC ticks of the last check, scheduled or asked for; 0 before the first one.
+    private long _lastCheckStartedTicks;
 
     public UpdateChecker(IUpdateStatus updateStatus, RuntimeServerSettings settings)
         : this(updateStatus, settings, SharedHttpClient) { }
 
     /// <summary>
-    /// Testing constructor, so a test can answer GitHub's API with a fake handler.
+    /// Testing constructor, so a test can answer GitHub's API with a fake handler and
+    /// move the clock.
     /// </summary>
     internal UpdateChecker(
         IUpdateStatus updateStatus,
         RuntimeServerSettings settings,
-        HttpClient httpClient
+        HttpClient httpClient,
+        TimeProvider? timeProvider = null
     )
     {
         _updateStatus = updateStatus;
         _settings = settings;
         _httpClient = httpClient;
+        _timeProvider = timeProvider ?? TimeProvider.System;
     }
 
     public async Task<bool> IsUpdateAvailableAsync()
     {
+        Interlocked.Exchange(ref _lastCheckStartedTicks, _timeProvider.GetUtcNow().UtcTicks);
+
         try
         {
             LatestReleaseInfo? release = await FetchChannelReleaseAsync();
@@ -180,6 +201,27 @@ public class UpdateChecker : IUpdateChecker
         using HttpResponseMessage response = await _httpClient.GetAsync(url);
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadAsStringAsync();
+    }
+
+    public async Task<bool> RefreshAsync()
+    {
+        // One refresh at a time, so callers arriving together share one GitHub request.
+        await _refreshGate.WaitAsync();
+        try
+        {
+            long last = Interlocked.Read(ref _lastCheckStartedTicks);
+            if (
+                last != 0
+                && _timeProvider.GetUtcNow().UtcTicks - last < MinimumRefreshInterval.Ticks
+            )
+                return _updateStatus.UpdateAvailable;
+
+            return await IsUpdateAvailableAsync();
+        }
+        finally
+        {
+            _refreshGate.Release();
+        }
     }
 
     private static HttpClient CreateHttpClient()

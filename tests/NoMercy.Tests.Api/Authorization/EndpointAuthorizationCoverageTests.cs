@@ -208,6 +208,9 @@ public sealed class EndpointAuthorizationCoverageTests(
             "MediaAccess: the country list for profile and playback settings.",
         ["GET /api/v{version:apiVersion}/dashboard/server/info"] =
             "MediaAccess: server name, version and hardware; the web account page shows it.",
+        ["GET /api/v{version:apiVersion}/dashboard/server/update/check"] =
+            "Every signed-in user reads the last known update status; only a moderator's "
+            + "call refreshes it, through UpdateChecker.RefreshAsync, at most once per 10 minutes.",
         ["POST /api/v{version:apiVersion}/dashboard/activity"] =
             "MediaAccess: a client reports its own activity.",
         ["POST /api/v{version:apiVersion}/dashboard/activity/playback-failure"] =
