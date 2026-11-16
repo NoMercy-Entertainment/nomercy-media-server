@@ -101,11 +101,10 @@ public partial class ServerController(
 
     [HttpGet]
     [Route("setup")]
+    [Authorize(Policy = "Moderator")]
     public async Task<IActionResult> Setup()
     {
         Guid userId = User.UserId();
-        if (!AuthPolicy.IsModerator(User))
-            return UnauthorizedResponse("You do not have permission to access the setup");
 
         List<Library> libraries = await libraryRepository.GetLibraries(userId);
 
@@ -135,7 +134,7 @@ public partial class ServerController(
 
     [HttpPost]
     [Route("start")]
-    [Authorize(Policy = "MediaAccess")]
+    [Authorize(Policy = "Owner")]
     public IActionResult StartServer()
     {
         return NotImplementedResponse("Starting the server via the API is not implemented.");
@@ -201,6 +200,7 @@ public partial class ServerController(
     }
 
     [HttpGet("update/check")]
+    [Authorize(Policy = "Moderator")]
     public async Task<IActionResult> CheckForUpdate()
     {
         return Ok(new { updateAvailable = await updateChecker.IsUpdateAvailableAsync() });
@@ -597,11 +597,10 @@ public partial class ServerController(
 
     [HttpPatch]
     [Route("info")]
+    [Authorize(Policy = "Moderator")]
     public async Task<IActionResult> UpdateServerInfo([FromBody] ServerUpdateRequest request)
     {
         Guid userId = User.UserId();
-        if (!AuthPolicy.IsModerator(User))
-            return UnauthorizedResponse("You do not have permission to update server information");
 
         try
         {

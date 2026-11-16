@@ -80,12 +80,10 @@ public class LibrariesController(
     }
 
     [HttpPost]
+    [Authorize(Policy = "Moderator")]
     public async Task<IActionResult> Store()
     {
         Guid userId = User.UserId();
-
-        if (!AuthPolicy.IsModerator(User))
-            return UnauthorizedResponse("You do not have permission to create a new library");
 
         try
         {
