@@ -49,7 +49,7 @@ public class PluginAccessResolverTests
         );
 
     private static PluginEntitlement Held(Guid user, int? seats = null) =>
-        new(Radio, user, PluginTier.Paid, seats, null);
+        new(Radio, user, PluginTier.Paid, seats, null, PluginEntitlementStatus.Active);
 
     [Fact]
     public void A_free_plugin_is_the_owners_and_shared_with_a_member()
@@ -223,7 +223,16 @@ public class PluginAccessResolverTests
                     Ulid.Empty,
                     Now.AddDays(-1),
                     Now.AddDays(1),
-                    [new PluginEntitlement(Radio, Owner, PluginTier.Paid, null, Now.AddDays(-1))]
+                    [
+                        new PluginEntitlement(
+                            Radio,
+                            Owner,
+                            PluginTier.Paid,
+                            null,
+                            Now.AddDays(-1),
+                            PluginEntitlementStatus.Active
+                        ),
+                    ]
                 )
             ),
             new StubMembership([Member], 0),
@@ -231,6 +240,21 @@ public class PluginAccessResolverTests
             () => Owner
         );
 
+        resolver.Resolve(Radio, Owner).Should().Be(PluginAccess.None);
+    }
+
+    [Fact]
+    public void A_suspended_entitlement_is_shared_with_nobody()
+    {
+        PluginAccessResolver resolver = Resolver(
+            PluginTier.Paid,
+            entitlements: Held(Owner) with
+            {
+                Status = PluginEntitlementStatus.Suspended,
+            }
+        );
+
+        resolver.Resolve(Radio, Member).Should().Be(PluginAccess.None);
         resolver.Resolve(Radio, Owner).Should().Be(PluginAccess.None);
     }
 

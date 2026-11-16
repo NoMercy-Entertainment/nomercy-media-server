@@ -23,10 +23,24 @@ public sealed record PluginEntitlementBundle(
     public static PluginEntitlementBundle None { get; } =
         new(Ulid.Empty, DateTimeOffset.MinValue, DateTimeOffset.MinValue, []);
 
+    /// <summary>The entitlement that lets the plugin run: active and not lapsed.</summary>
     public PluginEntitlement? For(Ulid pluginId, Guid userId, DateTimeOffset now) =>
+        Find(pluginId, userId, now, PluginEntitlementStatus.Active);
+
+    /// <summary>A purchase nomercy.tv paused, for example while a dispute runs.</summary>
+    public PluginEntitlement? SuspendedFor(Ulid pluginId, Guid userId, DateTimeOffset now) =>
+        Find(pluginId, userId, now, PluginEntitlementStatus.Suspended);
+
+    private PluginEntitlement? Find(
+        Ulid pluginId,
+        Guid userId,
+        DateTimeOffset now,
+        PluginEntitlementStatus status
+    ) =>
         Entitlements.FirstOrDefault(entitlement =>
             entitlement.PluginId == pluginId
             && entitlement.UserId == userId
+            && entitlement.Status == status
             && (entitlement.ExpiresAt is null || entitlement.ExpiresAt > now)
         );
 }

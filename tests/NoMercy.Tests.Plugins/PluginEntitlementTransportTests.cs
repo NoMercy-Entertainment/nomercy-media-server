@@ -174,6 +174,93 @@ public class PluginEntitlementTransportTests : IDisposable
     }
 
     [Fact]
+    public void A_suspended_entitlement_is_read_as_suspended_and_the_gate_refuses_it()
+    {
+        string suspended = Entitlements.Replace(
+            "\"status\":\"active\"",
+            "\"status\":\"suspended\""
+        );
+
+        PluginEntitlementStore store = new(_folder);
+
+        Client(store).Accept(Body(entitlements: suspended)).Should().BeTrue();
+
+        store
+            .Current.Entitlements.Should()
+            .ContainSingle()
+            .Which.Status.Should()
+            .Be(PluginEntitlementStatus.Suspended);
+
+        DateTimeOffset now = new(2026, 9, 20, 12, 0, 0, TimeSpan.Zero);
+        store.Current.For(Paid, Owner, now).Should().BeNull("a paused purchase is not held");
+
+        PluginRefusal? refusal = new PluginEntitlementGate(store, new FixedClock(now), Owner).Check(
+            Paid,
+            PluginTier.Paid
+        );
+
+        refusal.Should().NotBeNull("a suspended entitlement must not start the plugin");
+        refusal!.Why.Should().Contain("paused");
+    }
+
+    [Fact]
+    public void An_active_entitlement_is_read_as_active()
+    {
+        Client(new PluginEntitlementStore(_folder))
+            .TryRead(Body(), out PluginEntitlementBundle? bundle)
+            .Should()
+            .BeTrue();
+
+        bundle!
+            .Entitlements.Should()
+            .ContainSingle()
+            .Which.Status.Should()
+            .Be(PluginEntitlementStatus.Active);
+    }
+
+    [Theory]
+    [InlineData("\"status\":\"active\",", "")]
+    [InlineData("\"status\":\"active\"", "\"status\":\"disputed\"")]
+    [InlineData("\"status\":\"active\"", "\"status\":null")]
+    public void An_entitlement_without_a_known_status_is_refused(string published, string sent)
+    {
+        Client(new PluginEntitlementStore(_folder))
+            .TryRead(
+                Body(entitlements: Entitlements.Replace(published, sent)),
+                out PluginEntitlementBundle? bundle
+            )
+            .Should()
+            .BeFalse("a status this server cannot name is not a purchase it can confirm");
+
+        bundle.Should().BeNull();
+    }
+
+    [Fact]
+    public void A_bundle_saved_before_status_was_read_holds_nothing()
+    {
+        PluginEntitlementStore store = new(_folder);
+        Client(store).Accept(Body()).Should().BeTrue();
+        string file = Path.Combine(_folder, "entitlements.json");
+        string saved = File.ReadAllText(file);
+        string earlier = saved.Replace(",\"status\":1", string.Empty);
+        earlier.Should().NotBe(saved, "the saved file names the status");
+        File.WriteAllText(file, earlier);
+
+        PluginEntitlementBundle reopened = new PluginEntitlementStore(_folder).Current;
+
+        reopened.Entitlements.Should().ContainSingle();
+        reopened
+            .For(Paid, Owner, new DateTimeOffset(2026, 9, 20, 12, 0, 0, TimeSpan.Zero))
+            .Should()
+            .BeNull("no shim keeps a bundle without a status running a paid plugin");
+    }
+
+    private sealed class FixedClock(DateTimeOffset now) : TimeProvider
+    {
+        public override DateTimeOffset GetUtcNow() => now;
+    }
+
+    [Fact]
     public void A_bundle_naming_the_server_by_its_uuid_is_read()
     {
         // nomercy-tv names a server by the uuid it registered with, not a ulid.
@@ -341,7 +428,16 @@ public class PluginEntitlementTransportTests : IDisposable
                 Ulid.Parse(ServerId),
                 new DateTimeOffset(2026, 9, 20, 11, 0, 0, TimeSpan.Zero),
                 new DateTimeOffset(2026, 9, 21, 11, 0, 0, TimeSpan.Zero),
-                [new PluginEntitlement(Paid, Owner, PluginTier.Paid, 5, null)]
+                [
+                    new PluginEntitlement(
+                        Paid,
+                        Owner,
+                        PluginTier.Paid,
+                        5,
+                        null,
+                        PluginEntitlementStatus.Active
+                    ),
+                ]
             )
         );
 

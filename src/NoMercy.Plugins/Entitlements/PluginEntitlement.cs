@@ -21,5 +21,6 @@ public sealed record PluginEntitlement(
     Guid UserId,
     PluginTier Tier,
     int? Seats,
-    DateTimeOffset? ExpiresAt
+    DateTimeOffset? ExpiresAt,
+    PluginEntitlementStatus Status
 );

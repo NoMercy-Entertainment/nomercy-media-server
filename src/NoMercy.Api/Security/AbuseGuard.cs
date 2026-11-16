@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using System.Collections.Concurrent;
+using System.Globalization;
 using System.Net;
 using Microsoft.Extensions.Logging;
 using NoMercy.Authorization;
@@ -19,15 +20,16 @@ using NoMercy.Database.Models.Security;
 using NoMercy.Database.Models.Users;
 using NoMercy.Events;
 using NoMercy.Events.Media;
+using NoMercy.Networking.Discovery;
 using NoMercy.Networking.Http;
 
 namespace NoMercy.Api.Security;
 
 /// <summary>
 /// fail2ban semantics for the request pipeline: offences accumulate inside a
-/// sliding window, and crossing the threshold produces a ban. A scanner is
-/// never a mistake, so a probe-triggered ban never expires on its own — only
-/// a moderator lifting it through UnbanAsync ends it.
+/// sliding window, and crossing the threshold produces a ban. A known probe is
+/// never a mistake, so its ban is permanent. A ban made only of unrouted misses
+/// can be a confused client, so it expires and doubles on each repeat.
 /// </summary>
 public class AbuseGuard(
     IIpBanRepository repository,
@@ -36,7 +38,8 @@ public class AbuseGuard(
     IEventBus eventBus,
     ILogger<AbuseGuard> logger,
     TimeProvider timeProvider,
-    IUserCache userCache
+    IUserCache userCache,
+    INetworkDiscovery networkDiscovery
 ) : IAbuseGuard
 {
     private readonly ConcurrentDictionary<string, List<Offence>> _offences = new();
@@ -45,11 +48,11 @@ public class AbuseGuard(
     // instead of a database round trip on every request it fires at us.
     private readonly ConcurrentDictionary<string, DateTime> _bans = new();
 
-    private readonly record struct Offence(DateTime At, int Weight);
+    private readonly record struct Offence(DateTime At, int Weight, ProbeVerdict Verdict);
 
     public Task<bool> IsBannedAsync(IPAddress? address, CancellationToken ct)
     {
-        if (address is null || !settings.Enabled)
+        if (address is null || !settings.Enabled || IsOwnExternalAddress(address))
             return Task.FromResult(false);
 
         string key = address.ToString();
@@ -79,20 +82,28 @@ public class AbuseGuard(
 
         int score;
         int count;
+        bool knownProbe;
         List<Offence> window = _offences.GetOrAdd(key, _ => []);
         lock (window)
         {
             window.RemoveAll(offence => offence.At <= windowStart);
-            window.Add(new(now, weight));
+            window.Add(new(now, weight, verdict));
             score = window.Sum(offence => offence.Weight);
             count = window.Count;
+            knownProbe = window.Any(offence => offence.Verdict == ProbeVerdict.KnownProbe);
         }
 
         if (score < settings.MaxScore)
             return;
 
         _offences.TryRemove(key, out _);
-        await BanForProbeAsync(address, outcome.Path, count, verdict, ct);
+        await BanForProbeAsync(
+            address,
+            outcome.Path,
+            count,
+            knownProbe ? ProbeVerdict.KnownProbe : ProbeVerdict.Suspicious,
+            ct
+        );
     }
 
     public Task<IpBan> BanAsync(
@@ -152,7 +163,7 @@ public class AbuseGuard(
 
     private bool IsAllowlisted(IPAddress address)
     {
-        if (ClientIpResolver.IsPrivateNetwork(address))
+        if (ClientIpResolver.IsPrivateNetwork(address) || IsOwnExternalAddress(address))
             return true;
 
         foreach (IpRange range in settings.Allowlist)
@@ -161,6 +172,21 @@ public class AbuseGuard(
 
         return false;
     }
+
+    // Home devices reach the server through the tunnel with the server's own
+    // public address. Read on every call, so a changed address applies at once.
+    private bool IsOwnExternalAddress(IPAddress address)
+    {
+        IPAddress candidate = address.IsIPv4MappedToIPv6 ? address.MapToIPv4() : address;
+
+        return Matches(networkDiscovery.ExternalIp, candidate)
+            || Matches(networkDiscovery.ExternalIpV6, candidate);
+    }
+
+    private static bool Matches(string? own, IPAddress candidate) =>
+        IPAddress.TryParse(own, out IPAddress? parsed)
+        && !parsed.Equals(IPAddress.Any)
+        && parsed.Equals(candidate);
 
     private async Task<IpBan> BanForProbeAsync(
         IPAddress address,
@@ -173,9 +199,16 @@ public class AbuseGuard(
         DateTime now = timeProvider.GetUtcNow().UtcDateTime;
         int priorBans = await repository.PriorBanCountAsync(address.ToString(), ct);
 
-        // A caller that tripped the probe detector is presumed malicious, not
-        // mistaken, so the ban does not expire on a timer — only a moderator
-        // lifting it through UnbanAsync ends it.
+        // A known probe is malicious, so only a moderator ends its ban. A ban of
+        // unrouted misses alone doubles on each repeat, up to the maximum.
+        DateTime expiresAt = DateTime.MaxValue;
+        if (verdict != ProbeVerdict.KnownProbe)
+        {
+            TimeSpan duration = settings.BanDuration * Math.Pow(2, Math.Min(priorBans, 16));
+            expiresAt =
+                now + (duration > settings.MaxBanDuration ? settings.MaxBanDuration : duration);
+        }
+
         IpBan ban = await PersistAsync(
             address,
             reason: verdict.ToString(),
@@ -184,11 +217,11 @@ public class AbuseGuard(
             banNumber: priorBans + 1,
             manual: false,
             bannedAt: now,
-            expiresAt: DateTime.MaxValue,
+            expiresAt: expiresAt,
             ct
         );
 
-        await NotifyOwnersAsync(address, verdict, path, offenceCount, ct);
+        await NotifyOwnersAsync(address, verdict, path, offenceCount, expiresAt, ct);
 
         return ban;
     }
@@ -198,9 +231,15 @@ public class AbuseGuard(
         ProbeVerdict verdict,
         string path,
         int offenceCount,
+        DateTime expiresAt,
         CancellationToken ct
     )
     {
+        string sentence =
+            expiresAt == DateTime.MaxValue
+                ? "permanently banned"
+                : $"banned until {expiresAt.ToString("u", CultureInfo.InvariantCulture)}";
+
         foreach (User owner in userCache.Users.Where(user => user.Owner))
         {
             await eventBus.PublishAsync(
@@ -208,7 +247,7 @@ public class AbuseGuard(
                 {
                     Title = "IP banned",
                     Message =
-                        $"{address} was permanently banned as a {verdict} after {offenceCount} offence(s) on {path}.",
+                        $"{address} was {sentence} as a {verdict} after {offenceCount} offence(s) on {path}.",
                     Type = "security",
                     Route = "/settings/security/bans",
                     UserId = owner.Id,

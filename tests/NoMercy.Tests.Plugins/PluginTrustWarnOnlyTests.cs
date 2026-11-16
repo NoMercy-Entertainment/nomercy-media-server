@@ -166,7 +166,16 @@ public class PluginTrustWarnOnlyTests
             Ulid.Empty,
             Now.AddDays(-20),
             Now.AddDays(-10),
-            [new PluginEntitlement(Torrent, Owner, PluginTier.Paid, null, null)]
+            [
+                new PluginEntitlement(
+                    Torrent,
+                    Owner,
+                    PluginTier.Paid,
+                    null,
+                    null,
+                    PluginEntitlementStatus.Active
+                ),
+            ]
         );
         PluginEntitlementGate gate = new(
             new StubEntitlementStore(overdue),
@@ -179,6 +188,34 @@ public class PluginTrustWarnOnlyTests
         logger
             .Entries.Should()
             .ContainSingle(entry => entry.Message.Contains(PluginRefusalCodes.EntitlementDormant));
+    }
+
+    [Fact]
+    public void Warn_only_still_refuses_a_paid_plugin_whose_purchase_is_suspended()
+    {
+        PluginEntitlementBundle suspended = new(
+            Ulid.Empty,
+            Now.AddDays(-1),
+            Now.AddDays(1),
+            [
+                new PluginEntitlement(
+                    Torrent,
+                    Owner,
+                    PluginTier.Paid,
+                    null,
+                    null,
+                    PluginEntitlementStatus.Suspended
+                ),
+            ]
+        );
+        PluginEntitlementGate gate = new(
+            new StubEntitlementStore(suspended),
+            new StubClock(Now),
+            Owner,
+            new(false, new ListLogger())
+        );
+
+        gate.Check(Torrent, PluginTier.Paid)!.Why.Should().Contain("paused");
     }
 
     [Fact]

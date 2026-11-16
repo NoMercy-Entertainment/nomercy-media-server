@@ -46,8 +46,32 @@ public class PluginEntitlementGateTests
     private static PluginEntitlement Held(
         Ulid plugin,
         Guid? user = null,
-        DateTimeOffset? expiresAt = null
-    ) => new(plugin, user ?? Owner, PluginTier.Paid, null, expiresAt);
+        DateTimeOffset? expiresAt = null,
+        PluginEntitlementStatus status = PluginEntitlementStatus.Active
+    ) => new(plugin, user ?? Owner, PluginTier.Paid, null, expiresAt, status);
+
+    [Fact]
+    public void A_suspended_purchase_does_not_run_and_is_told_it_is_paused()
+    {
+        PluginRefusal? refusal = Gate(
+                Bundle(-1, Held(Paid, status: PluginEntitlementStatus.Suspended))
+            )
+            .Check(Paid, PluginTier.Paid);
+
+        refusal!.Code.Should().Be(PluginRefusalCodes.EntitlementDormant);
+        refusal.Severity.Should().Be(PluginRefusalSeverity.Blocked);
+        refusal.Why.Should().Contain("paused");
+        refusal.Fix.Should().NotContain("Buy it");
+    }
+
+    [Fact]
+    public void An_entitlement_stored_before_status_was_read_does_not_run_the_plugin()
+    {
+        Gate(Bundle(-1, Held(Paid, status: PluginEntitlementStatus.Unknown)))
+            .Check(Paid, PluginTier.Paid)!
+            .Code.Should()
+            .Be(PluginRefusalCodes.EntitlementMissing);
+    }
 
     [Fact]
     public void A_free_plugin_is_never_asked_about()
