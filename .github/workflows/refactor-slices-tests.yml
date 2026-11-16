@@ -22,6 +22,11 @@ on:
 permissions:
   contents: read
 
+# Test hosts watch config files through inotify; the shared runner host caps
+# inotify instances at 128 and the Api suite ran out of them. Polling needs none.
+env:
+  DOTNET_USE_POLLING_FILE_WATCHER: 'true'
+
 jobs:
   refactor-tests:
     timeout-minutes: 7200
