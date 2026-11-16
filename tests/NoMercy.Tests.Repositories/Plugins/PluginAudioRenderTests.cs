@@ -231,7 +231,8 @@ public class PluginAudioRenderTests : IDisposable
         TimeSpan? quotaCheckInterval = null,
         PluginQuotaMeter? quotas = null,
         TimeProvider? clock = null,
-        IStemsplitSourceSelector? stemsplitSources = null
+        IStemsplitSourceSelector? stemsplitSources = null,
+        TimeSpan? roformerNoChunkLimit = null
     )
     {
         Mock<IDbContextFactory<MediaContext>> contextFactory = new();
@@ -262,6 +263,7 @@ public class PluginAudioRenderTests : IDisposable
             // limit in milliseconds. The floor itself is proven on the limits.
             ShortestStallLimit = TimeSpan.Zero,
             Clock = clock ?? TimeProvider.System,
+            RoformerNoChunkLimit = roformerNoChunkLimit ?? TimeSpan.FromMinutes(5),
         };
     }
 
@@ -1775,5 +1777,63 @@ public class PluginAudioRenderTests : IDisposable
                 ),
             Times.Once
         );
+    }
+
+    /// <summary>
+    /// While RoFormer splits, ffmpeg's position stands still for as long as a
+    /// chunk takes: the render's own stall limit waits until the split is
+    /// done, and the filter's chunk lines judge the run until then.
+    /// </summary>
+    [Fact]
+    public async Task Render_ARoformerSplitThatHandsOutNoChunk_IsEndedAsStalled_NotByTheRendersOwnLimits()
+    {
+        _ffmpeg = async call =>
+        {
+            // ffmpeg's report repeats one position while the models load.
+            call.StdOut?.Invoke("out_time_us=0");
+            return await call.HangAsync();
+        };
+
+        PluginAudioRunResult result = await CreateTools(roformerNoChunkLimit: TimeSpan.FromMilliseconds(200))
+            .RenderAsync(
+                new(
+                    [TrackA()],
+                    "[0:a]stemsplit=preset=vocal_full:cpu_fallback=0:stem=vocals[out]",
+                    [new("out", "vocals.wav", PluginAudioCodec.Wav)]
+                ),
+                null,
+                null,
+                new PluginAudioRunOptions(TimeSpan.FromMilliseconds(50))
+                {
+                    StallTimeout = TimeSpan.FromMilliseconds(50),
+                }
+            );
+
+        result.ExitCode.Should().Be(PluginAudioRunResult.StalledExitCode);
+        FilesInDataFolder().Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Render_AfterTheLastChunk_TheRendersOwnLimitsHoldAgain()
+    {
+        _ffmpeg = async call =>
+        {
+            call.StdErr?.Invoke(StemsplitLogFixtures.LastChunk);
+            return await call.HangAsync();
+        };
+
+        PluginAudioRunResult result = await CreateTools(roformerNoChunkLimit: TimeSpan.FromMinutes(5))
+            .RenderAsync(
+                new(
+                    [TrackA()],
+                    "[0:a]stemsplit=preset=vocal_full:cpu_fallback=0:stem=vocals[out]",
+                    [new("out", "vocals.wav", PluginAudioCodec.Wav)]
+                ),
+                null,
+                null,
+                new PluginAudioRunOptions(TimeSpan.FromMilliseconds(100))
+            );
+
+        result.ExitCode.Should().Be(PluginAudioRunResult.TimedOutExitCode);
     }
 }

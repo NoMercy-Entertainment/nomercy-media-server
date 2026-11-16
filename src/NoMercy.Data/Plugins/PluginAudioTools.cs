@@ -105,6 +105,15 @@ public sealed class PluginAudioTools(
     /// </summary>
     internal TimeSpan ShortestStallLimit { get; init; } = PluginAudioRunLimits.ShortestStall;
 
+    /// <summary>
+    /// How long a run that splits with RoFormer may go without one of the
+    /// filter's chunk lines before the host ends it - see
+    /// <see cref="StemsplitProgressWatch" />.
+    /// <para>Init-only for the same reason as <see cref="RunTimeout" />.</para>
+    /// </summary>
+    internal TimeSpan RoformerNoChunkLimit { get; init; } =
+        StemsplitProgressWatch.DefaultNoChunkLimit;
+
     /// <summary>The clock a render's limits and its exit grace period count on.</summary>
     internal TimeProvider Clock { get; init; } = TimeProvider.System;
 
@@ -238,19 +247,17 @@ public sealed class PluginAudioTools(
                 IReadOnlyList<RoformerPreset> roformer = sources.RoformerPresets(graph.Text);
                 RoformerAttemptOutput output = new(onStdOut, onStdErr, roformer.Count > 0);
 
-                string[] arguments = PluginAudioArguments.FilterGraph(
-                    lease.Path,
-                    PluginGraphTokens.Resolve(graph.Text, dataFolderPath, sources).Text,
-                    graph.Complex
-                );
+                string text = PluginGraphTokens.Resolve(graph.Text, dataFolderPath, sources).Text;
 
-                ProcessResult? result = await RunFfmpegAsync(
+                FollowedRun run = await RunFollowingStemsplitAsync(
                     ffmpegPath,
-                    arguments,
+                    PluginAudioArguments.FilterGraph(lease.Path, text, graph.Complex),
                     output.StdOut,
                     output.StdErr,
-                    ct,
-                    timeout: EffectiveTimeout(options, RunTimeout)
+                    StemsplitGraph.RunsRoformer(text),
+                    EffectiveTimeout(options, RunTimeout),
+                    watchForExitMarker: false,
+                    ct
                 );
 
                 if (roformer.Count > 0 && output.Refusal is { } refusal)
@@ -261,18 +268,116 @@ public sealed class PluginAudioTools(
 
                 output.Release();
 
-                // Null is the timeout: -2 rather than a refusal, because the run
-                // did start - the plugin's graph was accepted and its callbacks
-                // saw whatever ffmpeg managed to print before the clock ran out.
-                return result is null
-                    ? new PluginAudioRunResult(PluginAudioRunResult.TimedOutExitCode, null)
-                    : new PluginAudioRunResult(result.ExitCode, null);
+                // Null is the host ending the run: -2 or -3 rather than a
+                // refusal, because the run did start - the plugin's graph was
+                // accepted and its callbacks saw whatever ffmpeg managed to
+                // print before the clock ran out.
+                if (run.Result is null)
+                {
+                    return new PluginAudioRunResult(
+                        run.Stalled
+                            ? PluginAudioRunResult.StalledExitCode
+                            : PluginAudioRunResult.TimedOutExitCode,
+                        null
+                    );
+                }
+
+                return new PluginAudioRunResult(run.Result.ExitCode, null);
             }
         }
         finally
         {
             _oneRunAtATime.Release();
         }
+    }
+
+    /// <summary>
+    /// One ffmpeg run with a fixed limit, or, when it splits with RoFormer,
+    /// judged by the filter's chunk lines until the split is done and by
+    /// <paramref name="limit" /> from then on; see <see cref="StemsplitProgressWatch" />.
+    /// A null result is the host ending the run; <see cref="FollowedRun.Stalled" />
+    /// says when the missing chunk lines are why.
+    /// </summary>
+    private async Task<FollowedRun> RunFollowingStemsplitAsync(
+        string ffmpegPath,
+        string[] arguments,
+        Action<string>? onStdOut,
+        Action<string> onStdErr,
+        bool roformer,
+        TimeSpan limit,
+        bool watchForExitMarker,
+        CancellationToken ct
+    )
+    {
+        if (!roformer)
+        {
+            return new(
+                await RunFfmpegAsync(
+                    ffmpegPath,
+                    arguments,
+                    onStdOut,
+                    onStdErr,
+                    ct,
+                    watchForExitMarker,
+                    timeout: limit
+                ),
+                false
+            );
+        }
+
+        using StemsplitProgressWatch progress = new(RoformerNoChunkLimit, Clock);
+        using CancellationTokenSource afterTheSplit = new(Timeout.InfiniteTimeSpan, Clock);
+        using CancellationTokenSource endRun = CancellationTokenSource.CreateLinkedTokenSource(
+            progress.Stalled,
+            afterTheSplit.Token
+        );
+        using CancellationTokenRegistration startTheRest = progress.SplitDone.Register(() =>
+            afterTheSplit.CancelAfter(limit)
+        );
+
+        void ObserveStdErr(string line)
+        {
+            progress.Observe(line);
+            onStdErr(line);
+        }
+
+        progress.Start();
+        ProcessResult? result = await RunFfmpegAsync(
+            ffmpegPath,
+            arguments,
+            onStdOut,
+            ObserveStdErr,
+            ct,
+            watchForExitMarker,
+            timeout: Timeout.InfiniteTimeSpan,
+            endRun: endRun.Token
+        );
+
+        if (result is null)
+        {
+            LogEnded(progress, limit);
+        }
+
+        return new(result, result is null && progress.HasStalled);
+    }
+
+    private void LogEnded(StemsplitProgressWatch progress, TimeSpan limit)
+    {
+        if (progress.HasStalled)
+        {
+            _logger.LogWarning(
+                "plugin {PluginId}: stemsplit handed out no RoFormer chunk for {Seconds}s; the run was ended",
+                pluginId,
+                progress.NoChunkLimit.TotalSeconds
+            );
+            return;
+        }
+
+        _logger.LogWarning(
+            "plugin {PluginId}: the run did not end within {Seconds}s after its RoFormer split was done",
+            pluginId,
+            limit.TotalSeconds
+        );
     }
 
     /// <summary>
@@ -465,10 +570,13 @@ public sealed class PluginAudioTools(
                 IReadOnlyList<RoformerPreset> roformer = sources.RoformerPresets(render.GraphText);
                 RoformerAttemptOutput output = new(onStdOut, onStdErr, roformer.Count > 0);
 
+                string text = PluginGraphTokens.Resolve(render.GraphText, dataFolderPath, sources).Text;
+
                 PluginAudioRunResult result = await RenderOnceAsync(
                     ffmpegPath,
                     inputs,
-                    PluginGraphTokens.Resolve(render.GraphText, dataFolderPath, sources).Text,
+                    text,
+                    StemsplitGraph.RunsRoformer(text),
                     plan,
                     files,
                     output,
@@ -505,11 +613,18 @@ public sealed class PluginAudioTools(
     /// <summary>
     /// One ffmpeg run of a render, under its limits and the plugin's disk
     /// quota, keeping its files when it exited 0.
+    /// <para>
+    /// A render that splits with RoFormer is judged by the filter's chunk
+    /// lines until the split is done, and only then by the limits the plugin
+    /// asked for, counted from that moment: during the split, ffmpeg's
+    /// position stands still for as long as a chunk takes.
+    /// </para>
     /// </summary>
     private async Task<PluginAudioRunResult> RenderOnceAsync(
         string ffmpegPath,
         IReadOnlyList<PluginAudioRenderInput> inputs,
         string graphText,
+        bool roformer,
         PluginAudioRenderPlan plan,
         PluginAudioRenderFiles files,
         RoformerAttemptOutput output,
@@ -526,19 +641,36 @@ public sealed class PluginAudioTools(
             ShortestStallLimit
         );
         using PluginAudioRunWatch watch = new(limits, Clock);
+        using StemsplitProgressWatch progress = new(RoformerNoChunkLimit, Clock);
         using CancellationTokenSource pastQuota = new();
         using CancellationTokenSource endRun = CancellationTokenSource.CreateLinkedTokenSource(
             ct,
             watch.Stalled,
             watch.TimedOut,
+            progress.Stalled,
             pastQuota.Token
         );
         using CancellationTokenSource runIsOver = new();
+        using CancellationTokenRegistration startTheRest = roformer
+            ? progress.SplitDone.Register(watch.Start)
+            : default;
 
         void ObserveStdOut(string line)
         {
-            watch.Observe(line);
+            // While RoFormer splits, the position only moves per chunk; the
+            // render's own limits judge the run once the split is done.
+            if (!roformer || progress.IsSplitDone)
+                watch.Observe(line);
+
             output.StdOut(line);
+        }
+
+        void ObserveStdErr(string line)
+        {
+            if (roformer)
+                progress.Observe(line);
+
+            output.StdErr(line);
         }
 
         Task<PluginRefusal?> quotaWatch = WatchDiskQuotaAsync(files, pastQuota, runIsOver.Token);
@@ -547,12 +679,16 @@ public sealed class PluginAudioTools(
 
         try
         {
-            watch.Start();
+            if (roformer)
+                progress.Start();
+            else
+                watch.Start();
+
             result = await RunFfmpegAsync(
                 ffmpegPath,
                 PluginAudioArguments.Render(inputs, graphText, plan.Targets),
                 ObserveStdOut,
-                output.StdErr,
+                ObserveStdErr,
                 ct,
                 watchForExitMarker: true,
                 // The watch keeps this run's total, next to its stall
@@ -580,6 +716,12 @@ public sealed class PluginAudioTools(
         // its callbacks saw whatever ffmpeg printed until then.
         if (result is null)
         {
+            if (progress.HasStalled)
+            {
+                LogEnded(progress, limits.Total);
+                return new(PluginAudioRunResult.StalledExitCode, null);
+            }
+
             if (!watch.HasStalled)
             {
                 _logger.LogWarning(
@@ -828,7 +970,7 @@ public sealed class PluginAudioTools(
             );
             string? bannerLine;
             Queue<string> stdErrTail;
-            ProcessResult? result;
+            FollowedRun run;
 
             while (true)
             {
@@ -855,13 +997,15 @@ public sealed class PluginAudioTools(
                     }
                 }
 
-                result = await RunFfmpegAsync(
+                run = await RunFollowingStemsplitAsync(
                     ffmpegPath,
                     arguments,
                     null,
                     CaptureStdErr,
-                    ct,
-                    watchForExitMarker: true
+                    source.Engine == StemsplitEngine.Roformer,
+                    RunTimeout,
+                    watchForExitMarker: true,
+                    ct
                 );
                 bannerLine = banner;
                 stdErrTail = tail;
@@ -879,10 +1023,14 @@ public sealed class PluginAudioTools(
                 source = StemsplitSource.Spleeter;
             }
 
+            ProcessResult? result = run.Result;
+
             if (result is null)
             {
                 return PluginStemSplitResult.Refused(
-                    $"stemsplit timed out after {RunTimeout.TotalSeconds:0} seconds"
+                    run.Stalled
+                        ? $"stemsplit made no progress: RoFormer handed out no chunk for {RoformerNoChunkLimit.TotalSeconds:0} seconds, and the run was ended"
+                        : $"stemsplit timed out after {RunTimeout.TotalSeconds:0} seconds"
                 );
             }
 
@@ -1521,6 +1669,9 @@ public sealed class PluginAudioTools(
     }
 
     private static int Milliseconds(double seconds) => (int)Math.Round(seconds * 1000);
+
+    /// <summary>An ffmpeg run's result, null when the host ended it, and whether a RoFormer split that stopped moving is why.</summary>
+    private sealed record FollowedRun(ProcessResult? Result, bool Stalled);
 
     /// <summary>A resolved input, or the reason there is none. Exactly one of the two is set.</summary>
     private sealed record InputResolution(LocalPathLease? Lease, string? Refusal);

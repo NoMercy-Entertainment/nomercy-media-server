@@ -55,6 +55,13 @@ public sealed record PluginAudioRunOptions(TimeSpan? Timeout)
     /// ignores it: that run reports no progress to judge it by. Added in ABI
     /// 12.7.
     /// </para>
+    /// <para>
+    /// A run whose graph splits stems with RoFormer is judged by the filter's
+    /// own chunk lines instead, in every call: until the split is done it is
+    /// ended only when no chunk came for five minutes, whatever this and
+    /// <see cref="PluginAudioRunOptions.Timeout" /> say; after the last chunk
+    /// both hold again, counted from that moment.
+    /// </para>
     /// </summary>
     public TimeSpan? StallTimeout { get; init; }
 }

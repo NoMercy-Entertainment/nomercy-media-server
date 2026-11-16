@@ -369,7 +369,8 @@ public class PluginAudioToolsTests : IDisposable
         TimeSpan? runTimeout = null,
         TimeSpan? exitGracePeriod = null,
         ILyricsAlignModelInstaller? alignModelInstaller = null,
-        IStemsplitSourceSelector? stemsplitSources = null
+        IStemsplitSourceSelector? stemsplitSources = null,
+        TimeSpan? roformerNoChunkLimit = null
     )
     {
         Mock<IDbContextFactory<MediaContext>> contextFactory = new();
@@ -395,6 +396,7 @@ public class PluginAudioToolsTests : IDisposable
         {
             RunTimeout = runTimeout ?? TimeSpan.FromMinutes(10),
             ExitGracePeriod = exitGracePeriod ?? TimeSpan.FromSeconds(2),
+            RoformerNoChunkLimit = roformerNoChunkLimit ?? TimeSpan.FromMinutes(5),
         };
 
         return tools;
@@ -1896,5 +1898,217 @@ public class PluginAudioToolsTests : IDisposable
             );
 
         ArgumentAfter("-filter_complex").Should().Be($"[0:a]stemsplit=model={ModelFile}[v][b]");
+    }
+
+    // --- RoFormer: a time-out that follows the filter's progress (#637) -----
+
+    /// <summary>
+    /// ffmpeg that prints <paramref name="lines" /> one by one, <paramref name="gap" />
+    /// apart, and then either exits 0 or, with <paramref name="hangAfter" />,
+    /// waits until the host ends it - the way a stuck process does.
+    /// </summary>
+    private void FfmpegPrinting(string[] lines, TimeSpan gap, bool hangAfter)
+    {
+        _runner
+            .Setup(runner =>
+                runner.RunAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string[]>(),
+                    It.IsAny<Action<string>?>(),
+                    It.IsAny<Action<string>?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<Action<int>?>()
+                )
+            )
+            .Returns(
+                async (
+                    string _,
+                    string[] arguments,
+                    Action<string>? _,
+                    Action<string>? onStdErr,
+                    string? _,
+                    CancellationToken ct,
+                    CancellationToken kill,
+                    Action<int>? _
+                ) =>
+                {
+                    _runCount++;
+                    _capturedArguments = arguments;
+                    using CancellationTokenSource ended =
+                        CancellationTokenSource.CreateLinkedTokenSource(ct, kill);
+
+                    foreach (string line in lines)
+                    {
+                        await Task.Delay(gap, ended.Token);
+                        onStdErr?.Invoke(line);
+                    }
+
+                    if (hangAfter)
+                        await Task.Delay(Timeout.InfiniteTimeSpan, ended.Token);
+
+                    return new ProcessResult(0, string.Empty, string.Empty, TimeSpan.Zero);
+                }
+            );
+    }
+
+    private Task<PluginAudioRunResult> RunRoformerGraph(
+        PluginAudioTools tools,
+        PluginAudioRunOptions? options = null
+    ) =>
+        options is null
+            ? tools.RunFilterGraphAsync(
+                PluginAudioInput.Track(_trackId.ToString()),
+                new PluginFilterGraph("[0:a]stemsplit={stemsSource}:stem=all[v][b]", true),
+                null,
+                null
+            )
+            : tools.RunFilterGraphAsync(
+                PluginAudioInput.Track(_trackId.ToString()),
+                new PluginFilterGraph("[0:a]stemsplit={stemsSource}:stem=all[v][b]", true),
+                null,
+                null,
+                options
+            );
+
+    [Fact]
+    public async Task RunFilterGraph_ARoformerRunWithoutAChunkLine_IsEndedAsStalled()
+    {
+        FfmpegPrinting(
+            [StemsplitLogFixtures.Banner, StemsplitLogFixtures.ModelLoaded],
+            TimeSpan.FromMilliseconds(5),
+            hangAfter: true
+        );
+
+        PluginAudioRunResult result = await RunRoformerGraph(
+            CreateTools(
+                stemsplitSources: RoformerWhereAsked(),
+                roformerNoChunkLimit: TimeSpan.FromMilliseconds(150)
+            )
+        );
+
+        result.ExitCode.Should().Be(PluginAudioRunResult.StalledExitCode);
+        result.Refusal.Should().BeNull();
+    }
+
+    /// <summary>
+    /// The plugin asked for a total that a slow card cannot keep. While the
+    /// filter keeps handing out chunks the run goes on past it.
+    /// </summary>
+    [Fact]
+    public async Task RunFilterGraph_ARoformerRunThatKeepsHandingOutChunks_OutlivesThePluginsTimeout()
+    {
+        string[] chunks =
+        [
+            .. Enumerable
+                .Range(1, 8)
+                .Select(chunk =>
+                    $"[Parsed_stemsplit_0 @ 000001f73aecab40] stemsplit: model 1/1, chunk {chunk}/? at sample 0 (485100 samples, 485376 received), 3.0 s elapsed, rtf 1.30."
+                ),
+            "[Parsed_stemsplit_0 @ 000001f73aecab40] stemsplit: model 1/1, chunk 9/9 at sample 1719900 (485100 samples, 2205000 received), 38.9 s elapsed, rtf 1.27.",
+        ];
+        FfmpegPrinting(chunks, TimeSpan.FromMilliseconds(60), hangAfter: false);
+
+        PluginAudioRunResult result = await RunRoformerGraph(
+            CreateTools(
+                stemsplitSources: RoformerWhereAsked(),
+                roformerNoChunkLimit: TimeSpan.FromSeconds(2)
+            ),
+            new PluginAudioRunOptions(TimeSpan.FromMilliseconds(150))
+        );
+
+        result.ExitCode.Should().Be(0);
+    }
+
+    /// <summary>Once the split is done, the rest of the run has the plugin's own limit.</summary>
+    [Fact]
+    public async Task RunFilterGraph_AfterTheLastChunk_ThePluginsTimeoutHoldsAgain()
+    {
+        FfmpegPrinting(
+            [StemsplitLogFixtures.FirstChunk, StemsplitLogFixtures.LastChunk],
+            TimeSpan.FromMilliseconds(5),
+            hangAfter: true
+        );
+
+        PluginAudioRunResult result = await RunRoformerGraph(
+            CreateTools(
+                stemsplitSources: RoformerWhereAsked(),
+                roformerNoChunkLimit: TimeSpan.FromSeconds(30)
+            ),
+            new PluginAudioRunOptions(TimeSpan.FromMilliseconds(150))
+        );
+
+        result.ExitCode.Should().Be(PluginAudioRunResult.TimedOutExitCode);
+    }
+
+    /// <summary>Spleeter prints no chunk lines, so its runs keep their fixed limit.</summary>
+    [Fact]
+    public async Task RunFilterGraph_ASpleeterRun_IsNotHeldToChunkLines()
+    {
+        FfmpegPrinting(
+            [StemsplitLogFixtures.Banner, StemsplitLogFixtures.SpleeterLoaded],
+            TimeSpan.FromMilliseconds(5),
+            hangAfter: false
+        );
+
+        PluginAudioRunResult result = await CreateTools(
+                roformerNoChunkLimit: TimeSpan.FromMilliseconds(1)
+            )
+            .RunFilterGraphAsync(
+                PluginAudioInput.Track(_trackId.ToString()),
+                new PluginFilterGraph("[0:a]stemsplit={stemsSource}:stem=all[v][b]", true),
+                null,
+                null
+            );
+
+        result.ExitCode.Should().Be(0);
+    }
+
+    [Fact]
+    public async Task SplitStems_ARoformerRunWithoutAChunkLine_IsRefusedInWordsThatSaySo()
+    {
+        FfmpegPrinting([StemsplitLogFixtures.Banner], TimeSpan.FromMilliseconds(5), true);
+
+        PluginStemSplitResult result = await CreateTools(
+                stemsplitSources: RoformerWhereAsked(),
+                roformerNoChunkLimit: TimeSpan.FromMilliseconds(150)
+            )
+            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
+
+        result
+            .Refusal.Should()
+            .StartWith("stemsplit made no progress: RoFormer handed out no chunk for ")
+            .And.EndWith(" seconds, and the run was ended");
+        _registeredStems.Should().BeEmpty();
+    }
+
+    /// <summary>
+    /// A GTX 1060 takes about 25 minutes over a four-minute song, far past the
+    /// ten minutes a stems job used to get. While chunks come, it runs on.
+    /// </summary>
+    [Fact]
+    public async Task SplitStems_ARoformerRunThatKeepsHandingOutChunks_OutlivesTheFixedLimit()
+    {
+        FfmpegPrinting(
+            [
+                StemsplitLogFixtures.FirstChunk,
+                StemsplitLogFixtures.ChunkAfterStats,
+                StemsplitLogFixtures.LastChunkOfFirstModel,
+                StemsplitLogFixtures.LastChunk,
+            ],
+            TimeSpan.FromMilliseconds(80),
+            hangAfter: false
+        );
+
+        PluginStemSplitResult result = await CreateTools(
+                runTimeout: TimeSpan.FromMilliseconds(100),
+                stemsplitSources: RoformerWhereAsked(),
+                roformerNoChunkLimit: TimeSpan.FromSeconds(2)
+            )
+            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
+
+        result.Refusal.Should().BeNull();
+        result.Stems.Should().HaveCount(2);
     }
 }

@@ -116,7 +116,8 @@ if (!result.Ran)
   own data folder: `PluginAudioInput.PluginFile(relativePath)` (ABI 12.7).
 - One ffmpeg run at a time per plugin; a second call while one is running is
   refused rather than queued. A 10-minute timeout applies on top of your own
-  cancellation token.
+  cancellation token, except while a RoFormer stem split is running; see
+  "A RoFormer stem split" below.
 
 ### `SplitStemsAsync`
 
@@ -270,6 +271,31 @@ longest stretch a filter works before it hands anything on. A stall limit under
 ten seconds is raised to ten, twice the time between two reports, and one above
 sixty minutes is clamped to sixty. `RunFilterGraphAsync` ignores `StallTimeout`:
 that run prints no progress report to judge it by.
+
+#### A RoFormer stem split: judged by the filter's chunks
+
+A run whose graph splits with RoFormer (a source token that became a RoFormer
+preset, or a `preset=`, `models=`, `vocals_models=` or `accompaniment_models=`
+of the plugin's own) is timed differently, in all three calls. No fixed total
+holds it: a four-minute song takes about four minutes on an RTX 3070 and about
+25 on a GTX 1060, after up to a minute of loading models. ffmpeg's position
+does not help either, because RoFormer hands its audio on a whole chunk at a
+time. The filter prints a line for every chunk it finishes, and the host
+follows those:
+
+- Until the filter has handed out its last chunk, the run is ended only when
+  no chunk line came for **five minutes**, counted from the start so a load
+  that never finishes counts too. `Timeout` and `StallTimeout` do not apply
+  in this phase, so the run may outlast them.
+- After the last chunk, the rest of the run gets the limits it would have had
+  without RoFormer, counted from that moment: your `Timeout` (or the ten
+  minutes), and for a render your `StallTimeout` too.
+- A run ended for want of chunk lines comes back as `StalledExitCode` (`-3`);
+  `SplitStemsAsync` refuses with `"stemsplit made no progress: RoFormer handed
+  out no chunk for 300 seconds, and the run was ended"`.
+
+The chunk lines are at ffmpeg's default log level, `info`; a graph run with a
+quieter `-loglevel` cannot be followed this way, so do not lower it.
 
 ## `IPluginDerivedAudio` — the derived-audio store
 

@@ -222,6 +222,12 @@ after `stemsplit=` and put your own options (`stem=`, …) after it.
 - **The model.** A source token needs the Spleeter model on the server, like
   `{stemsModel}`, because Spleeter is the fall back; it is installed on every
   server.
+- **The time-out follows the filter.** While RoFormer splits, your `Timeout`
+  is not what ends the run: the server ends it only when the filter handed out
+  no chunk for five minutes. Once the split is done, your `Timeout` holds again
+  for the rest of the run, counted from that moment. So `3 × the track + 5
+  minutes` is fine to keep; it no longer cuts off a slow card. See "A RoFormer
+  stem split" in [music-analysis.md](music-analysis.md).
 
 ## Aligning a text the server already has
 
