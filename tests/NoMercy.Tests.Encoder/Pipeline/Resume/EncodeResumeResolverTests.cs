@@ -470,6 +470,9 @@ public class EncodeResumeResolverTests : IDisposable
             Calls.Add((relative, video));
             return Task.FromResult(_pts.TryGetValue(relative, out double v) ? v : (double?)null);
         }
+
+        public Task<double?> FirstPtsAsync(string segmentPath, CancellationToken ct) =>
+            FirstPacketPtsAsync(segmentPath, true, ct);
     }
 
     private sealed class CapturingLogger : ILogger<EncodeResumeResolver>

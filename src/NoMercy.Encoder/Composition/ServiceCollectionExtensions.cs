@@ -358,6 +358,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ISegmentProber, FfprobeSegmentProber>();
         services.AddSingleton<EncodeResumeMarker>();
         services.AddSingleton<EncodeResumeResolver>();
+        services.AddSingleton<EncodeResumeStitcher>();
         services.AddTransient<BuildStage>();
         services.AddTransient<IBuildStage>(sp => sp.GetRequiredService<BuildStage>());
         services.AddSingleton<IPlanResultProjector, PlanResultProjector>();

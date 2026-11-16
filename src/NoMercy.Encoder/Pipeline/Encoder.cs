@@ -17,6 +17,7 @@ using NoMercy.Encoder.Decomposition;
 using NoMercy.Encoder.Errors;
 using NoMercy.Encoder.Execution;
 using NoMercy.Encoder.Output;
+using NoMercy.Encoder.Pipeline.Resume;
 using NoMercy.Encoder.Pipeline.Stages;
 using NoMercy.Encoder.Profiles;
 using NoMercy.Encoder.Progress;
@@ -31,7 +32,8 @@ public class Encoder(
     IExecutionStage executeStage,
     IFinalizeStage finalizeStage,
     ILogger<Encoder> logger,
-    IProfileOverride? profileOverride = null
+    IProfileOverride? profileOverride = null,
+    EncodeResumeStitcher? resumeStitcher = null
 ) : IEncoder
 {
     public async Task<EncodingResult> EncodeAsync(
@@ -207,6 +209,24 @@ public class Encoder(
                 return Fail(executeFailure.Error, stopwatch.Elapsed, progress);
 
             executionResults = ((StageSuccess<ExecutionResult[]>)executeResult).Value;
+
+            // A resumed run lists only its own segments; a half-stitched bundle must not publish.
+            if (resumeStitcher is not null)
+            {
+                string? stitchError = await resumeStitcher.StitchAsync(
+                    commands,
+                    request.OutputDirectory,
+                    context.CorrelationId,
+                    ct
+                );
+                if (stitchError is not null)
+                    return Fail(
+                        new(EncodingErrorKind.Unknown, stitchError, null, "Execute", true),
+                        stopwatch.Elapsed,
+                        progress
+                    );
+            }
+
             progress?.OnStageCompleted(executeStageName, stopwatch.Elapsed);
         }
 

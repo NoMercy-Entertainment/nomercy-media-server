@@ -20,18 +20,22 @@ public class FfprobeSegmentProber(IProcessRunner processRunner, EncoderOptions o
 {
     private static readonly TimeSpan ProbeTimeout = TimeSpan.FromSeconds(30);
 
-    public async Task<double?> FirstPacketPtsAsync(
+    public Task<double?> FirstPacketPtsAsync(
         string segmentPath,
         bool video,
         CancellationToken ct
-    )
+    ) => ProbeAsync(segmentPath, video ? "v:0" : "a:0", ct);
+
+    public Task<double?> FirstPtsAsync(string segmentPath, CancellationToken ct) =>
+        ProbeAsync(segmentPath, null, ct);
+
+    private async Task<double?> ProbeAsync(string segmentPath, string? stream, CancellationToken ct)
     {
         string[] arguments =
         [
             "-v",
             "quiet",
-            "-select_streams",
-            video ? "v:0" : "a:0",
+            .. stream is null ? Array.Empty<string>() : ["-select_streams", stream],
             "-show_entries",
             "packet=pts_time",
             "-of",

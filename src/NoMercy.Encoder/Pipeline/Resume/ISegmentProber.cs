@@ -18,4 +18,9 @@ public interface ISegmentProber
 {
     /// <returns>Seconds, or null when the file cannot be probed.</returns>
     Task<double?> FirstPacketPtsAsync(string segmentPath, bool video, CancellationToken ct);
+
+    /// <summary>
+    /// The same read for a segment of one stream, whichever kind it is.
+    /// </summary>
+    Task<double?> FirstPtsAsync(string segmentPath, CancellationToken ct);
 }

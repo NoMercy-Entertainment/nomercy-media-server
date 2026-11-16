@@ -37,11 +37,18 @@ public class EncodeResumeResolver(
     private const string SegmentNumberToken = "_%05d";
     private const string EndListTag = "#EXT-X-ENDLIST";
 
-    private sealed record HlsOutput(
+    internal sealed record HlsOutput(
         string SegmentPrefix,
         string SegmentExtension,
         string? Playlist
-    );
+    )
+    {
+        public string SegmentFile(int index) =>
+            SegmentPrefix
+            + "_"
+            + index.ToString("D5", CultureInfo.InvariantCulture)
+            + SegmentExtension;
+    }
 
     public async Task<ResumeDecision> ResolveAsync(ResumeRequest request, CancellationToken ct)
     {
@@ -236,19 +243,13 @@ public class EncodeResumeResolver(
     }
 
     private string SegmentPath(string outputDirectory, HlsOutput output, int index) =>
-        storage.CombinePath(
-            outputDirectory,
-            output.SegmentPrefix
-                + "_"
-                + index.ToString("D5", CultureInfo.InvariantCulture)
-                + output.SegmentExtension
-        );
+        storage.CombinePath(outputDirectory, output.SegmentFile(index));
 
     /// <summary>
     /// The segment pattern and playlist of every HLS output, read from the
     /// arguments so the naming stays owned by the output strategy.
     /// </summary>
-    private static List<HlsOutput> ParseOutputs(FfmpegCommand[] commands)
+    internal static List<HlsOutput> ParseOutputs(FfmpegCommand[] commands)
     {
         List<HlsOutput> outputs = [];
         foreach (FfmpegCommand command in commands)

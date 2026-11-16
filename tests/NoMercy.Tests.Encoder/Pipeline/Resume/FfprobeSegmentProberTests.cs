@@ -90,4 +90,42 @@ public class FfprobeSegmentProberTests
 
         (await prober.FirstPacketPtsAsync("x.ts", false, default)).Should().BeNull();
     }
+
+    [Fact]
+    public async Task FirstPtsAsync_ProbesWithoutPickingAStream()
+    {
+        string[] captured = [];
+        Mock<IProcessRunner> runner = new();
+        runner
+            .Setup(r =>
+                r.RunAsync(
+                    "ffprobe",
+                    It.IsAny<string[]>(),
+                    It.IsAny<TimeSpan>(),
+                    It.IsAny<Action<string>?>(),
+                    It.IsAny<Action<string>?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<Action<int>?>()
+                )
+            )
+            .Callback<
+                string,
+                string[],
+                TimeSpan,
+                Action<string>?,
+                Action<string>?,
+                string?,
+                CancellationToken,
+                Action<int>?
+            >((_, args, _, _, _, _, _, _) => captured = args)
+            .ReturnsAsync(new ProcessResult(0, "1.400000\n", "", TimeSpan.Zero));
+        FfprobeSegmentProber prober = new(runner.Object, new() { FfprobePathOverride = "ffprobe" });
+
+        double? pts = await prober.FirstPtsAsync("audio/a_00000.ts", default);
+
+        pts.Should().Be(1.4);
+        captured.Should().NotContain("-select_streams");
+        captured.Should().Contain(["-show_entries", "packet=pts_time"]);
+    }
 }

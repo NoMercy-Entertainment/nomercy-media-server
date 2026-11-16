@@ -206,5 +206,8 @@ public class BuildStageEncodeResumeTests : IDisposable
             int number = int.Parse(name[^5..]);
             return Task.FromResult<double?>(1.4 + 2.002 * number);
         }
+
+        public Task<double?> FirstPtsAsync(string segmentPath, CancellationToken ct) =>
+            FirstPacketPtsAsync(segmentPath, true, ct);
     }
 }
