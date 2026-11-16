@@ -23,6 +23,7 @@ public sealed class FaultyStorageDriver : IStorageDriver
 {
     private readonly LocalStorageDriver _inner = new();
     private bool _journalWritten;
+    private bool _journalDeleted;
 
     /// <summary>Called with (from, to) before every file or folder move; true makes it throw.</summary>
     public Func<string, string, bool> FailMove { get; set; } = (_, _) => false;
@@ -40,13 +41,24 @@ public sealed class FaultyStorageDriver : IStorageDriver
     /// </summary>
     public int? DeadAfterSwapMoves { get; set; }
 
+    /// <summary>
+    /// Once the journal has been deleted (the commit point), every change to the
+    /// disk fails: a crash right after a restore was applied.
+    /// </summary>
+    public bool DeadAfterJournalDeleted { get; set; }
+
+    /// <summary>Called before every folder delete; true makes it throw (a file held open).</summary>
+    public Func<string, bool> FailDeleteDirectory { get; set; } = _ => false;
+
     /// <summary>Every move that went through, in order.</summary>
     public List<(string From, string To)> Moves { get; } = [];
 
     public int SwapMoves =>
         Moves.Count(move => !move.From.EndsWith(".tmp", StringComparison.Ordinal));
 
-    private bool Dead => _journalWritten && DeadAfterSwapMoves is int limit && SwapMoves >= limit;
+    private bool Dead =>
+        (_journalWritten && DeadAfterSwapMoves is int limit && SwapMoves >= limit)
+        || (DeadAfterJournalDeleted && _journalDeleted);
 
     public bool FileExists(string path) => _inner.FileExists(path);
 
@@ -64,11 +76,15 @@ public sealed class FaultyStorageDriver : IStorageDriver
         if (FailDelete(path))
             throw new IOException($"Simulated failure deleting '{path}'.");
         _inner.DeleteFile(path);
+        if (path.EndsWith("journal.json", StringComparison.Ordinal))
+            _journalDeleted = true;
     }
 
     public void DeleteDirectory(string path, bool recursive)
     {
         GuardAlive();
+        if (FailDeleteDirectory(path))
+            throw new IOException($"Simulated failure deleting the folder '{path}'.");
         _inner.DeleteDirectory(path, recursive);
     }
 

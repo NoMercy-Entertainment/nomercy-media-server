@@ -53,6 +53,7 @@ public sealed class RestoreApplier(
     private string JournalPath => Path.Combine(options.RestoreWorkRoot, RestoreJournal.FileName);
     private string StagedRoot => Path.Combine(options.RestoreWorkRoot, StagedFolder);
     private string PreviousRoot => Path.Combine(options.RestoreWorkRoot, PreviousFolder);
+    private string CommitPath => Path.Combine(options.RestoreWorkRoot, RestoreCommit.FileName);
 
     public async Task<RestoreResult?> ApplyPendingAsync(
         bool noOtherServerRunning,
@@ -67,6 +68,8 @@ public sealed class RestoreApplier(
         RestoreResult? result = await RecoverInterruptedSwapAsync(cancellationToken);
         if (result is { Status: RestoreStatus.RollbackIncomplete })
             return result;
+
+        result = await FinishCommittedRestoreAsync(cancellationToken) ?? result;
 
         PendingRestore? pending;
         try
@@ -157,8 +160,9 @@ public sealed class RestoreApplier(
         if (HasFiles(PreviousRoot))
             return Refused(
                 pending,
-                $"The files from before an earlier restore are still in '{PreviousRoot}' and "
-                    + "were never saved as a backup. Move them somewhere safe, then ask again."
+                $"The files a previous restore replaced are still in '{PreviousRoot}' and could "
+                    + "not be saved as a backup yet (see the log). A new restore waits until "
+                    + "they are saved, or until they are moved somewhere safe."
             );
 
         BackupManifest manifest;
@@ -341,10 +345,31 @@ public sealed class RestoreApplier(
             return Refused(pending, $"The restore could not start: {exception.Message}");
         }
 
+        RestoreCommit commit;
         try
         {
             foreach (RestoreJournalStep step in journal.Steps)
                 Forward(step);
+
+            commit = new()
+            {
+                BackupId = pending.BackupId,
+                SafetyBackupId = pending.SafetyBackupId,
+                CommittedAt = clock.GetUtcNow().UtcDateTime,
+            };
+            await WriteCommitAsync(commit, cancellationToken);
+
+            // Recorded before the commit point, so a crash after it never leaves
+            // "nothing was changed" behind. A crash before it is undone from the
+            // journal, and that undo records its own result.
+            await SaveResultAsync(
+                CommittedResult(
+                    commit,
+                    "The backup was restored. Saving the files it replaced as a backup had not "
+                        + "finished yet; the next start finishes it."
+                ),
+                cancellationToken
+            );
 
             // The commit point: from here a restart keeps the restored files.
             storage.DeleteFile(JournalPath);
@@ -360,61 +385,234 @@ public sealed class RestoreApplier(
         }
 
         logger.LogInformation("Backup {BackupId} restored", pending.BackupId);
-        (string? preRestoreId, string? keepProblem) = await KeepPreviousStateAsync(pending);
-        string message = keepProblem is null
-            ? $"The backup was restored. The state from just before it is kept as backup {preRestoreId}."
-            : $"The backup was restored. The state from just before it could not be saved as "
-                + $"a backup ({keepProblem}); its files are kept in '{PreviousRoot}'.";
-
-        RestoreResult result = Result(
-            pending.BackupId,
-            pending.SafetyBackupId,
-            RestoreStatus.Applied,
-            message
-        );
-        result.PreRestoreBackupId = preRestoreId;
-        return result;
+        return await SavePreviousStateAsync(commit, CancellationToken.None);
     }
 
     /// <summary>
     /// Publishes the files the swap renamed aside as a backup set: the state the
     /// old server left when it exited, later than the safety set taken when the
-    /// restore was asked for. On failure the files stay where they are.
+    /// restore was asked for. A damaged database among them is kept, flagged. On
+    /// failure the files stay where they are and every start tries again.
     /// </summary>
-    private async Task<(string? Id, string? Problem)> KeepPreviousStateAsync(PendingRestore pending)
+    private async Task<RestoreResult> SavePreviousStateAsync(
+        RestoreCommit commit,
+        CancellationToken cancellationToken
+    )
     {
         try
         {
-            List<BackupDatabaseFile> databases = options
-                .Databases.Select(database => new BackupDatabaseFile(
-                    database.Name,
-                    Path.Combine(PreviousRoot, BackupSetWriter.DatabasesFolder, database.FileName)
-                ))
-                .ToList();
             BackupManifest kept = await writer.WriteAsync(
-                $"before restore of {pending.BackupId}",
-                databases,
+                commit.BackupId.Length > 0
+                    ? $"before restore of {commit.BackupId}"
+                    : "before an earlier restore",
+                PreviousDatabases(),
                 Path.Combine(PreviousRoot, BackupSetWriter.ConfigFolder),
                 keepDamagedCopies: true,
-                CancellationToken.None
+                cancellationToken
             );
-
-            sqlite.ReleaseAllConnections();
-            DeleteWorkFolder();
-            return (kept.Id, null);
+            commit.PreRestoreBackupId = kept.Id;
+            await WriteCommitAsync(commit, cancellationToken);
         }
         catch (Exception exception)
         {
             logger.LogCritical(
-                "The state from before the restore of {BackupId} could not be saved as a backup; "
-                    + "its files are kept in {Folder}: {Reason}",
-                pending.BackupId,
+                "The files replaced by the restore of {BackupId} could not be saved as a backup; "
+                    + "they are kept in {Folder} and the next start tries again: {Reason}",
+                commit.BackupId,
                 PreviousRoot,
                 exception.Message
             );
             sqlite.ReleaseAllConnections();
-            ClearWorkFolder();
-            return (null, exception.Message);
+            TryDeleteDirectory(StagedRoot);
+            return CommittedResult(
+                commit,
+                $"The backup was restored. The files it replaced could not be saved as a backup "
+                    + $"yet ({exception.Message}); they are kept in '{PreviousRoot}', and every "
+                    + "start tries again until it succeeds."
+            );
+        }
+
+        sqlite.ReleaseAllConnections();
+        DeleteCommittedWork();
+        return CommittedResult(
+            commit,
+            $"The backup was restored. The state from just before it is kept as backup "
+                + $"{commit.PreRestoreBackupId}."
+        );
+    }
+
+    /// <summary>
+    /// At start, with no journal: finishes a restore that was applied but whose
+    /// replaced files were not saved yet (a crash or a failure after the commit
+    /// point), or clears what is left of one whose files were saved. Null when
+    /// there is nothing to finish or to report.
+    /// </summary>
+    private async Task<RestoreResult?> FinishCommittedRestoreAsync(
+        CancellationToken cancellationToken
+    )
+    {
+        if (storage.FileExists(JournalPath) || !storage.DirectoryExists(options.RestoreWorkRoot))
+            return null;
+
+        RestoreCommit? commit = null;
+        try
+        {
+            commit = await BackupFiles.ReadJsonAsync<RestoreCommit>(
+                storage,
+                CommitPath,
+                cancellationToken
+            );
+        }
+        catch (Exception exception)
+        {
+            logger.LogError(
+                "The restore commit record cannot be read: {Reason}",
+                exception.Message
+            );
+        }
+
+        if (commit is null)
+        {
+            if (HasFiles(PreviousRoot))
+                await SaveUnrecordedFilesAsync(cancellationToken);
+            return null;
+        }
+
+        RestoreResult result;
+        if (commit.PreRestoreBackupId is not null)
+        {
+            // Saved already; only the clean-up was cut short.
+            DeleteCommittedWork();
+            RestoreResult? last = await ReadLastResultAsync(cancellationToken);
+            if (last?.PreRestoreBackupId == commit.PreRestoreBackupId)
+                return null;
+
+            result = CommittedResult(
+                commit,
+                $"The backup was restored. The state from just before it is kept as backup "
+                    + $"{commit.PreRestoreBackupId}."
+            );
+        }
+        else
+        {
+            logger.LogWarning(
+                "Saving the files replaced by the restore of {BackupId}, which an earlier start "
+                    + "did not finish",
+                commit.BackupId
+            );
+            result = await SavePreviousStateAsync(commit, cancellationToken);
+        }
+
+        await SaveResultAsync(result, cancellationToken);
+        return result;
+    }
+
+    /// <summary>
+    /// Files in <c>previous</c> with no commit record cannot be tied to a restore,
+    /// so no result is claimed for them; they are saved as a set if they make one,
+    /// and otherwise left where they are.
+    /// </summary>
+    private async Task SaveUnrecordedFilesAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            BackupManifest kept = await writer.WriteAsync(
+                "files left by an earlier restore",
+                PreviousDatabases(),
+                Path.Combine(PreviousRoot, BackupSetWriter.ConfigFolder),
+                keepDamagedCopies: true,
+                cancellationToken
+            );
+            sqlite.ReleaseAllConnections();
+            DeleteCommittedWork();
+            logger.LogWarning(
+                "Files left by an earlier restore were saved as backup {BackupId}",
+                kept.Id
+            );
+        }
+        catch (Exception exception)
+        {
+            sqlite.ReleaseAllConnections();
+            logger.LogError(
+                "Files left by an earlier restore in {Folder} could not be saved as a backup "
+                    + "and are kept there: {Reason}",
+                PreviousRoot,
+                exception.Message
+            );
+        }
+    }
+
+    private List<BackupDatabaseFile> PreviousDatabases() =>
+        options
+            .Databases.Select(database => new BackupDatabaseFile(
+                database.Name,
+                Path.Combine(PreviousRoot, BackupSetWriter.DatabasesFolder, database.FileName)
+            ))
+            .ToList();
+
+    private async Task WriteCommitAsync(
+        RestoreCommit commit,
+        CancellationToken cancellationToken
+    ) =>
+        await BackupFiles.WriteTextAtomicallyAsync(
+            storage,
+            CommitPath,
+            BackupFiles.Serialize(commit),
+            cancellationToken
+        );
+
+    private async Task<RestoreResult?> ReadLastResultAsync(CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await BackupFiles.ReadJsonAsync<RestoreResult>(
+                storage,
+                options.LastRestorePath,
+                cancellationToken
+            );
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    private RestoreResult CommittedResult(RestoreCommit commit, string message)
+    {
+        RestoreResult result = Result(
+            commit.BackupId,
+            commit.SafetyBackupId,
+            RestoreStatus.Applied,
+            message
+        );
+        result.PreRestoreBackupId = commit.PreRestoreBackupId;
+        return result;
+    }
+
+    /// <summary>
+    /// Clears the work folder of a committed restore whose replaced files are
+    /// saved. The commit record goes last: if deleting <c>previous</c> fails half
+    /// way, the record still says those files are saved, and the next start
+    /// clears them instead of reporting them unsaved.
+    /// </summary>
+    private void DeleteCommittedWork()
+    {
+        TryDeleteDirectory(PreviousRoot);
+        TryDeleteDirectory(StagedRoot);
+        if (!HasFiles(PreviousRoot))
+            DeleteWorkFolder();
+    }
+
+    private void TryDeleteDirectory(string path)
+    {
+        try
+        {
+            if (storage.DirectoryExists(path))
+                storage.DeleteDirectory(path, recursive: true);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning("Could not delete {Folder}: {Reason}", path, exception.Message);
         }
     }
 

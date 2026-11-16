@@ -954,4 +954,92 @@ public sealed class RestoreApplierTests : IDisposable
         BackupFiles.Deserialize<BackupManifest>(
             File.ReadAllText(Path.Combine(_options.SetsRoot, id, BackupManifest.FileName))
         )!;
+
+    // ── after the commit point ───────────────────────────────────────────────
+
+    private RestoreResult? LastResultOnDisk() =>
+        BackupFiles.Deserialize<RestoreResult>(File.ReadAllText(_options.LastRestorePath));
+
+    [Fact]
+    public async Task ACrashBetweenTheCommitAndSavingTheReplacedFiles_IsFinishedAtTheNextStart()
+    {
+        string id = await BackUpThenChangeServerAsync();
+        await RequestRestoreAsync(id);
+        FaultyStorageDriver dying = new() { DeadAfterJournalDeleted = true };
+
+        await ApplyAsync(dying);
+
+        // What the crash leaves: the backup in place, its replaced files unsaved,
+        // and a recorded result that says so instead of "nothing was changed".
+        BackupTestFolder.ReadMarker(_folder.DatabasePath("media")).Should().Be("original");
+        RestoreResult recorded = LastResultOnDisk()!;
+        recorded.Status.Should().Be(RestoreStatus.Applied);
+        recorded.Message.Should().Contain("had not finished");
+        recorded.PreRestoreBackupId.Should().BeNull();
+
+        RestoreResult? finished = await CreateApplier(new LocalStorageDriver(), CurrentSchema())
+            .ApplyPendingAsync(noOtherServerRunning: true, CancellationToken.None);
+
+        finished!.Status.Should().Be(RestoreStatus.Applied, finished.Message);
+        string kept = finished.PreRestoreBackupId!;
+        BackupTestFolder.ReadMarker(SetDatabase(kept, "media")).Should().Be("changed");
+        LastResultOnDisk()!.PreRestoreBackupId.Should().Be(kept);
+        AssertNothingLeftBehind();
+    }
+
+    [Fact]
+    public async Task WhenSavingTheReplacedFilesFails_EveryStartTriesAgain()
+    {
+        string id = await BackUpThenChangeServerAsync();
+        await RequestRestoreAsync(id);
+        FaultyStorageDriver full = new()
+        {
+            FailOpenWrite = path => path.Contains(BackupSetId.IncompletePrefix),
+        };
+
+        RestoreResult first = await ApplyAsync(full);
+
+        first.Status.Should().Be(RestoreStatus.Applied, first.Message);
+        first.PreRestoreBackupId.Should().BeNull();
+        first.Message.Should().Contain("could not be saved");
+        BackupTestFolder
+            .ReadMarker(Path.Combine(_options.RestoreWorkRoot, "previous", "databases", "media.db"))
+            .Should()
+            .Be("changed");
+
+        RestoreResult? retried = await CreateApplier(new LocalStorageDriver(), CurrentSchema())
+            .ApplyPendingAsync(noOtherServerRunning: true, CancellationToken.None);
+
+        retried!.PreRestoreBackupId.Should().NotBeNull();
+        BackupTestFolder
+            .ReadMarker(SetDatabase(retried.PreRestoreBackupId!, "media"))
+            .Should()
+            .Be("changed");
+        AssertNothingLeftBehind();
+    }
+
+    [Fact]
+    public async Task FilesLeftAfterASuccessfulSave_AreClearedAway_AndDoNotBlockTheNextRestore()
+    {
+        string id = await BackUpThenChangeServerAsync();
+        await RequestRestoreAsync(id);
+        string previous = Path.Combine(_options.RestoreWorkRoot, "previous");
+        FaultyStorageDriver stubborn = new()
+        {
+            FailDeleteDirectory = path =>
+                path.Equals(previous, StringComparison.OrdinalIgnoreCase)
+                || path.Equals(_options.RestoreWorkRoot, StringComparison.OrdinalIgnoreCase),
+        };
+
+        RestoreResult first = await ApplyAsync(stubborn);
+
+        first.PreRestoreBackupId.Should().NotBeNull();
+        Directory.Exists(previous).Should().BeTrue("the delete was made to fail");
+
+        await RequestRestoreAsync(id);
+        RestoreResult next = await ApplyAsync();
+
+        next.Status.Should().Be(RestoreStatus.Applied, next.Message);
+        AssertNothingLeftBehind();
+    }
 }
