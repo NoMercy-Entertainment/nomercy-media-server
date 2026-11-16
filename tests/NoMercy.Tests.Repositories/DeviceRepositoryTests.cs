@@ -393,4 +393,48 @@ public class DeviceRepositoryTests : IDisposable
             .Id.Should()
             .Be(clientMatch.Id);
     }
+
+    [Fact]
+    public async Task GetOwnedDeviceAsync_AnotherUsersDeviceNamedLikeTheOwnersRowId_CannotShadowIt()
+    {
+        Device tv = MakeDevice(OwnerId, "tv");
+        tv.Type = "tv";
+        Device shadow = MakeDevice(OtherOwnerId, "shadow");
+        shadow.Type = "tv";
+        shadow.DeviceId = tv.Id.ToString();
+
+        await using (MediaContext seedCtx = OpenContext())
+        {
+            seedCtx.Devices.AddRange(tv, shadow);
+            await seedCtx.SaveChangesAsync();
+        }
+
+        await using MediaContext ctx = OpenContext();
+        DeviceRepository repo = BuildRepo(ctx);
+
+        (await repo.GetOwnedDeviceAsync(tv.Id.ToString(), OwnerId, "tv"))!.Id.Should().Be(tv.Id);
+        (await repo.GetOwnedDeviceAsync(tv.Id.ToString(), OtherOwnerId, "tv"))!
+            .Id.Should()
+            .Be(shadow.Id);
+    }
+
+    [Fact]
+    public async Task GetOwnedDeviceAsync_TheOwnersOtherTypeDeviceNamedLikeTheRowId_CannotShadowIt()
+    {
+        Device tv = MakeDevice(OwnerId, "tv");
+        tv.Type = "tv";
+        Device phone = MakeDevice(OwnerId, "phone");
+        phone.DeviceId = tv.Id.ToString();
+
+        await using (MediaContext seedCtx = OpenContext())
+        {
+            seedCtx.Devices.AddRange(tv, phone);
+            await seedCtx.SaveChangesAsync();
+        }
+
+        await using MediaContext ctx = OpenContext();
+        DeviceRepository repo = BuildRepo(ctx);
+
+        (await repo.GetOwnedDeviceAsync(tv.Id.ToString(), OwnerId, "tv"))!.Id.Should().Be(tv.Id);
+    }
 }

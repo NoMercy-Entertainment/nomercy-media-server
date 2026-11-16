@@ -36,10 +36,11 @@ public class CastProxyDeviceLookupTests : IClassFixture<NoMercyApiFactory>
 
     private static async Task<(Ulid RowId, string DeviceId)> SeedDeviceAsync(
         Guid owner,
-        string type = "tv"
+        string type = "tv",
+        string? clientDeviceId = null
     )
     {
-        string deviceId = "cast-proxy-" + Guid.NewGuid().ToString("N");
+        string deviceId = clientDeviceId ?? "cast-proxy-" + Guid.NewGuid().ToString("N");
         Ulid rowId = Ulid.NewUlid();
         await using MediaContext db = new();
         db.Devices.Add(
@@ -74,6 +75,20 @@ public class CastProxyDeviceLookupTests : IClassFixture<NoMercyApiFactory>
     public async Task OwnersTv_NamedByItsRowId_IsFound()
     {
         (Ulid rowId, _) = await SeedDeviceAsync(TestAuthHandler.DefaultUserId);
+
+        HttpResponseMessage response = await _factory
+            .CreateClient()
+            .AsAuthenticated()
+            .GetAsync(Url(rowId.ToString()));
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task AnotherUsersDeviceNamedLikeTheTvsRowId_DoesNotShadowTheOwnersTv()
+    {
+        (Ulid rowId, _) = await SeedDeviceAsync(TestAuthHandler.DefaultUserId);
+        await SeedDeviceAsync(TestAuthHandler.SecondaryUserId, "tv", rowId.ToString());
 
         HttpResponseMessage response = await _factory
             .CreateClient()

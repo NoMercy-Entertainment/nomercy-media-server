@@ -127,9 +127,15 @@ public class DeviceRepository(MediaContext context) : IDeviceRepository
 
     public async Task<Device?> GetOwnedDeviceAsync(string deviceId, Guid ownerUserId, string type)
     {
-        Device? device = await GetByClientOrRowIdAsync(deviceId);
-        return device is not null && device.OwnerUserId == ownerUserId && device.Type == type
-            ? device
-            : null;
+        // Owner and type are in both queries, so another device whose client id equals
+        // this device's row id can never shadow it.
+        IQueryable<Device> owned = context
+            .Devices.AsNoTracking()
+            .Where(d => d.OwnerUserId == ownerUserId && d.Type == type);
+
+        Device? device = await owned.FirstOrDefaultAsync(d => d.DeviceId == deviceId);
+        if (device is null && Ulid.TryParse(deviceId, out Ulid rowId))
+            device = await owned.FirstOrDefaultAsync(d => d.Id == rowId);
+        return device;
     }
 }
