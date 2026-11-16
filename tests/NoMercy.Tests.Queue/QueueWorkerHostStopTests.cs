@@ -104,6 +104,30 @@ public class QueueWorkerHostStopTests
     }
 
     [Fact]
+    public async Task HostStopping_IdleWorker_ReservesNoNewJob()
+    {
+        using CancellationTokenSource hostStopping = new();
+        hostStopping.Cancel();
+        (QueueWorker worker, TestQueueContextAdapter context, string payload, _) = Build(
+            "host-stopped-idle",
+            "canceled",
+            hostStopping.Token
+        );
+        worker.Start();
+
+        // The other tests in this class see a reservation within milliseconds.
+        await Task.Delay(TimeSpan.FromSeconds(1));
+
+        context
+            .Jobs.Should()
+            .Contain(
+                j => j.Payload == payload && j.ReservedAt == null && j.Attempts == 0,
+                "a worker must not take new work while the host stops"
+            );
+        worker.Stop();
+    }
+
+    [Fact]
     public async Task OperationCanceled_WhileHostIsRunning_StillSpendsAnAttempt()
     {
         using CancellationTokenSource hostStopping = new();

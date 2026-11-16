@@ -98,10 +98,10 @@ public class QueueWorker(
             await readinessGate.WaitForReadyAsync(stopToken).ConfigureAwait(false);
         }
 
-        if (stopToken.IsCancellationRequested)
+        if (IsShuttingDown(stopToken))
             return;
 
-        while (_isRunning && !stopToken.IsCancellationRequested)
+        while (_isRunning && !IsShuttingDown(stopToken))
         {
             // Playback-activity gate: while a user is actively streaming, defer
             // reserving new jobs for NAS-read-heavy queues (library/file/import/
