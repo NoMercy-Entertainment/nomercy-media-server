@@ -43,6 +43,8 @@ public static class PluginAbi
     // record and a new protected property. No member changed shape: a link minted through
     // IPluginMediaProxy while a LAN route serves a device is bound to that device.
     // PluginLanCaller.ToString leaves BaseAddress out, because it carries the credential.
+    // 12.10 also added PluginFilterGraphTokens.StemsSource and StemsVocalSource (two new
+    // constants).
     public static Version Current { get; } = new(12, 10);
 
     /// <summary>

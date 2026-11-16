@@ -59,6 +59,9 @@ public static class PluginLibraryServiceCollectionExtensions
         // this, a plugin doing DJ-grade analysis has no host-mediated route to
         // ffmpeg, the derived store or the analysis record at all.
         services.AddSingleton<IPluginAudioToolsFactory, PluginAudioToolsFactory>();
+        // RoFormer or Spleeter, and the filter's refusal remembered, once for
+        // the whole machine rather than per plugin (#637).
+        services.AddSingleton<IStemsplitSourceSelector, StemsplitSourceSelector>();
         services.AddSingleton<IPluginDerivedAudio, PluginDerivedAudio>();
         services.AddSingleton<
             IPluginMusicAnalysisWriterFactory,

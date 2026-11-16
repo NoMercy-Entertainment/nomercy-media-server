@@ -38,10 +38,20 @@ internal static partial class PluginGraphTokens
     /// <summary>The lyricsalign model file's own name.</summary>
     internal static string AlignModelFileName => AppFiles.LyricsAlignModel + ".gguf";
 
-    /// <summary>Whether the text names the server's stemsplit model, by its token or by the file name the token stands for.</summary>
+    /// <summary>
+    /// Whether the text needs the server's Spleeter model: by its token, by the
+    /// file name the token stands for, or by a source token, which falls back
+    /// to Spleeter wherever RoFormer cannot run.
+    /// </summary>
     internal static bool UsesStemsModel(string text) =>
         text.Contains(PluginFilterGraphTokens.StemsModel, StringComparison.Ordinal)
-        || text.Contains(StemsModelFileName, StringComparison.Ordinal);
+        || text.Contains(StemsModelFileName, StringComparison.Ordinal)
+        || UsesStemsSource(text);
+
+    /// <summary>Whether the text has a source token, whose value the host chooses per run.</summary>
+    internal static bool UsesStemsSource(string text) =>
+        text.Contains(PluginFilterGraphTokens.StemsSource, StringComparison.Ordinal)
+        || text.Contains(PluginFilterGraphTokens.StemsVocalSource, StringComparison.Ordinal);
 
     /// <summary>Whether the text names the whisper model, so the host can check it is installed before ffmpeg reads the whole input.</summary>
     internal static bool UsesWhisperModel(string text) =>
@@ -56,15 +66,38 @@ internal static partial class PluginGraphTokens
         text.Contains(PluginFilterGraphTokens.AlignModel, StringComparison.Ordinal);
 
     /// <summary>
+    /// The text with every token replaced, or the reason one could not be,
+    /// with both source tokens as Spleeter.
+    /// </summary>
+    internal static ResolvedGraphText Resolve(string text, string? dataFolderPath) =>
+        Resolve(text, dataFolderPath, StemsplitSources.Spleeter);
+
+    /// <summary>
     /// The text with every token replaced, or the reason one could not be.
     /// <paramref name="dataFolderPath" /> is the plugin's own folder; null
     /// when the host does not know it, which refuses every plugin-file token.
+    /// <paramref name="sources" /> is what the two source tokens stand for in
+    /// this run.
     /// </summary>
-    internal static ResolvedGraphText Resolve(string text, string? dataFolderPath)
+    internal static ResolvedGraphText Resolve(
+        string text,
+        string? dataFolderPath,
+        StemsplitSources sources
+    )
     {
         string resolved = text.Replace(
                 PluginFilterGraphTokens.StemsModel,
                 StemsModelFileName,
+                StringComparison.Ordinal
+            )
+            .Replace(
+                PluginFilterGraphTokens.StemsSource,
+                sources.Full.Options,
+                StringComparison.Ordinal
+            )
+            .Replace(
+                PluginFilterGraphTokens.StemsVocalSource,
+                sources.Vocal.Options,
                 StringComparison.Ordinal
             )
             .Replace(

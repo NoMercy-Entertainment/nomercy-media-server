@@ -61,7 +61,8 @@ public sealed class PluginAudioTools(
     ILogger<PluginAudioTools>? logger = null,
     string? dataFolderPath = null,
     PluginQuotaMeter? quotas = null,
-    ILyricsAlignModelInstaller? alignModelInstaller = null
+    ILyricsAlignModelInstaller? alignModelInstaller = null,
+    IStemsplitSourceSelector? stemsplitSources = null
 ) : IPluginAudioTools
 {
     /// <summary>
@@ -136,6 +137,10 @@ public sealed class PluginAudioTools(
 
     private readonly SemaphoreSlim _oneRunAtATime = new(1, 1);
 
+    // Without one, every split is Spleeter, as it was before RoFormer.
+    private readonly IStemsplitSourceSelector _stemsplitSources =
+        stemsplitSources ?? SpleeterOnlySourceSelector.Instance;
+
     private readonly ILogger<PluginAudioTools> _logger =
         logger ?? NullLogger<PluginAudioTools>.Instance;
 
@@ -202,13 +207,16 @@ public sealed class PluginAudioTools(
             return PluginAudioRunResult.Refused(missingModel);
         }
 
-        ResolvedGraphText resolvedText = PluginGraphTokens.Resolve(graph.Text, dataFolderPath);
+        StemsplitSources sources = await ChooseStemsplitSourcesAsync(graph.Text, ct);
+        ResolvedGraphText resolvedText = PluginGraphTokens.Resolve(
+            graph.Text,
+            dataFolderPath,
+            sources
+        );
         if (resolvedText.Refusal is not null)
         {
             return PluginAudioRunResult.Refused(resolvedText.Refusal);
         }
-
-        string text = resolvedText.Text;
 
         if (!await _oneRunAtATime.WaitAsync(0, ct))
         {
@@ -225,28 +233,104 @@ public sealed class PluginAudioTools(
 
             await using LocalPathLease lease = resolved.Lease!;
 
-            string[] arguments = PluginAudioArguments.FilterGraph(lease.Path, text, graph.Complex);
+            while (true)
+            {
+                IReadOnlyList<RoformerPreset> roformer = sources.RoformerPresets(graph.Text);
+                RoformerAttemptOutput output = new(onStdOut, onStdErr, roformer.Count > 0);
 
-            ProcessResult? result = await RunFfmpegAsync(
-                ffmpegPath,
-                arguments,
-                onStdOut,
-                onStdErr,
-                ct,
-                timeout: EffectiveTimeout(options, RunTimeout)
-            );
+                string[] arguments = PluginAudioArguments.FilterGraph(
+                    lease.Path,
+                    PluginGraphTokens.Resolve(graph.Text, dataFolderPath, sources).Text,
+                    graph.Complex
+                );
 
-            // Null is the timeout: -2 rather than a refusal, because the run
-            // did start - the plugin's graph was accepted and its callbacks
-            // saw whatever ffmpeg managed to print before the clock ran out.
-            return result is null
-                ? new PluginAudioRunResult(PluginAudioRunResult.TimedOutExitCode, null)
-                : new PluginAudioRunResult(result.ExitCode, null);
+                ProcessResult? result = await RunFfmpegAsync(
+                    ffmpegPath,
+                    arguments,
+                    output.StdOut,
+                    output.StdErr,
+                    ct,
+                    timeout: EffectiveTimeout(options, RunTimeout)
+                );
+
+                if (roformer.Count > 0 && output.Refusal is { } refusal)
+                {
+                    sources = await FallBackToSpleeterAsync(roformer, refusal, ct);
+                    continue;
+                }
+
+                output.Release();
+
+                // Null is the timeout: -2 rather than a refusal, because the run
+                // did start - the plugin's graph was accepted and its callbacks
+                // saw whatever ffmpeg managed to print before the clock ran out.
+                return result is null
+                    ? new PluginAudioRunResult(PluginAudioRunResult.TimedOutExitCode, null)
+                    : new PluginAudioRunResult(result.ExitCode, null);
+            }
         }
         finally
         {
             _oneRunAtATime.Release();
         }
+    }
+
+    /// <summary>
+    /// What the source tokens of a plugin's graph stand for in this run: for
+    /// each token in the text, RoFormer when the filter may take this
+    /// machine's GPU for it, Spleeter otherwise. A graph that also runs
+    /// whisper gets Spleeter for both, see <see cref="StemsplitGraph.HasWhisper" />.
+    /// </summary>
+    private async Task<StemsplitSources> ChooseStemsplitSourcesAsync(
+        string graphText,
+        CancellationToken ct
+    )
+    {
+        if (!PluginGraphTokens.UsesStemsSource(graphText))
+            return StemsplitSources.Spleeter;
+
+        if (StemsplitGraph.HasWhisper(graphText))
+        {
+            _logger.LogDebug(
+                "plugin {PluginId}: the graph runs whisper, so its stems are split with Spleeter in the same process",
+                pluginId
+            );
+            return StemsplitSources.Spleeter;
+        }
+
+        StemsplitSource full = graphText.Contains(
+            PluginFilterGraphTokens.StemsSource,
+            StringComparison.Ordinal
+        )
+            ? await _stemsplitSources.ChooseAsync(RoformerPreset.Full, ct)
+            : StemsplitSource.Spleeter;
+
+        StemsplitSource vocal = graphText.Contains(
+            PluginFilterGraphTokens.StemsVocalSource,
+            StringComparison.Ordinal
+        )
+            ? await _stemsplitSources.ChooseAsync(RoformerPreset.VocalFull, ct)
+            : StemsplitSource.Spleeter;
+
+        return new(full, vocal);
+    }
+
+    /// <summary>
+    /// The filter refused RoFormer: remember it for this machine, and run the
+    /// same work again with Spleeter.
+    /// </summary>
+    private async Task<StemsplitSources> FallBackToSpleeterAsync(
+        IReadOnlyList<RoformerPreset> presets,
+        string refusal,
+        CancellationToken ct
+    )
+    {
+        _logger.LogInformation(
+            "plugin {PluginId}: stemsplit refused RoFormer, running again with Spleeter",
+            pluginId
+        );
+        await _stemsplitSources.RememberRefusalAsync(presets, refusal, ct);
+        return StemsplitSources.Spleeter;
     }
 
     public Task<PluginAudioRunResult> RenderAsync(
@@ -299,7 +383,12 @@ public sealed class PluginAudioTools(
             return PluginAudioRunResult.Refused(missingModel);
         }
 
-        ResolvedGraphText graphText = PluginGraphTokens.Resolve(render.GraphText, dataFolderPath);
+        StemsplitSources sources = await ChooseStemsplitSourcesAsync(render.GraphText, ct);
+        ResolvedGraphText graphText = PluginGraphTokens.Resolve(
+            render.GraphText,
+            dataFolderPath,
+            sources
+        );
         if (graphText.Refusal is not null)
         {
             return PluginAudioRunResult.Refused(graphText.Refusal);
@@ -316,7 +405,7 @@ public sealed class PluginAudioTools(
                 ffmpegPath,
                 render,
                 plan,
-                graphText.Text,
+                sources,
                 onStdOut,
                 onStdErr,
                 options,
@@ -338,7 +427,7 @@ public sealed class PluginAudioTools(
         string ffmpegPath,
         PluginAudioRender render,
         PluginAudioRenderPlan plan,
-        string graphText,
+        StemsplitSources sources,
         Action<string>? onStdOut,
         Action<string>? onStdErr,
         PluginAudioRunOptions? options,
@@ -371,94 +460,33 @@ public sealed class PluginAudioTools(
 
             files.Prepare();
 
-            // Every reason this run can be ended for goes through one token,
-            // the caller's own cancellation included: whatever ends it, the
-            // process has to be gone before its files are removed below.
-            PluginAudioRunLimits limits = PluginAudioRunLimits.ForRender(
-                options,
-                RunTimeout,
-                ShortestStallLimit
-            );
-            using PluginAudioRunWatch watch = new(limits, Clock);
-            using CancellationTokenSource pastQuota = new();
-            using CancellationTokenSource endRun = CancellationTokenSource.CreateLinkedTokenSource(
-                ct,
-                watch.Stalled,
-                watch.TimedOut,
-                pastQuota.Token
-            );
-            using CancellationTokenSource runIsOver = new();
-
-            void ObserveStdOut(string line)
+            while (true)
             {
-                watch.Observe(line);
-                onStdOut?.Invoke(line);
-            }
+                IReadOnlyList<RoformerPreset> roformer = sources.RoformerPresets(render.GraphText);
+                RoformerAttemptOutput output = new(onStdOut, onStdErr, roformer.Count > 0);
 
-            Task<PluginRefusal?> quotaWatch = WatchDiskQuotaAsync(
-                files,
-                pastQuota,
-                runIsOver.Token
-            );
-            ProcessResult? result;
-            PluginRefusal? quotaRefusal;
-
-            try
-            {
-                watch.Start();
-                result = await RunFfmpegAsync(
+                PluginAudioRunResult result = await RenderOnceAsync(
                     ffmpegPath,
-                    PluginAudioArguments.Render(inputs, graphText, plan.Targets),
-                    ObserveStdOut,
-                    onStdErr,
-                    ct,
-                    watchForExitMarker: true,
-                    // The watch keeps this run's total, next to its stall
-                    // limit, so both end it the same way.
-                    timeout: Timeout.InfiniteTimeSpan,
-                    endRun: endRun.Token
+                    inputs,
+                    PluginGraphTokens.Resolve(render.GraphText, dataFolderPath, sources).Text,
+                    plan,
+                    files,
+                    output,
+                    options,
+                    ct
                 );
-            }
-            finally
-            {
-                // Awaited on every way out, a cancellation included: the
-                // watch holds the token sources this method is about to
-                // dispose, and must be done with them first.
-                await runIsOver.CancelAsync();
-                quotaRefusal = await quotaWatch;
-            }
 
-            if (quotaRefusal is not null)
-            {
-                return PluginAudioRunResult.Refused(PastTheQuota(quotaRefusal));
-            }
-
-            // Null is the host ending the run. Not a refusal either way,
-            // because the run did start: the plugin's graph was accepted and
-            // its callbacks saw whatever ffmpeg printed until then.
-            if (result is null)
-            {
-                if (!watch.HasStalled)
+                if (roformer.Count > 0 && output.Refusal is { } refusal)
                 {
-                    _logger.LogWarning(
-                        "plugin {PluginId}: render timed out after {Seconds}s",
-                        pluginId,
-                        limits.Total.TotalSeconds
-                    );
-                    return new(PluginAudioRunResult.TimedOutExitCode, null);
+                    // The refused run may have opened its files already, empty.
+                    files.RemoveTempFiles();
+                    sources = await FallBackToSpleeterAsync(roformer, refusal, ct);
+                    continue;
                 }
 
-                _logger.LogWarning(
-                    "plugin {PluginId}: render made no progress for {Seconds}s and was ended",
-                    pluginId,
-                    limits.Stall?.TotalSeconds
-                );
-                return new(PluginAudioRunResult.StalledExitCode, null);
+                output.Release();
+                return result;
             }
-
-            return result.ExitCode == 0
-                ? KeepRenderedFiles(files)
-                : new PluginAudioRunResult(result.ExitCode, null);
         }
         finally
         {
@@ -472,6 +500,107 @@ public sealed class PluginAudioTools(
                 await lease.DisposeAsync();
             }
         }
+    }
+
+    /// <summary>
+    /// One ffmpeg run of a render, under its limits and the plugin's disk
+    /// quota, keeping its files when it exited 0.
+    /// </summary>
+    private async Task<PluginAudioRunResult> RenderOnceAsync(
+        string ffmpegPath,
+        IReadOnlyList<PluginAudioRenderInput> inputs,
+        string graphText,
+        PluginAudioRenderPlan plan,
+        PluginAudioRenderFiles files,
+        RoformerAttemptOutput output,
+        PluginAudioRunOptions? options,
+        CancellationToken ct
+    )
+    {
+        // Every reason this run can be ended for goes through one token,
+        // the caller's own cancellation included: whatever ends it, the
+        // process has to be gone before its files are removed.
+        PluginAudioRunLimits limits = PluginAudioRunLimits.ForRender(
+            options,
+            RunTimeout,
+            ShortestStallLimit
+        );
+        using PluginAudioRunWatch watch = new(limits, Clock);
+        using CancellationTokenSource pastQuota = new();
+        using CancellationTokenSource endRun = CancellationTokenSource.CreateLinkedTokenSource(
+            ct,
+            watch.Stalled,
+            watch.TimedOut,
+            pastQuota.Token
+        );
+        using CancellationTokenSource runIsOver = new();
+
+        void ObserveStdOut(string line)
+        {
+            watch.Observe(line);
+            output.StdOut(line);
+        }
+
+        Task<PluginRefusal?> quotaWatch = WatchDiskQuotaAsync(files, pastQuota, runIsOver.Token);
+        ProcessResult? result;
+        PluginRefusal? quotaRefusal;
+
+        try
+        {
+            watch.Start();
+            result = await RunFfmpegAsync(
+                ffmpegPath,
+                PluginAudioArguments.Render(inputs, graphText, plan.Targets),
+                ObserveStdOut,
+                output.StdErr,
+                ct,
+                watchForExitMarker: true,
+                // The watch keeps this run's total, next to its stall
+                // limit, so both end it the same way.
+                timeout: Timeout.InfiniteTimeSpan,
+                endRun: endRun.Token
+            );
+        }
+        finally
+        {
+            // Awaited on every way out, a cancellation included: the
+            // watch holds the token sources this method is about to
+            // dispose, and must be done with them first.
+            await runIsOver.CancelAsync();
+            quotaRefusal = await quotaWatch;
+        }
+
+        if (quotaRefusal is not null)
+        {
+            return PluginAudioRunResult.Refused(PastTheQuota(quotaRefusal));
+        }
+
+        // Null is the host ending the run. Not a refusal either way,
+        // because the run did start: the plugin's graph was accepted and
+        // its callbacks saw whatever ffmpeg printed until then.
+        if (result is null)
+        {
+            if (!watch.HasStalled)
+            {
+                _logger.LogWarning(
+                    "plugin {PluginId}: render timed out after {Seconds}s",
+                    pluginId,
+                    limits.Total.TotalSeconds
+                );
+                return new(PluginAudioRunResult.TimedOutExitCode, null);
+            }
+
+            _logger.LogWarning(
+                "plugin {PluginId}: render made no progress for {Seconds}s and was ended",
+                pluginId,
+                limits.Stall?.TotalSeconds
+            );
+            return new(PluginAudioRunResult.StalledExitCode, null);
+        }
+
+        return result.ExitCode == 0
+            ? KeepRenderedFiles(files)
+            : new PluginAudioRunResult(result.ExitCode, null);
     }
 
     /// <summary>
@@ -693,34 +822,62 @@ public sealed class PluginAudioTools(
             await using LocalPathLease accompanimentLease =
                 await derivedStorage.AcquireLocalPathAsync(accompanimentTemp, ct);
 
-            string[] arguments = PluginAudioArguments.StemSplit(
-                inputLease.Path,
-                window.Arguments,
-                vocalsLease.Path,
-                accompanimentLease.Path
+            StemsplitSource source = await _stemsplitSources.ChooseAsync(
+                RoformerPreset.Full,
+                ct
             );
+            string? bannerLine;
+            Queue<string> stdErrTail;
+            ProcessResult? result;
 
-            string? bannerLine = null;
-            Queue<string> stdErrTail = new();
-
-            void CaptureStdErr(string line)
+            while (true)
             {
-                bannerLine ??= line;
-                stdErrTail.Enqueue(line);
-                if (stdErrTail.Count > 5)
-                {
-                    stdErrTail.Dequeue();
-                }
-            }
+                string[] arguments = PluginAudioArguments.StemSplit(
+                    inputLease.Path,
+                    window.Arguments,
+                    source.Options,
+                    vocalsLease.Path,
+                    accompanimentLease.Path
+                );
 
-            ProcessResult? result = await RunFfmpegAsync(
-                ffmpegPath,
-                arguments,
-                null,
-                CaptureStdErr,
-                ct,
-                watchForExitMarker: true
-            );
+                string? banner = null;
+                Queue<string> tail = new();
+                string? refusal = null;
+
+                void CaptureStdErr(string line)
+                {
+                    banner ??= line;
+                    refusal ??= StemsplitLog.IsRefusal(line) ? line : null;
+                    tail.Enqueue(line);
+                    if (tail.Count > 5)
+                    {
+                        tail.Dequeue();
+                    }
+                }
+
+                result = await RunFfmpegAsync(
+                    ffmpegPath,
+                    arguments,
+                    null,
+                    CaptureStdErr,
+                    ct,
+                    watchForExitMarker: true
+                );
+                bannerLine = banner;
+                stdErrTail = tail;
+
+                if (source.Engine != StemsplitEngine.Roformer || refusal is null)
+                {
+                    break;
+                }
+
+                // The refused run may have opened both files already, empty;
+                // ffmpeg will not write over a file that is there.
+                await DeleteTempAsync(vocalsTemp, CancellationToken.None);
+                await DeleteTempAsync(accompanimentTemp, CancellationToken.None);
+                await FallBackToSpleeterAsync([RoformerPreset.Full], refusal, ct);
+                source = StemsplitSource.Spleeter;
+            }
 
             if (result is null)
             {
@@ -767,7 +924,7 @@ public sealed class PluginAudioTools(
             DerivedAudioEntry accompaniment = await StoreTempAsync(accompanimentTemp, ct);
 
             string producerVersion =
-                $"{AppFiles.StemsplitModel}@{PluginAudioArguments.FfmpegVersion(bannerLine)}";
+                $"{source.ModelId}@{PluginAudioArguments.FfmpegVersion(bannerLine)}";
 
             IPluginMusicAnalysisWriter writer = writerFactory.CreateFor(pluginId);
 

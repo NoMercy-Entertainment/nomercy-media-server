@@ -230,7 +230,8 @@ public class PluginAudioRenderTests : IDisposable
         TimeSpan? exitGracePeriod = null,
         TimeSpan? quotaCheckInterval = null,
         PluginQuotaMeter? quotas = null,
-        TimeProvider? clock = null
+        TimeProvider? clock = null,
+        IStemsplitSourceSelector? stemsplitSources = null
     )
     {
         Mock<IDbContextFactory<MediaContext>> contextFactory = new();
@@ -250,7 +251,8 @@ public class PluginAudioRenderTests : IDisposable
             contextFactory.Object,
             _probe.Object,
             dataFolderPath: _dataFolder,
-            quotas: quotas
+            quotas: quotas,
+            stemsplitSources: stemsplitSources
         )
         {
             RunTimeout = runTimeout ?? TimeSpan.FromMinutes(10),
@@ -1702,5 +1704,76 @@ public class PluginAudioRenderTests : IDisposable
 
         result.Refusal.Should().Be("the lyricsalign model is not installed");
         _runs.Should().BeEmpty();
+    }
+
+    // --- RoFormer (#637) ----------------------------------------------------
+
+    /// <summary>
+    /// The filter refuses RoFormer when the first audio arrives, after ffmpeg
+    /// opened its files: the host removes them, runs the graph again with
+    /// Spleeter, and the plugin gets the second run's files and lines only.
+    /// </summary>
+    [Fact]
+    public async Task Render_ARefusedRoformerRun_RunsAgainWithSpleeter_AndKeepsOnlyThatRunsFiles()
+    {
+        Mock<IStemsplitSourceSelector> sources = new();
+        sources
+            .Setup(selector =>
+                selector.ChooseAsync(It.IsAny<RoformerPreset>(), It.IsAny<CancellationToken>())
+            )
+            .ReturnsAsync(
+                (RoformerPreset preset, CancellationToken _) => StemsplitSource.Roformer(preset)
+            );
+
+        int started = 0;
+        _ffmpeg = call =>
+        {
+            if (++started == 1)
+            {
+                // Opened, empty, then refused.
+                call.WriteOutputs(0);
+                call.StdErr?.Invoke(StemsplitLogFixtures.MemoryRefusal);
+                return Task.FromResult(Exited(234));
+            }
+
+            call.StdErr?.Invoke(StemsplitLogFixtures.SpleeterLoaded);
+            call.WriteOutputs(1000);
+            call.StdOut?.Invoke("progress=end");
+            return Task.FromResult(Exited(0));
+        };
+        List<string> stdErr = [];
+
+        PluginAudioRunResult result = await CreateTools(stemsplitSources: sources.Object)
+            .RenderAsync(
+                new(
+                    [TrackA()],
+                    "[0:a]stemsplit={stemsVocalSource}:stem=vocals[out]",
+                    [new("out", "vocals.wav", PluginAudioCodec.Wav)]
+                ),
+                null,
+                stdErr.Add,
+                DefaultOptions
+            );
+
+        result.ExitCode.Should().Be(0);
+        _runs.Should().HaveCount(2);
+        _runs[0].Should().Contain("[0:a]stemsplit=preset=vocal_full:cpu_fallback=0:stem=vocals[out]");
+        _runs[1]
+            .Should()
+            .Contain($"[0:a]stemsplit=model={AppFiles.StemsplitModel}.gguf:stem=vocals[out]");
+        stdErr.Should().Equal(StemsplitLogFixtures.SpleeterLoaded);
+        FilesInDataFolder().Should().Equal("vocals.wav");
+        new FileInfo(InDataFolder("vocals.wav")).Length.Should().Be(1000);
+        sources.Verify(
+            selector =>
+                selector.RememberRefusalAsync(
+                    It.Is<IReadOnlyCollection<RoformerPreset>>(presets =>
+                        presets.SequenceEqual(new[] { RoformerPreset.VocalFull })
+                    ),
+                    StemsplitLogFixtures.MemoryRefusal,
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Once
+        );
     }
 }

@@ -10,7 +10,6 @@
 // -----------------------------------------------------------------------------
 
 using System.Globalization;
-using NoMercy.NmSystem.Information;
 using NoMercy.PluginSdk.Abstractions;
 
 namespace NoMercy.Data.Plugins;
@@ -25,14 +24,6 @@ namespace NoMercy.Data.Plugins;
 /// </summary>
 internal static class PluginAudioArguments
 {
-    /// <summary>
-    /// The stemsplit model file's own name, not its path: ffmpeg runs with
-    /// <see cref="AppFiles.FfmpegFolder" /> as its working directory, so a
-    /// bare name resolves there on every machine. The tokens a plugin writes
-    /// in its own text are replaced by <see cref="PluginGraphTokens" />.
-    /// </summary>
-    internal static string ModelFileName => PluginGraphTokens.StemsModelFileName;
-
     /// <summary>
     /// One filter chain over one input, decoded and thrown away: the plugin
     /// is after what the filters print, not after a file.
@@ -63,8 +54,8 @@ internal static class PluginAudioArguments
             : ["-nostdin", "-i", inputPath, "-vn", "-sn", "-dn", "-af", text, "-f", "null", "-"];
 
     /// <summary>
-    /// Spleeter 2 stems in one pass: the filter has two output pads, vocals
-    /// first, and each is encoded to its own Opus file. 160 kbit/s at 48 kHz
+    /// Two stems in one pass, with Spleeter or RoFormer: the filter has two
+    /// output pads, vocals first, and each is encoded to its own Opus file. 160 kbit/s at 48 kHz
     /// because a stem is an intermediate a transition is rendered from, not
     /// something a listener ever hears on its own.
     /// </summary>
@@ -81,9 +72,14 @@ internal static class PluginAudioArguments
     /// (accurate seek is the default), so the registered window milliseconds
     /// stay true to the samples.
     /// </param>
+    /// <param name="sourceOptions">
+    /// The filter's source, <see cref="StemsplitSource.Options" />: the
+    /// Spleeter model, or a RoFormer preset.
+    /// </param>
     internal static string[] StemSplit(
         string inputPath,
         IReadOnlyList<string> windowArguments,
+        string sourceOptions,
         string vocalsPath,
         string accompanimentPath
     ) =>
@@ -109,7 +105,7 @@ internal static class PluginAudioArguments
             "-sn",
             "-dn",
             "-filter_complex",
-            $"[0:a]stemsplit=model={ModelFileName}[voc][acc]",
+            $"[0:a]stemsplit={sourceOptions}[voc][acc]",
             "-map",
             "[voc]",
             "-c:a",

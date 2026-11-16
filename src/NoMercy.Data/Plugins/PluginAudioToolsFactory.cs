@@ -39,6 +39,7 @@ namespace NoMercy.Data.Plugins;
 /// <param name="derivedStorage">Scoped to the derived-audio root, for stem scratch files and derived inputs.</param>
 /// <param name="quotas">The plugin platform's disk meter, which a render's files are counted against. Null on a host that meters nothing.</param>
 /// <param name="alignModelInstaller">Fetches the lyricsalign model the first time a graph names it. Null on a host that installs nothing.</param>
+/// <param name="stemsplitSources">Chooses RoFormer or Spleeter for every plugin's stem splits on this machine. Null splits with Spleeter only.</param>
 public class PluginAudioToolsFactory(
     EncoderOptions options,
     IProcessRunner processRunner,
@@ -51,7 +52,8 @@ public class PluginAudioToolsFactory(
     IFfmpegCapabilityProbe capabilityProbe,
     ILogger<PluginAudioTools> logger,
     PluginQuotaMeter? quotas = null,
-    ILyricsAlignModelInstaller? alignModelInstaller = null
+    ILyricsAlignModelInstaller? alignModelInstaller = null,
+    IStemsplitSourceSelector? stemsplitSources = null
 ) : IPluginAudioToolsFactory
 {
     private readonly ConcurrentDictionary<Ulid, PluginAudioTools> _perPlugin = new();
@@ -73,7 +75,8 @@ public class PluginAudioToolsFactory(
                 logger,
                 dataFolderPath,
                 quotas,
-                alignModelInstaller
+                alignModelInstaller,
+                stemsplitSources
             )
         );
 }

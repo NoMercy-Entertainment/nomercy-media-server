@@ -81,6 +81,10 @@ public class PluginAudioToolsTests : IDisposable
     private readonly List<string> _stdErrLines = [VersionLine];
 
     private string[] _capturedArguments = [];
+
+    // Every run's arguments, in order, and the runs a test scripted one by one.
+    private readonly List<string[]> _argumentsPerRun = [];
+    private readonly Queue<ScriptedRun> _scriptedRuns = new();
     private string? _capturedWorkingDirectory;
     private string? _capturedExecutable;
     private int _runCount;
@@ -317,15 +321,24 @@ public class PluginAudioToolsTests : IDisposable
                     _capturedExecutable = executable;
                     _capturedArguments = arguments;
                     _capturedWorkingDirectory = workingDirectory;
+                    _argumentsPerRun.Add(arguments);
 
-                    foreach (string line in _stdErrLines)
+                    // A test that scripts several runs gives each its own
+                    // stderr and exit; every other test replays the same.
+                    bool scripted = _scriptedRuns.TryDequeue(out ScriptedRun? run);
+
+                    foreach (string line in scripted ? run!.StdErr : [.. _stdErrLines])
                     {
                         onStdErr?.Invoke(line);
                     }
 
                     onStdOut?.Invoke(string.Empty);
 
-                    return _runResult;
+                    return scripted
+                        ? Task.FromResult(
+                            new ProcessResult(run!.ExitCode, string.Empty, string.Empty, TimeSpan.Zero)
+                        )
+                        : _runResult;
                 }
             );
     }
@@ -355,7 +368,8 @@ public class PluginAudioToolsTests : IDisposable
     private PluginAudioTools CreateTools(
         TimeSpan? runTimeout = null,
         TimeSpan? exitGracePeriod = null,
-        ILyricsAlignModelInstaller? alignModelInstaller = null
+        ILyricsAlignModelInstaller? alignModelInstaller = null,
+        IStemsplitSourceSelector? stemsplitSources = null
     )
     {
         Mock<IDbContextFactory<MediaContext>> contextFactory = new();
@@ -375,7 +389,8 @@ public class PluginAudioToolsTests : IDisposable
             contextFactory.Object,
             _probe.Object,
             dataFolderPath: Path.Combine(Path.GetTempPath(), "nm-plugin-data"),
-            alignModelInstaller: alignModelInstaller
+            alignModelInstaller: alignModelInstaller,
+            stemsplitSources: stemsplitSources
         )
         {
             RunTimeout = runTimeout ?? TimeSpan.FromMinutes(10),
@@ -1628,5 +1643,258 @@ public class PluginAudioToolsTests : IDisposable
 
         (await RunAlignGraph()).Refusal.Should().BeNull();
         _runCount.Should().Be(1);
+    }
+
+    // --- RoFormer, and the fall back to Spleeter (#637) -------------------
+
+    /// <summary>One ffmpeg run a test scripted: its exit code and its stderr.</summary>
+    private sealed record ScriptedRun(int ExitCode, string[] StdErr);
+
+    // What ffmpeg on Windows exits with after the filter refused (-22 as a
+    // byte); the host keys on the filter's line, not on this number.
+    private const int RefusedExit = 234;
+
+    private readonly Mock<IStemsplitSourceSelector> _sources = new();
+
+    private IStemsplitSourceSelector RoformerWhereAsked()
+    {
+        _sources
+            .Setup(sources =>
+                sources.ChooseAsync(It.IsAny<RoformerPreset>(), It.IsAny<CancellationToken>())
+            )
+            .ReturnsAsync(
+                (RoformerPreset preset, CancellationToken _) => StemsplitSource.Roformer(preset)
+            );
+        return _sources.Object;
+    }
+
+    [Fact]
+    public async Task SplitStems_OnAMachineThatRunsRoformer_RunsPresetFull_AndSaysSoInTheProducerVersion()
+    {
+        PluginStemSplitResult result = await CreateTools(stemsplitSources: RoformerWhereAsked())
+            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
+
+        result.Refusal.Should().BeNull();
+        ArgumentAfter("-filter_complex")
+            .Should()
+            .Be("[0:a]stemsplit=preset=full:cpu_fallback=0[voc][acc]");
+        _registeredStems
+            .Should()
+            .OnlyContain(stem => stem.ProducerVersion == "roformer-full@9.0-NoMercy-MediaServer");
+        _runCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task SplitStems_ARefusedRoformerRun_RunsAgainWithSpleeter_InTheSameCall_AndIsRemembered()
+    {
+        _scriptedRuns.Enqueue(
+            new(
+                RefusedExit,
+                [
+                    StemsplitLogFixtures.Banner,
+                    StemsplitLogFixtures.ModelLoaded,
+                    StemsplitLogFixtures.MemoryRefusal,
+                ]
+            )
+        );
+        _scriptedRuns.Enqueue(new(0, [VersionLine, StemsplitLogFixtures.SpleeterLoaded]));
+
+        PluginStemSplitResult result = await CreateTools(stemsplitSources: RoformerWhereAsked())
+            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
+
+        result.Refusal.Should().BeNull();
+        result.Stems.Should().HaveCount(2);
+        _argumentsPerRun.Should().HaveCount(2);
+        _argumentsPerRun[0]
+            .Should()
+            .Contain("[0:a]stemsplit=preset=full:cpu_fallback=0[voc][acc]");
+        _argumentsPerRun[1].Should().Contain($"[0:a]stemsplit=model={ModelFile}[voc][acc]");
+        _registeredStems
+            .Should()
+            .OnlyContain(stem =>
+                stem.ProducerVersion == AppFiles.StemsplitModel + "@9.0-NoMercy-MediaServer"
+            );
+        _sources.Verify(
+            sources =>
+                sources.RememberRefusalAsync(
+                    It.Is<IReadOnlyCollection<RoformerPreset>>(presets =>
+                        presets.SequenceEqual(new[] { RoformerPreset.Full })
+                    ),
+                    StemsplitLogFixtures.MemoryRefusal,
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Once
+        );
+
+        // The refused run's empty files are removed before Spleeter writes,
+        // and the stored ones after: both scratch paths, twice.
+        _deletedDerivedPaths.Should().HaveCount(4);
+    }
+
+    [Fact]
+    public async Task SplitStems_ARoformerRunThatFailsForAnotherReason_IsNotRunAgain()
+    {
+        _scriptedRuns.Enqueue(new(1, [StemsplitLogFixtures.Banner, "Conversion failed!"]));
+
+        PluginStemSplitResult result = await CreateTools(stemsplitSources: RoformerWhereAsked())
+            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
+
+        result.Refusal.Should().Be("stemsplit exited with 1");
+        _runCount.Should().Be(1);
+        _sources.Verify(
+            sources =>
+                sources.RememberRefusalAsync(
+                    It.IsAny<IReadOnlyCollection<RoformerPreset>>(),
+                    It.IsAny<string>(),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Never
+        );
+    }
+
+    [Fact]
+    public async Task SplitStems_WithoutASelector_IsSpleeter_AsBefore()
+    {
+        await CreateTools()
+            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
+
+        ArgumentAfter("-filter_complex").Should().Be($"[0:a]stemsplit=model={ModelFile}[voc][acc]");
+    }
+
+    [Fact]
+    public async Task RunFilterGraph_TheVocalSourceToken_BecomesPresetVocalFull()
+    {
+        await CreateTools(stemsplitSources: RoformerWhereAsked())
+            .RunFilterGraphAsync(
+                PluginAudioInput.Track(_trackId.ToString()),
+                new PluginFilterGraph(
+                    "[0:a]stemsplit={stemsVocalSource}:stem=all[v][b];[v][b]amix",
+                    Complex: true
+                ),
+                null,
+                null
+            );
+
+        ArgumentAfter("-filter_complex")
+            .Should()
+            .Be("[0:a]stemsplit=preset=vocal_full:cpu_fallback=0:stem=all[v][b];[v][b]amix");
+        _sources.Verify(
+            sources => sources.ChooseAsync(RoformerPreset.Full, It.IsAny<CancellationToken>()),
+            Times.Never
+        );
+    }
+
+    /// <summary>
+    /// The plugin is meant to see one run: the refused one's lines are held
+    /// back and dropped, the Spleeter run's handed on.
+    /// </summary>
+    [Fact]
+    public async Task RunFilterGraph_ARefusedRoformerRun_RunsAgainWithSpleeter_AndThePluginSeesOneRun()
+    {
+        _scriptedRuns.Enqueue(
+            new(
+                RefusedExit,
+                [
+                    StemsplitLogFixtures.Banner,
+                    StemsplitLogFixtures.ModelLoaded,
+                    StemsplitLogFixtures.NoGpuRefusal,
+                ]
+            )
+        );
+        _scriptedRuns.Enqueue(new(0, [VersionLine, StemsplitLogFixtures.SpleeterLoaded]));
+        List<string> stdErr = [];
+        List<string> stdOut = [];
+
+        PluginAudioRunResult result = await CreateTools(stemsplitSources: RoformerWhereAsked())
+            .RunFilterGraphAsync(
+                PluginAudioInput.Track(_trackId.ToString()),
+                new PluginFilterGraph("[0:a]stemsplit={stemsSource}:stem=all[v][b]", true),
+                stdOut.Add,
+                stdErr.Add
+            );
+
+        result.ExitCode.Should().Be(0);
+        _argumentsPerRun.Should().HaveCount(2);
+        _argumentsPerRun[1].Should().Contain($"[0:a]stemsplit=model={ModelFile}:stem=all[v][b]");
+        stdErr.Should().Equal(VersionLine, StemsplitLogFixtures.SpleeterLoaded);
+        stdOut.Should().Equal(string.Empty);
+        _sources.Verify(
+            sources =>
+                sources.RememberRefusalAsync(
+                    It.IsAny<IReadOnlyCollection<RoformerPreset>>(),
+                    StemsplitLogFixtures.NoGpuRefusal,
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Once
+        );
+    }
+
+    [Fact]
+    public async Task RunFilterGraph_ARoformerRunThatStarted_HandsOnEveryLineInOrder()
+    {
+        string[] lines =
+        [
+            StemsplitLogFixtures.Banner,
+            StemsplitLogFixtures.ModelLoaded,
+            StemsplitLogFixtures.RunsOn,
+            StemsplitLogFixtures.FirstChunk,
+            StemsplitLogFixtures.LastChunk,
+        ];
+        _scriptedRuns.Enqueue(new(0, lines));
+        List<string> stdErr = [];
+
+        await CreateTools(stemsplitSources: RoformerWhereAsked())
+            .RunFilterGraphAsync(
+                PluginAudioInput.Track(_trackId.ToString()),
+                new PluginFilterGraph("[0:a]stemsplit={stemsSource}[v][b]", true),
+                null,
+                stdErr.Add
+            );
+
+        stdErr.Should().Equal(lines);
+        _runCount.Should().Be(1);
+    }
+
+    /// <summary>
+    /// RoFormer puts the GPU backend of the whole process at full precision,
+    /// and whisper on that GPU runs several times slower: a graph that
+    /// transcribes splits with Spleeter.
+    /// </summary>
+    [Fact]
+    public async Task RunFilterGraph_AGraphThatTranscribes_GetsSpleeter_WithoutAskingForRoformer()
+    {
+        await CreateTools(stemsplitSources: RoformerWhereAsked())
+            .RunFilterGraphAsync(
+                PluginAudioInput.Track(_trackId.ToString()),
+                new PluginFilterGraph(
+                    "[0:a]stemsplit={stemsSource}:stem=vocals,aresample=16000,whisper=model={whisperModel}",
+                    true
+                ),
+                null,
+                null
+            );
+
+        ArgumentAfter("-filter_complex")
+            .Should()
+            .StartWith($"[0:a]stemsplit=model={ModelFile}:stem=vocals,");
+        _sources.Verify(
+            sources =>
+                sources.ChooseAsync(It.IsAny<RoformerPreset>(), It.IsAny<CancellationToken>()),
+            Times.Never
+        );
+    }
+
+    [Fact]
+    public async Task RunFilterGraph_TheStemsModelToken_StaysSpleeter_OnARoformerMachine()
+    {
+        await CreateTools(stemsplitSources: RoformerWhereAsked())
+            .RunFilterGraphAsync(
+                PluginAudioInput.Track(_trackId.ToString()),
+                new PluginFilterGraph("[0:a]stemsplit=model={stemsModel}[v][b]", true),
+                null,
+                null
+            );
+
+        ArgumentAfter("-filter_complex").Should().Be($"[0:a]stemsplit=model={ModelFile}[v][b]");
     }
 }

@@ -90,9 +90,12 @@ if (!result.Ran)
 ```
 
 - The literal token `{stemsModel}` is replaced by the host with the
-  stemsplit model's file name before the graph runs — a plugin never learns
+  Spleeter model's file name before the graph runs — a plugin never learns
   the path, and the process runs with the ffmpeg folder as its working
-  directory so a bare file name resolves.
+  directory so a bare file name resolves. `stemsplit={stemsSource}` (ABI
+  12.10) lets the host choose the engine instead: RoFormer where this
+  machine's GPU runs it, Spleeter elsewhere, with the fall back handled by
+  the host; see "Stems with RoFormer" in [lyrics.md](lyrics.md).
 - `Complex: false` runs the text as `-af <text> -f null -`, a single input to
   a single output — fine for a one-filter measurement such as
   `"ebur128=metadata=1"`.
@@ -152,6 +155,12 @@ there is no separate `RegisterStemAsync` call to make for it (that member
 exists for `IPluginMusicAnalysisWriter`'s own callers, described below).
 `stemSet` is `PluginStemSet.Two` today (vocals + accompaniment);
 `PluginStemSet.Four` is reserved and currently refused.
+
+The engine is the server's choice. On a machine whose GPU the stemsplit
+filter takes, the split runs RoFormer's `preset=full`; everywhere else, and
+whenever the filter refuses RoFormer on this machine, it runs Spleeter, in the
+same call. The stems' `ProducerVersion` says which: `roformer-full@…` or
+`spleeter-2stems-f16@…`.
 
 ### `RenderAsync` — keeping the audio a graph produces
 
@@ -474,8 +483,9 @@ Three independent version numbers, each owned by a different thing:
 
 `ProducerVersion` is a free-form string you choose; `SplitStemsAsync` builds
 its own as `"{model name}@{ffmpeg version token}"` (for example
-`spleeter-2stems-f16@9.0-NoMercy-MediaServer`) when it writes stems through
-the built-in path, so use the same shape if you register stems yourself.
+`spleeter-2stems-f16@9.0-NoMercy-MediaServer`, or `roformer-full@…` for a
+RoFormer split) when it writes stems through the built-in path, so use the
+same shape if you register stems yourself.
 
 ## Refusals: what they mean and what to do
 

@@ -47,6 +47,60 @@ public class PluginGraphTokensTests
     }
 
     [Fact]
+    public void The_source_tokens_become_spleeter_unless_the_run_chose_roformer()
+    {
+        const string Graph =
+            "[0:a]stemsplit={stemsSource}:stem=all[v][b];[1:a]stemsplit={stemsVocalSource}:stem=vocals";
+
+        PluginGraphTokens
+            .Resolve(Graph, Folder)
+            .Text.Should()
+            .Be(
+                $"[0:a]stemsplit=model={AppFiles.StemsplitModel}.gguf:stem=all[v][b];[1:a]stemsplit=model={AppFiles.StemsplitModel}.gguf:stem=vocals"
+            );
+
+        PluginGraphTokens
+            .Resolve(
+                Graph,
+                Folder,
+                new StemsplitSources(
+                    StemsplitSource.Roformer(RoformerPreset.Full),
+                    StemsplitSource.Roformer(RoformerPreset.VocalFull)
+                )
+            )
+            .Text.Should()
+            .Be(
+                "[0:a]stemsplit=preset=full:cpu_fallback=0:stem=all[v][b];[1:a]stemsplit=preset=vocal_full:cpu_fallback=0:stem=vocals"
+            );
+    }
+
+    [Fact]
+    public void The_stems_model_token_stays_spleeter_whatever_the_run_chose()
+    {
+        PluginGraphTokens
+            .Resolve(
+                "stemsplit=model={stemsModel}",
+                Folder,
+                new StemsplitSources(
+                    StemsplitSource.Roformer(RoformerPreset.Full),
+                    StemsplitSource.Roformer(RoformerPreset.VocalFull)
+                )
+            )
+            .Text.Should()
+            .Be($"stemsplit=model={AppFiles.StemsplitModel}.gguf");
+    }
+
+    [Theory]
+    [InlineData("stemsplit={stemsSource}", true)]
+    [InlineData("stemsplit={stemsVocalSource}", true)]
+    [InlineData("stemsplit=model={stemsModel}", true)]
+    [InlineData("stemsplit=preset=full", false)]
+    public void A_source_token_needs_the_spleeter_model_as_its_fall_back(string graph, bool needs)
+    {
+        PluginGraphTokens.UsesStemsModel(graph).Should().Be(needs);
+    }
+
+    [Fact]
     public void A_plugin_file_becomes_an_absolute_path_escaped_for_both_filtergraph_levels()
     {
         ResolvedGraphText resolved = PluginGraphTokens.Resolve(
