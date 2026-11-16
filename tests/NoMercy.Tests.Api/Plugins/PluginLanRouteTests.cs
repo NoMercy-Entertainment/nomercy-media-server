@@ -61,7 +61,7 @@ public class PluginLanRouteTests
     public async Task A_device_on_the_lan_reaches_a_route_the_manifest_names()
     {
         await using LanFactory factory = new(WithLanRoutes);
-        (HttpClient client, PluginLanDevice device) = factory.Start();
+        (HttpClient client, PluginLanDeviceMinted device) = factory.Start();
 
         HttpResponseMessage response = await Get(client, Address(device, "hdhr/lineup.json"), Lan);
 
@@ -73,7 +73,7 @@ public class PluginLanRouteTests
     public async Task A_named_value_reaches_the_plugin()
     {
         await using LanFactory factory = new(WithLanRoutes);
-        (HttpClient client, PluginLanDevice device) = factory.Start();
+        (HttpClient client, PluginLanDeviceMinted device) = factory.Start();
 
         HttpResponseMessage response = await Get(client, Address(device, "hdhr/auto/v5.1"), Lan);
 
@@ -84,7 +84,7 @@ public class PluginLanRouteTests
     public async Task The_plugin_sees_the_device_and_its_own_route_never_the_credential_in_the_path()
     {
         await using LanFactory factory = new(WithLanRoutes);
-        (HttpClient client, PluginLanDevice device) = factory.Start();
+        (HttpClient client, PluginLanDeviceMinted device) = factory.Start();
 
         string seen = await (
             await Get(client, Address(device, "hdhr/discover.json?x=1"), Lan)
@@ -112,7 +112,7 @@ public class PluginLanRouteTests
     public async Task The_plugin_cannot_see_a_user_or_a_token_through_a_lan_route()
     {
         await using LanFactory factory = new(WithLanRoutes, signsEveryoneIn: true);
-        (HttpClient client, PluginLanDevice device) = factory.Start();
+        (HttpClient client, PluginLanDeviceMinted device) = factory.Start();
 
         HttpRequestMessage request = new(
             HttpMethod.Get,
@@ -141,8 +141,8 @@ public class PluginLanRouteTests
     public async Task Every_wrong_request_gets_the_refusal_an_outside_caller_gets()
     {
         await using LanFactory factory = new(WithLanRoutes);
-        (HttpClient client, PluginLanDevice device) = factory.Start();
-        PluginLanDevice revoked = factory.Mint("Old box");
+        (HttpClient client, PluginLanDeviceMinted device) = factory.Start();
+        PluginLanDeviceMinted revoked = factory.Mint("Old box");
         factory.Devices.Revoke(LiveTv, revoked.DeviceId);
 
         (HttpStatusCode Status, string Body) outside = await Read(
@@ -249,7 +249,7 @@ public class PluginLanRouteTests
     public async Task An_address_that_steps_anywhere_is_refused(string sent, string routed)
     {
         await using LanFactory factory = new(WithLanRoutes);
-        (HttpClient client, PluginLanDevice device) = factory.Start();
+        (HttpClient client, PluginLanDeviceMinted device) = factory.Start();
         (HttpStatusCode Status, string Body) outside = await Read(
             await Get(client, Address(device, "hdhr/lineup.json"), "203.0.113.10")
         );
@@ -270,7 +270,7 @@ public class PluginLanRouteTests
     public async Task A_plugin_that_names_no_lan_routes_serves_none_and_keeps_its_token()
     {
         await using LanFactory factory = new(new() { Rest = true });
-        (HttpClient client, PluginLanDevice device) = factory.Start();
+        (HttpClient client, PluginLanDeviceMinted device) = factory.Start();
 
         (await Get(client, Address(device, "hdhr/lineup.json"), Lan))
             .StatusCode.Should()
@@ -296,7 +296,7 @@ public class PluginLanRouteTests
     public async Task Revoking_a_device_cuts_the_stream_it_has_open()
     {
         await using LanFactory factory = new(WithLanRoutes);
-        (HttpClient client, PluginLanDevice device) = factory.Start();
+        (HttpClient client, PluginLanDeviceMinted device) = factory.Start();
 
         HttpRequestMessage request = new(HttpMethod.Get, Address(device, "hdhr/stream"));
         request.Headers.Add(PeerHeader, Lan);
@@ -321,7 +321,7 @@ public class PluginLanRouteTests
     public async Task The_device_route_answers_only_a_direct_lan_caller_too()
     {
         await using LanFactory factory = new(WithLanRoutes);
-        (HttpClient client, PluginLanDevice device) = factory.Start();
+        (HttpClient client, PluginLanDeviceMinted device) = factory.Start();
         string address = $"/api/v1/plugins/{LiveTv}/lan/{device.DeviceId}/{device.Credential}";
 
         (await Get(client, address, Lan)).StatusCode.Should().Be(HttpStatusCode.OK);
@@ -346,7 +346,7 @@ public class PluginLanRouteTests
         }
     }
 
-    private static string Address(PluginLanDevice device, string route) =>
+    private static string Address(PluginLanDeviceMinted device, string route) =>
         $"/api/v1/plugins/{LiveTv}/lan/{device.DeviceId}/{device.Credential}/{route}";
 
     private static string Line(string seen, string key) =>
@@ -415,7 +415,7 @@ public class PluginLanRouteTests
             });
         }
 
-        public (HttpClient Client, PluginLanDevice Device) Start()
+        public (HttpClient Client, PluginLanDeviceMinted Device) Start()
         {
             HttpClient client = CreateClient();
             IPluginManager manager = Services.GetRequiredService<IPluginManager>();
@@ -427,7 +427,7 @@ public class PluginLanRouteTests
             return (client, Mint("Living room TV"));
         }
 
-        public PluginLanDevice Mint(string name) => Devices.Mint(LiveTv, name);
+        public PluginLanDeviceMinted Mint(string name) => Devices.Mint(LiveTv, name);
     }
 
     /// <summary>

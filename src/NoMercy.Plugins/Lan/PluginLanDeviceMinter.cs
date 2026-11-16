@@ -23,7 +23,15 @@ namespace NoMercy.PluginSdk.Lan;
 /// A television tuner or an HDHomeRun client cannot hold a bearer token, so
 /// this is the one plugin route that does not carry one. The server mints the
 /// credential, binds it to one device row, and the owner revokes it from the
-/// plugin's page. A plugin never issues one and never sees one.
+/// plugin's page. A plugin never issues one. It does see the credential of a
+/// device it is answering, inside <c>PluginLanCaller.BaseAddress</c>, because
+/// an HDHomeRun client wants absolute addresses back; that address is for the
+/// device and never for a log.
+/// </para>
+/// <para>
+/// The store keeps a hash of the credential, never the credential: the owner
+/// sees it once, when the device is added, from what <see cref="Mint" />
+/// returns.
 /// </para>
 /// </summary>
 /// <param name="tickets">
@@ -52,25 +60,40 @@ public class PluginLanDeviceMinter(
         CancellationTokenSource
     > _revocations = new();
 
-    public PluginLanDevice Mint(Ulid pluginId, string name)
+    public PluginLanDeviceMinted Mint(Ulid pluginId, string name)
     {
-        PluginLanDevice device = new(
+        PluginLanDeviceMinted minted = new(
             pluginId,
             Guid.NewGuid().ToString("N"),
             name,
-            Convert
-                .ToBase64String(RandomNumberGenerator.GetBytes(CredentialBytes))
-                .TrimEnd('=')
-                .Replace('+', '-')
-                .Replace('/', '_'),
-            clock.GetUtcNow(),
-            false
+            Base64Url(RandomNumberGenerator.GetBytes(CredentialBytes)),
+            clock.GetUtcNow()
         );
 
-        store.Add(device);
+        store.Add(
+            new(
+                minted.PluginId,
+                minted.DeviceId,
+                minted.Name,
+                HashOf(minted.Credential),
+                minted.CreatedAt,
+                false
+            )
+        );
 
-        return device;
+        return minted;
     }
+
+    /// <summary>
+    /// What the store keeps for a credential: SHA-256, base64url. Unsalted is
+    /// enough here, because the credential is 32 random bytes rather than
+    /// something a person chose, so there is no list of likely ones to try.
+    /// </summary>
+    public static string HashOf(string credential) =>
+        Base64Url(SHA256.HashData(Encoding.UTF8.GetBytes(credential)));
+
+    private static string Base64Url(byte[] bytes) =>
+        Convert.ToBase64String(bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_');
 
     public PluginLanDevice? Resolve(Ulid pluginId, string deviceId, string credential)
     {
@@ -78,10 +101,11 @@ public class PluginLanDeviceMinter(
             return null;
 
         // Compared in fixed time, because this one is compared against
-        // whatever somebody on the network sends, as often as they like.
+        // whatever somebody on the network sends, as often as they like. Both
+        // sides are hashes, so they are always the same length.
         return CryptographicOperations.FixedTimeEquals(
-            Encoding.UTF8.GetBytes(device.Credential),
-            Encoding.UTF8.GetBytes(credential)
+            Encoding.UTF8.GetBytes(device.CredentialHash),
+            Encoding.UTF8.GetBytes(HashOf(credential))
         )
             ? device
             : null;

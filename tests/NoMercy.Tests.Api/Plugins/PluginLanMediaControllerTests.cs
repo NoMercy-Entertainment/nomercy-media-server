@@ -124,7 +124,7 @@ public class PluginLanMediaControllerTests
     public async Task A_link_from_another_device_of_another_plugin_does_not_play()
     {
         Rig rig = new();
-        PluginLanDevice radioBox = rig.Devices.Mint(Radio, "Kitchen radio");
+        PluginLanDeviceMinted radioBox = rig.Devices.Mint(Radio, "Kitchen radio");
         string ticket = rig.Tickets.MintForDevice(
             Radio,
             radioBox.DeviceId,
@@ -152,7 +152,7 @@ public class PluginLanMediaControllerTests
     public async Task Revoking_one_device_leaves_another_devices_links_playing()
     {
         Rig rig = new();
-        PluginLanDevice bedroom = rig.Devices.Mint(LiveTv, "Bedroom TV");
+        PluginLanDeviceMinted bedroom = rig.Devices.Mint(LiveTv, "Bedroom TV");
         string ticket = rig.MintFor(bedroom);
 
         rig.Devices.Revoke(LiveTv, rig.Device.DeviceId);
@@ -302,11 +302,11 @@ public class PluginLanMediaControllerTests
         public MovableClock Clock { get; }
         public PluginMediaTicketMinter Tickets { get; }
         public PluginLanDeviceMinter Devices { get; }
-        public PluginLanDevice Device { get; }
+        public PluginLanDeviceMinted Device { get; }
         public IPluginManager Plugins { get; }
         public CountingMedia Media { get; } = new();
 
-        public string MintFor(PluginLanDevice device) =>
+        public string MintFor(PluginLanDeviceMinted device) =>
             Tickets.MintForDevice(
                 LiveTv,
                 device.DeviceId,

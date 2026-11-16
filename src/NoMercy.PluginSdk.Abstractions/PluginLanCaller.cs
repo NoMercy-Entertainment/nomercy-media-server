@@ -31,4 +31,12 @@ namespace NoMercy.PluginSdk.Abstractions;
 /// device's credential, so put it only in answers to this device and never in
 /// a log.
 /// </param>
-public sealed record PluginLanCaller(string DeviceId, string Name, Uri BaseAddress);
+public sealed record PluginLanCaller(string DeviceId, string Name, Uri BaseAddress)
+{
+    /// <summary>
+    /// The device without <see cref="BaseAddress" />, which carries its
+    /// credential: a caller logged as a whole must not log the way in with it.
+    /// </summary>
+    public override string ToString() =>
+        $"{nameof(PluginLanCaller)} {{ DeviceId = {DeviceId}, Name = {Name}, BaseAddress = (redacted) }}";
+}

@@ -219,7 +219,7 @@ public class PluginMediaDeviceTicketTests
     {
         PluginMediaTicketMinter tickets = Minter();
         PluginLanDeviceMinter devices = new(new InMemoryStore(), new FixedClock(Noon), tickets);
-        PluginLanDevice device = devices.Mint(LiveTv, "Living room TV");
+        PluginLanDeviceMinted device = devices.Mint(LiveTv, "Living room TV");
         string ticket = tickets.MintForDevice(
             LiveTv,
             device.DeviceId,

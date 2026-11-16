@@ -42,6 +42,7 @@ public static class PluginAbi
     // PluginLanCaller and PluginControllerBase.LanCaller (the device a LAN route answers), a new
     // record and a new protected property. No member changed shape: a link minted through
     // IPluginMediaProxy while a LAN route serves a device is bound to that device.
+    // PluginLanCaller.ToString leaves BaseAddress out, because it carries the credential.
     public static Version Current { get; } = new(12, 10);
 
     /// <summary>
