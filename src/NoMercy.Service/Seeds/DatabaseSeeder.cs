@@ -442,6 +442,13 @@ public static class DatabaseSeeder
         }
     }
 
+    /// <summary>
+    /// Migrates a copy of a database, such as a restore's staged copy, with the
+    /// same repairs as the boot migration but without a pre-migration backup.
+    /// </summary>
+    internal static Task MigrateCopy(DbContext context) =>
+        Migrate(context, preMigrationBackup: null);
+
     private static Task Migrate(DbContext context, IPreMigrationBackup? preMigrationBackup)
     {
         string contextName = context.GetType().Name;

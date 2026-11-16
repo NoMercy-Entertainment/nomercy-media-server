@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.Data.ServerBackups;
+using NoMercy.Service.Seeds;
 
 namespace NoMercy.Service.Configuration;
 
@@ -21,5 +22,8 @@ public static partial class ServiceConfiguration
         services.AddSingleton<ISqliteFileOperations, SqliteFileOperations>();
         services.AddSingleton<IPreMigrationBackup, PreMigrationBackup>();
         services.AddSingleton<IBackupService, BackupService>();
+        services.AddSingleton<IBackupDatabaseSchema, BackupDatabaseSchema>();
+        services.AddSingleton<IBackupSetVerifier, BackupSetVerifier>();
+        services.AddSingleton<IRestoreScheduler, RestoreScheduler>();
     }
 }

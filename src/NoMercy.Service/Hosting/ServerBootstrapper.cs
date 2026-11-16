@@ -27,6 +27,7 @@ using NoMercy.Setup.Server;
 using NoMercy.Setup.Ui;
 using NoMercy.Storage;
 using NoMercyQueue;
+using Serilog.Events;
 
 namespace NoMercy.Service.Hosting;
 
@@ -64,7 +65,8 @@ public sealed class ServerBootstrapper
         options.ApplySettings();
 
         // A restart relaunched this process: the old server still holds the ports.
-        if (!ServerRestartPlan.WaitForPreviousServer())
+        bool previousServerStopped = ServerRestartPlan.WaitForPreviousServer();
+        if (!previousServerStopped)
             Logger.App(
                 $"The previous server did not exit within {ServerRestartPlan.WaitCap.TotalSeconds:0} seconds"
             );
@@ -89,6 +91,17 @@ public sealed class ServerBootstrapper
         // Pre-DI storage pair — used for seed calls that run before the DI
         // container is built. Same pattern as Start.cs Binaries task.
         (IStorage preBootStorage, IStorageDriver preBootBackend) = BootstrapStorageFactory.Create();
+        BackupOptions backupOptions = BackupOptions.ForAppFiles();
+        SqliteFileOperations sqliteFiles = new();
+
+        // A restore asked for before the restart goes in now: nothing has opened a
+        // database yet, and the process that held them has exited.
+        await ApplyPendingRestoreAsync(
+            preBootBackend,
+            sqliteFiles,
+            backupOptions,
+            previousServerStopped
+        );
 
         // Folders, then schema, then Phase 1 — in that order. Phase 1's
         // UserSettings task reads the Configuration table, so on a fresh install
@@ -103,8 +116,8 @@ public sealed class ServerBootstrapper
             preBootStorage,
             new PreMigrationBackup(
                 preBootBackend,
-                new SqliteFileOperations(),
-                BackupOptions.ForAppFiles(),
+                sqliteFiles,
+                backupOptions,
                 TimeProvider.System,
                 new SetupLogger<PreMigrationBackup>()
             )
@@ -373,6 +386,46 @@ public sealed class ServerBootstrapper
                 await retryServerRunner.RunHost(retryHost);
             }
         }
+    }
+
+    /// <summary>
+    /// Applies a pending restore, all or nothing. A restore that cannot finish and
+    /// cannot be undone stops the start: the server never runs on half a backup.
+    /// </summary>
+    private static async Task ApplyPendingRestoreAsync(
+        IStorageDriver storage,
+        ISqliteFileOperations sqlite,
+        BackupOptions options,
+        bool previousServerStopped
+    )
+    {
+        BackupDatabaseSchema schema = new();
+        RestoreApplier applier = new(
+            storage,
+            sqlite,
+            new BackupSetVerifier(storage, sqlite, schema, options),
+            schema,
+            options,
+            TimeProvider.System,
+            new SetupLogger<RestoreApplier>()
+        );
+
+        RestoreResult? result = await applier.ApplyPendingAsync(
+            previousServerStopped,
+            CancellationToken.None
+        );
+        if (result is null)
+            return;
+
+        if (result.Status == RestoreStatus.RollbackIncomplete)
+            throw new StartupAbortException($"A restore could not be undone. {result.Message}");
+
+        Logger.Setup(
+            $"Restore of backup {result.BackupId}: {result.Status}. {result.Message}",
+            result.Status == RestoreStatus.Applied
+                ? LogEventLevel.Information
+                : LogEventLevel.Warning
+        );
     }
 
     internal static async Task RestorePortRetryStateAsync(IServiceProvider services)

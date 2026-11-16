@@ -201,7 +201,10 @@ public sealed class BackupService(
     {
         try
         {
-            foreach (string id in ListSetIds().Skip(Math.Max(options.RetainCount, 1)))
+            // The set a waiting restore needs is never pruned, even when it is old.
+            string? protectedId = PendingRestoreTarget();
+            List<string> prunable = ListSetIds().Where(id => id != protectedId).ToList();
+            foreach (string id in prunable.Skip(Math.Max(options.RetainCount, 1)))
             {
                 storage.DeleteDirectory(Path.Combine(options.SetsRoot, id), recursive: true);
                 logger.LogInformation("Pruned old backup {BackupId}", id);
@@ -222,6 +225,16 @@ public sealed class BackupService(
         {
             logger.LogWarning("Backup pruning failed: {Reason}", exception.Message);
         }
+    }
+
+    private string? PendingRestoreTarget()
+    {
+        if (!storage.FileExists(options.PendingRestorePath))
+            return null;
+
+        using Stream stream = storage.OpenRead(options.PendingRestorePath);
+        using StreamReader reader = new(stream);
+        return BackupFiles.Deserialize<PendingRestore>(reader.ReadToEnd())?.BackupId;
     }
 
     private void TryDeleteDirectory(string path)
