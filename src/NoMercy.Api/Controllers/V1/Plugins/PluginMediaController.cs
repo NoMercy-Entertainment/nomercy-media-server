@@ -122,6 +122,11 @@ public class PluginMediaController(
         HttpContext.User = new(new ClaimsIdentity());
         HttpContext.Features.Set(new PluginLanDispatch(id, device.DeviceId, device.Name));
 
+        // Never kept by a cache: a stored answer would be served again without
+        // the network check, the ticket or a revocation being looked at.
+        PluginLanNoStore.Install(HttpContext);
+        PluginLanNoStore.Seal(Response);
+
         return await ServeAsync(id, read, ct);
     }
 

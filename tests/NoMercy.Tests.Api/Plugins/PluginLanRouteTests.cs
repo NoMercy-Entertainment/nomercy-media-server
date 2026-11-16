@@ -266,6 +266,66 @@ public class PluginLanRouteTests
         (await new StreamReader(context.Response.Body).ReadToEndAsync()).Should().Be(outside.Body);
     }
 
+    /// <summary>
+    /// The control for the test below: the server's response cache is live in
+    /// this host, and keeps an answer a plugin marks public on an open route.
+    /// </summary>
+    [Fact]
+    public async Task The_servers_response_cache_keeps_a_public_answer_on_an_open_route()
+    {
+        await using LanFactory factory = new(
+            new()
+            {
+                Rest = true,
+                RestAnonymous = true,
+                Lan = new() { Routes = ["hdhr/lineup_status.json"] },
+            }
+        );
+        (HttpClient client, _) = factory.Start();
+        string open = $"/api/v1/plugins/{LiveTv}/hdhr/lineup_status.json";
+
+        string first = await (await Get(client, open, Lan)).Content.ReadAsStringAsync();
+        string second = await (await Get(client, open, Lan)).Content.ReadAsStringAsync();
+
+        second.Should().Be(first, "the cache answered the second request");
+    }
+
+    /// <summary>
+    /// The server's response cache runs before routing and keys by the
+    /// address, which holds the credential here. A LAN answer it kept would
+    /// be served again with no network check, no credential check and no
+    /// revocation, so no LAN answer is ever kept, whatever the plugin says.
+    /// </summary>
+    [Fact]
+    public async Task A_lan_answer_is_never_kept_by_a_cache_whatever_the_plugin_says()
+    {
+        await using LanFactory factory = new(
+            new()
+            {
+                Rest = true,
+                RestAnonymous = true,
+                Lan = new() { Routes = ["hdhr/lineup_status.json"] },
+            }
+        );
+        (HttpClient client, PluginLanDeviceMinted device) = factory.Start();
+        string address = Address(device, "hdhr/lineup_status.json");
+
+        HttpResponseMessage first = await Get(client, address, Lan);
+        HttpResponseMessage second = await Get(client, address, Lan);
+
+        first.Headers.CacheControl!.NoStore.Should().BeTrue();
+        first.Headers.CacheControl.Public.Should().BeFalse();
+        (await second.Content.ReadAsStringAsync())
+            .Should()
+            .NotBe(await first.Content.ReadAsStringAsync(), "each answer came from the plugin");
+
+        factory.Devices.Revoke(LiveTv, device.DeviceId);
+
+        (await Get(client, address, Lan))
+            .StatusCode.Should()
+            .Be(HttpStatusCode.Forbidden, "nothing kept answers for a revoked device");
+    }
+
     [Fact]
     public async Task A_plugin_that_names_no_lan_routes_serves_none_and_keeps_its_token()
     {

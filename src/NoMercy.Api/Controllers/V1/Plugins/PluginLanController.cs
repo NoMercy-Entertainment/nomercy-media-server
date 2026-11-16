@@ -140,6 +140,10 @@ public class PluginLanController(
                 .Register(static state => ((HttpContext)state!).Abort(), HttpContext)
         );
 
+        // Before the plugin runs, so nothing it writes can make the server's
+        // response cache keep an answer keyed by this credential.
+        PluginLanNoStore.Install(HttpContext);
+
         PluginLanRequest.Prepare(
             HttpContext,
             new(id, device.DeviceId, device.Name),

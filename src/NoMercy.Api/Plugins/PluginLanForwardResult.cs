@@ -27,7 +27,7 @@ namespace NoMercy.Api.Plugins;
 /// </summary>
 public sealed class PluginLanForwardResult(PluginLanTarget target, string version) : IActionResult
 {
-    public Task ExecuteResultAsync(ActionContext context)
+    public async Task ExecuteResultAsync(ActionContext context)
     {
         HttpContext http = context.HttpContext;
         RouteEndpoint endpoint = target.Endpoint;
@@ -51,6 +51,9 @@ public sealed class PluginLanForwardResult(PluginLanTarget target, string versio
                 $"The plugin endpoint {endpoint.DisplayName} has nothing to run."
             );
 
-        return action(http);
+        await action(http);
+
+        // An action that wrote no body never reached the stamping stream.
+        PluginLanNoStore.Seal(http.Response);
     }
 }

@@ -59,6 +59,20 @@ public class LanSamplePluginController : PluginControllerBase
     [HttpGet("hdhr/auto/{channel}")]
     public IActionResult Tune(string channel) => Content($"channel={channel}");
 
+    private static int _served;
+
+    /// <summary>
+    /// An answer the plugin marks as cacheable for ten minutes, numbered so a
+    /// test can tell a fresh answer from one the server's cache kept.
+    /// </summary>
+    [HttpGet("hdhr/lineup_status.json")]
+    public IActionResult Status()
+    {
+        Response.Headers.CacheControl = "public, max-age=600";
+
+        return Content($"served={Interlocked.Increment(ref _served)}");
+    }
+
     [HttpGet("hdhr/lineup.json")]
     public IActionResult Lineup() => Content("lineup");
 

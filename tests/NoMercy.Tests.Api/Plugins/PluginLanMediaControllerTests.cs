@@ -57,6 +57,17 @@ public class PluginLanMediaControllerTests
         result.Should().BeOfType<FileStreamResult>();
     }
 
+    [Fact]
+    public async Task A_device_link_is_never_kept_by_a_cache()
+    {
+        Rig rig = new();
+        PluginMediaController controller = rig.Controller(Lan);
+
+        await controller.LanMedia(LiveTv, rig.MintFor(rig.Device), default);
+
+        controller.Response.Headers.CacheControl.ToString().Should().Be("no-store");
+    }
+
     /// <summary>
     /// While a device plays a playlist, the proxy is asked for its children,
     /// so the request reads as that device and as nobody signed in.
