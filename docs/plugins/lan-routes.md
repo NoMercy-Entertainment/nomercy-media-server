@@ -1,0 +1,178 @@
+# Serving devices on the owner's network (LAN routes)
+
+How a plugin answers software on the owner's network that cannot sign in,
+such as an HDHomeRun client in Plex, Jellyfin or Channels DVR, without
+opening the rest of the plugin. The owner adds the device on the plugin's
+page, the server mints a credential for it, and the device reaches only the
+`GET` routes the plugin's manifest names, only from the owner's own network.
+
+Everything here is ABI 12.10 or later (see `PluginAbi.Current`). It is all
+additive: a plugin that declares no LAN routes behaves exactly as before, and
+a plugin built against 12.0 to 12.9 keeps loading. A plugin that uses
+`PluginControllerBase.LanCaller` or `PluginLanCaller` declares
+`"targetAbi": "12.10"`.
+
+## Declaring the routes
+
+```json
+{
+  "capabilities": {
+    "rest": true,
+    "lan": {
+      "routes": [
+        "hdhr/discover.json",
+        "hdhr/lineup.json",
+        "hdhr/lineup_status.json",
+        "hdhr/auto/{channel}"
+      ]
+    }
+  }
+}
+```
+
+Each entry is a route template relative to the plugin's own prefix, written
+exactly as the plugin's controller writes it, and the plugin must have one
+`[HttpGet]` action with that template. The rules (`PluginLanRoutes`) are
+narrow on purpose:
+
+| rule | why |
+|---|---|
+| `rest` must be on | a LAN route is one of the plugin's own REST actions |
+| at most 16 routes, no duplicates | a tuner needs a handful; more is a plugin opening a surface |
+| a segment is plain text of letters, digits and `. _ ~ -`, or one value written `{name}` | no catch-all, no optional part, no constraint, no encoded character, no `.` or `..` |
+| no leading, trailing or double slash | the route is relative to the plugin's prefix and cannot leave it |
+
+The server refuses to load a manifest with a route it cannot serve, and
+`nomercy-plugin verify` refuses the same manifest before upload. A new LAN
+route is a widening: the owner is asked again before it is served, exactly as
+for a new hook or host.
+
+## What the device calls
+
+The owner adds a device on the plugin's page (`POST
+/api/v1/dashboard/plugins/{id}/lan-devices`) and gets its address once:
+
+```
+/api/v1/plugins/{pluginId}/lan/{deviceId}/{credential}
+```
+
+The device then asks for a route under that address:
+
+```
+GET /api/v1/plugins/{pluginId}/lan/{deviceId}/{credential}/hdhr/discover.json
+```
+
+The server checks, in this order, and refuses with one and the same `403`
+(`PLUGIN_LAN_CREDENTIAL_INVALID`) whichever check fails, so a caller never learns
+which part was wrong:
+
+1. The device connected to the server itself, from a private address (RFC
+   1918, link-local, CGNAT, IPv6 unique-local or link-local), with no relay in
+   between. Loopback is refused, and so is any request that carries a
+   forwarding header (`X-Forwarded-*`, `Forwarded`, `X-Real-IP`, `Via`,
+   `CF-*`): that is where tunnels and reverse proxies deliver callers from
+   anywhere. Point the device at the server's LAN address, not `localhost`.
+2. The credential belongs to this device on this plugin and was not revoked
+   (compared in fixed time).
+3. The method is `GET`.
+4. The address as sent is plain: no percent-encoding, no empty or dot
+   segment. The path the server routed is checked as well.
+5. The plugin is running, serves REST and names LAN routes.
+6. The path matches exactly one route the manifest names, and the plugin has
+   exactly one `GET` action with that template in its own assembly.
+
+The action then runs through the server's MVC like any plugin route, with the
+same filters. Only the sign-in step is replaced by the checks above.
+
+## What the handler sees
+
+```csharp
+[HttpGet("hdhr/discover.json")]
+public IActionResult Discover()
+{
+    if (LanCaller is not { } device)
+        return NotFound();
+
+    return Ok(new
+    {
+        FriendlyName = "NoMercy Live TV",
+        DeviceID = device.DeviceId,
+        BaseURL = device.BaseAddress.ToString().TrimEnd('/') + "/hdhr",
+        LineupURL = new Uri(device.BaseAddress, "hdhr/lineup.json").ToString(),
+    });
+}
+```
+
+| what | on a LAN request |
+|---|---|
+| `LanCaller` (`PluginLanCaller`) | the device: `DeviceId`, the `Name` the owner gave it, and `BaseAddress`, the absolute address its LAN routes live under |
+| `Caller` | refuses: there is no user |
+| `User` | nobody: an unauthenticated principal, and no authentication result |
+| `Authorization`, `Cookie`, `Proxy-Authorization`, `X-Api-Key` headers | removed |
+| `token` and `access_token` query parameters | removed; other parameters stay |
+| `Request.Path` | the plugin's own route, `/api/v1/plugins/{id}/hdhr/discover.json`; the credential is not in it |
+| `IPluginCallerAccessor.CurrentUserId` | `Guid.Empty` |
+
+`LanCaller` is null on every other request, so one action can serve both a
+signed-in user and a device when the route is also used by the app.
+
+`BaseAddress` carries the device's credential. Put it only in answers to this
+device (HDHomeRun clients want absolute addresses in `discover.json` and the
+lineup) and never in a log.
+
+## Stream links for a device
+
+While serving a LAN request, `context.Media.Proxy.MintAsync`,
+`MintImageAsync` and `MintFileAsync` mint a link bound to the device instead
+of a user. Nothing changes in the plugin's code:
+
+```csharp
+PluginMediaUrl url = await context.Media.Proxy.MintAsync(
+    new() { Links = [new() { Url = channel.StreamUrl }] },
+    ct
+);
+
+string lineupUrl = new Uri(LanCaller!.BaseAddress, url.Url.ToString()).ToString();
+```
+
+The minted address is `/api/v1/plugins/{id}/lan-media/{ticket}`; make it
+absolute from `BaseAddress` (it is an absolute path, so only the scheme and
+host are taken). A device-bound ticket:
+
+- plays only from the owner's network, under the same check as the routes,
+  and only while the plugin is running and still names LAN routes;
+- is bound to that device and that plugin, and is refused on the user media
+  route, just as a user's ticket is refused on this one;
+- follows the user-ticket lifetime (#603): it must be played within 15
+  minutes of minting, stays good while it keeps being played (2 minutes idle
+  timeout), and never outlives 24 hours;
+- stops the moment the owner revokes the device: the next request is
+  refused, every ticket minted for the device is forgotten, and a stream the
+  device has open is cut;
+- mints its playlist children for the same device.
+
+Because a ticket must be played within 15 minutes, a lineup that a client
+caches for hours should not hold tickets. Point the lineup at a LAN route of
+your own instead, such as `hdhr/auto/{channel}`, and have that action mint a
+fresh link and redirect to it:
+
+```csharp
+[HttpGet("hdhr/auto/{channel}")]
+public async Task<IActionResult> Tune(string channel, CancellationToken ct)
+{
+    PluginMediaUrl url = await context.Media.Proxy.MintAsync(RequestFor(channel), ct);
+
+    return Redirect(new Uri(LanCaller!.BaseAddress, url.Url.ToString()).ToString());
+}
+```
+
+## Security model, in short
+
+- Every request is tied to a device the owner created and can revoke; nothing
+  is opened to the LAN at large, and nothing answers outside the house.
+- Only routes the owner consented to in the manifest are reachable, only with
+  `GET`, and only the plugin's own actions.
+- The plugin never sees a user or a user's token through a LAN request, and a
+  device-bound link cannot play a user's media or another plugin's.
+- A plugin with no `capabilities.lan` serves nothing here; its other routes
+  keep asking for a token as before.
