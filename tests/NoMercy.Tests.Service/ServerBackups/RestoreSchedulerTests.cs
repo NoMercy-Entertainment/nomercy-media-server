@@ -191,4 +191,24 @@ public sealed class RestoreSchedulerTests : IDisposable
         result!.Status.Should().Be(RestoreStatus.RolledBack);
         File.ReadAllText(_options.LastRestorePath).Should().Contain("\"RolledBack\"");
     }
+
+    [Fact]
+    public async Task ASetWithADamagedDatabase_IsRefusedUpFront_BeforeAnySafetyBackup()
+    {
+        string id = (await _backups.CreateAsync("target", CancellationToken.None)).Id;
+        string manifestPath = Path.Combine(_options.SetsRoot, id, BackupManifest.FileName);
+        BackupManifest manifest = BackupFiles.Deserialize<BackupManifest>(
+            File.ReadAllText(manifestPath)
+        )!;
+        manifest.Databases[0].Damaged = true;
+        manifest.Databases[0].Damage = "*** in database main *** Page 2: damaged";
+        File.WriteAllText(manifestPath, BackupFiles.Serialize(manifest));
+
+        RestoreScheduleResult result = await _scheduler.ScheduleAsync(id, CancellationToken.None);
+
+        result.Status.Should().Be(RestoreScheduleStatus.Invalid);
+        result.Problems.Should().Contain(problem => problem.Contains("marked damaged"));
+        File.Exists(_options.PendingRestorePath).Should().BeFalse();
+        (await _backups.ListAsync(CancellationToken.None)).Select(set => set.Id).Should().Equal(id);
+    }
 }

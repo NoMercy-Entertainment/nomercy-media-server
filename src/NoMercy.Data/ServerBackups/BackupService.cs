@@ -182,7 +182,21 @@ public sealed class BackupService(
         {
             HashSet<string> kept = await ProtectedSetIdsAsync(cancellationToken);
             List<string> prunable = ListSetIds().Where(id => !kept.Contains(id)).ToList();
-            foreach (string id in prunable.Skip(Math.Max(options.RetainCount, 1)))
+
+            // A set with a damaged database cannot be restored, so it must not take
+            // a good set's place: damaged and good sets each keep their own newest
+            // RetainCount, and a damaged one is only ever pruned in favour of another.
+            HashSet<string> damaged = [];
+            foreach (string id in prunable)
+                if (await HasDamagedDatabaseAsync(id, cancellationToken))
+                    damaged.Add(id);
+
+            int retain = Math.Max(options.RetainCount, 1);
+            IEnumerable<string> pruned = prunable
+                .Where(id => !damaged.Contains(id))
+                .Skip(retain)
+                .Concat(prunable.Where(damaged.Contains).Skip(retain));
+            foreach (string id in pruned.ToList())
             {
                 storage.DeleteDirectory(Path.Combine(options.SetsRoot, id), recursive: true);
                 logger.LogInformation("Pruned old backup {BackupId}", id);
@@ -204,6 +218,14 @@ public sealed class BackupService(
             logger.LogWarning("Backup pruning failed: {Reason}", exception.Message);
         }
     }
+
+    private async Task<bool> HasDamagedDatabaseAsync(
+        string id,
+        CancellationToken cancellationToken
+    ) =>
+        (await ReadManifestAsync(id, cancellationToken))?.Databases.Any(database =>
+            database.Damaged
+        ) == true;
 
     /// <summary>
     /// The last restore's result, or null. A result that cannot be read (empty,

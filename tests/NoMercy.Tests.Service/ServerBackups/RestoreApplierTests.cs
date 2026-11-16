@@ -1111,4 +1111,73 @@ public sealed class RestoreApplierTests : IDisposable
         File.GetUnixFileMode(settings).Should().Be(groupReadableFile);
         File.GetUnixFileMode(_folder.DatabasePath("media")).Should().Be(worldReadableFile);
     }
+
+    // ── a stale commit record ────────────────────────────────────────────────
+
+    private string CommitRecord => Path.Combine(_options.RestoreWorkRoot, RestoreCommit.FileName);
+
+    [Fact]
+    public async Task ARollback_RemovesTheCommitRecord_EvenWhenTheWorkFolderCannotBeDeleted()
+    {
+        string id = await BackUpThenChangeServerAsync();
+        await RequestRestoreAsync(id);
+        Dictionary<string, byte[]> before = LiveState();
+        int journalDeletes = 0;
+        FaultyStorageDriver storage = new()
+        {
+            FailDelete = path =>
+                path.EndsWith(RestoreJournal.FileName, StringComparison.Ordinal)
+                && journalDeletes++ == 0,
+            FailDeleteDirectory = path =>
+                path.Equals(_options.RestoreWorkRoot, StringComparison.OrdinalIgnoreCase),
+        };
+
+        RestoreResult result = await ApplyAsync(storage);
+
+        result.Status.Should().Be(RestoreStatus.RolledBack, result.Message);
+        LiveState().Should().BeEquivalentTo(before);
+        Directory.Exists(_options.RestoreWorkRoot).Should().BeTrue("its delete was made to fail");
+        File.Exists(CommitRecord).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// Two faults: the commit point fails (so the restore is rolled back) and
+    /// neither the commit record nor the work folder can be deleted. The record
+    /// left behind must not make any later start claim the restore was applied.
+    /// </summary>
+    [Fact]
+    public async Task AStaleCommitRecordAfterARollback_NeverReportsTheRestoreAsApplied()
+    {
+        string id = await BackUpThenChangeServerAsync();
+        await RequestRestoreAsync(id);
+        Dictionary<string, byte[]> before = LiveState();
+        int journalDeletes = 0;
+        FaultyStorageDriver storage = new()
+        {
+            FailDelete = path =>
+                (
+                    path.EndsWith(RestoreJournal.FileName, StringComparison.Ordinal)
+                    && journalDeletes++ == 0
+                ) || path.EndsWith(RestoreCommit.FileName, StringComparison.Ordinal),
+            FailDeleteDirectory = path =>
+                path.Equals(_options.RestoreWorkRoot, StringComparison.OrdinalIgnoreCase),
+        };
+
+        RestoreResult first = await ApplyAsync(storage);
+
+        first.Status.Should().Be(RestoreStatus.RolledBack, first.Message);
+        File.Exists(CommitRecord).Should().BeTrue("its delete was made to fail");
+
+        for (int start = 0; start < 2; start++)
+        {
+            RestoreResult? later = await CreateApplier(new LocalStorageDriver(), CurrentSchema())
+                .ApplyPendingAsync(holdBackReason: null, CancellationToken.None);
+
+            later.Should().BeNull();
+            LastResultOnDisk()!.Status.Should().Be(RestoreStatus.RolledBack);
+        }
+
+        LiveState().Should().BeEquivalentTo(before);
+        AssertNothingLeftBehind();
+    }
 }

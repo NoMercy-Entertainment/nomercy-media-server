@@ -479,6 +479,18 @@ public sealed class RestoreApplier(
             return null;
         }
 
+        // No saved set and nothing to save: a restore that was rolled back (its
+        // record outlived a failed clean-up) or one already cleared. Nothing to
+        // report; just clear the work folder.
+        if (commit.PreRestoreBackupId is null && !HasFiles(PreviousRoot))
+        {
+            logger.LogWarning(
+                "A stale restore commit record was found with nothing to save; it is removed"
+            );
+            DeleteWorkFolder();
+            return null;
+        }
+
         RestoreResult result;
         if (commit.PreRestoreBackupId is not null)
         {
@@ -777,6 +789,11 @@ public sealed class RestoreApplier(
         }
 
         TryDeleteFile(JournalPath);
+
+        // A commit record written just before the failure is void now. Gone with
+        // the journal, a folder delete that fails below cannot leave it behind to
+        // claim the restore was applied at every later start.
+        TryDeleteFile(CommitPath);
         ClearWorkFolder();
         return Result(
             journal.BackupId,
