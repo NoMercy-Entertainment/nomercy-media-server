@@ -62,7 +62,8 @@ public sealed class PluginAudioTools(
     string? dataFolderPath = null,
     PluginQuotaMeter? quotas = null,
     ILyricsAlignModelInstaller? alignModelInstaller = null,
-    IStemsplitSourceSelector? stemsplitSources = null
+    IStemsplitSourceSelector? stemsplitSources = null,
+    IRoformerGpuSlot? roformerGpuSlot = null
 ) : IPluginAudioTools
 {
     /// <summary>
@@ -149,6 +150,10 @@ public sealed class PluginAudioTools(
     // Without one, every split is Spleeter, as it was before RoFormer.
     private readonly IStemsplitSourceSelector _stemsplitSources =
         stemsplitSources ?? SpleeterOnlySourceSelector.Instance;
+
+    // The host passes the one slot every plugin shares; a slot of this
+    // instance's own only keeps its own runs apart.
+    private readonly IRoformerGpuSlot _roformerGpuSlot = roformerGpuSlot ?? new RoformerGpuSlot();
 
     private readonly ILogger<PluginAudioTools> _logger =
         logger ?? NullLogger<PluginAudioTools>.Instance;
@@ -325,6 +330,9 @@ public sealed class PluginAudioTools(
             );
         }
 
+        // Taken before any clock starts: waiting for another run's split is
+        // not this run being slow.
+        using IDisposable gpu = await TakeTheGpuAsync(ct);
         using StemsplitProgressWatch progress = new(RoformerNoChunkLimit, Clock);
         using CancellationTokenSource afterTheSplit = new(Timeout.InfiniteTimeSpan, Clock);
         using CancellationTokenSource endRun = CancellationTokenSource.CreateLinkedTokenSource(
@@ -359,6 +367,24 @@ public sealed class PluginAudioTools(
         }
 
         return new(result, result is null && progress.HasStalled);
+    }
+
+    /// <summary>
+    /// Waits for the GPU's one place for a RoFormer run; see
+    /// <see cref="IRoformerGpuSlot" />.
+    /// </summary>
+    private async Task<IDisposable> TakeTheGpuAsync(CancellationToken ct)
+    {
+        Task<IDisposable> slot = _roformerGpuSlot.AcquireAsync(ct);
+        if (!slot.IsCompleted)
+        {
+            _logger.LogInformation(
+                "plugin {PluginId}: another RoFormer split holds the GPU; waiting for it to finish",
+                pluginId
+            );
+        }
+
+        return await slot;
     }
 
     private void LogEnded(StemsplitProgressWatch progress, TimeSpan limit)
@@ -632,6 +658,8 @@ public sealed class PluginAudioTools(
         CancellationToken ct
     )
     {
+        using IDisposable? gpu = roformer ? await TakeTheGpuAsync(ct) : null;
+
         // Every reason this run can be ended for goes through one token,
         // the caller's own cancellation included: whatever ends it, the
         // process has to be gone before its files are removed.

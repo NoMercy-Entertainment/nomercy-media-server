@@ -370,7 +370,8 @@ public class PluginAudioToolsTests : IDisposable
         TimeSpan? exitGracePeriod = null,
         ILyricsAlignModelInstaller? alignModelInstaller = null,
         IStemsplitSourceSelector? stemsplitSources = null,
-        TimeSpan? roformerNoChunkLimit = null
+        TimeSpan? roformerNoChunkLimit = null,
+        IRoformerGpuSlot? roformerGpuSlot = null
     )
     {
         Mock<IDbContextFactory<MediaContext>> contextFactory = new();
@@ -391,7 +392,8 @@ public class PluginAudioToolsTests : IDisposable
             _probe.Object,
             dataFolderPath: Path.Combine(Path.GetTempPath(), "nm-plugin-data"),
             alignModelInstaller: alignModelInstaller,
-            stemsplitSources: stemsplitSources
+            stemsplitSources: stemsplitSources,
+            roformerGpuSlot: roformerGpuSlot
         )
         {
             RunTimeout = runTimeout ?? TimeSpan.FromMinutes(10),
@@ -2110,5 +2112,125 @@ public class PluginAudioToolsTests : IDisposable
 
         result.Refusal.Should().BeNull();
         result.Stems.Should().HaveCount(2);
+    }
+
+    // --- RoFormer: one run on the GPU at a time (#637) ----------------------
+
+    /// <summary>
+    /// ffmpeg whose first run blocks until <paramref name="firstRun" />
+    /// completes, counting how many runs it has going at once.
+    /// </summary>
+    private void FfmpegHoldingItsFirstRun(Task firstRun, Action<int> started, Action<int> atOnce)
+    {
+        int count = 0;
+        int running = 0;
+
+        _runner
+            .Setup(runner =>
+                runner.RunAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<string[]>(),
+                    It.IsAny<Action<string>?>(),
+                    It.IsAny<Action<string>?>(),
+                    It.IsAny<string?>(),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<Action<int>?>()
+                )
+            )
+            .Returns(
+                async (
+                    string _,
+                    string[] _,
+                    Action<string>? _,
+                    Action<string>? _,
+                    string? _,
+                    CancellationToken _,
+                    CancellationToken _,
+                    Action<int>? _
+                ) =>
+                {
+                    int number = Interlocked.Increment(ref count);
+                    atOnce(Interlocked.Increment(ref running));
+                    started(number);
+
+                    if (number == 1)
+                        await firstRun;
+
+                    Interlocked.Decrement(ref running);
+                    return new ProcessResult(0, string.Empty, string.Empty, TimeSpan.Zero);
+                }
+            );
+    }
+
+    [Fact]
+    public async Task TwoPlugins_NeverRunRoformerOnTheGpuAtTheSameTime()
+    {
+        TaskCompletionSource firstRun = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int started = 0;
+        int mostAtOnce = 0;
+        FfmpegHoldingItsFirstRun(
+            firstRun.Task,
+            number => started = number,
+            running => mostAtOnce = Math.Max(mostAtOnce, running)
+        );
+        RoformerGpuSlot slot = new();
+
+        Task<PluginStemSplitResult> stemsJob = CreateTools(
+                stemsplitSources: RoformerWhereAsked(),
+                roformerGpuSlot: slot
+            )
+            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
+        await WaitForAsync(() => started == 1, "the stems job's split to start");
+
+        Task<PluginAudioRunResult> otherPlugin = CreateTools(
+                stemsplitSources: RoformerWhereAsked(),
+                roformerGpuSlot: slot
+            )
+            .RunFilterGraphAsync(
+                PluginAudioInput.Track(_trackId.ToString()),
+                new PluginFilterGraph("[0:a]stemsplit={stemsVocalSource}:stem=all[v][b]", true),
+                null,
+                null
+            );
+        await Task.Delay(100);
+
+        started.Should().Be(1, "the second RoFormer run waits for the GPU");
+
+        firstRun.SetResult();
+        (await stemsJob).Refusal.Should().BeNull();
+        (await otherPlugin).ExitCode.Should().Be(0);
+        started.Should().Be(2);
+        mostAtOnce.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task ASpleeterRun_DoesNotWaitForTheGpu()
+    {
+        TaskCompletionSource firstRun = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        int started = 0;
+        FfmpegHoldingItsFirstRun(firstRun.Task, number => started = number, _ => { });
+        RoformerGpuSlot slot = new();
+
+        Task<PluginStemSplitResult> stemsJob = CreateTools(
+                stemsplitSources: RoformerWhereAsked(),
+                roformerGpuSlot: slot
+            )
+            .SplitStemsAsync(_trackId.ToString(), PluginStemCoverage.Full, PluginStemSet.Two);
+        await WaitForAsync(() => started == 1, "the stems job's split to start");
+
+        PluginAudioRunResult spleeter = await CreateTools(roformerGpuSlot: slot)
+            .RunFilterGraphAsync(
+                PluginAudioInput.Track(_trackId.ToString()),
+                new PluginFilterGraph("[0:a]stemsplit=model={stemsModel}[v][b]", true),
+                null,
+                null
+            );
+
+        spleeter.ExitCode.Should().Be(0);
+        started.Should().Be(2);
+
+        firstRun.SetResult();
+        await stemsJob;
     }
 }

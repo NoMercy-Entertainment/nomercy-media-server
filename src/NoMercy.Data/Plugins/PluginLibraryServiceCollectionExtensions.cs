@@ -62,6 +62,8 @@ public static class PluginLibraryServiceCollectionExtensions
         // RoFormer or Spleeter, and the filter's refusal remembered, once for
         // the whole machine rather than per plugin (#637).
         services.AddSingleton<IStemsplitSourceSelector, StemsplitSourceSelector>();
+        // One RoFormer run on the GPU at a time, across every plugin.
+        services.AddSingleton<IRoformerGpuSlot, RoformerGpuSlot>();
         services.AddSingleton<IPluginDerivedAudio, PluginDerivedAudio>();
         services.AddSingleton<
             IPluginMusicAnalysisWriterFactory,

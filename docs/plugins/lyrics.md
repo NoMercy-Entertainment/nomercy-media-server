@@ -228,6 +228,8 @@ after `stemsplit=` and put your own options (`stem=`, …) after it.
   for the rest of the run, counted from that moment. So `3 × the track + 5
   minutes` is fine to keep; it no longer cuts off a slow card. See "A RoFormer
   stem split" in [music-analysis.md](music-analysis.md).
+- **One at a time on the GPU.** A RoFormer run waits while another one, of
+  any plugin or of the server's own stems job, holds the GPU.
 
 ## Aligning a text the server already has
 

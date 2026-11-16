@@ -297,6 +297,12 @@ follows those:
 The chunk lines are at ffmpeg's default log level, `info`; a graph run with a
 quieter `-loglevel` cannot be followed this way, so do not lower it.
 
+One RoFormer run holds the GPU at a time, across every plugin and the stems
+job: the four models of `preset=full` take 5.4 GB on an RTX 3070, so two runs
+do not fit on most cards. A second run waits for the first to finish before
+its ffmpeg starts, and the wait does not count against its limits. Spleeter
+runs never wait.
+
 ## `IPluginDerivedAudio` — the derived-audio store
 
 A content-addressed store for files nothing in a library owns — stems,
