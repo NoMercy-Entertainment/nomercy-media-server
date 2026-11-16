@@ -11,6 +11,7 @@
 
 using System.Net;
 using System.Text;
+using System.Text.Json;
 using NoMercy.Tests.Api.Infrastructure;
 using Xunit;
 
@@ -74,5 +75,66 @@ public class AdminRouteNonAdminRefusalTests : IClassFixture<NoMercyApiFactory>
         HttpResponseMessage response = await owner.SendAsync(Request("POST", url, body));
 
         Assert.Equal(expected, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Owner_ReadsTheServerSetup()
+    {
+        HttpClient owner = _factory.CreateClient().AsAuthenticated();
+
+        HttpResponseMessage response = await owner.GetAsync("/api/v1/dashboard/server/setup");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Owner_CreatesALibrary()
+    {
+        HttpClient owner = _factory.CreateClient().AsAuthenticated();
+
+        HttpResponseMessage response = await owner.PostAsync("/api/v1/dashboard/libraries", null);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    /// <summary>An unknown user id: past the gate to the lookup, and nothing changes.</summary>
+    [Fact]
+    public async Task Owner_UpdatingPermissions_GetsPastTheGate()
+    {
+        HttpClient owner = _factory.CreateClient().AsAuthenticated();
+
+        HttpResponseMessage response = await owner.SendAsync(
+            Request(
+                "PATCH",
+                $"/api/v1/dashboard/users/{Guid.NewGuid()}/permissions",
+                """{"allowed":false,"optical_access":false,"audio_transcoding":false,"video_transcoding":false,"no_transcoding":false,"manage":false,"libraries":[]}"""
+            )
+        );
+
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    /// <summary>
+    /// The server keeps its current name, so nothing changes. The test host holds no
+    /// token for the NoMercy API, so the action answers 503 after the gate.
+    /// </summary>
+    [Fact]
+    public async Task Owner_RenamingTheServer_GetsPastTheGate()
+    {
+        HttpClient owner = _factory.CreateClient().AsAuthenticated();
+        using JsonDocument info = JsonDocument.Parse(
+            await owner.GetStringAsync("/api/v1/dashboard/server/info")
+        );
+        string name = info.RootElement.GetProperty("data").GetProperty("server").GetString()!;
+
+        HttpResponseMessage response = await owner.SendAsync(
+            Request(
+                "PATCH",
+                "/api/v1/dashboard/server/info",
+                JsonSerializer.Serialize(new { name })
+            )
+        );
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
     }
 }

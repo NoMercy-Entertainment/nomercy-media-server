@@ -9,10 +9,12 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Reflection;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.DependencyInjection;
 using NoMercy.Tests.Api.Infrastructure;
 using Xunit;
@@ -197,6 +199,10 @@ public sealed class EndpointAuthorizationCoverageTests(
     /// is open to every signed-in user of this server today; closing it could break the
     /// web or KMP app, so it waits for the owner.
     /// </summary>
+    private const string WorkerProgressReason =
+        "Worker progress push, anonymous by design: a caller can overwrite a task's displayed "
+        + "progress and evict entries from the 500-entry progress store; display only.";
+
     private static readonly Dictionary<string, string> AdminAreaAllowList = new(
         StringComparer.Ordinal
     )
@@ -245,7 +251,8 @@ public sealed class EndpointAuthorizationCoverageTests(
         ["POST /api/v{version:apiVersion}/dashboard/optical/{drivePath}/play/{playlistId}"] =
             "OpticalAccess by design: watching a disc live.",
         ["POST /api/v{version:apiVersion}/dashboard/optical/{drivePath}/stop"] =
-            "OpticalAccess by design: stopping a live disc stream.",
+            "OpticalAccess by design: any OpticalAccess user can stop another member's disc "
+            + "session on that drive; no check ties the session to its starter.",
         // Plugin UI: PluginUiController sits in the dashboard folder but serves every user;
         // IPluginAccessResolver decides per plugin what each caller may see or use.
         ["GET /api/v{version:apiVersion}/plugins/ui"] = "Plugin UI, per-plugin access.",
@@ -266,14 +273,14 @@ public sealed class EndpointAuthorizationCoverageTests(
             "Worker: HMAC or owner.",
         [
             "POST /api/v{version:apiVersion}/distribution/workers/{workerId}/tasks/{taskId}/progress"
-        ] = "Worker: progress push, no secrets.",
+        ] = WorkerProgressReason,
         ["POST /api/v{version:apiVersion}/dashboard/workers/register"] = "Worker: owner only here.",
         ["POST /api/v{version:apiVersion}/dashboard/workers/{workerId}/heartbeat"] =
             "Worker: owner only here.",
         ["DELETE /api/v{version:apiVersion}/dashboard/workers/{workerId}"] =
             "Worker: owner only here.",
         ["POST /api/v{version:apiVersion}/dashboard/workers/{workerId}/tasks/{taskId}/progress"] =
-            "Worker: progress push, no secrets.",
+            WorkerProgressReason,
         // Needs owner decision.
         ["GET /api/v{version:apiVersion}/dashboard/libraries"] =
             "Needs owner decision: imperative IsAllowed, so any user with library access reads "
@@ -282,6 +289,10 @@ public sealed class EndpointAuthorizationCoverageTests(
             + "and the web dashboard calls this route, so closing it may break a client.",
     };
 
+    /// <summary>
+    /// The admin rule on top of <see cref="EveryEndpoint_RequiresAuth_UnlessOnTheAllowList"/>,
+    /// which already holds every endpoint of the host, in any folder, to authentication.
+    /// </summary>
     [Fact]
     public void EveryAdminAreaEndpoint_RequiresAnAdminPolicy_UnlessOnTheAdminAllowList()
     {
@@ -359,6 +370,108 @@ public sealed class EndpointAuthorizationCoverageTests(
     /// Every [Authorize] on the class and the action must pass, so one admin policy among
     /// them makes the endpoint admin-only, unless [AllowAnonymous] skips them all.
     /// </summary>
+    /// <summary>The hubs only the people who run the server need (ApplicationConfiguration.cs).</summary>
+    private static readonly HashSet<string> AdminHubPaths = new(StringComparer.Ordinal)
+    {
+        "/dashboardHub",
+        "/ripperHub",
+        "/drivesHub",
+        "/contentAnalysisHub",
+    };
+
+    /// <summary>
+    /// Admin hub methods a client can call without an admin policy on the method or hub,
+    /// each with the reason. Key: "DeclaringType.Method". [Authorize] on a hub method
+    /// refuses with a HubException ("Failed to invoke ... because user is unauthorized")
+    /// before HubCommandResultFilter runs, where these methods refuse with a forbidden
+    /// HubCommandResult the clients handle; moving them would change that reply.
+    /// AdminHubNonModeratorRefusalTests proves each one refuses a non-moderator.
+    /// </summary>
+    private static readonly Dictionary<string, string> AdminHubAllowList = new(
+        StringComparer.Ordinal
+    )
+    {
+        ["DashboardHub.StartResources"] =
+            "Imperative IsModerator, forbidden result; the web calls it without a catch.",
+        ["DashboardHub.StopResources"] = "Imperative IsModerator, forbidden result.",
+        ["RipperHub.GetDriveState"] = "Imperative IsModerator, forbidden result.",
+        ["ConnectionHub.Devices"] = "Every hub: the caller's own connected devices, no admin data.",
+        ["ConnectionHub.GetCountryFromContext"] =
+            "Every hub: echoes the caller's own request country.",
+        ["ConnectionHub.GetLanguageFromContext"] =
+            "Every hub: echoes the caller's own request language.",
+    };
+
+    [Fact]
+    public void EveryAdminHubMethod_RequiresAnAdminPolicy_UnlessOnTheAdminHubAllowList()
+    {
+        List<Type> adminHubs = factory
+            .Services.GetRequiredService<EndpointDataSource>()
+            .Endpoints.OfType<RouteEndpoint>()
+            .Where(endpoint => AdminHubPaths.Contains(endpoint.RoutePattern.RawText ?? ""))
+            .Select(endpoint => endpoint.Metadata.GetMetadata<HubMetadata>()?.HubType)
+            .OfType<Type>()
+            .Distinct()
+            .ToList();
+
+        Assert.Equal(AdminHubPaths.Count, adminHubs.Count);
+
+        Dictionary<string, bool> adminOnly = new(StringComparer.Ordinal);
+        foreach (Type hub in adminHubs)
+        foreach (MethodInfo method in HubMethods(hub))
+            adminOnly[$"{method.DeclaringType!.Name}.{method.Name}"] = RequiresAdminPolicy(
+                hub,
+                method
+            );
+
+        List<string> notAdminOnly = adminOnly
+            .Where(pair => !pair.Value && !AdminHubAllowList.ContainsKey(pair.Key))
+            .Select(pair => pair.Key)
+            .Order(StringComparer.Ordinal)
+            .ToList();
+
+        List<string> staleEntries = AdminHubAllowList
+            .Keys.Where(key => !adminOnly.TryGetValue(key, out bool isAdminOnly) || isAdminOnly)
+            .Order(StringComparer.Ordinal)
+            .ToList();
+
+        Assert.True(
+            notAdminOnly.Count == 0,
+            "These admin hub methods admit a caller without the Owner or Moderator policy and "
+                + "are not on the admin hub allow-list:\n"
+                + string.Join("\n", notAdminOnly)
+        );
+        Assert.True(
+            staleEntries.Count == 0,
+            "These admin hub allow-list entries no longer match a non-admin hub method; "
+                + "remove them:\n"
+                + string.Join("\n", staleEntries)
+        );
+    }
+
+    /// <summary>
+    /// The methods SignalR lets a client invoke: public instance methods, without those
+    /// of object, Hub and IDisposable, and without property accessors.
+    /// </summary>
+    private static IEnumerable<MethodInfo> HubMethods(Type hub)
+    {
+        MethodInfo[] disposal = hub.GetInterfaceMap(typeof(IDisposable)).TargetMethods;
+
+        return hub.GetMethods(BindingFlags.Public | BindingFlags.Instance)
+            .Where(method => !method.IsSpecialName && !disposal.Contains(method))
+            .Where(method =>
+            {
+                Type baseDeclaringType = method.GetBaseDefinition().DeclaringType!;
+                return baseDeclaringType != typeof(object) && baseDeclaringType != typeof(Hub);
+            });
+    }
+
+    private static bool RequiresAdminPolicy(Type hub, MethodInfo method) =>
+        method
+            .GetCustomAttributes<AuthorizeAttribute>(true)
+            .Concat(hub.GetCustomAttributes<AuthorizeAttribute>(true))
+            .Any(data => data.Policy is not null && AdminPolicies.Contains(data.Policy));
+
     private static bool RequiresAdminPolicy(RouteEndpoint endpoint)
     {
         if (endpoint.Metadata.GetMetadata<IAllowAnonymous>() is not null)

@@ -10,9 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using System.Text.Json;
-using Microsoft.AspNetCore.Http.Connections;
 using Microsoft.AspNetCore.SignalR.Client;
-using Microsoft.AspNetCore.TestHost;
 using NoMercy.Tests.Api.Infrastructure;
 using Xunit;
 
@@ -34,26 +32,8 @@ public class HubObjectArgumentTests : IClassFixture<NoMercyApiFactory>
         _factory = factory;
     }
 
-    private async Task<HubConnection> ConnectAsync(string hubPath)
-    {
-        TestServer server = _factory.Server;
-        HubConnection connection = new HubConnectionBuilder()
-            .WithUrl(
-                new Uri(server.BaseAddress, hubPath),
-                options =>
-                {
-                    options.Transports = HttpTransportType.WebSockets;
-                    options.SkipNegotiation = true;
-                    options.WebSocketFactory = async (context, cancellationToken) =>
-                        await server
-                            .CreateWebSocketClient()
-                            .ConnectAsync(context.Uri, cancellationToken);
-                }
-            )
-            .Build();
-        await connection.StartAsync();
-        return connection;
-    }
+    private Task<HubConnection> ConnectAsync(string hubPath) =>
+        HubTestConnection.ConnectAsync(_factory, hubPath);
 
     private static async Task<JsonElement> PlaybackAsync(
         HubConnection connection,
