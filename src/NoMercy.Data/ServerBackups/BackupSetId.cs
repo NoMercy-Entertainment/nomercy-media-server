@@ -28,6 +28,12 @@ public static partial class BackupSetId
 
     public static bool IsValid(string? id) => id is not null && Pattern().IsMatch(id);
 
-    [GeneratedRegex("^[0-9]{8}-[0-9]{6}-[0-9]{7}$")]
+    // \z, not $: "$" also matches before a trailing newline, which would let
+    // "<id>\n" through as a valid id.
+    [GeneratedRegex(
+        @"\A[0-9]{8}-[0-9]{6}-[0-9]{7}\z",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex Pattern();
 }

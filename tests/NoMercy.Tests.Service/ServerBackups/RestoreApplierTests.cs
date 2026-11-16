@@ -60,13 +60,7 @@ public sealed class RestoreApplierTests : IDisposable
     private async Task<string> BackUpThenChangeServerAsync()
     {
         _folder.CreateServer("original");
-        BackupService backups = new(
-            new LocalStorageDriver(),
-            new SqliteFileOperations(),
-            _options,
-            TimeProvider.System,
-            NullLogger<BackupService>.Instance
-        );
+        BackupService backups = BackupTestFolder.CreateBackupService(_options);
         string id = (await backups.CreateAsync("test", CancellationToken.None)).Id;
 
         foreach (string name in new[] { "app", "media", "queue" })
@@ -198,13 +192,7 @@ public sealed class RestoreApplierTests : IDisposable
                 _folder.DatabasePath(name),
                 $"DELETE FROM __EFMigrationsHistory WHERE MigrationId = '{BackupTestFolder.SecondMigration}'"
             );
-        BackupService backups = new(
-            new LocalStorageDriver(),
-            new SqliteFileOperations(),
-            _options,
-            TimeProvider.System,
-            NullLogger<BackupService>.Instance
-        );
+        BackupService backups = BackupTestFolder.CreateBackupService(_options);
         string id = (await backups.CreateAsync("old", CancellationToken.None)).Id;
         RequestRestore(id);
         FakeBackupDatabaseSchema schema = CurrentSchema();

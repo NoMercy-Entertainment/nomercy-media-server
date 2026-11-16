@@ -28,13 +28,7 @@ public sealed class DatabaseBackupCronJobTests : IDisposable
     public async Task ExecuteAsync_WritesACompleteBackupSet()
     {
         _folder.CreateServer();
-        BackupService backups = new(
-            new LocalStorageDriver(),
-            new SqliteFileOperations(),
-            _folder.Options(),
-            TimeProvider.System,
-            NullLogger<BackupService>.Instance
-        );
+        BackupService backups = BackupTestFolder.CreateBackupService(_folder.Options());
         DatabaseBackupCronJob job = new(NullLogger<DatabaseBackupCronJob>.Instance, backups);
 
         await job.ExecuteAsync(string.Empty);

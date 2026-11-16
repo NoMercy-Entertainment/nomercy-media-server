@@ -182,6 +182,27 @@ public interface IStorageDriver
     bool TryMarkSparse(string path) => false;
 
     /// <summary>
+    /// Limits a file to its owner (0600) or a folder to its owner (0700), for data
+    /// such as backups that hold credentials. Best effort: true when the mode was
+    /// set, false where there is nothing to set. Only the local driver on Linux
+    /// and macOS does anything; on Windows the per-user profile ACL already applies.
+    /// </summary>
+    bool TryRestrictToOwner(string path) => false;
+
+    /// <summary>
+    /// Moves <paramref name="source"/> over <paramref name="destination"/>, which
+    /// may exist. The local driver does this in one rename, so a reader sees the
+    /// old file or the new one, never neither. This default deletes first, which
+    /// leaves a moment without the file.
+    /// </summary>
+    void ReplaceFile(string source, string destination)
+    {
+        if (FileExists(destination))
+            DeleteFile(destination);
+        MoveFile(source, destination);
+    }
+
+    /// <summary>
     /// Path separator the driver speaks. Local on Windows is '\\'; remote
     /// drivers (NFS / S3 / R2 / WebDAV) all use '/' regardless of host OS.
     /// Callers building paths for storage operations should use this instead

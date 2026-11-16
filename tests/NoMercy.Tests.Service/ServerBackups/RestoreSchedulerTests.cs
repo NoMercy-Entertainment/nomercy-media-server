@@ -28,13 +28,7 @@ public sealed class RestoreSchedulerTests : IDisposable
         _options = _folder.Options(retainCount: 1);
         LocalStorageDriver storage = new();
         SqliteFileOperations sqlite = new();
-        _backups = new(
-            storage,
-            sqlite,
-            _options,
-            TimeProvider.System,
-            NullLogger<BackupService>.Instance
-        );
+        _backups = BackupTestFolder.CreateBackupService(_options);
         FakeBackupDatabaseSchema schema = new(
             BackupTestFolder.FirstMigration,
             BackupTestFolder.SecondMigration

@@ -21,6 +21,7 @@ public static partial class ServiceConfiguration
         services.AddSingleton(_ => BackupOptions.ForAppFiles());
         services.AddSingleton<ISqliteFileOperations, SqliteFileOperations>();
         services.AddSingleton<IPreMigrationBackup, PreMigrationBackup>();
+        services.AddSingleton<IBackupSetWriter, BackupSetWriter>();
         services.AddSingleton<IBackupService, BackupService>();
         services.AddSingleton<IBackupDatabaseSchema, BackupDatabaseSchema>();
         services.AddSingleton<IBackupSetVerifier, BackupSetVerifier>();

@@ -143,9 +143,13 @@ public sealed class RestoreApplier(
     )
     {
         DeleteWorkFolder();
-        storage.CreateDirectory(StagedRoot);
-        storage.CreateDirectory(Path.Combine(StagedRoot, BackupService.ConfigFolder));
+        BackupFiles.CreatePrivateDirectory(storage, options.RestoreRoot);
+        BackupFiles.CreatePrivateDirectory(storage, options.RestoreWorkRoot);
+        BackupFiles.CreatePrivateDirectory(storage, StagedRoot);
+        storage.CreateDirectory(Path.Combine(StagedRoot, BackupSetWriter.ConfigFolder));
 
+        // Every staged file is flushed to disk as it is copied: the checks below
+        // must judge what a power cut would leave, not what sits in a cache.
         IEnumerable<BackupManifestFile> files = manifest.Databases.Concat<BackupManifestFile>(
             manifest.ConfigFiles
         );
@@ -154,16 +158,18 @@ public sealed class RestoreApplier(
             cancellationToken.ThrowIfCancellationRequested();
             string target = BackupFiles.ResolveInside(StagedRoot, file.Path);
             storage.CreateDirectory(Path.GetDirectoryName(target)!);
-            storage.CopyFile(
+            await BackupFiles.CopyDurablyAsync(
+                storage,
                 BackupFiles.ResolveInside(setFolder, file.Path),
                 target,
-                overwrite: false
+                cancellationToken
             );
         }
-        storage.CopyFile(
+        await BackupFiles.CopyDurablyAsync(
+            storage,
             Path.Combine(setFolder, BackupManifest.FileName),
             Path.Combine(StagedRoot, BackupManifest.FileName),
-            overwrite: false
+            cancellationToken
         );
 
         // The copy is checked again, not trusted: a short read or a bad sector
@@ -206,7 +212,11 @@ public sealed class RestoreApplier(
         try
         {
             sqlite.ReleaseAllConnections();
-            storage.CreateDirectory(Path.Combine(PreviousRoot, BackupService.DatabasesFolder));
+            BackupFiles.CreatePrivateDirectory(storage, PreviousRoot);
+            BackupFiles.CreatePrivateDirectory(
+                storage,
+                Path.Combine(PreviousRoot, BackupSetWriter.DatabasesFolder)
+            );
             await BackupFiles.WriteTextAtomicallyAsync(
                 storage,
                 JournalPath,
@@ -256,7 +266,7 @@ public sealed class RestoreApplier(
             SafetyBackupId = pending.SafetyBackupId,
             StartedAt = clock.GetUtcNow().UtcDateTime,
         };
-        string previousDatabases = Path.Combine(PreviousRoot, BackupService.DatabasesFolder);
+        string previousDatabases = Path.Combine(PreviousRoot, BackupSetWriter.DatabasesFolder);
 
         foreach (BackupDatabaseFile database in options.Databases)
         {
@@ -289,8 +299,8 @@ public sealed class RestoreApplier(
             new()
             {
                 Live = options.ConfigRoot,
-                Previous = Path.Combine(PreviousRoot, BackupService.ConfigFolder),
-                Staged = Path.Combine(StagedRoot, BackupService.ConfigFolder),
+                Previous = Path.Combine(PreviousRoot, BackupSetWriter.ConfigFolder),
+                Staged = Path.Combine(StagedRoot, BackupSetWriter.ConfigFolder),
                 IsDirectory = true,
             }
         );

@@ -16,15 +16,11 @@ namespace NoMercy.Data.ServerBackups;
 
 public sealed class BackupService(
     IStorageDriver storage,
-    ISqliteFileOperations sqlite,
+    IBackupSetWriter writer,
     BackupOptions options,
-    TimeProvider clock,
     ILogger<BackupService> logger
 ) : IBackupService
 {
-    public const string DatabasesFolder = "databases";
-    public const string ConfigFolder = "config";
-
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     public async Task<BackupSetSummary> CreateAsync(
@@ -35,7 +31,12 @@ public sealed class BackupService(
         await _gate.WaitAsync(cancellationToken);
         try
         {
-            BackupManifest manifest = await WriteSetAsync(reason, cancellationToken);
+            BackupManifest manifest = await writer.WriteAsync(
+                reason,
+                options.Databases,
+                options.ConfigRoot,
+                cancellationToken
+            );
             logger.LogInformation(
                 "Backup {BackupId} created ({Reason})",
                 manifest.Id,
@@ -63,107 +64,6 @@ public sealed class BackupService(
         }
 
         return sets;
-    }
-
-    private async Task<BackupManifest> WriteSetAsync(
-        string reason,
-        CancellationToken cancellationToken
-    )
-    {
-        DateTime createdAt = clock.GetUtcNow().UtcDateTime;
-        string id = BackupSetId.Create(createdAt);
-        string building = Path.Combine(options.SetsRoot, BackupSetId.IncompletePrefix + id);
-        string published = Path.Combine(options.SetsRoot, id);
-        if (storage.DirectoryExists(published))
-            throw new IOException($"A backup named {id} already exists.");
-
-        BackupManifest manifest = new()
-        {
-            Id = id,
-            CreatedAt = createdAt,
-            Reason = reason,
-            ServerVersion = options.ServerVersion,
-        };
-
-        storage.CreateDirectory(building);
-        try
-        {
-            storage.CreateDirectory(Path.Combine(building, DatabasesFolder));
-            foreach (BackupDatabaseFile database in options.Databases)
-                manifest.Databases.Add(
-                    await CopyDatabaseAsync(database, building, cancellationToken)
-                );
-
-            foreach (string relative in BackupFiles.ListFilesRelative(storage, options.ConfigRoot))
-                manifest.ConfigFiles.Add(
-                    await CopyConfigFileAsync(relative, building, cancellationToken)
-                );
-
-            await BackupFiles.WriteTextAtomicallyAsync(
-                storage,
-                Path.Combine(building, BackupManifest.FileName),
-                BackupFiles.Serialize(manifest),
-                cancellationToken
-            );
-
-            storage.MoveDirectory(building, published);
-            return manifest;
-        }
-        catch
-        {
-            TryDeleteDirectory(building);
-            throw;
-        }
-    }
-
-    private async Task<BackupManifestDatabase> CopyDatabaseAsync(
-        BackupDatabaseFile database,
-        string building,
-        CancellationToken cancellationToken
-    )
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        if (!storage.FileExists(database.LivePath))
-            throw new FileNotFoundException(
-                $"The {database.Name} database is missing, so no complete backup can be made.",
-                database.LivePath
-            );
-
-        string relative = $"{DatabasesFolder}/{database.FileName}";
-        string target = BackupFiles.ResolveInside(building, relative);
-        sqlite.CopyOnline(database.LivePath, target);
-
-        IReadOnlyList<string> applied = sqlite.ReadAppliedMigrations(target);
-        return new()
-        {
-            Name = database.Name,
-            Path = relative,
-            Size = storage.GetFileSize(target),
-            Sha256 = await BackupFiles.Sha256Async(storage, target, cancellationToken),
-            LastMigration = applied.Count > 0 ? applied[^1] : null,
-        };
-    }
-
-    private async Task<BackupManifestFile> CopyConfigFileAsync(
-        string relativeToConfig,
-        string building,
-        CancellationToken cancellationToken
-    )
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        string relative = $"{ConfigFolder}/{relativeToConfig}";
-        string source = BackupFiles.ResolveInside(options.ConfigRoot, relativeToConfig);
-        string target = BackupFiles.ResolveInside(building, relative);
-
-        storage.CreateDirectory(Path.GetDirectoryName(target)!);
-        storage.CopyFile(source, target, overwrite: false);
-
-        return new()
-        {
-            Path = relative,
-            Size = storage.GetFileSize(target),
-            Sha256 = await BackupFiles.Sha256Async(storage, target, cancellationToken),
-        };
     }
 
     private async Task<BackupManifest?> ReadManifestAsync(
@@ -235,22 +135,5 @@ public sealed class BackupService(
         using Stream stream = storage.OpenRead(options.PendingRestorePath);
         using StreamReader reader = new(stream);
         return BackupFiles.Deserialize<PendingRestore>(reader.ReadToEnd())?.BackupId;
-    }
-
-    private void TryDeleteDirectory(string path)
-    {
-        try
-        {
-            if (storage.DirectoryExists(path))
-                storage.DeleteDirectory(path, recursive: true);
-        }
-        catch (Exception exception)
-        {
-            logger.LogWarning(
-                "Could not remove the unfinished backup folder {Folder}: {Reason}",
-                path,
-                exception.Message
-            );
-        }
     }
 }

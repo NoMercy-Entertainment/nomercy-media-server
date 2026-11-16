@@ -43,8 +43,9 @@ public static class BackupFiles
 
     /// <summary>
     /// Writes text to a temporary file next to <paramref name="path"/>, flushes
-    /// it to disk, then renames it into place, so a crash leaves either the old
-    /// file or the new one, never half of one.
+    /// it to disk, then renames it over the old one in a single step, so a crash
+    /// leaves either the old file or the new one, never half of one and never
+    /// none. The file is limited to its owner.
     /// </summary>
     public static async Task WriteTextAtomicallyAsync(
         IStorageDriver storage,
@@ -59,17 +60,74 @@ public static class BackupFiles
 
         await using (Stream stream = storage.OpenWrite(temporary, overwrite: false))
         {
-            byte[] bytes = Encoding.UTF8.GetBytes(contents);
-            await stream.WriteAsync(bytes, cancellationToken);
-            if (stream is FileStream fileStream)
-                fileStream.Flush(flushToDisk: true);
-            else
-                await stream.FlushAsync(cancellationToken);
+            await stream.WriteAsync(Encoding.UTF8.GetBytes(contents), cancellationToken);
+            await FlushToDiskAsync(stream, cancellationToken);
         }
 
-        if (storage.FileExists(path))
-            storage.DeleteFile(path);
-        storage.MoveFile(temporary, path);
+        storage.TryRestrictToOwner(temporary);
+        storage.ReplaceFile(temporary, path);
+    }
+
+    /// <summary>
+    /// Copies a file and flushes the copy to disk before returning, so a power
+    /// cut cannot leave a copy that was checked but never reached the disk.
+    /// The copy is limited to its owner. The target must not exist.
+    /// </summary>
+    public static async Task CopyDurablyAsync(
+        IStorageDriver storage,
+        string source,
+        string destination,
+        CancellationToken cancellationToken
+    )
+    {
+        await using (Stream input = storage.OpenRead(source))
+        await using (Stream output = storage.OpenWrite(destination, overwrite: false))
+        {
+            await input.CopyToAsync(output, cancellationToken);
+            await FlushToDiskAsync(output, cancellationToken);
+        }
+
+        storage.TryRestrictToOwner(destination);
+    }
+
+    /// <summary>Creates a folder (and its parents) and limits it to its owner.</summary>
+    public static void CreatePrivateDirectory(IStorageDriver storage, string path)
+    {
+        storage.CreateDirectory(path);
+        storage.TryRestrictToOwner(path);
+    }
+
+    /// <summary>Limits a folder and everything in it to their owner.</summary>
+    public static void RestrictTree(IStorageDriver storage, string root)
+    {
+        storage.TryRestrictToOwner(root);
+        foreach (
+            string entry in storage.EnumerateFileSystemEntries(
+                root,
+                "*",
+                SearchOption.AllDirectories
+            )
+        )
+            storage.TryRestrictToOwner(entry);
+    }
+
+    /// <summary>Reads a JSON file; null when it is missing or not valid.</summary>
+    public static async Task<T?> ReadJsonAsync<T>(
+        IStorageDriver storage,
+        string path,
+        CancellationToken cancellationToken
+    )
+        where T : class =>
+        storage.FileExists(path)
+            ? Deserialize<T>(await ReadTextAsync(storage, path, cancellationToken))
+            : null;
+
+    private static async Task FlushToDiskAsync(Stream stream, CancellationToken cancellationToken)
+    {
+        if (stream is FileStream fileStream)
+            fileStream.Flush(flushToDisk: true);
+        else
+            await stream.FlushAsync(cancellationToken);
     }
 
     public static async Task<string> ReadTextAsync(

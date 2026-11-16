@@ -26,13 +26,7 @@ public sealed class BackupServiceTests : IDisposable
     public void Dispose() => _folder.Dispose();
 
     private BackupService CreateService(int retainCount = 5) =>
-        new(
-            new LocalStorageDriver(),
-            new SqliteFileOperations(),
-            _folder.Options(retainCount),
-            TimeProvider.System,
-            NullLogger<BackupService>.Instance
-        );
+        BackupTestFolder.CreateBackupService(_folder.Options(retainCount));
 
     private string SetFolder(string id) => Path.Combine(_folder.BackupRoot, "sets", id);
 
@@ -215,5 +209,72 @@ public sealed class BackupServiceTests : IDisposable
             .ListAsync(CancellationToken.None);
 
         sets.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task Create_WhenADatabaseCopyFailsItsCheck_PublishesNothing_AndKeepsTheOldSets()
+    {
+        _folder.CreateServer();
+        BackupSetSummary good = await CreateService(retainCount: 1)
+            .CreateAsync("good", CancellationToken.None);
+        BackupService damaged = BackupTestFolder.CreateBackupService(
+            _folder.Options(retainCount: 1),
+            new FailingQuickCheck()
+        );
+
+        Func<Task> create = () => damaged.CreateAsync("damaged", CancellationToken.None);
+
+        await create.Should().ThrowAsync<InvalidDataException>();
+        IReadOnlyList<BackupSetSummary> sets = await damaged.ListAsync(CancellationToken.None);
+        sets.Select(set => set.Id).Should().Equal(good.Id);
+        Directory
+            .EnumerateDirectories(Path.Combine(_folder.BackupRoot, "sets"))
+            .Should()
+            .ContainSingle();
+    }
+
+    [SkippableFact]
+    public async Task Create_LimitsEveryFolderAndFileToItsOwner()
+    {
+        Skip.If(OperatingSystem.IsWindows(), "Windows applies the per-user profile ACL instead.");
+        _folder.CreateServer();
+
+        BackupSetSummary backup = await CreateService()
+            .CreateAsync("manual", CancellationToken.None);
+
+        if (OperatingSystem.IsWindows())
+            return;
+        const UnixFileMode folderMode =
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute;
+        const UnixFileMode fileMode = UnixFileMode.UserRead | UnixFileMode.UserWrite;
+        string set = SetFolder(backup.Id);
+        File.GetUnixFileMode(_folder.BackupRoot).Should().Be(folderMode);
+        File.GetUnixFileMode(Path.Combine(_folder.BackupRoot, "sets")).Should().Be(folderMode);
+        foreach (
+            string folder in Directory
+                .EnumerateDirectories(set, "*", SearchOption.AllDirectories)
+                .Append(set)
+        )
+            File.GetUnixFileMode(folder).Should().Be(folderMode, folder);
+        foreach (string file in Directory.EnumerateFiles(set, "*", SearchOption.AllDirectories))
+            File.GetUnixFileMode(file).Should().Be(fileMode, file);
+    }
+
+    /// <summary>Real SQLite work, except that every copy fails its integrity check.</summary>
+    private sealed class FailingQuickCheck : ISqliteFileOperations
+    {
+        private readonly SqliteFileOperations _inner = new();
+
+        public void CopyOnline(string sourcePath, string destinationPath) =>
+            _inner.CopyOnline(sourcePath, destinationPath);
+
+        public void Seal(string databasePath) => _inner.Seal(databasePath);
+
+        public IReadOnlyList<string> ReadAppliedMigrations(string databasePath) =>
+            _inner.ReadAppliedMigrations(databasePath);
+
+        public bool PassesQuickCheck(string databasePath) => false;
+
+        public void ReleaseAllConnections() => _inner.ReleaseAllConnections();
     }
 }

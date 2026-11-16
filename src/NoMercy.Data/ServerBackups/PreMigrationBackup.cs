@@ -33,7 +33,7 @@ public sealed class PreMigrationBackup(
         string databaseName = Path.GetFileNameWithoutExtension(databasePath);
         try
         {
-            storage.CreateDirectory(options.BackupRoot);
+            BackupFiles.CreatePrivateDirectory(storage, options.BackupRoot);
 
             string timestamp = clock.GetUtcNow().UtcDateTime.ToString(TimestampFormat);
             string backupFileName = $"{databaseName}.{timestamp}.db";
@@ -42,6 +42,7 @@ public sealed class PreMigrationBackup(
                 throw new IOException($"Backup file already exists: {backupPath}");
 
             sqlite.CopyOnline(databasePath, backupPath);
+            storage.TryRestrictToOwner(backupPath);
             logger.LogInformation(
                 "Database backup created: {BackupFile} ({PendingCount} pending migration(s))",
                 backupFileName,
@@ -71,9 +72,15 @@ public sealed class PreMigrationBackup(
     /// </summary>
     private void Prune(string databaseName)
     {
-        Regex copyPattern = new($"^{Regex.Escape(databaseName)}\\.(\\d{{14}})\\.db$");
+        Regex copyPattern = new(
+            $"^{Regex.Escape(databaseName)}\\.(\\d{{14}})\\.db$",
+            RegexOptions.None,
+            TimeSpan.FromSeconds(1)
+        );
         Regex sidePattern = new(
-            $"^({Regex.Escape(databaseName)}\\.\\d{{14}}\\.db)-(wal|shm|journal)$"
+            $"^({Regex.Escape(databaseName)}\\.\\d{{14}}\\.db)-(wal|shm|journal)$",
+            RegexOptions.None,
+            TimeSpan.FromSeconds(1)
         );
 
         try

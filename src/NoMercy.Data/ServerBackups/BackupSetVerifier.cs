@@ -82,14 +82,14 @@ public sealed class BackupSetVerifier(
         foreach (BackupManifestDatabase database in manifest.Databases)
             if (
                 !database.Path.StartsWith(
-                    BackupService.DatabasesFolder + "/",
+                    BackupSetWriter.DatabasesFolder + "/",
                     StringComparison.Ordinal
                 )
             )
                 problems.Add($"The {database.Name} database is outside the databases folder.");
 
         foreach (BackupManifestFile file in manifest.ConfigFiles)
-            if (!file.Path.StartsWith(BackupService.ConfigFolder + "/", StringComparison.Ordinal))
+            if (!file.Path.StartsWith(BackupSetWriter.ConfigFolder + "/", StringComparison.Ordinal))
                 problems.Add($"The settings file '{file.Path}' is outside the config folder.");
     }
 

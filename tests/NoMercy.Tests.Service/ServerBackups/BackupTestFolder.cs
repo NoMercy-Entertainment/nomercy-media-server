@@ -10,7 +10,10 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Data.ServerBackups;
+using NoMercy.Storage;
+using NoMercy.Storage.Drivers.Local;
 
 namespace NoMercy.Tests.Service.ServerBackups;
 
@@ -113,6 +116,31 @@ public sealed class BackupTestFolder : IDisposable
         Directory
             .EnumerateFiles(folder, "*", SearchOption.AllDirectories)
             .ToDictionary(path => Path.GetRelativePath(folder, path), File.ReadAllBytes);
+
+    public static BackupSetWriter CreateWriter(
+        BackupOptions options,
+        ISqliteFileOperations? sqlite = null,
+        IStorageDriver? storage = null
+    ) =>
+        new(
+            storage ?? new LocalStorageDriver(),
+            sqlite ?? new SqliteFileOperations(),
+            options,
+            TimeProvider.System,
+            NullLogger<BackupSetWriter>.Instance
+        );
+
+    public static BackupService CreateBackupService(
+        BackupOptions options,
+        ISqliteFileOperations? sqlite = null,
+        IStorageDriver? storage = null
+    ) =>
+        new(
+            storage ?? new LocalStorageDriver(),
+            CreateWriter(options, sqlite, storage),
+            options,
+            NullLogger<BackupService>.Instance
+        );
 
     public void Dispose()
     {
