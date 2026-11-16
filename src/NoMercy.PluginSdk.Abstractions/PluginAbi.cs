@@ -36,7 +36,10 @@ public static class PluginAbi
     // 12.9 added PluginIndexSignature, the optional signature fields of PluginRepositoryEntry
     // and PluginVersionEntry, and an optional indexSignature parameter on
     // IPluginManager.InstallPluginArchiveAsync (a default member no plugin calls).
-    public static Version Current { get; } = new(12, 9);
+    // 12.10 added PluginCapabilities.Lan (PluginLanCapability, checked by PluginLanRoutes): the
+    // routes a plugin serves to a device on the owner's network that cannot sign in. Additive:
+    // an optional manifest field, absent on every plugin built before it.
+    public static Version Current { get; } = new(12, 10);
 
     /// <summary>
     /// The oldest major this server can load at all.

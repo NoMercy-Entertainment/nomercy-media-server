@@ -135,6 +135,16 @@ public static class PluginManifestParser
                 $"Plugin manifest 'assembly' must be a plain .dll file name: '{manifest.Assembly}'."
             );
         }
+
+        // Refused whole rather than served in part: a route the server quietly
+        // dropped is one the owner consented to and the device never reaches,
+        // and nobody is told why.
+        IReadOnlyList<string> lanProblems = PluginLanRoutes.Problems(manifest.Capabilities);
+
+        if (lanProblems.Count > 0)
+        {
+            throw new InvalidOperationException($"Plugin manifest: {lanProblems[0]}");
+        }
     }
 
     // The assembly names the plugin's folder and its file, so it may not name a path.

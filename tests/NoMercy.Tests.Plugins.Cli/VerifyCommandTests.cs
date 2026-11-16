@@ -200,6 +200,45 @@ public class VerifyCommandTests : IDisposable
     }
 
     [Fact]
+    public void A_lan_route_the_server_would_refuse_to_load_is_blocked()
+    {
+        IReadOnlyList<PluginRefusal> findings = ManifestScan.Run(
+            Write(
+                Clean.Replace(
+                    "\"rest\": true,",
+                    "\"rest\": true, \"lan\": { \"routes\": [\"hdhr/{**rest}\"] },"
+                )
+            )
+        );
+
+        findings
+            .Should()
+            .ContainSingle()
+            .Which.Should()
+            .Match<PluginRefusal>(refusal =>
+                refusal.Code == PluginRefusalCodes.ManifestInvalid
+                && refusal.Severity == PluginRefusalSeverity.Blocked
+                && refusal.What.Contains("hdhr/{**rest}")
+            );
+    }
+
+    [Fact]
+    public void Plain_lan_routes_verify()
+    {
+        ManifestScan
+            .Run(
+                Write(
+                    Clean.Replace(
+                        "\"rest\": true,",
+                        "\"rest\": true, \"lan\": { \"routes\": [\"hdhr/discover.json\", \"hdhr/auto/{channel}\"] },"
+                    )
+                )
+            )
+            .Should()
+            .BeEmpty();
+    }
+
+    [Fact]
     public void An_unknown_mount_section_is_advice_only()
     {
         IReadOnlyList<PluginRefusal> findings = ManifestScan.Run(

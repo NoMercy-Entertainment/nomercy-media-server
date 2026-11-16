@@ -39,6 +39,14 @@ public class PluginCapabilities
     [JsonPropertyName("restAnonymous")]
     public bool RestAnonymous { get; init; }
 
+    /// <summary>
+    /// The routes this plugin serves to a device on the owner's network that
+    /// cannot sign in, by name. Absent means none, which is how every plugin
+    /// before ABI 12.10 behaves.
+    /// </summary>
+    [JsonPropertyName("lan")]
+    public PluginLanCapability? Lan { get; init; }
+
     [JsonPropertyName("ws")]
     public bool Ws { get; init; }
 }
