@@ -91,6 +91,16 @@ public sealed class EndpointAuthorizationCoverageTests(
         // ExemptSuffixes), the payload carries no secrets (WorkersController.cs).
         "POST /api/v{version:apiVersion}/dashboard/workers/{workerId}/tasks/{taskId}/progress",
         "POST /api/v{version:apiVersion}/distribution/workers/{workerId}/tasks/{taskId}/progress",
+        // A worker registering, heartbeating and unregistering itself. [HmacSignedOrOwner]
+        // admits a request HmacValidationMiddleware verified, or else only the owner
+        // (default + Owner policy); the /dashboard/ alias is never signature-checked,
+        // so there it is owner-only as before (WorkersController.cs).
+        "POST /api/v{version:apiVersion}/distribution/workers/register",
+        "POST /api/v{version:apiVersion}/distribution/workers/{workerId}/heartbeat",
+        "DELETE /api/v{version:apiVersion}/distribution/workers/{workerId}",
+        "POST /api/v{version:apiVersion}/dashboard/workers/register",
+        "POST /api/v{version:apiVersion}/dashboard/workers/{workerId}/heartbeat",
+        "DELETE /api/v{version:apiVersion}/dashboard/workers/{workerId}",
         // Plugin LAN device credential check, answered to the local network only;
         // PluginLanController.cs refuses with 403 outside it or on a wrong credential.
         "GET /api/v{version:apiVersion}/plugins/{id:ulid}/lan/{deviceId}/{credential}",

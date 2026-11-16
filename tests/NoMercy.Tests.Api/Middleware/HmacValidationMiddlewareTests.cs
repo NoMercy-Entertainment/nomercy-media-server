@@ -18,7 +18,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Options;
 using Moq;
 using NoMercy.Api.Middleware;
 using NoMercy.Encoder.Composition;
@@ -32,13 +31,17 @@ public class HmacValidationMiddlewareTests
 {
     private const string Secret = "test-hmac-secret-middleware";
 
+    // The terminal handler reports HmacValidationMiddleware.IsVerified in this header.
+    private const string VerifiedHeader = "X-Test-Hmac-Verified";
+
     // -------------------------------------------------------------------------
     // Helpers
     // -------------------------------------------------------------------------
 
     /// <summary>
     /// Builds a minimal test pipeline:
-    ///   HmacValidationMiddleware → terminal that returns 200 OK.
+    ///   HmacValidationMiddleware → terminal that returns 200 OK and says, in
+    ///   <see cref="VerifiedHeader"/>, whether the middleware marked the request verified.
     /// </summary>
     private static HttpClient BuildClient(string? configuredSecret)
     {
@@ -48,12 +51,8 @@ public class HmacValidationMiddlewareTests
                 web.UseTestServer();
                 web.ConfigureServices(services =>
                 {
-                    EncoderOptions opts = new()
-                    {
-                        DistributedEncodingSigningKey = configuredSecret,
-                    };
-                    services.AddSingleton<IOptions<EncoderOptions>>(
-                        new OptionsWrapper<EncoderOptions>(opts)
+                    services.AddSingleton(
+                        new EncoderOptions { DistributedEncodingSigningKey = configuredSecret }
                     );
                 });
                 web.Configure(app =>
@@ -62,6 +61,9 @@ public class HmacValidationMiddlewareTests
                     app.Run(ctx =>
                     {
                         ctx.Response.StatusCode = 200;
+                        ctx.Response.Headers[VerifiedHeader] = HmacValidationMiddleware
+                            .IsVerified(ctx)
+                            .ToString();
                         return ctx.Response.WriteAsync("ok");
                     });
                 });
@@ -91,12 +93,8 @@ public class HmacValidationMiddlewareTests
                 web.UseTestServer();
                 web.ConfigureServices(services =>
                 {
-                    EncoderOptions opts = new()
-                    {
-                        DistributedEncodingSigningKey = configuredSecret,
-                    };
-                    services.AddSingleton<IOptions<EncoderOptions>>(
-                        new OptionsWrapper<EncoderOptions>(opts)
+                    services.AddSingleton(
+                        new EncoderOptions { DistributedEncodingSigningKey = configuredSecret }
                     );
                     services.AddSingleton(licenseTokenClient.Object);
                 });
@@ -290,6 +288,51 @@ public class HmacValidationMiddlewareTests
         HttpResponseMessage response = await client.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    // -------------------------------------------------------------------------
+    // Tests: the verified mark that WorkersController's HmacSignedOrOwner reads
+    // -------------------------------------------------------------------------
+
+    [Fact]
+    public async Task ValidSignature_MarksTheRequestVerified()
+    {
+        HttpClient client = BuildClient(Secret);
+
+        byte[] bodyBytes = Encoding.UTF8.GetBytes("{\"worker_id\":\"w\"}");
+        (long ts, string sig) = MakeSignature(
+            "POST",
+            "/api/v1/distribution/workers/register",
+            bodyBytes,
+            Secret
+        );
+
+        HttpRequestMessage request = new(HttpMethod.Post, "/api/v1/distribution/workers/register")
+        {
+            Content = new ByteArrayContent(bodyBytes),
+        };
+        request.Headers.Add("X-NoMercy-Timestamp", ts.ToString());
+        request.Headers.Add("X-NoMercy-Signature", sig);
+
+        HttpResponseMessage response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(bool.TrueString, response.Headers.GetValues(VerifiedHeader).Single());
+    }
+
+    // Exempt and unprotected paths pass without a signature, so they must never
+    // look signed to an action that trusts the mark.
+    [Theory]
+    [InlineData("/api/v1/distribution/workers/worker-1/tasks/task-abc/progress")]
+    [InlineData("/api/v1/dashboard/workers/register")]
+    public async Task UncheckedPath_IsNotMarkedVerified(string path)
+    {
+        HttpClient client = BuildClient(Secret);
+
+        HttpResponseMessage response = await client.PostAsync(path, new StringContent("{}"));
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal(bool.FalseString, response.Headers.GetValues(VerifiedHeader).Single());
     }
 
     // -------------------------------------------------------------------------

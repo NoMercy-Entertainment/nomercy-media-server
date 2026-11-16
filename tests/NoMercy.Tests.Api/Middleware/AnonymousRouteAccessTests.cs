@@ -15,7 +15,6 @@ using System.Text.Json;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
-using Microsoft.Extensions.Options;
 using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.Distribution;
 using NoMercy.Tests.Api.Infrastructure;
@@ -63,17 +62,9 @@ public class AnonymousRouteAccessTests : IClassFixture<AnonymousNoMercyApiFactor
             {
                 builder.ConfigureTestServices(services =>
                 {
-                    // HmacValidationMiddleware and the worker controllers each
-                    // resolve their own view of the signing key — the middleware
-                    // via IOptions<EncoderOptions>, the controllers via the
-                    // EncoderOptions singleton. Override both to the same test
-                    // secret so a correctly-signed request clears the HMAC gate.
-                    services.RemoveAll<IOptions<EncoderOptions>>();
-                    services.AddSingleton<IOptions<EncoderOptions>>(
-                        new OptionsWrapper<EncoderOptions>(
-                            new() { DistributedEncodingSigningKey = HmacSecret }
-                        )
-                    );
+                    // HmacValidationMiddleware and the worker controllers read
+                    // the same EncoderOptions singleton, so one override sets
+                    // the signing key for both.
                     services.RemoveAll<EncoderOptions>();
                     services.AddSingleton(
                         new EncoderOptions { DistributedEncodingSigningKey = HmacSecret }

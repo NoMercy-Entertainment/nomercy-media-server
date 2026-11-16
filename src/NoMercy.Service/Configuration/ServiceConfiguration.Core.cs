@@ -704,6 +704,8 @@ public static partial class ServiceConfiguration
             // Pointing at AppFiles.SpeedIndexCachePath persists results so
             // NeedsRecalibration() can honour its 30-day grace window.
             opts.SpeedIndexCachePath = AppFiles.SpeedIndexCachePath;
+            // Coordinator and remote-worker settings (docs/distributed-encoding.md).
+            EncoderDistributionSettings.Apply(configuration, opts);
         });
 
         // Routes on-demand OCR model pulls through the signed nomercy-tesseract release

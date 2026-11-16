@@ -40,10 +40,14 @@ namespace NoMercy.Api.Middleware;
 /// token's secret is used to verify the HMAC; if not the request is
 /// rejected with 401.  The introspect result is cached for 30 s inside
 /// the client — this path does not block on network I/O for every request.
+///
+/// <see cref="EncoderOptions"/> is injected as the configured singleton that
+/// AddNoMercyEncoder registers. It is not in the options system, so asking for
+/// IOptions&lt;EncoderOptions&gt; would hand back an empty instance without the key.
 /// </summary>
 public class HmacValidationMiddleware(
     RequestDelegate next,
-    IOptions<EncoderOptions> encoderOptions,
+    EncoderOptions encoderOptions,
     IOptions<HmacValidationOptions> hmacOptions,
     ILicenseTokenClient? licenseTokenClient = null
 )
@@ -52,6 +56,16 @@ public class HmacValidationMiddleware(
 
     // Paths exempt from HMAC (anonymous per spec).
     private static readonly string[] ExemptSuffixes = ["/progress"];
+
+    // Private key object: only this middleware can mark a request as verified.
+    private static readonly object VerifiedItemKey = new();
+
+    /// <summary>
+    /// True when this middleware checked the request's signature and it was valid.
+    /// Exempt and unprotected paths are never marked.
+    /// </summary>
+    public static bool IsVerified(HttpContext context) =>
+        context.Items.ContainsKey(VerifiedItemKey);
 
     public async Task InvokeAsync(HttpContext context)
     {
@@ -89,7 +103,7 @@ public class HmacValidationMiddleware(
         }
         else
         {
-            secret = encoderOptions.Value.DistributedEncodingSigningKey;
+            secret = encoderOptions.DistributedEncodingSigningKey;
         }
 
         if (string.IsNullOrWhiteSpace(secret))
@@ -157,6 +171,7 @@ public class HmacValidationMiddleware(
             return;
         }
 
+        context.Items[VerifiedItemKey] = true;
         await next(context);
     }
 

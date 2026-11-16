@@ -73,6 +73,14 @@ public class AnonymousEndpointAllowListTests : IClassFixture<NoMercyApiFactory>
         // Worker progress: HMAC-exempt by spec; a spoofed progress bar is the worst case.
         "POST api/v{version:apiVersion}/dashboard/workers/{workerId}/tasks/{taskId}/progress [Workers.ReceiveProgress]",
         "POST api/v{version:apiVersion}/distribution/workers/{workerId}/tasks/{taskId}/progress [Workers.ReceiveProgress]",
+        // Worker register/heartbeat/unregister: [HmacSignedOrOwner] admits a signed worker,
+        // otherwise the owner only; the unsigned /dashboard/ alias stays owner-only.
+        "DELETE api/v{version:apiVersion}/dashboard/workers/{workerId} [Workers.Unregister]",
+        "DELETE api/v{version:apiVersion}/distribution/workers/{workerId} [Workers.Unregister]",
+        "POST api/v{version:apiVersion}/dashboard/workers/register [Workers.Register]",
+        "POST api/v{version:apiVersion}/dashboard/workers/{workerId}/heartbeat [Workers.Heartbeat]",
+        "POST api/v{version:apiVersion}/distribution/workers/register [Workers.Register]",
+        "POST api/v{version:apiVersion}/distribution/workers/{workerId}/heartbeat [Workers.Heartbeat]",
         // Inbound webhook: gated inside by the intake token check.
         "POST api/v{version:apiVersion}/intake/webhook [IntakeWebhook.Webhook]",
         // LAN device credential: refuses any caller outside the private network.

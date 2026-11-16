@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Diagnostics.CodeAnalysis;
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.Hosting;
@@ -105,8 +106,19 @@ public class WorkerSelfRegistrationService(
             return;
         }
 
+        if (!TryGetCoordinatorUri(out Uri? coordinator))
+        {
+            // CoordinatorUrl comes from configuration; a typo must not fault this
+            // service, because a faulted BackgroundService stops the whole host.
+            logger.LogWarning(
+                "Worker self-registration disabled: CoordinatorUrl {CoordinatorUrl} is not an absolute http(s) URL",
+                options.CoordinatorUrl
+            );
+            return;
+        }
+
         HttpClient http = httpClientFactory.CreateClient(HttpClientName);
-        http.BaseAddress = new(options.CoordinatorUrl!);
+        http.BaseAddress = coordinator;
         http.Timeout = TimeSpan.FromSeconds(10);
 
         // Perform initial token fetch before registering so heartbeats
@@ -168,6 +180,10 @@ public class WorkerSelfRegistrationService(
         !string.IsNullOrWhiteSpace(options.CoordinatorUrl)
         && !string.IsNullOrWhiteSpace(options.WorkerSelfBaseUrl)
         && options.IsDistributedEncodingEnabled;
+
+    private bool TryGetCoordinatorUri([NotNullWhen(true)] out Uri? coordinator) =>
+        Uri.TryCreate(options.CoordinatorUrl, UriKind.Absolute, out coordinator)
+        && (coordinator.Scheme == Uri.UriSchemeHttps || coordinator.Scheme == Uri.UriSchemeHttp);
 
     // ── Token rotation ────────────────────────────────────────────────────────
 

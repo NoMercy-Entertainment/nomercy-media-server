@@ -19,7 +19,6 @@ using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Options;
 using NoMercy.Api.Middleware;
 using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.Distribution;
@@ -92,10 +91,8 @@ public class HmacSigningHandlerTests
             {
                 web.UseTestServer();
                 web.ConfigureServices(services =>
-                    services.AddSingleton<IOptions<EncoderOptions>>(
-                        new OptionsWrapper<EncoderOptions>(
-                            new() { DistributedEncodingSigningKey = Secret }
-                        )
+                    services.AddSingleton(
+                        new EncoderOptions { DistributedEncodingSigningKey = Secret }
                     )
                 );
                 web.Configure(app =>

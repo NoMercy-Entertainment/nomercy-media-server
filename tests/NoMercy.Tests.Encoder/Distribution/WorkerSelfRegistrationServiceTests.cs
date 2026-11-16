@@ -43,6 +43,36 @@ public class WorkerSelfRegistrationServiceTests
         handler.RequestLog.Should().BeEmpty();
     }
 
+    // CoordinatorUrl now comes from configuration, so a typo must not take the
+    // whole server down: new Uri() threw inside ExecuteAsync, and a faulted
+    // ExecuteAsync stops the host (BackgroundServiceExceptionBehavior.StopHost).
+    [Theory]
+    [InlineData("not a url")]
+    [InlineData("coordinator.example:7626")]
+    [InlineData("ftp://coordinator.example")]
+    public async Task ExecuteAsync_CoordinatorUrlNotAnHttpUrl_StaysOffWithoutThrowing(
+        string coordinatorUrl
+    )
+    {
+        RecordingHandler handler = new();
+        WorkerSelfRegistrationService sut = MakeService(
+            handler,
+            opts =>
+            {
+                opts.DistributedEncodingSigningKey = "key";
+                opts.CoordinatorUrl = coordinatorUrl;
+                opts.WorkerSelfBaseUrl = "http://worker.test";
+            }
+        );
+
+        await sut.StartAsync(CancellationToken.None);
+        Func<Task> run = () => sut.ExecuteTask!.WaitAsync(TimeSpan.FromSeconds(5));
+        await run.Should().NotThrowAsync("the service must log and stay off, not fault");
+        await sut.StopAsync(CancellationToken.None);
+
+        handler.RequestLog.Should().BeEmpty();
+    }
+
     [Fact]
     public async Task ExecuteAsync_Enabled_PostsRegistrationOnStart()
     {
@@ -168,7 +198,9 @@ public class WorkerSelfRegistrationServiceTests
         // OperationCanceledException. It must not escape TryRegisterAsync
         // uncaught — the service's own stoppingToken was never asked to
         // cancel, so the ExecuteAsync loop must carry on to the heartbeat.
-        TaskCompletionSource heartbeatSeen = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        TaskCompletionSource heartbeatSeen = new(
+            TaskCreationOptions.RunContinuationsAsynchronously
+        );
         RecordingHandler handler = new(respond: req =>
         {
             if (req.RequestUri!.ToString().Contains("register"))

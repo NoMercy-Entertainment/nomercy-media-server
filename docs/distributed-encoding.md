@@ -26,8 +26,10 @@ worker. Adding more workers is the same procedure repeated.
 
 ## Coordinator config
 
-Set these in `EncoderOptions` (typically via `appsettings.json` → `Encoder`
-section or the bootstrap call in `Program.cs`):
+Set these in the `Encoder` section of `appsettings.json`, or as environment
+variables with a double underscore (`Encoder__DistributedEncodingSigningKey`).
+The server reads `DistributedEncodingSigningKey`, `CoordinatorUrl`,
+`WorkerSelfBaseUrl`, `WorkerId` and `WorkerHeartbeatInterval` from there:
 
 ```json
 {
@@ -67,8 +69,10 @@ settings that point at the coordinator:
 
 On boot the worker's `WorkerSelfRegistrationService`:
 
-1. POSTs `/api/v1/dashboard/workers/register` to the coordinator with its
-   hardware capabilities.
+1. POSTs `/api/v1/distribution/workers/register` to the coordinator with its
+   hardware capabilities. Every call is signed with the shared key
+   (`X-NoMercy-Timestamp` and `X-NoMercy-Signature`); the signature is the
+   worker's only credential, it needs no user token.
 2. Heartbeats every `WorkerHeartbeatInterval` to stay active.
 3. DELETEs its registration when the process shuts down cleanly. If the
    process crashes, the coordinator evicts the stale entry after ~60s.
@@ -219,6 +223,11 @@ clears the cooldown.
 **Coordinator returns 503 on register/heartbeat.**
 The coordinator's `DistributedEncodingSigningKey` isn't set. Check
 `appsettings.json` on the coordinator and restart.
+
+**Coordinator returns 401 on register/heartbeat.**
+The signature did not verify: the keys differ, or the two clocks are more
+than 5 minutes apart. A worker whose `CoordinatorUrl` is not an absolute
+`http(s)://` URL does not try at all and logs a warning instead.
 
 **Worker registers successfully but tasks all fall back to local.**
 Signing keys differ between coordinator and worker. Every task payload
