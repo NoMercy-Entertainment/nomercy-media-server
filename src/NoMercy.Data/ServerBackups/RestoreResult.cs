@@ -32,4 +32,12 @@ public sealed class RestoreResult
 
     [JsonProperty("safety_backup_id")]
     public string? SafetyBackupId { get; set; }
+
+    /// <summary>
+    /// The set holding the files the restore replaced, as the old server left
+    /// them. Null when the restore did not apply, or when that set could not be
+    /// written (the message then says where the files are).
+    /// </summary>
+    [JsonProperty("pre_restore_backup_id")]
+    public string? PreRestoreBackupId { get; set; }
 }

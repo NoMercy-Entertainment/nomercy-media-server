@@ -20,8 +20,8 @@ public interface IRestoreScheduler
 {
     Task<RestoreScheduleResult> ScheduleAsync(string backupId, CancellationToken cancellationToken);
 
-    /// <summary>Withdraws a waiting request. Does nothing when there is none.</summary>
-    Task CancelAsync(CancellationToken cancellationToken);
+    /// <summary>Withdraws a waiting request. False when there was none.</summary>
+    Task<bool> CancelAsync(CancellationToken cancellationToken);
 
     Task<PendingRestore?> GetPendingAsync(CancellationToken cancellationToken);
 

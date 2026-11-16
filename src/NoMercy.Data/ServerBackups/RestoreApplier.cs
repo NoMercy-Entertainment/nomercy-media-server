@@ -15,19 +15,22 @@ using NoMercy.Storage;
 namespace NoMercy.Data.ServerBackups;
 
 /// <summary>
-/// Applies a restore in three phases. Nothing live moves until the last check
+/// Applies a restore in four phases. Nothing live moves until the last check
 /// has passed:
 /// <list type="number">
-/// <item>Prepare: verify the set, copy it into a staging folder next to the live
-/// files, verify the copy again, check each database, and migrate the copies to
-/// this server's schema. Any failure here refuses the restore; no live file has
-/// been touched.</item>
+/// <item>Check: the request names a set and a safety set that both exist, the
+/// files to swap share one volume, and the set verifies.</item>
+/// <item>Prepare: copy the set into a staging folder next to the live files,
+/// flushed to disk, verify the copy again, check each database, and migrate the
+/// copies to this server's schema. Any failure in these two phases refuses the
+/// restore; no live file has been touched.</item>
 /// <item>Swap: write a journal, then for each database file and the config folder
 /// rename the live one aside and the staged one into place. Renames on one volume
 /// are atomic and keep every byte of the old files.</item>
 /// <item>Commit: delete the journal. A failure before this point renames
 /// everything back; a crash before it is undone from the journal at the next
-/// start.</item>
+/// start. After it, the files that were renamed aside are published as a
+/// backup set, the true state from before the restore.</item>
 /// </list>
 /// </summary>
 public sealed class RestoreApplier(
@@ -35,6 +38,8 @@ public sealed class RestoreApplier(
     ISqliteFileOperations sqlite,
     IBackupSetVerifier verifier,
     IBackupDatabaseSchema schema,
+    IBackupSetWriter writer,
+    IVolumeInspector volumes,
     BackupOptions options,
     TimeProvider clock,
     ILogger<RestoreApplier> logger
@@ -50,10 +55,15 @@ public sealed class RestoreApplier(
     private string PreviousRoot => Path.Combine(options.RestoreWorkRoot, PreviousFolder);
 
     public async Task<RestoreResult?> ApplyPendingAsync(
-        bool previousServerStopped,
+        bool noOtherServerRunning,
         CancellationToken cancellationToken
     )
     {
+        // Another server may be in the middle of its own swap: then neither its
+        // journal nor its request is ours to touch, and nothing is recorded.
+        if (!noOtherServerRunning)
+            return await RefuseWhileAnotherServerRunsAsync(cancellationToken);
+
         RestoreResult? result = await RecoverInterruptedSwapAsync(cancellationToken);
         if (result is { Status: RestoreStatus.RollbackIncomplete })
             return result;
@@ -79,24 +89,57 @@ public sealed class RestoreApplier(
             return result;
 
         logger.LogInformation("Restoring backup {BackupId}", pending.BackupId);
-        result = await ApplyAsync(pending, previousServerStopped, cancellationToken);
+
+        // Recorded first, so a crash while preparing still leaves a word on it.
+        await SaveResultAsync(
+            Result(
+                pending.BackupId,
+                pending.SafetyBackupId,
+                RestoreStatus.Refused,
+                "The server stopped while preparing this restore. Nothing was changed."
+            ),
+            cancellationToken
+        );
+
+        result = await ApplyAsync(pending, cancellationToken);
         await SaveResultAsync(result, cancellationToken);
         return result;
     }
 
-    private async Task<RestoreResult> ApplyAsync(
-        PendingRestore pending,
-        bool previousServerStopped,
+    private async Task<RestoreResult?> RefuseWhileAnotherServerRunsAsync(
         CancellationToken cancellationToken
     )
     {
-        if (!previousServerStopped)
-            return Refused(
-                pending,
-                "The previous server process was still running, so its database files "
-                    + "could not be swapped safely. Nothing was changed; ask for the restore again."
-            );
+        if (!storage.FileExists(options.PendingRestorePath))
+            return null;
 
+        PendingRestore? waiting = null;
+        try
+        {
+            waiting = await BackupFiles.ReadJsonAsync<PendingRestore>(
+                storage,
+                options.PendingRestorePath,
+                cancellationToken
+            );
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning("The restore request cannot be read: {Reason}", exception.Message);
+        }
+
+        return Refused(
+            waiting ?? new PendingRestore(),
+            "Another server process still holds the data folder, so its files could not be "
+                + "swapped safely. Nothing was changed. The restore stays requested and runs at "
+                + "the next start that has the data folder to itself; withdraw it to stop that."
+        );
+    }
+
+    private async Task<RestoreResult> ApplyAsync(
+        PendingRestore pending,
+        CancellationToken cancellationToken
+    )
+    {
         if (!BackupSetId.IsValid(pending.BackupId))
             return Refused(pending, "The restore request does not name a valid backup.");
 
@@ -104,9 +147,27 @@ public sealed class RestoreApplier(
         if (!storage.DirectoryExists(setFolder))
             return Refused(pending, "The backup no longer exists.");
 
+        if (!SafetySetExists(pending))
+            return Refused(
+                pending,
+                "The backup of the state before this restore is missing, so the restore could "
+                    + "not be undone. Nothing was changed; ask for the restore again."
+            );
+
+        if (HasFiles(PreviousRoot))
+            return Refused(
+                pending,
+                $"The files from before an earlier restore are still in '{PreviousRoot}' and "
+                    + "were never saved as a backup. Move them somewhere safe, then ask again."
+            );
+
         BackupManifest manifest;
         try
         {
+            string? layoutProblem = CheckLayout();
+            if (layoutProblem is not null)
+                return Refused(pending, layoutProblem);
+
             BackupVerification source = await verifier.VerifyAsync(
                 setFolder,
                 pending.BackupId,
@@ -119,17 +180,60 @@ public sealed class RestoreApplier(
             string? problem = await PrepareAsync(setFolder, manifest, cancellationToken);
             if (problem is not null)
             {
-                DeleteWorkFolder();
+                ClearWorkFolder();
                 return Refused(pending, problem);
             }
         }
         catch (Exception exception)
         {
-            DeleteWorkFolder();
+            ClearWorkFolder();
             return Refused(pending, $"The backup could not be prepared: {exception.Message}");
         }
 
         return await SwapAsync(pending, manifest, cancellationToken);
+    }
+
+    private bool SafetySetExists(PendingRestore pending) =>
+        BackupSetId.IsValid(pending.SafetyBackupId)
+        && storage.DirectoryExists(Path.Combine(options.SetsRoot, pending.SafetyBackupId!));
+
+    /// <summary>
+    /// A swap renames the databases and the config folder into the work folder
+    /// and back. A rename across volumes is a copy and a delete, neither atomic
+    /// nor safe to undo, so every one of them must share the work folder's volume.
+    /// Returns why not, or null when they do (or when the volumes are unknown).
+    /// </summary>
+    private string? CheckLayout()
+    {
+        if (storage.ResolveLinkTarget(options.ConfigRoot) is not null)
+            return $"The config folder '{options.ConfigRoot}' is a link. A restore renames "
+                + "the folder itself and cannot do that safely through a link.";
+
+        if (volumes.IsMountPoint(options.ConfigRoot))
+            return $"The config folder '{options.ConfigRoot}' is a mount point. A restore "
+                + "renames the folder itself, which a mount point does not allow.";
+
+        string? workVolume = volumes.VolumeOf(options.RestoreWorkRoot);
+        if (workVolume is null)
+            return null;
+
+        List<(string Label, string Path)> swapped =
+        [
+            ("The config folder", options.ConfigRoot),
+            .. options.Databases.Select(database =>
+                ($"The {database.Name} database", Path.GetDirectoryName(database.LivePath)!)
+            ),
+        ];
+        foreach ((string label, string path) in swapped)
+        {
+            string? volume = volumes.VolumeOf(path);
+            if (volume is not null && !volume.Equals(workVolume, StringComparison.Ordinal))
+                return $"{label} is on {volume}, but the restore works in "
+                    + $"'{options.RestoreWorkRoot}' on {workVolume}. A restore swaps files by "
+                    + "renaming them, which only works within one volume.";
+        }
+
+        return null;
     }
 
     /// <summary>
@@ -142,7 +246,7 @@ public sealed class RestoreApplier(
         CancellationToken cancellationToken
     )
     {
-        DeleteWorkFolder();
+        ClearWorkFolder();
         BackupFiles.CreatePrivateDirectory(storage, options.RestoreRoot);
         BackupFiles.CreatePrivateDirectory(storage, options.RestoreWorkRoot);
         BackupFiles.CreatePrivateDirectory(storage, StagedRoot);
@@ -190,6 +294,8 @@ public sealed class RestoreApplier(
                 return $"The {database.Name} database in the backup is damaged.";
         }
 
+        // SQLite syncs its own writes (rollback journal, synchronous=FULL), so the
+        // migrated and sealed copies are on disk when these calls return.
         foreach (BackupManifestDatabase database in manifest.Databases)
         {
             string path = BackupFiles.ResolveInside(StagedRoot, database.Path);
@@ -199,6 +305,7 @@ public sealed class RestoreApplier(
                 return $"The staged {database.Name} database did not close cleanly.";
         }
 
+        BackupFiles.RestrictTree(storage, StagedRoot);
         return null;
     }
 
@@ -208,15 +315,19 @@ public sealed class RestoreApplier(
         CancellationToken cancellationToken
     )
     {
-        RestoreJournal journal = BuildJournal(pending, manifest);
+        RestoreJournal journal;
         try
         {
+            journal = BuildJournal(pending, manifest);
             sqlite.ReleaseAllConnections();
             BackupFiles.CreatePrivateDirectory(storage, PreviousRoot);
             BackupFiles.CreatePrivateDirectory(
                 storage,
                 Path.Combine(PreviousRoot, BackupSetWriter.DatabasesFolder)
             );
+
+            // Flushed to disk before the first rename: a crash after any rename
+            // must find the journal to undo it.
             await BackupFiles.WriteTextAtomicallyAsync(
                 storage,
                 JournalPath,
@@ -226,7 +337,7 @@ public sealed class RestoreApplier(
         }
         catch (Exception exception)
         {
-            DeleteWorkFolder();
+            ClearWorkFolder();
             return Refused(pending, $"The restore could not start: {exception.Message}");
         }
 
@@ -248,14 +359,62 @@ public sealed class RestoreApplier(
             return Undo(journal, $"Putting the backup in place failed ({exception.Message}).");
         }
 
-        DeleteWorkFolder();
         logger.LogInformation("Backup {BackupId} restored", pending.BackupId);
-        return Result(
+        (string? preRestoreId, string? keepProblem) = await KeepPreviousStateAsync(pending);
+        string message = keepProblem is null
+            ? $"The backup was restored. The state from just before it is kept as backup {preRestoreId}."
+            : $"The backup was restored. The state from just before it could not be saved as "
+                + $"a backup ({keepProblem}); its files are kept in '{PreviousRoot}'.";
+
+        RestoreResult result = Result(
             pending.BackupId,
             pending.SafetyBackupId,
             RestoreStatus.Applied,
-            "The backup was restored."
+            message
         );
+        result.PreRestoreBackupId = preRestoreId;
+        return result;
+    }
+
+    /// <summary>
+    /// Publishes the files the swap renamed aside as a backup set: the state the
+    /// old server left when it exited, later than the safety set taken when the
+    /// restore was asked for. On failure the files stay where they are.
+    /// </summary>
+    private async Task<(string? Id, string? Problem)> KeepPreviousStateAsync(PendingRestore pending)
+    {
+        try
+        {
+            List<BackupDatabaseFile> databases = options
+                .Databases.Select(database => new BackupDatabaseFile(
+                    database.Name,
+                    Path.Combine(PreviousRoot, BackupSetWriter.DatabasesFolder, database.FileName)
+                ))
+                .ToList();
+            BackupManifest kept = await writer.WriteAsync(
+                $"before restore of {pending.BackupId}",
+                databases,
+                Path.Combine(PreviousRoot, BackupSetWriter.ConfigFolder),
+                CancellationToken.None
+            );
+
+            sqlite.ReleaseAllConnections();
+            DeleteWorkFolder();
+            return (kept.Id, null);
+        }
+        catch (Exception exception)
+        {
+            logger.LogCritical(
+                "The state from before the restore of {BackupId} could not be saved as a backup; "
+                    + "its files are kept in {Folder}: {Reason}",
+                pending.BackupId,
+                PreviousRoot,
+                exception.Message
+            );
+            sqlite.ReleaseAllConnections();
+            ClearWorkFolder();
+            return (null, exception.Message);
+        }
     }
 
     private RestoreJournal BuildJournal(PendingRestore pending, BackupManifest manifest)
@@ -375,7 +534,7 @@ public sealed class RestoreApplier(
         }
 
         TryDeleteFile(JournalPath);
-        DeleteWorkFolder();
+        ClearWorkFolder();
         return Result(
             journal.BackupId,
             journal.SafetyBackupId,
@@ -445,7 +604,7 @@ public sealed class RestoreApplier(
     {
         try
         {
-            storage.CreateDirectory(options.RestoreRoot);
+            BackupFiles.CreatePrivateDirectory(storage, options.RestoreRoot);
             await BackupFiles.WriteTextAtomicallyAsync(
                 storage,
                 options.LastRestorePath,
@@ -493,6 +652,41 @@ public sealed class RestoreApplier(
             storage.MoveDirectory(from, to);
         else
             storage.MoveFile(from, to);
+    }
+
+    private bool HasFiles(string folder) =>
+        storage.DirectoryExists(folder)
+        && storage
+            .EnumerateFileSystemEntries(folder, "*", SearchOption.AllDirectories)
+            .Any(storage.FileExists);
+
+    /// <summary>
+    /// Removes what a restore staged, but never a file from before a restore:
+    /// while <c>previous</c> holds any, only the staged copies and the journal go.
+    /// </summary>
+    private void ClearWorkFolder()
+    {
+        if (!HasFiles(PreviousRoot))
+        {
+            DeleteWorkFolder();
+            return;
+        }
+
+        try
+        {
+            if (storage.DirectoryExists(StagedRoot))
+                storage.DeleteDirectory(StagedRoot, recursive: true);
+        }
+        catch (Exception exception)
+        {
+            logger.LogWarning(
+                "Could not clear the staged restore copy {Folder}: {Reason}",
+                StagedRoot,
+                exception.Message
+            );
+        }
+
+        TryDeleteFile(JournalPath);
     }
 
     private void DeleteWorkFolder()

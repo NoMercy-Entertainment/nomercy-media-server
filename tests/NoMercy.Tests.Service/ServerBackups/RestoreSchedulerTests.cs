@@ -37,9 +37,7 @@ public sealed class RestoreSchedulerTests : IDisposable
             storage,
             new BackupSetVerifier(storage, sqlite, schema, _options),
             _backups,
-            _options,
-            TimeProvider.System,
-            NullLogger<RestoreScheduler>.Instance
+            _options
         );
         _folder.CreateServer();
     }
@@ -70,9 +68,44 @@ public sealed class RestoreSchedulerTests : IDisposable
         // would delete the very set the restore needs.
         string id = (await _backups.CreateAsync("target", CancellationToken.None)).Id;
 
-        await _scheduler.ScheduleAsync(id, CancellationToken.None);
+        RestoreScheduleResult result = await _scheduler.ScheduleAsync(id, CancellationToken.None);
+        await _backups.CreateAsync("a later daily backup", CancellationToken.None);
 
         Directory.Exists(Path.Combine(_options.SetsRoot, id)).Should().BeTrue();
+        Directory
+            .Exists(Path.Combine(_options.SetsRoot, result.Pending!.SafetyBackupId!))
+            .Should()
+            .BeTrue();
+    }
+
+    [Fact]
+    public async Task WhenTheSafetyBackupFails_NoRequestIsWritten()
+    {
+        string id = (await _backups.CreateAsync("target", CancellationToken.None)).Id;
+        Mock<ISqliteFileOperations> broken = new();
+        broken
+            .Setup(sqlite => sqlite.CopyOnline(It.IsAny<string>(), It.IsAny<string>()))
+            .Throws(new IOException("disk full"));
+        LocalStorageDriver storage = new();
+        RestoreScheduler scheduler = new(
+            storage,
+            new BackupSetVerifier(
+                storage,
+                new SqliteFileOperations(),
+                new FakeBackupDatabaseSchema(
+                    BackupTestFolder.FirstMigration,
+                    BackupTestFolder.SecondMigration
+                ),
+                _options
+            ),
+            BackupTestFolder.CreateBackupService(_options, broken.Object),
+            _options
+        );
+
+        Func<Task> schedule = () => scheduler.ScheduleAsync(id, CancellationToken.None);
+
+        await schedule.Should().ThrowAsync<IOException>();
+        File.Exists(_options.PendingRestorePath).Should().BeFalse();
     }
 
     [Fact]
@@ -129,9 +162,11 @@ public sealed class RestoreSchedulerTests : IDisposable
         string id = (await _backups.CreateAsync("target", CancellationToken.None)).Id;
         await _scheduler.ScheduleAsync(id, CancellationToken.None);
 
-        await _scheduler.CancelAsync(CancellationToken.None);
+        bool withdrawn = await _scheduler.CancelAsync(CancellationToken.None);
 
+        withdrawn.Should().BeTrue();
         (await _scheduler.GetPendingAsync(CancellationToken.None)).Should().BeNull();
+        (await _scheduler.CancelAsync(CancellationToken.None)).Should().BeFalse();
     }
 
     [Fact]

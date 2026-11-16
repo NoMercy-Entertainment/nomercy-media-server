@@ -26,5 +26,6 @@ public static partial class ServiceConfiguration
         services.AddSingleton<IBackupDatabaseSchema, BackupDatabaseSchema>();
         services.AddSingleton<IBackupSetVerifier, BackupSetVerifier>();
         services.AddSingleton<IRestoreScheduler, RestoreScheduler>();
+        services.AddSingleton<IVolumeInspector, DriveVolumeInspector>();
     }
 }

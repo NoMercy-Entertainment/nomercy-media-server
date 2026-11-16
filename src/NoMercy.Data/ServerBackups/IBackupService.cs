@@ -26,4 +26,18 @@ public interface IBackupService
 
     /// <summary>The published sets, newest first.</summary>
     Task<IReadOnlyList<BackupSetSummary>> ListAsync(CancellationToken cancellationToken);
+
+    /// <summary>
+    /// Backs up the current state, then writes the request that the next start
+    /// restores <paramref name="backupId"/>, naming that safety set. Both happen
+    /// under the gate every backup and prune takes, so neither set can be pruned
+    /// in between. The caller verifies the set first.
+    /// </summary>
+    Task<RestoreScheduleResult> RequestRestoreAsync(
+        string backupId,
+        CancellationToken cancellationToken
+    );
+
+    /// <summary>Withdraws the waiting restore. False when there was none.</summary>
+    Task<bool> CancelRestoreAsync(CancellationToken cancellationToken);
 }

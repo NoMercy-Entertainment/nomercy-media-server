@@ -139,6 +139,7 @@ public sealed class BackupTestFolder : IDisposable
             storage ?? new LocalStorageDriver(),
             CreateWriter(options, sqlite, storage),
             options,
+            TimeProvider.System,
             NullLogger<BackupService>.Instance
         );
 

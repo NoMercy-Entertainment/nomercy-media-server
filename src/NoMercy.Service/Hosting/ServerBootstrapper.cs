@@ -33,6 +33,8 @@ namespace NoMercy.Service.Hosting;
 
 public sealed class ServerBootstrapper
 {
+    private ServerInstanceLock? _instanceLock;
+
     public async Task RunAsync(StartupOptions options)
     {
         switch (options.RunAsService)
@@ -96,11 +98,19 @@ public sealed class ServerBootstrapper
 
         // A restore asked for before the restart goes in now: nothing has opened a
         // database yet, and the process that held them has exited.
+        // The instance lock is held for the life of this process. Without it,
+        // another server may be running on the same data (no restart PID to wait
+        // for), and its files must not be swapped under it.
+        _instanceLock = ServerInstanceLock.TryAcquire(preBootBackend, AppFiles.DataPath);
+        if (_instanceLock is null)
+            Logger.App(
+                "Another server process holds the data folder; a pending restore waits for it to stop",
+                LogEventLevel.Warning
+            );
+
         await ApplyPendingRestoreAsync(
-            preBootBackend,
-            sqliteFiles,
-            backupOptions,
-            previousServerStopped
+            CreateRestoreApplier(preBootBackend, sqliteFiles, backupOptions),
+            noOtherServerRunning: previousServerStopped && _instanceLock is not null
         );
 
         // Folders, then schema, then Phase 1 — in that order. Phase 1's
@@ -388,30 +398,43 @@ public sealed class ServerBootstrapper
         }
     }
 
-    /// <summary>
-    /// Applies a pending restore, all or nothing. A restore that cannot finish and
-    /// cannot be undone stops the start: the server never runs on half a backup.
-    /// </summary>
-    private static async Task ApplyPendingRestoreAsync(
+    private static RestoreApplier CreateRestoreApplier(
         IStorageDriver storage,
         ISqliteFileOperations sqlite,
-        BackupOptions options,
-        bool previousServerStopped
+        BackupOptions options
     )
     {
         BackupDatabaseSchema schema = new();
-        RestoreApplier applier = new(
+        return new(
             storage,
             sqlite,
             new BackupSetVerifier(storage, sqlite, schema, options),
             schema,
+            new BackupSetWriter(
+                storage,
+                sqlite,
+                options,
+                TimeProvider.System,
+                new SetupLogger<BackupSetWriter>()
+            ),
+            new DriveVolumeInspector(),
             options,
             TimeProvider.System,
             new SetupLogger<RestoreApplier>()
         );
+    }
 
+    /// <summary>
+    /// Applies a pending restore, all or nothing. A restore that cannot finish and
+    /// cannot be undone stops the start: the server never runs on half a backup.
+    /// </summary>
+    internal static async Task ApplyPendingRestoreAsync(
+        IRestoreApplier applier,
+        bool noOtherServerRunning
+    )
+    {
         RestoreResult? result = await applier.ApplyPendingAsync(
-            previousServerStopped,
+            noOtherServerRunning,
             CancellationToken.None
         );
         if (result is null)

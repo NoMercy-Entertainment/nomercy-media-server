@@ -15,29 +15,62 @@ using NoMercy.Storage.Drivers.Local;
 namespace NoMercy.Tests.Service.ServerBackups;
 
 /// <summary>
-/// The real local driver, with a switch that makes a chosen move fail, to put a
-/// restore through a failure at a precise point of its swap.
+/// The real local driver, with switches that make a chosen move, delete or
+/// write fail, or make the whole "process" die after a number of swap renames,
+/// to put a restore through a failure at a precise point.
 /// </summary>
 public sealed class FaultyStorageDriver : IStorageDriver
 {
     private readonly LocalStorageDriver _inner = new();
+    private bool _journalWritten;
 
     /// <summary>Called with (from, to) before every file or folder move; true makes it throw.</summary>
     public Func<string, string, bool> FailMove { get; set; } = (_, _) => false;
 
+    /// <summary>Called before every file delete; true makes it throw.</summary>
+    public Func<string, bool> FailDelete { get; set; } = _ => false;
+
+    /// <summary>Called before every file opened for writing; true makes it throw (a full disk).</summary>
+    public Func<string, bool> FailOpenWrite { get; set; } = _ => false;
+
+    /// <summary>
+    /// Once the journal is on disk and this many swap renames have happened,
+    /// every change to the disk fails, as if the process had died there: what is
+    /// on disk is exactly what a crash would leave. Reads keep working.
+    /// </summary>
+    public int? DeadAfterSwapMoves { get; set; }
+
     /// <summary>Every move that went through, in order.</summary>
     public List<(string From, string To)> Moves { get; } = [];
+
+    public int SwapMoves =>
+        Moves.Count(move => !move.From.EndsWith(".tmp", StringComparison.Ordinal));
+
+    private bool Dead => _journalWritten && DeadAfterSwapMoves is int limit && SwapMoves >= limit;
 
     public bool FileExists(string path) => _inner.FileExists(path);
 
     public bool DirectoryExists(string path) => _inner.DirectoryExists(path);
 
-    public void CreateDirectory(string path) => _inner.CreateDirectory(path);
+    public void CreateDirectory(string path)
+    {
+        GuardAlive();
+        _inner.CreateDirectory(path);
+    }
 
-    public void DeleteFile(string path) => _inner.DeleteFile(path);
+    public void DeleteFile(string path)
+    {
+        GuardAlive();
+        if (FailDelete(path))
+            throw new IOException($"Simulated failure deleting '{path}'.");
+        _inner.DeleteFile(path);
+    }
 
-    public void DeleteDirectory(string path, bool recursive) =>
+    public void DeleteDirectory(string path, bool recursive)
+    {
+        GuardAlive();
         _inner.DeleteDirectory(path, recursive);
+    }
 
     public long GetFileSize(string path) => _inner.GetFileSize(path);
 
@@ -49,17 +82,33 @@ public sealed class FaultyStorageDriver : IStorageDriver
 
     public Stream OpenRead(string path) => _inner.OpenRead(path);
 
-    public Stream OpenWrite(string path, bool overwrite) => _inner.OpenWrite(path, overwrite);
+    public Stream OpenWrite(string path, bool overwrite)
+    {
+        GuardAlive();
+        if (FailOpenWrite(path))
+            throw new IOException("There is not enough space on the disk.");
+        return _inner.OpenWrite(path, overwrite);
+    }
 
     public void MoveFile(string source, string destination)
     {
-        Guard(source, destination);
+        GuardMove(source, destination);
         _inner.MoveFile(source, destination);
-        Moves.Add((source, destination));
+        Record(source, destination);
     }
 
-    public void CopyFile(string source, string destination, bool overwrite) =>
+    public void ReplaceFile(string source, string destination)
+    {
+        GuardMove(source, destination);
+        _inner.ReplaceFile(source, destination);
+        Record(source, destination);
+    }
+
+    public void CopyFile(string source, string destination, bool overwrite)
+    {
+        GuardAlive();
         _inner.CopyFile(source, destination, overwrite);
+    }
 
     public IEnumerable<string> EnumerateFileSystemEntries(
         string directory,
@@ -73,16 +122,32 @@ public sealed class FaultyStorageDriver : IStorageDriver
 
     public bool IsHidden(string path) => _inner.IsHidden(path);
 
+    public bool TryRestrictToOwner(string path) => _inner.TryRestrictToOwner(path);
+
     public void MoveDirectory(string source, string destination)
     {
-        Guard(source, destination);
+        GuardMove(source, destination);
         _inner.MoveDirectory(source, destination);
-        Moves.Add((source, destination));
+        Record(source, destination);
     }
 
-    private void Guard(string source, string destination)
+    private void Record(string source, string destination)
     {
+        Moves.Add((source, destination));
+        if (destination.EndsWith("journal.json", StringComparison.Ordinal))
+            _journalWritten = true;
+    }
+
+    private void GuardMove(string source, string destination)
+    {
+        GuardAlive();
         if (FailMove(source, destination))
             throw new IOException($"Simulated failure moving '{source}' to '{destination}'.");
+    }
+
+    private void GuardAlive()
+    {
+        if (Dead)
+            throw new IOException("Simulated crash: the process is gone.");
     }
 }

@@ -14,10 +14,16 @@ using NoMercy.Storage;
 
 namespace NoMercy.Data.ServerBackups;
 
+/// <summary>
+/// Owns every write to the sets folder and to the restore request, behind one
+/// gate, so a prune can never run between a set being made and the request
+/// that protects it being written.
+/// </summary>
 public sealed class BackupService(
     IStorageDriver storage,
     IBackupSetWriter writer,
     BackupOptions options,
+    TimeProvider clock,
     ILogger<BackupService> logger
 ) : IBackupService
 {
@@ -42,7 +48,7 @@ public sealed class BackupService(
                 manifest.Id,
                 manifest.Reason
             );
-            Prune();
+            await PruneAsync(cancellationToken);
             return BackupSetSummary.From(manifest);
         }
         finally
@@ -66,17 +72,88 @@ public sealed class BackupService(
         return sets;
     }
 
+    public async Task<RestoreScheduleResult> RequestRestoreAsync(
+        string backupId,
+        CancellationToken cancellationToken
+    )
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (storage.FileExists(options.PendingRestorePath))
+                return new(
+                    RestoreScheduleStatus.AlreadyPending,
+                    ["Another restore is already waiting for the server to restart."],
+                    null
+                );
+            if (!storage.DirectoryExists(Path.Combine(options.SetsRoot, backupId)))
+                return new(RestoreScheduleStatus.NotFound, ["No backup by that id."], null);
+
+            // The safety set comes first and the request second: a request on disk
+            // always names a safety set that exists. No prune runs in between,
+            // because every prune waits for this gate.
+            BackupManifest safety = await writer.WriteAsync(
+                $"before restoring {backupId}",
+                options.Databases,
+                options.ConfigRoot,
+                CancellationToken.None
+            );
+
+            PendingRestore pending = new()
+            {
+                BackupId = backupId,
+                RequestedAt = clock.GetUtcNow().UtcDateTime,
+                SafetyBackupId = safety.Id,
+            };
+            BackupFiles.CreatePrivateDirectory(storage, options.RestoreRoot);
+            await BackupFiles.WriteTextAtomicallyAsync(
+                storage,
+                options.PendingRestorePath,
+                BackupFiles.Serialize(pending),
+                CancellationToken.None
+            );
+
+            logger.LogInformation(
+                "Restore of backup {BackupId} requested; safety backup {SafetyId}",
+                backupId,
+                safety.Id
+            );
+            await PruneAsync(CancellationToken.None);
+            return new(RestoreScheduleStatus.Scheduled, [], pending);
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
+    public async Task<bool> CancelRestoreAsync(CancellationToken cancellationToken)
+    {
+        await _gate.WaitAsync(cancellationToken);
+        try
+        {
+            if (!storage.FileExists(options.PendingRestorePath))
+                return false;
+
+            storage.DeleteFile(options.PendingRestorePath);
+            logger.LogInformation("The waiting restore was withdrawn");
+            return true;
+        }
+        finally
+        {
+            _gate.Release();
+        }
+    }
+
     private async Task<BackupManifest?> ReadManifestAsync(
         string id,
         CancellationToken cancellationToken
     )
     {
-        string path = Path.Combine(options.SetsRoot, id, BackupManifest.FileName);
-        if (!storage.FileExists(path))
-            return null;
-
-        BackupManifest? manifest = BackupFiles.Deserialize<BackupManifest>(
-            await BackupFiles.ReadTextAsync(storage, path, cancellationToken)
+        BackupManifest? manifest = await BackupFiles.ReadJsonAsync<BackupManifest>(
+            storage,
+            Path.Combine(options.SetsRoot, id, BackupManifest.FileName),
+            cancellationToken
         );
         return manifest?.Id == id ? manifest : null;
     }
@@ -93,17 +170,16 @@ public sealed class BackupService(
             .ToList();
 
     /// <summary>
-    /// Keeps the newest <see cref="BackupOptions.RetainCount"/> sets and clears any
-    /// folder a crashed backup left half built. Runs under the gate, so no set is
-    /// being built while it looks.
+    /// Keeps the newest <see cref="BackupOptions.RetainCount"/> sets, plus every set
+    /// a restore still needs, and clears any folder a crashed backup left half
+    /// built. Runs under the gate, so no set is being built while it looks.
     /// </summary>
-    private void Prune()
+    private async Task PruneAsync(CancellationToken cancellationToken)
     {
         try
         {
-            // The set a waiting restore needs is never pruned, even when it is old.
-            string? protectedId = PendingRestoreTarget();
-            List<string> prunable = ListSetIds().Where(id => id != protectedId).ToList();
+            HashSet<string> kept = await ProtectedSetIdsAsync(cancellationToken);
+            List<string> prunable = ListSetIds().Where(id => !kept.Contains(id)).ToList();
             foreach (string id in prunable.Skip(Math.Max(options.RetainCount, 1)))
             {
                 storage.DeleteDirectory(Path.Combine(options.SetsRoot, id), recursive: true);
@@ -127,13 +203,40 @@ public sealed class BackupService(
         }
     }
 
-    private string? PendingRestoreTarget()
+    /// <summary>
+    /// The sets no prune may delete: the target and the safety set of a waiting
+    /// restore, and the safety and pre-restore sets of the last restore, which
+    /// stay until a newer restore replaces that result.
+    /// </summary>
+    private async Task<HashSet<string>> ProtectedSetIdsAsync(CancellationToken cancellationToken)
     {
-        if (!storage.FileExists(options.PendingRestorePath))
-            return null;
+        PendingRestore? pending = await BackupFiles.ReadJsonAsync<PendingRestore>(
+            storage,
+            options.PendingRestorePath,
+            cancellationToken
+        );
+        RestoreResult? last = await BackupFiles.ReadJsonAsync<RestoreResult>(
+            storage,
+            options.LastRestorePath,
+            cancellationToken
+        );
 
-        using Stream stream = storage.OpenRead(options.PendingRestorePath);
-        using StreamReader reader = new(stream);
-        return BackupFiles.Deserialize<PendingRestore>(reader.ReadToEnd())?.BackupId;
+        // Unreadable means unknown: prune nothing rather than guess what is safe.
+        if (
+            (pending is null && storage.FileExists(options.PendingRestorePath))
+            || (last is null && storage.FileExists(options.LastRestorePath))
+        )
+            throw new InvalidDataException("A restore record cannot be read; nothing is pruned.");
+
+        return new[]
+        {
+            pending?.BackupId,
+            pending?.SafetyBackupId,
+            last?.SafetyBackupId,
+            last?.PreRestoreBackupId,
+        }
+            .OfType<string>()
+            .Where(id => id.Length > 0)
+            .ToHashSet(StringComparer.Ordinal);
     }
 }

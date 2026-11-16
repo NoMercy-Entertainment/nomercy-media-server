@@ -260,6 +260,51 @@ public sealed class BackupServiceTests : IDisposable
             File.GetUnixFileMode(file).Should().Be(fileMode, file);
     }
 
+    [Fact]
+    public async Task Prune_KeepsTheSetsTheLastRestoreNamed()
+    {
+        _folder.CreateServer();
+        BackupService service = CreateService(retainCount: 1);
+        BackupOptions options = _folder.Options(retainCount: 1);
+        BackupService roomy = CreateService(retainCount: 5);
+        string safety = (await roomy.CreateAsync("safety", CancellationToken.None)).Id;
+        string preRestore = (await roomy.CreateAsync("pre-restore", CancellationToken.None)).Id;
+        Directory.CreateDirectory(options.RestoreRoot);
+        File.WriteAllText(
+            options.LastRestorePath,
+            BackupFiles.Serialize(
+                new RestoreResult
+                {
+                    Status = RestoreStatus.Applied,
+                    SafetyBackupId = safety,
+                    PreRestoreBackupId = preRestore,
+                }
+            )
+        );
+
+        await service.CreateAsync("later", CancellationToken.None);
+        await service.CreateAsync("later again", CancellationToken.None);
+
+        Directory.Exists(SetFolder(safety)).Should().BeTrue();
+        Directory.Exists(SetFolder(preRestore)).Should().BeTrue();
+        (await service.ListAsync(CancellationToken.None)).Should().HaveCount(3);
+    }
+
+    [Fact]
+    public async Task Prune_WithAnUnreadableRestoreRequest_DeletesNothing()
+    {
+        _folder.CreateServer();
+        BackupService service = CreateService(retainCount: 1);
+        BackupOptions options = _folder.Options(retainCount: 1);
+        string first = (await service.CreateAsync("first", CancellationToken.None)).Id;
+        Directory.CreateDirectory(options.RestoreRoot);
+        File.WriteAllText(options.PendingRestorePath, "{ not json");
+
+        await service.CreateAsync("second", CancellationToken.None);
+
+        Directory.Exists(SetFolder(first)).Should().BeTrue();
+    }
+
     /// <summary>Real SQLite work, except that every copy fails its integrity check.</summary>
     private sealed class FailingQuickCheck : ISqliteFileOperations
     {
