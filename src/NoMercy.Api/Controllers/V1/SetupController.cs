@@ -69,11 +69,13 @@ public class SetupController(
             LibraryNavigation.HasVideo(libraries)
             && await animeThemeRepository.AnyThemedTitlesAsync(ct);
 
+        string locale = PluginLocale();
+
         List<LibraryNavigationEntryDto> entries = LibraryNavigation.Build(
             libraries,
             hasAnime,
-            PluginEntries(PluginKind.Library, PluginKind.Video),
-            PluginEntries(PluginKind.Music)
+            await PluginEntries(locale, ct, PluginKind.Library, PluginKind.Video),
+            await PluginEntries(locale, ct, PluginKind.Music)
         );
 
         return Ok(new DataResponseDto<List<LibraryNavigationEntryDto>> { Data = entries });
@@ -84,13 +86,82 @@ public class SetupController(
     /// disabled has no instance, so it contributes nothing — the entry appears
     /// the moment it is enabled and disappears again when it is not.
     /// </summary>
-    private List<LibraryNavigationEntryDto> PluginEntries(params string[] kinds) =>
-        [
-            .. pluginManager
-                .GetInstalledPlugins()
-                .SelectMany(info => EntriesOf(info, kinds) ?? [])
-                .OrderBy(entry => entry.Label),
-        ];
+    private async Task<List<LibraryNavigationEntryDto>> PluginEntries(
+        string locale,
+        CancellationToken ct,
+        params string[] kinds
+    )
+    {
+        List<LibraryNavigationEntryDto> entries = [];
+
+        foreach (PluginInfo info in pluginManager.GetInstalledPlugins())
+        {
+            List<LibraryNavigationEntryDto> own = [.. EntriesOf(info, kinds) ?? []];
+            if (own.Count == 0)
+                continue;
+
+            Dictionary<string, string>? strings = await TranslationsOf(info, locale, ct);
+            entries.AddRange(
+                own.Select(entry => entry with { Label = Translate(entry.Label, strings) })
+            );
+        }
+
+        return [.. entries.OrderBy(entry => entry.Label)];
+    }
+
+    /// <summary>
+    /// A plugin's nav label is a key into its own <c>lang/&lt;locale&gt;.json</c>,
+    /// not text. The client only knows its own catalogue, so a key sent as it is
+    /// reaches the sidebar as <c>stations.title</c>. A key the plugin has no
+    /// string for is sent unchanged, which is also what a plugin that wrote
+    /// plain text as its label has always got.
+    /// </summary>
+    private static string Translate(string label, Dictionary<string, string>? strings) =>
+        strings is not null
+        && strings.TryGetValue(label, out string? text)
+        && !string.IsNullOrWhiteSpace(text)
+            ? text
+            : label;
+
+    /// <summary>
+    /// The plugin's strings in the caller's language, or none. A bundle that
+    /// cannot be read costs that plugin its translations, not the navigation:
+    /// its entries keep their keys.
+    /// </summary>
+    private async Task<Dictionary<string, string>?> TranslationsOf(
+        PluginInfo info,
+        string locale,
+        CancellationToken ct
+    )
+    {
+        try
+        {
+            return await pluginManager.ReadTranslationsAsync(info.Id, locale, ct);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            logger.LogWarning(
+                "Plugin {Plugin} navigation labels are left untranslated: {Reason}",
+                info.Name,
+                exception.Message
+            );
+
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The caller's language as a plugin names its locales: <c>nl</c>, not
+    /// <c>nl-NL</c>. A language the plugin does not ship falls back to the one
+    /// it was written in, so anything unrecognised here still reads sensibly.
+    /// </summary>
+    private string PluginLocale()
+    {
+        string language = Language() ?? string.Empty;
+        string tag = language.Split(['-', '_', ',', ';'])[0].Trim().ToLowerInvariant();
+
+        return tag.Length > 0 ? tag : "en";
+    }
 
     /// <summary>
     /// One plugin's navigation entries, or none when that plugin was built
