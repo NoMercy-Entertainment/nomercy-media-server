@@ -28,12 +28,9 @@ namespace NoMercy.Tests.Setup.Boot;
 /// </summary>
 /// <remarks>
 /// Uses the internal delay-injecting constructor (see <c>DegradedModeRecovery.cs</c>)
-/// to skip the real 30s-30m backoff. The "network available" tests rely on genuine
-/// internet reachability via <c>NetworkProbe</c>'s real default targets — the same
-/// dependency <c>DegradedModeStartupTests.NetworkProbe_ReturnsTrue_WhenAtLeastOneTargetReachable</c>
-/// already has; the "network unavailable" tests point <c>NetworkProbe.ProbeTargets</c>
-/// at an RFC 5737 reserved, guaranteed-unroutable address instead of a live network
-/// dependency for the negative case.
+/// to skip the real 30s-30m backoff. The "network available" tests inject the connectivity
+/// check, so no test here needs the internet; <c>NetworkProbe.ProbeTargets</c> points at an
+/// RFC 5737 reserved, guaranteed-unroutable address for the whole class.
 /// </remarks>
 [Trait("Category", "Unit")]
 public sealed class DegradedModeRecoveryLoopTests : IDisposable
@@ -43,11 +40,22 @@ public sealed class DegradedModeRecoveryLoopTests : IDisposable
     public DegradedModeRecoveryLoopTests()
     {
         _originalProbeTargets = NetworkProbe.ProbeTargets;
+        // Whole class runs as if the internet were unreachable; tests that need
+        // "network available" inject checkConnectivity instead of the real probe.
+        NetworkProbe.ProbeTargets = ["192.0.2.1"];
     }
 
     public void Dispose()
     {
         NetworkProbe.ProbeTargets = _originalProbeTargets;
+    }
+
+    // Takes about a real probe's round trip: an instant probe plus the instant test
+    // delay would spin the loop on the caller's thread and flood the log.
+    private static async Task<bool> NetworkUp()
+    {
+        await Task.Delay(100);
+        return true;
     }
 
     private static string CreateValidJwt(TimeSpan validFor)
@@ -130,11 +138,8 @@ public sealed class DegradedModeRecoveryLoopTests : IDisposable
     [Fact]
     public async Task StartRecoveryLoop_NetworkAvailable_AllTasksSucceed_MarksAllCompleted()
     {
-        // Real internet reachability (see class remarks) — every other dependency is
-        // faked/pre-satisfied so this single pass through the loop body flips every
-        // DeferredTasks flag and exits on its own.
-        NetworkProbe.ProbeTargets = _originalProbeTargets;
-
+        // Every other dependency is faked/pre-satisfied so this single pass through
+        // the loop body flips every DeferredTasks flag and exits on its own.
         ApiKeyStore apiKeyStore = new() { KeysLoaded = true };
         AuthTokenStore authTokenStore = new();
         authTokenStore.SetAccessToken(CreateValidJwt(TimeSpan.FromHours(1)));
@@ -147,7 +152,8 @@ public sealed class DegradedModeRecoveryLoopTests : IDisposable
             apiKeyStore,
             registration,
             networkDiscovery: null,
-            delay: _ => Task.CompletedTask
+            delay: _ => Task.CompletedTask,
+            checkConnectivity: NetworkUp
         );
 
         Start.IsDegradedMode = true;
@@ -202,8 +208,6 @@ public sealed class DegradedModeRecoveryLoopTests : IDisposable
     [Fact]
     public async Task StartRecoveryLoop_NoAccessToken_LeavesAuthenticatedFalse_SkipsRegistration()
     {
-        NetworkProbe.ProbeTargets = _originalProbeTargets;
-
         ApiKeyStore apiKeyStore = new() { KeysLoaded = true };
         NoOpServerRegistrationService registration = new();
 
@@ -219,7 +223,8 @@ public sealed class DegradedModeRecoveryLoopTests : IDisposable
             apiKeyStore,
             registration,
             networkDiscovery: null,
-            delay: _ => Task.CompletedTask
+            delay: _ => Task.CompletedTask,
+            checkConnectivity: NetworkUp
         );
 
         // AllCompleted never flips (Authenticated stays false) — run one iteration's
@@ -237,8 +242,6 @@ public sealed class DegradedModeRecoveryLoopTests : IDisposable
     [Fact]
     public async Task StartRecoveryLoop_ExpiredAccessToken_DefersRegistration()
     {
-        NetworkProbe.ProbeTargets = _originalProbeTargets;
-
         ApiKeyStore apiKeyStore = new() { KeysLoaded = true };
         AuthTokenStore authTokenStore = new();
         // Already expired — tokenNeedsRefresh must evaluate true and defer registration
@@ -253,7 +256,8 @@ public sealed class DegradedModeRecoveryLoopTests : IDisposable
             apiKeyStore,
             registration,
             networkDiscovery: null,
-            delay: _ => Task.CompletedTask
+            delay: _ => Task.CompletedTask,
+            checkConnectivity: NetworkUp
         );
 
         Task loopTask = recovery.StartRecoveryLoop(tasks);
@@ -269,8 +273,6 @@ public sealed class DegradedModeRecoveryLoopTests : IDisposable
     [Fact]
     public async Task StartRecoveryLoop_RegistrationOnCooldown_DoesNotThrow_RetriesLater()
     {
-        NetworkProbe.ProbeTargets = _originalProbeTargets;
-
         ApiKeyStore apiKeyStore = new() { KeysLoaded = true };
         AuthTokenStore authTokenStore = new();
         authTokenStore.SetAccessToken(CreateValidJwt(TimeSpan.FromHours(1)));
@@ -282,7 +284,8 @@ public sealed class DegradedModeRecoveryLoopTests : IDisposable
             apiKeyStore,
             new CooldownServerRegistrationService(),
             networkDiscovery: null,
-            delay: _ => Task.CompletedTask
+            delay: _ => Task.CompletedTask,
+            checkConnectivity: NetworkUp
         );
 
         Task loopTask = recovery.StartRecoveryLoop(tasks);
@@ -296,8 +299,6 @@ public sealed class DegradedModeRecoveryLoopTests : IDisposable
     [Fact]
     public async Task StartRecoveryLoop_RegistrationThrowsOtherException_DoesNotThrow_RetriesLater()
     {
-        NetworkProbe.ProbeTargets = _originalProbeTargets;
-
         ApiKeyStore apiKeyStore = new() { KeysLoaded = true };
         AuthTokenStore authTokenStore = new();
         authTokenStore.SetAccessToken(CreateValidJwt(TimeSpan.FromHours(1)));
@@ -309,7 +310,8 @@ public sealed class DegradedModeRecoveryLoopTests : IDisposable
             apiKeyStore,
             new FailingServerRegistrationService(),
             networkDiscovery: null,
-            delay: _ => Task.CompletedTask
+            delay: _ => Task.CompletedTask,
+            checkConnectivity: NetworkUp
         );
 
         Task loopTask = recovery.StartRecoveryLoop(tasks);
@@ -323,8 +325,6 @@ public sealed class DegradedModeRecoveryLoopTests : IDisposable
     [Fact]
     public async Task StartRecoveryLoop_ApiKeyLoaderThrows_DoesNotThrow_LeavesApiKeysLoadedFalse()
     {
-        NetworkProbe.ProbeTargets = _originalProbeTargets;
-
         DeferredTasks tasks = new() { SeedsRun = true, BinariesReady = true };
         DegradedModeRecovery recovery = new(
             new AuthTokenStore(),
@@ -332,7 +332,8 @@ public sealed class DegradedModeRecoveryLoopTests : IDisposable
             new ApiKeyStore(),
             new NoOpServerRegistrationService(),
             networkDiscovery: null,
-            delay: _ => Task.CompletedTask
+            delay: _ => Task.CompletedTask,
+            checkConnectivity: NetworkUp
         );
 
         Task loopTask = recovery.StartRecoveryLoop(tasks);
@@ -346,8 +347,6 @@ public sealed class DegradedModeRecoveryLoopTests : IDisposable
     [Fact]
     public async Task StartRecoveryLoop_NetworkDiscoveryThrows_DoesNotThrow_LeavesNetworkDiscoveredFalse()
     {
-        NetworkProbe.ProbeTargets = _originalProbeTargets;
-
         DeferredTasks tasks = new() { SeedsRun = true, BinariesReady = true };
         DegradedModeRecovery recovery = new(
             new AuthTokenStore(),
@@ -355,7 +354,8 @@ public sealed class DegradedModeRecoveryLoopTests : IDisposable
             new ApiKeyStore(),
             new NoOpServerRegistrationService(),
             networkDiscovery: new ThrowingNetworkDiscovery(),
-            delay: _ => Task.CompletedTask
+            delay: _ => Task.CompletedTask,
+            checkConnectivity: NetworkUp
         );
 
         Task loopTask = recovery.StartRecoveryLoop(tasks);
