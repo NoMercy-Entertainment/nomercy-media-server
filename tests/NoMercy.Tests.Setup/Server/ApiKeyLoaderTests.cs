@@ -259,6 +259,38 @@ public sealed class ApiKeyLoaderTests : IDisposable
     }
 
     [Fact]
+    public async Task LoadKeys_WhileARetryIsWaiting_TriesOnceButStartsNoSecondRetry()
+    {
+        // The bootstrapper, the boot orchestrator, the host start and degraded-mode
+        // recovery all ask one loader for keys. Each ask still tries the API at once,
+        // but one retry loop per loader is enough: a second one only doubles the calls.
+        int waits = 0;
+        TaskCompletionSource firstWait = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        using LoopbackHttpServer server = FastFailingServer();
+        using ExternalServicesConfigScope scope = new(apiBaseUrl: server.BaseUrl);
+        ApiKeyLoader loader = BuildLoader(
+            delay: (_, ct) =>
+            {
+                Interlocked.Increment(ref waits);
+                firstWait.TrySetResult();
+                return Task.Delay(Timeout.Infinite, ct);
+            }
+        );
+
+        await loader.LoadKeys(_stop.Token);
+        await firstWait.Task.WaitAsync(TimeSpan.FromSeconds(10));
+
+        await loader.LoadKeys(_stop.Token);
+        await loader.LoadKeys(_stop.Token);
+
+        // Room for a second loop, if one were started, to reach its wait.
+        await Task.Delay(TimeSpan.FromMilliseconds(200));
+
+        Assert.Equal(3, server.RequestCount);
+        Assert.Equal(1, Volatile.Read(ref waits));
+    }
+
+    [Fact]
     public async Task LoadKeys_NoCacheDirectoryYet_DoesNotThrowWhenWritingCache()
     {
         using LoopbackHttpServer server = new();

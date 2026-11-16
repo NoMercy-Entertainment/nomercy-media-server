@@ -31,6 +31,8 @@ public class ApiKeyLoader : IApiKeyLoader
 
     private readonly IAuthTokenStore _authTokenStore;
     private readonly Func<TimeSpan, CancellationToken, Task> _delay;
+    private readonly Lock _backgroundRefreshLock = new();
+    private Task? _backgroundRefresh;
 
     public ApiKeyLoader(
         IAuthTokenStore authTokenStore,
@@ -245,7 +247,21 @@ public class ApiKeyLoader : IApiKeyLoader
 
     private void StartBackgroundRefresh(CancellationToken ct)
     {
-        _ = Task.Run(
+        // Several callers ask this loader for keys (the bootstrapper, the boot
+        // orchestrator, the host start, degraded-mode recovery). Each ask tries the API
+        // once, but one retry loop per loader is enough; a second only doubles the calls.
+        lock (_backgroundRefreshLock)
+        {
+            if (_backgroundRefresh is { IsCompleted: false })
+                return;
+
+            _backgroundRefresh = RunBackgroundRefresh(ct);
+        }
+    }
+
+    private Task RunBackgroundRefresh(CancellationToken ct)
+    {
+        return Task.Run(
             async () =>
             {
                 int attempt = 0;

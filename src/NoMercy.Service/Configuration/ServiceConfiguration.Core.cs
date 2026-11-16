@@ -197,7 +197,7 @@ public static partial class ServiceConfiguration
         services.AddSingleton(auditLog);
         EventBusProvider.Configure(eventBus);
 
-        services.AddSingleton<IApiKeyStore>(_ => ApiKeyStore.ForHost());
+        services.AddApiKeys();
         services.AddSingleton<IAniDbService, AniDbService>();
         int aniListRequestIntervalMs = configuration.GetValue(
             "Providers:AniList:RequestIntervalMs",
@@ -214,7 +214,6 @@ public static partial class ServiceConfiguration
             jikanRequestIntervalMs
         ));
         services.AddSingleton<ILyricsAggregator, LyricsAggregator>();
-        services.AddSingleton<IApiKeyLoader, ApiKeyLoader>();
         services.AddSingleton<IServerRegistrationService, ServerRegistrationService>();
         services.AddSingleton<IUserProvisioningService, UserProvisioningService>();
         services.AddSingleton<IDegradedModeRecovery, DegradedModeRecovery>();
