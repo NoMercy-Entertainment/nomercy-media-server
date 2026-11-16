@@ -17,9 +17,12 @@ worker. Adding more workers is the same procedure repeated.
   task wire format is versioned but hasn't stabilised yet).
 - Network reachability in both directions: coordinator → worker (task dispatch)
   and worker → coordinator (heartbeats + progress + optional source fetch).
-- A **shared signing key** — a random 32+ character string. Generate with
-  `openssl rand -base64 32` or equivalent. Both machines need the identical
-  value.
+- A **shared signing key** — a random string of at least 32 characters.
+  Generate one with `openssl rand -base64 32` or equivalent. Both machines
+  need the identical value. A shorter key is refused: distributed encoding
+  stays off and the server log says why.
+- Clocks within 5 minutes of each other (any NTP-synced machine is). A signed
+  request whose timestamp is more than 5 minutes off, either way, is refused.
 - **Either** a shared filesystem visible from both machines (NAS, SMB, NFS)
   **or** HTTP reachability from the worker back to the coordinator so it can
   stream source files.
@@ -63,9 +66,12 @@ settings that point at the coordinator:
 - `WorkerSelfBaseUrl` — how the coordinator reaches back to this worker. The
   coordinator POSTs encode tasks to `{WorkerSelfBaseUrl}/api/v1/worker/execute-task`.
 - `WorkerId` — defaults to `Environment.MachineName`. Override when running
-  multiple workers on the same host.
-- `WorkerHeartbeatInterval` — default 20s, must be comfortably below the
-  coordinator's 60s stale threshold.
+  multiple workers on the same host. Only the letters `A-Z`/`a-z`, the
+  digits, `.`, `_` and `-` are allowed; with anything else the worker does
+  not register and logs a warning.
+- `WorkerHeartbeatInterval` — default 20s. Kept between 1s and 30s (a value
+  outside that range is moved to the nearest limit, with a warning): the
+  coordinator drops a worker after 60s without a heartbeat.
 
 On boot the worker's `WorkerSelfRegistrationService`:
 

@@ -24,6 +24,12 @@ namespace NoMercy.Encoder.Distribution;
 /// unregister calls all go to the protected /api/v1/distribution/ prefix.
 /// Without a configured key the request goes out unsigned; the coordinator
 /// then refuses it, which is the right answer for a misconfigured worker.
+///
+/// The path signed is the one the coordinator's app checks: decoded (ASP.NET Core
+/// hands the middleware an unescaped path, so a worker id with a space or a
+/// non-ASCII letter would otherwise never match) and without the path prefix of
+/// <see cref="EncoderOptions.CoordinatorUrl"/> (a reverse proxy that serves the
+/// coordinator under a prefix strips it before the request arrives).
 /// </summary>
 public sealed class HmacSigningHandler(EncoderOptions options) : DelegatingHandler
 {
@@ -39,7 +45,7 @@ public sealed class HmacSigningHandler(EncoderOptions options) : DelegatingHandl
         return await base.SendAsync(request, cancellationToken).ConfigureAwait(false);
     }
 
-    private static async Task SignAsync(
+    private async Task SignAsync(
         HttpRequestMessage request,
         string secret,
         CancellationToken cancellationToken
@@ -53,7 +59,7 @@ public sealed class HmacSigningHandler(EncoderOptions options) : DelegatingHandl
         long timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         string signature = new HmacSigner(secret).Sign(
             request.Method.Method,
-            request.RequestUri!.AbsolutePath,
+            PathAsTheCoordinatorSeesIt(request.RequestUri!),
             timestamp,
             body
         );
@@ -66,4 +72,19 @@ public sealed class HmacSigningHandler(EncoderOptions options) : DelegatingHandl
         );
         request.Headers.Add(HmacRequestHeaders.Signature, signature);
     }
+
+    private string PathAsTheCoordinatorSeesIt(Uri requestUri)
+    {
+        string path = Uri.UnescapeDataString(requestUri.AbsolutePath);
+        string prefix = CoordinatorPathPrefix();
+
+        return prefix.Length > 0 && path.StartsWith(prefix + "/", StringComparison.Ordinal)
+            ? path[prefix.Length..]
+            : path;
+    }
+
+    private string CoordinatorPathPrefix() =>
+        Uri.TryCreate(options.CoordinatorUrl, UriKind.Absolute, out Uri? coordinator)
+            ? Uri.UnescapeDataString(coordinator.AbsolutePath).TrimEnd('/')
+            : string.Empty;
 }

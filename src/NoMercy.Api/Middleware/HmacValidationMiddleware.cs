@@ -27,7 +27,12 @@ namespace NoMercy.Api.Middleware;
 ///   X-NoMercy-Timestamp  — unix seconds (UTC)
 ///   X-NoMercy-Signature  — base64(hmac_sha256(key, stringToSign))
 ///
-/// Replay window: 5 minutes.  Requests older than that are rejected.
+/// Replay window: 5 minutes either side of now (a worker's clock may run a
+/// little ahead).  Requests outside it are rejected.  There is no nonce, so a
+/// captured request can be replayed within the window.
+///
+/// Body size: at most <see cref="HmacValidationOptions.MaxBodyBytes"/> is read
+/// before the signature is known to be good; larger bodies get 413.
 ///
 /// Progress-push path is exempt (spec: anonymous):
 ///   /api/v1/distribution/workers/{id}/tasks/{id}/progress
@@ -82,6 +87,10 @@ public class HmacValidationMiddleware(
         string? workerToken = context.Request.Headers[HmacRequestHeaders.WorkerToken].ToString();
         string? secret;
 
+        // Latent risk: any token the license service reports active becomes the HMAC
+        // secret here, whichever cluster it was issued to. No ILicenseTokenClient is
+        // registered today, so this branch never runs; before one is, introspection
+        // must also check that the token was issued to THIS cluster.
         if (!string.IsNullOrWhiteSpace(workerToken) && licenseTokenClient is not null)
         {
             IntrospectResult introspect = await licenseTokenClient
@@ -151,12 +160,23 @@ public class HmacValidationMiddleware(
             return;
         }
 
+        long maxBodyBytes = hmacOptions.Value.MaxBodyBytes;
+        byte[]? body =
+            context.Request.ContentLength > maxBodyBytes
+                ? null
+                : await ReadBufferedBodyAsync(context.Request, maxBodyBytes);
+        if (body is null)
+        {
+            await WriteBodyTooLarge(context, maxBodyBytes);
+            return;
+        }
+
         HmacSigner signer = new(secret);
         bool valid = signer.Verify(
             context.Request.Method,
             path,
             timestamp,
-            await ReadBufferedBodyAsync(context.Request),
+            body,
             sigHeader.ToString(),
             ReplayWindow
         );
@@ -205,14 +225,41 @@ public class HmacValidationMiddleware(
     private static bool IsExempt(string path) =>
         ExemptSuffixes.Any(suffix => path.EndsWith(suffix, StringComparison.OrdinalIgnoreCase));
 
-    /// <summary>Reads the body for verification and rewinds it so the controller can still read it.</summary>
-    private static async Task<byte[]> ReadBufferedBodyAsync(HttpRequest request)
+    /// <summary>
+    /// Reads the body for verification and rewinds it so the controller can still read it.
+    /// Returns null, having read at most one chunk past the limit, when the body is
+    /// larger than <paramref name="maxBytes"/>: a chunked request carries no
+    /// Content-Length, so the limit is also enforced while reading.
+    /// </summary>
+    private static async Task<byte[]?> ReadBufferedBodyAsync(HttpRequest request, long maxBytes)
     {
         request.EnableBuffering();
         using MemoryStream buffer = new();
-        await request.Body.CopyToAsync(buffer);
+        byte[] chunk = new byte[81920];
+        int read;
+        while ((read = await request.Body.ReadAsync(chunk, request.HttpContext.RequestAborted)) > 0)
+        {
+            if (buffer.Length + read > maxBytes)
+                return null;
+            buffer.Write(chunk, 0, read);
+        }
+
         request.Body.Position = 0;
         return buffer.ToArray();
+    }
+
+    private static async Task WriteBodyTooLarge(HttpContext context, long maxBytes)
+    {
+        context.Response.StatusCode = StatusCodes.Status413PayloadTooLarge;
+        context.Response.ContentType = "application/json";
+
+        object body = new
+        {
+            error = "payload_too_large",
+            detail = $"Signed requests may carry at most {maxBytes} bytes.",
+        };
+
+        await context.Response.WriteAsync(JsonConvert.SerializeObject(body), Encoding.UTF8);
     }
 
     private static async Task WriteHmacError(HttpContext context, string reason, string detail)

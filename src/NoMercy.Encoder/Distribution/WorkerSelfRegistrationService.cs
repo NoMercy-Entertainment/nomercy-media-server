@@ -110,9 +110,18 @@ public class WorkerSelfRegistrationService(
         {
             // CoordinatorUrl comes from configuration; a typo must not fault this
             // service, because a faulted BackgroundService stops the whole host.
+            // The value itself is not logged: a malformed URL may still carry a password.
             logger.LogWarning(
-                "Worker self-registration disabled: CoordinatorUrl {CoordinatorUrl} is not an absolute http(s) URL",
-                options.CoordinatorUrl
+                "Worker self-registration disabled: CoordinatorUrl is not an absolute http(s) URL"
+            );
+            return;
+        }
+
+        if (!IsUrlSafeWorkerId(options.WorkerId))
+        {
+            logger.LogWarning(
+                "Worker self-registration disabled: WorkerId {WorkerId} may only use the letters A-Z and a-z, the digits 0-9, '.', '_' and '-'",
+                options.WorkerId
             );
             return;
         }
@@ -129,7 +138,7 @@ public class WorkerSelfRegistrationService(
         {
             logger.LogWarning(
                 "Initial registration with {CoordinatorUrl} failed — will retry on heartbeat loop",
-                options.CoordinatorUrl
+                WithoutUserInfo(coordinator)
             );
         }
 
@@ -181,9 +190,39 @@ public class WorkerSelfRegistrationService(
         && !string.IsNullOrWhiteSpace(options.WorkerSelfBaseUrl)
         && options.IsDistributedEncodingEnabled;
 
-    private bool TryGetCoordinatorUri([NotNullWhen(true)] out Uri? coordinator) =>
-        Uri.TryCreate(options.CoordinatorUrl, UriKind.Absolute, out coordinator)
-        && (coordinator.Scheme == Uri.UriSchemeHttps || coordinator.Scheme == Uri.UriSchemeHttp);
+    /// <summary>
+    /// The coordinator as the client's base address. The path gets a trailing slash:
+    /// without one, a coordinator served under a prefix ("https://host/nomercy")
+    /// loses that prefix when the relative "api/v1/..." paths are resolved against it.
+    /// </summary>
+    private bool TryGetCoordinatorUri([NotNullWhen(true)] out Uri? coordinator)
+    {
+        if (
+            !Uri.TryCreate(options.CoordinatorUrl, UriKind.Absolute, out Uri? parsed)
+            || (parsed.Scheme != Uri.UriSchemeHttps && parsed.Scheme != Uri.UriSchemeHttp)
+        )
+        {
+            coordinator = null;
+            return false;
+        }
+
+        UriBuilder builder = new(parsed);
+        if (!builder.Path.EndsWith('/'))
+            builder.Path += "/";
+        coordinator = builder.Uri;
+        return true;
+    }
+
+    // The id travels in the request path (heartbeat, unregister); keeping it to
+    // URL-safe characters means it reads the same encoded and decoded, and a
+    // letter or digit rules out "." and "..", which a path would collapse.
+    private static bool IsUrlSafeWorkerId(string workerId) =>
+        workerId.Any(char.IsAsciiLetterOrDigit)
+        && workerId.All(c => char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-');
+
+    // A CoordinatorUrl may carry "user:password@"; logs must not.
+    private static string WithoutUserInfo(Uri uri) =>
+        uri.GetComponents(UriComponents.SchemeAndServer | UriComponents.Path, UriFormat.UriEscaped);
 
     // ── Token rotation ────────────────────────────────────────────────────────
 
@@ -309,7 +348,7 @@ public class WorkerSelfRegistrationService(
                 logger.LogInformation(
                     "Registered as worker {WorkerId} at {CoordinatorUrl}",
                     options.WorkerId,
-                    options.CoordinatorUrl
+                    WithoutUserInfo(http.BaseAddress!)
                 );
                 return true;
             }

@@ -160,17 +160,59 @@ public class HmacSignerTests
         Assert.True(result);
     }
 
-    [Fact]
-    public void FutureTimestamp_WithinWindow_ReturnsTrue()
+    // A worker whose clock runs ahead of the coordinator signs with a timestamp
+    // from the coordinator's future; within the window that must still verify,
+    // or such a worker gets 401 on every request.
+    [Theory]
+    [InlineData(1)]
+    [InlineData(299)]
+    public void FutureTimestamp_WithinWindow_ReturnsTrue(int secondsAhead)
     {
-        // Clocks between coordinator and worker may be slightly skewed.
-        // A timestamp 1 second in the future is within the window.
         HmacSigner signer = new(Secret);
-        long ts = NowSeconds() + 1;
+        long ts = NowSeconds() + secondsAhead;
         string sig = signer.Sign("POST", "/api/v1/worker/execute-task", ts, SampleBody);
 
-        // ageSeconds = nowSeconds - (nowSeconds + 1) = -1, which is < 0 → false.
-        // This documents the strict behaviour: only past-or-present timestamps pass.
+        bool result = signer.Verify(
+            "POST",
+            "/api/v1/worker/execute-task",
+            ts,
+            SampleBody,
+            sig,
+            FiveMinutes
+        );
+
+        Assert.True(result);
+    }
+
+    [Fact]
+    public void FutureTimestamp_OutsideWindow_ReturnsFalse()
+    {
+        HmacSigner signer = new(Secret);
+        long ts = DateTimeOffset.UtcNow.AddMinutes(6).ToUnixTimeSeconds();
+        string sig = signer.Sign("POST", "/api/v1/worker/execute-task", ts, SampleBody);
+
+        bool result = signer.Verify(
+            "POST",
+            "/api/v1/worker/execute-task",
+            ts,
+            SampleBody,
+            sig,
+            FiveMinutes
+        );
+
+        Assert.False(result);
+    }
+
+    // The timestamp is read from a request header; extreme values must be refused,
+    // not overflow the window arithmetic.
+    [Theory]
+    [InlineData(long.MinValue)]
+    [InlineData(long.MaxValue)]
+    public void ExtremeTimestamp_ReturnsFalse(long ts)
+    {
+        HmacSigner signer = new(Secret);
+        string sig = signer.Sign("POST", "/api/v1/worker/execute-task", ts, SampleBody);
+
         bool result = signer.Verify(
             "POST",
             "/api/v1/worker/execute-task",
