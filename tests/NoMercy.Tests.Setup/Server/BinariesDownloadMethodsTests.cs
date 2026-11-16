@@ -1332,12 +1332,17 @@ public sealed class BinariesDownloadMethodsTests : IDisposable
     private static FakeHttpHandler RoformerRelease(DateTimeOffset publishedAt)
     {
         FakeHttpHandler handler = new();
-        List<Asset> assets = [MakeAsset("spleeter-2stems-f16.gguf", "https://example.com/spleeter")];
+        List<Asset> assets =
+        [
+            MakeAsset("spleeter-2stems-f16.gguf", "https://example.com/spleeter"),
+        ];
 
         foreach (string model in AppFiles.StemsplitRoformerModels)
         {
             handler.Register(RoformerUrl(model), RoformerBytes(model));
-            assets.Add(MakeAsset(model + ".gguf", RoformerUrl(model), RoformerBytes(model)));
+            Asset asset = MakeAsset(model + ".gguf", RoformerUrl(model), RoformerBytes(model));
+            asset.Size = RoformerBytes(model).Length;
+            assets.Add(asset);
         }
 
         handler.RegisterReleaseInfo(
@@ -1421,6 +1426,45 @@ public sealed class BinariesDownloadMethodsTests : IDisposable
                 $"{model} must be stamped as current"
             );
         }
+    }
+
+    /// <summary>
+    /// 3.4 GB on a disk without room for it would fail halfway and leave the
+    /// disk full; the download is skipped and tried again at the next start.
+    /// </summary>
+    [Fact]
+    public async Task DownloadStemsplitRoformerModels_WithoutRoomOnTheDisk_DownloadsNothing()
+    {
+        FakeHttpHandler handler = RoformerRelease(DateTimeOffset.UtcNow.AddDays(-1));
+        Binaries binaries = BuildBinaries(handler);
+        long modelBytes = AppFiles.StemsplitRoformerModels.Sum(model =>
+            (long)RoformerBytes(model).Length
+        );
+        binaries.FreeBytesAt = _ => modelBytes + Binaries.RoformerDiskMargin - 1;
+
+        await binaries.DownloadStemsplitRoformerModels();
+
+        foreach (string model in AppFiles.StemsplitRoformerModels)
+        {
+            Assert.Equal(0, handler.RequestCountFor(RoformerUrl(model)));
+            Assert.False(File.Exists(AppFiles.StemsplitRoformerModelPath(model)));
+        }
+    }
+
+    [Fact]
+    public async Task DownloadStemsplitRoformerModels_WithJustEnoughRoom_DownloadsAllFour()
+    {
+        FakeHttpHandler handler = RoformerRelease(DateTimeOffset.UtcNow.AddDays(-1));
+        Binaries binaries = BuildBinaries(handler);
+        long modelBytes = AppFiles.StemsplitRoformerModels.Sum(model =>
+            (long)RoformerBytes(model).Length
+        );
+        binaries.FreeBytesAt = _ => modelBytes + Binaries.RoformerDiskMargin;
+
+        await binaries.DownloadStemsplitRoformerModels();
+
+        foreach (string model in AppFiles.StemsplitRoformerModels)
+            Assert.True(File.Exists(AppFiles.StemsplitRoformerModelPath(model)));
     }
 
     [Fact]

@@ -74,6 +74,15 @@ public class Binaries
 
     internal TimeSpan DownloadIdleTimeout { get; set; } = TimeSpan.FromMinutes(1);
 
+    /// <summary>What is left free on the disk after the RoFormer models: 1 GB.</summary>
+    internal const long RoformerDiskMargin = 1024L * 1024 * 1024;
+
+    /// <summary>
+    /// The free bytes on the disk that holds a folder, null when that cannot be
+    /// read. Replaceable so a test can make the disk full.
+    /// </summary>
+    internal Func<string, long?> FreeBytesAt { get; set; } = FreeBytesOnTheDiskOf;
+
     internal string RunningDirectory { get; set; } = AppContext.BaseDirectory;
 
     private const string GithubMediaServerApiUrl =
@@ -2220,6 +2229,10 @@ public class Binaries
     internal async Task DownloadStemsplitRoformerModels()
     {
         GithubReleaseResponse releaseInfo = await GetLatestReleaseInfo(GithubStemsplitModelApiUrl);
+
+        if (!RoomForTheRoformerModels(releaseInfo))
+            return;
+
         List<Exception> failures = [];
 
         foreach (string model in AppFiles.StemsplitRoformerModels)
@@ -2243,6 +2256,49 @@ public class Binaries
 
         if (failures.Count > 0)
             throw new AggregateException("Not every RoFormer model could be downloaded", failures);
+    }
+
+    /// <summary>
+    /// Whether the disk beside ffmpeg has room for the RoFormer models this
+    /// release would fetch, with <see cref="RoformerDiskMargin"/> to spare. Said
+    /// in the log when it does not: the download is skipped and tried again at
+    /// the next start. A disk whose free space cannot be read is given the
+    /// benefit of the doubt.
+    /// </summary>
+    private bool RoomForTheRoformerModels(GithubReleaseResponse releaseInfo)
+    {
+        long needed = AppFiles
+            .StemsplitRoformerModels.Where(model =>
+                !CheckLocalVersion(
+                    releaseInfo,
+                    AppFiles.StemsplitRoformerModelPath(model),
+                    out string _
+                )
+            )
+            .Select(model =>
+                releaseInfo
+                    .Assets.FirstOrDefault(asset =>
+                        asset.Name.Equals(model + ".gguf", StringComparison.OrdinalIgnoreCase)
+                    )
+                    ?.Size
+                ?? 0
+            )
+            .Sum();
+
+        if (needed == 0)
+            return true;
+
+        long? free = FreeBytesAt(AppFiles.FfmpegFolder);
+        if (free is null || free >= needed + RoformerDiskMargin)
+            return true;
+
+        Logger.Setup(
+            $"Not enough free disk space for the RoFormer stem models beside ffmpeg ({AppFiles.FfmpegFolder}): "
+                + $"{(needed + RoformerDiskMargin) / (1024 * 1024)} MB needed, {free / (1024 * 1024)} MB free. "
+                + "They are not downloaded, stems are split with Spleeter; the download is tried again at the next start.",
+            LogEventLevel.Warning
+        );
+        return false;
     }
 
     /// <summary>
@@ -2319,10 +2375,7 @@ public class Binaries
             return;
         }
 
-        if (
-            keepIdenticalLocalFile
-            && await LocalFileHasTheAssetsBytesAsync(destinationPath, asset)
-        )
+        if (keepIdenticalLocalFile && await LocalFileHasTheAssetsBytesAsync(destinationPath, asset))
         {
             await FileAttributes.SetCreatedAttribute(destinationPath, releaseInfo.PublishedAt);
             _binaryReport.Add($"{reportName} = {version}");
@@ -2346,6 +2399,20 @@ public class Binaries
             releaseInfo.PublishedAt,
             $"{reportName} model"
         );
+    }
+
+    private static long? FreeBytesOnTheDiskOf(string folder)
+    {
+        try
+        {
+            string? root = Path.GetPathRoot(Path.GetFullPath(folder));
+            return root is null ? null : new DriveInfo(root).AvailableFreeSpace;
+        }
+        catch (Exception exception)
+            when (exception is IOException or ArgumentException or UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     /// <summary>
