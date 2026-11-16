@@ -1305,7 +1305,10 @@ public class VideoEncodeJob
             try
             {
                 EncodingResult publishResult = await orchestrator.EncodeAsync(
-                    finalizeRequest,
+                    finalizeRequest with
+                    {
+                        HostStopping = _shutdownToken,
+                    },
                     ct: _shutdownToken
                 );
                 if (!publishResult.Success)
@@ -1557,7 +1560,8 @@ public class VideoEncodeJob
     internal static string PlainFailureReason(int failedCount, IReadOnlyList<string> descriptors)
     {
         string steps = failedCount == 1 ? "step" : "steps";
-        string which = descriptors.Count > 0 ? $" ({string.Join(", ", descriptors)})" : string.Empty;
+        string which =
+            descriptors.Count > 0 ? $" ({string.Join(", ", descriptors)})" : string.Empty;
         return $"The encode did not finish: {failedCount} {steps} failed{which}. You can retry it.";
     }
 
@@ -1913,7 +1917,10 @@ public class VideoEncodeJob
         );
 
         EncodingResult result = await orchestrator.EncodeAsync(
-            request,
+            request with
+            {
+                HostStopping = _shutdownToken,
+            },
             progressObserver,
             _shutdownToken
         );
@@ -2135,7 +2142,10 @@ public class VideoEncodeJob
         try
         {
             EncodingResult result = await orchestrator.EncodeAsync(
-                request,
+                request with
+                {
+                    HostStopping = _shutdownToken,
+                },
                 task,
                 progressObserver,
                 _shutdownToken

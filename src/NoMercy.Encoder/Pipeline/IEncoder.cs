@@ -99,6 +99,9 @@ public record EncodingRequest(
     public string ResolvedTitle =>
         MediaTitle
         ?? $"{Path.GetFileName(Path.TrimEndingDirectorySeparator(OutputDirectory))}.NoMercy";
+
+    /// <summary>Host shutdown token: a cancel from it keeps the working folder.</summary>
+    public CancellationToken HostStopping { get; init; }
 }
 
 public record EncodingOptions(

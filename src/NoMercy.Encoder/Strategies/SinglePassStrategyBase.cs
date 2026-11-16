@@ -75,7 +75,7 @@ public abstract class SinglePassStrategyBase(IEncoder encoder, ILogger logger, I
         }
         catch (OperationCanceledException)
         {
-            if (!isPerTaskRun)
+            if (!isPerTaskRun && !request.HostStopping.IsCancellationRequested)
             {
                 DeletePartialOutput(
                     request.OutputDirectory,
