@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.Service.Hosting;
+using NoMercy.Storage;
 using NoMercy.Storage.Drivers.Local;
 
 namespace NoMercy.Tests.Service.Hosting;
@@ -30,23 +31,71 @@ public sealed class ServerInstanceLockTests : IDisposable
     }
 
     [Fact]
-    public void ASecondServer_CannotTakeTheLockWhileTheFirstHoldsIt()
+    public void ASecondServer_IsToldTheLockIsHeld_AfterRetryingBriefly()
     {
-        using ServerInstanceLock? first = ServerInstanceLock.TryAcquire(_storage, _folder);
-        using ServerInstanceLock? second = ServerInstanceLock.TryAcquire(_storage, _folder);
+        List<TimeSpan> pauses = [];
+        using ServerInstanceLock? first = ServerInstanceLock.TryAcquire(_storage, _folder).Lock;
+
+        ServerInstanceLockAttempt second = ServerInstanceLock.TryAcquire(
+            _storage,
+            _folder,
+            pauses.Add
+        );
 
         first.Should().NotBeNull();
-        second.Should().BeNull();
+        second.Lock.Should().BeNull();
+        second.HeldElsewhere.Should().BeTrue();
+        pauses.Should().HaveCount(2);
+        pauses.Sum(pause => pause.TotalMilliseconds).Should().BeLessThanOrEqualTo(1000);
     }
 
     [Fact]
     public void TheLock_IsFreeAgainOnceReleased()
     {
-        ServerInstanceLock? first = ServerInstanceLock.TryAcquire(_storage, _folder);
+        ServerInstanceLock? first = ServerInstanceLock.TryAcquire(_storage, _folder).Lock;
         first!.Dispose();
 
-        using ServerInstanceLock? again = ServerInstanceLock.TryAcquire(_storage, _folder);
+        using ServerInstanceLock? again = ServerInstanceLock.TryAcquire(_storage, _folder).Lock;
 
         again.Should().NotBeNull();
+    }
+
+    [Fact]
+    public void AFolderThatCannotBeWritten_IsReportedAsSuch_NotAsAnotherServer()
+    {
+        Mock<IStorageDriver> readOnly = new();
+        readOnly
+            .Setup(storage => storage.OpenWrite(It.IsAny<string>(), It.IsAny<bool>()))
+            .Throws(new UnauthorizedAccessException("Access to the path is denied."));
+        List<TimeSpan> pauses = [];
+
+        ServerInstanceLockAttempt attempt = ServerInstanceLock.TryAcquire(
+            readOnly.Object,
+            _folder,
+            pauses.Add
+        );
+
+        attempt.Lock.Should().BeNull();
+        attempt.HeldElsewhere.Should().BeFalse();
+        attempt.Problem.Should().Contain("denied");
+        pauses.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ALockingFailureOfAnotherKind_IsNotTakenForAnotherServer()
+    {
+        Mock<IStorageDriver> share = new();
+        share
+            .Setup(storage => storage.OpenWrite(It.IsAny<string>(), It.IsAny<bool>()))
+            .Throws(new IOException("The request is not supported.", unchecked((int)0x80070032)));
+
+        ServerInstanceLockAttempt attempt = ServerInstanceLock.TryAcquire(
+            share.Object,
+            _folder,
+            _ => { }
+        );
+
+        attempt.HeldElsewhere.Should().BeFalse();
+        attempt.Problem.Should().Contain("not supported");
     }
 }

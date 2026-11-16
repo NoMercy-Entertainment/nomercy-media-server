@@ -9,42 +9,78 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using NoMercy.Storage;
+
 namespace NoMercy.Data.ServerBackups;
 
 /// <summary>
-/// Finds a path's volume as the longest mount root that contains it, from
-/// <see cref="DriveInfo.GetDrives"/>: drive letters on Windows, the mount table
-/// on Linux and macOS. A volume mounted into a folder on Windows is not listed
-/// there, so it is not told apart from its drive.
+/// Finds a path's volume as the longest mount root that contains its real
+/// location. Every link on the way (a symlink, or a junction on Windows) is
+/// followed first, so a folder linked to another disk is seen on that disk.
+/// Mount roots come from <see cref="DriveInfo.GetDrives"/>: drive letters on
+/// Windows, the mount table on Linux and macOS. A volume mounted into a folder
+/// on Windows is not listed there, so it is not told apart from its drive.
 /// </summary>
-public sealed class DriveVolumeInspector : IVolumeInspector
+public sealed class DriveVolumeInspector(
+    IStorageDriver storage,
+    Func<IReadOnlyList<string>>? mountRoots = null
+) : IVolumeInspector
 {
     private static readonly StringComparison PathComparison = OperatingSystem.IsWindows()
         ? StringComparison.OrdinalIgnoreCase
         : StringComparison.Ordinal;
 
+    private readonly Func<IReadOnlyList<string>> _mountRoots = mountRoots ?? ListMountRoots;
+
     public string? VolumeOf(string path)
     {
-        string full = WithSeparator(Path.GetFullPath(path));
-        return MountRoots()
-            .Where(root => full.StartsWith(root, PathComparison))
+        string real = WithSeparator(RealPath(path));
+        return _mountRoots()
+            .Select(WithSeparator)
+            .Where(root => real.StartsWith(root, PathComparison))
             .MaxBy(root => root.Length);
     }
 
     public bool IsMountPoint(string path)
     {
-        string full = WithSeparator(Path.GetFullPath(path));
-        return MountRoots().Any(root => root.Equals(full, PathComparison));
+        string real = WithSeparator(RealPath(path));
+        return _mountRoots().Select(WithSeparator).Any(root => root.Equals(real, PathComparison));
     }
 
-    private static List<string> MountRoots()
+    /// <summary>
+    /// The path with every link along it replaced by its target, from the root
+    /// down. Parts that do not exist yet are kept as they are.
+    /// </summary>
+    public string RealPath(string path)
+    {
+        string full = Path.GetFullPath(path);
+        string root = Path.GetPathRoot(full) ?? string.Empty;
+        string current = root;
+        string[] parts = full[root.Length..]
+            .Split(
+                [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+                StringSplitOptions.RemoveEmptyEntries
+            );
+
+        foreach (string part in parts)
+        {
+            current = Path.Combine(current, part);
+            string? target = storage.ResolveLinkTarget(current);
+            if (target is not null)
+                current = Path.GetFullPath(target);
+        }
+
+        return current;
+    }
+
+    private static List<string> ListMountRoots()
     {
         List<string> roots = [];
         foreach (DriveInfo drive in DriveInfo.GetDrives())
         {
             try
             {
-                roots.Add(WithSeparator(drive.RootDirectory.FullName));
+                roots.Add(drive.RootDirectory.FullName);
             }
             catch (IOException)
             {

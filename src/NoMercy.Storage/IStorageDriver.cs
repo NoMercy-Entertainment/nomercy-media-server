@@ -190,6 +190,15 @@ public interface IStorageDriver
     bool TryRestrictToOwner(string path) => false;
 
     /// <summary>
+    /// The Unix mode of a file or folder. Null on Windows, for a backend without
+    /// modes, and for a path that does not exist.
+    /// </summary>
+    UnixFileMode? TryGetUnixMode(string path) => null;
+
+    /// <summary>Sets the Unix mode of a file or folder; false where nothing was set.</summary>
+    bool TrySetUnixMode(string path, UnixFileMode mode) => false;
+
+    /// <summary>
     /// Moves <paramref name="source"/> over <paramref name="destination"/>, which
     /// may exist. The local driver does this in one rename, so a reader sees the
     /// old file or the new one, never neither. This default deletes first, which

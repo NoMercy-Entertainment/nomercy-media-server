@@ -140,6 +140,10 @@ public sealed class FaultyStorageDriver : IStorageDriver
 
     public bool TryRestrictToOwner(string path) => _inner.TryRestrictToOwner(path);
 
+    public UnixFileMode? TryGetUnixMode(string path) => _inner.TryGetUnixMode(path);
+
+    public bool TrySetUnixMode(string path, UnixFileMode mode) => _inner.TrySetUnixMode(path, mode);
+
     public void MoveDirectory(string source, string destination)
     {
         GuardMove(source, destination);

@@ -21,7 +21,9 @@ public sealed class ServerBootstrapperRestoreTests
     {
         Mock<IRestoreApplier> applier = new();
         applier
-            .Setup(mock => mock.ApplyPendingAsync(It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .Setup(mock =>
+                mock.ApplyPendingAsync(It.IsAny<string?>(), It.IsAny<CancellationToken>())
+            )
             .ReturnsAsync(result);
         return applier;
     }
@@ -39,7 +41,7 @@ public sealed class ServerBootstrapperRestoreTests
         );
 
         Func<Task> start = () =>
-            ServerBootstrapper.ApplyPendingRestoreAsync(applier.Object, noOtherServerRunning: true);
+            ServerBootstrapper.ApplyPendingRestoreAsync(applier.Object, holdBackReason: null);
 
         (await start.Should().ThrowAsync<StartupAbortException>())
             .Which.Message.Should()
@@ -57,23 +59,43 @@ public sealed class ServerBootstrapperRestoreTests
         );
 
         Func<Task> start = () =>
-            ServerBootstrapper.ApplyPendingRestoreAsync(applier.Object, noOtherServerRunning: true);
+            ServerBootstrapper.ApplyPendingRestoreAsync(applier.Object, holdBackReason: null);
 
         await start.Should().NotThrowAsync();
     }
 
     [Theory]
-    [InlineData(true)]
-    [InlineData(false)]
-    public async Task WhetherAnotherServerRuns_IsPassedOn(bool noOtherServerRunning)
+    [InlineData(null)]
+    [InlineData("Another server process holds the data folder.")]
+    public async Task TheReasonToHoldBack_IsPassedOn(string? holdBackReason)
     {
         Mock<IRestoreApplier> applier = Applier(null);
 
-        await ServerBootstrapper.ApplyPendingRestoreAsync(applier.Object, noOtherServerRunning);
+        await ServerBootstrapper.ApplyPendingRestoreAsync(applier.Object, holdBackReason);
 
         applier.Verify(
-            mock => mock.ApplyPendingAsync(noOtherServerRunning, It.IsAny<CancellationToken>()),
+            mock => mock.ApplyPendingAsync(holdBackReason, It.IsAny<CancellationToken>()),
             Times.Once
         );
+    }
+
+    [Fact]
+    public void OnlyALockHeldByAnotherProcess_IsCalledAnotherServer()
+    {
+        ServerInstanceLockAttempt held = new(null, HeldElsewhere: true, "in use");
+        ServerInstanceLockAttempt readOnly = new(null, HeldElsewhere: false, "Access denied");
+
+        ServerBootstrapper
+            .RestoreHoldBackReason(previousServerStopped: true, held)
+            .Should()
+            .Be("Another server process holds the data folder.");
+        ServerBootstrapper
+            .RestoreHoldBackReason(previousServerStopped: true, readOnly)
+            .Should()
+            .Contain("could not be locked (Access denied)");
+        ServerBootstrapper
+            .RestoreHoldBackReason(previousServerStopped: false, held)
+            .Should()
+            .Contain("had not exited");
     }
 }

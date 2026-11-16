@@ -53,7 +53,7 @@ public sealed class RestoreApplierTests : IDisposable
             new BackupSetVerifier(storage, sqlite, schema, _options),
             schema,
             BackupTestFolder.CreateWriter(_options, sqlite, storage),
-            volumes ?? new DriveVolumeInspector(),
+            volumes ?? new DriveVolumeInspector(storage),
             _options,
             TimeProvider.System,
             NullLogger<RestoreApplier>.Instance
@@ -143,14 +143,14 @@ public sealed class RestoreApplierTests : IDisposable
     private async Task<RestoreResult> ApplyAsync(
         IStorageDriver? storage = null,
         IBackupDatabaseSchema? schema = null,
-        bool noOtherServerRunning = true
+        string? holdBackReason = null
     )
     {
         RestoreResult? result = await CreateApplier(
                 storage ?? new LocalStorageDriver(),
                 schema ?? CurrentSchema()
             )
-            .ApplyPendingAsync(noOtherServerRunning, CancellationToken.None);
+            .ApplyPendingAsync(holdBackReason, CancellationToken.None);
         result.Should().NotBeNull();
         return result!;
     }
@@ -164,7 +164,7 @@ public sealed class RestoreApplierTests : IDisposable
         Dictionary<string, byte[]> before = LiveState();
 
         RestoreResult? result = await CreateApplier(new LocalStorageDriver(), CurrentSchema())
-            .ApplyPendingAsync(noOtherServerRunning: true, CancellationToken.None);
+            .ApplyPendingAsync(holdBackReason: null, CancellationToken.None);
 
         result.Should().BeNull();
         LiveState().Should().BeEquivalentTo(before);
@@ -341,7 +341,9 @@ public sealed class RestoreApplierTests : IDisposable
         await RequestRestoreAsync(id);
         Dictionary<string, byte[]> before = LiveState();
 
-        RestoreResult result = await ApplyAsync(noOtherServerRunning: false);
+        RestoreResult result = await ApplyAsync(
+            holdBackReason: "Another server process holds the data folder."
+        );
 
         result.Status.Should().Be(RestoreStatus.Refused);
         result.BackupId.Should().Be(id);
@@ -363,7 +365,10 @@ public sealed class RestoreApplierTests : IDisposable
         WriteFile(journal, "{}");
 
         RestoreResult? result = await CreateApplier(new LocalStorageDriver(), CurrentSchema())
-            .ApplyPendingAsync(noOtherServerRunning: false, CancellationToken.None);
+            .ApplyPendingAsync(
+                holdBackReason: "Another server process holds the data folder.",
+                CancellationToken.None
+            );
 
         result.Should().BeNull();
         File.Exists(journal).Should().BeTrue();
@@ -487,7 +492,7 @@ public sealed class RestoreApplierTests : IDisposable
         File.Exists(_folder.DatabasePath("media")).Should().BeFalse();
 
         RestoreResult? second = await CreateApplier(new LocalStorageDriver(), CurrentSchema())
-            .ApplyPendingAsync(noOtherServerRunning: true, CancellationToken.None);
+            .ApplyPendingAsync(holdBackReason: null, CancellationToken.None);
 
         second!.Status.Should().Be(RestoreStatus.RolledBack, second.Message);
         LiveState().Should().BeEquivalentTo(before);
@@ -640,7 +645,7 @@ public sealed class RestoreApplierTests : IDisposable
                 CurrentSchema(),
                 volumes
             )
-            .ApplyPendingAsync(noOtherServerRunning: true, CancellationToken.None);
+            .ApplyPendingAsync(holdBackReason: null, CancellationToken.None);
 
         result!.Status.Should().Be(RestoreStatus.Refused);
         result.Message.Should().Contain("one volume");
@@ -661,7 +666,7 @@ public sealed class RestoreApplierTests : IDisposable
                 CurrentSchema(),
                 volumes
             )
-            .ApplyPendingAsync(noOtherServerRunning: true, CancellationToken.None);
+            .ApplyPendingAsync(holdBackReason: null, CancellationToken.None);
 
         result!.Status.Should().Be(RestoreStatus.Refused);
         result.Message.Should().Contain("mount point");
@@ -738,7 +743,7 @@ public sealed class RestoreApplierTests : IDisposable
         dying.SwapMoves.Should().Be(renamesBeforeCrash);
 
         RestoreResult? recovered = await CreateApplier(new LocalStorageDriver(), CurrentSchema())
-            .ApplyPendingAsync(noOtherServerRunning: true, CancellationToken.None);
+            .ApplyPendingAsync(holdBackReason: null, CancellationToken.None);
 
         recovered!.Status.Should().Be(RestoreStatus.RolledBack, recovered.Message);
         LiveState().Should().BeEquivalentTo(before);
@@ -911,7 +916,7 @@ public sealed class RestoreApplierTests : IDisposable
                 CurrentSchema(),
                 sqliteFiles: sqlite
             )
-            .ApplyPendingAsync(noOtherServerRunning: true, CancellationToken.None);
+            .ApplyPendingAsync(holdBackReason: null, CancellationToken.None);
 
         result!.Status.Should().Be(RestoreStatus.Applied, result.Message);
         BackupTestFolder.ReadMarker(_folder.DatabasePath("media")).Should().Be("original");
@@ -978,7 +983,7 @@ public sealed class RestoreApplierTests : IDisposable
         recorded.PreRestoreBackupId.Should().BeNull();
 
         RestoreResult? finished = await CreateApplier(new LocalStorageDriver(), CurrentSchema())
-            .ApplyPendingAsync(noOtherServerRunning: true, CancellationToken.None);
+            .ApplyPendingAsync(holdBackReason: null, CancellationToken.None);
 
         finished!.Status.Should().Be(RestoreStatus.Applied, finished.Message);
         string kept = finished.PreRestoreBackupId!;
@@ -1008,7 +1013,7 @@ public sealed class RestoreApplierTests : IDisposable
             .Be("changed");
 
         RestoreResult? retried = await CreateApplier(new LocalStorageDriver(), CurrentSchema())
-            .ApplyPendingAsync(noOtherServerRunning: true, CancellationToken.None);
+            .ApplyPendingAsync(holdBackReason: null, CancellationToken.None);
 
         retried!.PreRestoreBackupId.Should().NotBeNull();
         BackupTestFolder
@@ -1041,5 +1046,69 @@ public sealed class RestoreApplierTests : IDisposable
 
         next.Status.Should().Be(RestoreStatus.Applied, next.Message);
         AssertNothingLeftBehind();
+    }
+
+    // ── the work folder and the live modes ───────────────────────────────────
+
+    [Fact]
+    public void TheWorkFolder_IsInTheDataFolder_NotUnderTheBackups()
+    {
+        Path.GetDirectoryName(_options.RestoreWorkRoot).Should().Be(_folder.DataRoot);
+        _options
+            .RestoreWorkRoot.Should()
+            .NotStartWith(_options.BackupRoot + Path.DirectorySeparatorChar);
+    }
+
+    [Fact]
+    public async Task ABackupsFolderOnAnotherDisk_DoesNotStopARestore()
+    {
+        // The swap renames stay inside the data folder; reading the set from
+        // another disk is an ordinary copy.
+        string id = await BackUpThenChangeServerAsync();
+        await RequestRestoreAsync(id);
+        FakeVolumes volumes = new(path =>
+            path.StartsWith(_options.BackupRoot, StringComparison.OrdinalIgnoreCase)
+                ? "/mnt/b/"
+                : "/mnt/a/"
+        );
+
+        RestoreResult? result = await CreateApplier(
+                new LocalStorageDriver(),
+                CurrentSchema(),
+                volumes
+            )
+            .ApplyPendingAsync(holdBackReason: null, CancellationToken.None);
+
+        result!.Status.Should().Be(RestoreStatus.Applied, result.Message);
+    }
+
+    [SkippableFact]
+    public async Task TheRestoredFiles_KeepTheModesTheLiveOnesHad()
+    {
+        Skip.If(OperatingSystem.IsWindows(), "Windows has no Unix modes.");
+        string id = await BackUpThenChangeServerAsync();
+        await RequestRestoreAsync(id);
+        if (OperatingSystem.IsWindows())
+            return;
+        const UnixFileMode groupReadableFolder =
+            UnixFileMode.UserRead
+            | UnixFileMode.UserWrite
+            | UnixFileMode.UserExecute
+            | UnixFileMode.GroupRead
+            | UnixFileMode.GroupExecute;
+        const UnixFileMode groupReadableFile =
+            UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.GroupRead;
+        const UnixFileMode worldReadableFile = groupReadableFile | UnixFileMode.OtherRead;
+        string settings = Path.Combine(_folder.ConfigRoot, "settings.json");
+        File.SetUnixFileMode(_folder.ConfigRoot, groupReadableFolder);
+        File.SetUnixFileMode(settings, groupReadableFile);
+        File.SetUnixFileMode(_folder.DatabasePath("media"), worldReadableFile);
+
+        RestoreResult result = await ApplyAsync();
+
+        result.Status.Should().Be(RestoreStatus.Applied, result.Message);
+        File.GetUnixFileMode(_folder.ConfigRoot).Should().Be(groupReadableFolder);
+        File.GetUnixFileMode(settings).Should().Be(groupReadableFile);
+        File.GetUnixFileMode(_folder.DatabasePath("media")).Should().Be(worldReadableFile);
     }
 }

@@ -47,6 +47,7 @@ public sealed class BackupTestFolder : IDisposable
         new()
         {
             BackupRoot = BackupRoot,
+            DataRoot = DataRoot,
             ConfigRoot = ConfigRoot,
             Databases =
             [

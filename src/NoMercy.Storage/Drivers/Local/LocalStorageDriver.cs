@@ -197,6 +197,45 @@ public sealed class LocalStorageDriver : IStorageDriver
         File.Move(source, destination, overwrite: true);
     }
 
+    public UnixFileMode? TryGetUnixMode(string path)
+    {
+        if (OperatingSystem.IsWindows() || (!File.Exists(path) && !Directory.Exists(path)))
+            return null;
+
+        try
+        {
+            return File.GetUnixFileMode(path);
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    public bool TrySetUnixMode(string path, UnixFileMode mode)
+    {
+        if (OperatingSystem.IsWindows())
+            return false;
+
+        try
+        {
+            File.SetUnixFileMode(path, mode);
+            return true;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
     public bool TryRestrictToOwner(string path)
     {
         if (OperatingSystem.IsWindows())

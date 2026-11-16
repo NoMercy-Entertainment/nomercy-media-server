@@ -23,14 +23,15 @@ public interface IRestoreApplier
     /// A <see cref="RestoreStatus.RollbackIncomplete"/> result means the live
     /// files are not whole: the server must not start on them.
     /// </summary>
-    /// <param name="noOtherServerRunning">
-    /// False when another server process may still hold the data folder (the one
-    /// this process replaces has not exited, or another holds the instance lock).
-    /// The restore is then refused and stays requested, and an interrupted swap
-    /// is left alone: it may be that server's own.
+    /// <param name="holdBackReason">
+    /// Why files cannot be swapped safely right now (the process this one
+    /// replaces has not exited, another holds the instance lock, or the lock
+    /// could not be taken); null when they can. When set, the restore is refused
+    /// and stays requested, and an interrupted swap is left alone: it may be that
+    /// other server's own.
     /// </param>
     Task<RestoreResult?> ApplyPendingAsync(
-        bool noOtherServerRunning,
+        string? holdBackReason,
         CancellationToken cancellationToken
     );
 }

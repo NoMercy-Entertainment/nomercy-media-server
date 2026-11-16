@@ -11,6 +11,7 @@
 
 using NoMercy.Data.ServerBackups;
 using NoMercy.Service.Seeds;
+using NoMercy.Storage;
 
 namespace NoMercy.Service.Configuration;
 
@@ -26,6 +27,8 @@ public static partial class ServiceConfiguration
         services.AddSingleton<IBackupDatabaseSchema, BackupDatabaseSchema>();
         services.AddSingleton<IBackupSetVerifier, BackupSetVerifier>();
         services.AddSingleton<IRestoreScheduler, RestoreScheduler>();
-        services.AddSingleton<IVolumeInspector, DriveVolumeInspector>();
+        services.AddSingleton<IVolumeInspector>(provider => new DriveVolumeInspector(
+            provider.GetRequiredService<IStorageDriver>()
+        ));
     }
 }

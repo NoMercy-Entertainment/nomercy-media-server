@@ -39,13 +39,21 @@ public sealed class BackupOptions
     /// <summary>The server version written into each manifest.</summary>
     public string ServerVersion { get; init; } = "0.0.0";
 
+    /// <summary>
+    /// The folder holding the live databases. Defaults to the parent of
+    /// <see cref="BackupRoot"/>, which is where the server keeps both.
+    /// </summary>
+    public string DataRoot
+    {
+        get => _dataRoot ?? Path.GetDirectoryName(Path.GetFullPath(BackupRoot))!;
+        init => _dataRoot = value;
+    }
+
+    private readonly string? _dataRoot;
+
     public string SetsRoot => Path.Combine(BackupRoot, "sets");
 
-    /// <summary>
-    /// Holds the pending-restore request, the result of the last restore and the
-    /// work folder a restore stages in. It sits under the data folder, next to the
-    /// live databases, so moving a staged file into place is a rename on one volume.
-    /// </summary>
+    /// <summary>Holds the pending-restore request and the result of the last restore.</summary>
     public string RestoreRoot => Path.Combine(BackupRoot, "restore");
 
     /// <summary>The restore request that the next start applies.</summary>
@@ -54,8 +62,13 @@ public sealed class BackupOptions
     /// <summary>How the last restore ended.</summary>
     public string LastRestorePath => Path.Combine(RestoreRoot, "last-result.json");
 
-    /// <summary>Staged copies, the pre-restore files and the swap journal while a restore runs.</summary>
-    public string RestoreWorkRoot => Path.Combine(RestoreRoot, "work");
+    /// <summary>
+    /// Staged copies, the pre-restore files and the swap journal while a restore
+    /// runs. It sits in the data folder itself, next to the live databases, so
+    /// the swap renames never leave that folder, even when the backups folder
+    /// is a link or a mount on another disk.
+    /// </summary>
+    public string RestoreWorkRoot => Path.Combine(DataRoot, ".restore-work");
 
     public static BackupOptions ForAppFiles()
     {
@@ -63,6 +76,7 @@ public sealed class BackupOptions
         return new()
         {
             BackupRoot = Path.Combine(AppFiles.DataPath, "backups"),
+            DataRoot = AppFiles.DataPath,
             ConfigRoot = AppFiles.ConfigPath,
             Databases =
             [

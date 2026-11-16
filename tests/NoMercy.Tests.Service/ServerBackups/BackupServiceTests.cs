@@ -305,6 +305,30 @@ public sealed class BackupServiceTests : IDisposable
         Directory.Exists(SetFolder(first)).Should().BeTrue();
     }
 
+    [Theory]
+    [InlineData("{ not json")]
+    [InlineData("null")]
+    [InlineData("")]
+    [InlineData("{\"status\":\"SomethingNew\"}")]
+    public async Task Prune_SetsAnUnreadableLastResultAside_AndStillPrunes(string content)
+    {
+        _folder.CreateServer();
+        BackupService service = CreateService(retainCount: 1);
+        BackupOptions options = _folder.Options(retainCount: 1);
+        string first = (await service.CreateAsync("first", CancellationToken.None)).Id;
+        Directory.CreateDirectory(options.RestoreRoot);
+        File.WriteAllText(options.LastRestorePath, content);
+        string leftover = Path.Combine(options.SetsRoot, ".incomplete-20240101-000000-0000000");
+        Directory.CreateDirectory(leftover);
+
+        await service.CreateAsync("second", CancellationToken.None);
+
+        Directory.Exists(SetFolder(first)).Should().BeFalse();
+        Directory.Exists(leftover).Should().BeFalse();
+        File.Exists(options.LastRestorePath).Should().BeFalse();
+        File.ReadAllText(options.LastRestorePath + ".bad").Should().Be(content);
+    }
+
     /// <summary>Real SQLite work, except that every copy fails its integrity check.</summary>
     private sealed class FailingQuickCheck : ISqliteFileOperations
     {

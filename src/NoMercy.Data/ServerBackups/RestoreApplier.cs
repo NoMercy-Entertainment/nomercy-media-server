@@ -56,14 +56,14 @@ public sealed class RestoreApplier(
     private string CommitPath => Path.Combine(options.RestoreWorkRoot, RestoreCommit.FileName);
 
     public async Task<RestoreResult?> ApplyPendingAsync(
-        bool noOtherServerRunning,
+        string? holdBackReason,
         CancellationToken cancellationToken
     )
     {
         // Another server may be in the middle of its own swap: then neither its
         // journal nor its request is ours to touch, and nothing is recorded.
-        if (!noOtherServerRunning)
-            return await RefuseWhileAnotherServerRunsAsync(cancellationToken);
+        if (holdBackReason is not null)
+            return await HoldBackAsync(holdBackReason, cancellationToken);
 
         RestoreResult? result = await RecoverInterruptedSwapAsync(cancellationToken);
         if (result is { Status: RestoreStatus.RollbackIncomplete })
@@ -109,7 +109,8 @@ public sealed class RestoreApplier(
         return result;
     }
 
-    private async Task<RestoreResult?> RefuseWhileAnotherServerRunsAsync(
+    private async Task<RestoreResult?> HoldBackAsync(
+        string reason,
         CancellationToken cancellationToken
     )
     {
@@ -132,9 +133,8 @@ public sealed class RestoreApplier(
 
         return Refused(
             waiting ?? new PendingRestore(),
-            "Another server process still holds the data folder, so its files could not be "
-                + "swapped safely. Nothing was changed. The restore stays requested and runs at "
-                + "the next start that has the data folder to itself; withdraw it to stop that."
+            $"{reason} Nothing was changed. The restore stays requested and runs at the next "
+                + "start that can swap the files safely; withdraw it to stop that."
         );
     }
 
@@ -329,6 +329,7 @@ public sealed class RestoreApplier(
                 storage,
                 Path.Combine(PreviousRoot, BackupSetWriter.DatabasesFolder)
             );
+            CarryOverLiveModes(journal);
 
             // Flushed to disk before the first rename: a crash after any rename
             // must find the journal to undo it.
@@ -664,6 +665,49 @@ public sealed class RestoreApplier(
         );
 
         return journal;
+    }
+
+    /// <summary>
+    /// The staged copies are private while they wait; the files they replace may
+    /// not be (a Docker setup where another user or group reads the config). Each
+    /// staged file and folder takes the mode of the live one it replaces, a new
+    /// one the mode of its live folder or of a live file. Nothing on Windows.
+    /// </summary>
+    private void CarryOverLiveModes(RestoreJournal journal)
+    {
+        foreach (RestoreJournalStep step in journal.Steps)
+        {
+            if (step.Staged is null)
+                continue;
+            UnixFileMode? liveMode = storage.TryGetUnixMode(step.Live);
+            if (liveMode is null)
+                continue;
+
+            storage.TrySetUnixMode(step.Staged, liveMode.Value);
+            if (!step.IsDirectory)
+                continue;
+
+            UnixFileMode? liveFileMode = storage
+                .EnumerateFileSystemEntries(step.Live, "*", SearchOption.AllDirectories)
+                .Where(storage.FileExists)
+                .Select(storage.TryGetUnixMode)
+                .FirstOrDefault(mode => mode is not null);
+            foreach (
+                string entry in storage.EnumerateFileSystemEntries(
+                    step.Staged,
+                    "*",
+                    SearchOption.AllDirectories
+                )
+            )
+            {
+                string twin = Path.Combine(step.Live, Path.GetRelativePath(step.Staged, entry));
+                UnixFileMode? mode =
+                    storage.TryGetUnixMode(twin)
+                    ?? (storage.DirectoryExists(entry) ? liveMode : liveFileMode);
+                if (mode is not null)
+                    storage.TrySetUnixMode(entry, mode.Value);
+            }
+        }
     }
 
     private void Forward(RestoreJournalStep step)

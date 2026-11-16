@@ -206,6 +206,44 @@ public sealed class BackupService(
     }
 
     /// <summary>
+    /// The last restore's result, or null. A result that cannot be read (empty,
+    /// <c>null</c>, broken JSON, an unknown status) would otherwise stop every
+    /// prune for good, so it is renamed to <c>last-result.json.bad</c> and the
+    /// prune goes on without the protection it could have given.
+    /// </summary>
+    private async Task<RestoreResult?> ReadLastResultOrSetAsideAsync(
+        CancellationToken cancellationToken
+    )
+    {
+        string path = options.LastRestorePath;
+        if (!storage.FileExists(path))
+            return null;
+
+        RestoreResult? last = BackupFiles.Deserialize<RestoreResult>(
+            await BackupFiles.ReadTextAsync(storage, path, cancellationToken)
+        );
+        if (last is not null)
+            return last;
+
+        logger.LogError(
+            "The last restore result {File} cannot be read; it is set aside as {SetAside} "
+                + "and the sets it named are no longer protected from pruning",
+            path,
+            path + ".bad"
+        );
+        try
+        {
+            storage.ReplaceFile(path, path + ".bad");
+        }
+        catch (Exception exception)
+        {
+            logger.LogError("Could not set {File} aside: {Reason}", path, exception.Message);
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// The sets no prune may delete: the target and the safety set of a waiting
     /// restore, and the safety and pre-restore sets of the last restore, which
     /// stay until a newer restore replaces that result.
@@ -217,18 +255,14 @@ public sealed class BackupService(
             options.PendingRestorePath,
             cancellationToken
         );
-        RestoreResult? last = await BackupFiles.ReadJsonAsync<RestoreResult>(
-            storage,
-            options.LastRestorePath,
-            cancellationToken
-        );
+        // An unreadable request protects a restore that is about to run: prune
+        // nothing rather than guess which set it needs.
+        if (pending is null && storage.FileExists(options.PendingRestorePath))
+            throw new InvalidDataException(
+                "The restore request cannot be read; nothing is pruned."
+            );
 
-        // Unreadable means unknown: prune nothing rather than guess what is safe.
-        if (
-            (pending is null && storage.FileExists(options.PendingRestorePath))
-            || (last is null && storage.FileExists(options.LastRestorePath))
-        )
-            throw new InvalidDataException("A restore record cannot be read; nothing is pruned.");
+        RestoreResult? last = await ReadLastResultOrSetAsideAsync(cancellationToken);
 
         return new[]
         {

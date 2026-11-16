@@ -101,16 +101,21 @@ public sealed class ServerBootstrapper
         // The instance lock is held for the life of this process. Without it,
         // another server may be running on the same data (no restart PID to wait
         // for), and its files must not be swapped under it.
-        _instanceLock = ServerInstanceLock.TryAcquire(preBootBackend, AppFiles.DataPath);
-        if (_instanceLock is null)
+        ServerInstanceLockAttempt lockAttempt = ServerInstanceLock.TryAcquire(
+            preBootBackend,
+            AppFiles.DataPath
+        );
+        _instanceLock = lockAttempt.Lock;
+        string? holdBackReason = RestoreHoldBackReason(previousServerStopped, lockAttempt);
+        if (lockAttempt.Lock is null)
             Logger.App(
-                "Another server process holds the data folder; a pending restore waits for it to stop",
+                $"{holdBackReason} A pending restore waits until the data folder can be locked.",
                 LogEventLevel.Warning
             );
 
         await ApplyPendingRestoreAsync(
             CreateRestoreApplier(preBootBackend, sqliteFiles, backupOptions),
-            noOtherServerRunning: previousServerStopped && _instanceLock is not null
+            holdBackReason
         );
 
         // Folders, then schema, then Phase 1 — in that order. Phase 1's
@@ -398,6 +403,22 @@ public sealed class ServerBootstrapper
         }
     }
 
+    /// <summary>
+    /// Why this start must not swap files, or null when it may. Only a lock held
+    /// by another process means another server; any other failure to lock is
+    /// reported as itself, and holds the restore back all the same.
+    /// </summary>
+    internal static string? RestoreHoldBackReason(
+        bool previousServerStopped,
+        ServerInstanceLockAttempt lockAttempt
+    ) =>
+        !previousServerStopped
+            ? "The server process this one replaces had not exited, so its files could still be open."
+        : lockAttempt.Lock is not null ? null
+        : lockAttempt.HeldElsewhere ? "Another server process holds the data folder."
+        : $"The data folder could not be locked ({lockAttempt.Problem}), so another server "
+            + "process using it cannot be ruled out.";
+
     private static RestoreApplier CreateRestoreApplier(
         IStorageDriver storage,
         ISqliteFileOperations sqlite,
@@ -417,7 +438,7 @@ public sealed class ServerBootstrapper
                 TimeProvider.System,
                 new SetupLogger<BackupSetWriter>()
             ),
-            new DriveVolumeInspector(),
+            new DriveVolumeInspector(storage),
             options,
             TimeProvider.System,
             new SetupLogger<RestoreApplier>()
@@ -430,11 +451,11 @@ public sealed class ServerBootstrapper
     /// </summary>
     internal static async Task ApplyPendingRestoreAsync(
         IRestoreApplier applier,
-        bool noOtherServerRunning
+        string? holdBackReason
     )
     {
         RestoreResult? result = await applier.ApplyPendingAsync(
-            noOtherServerRunning,
+            holdBackReason,
             CancellationToken.None
         );
         if (result is null)
