@@ -1,0 +1,71 @@
+name: 'Windows Service Smoke Test'
+
+# Live proof for the installer's service task (#180). Not part of the release path:
+# it only runs by hand or on a smoke/** branch.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'smoke/**'
+
+permissions:
+  contents: read
+
+jobs:
+  windows_service_smoke:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Build Windows installer
+        uses: ./.github/actions/build-windows-installer
+        with:
+          version: '0.0.0-smoke'
+          commit-sha: ${{ github.sha }}
+          app-repo-token: ${{ secrets.PAT }}
+
+      - name: Install, check RUNNING, install again over it, check RUNNING
+        shell: pwsh
+        run: |
+          $setup = Get-ChildItem ./packages/windows -Filter '*-setup.exe' | Select-Object -First 1
+          if (-not $setup) { Write-Error 'installer not found'; exit 1 }
+          $installDir = Join-Path $env:ProgramFiles 'NoMercy MediaServer'
+
+          function Install-Server([string] $logName) {
+            $p = Start-Process -FilePath $setup.FullName -PassThru -Wait -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/TASKS=installservice', "/LOG=$logName"
+            Write-Host "Installer exit code $($p.ExitCode)"
+            if ($p.ExitCode -ne 0) { Get-Content $logName -Tail 50; exit 1 }
+          }
+
+          function Wait-ServiceRunning([string] $label) {
+            $deadline = (Get-Date).AddSeconds(60)
+            do {
+              $out = sc.exe query NoMercyMediaServer | Out-String
+              if ($out -match 'RUNNING') { Write-Host "${label}: RUNNING"; Write-Host $out; return }
+              Start-Sleep -Seconds 2
+            } while ((Get-Date) -lt $deadline)
+            Write-Host "${label}: not RUNNING after 60 s"
+            Write-Host $out
+            sc.exe qc NoMercyMediaServer
+            Get-ChildItem $installDir -Recurse -Include '*.log' -ErrorAction SilentlyContinue |
+              Sort-Object LastWriteTime -Descending | Select-Object -First 1 |
+              ForEach-Object { Write-Host $_.FullName; Get-Content $_.FullName -Tail 50 }
+            exit 1
+          }
+
+          try {
+            Install-Server 'install-fresh.log'
+            Wait-ServiceRunning 'fresh install'
+            Install-Server 'install-upgrade.log'
+            Wait-ServiceRunning 'install over existing'
+          } finally {
+            $unins = Get-ChildItem $installDir -Filter 'unins*.exe' -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($unins) {
+              $u = Start-Process -FilePath $unins.FullName -PassThru -Wait -ArgumentList '/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART'
+              Write-Host "Uninstaller exit code $($u.ExitCode)"
+            }
+            sc.exe query NoMercyMediaServer
+          }
