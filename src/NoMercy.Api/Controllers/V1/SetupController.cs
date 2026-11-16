@@ -138,7 +138,10 @@ public class SetupController(
         {
             return await pluginManager.ReadTranslationsAsync(info.Id, locale, ct);
         }
-        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        // Any failure, not only I/O: the storage layer refuses a path with an
+        // InvalidOperationException (output.path_not_allowed), and one plugin's
+        // bundle must never take the navigation of every user down with it.
+        catch (Exception exception) when (exception is not OperationCanceledException)
         {
             logger.LogWarning(
                 "Plugin {Plugin} navigation labels are left untranslated: {Reason}",

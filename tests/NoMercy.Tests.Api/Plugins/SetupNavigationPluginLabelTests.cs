@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -20,6 +21,7 @@ using NoMercy.Api.DTOs.Media;
 using NoMercy.Data.Repositories;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.Storage.Validation;
 using Xunit;
 
 namespace NoMercy.Tests.Api.Plugins;
@@ -141,10 +143,22 @@ public class SetupNavigationPluginLabelTests
     }
 
     // A bundle the server cannot read costs the plugin its translations, never
-    // the whole navigation.
-    [Fact]
-    public async Task AnUnreadableBundleLeavesTheKeysInPlace()
+    // the whole navigation. path_not_allowed is how the storage layer refuses
+    // a path, and it is not an IOException.
+    [Theory]
+    [InlineData("io")]
+    [InlineData("access")]
+    [InlineData("path_not_allowed")]
+    [InlineData("json")]
+    public async Task AnUnreadableBundleLeavesTheKeysInPlace(string failure)
     {
+        Exception exception = failure switch
+        {
+            "io" => new IOException("locked"),
+            "access" => new UnauthorizedAccessException("denied"),
+            "path_not_allowed" => new StoragePathNotAllowedException("lang", "outside the roots"),
+            _ => new JsonException("broken bundle"),
+        };
         Mock<IPluginManager> manager = Manager(Entry("stations.title", "/"));
         manager
             .Setup(one =>
@@ -154,7 +168,7 @@ public class SetupNavigationPluginLabelTests
                     It.IsAny<CancellationToken>()
                 )
             )
-            .ThrowsAsync(new IOException("locked"));
+            .ThrowsAsync(exception);
 
         List<LibraryNavigationEntryDto> entries = await Navigation(manager, "nl");
 
