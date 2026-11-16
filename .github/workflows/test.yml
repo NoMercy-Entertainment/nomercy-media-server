@@ -44,7 +44,7 @@ jobs:
         env:
           VSTEST_ARTIFACTS_DIRECTORY: ${{ github.workspace }}/testresults
         run: >
-          mkdir -p testresults &&
+          mkdir -p testresults && chmod 700 testresults &&
           dotnet test NoMercy.Server.sln
           --configuration Debug
           --no-restore
@@ -210,7 +210,7 @@ jobs:
         env:
           VSTEST_ARTIFACTS_DIRECTORY: ${{ github.workspace }}/testresults
         run: >
-          mkdir -p testresults &&
+          mkdir -p testresults && chmod 700 testresults &&
           dotnet test NoMercy.Server.sln
           --configuration Release
           --verbosity minimal
@@ -309,7 +309,7 @@ jobs:
         env:
           VSTEST_ARTIFACTS_DIRECTORY: ${{ github.workspace }}/testresults
         run: >
-          mkdir -p testresults &&
+          mkdir -p testresults && chmod 700 testresults &&
           dotnet test NoMercy.Server.sln
           --configuration Debug
           --no-restore
@@ -325,7 +325,7 @@ jobs:
         env:
           VSTEST_ARTIFACTS_DIRECTORY: ${{ github.workspace }}/testresults
         run: >
-          mkdir -p testresults &&
+          mkdir -p testresults && chmod 700 testresults &&
           dotnet test NoMercy.Server.sln
           --configuration Debug
           --no-restore
@@ -356,7 +356,7 @@ jobs:
         env:
           VSTEST_ARTIFACTS_DIRECTORY: ${{ github.workspace }}/testresults
         run: >
-          mkdir -p testresults &&
+          mkdir -p testresults && chmod 700 testresults &&
           dotnet test NoMercy.Server.sln
           --configuration Release
           --no-restore

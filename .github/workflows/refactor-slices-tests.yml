@@ -42,7 +42,7 @@ jobs:
           VSTEST_ARTIFACTS_DIRECTORY: ${{ github.workspace }}/testresults
         run: |
           set -e
-          mkdir -p testresults
+          mkdir -p testresults && chmod 700 testresults
           for proj in \
             tests/NoMercy.Tests.Queue/NoMercy.Tests.Queue.csproj \
             tests/NoMercy.Tests.Storage/NoMercy.Tests.Storage.csproj \

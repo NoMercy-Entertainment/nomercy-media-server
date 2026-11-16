@@ -92,7 +92,7 @@ jobs:
           VSTEST_ARTIFACTS_DIRECTORY: ${{ github.workspace }}/testresults
         run: |
           set +e
-          mkdir -p testresults
+          mkdir -p testresults && chmod 700 testresults
           dotnet test NoMercy.Server.sln \
             --settings tests/default.runsettings \
             --configuration Debug \
