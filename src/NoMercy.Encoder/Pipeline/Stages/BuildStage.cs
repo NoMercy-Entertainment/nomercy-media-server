@@ -19,6 +19,7 @@ using NoMercy.Encoder.Decomposition;
 using NoMercy.Encoder.Errors;
 using NoMercy.Encoder.Metadata;
 using NoMercy.Encoder.Output;
+using NoMercy.Encoder.Pipeline.Resume;
 using NoMercy.Encoder.Profiles;
 using NoMercy.Encoder.Subtitles;
 using NoMercy.Resources;
@@ -37,7 +38,10 @@ public record BuildInput(
     string? StatsFilePath = null,
     int Pass1VariantIndex = 0,
     DecomposedTask? TaskFilter = null,
-    long? ResumeFromMs = null
+    long? ResumeFromMs = null,
+    // True when ResumeFromMs is an exact segment boundary rather than a crash
+    // checkpoint, so the seek keeps it instead of backing off to a keyframe.
+    bool ExactResume = false
 );
 
 public class BuildStage(
@@ -51,12 +55,67 @@ public class BuildStage(
     AssBurnInFilterBuilder? assBurnInFilterBuilder = null,
     PgsBurnInFilterBuilder? pgsBurnInFilterBuilder = null,
     IMetadataInjector? metadataInjector = null,
-    IMetadataMerger? metadataMerger = null
+    IMetadataMerger? metadataMerger = null,
+    EncodeResumeResolver? resumeResolver = null
 ) : IPipelineStage<BuildInput, FfmpegCommand[]>, IBuildStage
 {
     public string Name => "Build";
 
     public async Task<StageResult> ExecuteAsync(
+        BuildInput input,
+        EncodingContext context,
+        CancellationToken ct
+    )
+    {
+        StageResult built = await BuildCommandsAsync(input, context, ct);
+        if (
+            resumeResolver is null
+            || built is not StageSuccess<FfmpegCommand[]> { Value: { Length: > 0 } commands }
+        )
+            return built;
+
+        ResumeDecision decision = await resumeResolver.ResolveAsync(
+            new(
+                input.Plan.OutputPlan,
+                commands,
+                input.OutputDirectory,
+                input.Pass,
+                input.DurationLimit,
+                input.ResumeFromMs,
+                context.CorrelationId
+            ),
+            ct
+        );
+        if (!decision.Resume)
+            return built;
+
+        BuildInput resumed = input with
+        {
+            Plan = input.Plan with
+            {
+                OutputPlan = EncodeResumeResolver.ApplyTo(input.Plan.OutputPlan, decision),
+            },
+            ResumeFromMs = decision.ResumeMs,
+            ExactResume = true,
+        };
+        StageResult rebuilt = await BuildCommandsAsync(resumed, context, ct);
+        if (rebuilt is not StageSuccess<FfmpegCommand[]> { Value: { Length: > 0 } resumedCommands })
+            return rebuilt;
+
+        int main = Array.FindIndex(
+            resumedCommands,
+            c => Array.IndexOf(c.Arguments, "-start_number") >= 0
+        );
+        if (main >= 0)
+            resumedCommands[main] = resumedCommands[main] with
+            {
+                ResumeMarkerPath = decision.MarkerPath,
+            };
+
+        return rebuilt;
+    }
+
+    private async Task<StageResult> BuildCommandsAsync(
         BuildInput input,
         EncodingContext context,
         CancellationToken ct
@@ -252,7 +311,10 @@ public class BuildStage(
             FfmpegCommandBuilder builder = new();
             builder.WithGlobalExtraFlags(input.Plan.OutputPlan.GlobalExtraFlags);
 
-            TimeSpan? resumeSeek = ResolveResumeSeek(input.ResumeFromMs);
+            TimeSpan? resumeSeek =
+                input.ExactResume && input.ResumeFromMs is > 0
+                    ? TimeSpan.FromMilliseconds(input.ResumeFromMs.Value)
+                    : ResolveResumeSeek(input.ResumeFromMs);
             bool useGpuResident = FilterGraphAssembler.UsesGpuResidentPath(
                 input.Plan.OutputPlan,
                 context.MediaInfo

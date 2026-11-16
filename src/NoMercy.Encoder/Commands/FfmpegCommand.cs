@@ -11,4 +11,10 @@
 
 namespace NoMercy.Encoder.Commands;
 
-public record FfmpegCommand(string Executable, string[] Arguments, string? WorkingDirectory);
+/// <param name="ResumeMarkerPath">The marker that allowed a resumed run; a failed run deletes it.</param>
+public record FfmpegCommand(
+    string Executable,
+    string[] Arguments,
+    string? WorkingDirectory,
+    string? ResumeMarkerPath = null
+);
