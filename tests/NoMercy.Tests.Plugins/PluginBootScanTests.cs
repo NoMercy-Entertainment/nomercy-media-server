@@ -184,6 +184,57 @@ public class PluginBootScanTests : IDisposable
         results[0].Name.Should().Be("Echo");
     }
 
+    // A manifest that ships translations, as Internet Radio and Automix do. The
+    // boot scan hands the loader a storage-relative folder; the translation check
+    // resolved that against the process's working directory, the storage layer
+    // refused the path, and every such plugin failed to load after a restart
+    // (media-server #680). A translation check never costs a plugin its load.
+    [Fact]
+    public async Task LoadAllAsync_PluginThatShipsTranslations_Loads()
+    {
+        StageEchoPlugin();
+        string manifestPath = Path.Combine(_echoPluginDir, "plugin.json");
+        string manifest = await File.ReadAllTextAsync(manifestPath);
+        manifest =
+            manifest.TrimEnd().TrimEnd('}').TrimEnd()
+            + ",\n  \"translations\": { \"source\": \"en\", \"locales\": [\"en\", \"nl\"], \"path\": \"lang\" }\n}\n";
+        await File.WriteAllTextAsync(manifestPath, manifest);
+        Directory.CreateDirectory(Path.Combine(_echoPluginDir, "lang"));
+        await File.WriteAllTextAsync(
+            Path.Combine(_echoPluginDir, "lang", "en.json"),
+            "{ \"echo.title\": \"Echo\" }"
+        );
+        await File.WriteAllTextAsync(
+            Path.Combine(_echoPluginDir, "lang", "nl.json"),
+            "{ \"echo.title\": \"Echo\" }"
+        );
+        InstalledPluginFolder.Record(_tempPluginsDir, _echoPluginDir);
+
+        IReadOnlyList<PluginLoadResult> results = await _manager.LoadAllAsync();
+
+        results.Should().ContainSingle();
+        results[0].Name.Should().Be("Echo");
+    }
+
+    // AUD-1248 still holds: a translation folder outside the plugin is not read,
+    // and the plugin loads without its translations.
+    [Fact]
+    public async Task LoadAllAsync_TranslationFolderOutsideThePlugin_IsIgnoredAndThePluginLoads()
+    {
+        StageEchoPlugin();
+        string manifestPath = Path.Combine(_echoPluginDir, "plugin.json");
+        string manifest = await File.ReadAllTextAsync(manifestPath);
+        manifest =
+            manifest.TrimEnd().TrimEnd('}').TrimEnd()
+            + ",\n  \"translations\": { \"source\": \"en\", \"locales\": [\"en\"], \"path\": \"../elsewhere\" }\n}\n";
+        await File.WriteAllTextAsync(manifestPath, manifest);
+        InstalledPluginFolder.Record(_tempPluginsDir, _echoPluginDir);
+
+        IReadOnlyList<PluginLoadResult> results = await _manager.LoadAllAsync();
+
+        results.Should().ContainSingle();
+    }
+
     [Fact]
     public async Task LoadAllAsync_EchoPlugin_ResultVersionMatchesManifest()
     {

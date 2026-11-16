@@ -1219,10 +1219,37 @@ internal sealed class PluginLoader(
         if (manifest.Translations is null)
             return;
 
+        try
+        {
+            await CheckTranslationsAsync(manifest.Translations, pluginDir, manifestPath, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            // A warning rather than a refusal, as above: this check is advice to
+            // the author, and it is never worth a plugin its load (#680).
+            _logger.LogWarning(
+                "Plugin manifest {ManifestPath}: its translations could not be checked: {Error}",
+                [manifestPath, ex.Message]
+            );
+        }
+    }
+
+    private async Task CheckTranslationsAsync(
+        PluginTranslations translations,
+        string pluginDir,
+        string manifestPath,
+        CancellationToken ct
+    )
+    {
         // AUD-1248: a translation folder outside the plugin is never read; the
         // plugin still loads, without its translations.
-        string directory = Path.GetFullPath(Path.Combine(pluginDir, manifest.Translations.Path));
-        string root = Path.GetFullPath(pluginDir).TrimEnd(Path.DirectorySeparatorChar);
+        //
+        // Against the plugins root, not the working directory: the boot scan
+        // hands this a storage-relative folder, and Path.GetFullPath on that
+        // resolved it under the server's install folder, which the storage
+        // layer refuses (#680).
+        string root = ToLocalAssemblyPath(pluginDir).TrimEnd(Path.DirectorySeparatorChar);
+        string directory = Path.GetFullPath(Path.Combine(root, translations.Path));
         if (
             directory != root
             && !directory.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.Ordinal)
@@ -1237,11 +1264,7 @@ internal sealed class PluginLoader(
 
         Dictionary<string, string?> files = new();
 
-        foreach (
-            string locale in manifest
-                .Translations.Locales.Append(manifest.Translations.Source)
-                .Distinct()
-        )
+        foreach (string locale in translations.Locales.Append(translations.Source).Distinct())
         {
             string path = Path.Combine(directory, $"{locale}.json");
             files[locale] = _storage.Exists(path)
@@ -1250,7 +1273,7 @@ internal sealed class PluginLoader(
         }
 
         List<PluginTranslationProblem> problems = PluginTranslationValidator.Validate(
-            manifest.Translations,
+            translations,
             locale => files.GetValueOrDefault(locale)
         );
 
