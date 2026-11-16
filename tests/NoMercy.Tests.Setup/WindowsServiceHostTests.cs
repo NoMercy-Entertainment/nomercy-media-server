@@ -65,4 +65,29 @@ public class WindowsServiceHostTests
         Assert.True(parsed.Development);
     }
 
+    [Fact]
+    public void InstallerServiceBinPath_PassesServiceFlagAfterQuotedExePath()
+    {
+        string iss = File.ReadAllText(
+            Path.Combine(RepoRoot(), "src", "NoMercy.Service", "NoMercyMediaServer.iss")
+        );
+        string createLine = iss.Split('\n')
+            .Single(line => line.Contains("create NoMercyMediaServer", StringComparison.Ordinal));
+
+        // sc.exe takes the binPath as one argument: "\"<exe>\" --service".
+        // Inno doubles every literal quote inside a quoted parameter string.
+        Assert.Contains(
+            "binPath= \"\"\\\"\"{app}\\NoMercyMediaServer.exe\\\"\" --service\"\"",
+            createLine,
+            StringComparison.Ordinal
+        );
+    }
+
+    private static string RepoRoot()
+    {
+        string? dir = AppContext.BaseDirectory;
+        while (dir is not null && !Directory.Exists(Path.Combine(dir, "src", "NoMercy.Service")))
+            dir = Path.GetDirectoryName(dir);
+        return dir ?? throw new DirectoryNotFoundException("repository root not found");
+    }
 }
