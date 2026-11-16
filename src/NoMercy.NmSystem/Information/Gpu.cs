@@ -112,8 +112,47 @@ public static class Gpu
     private static List<string> GetGpuNamesLinux()
     {
         string output = Shell.ExecCommand("lspci | grep 'VGA'");
-        return output.Split('\n').Where(v => !string.IsNullOrEmpty(v)).ToList();
+        return output.Split('\n').Where(v => !string.IsNullOrEmpty(v)).Select(LinuxDisplayName).ToList();
     }
+
+    private static readonly (string Vendor, string Short)[] LinuxVendors =
+    [
+        ("Advanced Micro Devices, Inc. [AMD/ATI]", "AMD"),
+        ("Advanced Micro Devices, Inc.", "AMD"),
+        ("NVIDIA Corporation", "NVIDIA"),
+        ("Intel Corporation", "Intel"),
+        ("Matrox Electronics Systems Ltd.", "Matrox"),
+    ];
+
+    // lspci prints "<slot> <class>: <vendor> <chip> [<model>] (rev xx)"; Windows and Mac give only vendor and model.
+    public static string LinuxDisplayName(string lspciLine)
+    {
+        string name = lspciLine.Trim();
+        int space = name.IndexOf(' ');
+        int colon = name.IndexOf(": ", StringComparison.Ordinal);
+        if (space > 0 && colon > space && IsPciSlot(name[..space]))
+            name = name[(colon + 2)..].Trim();
+
+        int rev = name.LastIndexOf(" (rev ", StringComparison.Ordinal);
+        if (rev > 0 && name.EndsWith(')'))
+            name = name[..rev].TrimEnd();
+
+        foreach ((string vendor, string shortName) in LinuxVendors)
+        {
+            if (!name.StartsWith(vendor + " ", StringComparison.Ordinal))
+                continue;
+            string model = name[vendor.Length..].Trim();
+            int open = model.LastIndexOf('[');
+            if (open >= 0 && model.EndsWith(']'))
+                model = model[(open + 1)..^1].Trim();
+            return $"{shortName} {model}";
+        }
+
+        return name;
+    }
+
+    private static bool IsPciSlot(string token) =>
+        token.Contains(':') && token.Contains('.') && token.All(c => char.IsAsciiHexDigit(c) || c is ':' or '.');
 
     private static List<string> GetGpuNamesMac()
     {
