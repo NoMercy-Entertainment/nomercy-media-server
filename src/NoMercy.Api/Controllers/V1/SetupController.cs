@@ -221,10 +221,12 @@ public class SetupController(
         if (!AuthPolicy.IsAllowed(User))
             return UnauthorizedResponse("You do not have permission to view libraries");
 
+        bool moderator = AuthPolicy.IsModerator(User);
         List<LibrariesResponseItemDto> response = (
             await libraryRepository.GetSetupLibrariesAsync(userId)
         )
             .Select(library => new LibrariesResponseItemDto(library))
+            .Select(item => moderator ? item : item.WithoutServerDetails())
             .ToList();
 
         return Ok(new LibrariesDto { Data = response.OrderBy(library => library.Order) });

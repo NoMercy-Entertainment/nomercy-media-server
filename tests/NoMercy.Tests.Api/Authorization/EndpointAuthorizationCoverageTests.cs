@@ -281,12 +281,6 @@ public sealed class EndpointAuthorizationCoverageTests(
             "Worker: owner only here.",
         ["POST /api/v{version:apiVersion}/dashboard/workers/{workerId}/tasks/{taskId}/progress"] =
             WorkerProgressReason,
-        // Needs owner decision.
-        ["GET /api/v{version:apiVersion}/dashboard/libraries"] =
-            "Needs owner decision: imperative IsAllowed, so any user with library access reads "
-            + "the full settings of the libraries they can see, folder paths and encoder "
-            + "presets included. GET /setup/libraries returns the same shape to the same users, "
-            + "and the web dashboard calls this route, so closing it may break a client.",
     };
 
     /// <summary>

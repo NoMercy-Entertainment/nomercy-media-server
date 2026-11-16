@@ -78,6 +78,19 @@ public record LibrariesResponseItemDto
     [JsonProperty("subtitles")]
     public string[] Subtitles { get; set; }
 
+    /// <summary>
+    /// This library as a member sees it: no folders and no encoder preset. The
+    /// folder paths describe the server's disks and the presets its encoding;
+    /// both are for the people who run the server, and no client reads them
+    /// outside its moderator screens (#127). The shape stays the same.
+    /// </summary>
+    public LibrariesResponseItemDto WithoutServerDetails() =>
+        this with
+        {
+            FolderLibrary = [],
+            EncodePresetId = null,
+        };
+
     public LibrariesResponseItemDto(Library library)
     {
         bool shouldPaginate = library.LibraryMovies.Count + library.LibraryTvs.Count > 500;

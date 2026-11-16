@@ -47,6 +47,7 @@ public class AdminRouteNonAdminRefusalTests : IClassFixture<NoMercyApiFactory>
     [InlineData("GET", "/api/v1/dashboard/server/setup")]
     [InlineData("PATCH", "/api/v1/dashboard/server/info")]
     [InlineData("POST", "/api/v1/dashboard/libraries")]
+    [InlineData("GET", "/api/v1/dashboard/libraries")]
     [InlineData(
         "PATCH",
         "/api/v1/dashboard/users/37d03e60-7b0a-4246-a85b-a5618966a383/permissions"
