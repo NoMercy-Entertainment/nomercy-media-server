@@ -66,4 +66,42 @@ public sealed class CorsPreflightCacheTests
         policy.AllowAnyHeader.Should().BeTrue();
         policy.SupportsCredentials.Should().BeTrue();
     }
+
+    [Theory]
+    [InlineData("https://nomercy.tv")]
+    [InlineData("https://app.nomercy.tv")]
+    [InlineData("https://cast.nomercy.tv")]
+    [InlineData("https://hlsjs.video-dev.org")]
+    [InlineData("http://localhost:7625")]
+    public async Task Production_allows_each_first_party_origin(string origin)
+    {
+        CorsPolicy policy = await BuildPolicy(isDev: false);
+
+        policy.IsOriginAllowed(origin).Should().BeTrue();
+    }
+
+    // Every self-hosted server has a name under nomercy.tv, and its owner decides
+    // what it serves. Another user's server is not a first-party origin.
+    [Theory]
+    [InlineData("https://192-0-2-1.00000000-0000-4000-8000-000000000001.srv.nomercy.tv")]
+    [InlineData("https://192-0-2-1.00000000-0000-4000-8000-000000000001.srv.nomercy.tv:7626")]
+    [InlineData("https://2001-db8--1.00000000-0000-4000-8000-000000000001.srv.nomercy.tv:7626")]
+    [InlineData("https://192-0-2-1.00000000-0000-4000-8000-000000000001.nomercy.tv:7626")]
+    [InlineData("https://00000000-0000-4000-8000-000000000001.nomercy.tv")]
+    [InlineData("https://app.nomercy.tv.example.com")]
+    [InlineData("http://app.nomercy.tv")]
+    public async Task Production_refuses_another_server_under_the_shared_domain(string origin)
+    {
+        CorsPolicy policy = await BuildPolicy(isDev: false);
+
+        policy.IsOriginAllowed(origin).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task Production_origin_list_holds_no_wildcard()
+    {
+        CorsPolicy policy = await BuildPolicy(isDev: false);
+
+        policy.Origins.Should().NotContain(origin => origin.Contains('*'));
+    }
 }

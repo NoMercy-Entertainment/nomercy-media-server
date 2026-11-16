@@ -12,14 +12,16 @@
 using System.Text.Json;
 using Microsoft.Extensions.Logging;
 using NoMercy.Encoder.Jobs;
+using NoMercy.Encoder.Orchestration;
 using NoMercy.Queue.MediaServer;
 
 namespace NoMercy.MediaProcessing.Jobs;
 
 /// <summary>
 /// Looks up crash checkpoints for encoder queue jobs during orphan recovery.
-/// Extracts the output directory from the serialized job payload, then
-/// delegates to <see cref="ICheckpointStore"/> to check for a crash checkpoint.
+/// Extracts the output directory from the serialized job payload, maps it to
+/// the encode's working folder with <see cref="EncoderTempDirectory"/>, then
+/// asks <see cref="ICheckpointStore"/> for a crash checkpoint there.
 /// </summary>
 public class EncoderOrphanCheckpointLookup(
     ICheckpointStore checkpointStore,
@@ -28,21 +30,25 @@ public class EncoderOrphanCheckpointLookup(
 {
     public async Task<bool> HasCheckpointAsync(string jobPayload, CancellationToken ct = default)
     {
-        string? outputDirectory = ExtractOutputDirectory(jobPayload);
-        if (string.IsNullOrEmpty(outputDirectory))
+        // The execute stage saves the checkpoint in the encode's working folder,
+        // not in the storage-relative output directory the payload carries.
+        string? workingDirectory = EncoderTempDirectory.MirroredPath(
+            ExtractOutputDirectory(jobPayload)
+        );
+        if (workingDirectory is null)
             return false;
 
         try
         {
-            JobCheckpoint? checkpoint = await checkpointStore.LoadAsync(outputDirectory, ct);
+            JobCheckpoint? checkpoint = await checkpointStore.LoadAsync(workingDirectory, ct);
             return checkpoint?.FailedAt is not null;
         }
         catch (Exception ex)
         {
             logger.LogWarning(
                 ex,
-                "Failed to load checkpoint for OutputDirectory={OutputDirectory}",
-                outputDirectory
+                "Failed to load checkpoint for WorkingDirectory={WorkingDirectory}",
+                workingDirectory
             );
             return false;
         }
@@ -55,8 +61,12 @@ public class EncoderOrphanCheckpointLookup(
             using JsonDocument doc = JsonDocument.Parse(payload);
             JsonElement root = doc.RootElement;
 
+            // The queue serializes payloads in camelCase, and the directory
+            // lives on the coordinator state of a VideoEncodeJob.
             if (
-                root.TryGetProperty("OutputDirectory", out JsonElement dirElement)
+                root.TryGetProperty("coordinator", out JsonElement coordinator)
+                && coordinator.ValueKind == JsonValueKind.Object
+                && coordinator.TryGetProperty("outputDirectory", out JsonElement dirElement)
                 && dirElement.ValueKind == JsonValueKind.String
             )
             {

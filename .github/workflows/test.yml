@@ -9,6 +9,11 @@ on:
         type: string
         default: '10.0.x'
 
+# Test hosts watch config files through inotify; the shared runner host caps
+# inotify instances at 128 and the Api suite ran out of them. Polling needs none.
+env:
+  DOTNET_USE_POLLING_FILE_WATCHER: 'true'
+
 jobs:
   # Fast tests that run on every push/PR
   test:

@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
 using NoMercy.Events;
 using NoMercy.Events.Plugins;
 using NoMercy.PluginSdk.Abstractions;
@@ -21,7 +22,9 @@ namespace NoMercy.PluginSdk;
 /// payload it expects; it never holds the bus, so it never sees the events it
 /// has no capability for.
 /// </summary>
-public sealed class PluginEvents(Ulid pluginId, IEventBus eventBus) : IPluginEvents, IDisposable
+public sealed class PluginEvents(Ulid pluginId, IEventBus eventBus, ILogger? logger = null)
+    : IPluginEvents,
+        IDisposable
 {
     private readonly List<IDisposable> _subscriptions = [];
 
@@ -39,6 +42,16 @@ public sealed class PluginEvents(Ulid pluginId, IEventBus eventBus) : IPluginEve
                         return Task.CompletedTask;
                     }
 
+                    // A host topic is the server's word: one that arrives under a
+                    // plugin's id was forged on the bus.
+                    if (
+                        PluginHostTopics.IsReserved(topic)
+                        && message.PluginId != PluginHostTopics.HostSender
+                    )
+                    {
+                        return Task.CompletedTask;
+                    }
+
                     T? payload = message.Payload is null
                         ? default
                         : message.Payload.Deserialize<T>(JsonSerializerOptions.Web);
@@ -52,6 +65,18 @@ public sealed class PluginEvents(Ulid pluginId, IEventBus eventBus) : IPluginEve
     public Task PublishAsync<T>(string name, T payload, CancellationToken ct = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(name);
+
+        if (PluginHostTopics.IsReserved(name))
+        {
+            logger?.LogWarning(
+                "Plugin {PluginId} tried to publish the host topic {Topic}; refused",
+                pluginId,
+                name
+            );
+            throw new InvalidOperationException(
+                $"The topic '{name}' is published by the server only. A plugin may subscribe to it and may not publish it; publish under a topic name of its own."
+            );
+        }
 
         return eventBus.PublishAsync(PluginMessageEvent.From(pluginId, name, payload), ct);
     }
