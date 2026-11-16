@@ -349,6 +349,8 @@ public static partial class ServiceConfiguration
         services.AddSingleton<IUpdateChecker, UpdateChecker>();
         services.AddHostedService<PeriodicUpdateCheckService>();
         services.AddHostedService<JwksRefreshService>();
+        services.AddSingleton<SqliteWalCheckpointer>();
+        services.AddHostedService<WalCheckpointService>();
         services.AddHostedService<LibraryStartupScanService>();
         services.AddLibraryFileWatcher();
 
