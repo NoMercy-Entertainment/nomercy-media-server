@@ -77,7 +77,9 @@ Name: "installservice"; Description: "Install as Windows Service (auto-start on 
 Name: "addtopath"; Description: "Add CLI to system PATH"; GroupDescription: "CLI:"; Components: cli
 
 [Run]
-Filename: "sc.exe"; Parameters: "create NoMercyMediaServer binPath= ""{app}\NoMercyMediaServer.exe"" start= auto DisplayName= ""NoMercy MediaServer"""; Flags: runhidden; Tasks: installservice
+Filename: "sc.exe"; Parameters: "create NoMercyMediaServer binPath= ""\""{app}\NoMercyMediaServer.exe\"" --service"" start= auto DisplayName= ""NoMercy MediaServer"""; Flags: runhidden; Tasks: installservice
+; An upgrade keeps the old service, so create fails; config moves it to --service.
+Filename: "sc.exe"; Parameters: "config NoMercyMediaServer binPath= ""\""{app}\NoMercyMediaServer.exe\"" --service"""; Flags: runhidden; Tasks: installservice
 Filename: "sc.exe"; Parameters: "start NoMercyMediaServer"; Flags: runhidden; Tasks: installservice
 ; skipifsilent is omitted when /LaunchAfterInstall=1 is passed (auto-update with auto-start enabled).
 ; The [Code] section handles conditional launch via PostInstall pascal code.

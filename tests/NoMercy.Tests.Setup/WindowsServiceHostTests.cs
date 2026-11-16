@@ -65,4 +65,50 @@ public class WindowsServiceHostTests
         Assert.True(parsed.Development);
     }
 
+    [Fact]
+    public void InstallerServiceBinPath_PassesServiceFlagAfterQuotedExePath()
+    {
+        string iss = File.ReadAllText(
+            Path.Combine(RepoRoot(), "src", "NoMercy.Service", "NoMercyMediaServer.iss")
+        );
+        string createLine = iss.Split('\n')
+            .Single(line => line.Contains("create NoMercyMediaServer", StringComparison.Ordinal));
+
+        // sc.exe takes the binPath as one argument: "\"<exe>\" --service".
+        // Inno doubles every literal quote inside a quoted parameter string.
+        Assert.Contains(
+            "binPath= \"\"\\\"\"{app}\\NoMercyMediaServer.exe\\\"\" --service\"\"",
+            createLine,
+            StringComparison.Ordinal
+        );
+    }
+
+    [Fact]
+    public void InstallerConfigsExistingServiceToServiceModeBeforeStart()
+    {
+        string[] lines = File.ReadAllLines(
+            Path.Combine(RepoRoot(), "src", "NoMercy.Service", "NoMercyMediaServer.iss")
+        );
+        int create = Array.FindIndex(lines, l => l.Contains("create NoMercyMediaServer"));
+        int config = Array.FindIndex(lines, l => l.Contains("config NoMercyMediaServer"));
+        int start = Array.FindIndex(lines, l => l.Contains("start NoMercyMediaServer"));
+
+        Assert.True(config >= 0, "an upgrade needs an sc config step for the existing service");
+        Assert.True(create < config && config < start, "order must be create, config, start");
+        Assert.Contains(
+            "binPath= \"\"\\\"\"{app}\\NoMercyMediaServer.exe\\\"\" --service\"\"",
+            lines[config],
+            StringComparison.Ordinal
+        );
+        Assert.Contains("Tasks: installservice", lines[config], StringComparison.Ordinal);
+        Assert.Contains("runhidden", lines[config], StringComparison.Ordinal);
+    }
+
+    private static string RepoRoot()
+    {
+        string? dir = AppContext.BaseDirectory;
+        while (dir is not null && !Directory.Exists(Path.Combine(dir, "src", "NoMercy.Service")))
+            dir = Path.GetDirectoryName(dir);
+        return dir ?? throw new DirectoryNotFoundException("repository root not found");
+    }
 }
