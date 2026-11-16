@@ -18,11 +18,7 @@ using NoMercy.Storage;
 namespace NoMercy.Encoder.Pipeline.Resume;
 
 /// <summary>
-/// A resumed run writes playlists that list only its own segments. The stitch
-/// puts the entries of the segments before the resume point back in front, so
-/// each variant playlist lists the whole title again. EXTINF comes from the
-/// first packet times of segment i and i+1, the same spacing an uninterrupted
-/// run has.
+/// Puts the entries before the resume point back into each playlist; EXTINF is the first-packet gap.
 /// </summary>
 public class EncodeResumeStitcher(
     IStorage storage,
@@ -30,6 +26,7 @@ public class EncodeResumeStitcher(
     ILogger<EncodeResumeStitcher> logger
 )
 {
+    internal const string StitchSuffix = ".stitch";
     private const string ExtInfTag = "#EXTINF:";
     private const string MediaSequenceTag = "#EXT-X-MEDIA-SEQUENCE:";
     private const string TargetDurationTag = "#EXT-X-TARGETDURATION:";
@@ -66,7 +63,7 @@ public class EncodeResumeStitcher(
                     start,
                     ct
                 );
-                stitched.Add((playlistPath + ".stitch", playlistPath, text));
+                stitched.Add((playlistPath + StitchSuffix, playlistPath, text));
             }
 
             foreach ((string tempPath, string path, string text) in stitched)

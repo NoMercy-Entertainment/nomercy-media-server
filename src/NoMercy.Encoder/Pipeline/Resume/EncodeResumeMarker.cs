@@ -17,9 +17,7 @@ using NoMercy.Storage;
 namespace NoMercy.Encoder.Pipeline.Resume;
 
 /// <summary>
-/// The <c>.resume.&lt;hash&gt;</c> file in an encode's working folder. It names
-/// the argument list that wrote the segments next to it, so a changed list
-/// (a new profile, another source) never resumes onto segments it did not write.
+/// The <c>.resume.&lt;hash&gt;</c> file names the arguments and source that wrote the segments next to it.
 /// </summary>
 public class EncodeResumeMarker(IStorage storage)
 {
@@ -27,8 +25,27 @@ public class EncodeResumeMarker(IStorage storage)
 
     public static string HashArguments(IEnumerable<FfmpegCommand> commands)
     {
-        string joined = string.Join('\n', commands.SelectMany(c => c.Arguments));
+        FfmpegCommand[] all = [.. commands];
+        IEnumerable<string> input = all.SelectMany(c => c.Arguments).Concat(SourceStamps(all));
+        string joined = string.Join('\n', input);
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(joined)));
+    }
+
+    // A source replaced under the same path has another length or write time.
+    private static IEnumerable<string> SourceStamps(FfmpegCommand[] commands)
+    {
+        foreach (FfmpegCommand command in commands)
+        {
+            for (int i = 0; i < command.Arguments.Length - 1; i++)
+            {
+                if (command.Arguments[i] != "-i")
+                    continue;
+
+                FileInfo file = new(command.Arguments[i + 1]);
+                if (file.Exists)
+                    yield return $"{file.Length}:{file.LastWriteTimeUtc.Ticks}";
+            }
+        }
     }
 
     public string PathFor(string outputDirectory, string hash) =>
@@ -46,15 +63,19 @@ public class EncodeResumeMarker(IStorage storage)
             await storage.DeleteAsync(markerPath, ct);
     }
 
-    /// <summary>Removes every marker in the folder; a finished bundle has none to resume.</summary>
+    /// <summary>Removes every marker and stitch temp file; a finished bundle has none to resume.</summary>
     public async Task ClearAllAsync(string outputDirectory, CancellationToken ct)
     {
         List<string> markers = [];
-        await foreach (StorageEntry entry in storage.ListAsync(outputDirectory, "*", false, ct))
+        await foreach (StorageEntry entry in storage.ListAsync(outputDirectory, "*", true, ct))
         {
+            string name = storage.GetName(entry.Path);
             if (
                 !entry.IsDirectory
-                && storage.GetName(entry.Path).StartsWith(Prefix, StringComparison.Ordinal)
+                && (
+                    name.StartsWith(Prefix, StringComparison.Ordinal)
+                    || name.EndsWith(EncodeResumeStitcher.StitchSuffix, StringComparison.Ordinal)
+                )
             )
                 markers.Add(entry.Path);
         }

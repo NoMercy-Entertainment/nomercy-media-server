@@ -22,10 +22,8 @@ using NoMercy.Storage;
 namespace NoMercy.Encoder.Pipeline.Resume;
 
 /// <summary>
-/// Finds where an interrupted HLS encode continues. A default (vod) encode
-/// writes its playlists only when it ends, so a stopped encode leaves segment
-/// files and no playlist; the files are counted instead. Anything the resume
-/// cannot prove safe starts the encode over from zero.
+/// Finds where an interrupted HLS encode continues by counting its segment files.
+/// Anything it cannot prove safe starts the encode over from zero.
 /// </summary>
 public class EncodeResumeResolver(
     IStorage storage,
@@ -49,6 +47,19 @@ public class EncodeResumeResolver(
             + "_"
             + index.ToString("D5", CultureInfo.InvariantCulture)
             + SegmentExtension;
+
+        public bool IsSegmentName(string name)
+        {
+            string head = Path.GetFileName(SegmentPrefix) + "_";
+            if (
+                name.Length != head.Length + 5 + SegmentExtension.Length
+                || !name.StartsWith(head, StringComparison.Ordinal)
+                || !name.EndsWith(SegmentExtension, StringComparison.Ordinal)
+            )
+                return false;
+
+            return name.AsSpan(head.Length, 5).IndexOfAnyExceptInRange('0', '9') < 0;
+        }
     }
 
     public async Task<ResumeDecision> ResolveAsync(ResumeRequest request, CancellationToken ct)
@@ -84,9 +95,65 @@ public class EncodeResumeResolver(
             return decision;
         }
 
-        // The new run replaces whatever marker was there, so its own restart can resume.
-        await marker.WriteAsync(markerPath, request.CorrelationId, ct);
+        await BeginFreshAsync(request, outputs, markerPath, ct);
         return StartOver(request, decision.Reason);
+    }
+
+    /// <summary>Starts the encode over after a failed resume rebuild, so its own restart can resume.</summary>
+    public async Task AbandonAsync(ResumeRequest request, string reason, CancellationToken ct)
+    {
+        string markerPath = marker.PathFor(
+            request.OutputDirectory,
+            EncodeResumeMarker.HashArguments(request.Commands)
+        );
+        await BeginFreshAsync(request, ParseOutputs(request.Commands), markerPath, ct);
+        StartOver(request, reason);
+    }
+
+    // Segments of an older run would join the new ones at the next restart, so they go first.
+    private async Task BeginFreshAsync(
+        ResumeRequest request,
+        List<HlsOutput> outputs,
+        string markerPath,
+        CancellationToken ct
+    )
+    {
+        try
+        {
+            await ClearStaleFilesAsync(request.OutputDirectory, outputs, ct);
+            await marker.WriteAsync(markerPath, request.CorrelationId, ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogWarning(
+                ex,
+                "[{CorrelationId}] Resume marker not written; this encode cannot be resumed",
+                request.CorrelationId
+            );
+        }
+    }
+
+    private async Task ClearStaleFilesAsync(
+        string outputDirectory,
+        List<HlsOutput> outputs,
+        CancellationToken ct
+    )
+    {
+        await marker.ClearAllAsync(outputDirectory, ct);
+        foreach (HlsOutput output in outputs)
+        {
+            string firstSegment = SegmentPath(outputDirectory, output, 0);
+            string folder = storage.GetParent(firstSegment) ?? outputDirectory;
+            List<string> stale = [];
+            await foreach (StorageEntry entry in storage.ListAsync(folder, "*", false, ct))
+            {
+                if (!entry.IsDirectory && output.IsSegmentName(storage.GetName(entry.Path)))
+                    stale.Add(entry.Path);
+            }
+
+            foreach (string path in stale)
+                await storage.DeleteAsync(path, ct);
+        }
     }
 
     private async Task<ResumeDecision> DecideAsync(
@@ -139,9 +206,7 @@ public class EncodeResumeResolver(
     }
 
     /// <summary>
-    /// Makes every HLS output write from the resume segment and stamp its
-    /// timestamps at the resume time, so the new segments equal the ones an
-    /// uninterrupted run would have written.
+    /// Makes every HLS output write from the resume segment, stamped at the resume time.
     /// </summary>
     public static OutputPlan ApplyTo(OutputPlan plan, ResumeDecision decision)
     {
@@ -237,11 +302,17 @@ public class EncodeResumeResolver(
             return "a copy output cannot be cut at a segment boundary";
         if (request.Plan.Drm is not null && request.Plan.Drm.Method != DrmMethod.None)
             return "DRM keys are prepared per run";
+        if (request.Plan.AudioOutputs.Any(UsesLoudnorm))
+            return "loudnorm carries state from the start of the audio";
         if (outputs.Count == 0)
             return "the commands write no HLS segments in a known name pattern";
 
         return null;
     }
+
+    private static bool UsesLoudnorm(AudioOutputPlan audio) =>
+        audio.Action == StreamAction.Transcode
+        && audio.AudioFilter?.Contains("loudnorm", StringComparison.Ordinal) == true;
 
     private ResumeDecision StartOver(ResumeRequest request, string reason)
     {

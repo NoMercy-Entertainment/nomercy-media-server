@@ -12,9 +12,7 @@
 namespace NoMercy.Encoder.Pipeline.Resume;
 
 /// <summary>
-/// Where an interrupted HLS encode continues. <see cref="StartSegment"/> is the
-/// first segment ffmpeg writes again and <see cref="ResumeMs"/> is the source
-/// position it starts reading from; both are zero when the encode starts over.
+/// Where an interrupted HLS encode continues: first segment and source position; zero to start over.
 /// </summary>
 public record ResumeDecision(
     bool Resume,

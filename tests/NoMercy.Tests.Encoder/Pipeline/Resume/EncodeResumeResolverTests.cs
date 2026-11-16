@@ -437,6 +437,105 @@ public class EncodeResumeResolverTests : IDisposable
         _logger.Lines.Should().ContainSingle().Which.Should().Contain("starts at 0");
     }
 
+    [Fact]
+    public async Task Resolve_StartOver_DeletesTheSegmentsAndMarkersOfAnOlderRun()
+    {
+        // An older server was stopped at segment 100 and left no marker.
+        Segments("video", "v", 101);
+        Segments("audio", "a", 101);
+        string keep = Path.Combine(_dir, "video", "keep_00001.ts");
+        File.WriteAllBytes(keep, [1]);
+        string otherMarker = Path.Combine(_dir, ".resume." + new string('0', 64));
+        File.WriteAllText(otherMarker, "old");
+        ResumeRequest request = Request(DefaultCommands());
+
+        ResumeDecision first = await _resolver.ResolveAsync(request, default);
+
+        first.Resume.Should().BeFalse();
+        Directory.GetFiles(Path.Combine(_dir, "video"), "v_*.ts").Should().BeEmpty();
+        Directory.GetFiles(Path.Combine(_dir, "audio"), "a_*.ts").Should().BeEmpty();
+        File.Exists(keep).Should().BeTrue("only files of the segment pattern go");
+        File.Exists(otherMarker).Should().BeFalse();
+        File.Exists(MarkerPath(request)).Should().BeTrue();
+
+        // The new run writes segments 0..10 and is stopped; none of the old ones may count.
+        Segments("video", "v", 11);
+        Segments("audio", "a", 11);
+        _prober.Set("video/v_00000.ts", 0);
+        _prober.Set("video/v_00010.ts", 20.02);
+
+        ResumeDecision second = await _resolver.ResolveAsync(request, default);
+
+        second.Resume.Should().BeTrue(second.Reason);
+        second.StartSegment.Should().Be(10);
+    }
+
+    [Fact]
+    public async Task Resolve_LoudnormAudio_StartsAtZero() =>
+        await AssertRefused(
+            r =>
+                r with
+                {
+                    Plan = r.Plan with
+                    {
+                        AudioOutputs =
+                        [
+                            r.Plan.AudioOutputs[0] with
+                            {
+                                AudioFilter = "loudnorm=I=-16:TP=-1.5:LRA=11",
+                            },
+                        ],
+                    },
+                },
+            "loudnorm"
+        );
+
+    [Fact]
+    public void HashArguments_ReplacedSourceFile_ChangesTheHash()
+    {
+        string source = Path.Combine(_dir, "in.mkv");
+        File.WriteAllBytes(source, [1, 2, 3]);
+        FfmpegCommand[] commands = [new("ffmpeg", ["-i", source, "-f", "hls"], null)];
+        string first = EncodeResumeMarker.HashArguments(commands);
+
+        File.WriteAllBytes(source, [1, 2, 3, 4]);
+        string longer = EncodeResumeMarker.HashArguments(commands);
+        File.SetLastWriteTimeUtc(source, new(2020, 1, 1, 0, 0, 0, DateTimeKind.Utc));
+        string touched = EncodeResumeMarker.HashArguments(commands);
+
+        longer.Should().NotBe(first);
+        touched.Should().NotBe(longer);
+    }
+
+    [Fact]
+    public async Task Resolve_MarkerCannotBeWritten_StartsAtZeroWithoutThrowing()
+    {
+        string blocker = Path.Combine(_dir, "blocker");
+        File.WriteAllText(blocker, "a file where the working folder should be");
+        ResumeRequest request = Request(DefaultCommands()) with
+        {
+            OutputDirectory = Path.Combine(blocker, "work"),
+        };
+
+        ResumeDecision decision = await _resolver.ResolveAsync(request, default);
+
+        decision.Resume.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ClearAll_RemovesStitchTempFiles_AndKeepsThePlaylist()
+    {
+        string playlist = Path.Combine(_dir, "video", "v.m3u8");
+        string stitch = playlist + ".stitch";
+        File.WriteAllText(playlist, "#EXTM3U");
+        File.WriteAllText(stitch, "#EXTM3U");
+
+        await _marker.ClearAllAsync(_dir, default);
+
+        File.Exists(stitch).Should().BeFalse();
+        File.Exists(playlist).Should().BeTrue();
+    }
+
     private async Task AssertRefused(Func<ResumeRequest, ResumeRequest> change, string reason)
     {
         Segments("video", "v", 6);

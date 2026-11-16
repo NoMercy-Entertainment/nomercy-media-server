@@ -74,18 +74,16 @@ public class BuildStage(
         )
             return built;
 
-        ResumeDecision decision = await resumeResolver.ResolveAsync(
-            new(
-                input.Plan.OutputPlan,
-                commands,
-                input.OutputDirectory,
-                input.Pass,
-                input.DurationLimit,
-                input.ResumeFromMs,
-                context.CorrelationId
-            ),
-            ct
+        ResumeRequest resumeRequest = new(
+            input.Plan.OutputPlan,
+            commands,
+            input.OutputDirectory,
+            input.Pass,
+            input.DurationLimit,
+            input.ResumeFromMs,
+            context.CorrelationId
         );
+        ResumeDecision decision = await resumeResolver.ResolveAsync(resumeRequest, ct);
         if (!decision.Resume)
             return built;
 
@@ -99,20 +97,26 @@ public class BuildStage(
             ExactResume = true,
         };
         StageResult rebuilt = await BuildCommandsAsync(resumed, context, ct);
-        if (rebuilt is not StageSuccess<FfmpegCommand[]> { Value: { Length: > 0 } resumedCommands })
+        int main = -1;
+        if (rebuilt is StageSuccess<FfmpegCommand[]> { Value: { Length: > 0 } resumedCommands })
+        {
+            main = Array.FindIndex(
+                resumedCommands,
+                c => Array.IndexOf(c.Arguments, "-start_number") >= 0
+            );
+            if (main >= 0)
+                resumedCommands[main] = resumedCommands[main] with
+                {
+                    ResumeMarkerPath = decision.MarkerPath,
+                };
+        }
+
+        if (main >= 0)
             return rebuilt;
 
-        int main = Array.FindIndex(
-            resumedCommands,
-            c => Array.IndexOf(c.Arguments, "-start_number") >= 0
-        );
-        if (main >= 0)
-            resumedCommands[main] = resumedCommands[main] with
-            {
-                ResumeMarkerPath = decision.MarkerPath,
-            };
-
-        return rebuilt;
+        // A retry would fail the same way, so the first build runs and the marker restarts.
+        await resumeResolver.AbandonAsync(resumeRequest, "the resume rebuild failed", ct);
+        return built;
     }
 
     private async Task<StageResult> BuildCommandsAsync(

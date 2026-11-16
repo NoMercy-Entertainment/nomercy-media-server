@@ -100,7 +100,27 @@ public class EncoderResumeStitchTests : IDisposable
         File.Exists(checkpoint).Should().BeTrue();
     }
 
-    private async Task<EncodingResult> Encode(ISegmentProber prober, bool withCleanup = false)
+    [Fact]
+    public async Task FinalizeOnlyPass_RemovesEveryResumeMarker()
+    {
+        string marker = Path.Combine(_dir, ".resume." + new string('b', 64));
+        File.WriteAllText(marker, "run-0");
+
+        EncodingResult result = await Encode(
+            new SegmentProber(1.0),
+            withCleanup: true,
+            finalizeOnly: true
+        );
+
+        result.Success.Should().BeTrue(result.Error?.Message);
+        File.Exists(marker).Should().BeFalse("the coordinator publishes a finished bundle");
+    }
+
+    private async Task<EncodingResult> Encode(
+        ISegmentProber prober,
+        bool withCleanup = false,
+        bool finalizeOnly = false
+    )
     {
         FfmpegCommand[] commands =
         [
@@ -198,7 +218,7 @@ public class EncoderResumeStitchTests : IDisposable
                 InputPath: "/media/in.mkv",
                 OutputDirectory: _dir,
                 Profile: profile,
-                Options: new(PrecomputedPlan: plan)
+                Options: new(PrecomputedPlan: plan, FinalizeOnly: finalizeOnly)
             ),
             progress: null,
             ct: default

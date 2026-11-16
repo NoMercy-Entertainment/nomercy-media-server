@@ -34,6 +34,7 @@ public class BuildStageEncodeResumeTests : IDisposable
         Path.GetTempPath(),
         $"resume_build_{Guid.NewGuid():N}"
     );
+    private readonly SegmentNumberProber _prober = new();
     private readonly BuildStage _stage;
     private readonly EncodingContext _context = EncodingContext.Create();
 
@@ -48,7 +49,7 @@ public class BuildStageEncodeResumeTests : IDisposable
         };
         EncodeResumeResolver resolver = new(
             storage,
-            new SegmentNumberProber(),
+            _prober,
             new(storage),
             NullLogger<EncodeResumeResolver>.Instance
         );
@@ -106,6 +107,22 @@ public class BuildStageEncodeResumeTests : IDisposable
 
         second[0].Arguments.Should().NotContain("-start_number");
         second[0].Arguments.Should().NotContain("-ss");
+    }
+
+    [Fact]
+    public async Task ResumeRebuildFails_RunsTheFirstBuildAndRestartsTheMarker()
+    {
+        FfmpegCommand[] first = await Build(crf: 23);
+        WriteSegments(first[0], 6);
+        // A resume time too large for a TimeSpan makes the rebuild throw.
+        _prober.SecondsPerSegment = 1e12;
+
+        FfmpegCommand[] second = await Build(crf: 23);
+
+        second[0].Arguments.Should().NotContain("-start_number");
+        second[0].ResumeMarkerPath.Should().BeNull();
+        Directory.GetFiles(_dir, ".resume.*").Should().ContainSingle();
+        Directory.GetFiles(_dir, "*.ts", SearchOption.AllDirectories).Should().BeEmpty();
     }
 
     private async Task<FfmpegCommand[]> Build(int crf)
@@ -196,6 +213,8 @@ public class BuildStageEncodeResumeTests : IDisposable
     /// <summary>Segment n starts at 1.4 s plus 2.002 s per segment.</summary>
     private sealed class SegmentNumberProber : ISegmentProber
     {
+        public double SecondsPerSegment { get; set; } = 2.002;
+
         public Task<double?> FirstPacketPtsAsync(
             string segmentPath,
             bool video,
@@ -204,7 +223,7 @@ public class BuildStageEncodeResumeTests : IDisposable
         {
             string name = Path.GetFileNameWithoutExtension(segmentPath);
             int number = int.Parse(name[^5..]);
-            return Task.FromResult<double?>(1.4 + 2.002 * number);
+            return Task.FromResult<double?>(1.4 + SecondsPerSegment * number);
         }
 
         public Task<double?> FirstPtsAsync(string segmentPath, CancellationToken ct) =>
