@@ -23,4 +23,14 @@ public record BackupDatabaseDto
 
     [JsonProperty("last_migration")]
     public string? LastMigration { get; init; }
+
+    /// <summary>
+    /// True when this copy failed its integrity check and was kept anyway (only in
+    /// a set made before a restore). A set with a damaged database cannot be restored.
+    /// </summary>
+    [JsonProperty("damaged")]
+    public bool Damaged { get; init; }
+
+    [JsonProperty("damage")]
+    public string? Damage { get; init; }
 }

@@ -23,4 +23,16 @@ public sealed class BackupManifestDatabase : BackupManifestFile
     /// <summary>The newest EF Core migration applied to the copy; null when it has none.</summary>
     [JsonProperty("last_migration")]
     public string? LastMigration { get; set; }
+
+    /// <summary>
+    /// True when the copy failed its integrity check and was kept anyway, which
+    /// only a set preserving the state before a restore does. Such a set cannot
+    /// be restored.
+    /// </summary>
+    [JsonProperty("damaged")]
+    public bool Damaged { get; set; }
+
+    /// <summary>What the integrity check reported for a damaged copy.</summary>
+    [JsonProperty("damage")]
+    public string? Damage { get; set; }
 }

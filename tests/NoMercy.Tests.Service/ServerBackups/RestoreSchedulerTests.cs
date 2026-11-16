@@ -82,10 +82,11 @@ public sealed class RestoreSchedulerTests : IDisposable
     public async Task WhenTheSafetyBackupFails_NoRequestIsWritten()
     {
         string id = (await _backups.CreateAsync("target", CancellationToken.None)).Id;
-        Mock<ISqliteFileOperations> broken = new();
-        broken
-            .Setup(sqlite => sqlite.CopyOnline(It.IsAny<string>(), It.IsAny<string>()))
-            .Throws(new IOException("disk full"));
+        // A full disk while the safety set is written.
+        FaultyStorageDriver full = new()
+        {
+            FailOpenWrite = path => path.Contains(BackupSetId.IncompletePrefix),
+        };
         LocalStorageDriver storage = new();
         RestoreScheduler scheduler = new(
             storage,
@@ -98,7 +99,7 @@ public sealed class RestoreSchedulerTests : IDisposable
                 ),
                 _options
             ),
-            BackupTestFolder.CreateBackupService(_options, broken.Object),
+            BackupTestFolder.CreateBackupService(_options, storage: full),
             _options
         );
 

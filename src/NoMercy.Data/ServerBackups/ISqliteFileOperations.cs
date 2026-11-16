@@ -37,8 +37,11 @@ public interface ISqliteFileOperations
     /// </summary>
     IReadOnlyList<string> ReadAppliedMigrations(string databasePath);
 
-    /// <summary>True when <c>PRAGMA quick_check</c> finds nothing wrong.</summary>
-    bool PassesQuickCheck(string databasePath);
+    /// <summary>
+    /// Null when <c>PRAGMA quick_check</c> finds nothing wrong; otherwise what it
+    /// (or SQLite, for a file it cannot open) reports, at most five findings.
+    /// </summary>
+    string? FindDamage(string databasePath);
 
     /// <summary>
     /// Closes every pooled SQLite connection in this process, so no handle holds a

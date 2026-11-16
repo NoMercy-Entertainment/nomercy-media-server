@@ -56,13 +56,25 @@ public sealed class SqliteFileOperations : ISqliteFileOperations
         return migrations;
     }
 
-    public bool PassesQuickCheck(string databasePath)
+    public string? FindDamage(string databasePath)
     {
-        using SqliteConnection connection = Open(databasePath, SqliteOpenMode.ReadOnly);
-        using SqliteCommand command = connection.CreateCommand();
-        command.CommandText = "PRAGMA quick_check";
-        return command.ExecuteScalar() is string result
-            && result.Equals("ok", StringComparison.OrdinalIgnoreCase);
+        try
+        {
+            using SqliteConnection connection = Open(databasePath, SqliteOpenMode.ReadOnly);
+            using SqliteCommand command = connection.CreateCommand();
+            command.CommandText = "PRAGMA quick_check(5)";
+            List<string> findings = [];
+            using SqliteDataReader reader = command.ExecuteReader();
+            while (reader.Read())
+                findings.Add(reader.GetString(0));
+
+            return findings is ["ok"] ? null : string.Join("; ", findings);
+        }
+        catch (SqliteException exception)
+        {
+            // "file is not a database" and the like: damage too, with SQLite's word for it.
+            return exception.Message;
+        }
     }
 
     public void ReleaseAllConnections() => SqliteConnection.ClearAllPools();

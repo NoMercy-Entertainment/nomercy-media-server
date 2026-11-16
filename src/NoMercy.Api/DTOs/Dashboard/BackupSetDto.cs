@@ -51,6 +51,8 @@ public record BackupSetDto
                     Name = database.Name,
                     Size = database.Size,
                     LastMigration = database.LastMigration,
+                    Damaged = database.Damaged,
+                    Damage = database.Damage,
                 })
                 .ToList(),
             ConfigFileCount = summary.ConfigFileCount,

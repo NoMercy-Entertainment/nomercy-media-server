@@ -13961,6 +13961,13 @@
           "last_migration": {
             "type": "string",
             "nullable": true
+          },
+          "damaged": {
+            "type": "boolean"
+          },
+          "damage": {
+            "type": "string",
+            "nullable": true
           }
         },
         "additionalProperties": false

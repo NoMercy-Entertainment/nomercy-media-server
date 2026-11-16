@@ -88,6 +88,14 @@ public sealed class BackupSetVerifier(
             )
                 problems.Add($"The {database.Name} database is outside the databases folder.");
 
+        foreach (
+            BackupManifestDatabase database in manifest.Databases.Where(entry => entry.Damaged)
+        )
+            problems.Add(
+                $"The {database.Name} database in this backup is marked damaged "
+                    + $"({database.Damage}); a backup with a damaged database cannot be restored."
+            );
+
         foreach (BackupManifestFile file in manifest.ConfigFiles)
             if (!file.Path.StartsWith(BackupSetWriter.ConfigFolder + "/", StringComparison.Ordinal))
                 problems.Add($"The settings file '{file.Path}' is outside the config folder.");

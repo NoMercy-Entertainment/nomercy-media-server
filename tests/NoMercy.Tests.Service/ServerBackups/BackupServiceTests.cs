@@ -318,7 +318,7 @@ public sealed class BackupServiceTests : IDisposable
         public IReadOnlyList<string> ReadAppliedMigrations(string databasePath) =>
             _inner.ReadAppliedMigrations(databasePath);
 
-        public bool PassesQuickCheck(string databasePath) => false;
+        public string? FindDamage(string databasePath) => "*** in database main *** Page 2: fake";
 
         public void ReleaseAllConnections() => _inner.ReleaseAllConnections();
     }

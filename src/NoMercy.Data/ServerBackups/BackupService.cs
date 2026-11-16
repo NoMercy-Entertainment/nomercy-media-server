@@ -41,6 +41,7 @@ public sealed class BackupService(
                 reason,
                 options.Databases,
                 options.ConfigRoot,
+                keepDamagedCopies: false,
                 cancellationToken
             );
             logger.LogInformation(
@@ -96,6 +97,7 @@ public sealed class BackupService(
                 $"before restoring {backupId}",
                 options.Databases,
                 options.ConfigRoot,
+                keepDamagedCopies: true,
                 CancellationToken.None
             );
 

@@ -42,10 +42,11 @@ public sealed class RestoreApplierTests : IDisposable
     private RestoreApplier CreateApplier(
         IStorageDriver storage,
         IBackupDatabaseSchema schema,
-        IVolumeInspector? volumes = null
+        IVolumeInspector? volumes = null,
+        ISqliteFileOperations? sqliteFiles = null
     )
     {
-        SqliteFileOperations sqlite = new();
+        ISqliteFileOperations sqlite = sqliteFiles ?? new SqliteFileOperations();
         return new(
             storage,
             sqlite,
@@ -864,4 +865,93 @@ public sealed class RestoreApplierTests : IDisposable
             return _inner.MigrateAsync(databaseName, databasePath, cancellationToken);
         }
     }
+
+    // ── a damaged live database ──────────────────────────────────────────────
+
+    /// <summary>
+    /// A damaged database is exactly when an owner restores. The safety set
+    /// keeps the damaged copy, flagged, instead of blocking the request, and the
+    /// restore of a healthy backup goes ahead.
+    /// </summary>
+    [Fact]
+    public async Task WithADamagedLiveDatabase_TheRequestSucceeds_ItsSafetySetIsFlagged_AndTheRestoreApplies()
+    {
+        string id = await BackUpThenChangeServerAsync();
+        Execute(
+            _folder.DatabasePath("media"),
+            $"UPDATE marker SET content = '{MarkerDamageSqlite.CorruptMarker}'"
+        );
+        MarkerDamageSqlite sqlite = new();
+        BackupService backups = BackupTestFolder.CreateBackupService(_options, sqlite);
+
+        RestoreScheduleResult request = await backups.RequestRestoreAsync(
+            id,
+            CancellationToken.None
+        );
+
+        request.Status.Should().Be(RestoreScheduleStatus.Scheduled);
+        string safetyId = request.Pending!.SafetyBackupId!;
+        BackupManifest safety = ReadManifest(safetyId);
+        BackupManifestDatabase media = safety.Databases.Single(database =>
+            database.Name == "media"
+        );
+        media.Damaged.Should().BeTrue();
+        media.Damage.Should().Be(MarkerDamageSqlite.Damage);
+        safety
+            .Databases.Where(database => database.Name != "media")
+            .Should()
+            .OnlyContain(database => !database.Damaged);
+
+        // An ordinary backup of the same damaged server still fails, as before.
+        Func<Task> ordinary = () => backups.CreateAsync("daily", CancellationToken.None);
+        await ordinary.Should().ThrowAsync<InvalidDataException>();
+
+        RestoreResult? result = await CreateApplier(
+                new LocalStorageDriver(),
+                CurrentSchema(),
+                sqliteFiles: sqlite
+            )
+            .ApplyPendingAsync(noOtherServerRunning: true, CancellationToken.None);
+
+        result!.Status.Should().Be(RestoreStatus.Applied, result.Message);
+        BackupTestFolder.ReadMarker(_folder.DatabasePath("media")).Should().Be("original");
+        ReadManifest(result.PreRestoreBackupId!)
+            .Databases.Single(database => database.Name == "media")
+            .Damaged.Should()
+            .BeTrue();
+    }
+
+    [Fact]
+    public async Task ASetWithADamagedDatabase_CannotBeRestored()
+    {
+        _folder.CreateServer("original");
+        Execute(
+            _folder.DatabasePath("queue"),
+            $"UPDATE marker SET content = '{MarkerDamageSqlite.CorruptMarker}'"
+        );
+        string flagged = (
+            await BackupTestFolder
+                .CreateWriter(_options, new MarkerDamageSqlite())
+                .WriteAsync(
+                    "before restoring something",
+                    _options.Databases,
+                    _options.ConfigRoot,
+                    keepDamagedCopies: true,
+                    CancellationToken.None
+                )
+        ).Id;
+        await RequestRestoreAsync(flagged);
+        Dictionary<string, byte[]> before = LiveState();
+
+        RestoreResult result = await ApplyAsync();
+
+        result.Status.Should().Be(RestoreStatus.Refused);
+        result.Message.Should().Contain("marked damaged");
+        LiveState().Should().BeEquivalentTo(before);
+    }
+
+    private BackupManifest ReadManifest(string id) =>
+        BackupFiles.Deserialize<BackupManifest>(
+            File.ReadAllText(Path.Combine(_options.SetsRoot, id, BackupManifest.FileName))
+        )!;
 }

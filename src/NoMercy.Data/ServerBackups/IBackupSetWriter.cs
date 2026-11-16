@@ -22,12 +22,20 @@ public interface IBackupSetWriter
     /// <c>quick_check</c>) and every file under <paramref name="configRoot"/>
     /// into a hidden folder readable by the owner only, writes the manifest, and
     /// publishes the set with one rename. Throws, leaving nothing behind, when
-    /// any copy fails or any database copy fails its check.
+    /// any copy fails.
     /// </summary>
+    /// <param name="keepDamagedCopies">
+    /// False for ordinary backups: a database copy that fails its check fails the
+    /// whole set, so a damaged copy never pushes a good set out. True for sets
+    /// that preserve the current state before a restore (the safety set and the
+    /// pre-restore set): a damaged database is exactly when an owner restores, so
+    /// its copy is kept, marked <see cref="BackupManifestDatabase.Damaged"/>.
+    /// </param>
     Task<BackupManifest> WriteAsync(
         string reason,
         IReadOnlyList<BackupDatabaseFile> databases,
         string configRoot,
+        bool keepDamagedCopies,
         CancellationToken cancellationToken
     );
 }

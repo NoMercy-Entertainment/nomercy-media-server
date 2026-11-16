@@ -290,7 +290,7 @@ public sealed class RestoreApplier(
         foreach (BackupManifestDatabase database in manifest.Databases)
         {
             string path = BackupFiles.ResolveInside(StagedRoot, database.Path);
-            if (!sqlite.PassesQuickCheck(path))
+            if (sqlite.FindDamage(path) is not null)
                 return $"The {database.Name} database in the backup is damaged.";
         }
 
@@ -395,6 +395,7 @@ public sealed class RestoreApplier(
                 $"before restore of {pending.BackupId}",
                 databases,
                 Path.Combine(PreviousRoot, BackupSetWriter.ConfigFolder),
+                keepDamagedCopies: true,
                 CancellationToken.None
             );
 
