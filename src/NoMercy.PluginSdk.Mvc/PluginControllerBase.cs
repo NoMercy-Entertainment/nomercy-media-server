@@ -61,6 +61,20 @@ public abstract class PluginControllerBase : ControllerBase
     /// <summary>Where the host puts the caller on the request.</summary>
     public const string CallerItemKey = "PluginCaller";
 
+    /// <summary>
+    /// The device on the owner's network this request came from, when it
+    /// arrived through one of the routes the manifest names in
+    /// <c>capabilities.lan.routes</c>; null on every other request.
+    /// <para>
+    /// A LAN request has no user, and <see cref="Caller" /> refuses on it.
+    /// Added in ABI 12.10.
+    /// </para>
+    /// </summary>
+    protected PluginLanCaller? LanCaller => HttpContext.Items[LanCallerItemKey] as PluginLanCaller;
+
+    /// <summary>Where the host puts the device on a LAN request.</summary>
+    public const string LanCallerItemKey = "PluginLanCaller";
+
     /// <summary>A payload, in the <c>{ data }</c> envelope.</summary>
     protected OkObjectResult Data<T>(T data) => Ok(new PluginDataResponse<T> { Data = data });
 

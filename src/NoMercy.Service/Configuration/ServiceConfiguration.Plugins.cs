@@ -47,6 +47,10 @@ public static partial class ServiceConfiguration
         services.AddSingleton<IPluginAssemblyCatalog>(registrar);
         services.AddSingleton<IActionDescriptorChangeProvider>(changeProvider);
 
+        // Picks a plugin's own action for a route its manifest names for LAN
+        // devices, out of the same endpoint table everything else is served from.
+        services.AddSingleton<PluginLanEndpoints>();
+
         services.Configure<MvcOptions>(options =>
         {
             options.Conventions.Add(new PluginRouteConvention(registrar));

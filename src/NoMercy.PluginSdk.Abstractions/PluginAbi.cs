@@ -38,7 +38,9 @@ public static class PluginAbi
     // IPluginManager.InstallPluginArchiveAsync (a default member no plugin calls).
     // 12.10 added PluginCapabilities.Lan (PluginLanCapability, checked by PluginLanRoutes): the
     // routes a plugin serves to a device on the owner's network that cannot sign in. Additive:
-    // an optional manifest field, absent on every plugin built before it.
+    // an optional manifest field, absent on every plugin built before it. It also added
+    // PluginLanCaller and PluginControllerBase.LanCaller (the device a LAN route answers), a new
+    // record and a new protected property.
     public static Version Current { get; } = new(12, 10);
 
     /// <summary>

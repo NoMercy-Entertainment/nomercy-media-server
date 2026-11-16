@@ -29,6 +29,10 @@ public static class ClientIpResolver
     private const string CloudflareHeader = "CF-Connecting-IP";
     private const string ForwardedForHeader = "X-Forwarded-For";
     private const string RealIpHeader = "X-Real-IP";
+    private const string ForwardedHeader = "Forwarded";
+    private const string ViaHeader = "Via";
+    private const string ForwardedFamilyPrefix = "X-Forwarded-";
+    private const string CloudflarePrefix = "CF-";
 
     /// <summary>
     /// The caller's own address, or the transport peer when the request did not
@@ -59,6 +63,41 @@ public static class ClientIpResolver
             || headers.ContainsKey(ForwardedForHeader)
             || headers.ContainsKey(RealIpHeader);
     }
+
+    /// <summary>
+    /// True only for a device that connected to this server itself, from an
+    /// address inside a private network, with no relay in between.
+    /// <para>
+    /// Stricter than <see cref="IsPrivateNetwork" /> of <see cref="ClientIp" />,
+    /// for routes whose only guard besides a credential is being on the LAN.
+    /// A forwarding header is refused rather than believed: a relay that
+    /// passes on what the caller wrote would let a caller anywhere claim a LAN
+    /// address, and a television on the owner's network does not send one.
+    /// Loopback is refused too, because loopback is where a tunnel or a relay
+    /// on this machine delivers callers from anywhere, usually without saying
+    /// so in any header.
+    /// </para>
+    /// </summary>
+    public static bool IsDirectLanCaller(this HttpContext context)
+    {
+        IPAddress? peer = Normalize(context.Connection.RemoteIpAddress);
+
+        if (peer is null || IPAddress.IsLoopback(peer) || !IsPrivateNetwork(peer))
+            return false;
+
+        return !context.Request.Headers.Keys.Any(IsRelayHeader);
+    }
+
+    /// <summary>
+    /// A header only a relay writes: the forwarding family, X-Real-IP, Via,
+    /// and anything Cloudflare adds.
+    /// </summary>
+    private static bool IsRelayHeader(string name) =>
+        name.Equals(RealIpHeader, StringComparison.OrdinalIgnoreCase)
+        || name.Equals(ForwardedHeader, StringComparison.OrdinalIgnoreCase)
+        || name.Equals(ViaHeader, StringComparison.OrdinalIgnoreCase)
+        || name.StartsWith(ForwardedFamilyPrefix, StringComparison.OrdinalIgnoreCase)
+        || name.StartsWith(CloudflarePrefix, StringComparison.OrdinalIgnoreCase);
 
     private static IPAddress? Resolve(HttpContext context)
     {

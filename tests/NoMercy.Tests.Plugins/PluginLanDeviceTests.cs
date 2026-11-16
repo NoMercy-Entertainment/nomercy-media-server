@@ -80,6 +80,56 @@ public class PluginLanDeviceTests
     }
 
     [Fact]
+    public void Revoking_through_the_minter_stops_the_credential_at_once()
+    {
+        (PluginLanDeviceMinter minter, _) = Build();
+        PluginLanDevice device = minter.Mint(Iptv, "Living room TV");
+
+        minter.Revoke(Iptv, device.DeviceId);
+
+        minter.Resolve(Iptv, device.DeviceId, device.Credential).Should().BeNull();
+        minter.IsActive(Iptv, device.DeviceId).Should().BeFalse();
+    }
+
+    [Fact]
+    public void Revoking_a_device_fires_the_signal_its_open_requests_hold()
+    {
+        (PluginLanDeviceMinter minter, _) = Build();
+        PluginLanDevice device = minter.Mint(Iptv, "Living room TV");
+        CancellationToken open = minter.RevocationOf(Iptv, device.DeviceId);
+
+        open.IsCancellationRequested.Should().BeFalse();
+
+        minter.Revoke(Iptv, device.DeviceId);
+
+        open.IsCancellationRequested.Should().BeTrue("a stream it has open is cut there and then");
+    }
+
+    [Fact]
+    public void Revoking_one_device_leaves_the_others_reading()
+    {
+        (PluginLanDeviceMinter minter, _) = Build();
+        PluginLanDevice living = minter.Mint(Iptv, "Living room TV");
+        PluginLanDevice bedroom = minter.Mint(Iptv, "Bedroom TV");
+        CancellationToken bedroomOpen = minter.RevocationOf(Iptv, bedroom.DeviceId);
+
+        minter.Revoke(Iptv, living.DeviceId);
+
+        bedroomOpen.IsCancellationRequested.Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_request_that_raced_the_revocation_gets_a_signal_that_already_fired()
+    {
+        (PluginLanDeviceMinter minter, InMemoryStore store) = Build();
+        PluginLanDevice device = minter.Mint(Iptv, "Living room TV");
+        store.Revoke(Iptv, device.DeviceId);
+
+        minter.RevocationOf(Iptv, device.DeviceId).IsCancellationRequested.Should().BeTrue();
+        minter.RevocationOf(Iptv, "never-added").IsCancellationRequested.Should().BeTrue();
+    }
+
+    [Fact]
     public void A_credential_from_one_plugin_does_not_open_another()
     {
         (PluginLanDeviceMinter minter, _) = Build();

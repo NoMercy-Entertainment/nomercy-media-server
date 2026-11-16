@@ -94,7 +94,9 @@ public class PluginLanDeviceController(
         if (store.Find(id, deviceId) is null)
             return NotFoundResponse("This plugin has no such device");
 
-        store.Revoke(id, deviceId);
+        // Through the minter rather than the store, so a stream the device
+        // still has open is cut now rather than when it ends.
+        minter.Revoke(id, deviceId);
 
         return Ok(
             new StatusResponseDto<string>

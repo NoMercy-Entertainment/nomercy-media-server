@@ -104,6 +104,9 @@ public sealed class EndpointAuthorizationCoverageTests(
         // Plugin LAN device credential check, answered to the local network only;
         // PluginLanController.cs refuses with 403 outside it or on a wrong credential.
         "GET /api/v{version:apiVersion}/plugins/{id:ulid}/lan/{deviceId}/{credential}",
+        // The routes a plugin's manifest names for LAN devices: the same network
+        // and credential check first, every other method refused the same way.
+        "DELETE,GET,HEAD,OPTIONS,PATCH,POST,PUT /api/v{version:apiVersion}/plugins/{id:ulid}/lan/{deviceId}/{credential}/{**path}",
         // Artwork is public on purpose: clients load it through img tags and CSS
         // backgrounds, which carry no Authorization header, and the response sets
         // Access-Control-Allow-Origin: *. AccessLogMiddleware lists /images among

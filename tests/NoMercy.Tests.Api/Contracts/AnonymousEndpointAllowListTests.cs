@@ -85,6 +85,8 @@ public class AnonymousEndpointAllowListTests : IClassFixture<NoMercyApiFactory>
         "POST api/v{version:apiVersion}/intake/webhook [IntakeWebhook.Webhook]",
         // LAN device credential: refuses any caller outside the private network.
         "GET api/v{version:apiVersion}/plugins/{id:ulid}/lan/{deviceId}/{credential} [PluginLan.Device]",
+        // LAN routes a plugin's manifest names: same network and credential check.
+        "GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS api/v{version:apiVersion}/plugins/{id:ulid}/lan/{deviceId}/{credential}/{**path} [PluginLan.Forward]",
         // Public key a TV checks a cast control token against; holds no secret.
         "GET api/v{version:apiVersion}/cast/keys [CastToken.Keys]",
         // public today; under review

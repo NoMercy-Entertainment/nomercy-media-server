@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using NoMercy.PluginSdk.Abstractions;
@@ -31,6 +32,16 @@ public class PluginLanDeviceMinter(IPluginLanDeviceStore store, TimeProvider clo
     /// more here than anywhere else because nothing else guards this route.
     /// </summary>
     public const int CredentialBytes = 32;
+
+    /// <summary>
+    /// One signal per device that has a request open, fired when the owner
+    /// revokes it. A tuner streaming a channel holds one request for hours, and
+    /// a revocation that waited for it to end would not be one.
+    /// </summary>
+    private readonly ConcurrentDictionary<
+        (Ulid PluginId, string DeviceId),
+        CancellationTokenSource
+    > _revocations = new();
 
     public PluginLanDevice Mint(Ulid pluginId, string name)
     {
@@ -66,6 +77,43 @@ public class PluginLanDeviceMinter(IPluginLanDeviceStore store, TimeProvider clo
             ? device
             : null;
     }
+
+    /// <summary>
+    /// Takes a device off the owner's network: its credential stops working,
+    /// and every request it still has open is cut.
+    /// </summary>
+    public void Revoke(Ulid pluginId, string deviceId)
+    {
+        store.Revoke(pluginId, deviceId);
+
+        if (_revocations.TryRemove((pluginId, deviceId), out CancellationTokenSource? revoked))
+        {
+            revoked.Cancel();
+            revoked.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Fires when the owner revokes this device. Already fired for a device
+    /// that is revoked or unknown, so a request that raced the revocation is
+    /// cut rather than missed.
+    /// </summary>
+    public CancellationToken RevocationOf(Ulid pluginId, string deviceId)
+    {
+        if (!IsActive(pluginId, deviceId))
+            return new(canceled: true);
+
+        CancellationToken token = _revocations.GetOrAdd((pluginId, deviceId), _ => new()).Token;
+
+        // Asked again after the signal exists: a revocation that landed between
+        // the first look and the GetOrAdd removed nothing, so this one would
+        // never fire.
+        return IsActive(pluginId, deviceId) ? token : new(canceled: true);
+    }
+
+    /// <summary>Whether the device exists on this plugin and has not been revoked.</summary>
+    public bool IsActive(Ulid pluginId, string deviceId) =>
+        store.Find(pluginId, deviceId) is { Revoked: false };
 
     public PluginRefusal? Refuse(Ulid pluginId, string deviceId, string credential)
     {
