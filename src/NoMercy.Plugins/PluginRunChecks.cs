@@ -31,9 +31,9 @@ public sealed class PluginRevocationRunCheck(
     {
         // A server that has never received a list is not a server that
         // stopped receiving one. Nothing serves the list yet, so reading
-        // silence as seven days of silence would pause every plugin on every
-        // existing server over a feature that does not exist. Phase 3 serves
-        // it, and this line goes in the same commit.
+        // silence as seven days of silence would pause every marketplace plugin
+        // on every existing server over a feature that does not exist. Phase 3
+        // serves it, and this line goes in the same commit.
         if (store.Current.IssuedAt == DateTimeOffset.MinValue)
             return null;
 

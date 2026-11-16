@@ -133,6 +133,21 @@ public class PluginTrustWarnOnlyTests
     }
 
     [Fact]
+    public void Warn_only_says_nothing_about_a_sideloaded_plugin_on_a_stale_list()
+    {
+        ListLogger logger = new();
+
+        RevocationGate(new(Now.AddDays(-30), []), new(false, logger))
+            .Check(Torrent, null, Installed)
+            .Should()
+            .BeNull();
+
+        logger
+            .Entries.Should()
+            .BeEmpty("a stale list would not refuse a plugin with no stored hash");
+    }
+
+    [Fact]
     public void The_same_would_refuse_is_logged_once_not_on_every_check()
     {
         ListLogger logger = new();

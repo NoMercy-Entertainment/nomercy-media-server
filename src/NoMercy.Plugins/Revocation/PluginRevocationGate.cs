@@ -18,10 +18,17 @@ namespace NoMercy.PluginSdk.Revocation;
 /// Asked before a plugin runs: is this exact build still allowed.
 /// <para>
 /// A server that cannot reach nomercy.tv keeps working until its list is a
-/// week old, then pauses every plugin, free ones included. Not as a penalty:
-/// after a week it can no longer honestly say none of them was revoked, and
-/// answering yes to a question it cannot check is the failure this exists to
-/// prevent. Nothing is uninstalled and nothing the owner approved is lost.
+/// week old, then pauses every marketplace plugin, free ones included. Not as
+/// a penalty: after a week it can no longer honestly say none of them was
+/// revoked, and answering yes to a question it cannot check is the failure
+/// this exists to prevent. Nothing is uninstalled and nothing the owner
+/// approved is lost.
+/// </para>
+/// <para>
+/// A marketplace plugin is one with a package hash stored at install, the
+/// build a revocation names. A sideloaded or self-built plugin has none, so a
+/// stale list says nothing new about it and it keeps running (#65). A
+/// revocation that does name it still stops it.
 /// </para>
 /// <para>
 /// A revoked build is refused in every <see cref="PluginTrustMode"/>. Under
@@ -45,7 +52,7 @@ public class PluginRevocationGate(
         PluginRevocationEntry? revoked = list.Find(pluginId, packageHash, installedVersion);
 
         if (revoked is null)
-            return _mode.Apply(Stale(pluginId, list));
+            return _mode.Apply(Stale(pluginId, packageHash, list));
 
         _mode.Refused(pluginId.ToString(), PluginRefusalCodes.Revoked, revoked.Describe());
 
@@ -59,16 +66,19 @@ public class PluginRevocationGate(
         );
     }
 
-    private PluginRefusal? Stale(Ulid pluginId, PluginRevocationList list)
+    private PluginRefusal? Stale(Ulid pluginId, string? packageHash, PluginRevocationList list)
     {
+        if (string.IsNullOrWhiteSpace(packageHash))
+            return null;
+
         if (clock.GetUtcNow() - list.IssuedAt <= TimeSpan.FromDays(StaleAfterDays))
             return null;
 
         return new(
             PluginRefusalCodes.RevocationListStale,
             pluginId.ToString(),
-            "Every plugin on this server is paused.",
-            $"This server has not reached NoMercy for more than {StaleAfterDays} days, so it cannot tell whether a plugin was revoked.",
+            "Every marketplace plugin on this server is paused.",
+            $"This server has not reached NoMercy for more than {StaleAfterDays} days, so it cannot tell whether a marketplace plugin was revoked.",
             "Connect the server to the internet. Nothing was uninstalled and nothing you approved was lost; the plugins start again on the next successful check.",
             PluginRefusalSeverity.Blocked
         );
