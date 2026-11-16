@@ -1551,8 +1551,10 @@ public class PluginMusicAnalysisWriterTests : IDisposable
         stored.Engine.Should().Be(engine);
     }
 
-    [Fact]
-    public async Task RegisterStem_RefusesAnEngineLongerThanTheColumn()
+    [Theory]
+    [InlineData("a-very-long-engine-name")]
+    [InlineData("demucs")]
+    public async Task RegisterStem_RefusesAnEngineThatIsNeitherKnownName(string engine)
     {
         Mock<IDerivedAudioStore> store = NewStoreMock();
         store
@@ -1560,14 +1562,9 @@ public class PluginMusicAnalysisWriterTests : IDisposable
             .ReturnsAsync(true);
 
         PluginWriteResult result = await CreateWriter(store.Object)
-            .RegisterStemAsync(
-                ValidFullStem(_trackId, KeyOne) with
-                {
-                    Engine = "a-very-long-engine-name",
-                }
-            );
+            .RegisterStemAsync(ValidFullStem(_trackId, KeyOne) with { Engine = engine });
 
         result.Ok.Should().BeFalse();
-        result.Refusal.Should().Be("engine must be at most 16 characters");
+        result.Refusal.Should().Be("engine must be spleeter or roformer");
     }
 }

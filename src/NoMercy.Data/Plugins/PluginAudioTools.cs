@@ -58,12 +58,12 @@ public sealed class PluginAudioTools(
     IPluginMusicAnalysisWriterFactory writerFactory,
     IDbContextFactory<MediaContext> contextFactory,
     IFfmpegCapabilityProbe capabilityProbe,
+    IStemsplitSourceSelector stemsplitSources,
+    IRoformerGpuSlot roformerGpuSlot,
     ILogger<PluginAudioTools>? logger = null,
     string? dataFolderPath = null,
     PluginQuotaMeter? quotas = null,
-    ILyricsAlignModelInstaller? alignModelInstaller = null,
-    IStemsplitSourceSelector? stemsplitSources = null,
-    IRoformerGpuSlot? roformerGpuSlot = null
+    ILyricsAlignModelInstaller? alignModelInstaller = null
 ) : IPluginAudioTools
 {
     /// <summary>
@@ -144,16 +144,10 @@ public sealed class PluginAudioTools(
         "the espeak-ng data is missing from the ffmpeg folder; it ships with nomercy-ffmpeg v1.0.46 and later";
     private const string RunInProgress = "another ffmpeg run of this plugin is still in progress";
     private const string NoStemOutput = "stemsplit produced no output";
+    private const string RoformerRefused =
+        "stemsplit refused to run RoFormer on this machine's GPU; nothing was kept";
 
     private readonly SemaphoreSlim _oneRunAtATime = new(1, 1);
-
-    // Without one, every split is Spleeter, as it was before RoFormer.
-    private readonly IStemsplitSourceSelector _stemsplitSources =
-        stemsplitSources ?? SpleeterOnlySourceSelector.Instance;
-
-    // The host passes the one slot every plugin shares; a slot of this
-    // instance's own only keeps its own runs apart.
-    private readonly IRoformerGpuSlot _roformerGpuSlot = roformerGpuSlot ?? new RoformerGpuSlot();
 
     private readonly ILogger<PluginAudioTools> _logger =
         logger ?? NullLogger<PluginAudioTools>.Instance;
@@ -376,7 +370,7 @@ public sealed class PluginAudioTools(
     /// </summary>
     private async Task<IDisposable> TakeTheGpuAsync(CancellationToken ct)
     {
-        Task<IDisposable> slot = _roformerGpuSlot.AcquireAsync(ct);
+        Task<IDisposable> slot = roformerGpuSlot.AcquireAsync(ct);
         if (!slot.IsCompleted)
         {
             _logger.LogInformation(
@@ -434,14 +428,14 @@ public sealed class PluginAudioTools(
             PluginFilterGraphTokens.StemsSource,
             StringComparison.Ordinal
         )
-            ? await _stemsplitSources.ChooseAsync(RoformerPreset.Full, ct)
+            ? await stemsplitSources.ChooseAsync(RoformerPreset.Full, ct)
             : StemsplitSource.Spleeter;
 
         StemsplitSource vocal = graphText.Contains(
             PluginFilterGraphTokens.StemsVocalSource,
             StringComparison.Ordinal
         )
-            ? await _stemsplitSources.ChooseAsync(RoformerPreset.VocalFull, ct)
+            ? await stemsplitSources.ChooseAsync(RoformerPreset.VocalFull, ct)
             : StemsplitSource.Spleeter;
 
         return new(full, vocal);
@@ -461,7 +455,7 @@ public sealed class PluginAudioTools(
             "plugin {PluginId}: stemsplit refused RoFormer, running again with Spleeter",
             pluginId
         );
-        await _stemsplitSources.RememberRefusalAsync(presets, refusal, ct);
+        await stemsplitSources.RememberRefusalAsync(presets, refusal, ct);
         return StemsplitSources.Spleeter;
     }
 
@@ -597,7 +591,9 @@ public sealed class PluginAudioTools(
                 IReadOnlyList<RoformerPreset> roformer = sources.RoformerPresets(render.GraphText);
                 RoformerAttemptOutput output = new(onStdOut, onStdErr, roformer.Count > 0);
 
-                string text = PluginGraphTokens.Resolve(render.GraphText, dataFolderPath, sources).Text;
+                string text = PluginGraphTokens
+                    .Resolve(render.GraphText, dataFolderPath, sources)
+                    .Text;
 
                 PluginAudioRunResult result = await RenderOnceAsync(
                     ffmpegPath,
@@ -772,6 +768,13 @@ public sealed class PluginAudioTools(
                 limits.Stall?.TotalSeconds
             );
             return new(PluginAudioRunResult.StalledExitCode, null);
+        }
+
+        // A run the filter refused is never kept or counted against the
+        // quota, whatever ffmpeg exited with: its files are empty.
+        if (output.Refusal is not null)
+        {
+            return PluginAudioRunResult.Refused(RoformerRefused);
         }
 
         return result.ExitCode == 0
@@ -998,10 +1001,7 @@ public sealed class PluginAudioTools(
             await using LocalPathLease accompanimentLease =
                 await derivedStorage.AcquireLocalPathAsync(accompanimentTemp, ct);
 
-            StemsplitSource source = await _stemsplitSources.ChooseAsync(
-                RoformerPreset.Full,
-                ct
-            );
+            StemsplitSource source = await stemsplitSources.ChooseAsync(RoformerPreset.Full, ct);
             string? bannerLine;
             Queue<string> stdErrTail;
             FollowedRun run;

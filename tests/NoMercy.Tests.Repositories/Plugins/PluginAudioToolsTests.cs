@@ -336,7 +336,12 @@ public class PluginAudioToolsTests : IDisposable
 
                     return scripted
                         ? Task.FromResult(
-                            new ProcessResult(run!.ExitCode, string.Empty, string.Empty, TimeSpan.Zero)
+                            new ProcessResult(
+                                run!.ExitCode,
+                                string.Empty,
+                                string.Empty,
+                                TimeSpan.Zero
+                            )
                         )
                         : _runResult;
                 }
@@ -390,10 +395,10 @@ public class PluginAudioToolsTests : IDisposable
             _writerFactory.Object,
             contextFactory.Object,
             _probe.Object,
+            stemsplitSources ?? new SpleeterOnlySources(),
+            roformerGpuSlot ?? new RoformerGpuSlot(),
             dataFolderPath: Path.Combine(Path.GetTempPath(), "nm-plugin-data"),
-            alignModelInstaller: alignModelInstaller,
-            stemsplitSources: stemsplitSources,
-            roformerGpuSlot: roformerGpuSlot
+            alignModelInstaller: alignModelInstaller
         )
         {
             RunTimeout = runTimeout ?? TimeSpan.FromMinutes(10),
@@ -1712,9 +1717,7 @@ public class PluginAudioToolsTests : IDisposable
         result.Refusal.Should().BeNull();
         result.Stems.Should().HaveCount(2);
         _argumentsPerRun.Should().HaveCount(2);
-        _argumentsPerRun[0]
-            .Should()
-            .Contain("[0:a]stemsplit=preset=full:cpu_fallback=0[voc][acc]");
+        _argumentsPerRun[0].Should().Contain("[0:a]stemsplit=preset=full:cpu_fallback=0[voc][acc]");
         _argumentsPerRun[1].Should().Contain($"[0:a]stemsplit=model={ModelFile}[voc][acc]");
         _registeredStems
             .Should()

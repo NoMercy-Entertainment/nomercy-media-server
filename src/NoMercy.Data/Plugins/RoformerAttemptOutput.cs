@@ -25,8 +25,11 @@ namespace NoMercy.Data.Plugins;
 /// past <see cref="MostHeldLines" /> the lines are handed on regardless.
 /// </para>
 /// <para>
-/// Every line goes through one lock: stdout and stderr arrive on two reader
-/// threads, and a line handed on directly must never overtake one still held.
+/// stdout and stderr arrive on two reader threads, and a line handed on
+/// must never overtake one still held. So every line goes into one queue
+/// under a lock, in the order it came, and one thread at a time hands the
+/// queue on to the plugin, outside the lock: a slow plugin callback holds up
+/// the lines behind it, never the other reader's bookkeeping.
 /// </para>
 /// </summary>
 internal sealed class RoformerAttemptOutput(
@@ -39,7 +42,9 @@ internal sealed class RoformerAttemptOutput(
 
     private readonly Lock _gate = new();
     private readonly List<(bool StdErr, string Line)> _held = [];
+    private readonly Queue<(bool StdErr, string Line)> _ready = new();
     private bool _holding = holdBack;
+    private bool _handingOn;
 
     /// <summary>The filter's refusal, once it gave one.</summary>
     public string? Refusal { get; private set; }
@@ -76,36 +81,78 @@ internal sealed class RoformerAttemptOutput(
                 return;
 
             _holding = false;
-            foreach ((bool stdErr, string line) in _held)
-                Forward(stdErr, line);
+            foreach ((bool StdErr, string Line) line in _held)
+                _ready.Enqueue(line);
             _held.Clear();
         }
+
+        HandOn();
     }
 
     private void Pass(bool stdErr, string line)
     {
-        bool full;
+        bool full = false;
         lock (_gate)
         {
-            if (!_holding)
+            if (_holding)
             {
-                Forward(stdErr, line);
-                return;
+                _held.Add((stdErr, line));
+                full = _held.Count >= MostHeldLines;
             }
-
-            _held.Add((stdErr, line));
-            full = _held.Count >= MostHeldLines;
+            else
+            {
+                _ready.Enqueue((stdErr, line));
+            }
         }
 
         if (full)
             Release();
+        else
+            HandOn();
     }
 
-    private void Forward(bool stdErr, string line)
+    /// <summary>
+    /// Hands the queued lines on, in order, unless another thread already is:
+    /// that thread takes this one's lines too, since it only stops once the
+    /// queue is empty under the lock.
+    /// </summary>
+    private void HandOn()
     {
-        if (stdErr)
-            onStdErr?.Invoke(line);
-        else
-            onStdOut?.Invoke(line);
+        lock (_gate)
+        {
+            if (_handingOn)
+                return;
+
+            _handingOn = true;
+        }
+
+        while (true)
+        {
+            (bool StdErr, string Line) next;
+            lock (_gate)
+            {
+                if (!_ready.TryDequeue(out next))
+                {
+                    _handingOn = false;
+                    return;
+                }
+            }
+
+            try
+            {
+                if (next.StdErr)
+                    onStdErr?.Invoke(next.Line);
+                else
+                    onStdOut?.Invoke(next.Line);
+            }
+            catch
+            {
+                // A callback that throws must not leave the next line waiting
+                // for a hand-on that never comes.
+                lock (_gate)
+                    _handingOn = false;
+                throw;
+            }
+        }
     }
 }

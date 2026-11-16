@@ -9,16 +9,13 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-namespace NoMercy.Data.Plugins;
+using NoMercy.Data.Plugins;
 
-/// <summary>
-/// Always Spleeter: what a host without a <see cref="StemsplitSourceSelector" />
-/// splits with, as every host did before RoFormer.
-/// </summary>
-public sealed class SpleeterOnlySourceSelector : IStemsplitSourceSelector
+namespace NoMercy.Tests.Repositories.Plugins;
+
+/// <summary>A machine without the RoFormer models: every split is Spleeter, as before RoFormer.</summary>
+internal sealed class SpleeterOnlySources : IStemsplitSourceSelector
 {
-    public static SpleeterOnlySourceSelector Instance { get; } = new();
-
     public Task<StemsplitSource> ChooseAsync(
         RoformerPreset preset,
         CancellationToken ct = default

@@ -23,6 +23,18 @@ public static class StemEngineNames
         engine == StemsplitEngine.Roformer ? Roformer : Spleeter;
 
     /// <summary>
+    /// The register's own spelling of a name a producer wrote, ignoring case
+    /// and surrounding blanks; null for a name that is neither engine.
+    /// </summary>
+    public static string? Known(string engine) =>
+        engine.Trim().ToLowerInvariant() switch
+        {
+            Spleeter => Spleeter,
+            Roformer => Roformer,
+            _ => null,
+        };
+
+    /// <summary>
     /// The engine a producer version names, in the shape the stems job writes
     /// (<c>spleeter-2stems-f16@…</c>, <c>roformer-full@…</c>); null for any
     /// other.

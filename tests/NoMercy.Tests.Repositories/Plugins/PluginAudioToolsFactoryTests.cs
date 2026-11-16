@@ -55,6 +55,8 @@ public class PluginAudioToolsFactoryTests
         services.AddSingleton(new Mock<IDbContextFactory<MediaContext>>().Object);
         services.AddSingleton<ILogger<PluginAudioTools>>(NullLogger<PluginAudioTools>.Instance);
 
+        services.AddSingleton<IStemsplitSourceSelector>(new SpleeterOnlySources());
+        services.AddSingleton<IRoformerGpuSlot, RoformerGpuSlot>();
         services.AddSingleton<IPluginAudioToolsFactory, PluginAudioToolsFactory>();
 
         return services.BuildServiceProvider();
@@ -137,6 +139,8 @@ public class PluginAudioToolsFactoryTests
             services.AddSingleton(new Mock<IDbContextFactory<MediaContext>>().Object);
             services.AddSingleton<ILogger<PluginAudioTools>>(NullLogger<PluginAudioTools>.Instance);
             services.AddSingleton(new PluginQuotaMeter(new HalfAKilobyte(), TimeProvider.System));
+            services.AddSingleton<IStemsplitSourceSelector>(new SpleeterOnlySources());
+            services.AddSingleton<IRoformerGpuSlot, RoformerGpuSlot>();
             services.AddSingleton<IPluginAudioToolsFactory, PluginAudioToolsFactory>();
             await using ServiceProvider provider = services.BuildServiceProvider();
 

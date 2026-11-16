@@ -53,9 +53,6 @@ public class PluginMusicAnalysisWriter(
     /// <summary>Mirrors the <c>[MaxLength(1024)]</c> on <c>FailureReason</c>.</summary>
     private const int MaxFailureReasonLength = 1024;
 
-    /// <summary>Mirrors the <c>[MaxLength(16)]</c> on <c>TrackStem.Engine</c>.</summary>
-    private const int MaxEngineLength = 16;
-
     private readonly ILogger<PluginMusicAnalysisWriter> _logger =
         logger ?? NullLogger<PluginMusicAnalysisWriter>.Instance;
 
@@ -500,9 +497,9 @@ public class PluginMusicAnalysisWriter(
         if (string.IsNullOrWhiteSpace(stem.ProducerVersion))
             return PluginWriteResult.Refused("producer_version must not be empty");
 
-        if (stem.Engine is { Length: > MaxEngineLength })
+        if (!string.IsNullOrWhiteSpace(stem.Engine) && StemEngineNames.Known(stem.Engine) is null)
             return PluginWriteResult.Refused(
-                $"engine must be at most {MaxEngineLength} characters"
+                $"engine must be {StemEngineNames.Spleeter} or {StemEngineNames.Roformer}"
             );
 
         return null;
@@ -581,7 +578,7 @@ public class PluginMusicAnalysisWriter(
         existing.ProducerVersion = stem.ProducerVersion;
         existing.Engine = string.IsNullOrWhiteSpace(stem.Engine)
             ? StemEngineNames.FromProducerVersion(stem.ProducerVersion)
-            : stem.Engine.Trim().ToLowerInvariant();
+            : StemEngineNames.Known(stem.Engine);
         existing.CreatedAt = DateTime.UtcNow;
     }
 

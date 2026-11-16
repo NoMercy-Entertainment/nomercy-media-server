@@ -521,7 +521,8 @@ same shape if you register stems yourself.
 
 Each stem also carries the engine that made it, `PluginTrackStem.Engine`
 (ABI 12.10): `"spleeter"` or `"roformer"`. `SplitStemsAsync` sets it; a stem
-you register yourself may set it, and without it the register reads it from a
+you register yourself may set it (any other name is refused with `"engine must
+be spleeter or roformer"`), and without it the register reads it from a
 producer version in the shape above, or leaves it null. Stems stored before
 12.10 by the server's own split read `"spleeter"`. A sweep that wants better
 stems on a machine that now runs RoFormer looks for `Engine == "spleeter"` in
