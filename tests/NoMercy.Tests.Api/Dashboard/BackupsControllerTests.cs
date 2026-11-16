@@ -91,6 +91,7 @@ public sealed class BackupsControllerTests(NoMercyApiFactory factory)
     [InlineData("GET", Route)]
     [InlineData("POST", Route)]
     [InlineData("POST", Route + "/" + BackupId + "/restore")]
+    [InlineData("DELETE", Route + "/pending-restore")]
     public async Task ASignedInNonOwner_IsRefused_AndNothingHappens(string method, string url)
     {
         using WebApplicationFactory<Startup> host = Host();
@@ -108,6 +109,7 @@ public sealed class BackupsControllerTests(NoMercyApiFactory factory)
     [InlineData("GET", Route)]
     [InlineData("POST", Route)]
     [InlineData("POST", Route + "/" + BackupId + "/restore")]
+    [InlineData("DELETE", Route + "/pending-restore")]
     public async Task AnAnonymousCaller_IsRefused(string method, string url)
     {
         using WebApplicationFactory<Startup> host = Host();
@@ -271,5 +273,26 @@ public sealed class BackupsControllerTests(NoMercyApiFactory factory)
 
         response.StatusCode.Should().Be(expected);
         _restarter.Verify(restarter => restarter.Begin(), Times.Never);
+    }
+
+    [Theory]
+    [InlineData(true, HttpStatusCode.NoContent)]
+    [InlineData(false, HttpStatusCode.NotFound)]
+    public async Task CancelRestore_WithdrawsAWaitingRestore(bool waiting, HttpStatusCode expected)
+    {
+        _restores
+            .Setup(scheduler => scheduler.CancelAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(waiting);
+        using WebApplicationFactory<Startup> host = Host();
+        using HttpClient owner = host.CreateClient().AsAuthenticated();
+
+        using HttpResponseMessage response = await owner.DeleteAsync($"{Route}/pending-restore");
+
+        response.StatusCode.Should().Be(expected);
+        _restores.Verify(
+            scheduler => scheduler.CancelAsync(It.IsAny<CancellationToken>()),
+            Times.Once
+        );
+        _restarter.Invocations.Should().BeEmpty();
     }
 }

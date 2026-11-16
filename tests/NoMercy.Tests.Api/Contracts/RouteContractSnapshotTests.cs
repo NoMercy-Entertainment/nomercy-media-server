@@ -53,6 +53,7 @@ public class RouteContractSnapshotTests : IClassFixture<NoMercyApiFactory>
         "DELETE api/v{version:apiVersion}/collection/{id:int} [Collections.DeleteMovie]",
         "DELETE api/v{version:apiVersion}/content-segments/{id} [ContentSegments.Delete]",
         "DELETE api/v{version:apiVersion}/dashboard/activity [ServerActivity.Destroy]",
+        "DELETE api/v{version:apiVersion}/dashboard/backups/pending-restore [Backups.CancelRestore]",
         "DELETE api/v{version:apiVersion}/dashboard/devices [Devices.Destroy]",
         "DELETE api/v{version:apiVersion}/dashboard/devices/offline [Devices.DestroyOffline]",
         "DELETE api/v{version:apiVersion}/dashboard/devices/{id} [Devices.DestroyOne]",

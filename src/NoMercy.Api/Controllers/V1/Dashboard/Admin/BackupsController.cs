@@ -82,6 +82,20 @@ public class BackupsController(
         }
     }
 
+    /// <summary>
+    /// Withdraws a restore that is still waiting, for instance one held back
+    /// because another server process had the data folder.
+    /// </summary>
+    [HttpDelete]
+    [Route("pending-restore")]
+    [ProducesResponseType(StatusCodes.Status204NoContent)]
+    [ProducesResponseType(StatusCodes.Status404NotFound)]
+    public async Task<IActionResult> CancelRestore()
+    {
+        bool withdrawn = await restores.CancelAsync(HttpContext.RequestAborted);
+        return withdrawn ? NoContent() : NotFoundResponse("No restore is waiting.");
+    }
+
     [HttpPost]
     [Route("{backupId}/restore")]
     [ProducesResponseType(typeof(RestoreScheduledResponseDto), StatusCodes.Status202Accepted)]
