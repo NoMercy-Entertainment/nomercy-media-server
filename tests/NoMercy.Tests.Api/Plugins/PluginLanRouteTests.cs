@@ -116,7 +116,10 @@ public class PluginLanRouteTests
 
         HttpRequestMessage request = new(
             HttpMethod.Get,
-            Address(device, "hdhr/discover.json?access_token=abc&token=def&keep=1")
+            Address(
+                device,
+                "hdhr/discover.json?access_token=query-token-one&token=query-token-two&keep=1"
+            )
         );
         request.Headers.Add(PeerHeader, Lan);
         request.Headers.Add("Authorization", "Bearer user-token");
@@ -134,7 +137,10 @@ public class PluginLanRouteTests
         seen.Should().Contain("query=?keep=1");
         seen.Should().Contain($"accessor={Guid.Empty}");
         seen.Should().Contain("caller=refused");
-        seen.Should().NotContain("user-token").And.NotContain("abc").And.NotContain("def");
+        seen.Should()
+            .NotContain("user-token")
+            .And.NotContain("query-token-one")
+            .And.NotContain("query-token-two");
     }
 
     [Fact]
@@ -324,6 +330,41 @@ public class PluginLanRouteTests
         (await Get(client, address, Lan))
             .StatusCode.Should()
             .Be(HttpStatusCode.Forbidden, "nothing kept answers for a revoked device");
+    }
+
+    /// <summary>
+    /// A manifest that names a route the server serves under the plugin's
+    /// prefix, or the template of a plugin action written with <c>~/</c>,
+    /// reaches neither: only the plugin's own GET actions under its own
+    /// prefix are candidates.
+    /// </summary>
+    [Fact]
+    public async Task A_lan_route_never_reaches_a_server_route_or_an_escaped_plugin_action()
+    {
+        await using LanFactory factory = new(
+            new()
+            {
+                Rest = true,
+                Lan = new()
+                {
+                    Routes = ["media/{ticket}", "lan-media/{ticket}", "lan-escape/lineup.json"],
+                },
+            }
+        );
+        (HttpClient client, PluginLanDeviceMinted device) = factory.Start();
+        (HttpStatusCode Status, string Body) outside = await Read(
+            await Get(client, Address(device, "lan-escape/lineup.json"), "203.0.113.11")
+        );
+
+        foreach (string path in new[] { "media/abc", "lan-media/abc", "lan-escape/lineup.json" })
+        {
+            (HttpStatusCode status, string body) = await Read(
+                await Get(client, Address(device, path), Lan)
+            );
+
+            status.Should().Be(outside.Status, path);
+            body.Should().Be(outside.Body, path);
+        }
     }
 
     [Fact]

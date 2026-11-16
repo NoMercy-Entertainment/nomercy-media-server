@@ -79,6 +79,13 @@ public class LanSamplePluginController : PluginControllerBase
     [HttpPost("hdhr/lineup.json")]
     public IActionResult ChangeLineup() => Content("changed");
 
+    /// <summary>
+    /// An action that writes its template from the root with <c>~/</c>, so it
+    /// does not sit under the plugin's prefix.
+    /// </summary>
+    [HttpGet("~/lan-escape/lineup.json")]
+    public IActionResult Escaped() => Content("escaped");
+
     /// <summary>A real GET action the manifest does not name.</summary>
     [HttpGet("hdhr/secret.json")]
     public IActionResult Secret() => Content("secret");
