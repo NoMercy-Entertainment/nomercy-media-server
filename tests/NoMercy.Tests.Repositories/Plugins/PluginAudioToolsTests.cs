@@ -2048,6 +2048,38 @@ public class PluginAudioToolsTests : IDisposable
         result.ExitCode.Should().Be(PluginAudioRunResult.TimedOutExitCode);
     }
 
+    /// <summary>
+    /// A graph with both source tokens runs two RoFormer filters. The first
+    /// one's last chunk does not end the split: the second is still judged
+    /// by its chunk lines, not by the plugin's short total.
+    /// </summary>
+    [Fact]
+    public async Task RunFilterGraph_WithTwoRoformerFilters_TheFirstOnesLastChunkDoesNotEndTheSplit()
+    {
+        FfmpegPrinting(
+            StemsplitLogFixtures.TwoFilters[..8],
+            TimeSpan.FromMilliseconds(5),
+            hangAfter: true
+        );
+
+        PluginAudioRunResult result = await CreateTools(
+                stemsplitSources: RoformerWhereAsked(),
+                roformerNoChunkLimit: TimeSpan.FromMilliseconds(400)
+            )
+            .RunFilterGraphAsync(
+                PluginAudioInput.Track(_trackId.ToString()),
+                new PluginFilterGraph(
+                    "[0:a]asplit[a][b];[a]stemsplit={stemsVocalSource}:stem=vocals[v1];[b]stemsplit={stemsSource}:stem=vocals[v2]",
+                    true
+                ),
+                null,
+                null,
+                new PluginAudioRunOptions(TimeSpan.FromMilliseconds(100))
+            );
+
+        result.ExitCode.Should().Be(PluginAudioRunResult.StalledExitCode);
+    }
+
     /// <summary>Spleeter prints no chunk lines, so its runs keep their fixed limit.</summary>
     [Fact]
     public async Task RunFilterGraph_ASpleeterRun_IsNotHeldToChunkLines()

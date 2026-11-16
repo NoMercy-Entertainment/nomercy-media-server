@@ -259,7 +259,7 @@ public sealed class PluginAudioTools(
                     PluginAudioArguments.FilterGraph(lease.Path, text, graph.Complex),
                     output.StdOut,
                     output.StdErr,
-                    StemsplitGraph.RunsRoformer(text),
+                    StemsplitGraph.RoformerFilters(text),
                     EffectiveTimeout(options, RunTimeout),
                     watchForExitMarker: false,
                     ct
@@ -303,18 +303,19 @@ public sealed class PluginAudioTools(
     /// A null result is the host ending the run; <see cref="FollowedRun.Stalled" />
     /// says when the missing chunk lines are why.
     /// </summary>
+    /// <param name="roformerFilters">How many stemsplit filters of the graph run RoFormer; 0 for none.</param>
     private async Task<FollowedRun> RunFollowingStemsplitAsync(
         string ffmpegPath,
         string[] arguments,
         Action<string>? onStdOut,
         Action<string> onStdErr,
-        bool roformer,
+        int roformerFilters,
         TimeSpan limit,
         bool watchForExitMarker,
         CancellationToken ct
     )
     {
-        if (!roformer)
+        if (roformerFilters == 0)
         {
             return new(
                 await RunFfmpegAsync(
@@ -333,7 +334,7 @@ public sealed class PluginAudioTools(
         // Taken before any clock starts: waiting for another run's split is
         // not this run being slow.
         using IDisposable gpu = await TakeTheGpuAsync(ct);
-        using StemsplitProgressWatch progress = new(RoformerNoChunkLimit, Clock);
+        using StemsplitProgressWatch progress = new(RoformerNoChunkLimit, Clock, roformerFilters);
         using CancellationTokenSource afterTheSplit = new(Timeout.InfiniteTimeSpan, Clock);
         using CancellationTokenSource endRun = CancellationTokenSource.CreateLinkedTokenSource(
             progress.Stalled,
@@ -602,7 +603,7 @@ public sealed class PluginAudioTools(
                     ffmpegPath,
                     inputs,
                     text,
-                    StemsplitGraph.RunsRoformer(text),
+                    StemsplitGraph.RoformerFilters(text),
                     plan,
                     files,
                     output,
@@ -650,7 +651,7 @@ public sealed class PluginAudioTools(
         string ffmpegPath,
         IReadOnlyList<PluginAudioRenderInput> inputs,
         string graphText,
-        bool roformer,
+        int roformerFilters,
         PluginAudioRenderPlan plan,
         PluginAudioRenderFiles files,
         RoformerAttemptOutput output,
@@ -658,6 +659,7 @@ public sealed class PluginAudioTools(
         CancellationToken ct
     )
     {
+        bool roformer = roformerFilters > 0;
         using IDisposable? gpu = roformer ? await TakeTheGpuAsync(ct) : null;
 
         // Every reason this run can be ended for goes through one token,
@@ -669,7 +671,11 @@ public sealed class PluginAudioTools(
             ShortestStallLimit
         );
         using PluginAudioRunWatch watch = new(limits, Clock);
-        using StemsplitProgressWatch progress = new(RoformerNoChunkLimit, Clock);
+        using StemsplitProgressWatch progress = new(
+            RoformerNoChunkLimit,
+            Clock,
+            Math.Max(1, roformerFilters)
+        );
         using CancellationTokenSource pastQuota = new();
         using CancellationTokenSource endRun = CancellationTokenSource.CreateLinkedTokenSource(
             ct,
@@ -1030,7 +1036,7 @@ public sealed class PluginAudioTools(
                     arguments,
                     null,
                     CaptureStdErr,
-                    source.Engine == StemsplitEngine.Roformer,
+                    source.Engine == StemsplitEngine.Roformer ? 1 : 0,
                     RunTimeout,
                     watchForExitMarker: true,
                     ct

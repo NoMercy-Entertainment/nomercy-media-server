@@ -93,6 +93,51 @@ public sealed class StemsplitProgressWatchTests : IDisposable
         _watch.HasStalled.Should().BeFalse();
     }
 
+    /// <summary>
+    /// Two RoFormer filters in one graph, as the real binary prints them: the
+    /// first one's last chunk leaves the second still splitting, and the run
+    /// is still judged by chunk lines until the second is done too.
+    /// </summary>
+    [Fact]
+    public void WithTwoFilters_TheSplitIsDoneOnlyWhenBothHandedOutTheirLastChunk()
+    {
+        using StemsplitProgressWatch watch = new(TimeSpan.FromMinutes(5), _clock, filters: 2);
+        watch.Start();
+
+        foreach (string line in StemsplitLogFixtures.TwoFilters[..8])
+            watch.Observe(line);
+
+        watch.IsSplitDone.Should().BeFalse("Parsed_stemsplit_2 is still splitting");
+        _clock.Advance(TimeSpan.FromMinutes(5));
+        watch.HasStalled.Should().BeTrue("the second filter's silence is still a stall");
+    }
+
+    [Fact]
+    public void WithTwoFilters_BothLastChunks_FinishTheSplit()
+    {
+        using StemsplitProgressWatch watch = new(TimeSpan.FromMinutes(5), _clock, filters: 2);
+        watch.Start();
+
+        foreach (string line in StemsplitLogFixtures.TwoFilters)
+            watch.Observe(line);
+
+        watch.IsSplitDone.Should().BeTrue();
+        _clock.Advance(TimeSpan.FromHours(1));
+        watch.HasStalled.Should().BeFalse();
+    }
+
+    [Fact]
+    public void OneFiltersLastChunkTwice_IsStillOneFilterDone()
+    {
+        using StemsplitProgressWatch watch = new(TimeSpan.FromMinutes(5), _clock, filters: 2);
+        watch.Start();
+
+        watch.Observe(StemsplitLogFixtures.TwoFilters[7]);
+        watch.Observe(StemsplitLogFixtures.TwoFilters[7]);
+
+        watch.IsSplitDone.Should().BeFalse();
+    }
+
     [Fact]
     public void ALineAfterDisposal_IsIgnored()
     {

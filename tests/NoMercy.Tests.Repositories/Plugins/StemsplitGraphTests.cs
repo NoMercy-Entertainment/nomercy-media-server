@@ -64,4 +64,21 @@ public class StemsplitGraphTests
     {
         StemsplitGraph.RunsRoformer(graph).Should().BeFalse();
     }
+
+    [Theory]
+    [InlineData("[0:a]asplit[a][b]", 0)]
+    [InlineData("[0:a]stemsplit=model=spleeter-2stems-f16.gguf[v][b]", 0)]
+    [InlineData("[0:a]stemsplit=preset=full:cpu_fallback=0[v][b]", 1)]
+    [InlineData(
+        "[0:a]asplit[a][b];[a]stemsplit=preset=vocal_full:cpu_fallback=0:stem=vocals[v1];[b]stemsplit=preset=full:cpu_fallback=0:stem=vocals[v2]",
+        2
+    )]
+    [InlineData(
+        "[0:a]asplit[a][b];[a]stemsplit=preset=full[v1];[b]stemsplit=model=spleeter-2stems-f16.gguf[v2]",
+        1
+    )]
+    public void TheRoformerFilters_AreCounted(string graph, int filters)
+    {
+        StemsplitGraph.RoformerFilters(graph).Should().Be(filters);
+    }
 }

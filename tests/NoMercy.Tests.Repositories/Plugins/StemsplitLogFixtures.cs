@@ -24,6 +24,9 @@ namespace NoMercy.Tests.Repositories.Plugins;
 /// <c>preset=full:cpu_fallback=0</c> on the GPU, and <c>model=spleeter-2stems-f16.gguf</c>.</item>
 /// <item><see cref="UnknownOption" />: an older build (no <c>preset</c>);
 /// stemsplit 1.2.1 says the same of <c>cpu_fallback</c>.</item>
+/// <item><see cref="TwoFilters" />: two filters in one graph,
+/// <c>[0:a]asplit[a][b];[a]stemsplit=preset=vocal_full:cpu_fallback=0:stem=vocals[v1];[b]stemsplit=preset=vocal_full:cpu_fallback=0:stem=vocals[v2]</c>
+/// on 15 seconds of audio, with <c>-nostats</c>; every line, in the order printed.</item>
 /// </list>
 /// </summary>
 internal static class StemsplitLogFixtures
@@ -72,4 +75,23 @@ internal static class StemsplitLogFixtures
 
     public const string SpleeterLoaded =
         "[Parsed_stemsplit_0 @ 0000013f3b554ec0] stemsplit: model 'spleeter-2stems-f16.gguf' weights loaded (100 tensors); instruments: vocals, accompaniment.";
+
+    /// <summary>
+    /// The chunk lines of two RoFormer filters in one graph: ffmpeg names
+    /// each instance (<c>Parsed_stemsplit_1</c>, <c>Parsed_stemsplit_2</c>;
+    /// the asplit is 0), and the first is done well before the second.
+    /// </summary>
+    public static readonly string[] TwoFilters =
+    [
+        "[Parsed_stemsplit_1 @ 000001c8ec477ac0] stemsplit: RoFormer runs on 'vulkan' (NVIDIA GeForce RTX 3070).",
+        "[Parsed_stemsplit_2 @ 000001c8ec4772c0] stemsplit: RoFormer runs on 'vulkan' (NVIDIA GeForce RTX 3070).",
+        "[Parsed_stemsplit_1 @ 000001c8ec477ac0] stemsplit: model 1/2, chunk 1/? at sample 0 (485100 samples, 485376 received), 3.3 s elapsed, rtf 0.00.",
+        "[Parsed_stemsplit_1 @ 000001c8ec477ac0] stemsplit: model 2/2, chunk 1/? at sample 0 (485100 samples, 485376 received), 4.7 s elapsed, rtf 2.34.",
+        "[Parsed_stemsplit_2 @ 000001c8ec4772c0] stemsplit: model 1/2, chunk 1/? at sample 0 (485100 samples, 485376 received), 8.0 s elapsed, rtf 0.00.",
+        "[Parsed_stemsplit_2 @ 000001c8ec4772c0] stemsplit: model 2/2, chunk 1/? at sample 0 (485100 samples, 485376 received), 9.4 s elapsed, rtf 2.34.",
+        "[Parsed_stemsplit_1 @ 000001c8ec477ac0] stemsplit: model 1/2, chunk 2/2 at sample 176400 (485100 samples, 661500 received), 12.7 s elapsed, rtf 1.39.",
+        "[Parsed_stemsplit_1 @ 000001c8ec477ac0] stemsplit: model 2/2, chunk 2/2 at sample 176400 (485100 samples, 661500 received), 14.1 s elapsed, rtf 1.60.",
+        "[Parsed_stemsplit_2 @ 000001c8ec4772c0] stemsplit: model 1/2, chunk 2/2 at sample 176400 (485100 samples, 661500 received), 17.3 s elapsed, rtf 1.39.",
+        "[Parsed_stemsplit_2 @ 000001c8ec4772c0] stemsplit: model 2/2, chunk 2/2 at sample 176400 (485100 samples, 661500 received), 18.8 s elapsed, rtf 1.60.",
+    ];
 }

@@ -16,7 +16,18 @@ namespace NoMercy.Data.Plugins;
 /// <param name="Models">How many models the run has.</param>
 /// <param name="Chunk">Which chunk of the input, from 1.</param>
 /// <param name="Chunks">How many chunks the input has; null while the filter does not know yet.</param>
-internal sealed record StemsplitChunk(int Model, int Models, long Chunk, long? Chunks)
+/// <param name="Filter">
+/// Which stemsplit filter of the graph printed it, as ffmpeg names the
+/// instance in front of the line (<c>Parsed_stemsplit_1</c>); null for a line
+/// without that name.
+/// </param>
+internal sealed record StemsplitChunk(
+    int Model,
+    int Models,
+    long Chunk,
+    long? Chunks,
+    string? Filter = null
+)
 {
     /// <summary>The last chunk of the last model: the filter has handed out all it will.</summary>
     public bool IsLast => Model == Models && Chunks is { } total && Chunk >= total;

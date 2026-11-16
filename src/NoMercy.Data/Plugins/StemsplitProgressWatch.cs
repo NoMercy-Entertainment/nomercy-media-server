@@ -30,9 +30,20 @@ namespace NoMercy.Data.Plugins;
 /// the caller's to judge again: <see cref="SplitDone" /> fires once, and the
 /// caller starts the limits it would have given the whole run.
 /// </para>
+/// <para>
+/// A graph may run several RoFormer filters, one after another or side by
+/// side. ffmpeg names each instance in front of its lines
+/// (<c>[Parsed_stemsplit_1 @ …]</c>), so the split is only done once
+/// <paramref name="filters" /> different instances have each printed their
+/// last chunk. A last chunk without that name counts as one more filter done.
+/// </para>
 /// </summary>
-internal sealed class StemsplitProgressWatch(TimeSpan noChunkLimit, TimeProvider clock)
-    : IDisposable
+/// <param name="filters">How many stemsplit filters of the graph run RoFormer; at least one.</param>
+internal sealed class StemsplitProgressWatch(
+    TimeSpan noChunkLimit,
+    TimeProvider clock,
+    int filters = 1
+) : IDisposable
 {
     /// <summary>How long a RoFormer run may go without a chunk line: five minutes.</summary>
     internal static readonly TimeSpan DefaultNoChunkLimit = TimeSpan.FromMinutes(5);
@@ -41,6 +52,7 @@ internal sealed class StemsplitProgressWatch(TimeSpan noChunkLimit, TimeProvider
     private readonly CancellationTokenSource _stalled = new(Timeout.InfiniteTimeSpan, clock);
     private readonly CancellationTokenSource _splitDone = new(Timeout.InfiniteTimeSpan, clock);
     private readonly Lock _gate = new();
+    private readonly HashSet<string> _finished = [];
     private bool _disposed;
 
     public TimeSpan NoChunkLimit => noChunkLimit;
@@ -67,7 +79,16 @@ internal sealed class StemsplitProgressWatch(TimeSpan noChunkLimit, TimeProvider
         if (chunk is null)
             return;
 
-        if (!chunk.IsLast)
+        bool allDone;
+        lock (_gate)
+        {
+            if (chunk.IsLast)
+                _finished.Add(chunk.Filter ?? $"unnamed filter {_finished.Count}");
+
+            allDone = _finished.Count >= Math.Max(1, filters);
+        }
+
+        if (!allDone)
         {
             Arm(noChunkLimit);
             return;

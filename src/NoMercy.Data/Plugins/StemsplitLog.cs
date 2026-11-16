@@ -61,14 +61,17 @@ internal static partial class StemsplitLog
     internal static int? RefusedRunModels(string line)
     {
         Match match = ModelsOnTheCpu().Match(line);
-        return match.Success ? int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture) : null;
+        return match.Success
+            ? int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture)
+            : null;
     }
 
     /// <summary>
     /// One of RoFormer's per-chunk lines,
     /// <c>stemsplit: model 1/2, chunk 9/9 at sample 1719900 (485100 samples, 2205000 received), 38.9 s elapsed, rtf 1.27.</c>,
     /// or null. The chunk count is <c>?</c> until the filter knows where the
-    /// input ends. Spleeter prints none of these.
+    /// input ends. Spleeter prints none of these. The filter's instance name
+    /// in front of the line tells two RoFormer filters of one graph apart.
     /// </summary>
     internal static StemsplitChunk? Chunk(string line)
     {
@@ -77,12 +80,13 @@ internal static partial class StemsplitLog
             return null;
 
         return new(
-            int.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture),
-            int.Parse(match.Groups[2].Value, CultureInfo.InvariantCulture),
-            long.Parse(match.Groups[3].Value, CultureInfo.InvariantCulture),
-            match.Groups[4].Value == "?"
+            int.Parse(match.Groups["model"].Value, CultureInfo.InvariantCulture),
+            int.Parse(match.Groups["models"].Value, CultureInfo.InvariantCulture),
+            long.Parse(match.Groups["chunk"].Value, CultureInfo.InvariantCulture),
+            match.Groups["chunks"].Value == "?"
                 ? null
-                : long.Parse(match.Groups[4].Value, CultureInfo.InvariantCulture)
+                : long.Parse(match.Groups["chunks"].Value, CultureInfo.InvariantCulture),
+            match.Groups["filter"].Success ? match.Groups["filter"].Value : null
         );
     }
 
@@ -112,7 +116,7 @@ internal static partial class StemsplitLog
     private static partial Regex ModelsOnTheCpu();
 
     [GeneratedRegex(
-        @"stemsplit: model (\d+)/(\d+), chunk (\d+)/(\d+|\?) at sample ",
+        @"(?:\[(?<filter>Parsed_stemsplit_\d+) @ [^\]]*\] )?stemsplit: model (?<model>\d+)/(?<models>\d+), chunk (?<chunk>\d+)/(?<chunks>\d+|\?) at sample ",
         RegexOptions.None,
         matchTimeoutMilliseconds: 1000
     )]

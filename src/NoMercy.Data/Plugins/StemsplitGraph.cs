@@ -44,20 +44,23 @@ internal static partial class StemsplitGraph
     /// preset or a model list in its options. Such a run hands its audio on a
     /// whole chunk at a time, after loading models for up to a minute.
     /// </summary>
-    internal static bool RunsRoformer(string graphText)
-    {
-        foreach (Match filter in StemsplitFilter().Matches(graphText))
-        {
-            foreach (string option in filter.Groups[1].Value.Split(':'))
-            {
-                string name = option.Split('=', 2)[0].Trim();
-                if (RoformerOptions.Contains(name, StringComparer.Ordinal))
-                    return true;
-            }
-        }
+    internal static bool RunsRoformer(string graphText) => RoformerFilters(graphText) > 0;
 
-        return false;
-    }
+    /// <summary>
+    /// How many stemsplit filters of the (resolved) graph run RoFormer. Each
+    /// prints its own chunk lines, and the split is only done once every one
+    /// of them has handed out its last chunk.
+    /// </summary>
+    internal static int RoformerFilters(string graphText) =>
+        StemsplitFilter()
+            .Matches(graphText)
+            .Count(filter =>
+                filter
+                    .Groups[1]
+                    .Value.Split(':')
+                    .Select(option => option.Split('=', 2)[0].Trim())
+                    .Any(name => RoformerOptions.Contains(name, StringComparer.Ordinal))
+            );
 
     [GeneratedRegex(
         @"(?:^|[,;\]])\s*whisper\s*(?:=|[,;\[]|$)",

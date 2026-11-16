@@ -62,7 +62,7 @@ public class StemsplitLogTests
         StemsplitLog
             .Chunk(StemsplitLogFixtures.FirstChunk)
             .Should()
-            .Be(new StemsplitChunk(1, 2, 1, null));
+            .Be(new StemsplitChunk(1, 2, 1, null, "Parsed_stemsplit_0"));
     }
 
     [Fact]
@@ -71,7 +71,31 @@ public class StemsplitLogTests
         StemsplitLog
             .Chunk(StemsplitLogFixtures.ChunkAfterStats)
             .Should()
-            .Be(new StemsplitChunk(2, 2, 2, null));
+            .Be(new StemsplitChunk(2, 2, 2, null, "Parsed_stemsplit_0"));
+    }
+
+    [Fact]
+    public void TwoFiltersInOneGraph_AreToldApartByTheirInstanceNames()
+    {
+        StemsplitLog
+            .Chunk(StemsplitLogFixtures.TwoFilters[7])!
+            .Filter.Should()
+            .Be("Parsed_stemsplit_1");
+        StemsplitLog
+            .Chunk(StemsplitLogFixtures.TwoFilters[9])!
+            .Filter.Should()
+            .Be("Parsed_stemsplit_2");
+    }
+
+    [Fact]
+    public void AChunkLineWithoutAnInstanceName_HasNoFilter()
+    {
+        StemsplitLog
+            .Chunk(
+                "stemsplit: model 1/1, chunk 3/9 at sample 0 (485100 samples, 485376 received), 3.0 s elapsed, rtf 1.00."
+            )
+            .Should()
+            .Be(new StemsplitChunk(1, 1, 3, 9));
     }
 
     [Fact]
