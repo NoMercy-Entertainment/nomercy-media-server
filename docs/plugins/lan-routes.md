@@ -56,6 +56,17 @@ The owner adds a device on the plugin's page (`POST
 /api/v1/plugins/{pluginId}/lan/{deviceId}/{credential}
 ```
 
+Once is meant literally: the server keeps only a SHA-256 hash of the
+credential (`lan-devices.json`), so it cannot show it again. A device whose
+address was lost is removed and added again. A file written before hashing
+keeps working; its credentials are hashed on the first read.
+
+`GET` on that address itself answers who the device is. It existed before
+the LAN routes, and it now uses the same network check as they do: a caller
+on loopback, or one whose request carries a forwarding header, is refused. A
+client on the same machine as the server must use the server's LAN address,
+not `localhost` or `127.0.0.1`.
+
 The device then asks for a route under that address:
 
 ```
@@ -99,6 +110,12 @@ which part was wrong:
 
 The action then runs through the server's MVC like any plugin route, with the
 same filters. Only the sign-in step is replaced by the checks above.
+
+Every answer on a LAN route, and on a LAN media link, carries
+`Cache-Control: no-store`, written over whatever the plugin set. The
+server's response cache keys an answer by its address, which holds the
+credential; a kept answer would be served again without any of the checks
+above, so none is ever kept.
 
 ## What the handler sees
 
@@ -166,6 +183,18 @@ host are taken). A device-bound ticket:
   refused, every ticket minted for the device is forgotten, and a stream the
   device has open is cut;
 - mints its playlist children for the same device.
+
+A device-bound link is a capability link: the ticket in the address is all
+it takes. Any host on the owner's network that sees the address (in a
+lineup it fetched, a log, or a capture of the traffic) can play it until it
+idles out, the owner revokes the device, or the 24-hour cap passes. It never
+plays from outside the network and never for an account.
+
+One device may hold at most 10,000 live links per plugin at a time, as may
+one account. A live window polled every few seconds stays well under that.
+At the limit the device's oldest links that were never played are dropped
+first; only a device whose every link is still being played is refused
+(`PLUGIN_RESOURCE_CEILING`).
 
 Because a ticket must be played within 15 minutes, a lineup that a client
 caches for hours should not hold tickets. Point the lineup at a LAN route of
