@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace NoMercy.NmSystem.NewtonSoftConverters;
 
@@ -37,6 +38,11 @@ public class ParseNumbersAsInt32Converter : JsonConverter
         JsonSerializer serializer
     )
     {
+        // An object or array has no reader.Value; returning without reading it leaves the
+        // reader inside it, which fails every object-typed slot that receives one.
+        if (reader.TokenType is JsonToken.StartObject or JsonToken.StartArray)
+            return JToken.Load(reader);
+
         return reader.Value is long ? Convert.ToInt64(reader.Value ?? 0) : reader.Value;
     }
 }
