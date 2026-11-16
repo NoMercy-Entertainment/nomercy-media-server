@@ -131,9 +131,7 @@ public sealed class StemsplitSourceSelectorTests : IDisposable
 
         StemsplitSourceSelector afterRestart = CreateSelector();
 
-        (await afterRestart.ChooseAsync(RoformerPreset.Full))
-            .Should()
-            .Be(StemsplitSource.Spleeter);
+        (await afterRestart.ChooseAsync(RoformerPreset.Full)).Should().Be(StemsplitSource.Spleeter);
         (await afterRestart.ChooseAsync(RoformerPreset.VocalFull))
             .Should()
             .Be(StemsplitSource.Spleeter);
@@ -268,6 +266,65 @@ public sealed class StemsplitSourceSelectorTests : IDisposable
             detector => detector.DetectGpusAsync(It.IsAny<CancellationToken>()),
             Times.Exactly(2)
         );
+    }
+
+    /// <summary>
+    /// Free GPU memory depends on what else holds the GPU at the moment, a
+    /// game for one: a refusal for memory is asked again after a day.
+    /// </summary>
+    [Fact]
+    public async Task AMemoryRefusal_IsAskedAgainAfterADay()
+    {
+        InstallModels(AppFiles.StemsplitRoformerModels);
+        await CreateSelector()
+            .RememberRefusalAsync(
+                [RoformerPreset.VocalFull],
+                StemsplitLogFixtures.PartialMemoryRefusal
+            );
+
+        _clock.Advance(TimeSpan.FromHours(23));
+        (await CreateSelector().ChooseAsync(RoformerPreset.VocalFull))
+            .Should()
+            .Be(StemsplitSource.Spleeter);
+
+        _clock.Advance(TimeSpan.FromHours(1));
+        (await CreateSelector().ChooseAsync(RoformerPreset.VocalFull))
+            .Engine.Should()
+            .Be(StemsplitEngine.Roformer);
+        File.Exists(VerdictPath).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task ANoGpuRefusal_HoldsPastADay()
+    {
+        InstallModels(AppFiles.StemsplitRoformerModels);
+        await CreateSelector()
+            .RememberRefusalAsync([RoformerPreset.Full], StemsplitLogFixtures.NoGpuRefusal);
+
+        _clock.Advance(TimeSpan.FromDays(30));
+
+        (await CreateSelector().ChooseAsync(RoformerPreset.Full))
+            .Should()
+            .Be(StemsplitSource.Spleeter);
+    }
+
+    /// <summary>
+    /// The detection swallows its own failures into an empty GPU list, so an
+    /// empty list must not throw away a verdict given with GPUs.
+    /// </summary>
+    [Fact]
+    public async Task AnEmptyGpuList_KeepsTheVerdict()
+    {
+        InstallModels(AppFiles.StemsplitRoformerModels);
+        await CreateSelector()
+            .RememberRefusalAsync([RoformerPreset.Full], StemsplitLogFixtures.NoGpuRefusal);
+
+        _gpus = [];
+
+        (await CreateSelector().ChooseAsync(RoformerPreset.Full))
+            .Should()
+            .Be(StemsplitSource.Spleeter);
+        File.Exists(VerdictPath).Should().BeTrue();
     }
 
     [Fact]

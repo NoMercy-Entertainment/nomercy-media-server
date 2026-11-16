@@ -44,6 +44,15 @@ public sealed class StemsplitSourceSelector(
     /// <summary>How long one reading of the GPU list is trusted.</summary>
     internal static readonly TimeSpan GpuListLifetime = TimeSpan.FromMinutes(10);
 
+    /// <summary>
+    /// How long a refusal for want of free GPU memory holds before the filter
+    /// is asked again: a day. What held the memory may be gone by then.
+    /// </summary>
+    internal static readonly TimeSpan MemoryRefusalLifetime = TimeSpan.FromHours(24);
+
+    // The hash of an empty GPU list, which is what a failed detection returns.
+    private static readonly string NoGpus = new DriverFingerprint([]).ComputeHash();
+
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     private bool _loaded;
@@ -74,7 +83,17 @@ public sealed class StemsplitSourceSelector(
             if (verdict is null || !verdict.Refuses(preset))
                 return StemsplitSource.Roformer(preset);
 
-            if (verdict.Holds(FfmpegBuild(), await GpusAsync(ct)))
+            if (verdict.HasExpired(Clock.GetUtcNow()))
+            {
+                logger.LogInformation(
+                    "A day has passed since stemsplit refused RoFormer for want of free GPU memory; asking it again"
+                );
+                ForgetVerdict();
+                return StemsplitSource.Roformer(preset);
+            }
+
+            string gpus = await GpusAsync(ct);
+            if (verdict.Holds(FfmpegBuild(), gpus, gpusUnknown: gpus == NoGpus))
                 return StemsplitSource.Spleeter;
 
             logger.LogInformation(
@@ -104,19 +123,25 @@ public sealed class StemsplitSourceSelector(
             // A refusal adds to one given on the same machine; one given on
             // another machine, or another build, no longer says anything.
             StemsplitVerdict? earlier = LoadVerdict();
+            DateTimeOffset now = Clock.GetUtcNow();
             IEnumerable<string> kept =
-                earlier is not null && earlier.Holds(ffmpegBuild, gpus)
+                earlier is not null
+                && !earlier.HasExpired(now)
+                && earlier.Holds(ffmpegBuild, gpus, gpusUnknown: gpus == NoGpus)
                     ? earlier.RefusedPresets
                     : [];
 
             List<string> refused = [.. kept.Union(Refused(presets, refusalLine))];
 
+            // Only the want of any GPU is for good; a want of memory is asked
+            // again after a day.
             StemsplitVerdict verdict = new(
                 ffmpegBuild,
                 gpus,
                 refused,
                 refusalLine.Trim(),
-                Clock.GetUtcNow()
+                now,
+                refused.Contains(StemsplitVerdict.EveryPreset) ? null : now + MemoryRefusalLifetime
             );
             SaveVerdict(verdict);
 
