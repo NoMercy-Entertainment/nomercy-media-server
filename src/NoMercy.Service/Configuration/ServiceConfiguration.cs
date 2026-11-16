@@ -48,6 +48,17 @@ public static partial class ServiceConfiguration
     // Without this a browser repeats the OPTIONS round trip for every media URL it fetches.
     private static readonly TimeSpan PreflightMaxAge = TimeSpan.FromHours(24);
 
+    // Exact first-party page origins only. Every self-hosted server has a name under
+    // nomercy.tv, so a subdomain wildcard would trust each other user's server.
+    internal static readonly string[] ProductionCorsOrigins =
+    [
+        "https://nomercy.tv",
+        "https://app.nomercy.tv",
+        "https://cast.nomercy.tv",
+        "https://hlsjs.video-dev.org",
+        "http://localhost:7625",
+    ];
+
     internal static void ConfigureCors(IServiceCollection services)
     {
         // Configure CORS
@@ -77,16 +88,9 @@ public static partial class ServiceConfiguration
 
                     builder
                         .SetPreflightMaxAge(PreflightMaxAge)
-                        .WithOrigins(
-                            "https://nomercy.tv",
-                            "https://*.nomercy.tv",
-                            "https://cast.nomercy.tv",
-                            "https://hlsjs.video-dev.org",
-                            "http://localhost:7625"
-                        )
+                        .WithOrigins(ProductionCorsOrigins)
                         .AllowAnyMethod()
                         .AllowCredentials()
-                        .SetIsOriginAllowedToAllowWildcardSubdomains()
                         .AllowAnyHeader();
                 }
             );

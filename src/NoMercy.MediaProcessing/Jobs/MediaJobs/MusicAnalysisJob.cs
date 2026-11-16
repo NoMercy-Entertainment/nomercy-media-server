@@ -250,11 +250,8 @@ public class MusicAnalysisJob : IShouldQueue
                 }
             );
 
-            // Sender is Ulid.Empty: this event comes from the host, not from a
-            // plugin, and PluginId.Empty is how the in-process PluginEvents
-            // facade (which matches subscribers on the topic name, not on who
-            // published it) lets a host-raised topic reach a plugin the same
-            // way one plugin's own event reaches another.
+            // Sender Ulid.Empty: raised by the host. The in-process events facade
+            // delivers a host topic only under that sender.
             await _eventBus.PublishAsync(
                 PluginMessageEvent.From(
                     Ulid.Empty,

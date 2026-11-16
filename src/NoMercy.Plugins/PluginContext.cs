@@ -11,7 +11,6 @@
 
 using Microsoft.Extensions.Logging;
 using NoMercy.Events;
-using NoMercy.Events.Plugins;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Hub;
 using NoMercy.PluginSdk.Network;
@@ -198,8 +197,8 @@ public class PluginContext : IPluginContext
         PluginId = pluginId;
         _eventBus = eventBus ?? throw new ArgumentNullException(nameof(eventBus));
         ArgumentNullException.ThrowIfNull(services);
-        Events = new PluginEvents(pluginId, _eventBus);
         Logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        Events = new PluginEvents(pluginId, _eventBus, Logger);
         DataFolderPath = dataFolderPath ?? throw new ArgumentNullException(nameof(dataFolderPath));
         Configuration = new PluginConfiguration(dataFolderPath, storage);
         Secrets = secrets ?? throw new ArgumentNullException(nameof(secrets));
@@ -229,11 +228,7 @@ public class PluginContext : IPluginContext
 
     public Task PublishAsync<T>(string name, T payload, CancellationToken ct = default)
     {
-        ArgumentException.ThrowIfNullOrWhiteSpace(name);
-
-        // The envelope, not the plugin's own event class: a type declared in a
-        // collectible load context has an identity no host subscriber can name,
-        // so publishing one reaches nobody.
-        return _eventBus.PublishAsync(PluginMessageEvent.From(PluginId, name, payload), ct);
+        // Through the facade, so the shortcut meets the same host-topic refusal.
+        return Events.PublishAsync(name, payload, ct);
     }
 }
