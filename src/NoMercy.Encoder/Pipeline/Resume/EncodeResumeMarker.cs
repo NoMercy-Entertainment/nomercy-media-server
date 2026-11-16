@@ -45,4 +45,21 @@ public class EncodeResumeMarker(IStorage storage)
         if (await storage.ExistsAsync(markerPath, ct))
             await storage.DeleteAsync(markerPath, ct);
     }
+
+    /// <summary>Removes every marker in the folder; a finished bundle has none to resume.</summary>
+    public async Task ClearAllAsync(string outputDirectory, CancellationToken ct)
+    {
+        List<string> markers = [];
+        await foreach (StorageEntry entry in storage.ListAsync(outputDirectory, "*", false, ct))
+        {
+            if (
+                !entry.IsDirectory
+                && storage.GetName(entry.Path).StartsWith(Prefix, StringComparison.Ordinal)
+            )
+                markers.Add(entry.Path);
+        }
+
+        foreach (string marker in markers)
+            await storage.DeleteAsync(marker, ct);
+    }
 }

@@ -23,4 +23,7 @@ public interface ISegmentProber
     /// The same read for a segment of one stream, whichever kind it is.
     /// </summary>
     Task<double?> FirstPtsAsync(string segmentPath, CancellationToken ct);
+
+    /// <summary>The first packet's presentation time minus its decode time, in seconds.</summary>
+    Task<double?> FirstPacketDelayAsync(string segmentPath, bool video, CancellationToken ct);
 }

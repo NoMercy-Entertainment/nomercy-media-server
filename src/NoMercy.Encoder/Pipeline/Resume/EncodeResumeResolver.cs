@@ -36,6 +36,7 @@ public class EncodeResumeResolver(
 {
     private const string SegmentNumberToken = "_%05d";
     private const string EndListTag = "#EXT-X-ENDLIST";
+    private const int AacFrameSamples = 1024;
 
     internal sealed record HlsOutput(
         string SegmentPrefix,
@@ -122,13 +123,19 @@ public class EncodeResumeResolver(
             video,
             ct
         );
-        if (startPts is null || resumePts is null)
+        double? delay = await prober.FirstPacketDelayAsync(
+            SegmentPath(request.OutputDirectory, first, 0),
+            video,
+            ct
+        );
+        if (startPts is null || resumePts is null || delay is null)
             return ResumeDecision.StartAtZero("segment probe failed");
 
         long resumeMs = (long)Math.Round((resumePts.Value - startPts.Value) * 1000);
+        long delayMs = (long)Math.Round(delay.Value * 1000);
         return resumeMs <= 0
             ? ResumeDecision.StartAtZero("resume time is not after the start")
-            : new(true, completeSegments, resumeMs, "resuming", markerPath);
+            : new(true, completeSegments, resumeMs, "resuming", markerPath, delayMs);
     }
 
     /// <summary>
@@ -138,14 +145,12 @@ public class EncodeResumeResolver(
     /// </summary>
     public static OutputPlan ApplyTo(OutputPlan plan, ResumeDecision decision)
     {
-        Dictionary<string, string> flags = new()
-        {
-            ["-start_number"] = decision.StartSegment.ToString(CultureInfo.InvariantCulture),
-            ["-output_ts_offset"] = (decision.ResumeMs / 1000.0).ToString(
-                "F3",
-                CultureInfo.InvariantCulture
-            ),
-        };
+        // A fresh run's first video packet sits its B-frame delay after the start; the offset adds it back.
+        Dictionary<string, string> videoFlags = Flags(
+            decision,
+            (decision.ResumeMs + decision.TimestampDelayMs) / 1000.0,
+            "F3"
+        );
 
         return plan with
         {
@@ -154,7 +159,7 @@ public class EncodeResumeResolver(
                 .. plan.VideoOutputs.Select(v =>
                     v with
                     {
-                        ExtraFlags = Merge(v.ExtraFlags, flags),
+                        ExtraFlags = Merge(v.ExtraFlags, videoFlags),
                     }
                 ),
             ],
@@ -164,13 +169,45 @@ public class EncodeResumeResolver(
                     a.Action == StreamAction.Transcode
                         ? a with
                         {
-                            ExtraFlags = Merge(a.ExtraFlags, flags),
+                            ExtraFlags = Merge(
+                                a.ExtraFlags,
+                                Flags(decision, AudioOffsetSeconds(a, decision), "F6")
+                            ),
                         }
                         : a
                 ),
             ],
         };
     }
+
+    // The first AAC packet of a resumed run must land on the frame grid a full run uses.
+    // A full run's muxer adds the encoder delay back; a resumed run's does not.
+    private static double AudioOffsetSeconds(AudioOutputPlan audio, ResumeDecision decision)
+    {
+        double resumeSeconds = decision.ResumeMs / 1000.0;
+        int delayFrames = audio.EncoderName switch
+        {
+            "libfdk_aac" => 2,
+            "aac" => 1,
+            _ => 0,
+        };
+        if (delayFrames == 0 || audio.SampleRate <= 0)
+            return resumeSeconds;
+
+        double frameSeconds = AacFrameSamples / (double)audio.SampleRate;
+        return (Math.Ceiling(resumeSeconds / frameSeconds) + delayFrames) * frameSeconds;
+    }
+
+    private static Dictionary<string, string> Flags(
+        ResumeDecision decision,
+        double offsetSeconds,
+        string format
+    ) =>
+        new()
+        {
+            ["-start_number"] = decision.StartSegment.ToString(CultureInfo.InvariantCulture),
+            ["-output_ts_offset"] = offsetSeconds.ToString(format, CultureInfo.InvariantCulture),
+        };
 
     private static Dictionary<string, string> Merge(
         Dictionary<string, string>? existing,

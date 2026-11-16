@@ -21,7 +21,8 @@ public record ResumeDecision(
     int StartSegment,
     long ResumeMs,
     string Reason,
-    string? MarkerPath = null
+    string? MarkerPath = null,
+    long TimestampDelayMs = 0
 )
 {
     public static ResumeDecision StartAtZero(string reason) => new(false, 0, 0, reason);

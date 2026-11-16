@@ -333,6 +333,101 @@ public class EncodeResumeResolverTests : IDisposable
     }
 
     [Fact]
+    public async Task Resolve_BFrameVideo_CarriesTheStartSegmentDelay()
+    {
+        Segments("video", "v", 6);
+        Segments("audio", "a", 6);
+        _prober.Set("video/v_00000.ts", 1.48);
+        _prober.Set("video/v_00005.ts", 11.48);
+        _prober.Delay = 0.08;
+
+        ResumeDecision decision = await _resolver.ResolveAsync(
+            Request(StartMarker(DefaultCommands())),
+            default
+        );
+
+        decision.ResumeMs.Should().Be(10000);
+        decision.TimestampDelayMs.Should().Be(80);
+    }
+
+    [Fact]
+    public async Task Resolve_DelayCannotBeProbed_StartsAtZero()
+    {
+        Segments("video", "v", 6);
+        Segments("audio", "a", 6);
+        _prober.Set("video/v_00000.ts", 1.4);
+        _prober.Set("video/v_00005.ts", 11.4);
+        _prober.Delay = null;
+
+        ResumeDecision decision = await _resolver.ResolveAsync(
+            Request(StartMarker(DefaultCommands())),
+            default
+        );
+
+        decision.Resume.Should().BeFalse();
+        decision.Reason.Should().Contain("probe");
+    }
+
+    [Fact]
+    public void ApplyTo_TimestampOffset_IsTheResumeTimePlusTheDelay()
+    {
+        ResumeDecision decision = new(true, 5, 10000, "resuming", null, 80);
+
+        OutputPlan plan = EncodeResumeResolver.ApplyTo(PlanWith(), decision);
+
+        plan.VideoOutputs[0].ExtraFlags!["-output_ts_offset"].Should().Be("10.080");
+        plan.VideoOutputs[0].ExtraFlags!["-start_number"].Should().Be("5");
+        plan.AudioOutputs[0].ExtraFlags!["-start_number"].Should().Be("5");
+    }
+
+    [Theory]
+    [InlineData("libfdk_aac", 12000, 48000, "12.053333")] // 563 frames of 21.333 ms, plus two frames of delay
+    [InlineData("libfdk_aac", 10000, 48000, "10.048000")] // 469 frames, plus two
+    [InlineData("libfdk_aac", 10000, 44100, "10.054240")] // 431 frames of 23.220 ms, plus two
+    [InlineData("aac", 12000, 48000, "12.032000")] // 563 frames, plus one
+    public void ApplyTo_AacAudio_StartsOnTheFrameGridAfterTheResumeTime(
+        string encoder,
+        long resumeMs,
+        int sampleRate,
+        string expected
+    )
+    {
+        OutputPlan plan = PlanWith();
+        plan = plan with
+        {
+            AudioOutputs =
+            [
+                plan.AudioOutputs[0] with
+                {
+                    EncoderName = encoder,
+                    SampleRate = sampleRate,
+                },
+            ],
+        };
+
+        OutputPlan applied = EncodeResumeResolver.ApplyTo(
+            plan,
+            new(true, 5, resumeMs, "resuming", null, 80)
+        );
+
+        applied.AudioOutputs[0].ExtraFlags!["-output_ts_offset"].Should().Be(expected);
+    }
+
+    [Fact]
+    public void ApplyTo_NonAacAudio_StartsAtTheResumeTime()
+    {
+        OutputPlan plan = PlanWith();
+        plan = plan with { AudioOutputs = [plan.AudioOutputs[0] with { EncoderName = "libopus" }] };
+
+        OutputPlan applied = EncodeResumeResolver.ApplyTo(
+            plan,
+            new(true, 5, 12000, "resuming", null, 80)
+        );
+
+        applied.AudioOutputs[0].ExtraFlags!["-output_ts_offset"].Should().Be("12.000000");
+    }
+
+    [Fact]
     public async Task Resolve_LogsOneLineWithTheReason_WhenItStartsAtZero()
     {
         Segments("video", "v", 1);
@@ -473,6 +568,14 @@ public class EncodeResumeResolverTests : IDisposable
 
         public Task<double?> FirstPtsAsync(string segmentPath, CancellationToken ct) =>
             FirstPacketPtsAsync(segmentPath, true, ct);
+
+        public double? Delay { get; set; } = 0;
+
+        public Task<double?> FirstPacketDelayAsync(
+            string segmentPath,
+            bool video,
+            CancellationToken ct
+        ) => Task.FromResult(Delay);
     }
 
     private sealed class CapturingLogger : ILogger<EncodeResumeResolver>

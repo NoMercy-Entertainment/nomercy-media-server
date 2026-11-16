@@ -245,6 +245,12 @@ public class EncodeResumeStitcherTests : IDisposable
             bool video,
             CancellationToken ct
         ) => FirstPtsAsync(segmentPath, ct);
+
+        public Task<double?> FirstPacketDelayAsync(
+            string segmentPath,
+            bool video,
+            CancellationToken ct
+        ) => Task.FromResult<double?>(0);
     }
 
     private sealed class CapturingLogger : ILogger<EncodeResumeStitcher>

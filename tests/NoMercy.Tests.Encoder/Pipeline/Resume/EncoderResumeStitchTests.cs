@@ -4,6 +4,7 @@ using NoMercy.Encoder.Analysis;
 using NoMercy.Encoder.Codecs;
 using NoMercy.Encoder.Commands;
 using NoMercy.Encoder.Execution;
+using NoMercy.Encoder.Jobs;
 using NoMercy.Encoder.Output;
 using NoMercy.Encoder.Pipeline;
 using NoMercy.Encoder.Pipeline.Resume;
@@ -68,7 +69,38 @@ public class EncoderResumeStitchTests : IDisposable
             .And.Contain("v_00000.ts");
     }
 
-    private async Task<EncodingResult> Encode(ISegmentProber prober)
+    [Fact]
+    public async Task FinishedEncode_RemovesTheResumeMarkerAndTheCrashCheckpoint()
+    {
+        string marker = Path.Combine(_dir, ".resume." + new string('a', 64));
+        string checkpoint = Path.Combine(_dir, ".checkpoint.json");
+        File.WriteAllText(marker, "run-0");
+        File.WriteAllText(checkpoint, "{}");
+
+        EncodingResult result = await Encode(new SegmentProber(1.0), withCleanup: true);
+
+        result.Success.Should().BeTrue(result.Error?.Message);
+        File.Exists(marker).Should().BeFalse("a finished encode has nothing to resume");
+        File.Exists(checkpoint).Should().BeFalse("the crash it described is over");
+        File.Exists(Path.Combine(_dir, "video", "v.m3u8")).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task FailedEncode_KeepsTheResumeMarkerAndTheCrashCheckpoint()
+    {
+        string marker = Path.Combine(_dir, ".resume." + new string('a', 64));
+        string checkpoint = Path.Combine(_dir, ".checkpoint.json");
+        File.WriteAllText(marker, "run-0");
+        File.WriteAllText(checkpoint, "{}");
+
+        EncodingResult result = await Encode(new SegmentProber(null), withCleanup: true);
+
+        result.Success.Should().BeFalse();
+        File.Exists(marker).Should().BeTrue();
+        File.Exists(checkpoint).Should().BeTrue();
+    }
+
+    private async Task<EncodingResult> Encode(ISegmentProber prober, bool withCleanup = false)
     {
         FfmpegCommand[] commands =
         [
@@ -152,7 +184,11 @@ public class EncoderResumeStitchTests : IDisposable
             execute.Object,
             _finalize.Object,
             NullLogger<NoMercy.Encoder.Pipeline.Encoder>.Instance,
-            resumeStitcher: new(_storage, prober, NullLogger<EncodeResumeStitcher>.Instance)
+            resumeStitcher: new(_storage, prober, NullLogger<EncodeResumeStitcher>.Instance),
+            resumeMarker: withCleanup ? new EncodeResumeMarker(_storage) : null,
+            checkpointStore: withCleanup
+                ? new JsonCheckpointStore(_storage, NullLogger<JsonCheckpointStore>.Instance)
+                : null
         );
         EncodingProfile profile = new(Ulid.NewUlid(), "test", Container.HlsTs, null, [], []);
         OutputPlan plan = new(OutputFormat.Hls, [], [], [], null);
@@ -183,5 +219,11 @@ public class EncoderResumeStitchTests : IDisposable
             bool video,
             CancellationToken ct
         ) => FirstPtsAsync(segmentPath, ct);
+
+        public Task<double?> FirstPacketDelayAsync(
+            string segmentPath,
+            bool video,
+            CancellationToken ct
+        ) => Task.FromResult<double?>(0);
     }
 }

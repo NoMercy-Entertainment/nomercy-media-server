@@ -30,6 +30,20 @@ public class FfprobeSegmentProberTests
     public void ParseFirstPts_NoNumber_ReturnsNull(string output) =>
         FfprobeSegmentProber.ParseFirstPts(output).Should().BeNull();
 
+    [Theory]
+    [InlineData("1.480000,1.400000\n", 0.08)]
+    [InlineData("N/A,N/A\n1.480000,1.400000\n", 0.08)]
+    [InlineData("1.400000,1.400000\n", 0)]
+    public void ParseFirstDelay_IsPtsMinusDts(string output, double expected) =>
+        FfprobeSegmentProber.ParseFirstDelay(output).Should().BeApproximately(expected, 1e-9);
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("1.4\n")]
+    [InlineData("N/A,N/A\n")]
+    public void ParseFirstDelay_NoPair_ReturnsNull(string output) =>
+        FfprobeSegmentProber.ParseFirstDelay(output).Should().BeNull();
+
     [Fact]
     public async Task FirstPacketPtsAsync_ProbesTheFirstPacketOfTheVideoStream()
     {

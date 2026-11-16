@@ -29,7 +29,35 @@ public class FfprobeSegmentProber(IProcessRunner processRunner, EncoderOptions o
     public Task<double?> FirstPtsAsync(string segmentPath, CancellationToken ct) =>
         ProbeAsync(segmentPath, null, ct);
 
+    public async Task<double?> FirstPacketDelayAsync(
+        string segmentPath,
+        bool video,
+        CancellationToken ct
+    )
+    {
+        ProcessResult result = await RunProbeAsync(
+            segmentPath,
+            video ? "v:0" : "a:0",
+            "packet=pts_time,dts_time",
+            ct
+        );
+
+        return result.IsSuccess ? ParseFirstDelay(result.StdOut) : null;
+    }
+
     private async Task<double?> ProbeAsync(string segmentPath, string? stream, CancellationToken ct)
+    {
+        ProcessResult result = await RunProbeAsync(segmentPath, stream, "packet=pts_time", ct);
+
+        return result.IsSuccess ? ParseFirstPts(result.StdOut) : null;
+    }
+
+    private async Task<ProcessResult> RunProbeAsync(
+        string segmentPath,
+        string? stream,
+        string entries,
+        CancellationToken ct
+    )
     {
         string[] arguments =
         [
@@ -37,7 +65,7 @@ public class FfprobeSegmentProber(IProcessRunner processRunner, EncoderOptions o
             "quiet",
             .. stream is null ? Array.Empty<string>() : ["-select_streams", stream],
             "-show_entries",
-            "packet=pts_time",
+            entries,
             "-of",
             "csv=p=0",
             "-read_intervals",
@@ -45,14 +73,38 @@ public class FfprobeSegmentProber(IProcessRunner processRunner, EncoderOptions o
             segmentPath,
         ];
 
-        ProcessResult result = await processRunner.RunAsync(
+        return await processRunner.RunAsync(
             options.FfprobePath,
             arguments,
             ProbeTimeout,
             cancellationToken: ct
         );
+    }
 
-        return result.IsSuccess ? ParseFirstPts(result.StdOut) : null;
+    internal static double? ParseFirstDelay(string output)
+    {
+        foreach (string line in output.Split('\n', StringSplitOptions.RemoveEmptyEntries))
+        {
+            string[] fields = line.Split(',');
+            if (
+                fields.Length >= 2
+                && double.TryParse(
+                    fields[0].Trim(),
+                    NumberStyles.Float,
+                    CultureInfo.InvariantCulture,
+                    out double pts
+                )
+                && double.TryParse(
+                    fields[1].Trim(),
+                    NumberStyles.Float,
+                    CultureInfo.InvariantCulture,
+                    out double dts
+                )
+            )
+                return pts - dts;
+        }
+
+        return null;
     }
 
     internal static double? ParseFirstPts(string output)

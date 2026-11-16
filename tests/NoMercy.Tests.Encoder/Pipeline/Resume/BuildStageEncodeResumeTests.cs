@@ -209,5 +209,11 @@ public class BuildStageEncodeResumeTests : IDisposable
 
         public Task<double?> FirstPtsAsync(string segmentPath, CancellationToken ct) =>
             FirstPacketPtsAsync(segmentPath, true, ct);
+
+        public Task<double?> FirstPacketDelayAsync(
+            string segmentPath,
+            bool video,
+            CancellationToken ct
+        ) => Task.FromResult<double?>(0);
     }
 }
