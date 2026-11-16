@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using NoMercy.Database;
 using NoMercy.Database.Models.Common;
 using NoMercy.Database.Models.Libraries;
@@ -169,13 +170,83 @@ public class ShowRepository(MediaContext context) : IShowRepository
         if (target is null)
             return false;
 
-        Tv? tv = await context.Tvs.FirstOrDefaultAsync(row => row.Id == tvId);
-        if (tv is null || tv.LibraryId == target.Id)
+        // The read and both writes share one transaction, and the writes are
+        // set-based: nothing is left tracked on the import's shared context,
+        // and a scan linking the show at the same moment cannot make the move
+        // fail (the delete removes whatever is there, the upsert absorbs a
+        // link that already exists). A transaction the caller already opened
+        // stays the caller's to commit.
+        if (context.Database.CurrentTransaction is not null)
+            return await RefileAsync(tvId, target.Id);
+
+        await using IDbContextTransaction transaction =
+            await context.Database.BeginTransactionAsync();
+        bool changed = await RefileAsync(tvId, target.Id);
+        await transaction.CommitAsync();
+        return changed;
+    }
+
+    // A show belongs to one library, so the LibraryTv link moves with
+    // Tv.LibraryId. Moving only the column left the show listed under the
+    // library it was just taken out of. A show already filed here but still
+    // linked elsewhere (what the column-only move left behind) gets its link
+    // moved too.
+    private async Task<bool> RefileAsync(int tvId, Ulid targetLibraryId)
+    {
+        Ulid? currentLibraryId = await GetCurrentLibraryIdAsync(tvId);
+        if (currentLibraryId is null)
             return false;
 
-        tv.LibraryId = target.Id;
-        await context.SaveChangesAsync();
+        List<LibraryTv> links = await context
+            .LibraryTv.AsNoTracking()
+            .Where(link => link.TvId == tvId)
+            .ToListAsync();
+        bool linksAgree = links.All(link => link.LibraryId == targetLibraryId);
+        if (currentLibraryId == targetLibraryId && linksAgree)
+            return false;
+
+        if (currentLibraryId != targetLibraryId)
+            await context
+                .Tvs.Where(tv => tv.Id == tvId)
+                .ExecuteUpdateAsync(set => set.SetProperty(tv => tv.LibraryId, targetLibraryId));
+
+        if (!linksAgree)
+            await MoveLinksAsync(links, targetLibraryId, tvId);
+
         return true;
+    }
+
+    // Replaces every link of the show with one link to the target library,
+    // whether that link is new or already there. It keeps how and when the
+    // show first came in: Manual if any of the links was, and the earliest
+    // date of them all. A re-file is not the owner adding the show, and it is
+    // not new to the server. A show with no link at all gains none here;
+    // membership is not this method's to invent.
+    private async Task MoveLinksAsync(List<LibraryTv> links, Ulid targetLibraryId, int tvId)
+    {
+        string addedBy = links.Any(link => link.AddedBy == LibraryLinkOrigin.Manual)
+            ? LibraryLinkOrigin.Manual
+            : LibraryLinkOrigin.File;
+        DateTime? addedAt = links.Min(link => link.AddedAt);
+
+        await context
+            .LibraryTv.Where(link => link.TvId == tvId && link.LibraryId != targetLibraryId)
+            .ExecuteDeleteAsync();
+
+        await context
+            .LibraryTv.Upsert(new(targetLibraryId, tvId, addedBy) { AddedAt = addedAt })
+            .On(link => new { link.LibraryId, link.TvId })
+            .WhenMatched(
+                (existing, incoming) =>
+                    new()
+                    {
+                        LibraryId = incoming.LibraryId,
+                        TvId = incoming.TvId,
+                        AddedBy = incoming.AddedBy,
+                        AddedAt = incoming.AddedAt,
+                    }
+            )
+            .RunAsync();
     }
 
     public Task StoreAlternativeTitles(IEnumerable<AlternativeTitle> alternativeTitles)

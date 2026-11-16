@@ -45,8 +45,9 @@ public interface IShowRepository
 
     /// <summary>
     /// Moves a Tv row into the library of the given type when it is not already
-    /// there. Library membership only — no files move, nothing is re-scanned.
-    /// Returns true when a row was actually moved.
+    /// there, and moves its LibraryTv link with it so both agree. Library
+    /// membership only — no files move, nothing is re-scanned.
+    /// Returns true when the row or its link was actually moved.
     /// </summary>
     Task<bool> EnsureFiledUnderLibraryTypeAsync(int tvId, string libraryType);
     Task StoreAlternativeTitles(IEnumerable<AlternativeTitle> alternativeTitles);
