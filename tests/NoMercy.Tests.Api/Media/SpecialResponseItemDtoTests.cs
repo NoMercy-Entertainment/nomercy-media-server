@@ -95,7 +95,7 @@ public class SpecialResponseItemDtoTests
             Id = specialId,
             Title = "The Best Of",
             Overview = "ov",
-            Backdrop = "https://storage.nomercy.tv/laravel/backdrop.jpg",
+            Backdrop = "/backdrop.jpg",
             Poster = "/poster.jpg",
             Logo = "/logo.jpg",
         };
@@ -210,7 +210,12 @@ public class SpecialResponseItemDtoTests
     [Fact]
     public void Ctor_SpecialOnly_ComputesFromRawItemsWithNullSafeMovieNavigation()
     {
-        Special special = new() { Id = Ulid.NewUlid(), Title = "Raw Special" };
+        Special special = new()
+        {
+            Id = Ulid.NewUlid(),
+            Title = "Raw Special",
+            Backdrop = "/raw-backdrop.jpg",
+        };
 
         Movie movieWithRuntime = new()
         {
@@ -245,6 +250,7 @@ public class SpecialResponseItemDtoTests
 
         SpecialResponseItemDto dto = new(special);
 
+        Assert.Equal("/raw-backdrop.jpg", dto.Backdrop);
         Assert.Equal(3, dto.NumberOfItems);
         Assert.Equal(2, dto.HaveItems); // haveMovies=1 (movieWithRuntime) + haveEpisodes=1 (episode)
 
@@ -291,7 +297,7 @@ public class SpecialResponseItemDtoTests
             Id = Ulid.NewUlid(),
             Title = "The Detail Special",
             Overview = "detail overview",
-            Backdrop = "https://storage.nomercy.tv/laravel/x.jpg",
+            Backdrop = "/x.jpg",
             Poster = "/detail-poster.jpg",
             Logo = "/detail-logo.jpg",
             ColorPalette = colorPaletteJson,

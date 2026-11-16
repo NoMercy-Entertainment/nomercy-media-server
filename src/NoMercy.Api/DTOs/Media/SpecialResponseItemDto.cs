@@ -152,7 +152,7 @@ public record SpecialResponseItemDto
         Id = special.Id;
         Title = special.Title.OrEmpty();
         Overview = special.Overview;
-        Backdrop = special.Backdrop?.Replace("https://storage.nomercy.tv/laravel", "");
+        Backdrop = special.Backdrop;
         Poster = special.Poster;
         Logo = special.Logo;
         TitleSort = special.Title.TitleSort();
@@ -199,7 +199,7 @@ public record SpecialResponseItemDto
         Id = special.Id;
         Title = special.Title.OrEmpty();
         Overview = special.Overview;
-        Backdrop = special.Backdrop?.Replace("https://storage.nomercy.tv/laravel", "");
+        Backdrop = special.Backdrop;
         Logo = special.Logo;
         Poster = special.Poster;
         TitleSort = special.Title.TitleSort();
@@ -301,7 +301,7 @@ public record SpecialResponseItemDto
         Id = detail.Id;
         Title = detail.Title;
         Overview = detail.Overview;
-        Backdrop = detail.Backdrop?.Replace("https://storage.nomercy.tv/laravel", "");
+        Backdrop = detail.Backdrop;
         Poster = detail.Poster;
         Logo = detail.Logo;
         TitleSort = detail.Title.TitleSort();
