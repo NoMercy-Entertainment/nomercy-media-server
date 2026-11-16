@@ -315,6 +315,23 @@ public class BuildStage(
                 input.ExactResume && input.ResumeFromMs is > 0
                     ? TimeSpan.FromMilliseconds(input.ResumeFromMs.Value)
                     : ResolveResumeSeek(input.ResumeFromMs);
+
+            // A seek would cut a sprite built on this command down to the tail, so a
+            // seeked build moves it to its own command that reads the whole source.
+            ThumbnailOutputPlan? seekedSprite = resumeSeek is null
+                ? null
+                : input.Plan.OutputPlan.Thumbnails;
+            if (seekedSprite is not null)
+            {
+                input = input with
+                {
+                    Plan = input.Plan with
+                    {
+                        OutputPlan = input.Plan.OutputPlan with { Thumbnails = null },
+                    },
+                };
+            }
+
             bool useGpuResident = FilterGraphAssembler.UsesGpuResidentPath(
                 input.Plan.OutputPlan,
                 context.MediaInfo
@@ -441,11 +458,12 @@ public class BuildStage(
             // Thumbnail sprite — the spritevtt muxer generates both the sprite
             // sheet (.webp) and the companion VTT cue file in one pass.
             List<FfmpegCommand> spriteCommands = [];
-            if (input.Plan.OutputPlan.Thumbnails is not null && context.MediaInfo is not null)
+            ThumbnailOutputPlan? spritePlan = input.Plan.OutputPlan.Thumbnails ?? seekedSprite;
+            if (spritePlan is not null && context.MediaInfo is not null)
             {
-                ThumbnailOutputPlan thumbs = input.Plan.OutputPlan.Thumbnails;
+                ThumbnailOutputPlan thumbs = spritePlan;
 
-                if (!HasFiltergraphVideoOutput(input.Plan.OutputPlan))
+                if (seekedSprite is not null || !HasFiltergraphVideoOutput(input.Plan.OutputPlan))
                 {
                     // Nothing on the main builder defines a [thumbs] pad unless a
                     // video output is running through the filtergraph. That is the
