@@ -121,6 +121,73 @@ public class OrphanJobRecoveryCheckpointTests
         Assert.Equal(0, context.Jobs[0].Attempts);
     }
 
+    [Fact]
+    public async Task StartAsync_EncoderOrphanWithCheckpointBelowTheCap_ResumedAndChargedOneInterruption()
+    {
+        Mock<IOrphanCheckpointLookup> lookup = new();
+        lookup
+            .Setup(l => l.HasCheckpointAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        (OrphanJobRecoveryHostedService service, TestQueueContextAdapter context) = BuildService(
+            lookup.Object
+        );
+
+        QueueJobModel orphan = new()
+        {
+            Queue = EncoderQueue,
+            Payload = "{\"OutputDirectory\":\"/media/output\"}",
+            Priority = 5,
+            Attempts = 1,
+            Interruptions = OrphanRecoveryTriage.MaxInterruptions - 2,
+            ReservedAt = DateTime.UtcNow.AddMinutes(-5),
+            AvailableAt = DateTime.UtcNow.AddHours(-1),
+        };
+        context.AddJob(orphan);
+
+        await service.StartAsync(CancellationToken.None);
+        if (service.ExecuteTask is not null)
+            await service.ExecuteTask;
+
+        Assert.Single(context.Jobs);
+        Assert.Empty(context.FailedJobs);
+        Assert.Equal(0, context.Jobs[0].Attempts);
+        Assert.Null(context.Jobs[0].ReservedAt);
+        Assert.Equal(OrphanRecoveryTriage.MaxInterruptions - 1, context.Jobs[0].Interruptions);
+    }
+
+    [Fact]
+    public async Task StartAsync_EncoderOrphanWithCheckpointInterruptedTooOften_MovedToFailedJobs()
+    {
+        Mock<IOrphanCheckpointLookup> lookup = new();
+        lookup
+            .Setup(l => l.HasCheckpointAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        (OrphanJobRecoveryHostedService service, TestQueueContextAdapter context) = BuildService(
+            lookup.Object
+        );
+
+        QueueJobModel orphan = new()
+        {
+            Queue = EncoderQueue,
+            Payload = "{\"OutputDirectory\":\"/media/output\"}",
+            Priority = 5,
+            Attempts = 1,
+            Interruptions = OrphanRecoveryTriage.MaxInterruptions - 1,
+            ReservedAt = DateTime.UtcNow.AddMinutes(-5),
+            AvailableAt = DateTime.UtcNow.AddHours(-1),
+        };
+        context.AddJob(orphan);
+
+        await service.StartAsync(CancellationToken.None);
+        if (service.ExecuteTask is not null)
+            await service.ExecuteTask;
+
+        Assert.Empty(context.Jobs);
+        Assert.Single(context.FailedJobs);
+    }
+
     // ── Without checkpoint — original behaviour preserved ──────────────────
 
     [Fact]

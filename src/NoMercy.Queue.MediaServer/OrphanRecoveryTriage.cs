@@ -105,22 +105,12 @@ public static class OrphanRecoveryTriage
             DateTime? reservedAt = orphan.ReservedAt;
             bool isEncoderJob = encoderQueues.Contains(orphan.Queue);
 
-            if (isEncoderJob && checkpointLookup is not null)
-            {
-                bool hasCheckpoint = await checkpointLookup
+            bool hasCheckpoint =
+                isEncoderJob
+                && checkpointLookup is not null
+                && await checkpointLookup
                     .HasCheckpointAsync(orphan.Payload, cancellationToken)
                     .ConfigureAwait(false);
-
-                if (hasCheckpoint)
-                {
-                    orphan.Attempts = 0;
-                    orphan.ReservedAt = null;
-                    context.UpdateJob(orphan);
-                    resumable++;
-                    onReclaimed?.Invoke(orphan, reservedAt, "resumed-from-checkpoint");
-                    continue;
-                }
-            }
 
             // An interrupted job is charged an interruption, never an attempt.
             // ReserveJob increments Attempts the moment it hands a job out, so
@@ -134,9 +124,12 @@ public static class OrphanRecoveryTriage
                 orphan.Attempts = (byte)Math.Max(0, orphan.Attempts - 1);
             }
 
+            // A checkpoint spares a job the attempt budget, never the interruption
+            // cap: a job that takes the process down on every run leaves a
+            // checkpoint behind too, and would be resumed by every boot forever.
             bool exhausted = interrupted
                 ? orphan.Interruptions >= MaxInterruptions
-                : orphan.Attempts > 1;
+                : !hasCheckpoint && orphan.Attempts > 1;
 
             if (exhausted)
             {
@@ -156,6 +149,14 @@ public static class OrphanRecoveryTriage
                 );
                 failed++;
                 onReclaimed?.Invoke(orphan, reservedAt, "failed-exhausted");
+            }
+            else if (hasCheckpoint)
+            {
+                orphan.Attempts = 0;
+                orphan.ReservedAt = null;
+                context.UpdateJob(orphan);
+                resumable++;
+                onReclaimed?.Invoke(orphan, reservedAt, "resumed-from-checkpoint");
             }
             else
             {
