@@ -277,6 +277,7 @@ public class RouteContractSnapshotTests : IClassFixture<NoMercyApiFactory>
         "GET api/v{version:apiVersion}/plugins/{id:ulid}/live/{channel}/guide [PluginLive.Guide]",
         "GET api/v{version:apiVersion}/plugins/{id:ulid}/media/{ticket} [PluginMedia.Media]",
         "GET api/v{version:apiVersion}/plugins/{id:ulid}/lan/{deviceId}/{credential} [PluginLan.Device]",
+        "GET api/v{version:apiVersion}/plugins/{id:ulid}/lan-media/{ticket} [PluginMedia.LanMedia]",
         "GET|HEAD|POST|PUT|PATCH|DELETE|OPTIONS api/v{version:apiVersion}/plugins/{id:ulid}/lan/{deviceId}/{credential}/{**path} [PluginLan.Forward]",
         "GET api/v{version:apiVersion}/search/music [Search.SearchMusic]",
         "GET api/v{version:apiVersion}/search/music/tv [Search.SearchTvMusic]",

@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.DependencyInjection;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Lan;
 using NoMercy.PluginSdk.Mvc;
 
 namespace NoMercy.Tests.Api.Plugins;
@@ -48,6 +49,9 @@ public class LanSamplePluginController : PluginControllerBase
             $"accessor={HttpContext.RequestServices.GetRequiredService<IPluginCallerAccessor>().CurrentUserId}"
         );
         seen.AppendLine($"caller={CallerOrRefusal()}");
+        seen.AppendLine(
+            $"minting-for={HttpContext.RequestServices.GetRequiredService<IPluginLanCallerAccessor>().Current?.DeviceId}"
+        );
 
         return Content(seen.ToString());
     }

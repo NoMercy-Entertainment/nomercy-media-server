@@ -15,6 +15,7 @@ using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Capabilities;
+using NoMercy.PluginSdk.Lan;
 using NoMercy.PluginSdk.Network;
 using NoMercy.PluginSdk.Quotas;
 using NoMercy.Storage;
@@ -38,7 +39,8 @@ public partial class PluginMediaProxy(
     ILogger logger,
     PluginQuotaMeter? quotas = null,
     string? dataFolder = null,
-    IStorage? files = null
+    IStorage? files = null,
+    IPluginLanCallerAccessor? lanCaller = null
 ) : IPluginMediaProxy, IPluginMediaFetcher
 {
     // Enough for a byte order mark, a little whitespace and "#EXTM3U".
@@ -144,14 +146,16 @@ public partial class PluginMediaProxy(
             );
 
         DateTimeOffset expiresAt = DateTimeOffset.UtcNow.Add(TicketLifetime);
-        string ticket = minter.MintFile(pluginId, Asking(), path, TicketLifetime);
+        string link = Asking() switch
+        {
+            { DeviceId: { } device } => DeviceLink(
+                minter.MintFileForDevice(pluginId, device, path, TicketLifetime)
+            ),
+            { UserId: var user } => UserLink(minter.MintFile(pluginId, user, path, TicketLifetime)),
+        };
 
         return Task.FromResult(
-            PluginMediaUrl.Minted(
-                new($"/api/v1/plugins/{pluginId}/media/{ticket}", UriKind.Relative),
-                expiresAt,
-                default
-            )
+            PluginMediaUrl.Minted(new(link, UriKind.Relative), expiresAt, default)
         );
     }
 
@@ -372,26 +376,58 @@ public partial class PluginMediaProxy(
     private PluginMediaUrl Minted(PluginProxyRequest request)
     {
         DateTimeOffset expiresAt = DateTimeOffset.UtcNow.Add(TicketLifetime);
-        string ticket = minter.Mint(pluginId, Asking(), request, TicketLifetime);
 
-        return PluginMediaUrl.Minted(
-            new($"/api/v1/plugins/{pluginId}/media/{ticket}", UriKind.Relative),
-            expiresAt,
-            default
-        );
+        return PluginMediaUrl.Minted(new(Link(request), UriKind.Relative), expiresAt, default);
     }
 
     /// <summary>
-    /// The account this link is for. Refused rather than minted for nobody: a
-    /// ticket bound to the empty account is a ticket anybody can play, and a
-    /// plugin minting one outside a request has nobody to play it.
+    /// A ticket for whoever is asking, as the address a client fetches: the
+    /// user media route for an account, the LAN media route for a device.
     /// </summary>
-    private Guid Asking()
+    private string Link(PluginProxyRequest request) =>
+        Asking() switch
+        {
+            { DeviceId: { } device } => DeviceLink(
+                minter.MintForDevice(pluginId, device, request, TicketLifetime)
+            ),
+            { UserId: var user } => UserLink(minter.Mint(pluginId, user, request, TicketLifetime)),
+        };
+
+    private string UserLink(string ticket) => $"/api/v1/plugins/{pluginId}/media/{ticket}";
+
+    private string DeviceLink(string ticket) => $"/api/v1/plugins/{pluginId}/lan-media/{ticket}";
+
+    /// <summary>
+    /// Who this link is for: the LAN device a LAN route is serving, or else
+    /// the account. Refused rather than minted for nobody: a ticket bound to
+    /// the empty account is a ticket anybody can play, and a plugin minting
+    /// one outside a request has nobody to play it.
+    /// </summary>
+    private (Guid UserId, string? DeviceId) Asking()
     {
+        if (lanCaller?.Current is { } device)
+        {
+            // The server checked this device for one plugin. Another plugin's
+            // facade has no business minting for it.
+            if (device.PluginId != pluginId)
+                throw new PluginRefusedException(
+                    new(
+                        PluginRefusalCodes.MediaTicketUserMismatch,
+                        pluginId.ToString(),
+                        "The server did not mint a media link.",
+                        "The device asking reached a different plugin.",
+                        "Mint links for a device only while serving its own LAN route.",
+                        PluginRefusalSeverity.Blocked
+                    )
+                );
+
+            return (Guid.Empty, device.DeviceId);
+        }
+
         Guid userId = caller.CurrentUserId;
 
         if (userId != Guid.Empty)
-            return userId;
+            return (userId, null);
 
         throw new PluginRefusedException(
             new(
@@ -562,6 +598,6 @@ public partial class PluginMediaProxy(
             ],
         };
 
-        return $"/api/v1/plugins/{pluginId}/media/{minter.Mint(pluginId, Asking(), child, TicketLifetime)}";
+        return Link(child);
     }
 }

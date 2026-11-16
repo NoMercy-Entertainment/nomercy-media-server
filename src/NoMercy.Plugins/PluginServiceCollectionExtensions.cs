@@ -1,4 +1,4 @@
-﻿// -----------------------------------------------------------------------------
+// -----------------------------------------------------------------------------
 //  Copyright (c) 2024-present NoMercy Entertainment. All rights reserved.
 //
 //  This file is part of NoMercy MediaServer, source-available software (NOT open
@@ -435,7 +435,8 @@ public static class PluginServiceCollectionExtensions
         services.AddSingleton<PluginLanDeviceMinter>(sp =>
             new(
                 sp.GetRequiredService<IPluginLanDeviceStore>(),
-                sp.GetRequiredService<TimeProvider>()
+                sp.GetRequiredService<TimeProvider>(),
+                sp.GetRequiredService<PluginMediaTicketMinter>()
             )
         );
 
@@ -507,7 +508,8 @@ public static class PluginServiceCollectionExtensions
             sp.GetRequiredService<ILoggerFactory>(),
             sp.GetRequiredService<PluginQuotaMeter>(),
             pluginsPath,
-            PluginStorage(sp, pluginsPath)
+            PluginStorage(sp, pluginsPath),
+            sp.GetService<IPluginLanCallerAccessor>()
         ));
 
         services.AddSingleton<PluginMediaTicketMinter>(sp =>

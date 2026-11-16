@@ -13,6 +13,7 @@ using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Media;
 
 namespace NoMercy.PluginSdk.Lan;
 
@@ -25,7 +26,15 @@ namespace NoMercy.PluginSdk.Lan;
 /// plugin's page. A plugin never issues one and never sees one.
 /// </para>
 /// </summary>
-public class PluginLanDeviceMinter(IPluginLanDeviceStore store, TimeProvider clock)
+/// <param name="tickets">
+/// The media tickets, so revoking a device forgets every link it was handed.
+/// Optional only for a host that serves no plugin media.
+/// </param>
+public class PluginLanDeviceMinter(
+    IPluginLanDeviceStore store,
+    TimeProvider clock,
+    PluginMediaTicketMinter? tickets = null
+)
 {
     /// <summary>
     /// 32 bytes. Long enough that guessing it is not a way in, which matters
@@ -85,6 +94,7 @@ public class PluginLanDeviceMinter(IPluginLanDeviceStore store, TimeProvider clo
     public void Revoke(Ulid pluginId, string deviceId)
     {
         store.Revoke(pluginId, deviceId);
+        tickets?.ForgetDevice(pluginId, deviceId);
 
         if (_revocations.TryRemove((pluginId, deviceId), out CancellationTokenSource? revoked))
         {
@@ -112,8 +122,11 @@ public class PluginLanDeviceMinter(IPluginLanDeviceStore store, TimeProvider clo
     }
 
     /// <summary>Whether the device exists on this plugin and has not been revoked.</summary>
-    public bool IsActive(Ulid pluginId, string deviceId) =>
-        store.Find(pluginId, deviceId) is { Revoked: false };
+    public bool IsActive(Ulid pluginId, string deviceId) => Active(pluginId, deviceId) is not null;
+
+    /// <summary>The device, when it exists on this plugin and has not been revoked.</summary>
+    public PluginLanDevice? Active(Ulid pluginId, string deviceId) =>
+        store.Find(pluginId, deviceId) is { Revoked: false } device ? device : null;
 
     public PluginRefusal? Refuse(Ulid pluginId, string deviceId, string credential)
     {

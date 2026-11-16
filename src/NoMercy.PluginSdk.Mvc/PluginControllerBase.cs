@@ -66,8 +66,9 @@ public abstract class PluginControllerBase : ControllerBase
     /// arrived through one of the routes the manifest names in
     /// <c>capabilities.lan.routes</c>; null on every other request.
     /// <para>
-    /// A LAN request has no user, and <see cref="Caller" /> refuses on it.
-    /// Added in ABI 12.10.
+    /// A LAN request has no user, and <see cref="Caller" /> refuses on it. A
+    /// media link minted while serving it is bound to this device instead of
+    /// an account. Added in ABI 12.10.
     /// </para>
     /// </summary>
     protected PluginLanCaller? LanCaller => HttpContext.Items[LanCallerItemKey] as PluginLanCaller;

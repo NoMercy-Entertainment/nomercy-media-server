@@ -12506,6 +12506,36 @@
         }
       }
     },
+    "/api/v1/plugins/{id}/lan-media/{ticket}": {
+      "get": {
+        "tags": [
+          "Plugins"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "ticket",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
     "/api/v1/plugins/search": {
       "get": {
         "tags": [

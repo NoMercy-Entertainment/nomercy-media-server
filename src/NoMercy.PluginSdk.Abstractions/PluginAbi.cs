@@ -40,7 +40,8 @@ public static class PluginAbi
     // routes a plugin serves to a device on the owner's network that cannot sign in. Additive:
     // an optional manifest field, absent on every plugin built before it. It also added
     // PluginLanCaller and PluginControllerBase.LanCaller (the device a LAN route answers), a new
-    // record and a new protected property.
+    // record and a new protected property. No member changed shape: a link minted through
+    // IPluginMediaProxy while a LAN route serves a device is bound to that device.
     public static Version Current { get; } = new(12, 10);
 
     /// <summary>

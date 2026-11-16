@@ -151,14 +151,5 @@ public class PluginLanController(
     }
 
     private IActionResult Refused(Ulid pluginId) =>
-        ForbiddenResponse(
-            new(
-                PluginRefusalCodes.LanCredentialInvalid,
-                pluginId.ToString(),
-                "The device could not reach the plugin.",
-                "This address answers only to a device the owner added on the plugin's page, on the same network as the server.",
-                "Use the address from the plugin's page, on a device in the same house as the server. Add the device again if it was removed.",
-                PluginRefusalSeverity.Blocked
-            )
-        );
+        ForbiddenResponse(PluginLanRefusal.For(pluginId));
 }

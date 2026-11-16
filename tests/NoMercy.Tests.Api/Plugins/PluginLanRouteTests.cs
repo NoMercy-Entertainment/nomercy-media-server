@@ -91,6 +91,8 @@ public class PluginLanRouteTests
         ).Content.ReadAsStringAsync();
 
         seen.Should().Contain($"device={device.DeviceId}");
+        seen.Should()
+            .Contain($"minting-for={device.DeviceId}", "a link minted now is the device's");
         seen.Should().Contain("name=Living room TV");
         seen.Should().Contain($"path=/api/v1/plugins/{LiveTv}/hdhr/discover.json");
         seen.Should().Contain("query=?x=1");

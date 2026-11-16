@@ -65,7 +65,20 @@ public class PluginMediaTicketMinter(TimeProvider clock, byte[] serverKey)
         );
 
     public string Mint(Ulid pluginId, Guid userId, PluginProxyRequest request, TimeSpan lifetime) =>
-        Mint(pluginId, userId, request, null, lifetime);
+        Mint(pluginId, userId, null, request, null, lifetime);
+
+    /// <summary>
+    /// A ticket for a device on the owner's network rather than an account,
+    /// minted while a LAN route is serving that device. It plays only on the
+    /// LAN media route, for this device, and is forgotten the moment the owner
+    /// revokes the device. Same lifetime rules as a user's ticket.
+    /// </summary>
+    public string MintForDevice(
+        Ulid pluginId,
+        string deviceId,
+        PluginProxyRequest request,
+        TimeSpan lifetime
+    ) => Mint(pluginId, Guid.Empty, deviceId, request, null, lifetime);
 
     /// <summary>
     /// A file in the plugin's own folder, by its path relative to that folder.
@@ -74,24 +87,26 @@ public class PluginMediaTicketMinter(TimeProvider clock, byte[] serverKey)
     /// after minting is still refused.
     /// </summary>
     public string MintFile(Ulid pluginId, Guid userId, string relativePath, TimeSpan lifetime) =>
-        Mint(
-            pluginId,
-            userId,
-            new PluginProxyRequest
-            {
-                // Never fetched: a file ticket is served from the folder by its
-                // path. A fixed address keeps any file name, "#" and "%" included,
-                // from having to make a valid URI.
-                Links = [new() { Url = FileTicketAddress }],
-                RewriteHlsPlaylists = false,
-            },
-            relativePath,
-            lifetime
-        );
+        Mint(pluginId, userId, null, FileRequest(), relativePath, lifetime);
+
+    /// <summary>A file in the plugin's own folder, for a device rather than an account.</summary>
+    public string MintFileForDevice(
+        Ulid pluginId,
+        string deviceId,
+        string relativePath,
+        TimeSpan lifetime
+    ) => Mint(pluginId, Guid.Empty, deviceId, FileRequest(), relativePath, lifetime);
+
+    // Never fetched: a file ticket is served from the folder by its path. A
+    // fixed address keeps any file name, "#" and "%" included, from having to
+    // make a valid URI.
+    private static PluginProxyRequest FileRequest() =>
+        new() { Links = [new() { Url = FileTicketAddress }], RewriteHlsPlaylists = false };
 
     private string Mint(
         Ulid pluginId,
         Guid userId,
+        string? deviceId,
         PluginProxyRequest request,
         string? file,
         TimeSpan lifetime
@@ -112,7 +127,9 @@ public class PluginMediaTicketMinter(TimeProvider clock, byte[] serverKey)
             file,
             expiresAt,
             hardStop > expiresAt ? hardStop : expiresAt,
-            null
+            null,
+            pluginId,
+            deviceId
         );
 
         string payload = JsonSerializer.Serialize(
@@ -186,6 +203,7 @@ public class PluginMediaTicketMinter(TimeProvider clock, byte[] serverKey)
                 )
                 {
                     FilePath = held.File,
+                    DeviceId = held.DeviceId,
                 },
                 digest,
                 held
@@ -217,6 +235,18 @@ public class PluginMediaTicketMinter(TimeProvider clock, byte[] serverKey)
                 PluginRefusalSeverity.Blocked
             );
 
+        // A device's ticket never plays for an account, whoever asks: the
+        // device was given it, not a person, and it is served on the LAN only.
+        if (open.Ticket.DeviceId is not null)
+            return new(
+                PluginRefusalCodes.MediaTicketUserMismatch,
+                open.Ticket.PluginId.ToString(),
+                "The media link did not play.",
+                "The link was minted for a device on the owner's network, not for an account.",
+                "Open the item from your own account.",
+                PluginRefusalSeverity.Blocked
+            );
+
         if (asking is { } user && user != open.Ticket.UserId)
             return new(
                 PluginRefusalCodes.MediaTicketUserMismatch,
@@ -228,6 +258,37 @@ public class PluginMediaTicketMinter(TimeProvider clock, byte[] serverKey)
             );
 
         return null;
+    }
+
+    /// <summary>
+    /// The ticket, when it may play for <paramref name="deviceId" /> on
+    /// <paramref name="pluginId" />'s LAN media route; null otherwise. A user's
+    /// ticket, another device's, another plugin's, one that ran out and one
+    /// this server never minted all read alike.
+    /// </summary>
+    public PluginMediaTicket? ReadForDevice(string ticket, Ulid pluginId)
+    {
+        (PluginMediaTicket Ticket, string Digest, Held Held)? opened = Open(ticket);
+
+        if (opened is not { } open || !open.Held.IsLive(clock.GetUtcNow()))
+            return null;
+
+        return open.Ticket is { DeviceId: not null } read && read.PluginId == pluginId
+            ? read
+            : null;
+    }
+
+    /// <summary>
+    /// Every ticket minted for a device, gone. Called when the owner revokes
+    /// it, so a link it was handed stops at once rather than when it runs out.
+    /// </summary>
+    public void ForgetDevice(Ulid pluginId, string deviceId)
+    {
+        foreach (KeyValuePair<string, Held> held in _upstreams)
+        {
+            if (held.Value.PluginId == pluginId && held.Value.DeviceId == deviceId)
+                _upstreams.TryRemove(held.Key, out _);
+        }
     }
 
     /// <summary>
@@ -264,12 +325,15 @@ public class PluginMediaTicketMinter(TimeProvider clock, byte[] serverKey)
     /// <param name="StartBy">The deadline the ticket was minted with: play it by then.</param>
     /// <param name="HardStop">The end, however much it is played.</param>
     /// <param name="LastPlayed">The last request it served, or null before the first.</param>
+    /// <param name="DeviceId">For a device's ticket, the device on the owner's network; null for a user's.</param>
     private sealed record Held(
         PluginProxyRequest Request,
         string? File,
         DateTimeOffset StartBy,
         DateTimeOffset HardStop,
-        DateTimeOffset? LastPlayed
+        DateTimeOffset? LastPlayed,
+        Ulid PluginId,
+        string? DeviceId
     )
     {
         public bool IsLive(DateTimeOffset now) =>
