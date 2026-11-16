@@ -116,12 +116,20 @@ public class DeviceRepository(MediaContext context) : IDeviceRepository
         return context.Devices.AsNoTracking().FirstOrDefaultAsync(d => d.DeviceId == deviceId);
     }
 
-    public Task<Device?> GetOwnedDeviceAsync(string deviceId, Guid ownerUserId, string type)
+    public async Task<Device?> GetByClientOrRowIdAsync(string deviceId)
     {
-        return context
-            .Devices.AsNoTracking()
-            .FirstOrDefaultAsync(d =>
-                d.DeviceId == deviceId && d.OwnerUserId == ownerUserId && d.Type == type
-            );
+        // The device hub lists a device by its row Ulid; older callers send the client device id.
+        Device? device = await GetByClientDeviceIdAsync(deviceId);
+        if (device is null && Ulid.TryParse(deviceId, out Ulid rowId))
+            device = await GetByIdAsync(rowId);
+        return device;
+    }
+
+    public async Task<Device?> GetOwnedDeviceAsync(string deviceId, Guid ownerUserId, string type)
+    {
+        Device? device = await GetByClientOrRowIdAsync(deviceId);
+        return device is not null && device.OwnerUserId == ownerUserId && device.Type == type
+            ? device
+            : null;
     }
 }

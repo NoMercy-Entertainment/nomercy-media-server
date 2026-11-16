@@ -322,4 +322,75 @@ public class DeviceRepositoryTests : IDisposable
         (await repo.GetOwnedDeviceAsync(othersTv.DeviceId, OwnerId, "tv")).Should().BeNull();
         (await repo.GetOwnedDeviceAsync(phone.DeviceId, OwnerId, "tv")).Should().BeNull();
     }
+
+    [Fact]
+    public async Task GetOwnedDeviceAsync_FindsTheOwnersTvByItsRowId_WithTheSameOwnerAndTypeChecks()
+    {
+        Device tv = MakeDevice(OwnerId, "tv");
+        tv.Type = "tv";
+        Device othersTv = MakeDevice(OtherOwnerId, "other-tv");
+        othersTv.Type = "tv";
+        Device phone = MakeDevice(OwnerId, "phone");
+
+        await using (MediaContext seedCtx = OpenContext())
+        {
+            seedCtx.Devices.AddRange(tv, othersTv, phone);
+            await seedCtx.SaveChangesAsync();
+        }
+
+        await using MediaContext ctx = OpenContext();
+        DeviceRepository repo = BuildRepo(ctx);
+
+        (await repo.GetOwnedDeviceAsync(tv.Id.ToString(), OwnerId, "tv"))!.Id.Should().Be(tv.Id);
+        (await repo.GetOwnedDeviceAsync(othersTv.Id.ToString(), OwnerId, "tv")).Should().BeNull();
+        (await repo.GetOwnedDeviceAsync(phone.Id.ToString(), OwnerId, "tv")).Should().BeNull();
+        (await repo.GetOwnedDeviceAsync(Ulid.NewUlid().ToString(), OwnerId, "tv"))
+            .Should()
+            .BeNull();
+    }
+
+    // =========================================================================
+    // GetByClientOrRowIdAsync — client device id first, then row id
+    // =========================================================================
+
+    [Fact]
+    public async Task GetByClientOrRowIdAsync_FindsADeviceByClientDeviceIdOrRowId_WhoeverOwnsIt()
+    {
+        Device device = MakeDevice(OtherOwnerId, "lookup");
+
+        await using (MediaContext seedCtx = OpenContext())
+        {
+            seedCtx.Devices.Add(device);
+            await seedCtx.SaveChangesAsync();
+        }
+
+        await using MediaContext ctx = OpenContext();
+        DeviceRepository repo = BuildRepo(ctx);
+
+        (await repo.GetByClientOrRowIdAsync(device.DeviceId))!.Id.Should().Be(device.Id);
+        (await repo.GetByClientOrRowIdAsync(device.Id.ToString()))!.Id.Should().Be(device.Id);
+        (await repo.GetByClientOrRowIdAsync("device-unknown")).Should().BeNull();
+        (await repo.GetByClientOrRowIdAsync(Ulid.NewUlid().ToString())).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task GetByClientOrRowIdAsync_PrefersTheClientDeviceId_OverAnotherDevicesRowId()
+    {
+        Device rowMatch = MakeDevice(OwnerId, "row");
+        Device clientMatch = MakeDevice(OwnerId, "client");
+        clientMatch.DeviceId = rowMatch.Id.ToString();
+
+        await using (MediaContext seedCtx = OpenContext())
+        {
+            seedCtx.Devices.AddRange(rowMatch, clientMatch);
+            await seedCtx.SaveChangesAsync();
+        }
+
+        await using MediaContext ctx = OpenContext();
+        DeviceRepository repo = BuildRepo(ctx);
+
+        (await repo.GetByClientOrRowIdAsync(rowMatch.Id.ToString()))!
+            .Id.Should()
+            .Be(clientMatch.Id);
+    }
 }
