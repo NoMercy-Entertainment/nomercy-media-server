@@ -1,5 +1,7 @@
 # Docs index
 
+- [`backups.md`](backups.md) — what a backup holds, when backups are made,
+  and how a restore works and is undone.
 - [`distributed-encoding.md`](distributed-encoding.md) — running encode jobs
   across a coordinator and remote workers.
 - [`encoder-errors.md`](encoder-errors.md) — the catalog of every
