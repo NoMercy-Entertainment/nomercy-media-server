@@ -156,6 +156,30 @@ public static class AppFiles
     // colon in an absolute path splits the filter argument.
     public static string StemsplitModelPath => Path.Combine(FfmpegFolder, StemsplitModel + ".gguf");
 
+    // The RoFormer models of the stemsplit filter's presets, by the names the
+    // filter looks for (stemsplit 2.0.1, `ffmpeg -h filter=stemsplit`). The
+    // vocals pair first: preset=vocal_full needs those two, preset=full all
+    // four. They land beside ffmpeg like Spleeter, so ffmpeg finds them in its
+    // working directory without a model_dir. 3.4 GB together, so they are only
+    // fetched on a machine with a GPU: RoFormer on a CPU takes most of an hour
+    // per minute of music.
+    public static IReadOnlyList<string> StemsplitRoformerVocalModels { get; } =
+    ["roformer-bs-vocals-revive3e-unwa-f32", "roformer-mel-vocals-becruily-f32"];
+
+    public static IReadOnlyList<string> StemsplitRoformerModels { get; } =
+    [
+        .. StemsplitRoformerVocalModels,
+        "roformer-mel-inst-v1e-plus-unwa-f32",
+        "roformer-mel-inst-becruily-f32",
+    ];
+
+    public static string StemsplitRoformerModelPath(string model) =>
+        Path.Combine(FfmpegFolder, model + ".gguf");
+
+    // What this machine's stemsplit filter said about RoFormer: refused, and
+    // for which ffmpeg build and GPUs. Read before every stem split.
+    public static string StemsplitVerdictPath => Path.Combine(ConfigPath, "stemsplit_verdict.json");
+
     // The CTC model the ffmpeg lyricsalign filter places a known lyric text on
     // the audio with. Beside ffmpeg like the other models, so a bare file name
     // resolves. Unlike them it is not fetched at setup: it is 600 MB and only a

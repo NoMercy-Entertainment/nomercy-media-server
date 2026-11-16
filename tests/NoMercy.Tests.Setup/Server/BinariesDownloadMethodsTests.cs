@@ -1315,6 +1315,132 @@ public sealed class BinariesDownloadMethodsTests : IDisposable
     }
 
     // -------------------------------------------------------------------------
+    // DownloadStemsplitRoformerModels — the four RoFormer files of preset=full,
+    // fetched only on a machine with a GPU (StemsplitRoformerModelService), each
+    // through the same verified single-asset path as every other model.
+    // -------------------------------------------------------------------------
+
+    private const string StemsplitApiUrl =
+        "https://api.github.com/repos/NoMercy-Entertainment/nomercy-stemsplit-models/releases/latest";
+
+    private static string RoformerUrl(string model) => $"https://example.com/{model}.gguf";
+
+    private static byte[] RoformerBytes(string model) =>
+        Encoding.ASCII.GetBytes("bytes of " + model);
+
+    /// <summary>The release as published: Spleeter and the four RoFormer files, each with its digest.</summary>
+    private static FakeHttpHandler RoformerRelease(DateTimeOffset publishedAt)
+    {
+        FakeHttpHandler handler = new();
+        List<Asset> assets = [MakeAsset("spleeter-2stems-f16.gguf", "https://example.com/spleeter")];
+
+        foreach (string model in AppFiles.StemsplitRoformerModels)
+        {
+            handler.Register(RoformerUrl(model), RoformerBytes(model));
+            assets.Add(MakeAsset(model + ".gguf", RoformerUrl(model), RoformerBytes(model)));
+        }
+
+        handler.RegisterReleaseInfo(
+            StemsplitApiUrl,
+            ReleaseWithAssets(publishedAt, "v2026.10.31", [.. assets])
+        );
+        return handler;
+    }
+
+    [Fact]
+    public async Task DownloadStemsplitRoformerModels_PutsAllFourBesideFfmpeg_AndNotSpleeter()
+    {
+        FakeHttpHandler handler = RoformerRelease(DateTimeOffset.UtcNow.AddDays(-1));
+
+        await BuildBinaries(handler).DownloadStemsplitRoformerModels();
+
+        Assert.Equal(4, AppFiles.StemsplitRoformerModels.Count);
+        foreach (string model in AppFiles.StemsplitRoformerModels)
+        {
+            Assert.Equal(
+                RoformerBytes(model),
+                await File.ReadAllBytesAsync(AppFiles.StemsplitRoformerModelPath(model))
+            );
+            Assert.Equal(1, handler.RequestCountFor(RoformerUrl(model)));
+        }
+
+        Assert.Equal(0, handler.RequestCountFor("https://example.com/spleeter"));
+        Assert.Equal(1, handler.RequestCountFor(StemsplitApiUrl));
+    }
+
+    [Fact]
+    public async Task DownloadStemsplitRoformerModels_AFileWithTheWrongBytes_IsRefused_AndTheOthersStillLand()
+    {
+        FakeHttpHandler handler = RoformerRelease(DateTimeOffset.UtcNow.AddDays(-1));
+        string tampered = AppFiles.StemsplitRoformerModels[1];
+        handler.Register(RoformerUrl(tampered), [.. "not the published bytes"u8]);
+
+        AggregateException thrown = await Assert.ThrowsAsync<AggregateException>(() =>
+            BuildBinaries(handler).DownloadStemsplitRoformerModels()
+        );
+
+        Assert.IsType<InvalidDataException>(Assert.Single(thrown.InnerExceptions));
+        Assert.False(File.Exists(AppFiles.StemsplitRoformerModelPath(tampered)));
+        foreach (string model in AppFiles.StemsplitRoformerModels.Where(m => m != tampered))
+        {
+            Assert.True(File.Exists(AppFiles.StemsplitRoformerModelPath(model)));
+        }
+    }
+
+    /// <summary>
+    /// A new release of the repository that only adds a model must not fetch
+    /// 3.4 GB of RoFormer files that did not change: a file older than the
+    /// release with exactly the asset's bytes is kept and stamped current.
+    /// </summary>
+    [Fact]
+    public async Task DownloadStemsplitRoformerModels_AnOlderFileWithTheSameBytes_IsKept_AndStampedCurrent()
+    {
+        DateTimeOffset publishedAt = DateTimeOffset.UtcNow.AddDays(-1);
+        Directory.CreateDirectory(AppFiles.FfmpegFolder);
+        foreach (string model in AppFiles.StemsplitRoformerModels)
+        {
+            string path = AppFiles.StemsplitRoformerModelPath(model);
+            await File.WriteAllBytesAsync(path, RoformerBytes(model));
+            File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddDays(-30));
+        }
+
+        FakeHttpHandler handler = RoformerRelease(publishedAt);
+        Binaries binaries = BuildBinaries(handler);
+
+        await binaries.DownloadStemsplitRoformerModels();
+
+        foreach (string model in AppFiles.StemsplitRoformerModels)
+        {
+            Assert.Equal(0, handler.RequestCountFor(RoformerUrl(model)));
+            Assert.True(
+                binaries.CheckLocalVersion(
+                    ReleaseWithAssets(publishedAt, "v2026.10.31"),
+                    AppFiles.StemsplitRoformerModelPath(model),
+                    out string _
+                ),
+                $"{model} must be stamped as current"
+            );
+        }
+    }
+
+    [Fact]
+    public async Task DownloadStemsplitRoformerModels_AnOlderFileWithOtherBytes_IsReplaced()
+    {
+        string model = AppFiles.StemsplitRoformerModels[0];
+        string path = AppFiles.StemsplitRoformerModelPath(model);
+        Directory.CreateDirectory(AppFiles.FfmpegFolder);
+        await File.WriteAllTextAsync(path, "an earlier model of the same name");
+        File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddDays(-30));
+
+        FakeHttpHandler handler = RoformerRelease(DateTimeOffset.UtcNow.AddDays(-1));
+
+        await BuildBinaries(handler).DownloadStemsplitRoformerModels();
+
+        Assert.Equal(1, handler.RequestCountFor(RoformerUrl(model)));
+        Assert.Equal(RoformerBytes(model), await File.ReadAllBytesAsync(path));
+    }
+
+    // -------------------------------------------------------------------------
     // DownloadTesseractData — per-language loop
     // -------------------------------------------------------------------------
 

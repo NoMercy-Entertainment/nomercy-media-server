@@ -2206,6 +2206,46 @@ public class Binaries
         );
 
     /// <summary>
+    /// Downloads the four RoFormer models of the stemsplit filter's presets
+    /// (<see cref="AppFiles.StemsplitRoformerModels"/>) from the nomercy-stemsplit-models
+    /// release, each verified the way every model is: against the signed manifest, else
+    /// its <c>.sha256</c> sidecar, else GitHub's digest. One release lookup serves all four.
+    /// <para>
+    /// 3.4 GB together, and RoFormer is only usable on a GPU, so this is not part of
+    /// <see cref="DownloadAll"/>: <see cref="StemsplitRoformerModelService"/> calls it on a
+    /// machine whose hardware detection reports one. A model that fails does not stop the
+    /// others; the failures are thrown together once all four were tried.
+    /// </para>
+    /// </summary>
+    internal async Task DownloadStemsplitRoformerModels()
+    {
+        GithubReleaseResponse releaseInfo = await GetLatestReleaseInfo(GithubStemsplitModelApiUrl);
+        List<Exception> failures = [];
+
+        foreach (string model in AppFiles.StemsplitRoformerModels)
+        {
+            try
+            {
+                await DownloadGgufModelAsync(
+                    GithubStemsplitModelApiUrl,
+                    "nomercy-stemsplit-models",
+                    model,
+                    "RoFormer " + model,
+                    releaseInfo,
+                    keepIdenticalLocalFile: true
+                );
+            }
+            catch (Exception exception)
+            {
+                failures.Add(exception);
+            }
+        }
+
+        if (failures.Count > 0)
+            throw new AggregateException("Not every RoFormer model could be downloaded", failures);
+    }
+
+    /// <summary>
     /// Downloads and verifies the lyricsalign GGUF model (wav2vec2 XLSR-53 with
     /// espeak phonemes) that the ffmpeg <c>lyricsalign</c> filter places a known
     /// lyric text on the audio with, from the dedicated nomercy-lyricsalign-models
@@ -2234,16 +2274,25 @@ public class Binaries
     /// </summary>
     /// <param name="repository">The release's repository, as the log and the verification name it.</param>
     /// <param name="reportName">The model's name in the binary report and in the log.</param>
+    /// <param name="releaseInfo">The release, when the caller already looked it up for several models; null looks it up here.</param>
+    /// <param name="keepIdenticalLocalFile">
+    /// For the large models: a file on disk that is older than the release but has exactly
+    /// the bytes of its asset is kept and stamped as current instead of downloaded again. A
+    /// new release of the repository that only adds a model would otherwise fetch 3.4 GB of
+    /// RoFormer files that did not change.
+    /// </param>
     private async Task DownloadGgufModelAsync(
         string apiUrl,
         string repository,
         string modelName,
-        string reportName
+        string reportName,
+        GithubReleaseResponse? releaseInfo = null,
+        bool keepIdenticalLocalFile = false
     )
     {
         string destinationPath = Path.Combine(AppFiles.FfmpegFolder, modelName + ".gguf");
 
-        GithubReleaseResponse releaseInfo = await GetLatestReleaseInfo(apiUrl);
+        releaseInfo ??= await GetLatestReleaseInfo(apiUrl);
         if (releaseInfo.Assets.Length == 0)
         {
             Logger.Setup($"No assets found for {repository} release.", LogEventLevel.Warning);
@@ -2270,6 +2319,16 @@ public class Binaries
             return;
         }
 
+        if (
+            keepIdenticalLocalFile
+            && await LocalFileHasTheAssetsBytesAsync(destinationPath, asset)
+        )
+        {
+            await FileAttributes.SetCreatedAttribute(destinationPath, releaseInfo.PublishedAt);
+            _binaryReport.Add($"{reportName} = {version}");
+            return;
+        }
+
         string partDestPath = Path.Combine(AppFiles.DependenciesPath, asset.Name);
         string downloadedPath = await DownloadWithVerificationAsync(
             apiUrl,
@@ -2287,6 +2346,21 @@ public class Binaries
             releaseInfo.PublishedAt,
             $"{reportName} model"
         );
+    }
+
+    /// <summary>
+    /// Whether the file at <paramref name="path"/> is byte for byte the release asset, by
+    /// the SHA-256 GitHub reports for it. Without that digest there is nothing to compare
+    /// against, and the answer is no.
+    /// </summary>
+    private async Task<bool> LocalFileHasTheAssetsBytesAsync(string path, Asset asset)
+    {
+        string? expected = BinaryVerification.ExtractSha256FromDigest(asset.Digest);
+        if (expected is null || !_storage.Exists(path))
+            return false;
+
+        await using Stream local = _storage.OpenRead(path);
+        return await BinaryVerification.VerifyStreamSha256Async(local, expected);
     }
 
     /// <summary>

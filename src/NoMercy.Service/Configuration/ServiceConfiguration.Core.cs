@@ -689,6 +689,10 @@ public static partial class ServiceConfiguration
             sp.GetRequiredService<IStorage>()
         ));
 
+        // The stemsplit filter's RoFormer models: 3.4 GB, fetched only on a
+        // machine whose hardware detection reports a GPU (#637).
+        services.AddHostedService<StemsplitRoformerModelService>();
+
         services.AddNoMercyEncoder(opts =>
         {
             opts.FfmpegPathOverride = AppFiles.FfmpegPath;
