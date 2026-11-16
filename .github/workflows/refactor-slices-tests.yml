@@ -38,8 +38,11 @@ jobs:
           dotnet-version: '10.0.x'
 
       - name: Run refactor-targeted test projects
+        env:
+          VSTEST_ARTIFACTS_DIRECTORY: ${{ github.workspace }}/testresults
         run: |
           set -e
+          mkdir -p testresults && chmod 700 testresults
           for proj in \
             tests/NoMercy.Tests.Queue/NoMercy.Tests.Queue.csproj \
             tests/NoMercy.Tests.Storage/NoMercy.Tests.Storage.csproj \
@@ -50,7 +53,18 @@ jobs:
               --configuration Debug \
               --verbosity minimal \
               --logger trx \
+              --results-directory ./testresults \
               --blame-hang-timeout 5m \
+              --blame-hang-dump-type mini \
               --filter "Category!=Integration"
             echo "::endgroup::"
           done
+
+      - name: Upload test results and hang dumps
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-${{ github.job }}
+          path: ./testresults
+          retention-days: 7
+          if-no-files-found: ignore

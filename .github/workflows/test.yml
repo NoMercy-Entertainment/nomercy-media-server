@@ -41,14 +41,30 @@ jobs:
           git diff --exit-code -- openapi.json signalr-contracts.json
 
       - name: Run fast tests (Unit + ErrorHandling + Characterization)
+        env:
+          VSTEST_ARTIFACTS_DIRECTORY: ${{ github.workspace }}/testresults
         run: >
+          mkdir -p testresults && chmod 700 testresults &&
           dotnet test NoMercy.Server.sln
           --configuration Debug
           --no-restore
           --verbosity minimal
           --logger trx
+          --results-directory ./testresults
           --blame-hang-timeout 5m
+          --blame-hang-dump-type mini
           --filter "(Category=Unit|Category=ErrorHandling|Category=Characterization)&Category!=Integration"
+
+      # Without a results folder in the workspace the blame hang dump goes to
+      # a temp folder the runner lacks, and is lost (#669).
+      - name: Upload test results and hang dumps
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-${{ github.job }}
+          path: ./testresults
+          retention-days: 7
+          if-no-files-found: ignore
 
       # The plugin template is not in the solution: it references the SDK as
       # NuGet packages, the way a plugin author does, and the root
@@ -191,12 +207,26 @@ jobs:
       # time live TMDB calls against a wall-clock budget and have their own job,
       # and a slow TMDB day failed this gate twice in a row on 2026-09-15.
       - name: Run uncategorized tests
+        env:
+          VSTEST_ARTIFACTS_DIRECTORY: ${{ github.workspace }}/testresults
         run: >
+          mkdir -p testresults && chmod 700 testresults &&
           dotnet test NoMercy.Server.sln
           --configuration Release
           --verbosity minimal
+          --results-directory ./testresults
           --blame-hang-timeout 10m
+          --blame-hang-dump-type mini
           --filter "Category!=Unit&Category!=ErrorHandling&Category!=Characterization&Category!=Integration&Category!=Performance"
+
+      - name: Upload test results and hang dumps
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-${{ github.job }}
+          path: ./testresults
+          retention-days: 7
+          if-no-files-found: ignore
 
   # Integration tests - run on the dev release path (direct pushes to dev), master,
   # releases, or manually. PRs (github.ref = refs/pull/N/merge) don't match the
@@ -276,24 +306,34 @@ jobs:
       # gets an update because a third party returned null. They still run, immediately below,
       # where a failure is visible without holding a release hostage.
       - name: Run integration tests
+        env:
+          VSTEST_ARTIFACTS_DIRECTORY: ${{ github.workspace }}/testresults
         run: >
+          mkdir -p testresults && chmod 700 testresults &&
           dotnet test NoMercy.Server.sln
           --configuration Debug
           --no-restore
           --verbosity minimal
           --logger trx
+          --results-directory ./testresults
           --blame-hang-timeout 10m
+          --blame-hang-dump-type mini
           --filter "Category=Integration&FullyQualifiedName!~NoMercy.Tests.Providers.TMDB"
 
       - name: Run live TMDB API tests (reported, never blocking)
         continue-on-error: true
+        env:
+          VSTEST_ARTIFACTS_DIRECTORY: ${{ github.workspace }}/testresults
         run: >
+          mkdir -p testresults && chmod 700 testresults &&
           dotnet test NoMercy.Server.sln
           --configuration Debug
           --no-restore
           --verbosity minimal
           --logger trx
+          --results-directory ./testresults
           --blame-hang-timeout 10m
+          --blame-hang-dump-type mini
           --filter "Category=Integration&FullyQualifiedName~NoMercy.Tests.Providers.TMDB"
 
       # A full build of this solution is ~9.5GB of output — ~7GB of it is tests/,
@@ -313,11 +353,25 @@ jobs:
           df -h / | tail -1
 
       - name: Run performance tests
+        env:
+          VSTEST_ARTIFACTS_DIRECTORY: ${{ github.workspace }}/testresults
         run: >
+          mkdir -p testresults && chmod 700 testresults &&
           dotnet test NoMercy.Server.sln
           --configuration Release
           --no-restore
           --verbosity minimal
           --logger trx
+          --results-directory ./testresults
           --blame-hang-timeout 15m
+          --blame-hang-dump-type mini
           --filter "Category=Performance"
+
+      - name: Upload test results and hang dumps
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: test-results-${{ github.job }}
+          path: ./testresults
+          retention-days: 7
+          if-no-files-found: ignore
