@@ -12,6 +12,7 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NoMercy.Encoder.Codecs;
+using NoMercy.Encoder.Errors;
 using NoMercy.Encoder.Orchestration;
 using NoMercy.Encoder.Pipeline;
 using NoMercy.Encoder.Progress;
@@ -60,6 +61,23 @@ public class HostShutdownKeepsEncodeTests : IDisposable
     }
 
     [Fact]
+    public async Task Strategy_HostStopping_FailedResult_KeepsSegmentsAndMarker()
+    {
+        (string segment, string marker) = await RunStrategyFailedResultAsync(hostStopping: true);
+
+        File.Exists(segment).Should().BeTrue("ffmpeg can exit non-zero on the stop signal");
+        File.Exists(marker).Should().BeTrue("the marker must outlive that failed result");
+    }
+
+    [Fact]
+    public async Task Strategy_FailedResult_WithoutHostStop_StillWipesSegments()
+    {
+        (string segment, string _) = await RunStrategyFailedResultAsync(hostStopping: false);
+
+        File.Exists(segment).Should().BeFalse("a real failure still sweeps the partial output");
+    }
+
+    [Fact]
     public async Task Strategy_UserCancel_WipesSegmentsAndMarker()
     {
         (string segment, string marker) = await RunStrategyCancelAsync(hostStopping: false);
@@ -83,6 +101,59 @@ public class HostShutdownKeepsEncodeTests : IDisposable
         (string tempDir, string _) = await RunOrchestratorCancelAsync(hostStopping: false);
 
         Directory.Exists(tempDir).Should().BeFalse("a user cancel still removes the folder");
+    }
+
+    private async Task<(string Segment, string Marker)> RunStrategyFailedResultAsync(
+        bool hostStopping
+    )
+    {
+        string outputDir = Path.Combine(_tempRoot, "output");
+        Directory.CreateDirectory(outputDir);
+        string segment = Path.Combine(outputDir, "video_00000.ts");
+        string marker = Path.Combine(outputDir, ".resume.0123abcd");
+        await File.WriteAllTextAsync(segment, "segment");
+        await File.WriteAllTextAsync(marker, "started");
+
+        using CancellationTokenSource cts = new();
+        Mock<IEncoder> encoder = new();
+        encoder
+            .Setup(e =>
+                e.EncodeAsync(
+                    It.IsAny<EncodingRequest>(),
+                    It.IsAny<IProgressObserver?>(),
+                    It.IsAny<CancellationToken>()
+                )
+            )
+            .Returns(
+                (EncodingRequest _, IProgressObserver? _, CancellationToken _) =>
+                {
+                    cts.Cancel();
+                    return Task.FromResult(
+                        new EncodingResult(
+                            false,
+                            outputDir,
+                            TimeSpan.Zero,
+                            new(EncodingErrorKind.ProcessCrashed, "exit 255", null, "exec", true),
+                            null
+                        )
+                    );
+                }
+            );
+
+        HlsSinglePassStrategy strategy = new(
+            encoder.Object,
+            NullLogger<HlsSinglePassStrategy>.Instance,
+            TestStorageFactory.CreateLocal()
+        );
+        EncodingRequest request = BuildRequest(outputDir) with
+        {
+            HostStopping = hostStopping ? cts.Token : CancellationToken.None,
+        };
+
+        EncodingResult result = await strategy.EncodeAsync(request, null, CancellationToken.None);
+        result.Success.Should().BeFalse();
+
+        return (segment, marker);
     }
 
     private async Task<(string Segment, string Marker)> RunStrategyCancelAsync(bool hostStopping)

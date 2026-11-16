@@ -70,7 +70,23 @@ public class ResumedRunFailureTests : IDisposable
         File.Exists(_markerPath).Should().BeTrue();
     }
 
-    private async Task<StageResult> Run(bool success, string? markerPath)
+    [Fact]
+    public async Task ResumedRunExitsNonZeroWhileTheHostStops_KeepsTheMarker()
+    {
+        using CancellationTokenSource hostStop = new();
+        await hostStop.CancelAsync();
+
+        StageResult result = await Run(false, _markerPath, hostStop.Token);
+
+        result.Should().BeOfType<StageFailure>();
+        File.Exists(_markerPath).Should().BeTrue("ffmpeg may exit non-zero on the stop signal");
+    }
+
+    private async Task<StageResult> Run(
+        bool success,
+        string? markerPath,
+        CancellationToken hostStopping = default
+    )
     {
         Mock<IFfmpegExecutor> executor = new();
         executor
@@ -104,7 +120,12 @@ public class ResumedRunFailureTests : IDisposable
 
         return await stage.ExecuteAsync(
             new([command], TimeSpan.FromMinutes(1)),
-            new("ctx-1", OutputDirectory: _dir, InputPath: "/media/src.mkv"),
+            new(
+                "ctx-1",
+                OutputDirectory: _dir,
+                InputPath: "/media/src.mkv",
+                HostStopping: hostStopping
+            ),
             CancellationToken.None
         );
     }

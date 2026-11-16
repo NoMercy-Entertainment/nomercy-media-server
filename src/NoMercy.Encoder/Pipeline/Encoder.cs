@@ -60,6 +60,7 @@ public class Encoder(
             OriginalOutputDirectory = request.OriginalOutputDirectory,
             EnableMetadataInjection = request.Options?.EnableMetadataInjection ?? false,
             Resources = request.Options?.TaskFilter?.Resources,
+            HostStopping = request.HostStopping,
         };
         Stopwatch stopwatch = Stopwatch.StartNew();
 

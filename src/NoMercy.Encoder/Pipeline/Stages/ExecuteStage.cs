@@ -103,7 +103,8 @@ public class ExecuteStage(
                             );
 
                         await WriteCrashCheckpointAsync(context, lastProgressMs, result.StdErr, ct);
-                        await DropResumeMarkerAsync(cmd, context.CorrelationId, ct);
+                        if (!context.HostStopping.IsCancellationRequested)
+                            await DropResumeMarkerAsync(cmd, context.CorrelationId, ct);
 
                         return new StageFailure(error);
                     }

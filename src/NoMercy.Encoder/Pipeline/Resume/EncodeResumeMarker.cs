@@ -22,6 +22,7 @@ namespace NoMercy.Encoder.Pipeline.Resume;
 public class EncodeResumeMarker(IStorage storage)
 {
     private const string Prefix = ".resume.";
+    private const string ScopeTag = "scope:";
 
     public static string HashArguments(IEnumerable<FfmpegCommand> commands)
     {
@@ -41,10 +42,29 @@ public class EncodeResumeMarker(IStorage storage)
                 if (command.Arguments[i] != "-i")
                     continue;
 
-                FileInfo file = new(command.Arguments[i + 1]);
-                if (file.Exists)
-                    yield return $"{file.Length}:{file.LastWriteTimeUtc.Ticks}";
+                if (StampOf(command.Arguments[i + 1]) is { } stamp)
+                    yield return stamp;
             }
+        }
+    }
+
+    // A URL, a pipe or a file that vanishes mid-read has no stamp; it must not fail the hash.
+    private static string? StampOf(string argument)
+    {
+        try
+        {
+            FileInfo file = new(argument);
+            return file.Exists ? $"{file.Length}:{file.LastWriteTimeUtc.Ticks}" : null;
+        }
+        catch (Exception ex)
+            when (ex
+                    is IOException
+                        or ArgumentException
+                        or NotSupportedException
+                        or UnauthorizedAccessException
+            )
+        {
+            return null;
         }
     }
 
@@ -61,6 +81,49 @@ public class EncodeResumeMarker(IStorage storage)
     {
         if (await storage.ExistsAsync(markerPath, ct))
             await storage.DeleteAsync(markerPath, ct);
+    }
+
+    public static string ScopedContent(IEnumerable<string> segmentPrefixes, string startedBy) =>
+        startedBy + "\n" + ScopeTag + string.Join('|', segmentPrefixes);
+
+    /// <summary>Removes the markers that name one of these segment prefixes (or none), and the given stitch files.</summary>
+    public async Task ClearOwnAsync(
+        string outputDirectory,
+        IReadOnlyCollection<string> segmentPrefixes,
+        IEnumerable<string> stitchPaths,
+        CancellationToken ct
+    )
+    {
+        List<string> doomed = [];
+        await foreach (StorageEntry entry in storage.ListAsync(outputDirectory, "*", true, ct))
+        {
+            if (
+                entry.IsDirectory
+                || !storage.GetName(entry.Path).StartsWith(Prefix, StringComparison.Ordinal)
+            )
+                continue;
+
+            if (Owns(await storage.ReadAllTextAsync(entry.Path, ct), segmentPrefixes))
+                doomed.Add(entry.Path);
+        }
+
+        foreach (string stitch in stitchPaths)
+        {
+            if (await storage.ExistsAsync(stitch, ct))
+                doomed.Add(stitch);
+        }
+
+        foreach (string path in doomed)
+            await storage.DeleteAsync(path, ct);
+    }
+
+    // A marker without a scope line predates it and is cleared like one of ours.
+    private static bool Owns(string content, IReadOnlyCollection<string> segmentPrefixes)
+    {
+        string? scope = content
+            .Split('\n')
+            .FirstOrDefault(line => line.StartsWith(ScopeTag, StringComparison.Ordinal));
+        return scope is null || scope[ScopeTag.Length..].Split('|').Any(segmentPrefixes.Contains);
     }
 
     /// <summary>Removes every marker and stitch temp file; a finished bundle has none to resume.</summary>

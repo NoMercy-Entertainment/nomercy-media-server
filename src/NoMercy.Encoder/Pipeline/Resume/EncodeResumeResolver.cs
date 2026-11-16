@@ -121,7 +121,14 @@ public class EncodeResumeResolver(
         try
         {
             await ClearStaleFilesAsync(request.OutputDirectory, outputs, ct);
-            await marker.WriteAsync(markerPath, request.CorrelationId, ct);
+            await marker.WriteAsync(
+                markerPath,
+                EncodeResumeMarker.ScopedContent(
+                    outputs.Select(o => o.SegmentPrefix),
+                    request.CorrelationId
+                ),
+                ct
+            );
         }
         catch (Exception ex) when (ex is not OperationCanceledException)
         {
@@ -139,7 +146,17 @@ public class EncodeResumeResolver(
         CancellationToken ct
     )
     {
-        await marker.ClearAllAsync(outputDirectory, ct);
+        await marker.ClearOwnAsync(
+            outputDirectory,
+            [.. outputs.Select(o => o.SegmentPrefix)],
+            outputs
+                .Where(o => o.Playlist is not null)
+                .Select(o =>
+                    storage.CombinePath(outputDirectory, o.Playlist!)
+                    + EncodeResumeStitcher.StitchSuffix
+                ),
+            ct
+        );
         foreach (HlsOutput output in outputs)
         {
             string firstSegment = SegmentPath(outputDirectory, output, 0);

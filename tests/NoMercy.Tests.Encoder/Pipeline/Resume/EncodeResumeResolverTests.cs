@@ -227,7 +227,7 @@ public class EncodeResumeResolverTests : IDisposable
         decision.Resume.Should().BeFalse();
         decision.Reason.Should().Contain("marker");
         File.Exists(MarkerPath(request)).Should().BeTrue();
-        File.ReadAllText(MarkerPath(request)).Should().Be("corr-1");
+        File.ReadAllText(MarkerPath(request)).Should().StartWith("corr-1\nscope:");
     }
 
     [Fact]
@@ -266,7 +266,7 @@ public class EncodeResumeResolverTests : IDisposable
 
         decision.Resume.Should().BeFalse();
         decision.Reason.Should().Contain("probe");
-        File.ReadAllText(MarkerPath(request)).Should().Be("corr-1");
+        File.ReadAllText(MarkerPath(request)).Should().StartWith("corr-1\nscope:");
     }
 
     [Fact]
@@ -281,7 +281,7 @@ public class EncodeResumeResolverTests : IDisposable
 
         decision.Resume.Should().BeFalse();
         decision.Reason.Should().Contain("failed");
-        File.ReadAllText(MarkerPath(request)).Should().Be("corr-1");
+        File.ReadAllText(MarkerPath(request)).Should().StartWith("corr-1\nscope:");
     }
 
     [Fact]
@@ -535,6 +535,74 @@ public class EncodeResumeResolverTests : IDisposable
         File.Exists(stitch).Should().BeFalse();
         File.Exists(playlist).Should().BeTrue();
     }
+
+    [Fact]
+    public async Task Resolve_StartAtZero_KeepsTheMarkerAndStitchFilesOfAnotherBundle()
+    {
+        FfmpegCommand[] audio = [AudioOnlyCommand()];
+        FfmpegCommand[] video = [VideoOnlyCommand("-crf")];
+        FfmpegCommand[] oldVideo = [VideoOnlyCommand("-preset")];
+        await _resolver.ResolveAsync(Request(audio), default);
+        await _resolver.ResolveAsync(Request(oldVideo), default);
+        string audioMarker = MarkerPath(Request(audio));
+        string oldVideoMarker = MarkerPath(Request(oldVideo));
+        string audioStitch = Path.Combine(_dir, "audio", "a.m3u8.stitch");
+        string videoStitch = Path.Combine(_dir, "video", "v.m3u8.stitch");
+        File.WriteAllText(audioStitch, "#EXTM3U");
+        File.WriteAllText(videoStitch, "#EXTM3U");
+
+        await _resolver.ResolveAsync(Request(video), default);
+
+        File.Exists(audioMarker).Should().BeTrue("another bundle's resume must survive");
+        File.Exists(audioStitch).Should().BeTrue();
+        File.Exists(oldVideoMarker)
+            .Should()
+            .BeFalse("a marker of this bundle's old arguments goes");
+        File.Exists(videoStitch).Should().BeFalse();
+        File.Exists(MarkerPath(Request(video))).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Resolve_InputThatIsNotAFilePath_StartsAtZeroWithoutThrowing()
+    {
+        FfmpegCommand[] commands =
+        [
+            new(
+                "ffmpeg",
+                [
+                    "-i",
+                    "http://media.example/in.mkv",
+                    "-f",
+                    "hls",
+                    "-hls_segment_filename",
+                    "video/v_%05d.ts",
+                    "video/v.m3u8",
+                ],
+                null
+            ),
+        ];
+
+        ResumeDecision decision = await _resolver.ResolveAsync(Request(commands), default);
+
+        decision.Resume.Should().BeFalse();
+    }
+
+    private static FfmpegCommand VideoOnlyCommand(string extraFlag) =>
+        new(
+            "ffmpeg",
+            [
+                "-i",
+                "in.mkv",
+                extraFlag,
+                "1",
+                "-f",
+                "hls",
+                "-hls_segment_filename",
+                "video/v_%05d.ts",
+                "video/v.m3u8",
+            ],
+            null
+        );
 
     private async Task AssertRefused(Func<ResumeRequest, ResumeRequest> change, string reason)
     {

@@ -99,7 +99,9 @@ public record EncodingContext(
     /// for whole-file runs with no coordinator (preview, live-transcode) — those keep
     /// the flat host-fraction default.
     /// </summary>
-    ResourceRequirement? Resources = null
+    ResourceRequirement? Resources = null,
+    // The host is stopping (restart, update): a failed run keeps its resume state.
+    CancellationToken HostStopping = default
 )
 {
     /// <summary>
