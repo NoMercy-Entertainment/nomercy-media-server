@@ -124,12 +124,12 @@ public static class OrphanRecoveryTriage
                 orphan.Attempts = (byte)Math.Max(0, orphan.Attempts - 1);
             }
 
-            // A checkpoint spares a job the attempt budget, never the interruption
-            // cap: a job that takes the process down on every run leaves a
-            // checkpoint behind too, and would be resumed by every boot forever.
+            // A checkpoint never resets or exempts either budget: a job that hangs
+            // or takes the process down on every run leaves a checkpoint behind
+            // too, and would otherwise be resumed forever.
             bool exhausted = interrupted
                 ? orphan.Interruptions >= MaxInterruptions
-                : !hasCheckpoint && orphan.Attempts > 1;
+                : orphan.Attempts > 1;
 
             if (exhausted)
             {
@@ -152,7 +152,6 @@ public static class OrphanRecoveryTriage
             }
             else if (hasCheckpoint)
             {
-                orphan.Attempts = 0;
                 orphan.ReservedAt = null;
                 context.UpdateJob(orphan);
                 resumable++;

@@ -24,8 +24,8 @@ namespace NoMercy.Tests.Queue;
 /// Checkpoint-aware orphan triage (Phase 4.14b).
 ///
 /// When <see cref="IOrphanCheckpointLookup"/> is registered, encoder-queue
-/// orphans with a crash checkpoint must be re-queued with Attempts=0 instead
-/// of being moved to FailedJobs. Orphans without a checkpoint keep the
+/// orphans with a crash checkpoint are re-queued as resumable, but the
+/// checkpoint resets or exempts no budget. Orphans without a checkpoint keep the
 /// non-checkpoint recovery behaviour: a repeatedly-failing orphan
 /// (Attempts &gt; 1) dead-letters regardless of queue.
 /// </summary>
@@ -56,7 +56,7 @@ public class OrphanJobRecoveryCheckpointTests
     // ── With checkpoint present ─────────────────────────────────────────────
 
     [Fact]
-    public async Task StartAsync_EncoderOrphanWithCheckpoint_ReQueuedWithZeroAttempts()
+    public async Task StartAsync_EncoderOrphanWithCheckpoint_ReQueuedWithOnlyTheInterruptedAttemptRefunded()
     {
         Mock<IOrphanCheckpointLookup> lookup = new();
         lookup
@@ -82,10 +82,10 @@ public class OrphanJobRecoveryCheckpointTests
         if (service.ExecuteTask is not null)
             await service.ExecuteTask;
 
-        // Job stays in queue with Attempts=0, ready for resume.
+        // Job stays in queue for resume; only the interrupted run's attempt is refunded.
         Assert.Single(context.Jobs);
         Assert.Empty(context.FailedJobs);
-        Assert.Equal(0, context.Jobs[0].Attempts);
+        Assert.Equal(1, context.Jobs[0].Attempts);
         Assert.Null(context.Jobs[0].ReservedAt);
     }
 
@@ -186,6 +186,40 @@ public class OrphanJobRecoveryCheckpointTests
 
         Assert.Empty(context.Jobs);
         Assert.Single(context.FailedJobs);
+    }
+
+    [Fact]
+    public async Task RunAsync_WedgedEncoderOrphanWithCheckpointOverTheAttemptBudget_MovedToFailedJobs()
+    {
+        Mock<IOrphanCheckpointLookup> lookup = new();
+        lookup
+            .Setup(l => l.HasCheckpointAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        TestQueueContextAdapter context = new();
+        QueueJobModel orphan = new()
+        {
+            Queue = EncoderQueue,
+            Payload = "{\"OutputDirectory\":\"/media/output\"}",
+            Priority = 5,
+            Attempts = 2,
+            ReservedAt = DateTime.UtcNow.AddMinutes(-5),
+            AvailableAt = DateTime.UtcNow.AddHours(-1),
+        };
+        context.AddJob(orphan);
+
+        OrphanTriageResult result = await OrphanRecoveryTriage.RunAsync(
+            context,
+            lookup.Object,
+            [orphan],
+            new HashSet<string> { EncoderQueue },
+            interrupted: false
+        );
+
+        Assert.Empty(context.Jobs);
+        Assert.Single(context.FailedJobs);
+        Assert.Equal(1, result.Failed);
+        Assert.Equal(0, result.Resumable);
     }
 
     // ── Without checkpoint — original behaviour preserved ──────────────────

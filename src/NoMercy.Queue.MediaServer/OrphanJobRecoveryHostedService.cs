@@ -24,8 +24,9 @@ namespace NoMercy.Queue.MediaServer;
 /// shutdown that are older than the cutoff window.
 ///
 /// Checkpoint-aware triage (Phase 4.14b): encoder-queue orphans that have a
-/// crash checkpoint are re-queued with Attempts=0 so the resume path gets a
-/// chance to pick up from the last-known keyframe position. Orphans with no
+/// crash checkpoint are re-queued and counted as resumable so the resume path
+/// gets a chance to pick up from the last-known keyframe position; the
+/// checkpoint resets or exempts no budget. Orphans with no
 /// checkpoint follow the original logic: a genuine first-time orphan (reserved
 /// exactly once — <c>Attempts &lt;= 1</c>, since <c>ReserveJob</c> increments
 /// Attempts in the same write that sets ReservedAt) gets one clean retry with
