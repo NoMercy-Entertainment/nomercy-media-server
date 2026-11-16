@@ -31,7 +31,8 @@ public class QueueWorker(
     IResourceBudget? resourceBudget = null,
     IReadOnlySet<string>? resourceAwareQueues = null,
     IWorkerActivityGate? activityGate = null,
-    BootStage readyStage = BootStage.All
+    BootStage readyStage = BootStage.All,
+    CancellationToken hostStopping = default
 )
 {
     private static readonly TimeSpan BudgetRetryDelay = TimeSpan.FromSeconds(5);
@@ -62,6 +63,12 @@ public class QueueWorker(
     private const int SaturationLogInterval = 120; // Log every 10 minutes (120 * 5s)
 
     private int CurrentIndex => runner?.GetWorkerIndex(name, this) ?? -1;
+
+    // A normal host stop never calls Stop(); the worker learns of it only here.
+    // The job's own cancel comes from this same token, whose state flips before
+    // any callback runs, so a job that rethrows it always finds it set.
+    private bool IsShuttingDown(CancellationToken stopToken) =>
+        stopToken.IsCancellationRequested || hostStopping.IsCancellationRequested;
 
     /// <summary>
     /// True while this worker holds a reserved job (between
@@ -206,7 +213,7 @@ public class QueueWorker(
                         _currentJobId = null;
                     }
                 }
-                catch (OperationCanceledException) when (stopToken.IsCancellationRequested)
+                catch (OperationCanceledException) when (IsShuttingDown(stopToken))
                 {
                     // Shutdown interrupted the job (e.g. an encode whose ffmpeg
                     // child was torn down via the host-stopping token). This is
@@ -224,7 +231,7 @@ public class QueueWorker(
                     break;
                 }
                 catch (ObjectDisposedException)
-                    when (stopToken.IsCancellationRequested || CannotRunAnotherJob())
+                    when (IsShuttingDown(stopToken) || CannotRunAnotherJob())
                 {
                     // The service provider this worker scopes jobs against is gone
                     // (ExecuteWithTransientRetry → IServiceScopeFactory.CreateScope).

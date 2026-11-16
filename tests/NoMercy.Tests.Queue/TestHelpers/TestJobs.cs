@@ -100,6 +100,7 @@ public class GatedThrowingJob : IShouldQueue
         throw ExceptionMode switch
         {
             "cancelled" => new OperationCanceledException("test-cancelled-by-shutdown"),
+            "canceled" => new OperationCanceledException("test-canceled-by-host-stop"),
             "disposed" => new ObjectDisposedException("test-scope-disposed-by-shutdown"),
             _ => new InvalidOperationException("test-generic-failure"),
         };
