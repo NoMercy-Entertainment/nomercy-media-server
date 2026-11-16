@@ -1684,7 +1684,10 @@ public class PluginAudioToolsTests : IDisposable
             .Be("[0:a]stemsplit=preset=full:cpu_fallback=0[voc][acc]");
         _registeredStems
             .Should()
-            .OnlyContain(stem => stem.ProducerVersion == "roformer-full@9.0-NoMercy-MediaServer");
+            .OnlyContain(stem =>
+                stem.ProducerVersion == "roformer-full@9.0-NoMercy-MediaServer"
+                && stem.Engine == "roformer"
+            );
         _runCount.Should().Be(1);
     }
 
@@ -1717,6 +1720,7 @@ public class PluginAudioToolsTests : IDisposable
             .Should()
             .OnlyContain(stem =>
                 stem.ProducerVersion == AppFiles.StemsplitModel + "@9.0-NoMercy-MediaServer"
+                && stem.Engine == "spleeter"
             );
         _sources.Verify(
             sources =>

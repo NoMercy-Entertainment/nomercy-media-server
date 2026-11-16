@@ -519,6 +519,15 @@ its own as `"{model name}@{ffmpeg version token}"` (for example
 RoFormer split) when it writes stems through the built-in path, so use the
 same shape if you register stems yourself.
 
+Each stem also carries the engine that made it, `PluginTrackStem.Engine`
+(ABI 12.10): `"spleeter"` or `"roformer"`. `SplitStemsAsync` sets it; a stem
+you register yourself may set it, and without it the register reads it from a
+producer version in the shape above, or leaves it null. Stems stored before
+12.10 by the server's own split read `"spleeter"`. A sweep that wants better
+stems on a machine that now runs RoFormer looks for `Engine == "spleeter"` in
+`GetStemsAsync` and splits those tracks again; the new rows land next to the
+old ones, which stay until the derived-audio store evicts them.
+
 ## Refusals: what they mean and what to do
 
 Every method here fails by returning a refusal in words, never by throwing —

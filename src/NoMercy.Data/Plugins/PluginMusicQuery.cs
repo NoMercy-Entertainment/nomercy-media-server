@@ -262,7 +262,8 @@ public class PluginMusicQuery(
                 stem.Format,
                 stem.SampleRate,
                 stem.StorageKey,
-                stem.ProducerVersion
+                stem.ProducerVersion,
+                stem.Engine
             ))
             .ToListAsync(ct);
 
@@ -276,7 +277,10 @@ public class PluginMusicQuery(
                 row.SampleRate,
                 row.StorageKey,
                 row.ProducerVersion
-            ))
+            )
+            {
+                Engine = row.Engine,
+            })
             .ToList();
     }
 
@@ -514,6 +518,7 @@ public class PluginMusicQuery(
         string Format,
         int SampleRate,
         string StorageKey,
-        string ProducerVersion
+        string ProducerVersion,
+        string? Engine
     );
 }

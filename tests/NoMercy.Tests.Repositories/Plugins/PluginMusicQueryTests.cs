@@ -507,6 +507,7 @@ public class PluginMusicQueryTests : IDisposable
                 SampleRate = 48000,
                 StorageKey = fullVocalsKey,
                 ProducerVersion = StemProducerVersion,
+                Engine = "spleeter",
                 CreatedAt = DateTime.UtcNow,
             },
             new TrackStem
@@ -947,6 +948,10 @@ public class PluginMusicQueryTests : IDisposable
         stems.Should().OnlyContain(stem => stem.TrackId == _stemsFullPresentTrackId);
         stems.Should().OnlyContain(stem => stem.Coverage == PluginStemCoverage.Full);
         stems.Select(stem => stem.Kind).Should().BeEquivalentTo(["vocals", "accompaniment"]);
+
+        // The engine as the register holds it; null where it was never known.
+        stems.Single(stem => stem.Kind == "vocals").Engine.Should().Be("spleeter");
+        stems.Single(stem => stem.Kind == "accompaniment").Engine.Should().BeNull();
     }
 
     [Fact]

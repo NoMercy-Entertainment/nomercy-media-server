@@ -1124,7 +1124,10 @@ public sealed class PluginAudioTools(
                         OpusSampleRate,
                         stem.Entry.Key,
                         producerVersion
-                    ))
+                    )
+                    {
+                        Engine = source.EngineName,
+                    })
                     .ToList(),
                 ct
             );

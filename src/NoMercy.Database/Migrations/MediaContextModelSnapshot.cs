@@ -3393,6 +3393,10 @@ namespace NoMercy.Database.Migrations
                         .HasColumnType("TEXT")
                         .HasDefaultValueSql("CURRENT_TIMESTAMP");
 
+                    b.Property<string>("Engine")
+                        .HasMaxLength(16)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Format")
                         .IsRequired()
                         .HasMaxLength(8)

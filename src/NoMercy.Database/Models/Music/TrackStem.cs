@@ -60,10 +60,22 @@ public class TrackStem
 
     public DerivedAudio DerivedAudio { get; set; } = null!;
 
-    /// <summary>Model and ffmpeg, e.g. <c>spleeter-2stems-f16@v1.0.41</c>.</summary>
+    /// <summary>
+    /// Model and ffmpeg, e.g. <c>spleeter-2stems-f16@9.0.2-NoMercy-MediaServer</c>
+    /// or <c>roformer-full@9.0.2-NoMercy-MediaServer</c>.
+    /// </summary>
     [MaxLength(64)]
     [JsonProperty("producer_version")]
     public string ProducerVersion { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The network that separated the stem: <c>spleeter</c> or <c>roformer</c>,
+    /// so stems made by Spleeter can be found and made again with RoFormer.
+    /// Null when the producer did not say and its version does not tell.
+    /// </summary>
+    [MaxLength(16)]
+    [JsonProperty("engine")]
+    public string? Engine { get; set; }
 
     [JsonProperty("created_at")]
     public DateTime CreatedAt { get; set; }

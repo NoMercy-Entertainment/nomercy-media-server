@@ -38,4 +38,16 @@ public sealed record PluginTrackStem(
     int SampleRate,
     string StorageKey,
     string ProducerVersion
-);
+)
+{
+    /// <summary>
+    /// The network that separated the stem, <c>"spleeter"</c> or
+    /// <c>"roformer"</c>, at most 16 characters. Null when the producer does
+    /// not say; the register then reads it from a producer version that
+    /// starts with <c>spleeter-</c> or <c>roformer-</c>, the shape
+    /// <see cref="IPluginAudioTools.SplitStemsAsync" /> writes. Lets a sweep
+    /// find stems made by Spleeter and make them again with RoFormer. Added
+    /// in ABI 12.10.
+    /// </summary>
+    public string? Engine { get; init; }
+}

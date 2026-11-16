@@ -44,7 +44,8 @@ public static class PluginAbi
     // IPluginMediaProxy while a LAN route serves a device is bound to that device.
     // PluginLanCaller.ToString leaves BaseAddress out, because it carries the credential.
     // 12.10 also added PluginFilterGraphTokens.StemsSource and StemsVocalSource (two new
-    // constants).
+    // constants) and PluginTrackStem.Engine (an init-only property, so the constructor a
+    // plugin was compiled against is still there).
     public static Version Current { get; } = new(12, 10);
 
     /// <summary>

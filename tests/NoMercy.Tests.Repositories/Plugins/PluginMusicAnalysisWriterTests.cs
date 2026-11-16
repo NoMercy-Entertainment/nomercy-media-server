@@ -1501,4 +1501,73 @@ public class PluginMusicAnalysisWriterTests : IDisposable
             Times.Once
         );
     }
+
+    // --- the stem's engine (#637) -------------------------------------------
+
+    private async Task<TrackStem> RegisterAndRead(PluginTrackStem stem)
+    {
+        Mock<IDerivedAudioStore> store = NewStoreMock();
+        store
+            .Setup(s => s.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        PluginWriteResult result = await CreateWriter(store.Object).RegisterStemAsync(stem);
+        result.Ok.Should().BeTrue(result.Refusal);
+
+        using MediaContext context = new(_options);
+        return context.TrackStems.Single(row => row.TrackId == _trackId);
+    }
+
+    [Fact]
+    public async Task RegisterStem_StoresTheEngineTheProducerNamed()
+    {
+        TrackStem stored = await RegisterAndRead(
+            ValidFullStem(_trackId, KeyOne) with
+            {
+                ProducerVersion = "my-splitter@3",
+                Engine = "RoFormer",
+            }
+        );
+
+        stored.Engine.Should().Be("roformer");
+    }
+
+    [Theory]
+    [InlineData("spleeter-2stems-f16@9.0-NoMercy-MediaServer", "spleeter")]
+    [InlineData("roformer-full@9.0.2-NoMercy-MediaServer", "roformer")]
+    [InlineData("my-splitter@3", null)]
+    public async Task RegisterStem_WithoutAnEngine_ReadsItFromTheProducerVersion(
+        string producerVersion,
+        string? engine
+    )
+    {
+        TrackStem stored = await RegisterAndRead(
+            ValidFullStem(_trackId, KeyOne) with
+            {
+                ProducerVersion = producerVersion,
+            }
+        );
+
+        stored.Engine.Should().Be(engine);
+    }
+
+    [Fact]
+    public async Task RegisterStem_RefusesAnEngineLongerThanTheColumn()
+    {
+        Mock<IDerivedAudioStore> store = NewStoreMock();
+        store
+            .Setup(s => s.ExistsAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
+
+        PluginWriteResult result = await CreateWriter(store.Object)
+            .RegisterStemAsync(
+                ValidFullStem(_trackId, KeyOne) with
+                {
+                    Engine = "a-very-long-engine-name",
+                }
+            );
+
+        result.Ok.Should().BeFalse();
+        result.Refusal.Should().Be("engine must be at most 16 characters");
+    }
 }

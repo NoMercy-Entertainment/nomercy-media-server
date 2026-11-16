@@ -41,9 +41,13 @@ public record TrackStemDto
     [JsonProperty("storage_key")]
     public string StorageKey { get; set; } = string.Empty;
 
-    /// <summary>Model and ffmpeg, e.g. "spleeter-2stems-f16@v1.0.41".</summary>
+    /// <summary>Model and ffmpeg, e.g. "spleeter-2stems-f16@9.0.2-NoMercy-MediaServer".</summary>
     [JsonProperty("producer_version")]
     public string ProducerVersion { get; set; } = string.Empty;
+
+    /// <summary>"spleeter" or "roformer"; null when the producer did not say.</summary>
+    [JsonProperty("engine")]
+    public string? Engine { get; set; }
 
     public TrackStemDto() { }
 
@@ -57,6 +61,7 @@ public record TrackStemDto
         SampleRate = stem.SampleRate;
         StorageKey = stem.StorageKey;
         ProducerVersion = stem.ProducerVersion;
+        Engine = stem.Engine;
     }
 
     /// <summary>
