@@ -108,7 +108,11 @@ public class CollectionsController(
 
     [HttpGet]
     [ResponseCache(NoStore = true)]
-    public async Task<IActionResult> Collection(int id, CancellationToken ct = default)
+    public async Task<IActionResult> Collection(
+        int id,
+        [FromQuery(Name = "version")] string? responseVersion = null,
+        CancellationToken ct = default
+    )
     {
         Guid userId = User.UserId();
         if (!AuthPolicy.IsAllowed(User))
@@ -130,7 +134,7 @@ public class CollectionsController(
             && collection.CollectionMovies.Count > 0
             && collection.Images.Count > 0
         )
-            return Ok(new CollectionResponseDto { Data = new(collection) });
+            return CollectionInfoResponse(new(collection), responseVersion);
 
         TmdbCollectionAppends? collectionAppends =
             await collectionMetadataProvider.GetCollectionAsync(id, language, ct);
@@ -138,8 +142,16 @@ public class CollectionsController(
         if (collectionAppends is null)
             return NotFoundResponse("Collection not found");
 
-        return Ok(new CollectionResponseDto { Data = new(collectionAppends) });
+        return CollectionInfoResponse(new(collectionAppends), responseVersion);
     }
+
+    private IActionResult CollectionInfoResponse(
+        CollectionResponseItemDto item,
+        string? responseVersion
+    ) =>
+        responseVersion == "lolomo"
+            ? Ok(ComponentResponse.From(InfoPage.Build(item)))
+            : Ok(new CollectionResponseDto { Data = item });
 
     [HttpGet]
     [Route("available")]

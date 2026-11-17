@@ -79,6 +79,9 @@ public record CardData
     [JsonProperty("percentage", NullValueHandling = NullValueHandling.Ignore)]
     public double? Percentage { get; set; }
 
+    [JsonProperty("subtitle", NullValueHandling = NullValueHandling.Ignore)]
+    public string? Subtitle { get; set; }
+
     public CardData() { }
 
     public CardData(Movie movie, string country, bool watch = false)

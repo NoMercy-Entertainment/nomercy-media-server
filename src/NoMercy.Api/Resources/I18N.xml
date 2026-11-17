@@ -1056,4 +1056,44 @@
     <Key>Songs you like</Key>
     <Value lang="nl">Nummers die je leuk vindt</Value>
   </Entry>
+  <Entry>
+    <Key>Known for</Key>
+    <Value lang="nl">Bekend van</Value>
+  </Entry>
+  <Entry>
+    <Key>Acting</Key>
+    <Value lang="nl">Acteren</Value>
+  </Entry>
+  <Entry>
+    <Key>Production</Key>
+    <Value lang="nl">Productie</Value>
+  </Entry>
+  <Entry>
+    <Key>Writing</Key>
+    <Value lang="nl">Schrijven</Value>
+  </Entry>
+  <Entry>
+    <Key>Director</Key>
+    <Value lang="nl">Regie</Value>
+  </Entry>
+  <Entry>
+    <Key>Crew</Key>
+    <Value lang="nl">Crew</Value>
+  </Entry>
+  <Entry>
+    <Key>Creator</Key>
+    <Value lang="nl">Bedenker</Value>
+  </Entry>
+  <Entry>
+    <Key>Collections</Key>
+    <Value lang="nl">Collecties</Value>
+  </Entry>
+  <Entry>
+    <Key>Writer &amp; Director</Key>
+    <Value lang="nl">Schrijver &amp; Regisseur</Value>
+  </Entry>
+  <Entry>
+    <Key>Cast</Key>
+    <Value lang="nl">Cast</Value>
+  </Entry>
 </I18N>

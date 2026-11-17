@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using NoMercy.Api.DTOs.Media;
+using NoMercy.Api.DTOs.Media.Components;
 using NoMercy.Authorization;
 using NoMercy.Data.Repositories;
 using NoMercy.Database.Models.People;
@@ -54,7 +55,10 @@ public class PeopleController(
     [HttpGet]
     [Route("/api/v{version:apiVersion}/person/{id:int}")] // match themoviedb.org API
     [ResponseCache(NoStore = true)]
-    public async Task<IActionResult> Show(int id)
+    public async Task<IActionResult> Show(
+        int id,
+        [FromQuery(Name = "version")] string? responseVersion = null
+    )
     {
         string country = Country();
 
@@ -80,6 +84,11 @@ public class PeopleController(
 
         Person? person = await peopleRepository.GetPersonWithCreditsAsync(id);
 
-        return Ok(new PersonResponseDto { Data = new(personAppends, country, person) });
+        PersonResponseItemDto item = new(personAppends, country, person);
+
+        if (responseVersion == "lolomo")
+            return Ok(ComponentResponse.From(PersonPage.Build(item)));
+
+        return Ok(new PersonResponseDto { Data = item });
     }
 }

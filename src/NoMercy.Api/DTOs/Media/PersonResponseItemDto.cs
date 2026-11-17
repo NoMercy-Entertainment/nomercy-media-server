@@ -200,7 +200,11 @@ public record PersonResponseItemDto
             Crew =
             [
                 .. tmdbPersonAppends
-                    .CombinedCredits.Crew.Select(crew => new KnownForDto(crew, person))
+                    .CombinedCredits.Crew.Select(crew => new KnownForDto(
+                        crew,
+                        crew.MediaType,
+                        person
+                    ))
                     .Where(knownFor =>
                         RuntimeServerSettings.Current.ShowAdultContent || !knownFor.Adult
                     )
@@ -221,7 +225,7 @@ public record PersonResponseItemDto
         KnownForDto[] crew =
         [
             .. tmdbPersonAppends
-                .CombinedCredits.Crew.Select(crew => new KnownForDto(crew, person))
+                .CombinedCredits.Crew.Select(crew => new KnownForDto(crew, crew.MediaType, person))
                 .Where(knownFor =>
                     RuntimeServerSettings.Current.ShowAdultContent || !knownFor.Adult
                 )

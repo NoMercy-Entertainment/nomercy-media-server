@@ -51,7 +51,11 @@ public class TvShowsController(
     // Never stored: a rescan changes this per-user answer, and the RefreshLibrary
     // refetch must reach the server instead of the browser cache.
     [ResponseCache(NoStore = true)]
-    public async Task<IActionResult> Tv(int id, CancellationToken ct = default)
+    public async Task<IActionResult> Tv(
+        int id,
+        [FromQuery(Name = "version")] string? responseVersion = null,
+        CancellationToken ct = default
+    )
     {
         Guid userId = User.UserId();
         if (!AuthPolicy.IsAllowed(User))
@@ -63,11 +67,9 @@ public class TvShowsController(
         TvDetail? tvDetail = await tvShowRepository.GetTvAsync(userId, id, language, country, ct);
 
         if (tvDetail is not null)
-            return Ok(
-                new InfoResponseDto
-                {
-                    Data = new(tvDetail.Tv, country, tvDetail.Similars, tvDetail.Recommendations),
-                }
+            return InfoResponse(
+                new(tvDetail.Tv, country, tvDetail.Similars, tvDetail.Recommendations),
+                responseVersion
             );
 
         TmdbTvShowAppends? tvShowAppends = await tvShowMetadataProvider.GetTvShowAsync(
@@ -79,8 +81,13 @@ public class TvShowsController(
         if (tvShowAppends is null)
             return NotFoundResponse("Tv show not found");
 
-        return Ok(new InfoResponseDto { Data = new(tvShowAppends, country) });
+        return InfoResponse(new(tvShowAppends, country), responseVersion);
     }
+
+    private IActionResult InfoResponse(InfoResponseItemDto item, string? responseVersion) =>
+        responseVersion == "lolomo"
+            ? Ok(ComponentResponse.From(InfoPage.Build(item)))
+            : Ok(new InfoResponseDto { Data = item });
 
     [HttpDelete]
     [Authorize(Policy = "Moderator")]
