@@ -50,6 +50,9 @@ public static class PluginAbi
     // encode a library's folders, each with the tallest video it can produce. Additive: an
     // init-only property defaulting to empty, so new PluginLibrary(id, title, type) written
     // before it still constructs and still reads Id, Title and Type.
+    // 12.11 also added PluginDocs (constants: the docs page each refusal links) and
+    // PluginLibrary's own Equals and GetHashCode, which compare the presets by value so two
+    // reads of one library stay equal.
     public static Version Current { get; } = new(12, 11);
 
     /// <summary>
