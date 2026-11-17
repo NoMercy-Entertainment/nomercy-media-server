@@ -107,6 +107,24 @@ public class PluginPagingTests
         features.Names.Should().HaveCount(2);
     }
 
+    // rows is separate from paging: a client can page before it draws the
+    // app's home row and NMLolomo, and a plugin must not send those to it.
+    [Fact]
+    public void Rows_is_its_own_feature_word()
+    {
+        PluginClientFeatures pagingOnly = PluginClientFeatures.From(
+            new Dictionary<string, string> { ["features"] = "paging" }
+        );
+        PluginClientFeatures both = PluginClientFeatures.From(
+            new Dictionary<string, string> { ["features"] = "paging,rows" }
+        );
+
+        PluginClientFeatures.Rows.Should().Be("rows");
+        pagingOnly.Supports(PluginClientFeatures.Rows).Should().BeFalse();
+        both.Supports(PluginClientFeatures.Rows).Should().BeTrue();
+        both.Supports(PluginClientFeatures.Paging).Should().BeTrue();
+    }
+
     [Fact]
     public void A_load_page_action_has_the_shape_the_client_runs()
     {
