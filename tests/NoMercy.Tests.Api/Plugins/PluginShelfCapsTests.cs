@@ -61,7 +61,12 @@ public class PluginShelfCapsTests
             Id = "page",
             Component = "NMLolomo",
             Props = new() { ["id"] = "page" },
-            Items = [.. Enumerable.Range(0, 40).Select(index => HandWritten($"r{index}", "NMCarousel", 1))],
+            Items =
+            [
+                .. Enumerable
+                    .Range(0, 40)
+                    .Select(index => HandWritten($"r{index}", "NMCarousel", 1)),
+            ],
         };
 
         PluginView sent = PluginShelfCaps.Apply(
@@ -187,28 +192,184 @@ public class PluginShelfCapsTests
     {
         ComponentEnvelope server = Component
             .Lolomo("home")
-            .WithItems(
-                [
-                    Component
-                        .Carousel()
-                        .WithId("a")
-                        .WithTitle("A")
-                        .WithItems(Component.Card().WithData(new CardData { Title = "x" }).Build())
-                        .Build(),
-                ]
-            );
+            .WithItems([
+                Component
+                    .Carousel()
+                    .WithId("a")
+                    .WithTitle("A")
+                    .WithItems(Component.Card().WithData(new CardData { Title = "x" }).Build())
+                    .Build(),
+            ]);
 
         JObject serverJson = JObject.Parse(Json(server));
         JObject pluginJson = JObject.Parse(Json(PluginShelves.Page("home", [Shelf("a")])));
 
-        pluginJson["component"]!.Value<string>().Should().Be(serverJson["component"]!.Value<string>());
+        pluginJson["component"]!
+            .Value<string>()
+            .Should()
+            .Be(serverJson["component"]!.Value<string>());
         Keys(pluginJson["props"]!.Value<JObject>()!)
             .Should()
             .BeEquivalentTo(Keys(serverJson["props"]!.Value<JObject>()!));
-        pluginJson["props"]!["hero"]!.Value<string>()
+        pluginJson["props"]!["hero"]!
+            .Value<string>()
             .Should()
             .Be(serverJson["props"]!["hero"]!.Value<string>());
     }
+
+    [Fact]
+    public void A_grid_whose_items_come_from_a_design_record_is_capped()
+    {
+        PluginView view = PluginViews.Declarative(
+            DesignGrid("grid", PluginPaging.MaximumPageSize + 10)
+        );
+
+        PluginView sent = PluginShelfCaps.Apply(view, PluginPageRequest.First, out int trimmed);
+
+        trimmed.Should().Be(10);
+        sent.Components![0]
+            .Props["items"]
+            .Should()
+            .BeOfType<JArray>()
+            .Which.Should()
+            .HaveCount(PluginPaging.MaximumPageSize);
+        JObject.Parse(Json(sent))["components"]![0]!["props"]!["items"]!
+            .Should()
+            .HaveCount(PluginPaging.MaximumPageSize);
+    }
+
+    [Fact]
+    public void An_append_finds_a_design_record_shelf_and_holds_it_to_the_limit()
+    {
+        PluginView view = PluginViews.Declarative(
+            PluginViews.Container("wrap", DesignGrid("all", 30))
+        );
+
+        PluginView sent = PluginShelfCaps.Apply(
+            view,
+            PluginPageRequest.From(
+                new Dictionary<string, string> { ["append"] = "all", ["limit"] = "5" }
+            ),
+            out int trimmed
+        );
+
+        sent.Components.Should().ContainSingle().Which.Id.Should().Be("all");
+        ((JArray)sent.Components![0].Props["items"]!).Should().HaveCount(5);
+        trimmed.Should().Be(25);
+    }
+
+    [Fact]
+    public void Hand_built_dictionaries_are_capped_at_every_depth_without_changing_them()
+    {
+        List<Dictionary<string, object>> rows =
+        [
+            .. Enumerable.Range(0, 40).Select(index => DictionaryRow($"row-{index}", 40)),
+        ];
+        PluginView view = PluginViews.Declarative(
+            new PluginComponent
+            {
+                Id = "page",
+                Component = "NMLolomo",
+                Props = new() { ["id"] = "page", ["items"] = rows },
+            }
+        );
+
+        PluginView sent = PluginShelfCaps.Apply(view, PluginPageRequest.First, out int trimmed);
+
+        List<object?> sentRows = (List<object?>)sent.Components![0].Props["items"]!;
+        sentRows.Should().HaveCount(PluginPaging.MaximumPageRows);
+        sentRows
+            .Cast<Dictionary<string, object?>>()
+            .Select(row =>
+                ((List<object?>)((Dictionary<string, object?>)row["props"]!)["items"]!).Count
+            )
+            .Should()
+            .OnlyContain(count => count == PluginPaging.MaximumRowCards);
+        trimmed.Should().Be(4 + (PluginPaging.MaximumPageRows * 4));
+
+        rows.Should().HaveCount(40, "the plugin's own list is not changed");
+        ((List<Dictionary<string, object>>)((Dictionary<string, object>)rows[0]["props"])["items"])
+            .Should()
+            .HaveCount(40);
+    }
+
+    [Fact]
+    public void An_append_finds_a_hand_built_dictionary_shelf()
+    {
+        PluginView view = PluginViews.Declarative(
+            new PluginComponent
+            {
+                Id = "page",
+                Component = "NMLolomo",
+                Props = new()
+                {
+                    ["id"] = "page",
+                    ["items"] = new List<Dictionary<string, object>>
+                    {
+                        DictionaryRow("row-0", 3),
+                        DictionaryRow("row-1", 20),
+                    },
+                },
+            }
+        );
+
+        PluginView sent = PluginShelfCaps.Apply(
+            view,
+            PluginPageRequest.From(
+                new Dictionary<string, string> { ["append"] = "row-1", ["limit"] = "8" }
+            ),
+            out _
+        );
+
+        PluginComponent row = sent.Components.Should().ContainSingle().Subject;
+        row.Id.Should().Be("row-1");
+        row.Component.Should().Be("NMCarousel");
+        ((List<object?>)row.Props["items"]!).Should().HaveCount(8);
+        JObject.Parse(Json(sent))["components"]![0]!["props"]!["title"]!
+            .Value<string>()
+            .Should()
+            .Be("row-1");
+    }
+
+    private static PluginComponent DesignGrid(string id, int items) =>
+        new()
+        {
+            Id = id,
+            Component = "NMGrid",
+            Design = new
+            {
+                id,
+                items = Enumerable
+                    .Range(0, items)
+                    .Select(index => new
+                    {
+                        id = $"{id}-{index}",
+                        component = "NMMusicCard",
+                        props = new { id = $"{id}-{index}" },
+                    }),
+            },
+        };
+
+    private static Dictionary<string, object> DictionaryRow(string id, int cards) =>
+        new()
+        {
+            ["id"] = id,
+            ["component"] = "NMCarousel",
+            ["props"] = new Dictionary<string, object>
+            {
+                ["id"] = id,
+                ["title"] = id,
+                ["items"] = Enumerable
+                    .Range(0, cards)
+                    .Select(index => new Dictionary<string, object>
+                    {
+                        ["id"] = $"{id}-{index}",
+                        ["component"] = "NMMusicCard",
+                        ["props"] = new Dictionary<string, object> { ["id"] = $"{id}-{index}" },
+                    })
+                    .ToList(),
+            },
+        };
 
     private static PluginComponent HandWritten(string id, string component, int items) =>
         new()
@@ -218,7 +379,10 @@ public class PluginShelfCapsTests
             Props = new()
             {
                 ["id"] = id,
-                ["items"] = Enumerable.Range(0, items).Select(index => Card($"{id}-{index}")).ToList(),
+                ["items"] = Enumerable
+                    .Range(0, items)
+                    .Select(index => Card($"{id}-{index}"))
+                    .ToList(),
             },
         };
 

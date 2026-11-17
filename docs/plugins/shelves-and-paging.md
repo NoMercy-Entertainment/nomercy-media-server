@@ -307,6 +307,14 @@ On every view answer, before it is sent (`PluginShelfCaps`):
 - An `NMLolomo` keeps its first 36 rows.
 - An append keeps only the target shelf, and only `limit` of its items.
 
+The server reads a shelf's children in three shapes: SDK nodes
+(`PluginComponent`), JSON objects (what a `Design` record becomes), and
+dictionaries written by hand with `id`, `component` and `props.items`. Keys
+match without case. Each shape is capped, and each can be the target of an
+append. Any other object in a list still counts against the cap, but is not
+looked into. The server never changes the plugin's own objects; it sends
+copies.
+
 Items past a cap are left out, and the server logs a warning. The plugin's
 next cursor is sent as the plugin wrote it, so a plugin that goes over the cap
 skips the items it went over by. Keep to the limit.
