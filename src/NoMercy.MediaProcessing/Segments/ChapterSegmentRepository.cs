@@ -172,19 +172,7 @@ public class ChapterSegmentRepository(IDbContextFactory<MediaContext> contextFac
             return;
 
         await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
-        DateTime now = DateTime.UtcNow;
-        foreach (ContentSegmentWritePlan plan in plans)
-        {
-            context.ContentSegments.RemoveRange(plan.Remove);
-            foreach (ContentSegment segment in plan.Add)
-            {
-                segment.CreatedAt = now;
-                segment.UpdatedAt = now;
-                context.ContentSegments.Add(segment);
-            }
-        }
-
-        await context.SaveChangesAsync(ct);
+        await context.ApplySegmentPlansAsync(plans, ct);
     }
 
     private static IEnumerable<StoredChapters> Newest(List<StoredChapters> rows) =>

@@ -123,33 +123,6 @@ public class ContentSegmentRepository(MediaContext context) : IContentSegmentRep
             .Where(cs => cs.EpisodeId != null && episodeIds.Contains(cs.EpisodeId.Value))
             .ToListAsync();
 
-    public async Task ApplyAsync(IReadOnlyList<ContentSegmentWritePlan> plans)
-    {
-        if (plans.All(plan => plan.IsEmpty))
-            return;
-
-        DateTime now = DateTime.UtcNow;
-        foreach (ContentSegmentWritePlan plan in plans)
-        {
-            // The plan's rows were read untracked; this scoped context may
-            // already track the same row (created or updated earlier in the
-            // request), and EF refuses a second instance with the same key.
-            foreach (ContentSegment stale in plan.Remove)
-            {
-                ContentSegment? tracked = context.ContentSegments.Local.FirstOrDefault(s =>
-                    s.Id == stale.Id
-                );
-                context.ContentSegments.Remove(tracked ?? stale);
-            }
-
-            foreach (ContentSegment segment in plan.Add)
-            {
-                segment.CreatedAt = now;
-                segment.UpdatedAt = now;
-                context.ContentSegments.Add(segment);
-            }
-        }
-
-        await context.SaveChangesAsync();
-    }
+    public Task ApplyAsync(IReadOnlyList<ContentSegmentWritePlan> plans) =>
+        context.ApplySegmentPlansAsync(plans, CancellationToken.None);
 }

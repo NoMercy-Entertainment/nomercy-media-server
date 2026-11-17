@@ -290,16 +290,14 @@ public class IntroDetectSubscriber : EventSubscriber
         if (newSegments.Count == 0)
             return;
 
+        List<ContentSegmentWritePlan> plans =
+        [
+            .. newSegments
+                .GroupBy(s => s.EpisodeId!.Value)
+                .Select(episodeSegments => PlanFor(episodeSegments, existingSegments)),
+        ];
         await using (MediaContext context = await _contextFactory.CreateDbContextAsync(ct))
-        {
-            foreach (IGrouping<int, ContentSegment> episodeSegments in newSegments.GroupBy(s => s.EpisodeId!.Value))
-            {
-                ContentSegmentWritePlan plan = PlanFor(episodeSegments, existingSegments);
-                context.ContentSegments.RemoveRange(plan.Remove);
-                context.ContentSegments.AddRange(plan.Add);
-            }
-            await context.SaveChangesAsync(ct);
-        }
+            await context.ApplySegmentPlansAsync(plans, ct);
 
         _logger.LogInformation(
             "IntroDetect: persisted {Count} segment(s) for season {SeasonId}",
@@ -312,14 +310,14 @@ public class IntroDetectSubscriber : EventSubscriber
         List<ContentSegment> existingSegments,
         ContentSegmentType kind
     ) =>
-    [
-        .. existingSegments
-            .Where(cs =>
-                ContentSegmentPrecedence.KindOf(cs.SegmentType) == kind
-                && ContentSegmentPrecedence.RankOf(cs) >= ContentSegmentRank.Detection
-            )
-            .Select(cs => cs.EpisodeId!.Value),
-    ];
+        [
+            .. existingSegments
+                .Where(cs =>
+                    ContentSegmentPrecedence.KindOf(cs.SegmentType) == kind
+                    && ContentSegmentPrecedence.RankOf(cs) >= ContentSegmentRank.Detection
+                )
+                .Select(cs => cs.EpisodeId!.Value),
+        ];
 
     /// <summary>
     /// The precedence plan for one episode's new rows. Only the kinds this run

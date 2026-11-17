@@ -297,12 +297,7 @@ public class IntroDetectionSubscriber(
             newSegments,
             ContentSegmentSource.Detector
         );
-        if (plan.IsEmpty)
-            return;
-
-        context.ContentSegments.RemoveRange(plan.Remove);
-        context.ContentSegments.AddRange(plan.Add);
-        await context.SaveChangesAsync(ct);
+        await context.ApplySegmentPlansAsync([plan], ct);
     }
 
     private string? ResolveEpisodeInputPath(Episode episode)
