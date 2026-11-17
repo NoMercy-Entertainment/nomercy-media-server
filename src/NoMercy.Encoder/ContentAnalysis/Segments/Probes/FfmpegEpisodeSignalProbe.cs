@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using System.ComponentModel;
 using System.Globalization;
 using System.Text;
 using Microsoft.Extensions.Logging;
@@ -214,6 +215,11 @@ public sealed class FfmpegEpisodeSignalProbe(
                 logger.LogWarning("Segment analysis: OCR timed out for {Path}", source.VideoPath);
                 return null;
             }
+            catch (Win32Exception ex)
+            {
+                LogNotStarted(ex);
+                return null;
+            }
 
             if (!result.IsSuccess || !storage.Exists(dumpPath))
             {
@@ -384,7 +390,20 @@ public sealed class FfmpegEpisodeSignalProbe(
             logger.LogWarning("Segment analysis: ffmpeg timed out for {Path}", path);
             return false;
         }
+        catch (Win32Exception ex)
+        {
+            LogNotStarted(ex);
+            return false;
+        }
     }
+
+    /// <summary>FFmpeg itself is missing or not executable: say so plainly, once per pass.</summary>
+    private void LogNotStarted(Win32Exception ex) =>
+        logger.LogError(
+            ex,
+            "Segment analysis: FFmpeg could not be started at {Ffmpeg}. Check that the server's FFmpeg is installed",
+            options.FfmpegPath
+        );
 
     private string CreateTempFolder()
     {

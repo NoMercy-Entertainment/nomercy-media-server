@@ -14,9 +14,9 @@ namespace NoMercy.MediaProcessing.Segments;
 /// <summary>Runs the intro / credits / end-of-content analysis (#598) and stores the answers.</summary>
 public interface ISegmentAnalysisService
 {
-    /// <summary>Analyses one season as a group. False when it had nothing to analyse.</summary>
-    Task<bool> AnalyseSeasonAsync(int seasonId, CancellationToken ct);
+    /// <summary>Analyses one season as a group.</summary>
+    Task<SegmentAnalysisOutcome> AnalyseSeasonAsync(int seasonId, CancellationToken ct);
 
     /// <summary>A movie gets credits and end of content only (stages 7–8).</summary>
-    Task<bool> AnalyseMovieAsync(int movieId, CancellationToken ct);
+    Task<SegmentAnalysisOutcome> AnalyseMovieAsync(int movieId, CancellationToken ct);
 }

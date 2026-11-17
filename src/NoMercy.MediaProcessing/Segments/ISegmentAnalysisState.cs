@@ -12,17 +12,30 @@
 namespace NoMercy.MediaProcessing.Segments;
 
 /// <summary>
-/// Which seasons and movies the analysis already ran on, so the backfill does
-/// not run it again for one where it found nothing (or where manual or chapter
-/// segments blocked every analysis row).
+/// What the backfill remembers per season and movie: which were analysed (so a
+/// season where nothing was found, or where manual and chapter segments block
+/// every row, is not analysed again on every scan), and how often an analysis
+/// failed (so an always-failing season stops being retried).
 /// </summary>
 public interface ISegmentAnalysisState
 {
-    Task<HashSet<int>> AnalysedSeasonsAsync(CancellationToken ct);
+    /// <summary>After this many failures the backfill leaves an item alone.</summary>
+    const int MaxFailures = 3;
 
-    Task<HashSet<int>> AnalysedMoviesAsync(CancellationToken ct);
+    Task<HashSet<int>> AnalysedAsync(SegmentAnalysisTarget target, CancellationToken ct);
 
-    Task MarkSeasonAsync(int seasonId, CancellationToken ct);
+    /// <summary>Items that failed <see cref="MaxFailures"/> times since their last reset.</summary>
+    Task<HashSet<int>> GivenUpAsync(SegmentAnalysisTarget target, CancellationToken ct);
 
-    Task MarkMovieAsync(int movieId, CancellationToken ct);
+    /// <summary>The item was analysed; its failure count is cleared.</summary>
+    Task MarkAnalysedAsync(SegmentAnalysisTarget target, int id, CancellationToken ct);
+
+    /// <summary>One more failed run. Returns the new failure count.</summary>
+    Task<int> RecordFailureAsync(SegmentAnalysisTarget target, int id, CancellationToken ct);
+
+    /// <summary>
+    /// The item's files changed (a new encode) or someone asked for a run: its
+    /// failures are forgotten so it is tried again.
+    /// </summary>
+    Task ResetFailuresAsync(SegmentAnalysisTarget target, int id, CancellationToken ct);
 }

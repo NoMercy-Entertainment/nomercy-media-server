@@ -10,6 +10,8 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging;
 using NoMercy.MediaProcessing.Segments;
 using NoMercyQueue;
 using NoMercyQueue.Core.Interfaces;
@@ -19,10 +21,18 @@ namespace NoMercy.MediaProcessing.Jobs.SegmentJobs;
 /// <summary>
 /// Finds the intro, the credits and the real end of content (#598) for one
 /// season as a group, or for one movie (credits and end of content only).
-/// Queued after an encode and by the library-scan backfill. Runs on the
-/// encoder queue, which holds off while anything is playing, at the lowest
-/// priority there so encodes and subtitle OCR always go first. Idempotent:
-/// a rerun replaces the earlier analysis rows.
+/// Queued after an encode, by the library-scan backfill and by the on-demand
+/// endpoint. Runs on the encoder queue, which holds off while anything is
+/// playing, at the lowest priority there so encodes and subtitle OCR go first.
+/// <para>
+/// The item is marked analysed only when the analysis really ran. Nothing to
+/// read (an unmounted folder) leaves it unmarked for the next scan; a run that
+/// measured nothing or threw counts as a failure, and after
+/// <see cref="ISegmentAnalysisState.MaxFailures"/> of them the backfill leaves
+/// the item alone until its files change or someone asks for a run. A failure
+/// is not rethrown: a queue retry would repeat the same expensive passes.
+/// Shutdown cancels a run mid-way.
+/// </para>
 /// </summary>
 [Serializable]
 public class SegmentAnalysisJob : IShouldQueue, IJobStorageInjector
@@ -35,6 +45,8 @@ public class SegmentAnalysisJob : IShouldQueue, IJobStorageInjector
 
     private ISegmentAnalysisService? _analysis;
     private ISegmentAnalysisState? _state;
+    private ILogger<SegmentAnalysisJob>? _logger;
+    private CancellationToken _stopping = CancellationToken.None;
 
     public SegmentAnalysisJob() { }
 
@@ -46,6 +58,10 @@ public class SegmentAnalysisJob : IShouldQueue, IJobStorageInjector
     {
         _analysis = serviceProvider.GetService<ISegmentAnalysisService>();
         _state = serviceProvider.GetService<ISegmentAnalysisState>();
+        _logger = serviceProvider.GetService<ILogger<SegmentAnalysisJob>>();
+        _stopping =
+            serviceProvider.GetService<IHostApplicationLifetime>()?.ApplicationStopping
+            ?? CancellationToken.None;
     }
 
     public async Task Handle()
@@ -53,17 +69,50 @@ public class SegmentAnalysisJob : IShouldQueue, IJobStorageInjector
         if (_analysis is null)
             return;
 
-        if (SeasonId is { } seasonId)
+        (SegmentAnalysisTarget target, int id) = SeasonId is { } seasonId
+            ? (SegmentAnalysisTarget.Season, seasonId)
+            : MovieId is { } movieId
+                ? (SegmentAnalysisTarget.Movie, movieId)
+                : (SegmentAnalysisTarget.Season, -1);
+        if (id < 0)
+            return;
+
+        SegmentAnalysisOutcome outcome;
+        try
         {
-            await _analysis.AnalyseSeasonAsync(seasonId, CancellationToken.None);
-            if (_state is not null)
-                await _state.MarkSeasonAsync(seasonId, CancellationToken.None);
+            outcome = target == SegmentAnalysisTarget.Season
+                ? await _analysis.AnalyseSeasonAsync(id, _stopping)
+                : await _analysis.AnalyseMovieAsync(id, _stopping);
         }
-        else if (MovieId is { } movieId)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
-            await _analysis.AnalyseMovieAsync(movieId, CancellationToken.None);
-            if (_state is not null)
-                await _state.MarkMovieAsync(movieId, CancellationToken.None);
+            int failures = await RecordFailureAsync(target, id);
+            _logger?.LogError(
+                ex,
+                "Segment analysis of {Target} {Id} failed ({Failures}/{Max})",
+                target,
+                id,
+                failures,
+                ISegmentAnalysisState.MaxFailures
+            );
+            return;
+        }
+
+        switch (outcome)
+        {
+            case SegmentAnalysisOutcome.Analysed:
+                if (_state is not null)
+                    await _state.MarkAnalysedAsync(target, id, _stopping);
+                break;
+            case SegmentAnalysisOutcome.NothingMeasured:
+                await RecordFailureAsync(target, id);
+                break;
+            case SegmentAnalysisOutcome.NoSources:
+                // Unmounted or not encoded yet: the next scan tries again.
+                break;
         }
     }
+
+    private async Task<int> RecordFailureAsync(SegmentAnalysisTarget target, int id) =>
+        _state is null ? 0 : await _state.RecordFailureAsync(target, id, _stopping);
 }

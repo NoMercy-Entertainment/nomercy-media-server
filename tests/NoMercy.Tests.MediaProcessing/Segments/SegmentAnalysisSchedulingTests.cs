@@ -11,6 +11,7 @@
 
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NoMercy.Database;
@@ -41,14 +42,19 @@ public class SegmentAnalysisSchedulingTests
     private readonly List<SegmentAnalysisJob> _queued = [];
     private readonly Mock<IJobDispatcher> _dispatcher = new();
     private readonly Mock<ISegmentAnalysisState> _state = new();
+    private readonly Mock<ISegmentAnalysisService> _analysis = new();
 
     public SegmentAnalysisSchedulingTests()
     {
         _dispatcher
             .Setup(d => d.Dispatch(It.IsAny<IShouldQueue>(), It.IsAny<string>(), It.IsAny<int>()))
             .Callback<IShouldQueue, string, int>((job, _, _) => _queued.Add((SegmentAnalysisJob)job));
-        _state.Setup(s => s.AnalysedSeasonsAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
-        _state.Setup(s => s.AnalysedMoviesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([]);
+        _state
+            .Setup(s => s.AnalysedAsync(It.IsAny<SegmentAnalysisTarget>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => []);
+        _state
+            .Setup(s => s.GivenUpAsync(It.IsAny<SegmentAnalysisTarget>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => []);
 
         using MediaContext context = _factory.CreateDbContext();
         context.LibraryTv.Add(new LibraryTv { LibraryId = _libraryId, TvId = 1 });
@@ -95,12 +101,38 @@ public class SegmentAnalysisSchedulingTests
     [Fact]
     public async Task LibraryScan_SkipsWhatWasAnalysedAlready()
     {
-        _state.Setup(s => s.AnalysedSeasonsAsync(It.IsAny<CancellationToken>())).ReturnsAsync([10]);
-        _state.Setup(s => s.AnalysedMoviesAsync(It.IsAny<CancellationToken>())).ReturnsAsync([129]);
+        _state
+            .Setup(s => s.AnalysedAsync(SegmentAnalysisTarget.Season, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => [10]);
+        _state
+            .Setup(s => s.AnalysedAsync(SegmentAnalysisTarget.Movie, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => [129]);
 
         await Scheduler().OnLibraryScanCompletedAsync(Scanned(), CancellationToken.None);
 
         _queued.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task LibraryScan_SkipsWhatKeptFailing()
+    {
+        _state
+            .Setup(s => s.GivenUpAsync(SegmentAnalysisTarget.Season, It.IsAny<CancellationToken>()))
+            .ReturnsAsync(() => [10]);
+
+        await Scheduler().OnLibraryScanCompletedAsync(Scanned(), CancellationToken.None);
+
+        _queued.Select(j => j.SeasonId).OfType<int>().Should().BeEmpty();
+        _queued.Select(j => j.MovieId).OfType<int>().Should().Equal(129);
+    }
+
+    [Fact]
+    public async Task ANewEncode_ForgetsTheSeasonsFailures_AndQueuesIt()
+    {
+        await Scheduler().OnEncodingCompletedAsync(Completed(2), CancellationToken.None);
+
+        _state.Verify(s => s.ResetFailuresAsync(SegmentAnalysisTarget.Season, 10, It.IsAny<CancellationToken>()));
+        _queued.Should().ContainSingle().Which.SeasonId.Should().Be(10);
     }
 
     [Fact]
@@ -118,20 +150,89 @@ public class SegmentAnalysisSchedulingTests
     [Fact]
     public async Task Job_AnalysesTheSeason_ThenMarksIt()
     {
-        Mock<ISegmentAnalysisService> analysis = new();
-        ServiceProvider services = new ServiceCollection()
-            .AddSingleton(analysis.Object)
-            .AddSingleton(_state.Object)
-            .BuildServiceProvider();
-        SegmentAnalysisJob job = SegmentAnalysisJob.ForSeason(10);
-        job.InjectStorageServices(services);
+        SegmentAnalysisJob job = Job(SegmentAnalysisOutcome.Analysed);
 
         await job.Handle();
 
-        analysis.Verify(a => a.AnalyseSeasonAsync(10, It.IsAny<CancellationToken>()), Times.Once);
-        _state.Verify(s => s.MarkSeasonAsync(10, It.IsAny<CancellationToken>()), Times.Once);
+        _analysis.Verify(a => a.AnalyseSeasonAsync(10, It.IsAny<CancellationToken>()), Times.Once);
+        _state.Verify(s => s.MarkAnalysedAsync(SegmentAnalysisTarget.Season, 10, It.IsAny<CancellationToken>()), Times.Once);
         job.QueueName.Should().Be("encoder", "the encoder queue holds off during playback");
         job.Priority.Should().BeLessThan(2, "encodes and subtitle OCR go first");
+    }
+
+    [Fact]
+    public async Task Job_WithNothingToRead_NeitherMarksNorCountsAFailure()
+    {
+        // An unmounted NAS or a non-local folder: the next scan tries again.
+        await Job(SegmentAnalysisOutcome.NoSources).Handle();
+
+        _state.Verify(s => s.MarkAnalysedAsync(It.IsAny<SegmentAnalysisTarget>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+        _state.Verify(s => s.RecordFailureAsync(It.IsAny<SegmentAnalysisTarget>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Job_ThatMeasuredNothing_CountsAFailure_AndDoesNotMark()
+    {
+        // FFmpeg missing or without chromaprint: every episode's audio pass failed.
+        await Job(SegmentAnalysisOutcome.NothingMeasured).Handle();
+
+        _state.Verify(s => s.RecordFailureAsync(SegmentAnalysisTarget.Season, 10, It.IsAny<CancellationToken>()), Times.Once);
+        _state.Verify(s => s.MarkAnalysedAsync(It.IsAny<SegmentAnalysisTarget>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Job_ThatThrows_CountsAFailure_AndDoesNotRetryTheExpensivePasses()
+    {
+        _analysis
+            .Setup(a => a.AnalyseSeasonAsync(10, It.IsAny<CancellationToken>()))
+            .ThrowsAsync(new InvalidOperationException("disk gone"));
+        SegmentAnalysisJob job = Job(SegmentAnalysisOutcome.Analysed, setUp: false);
+
+        Func<Task> handle = job.Handle;
+
+        await handle.Should().NotThrowAsync("a queue retry would run every pass again");
+        _state.Verify(s => s.RecordFailureAsync(SegmentAnalysisTarget.Season, 10, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Job_PassesTheShutdownToken()
+    {
+        using CancellationTokenSource stopping = new();
+        Mock<IHostApplicationLifetime> lifetime = new();
+        lifetime.Setup(l => l.ApplicationStopping).Returns(stopping.Token);
+        CancellationToken seen = default;
+        _analysis
+            .Setup(a => a.AnalyseMovieAsync(129, It.IsAny<CancellationToken>()))
+            .Callback<int, CancellationToken>((_, ct) => seen = ct)
+            .ReturnsAsync(SegmentAnalysisOutcome.Analysed);
+        SegmentAnalysisJob job = SegmentAnalysisJob.ForMovie(129);
+        job.InjectStorageServices(
+            new ServiceCollection()
+                .AddSingleton(_analysis.Object)
+                .AddSingleton(_state.Object)
+                .AddSingleton(lifetime.Object)
+                .BuildServiceProvider()
+        );
+
+        await job.Handle();
+
+        seen.Should().Be(stopping.Token);
+    }
+
+    private SegmentAnalysisJob Job(SegmentAnalysisOutcome outcome, bool setUp = true)
+    {
+        if (setUp)
+        {
+            _analysis
+                .Setup(a => a.AnalyseSeasonAsync(10, It.IsAny<CancellationToken>()))
+                .ReturnsAsync(outcome);
+        }
+
+        SegmentAnalysisJob job = SegmentAnalysisJob.ForSeason(10);
+        job.InjectStorageServices(
+            new ServiceCollection().AddSingleton(_analysis.Object).AddSingleton(_state.Object).BuildServiceProvider()
+        );
+        return job;
     }
 
     private SegmentAnalysisScheduler Scheduler(IEventBus? bus = null, EncoderOptions? options = null) =>

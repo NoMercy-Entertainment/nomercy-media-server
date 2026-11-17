@@ -81,6 +81,16 @@ public class FfmpegEpisodeSignalProbeTests
     }
 
     [Fact]
+    public async Task ReadAudio_WhenFfmpegCannotStart_IsNull_NotAnException()
+    {
+        Mock<IProcessRunner> runner = Runner(
+            (_, _) => throw new System.ComponentModel.Win32Exception(2, "The system cannot find the file specified.")
+        );
+
+        (await Probe(runner).ReadAudioAsync(_source, CancellationToken.None)).Should().BeNull();
+    }
+
+    [Fact]
     public async Task ReadBlack_RunsBothDetectorsPerWindow_InEpisodeTime()
     {
         List<string[]> calls = [];

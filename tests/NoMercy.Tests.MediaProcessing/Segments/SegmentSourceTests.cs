@@ -73,11 +73,4 @@ public class SegmentSourceTests
         AudioLanguagePicker.Pick("ja", episodes).Should().Be("eng");
         AudioLanguagePicker.Pick(null, []).Should().BeNull();
     }
-
-    [Fact]
-    public void AnalysedIds_SurviveTheConfigurationValue()
-    {
-        SegmentAnalysisState.Parse("3, 12,x,40").Should().BeEquivalentTo([3, 12, 40]);
-        SegmentAnalysisState.Parse(null).Should().BeEmpty();
-    }
 }

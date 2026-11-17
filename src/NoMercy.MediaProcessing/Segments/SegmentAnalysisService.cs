@@ -24,13 +24,13 @@ public sealed class SegmentAnalysisService(
     ILogger<SegmentAnalysisService> logger
 ) : ISegmentAnalysisService
 {
-    public async Task<bool> AnalyseSeasonAsync(int seasonId, CancellationToken ct)
+    public async Task<SegmentAnalysisOutcome> AnalyseSeasonAsync(int seasonId, CancellationToken ct)
     {
         List<ResolvedSegmentSource> sources = await resolver.ResolveSeasonAsync(seasonId, ct);
         if (sources.Count == 0)
         {
             logger.LogDebug("Segment analysis: season {SeasonId} has no readable encoded episodes", seasonId);
-            return false;
+            return SegmentAnalysisOutcome.NoSources;
         }
 
         Dictionary<string, int> episodeByKey = sources.ToDictionary(
@@ -42,6 +42,16 @@ public sealed class SegmentAnalysisService(
             ct
         );
 
+        if (answers.Count == 0)
+        {
+            logger.LogWarning(
+                "Segment analysis: season {SeasonId}, no episode of {Count} could be measured",
+                seasonId,
+                sources.Count
+            );
+            return SegmentAnalysisOutcome.NothingMeasured;
+        }
+
         List<AnalysedItem> items =
         [
             .. answers.Select(a => new AnalysedItem(episodeByKey[a.Key], null, a)),
@@ -52,24 +62,24 @@ public sealed class SegmentAnalysisService(
             seasonId,
             items.Count
         );
-        return items.Count > 0;
+        return SegmentAnalysisOutcome.Analysed;
     }
 
-    public async Task<bool> AnalyseMovieAsync(int movieId, CancellationToken ct)
+    public async Task<SegmentAnalysisOutcome> AnalyseMovieAsync(int movieId, CancellationToken ct)
     {
         ResolvedSegmentSource? source = await resolver.ResolveMovieAsync(movieId, ct);
         if (source is null)
-            return false;
+            return SegmentAnalysisOutcome.NoSources;
 
         IReadOnlyList<EpisodeSegments> answers = await pipeline.AnalyseAsync(
             [new SegmentAnalysisInput(Key(movieId), source.Source)],
             ct
         );
         if (answers.Count == 0)
-            return false;
+            return SegmentAnalysisOutcome.NothingMeasured;
 
         await writer.WriteAsync([new AnalysedItem(null, movieId, answers[0])], ct);
-        return true;
+        return SegmentAnalysisOutcome.Analysed;
     }
 
     private static string Key(int id) => id.ToString(CultureInfo.InvariantCulture);

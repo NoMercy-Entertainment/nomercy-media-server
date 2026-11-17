@@ -27,7 +27,9 @@ namespace NoMercy.MediaProcessing.EventHandlers;
 /// Queues the intro / credits / end-of-content analysis (#598). It replaces the
 /// chromaprint detector's two triggers: after an encode the item's season (or
 /// the movie) is analysed again; after a library scan every season and movie of
-/// the library that was never analysed is queued (the backfill). The queue
+/// the library that was never analysed is queued (the backfill), except items
+/// that failed <see cref="ISegmentAnalysisState.MaxFailures"/> times. A new
+/// encode clears those failures: the item's files changed. The queue
 /// keeps one copy of an identical pending job, and the analysis job sits below
 /// encodes on the encoder queue, so a season encoded in one batch is analysed
 /// once, after its last episode.
@@ -85,9 +87,16 @@ public sealed class SegmentAnalysisScheduler(
                 .AnyAsync(m => m.Id == evt.JobId && m.VideoFiles.Any(), ct);
 
             if (seasonId is not null)
+            {
+                await state.ResetFailuresAsync(SegmentAnalysisTarget.Season, seasonId.Value, ct);
                 Dispatch(SegmentAnalysisJob.ForSeason(seasonId.Value));
+            }
+
             if (movie)
+            {
+                await state.ResetFailuresAsync(SegmentAnalysisTarget.Movie, evt.JobId, ct);
                 Dispatch(SegmentAnalysisJob.ForMovie(evt.JobId));
+            }
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
@@ -117,8 +126,10 @@ public sealed class SegmentAnalysisScheduler(
                 .Select(m => m.Id)
                 .ToListAsync(ct);
 
-            HashSet<int> doneSeasons = await state.AnalysedSeasonsAsync(ct);
-            HashSet<int> doneMovies = await state.AnalysedMoviesAsync(ct);
+            HashSet<int> doneSeasons = await state.AnalysedAsync(SegmentAnalysisTarget.Season, ct);
+            doneSeasons.UnionWith(await state.GivenUpAsync(SegmentAnalysisTarget.Season, ct));
+            HashSet<int> doneMovies = await state.AnalysedAsync(SegmentAnalysisTarget.Movie, ct);
+            doneMovies.UnionWith(await state.GivenUpAsync(SegmentAnalysisTarget.Movie, ct));
             List<int> todoSeasons = [.. seasons.Where(id => !doneSeasons.Contains(id))];
             List<int> todoMovies = [.. movies.Where(id => !doneMovies.Contains(id))];
 
