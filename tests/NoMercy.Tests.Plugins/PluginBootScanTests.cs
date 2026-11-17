@@ -184,7 +184,7 @@ public class PluginBootScanTests : IDisposable
         results[0].Name.Should().Be("Echo");
     }
 
-    // A manifest that ships translations, as Internet Radio and Automix do. The
+    // A manifest that ships translations, as Internet Radio does. The
     // boot scan hands the loader a storage-relative folder; the translation check
     // resolved that against the process's working directory, the storage layer
     // refused the path, and every such plugin failed to load after a restart
