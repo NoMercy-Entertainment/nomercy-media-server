@@ -36,6 +36,7 @@ public static class PluginLibraryServiceCollectionExtensions
     {
         ArgumentNullException.ThrowIfNull(services);
 
+        services.AddSingleton<IPluginLibraryProjection, PluginLibraryProjection>();
         services.AddSingleton<IPluginLibraryQuery, PluginLibraryQuery>();
         services.AddSingleton<IPluginMusicQuery, PluginMusicQuery>();
         services.AddSingleton<IPluginLibraryWriterFactory, PluginLibraryWriterFactory>();

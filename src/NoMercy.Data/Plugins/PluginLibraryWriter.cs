@@ -39,6 +39,7 @@ namespace NoMercy.Data.Plugins;
 public class PluginLibraryWriter(
     Ulid pluginId,
     IDbContextFactory<MediaContext> contextFactory,
+    IPluginLibraryProjection libraryProjection,
     IStorageFactory storageFactory,
     IPluginGrantStore grants,
     ILogger logger
@@ -48,16 +49,7 @@ public class PluginLibraryWriter(
         CancellationToken ct = default
     )
     {
-        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
-
-        List<PluginLibrary> libraries = await context
-            .Libraries.AsNoTracking()
-            .Select(library => new PluginLibrary(
-                library.Id.ToString(),
-                library.Title,
-                library.Type
-            ))
-            .ToListAsync(ct);
+        List<PluginLibrary> libraries = await libraryProjection.GetLibrariesAsync(ct);
 
         return
         [
@@ -234,6 +226,7 @@ public class PluginLibraryWriter(
 /// <summary>Builds a writer bound to one plugin's grants.</summary>
 public class PluginLibraryWriterFactory(
     IDbContextFactory<MediaContext> contextFactory,
+    IPluginLibraryProjection libraryProjection,
     IStorageFactory storageFactory,
     IPluginGrantStore grants,
     ILoggerFactory loggerFactory
@@ -250,6 +243,7 @@ public class PluginLibraryWriterFactory(
         return new PluginLibraryWriter(
             pluginId,
             contextFactory,
+            libraryProjection,
             storageFactory,
             grants,
             loggerFactory.CreateLogger<PluginLibraryWriter>()

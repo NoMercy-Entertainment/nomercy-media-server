@@ -91,6 +91,7 @@ public class PluginAbiTests
     /// </summary>
     [Theory]
     [InlineData(typeof(PluginScheduledJob), new[] { typeof(string), typeof(string), typeof(bool) })]
+    [InlineData(typeof(PluginLibrary), new[] { typeof(string), typeof(string), typeof(string) })]
     public void ConstructorsElevenZeroPluginsCall_AreStillThere(Type type, Type[] parameters)
     {
         ConstructorInfo? found = type.GetConstructor(parameters);
@@ -109,6 +110,9 @@ public class PluginAbiTests
     /// </summary>
     [Theory]
     [InlineData(typeof(PluginViewRequest), "UserId", typeof(string))]
+    [InlineData(typeof(PluginLibrary), "Id", typeof(string))]
+    [InlineData(typeof(PluginLibrary), "Title", typeof(string))]
+    [InlineData(typeof(PluginLibrary), "Type", typeof(string))]
     public void PropertiesElevenZeroPluginsRead_KeepTheirType(
         Type type,
         string property,
@@ -123,6 +127,23 @@ public class PluginAbiTests
             $"{type.Name}.{property} returns {found.PropertyType.Name}, and every plugin built "
                 + $"against 11.0 reads it as {expected.Name}. The call fails with MissingMethodException."
         );
+    }
+
+    /// <summary>
+    /// 12.11 added <see cref="PluginLibrary.EncodingPresets"/> as an init-only
+    /// member, so a plugin that builds a library the way it always did (a test
+    /// double, a fake host) still compiles, still reads the three values it
+    /// knows, and sees no presets rather than a null.
+    /// </summary>
+    [Fact]
+    public void Library_BuiltTheWayAPluginBefore12_11BuiltIt_CarriesItsValuesAndNoPresets()
+    {
+        PluginLibrary library = new("films", "Films", "movie");
+
+        library.Id.Should().Be("films");
+        library.Title.Should().Be("Films");
+        library.Type.Should().Be("movie");
+        library.EncodingPresets.Should().NotBeNull().And.BeEmpty();
     }
 
     [Fact]

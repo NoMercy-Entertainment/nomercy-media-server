@@ -46,7 +46,11 @@ public static class PluginAbi
     // 12.10 also added PluginFilterGraphTokens.StemsSource and StemsVocalSource (two new
     // constants) and PluginTrackStem.Engine (an init-only property, so the constructor a
     // plugin was compiled against is still there).
-    public static Version Current { get; } = new(12, 10);
+    // 12.11 added PluginLibrary.EncodingPresets and PluginEncodingPreset: the presets that
+    // encode a library's folders, each with the tallest video it can produce. Additive: an
+    // init-only property defaulting to empty, so new PluginLibrary(id, title, type) written
+    // before it still constructs and still reads Id, Title and Type.
+    public static Version Current { get; } = new(12, 11);
 
     /// <summary>
     /// The oldest major this server can load at all.

@@ -90,7 +90,26 @@ public interface IPluginLibraryQuery
 
 /// <param name="Id">The library's id, as used by <see cref="PluginGrantKind.LibraryWrite"/>.</param>
 /// <param name="Type">movie, tv, anime or music.</param>
-public record PluginLibrary(string Id, string Title, string Type);
+public record PluginLibrary(string Id, string Title, string Type)
+{
+    /// <summary>
+    /// The encoding presets that auto-encode this library's files, as the
+    /// server would run them: every preset linked to one of the library's
+    /// folders, narrowed to the library's own encode preset when it has one.
+    /// Each preset appears once, however many folders link it.
+    /// <para>
+    /// Facts, not a choice. A library can encode to several presets, and which
+    /// one a plugin follows is the plugin's rule to keep. Empty when no folder
+    /// links a preset, or when the server says nothing about it.
+    /// </para>
+    /// <para>
+    /// A member rather than a positional parameter, so every plugin compiled
+    /// against the older shape still constructs and still reads the three it
+    /// knows. Added in ABI 12.11.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<PluginEncodingPreset> EncodingPresets { get; init; } = [];
+}
 
 /// <param name="Id">The provider's show id, which is what the rest of this contract keys on.</param>
 /// <param name="Folder">The show's folder relative to its library root, or null when it has none.</param>
