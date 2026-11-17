@@ -15,11 +15,12 @@ namespace NoMercy.PluginSdk.Abstractions;
 /// The parts of the view contract the asking client says it can run.
 /// <para>
 /// A client sends them as one comma-separated query value,
-/// <c>features=paging</c>. A client that sends nothing is an older client. The
-/// shelves look the same to every client; what changes is whether a
-/// <see cref="PluginActionType.LoadPage" /> does anything. A plugin that used to
-/// send one long page can keep sending it to a client without paging, and send
-/// the first page and a next cursor to a client with it.
+/// <c>features=paging,rows</c>. A client that sends nothing is an older client.
+/// <see cref="Paging" /> decides whether a <see cref="PluginActionType.LoadPage" />
+/// does anything: a plugin that used to send one long page can keep sending it to
+/// a client without paging, and send the first page and a next cursor to a client
+/// with it. <see cref="Rows" /> decides whether the client draws the app's
+/// home-page row and <c>NMLolomo</c>.
 /// </para>
 /// </summary>
 public sealed class PluginClientFeatures
@@ -29,6 +30,14 @@ public sealed class PluginClientFeatures
 
     /// <summary>The client runs <see cref="PluginActionType.LoadPage" /> and reads a shelf's <c>loadMore</c>.</summary>
     public const string Paging = "paging";
+
+    /// <summary>
+    /// The client draws a plugin's <c>NMCarousel</c> as its own home-page row
+    /// and draws <c>NMLolomo</c>. Without it a plugin should send its rows some
+    /// other way, because an older client draws <c>NMCarousel</c> as the design
+    /// system's carousel and cannot show <c>NMLolomo</c>. Added in ABI 12.12.
+    /// </summary>
+    public const string Rows = "rows";
 
     private readonly HashSet<string> _names;
 
