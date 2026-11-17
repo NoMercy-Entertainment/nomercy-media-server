@@ -16,6 +16,8 @@
 services:
   nomercy:
     container_name: nomercy-mediaserver
+    # Use :latest-browser if a plugin needs a browser (for example to pass
+    # challenges); it is about 380 MB larger.
     image: ghcr.io/nomercy-entertainment/nomercymediaserver:latest
     # To build locally instead of pulling from registry, uncomment:
     # build:
