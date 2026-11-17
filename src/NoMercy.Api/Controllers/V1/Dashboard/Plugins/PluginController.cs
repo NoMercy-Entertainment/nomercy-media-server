@@ -41,7 +41,8 @@ public class PluginController(
     IPluginRestartAdvisor restartAdvisor,
     IStorageDriver storageDriver,
     IPluginDeveloperModeSource developerMode,
-    IPluginRunGate? runGate = null
+    IPluginRunGate? runGate = null,
+    IPluginIsolationFit? isolationFit = null
 ) : BaseController
 {
     private const long MaximumUploadBytes = 64L * 1024 * 1024;
@@ -597,13 +598,46 @@ public class PluginController(
     /// server's own process.
     /// </para>
     /// </summary>
-    private static PluginRuntimeModeDto DescribeRuntime(PluginRuntimeMode mode)
+    private PluginRuntimeModeDto DescribeRuntime(PluginRuntimeMode mode)
     {
         return new PluginRuntimeModeDto
         {
             Isolation = mode.Default.ToString(),
             PerPlugin = mode.PerPlugin ?? new Dictionary<string, PluginIsolation>(),
             Notice = mode.AnyOutOfProcess ? PluginIsolationLevel.PendingKey : null,
+            NeedsInProcess = NeedsInProcess(),
         };
+    }
+
+    /// <summary>
+    /// Every installed plugin that would lose something in a process of its
+    /// own, and what. Without it an owner who moved a plugin there saw it
+    /// start and then do nothing, with no word on the screen that moved it.
+    /// Null on a host that registered no fit check, so the field is left out
+    /// rather than claiming every plugin fits.
+    /// </summary>
+    private Dictionary<string, PluginInProcessNeedDto>? NeedsInProcess()
+    {
+        if (isolationFit is null)
+            return null;
+
+        Dictionary<string, PluginInProcessNeedDto> needs = new();
+
+        foreach (PluginInfo plugin in pluginManager.GetInstalledPlugins())
+        {
+            PluginIsolationVerdict verdict = isolationFit.For(plugin.Capabilities);
+
+            if (verdict.CanRunOutOfProcess)
+                continue;
+
+            needs[plugin.Id.ToString()] = new PluginInProcessNeedDto
+            {
+                Facades = verdict.Facades,
+                Hooks = verdict.Hooks,
+                Controllers = verdict.Controllers,
+            };
+        }
+
+        return needs;
     }
 }

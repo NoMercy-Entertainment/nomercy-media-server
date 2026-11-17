@@ -353,6 +353,9 @@ public static class PluginServiceCollectionExtensions
             sp.GetRequiredService<ILoggerFactory>().CreateLogger("plugins.runtime"),
             pluginLoggers: sp.GetRequiredService<IPluginLoggers>()
         ));
+        // What a plugin would lose in a process of its own, so the dashboard
+        // can say so before the owner moves it there.
+        services.TryAddSingleton<IPluginIsolationFit, PluginIsolationFit>();
         // A plugin runs only while what it leans on runs, and a free
         // dependency installs beside it rather than leaving the owner to work
         // out why nothing started.

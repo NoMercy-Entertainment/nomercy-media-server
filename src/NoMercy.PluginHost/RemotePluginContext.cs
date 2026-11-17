@@ -31,6 +31,12 @@ namespace NoMercy.PluginHost;
 /// log under the plugin's name — a log line is the one thing that must still
 /// arrive when the channel is the thing that broke.
 /// </para>
+/// <para>
+/// The members this leaves at the interface default are listed in
+/// <c>PluginRemoteReach</c> in NoMercy.Plugins, which the dashboard reads to
+/// tell an owner what a plugin would lose here. A test holds the two together:
+/// carry a facade, or add one to the contract, and update that list with it.
+/// </para>
 /// </summary>
 public sealed class RemotePluginContext : IPluginContext
 {
