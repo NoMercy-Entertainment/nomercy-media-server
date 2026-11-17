@@ -39,8 +39,14 @@ public static class PersonPage
         };
 
         // Only titles the user owns are listed, as on the native Person screen.
-        KnownForDto[] cast = [.. person.CombinedCredits.Cast.Where(credit => credit.HasItem == true)];
-        KnownForDto[] crew = [.. person.CombinedCredits.Crew.Where(credit => credit.HasItem == true)];
+        KnownForDto[] cast =
+        [
+            .. person.CombinedCredits.Cast.Where(credit => credit.HasItem == true),
+        ];
+        KnownForDto[] crew =
+        [
+            .. person.CombinedCredits.Crew.Where(credit => credit.HasItem == true),
+        ];
 
         List<ComponentEnvelope> rows =
         [
@@ -48,7 +54,7 @@ public static class PersonPage
             Row("person-acting", "Acting".Localize(), cast),
             Row("person-production", "Production".Localize(), crew.Where(c => HasJob(c, "Produc"))),
             Row("person-writing", "Writing".Localize(), crew.Where(c => HasJob(c, "Writ"))),
-            Row("person-directing", "Directing".Localize(), crew.Where(c => HasJob(c, "Direct"))),
+            Row("person-directing", "Director".Localize(), crew.Where(c => HasJob(c, "Direct"))),
             Row(
                 "person-crew",
                 "Crew".Localize(),
@@ -67,7 +73,11 @@ public static class PersonPage
     private static bool HasJob(KnownForDto credit, params string[] parts) =>
         parts.Any(part => credit.Job?.Contains(part, StringComparison.OrdinalIgnoreCase) == true);
 
-    private static ComponentEnvelope Row(string id, string title, IEnumerable<KnownForDto> credits) =>
+    private static ComponentEnvelope Row(
+        string id,
+        string title,
+        IEnumerable<KnownForDto> credits
+    ) =>
         Component
             .Carousel()
             .WithId(id)

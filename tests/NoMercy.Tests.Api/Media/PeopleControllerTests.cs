@@ -16,6 +16,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Moq;
 using NoMercy.Data.Repositories;
+using NoMercy.Database.Models.Movies;
 using NoMercy.Database.Models.People;
 using NoMercy.Providers.TMDB.Client;
 using NoMercy.Providers.TMDB.Models.People;
@@ -150,6 +151,24 @@ public class PeopleControllerTests : IClassFixture<NoMercyApiFactory>
             },
         };
 
+        Movie ownedFilm = new()
+        {
+            Id = OwnedMovieId,
+            Title = "Owned Film",
+            VideoFiles =
+            [
+                new()
+                {
+                    Id = Ulid.NewUlid(),
+                    Filename = "Owned.Film.mkv",
+                    Folder = "/media/movies/Owned Film",
+                    HostFolder = "/media/movies/Owned Film",
+                    Share = NoMercyApiFactory.MovieFolderId.ToString(),
+                    MovieId = OwnedMovieId,
+                },
+            ],
+        };
+
         Person person = new()
         {
             Id = 990100,
@@ -160,23 +179,22 @@ public class PeopleControllerTests : IClassFixture<NoMercyApiFactory>
                 {
                     MovieId = OwnedMovieId,
                     Role = new() { Character = "Test Hero" },
-                    Movie = new()
-                    {
-                        Id = OwnedMovieId,
-                        Title = "Owned Film",
-                        VideoFiles =
-                        [
-                            new()
-                            {
-                                Id = Ulid.NewUlid(),
-                                Filename = "Owned.Film.mkv",
-                                Folder = "/media/movies/Owned Film",
-                                HostFolder = "/media/movies/Owned Film",
-                                Share = NoMercyApiFactory.MovieFolderId.ToString(),
-                                MovieId = OwnedMovieId,
-                            },
-                        ],
-                    },
+                    Movie = ownedFilm,
+                },
+            ],
+            Crews =
+            [
+                new()
+                {
+                    MovieId = OwnedMovieId,
+                    Job = new() { Task = "Director" },
+                    Movie = ownedFilm,
+                },
+                new()
+                {
+                    MovieId = OwnedMovieId,
+                    Job = new() { Task = "Sound Editor" },
+                    Movie = ownedFilm,
                 },
             ],
         };
@@ -246,7 +264,7 @@ public class PeopleControllerTests : IClassFixture<NoMercyApiFactory>
         JsonElement[] rows = lolomo.GetProperty("items").EnumerateArray().ToArray();
         rows.Select(r => r.GetProperty("props").GetProperty("title").GetString())
             .Should()
-            .Equal("Known for", "Acting", "Directing", "Crew");
+            .Equal("Known for", "Acting", "Director", "Crew");
 
         JsonElement Row(string title) =>
             rows.Single(r => r.GetProperty("props").GetProperty("title").GetString() == title)
@@ -254,10 +272,14 @@ public class PeopleControllerTests : IClassFixture<NoMercyApiFactory>
                 .GetProperty("items");
 
         string Subtitle(string title) =>
-            Row(title)[0].GetProperty("props").GetProperty("data").GetProperty("subtitle").GetString()!;
+            Row(title)[0]
+                .GetProperty("props")
+                .GetProperty("data")
+                .GetProperty("subtitle")
+                .GetString()!;
 
         Subtitle("Acting").Should().Be("Test Hero");
-        Subtitle("Directing").Should().Be("Director");
+        Subtitle("Director").Should().Be("Director");
         Subtitle("Crew").Should().Be("Sound Editor");
         Row("Acting").GetArrayLength().Should().Be(1);
     }

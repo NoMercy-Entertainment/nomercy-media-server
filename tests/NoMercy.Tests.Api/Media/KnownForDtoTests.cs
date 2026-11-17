@@ -162,6 +162,33 @@ public class KnownForDtoTests
         dto.NumberOfItems.Should().Be(0);
     }
 
+    [Fact]
+    public void PersonResponse_FromTmdb_CrewCreditTheUserOwnsAsCrew_ReportsItem()
+    {
+        Person person = new()
+        {
+            Crews =
+            [
+                new()
+                {
+                    TvId = ShowId,
+                    Tv = BuildShowWithOneEpisode(hasVideoFile: true),
+                    Job = new() { Task = "Director" },
+                },
+            ],
+        };
+        TmdbPersonAppends tmdbPerson = new()
+        {
+            Id = 1,
+            Name = "Test Person",
+            CombinedCredits = new() { Crew = [BuildTvCredit()] },
+        };
+
+        PersonResponseItemDto dto = new(tmdbPerson, null, person);
+
+        dto.CombinedCredits.Crew.Should().ContainSingle().Which.HasItem.Should().BeTrue();
+    }
+
     private static TmdbPersonCredit BuildTvCredit()
     {
         return new()
