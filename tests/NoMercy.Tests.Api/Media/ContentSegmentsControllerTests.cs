@@ -277,6 +277,34 @@ public class ContentSegmentsControllerTests : IClassFixture<NoMercyApiFactory>, 
     }
 
     [Fact]
+    public async Task GetByEpisode_WithoutCredits_HasANullCreditsStart()
+    {
+        HttpResponseMessage response = await _authed.GetAsync(
+            $"/api/v1/content-segments/episode/{SeededEpisodeId}"
+        );
+
+        string body = await response.Content.ReadAsStringAsync();
+        using JsonDocument doc = JsonDocument.Parse(body);
+
+        doc.RootElement.GetProperty("credits_start").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task GetByMovie_CreditsStart_IsTheOutroStart()
+    {
+        // #598: additive next to "data", which keeps its shape.
+        HttpResponseMessage response = await _authed.GetAsync(
+            $"/api/v1/content-segments/movie/{SeededMovieId}"
+        );
+
+        string body = await response.Content.ReadAsStringAsync();
+        using JsonDocument doc = JsonDocument.Parse(body);
+
+        doc.RootElement.GetProperty("credits_start").GetDouble().Should().Be(5400);
+        doc.RootElement.GetProperty("data").GetArrayLength().Should().Be(2);
+    }
+
+    [Fact]
     public async Task GetByMovie_ReturnsUnauthorized_WhenAnonymous()
     {
         HttpResponseMessage response = await _unauthed.GetAsync(
