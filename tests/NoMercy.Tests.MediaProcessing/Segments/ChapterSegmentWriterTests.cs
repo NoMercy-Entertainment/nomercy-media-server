@@ -93,9 +93,20 @@ public sealed class ChapterSegmentWriterTests : IDisposable
         changed.Should().Be(1);
         List<ContentSegment> rows = Segments(AnimeEpisodeId);
         rows.Should().HaveCount(2);
-        rows.Should().OnlyContain(r => r.Source == ContentSegmentSource.Chapters && r.Confidence == 1.0);
-        rows.Should().ContainSingle(r => r.SegmentType == ContentSegmentType.Intro && r.StartSeconds == 4.8 && r.EndSeconds == 83.061);
-        rows.Should().ContainSingle(r => r.SegmentType == ContentSegmentType.Outro && r.StartSeconds == 1282.534 && r.EndSeconds == 1380.128);
+        rows.Should()
+            .OnlyContain(r => r.Source == ContentSegmentSource.Chapters && r.Confidence == 1.0);
+        rows.Should()
+            .ContainSingle(r =>
+                r.SegmentType == ContentSegmentType.Intro
+                && r.StartSeconds == 4.8
+                && r.EndSeconds == 83.061
+            );
+        rows.Should()
+            .ContainSingle(r =>
+                r.SegmentType == ContentSegmentType.Outro
+                && r.StartSeconds == 1282.534
+                && r.EndSeconds == 1380.128
+            );
     }
 
     [Fact]
@@ -119,7 +130,10 @@ public sealed class ChapterSegmentWriterTests : IDisposable
 
         await _writer.ClassifyEpisodeAsync(AnimeEpisodeId, CancellationToken.None);
 
-        List<ContentSegment> intros = [.. Segments(AnimeEpisodeId).Where(r => r.SegmentType == ContentSegmentType.Intro)];
+        List<ContentSegment> intros =
+        [
+            .. Segments(AnimeEpisodeId).Where(r => r.SegmentType == ContentSegmentType.Intro),
+        ];
         intros.Should().ContainSingle().Which.Source.Should().Be(ContentSegmentSource.Manual);
     }
 
@@ -165,7 +179,10 @@ public sealed class ChapterSegmentWriterTests : IDisposable
     [Fact]
     public async Task The_newest_video_file_of_an_episode_counts()
     {
-        AddFile(episodeId: AnimeEpisodeId, chapters: [Chapter(0, 0, 600000, "Part A"), Chapter(1, 600000, 630000, "Credits")]);
+        AddFile(
+            episodeId: AnimeEpisodeId,
+            chapters: [Chapter(0, 0, 600000, "Part A"), Chapter(1, 600000, 630000, "Credits")]
+        );
         AddFile(episodeId: AnimeEpisodeId, chapters: Hellsing);
 
         await _writer.ClassifyEpisodeAsync(AnimeEpisodeId, CancellationToken.None);
@@ -176,7 +193,14 @@ public sealed class ChapterSegmentWriterTests : IDisposable
     [Fact]
     public async Task A_movie_is_classified_by_title()
     {
-        AddFile(movieId: MovieId, chapters: [Chapter(0, 0, 5000000, "Feature"), Chapter(1, 5000000, 5300000, "End Credits")]);
+        AddFile(
+            movieId: MovieId,
+            chapters:
+            [
+                Chapter(0, 0, 5000000, "Feature"),
+                Chapter(1, 5000000, 5300000, "End Credits"),
+            ]
+        );
 
         await _writer.ClassifyMovieAsync(MovieId, CancellationToken.None);
 
@@ -184,7 +208,12 @@ public sealed class ChapterSegmentWriterTests : IDisposable
         context
             .ContentSegments.AsNoTracking()
             .Should()
-            .ContainSingle(r => r.MovieId == MovieId && r.EpisodeId == null && r.SegmentType == ContentSegmentType.Outro && r.StartSeconds == 5000);
+            .ContainSingle(r =>
+                r.MovieId == MovieId
+                && r.EpisodeId == null
+                && r.SegmentType == ContentSegmentType.Outro
+                && r.StartSeconds == 5000
+            );
     }
 
     [Fact]
@@ -193,7 +222,13 @@ public sealed class ChapterSegmentWriterTests : IDisposable
         AddFile(episodeId: AnimeEpisodeId, chapters: Hellsing);
         AddFile(episodeId: TvEpisodeId, chapters: null);
         AddSegment(TvEpisodeId, ContentSegmentSource.Chapters, ContentSegmentType.Intro, 0, 30);
-        AddSegment(TvEpisodeId, ContentSegmentSource.Detector, ContentSegmentType.Outro, 1200, 1260);
+        AddSegment(
+            TvEpisodeId,
+            ContentSegmentSource.Detector,
+            ContentSegmentType.Outro,
+            1200,
+            1260
+        );
 
         int changed = await _writer.ClassifyAllAsync(CancellationToken.None);
 
@@ -208,11 +243,40 @@ public sealed class ChapterSegmentWriterTests : IDisposable
     }
 
     [Fact]
+    public async Task The_sweep_removes_only_chapter_rows_of_items_without_a_video_file()
+    {
+        const int GoneEpisodeId = 401;
+        AddSegment(GoneEpisodeId, ContentSegmentSource.Chapters, ContentSegmentType.Intro, 5, 83);
+        AddSegment(GoneEpisodeId, ContentSegmentSource.Manual, ContentSegmentType.Recap, 0, 40);
+        AddSegment(
+            GoneEpisodeId,
+            ContentSegmentSource.Detector,
+            ContentSegmentType.Outro,
+            1280,
+            1370
+        );
+        AddMovieSegment(MovieId, ContentSegmentSource.Chapters, ContentSegmentType.Outro);
+
+        int changed = await _writer.ClassifyAllAsync(CancellationToken.None);
+
+        changed.Should().Be(2);
+        Segments(GoneEpisodeId)
+            .Select(r => r.Source)
+            .Should()
+            .BeEquivalentTo([ContentSegmentSource.Manual, ContentSegmentSource.Detector]);
+        using MediaContext context = new(_options);
+        context.ContentSegments.AsNoTracking().Where(r => r.MovieId == MovieId).Should().BeEmpty();
+    }
+
+    [Fact]
     public async Task One_conflicting_item_does_not_stop_the_sweep()
     {
         AddFile(episodeId: AnimeEpisodeId, chapters: Hellsing);
         AddFile(episodeId: TvEpisodeId, chapters: Hellsing);
-        ConflictingChapterSegmentRepository conflicting = new(_repository, failingEpisodeId: TvEpisodeId);
+        ConflictingChapterSegmentRepository conflicting = new(
+            _repository,
+            failingEpisodeId: TvEpisodeId
+        );
 
         int changed = await Writer(conflicting).ClassifyAllAsync(CancellationToken.None);
 
@@ -227,7 +291,11 @@ public sealed class ChapterSegmentWriterTests : IDisposable
     {
         AddFile(episodeId: AnimeEpisodeId, chapters: Hellsing);
         AddFile(episodeId: TvEpisodeId, chapters: Hellsing);
-        ConflictingChapterSegmentRepository conflicting = new(_repository, failingEpisodeId: TvEpisodeId, failOnce: true);
+        ConflictingChapterSegmentRepository conflicting = new(
+            _repository,
+            failingEpisodeId: TvEpisodeId,
+            failOnce: true
+        );
 
         int changed = await Writer(conflicting).ClassifyAllAsync(CancellationToken.None);
 
@@ -242,18 +310,59 @@ public sealed class ChapterSegmentWriterTests : IDisposable
     private static void Seed(MediaContext context)
     {
         context.Libraries.AddRange(
-            new Library { Id = AnimeLibraryId, Title = "Anime", Type = MediaTypes.AnimeMediaType },
-            new Library { Id = TvLibraryId, Title = "TV", Type = MediaTypes.TvMediaType }
+            new Library
+            {
+                Id = AnimeLibraryId,
+                Title = "Anime",
+                Type = MediaTypes.AnimeMediaType,
+            },
+            new Library
+            {
+                Id = TvLibraryId,
+                Title = "TV",
+                Type = MediaTypes.TvMediaType,
+            }
         );
         context.Tvs.AddRange(
-            new Tv { Id = 1, Title = "Hellsing", LibraryId = AnimeLibraryId },
-            new Tv { Id = 2, Title = "Rick and Morty", LibraryId = TvLibraryId }
+            new Tv
+            {
+                Id = 1,
+                Title = "Hellsing",
+                LibraryId = AnimeLibraryId,
+            },
+            new Tv
+            {
+                Id = 2,
+                Title = "Rick and Morty",
+                LibraryId = TvLibraryId,
+            }
         );
         context.Episodes.AddRange(
-            new Episode { Id = AnimeEpisodeId, TvId = 1, SeasonId = 1, EpisodeNumber = 1, SeasonNumber = 1 },
-            new Episode { Id = TvEpisodeId, TvId = 2, SeasonId = 2, EpisodeNumber = 1, SeasonNumber = 1 }
+            new Episode
+            {
+                Id = AnimeEpisodeId,
+                TvId = 1,
+                SeasonId = 1,
+                EpisodeNumber = 1,
+                SeasonNumber = 1,
+            },
+            new Episode
+            {
+                Id = TvEpisodeId,
+                TvId = 2,
+                SeasonId = 2,
+                EpisodeNumber = 1,
+                SeasonNumber = 1,
+            }
         );
-        context.Movies.Add(new Movie { Id = MovieId, Title = "A Movie", LibraryId = TvLibraryId });
+        context.Movies.Add(
+            new Movie
+            {
+                Id = MovieId,
+                Title = "A Movie",
+                LibraryId = TvLibraryId,
+            }
+        );
         context.SaveChanges();
     }
 
@@ -283,7 +392,13 @@ public sealed class ChapterSegmentWriterTests : IDisposable
         context.SaveChanges();
     }
 
-    private void AddSegment(int episodeId, string source, ContentSegmentType type, double start, double end)
+    private void AddSegment(
+        int episodeId,
+        string source,
+        ContentSegmentType type,
+        double start,
+        double end
+    )
     {
         using MediaContext context = new(_options);
         context.ContentSegments.Add(
@@ -294,6 +409,23 @@ public sealed class ChapterSegmentWriterTests : IDisposable
                 SegmentType = type,
                 StartSeconds = start,
                 EndSeconds = end,
+                Confidence = 1.0,
+            }
+        );
+        context.SaveChanges();
+    }
+
+    private void AddMovieSegment(int movieId, string source, ContentSegmentType type)
+    {
+        using MediaContext context = new(_options);
+        context.ContentSegments.Add(
+            new ContentSegment
+            {
+                MovieId = movieId,
+                Source = source,
+                SegmentType = type,
+                StartSeconds = 5000,
+                EndSeconds = 5300,
                 Confidence = 1.0,
             }
         );

@@ -22,7 +22,8 @@ namespace NoMercy.MediaProcessing.Segments;
 /// Reads the chapter list the scan stored for each video file (the parsed
 /// chapters.vtt that clients get with the playlist) and writes the segments
 /// classified from it. When an item has several video files, the newest one
-/// counts, as everywhere else on the server.
+/// counts, as everywhere else on the server. An item without any video file
+/// gets an empty chapter list, so its old chapter rows are removed.
 /// </summary>
 public class ChapterSegmentRepository(IDbContextFactory<MediaContext> contextFactory)
     : IChapterSegmentRepository
@@ -50,7 +51,7 @@ public class ChapterSegmentRepository(IDbContextFactory<MediaContext> contextFac
             ))
             .ToListAsync(ct);
 
-        return
+        List<ChapterSource> sources =
         [
             .. Newest(rows)
                 .Select(row => new ChapterSource(
@@ -60,6 +61,14 @@ public class ChapterSegmentRepository(IDbContextFactory<MediaContext> contextFac
                     ParseChapters(row.ChaptersJson)
                 )),
         ];
+        HashSet<int> withFiles = [.. rows.Select(row => row.MediaId)];
+        sources.AddRange(
+            episodeIds
+                .Where(id => !withFiles.Contains(id))
+                .Distinct()
+                .Select(id => new ChapterSource(id, null, false, []))
+        );
+        return sources;
     }
 
     public async Task<List<ChapterSource>> GetMovieSourcesAsync(
@@ -83,7 +92,7 @@ public class ChapterSegmentRepository(IDbContextFactory<MediaContext> contextFac
             .ToListAsync(ct);
 
         // The length rules describe anime episodes; a movie is classified by title only.
-        return
+        List<ChapterSource> sources =
         [
             .. Newest(rows)
                 .Select(row => new ChapterSource(
@@ -93,6 +102,14 @@ public class ChapterSegmentRepository(IDbContextFactory<MediaContext> contextFac
                     ParseChapters(row.ChaptersJson)
                 )),
         ];
+        HashSet<int> withFiles = [.. rows.Select(row => row.MediaId)];
+        sources.AddRange(
+            movieIds
+                .Where(id => !withFiles.Contains(id))
+                .Distinct()
+                .Select(id => new ChapterSource(null, id, false, []))
+        );
+        return sources;
     }
 
     public async Task<List<int>> GetEpisodeIdsToClassifyAsync(CancellationToken ct)

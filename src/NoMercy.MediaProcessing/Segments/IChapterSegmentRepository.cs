@@ -18,8 +18,9 @@ namespace NoMercy.MediaProcessing.Segments;
 public interface IChapterSegmentRepository
 {
     /// <summary>
-    /// The chapters of the given episodes; every episode that has a video file
-    /// gets a source, with an empty list when it has no chapters.
+    /// The chapters of the given episodes. Every requested episode gets a
+    /// source, with an empty list when it has no chapters or no video file any
+    /// more, so its old chapter rows are removed.
     /// </summary>
     Task<List<ChapterSource>> GetEpisodeSourcesAsync(
         IReadOnlyList<int> episodeIds,
@@ -27,7 +28,10 @@ public interface IChapterSegmentRepository
     );
 
     /// <summary>The chapters of the given movies, as <see cref="GetEpisodeSourcesAsync"/>.</summary>
-    Task<List<ChapterSource>> GetMovieSourcesAsync(IReadOnlyList<int> movieIds, CancellationToken ct);
+    Task<List<ChapterSource>> GetMovieSourcesAsync(
+        IReadOnlyList<int> movieIds,
+        CancellationToken ct
+    );
 
     /// <summary>
     /// Every episode id with stored chapters or a stored chapter segment, in
