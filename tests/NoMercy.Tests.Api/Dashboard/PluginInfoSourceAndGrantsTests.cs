@@ -18,11 +18,13 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using NoMercy.Api.Controllers.V1.Dashboard.Plugins;
 using NoMercy.Api.DTOs.Common;
+using NoMercy.Api.DTOs.Dashboard;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Capabilities;
 using NoMercy.PluginSdk.Provenance;
 using NoMercy.PluginSdk.Sideload;
+using NoMercy.PluginSdk.Storage;
 using NoMercy.Storage;
 using Xunit;
 
@@ -62,15 +64,22 @@ public class PluginInfoSourceAndGrantsTests
             .Returns(PluginProvenance.Unknown);
     }
 
-    private PluginController BuildController(bool withProvenance = true) =>
+    private readonly Mock<IPluginGrantedLocations> _locations = new();
+
+    private PluginController BuildController(
+        bool withProvenance = true,
+        IPluginGrantStore? grantStore = null,
+        IPluginGrantedLocations? locations = null
+    ) =>
         new(
             _pluginManager.Object,
             _consent.Object,
-            _grantStore.Object,
+            grantStore ?? _grantStore.Object,
             Mock.Of<IPluginRestartAdvisor>(),
             Mock.Of<IStorageDriver>(),
             Mock.Of<IPluginDeveloperModeSource>(),
-            provenance: withProvenance ? _provenance.Object : null
+            provenance: withProvenance ? _provenance.Object : null,
+            grantedLocations: locations ?? _locations.Object
         )
         {
             ControllerContext = new() { HttpContext = new DefaultHttpContext() },
@@ -79,7 +88,8 @@ public class PluginInfoSourceAndGrantsTests
     private static PluginInfoDto Payload(IActionResult result) =>
         ((DataResponseDto<PluginInfoDto>)((OkObjectResult)result).Value!).Data!;
 
-    private static JObject Json(PluginInfoDto dto) => JObject.Parse(JsonConvert.SerializeObject(dto));
+    private static JObject Json(PluginInfoDto dto) =>
+        JObject.Parse(JsonConvert.SerializeObject(dto));
 
     private static PluginProvenance FromIndex(bool trustedNow) =>
         new()
@@ -172,10 +182,8 @@ public class PluginInfoSourceAndGrantsTests
 
         PluginInfoDto shown = Payload(controller.Show(PluginId));
         PluginInfoDto listed = (
-            (DataResponseDto<IEnumerable<PluginInfoDto>>)
-                ((OkObjectResult)controller.Index()).Value!
-        )
-            .Data!.Single();
+            (DataResponseDto<IEnumerable<PluginInfoDto>>)((OkObjectResult)controller.Index()).Value!
+        ).Data!.Single();
 
         foreach (PluginInfoDto info in new[] { shown, listed })
             info.Grants.Select(grant => (grant.Kind, grant.Value))
@@ -196,7 +204,8 @@ public class PluginInfoSourceAndGrantsTests
 
         JObject json = Json(Payload(BuildController().Show(PluginId)));
 
-        JToken.DeepEquals(
+        JToken
+            .DeepEquals(
                 json["source"],
                 JObject.Parse(
                     """
@@ -218,7 +227,8 @@ public class PluginInfoSourceAndGrantsTests
             )
             .Should()
             .BeTrue(json["source"]!.ToString());
-        JToken.DeepEquals(
+        JToken
+            .DeepEquals(
                 json["grants"],
                 JArray.Parse("""[{ "kind": "network.host", "value": "*" }]""")
             )
@@ -255,7 +265,7 @@ public class PluginInfoSourceAndGrantsTests
     }
 
     [Fact]
-    public void Revoking_one_grant_takes_back_only_that_grant()
+    public async Task Revoking_one_grant_takes_back_only_that_grant()
     {
         _grantStore
             .Setup(store => store.HeldBy(PluginId))
@@ -264,7 +274,7 @@ public class PluginInfoSourceAndGrantsTests
                 Held(PluginGrantKind.LibraryWrite, "library-1"),
             ]);
 
-        IActionResult result = BuildController()
+        IActionResult result = await BuildController()
             .RevokeGrant(PluginId, PluginGrantKind.NetworkHost, PluginGrant.Everything);
 
         result.Should().BeOfType<OkObjectResult>();
@@ -282,13 +292,13 @@ public class PluginInfoSourceAndGrantsTests
     }
 
     [Fact]
-    public void Revoking_a_grant_the_plugin_does_not_hold_is_not_found()
+    public async Task Revoking_a_grant_the_plugin_does_not_hold_is_not_found()
     {
         _grantStore
             .Setup(store => store.HeldBy(PluginId))
             .Returns([Held(PluginGrantKind.LibraryWrite, "library-1")]);
 
-        IActionResult result = BuildController()
+        IActionResult result = await BuildController()
             .RevokeGrant(PluginId, PluginGrantKind.NetworkHost, PluginGrant.Everything);
 
         result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(404);
@@ -302,15 +312,118 @@ public class PluginInfoSourceAndGrantsTests
     [InlineData(null, "*")]
     [InlineData("network.host", null)]
     [InlineData(" ", "*")]
-    public void Revoking_without_a_kind_and_a_value_is_refused(string? kind, string? value)
+    public async Task Revoking_without_a_kind_and_a_value_is_refused(string? kind, string? value)
     {
-        IActionResult result = BuildController().RevokeGrant(PluginId, kind, value);
+        IActionResult result = await BuildController().RevokeGrant(PluginId, kind, value);
 
         result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(422);
         _grantStore.Verify(
             store => store.Revoke(It.IsAny<Ulid>(), It.IsAny<string>(), It.IsAny<string>()),
             Times.Never
         );
+    }
+
+    [Theory]
+    [InlineData("process.spawn", true)]
+    [InlineData("network.host", false)]
+    [InlineData("capability.storage.path", false)]
+    public async Task A_kind_read_only_at_launch_says_the_revoke_waits_for_a_restart(
+        string kind,
+        bool restartRequired
+    )
+    {
+        _grantStore.Setup(store => store.HeldBy(PluginId)).Returns([Held(kind, "*")]);
+
+        IActionResult result = await BuildController().RevokeGrant(PluginId, kind, "*");
+
+        PluginGrantRevokedDto revoked = (PluginGrantRevokedDto)((OkObjectResult)result).Value!;
+        revoked.RestartRequired.Should().Be(restartRequired);
+        JObject.Parse(JsonConvert.SerializeObject(revoked))["restart_required"]!
+            .Value<bool>()
+            .Should()
+            .Be(restartRequired);
+        _pluginManager.Verify(
+            manager => manager.RestartPluginAsync(It.IsAny<Ulid>(), It.IsAny<CancellationToken>()),
+            Times.Never,
+            "the owner restarts the plugin, the revoke does not"
+        );
+    }
+
+    [Fact]
+    public void The_launch_time_list_is_the_one_the_revoke_reads()
+    {
+        PluginLaunchTimeGrants.All.Should().Contain(PluginCapabilityNames.ProcessSpawn);
+        PluginLaunchTimeGrants.AppliesFromNextStart(PluginGrantKind.NetworkHost).Should().BeFalse();
+    }
+
+    /// <summary>
+    /// The folders a plugin reads from its server info are cached. A revoked
+    /// folder has to leave that list on the revoke, not at the plugin's next start.
+    /// </summary>
+    [Fact]
+    public async Task A_revoked_storage_folder_leaves_the_plugin_s_granted_paths_at_once()
+    {
+        string kind = PluginGrantKind.ForCapability(PluginCapabilityNames.StoragePath);
+        InMemoryGrants grants = new();
+        grants.Grant(PluginId, kind, "movies");
+        Mock<IPluginFolderCatalog> catalog = new();
+        catalog
+            .Setup(folders => folders.LocationsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([new PluginStorageLocation("movies", "Movies", "library", true)]);
+        PluginGrantedLocations locations = new(catalog.Object, grants);
+        await locations.RefreshAsync(PluginId);
+        PluginServerInfo info = new(
+            PluginId,
+            new(1, 0),
+            locations,
+            Mock.Of<IPluginFreeSpaceProbe>(),
+            grants
+        );
+        info.GrantedPaths.Should().ContainSingle();
+
+        await BuildController(grantStore: grants, locations: locations)
+            .RevokeGrant(PluginId, kind, "movies");
+
+        info.GrantedPaths.Should().BeEmpty();
+    }
+
+    /// <summary>Grants as the store keeps them, without the file.</summary>
+    private sealed class InMemoryGrants : IPluginGrantStore
+    {
+        private readonly List<PluginGrantEntry> _grants = [];
+
+        public IReadOnlyList<string> Granted(Ulid pluginId, string kind) =>
+            [.. HeldBy(pluginId).Where(grant => grant.Kind == kind).Select(grant => grant.Value)];
+
+        public IReadOnlyList<PluginGrantEntry> HeldBy(Ulid pluginId) =>
+            [.. _grants.Where(grant => grant.PluginId == pluginId)];
+
+        public bool Holds(Ulid pluginId, string kind, string value) =>
+            Granted(pluginId, kind).Contains(value);
+
+        public void Grant(Ulid pluginId, string kind, string value) =>
+            _grants.Add(
+                new()
+                {
+                    PluginId = pluginId,
+                    Kind = kind,
+                    Value = value,
+                }
+            );
+
+        public void Revoke(Ulid pluginId, string kind, string value) =>
+            _grants.RemoveAll(grant =>
+                grant.PluginId == pluginId && grant.Kind == kind && grant.Value == value
+            );
+
+        public void RevokeAll(Ulid pluginId) =>
+            _grants.RemoveAll(grant => grant.PluginId == pluginId);
+
+        public void Request(Ulid pluginId, string kind, string value, string reason) { }
+
+        public IReadOnlyList<PluginGrantRequest> PendingRequests() => [];
+
+        public void ClearRequest(Ulid pluginId, string kind, string value) { }
     }
 
     [Fact]

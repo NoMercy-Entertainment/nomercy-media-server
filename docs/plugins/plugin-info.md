@@ -70,9 +70,10 @@ The three kinds:
   (`POST /dashboard/plugins/install`), which needs developer mode, including an
   install for one guest (`?forUser=`). `repository` is `null`,
   `official_marketplace` and `checksum_verified` are `false`.
-- **`unknown`**: installed before the server recorded sources, or put in the
-  plugins folder by hand and approved. Every other key is `null`. Show it as
-  "source not recorded", not as "unverified".
+- **`unknown`**: installed before the server recorded sources, put in the
+  plugins folder by hand and approved, an uploaded `.dll` whose load failed,
+  or an install that did not name its repository. Every other key is `null`.
+  Show it as "source not recorded", not as "unverified".
 
 ```json
 "source": {
@@ -86,10 +87,10 @@ The three kinds:
 ```
 
 An update replaces the record: a plugin uploaded once and later updated from
-the marketplace reads `"kind": "repository"`. An update that is waiting for the
-next server start is recorded when it is accepted, so `source.version` can be
-newer than the running `version` until the restart. Uninstalling drops the
-record, also when the plugin's data is kept.
+the marketplace reads `"kind": "repository"`. An update that waits for the next
+server start keeps the old source until that start applies it; if another
+install replaces the staged copy first, the waiting source goes with it.
+Uninstalling drops the record, also when the plugin's data is kept.
 
 ### `grants`
 
@@ -109,12 +110,21 @@ DELETE /api/v1/dashboard/plugins/{id}/grants?kind=network.host&value=*
 
 Owner-only. Removes that one grant and leaves the plugin's other grants, its
 consent and its running state as they are. Grants are checked when they are
-used, so the plugin is refused from its next use; a grant that decides how the
-plugin was started (such as spawning processes) applies from its next restart.
+used, so the running plugin is refused from its next use, and a revoked
+`capability.storage.path` folder leaves the plugin's granted folders at once.
+
+A kind read only when the plugin's process starts (today `process.spawn`,
+listed in `PluginLaunchTimeGrants`) is gone only after the plugin restarts.
+The answer then says `"restart_required": true`; offer the plugin's restart
+(`POST {id}/restart`). The server does not restart it on its own.
+
+```json
+{ "status": "ok", "message": "Grant revoked", "restart_required": false }
+```
 
 | status | when |
 |---|---|
-| 200 `{ "status": "ok", "message": "Grant revoked" }` | The grant was held and is gone. |
+| 200 | The grant was held and is gone. `restart_required` says whether the running plugin keeps it until it restarts. |
 | 404 | The plugin does not hold that grant (already taken back, or never given). Refresh the info. |
 | 422 | `kind` or `value` is missing. |
 

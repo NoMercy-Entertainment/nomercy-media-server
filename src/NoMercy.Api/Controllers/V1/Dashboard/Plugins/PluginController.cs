@@ -25,6 +25,7 @@ using NoMercy.PluginSdk.Capabilities;
 using NoMercy.PluginSdk.OutOfProcess;
 using NoMercy.PluginSdk.Provenance;
 using NoMercy.PluginSdk.Sideload;
+using NoMercy.PluginSdk.Storage;
 using NoMercy.PluginSdk.Verification;
 using NoMercy.Storage;
 
@@ -44,7 +45,8 @@ public class PluginController(
     IPluginDeveloperModeSource developerMode,
     IPluginRunGate? runGate = null,
     IPluginIsolationFit? isolationFit = null,
-    IPluginProvenanceReader? provenance = null
+    IPluginProvenanceReader? provenance = null,
+    IPluginGrantedLocations? grantedLocations = null
 ) : BaseController
 {
     private const long MaximumUploadBytes = 64L * 1024 * 1024;
@@ -184,9 +186,21 @@ public class PluginController(
     /// let the owner take back one thing they had given, which is what the
     /// plugin's page offers beside each grant it lists.
     /// </para>
+    /// <para>
+    /// Most grants are checked on every use and are gone from the plugin's
+    /// next call. The folders a plugin reads from its server info are cached,
+    /// so they are refreshed here. A kind read only when the plugin starts
+    /// (<see cref="PluginLaunchTimeGrants"/>) says <c>restart_required</c>;
+    /// the plugin is not restarted for the owner.
+    /// </para>
     /// </summary>
     [HttpDelete("{id:ulid}/grants")]
-    public IActionResult RevokeGrant(Ulid id, [FromQuery] string? kind, [FromQuery] string? value)
+    public async Task<IActionResult> RevokeGrant(
+        Ulid id,
+        [FromQuery] string? kind,
+        [FromQuery] string? value,
+        CancellationToken ct = default
+    )
     {
         if (string.IsNullOrWhiteSpace(kind) || string.IsNullOrWhiteSpace(value))
             return UnprocessableEntityResponse("A grant needs both a kind and a value");
@@ -203,7 +217,21 @@ public class PluginController(
 
         grantStore.Revoke(id, kind, value);
 
-        return Ok(new StatusResponseDto<string> { Status = "ok", Message = "Grant revoked" });
+        if (grantedLocations is not null)
+            await grantedLocations.RefreshAsync(id, ct);
+
+        bool restartRequired = PluginLaunchTimeGrants.AppliesFromNextStart(kind);
+
+        return Ok(
+            new PluginGrantRevokedDto
+            {
+                Status = "ok",
+                Message = restartRequired
+                    ? "Grant revoked. The plugin keeps it until it restarts"
+                    : "Grant revoked",
+                RestartRequired = restartRequired,
+            }
+        );
     }
 
     /// <summary>
