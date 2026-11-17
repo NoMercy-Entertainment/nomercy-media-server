@@ -804,6 +804,22 @@ public static partial class ServiceConfiguration
         services.AddHostedService<EncodingNotificationSubscriber>();
         services.AddHostedService<AutoEncodeSubscriber>();
         services.AddHostedService<IntroDetectionSubscriber>();
+        // Chapters become content segments: one classifier, one title list, the
+        // precedence order applied on write. Database-only, so singletons over
+        // the context factory. Runs after each encode and in the daily sweep.
+        services.AddSingleton<
+            MediaProcessing.Segments.IChapterSegmentClassifier,
+            MediaProcessing.Segments.ChapterSegmentClassifier
+        >();
+        services.AddSingleton<
+            MediaProcessing.Segments.IChapterSegmentRepository,
+            MediaProcessing.Segments.ChapterSegmentRepository
+        >();
+        services.AddSingleton<
+            MediaProcessing.Segments.IChapterSegmentWriter,
+            MediaProcessing.Segments.ChapterSegmentWriter
+        >();
+        services.AddHostedService<ChapterSegmentSubscriber>();
         // Analysis is part of every music import and rescan, not a switch a
         // user has to find. Same shape as AutoEncodeSubscriber above: a hosted
         // service that subscribes on start and unsubscribes on stop.

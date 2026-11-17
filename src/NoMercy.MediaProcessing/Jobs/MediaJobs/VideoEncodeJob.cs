@@ -1383,6 +1383,8 @@ public class VideoEncodeJob
                     OutputPath = fileMetadata.Path ?? string.Empty,
                     Duration = TimeSpan.Zero,
                     PosterPath = fileMetadata.PosterPath,
+                    EpisodeId = fileMetadata.EpisodeId,
+                    MovieId = fileMetadata.MovieId,
                     BackdropPath = fileMetadata.ImgPath,
                 }
             );
@@ -1557,7 +1559,8 @@ public class VideoEncodeJob
     internal static string PlainFailureReason(int failedCount, IReadOnlyList<string> descriptors)
     {
         string steps = failedCount == 1 ? "step" : "steps";
-        string which = descriptors.Count > 0 ? $" ({string.Join(", ", descriptors)})" : string.Empty;
+        string which =
+            descriptors.Count > 0 ? $" ({string.Join(", ", descriptors)})" : string.Empty;
         return $"The encode did not finish: {failedCount} {steps} failed{which}. You can retry it.";
     }
 
@@ -1963,6 +1966,8 @@ public class VideoEncodeJob
                     OutputPath = result.OutputPath,
                     Duration = stopwatch.Elapsed,
                     PosterPath = fileMetadata.PosterPath,
+                    EpisodeId = fileMetadata.EpisodeId,
+                    MovieId = fileMetadata.MovieId,
                     BackdropPath = fileMetadata.ImgPath,
                 }
             );
@@ -2555,6 +2560,8 @@ public class VideoEncodeJob
                     OutputPath = fileMetadata.Path ?? string.Empty,
                     Duration = TimeSpan.Zero,
                     PosterPath = fileMetadata.PosterPath,
+                    EpisodeId = fileMetadata.EpisodeId,
+                    MovieId = fileMetadata.MovieId,
                     BackdropPath = fileMetadata.ImgPath,
                 }
             );
@@ -2751,6 +2758,14 @@ public class VideoEncodeJob
         /// which this job never sets.
         /// </summary>
         public MediaItemRef? MediaItem { get; set; }
+
+        /// <summary>The episode this job encodes, or null for a movie.</summary>
+        public int? EpisodeId =>
+            MediaItem?.Type == NoMercy.Encoder.Naming.MediaType.Episode ? Id : null;
+
+        /// <summary>The movie this job encodes, or null for an episode.</summary>
+        public int? MovieId =>
+            MediaItem?.Type == NoMercy.Encoder.Naming.MediaType.Movie ? Id : null;
     }
 
     private static async Task PublishStageAsync(FileMetadata fileMetadata, string message)
