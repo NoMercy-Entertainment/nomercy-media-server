@@ -48,29 +48,80 @@ public class SegmentAnalysisSchedulingTests
     {
         _dispatcher
             .Setup(d => d.Dispatch(It.IsAny<IShouldQueue>(), It.IsAny<string>(), It.IsAny<int>()))
-            .Callback<IShouldQueue, string, int>((job, _, _) => _queued.Add((SegmentAnalysisJob)job));
+            .Callback<IShouldQueue, string, int>(
+                (job, _, _) => _queued.Add((SegmentAnalysisJob)job)
+            );
         _state
-            .Setup(s => s.AnalysedAsync(It.IsAny<SegmentAnalysisTarget>(), It.IsAny<CancellationToken>()))
+            .Setup(s =>
+                s.AnalysedAsync(It.IsAny<SegmentAnalysisTarget>(), It.IsAny<CancellationToken>())
+            )
             .ReturnsAsync(() => []);
         _state
-            .Setup(s => s.GivenUpAsync(It.IsAny<SegmentAnalysisTarget>(), It.IsAny<CancellationToken>()))
+            .Setup(s =>
+                s.GivenUpAsync(It.IsAny<SegmentAnalysisTarget>(), It.IsAny<CancellationToken>())
+            )
             .ReturnsAsync(() => []);
 
         using MediaContext context = _factory.CreateDbContext();
         context.Tvs.Add(new Tv { Id = 1, Title = "Hellsing" });
         context.LibraryTv.Add(new LibraryTv { LibraryId = _libraryId, TvId = 1 });
         context.LibraryMovie.Add(new LibraryMovie { LibraryId = _libraryId, MovieId = 129 });
-        context.Seasons.AddRange(new Season { Id = 10, TvId = 1, SeasonNumber = 1 }, new Season { Id = 11, TvId = 1, SeasonNumber = 2 });
+        context.Seasons.AddRange(
+            new Season
+            {
+                Id = 10,
+                TvId = 1,
+                SeasonNumber = 1,
+            },
+            new Season
+            {
+                Id = 11,
+                TvId = 1,
+                SeasonNumber = 2,
+            }
+        );
         for (int id = 1; id <= 3; id++)
         {
-            context.Episodes.Add(new Episode { Id = id, TvId = 1, SeasonId = 10, SeasonNumber = 1, EpisodeNumber = id });
-            context.VideoFiles.Add(new VideoFile { EpisodeId = id, HostFolder = "/show", Filename = $"/e{id}.m3u8" });
+            context.Episodes.Add(
+                new Episode
+                {
+                    Id = id,
+                    TvId = 1,
+                    SeasonId = 10,
+                    SeasonNumber = 1,
+                    EpisodeNumber = id,
+                }
+            );
+            context.VideoFiles.Add(
+                new VideoFile
+                {
+                    EpisodeId = id,
+                    HostFolder = "/show",
+                    Filename = $"/e{id}.m3u8",
+                }
+            );
         }
 
         // Season 11 is not encoded yet.
-        context.Episodes.Add(new Episode { Id = 4, TvId = 1, SeasonId = 11, SeasonNumber = 2, EpisodeNumber = 1 });
+        context.Episodes.Add(
+            new Episode
+            {
+                Id = 4,
+                TvId = 1,
+                SeasonId = 11,
+                SeasonNumber = 2,
+                EpisodeNumber = 1,
+            }
+        );
         context.Movies.Add(new Movie { Id = 129, Title = "Movie" });
-        context.VideoFiles.Add(new VideoFile { MovieId = 129, HostFolder = "/movie", Filename = "/movie.m3u8" });
+        context.VideoFiles.Add(
+            new VideoFile
+            {
+                MovieId = 129,
+                HostFolder = "/movie",
+                Filename = "/movie.m3u8",
+            }
+        );
         context.SaveChanges();
     }
 
@@ -96,7 +147,14 @@ public class SegmentAnalysisSchedulingTests
         using (MediaContext context = _factory.CreateDbContext())
         {
             context.Movies.Add(new Movie { Id = 2, Title = "Same id" });
-            context.VideoFiles.Add(new VideoFile { MovieId = 2, HostFolder = "/movie2", Filename = "/m.m3u8" });
+            context.VideoFiles.Add(
+                new VideoFile
+                {
+                    MovieId = 2,
+                    HostFolder = "/movie2",
+                    Filename = "/m.m3u8",
+                }
+            );
             context.SaveChanges();
         }
 
@@ -104,7 +162,12 @@ public class SegmentAnalysisSchedulingTests
 
         _queued.Should().ContainSingle().Which.SeasonId.Should().Be(10);
         _state.Verify(
-            s => s.ResetFailuresAsync(SegmentAnalysisTarget.Movie, It.IsAny<int>(), It.IsAny<CancellationToken>()),
+            s =>
+                s.ResetFailuresAsync(
+                    SegmentAnalysisTarget.Movie,
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()
+                ),
             Times.Never
         );
     }
@@ -114,7 +177,12 @@ public class SegmentAnalysisSchedulingTests
     {
         await Scheduler()
             .OnEncodingCompletedAsync(
-                new() { JobId = 2, OutputPath = string.Empty, Duration = TimeSpan.Zero },
+                new()
+                {
+                    JobId = 2,
+                    OutputPath = string.Empty,
+                    Duration = TimeSpan.Zero,
+                },
                 CancellationToken.None
             );
 
@@ -135,7 +203,9 @@ public class SegmentAnalysisSchedulingTests
     public async Task LibraryScan_SkipsWhatWasAnalysedAlready()
     {
         _state
-            .Setup(s => s.AnalysedAsync(SegmentAnalysisTarget.Season, It.IsAny<CancellationToken>()))
+            .Setup(s =>
+                s.AnalysedAsync(SegmentAnalysisTarget.Season, It.IsAny<CancellationToken>())
+            )
             .ReturnsAsync(() => [10]);
         _state
             .Setup(s => s.AnalysedAsync(SegmentAnalysisTarget.Movie, It.IsAny<CancellationToken>()))
@@ -164,7 +234,9 @@ public class SegmentAnalysisSchedulingTests
     {
         await Scheduler().OnEncodingCompletedAsync(Completed(2), CancellationToken.None);
 
-        _state.Verify(s => s.ResetFailuresAsync(SegmentAnalysisTarget.Season, 10, It.IsAny<CancellationToken>()));
+        _state.Verify(s =>
+            s.ResetFailuresAsync(SegmentAnalysisTarget.Season, 10, It.IsAny<CancellationToken>())
+        );
         _queued.Should().ContainSingle().Which.SeasonId.Should().Be(10);
     }
 
@@ -172,7 +244,10 @@ public class SegmentAnalysisSchedulingTests
     public async Task SwitchedOff_SubscribesToNothing()
     {
         InMemoryEventBus bus = new();
-        SegmentAnalysisScheduler scheduler = Scheduler(bus, new EncoderOptions { EnableIntroDetectSubscriber = false });
+        SegmentAnalysisScheduler scheduler = Scheduler(
+            bus,
+            new EncoderOptions { EnableIntroDetectSubscriber = false }
+        );
 
         await scheduler.StartAsync(CancellationToken.None);
         await bus.PublishAsync(Completed(2));
@@ -188,7 +263,15 @@ public class SegmentAnalysisSchedulingTests
         await job.Handle();
 
         _analysis.Verify(a => a.AnalyseSeasonAsync(10, It.IsAny<CancellationToken>()), Times.Once);
-        _state.Verify(s => s.MarkAnalysedAsync(SegmentAnalysisTarget.Season, 10, It.IsAny<CancellationToken>()), Times.Once);
+        _state.Verify(
+            s =>
+                s.MarkAnalysedAsync(
+                    SegmentAnalysisTarget.Season,
+                    10,
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Once
+        );
         job.QueueName.Should().Be("encoder", "the encoder queue holds off during playback");
         job.Priority.Should().BeLessThan(2, "encodes and subtitle OCR go first");
     }
@@ -199,8 +282,24 @@ public class SegmentAnalysisSchedulingTests
         // An unmounted NAS or a non-local folder: the next scan tries again.
         await Job(SegmentAnalysisOutcome.NoSources).Handle();
 
-        _state.Verify(s => s.MarkAnalysedAsync(It.IsAny<SegmentAnalysisTarget>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
-        _state.Verify(s => s.RecordFailureAsync(It.IsAny<SegmentAnalysisTarget>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+        _state.Verify(
+            s =>
+                s.MarkAnalysedAsync(
+                    It.IsAny<SegmentAnalysisTarget>(),
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Never
+        );
+        _state.Verify(
+            s =>
+                s.RecordFailureAsync(
+                    It.IsAny<SegmentAnalysisTarget>(),
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Never
+        );
     }
 
     [Fact]
@@ -209,8 +308,49 @@ public class SegmentAnalysisSchedulingTests
         // FFmpeg missing or without chromaprint: every episode's audio pass failed.
         await Job(SegmentAnalysisOutcome.NothingMeasured).Handle();
 
-        _state.Verify(s => s.RecordFailureAsync(SegmentAnalysisTarget.Season, 10, It.IsAny<CancellationToken>()), Times.Once);
-        _state.Verify(s => s.MarkAnalysedAsync(It.IsAny<SegmentAnalysisTarget>(), It.IsAny<int>(), It.IsAny<CancellationToken>()), Times.Never);
+        _state.Verify(
+            s =>
+                s.RecordFailureAsync(
+                    SegmentAnalysisTarget.Season,
+                    10,
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Once
+        );
+        _state.Verify(
+            s =>
+                s.MarkAnalysedAsync(
+                    It.IsAny<SegmentAnalysisTarget>(),
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Never
+        );
+    }
+
+    [Fact]
+    public async Task Job_ThatMeasuredPartOfTheSeason_CountsAFailure_SoTheRestIsRetried()
+    {
+        await Job(SegmentAnalysisOutcome.PartlyMeasured).Handle();
+
+        _state.Verify(
+            s =>
+                s.RecordFailureAsync(
+                    SegmentAnalysisTarget.Season,
+                    10,
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Once
+        );
+        _state.Verify(
+            s =>
+                s.MarkAnalysedAsync(
+                    It.IsAny<SegmentAnalysisTarget>(),
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Never
+        );
     }
 
     [Fact]
@@ -224,7 +364,15 @@ public class SegmentAnalysisSchedulingTests
         Func<Task> handle = job.Handle;
 
         await handle.Should().NotThrowAsync("a queue retry would run every pass again");
-        _state.Verify(s => s.RecordFailureAsync(SegmentAnalysisTarget.Season, 10, It.IsAny<CancellationToken>()), Times.Once);
+        _state.Verify(
+            s =>
+                s.RecordFailureAsync(
+                    SegmentAnalysisTarget.Season,
+                    10,
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Once
+        );
     }
 
     [Fact]
@@ -263,12 +411,18 @@ public class SegmentAnalysisSchedulingTests
 
         SegmentAnalysisJob job = SegmentAnalysisJob.ForSeason(10);
         job.InjectStorageServices(
-            new ServiceCollection().AddSingleton(_analysis.Object).AddSingleton(_state.Object).BuildServiceProvider()
+            new ServiceCollection()
+                .AddSingleton(_analysis.Object)
+                .AddSingleton(_state.Object)
+                .BuildServiceProvider()
         );
         return job;
     }
 
-    private SegmentAnalysisScheduler Scheduler(IEventBus? bus = null, EncoderOptions? options = null) =>
+    private SegmentAnalysisScheduler Scheduler(
+        IEventBus? bus = null,
+        EncoderOptions? options = null
+    ) =>
         new(
             bus ?? new InMemoryEventBus(),
             _factory,
@@ -279,19 +433,38 @@ public class SegmentAnalysisSchedulingTests
         );
 
     private static EncodingCompletedEvent Completed(int episodeId) =>
-        new() { JobId = episodeId, EpisodeId = episodeId, OutputPath = string.Empty, Duration = TimeSpan.Zero };
+        new()
+        {
+            JobId = episodeId,
+            EpisodeId = episodeId,
+            OutputPath = string.Empty,
+            Duration = TimeSpan.Zero,
+        };
 
     private static EncodingCompletedEvent MovieEncoded(int movieId) =>
-        new() { JobId = movieId, MovieId = movieId, OutputPath = string.Empty, Duration = TimeSpan.Zero };
+        new()
+        {
+            JobId = movieId,
+            MovieId = movieId,
+            OutputPath = string.Empty,
+            Duration = TimeSpan.Zero,
+        };
 
     private LibraryScanCompletedEvent Scanned() =>
-        new() { LibraryId = _libraryId, LibraryName = "Anime", ItemsFound = 4, Duration = TimeSpan.Zero };
+        new()
+        {
+            LibraryId = _libraryId,
+            LibraryName = "Anime",
+            ItemsFound = 4,
+            Duration = TimeSpan.Zero,
+        };
 
     private sealed class InMemoryMediaFactory : IDbContextFactory<MediaContext>
     {
-        private readonly DbContextOptions<MediaContext> _options = new DbContextOptionsBuilder<MediaContext>()
-            .UseInMemoryDatabase(Guid.NewGuid().ToString())
-            .Options;
+        private readonly DbContextOptions<MediaContext> _options =
+            new DbContextOptionsBuilder<MediaContext>()
+                .UseInMemoryDatabase(Guid.NewGuid().ToString())
+                .Options;
 
         public MediaContext CreateDbContext() => new(_options);
     }

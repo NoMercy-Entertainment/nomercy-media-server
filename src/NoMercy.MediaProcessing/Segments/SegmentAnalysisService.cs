@@ -29,7 +29,10 @@ public sealed class SegmentAnalysisService(
         List<ResolvedSegmentSource> sources = await resolver.ResolveSeasonAsync(seasonId, ct);
         if (sources.Count == 0)
         {
-            logger.LogDebug("Segment analysis: season {SeasonId} has no readable encoded episodes", seasonId);
+            logger.LogDebug(
+                "Segment analysis: season {SeasonId} has no readable encoded episodes",
+                seasonId
+            );
             return SegmentAnalysisOutcome.NoSources;
         }
 
@@ -58,11 +61,14 @@ public sealed class SegmentAnalysisService(
         ];
         await writer.WriteAsync(items, ct);
         logger.LogInformation(
-            "Segment analysis: season {SeasonId}, {Count} episode(s) stored",
+            "Segment analysis: season {SeasonId}, {Count} of {Sources} episode(s) stored",
             seasonId,
-            items.Count
+            items.Count,
+            sources.Count
         );
-        return SegmentAnalysisOutcome.Analysed;
+        return items.Count < sources.Count
+            ? SegmentAnalysisOutcome.PartlyMeasured
+            : SegmentAnalysisOutcome.Analysed;
     }
 
     public async Task<SegmentAnalysisOutcome> AnalyseMovieAsync(int movieId, CancellationToken ct)

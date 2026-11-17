@@ -26,6 +26,13 @@ public enum SegmentAnalysisOutcome
     /// </summary>
     NothingMeasured,
 
-    /// <summary>The analysis ran and its answers were stored (possibly empty).</summary>
+    /// <summary>
+    /// Some episodes could not be measured (an unreadable file, a mount that
+    /// dropped mid-run). The measured ones are stored, but the season is not
+    /// done: this counts as a failure so a later run picks up the rest.
+    /// </summary>
+    PartlyMeasured,
+
+    /// <summary>Every readable episode was analysed and the answers stored (possibly empty).</summary>
     Analysed,
 }

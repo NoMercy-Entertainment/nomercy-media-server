@@ -28,7 +28,8 @@ namespace NoMercy.MediaProcessing.Jobs.SegmentJobs;
 /// <para>
 /// The item is marked analysed only when the analysis really ran. Nothing to
 /// read (an unmounted folder) leaves it unmarked for the next scan; a run that
-/// measured nothing or threw counts as a failure, and after
+/// measured nothing, measured only part of a season (its answers are still
+/// stored) or threw counts as a failure, and after
 /// <see cref="ISegmentAnalysisState.MaxFailures"/> of them the backfill leaves
 /// the item alone until its files change or someone asks for a run. A failure
 /// is not rethrown: a queue retry would repeat the same expensive passes.
@@ -122,6 +123,8 @@ public class SegmentAnalysisJob : IShouldQueue, IJobStorageInjector
                     await _state.MarkAnalysedAsync(target, id, _stopping);
                 break;
             case SegmentAnalysisOutcome.NothingMeasured:
+            case SegmentAnalysisOutcome.PartlyMeasured:
+                // Partly: the measured episodes are stored, the rest is retried.
                 await RecordFailureAsync(target, id);
                 break;
             case SegmentAnalysisOutcome.NoSources:
