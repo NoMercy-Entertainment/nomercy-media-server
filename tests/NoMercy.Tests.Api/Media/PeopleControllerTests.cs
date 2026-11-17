@@ -15,7 +15,10 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Moq;
+using NoMercy.Data.Repositories;
+using NoMercy.Database.Models.People;
 using NoMercy.Providers.TMDB.Client;
+using NoMercy.Providers.TMDB.Models.People;
 using NoMercy.Tests.Api.Infrastructure;
 using Xunit;
 
@@ -92,5 +95,170 @@ public class PeopleControllerTests : IClassFixture<NoMercyApiFactory>
             .Should()
             .BeTrue("a provider failure must still return the standard ProblemDetails envelope");
         title.GetString().Should().Be("Not Found.");
+    }
+
+    private const int OwnedMovieId = 990001;
+    private const int MissingTvId = 990002;
+
+    private HttpClient PersonClient()
+    {
+        TmdbPersonAppends appends = new()
+        {
+            Id = 990100,
+            Name = "Test Person",
+            Biography = "A made-up biography.",
+            CombinedCredits = new()
+            {
+                Cast =
+                [
+                    new()
+                    {
+                        Id = OwnedMovieId,
+                        MediaType = "movie",
+                        Title = "Owned Film",
+                        Character = "Test Hero",
+                        BackdropPath = "/owned-backdrop.jpg",
+                        PosterPath = "/owned-poster.jpg",
+                        VoteCount = 500,
+                    },
+                    new()
+                    {
+                        Id = MissingTvId,
+                        MediaType = "tv",
+                        Name = "Missing Show",
+                        Character = "Nobody",
+                        VoteCount = 10,
+                    },
+                ],
+                Crew =
+                [
+                    new()
+                    {
+                        Id = OwnedMovieId,
+                        MediaType = "movie",
+                        Title = "Owned Film",
+                        Job = "Director",
+                    },
+                    new()
+                    {
+                        Id = OwnedMovieId,
+                        MediaType = "movie",
+                        Title = "Owned Film",
+                        Job = "Sound Editor",
+                    },
+                ],
+            },
+        };
+
+        Person person = new()
+        {
+            Id = 990100,
+            Name = "Test Person",
+            Casts =
+            [
+                new()
+                {
+                    MovieId = OwnedMovieId,
+                    Role = new() { Character = "Test Hero" },
+                    Movie = new()
+                    {
+                        Id = OwnedMovieId,
+                        Title = "Owned Film",
+                        VideoFiles =
+                        [
+                            new()
+                            {
+                                Id = Ulid.NewUlid(),
+                                Filename = "Owned.Film.mkv",
+                                Folder = "/media/movies/Owned Film",
+                                HostFolder = "/media/movies/Owned Film",
+                                Share = NoMercyApiFactory.MovieFolderId.ToString(),
+                                MovieId = OwnedMovieId,
+                            },
+                        ],
+                    },
+                },
+            ],
+        };
+
+        Mock<IPersonMetadataProvider> providerMock = new();
+        providerMock
+            .Setup(p => p.GetPersonAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(appends);
+
+        Mock<IPeopleRepository> repositoryMock = new();
+        repositoryMock
+            .Setup(r => r.GetPersonWithCreditsAsync(It.IsAny<int>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(person);
+
+        return _factory
+            .WithWebHostBuilder(builder =>
+            {
+                builder.ConfigureTestServices(services =>
+                {
+                    services.RemoveAll<IPersonMetadataProvider>();
+                    services.AddSingleton(providerMock.Object);
+                    services.RemoveAll<IPeopleRepository>();
+                    services.AddSingleton(repositoryMock.Object);
+                });
+            })
+            .CreateClient()
+            .AsAuthenticated();
+    }
+
+    [Fact]
+    public async Task Show_WithoutVersion_KeepsThePersonResponseDto()
+    {
+        HttpResponseMessage response = await PersonClient().GetAsync("/api/v1/person/990100");
+
+        string body = await response.Content.ReadAsStringAsync();
+        response.StatusCode.Should().Be(HttpStatusCode.OK, body);
+
+        using JsonDocument doc = JsonDocument.Parse(body);
+        JsonElement data = doc.RootElement.GetProperty("data");
+        data.GetProperty("name").GetString().Should().Be("Test Person");
+        data.TryGetProperty("combined_credits", out _).Should().BeTrue();
+        data.TryGetProperty("known_for", out _).Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task Show_LolomoVersion_ReturnsAHeroAndTheCreditRowsTheUserOwns()
+    {
+        HttpResponseMessage response = await PersonClient()
+            .GetAsync("/api/v1/person/990100?version=lolomo");
+
+        string body = await response.Content.ReadAsStringAsync();
+        response.StatusCode.Should().Be(HttpStatusCode.OK, body);
+
+        using JsonDocument doc = JsonDocument.Parse(body);
+        JsonElement[] page = doc.RootElement.GetProperty("data").EnumerateArray().ToArray();
+        page.Select(c => c.GetProperty("component").GetString())
+            .Should()
+            .Equal("NMHomeCard", "NMLolomo");
+
+        JsonElement hero = page[0].GetProperty("props").GetProperty("data");
+        hero.GetProperty("title").GetString().Should().Be("Test Person");
+        hero.GetProperty("overview").GetString().Should().Be("A made-up biography.");
+        hero.GetProperty("backdrop").GetString().Should().Be("/owned-backdrop.jpg");
+
+        JsonElement lolomo = page[1].GetProperty("props");
+        lolomo.GetProperty("hero").GetString().Should().Be("none");
+        JsonElement[] rows = lolomo.GetProperty("items").EnumerateArray().ToArray();
+        rows.Select(r => r.GetProperty("props").GetProperty("title").GetString())
+            .Should()
+            .Equal("Known for", "Acting", "Directing", "Crew");
+
+        JsonElement Row(string title) =>
+            rows.Single(r => r.GetProperty("props").GetProperty("title").GetString() == title)
+                .GetProperty("props")
+                .GetProperty("items");
+
+        string Subtitle(string title) =>
+            Row(title)[0].GetProperty("props").GetProperty("data").GetProperty("subtitle").GetString()!;
+
+        Subtitle("Acting").Should().Be("Test Hero");
+        Subtitle("Directing").Should().Be("Director");
+        Subtitle("Crew").Should().Be("Sound Editor");
+        Row("Acting").GetArrayLength().Should().Be(1);
     }
 }
