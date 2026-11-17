@@ -10,20 +10,106 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Logging;
 
 namespace NoMercy.Data.ServerBackups;
 
-public sealed class SqliteFileOperations : ISqliteFileOperations
+public sealed class SqliteFileOperations(ILogger<SqliteFileOperations>? logger = null)
+    : ISqliteFileOperations
 {
+    private const int LockWaitMilliseconds = 3000;
+    private const int CopyBufferBytes = 4 * 1024 * 1024;
+
     public void CopyOnline(string sourcePath, string destinationPath)
     {
-        // Pooling off on both ends: a pooled connection keeps its file handle after
-        // Dispose, which on Windows locks the copy against pruning and moving.
-        using (SqliteConnection source = Open(sourcePath, SqliteOpenMode.ReadWrite))
-        using (SqliteConnection destination = Open(destinationPath, SqliteOpenMode.ReadWriteCreate))
+        string? fallbackReason = TryByteCopy(sourcePath, destinationPath);
+        if (fallbackReason is not null)
+        {
+            logger?.LogWarning(
+                "Byte copy of {Database} not possible ({Reason}); using the online backup",
+                Path.GetFileName(sourcePath),
+                fallbackReason
+            );
+            if (File.Exists(destinationPath))
+                File.Delete(destinationPath);
+
+            // Pooling off on both ends: a pooled connection keeps its file handle after
+            // Dispose, which on Windows locks the copy against pruning and moving.
+            using SqliteConnection source = Open(sourcePath, SqliteOpenMode.ReadWrite);
+            using SqliteConnection destination = Open(
+                destinationPath,
+                SqliteOpenMode.ReadWriteCreate
+            );
             source.BackupDatabase(destination);
+        }
 
         Seal(destinationPath);
+    }
+
+    // Null when copied; otherwise the reason a byte copy was not possible.
+    private string? TryByteCopy(string sourcePath, string destinationPath)
+    {
+        try
+        {
+            using SqliteConnection source = Open(sourcePath, SqliteOpenMode.ReadWrite);
+            Execute(source, $"PRAGMA busy_timeout={LockWaitMilliseconds}");
+
+            using (SqliteCommand checkpoint = source.CreateCommand())
+            {
+                checkpoint.CommandText = "PRAGMA wal_checkpoint(TRUNCATE)";
+                using SqliteDataReader reader = checkpoint.ExecuteReader();
+                if (reader.Read() && reader.GetInt64(0) != 0)
+                    return "checkpoint busy";
+            }
+
+            Execute(source, "BEGIN IMMEDIATE");
+            try
+            {
+                // A commit between the checkpoint and the lock leaves frames in the WAL,
+                // and another connection may backfill them into the file mid-copy.
+                FileInfo wal = new(sourcePath + "-wal");
+                if (wal.Exists && wal.Length > 0)
+                    return "write-ahead log not empty";
+
+                using FileStream from = new(
+                    sourcePath,
+                    FileMode.Open,
+                    FileAccess.Read,
+                    FileShare.ReadWrite,
+                    CopyBufferBytes
+                );
+                using FileStream to = new(
+                    destinationPath,
+                    FileMode.CreateNew,
+                    FileAccess.Write,
+                    FileShare.None,
+                    CopyBufferBytes
+                );
+                from.CopyTo(to, CopyBufferBytes);
+                logger?.LogDebug(
+                    "Byte-copied {Database}: {Bytes} bytes",
+                    Path.GetFileName(sourcePath),
+                    to.Length
+                );
+            }
+            finally
+            {
+                Execute(source, "ROLLBACK");
+            }
+
+            return null;
+        }
+        catch (SqliteException exception)
+        {
+            return exception.Message;
+        }
+    }
+
+    private static void Execute(SqliteConnection connection, string sql)
+    {
+        using SqliteCommand command = connection.CreateCommand();
+        command.CommandText = sql;
+        command.ExecuteNonQuery();
     }
 
     public void Seal(string databasePath)

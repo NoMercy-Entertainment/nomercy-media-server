@@ -24,6 +24,7 @@ public sealed class PreMigrationBackup(
 ) : IPreMigrationBackup
 {
     private const string TimestampFormat = "yyyyMMddHHmmss";
+    private static readonly TimeSpan ProgressInterval = TimeSpan.FromSeconds(10);
 
     public bool BackupBeforeMigration(string databasePath, int pendingMigrationCount)
     {
@@ -41,7 +42,7 @@ public sealed class PreMigrationBackup(
             if (storage.FileExists(backupPath))
                 throw new IOException($"Backup file already exists: {backupPath}");
 
-            sqlite.CopyOnline(databasePath, backupPath);
+            CopyWithProgress(databasePath, backupPath, databaseName);
             storage.TryRestrictToOwner(backupPath);
             logger.LogInformation(
                 "Database backup created: {BackupFile} ({PendingCount} pending migration(s))",
@@ -62,6 +63,52 @@ public sealed class PreMigrationBackup(
 
         Prune(databaseName);
         return true;
+    }
+
+    private void CopyWithProgress(string databasePath, string backupPath, string databaseName)
+    {
+        long total = SizeOrZero(databasePath) + SizeOrZero(databasePath + "-wal");
+        LogProgress(databaseName, 0, total);
+
+        // The online backup call reports nothing, so the growing backup file is the signal.
+        using ITimer timer = clock.CreateTimer(
+            _ => LogProgress(databaseName, SizeOrZero(backupPath), total),
+            null,
+            ProgressInterval,
+            ProgressInterval
+        );
+        sqlite.CopyOnline(databasePath, backupPath);
+    }
+
+    private void LogProgress(string databaseName, long done, long total)
+    {
+        try
+        {
+            long percent = total > 0 ? Math.Clamp(done * 100 / total, 0, 99) : 0;
+            logger.LogInformation(
+                "Backing up {Database}: {Done} of {Total} ({Percent}%)",
+                databaseName,
+                done,
+                total,
+                percent
+            );
+        }
+        catch (Exception)
+        {
+            // A progress line never fails the backup.
+        }
+    }
+
+    private long SizeOrZero(string path)
+    {
+        try
+        {
+            return storage.FileExists(path) ? storage.GetFileSize(path) : 0;
+        }
+        catch (Exception)
+        {
+            return 0;
+        }
     }
 
     /// <summary>

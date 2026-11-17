@@ -10,7 +10,9 @@
 // -----------------------------------------------------------------------------
 
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using Microsoft.Extensions.Time.Testing;
 using NoMercy.Data.ServerBackups;
 using NoMercy.Storage.Drivers.Local;
 
@@ -55,6 +57,159 @@ public sealed class PreMigrationBackupTests : IDisposable
                 )
                 .ToArray()
             : [];
+
+    private const string ProgressTemplate = "Backing up {Database}: {Done} of {Total} ({Percent}%)";
+
+    private sealed class RecordingLogger : ILogger<PreMigrationBackup>
+    {
+        public List<(string Template, Dictionary<string, object?> Values)> Lines { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state)
+            where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter
+        )
+        {
+            Dictionary<string, object?> values = [];
+            if (state is IEnumerable<KeyValuePair<string, object?>> pairs)
+                foreach (KeyValuePair<string, object?> pair in pairs)
+                    values[pair.Key] = pair.Value;
+            Lines.Add(((string)values["{OriginalFormat}"]!, values));
+        }
+
+        public List<Dictionary<string, object?>> Progress() =>
+            Lines
+                .Where(line => line.Template == ProgressTemplate)
+                .Select(line => line.Values)
+                .ToList();
+    }
+
+    private sealed class ScriptedCopySqlite(Action<string, string> copy) : ISqliteFileOperations
+    {
+        private readonly SqliteFileOperations _inner = new();
+
+        public void CopyOnline(string sourcePath, string destinationPath) =>
+            copy(sourcePath, destinationPath);
+
+        public void Seal(string databasePath) => _inner.Seal(databasePath);
+
+        public IReadOnlyList<string> ReadAppliedMigrations(string databasePath) =>
+            _inner.ReadAppliedMigrations(databasePath);
+
+        public string? FindDamage(string databasePath) => _inner.FindDamage(databasePath);
+
+        public void ReleaseAllConnections() => _inner.ReleaseAllConnections();
+    }
+
+    private PreMigrationBackup CreateScripted(
+        Action<string, string> copy,
+        FakeTimeProvider clock,
+        RecordingLogger logger
+    ) =>
+        new(
+            new LocalStorageDriver(),
+            new ScriptedCopySqlite(copy),
+            new BackupOptions
+            {
+                BackupRoot = _folder.BackupRoot,
+                ConfigRoot = _folder.ConfigRoot,
+                Databases = [],
+            },
+            clock,
+            logger
+        );
+
+    private string CreateDbWithWal(string name, int walBytes)
+    {
+        string path = CreateDb(name);
+        File.WriteAllBytes(path + "-wal", new byte[walBytes]);
+        return path;
+    }
+
+    [Fact]
+    public void BeforeTheCopy_LogsAStartLineWithZeroDoneAndTheDatabaseAndWalSize()
+    {
+        string path = CreateDbWithWal("media", 5);
+        long total = new FileInfo(path).Length + 5;
+        RecordingLogger logger = new();
+        int progressWhenCopyStarted = -1;
+
+        CreateScripted(
+                (_, destination) =>
+                {
+                    progressWhenCopyStarted = logger.Progress().Count;
+                    File.WriteAllText(destination, "x");
+                },
+                new FakeTimeProvider(),
+                logger
+            )
+            .BackupBeforeMigration(path, 1)
+            .Should()
+            .BeTrue();
+
+        progressWhenCopyStarted.Should().Be(1);
+        Dictionary<string, object?> start = logger.Progress().First();
+        start["Database"].Should().Be("media");
+        start["Done"].Should().Be(0L);
+        start["Total"].Should().Be(total);
+        start["Percent"].Should().Be(0L);
+    }
+
+    [Fact]
+    public void WhileTheCopyRuns_EveryTenSecondsLogsTheBackupFileSize()
+    {
+        string path = CreateDbWithWal("media", 5);
+        long total = new FileInfo(path).Length + 5;
+        FakeTimeProvider clock = new();
+        RecordingLogger logger = new();
+
+        CreateScripted(
+                (_, destination) =>
+                {
+                    File.WriteAllBytes(destination, new byte[12]);
+                    clock.Advance(TimeSpan.FromSeconds(10));
+                },
+                clock,
+                logger
+            )
+            .BackupBeforeMigration(path, 1)
+            .Should()
+            .BeTrue();
+
+        List<Dictionary<string, object?>> progress = logger.Progress();
+        progress.Should().HaveCount(2);
+        progress[1]["Done"].Should().Be(12L);
+        progress[1]["Total"].Should().Be(total);
+        progress[1]["Percent"].Should().Be(12 * 100 / total);
+    }
+
+    [Fact]
+    public void NoProgressLineIsLoggedAfterTheCopyReturnsOrThrows()
+    {
+        FakeTimeProvider clock = new();
+        RecordingLogger returned = new();
+        CreateScripted((_, destination) => File.WriteAllText(destination, "x"), clock, returned)
+            .BackupBeforeMigration(CreateDb("media"), 1);
+        int afterReturn = returned.Progress().Count;
+        clock.Advance(TimeSpan.FromSeconds(30));
+        returned.Progress().Should().HaveCount(afterReturn);
+
+        RecordingLogger thrown = new();
+        CreateScripted((_, _) => throw new IOException("disk full"), clock, thrown)
+            .BackupBeforeMigration(CreateDb("queue"), 1)
+            .Should()
+            .BeFalse();
+        int afterThrow = thrown.Progress().Count;
+        clock.Advance(TimeSpan.FromSeconds(30));
+        thrown.Progress().Should().HaveCount(afterThrow);
+    }
 
     [Fact]
     public void NoPendingMigrations_SkipsBackup()
