@@ -35,9 +35,16 @@ public static class PluginIsolationLevel
     /// The English source for <see cref="NoticeKey" />. Here so the wording
     /// lives beside the level it describes; a translator reads it from the
     /// locale file like any other string.
+    /// <para>
+    /// One sentence for every plugin, because the permissions page that shows
+    /// it does not know where a plugin runs. It used to say the plugin runs
+    /// inside the server, which is false for one the owner moved to its own
+    /// process, so it now says only what holds in both places: permissions
+    /// decide what a plugin may reach, not how far it is kept from the server.
+    /// </para>
     /// </summary>
     public const string EnglishNotice =
-        "Runs inside the server: permissions are checked, not isolated.";
+        "Permissions are checked on every call. They decide what this plugin may reach, not how far it is kept apart from the server.";
 
     /// <summary>
     /// Said when the owner asks for out-of-process for any plugin.

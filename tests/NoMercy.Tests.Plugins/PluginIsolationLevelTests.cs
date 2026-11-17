@@ -38,17 +38,22 @@ public class PluginIsolationLevelTests
     }
 
     [Fact]
-    public void The_english_source_says_what_stage_one_is()
+    public void The_english_source_is_true_wherever_the_plugin_runs()
     {
         PluginIsolationLevel
             .EnglishNotice.Should()
-            .Be("Runs inside the server: permissions are checked, not isolated.");
+            .Be(
+                "Permissions are checked on every call. They decide what this plugin may reach, not how far it is kept apart from the server."
+            );
+
+        // The page shows it for a plugin in its own process too (#68).
+        PluginIsolationLevel.EnglishNotice.Should().NotContain("inside the server");
     }
 
     [Fact]
     public void The_notice_says_permissions_are_checked_rather_than_promising_a_sandbox()
     {
-        PluginIsolationLevel.EnglishNotice.Should().Contain("not isolated");
+        PluginIsolationLevel.EnglishNotice.Should().Contain("checked");
         PluginIsolationLevel
             .EnglishNotice.Should()
             .NotContain(
