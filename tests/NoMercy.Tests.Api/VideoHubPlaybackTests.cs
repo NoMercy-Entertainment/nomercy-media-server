@@ -826,6 +826,58 @@ public class VideoHubPlaybackTests : IClassFixture<NoMercyApiFactory>
         }
     }
 
+    // The cast receiver sends the list id as a JSON number. Newtonsoft hands the
+    // dynamic parameter a long, and int.Parse(long) threw RuntimeBinderException,
+    // so playback never started on the TV.
+    [Fact]
+    public async Task StartPlaybackCommand_NumericListId_StartsPlayback()
+    {
+        Guid userId = TestAuthHandler.DefaultUserId;
+        VideoPlayerStateManager stateManager =
+            _factory.Services.GetRequiredService<VideoPlayerStateManager>();
+        ConnectedClients connectedClients = _factory.GetConnectedClients();
+        string connection = Guid.NewGuid().ToString();
+        connectedClients.Clients[connection] = new()
+        {
+            Id = Ulid.NewUlid(),
+            Sub = userId,
+            DeviceId = $"cast-{Guid.NewGuid()}",
+            Endpoint = "/videoHub",
+            Type = "cast",
+            Socket = Mock.Of<ISingleClientProxy>(),
+        };
+        Mock<IActivityLogger> activityLogger = new();
+        (VideoHub hub, _) = CreateHub(connection, userId, out _, activityLogger.Object);
+
+        try
+        {
+            stateManager.RemoveState(userId);
+            await hub.StartPlaybackCommand(MediaTypes.MovieMediaType, 129L, 129);
+
+            activityLogger.Verify(
+                logger =>
+                    logger.LogFailureAsync(
+                        "failure.playback_start",
+                        It.IsAny<Guid>(),
+                        It.IsAny<Ulid>(),
+                        "RuntimeBinderException",
+                        It.IsAny<string>(),
+                        It.IsAny<Ulid?>(),
+                        It.IsAny<object?>(),
+                        It.IsAny<CancellationToken>()
+                    ),
+                Times.Never
+            );
+            stateManager.TryGetValue(userId, out VideoPlayerState? state).Should().BeTrue();
+            state!.CurrentList.ToString().Should().Be("/movie/129/watch");
+        }
+        finally
+        {
+            stateManager.RemoveState(userId);
+            connectedClients.Clients.TryRemove(connection, out _);
+        }
+    }
+
     // The hub used to remember the first device a user started on, in a static map
     // nothing ever cleared, so every later session was created on that device.
     [Fact]
