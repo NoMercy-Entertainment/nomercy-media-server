@@ -55,7 +55,9 @@ public sealed class SegmentAnalysisScheduler(
         }
 
         _subscriptions.Add(eventBus.Subscribe<EncodingCompletedEvent>(OnEncodingCompletedAsync));
-        _subscriptions.Add(eventBus.Subscribe<LibraryScanCompletedEvent>(OnLibraryScanCompletedAsync));
+        _subscriptions.Add(
+            eventBus.Subscribe<LibraryScanCompletedEvent>(OnLibraryScanCompletedAsync)
+        );
         return Task.CompletedTask;
     }
 
@@ -68,46 +70,73 @@ public sealed class SegmentAnalysisScheduler(
     }
 
     /// <summary>
-    /// The encode's id names an episode or a movie (the event does not say
-    /// which); both are looked up, and an extra analysis of a same-numbered item
-    /// is harmless.
+    /// The encode names what it produced: an episode (its season is analysed
+    /// again) or a movie. A music encode names neither and queues nothing.
     /// </summary>
     internal async Task OnEncodingCompletedAsync(EncodingCompletedEvent evt, CancellationToken ct)
     {
+        if (evt.EpisodeId is null && evt.MovieId is null)
+            return;
+
         try
         {
             await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
-            int? seasonId = await context
-                .Episodes.AsNoTracking()
-                .Where(e => e.Id == evt.JobId && e.VideoFiles.Any())
-                .Select(e => (int?)e.SeasonId)
-                .FirstOrDefaultAsync(ct);
-            string? movieTitle = await context
-                .Movies.AsNoTracking()
-                .Where(m => m.Id == evt.JobId && m.VideoFiles.Any())
-                .Select(m => m.Title)
-                .FirstOrDefaultAsync(ct);
-
-            if (seasonId is not null)
+            if (evt.EpisodeId is { } episodeId)
             {
-                await state.ResetFailuresAsync(SegmentAnalysisTarget.Season, seasonId.Value, ct);
-                Dictionary<int, string> titles = await SeasonTitlesAsync(context, [seasonId.Value], ct);
-                Dispatch(SegmentAnalysisJob.ForSeason(seasonId.Value, titles.GetValueOrDefault(seasonId.Value, string.Empty)));
+                int? seasonId = await context
+                    .Episodes.AsNoTracking()
+                    .Where(e => e.Id == episodeId && e.VideoFiles.Any())
+                    .Select(e => (int?)e.SeasonId)
+                    .FirstOrDefaultAsync(ct);
+                if (seasonId is not null)
+                {
+                    await state.ResetFailuresAsync(
+                        SegmentAnalysisTarget.Season,
+                        seasonId.Value,
+                        ct
+                    );
+                    Dictionary<int, string> titles = await SeasonTitlesAsync(
+                        context,
+                        [seasonId.Value],
+                        ct
+                    );
+                    Dispatch(
+                        SegmentAnalysisJob.ForSeason(
+                            seasonId.Value,
+                            titles.GetValueOrDefault(seasonId.Value, string.Empty)
+                        )
+                    );
+                }
             }
 
-            if (movieTitle is not null)
+            if (evt.MovieId is { } movieId)
             {
-                await state.ResetFailuresAsync(SegmentAnalysisTarget.Movie, evt.JobId, ct);
-                Dispatch(SegmentAnalysisJob.ForMovie(evt.JobId, movieTitle));
+                string? movieTitle = await context
+                    .Movies.AsNoTracking()
+                    .Where(m => m.Id == movieId && m.VideoFiles.Any())
+                    .Select(m => m.Title)
+                    .FirstOrDefaultAsync(ct);
+                if (movieTitle is not null)
+                {
+                    await state.ResetFailuresAsync(SegmentAnalysisTarget.Movie, movieId, ct);
+                    Dispatch(SegmentAnalysisJob.ForMovie(movieId, movieTitle));
+                }
             }
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
-            logger.LogWarning(ex, "Segment analysis: could not queue after encode {JobId}", evt.JobId);
+            logger.LogWarning(
+                ex,
+                "Segment analysis: could not queue after encode {JobId}",
+                evt.JobId
+            );
         }
     }
 
-    internal async Task OnLibraryScanCompletedAsync(LibraryScanCompletedEvent evt, CancellationToken ct)
+    internal async Task OnLibraryScanCompletedAsync(
+        LibraryScanCompletedEvent evt,
+        CancellationToken ct
+    )
     {
         try
         {
@@ -123,8 +152,9 @@ public sealed class SegmentAnalysisScheduler(
             Dictionary<int, string> movies = await context
                 .Movies.AsNoTracking()
                 .Where(m =>
-                    context.LibraryMovie.Any(lm => lm.LibraryId == evt.LibraryId && lm.MovieId == m.Id)
-                    && m.VideoFiles.Any()
+                    context.LibraryMovie.Any(lm =>
+                        lm.LibraryId == evt.LibraryId && lm.MovieId == m.Id
+                    ) && m.VideoFiles.Any()
                 )
                 .ToDictionaryAsync(m => m.Id, m => m.Title, ct);
 
@@ -134,10 +164,19 @@ public sealed class SegmentAnalysisScheduler(
             doneMovies.UnionWith(await state.GivenUpAsync(SegmentAnalysisTarget.Movie, ct));
             List<int> todoSeasons = [.. seasons.Where(id => !doneSeasons.Contains(id))];
             List<int> todoMovies = [.. movies.Keys.Where(id => !doneMovies.Contains(id)).Order()];
-            Dictionary<int, string> seasonTitles = await SeasonTitlesAsync(context, todoSeasons, ct);
+            Dictionary<int, string> seasonTitles = await SeasonTitlesAsync(
+                context,
+                todoSeasons,
+                ct
+            );
 
             foreach (int seasonId in todoSeasons)
-                Dispatch(SegmentAnalysisJob.ForSeason(seasonId, seasonTitles.GetValueOrDefault(seasonId, string.Empty)));
+                Dispatch(
+                    SegmentAnalysisJob.ForSeason(
+                        seasonId,
+                        seasonTitles.GetValueOrDefault(seasonId, string.Empty)
+                    )
+                );
             foreach (int movieId in todoMovies)
                 Dispatch(SegmentAnalysisJob.ForMovie(movieId, movies[movieId]));
 
@@ -151,7 +190,11 @@ public sealed class SegmentAnalysisScheduler(
         }
         catch (Exception ex) when (!ct.IsCancellationRequested)
         {
-            logger.LogWarning(ex, "Segment analysis: could not queue the backfill for {Library}", evt.LibraryName);
+            logger.LogWarning(
+                ex,
+                "Segment analysis: could not queue the backfill for {Library}",
+                evt.LibraryName
+            );
         }
     }
 
@@ -165,10 +208,16 @@ public sealed class SegmentAnalysisScheduler(
         var rows = await context
             .Seasons.AsNoTracking()
             .Where(s => seasonIds.Contains(s.Id))
-            .Select(s => new { s.Id, Show = s.Tv.Title, s.SeasonNumber })
+            .Select(s => new
+            {
+                s.Id,
+                Show = s.Tv.Title,
+                s.SeasonNumber,
+            })
             .ToListAsync(ct);
         return rows.ToDictionary(r => r.Id, r => $"{r.Show}, season {r.SeasonNumber}");
     }
 
-    private void Dispatch(SegmentAnalysisJob job) => dispatcher.Dispatch(job, job.QueueName, job.Priority);
+    private void Dispatch(SegmentAnalysisJob job) =>
+        dispatcher.Dispatch(job, job.QueueName, job.Priority);
 }

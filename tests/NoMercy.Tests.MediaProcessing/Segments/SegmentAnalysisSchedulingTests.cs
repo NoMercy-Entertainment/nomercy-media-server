@@ -85,9 +85,40 @@ public class SegmentAnalysisSchedulingTests
     [Fact]
     public async Task AfterAMovieEncode_TheMovieIsQueued()
     {
-        await Scheduler().OnEncodingCompletedAsync(Completed(129), CancellationToken.None);
+        await Scheduler().OnEncodingCompletedAsync(MovieEncoded(129), CancellationToken.None);
 
         _queued.Should().ContainSingle().Which.MovieId.Should().Be(129);
+    }
+
+    [Fact]
+    public async Task AnEpisodeEncode_NeverQueuesOrResetsAMovieWithTheSameId()
+    {
+        using (MediaContext context = _factory.CreateDbContext())
+        {
+            context.Movies.Add(new Movie { Id = 2, Title = "Same id" });
+            context.VideoFiles.Add(new VideoFile { MovieId = 2, HostFolder = "/movie2", Filename = "/m.m3u8" });
+            context.SaveChanges();
+        }
+
+        await Scheduler().OnEncodingCompletedAsync(Completed(2), CancellationToken.None);
+
+        _queued.Should().ContainSingle().Which.SeasonId.Should().Be(10);
+        _state.Verify(
+            s => s.ResetFailuresAsync(SegmentAnalysisTarget.Movie, It.IsAny<int>(), It.IsAny<CancellationToken>()),
+            Times.Never
+        );
+    }
+
+    [Fact]
+    public async Task AMusicEncode_QueuesNothing()
+    {
+        await Scheduler()
+            .OnEncodingCompletedAsync(
+                new() { JobId = 2, OutputPath = string.Empty, Duration = TimeSpan.Zero },
+                CancellationToken.None
+            );
+
+        _queued.Should().BeEmpty();
     }
 
     [Fact]
@@ -247,8 +278,11 @@ public class SegmentAnalysisSchedulingTests
             NullLogger<SegmentAnalysisScheduler>.Instance
         );
 
-    private static EncodingCompletedEvent Completed(int id) =>
-        new() { JobId = id, OutputPath = string.Empty, Duration = TimeSpan.Zero };
+    private static EncodingCompletedEvent Completed(int episodeId) =>
+        new() { JobId = episodeId, EpisodeId = episodeId, OutputPath = string.Empty, Duration = TimeSpan.Zero };
+
+    private static EncodingCompletedEvent MovieEncoded(int movieId) =>
+        new() { JobId = movieId, MovieId = movieId, OutputPath = string.Empty, Duration = TimeSpan.Zero };
 
     private LibraryScanCompletedEvent Scanned() =>
         new() { LibraryId = _libraryId, LibraryName = "Anime", ItemsFound = 4, Duration = TimeSpan.Zero };
