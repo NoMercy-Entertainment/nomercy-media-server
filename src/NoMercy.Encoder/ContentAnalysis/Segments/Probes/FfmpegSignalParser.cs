@@ -71,6 +71,18 @@ internal static partial class FfmpegSignalParser
         return runs;
     }
 
+    /// <summary>
+    /// True when a blackdetect line carries no instance name. Builds before the
+    /// NoMercy FFmpeg 1.0.44 release log every instance as plain "blackdetect",
+    /// so two named detectors in one graph cannot be told apart.
+    /// </summary>
+    public static bool HasUnnamedBlack(IEnumerable<string> lines) =>
+        lines.Any(line =>
+        {
+            Match match = BlackRegex().Match(line);
+            return match.Success && !match.Groups["instance"].Success;
+        });
+
     /// <summary>scdet scene cuts.</summary>
     public static List<double> SceneCuts(IEnumerable<string> lines, double offset = 0)
     {

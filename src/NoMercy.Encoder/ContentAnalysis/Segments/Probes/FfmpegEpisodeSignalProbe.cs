@@ -38,6 +38,8 @@ public sealed class FfmpegEpisodeSignalProbe(
 ) : IEpisodeSignalProbe
 {
     private const string OcrLanguage = "eng";
+    private const string StrictBlack = "blackdetect@strict=d=0.1:pix_th=0.10:pic_th=0.98";
+    private const string LooseBlack = "blackdetect@loose=d=1.0:pix_th=0.10:pic_th=0.80";
 
     private static readonly TimeSpan MaxIdleWait = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan LongPassTimeout = TimeSpan.FromMinutes(30);
@@ -114,22 +116,24 @@ public sealed class FfmpegEpisodeSignalProbe(
         List<TimeRange> loose = [];
         foreach (TimeRange window in windows)
         {
-            List<string> stderr = [];
-            string[] args =
-            [
-                .. WindowArgs(input.Path, window.Start, window.Length),
-                "-vf",
-                "scale=320:-2,blackdetect@strict=d=0.1:pix_th=0.10:pic_th=0.98,"
-                    + "blackdetect@loose=d=1.0:pix_th=0.10:pic_th=0.80",
-                "-f",
-                "null",
-                "-",
-            ];
-            if (!await RunAsync(args, stderr, ShortPassTimeout, source.VideoPath, ct))
+            // Both detectors on the same decoded frames, told apart by instance name.
+            List<string>? both = await BlackPassAsync(input.Path, window, $"{StrictBlack},{LooseBlack}", source, ct);
+            if (both is null)
                 return null;
+            if (!FfmpegSignalParser.HasUnnamedBlack(both))
+            {
+                strict.AddRange(FfmpegSignalParser.Black(both, window.Start, "strict"));
+                loose.AddRange(FfmpegSignalParser.Black(both, window.Start, "loose"));
+                continue;
+            }
 
-            strict.AddRange(FfmpegSignalParser.Black(stderr, window.Start, "strict"));
-            loose.AddRange(FfmpegSignalParser.Black(stderr, window.Start, "loose"));
+            // An older build logs both as plain "blackdetect": one pass each.
+            List<string>? strictOnly = await BlackPassAsync(input.Path, window, StrictBlack, source, ct);
+            List<string>? looseOnly = await BlackPassAsync(input.Path, window, LooseBlack, source, ct);
+            if (strictOnly is null || looseOnly is null)
+                return null;
+            strict.AddRange(FfmpegSignalParser.Black(strictOnly, window.Start));
+            loose.AddRange(FfmpegSignalParser.Black(looseOnly, window.Start));
         }
 
         return new([.. strict.OrderBy(r => r.Start)], [.. loose.OrderBy(r => r.Start)]);
@@ -294,6 +298,28 @@ public sealed class FfmpegEpisodeSignalProbe(
         {
             DeleteTempFolder(folder);
         }
+    }
+
+    /// <summary>One blackdetect pass over a window: its stderr, or null when it failed.</summary>
+    private async Task<List<string>?> BlackPassAsync(
+        string input,
+        TimeRange window,
+        string detectors,
+        SegmentMediaSource source,
+        CancellationToken ct
+    )
+    {
+        List<string> stderr = [];
+        string[] args =
+        [
+            .. WindowArgs(input, window.Start, window.Length),
+            "-vf",
+            $"scale=320:-2,{detectors}",
+            "-f",
+            "null",
+            "-",
+        ];
+        return await RunAsync(args, stderr, ShortPassTimeout, source.VideoPath, ct) ? stderr : null;
     }
 
     private static string[] WindowArgs(string input, double start, double length) =>

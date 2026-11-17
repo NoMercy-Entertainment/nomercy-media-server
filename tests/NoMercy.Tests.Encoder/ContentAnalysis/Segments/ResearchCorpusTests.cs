@@ -11,6 +11,7 @@
 
 using NoMercy.Encoder.ContentAnalysis.Segments;
 using NoMercy.Tests.Encoder.ContentAnalysis.Segments.Support;
+using Xunit.Abstractions;
 
 namespace NoMercy.Tests.Encoder.ContentAnalysis.Segments;
 
@@ -21,7 +22,7 @@ namespace NoMercy.Tests.Encoder.ContentAnalysis.Segments;
 /// nomercy-segment-research checkout; skipped otherwise.
 /// </summary>
 [Trait("Category", "Integration")]
-public class ResearchCorpusTests
+public class ResearchCorpusTests(ITestOutputHelper output)
 {
     private readonly SeasonSegmentAnalyzer _analyzer = new();
 
@@ -52,6 +53,16 @@ public class ResearchCorpusTests
         SeasonCandidates candidates = _analyzer.FindCandidates(season.Signals, matches);
         IReadOnlyList<EpisodeSegments> result = _analyzer.Decide(candidates, season.Evidence());
 
+        ChapterScore score = ChapterScore.Zero;
+        for (int i = 0; i < result.Count; i++)
+            score += ChapterScore.Of(season.Id, season.Episodes[i], result[i]);
+        output.WriteLine(
+            $"{season.Id}: {result.Count} episodes, {result.Count(e => e.Intro is not null)} intros, "
+                + $"{result.Count(e => e.CreditsStart is not null)} credits, "
+                + $"{result.Count(e => e.AfterOutro is not null)} after-outro, "
+                + $"{result.Count(e => e.Outro?.ButtonOnly == true)} button-only; chapters {score.Hit}/{score.Truth}, "
+                + $"{score.Within5} within 5 s, {score.Within2} within 2 s, {score.Extra} extra"
+        );
         AcceptanceChecks.Failures(season, result).Should().BeEmpty();
     }
 

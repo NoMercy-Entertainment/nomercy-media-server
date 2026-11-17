@@ -104,6 +104,31 @@ public class FfmpegEpisodeSignalProbeTests
     }
 
     [Fact]
+    public async Task ReadBlack_OnABuildThatDoesNotNameInstances_RunsOnePassPerDetector()
+    {
+        // FFmpeg 8.0 NoMercy builds before release 1.0.44 log both detectors as
+        // "[blackdetect @ ...]" (measured on the installed Jan 2026 build).
+        List<string> graphs = [];
+        Mock<IProcessRunner> runner = Runner(
+            (a, stderr) =>
+            {
+                string graph = a[Array.IndexOf(a, "-vf") + 1];
+                graphs.Add(graph);
+                if (graph.Contains("strict") && !graph.Contains("loose"))
+                    stderr("[blackdetect @ 0x1] black_start:5 black_end:6 black_duration:1");
+                else
+                    stderr("[blackdetect @ 0x2] black_start:3 black_end:8.04 black_duration:5.04");
+            }
+        );
+
+        BlackRuns? black = await Probe(runner).ReadBlackAsync(_source, [new(100, 120)], CancellationToken.None);
+
+        graphs.Should().HaveCount(3);
+        black!.Strict.Should().Equal(new TimeRange(105, 106));
+        black.Loose.Should().ContainSingle().Which.Start.Should().Be(103);
+    }
+
+    [Fact]
     public async Task ProbeEdge_Looks6SecondsEachWay()
     {
         string[]? args = null;

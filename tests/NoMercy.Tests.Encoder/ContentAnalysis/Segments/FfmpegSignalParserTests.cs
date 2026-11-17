@@ -48,12 +48,16 @@ public class FfmpegSignalParserTests
             "[blackdetect@loose @ 000001c90220f940] black_start:3.08 black_end:6.2 black_duration:3.12",
         ];
 
-        FfmpegSignalParser.Black(lines, offset: 79.573, instance: "strict")
+        FfmpegSignalParser
+            .Black(lines, offset: 79.573, instance: "strict")
             .Should()
             .ContainSingle()
             .Which.Start.Should()
             .BeApproximately(82.693, 1e-9);
-        FfmpegSignalParser.Black(lines, offset: 0, instance: "loose").Should().Equal(new TimeRange(3.08, 6.2));
+        FfmpegSignalParser
+            .Black(lines, offset: 0, instance: "loose")
+            .Should()
+            .Equal(new TimeRange(3.08, 6.2));
     }
 
     [Fact]
@@ -61,9 +65,30 @@ public class FfmpegSignalParserTests
     {
         string[] lines = ["[blackdetect @ 0x55d] black_start:0.8 black_end:1.6 black_duration:0.8"];
 
-        TimeRange run = FfmpegSignalParser.Black(lines, offset: 1355.9).Should().ContainSingle().Subject;
+        TimeRange run = FfmpegSignalParser
+            .Black(lines, offset: 1355.9)
+            .Should()
+            .ContainSingle()
+            .Subject;
         run.Start.Should().BeApproximately(1356.7, 1e-9);
         run.End.Should().BeApproximately(1357.5, 1e-9);
+    }
+
+    [Fact]
+    public void UnnamedBlackLines_AreRecognised()
+    {
+        FfmpegSignalParser
+            .HasUnnamedBlack([
+                "[blackdetect @ 0x1] black_start:5 black_end:8.04 black_duration:3.04",
+            ])
+            .Should()
+            .BeTrue();
+        FfmpegSignalParser
+            .HasUnnamedBlack([
+                "[blackdetect@loose @ 0x1] black_start:3.08 black_end:6.2 black_duration:3.12",
+            ])
+            .Should()
+            .BeFalse();
     }
 
     [Fact]

@@ -34,7 +34,7 @@ public sealed class SegmentAnalysisService(
         }
 
         Dictionary<string, int> episodeByKey = sources.ToDictionary(
-            s => s.EpisodeId!.Value.ToString(CultureInfo.InvariantCulture),
+            s => Key(s.EpisodeId!.Value),
             s => s.EpisodeId!.Value
         );
         IReadOnlyList<EpisodeSegments> answers = await pipeline.AnalyseAsync(
