@@ -84,7 +84,8 @@ public class PluginPlatformConfigurationTests : IDisposable
     {
         using ServiceProvider container = Container();
         IPluginGrantStore grants = container.GetRequiredService<IPluginGrantStore>();
-        IPluginInstallSourceStore sources = container.GetRequiredService<IPluginInstallSourceStore>();
+        IPluginInstallSourceStore sources =
+            container.GetRequiredService<IPluginInstallSourceStore>();
         IPluginApprovalStore approvals = container.GetRequiredService<IPluginApprovalStore>();
 
         await Task.WhenAll(
@@ -96,10 +97,7 @@ public class PluginPlatformConfigurationTests : IDisposable
             Task.Run(() =>
             {
                 for (int index = 0; index < Writes; index++)
-                    sources.Record(
-                        Id(index),
-                        new() { Kind = PluginInstallSourceKind.File }
-                    );
+                    sources.Record(Id(index), new() { Kind = PluginInstallSourceKind.File });
             }),
             Task.Run(() =>
             {
@@ -123,5 +121,73 @@ public class PluginPlatformConfigurationTests : IDisposable
             sourcesOnDisk.Find(Id(index)).Should().NotBeNull();
             approvalsOnDisk.Find($"Folder{index}").Should().NotBeNull();
         }
+    }
+
+    /// <summary>
+    /// The same record changed from two stores at once: each change reads and
+    /// writes under the one lock, so neither works from a copy the other
+    /// already replaced.
+    /// </summary>
+    [Fact]
+    public async Task Parallel_grant_changes_for_one_plugin_all_survive()
+    {
+        PluginPlatformConfiguration platform = new(
+            _pluginsDir,
+            TestStorageHelper.CreateStorage(_pluginsDir)
+        );
+        ConfigPluginGrantStore first = new(platform);
+        ConfigPluginGrantStore second = new(platform);
+        Ulid plugin = Id(1);
+
+        await Task.WhenAll(
+            Enumerable
+                .Range(0, Writes)
+                .Select(index =>
+                    Task.Run(() =>
+                        (index % 2 == 0 ? first : second).Grant(
+                            plugin,
+                            PluginGrantKind.NetworkHost,
+                            $"host-{index}.example"
+                        )
+                    )
+                )
+        );
+
+        IReadOnlyList<string> granted = new ConfigPluginGrantStore(
+            new PluginPlatformConfiguration(
+                _pluginsDir,
+                TestStorageHelper.CreateStorage(_pluginsDir)
+            )
+        ).Granted(plugin, PluginGrantKind.NetworkHost);
+
+        granted.Should().HaveCount(Writes);
+        granted
+            .Should()
+            .BeEquivalentTo(Enumerable.Range(0, Writes).Select(index => $"host-{index}.example"));
+    }
+
+    /// <summary>Every plugin's secrets share one record, so two plugins writing at once must both keep theirs.</summary>
+    [Fact]
+    public async Task Parallel_secrets_from_two_plugins_all_survive()
+    {
+        PluginPlatformConfiguration platform = new(
+            _pluginsDir,
+            TestStorageHelper.CreateStorage(_pluginsDir)
+        );
+        EphemeralDataProtectionProvider protection = new();
+        PluginSecretStore one = new(Id(1), protection, platform);
+        PluginSecretStore two = new(Id(2), protection, platform);
+
+        await Task.WhenAll(
+            Enumerable
+                .Range(0, Writes)
+                .Select(index =>
+                    Task.Run(() => (index % 2 == 0 ? one : two).SetAsync($"key-{index}", "value"))
+                )
+        );
+
+        IReadOnlyList<string> ones = await one.KeysAsync();
+        IReadOnlyList<string> twos = await two.KeysAsync();
+        (ones.Count + twos.Count).Should().Be(Writes);
     }
 }

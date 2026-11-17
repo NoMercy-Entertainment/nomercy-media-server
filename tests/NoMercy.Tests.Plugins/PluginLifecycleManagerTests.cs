@@ -108,7 +108,7 @@ public class PluginLifecycleManagerTests : IDisposable
     private static IPluginDataPurge DataPurge(string pluginsPath)
     {
         IStorage storage = TestStorageHelper.CreateStorage(pluginsPath);
-        IPluginConfiguration platform = new PluginConfiguration(
+        IPluginAtomicConfiguration platform = new PluginConfiguration(
             Path.Combine(pluginsPath, "data", "platform"),
             storage
         );
@@ -731,7 +731,7 @@ public class PluginLifecycleManagerTests : IDisposable
         Directory.CreateDirectory(dataFolder);
         File.WriteAllText(Path.Combine(dataFolder, "state.json"), "{}");
 
-        IPluginConfiguration platform = new PluginConfiguration(
+        IPluginAtomicConfiguration platform = new PluginConfiguration(
             Path.Combine(_tempDir, "data", "platform"),
             TestStorageHelper.CreateStorage(_tempDir)
         );

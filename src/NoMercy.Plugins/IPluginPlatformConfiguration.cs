@@ -9,8 +9,6 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.PluginSdk.Abstractions;
-
 namespace NoMercy.PluginSdk;
 
 /// <summary>
@@ -20,7 +18,9 @@ namespace NoMercy.PluginSdk;
 /// A named type so the container hands every store the same instance. A save
 /// reads the file, merges its own key and writes it back under the
 /// instance's lock, so two instances over one file could each write back a
-/// copy without the other's change and lose it.
+/// copy without the other's change and lose it. Every store changes its
+/// record through <see cref="IPluginAtomicConfiguration.Update{T}" />, so two
+/// changes to the same record cannot lose one either.
 /// </para>
 /// </summary>
-public interface IPluginPlatformConfiguration : IPluginConfiguration;
+public interface IPluginPlatformConfiguration : IPluginAtomicConfiguration;

@@ -210,7 +210,7 @@ public static class PluginServiceCollectionExtensions
         {
             IStorageDriver driver = sp.GetRequiredService<IStorageDriver>();
             IStorage storage = new LocalStorage(driver, new([pluginsPath], driver));
-            IPluginConfiguration configuration = PlatformConfiguration(sp);
+            IPluginPlatformConfiguration configuration = PlatformConfiguration(sp);
 
             // Built here the way the manager builds its own: the purge is not
             // a registered service, and a guest leaving has to remove exactly
@@ -639,9 +639,9 @@ public static class PluginServiceCollectionExtensions
 
         // Where each plugin came from, beside them for the same reason: a
         // plugin must not be able to rewrite where it was installed from.
-        services.AddSingleton<IPluginInstallSourceStore>(
-            sp => new ConfigPluginInstallSourceStore(PlatformConfiguration(sp))
-        );
+        services.AddSingleton<IPluginInstallSourceStore>(sp => new ConfigPluginInstallSourceStore(
+            PlatformConfiguration(sp)
+        ));
         services.AddSingleton<IPluginProvenanceReader>(sp => new PluginProvenanceReader(
             sp.GetRequiredService<IPluginInstallSourceStore>(),
             sp.GetRequiredService<IPluginRepository>()

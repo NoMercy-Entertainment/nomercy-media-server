@@ -212,7 +212,7 @@ public class PluginReloadStartChecksTests : IDisposable
     private PluginLifecycleManager Lifecycle(IPluginRunGate gate)
     {
         IStorage storage = TestStorageHelper.CreateStorage(_pluginsDir);
-        IPluginConfiguration platform = new PluginConfiguration(
+        IPluginAtomicConfiguration platform = new PluginConfiguration(
             Path.Combine(_pluginsDir, "data", "platform"),
             storage
         );

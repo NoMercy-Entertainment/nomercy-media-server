@@ -106,9 +106,22 @@ public static class TestPluginPlatform
 /// Configuration held in memory, so a store test exercises the real store
 /// rather than the filesystem.
 /// </summary>
-public sealed class InMemoryPluginConfiguration : IPluginConfiguration
+public sealed class InMemoryPluginConfiguration : IPluginAtomicConfiguration
 {
+    private readonly Lock _gate = new();
     private object? _value;
+
+    public void Update<T>(Func<T, bool> change)
+        where T : class, new()
+    {
+        lock (_gate)
+        {
+            T record = _value as T ?? new();
+
+            if (change(record))
+                _value = record;
+        }
+    }
 
     public T? GetConfiguration<T>()
         where T : class, new() => _value as T;

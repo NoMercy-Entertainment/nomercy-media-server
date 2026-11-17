@@ -14,11 +14,9 @@ using NoMercy.PluginSdk.Abstractions;
 namespace NoMercy.PluginSdk.Provenance;
 
 /// <summary>Install sources in the platform-scoped config, the file consent and grants live in.</summary>
-public class ConfigPluginInstallSourceStore(IPluginConfiguration configuration)
+public class ConfigPluginInstallSourceStore(IPluginAtomicConfiguration configuration)
     : IPluginInstallSourceStore
 {
-    private readonly Lock _gate = new();
-
     public PluginInstallSource? Find(Ulid pluginId)
     {
         PluginInstallSourceRecord? record =
@@ -86,18 +84,9 @@ public class ConfigPluginInstallSourceStore(IPluginConfiguration configuration)
             ? [.. record.StagedInstallSources.Keys]
             : [];
 
-    /// <summary>Reads, changes and saves under one gate; saves only when something changed.</summary>
-    private void Change(Func<PluginInstallSourceRecord, bool> change)
-    {
-        lock (_gate)
-        {
-            PluginInstallSourceRecord record =
-                configuration.GetConfiguration<PluginInstallSourceRecord>() ?? new();
-
-            if (change(record))
-                configuration.SaveConfiguration(record);
-        }
-    }
+    /// <summary>Reads, changes and saves under the file's one lock; saves only when something changed.</summary>
+    private void Change(Func<PluginInstallSourceRecord, bool> change) =>
+        configuration.Update(change);
 
     private static bool RemoveFolder(PluginInstallSourceRecord record, string folder)
     {
