@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.Database.Models.Media;
+using NoMercy.Database.Segments;
 
 namespace NoMercy.Data.Repositories;
 
@@ -35,31 +36,12 @@ public interface IContentSegmentRepository
 
     Task<bool> DeleteAsync(Ulid id);
 
-    Task ReplaceDetectorSegmentsForEpisodeAsync(
-        int episodeId,
-        IReadOnlyList<ContentSegment> newSegments
-    );
+    /// <summary>Every row, of any source, of the given episodes in one query.</summary>
+    Task<List<ContentSegment>> GetForEpisodesAsync(IReadOnlyList<int> episodeIds);
 
     /// <summary>
-    /// Bulk read across many episodes filtered by <see cref="ContentSegment.Source"/>.
-    /// Used by season-wide detection to find existing rows (e.g. manual
-    /// overrides to skip, or stale auto rows to replace) in one query
-    /// instead of one round trip per episode.
+    /// Applies precedence plans (see <see cref="ContentSegmentPrecedence"/>) in
+    /// one SaveChanges.
     /// </summary>
-    Task<List<ContentSegment>> GetForEpisodesBySourceAsync(
-        IReadOnlyList<int> episodeIds,
-        string source
-    );
-
-    /// <summary>
-    /// Removes every row matching <paramref name="staleSource"/> across
-    /// <paramref name="episodeIds"/> and inserts <paramref name="newSegments"/>,
-    /// in one SaveChanges. Rows with a different source (e.g. manual edits)
-    /// are left untouched.
-    /// </summary>
-    Task ReplaceSegmentsForEpisodesAsync(
-        IReadOnlyList<int> episodeIds,
-        string staleSource,
-        IReadOnlyList<ContentSegment> newSegments
-    );
+    Task ApplyAsync(IReadOnlyList<ContentSegmentWritePlan> plans);
 }

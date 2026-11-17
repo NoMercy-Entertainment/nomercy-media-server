@@ -17,6 +17,7 @@ using Microsoft.Extensions.Logging;
 using NoMercy.Database;
 using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.TvShows;
+using NoMercy.Database.Segments;
 using NoMercy.Encoder.ContentAnalysis.Fingerprinting;
 using NoMercy.Events;
 using NoMercy.Events.Encoding;
@@ -266,9 +267,10 @@ public class IntroDetectionSubscriber(
     }
 
     /// <summary>
-    /// Removes previously-written detector rows for this episode and writes
-    /// the fresh set. Manual edits (Source != "detector") are left alone so
-    /// user corrections survive re-detection.
+    /// Stores the fresh detector rows for this episode under the precedence
+    /// order (<see cref="ContentSegmentPrecedence"/>): the previous detector
+    /// rows go, while a manual row or a chapter title of the same kind keeps
+    /// its place.
     /// </summary>
     private static async Task ReplaceDetectorSegmentsAsync(
         MediaContext context,
@@ -277,22 +279,29 @@ public class IntroDetectionSubscriber(
         CancellationToken ct
     )
     {
-        List<ContentSegment> old = await context
-            .ContentSegments.Where(s => s.EpisodeId == episodeId && s.Source == "detector")
+        List<ContentSegment> existing = await context
+            .ContentSegments.Where(s => s.EpisodeId == episodeId)
             .ToListAsync(ct);
-
-        context.ContentSegments.RemoveRange(old);
 
         foreach (ContentSegment seg in newSegments)
         {
             seg.EpisodeId = episodeId;
             seg.MovieId = null;
-            seg.Source = "detector";
+            seg.Source = ContentSegmentSource.Detector;
             seg.CreatedAt = DateTime.UtcNow;
             seg.UpdatedAt = seg.CreatedAt;
-            context.ContentSegments.Add(seg);
         }
 
+        ContentSegmentWritePlan plan = ContentSegmentPrecedence.Plan(
+            existing,
+            newSegments,
+            ContentSegmentSource.Detector
+        );
+        if (plan.IsEmpty)
+            return;
+
+        context.ContentSegments.RemoveRange(plan.Remove);
+        context.ContentSegments.AddRange(plan.Add);
         await context.SaveChangesAsync(ct);
     }
 

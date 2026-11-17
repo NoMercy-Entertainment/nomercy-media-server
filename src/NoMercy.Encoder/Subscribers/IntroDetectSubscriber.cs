@@ -16,6 +16,7 @@ using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
 using NoMercy.Database.Models.Media;
 using NoMercy.Database.Models.TvShows;
+using NoMercy.Database.Segments;
 using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.ContentAnalysis.Fingerprinting;
 using NoMercy.Events;
@@ -29,8 +30,10 @@ namespace NoMercy.Encoder.Subscribers;
 /// fingerprinting + intro/outro detection for all episodes in each season
 /// that belongs to the scanned library.
 ///
-/// Skips episodes that already have a <c>Source="manual"</c> row of the same
-/// type — manual annotations always win.
+/// Skips an episode's intro or outro when a row of that kind already ranks at
+/// or above the detector (<see cref="ContentSegmentPrecedence"/>): manual
+/// annotations and chapter titles always win, and a chapter chosen only by
+/// its length is replaced.
 ///
 /// Each episode's file is resolved through the storage of its own library
 /// folder (<see cref="IStorageFactory"/>): VideoFile.HostFolder is stored
@@ -148,6 +151,7 @@ public class IntroDetectSubscriber : EventSubscriber
     private async Task ProcessSeasonAsync(int seasonId, CancellationToken ct)
     {
         List<Episode> episodes;
+        List<ContentSegment> existingSegments;
         HashSet<int> episodesWithIntro;
         HashSet<int> episodesWithOutro;
 
@@ -162,28 +166,19 @@ public class IntroDetectSubscriber : EventSubscriber
             // Two-step to avoid SQLite APPLY: fetch episode IDs with existing segments first.
             List<int> episodeIds = [.. episodes.Select(e => e.Id)];
 
-            // Every existing segment regardless of Source — a prior detector
-            // run's rows must block re-insertion on a rescan just as much as a
-            // manual one, or a repeated LibraryScanCompletedEvent duplicates
-            // every segment row on each pass.
-            List<ContentSegment> existingSegments = await context
+            // Every existing segment at or above the detector's rank blocks its
+            // kind (ContentSegmentPrecedence): a prior detector run's rows must
+            // block re-insertion on a rescan just as much as a manual one, or a
+            // repeated LibraryScanCompletedEvent duplicates every segment row on
+            // each pass. Only a chapter chosen by length ranks lower; the
+            // detector replaces it.
+            existingSegments = await context
                 .ContentSegments.AsNoTracking()
                 .Where(cs => cs.EpisodeId != null && episodeIds.Contains(cs.EpisodeId!.Value))
                 .ToListAsync(ct);
 
-            episodesWithIntro =
-            [
-                .. existingSegments
-                    .Where(cs => cs.SegmentType == ContentSegmentType.Intro)
-                    .Select(cs => cs.EpisodeId!.Value),
-            ];
-
-            episodesWithOutro =
-            [
-                .. existingSegments
-                    .Where(cs => cs.SegmentType == ContentSegmentType.Outro)
-                    .Select(cs => cs.EpisodeId!.Value),
-            ];
+            episodesWithIntro = EpisodesHolding(existingSegments, ContentSegmentType.Intro);
+            episodesWithOutro = EpisodesHolding(existingSegments, ContentSegmentType.Outro);
         }
 
         if (episodes.Count < 2)
@@ -246,7 +241,7 @@ public class IntroDetectSubscriber : EventSubscriber
                                 StartSeconds = ToEpisodeTime(marker.Start, reference, fp),
                                 EndSeconds = ToEpisodeTime(marker.End, reference, fp),
                                 Confidence = marker.Confidence,
-                                Source = "detector",
+                                Source = ContentSegmentSource.Detector,
                             }
                         );
                     }
@@ -284,7 +279,7 @@ public class IntroDetectSubscriber : EventSubscriber
                                 StartSeconds = ToEpisodeTime(marker.Start, reference, fp),
                                 EndSeconds = ToEpisodeTime(marker.End, reference, fp),
                                 Confidence = marker.Confidence,
-                                Source = "detector",
+                                Source = ContentSegmentSource.Detector,
                             }
                         );
                     }
@@ -297,13 +292,60 @@ public class IntroDetectSubscriber : EventSubscriber
 
         await using (MediaContext context = await _contextFactory.CreateDbContextAsync(ct))
         {
-            context.ContentSegments.AddRange(newSegments);
+            foreach (IGrouping<int, ContentSegment> episodeSegments in newSegments.GroupBy(s => s.EpisodeId!.Value))
+            {
+                ContentSegmentWritePlan plan = PlanFor(episodeSegments, existingSegments);
+                context.ContentSegments.RemoveRange(plan.Remove);
+                context.ContentSegments.AddRange(plan.Add);
+            }
             await context.SaveChangesAsync(ct);
         }
 
         _logger.LogInformation(
             "IntroDetect: persisted {Count} segment(s) for season {SeasonId}",
             [newSegments.Count, seasonId]
+        );
+    }
+
+    /// <summary>Episodes whose <paramref name="kind"/> is held at or above the detector's rank.</summary>
+    private static HashSet<int> EpisodesHolding(
+        List<ContentSegment> existingSegments,
+        ContentSegmentType kind
+    ) =>
+    [
+        .. existingSegments
+            .Where(cs =>
+                ContentSegmentPrecedence.KindOf(cs.SegmentType) == kind
+                && ContentSegmentPrecedence.RankOf(cs) >= ContentSegmentRank.Detection
+            )
+            .Select(cs => cs.EpisodeId!.Value),
+    ];
+
+    /// <summary>
+    /// The precedence plan for one episode's new rows. Only the kinds this run
+    /// produced are planned: a kind it skipped keeps its rows, detector ones too.
+    /// </summary>
+    private static ContentSegmentWritePlan PlanFor(
+        IGrouping<int, ContentSegment> episodeSegments,
+        List<ContentSegment> existingSegments
+    )
+    {
+        HashSet<ContentSegmentType> kinds =
+        [
+            .. episodeSegments.Select(s => ContentSegmentPrecedence.KindOf(s.SegmentType)),
+        ];
+        List<ContentSegment> existing =
+        [
+            .. existingSegments.Where(cs =>
+                cs.EpisodeId == episodeSegments.Key
+                && kinds.Contains(ContentSegmentPrecedence.KindOf(cs.SegmentType))
+            ),
+        ];
+
+        return ContentSegmentPrecedence.Plan(
+            existing,
+            [.. episodeSegments],
+            ContentSegmentSource.Detector
         );
     }
 

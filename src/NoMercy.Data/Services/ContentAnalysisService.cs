@@ -12,6 +12,7 @@
 using System.Security.Cryptography;
 using NoMercy.Data.Repositories;
 using NoMercy.Database.Models.TvShows;
+using NoMercy.Database.Segments;
 using NoMercy.Encoder.Codecs;
 using NoMercy.Encoder.ContentAnalysis;
 using NoMercy.Encoder.ContentAnalysis.Fingerprinting;
@@ -108,8 +109,8 @@ public class ContentAnalysisService(
     /// Fingerprints every encoded episode in a season and detects a shared
     /// intro/outro. When <paramref name="persistToDatabase"/> is set, detected
     /// markers are written as <c>Source="auto"</c> <see cref="ContentSegment"/>
-    /// rows, skipping episodes that already carry a manual override of the
-    /// same segment type.
+    /// rows under the precedence order (<see cref="ContentSegmentPrecedence"/>):
+    /// a manual row or a chapter title of the same kind keeps its place.
     /// </summary>
     public async Task<SeasonIntroOutcome> DetectIntroForSeasonAsync(
         int seasonId,
@@ -205,37 +206,29 @@ public class ContentAnalysisService(
             return;
 
         List<int> episodeIds = [.. prints.Select(t => t.Episode.Id)];
+        List<ContentSegment> stored = await contentSegmentRepository.GetForEpisodesAsync(
+            episodeIds
+        );
 
-        List<ContentSegment> existingManual =
-            await contentSegmentRepository.GetForEpisodesBySourceAsync(episodeIds, "manual");
-        HashSet<(int EpisodeId, ContentSegmentType Type)> manualKeys =
-        [
-            .. existingManual.Select(cs => (cs.EpisodeId!.Value, cs.SegmentType)),
-        ];
-
-        List<ContentSegment> toUpsert = [];
-
+        List<ContentSegmentWritePlan> plans = [];
         foreach ((Episode episode, _, _) in prints)
         {
-            if (
-                introMarker is not null
-                && !manualKeys.Contains((episode.Id, ContentSegmentType.Intro))
-            )
-                toUpsert.Add(BuildSegment(episode.Id, ContentSegmentType.Intro, introMarker));
+            List<ContentSegment> incoming = [];
+            if (introMarker is not null)
+                incoming.Add(BuildSegment(episode.Id, ContentSegmentType.Intro, introMarker));
+            if (outroMarker is not null)
+                incoming.Add(BuildSegment(episode.Id, ContentSegmentType.Outro, outroMarker));
 
-            if (
-                outroMarker is not null
-                && !manualKeys.Contains((episode.Id, ContentSegmentType.Outro))
-            )
-                toUpsert.Add(BuildSegment(episode.Id, ContentSegmentType.Outro, outroMarker));
+            ContentSegmentWritePlan plan = ContentSegmentPrecedence.Plan(
+                [.. stored.Where(cs => cs.EpisodeId == episode.Id)],
+                incoming,
+                ContentSegmentSource.Auto
+            );
+            if (!plan.IsEmpty)
+                plans.Add(plan);
         }
 
-        if (toUpsert.Count > 0)
-            await contentSegmentRepository.ReplaceSegmentsForEpisodesAsync(
-                episodeIds,
-                "auto",
-                toUpsert
-            );
+        await contentSegmentRepository.ApplyAsync(plans);
     }
 
     private static ContentSegment BuildSegment(
@@ -250,7 +243,7 @@ public class ContentAnalysisService(
             StartSeconds = marker.Start.TotalSeconds,
             EndSeconds = marker.End.TotalSeconds,
             Confidence = marker.Confidence,
-            Source = "auto",
+            Source = ContentSegmentSource.Auto,
         };
 
     // -------------------------------------------------------------------------

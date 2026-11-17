@@ -14,6 +14,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NoMercy.Database;
 using NoMercy.Database.Models.Media;
+using NoMercy.Database.Segments;
 using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.ContentAnalysis.Fingerprinting;
 using NoMercy.Encoder.Subscribers;
@@ -903,6 +904,104 @@ public class IntroDetectSubscriberTests
             .Where(s => s.Source == "manual" && s.EpisodeId == episodeWithManual)
             .Should()
             .ContainSingle("manual segment is untouched");
+    }
+
+    [Fact]
+    public async Task OnLibraryScanCompleted_ChapterTitleIntroBlocks_ChapterLengthIntroIsReplaced()
+    {
+        IDbContextFactory<MediaContext> factory = InMemoryFactory("chapterprecedence");
+        Mock<IAudioFingerprinter> fingerprinter = new();
+        Mock<IIntroDetector> detector = new();
+        InMemoryEventBus bus = new();
+
+        fingerprinter
+            .Setup(f =>
+                f.FingerprintAsync(
+                    It.IsAny<string>(),
+                    It.IsAny<FingerprintWindow?>(),
+                    It.IsAny<CancellationToken>(),
+                    It.IsAny<IStorage?>()
+                )
+            )
+            .ReturnsAsync(FakeFingerprint());
+        detector
+            .Setup(d => d.DetectIntro(It.IsAny<IReadOnlyList<AudioFingerprint>>()))
+            .Returns(new IntroMarker(TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(90), 0.95));
+        detector
+            .Setup(d => d.DetectOutro(It.IsAny<IReadOnlyList<AudioFingerprint>>()))
+            .Returns((IntroMarker?)null);
+
+        using IntroDetectSubscriber subject = new(
+            bus,
+            fingerprinter.Object,
+            detector.Object,
+            new() { EnableIntroDetectSubscriber = true },
+            NullLogger<IntroDetectSubscriber>.Instance,
+            new FixedStorageFactory(FolderStorage().Object),
+            factory
+        );
+
+        Ulid libraryId = Ulid.NewUlid();
+        int titledEpisode = 600;
+        int lengthEpisode = 601;
+        await SeedTvSeasonAsync(
+            factory,
+            libraryId,
+            tvId: 6,
+            seasonId: 60,
+            episodeIds: [titledEpisode, lengthEpisode]
+        );
+
+        await using (MediaContext seedCtx = await factory.CreateDbContextAsync())
+        {
+            seedCtx.ContentSegments.AddRange(
+                new ContentSegment
+                {
+                    EpisodeId = titledEpisode,
+                    SegmentType = ContentSegmentType.Intro,
+                    StartSeconds = 4.8,
+                    EndSeconds = 83,
+                    Source = ContentSegmentSource.Chapters,
+                    Confidence = ContentSegmentPrecedence.ChapterTitleConfidence,
+                },
+                new ContentSegment
+                {
+                    EpisodeId = lengthEpisode,
+                    SegmentType = ContentSegmentType.Intro,
+                    StartSeconds = 0,
+                    EndSeconds = 90,
+                    Source = ContentSegmentSource.Chapters,
+                    Confidence = ContentSegmentPrecedence.ChapterLengthConfidence,
+                }
+            );
+            await seedCtx.SaveChangesAsync();
+        }
+
+        await bus.PublishAsync(
+            new LibraryScanCompletedEvent
+            {
+                LibraryId = libraryId,
+                LibraryName = "TV",
+                ItemsFound = 2,
+                Duration = TimeSpan.FromSeconds(1),
+            }
+        );
+
+        await using MediaContext ctx = await factory.CreateDbContextAsync();
+        List<ContentSegment> segments = [.. ctx.ContentSegments];
+
+        segments
+            .Where(s => s.EpisodeId == titledEpisode)
+            .Should()
+            .ContainSingle()
+            .Which.Source.Should()
+            .Be(ContentSegmentSource.Chapters, "a chapter title outranks the detector");
+        segments
+            .Where(s => s.EpisodeId == lengthEpisode)
+            .Should()
+            .ContainSingle()
+            .Which.Source.Should()
+            .Be(ContentSegmentSource.Detector, "the detector outranks a chapter chosen by length");
     }
 
     [Fact]
