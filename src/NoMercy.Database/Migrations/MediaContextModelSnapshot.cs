@@ -695,6 +695,9 @@ namespace NoMercy.Database.Migrations
                     b.Property<double>("Confidence")
                         .HasColumnType("REAL");
 
+                    b.Property<double?>("ContentEndSeconds")
+                        .HasColumnType("REAL");
+
                     b.Property<DateTime>("CreatedAt")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT")

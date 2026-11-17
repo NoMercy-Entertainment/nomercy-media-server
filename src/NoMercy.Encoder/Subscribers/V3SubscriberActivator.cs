@@ -32,17 +32,15 @@ internal sealed class V3SubscriberActivator(
     ILogger<V3SubscriberActivator> logger
 ) : IHostedService, IDisposable
 {
-    private IntroDetectSubscriber? _introDetect;
     private CropDetectSubscriber? _cropDetect;
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
         try
         {
-            _introDetect = services.GetRequiredService<IntroDetectSubscriber>();
             _cropDetect = services.GetRequiredService<CropDetectSubscriber>();
 
-            logger.LogInformation("V3 encoder subscribers activated (intro_detect, crop_detect)");
+            logger.LogInformation("V3 encoder subscribers activated (crop_detect)");
         }
         catch (Exception ex)
         {
@@ -67,8 +65,6 @@ internal sealed class V3SubscriberActivator(
 
     public void Dispose()
     {
-        _introDetect?.Dispose();
-        _introDetect = null;
         _cropDetect = null;
     }
 }

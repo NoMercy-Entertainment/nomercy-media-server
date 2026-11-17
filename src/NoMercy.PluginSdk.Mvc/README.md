@@ -27,5 +27,5 @@ bearer token.
 Routes are mounted under the plugin's own prefix. A route that reached for a
 reserved prefix is refused at load with a message naming the prefix.
 
-Docs: https://nomercy.tv/docs/nomercy-plugins
+Docs: https://docs.nomercy.tv/nomercy-plugins/overview
 

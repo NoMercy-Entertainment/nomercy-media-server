@@ -12,6 +12,7 @@
 using NoMercy.Data.Repositories;
 using NoMercy.Database;
 using NoMercy.Database.Models.Media;
+using NoMercy.Database.Segments;
 using NoMercy.Tests.Repositories.Infrastructure;
 
 namespace NoMercy.Tests.Repositories;
@@ -125,10 +126,9 @@ public class ContentSegmentRepositoryTests : IDisposable
     }
 
     [Fact]
-    public async Task ReplaceDetectorSegmentsForEpisode_PreservesManualEdits()
+    public async Task ApplyAsync_StoresAPrecedencePlan_AndKeepsManualEdits()
     {
-        // Manual edit stays.
-        await _repository.CreateAsync(
+        ContentSegment manual = await _repository.CreateAsync(
             Build(
                 episodeId: 62085,
                 type: ContentSegmentType.Intro,
@@ -137,7 +137,6 @@ public class ContentSegmentRepositoryTests : IDisposable
                 source: "manual"
             )
         );
-        // Old detector run — should be wiped and replaced.
         await _repository.CreateAsync(
             Build(
                 episodeId: 62085,
@@ -148,46 +147,66 @@ public class ContentSegmentRepositoryTests : IDisposable
             )
         );
 
-        List<ContentSegment> fresh =
-        [
-            Build(
-                episodeId: 62085,
-                type: ContentSegmentType.Intro,
-                start: 10,
-                end: 60,
-                source: "detector"
-            ),
-            Build(
-                episodeId: 62085,
-                type: ContentSegmentType.Outro,
-                start: 1800,
-                end: 1830,
-                source: "detector"
-            ),
-        ];
+        List<ContentSegment> stored = await _repository.GetForEpisodesAsync([62085]);
+        ContentSegmentWritePlan plan = ContentSegmentPrecedence.Plan(
+            stored,
+            [
+                Build(
+                    episodeId: 62085,
+                    type: ContentSegmentType.Intro,
+                    start: 10,
+                    end: 60,
+                    source: "detector"
+                ),
+                Build(
+                    episodeId: 62085,
+                    type: ContentSegmentType.Outro,
+                    start: 1800,
+                    end: 1830,
+                    source: "detector"
+                ),
+            ],
+            ContentSegmentSource.Detector
+        );
 
-        await _repository.ReplaceDetectorSegmentsForEpisodeAsync(62085, fresh);
+        await _repository.ApplyAsync([plan]);
 
         List<ContentSegment> after = await _repository.GetForEpisodeAsync(62085);
+        Assert.Equal(2, after.Count);
+        Assert.Contains(after, s => s.Id == manual.Id);
+        Assert.Contains(
+            after,
+            s =>
+                s
+                    is {
+                        Source: "detector",
+                        SegmentType: ContentSegmentType.Outro,
+                        StartSeconds: 1800
+                    }
+        );
+        Assert.DoesNotContain(
+            after,
+            s => s is { Source: "detector", SegmentType: ContentSegmentType.Intro }
+        );
+    }
 
-        // Manual intro 0-30 must still be there.
-        Assert.Contains(
-            after,
-            s => s is { Source: "manual", StartSeconds: 0, EndSeconds: 30 }
+    [Fact]
+    public async Task GetForEpisodesAsync_ReturnsEverySourceOfTheGivenEpisodesOnly()
+    {
+        await _repository.CreateAsync(
+            Build(episodeId: 62085, type: ContentSegmentType.Intro, source: "manual")
         );
-        // New detector rows from the replacement.
-        Assert.Contains(
-            after,
-            s =>
-                s is { Source: "detector", SegmentType: ContentSegmentType.Intro, StartSeconds: 10 }
+        await _repository.CreateAsync(
+            Build(episodeId: 62085, type: ContentSegmentType.Outro, source: "chapters")
         );
-        Assert.Contains(
-            after,
-            s =>
-                s is { Source: "detector", SegmentType: ContentSegmentType.Outro, StartSeconds: 1800 }
+        await _repository.CreateAsync(
+            Build(episodeId: 62086, type: ContentSegmentType.Intro, source: "detector")
         );
-        // Old detector row should be gone.
-        Assert.DoesNotContain(after, s => s is { Source: "detector", StartSeconds: 1700 });
+
+        List<ContentSegment> rows = await _repository.GetForEpisodesAsync([62085]);
+
+        Assert.Equal(2, rows.Count);
+        Assert.All(rows, r => Assert.Equal(62085, r.EpisodeId));
     }
 
     public void Dispose()

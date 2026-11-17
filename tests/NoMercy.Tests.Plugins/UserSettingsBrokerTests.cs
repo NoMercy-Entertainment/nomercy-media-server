@@ -134,7 +134,7 @@ public class UserSettingsBrokerTests
                 "radio",
                 "The plugin read something the owner gates.",
                 "It did not declare the capability that reading belongs to.",
-                "Declare it in the manifest. Docs: /nomercy-plugins/handbook/capabilities",
+                "Declare it in the manifest. Docs: /nomercy-plugins/capabilities",
                 PluginRefusalSeverity.Blocked
             )
         );

@@ -68,6 +68,12 @@ public sealed class PluginStorageRootsFactory(IPluginGrantStore grants) : IPlugi
 /// </summary>
 public sealed class PluginCapabilityGrants(IPluginGrantStore grants) : IPluginCapabilityGrants
 {
+    // Capability grants are stored under PluginGrantKind.ForCapability
+    // ("capability.process.spawn"), which is where PluginApprovedBinaries
+    // writes and reads them. Asking for the bare name missed every approved
+    // binary, so an out-of-process plugin's sandbox never allowed a spawn.
+    // The bare name is still read, for a grant written that way before.
     public bool Holds(Ulid pluginId, string capability) =>
-        grants.Granted(pluginId, capability).Count > 0;
+        grants.Granted(pluginId, PluginGrantKind.ForCapability(capability)).Count > 0
+        || grants.Granted(pluginId, capability).Count > 0;
 }

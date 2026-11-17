@@ -31,7 +31,7 @@ public class PluginDataPurgeTests : IDisposable
 
     private readonly string _pluginsPath;
     private readonly IStorage _storage;
-    private readonly IPluginConfiguration _platform;
+    private readonly IPluginAtomicConfiguration _platform;
     private readonly IPluginConsentService _consent;
     private readonly IPluginGrantStore _grants;
     private readonly PluginDataPurge _purge;

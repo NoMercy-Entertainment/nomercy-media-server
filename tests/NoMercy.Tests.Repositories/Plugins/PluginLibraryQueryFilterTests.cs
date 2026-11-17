@@ -129,6 +129,6 @@ public sealed class PluginLibraryQueryFilterTests : IDisposable
             .Setup(x => x.CreateDbContextAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => new(_options));
 
-        return new(factory.Object);
+        return new(factory.Object, new PluginLibraryProjection(factory.Object));
     }
 }

@@ -211,8 +211,10 @@ public class EncoderOptions
     // ── Background-subscriber toggles ──────────────────────────────────────
 
     /// <summary>
-    /// When true (default), <c>IntroDetectSubscriber</c> runs chromaprint
-    /// fingerprinting + intro/outro detection after a library scan completes.
+    /// When true (default), <c>SegmentAnalysisScheduler</c> queues the intro /
+    /// credits / end-of-content analysis (#598) after an encode and, as a
+    /// backfill, after a library scan. The name is kept so existing settings
+    /// keep switching it off.
     /// </summary>
     public bool EnableIntroDetectSubscriber { get; set; } = true;
 

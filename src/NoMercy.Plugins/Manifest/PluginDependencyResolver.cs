@@ -31,7 +31,8 @@ public static class PluginDependencyResolver
                     plugin,
                     $"The plugin depends on the paid plugin {dependency.Id}.",
                     "A free plugin may depend only on free plugins, so nobody has to buy something to run something that is free.",
-                    "Remove the dependency from plugin.json, or list this plugin as paid, because a free plugin may depend only on free plugins. Docs: /nomercy-plugins/tour/dependencies",
+                    "Remove the dependency from plugin.json, or list this plugin as paid, because a free plugin may depend only on free plugins. Docs: "
+                        + PluginDocs.ManifestDependencies,
                     PluginRefusalSeverity.Blocked
                 );
             }
@@ -47,7 +48,7 @@ public static class PluginDependencyResolver
                     plugin,
                     $"The plugin depends on the paid plugin {dependency.Id}, which this server does not own.",
                     "A paid dependency is never bought for you, so the plugin installs and stays off until you own it.",
-                    $"Buy {dependency.Id} on nomercy.tv, then enable this plugin. Docs: /nomercy-plugins/tour/dependencies",
+                    $"Buy {dependency.Id} on nomercy.tv, then enable this plugin. Docs: {PluginDocs.ManifestDependencies}",
                     PluginRefusalSeverity.Blocked
                 );
             }
@@ -59,7 +60,7 @@ public static class PluginDependencyResolver
                     plugin,
                     $"The plugin needs {dependency.Id} {dependency.Range}, which is not installed.",
                     "A dependency that is missing, revoked, abandoned or removed pauses everything that depends on it.",
-                    $"Install {dependency.Id} {dependency.Range} from the marketplace. Docs: /nomercy-plugins/tour/dependencies",
+                    $"Install {dependency.Id} {dependency.Range} from the marketplace. Docs: {PluginDocs.ManifestDependencies}",
                     PluginRefusalSeverity.Blocked
                 );
             }

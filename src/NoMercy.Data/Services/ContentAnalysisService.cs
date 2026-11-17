@@ -9,16 +9,16 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using System.Security.Cryptography;
 using NoMercy.Data.Repositories;
 using NoMercy.Database.Models.TvShows;
 using NoMercy.Encoder.Codecs;
 using NoMercy.Encoder.ContentAnalysis;
-using NoMercy.Encoder.ContentAnalysis.Fingerprinting;
 using NoMercy.Encoder.Progress;
 using NoMercy.Encoder.Subtitles;
+using NoMercy.MediaProcessing.Jobs.SegmentJobs;
+using NoMercy.MediaProcessing.Segments;
 using NoMercy.Storage;
-using static NoMercy.Database.Models.Media.VideoFileExtensions;
+using NoMercyQueue.Core.Interfaces;
 using ContentSegment = NoMercy.Database.Models.Media.ContentSegment;
 using ContentSegmentType = NoMercy.Database.Models.Media.ContentSegmentType;
 using VideoFile = NoMercy.Database.Models.Media.VideoFile;
@@ -30,13 +30,13 @@ namespace NoMercy.Data.Services;
 /// <see cref="NoMercy.Api.Controllers.V1.Encoder.EncoderContentAnalysisController"/>
 /// and its deprecated dashboard alias. Both controllers own auth, HTTP input
 /// binding, and JSON response shaping; this service owns file resolution,
-/// invoking the ffmpeg/whisper/tesseract detectors, and (for the encoder
-/// route) persisting detected segments.
+/// invoking the crop/whisper/tesseract tools, and queuing the segment
+/// analysis for a season.
 /// </summary>
 public class ContentAnalysisService(
     ICropDetector cropDetector,
-    IAudioFingerprinter fingerprinter,
-    IIntroDetector introDetector,
+    IJobDispatcher jobDispatcher,
+    ISegmentAnalysisState segmentAnalysisState,
     ISubtitleOcrEngine? ocrEngine,
     IWhisperTranscriber? whisperTranscriber,
     IVideoFileRepository videoFileRepository,
@@ -44,9 +44,6 @@ public class ContentAnalysisService(
     IStorageDriver storageDriver
 )
 {
-    private const int MinEpisodesForDetection = 2;
-    private static readonly TimeSpan IntroOutroWindow = TimeSpan.FromMinutes(3);
-
     // -------------------------------------------------------------------------
     // Crop
     // -------------------------------------------------------------------------
@@ -88,32 +85,30 @@ public class ContentAnalysisService(
     }
 
     // -------------------------------------------------------------------------
-    // Season intro / outro fingerprinting
+    // Season intro / credits analysis (on demand)
     // -------------------------------------------------------------------------
 
-    public sealed record SeasonIntroOutcome
+    public sealed record SeasonAnalysisRequest
     {
         public int EpisodesFound { get; init; }
-        public bool NotEnoughEpisodes { get; init; }
-        public int EpisodesScanned { get; init; }
-        public bool NotEnoughFingerprints { get; init; }
-        public string? FingerprintError { get; init; }
-        public IntroMarker? IntroMarker { get; init; }
-        public IntroMarker? OutroMarker { get; init; }
-        public string? IntroFingerprintHash { get; init; }
-        public string? OutroFingerprintHash { get; init; }
+        public bool Queued { get; init; }
+
+        /// <summary>The season's stored intro now (first episode that has one), before the new run.</summary>
+        public ContentSegment? Intro { get; init; }
+
+        /// <summary>The season's stored credits or outro now, before the new run.</summary>
+        public ContentSegment? Outro { get; init; }
     }
 
     /// <summary>
-    /// Fingerprints every encoded episode in a season and detects a shared
-    /// intro/outro. When <paramref name="persistToDatabase"/> is set, detected
-    /// markers are written as <c>Source="auto"</c> <see cref="ContentSegment"/>
-    /// rows, skipping episodes that already carry a manual override of the
-    /// same segment type.
+    /// Queues the #598 segment analysis for a season (the same job that runs
+    /// after an encode) and answers with what is stored now. A manual request
+    /// also clears the season's failure count, so a season the backfill gave up
+    /// on runs again. The new answer lands in the content segments when the job
+    /// has run (minutes per episode, after encodes, never during playback).
     /// </summary>
-    public async Task<SeasonIntroOutcome> DetectIntroForSeasonAsync(
+    public async Task<SeasonAnalysisRequest> QueueSegmentAnalysisForSeasonAsync(
         int seasonId,
-        bool persistToDatabase,
         CancellationToken ct
     )
     {
@@ -121,137 +116,40 @@ public class ContentAnalysisService(
             seasonId,
             ct
         );
+        if (episodes.Count == 0)
+            return new() { EpisodesFound = 0 };
 
-        if (episodes.Count < MinEpisodesForDetection)
-            return new() { EpisodesFound = episodes.Count, NotEnoughEpisodes = true };
+        await segmentAnalysisState.ResetFailuresAsync(SegmentAnalysisTarget.Season, seasonId, ct);
+        SegmentAnalysisJob job = SegmentAnalysisJob.ForSeason(seasonId);
+        jobDispatcher.Dispatch(job, job.QueueName, job.Priority);
 
-        List<(Episode Episode, AudioFingerprint Intro, AudioFingerprint Outro)> prints = [];
-
-        foreach (Episode episode in episodes)
+        ContentSegment? intro = null;
+        ContentSegment? outro = null;
+        foreach (Episode episode in episodes.OrderBy(e => e.EpisodeNumber))
         {
-            ct.ThrowIfCancellationRequested();
-            VideoFile? source = episode.VideoFiles.Newest();
-            if (source is null)
-                continue;
-
-            string path = storageDriver.CombinePath(source.HostFolder, source.Filename);
-            if (!storageDriver.FileExists(path))
-                continue;
-
-            try
-            {
-                AudioFingerprint introPrint = await fingerprinter.FingerprintAsync(
-                    path,
-                    new(TimeSpan.Zero, IntroOutroWindow),
-                    ct
-                );
-
-                TimeSpan duration = ParseDuration(source.Duration);
-                TimeSpan outroStart = ResolveOutroStart(duration, IntroOutroWindow);
-
-                AudioFingerprint outroPrint = await fingerprinter.FingerprintAsync(
-                    path,
-                    new(outroStart, IntroOutroWindow),
-                    ct
-                );
-
-                prints.Add((episode, introPrint, outroPrint));
-            }
-            catch (Exception ex)
-            {
-                return new()
-                {
-                    EpisodesFound = episodes.Count,
-                    FingerprintError =
-                        $"Fingerprinting failed for episode {episode.Id}: {ex.Message}",
-                };
-            }
+            if (intro is not null && outro is not null)
+                break;
+            List<ContentSegment> segments = await contentSegmentRepository.GetForEpisodeAsync(
+                episode.Id
+            );
+            intro ??= segments.FirstOrDefault(s => s.SegmentType == ContentSegmentType.Intro);
+            outro ??= segments
+                .Where(s =>
+                    s.SegmentType is ContentSegmentType.Credits or ContentSegmentType.Outro
+                    && s.StartSeconds >= 0
+                )
+                .OrderByDescending(s => s.StartSeconds)
+                .FirstOrDefault();
         }
-
-        if (prints.Count < MinEpisodesForDetection)
-            return new() { EpisodesFound = episodes.Count, NotEnoughFingerprints = true };
-
-        List<AudioFingerprint> introFingerprints = [.. prints.Select(t => t.Intro)];
-        List<AudioFingerprint> outroFingerprints = [.. prints.Select(t => t.Outro)];
-
-        IntroMarker? introMarker = introDetector.DetectIntro(introFingerprints);
-        IntroMarker? outroMarker = introDetector.DetectOutro(outroFingerprints);
-
-        if (persistToDatabase)
-            await PersistDetectedSegmentsAsync(prints, introMarker, outroMarker);
 
         return new()
         {
             EpisodesFound = episodes.Count,
-            EpisodesScanned = prints.Count,
-            IntroMarker = introMarker,
-            OutroMarker = outroMarker,
-            IntroFingerprintHash = introMarker is not null
-                ? ComputeFingerprintHash(introFingerprints)
-                : null,
-            OutroFingerprintHash = outroMarker is not null
-                ? ComputeFingerprintHash(outroFingerprints)
-                : null,
+            Queued = true,
+            Intro = intro,
+            Outro = outro,
         };
     }
-
-    private async Task PersistDetectedSegmentsAsync(
-        List<(Episode Episode, AudioFingerprint Intro, AudioFingerprint Outro)> prints,
-        IntroMarker? introMarker,
-        IntroMarker? outroMarker
-    )
-    {
-        if (introMarker is null && outroMarker is null)
-            return;
-
-        List<int> episodeIds = [.. prints.Select(t => t.Episode.Id)];
-
-        List<ContentSegment> existingManual =
-            await contentSegmentRepository.GetForEpisodesBySourceAsync(episodeIds, "manual");
-        HashSet<(int EpisodeId, ContentSegmentType Type)> manualKeys =
-        [
-            .. existingManual.Select(cs => (cs.EpisodeId!.Value, cs.SegmentType)),
-        ];
-
-        List<ContentSegment> toUpsert = [];
-
-        foreach ((Episode episode, _, _) in prints)
-        {
-            if (
-                introMarker is not null
-                && !manualKeys.Contains((episode.Id, ContentSegmentType.Intro))
-            )
-                toUpsert.Add(BuildSegment(episode.Id, ContentSegmentType.Intro, introMarker));
-
-            if (
-                outroMarker is not null
-                && !manualKeys.Contains((episode.Id, ContentSegmentType.Outro))
-            )
-                toUpsert.Add(BuildSegment(episode.Id, ContentSegmentType.Outro, outroMarker));
-        }
-
-        if (toUpsert.Count > 0)
-            await contentSegmentRepository.ReplaceSegmentsForEpisodesAsync(
-                episodeIds,
-                "auto",
-                toUpsert
-            );
-    }
-
-    private static ContentSegment BuildSegment(
-        int episodeId,
-        ContentSegmentType type,
-        IntroMarker marker
-    ) =>
-        new()
-        {
-            EpisodeId = episodeId,
-            SegmentType = type,
-            StartSeconds = marker.Start.TotalSeconds,
-            EndSeconds = marker.End.TotalSeconds,
-            Confidence = marker.Confidence,
-            Source = "auto",
-        };
 
     // -------------------------------------------------------------------------
     // OCR
@@ -361,38 +259,4 @@ public class ContentAnalysisService(
             "srt" => SubtitleCodecType.Srt,
             _ => SubtitleCodecType.WebVtt,
         };
-
-    /// <summary>VideoFile.Duration is stored as "HH:MM:SS"; malformed values scan as zero.</summary>
-    internal static TimeSpan ParseDuration(string? raw) =>
-        raw is not null && TimeSpan.TryParse(raw, out TimeSpan parsed) ? parsed : TimeSpan.Zero;
-
-    /// <summary>
-    /// Picks the outro scan window: the last <paramref name="window"/> of the
-    /// source, or the whole file when it is shorter than one window.
-    /// </summary>
-    internal static TimeSpan ResolveOutroStart(TimeSpan duration, TimeSpan window) =>
-        duration > window ? duration - window : TimeSpan.Zero;
-
-    /// <summary>
-    /// Stable MD5-based hex digest of the XOR-reduced fingerprint hashes,
-    /// used as the <c>fingerprint_hash</c> field in content_segments rows.
-    /// Not cryptographic — just a cheap stable identifier.
-    /// </summary>
-    internal static string ComputeFingerprintHash(IReadOnlyList<AudioFingerprint> prints)
-    {
-        uint[] combined = [.. prints[0].Hashes];
-        for (int i = 1; i < prints.Count; i++)
-        {
-            uint[] h = prints[i].Hashes;
-            int len = Math.Min(combined.Length, h.Length);
-            for (int j = 0; j < len; j++)
-                combined[j] ^= h[j];
-        }
-
-        byte[] bytes = new byte[combined.Length * 4];
-        Buffer.BlockCopy(combined, 0, bytes, 0, bytes.Length);
-
-        byte[] hash = MD5.HashData(bytes);
-        return Convert.ToHexString(hash).ToLowerInvariant();
-    }
 }

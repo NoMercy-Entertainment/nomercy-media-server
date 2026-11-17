@@ -120,7 +120,7 @@ public sealed class PluginBrokerService(
                 PluginRefusalCodes.HostServicesRemoved,
                 $"The plugin asked the server for {request.Facade}.{request.Member}.",
                 $"This server does not serve a facade called {request.Facade} across the process boundary.",
-                "Use a facade the contract declares. Docs: /nomercy-plugins/handbook/runtime-and-isolation"
+                "Use a facade the contract declares. Docs: " + PluginDocs.RuntimeAndIsolation
             ),
         };
     }
@@ -165,7 +165,7 @@ public sealed class PluginBrokerService(
                     PluginRefusalCodes.HostServicesRemoved,
                     $"The plugin asked the server for secrets.{request.Member}.",
                     "The secrets facade has no member by that name.",
-                    "Use a member the contract declares. Docs: /nomercy-plugins/handbook/runtime-and-isolation"
+                    "Use a member the contract declares. Docs: " + PluginDocs.RuntimeAndIsolation
                 );
         }
     }
@@ -186,7 +186,7 @@ public sealed class PluginBrokerService(
                 PluginRefusalCodes.HostServicesRemoved,
                 $"The plugin asked the server for process.{request.Member}.",
                 "The process facade has no member by that name.",
-                "Use a member the contract declares. Docs: /nomercy-plugins/handbook/runtime-and-isolation"
+                "Use a member the contract declares. Docs: " + PluginDocs.RuntimeAndIsolation
             );
 
         SpawnCall call =
@@ -244,7 +244,7 @@ public sealed class PluginBrokerService(
                     PluginRefusalCodes.HostServicesRemoved,
                     $"The plugin asked the server for server.{request.Member}.",
                     "The server facade has no member by that name.",
-                    "Use a member the contract declares. Docs: /nomercy-plugins/handbook/runtime-and-isolation"
+                    "Use a member the contract declares. Docs: " + PluginDocs.RuntimeAndIsolation
                 );
         }
     }
@@ -298,7 +298,7 @@ public sealed class PluginBrokerService(
                     PluginRefusalCodes.HostServicesRemoved,
                     $"The plugin asked the server for storage.{request.Member}.",
                     "The storage facade has no member by that name.",
-                    "Use a member the contract declares. Docs: /nomercy-plugins/handbook/runtime-and-isolation"
+                    "Use a member the contract declares. Docs: " + PluginDocs.RuntimeAndIsolation
                 );
         }
     }
@@ -347,7 +347,8 @@ public sealed class PluginBrokerService(
                 PluginRefusalCodes.HostServicesRemoved,
                 $"The plugin asked the server for net.{request.Member}.",
                 "The net facade does not carry that member across the process boundary yet.",
-                "Run this plugin in the server's own process until it is carried across. Docs: /nomercy-plugins/handbook/runtime-and-isolation"
+                "Run this plugin in the server's own process until it is carried across. Docs: "
+                    + PluginDocs.RuntimeAndIsolation
             );
 
         DialCall call =
@@ -408,7 +409,8 @@ public sealed class PluginBrokerService(
                     PluginRefusalCodes.HostServicesRemoved,
                     $"The plugin asked the server for library.{request.Member}.",
                     "The library facade does not carry that member across the process boundary yet.",
-                    "Run this plugin in the server's own process until it is carried across. Docs: /nomercy-plugins/handbook/runtime-and-isolation"
+                    "Run this plugin in the server's own process until it is carried across. Docs: "
+                        + PluginDocs.RuntimeAndIsolation
                 );
         }
     }
@@ -897,7 +899,8 @@ public sealed class PluginBrokerService(
             PluginRefusalCodes.HostServicesRemoved,
             $"The plugin asked the server for {facade}.{member}.",
             $"The {facade} facade does not carry that member across the process boundary yet.",
-            "Run this plugin in the server's own process until it is carried across. Docs: /nomercy-plugins/handbook/runtime-and-isolation"
+            "Run this plugin in the server's own process until it is carried across. Docs: "
+                + PluginDocs.RuntimeAndIsolation
         );
 
     private PluginRefusal NotUnderstood(string facade, string member) =>
@@ -906,7 +909,8 @@ public sealed class PluginBrokerService(
             pluginId.ToString(),
             $"The plugin called {facade}.{member} with a payload the server could not read.",
             "The arguments did not arrive in the shape the contract declares.",
-            "Report this with the server log around the call. Docs: /nomercy-plugins/handbook/runtime-and-isolation",
+            "Report this with the server log around the call. Docs: "
+                + PluginDocs.RuntimeAndIsolation,
             PluginRefusalSeverity.Blocked
         );
 

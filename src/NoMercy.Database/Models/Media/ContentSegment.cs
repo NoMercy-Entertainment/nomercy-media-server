@@ -17,10 +17,10 @@ using Newtonsoft.Json;
 namespace NoMercy.Database.Models.Media;
 
 /// <summary>
-/// Kinds of timeline segments the player knows how to handle. The detector
-/// writes <see cref="Intro"/> / <see cref="Outro"/> automatically via
-/// audio fingerprinting; users can also add <see cref="Recap"/> or
-/// <see cref="Credits"/> manually from the dashboard.
+/// Kinds of timeline segments the player knows how to handle. The segment
+/// analysis writes <see cref="Intro"/> and <see cref="Credits"/>, the chapter
+/// classifier any kind; users can add or correct any of them from the
+/// dashboard. Old detector rows used <see cref="Outro"/>.
 /// </summary>
 public enum ContentSegmentType
 {
@@ -66,9 +66,12 @@ public class ContentSegment
     public double EndSeconds { get; set; }
 
     /// <summary>
-    /// How this segment landed in the database — "detector" for chromaprint
-    /// auto-detection, "manual" for dashboard overrides, "import" for
-    /// community-provided data.
+    /// How this segment landed in the database — "analysis" for the segment
+    /// analysis, "detector" / "auto" for rows the retired chromaprint detector
+    /// stored, "manual" for dashboard overrides, "import" for
+    /// community-provided data, "chapters" for the file's chapter list. The
+    /// values and which one wins live in <c>NoMercy.Database.Segments</c>
+    /// (<c>ContentSegmentSource</c>, <c>ContentSegmentPrecedence</c>).
     /// </summary>
     [JsonProperty("source")]
     [MaxLength(32)]
@@ -80,6 +83,15 @@ public class ContentSegment
     /// </summary>
     [JsonProperty("confidence")]
     public double Confidence { get; set; } = 1.0;
+
+    /// <summary>
+    /// Where the item's content really ends: black and silence run from here to
+    /// the end of the file, so auto-advance belongs here, after any epilogue or
+    /// preview that follows the credits (#598). Set only on the analysis Credits
+    /// row; null on every other row.
+    /// </summary>
+    [JsonProperty("content_end_seconds")]
+    public double? ContentEndSeconds { get; set; }
 
     [JsonProperty("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

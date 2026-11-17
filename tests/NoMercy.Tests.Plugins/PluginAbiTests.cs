@@ -91,6 +91,7 @@ public class PluginAbiTests
     /// </summary>
     [Theory]
     [InlineData(typeof(PluginScheduledJob), new[] { typeof(string), typeof(string), typeof(bool) })]
+    [InlineData(typeof(PluginLibrary), new[] { typeof(string), typeof(string), typeof(string) })]
     public void ConstructorsElevenZeroPluginsCall_AreStillThere(Type type, Type[] parameters)
     {
         ConstructorInfo? found = type.GetConstructor(parameters);
@@ -109,6 +110,11 @@ public class PluginAbiTests
     /// </summary>
     [Theory]
     [InlineData(typeof(PluginViewRequest), "UserId", typeof(string))]
+    [InlineData(typeof(PluginViewRequest), "Route", typeof(string))]
+    [InlineData(typeof(PluginViewRequest), "Query", typeof(Dictionary<string, string>))]
+    [InlineData(typeof(PluginLibrary), "Id", typeof(string))]
+    [InlineData(typeof(PluginLibrary), "Title", typeof(string))]
+    [InlineData(typeof(PluginLibrary), "Type", typeof(string))]
     public void PropertiesElevenZeroPluginsRead_KeepTheirType(
         Type type,
         string property,
@@ -123,6 +129,84 @@ public class PluginAbiTests
             $"{type.Name}.{property} returns {found.PropertyType.Name}, and every plugin built "
                 + $"against 11.0 reads it as {expected.Name}. The call fails with MissingMethodException."
         );
+    }
+
+    /// <summary>
+    /// 12.11 added <see cref="PluginLibrary.EncodingPresets"/> as an init-only
+    /// member, so a plugin that builds a library the way it always did (a test
+    /// double, a fake host) still compiles, still reads the three values it
+    /// knows, and sees no presets rather than a null.
+    /// </summary>
+    [Fact]
+    public void Library_BuiltTheWayAPluginBefore12_11BuiltIt_CarriesItsValuesAndNoPresets()
+    {
+        PluginLibrary library = new("films", "Films", "movie");
+
+        library.Id.Should().Be("films");
+        library.Title.Should().Be("Films");
+        library.Type.Should().Be("movie");
+        library.EncodingPresets.Should().NotBeNull().And.BeEmpty();
+    }
+
+    /// <summary>
+    /// A plugin built against 12.10 spots a changed library with <c>==</c>, a
+    /// set or a dictionary key. The presets list must compare by its items, or
+    /// every read of an unchanged library looks like a change.
+    /// </summary>
+    [Fact]
+    public void Libraries_with_equal_presets_are_equal_and_a_changed_preset_is_not()
+    {
+        PluginLibrary first = Shows(new PluginEncodingPreset("p1", "Streaming", true, 2160));
+        PluginLibrary second = Shows(new PluginEncodingPreset("p1", "Streaming", true, 2160));
+        PluginLibrary changed = Shows(new PluginEncodingPreset("p1", "Streaming", true, 1080));
+        PluginLibrary fewer = Shows();
+
+        first.Should().Be(second);
+        (first == second).Should().BeTrue();
+        first.GetHashCode().Should().Be(second.GetHashCode());
+        new HashSet<PluginLibrary> { first }
+            .Contains(second)
+            .Should()
+            .BeTrue();
+
+        first.Should().NotBe(changed);
+        first.Should().NotBe(fewer);
+        first.Should().NotBe(first with { Title = "Other" });
+    }
+
+    /// <summary>A server or a plugin that sets the list to null still reads as no presets.</summary>
+    [Fact]
+    public void A_null_preset_list_reads_as_empty()
+    {
+        PluginLibrary library = new("shows", "Shows", "tv") { EncodingPresets = null! };
+
+        library.EncodingPresets.Should().NotBeNull().And.BeEmpty();
+        library.Should().Be(new PluginLibrary("shows", "Shows", "tv"));
+    }
+
+    private static PluginLibrary Shows(params PluginEncodingPreset[] presets) =>
+        new("shows", "Shows", "tv") { EncodingPresets = [.. presets] };
+
+    /// <summary>
+    /// 12.11 added the paging contract and the shelf builders. Every action
+    /// word and builder a 12.10 plugin was compiled against still means what
+    /// it meant, and the new word is one more, not a renamed one.
+    /// </summary>
+    [Fact]
+    public void The_12_11_paging_additions_leave_every_older_action_word_alone()
+    {
+        PluginActionType.PlayMedia.Should().Be("playMedia");
+        PluginActionType.Navigate.Should().Be("navigate");
+        PluginActionType.RefreshView.Should().Be("refreshView");
+        PluginActionType.SubmitForm.Should().Be("submitForm");
+        PluginActionType.PickFolder.Should().Be("pickFolder");
+        PluginActionType.LoadPage.Should().Be("loadPage");
+        PluginActionType.All.Should().HaveCount(10);
+
+        typeof(PluginViews)
+            .GetMethod(nameof(PluginViews.Grid), [typeof(string), typeof(PluginComponent[])])
+            .Should()
+            .NotBeNull("PluginViews.Grid keeps its 12.0 shape; the app grid is PluginShelves.Grid");
     }
 
     [Fact]

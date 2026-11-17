@@ -85,7 +85,8 @@ public sealed class RemoteCall(Ulid pluginId, IPluginBrokerService broker)
                 pluginId.ToString(),
                 $"The plugin called {facade}.{member}.",
                 "The server refused the call and sent no reason with it.",
-                "Report this with the server log around the call. Docs: /nomercy-plugins/handbook/runtime-and-isolation",
+                "Report this with the server log around the call. Docs: "
+                    + PluginDocs.RuntimeAndIsolation,
                 PluginRefusalSeverity.Blocked
             );
 

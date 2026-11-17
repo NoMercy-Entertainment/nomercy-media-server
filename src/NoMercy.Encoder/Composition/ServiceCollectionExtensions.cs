@@ -20,7 +20,8 @@ using NoMercy.Encoder.Bundle;
 using NoMercy.Encoder.Codecs;
 using NoMercy.Encoder.Commands;
 using NoMercy.Encoder.ContentAnalysis;
-using NoMercy.Encoder.ContentAnalysis.Fingerprinting;
+using NoMercy.Encoder.ContentAnalysis.Segments;
+using NoMercy.Encoder.ContentAnalysis.Segments.Probes;
 using NoMercy.Encoder.Devices;
 using NoMercy.Encoder.Distribution;
 using NoMercy.Encoder.Execution;
@@ -287,13 +288,17 @@ public static class ServiceCollectionExtensions
         services.AddTransient<ICropDetector, CropDetector>();
         services.AddTransient<IEncodeYieldProbe, EncodeYieldProbe>();
 
-        // Self-sufficient default: ChromaprintFingerprinter defers to active
+        // Self-sufficient default: the segment analysis defers to active
         // playback via MediaActivityMonitor. TryAdd so a host that also calls
         // AddMediaServerQueue() (the primary owner) shares that same instance
         // regardless of which registration runs first.
         services.TryAddSingleton<NmSystem.Monitoring.MediaActivityMonitor>();
-        services.AddTransient<IAudioFingerprinter, ChromaprintFingerprinter>();
-        services.AddTransient<IIntroDetector, ChromaprintIntroDetector>();
+
+        // Intro / credits / end-of-content analysis (#598), the one detector:
+        // pure stages plus the FFmpeg passes that feed them. Both yield to playback.
+        services.AddSingleton<ISeasonSegmentAnalyzer, SeasonSegmentAnalyzer>();
+        services.AddTransient<IEpisodeSignalProbe, FfmpegEpisodeSignalProbe>();
+        services.AddTransient<ISeasonSegmentPipeline, SeasonSegmentPipeline>();
 
         // Notifications — plugins can replace INotificationDispatcher to swap
         // webhooks for Discord/Slack/email/etc.
@@ -544,7 +549,6 @@ public static class ServiceCollectionExtensions
         // NoMercy.MediaProcessing.EventHandlers.AutoEncodeSubscriber, gated
         // per-library. Each subscriber here has its own opt-out flag on
         // EncoderOptions for hard disable.
-        services.AddSingleton<IntroDetectSubscriber>();
         services.AddSingleton<CropDetectSubscriber>();
         services.AddHostedService<V3SubscriberActivator>();
 

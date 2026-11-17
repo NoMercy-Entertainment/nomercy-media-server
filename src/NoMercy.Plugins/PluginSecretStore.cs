@@ -36,15 +36,13 @@ namespace NoMercy.PluginSdk;
 public class PluginSecretStore(
     Ulid pluginId,
     IDataProtectionProvider protectionProvider,
-    IPluginConfiguration configuration,
+    IPluginAtomicConfiguration configuration,
     Func<UserId?>? caller = null
 ) : IPluginSecretStore
 {
     private readonly IDataProtector _protector = protectionProvider.CreateProtector(
         $"NoMercy.Plugins.Secrets.{pluginId:D}"
     );
-
-    private readonly Lock _gate = new();
 
     public Task<string?> GetAsync(string key, CancellationToken ct = default) =>
         GetScopedAsync(Scoped(key));
@@ -77,14 +75,17 @@ public class PluginSecretStore(
         return SetScopedAsync(Scoped(key), value);
     }
 
+    // Every plugin's secrets share one record, so a change made from a read
+    // that was not under the file's lock could drop another plugin's secret.
     private Task SetScopedAsync(string scopedKey, string value)
     {
-        lock (_gate)
+        string protectedValue = _protector.Protect(value);
+
+        configuration.Update<PluginSecretRecord>(record =>
         {
-            PluginSecretRecord record = Read();
-            record.Values[scopedKey] = _protector.Protect(value);
-            configuration.SaveConfiguration(record);
-        }
+            record.Values[scopedKey] = protectedValue;
+            return true;
+        });
 
         return Task.CompletedTask;
     }
@@ -94,13 +95,7 @@ public class PluginSecretStore(
 
     private Task DeleteScopedAsync(string scopedKey)
     {
-        lock (_gate)
-        {
-            PluginSecretRecord record = Read();
-
-            if (record.Values.Remove(scopedKey))
-                configuration.SaveConfiguration(record);
-        }
+        configuration.Update<PluginSecretRecord>(record => record.Values.Remove(scopedKey));
 
         return Task.CompletedTask;
     }
@@ -127,23 +122,24 @@ public class PluginSecretStore(
     /// knows the prefix is a second place that can get it wrong and wipe
     /// another plugin's values.
     /// </summary>
-    public static void Purge(Ulid pluginId, IPluginConfiguration configuration)
+    public static void Purge(Ulid pluginId, IPluginAtomicConfiguration configuration)
     {
-        PluginSecretRecord record = configuration.GetConfiguration<PluginSecretRecord>() ?? new();
         string prefix = $"{pluginId:D}:";
 
-        List<string> owned =
-        [
-            .. record.Values.Keys.Where(key => key.StartsWith(prefix, StringComparison.Ordinal)),
-        ];
+        configuration.Update<PluginSecretRecord>(record =>
+        {
+            List<string> owned =
+            [
+                .. record.Values.Keys.Where(key =>
+                    key.StartsWith(prefix, StringComparison.Ordinal)
+                ),
+            ];
 
-        if (owned.Count == 0)
-            return;
+            foreach (string key in owned)
+                record.Values.Remove(key);
 
-        foreach (string key in owned)
-            record.Values.Remove(key);
-
-        configuration.SaveConfiguration(record);
+            return owned.Count > 0;
+        });
     }
 
     private string Scoped(string key) => $"{pluginId:D}:{key}";

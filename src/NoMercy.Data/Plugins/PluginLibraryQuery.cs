@@ -28,24 +28,14 @@ namespace NoMercy.Data.Plugins;
 /// </para>
 /// <para>Read-only throughout, and every query is <c>AsNoTracking</c>.</para>
 /// </summary>
-public class PluginLibraryQuery(IDbContextFactory<MediaContext> contextFactory)
-    : IPluginLibraryQuery
+public class PluginLibraryQuery(
+    IDbContextFactory<MediaContext> contextFactory,
+    IPluginLibraryProjection libraries
+) : IPluginLibraryQuery
 {
     public async Task<IReadOnlyList<PluginLibrary>> GetLibrariesAsync(
         CancellationToken ct = default
-    )
-    {
-        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
-
-        return await context
-            .Libraries.AsNoTracking()
-            .Select(library => new PluginLibrary(
-                library.Id.ToString(),
-                library.Title,
-                library.Type
-            ))
-            .ToListAsync(ct);
-    }
+    ) => await libraries.GetLibrariesAsync(ct);
 
     public async Task<IReadOnlyList<PluginLibraryShow>> GetShowsAsync(
         string? libraryId = null,

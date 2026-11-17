@@ -16,9 +16,9 @@ using Xunit;
 namespace NoMercy.Tests.Plugins;
 
 /// <summary>
-/// The refusal for a sideload says "turn on developer mode in server settings".
-/// Nothing wrote that setting but a text editor, so the sentence sent the owner
-/// somewhere that did not exist.
+/// The refusal for a sideload says to turn on developer mode with the switch on
+/// the dashboard's plugins page. Before that switch, nothing wrote the setting
+/// but a text editor, so the sentence sent the owner somewhere that did not exist.
 /// </summary>
 [Trait("Category", "Unit")]
 public class PluginDeveloperModeSwitchTests : IDisposable

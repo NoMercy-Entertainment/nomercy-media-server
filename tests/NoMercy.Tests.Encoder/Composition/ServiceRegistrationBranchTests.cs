@@ -198,7 +198,7 @@ public class ServiceRegistrationBranchTests
         provider.GetRequiredService<IWhisperTranscriber>().Should().NotBeNull();
         provider.GetRequiredService<ICropDetector>().Should().NotBeNull();
         provider
-            .GetRequiredService<NoMercy.Encoder.ContentAnalysis.Fingerprinting.IIntroDetector>()
+            .GetRequiredService<NoMercy.Encoder.ContentAnalysis.Segments.Probes.ISeasonSegmentPipeline>()
             .Should()
             .NotBeNull();
     }

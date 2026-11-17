@@ -198,9 +198,10 @@ jobs:
           docker pull ghcr.io/nomercy-entertainment/nomercymediaserver:${VERSION}-nvidia   # NVIDIA GPU
           docker pull ghcr.io/nomercy-entertainment/nomercymediaserver:${VERSION}-intel    # Intel Quick Sync
           docker pull ghcr.io/nomercy-entertainment/nomercymediaserver:${VERSION}-amd      # AMD GPU
+          docker pull ghcr.io/nomercy-entertainment/nomercymediaserver:${VERSION}-browser  # CPU + browser for plugins
           \`\`\`
 
-          To follow a channel instead, use \`:latest\` (stable), \`:beta\` or \`:nightly\`, with the same \`-nvidia\`, \`-intel\` and \`-amd\` suffixes. See [release channels](${REPO}#release-channels).
+          To follow a channel instead, use \`:latest\` (stable), \`:beta\` or \`:nightly\`, with the same \`-nvidia\`, \`-intel\`, \`-amd\` and \`-browser\` suffixes. Use \`-browser\` if a plugin needs a browser (for example to pass challenges); it is about 380 MB larger. See [release channels](${REPO}#release-channels).
 
           Or use Docker Compose — see \`docker-compose.yml\` (and GPU variants) in the repo.
 

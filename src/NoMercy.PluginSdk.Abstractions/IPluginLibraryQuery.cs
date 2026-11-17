@@ -90,7 +90,61 @@ public interface IPluginLibraryQuery
 
 /// <param name="Id">The library's id, as used by <see cref="PluginGrantKind.LibraryWrite"/>.</param>
 /// <param name="Type">movie, tv, anime or music.</param>
-public record PluginLibrary(string Id, string Title, string Type);
+public record PluginLibrary(string Id, string Title, string Type)
+{
+    /// <summary>
+    /// The presets an encode of this library's files runs: those linked to its
+    /// folders, narrowed to the library's own preset when it has one. Each
+    /// preset appears once, however many folders link it.
+    /// <para>
+    /// Facts, not a choice. A library can encode to several presets, and which
+    /// one a plugin follows is the plugin's rule to keep. Empty when no folder
+    /// links a preset, or when the server says nothing about it; never null.
+    /// </para>
+    /// <para>
+    /// A member rather than a positional parameter, so every plugin compiled
+    /// against the older shape still constructs and still reads the three it
+    /// knows. Added in ABI 12.11.
+    /// </para>
+    /// </summary>
+    public IReadOnlyList<PluginEncodingPreset> EncodingPresets
+    {
+        get;
+        init => field = value ?? [];
+    } = [];
+
+    /// <summary>
+    /// Value equality, with <see cref="EncodingPresets"/> compared by its
+    /// items. The generated equality would compare the list by reference, so
+    /// two reads of one unchanged library would stop being equal, and a plugin
+    /// built before 12.11 that spots changes with <c>==</c>, a set or a
+    /// dictionary key would see every library change on every read.
+    /// </summary>
+    public virtual bool Equals(PluginLibrary? other) =>
+        ReferenceEquals(this, other)
+        || (
+            other is not null
+            && EqualityContract == other.EqualityContract
+            && Id == other.Id
+            && Title == other.Title
+            && Type == other.Type
+            && EncodingPresets.SequenceEqual(other.EncodingPresets)
+        );
+
+    public override int GetHashCode()
+    {
+        HashCode hash = new();
+        hash.Add(EqualityContract);
+        hash.Add(Id);
+        hash.Add(Title);
+        hash.Add(Type);
+
+        foreach (PluginEncodingPreset preset in EncodingPresets)
+            hash.Add(preset);
+
+        return hash.ToHashCode();
+    }
+}
 
 /// <param name="Id">The provider's show id, which is what the rest of this contract keys on.</param>
 /// <param name="Folder">The show's folder relative to its library root, or null when it has none.</param>

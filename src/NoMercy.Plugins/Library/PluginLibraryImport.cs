@@ -63,10 +63,9 @@ public class PluginLibraryImport(
                 "Ask the owner to grant this plugin write access to the library the file is in."
             );
 
-        IReadOnlyList<PluginLibrary> writable = await writer.GetWritableLibrariesAsync(ct);
         string library = request.Library.ToString();
 
-        if (!writable.Any(entry => entry.Id == library))
+        if (!await MayWriteToLibraryAsync(library, ct))
             return Refused(
                 $"This plugin may not write to library {library}.",
                 "Ask the owner to grant this plugin write access to that library."
@@ -86,6 +85,19 @@ public class PluginLibraryImport(
         MediaId media = await scanner.ImportAsync(request, streaming, ct);
 
         return new(media, null);
+    }
+
+    /// <summary>
+    /// The server's writer answers this from the grant and one row; any other
+    /// writer is asked for its list, which says the same thing more slowly.
+    /// </summary>
+    private async Task<bool> MayWriteToLibraryAsync(string library, CancellationToken ct)
+    {
+        if (writer is IPluginLibraryWriteCheck check)
+            return await check.MayWriteToLibraryAsync(library, ct);
+
+        IReadOnlyList<PluginLibrary> writable = await writer.GetWritableLibrariesAsync(ct);
+        return writable.Any(entry => entry.Id == library);
     }
 
     private PluginImportResult Refused(string why, string fix) =>

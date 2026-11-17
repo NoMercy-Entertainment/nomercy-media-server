@@ -19,6 +19,12 @@ namespace NoMercy.PluginSdk.Capabilities;
 public interface IPluginGrantStore
 {
     IReadOnlyList<string> Granted(Ulid pluginId, string kind);
+
+    /// <summary>
+    /// Everything one plugin holds, whatever the kind, in the order it was
+    /// given. What the owner reads on the plugin's page to decide what to take back.
+    /// </summary>
+    IReadOnlyList<PluginGrantEntry> HeldBy(Ulid pluginId);
     bool Holds(Ulid pluginId, string kind, string value);
     void Grant(Ulid pluginId, string kind, string value);
     void Revoke(Ulid pluginId, string kind, string value);
@@ -76,49 +82,28 @@ public class PluginGrantRequestEntry
 /// Deliberately not per-plugin storage: a plugin must not be able to edit the
 /// record of what it was allowed to do.
 /// </para>
+/// <para>
+/// Every change goes through <see cref="IPluginAtomicConfiguration.Update{T}" />,
+/// which reads and writes under the file's one lock, so two grants given to
+/// one plugin at once both stay.
+/// </para>
 /// </summary>
-public class ConfigPluginGrantStore(IPluginConfiguration configuration) : IPluginGrantStore
+public class ConfigPluginGrantStore(IPluginAtomicConfiguration configuration) : IPluginGrantStore
 {
-    private readonly Lock _gate = new();
+    public IReadOnlyList<string> Granted(Ulid pluginId, string kind) =>
+        GrantedIn(Read(), pluginId, kind);
 
-    public IReadOnlyList<string> Granted(Ulid pluginId, string kind)
-    {
-        PluginGrantRecord record = Read();
-        return
-        [
-            .. record
-                .Grants.Where(entry =>
-                    entry.PluginId == pluginId
-                    && string.Equals(entry.Kind, kind, StringComparison.OrdinalIgnoreCase)
-                )
-                .Select(entry => entry.Value),
-        ];
-    }
+    public IReadOnlyList<PluginGrantEntry> HeldBy(Ulid pluginId) =>
+        [.. Read().Grants.Where(entry => entry.PluginId == pluginId)];
 
-    public bool Holds(Ulid pluginId, string kind, string value)
-    {
-        IReadOnlyList<string> granted = Granted(pluginId, kind);
+    public bool Holds(Ulid pluginId, string kind, string value) =>
+        HoldsIn(Read(), pluginId, kind, value);
 
-        return granted.Any(entry =>
-            entry == PluginGrant.Everything
-            || string.Equals(entry, value, StringComparison.OrdinalIgnoreCase)
-        );
-    }
-
-    public void Grant(Ulid pluginId, string kind, string value)
-    {
-        lock (_gate)
+    public void Grant(Ulid pluginId, string kind, string value) =>
+        configuration.Update<PluginGrantRecord>(record =>
         {
-            PluginGrantRecord record = Read();
-
-            if (
-                record.Grants.Any(entry =>
-                    entry.PluginId == pluginId
-                    && string.Equals(entry.Kind, kind, StringComparison.OrdinalIgnoreCase)
-                    && string.Equals(entry.Value, value, StringComparison.OrdinalIgnoreCase)
-                )
-            )
-                return;
+            if (record.Grants.Any(entry => Matches(entry.PluginId, entry.Kind, entry.Value)))
+                return false;
 
             record.Grants.Add(
                 new()
@@ -129,58 +114,42 @@ public class ConfigPluginGrantStore(IPluginConfiguration configuration) : IPlugi
                 }
             );
 
-            record.Requests.RemoveAll(entry =>
+            record.Requests.RemoveAll(entry => Matches(entry.PluginId, entry.Kind, entry.Value));
+
+            return true;
+
+            bool Matches(Ulid id, string entryKind, string entryValue) =>
+                id == pluginId
+                && string.Equals(entryKind, kind, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(entryValue, value, StringComparison.OrdinalIgnoreCase);
+        });
+
+    public void Revoke(Ulid pluginId, string kind, string value) =>
+        configuration.Update<PluginGrantRecord>(record =>
+            record.Grants.RemoveAll(entry =>
                 entry.PluginId == pluginId
                 && string.Equals(entry.Kind, kind, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(entry.Value, value, StringComparison.OrdinalIgnoreCase)
-            );
+            ) > 0
+        );
 
-            configuration.SaveConfiguration(record);
-        }
-    }
-
-    public void Revoke(Ulid pluginId, string kind, string value)
-    {
-        lock (_gate)
+    public void RevokeAll(Ulid pluginId) =>
+        configuration.Update<PluginGrantRecord>(record =>
         {
-            PluginGrantRecord record = Read();
-
-            int removed = record.Grants.RemoveAll(entry =>
-                entry.PluginId == pluginId
-                && string.Equals(entry.Kind, kind, StringComparison.OrdinalIgnoreCase)
-                && string.Equals(entry.Value, value, StringComparison.OrdinalIgnoreCase)
-            );
-
-            if (removed > 0)
-                configuration.SaveConfiguration(record);
-        }
-    }
-
-    public void RevokeAll(Ulid pluginId)
-    {
-        lock (_gate)
-        {
-            PluginGrantRecord record = Read();
-
             int removed = record.Grants.RemoveAll(entry => entry.PluginId == pluginId);
             removed += record.Requests.RemoveAll(entry => entry.PluginId == pluginId);
 
-            if (removed > 0)
-                configuration.SaveConfiguration(record);
-        }
-    }
+            return removed > 0;
+        });
 
-    public void Request(Ulid pluginId, string kind, string value, string reason)
-    {
-        lock (_gate)
+    public void Request(Ulid pluginId, string kind, string value, string reason) =>
+        configuration.Update<PluginGrantRecord>(record =>
         {
-            PluginGrantRecord record = Read();
-
             // Already allowed, or already asked. Neither needs a second prompt,
             // and a plugin that asks in a loop must not be able to fill the
             // owner's dashboard with the same request.
-            if (Holds(pluginId, kind, value))
-                return;
+            if (HoldsIn(record, pluginId, kind, value))
+                return false;
 
             if (
                 record.Requests.Any(entry =>
@@ -189,7 +158,7 @@ public class ConfigPluginGrantStore(IPluginConfiguration configuration) : IPlugi
                     && string.Equals(entry.Value, value, StringComparison.OrdinalIgnoreCase)
                 )
             )
-                return;
+                return false;
 
             record.Requests.Add(
                 new()
@@ -202,9 +171,8 @@ public class ConfigPluginGrantStore(IPluginConfiguration configuration) : IPlugi
                 }
             );
 
-            configuration.SaveConfiguration(record);
-        }
-    }
+            return true;
+        });
 
     public IReadOnlyList<PluginGrantRequest> PendingRequests() =>
         [
@@ -218,22 +186,40 @@ public class ConfigPluginGrantStore(IPluginConfiguration configuration) : IPlugi
                 )),
         ];
 
-    public void ClearRequest(Ulid pluginId, string kind, string value)
-    {
-        lock (_gate)
-        {
-            PluginGrantRecord record = Read();
-
-            int removed = record.Requests.RemoveAll(entry =>
+    public void ClearRequest(Ulid pluginId, string kind, string value) =>
+        configuration.Update<PluginGrantRecord>(record =>
+            record.Requests.RemoveAll(entry =>
                 entry.PluginId == pluginId
                 && string.Equals(entry.Kind, kind, StringComparison.OrdinalIgnoreCase)
                 && string.Equals(entry.Value, value, StringComparison.OrdinalIgnoreCase)
-            );
+            ) > 0
+        );
 
-            if (removed > 0)
-                configuration.SaveConfiguration(record);
-        }
-    }
+    private static IReadOnlyList<string> GrantedIn(
+        PluginGrantRecord record,
+        Ulid pluginId,
+        string kind
+    ) =>
+        [
+            .. record
+                .Grants.Where(entry =>
+                    entry.PluginId == pluginId
+                    && string.Equals(entry.Kind, kind, StringComparison.OrdinalIgnoreCase)
+                )
+                .Select(entry => entry.Value),
+        ];
+
+    private static bool HoldsIn(
+        PluginGrantRecord record,
+        Ulid pluginId,
+        string kind,
+        string value
+    ) =>
+        GrantedIn(record, pluginId, kind)
+            .Any(entry =>
+                entry == PluginGrant.Everything
+                || string.Equals(entry, value, StringComparison.OrdinalIgnoreCase)
+            );
 
     private PluginGrantRecord Read() =>
         configuration.GetConfiguration<PluginGrantRecord>() ?? new();

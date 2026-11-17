@@ -18,7 +18,8 @@ namespace NoMercy.PluginSdk.Approval;
 /// live in. Folder names are matched without case, as the recorded-folder set
 /// matches them, so a folder is one entry whatever the filesystem's casing.
 /// </summary>
-public class ConfigPluginApprovalStore(IPluginConfiguration configuration) : IPluginApprovalStore
+public class ConfigPluginApprovalStore(IPluginAtomicConfiguration configuration)
+    : IPluginApprovalStore
 {
     public PluginApproval? Find(string folder)
     {
@@ -31,30 +32,19 @@ public class ConfigPluginApprovalStore(IPluginConfiguration configuration) : IPl
         return key is null ? null : record.DropApprovals[key];
     }
 
-    public void Approve(string folder, string digest)
-    {
-        PluginApprovalRecord record =
-            configuration.GetConfiguration<PluginApprovalRecord>() ?? new();
+    public void Approve(string folder, string digest) =>
+        configuration.Update<PluginApprovalRecord>(record =>
+        {
+            string key = KeyOf(record, folder) ?? folder;
+            record.DropApprovals[key] = new() { Digest = digest };
 
-        string key = KeyOf(record, folder) ?? folder;
-        record.DropApprovals[key] = new() { Digest = digest };
+            return true;
+        });
 
-        configuration.SaveConfiguration(record);
-    }
-
-    public void Forget(string folder)
-    {
-        PluginApprovalRecord? record = configuration.GetConfiguration<PluginApprovalRecord>();
-        if (record is null)
-            return;
-
-        string? key = KeyOf(record, folder);
-        if (key is null)
-            return;
-
-        record.DropApprovals.Remove(key);
-        configuration.SaveConfiguration(record);
-    }
+    public void Forget(string folder) =>
+        configuration.Update<PluginApprovalRecord>(record =>
+            KeyOf(record, folder) is { } key && record.DropApprovals.Remove(key)
+        );
 
     private static string? KeyOf(PluginApprovalRecord record, string folder) =>
         record.DropApprovals.Keys.FirstOrDefault(key =>

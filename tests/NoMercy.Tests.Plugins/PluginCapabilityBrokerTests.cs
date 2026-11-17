@@ -228,6 +228,16 @@ public class PluginCapabilityBrokerTests
         public IReadOnlyList<string> Granted(Ulid pluginId, string kind) =>
             [.. grants.Where(grant => grant.Kind == kind).Select(grant => grant.Value)];
 
+        public IReadOnlyList<PluginGrantEntry> HeldBy(Ulid pluginId) =>
+            [
+                .. grants.Select(grant => new PluginGrantEntry
+                {
+                    PluginId = pluginId,
+                    Kind = grant.Kind,
+                    Value = grant.Value,
+                }),
+            ];
+
         public bool Holds(Ulid pluginId, string kind, string value) =>
             grants.Any(grant => grant.Kind == kind && grant.Value == value);
 

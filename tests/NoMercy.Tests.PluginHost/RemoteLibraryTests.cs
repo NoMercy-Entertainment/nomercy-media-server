@@ -37,6 +37,41 @@ public class RemoteLibraryTests
     }
 
     /// <summary>
+    /// The encoding presets cross with the library they belong to (ABI 12.11),
+    /// and a row from a server that sends none reads as no presets, not null.
+    /// </summary>
+    [Fact]
+    public async Task TheEncodingPresetsCrossWithTheirLibrary()
+    {
+        RemoteLibrary library = Build(
+            """
+            [
+              {"id":"shows","title":"Shows","type":"tv","encodingPresets":[
+                {"id":"01KQK5NFSRXDP6F83NZK1YA6WF","name":"H.264 Streaming (Universal)","isDefault":true,"maxHeight":2160},
+                {"id":"01KQK5NFSRXDP6F83NZK1YA6WG","name":"Source size","isDefault":false,"maxHeight":null}
+              ]},
+              {"id":"films","title":"Films","type":"movie"}
+            ]
+            """
+        );
+
+        IReadOnlyList<PluginLibrary> libraries = await library.GetLibrariesAsync();
+
+        libraries[0]
+            .EncodingPresets.Should()
+            .Equal(
+                new PluginEncodingPreset(
+                    "01KQK5NFSRXDP6F83NZK1YA6WF",
+                    "H.264 Streaming (Universal)",
+                    true,
+                    2160
+                ),
+                new PluginEncodingPreset("01KQK5NFSRXDP6F83NZK1YA6WG", "Source size", false, null)
+            );
+        libraries[1].EncodingPresets.Should().NotBeNull().And.BeEmpty();
+    }
+
+    /// <summary>
     /// A library is what the owner is changing while the plugin runs, so an
     /// answer remembered from startup is a plugin that cannot see the show its
     /// owner just added.

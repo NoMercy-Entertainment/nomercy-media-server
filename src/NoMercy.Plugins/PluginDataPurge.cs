@@ -20,7 +20,7 @@ public class PluginDataPurge(
     IStorage storage,
     IPluginConsentService consentService,
     IPluginGrantStore grantStore,
-    IPluginConfiguration platformConfiguration
+    IPluginAtomicConfiguration platformConfiguration
 ) : IPluginDataPurge
 {
     public async Task PurgeAsync(Ulid pluginId, CancellationToken ct = default)

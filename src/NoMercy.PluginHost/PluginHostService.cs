@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Grpc.Core;
+using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Ipc;
 using ProtoBuf.Grpc;
 
@@ -90,7 +91,8 @@ public sealed class PluginHostService(IHostedPlugin plugin, string token) : IPlu
                     "unknown plugin",
                     "A call reached the plugin process without the server's launch token.",
                     "Only the server that started this process may talk to it, and the token did not match.",
-                    "Restart the plugin from its health page so the server mints a new token. Docs: /nomercy-plugins/handbook/runtime-and-isolation",
+                    "Restart the plugin from its health page so the server mints a new token. Docs: "
+                        + PluginDocs.RuntimeAndIsolation,
                     "blocked"
                 )
             )

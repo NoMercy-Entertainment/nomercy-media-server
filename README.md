@@ -156,6 +156,8 @@ docker pull ghcr.io/nomercy-entertainment/nomercymediaserver:intel     # Intel
 docker pull ghcr.io/nomercy-entertainment/nomercymediaserver:amd       # AMD
 ```
 
+Use `:latest-browser` instead of `:latest` if a plugin needs a browser (for example to pass challenges); it is the CPU image plus Xvfb and the libraries Chrome needs, and about 380 MB larger.
+
 > [!IMPORTANT]
 > Export `HOST_IP` before running — the compose files use it for `NOMERCY_INTERNAL_IP`. Edit the compose file to update media volume paths.
 
@@ -168,9 +170,9 @@ Every build starts as a nightly. The same build can later be promoted to beta, t
 
 | Channel | What it is | Docker tag |
 |---------|------------|------------|
-| **Stable** | Promoted from beta. What the installers, the built-in updater and nomercy.tv offer. | `latest` or `stable` (plus `-nvidia`, `-intel`, `-amd`) |
-| **Beta** | A nightly that was picked for wider testing. | `beta` (plus `-nvidia`, `-intel`, `-amd`) |
-| **Nightly** | Every change on `dev` that passes CI. Marked as a pre-release on GitHub. | `nightly` (plus `-nvidia`, `-intel`, `-amd`) |
+| **Stable** | Promoted from beta. What the installers, the built-in updater and nomercy.tv offer. | `latest` or `stable` (plus `-nvidia`, `-intel`, `-amd`, `-browser`) |
+| **Beta** | A nightly that was picked for wider testing. | `beta` (plus `-nvidia`, `-intel`, `-amd`, `-browser`) |
+| **Nightly** | Every change on `dev` that passes CI. Marked as a pre-release on GitHub. | `nightly` (plus `-nvidia`, `-intel`, `-amd`, `-browser`) |
 
 Every build also keeps a tag with its version, like `1.0.14` or `1.0.14-nvidia`. Pin one of those if you never want an automatic move.
 

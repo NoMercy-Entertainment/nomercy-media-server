@@ -120,4 +120,41 @@ public class PluginActionIntent
         };
 
     public static PluginActionIntent RefreshView() => new() { Type = PluginActionType.RefreshView };
+
+    /// <summary>
+    /// Ask the view at <paramref name="route" /> for the page after
+    /// <paramref name="cursor" />, for the shelf <paramref name="target" />.
+    /// <para>
+    /// <paramref name="query" /> is the rest of the view's own query, such as a
+    /// search term, so the next page answers the same question. The keys the
+    /// paging contract owns are left out of it. <paramref name="limit" /> is
+    /// held between 1 and <see cref="PluginPaging.MaximumPageSize" />.
+    /// </para>
+    /// </summary>
+    public static PluginActionIntent LoadPage(
+        string route,
+        string target,
+        string? cursor,
+        int limit = PluginPaging.DefaultPageSize,
+        string mode = PluginPaging.Append,
+        IReadOnlyDictionary<string, string>? query = null
+    ) =>
+        new()
+        {
+            Type = PluginActionType.LoadPage,
+            Payload = new()
+            {
+                ["route"] = route,
+                ["target"] = target,
+                ["cursor"] = cursor,
+                ["limit"] = Math.Clamp(limit, 1, PluginPaging.MaximumPageSize),
+                ["mode"] =
+                    mode == PluginPaging.Replace ? PluginPaging.Replace : PluginPaging.Append,
+                ["query"] = new Dictionary<string, string>(
+                    (query ?? new Dictionary<string, string>()).Where(entry =>
+                        !PluginPaging.ReservedQueryKeys.Contains(entry.Key)
+                    )
+                ),
+            },
+        };
 }

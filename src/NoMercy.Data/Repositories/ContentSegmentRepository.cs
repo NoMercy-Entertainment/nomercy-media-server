@@ -12,14 +12,17 @@
 using Microsoft.EntityFrameworkCore;
 using NoMercy.Database;
 using NoMercy.Database.Models.Media;
+using NoMercy.Database.Segments;
 
 namespace NoMercy.Data.Repositories;
 
 /// <summary>
 /// Read/write access for timeline annotations — intro/outro/recap/credits
 /// segments the player uses to render "Skip Intro" / auto-advance buttons.
-/// Writes come from the detector (chromaprint pipeline) or manual edits
-/// from the dashboard; reads come from the player on every playback start.
+/// Writes come from the segment analysis, the chapter classifier, or manual
+/// edits from the dashboard; reads come from the player on every playback start.
+/// Automatic writers store through <see cref="ApplyAsync"/> with a plan from
+/// <see cref="ContentSegmentPrecedence"/>.
 /// </summary>
 public class ContentSegmentRepository(MediaContext context) : IContentSegmentRepository
 {
@@ -114,63 +117,12 @@ public class ContentSegmentRepository(MediaContext context) : IContentSegmentRep
         return true;
     }
 
-    /// <summary>
-    /// Bulk replaces detector-written segments for an episode. Manual edits
-    /// (Source != "detector") stay untouched so re-running detection doesn't
-    /// clobber user overrides.
-    /// </summary>
-    public async Task ReplaceDetectorSegmentsForEpisodeAsync(
-        int episodeId,
-        IReadOnlyList<ContentSegment> newSegments
-    )
-    {
-        List<ContentSegment> oldDetector = await context
-            .ContentSegments.Where(s => s.EpisodeId == episodeId && s.Source == "detector")
-            .ToListAsync();
-
-        context.ContentSegments.RemoveRange(oldDetector);
-        foreach (ContentSegment seg in newSegments)
-        {
-            seg.EpisodeId = episodeId;
-            seg.MovieId = null;
-            seg.Source = "detector";
-            seg.CreatedAt = DateTime.UtcNow;
-            seg.UpdatedAt = seg.CreatedAt;
-            context.ContentSegments.Add(seg);
-        }
-
-        await context.SaveChangesAsync();
-    }
-
-    public Task<List<ContentSegment>> GetForEpisodesBySourceAsync(
-        IReadOnlyList<int> episodeIds,
-        string source
-    ) =>
+    public Task<List<ContentSegment>> GetForEpisodesAsync(IReadOnlyList<int> episodeIds) =>
         context
             .ContentSegments.AsNoTracking()
-            .Where(cs =>
-                cs.EpisodeId != null
-                && episodeIds.Contains(cs.EpisodeId.Value)
-                && cs.Source == source
-            )
+            .Where(cs => cs.EpisodeId != null && episodeIds.Contains(cs.EpisodeId.Value))
             .ToListAsync();
 
-    public async Task ReplaceSegmentsForEpisodesAsync(
-        IReadOnlyList<int> episodeIds,
-        string staleSource,
-        IReadOnlyList<ContentSegment> newSegments
-    )
-    {
-        List<ContentSegment> stale = await context
-            .ContentSegments.Where(cs =>
-                cs.EpisodeId != null
-                && episodeIds.Contains(cs.EpisodeId.Value)
-                && cs.Source == staleSource
-            )
-            .ToListAsync();
-
-        context.ContentSegments.RemoveRange(stale);
-        await context.ContentSegments.AddRangeAsync(newSegments);
-        await context.SaveChangesAsync();
-    }
+    public Task ApplyAsync(IReadOnlyList<ContentSegmentWritePlan> plans) =>
+        context.ApplySegmentPlansAsync(plans, CancellationToken.None);
 }

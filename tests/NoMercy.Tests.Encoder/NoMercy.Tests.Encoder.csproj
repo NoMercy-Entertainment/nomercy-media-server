@@ -57,5 +57,9 @@
     <None Update="Profiles\V2\Fixtures\*.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- #598 segment-analysis corpus (tools/segment-corpus/export_fixtures.py) -->
+    <None Update="ContentAnalysis\Segments\Corpus\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 </Project>

@@ -23,13 +23,20 @@ env:
   IMAGE_NAME: nomercy-entertainment/nomercymediaserver
 
 jobs:
-  # Package the linux-x64 binary (from build_executables) into each GPU variant.
+  # Package the linux-x64 binary (from build_executables) into each GPU variant,
+  # plus the browser variant: the CPU image with Xvfb and Chrome's libraries
+  # (WITH_BROWSER=true), for plugins that drive a real browser.
   # Pushes immutable RC tags only (e.g. 0.1.375-rc, 0.1.375-rc-nvidia).
   # The floating :latest and :<version> tags are applied by the promote_docker_images
   # job in ci-cd-pipeline.yml AFTER create_release succeeds, so users never pull
   # a half-baked image as stable.
   package:
     timeout-minutes: 7200
+    # The browser variant is optional for users, so a failed browser build (an
+    # apt mirror blip, say) must not block the release: only that matrix entry
+    # may fail without failing this job. The four default variants still must
+    # succeed, and create_release needs this job, so it still waits for them.
+    continue-on-error: ${{ matrix.variant == 'browser' }}
     runs-on: ${{ (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) && fromJSON('["self-hosted","Linux","X64","beast-unit"]') || 'ubuntu-latest' }}
     strategy:
       fail-fast: false
@@ -38,15 +45,23 @@ jobs:
           - variant: cpu
             dockerfile: docker/Dockerfile.cpu
             suffix: ""
+            with_browser: "false"
           - variant: nvidia
             dockerfile: docker/Dockerfile.nvidia
             suffix: "-nvidia"
+            with_browser: "false"
           - variant: intel
             dockerfile: docker/Dockerfile.intel
             suffix: "-intel"
+            with_browser: "false"
           - variant: amd
             dockerfile: docker/Dockerfile.amd
             suffix: "-amd"
+            with_browser: "false"
+          - variant: browser
+            dockerfile: docker/Dockerfile.cpu
+            suffix: "-browser"
+            with_browser: "true"
 
     permissions:
       contents: read
@@ -96,6 +111,7 @@ jobs:
         with:
           context: .
           file: ${{ matrix.dockerfile }}
+          build-args: WITH_BROWSER=${{ matrix.with_browser }}
           platforms: linux/amd64
           push: ${{ inputs.push }}
           tags: ${{ steps.meta.outputs.tags }}

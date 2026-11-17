@@ -4517,6 +4517,40 @@
             "description": "OK"
           }
         }
+      },
+      "delete": {
+        "tags": [
+          "Dashboard Server Plugins"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "kind",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "value",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
       }
     },
     "/api/v1/dashboard/plugins/{id}/approve": {
@@ -16268,6 +16302,33 @@
         },
         "additionalProperties": false
       },
+      "PluginInProcessNeedDto": {
+        "type": "object",
+        "properties": {
+          "notice": {
+            "type": "string",
+            "nullable": true
+          },
+          "facades": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "hooks": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "nullable": true
+          },
+          "controllers": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      },
       "PluginIsolation": {
         "enum": [
           0,
@@ -16368,6 +16429,13 @@
           },
           "notice": {
             "type": "string",
+            "nullable": true
+          },
+          "needs_in_process": {
+            "type": "object",
+            "additionalProperties": {
+              "$ref": "#/components/schemas/PluginInProcessNeedDto"
+            },
             "nullable": true
           }
         },

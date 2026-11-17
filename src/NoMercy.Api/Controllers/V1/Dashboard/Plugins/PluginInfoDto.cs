@@ -10,8 +10,11 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
+using NoMercy.Api.DTOs.Dashboard;
 using NoMercy.Api.Plugins;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Capabilities;
+using NoMercy.PluginSdk.Provenance;
 
 namespace NoMercy.Api.Controllers.V1.Dashboard.Plugins;
 
@@ -95,6 +98,21 @@ public record PluginInfoDto
     [JsonProperty("refusal")]
     public PluginRefusalDto? Refusal { get; init; }
 
+    /// <summary>
+    /// Where the plugin came from. Always sent; <c>kind</c> is
+    /// <c>unknown</c> for a plugin installed before the server recorded it.
+    /// </summary>
+    [JsonProperty("source")]
+    public PluginInstallSourceDto Source { get; init; } = new();
+
+    /// <summary>
+    /// The runtime grants the owner gave this plugin, such as
+    /// <c>network.host = *</c>. Each one is taken back with
+    /// <c>DELETE {id}/grants?kind=..&amp;value=..</c>.
+    /// </summary>
+    [JsonProperty("grants")]
+    public IReadOnlyList<PluginGrantDto> Grants { get; init; } = [];
+
     public PluginInfoDto() { }
 
     public PluginInfoDto(
@@ -102,10 +120,21 @@ public record PluginInfoDto
         PluginRestartRequirement? restart = null,
         bool awaitingConsent = false,
         PluginCapabilities? consentedCapabilities = null,
-        PluginRefusal? refusal = null
+        PluginRefusal? refusal = null,
+        PluginProvenance? provenance = null,
+        IReadOnlyList<PluginGrantEntry>? grants = null
     )
     {
         Refusal = refusal is null ? null : PluginRefusalDto.From(refusal);
+        Source = PluginInstallSourceDto.From(provenance ?? PluginProvenance.Unknown);
+        Grants =
+        [
+            .. (grants ?? []).Select(grant => new PluginGrantDto
+            {
+                Kind = grant.Kind,
+                Value = grant.Value,
+            }),
+        ];
         Capabilities = info.Capabilities;
         AwaitingConsent = awaitingConsent;
         AwaitingApproval = info.ApprovalReason is not null;

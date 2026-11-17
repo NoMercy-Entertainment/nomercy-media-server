@@ -54,5 +54,5 @@ A plugin runs in its own process, in the platform's sandbox: a Windows job
 object, a Linux cgroup v2 slice, or a macOS sandbox profile. The facades behave
 identically in either runtime, so nothing here changes when a server switches.
 
-Docs: https://nomercy.tv/docs/nomercy-plugins
+Docs: https://docs.nomercy.tv/nomercy-plugins/overview
 

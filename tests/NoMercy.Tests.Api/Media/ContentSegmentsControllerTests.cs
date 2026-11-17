@@ -277,6 +277,82 @@ public class ContentSegmentsControllerTests : IClassFixture<NoMercyApiFactory>, 
     }
 
     [Fact]
+    public async Task GetByEpisode_WithoutCredits_HasANullCreditsStart()
+    {
+        HttpResponseMessage response = await _authed.GetAsync(
+            $"/api/v1/content-segments/episode/{SeededEpisodeId}"
+        );
+
+        string body = await response.Content.ReadAsStringAsync();
+        using JsonDocument doc = JsonDocument.Parse(body);
+
+        doc.RootElement.GetProperty("credits_start").ValueKind.Should().Be(JsonValueKind.Null);
+        doc.RootElement.GetProperty("content_end").ValueKind.Should().Be(JsonValueKind.Null);
+    }
+
+    [Fact]
+    public async Task GetByEpisode_AnalysisCredits_GiveCreditsStartAndContentEnd()
+    {
+        Ulid creditsId = Ulid.NewUlid();
+        await using (MediaContext ctx = new())
+        {
+            ctx.ContentSegments.Add(
+                new ContentSegment
+                {
+                    Id = creditsId,
+                    EpisodeId = SeededEpisodeId,
+                    SegmentType = ContentSegmentType.Credits,
+                    StartSeconds = 1281.64,
+                    EndSeconds = 1361.08,
+                    ContentEndSeconds = 1377.27,
+                    Source = "analysis",
+                    Confidence = 0.9,
+                }
+            );
+            await ctx.SaveChangesAsync();
+        }
+
+        try
+        {
+            HttpResponseMessage response = await _authed.GetAsync(
+                $"/api/v1/content-segments/episode/{SeededEpisodeId}"
+            );
+
+            string body = await response.Content.ReadAsStringAsync();
+            using JsonDocument doc = JsonDocument.Parse(body);
+            doc.RootElement.GetProperty("credits_start").GetDouble().Should().Be(1281.64);
+            doc.RootElement.GetProperty("content_end").GetDouble().Should().Be(1377.27);
+            doc.RootElement.GetProperty("data")
+                .EnumerateArray()
+                .Single(e => e.GetProperty("id").GetString() == creditsId.ToString())
+                .GetProperty("content_end_seconds")
+                .GetDouble()
+                .Should()
+                .Be(1377.27);
+        }
+        finally
+        {
+            await using MediaContext ctx = new();
+            await ctx.ContentSegments.Where(s => s.Id == creditsId).ExecuteDeleteAsync();
+        }
+    }
+
+    [Fact]
+    public async Task GetByMovie_CreditsStart_IsTheOutroStart()
+    {
+        // #598: additive next to "data", which keeps its shape.
+        HttpResponseMessage response = await _authed.GetAsync(
+            $"/api/v1/content-segments/movie/{SeededMovieId}"
+        );
+
+        string body = await response.Content.ReadAsStringAsync();
+        using JsonDocument doc = JsonDocument.Parse(body);
+
+        doc.RootElement.GetProperty("credits_start").GetDouble().Should().Be(5400);
+        doc.RootElement.GetProperty("data").GetArrayLength().Should().Be(2);
+    }
+
+    [Fact]
     public async Task GetByMovie_ReturnsUnauthorized_WhenAnonymous()
     {
         HttpResponseMessage response = await _unauthed.GetAsync(

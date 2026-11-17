@@ -128,7 +128,7 @@ public class RemoteStorageTests : IDisposable
                     PluginId.ToString(),
                     "The plugin reached a path outside every folder it was granted: movies",
                     "The owner has not granted that folder.",
-                    "Ask the owner for the folder. Docs: /nomercy-plugins/capabilities/storage",
+                    "Ask the owner for the folder. Docs: /nomercy-plugins/capabilities/storage-path",
                     PluginRefusalSeverity.Blocked.ToString()
                 )
             )

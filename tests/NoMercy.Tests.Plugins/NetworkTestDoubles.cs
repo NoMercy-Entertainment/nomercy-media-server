@@ -162,6 +162,19 @@ public sealed class GrantingPlugin(
     public IReadOnlyList<string> Granted(Ulid pluginId, string grantKind) =>
         pluginId == id && grantKind == kind ? granted : [];
 
+    public IReadOnlyList<PluginGrantEntry> HeldBy(Ulid pluginId) =>
+        pluginId == id
+            ?
+            [
+                .. granted.Select(value => new PluginGrantEntry
+                {
+                    PluginId = id,
+                    Kind = kind,
+                    Value = value,
+                }),
+            ]
+            : [];
+
     public bool Holds(Ulid pluginId, string grantKind, string value) =>
         Granted(pluginId, grantKind).Contains(value);
 
@@ -242,6 +255,8 @@ public sealed class NetworkPlugin(Ulid id, PluginCapabilities? capabilities)
     public void RevokeConsent(Ulid pluginId) { }
 
     public IReadOnlyList<string> Granted(Ulid pluginId, string kind) => [];
+
+    public IReadOnlyList<PluginGrantEntry> HeldBy(Ulid pluginId) => [];
 
     public bool Holds(Ulid pluginId, string kind, string value) => false;
 

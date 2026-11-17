@@ -11,7 +11,8 @@ name: Promote Release
 # bytes are the ones that already ran as nightly and beta.
 #
 #   beta    keeps the release a prerelease, labels it beta, and moves the
-#           beta Docker tags (beta, beta-nvidia, beta-intel, beta-amd).
+#           beta Docker tags (beta, beta-nvidia, beta-intel, beta-amd,
+#           beta-browser).
 #   stable  makes it the GitHub "latest" release, which is what the server's
 #           update checker, the launcher and nomercy.tv read; moves the stable
 #           Docker tags (latest, stable, nvidia, latest-nvidia, ...); and asks
@@ -142,6 +143,14 @@ jobs:
               missing=1
             fi
           done
+          # Builds made before the -browser image existed have no such tag;
+          # they still promote, and the -browser tags stay where they are.
+          ref="${BASE}:${VERSION}-browser"
+          if docker buildx imagetools inspect "$ref" >/dev/null 2>&1; then
+            echo "ok      $ref"
+          else
+            echo "::warning::no $ref (built before the browser image); its tags are not moved"
+          fi
           exit $missing
 
       - name: Move the channel's Docker tags
@@ -153,13 +162,15 @@ jobs:
               ":latest stable" \
               "-nvidia:nvidia latest-nvidia stable-nvidia" \
               "-intel:intel latest-intel stable-intel" \
-              "-amd:amd latest-amd stable-amd"
+              "-amd:amd latest-amd stable-amd" \
+              "-browser:browser latest-browser stable-browser"
           else
             set -- \
               ":beta" \
               "-nvidia:beta-nvidia" \
               "-intel:beta-intel" \
-              "-amd:beta-amd"
+              "-amd:beta-amd" \
+              "-browser:beta-browser"
           fi
           for entry in "$@"; do
             suffix="${entry%%:*}"
@@ -169,6 +180,10 @@ jobs:
               args+=(--tag "${BASE}:${tag}")
             done
             src="${BASE}:${VERSION}${suffix}"
+            if [ "$suffix" = "-browser" ] && ! docker buildx imagetools inspect "$src" >/dev/null 2>&1; then
+              echo "==> skip $moving: no ${VERSION}${suffix}"
+              continue
+            fi
             echo "==> $moving -> ${VERSION}${suffix}"
             if [ "$DRY_RUN" = "true" ]; then
               echo "    dry run: docker buildx imagetools create ${args[*]} $src"
@@ -240,8 +255,8 @@ jobs:
             echo "- Gate: release complete, CI green for its commit, images present"
             if [ "$CHANNEL" = "stable" ]; then
               echo "- Now GitHub's latest release, so every server, the launcher and nomercy.tv offer it"
-              echo "- Docker: latest, stable, nvidia, intel, amd (and their latest-/stable- forms)"
+              echo "- Docker: latest, stable, nvidia, intel, amd, browser (and their latest-/stable- forms)"
             else
-              echo "- Docker: beta, beta-nvidia, beta-intel, beta-amd"
+              echo "- Docker: beta, beta-nvidia, beta-intel, beta-amd, beta-browser"
             fi
           } >> "$GITHUB_STEP_SUMMARY"

@@ -591,7 +591,7 @@ public class PluginLoaderFailureFixtureTests : IDisposable
 
         reported.PluginName.Should().Be("NoMercy.Plugin.Corrupt");
         reported.ErrorMessage.Should().NotContain(PluginAbi.Current.ToString());
-        reported.ErrorMessage.Should().NotContain("/nomercy-plugins/migration");
+        reported.ErrorMessage.Should().NotContain(PluginDocs.Migration);
         reported.ErrorMessage.Should().NotBeNullOrWhiteSpace();
     }
 
@@ -705,7 +705,7 @@ public class PluginLoaderFailureFixtureTests : IDisposable
         reported.PluginName.Should().Be("StaleMember");
         reported.ErrorMessage.Should().Contain("get_EventBus");
         reported.ErrorMessage.Should().Contain(PluginAbi.Current.ToString());
-        reported.ErrorMessage.Should().Contain("/nomercy-plugins/migration");
+        reported.ErrorMessage.Should().Contain(PluginDocs.Migration);
     }
 
     /// <summary>
@@ -746,7 +746,7 @@ public class PluginLoaderFailureFixtureTests : IDisposable
                 PluginAbi.Current.ToString(),
                 "and the version to rebuild against, which the runtime never says"
             );
-        reported.ErrorMessage.Should().Contain("/nomercy-plugins/migration");
+        reported.ErrorMessage.Should().Contain(PluginDocs.Migration);
 
         // The plugin beside it in the same assembly fails for its own reason and
         // must keep its own message. A blanket "rebuild against 11.0" on every
