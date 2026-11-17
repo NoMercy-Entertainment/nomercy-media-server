@@ -120,7 +120,8 @@ public sealed class RemoteScheduler(Ulid pluginId, RemoteCall call) : IPluginSch
             pluginId.ToString(),
             $"A plugin in its own process asked for scheduler.{member}.",
             "That member hands the server a delegate, and a delegate cannot cross a process boundary.",
-            "Declare the job in the manifest and implement IScheduledTaskPlugin instead. Docs: /nomercy-plugins/handbook/runtime-and-isolation",
+            "Declare the job in the manifest and implement IScheduledTaskPlugin instead. Docs: "
+                + PluginDocs.RuntimeAndIsolation,
             PluginRefusalSeverity.Blocked
         );
 }

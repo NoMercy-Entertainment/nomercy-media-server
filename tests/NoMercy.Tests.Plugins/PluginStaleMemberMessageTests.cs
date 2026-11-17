@@ -9,9 +9,9 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
-using NoMercy.PluginSdk.Abstractions;
 using FluentAssertions;
 using NoMercy.PluginSdk;
+using NoMercy.PluginSdk.Abstractions;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;
@@ -42,8 +42,10 @@ public class PluginStaleMemberMessageTests
         );
 
         described.Should().Contain("get_EventBus", "the author has to know which member");
-        described.Should().Contain(PluginAbi.Current.ToString(), "and the version to rebuild against");
-        described.Should().Contain("/nomercy-plugins/migration");
+        described
+            .Should()
+            .Contain(PluginAbi.Current.ToString(), "and the version to rebuild against");
+        described.Should().Contain(PluginDocs.Migration);
     }
 
     /// <summary>

@@ -134,7 +134,8 @@ public sealed class RemotePluginContext : IPluginContext
             _launch.PluginId.ToString(),
             $"A plugin in its own process asked for {facade}.",
             "This server runs the plugin out of process, and that facade does not cross the boundary yet.",
-            "Run this plugin in the server's own process until the facade is carried across. Docs: /nomercy-plugins/handbook/runtime-and-isolation",
+            "Run this plugin in the server's own process until the facade is carried across. Docs: "
+                + PluginDocs.RuntimeAndIsolation,
             PluginRefusalSeverity.Blocked
         );
 }

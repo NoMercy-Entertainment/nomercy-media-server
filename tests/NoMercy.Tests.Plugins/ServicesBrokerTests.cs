@@ -172,7 +172,7 @@ public class ServicesBrokerTests
                 "radio",
                 "The plugin used a server service.",
                 "It did not declare the capability that service belongs to.",
-                "Declare it in the manifest. Docs: /nomercy-plugins/handbook/capabilities",
+                "Declare it in the manifest. Docs: /nomercy-plugins/capabilities",
                 PluginRefusalSeverity.Blocked
             )
         );

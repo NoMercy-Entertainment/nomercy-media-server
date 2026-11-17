@@ -35,7 +35,8 @@ public sealed class RemoteLibraryImport(Ulid pluginId, RemoteCall call) : IPlugi
                 pluginId.ToString(),
                 $"The plugin called libraryImport.{member}.",
                 "The server answered with nothing where an import result belongs.",
-                "Report this with the server log around the call. Docs: /nomercy-plugins/handbook/runtime-and-isolation",
+                "Report this with the server log around the call. Docs: "
+                    + PluginDocs.RuntimeAndIsolation,
                 PluginRefusalSeverity.Blocked
             )
         );

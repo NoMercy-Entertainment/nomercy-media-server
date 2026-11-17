@@ -69,7 +69,8 @@ public sealed class PluginHostLauncher(
                     pluginId.ToString(),
                     "The owner asked for this plugin to run in a process of its own.",
                     "This install has no NoMercy.PluginHost beside the server, so there is nothing to start.",
-                    "Run the plugin in the server's own process, or reinstall the server so the host ships with it. Docs: /nomercy-plugins/handbook/runtime-and-isolation",
+                    "Run the plugin in the server's own process, or reinstall the server so the host ships with it. Docs: "
+                        + PluginDocs.RuntimeAndIsolation,
                     PluginRefusalSeverity.Blocked
                 )
             );
@@ -119,7 +120,8 @@ public sealed class PluginHostLauncher(
                     pluginId.ToString(),
                     "The owner asked for this plugin to run in a process of its own.",
                     "The operating system refused to start the plugin host.",
-                    "Read the server log around this line, then start the plugin again from its health page. Docs: /nomercy-plugins/handbook/runtime-and-isolation",
+                    "Read the server log around this line, then start the plugin again from its health page. Docs: "
+                        + PluginDocs.RuntimeAndIsolation,
                     PluginRefusalSeverity.Blocked
                 )
             );

@@ -60,7 +60,7 @@ public class RemoteContextTests
                     "radio",
                     "The plugin asked for a secret.",
                     "It did not declare the secrets capability.",
-                    "Declare it in the manifest. Docs: /nomercy-plugins/handbook/capabilities",
+                    "Declare it in the manifest. Docs: /nomercy-plugins/capabilities",
                     "Blocked"
                 )
             )

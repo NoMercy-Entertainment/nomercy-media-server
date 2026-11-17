@@ -19,5 +19,5 @@ belongs, a token in a media URL, a component name that no client has. Each
 warning carries the same code the server would refuse with, so the fix in the
 editor is the fix in production.
 
-Docs: https://nomercy.tv/docs/nomercy-plugins
+Docs: https://docs.nomercy.tv/nomercy-plugins/overview
 

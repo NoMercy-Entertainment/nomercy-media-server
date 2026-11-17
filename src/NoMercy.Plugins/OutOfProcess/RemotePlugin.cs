@@ -71,7 +71,8 @@ public sealed class RemotePlugin(
                 response.Refusal?.What ?? "The server started this plugin in a process of its own.",
                 response.Refusal?.Why ?? "The plugin process refused to initialize.",
                 response.Refusal?.Fix
-                    ?? "Read the server log around this line, then start the plugin again from its health page. Docs: /nomercy-plugins/handbook/runtime-and-isolation",
+                    ?? "Read the server log around this line, then start the plugin again from its health page. Docs: "
+                        + PluginDocs.RuntimeAndIsolation,
                 PluginRefusalSeverity.Blocked
             )
         );

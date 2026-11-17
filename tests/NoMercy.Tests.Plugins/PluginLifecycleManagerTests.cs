@@ -441,7 +441,7 @@ public class PluginLifecycleManagerTests : IDisposable
                 PluginAbi.Current.ToString(),
                 "and the version to rebuild against, which the runtime never says"
             );
-        reported.ErrorMessage.Should().Contain("/nomercy-plugins/migration");
+        reported.ErrorMessage.Should().Contain(PluginDocs.Migration);
     }
 
     // ── DisablePluginAsync ───────────────────────────────────────────────────
