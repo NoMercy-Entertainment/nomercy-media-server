@@ -71,6 +71,6 @@ public sealed partial record HlsMasterPlaylist(
         return null;
     }
 
-    [GeneratedRegex("""(?<name>[A-Z0-9-]+)=(?:"(?<quoted>[^"]*)"|(?<bare>[^,]*))""")]
+    [GeneratedRegex("""(?<name>[A-Z0-9-]+)=(?:"(?<quoted>[^"]*)"|(?<bare>[^,]*))""", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex AttributeRegex();
 }

@@ -33,7 +33,9 @@ public static partial class NpzReader
 
         double[] times = new double[timesData.Length / sizeof(double)];
         for (int i = 0; i < times.Length; i++)
-            times[i] = BinaryPrimitives.ReadDoubleLittleEndian(timesData.AsSpan(i * sizeof(double)));
+            times[i] = BinaryPrimitives.ReadDoubleLittleEndian(
+                timesData.AsSpan(i * sizeof(double))
+            );
 
         return (times, pixelsData);
     }
@@ -49,9 +51,10 @@ public static partial class NpzReader
 
         // \x93NUMPY, version major/minor, header length (2 bytes in v1, 4 in v2+).
         int major = bytes[6];
-        int headerLength = major == 1
-            ? BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(8))
-            : (int)BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(8));
+        int headerLength =
+            major == 1
+                ? BinaryPrimitives.ReadUInt16LittleEndian(bytes.AsSpan(8))
+                : (int)BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(8));
         int headerStart = major == 1 ? 10 : 12;
         string header = Encoding.ASCII.GetString(bytes, headerStart, headerLength);
 
@@ -61,15 +64,18 @@ public static partial class NpzReader
             .. ShapeRegex()
                 .Match(header)
                 .Groups[1]
-                .Value.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Value.Split(
+                    ',',
+                    StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries
+                )
                 .Select(int.Parse),
         ];
         return (dtype, shape, bytes[(headerStart + headerLength)..]);
     }
 
-    [GeneratedRegex(@"'descr':\s*'([^']+)'")]
+    [GeneratedRegex(@"'descr':\s*'([^']+)'", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex DescrRegex();
 
-    [GeneratedRegex(@"'shape':\s*\(([^)]*)\)")]
+    [GeneratedRegex(@"'shape':\s*\(([^)]*)\)", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex ShapeRegex();
 }

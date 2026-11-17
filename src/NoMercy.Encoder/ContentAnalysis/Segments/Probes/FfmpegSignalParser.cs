@@ -134,24 +134,24 @@ internal static partial class FfmpegSignalParser
 
     private static double Number(string value) => double.Parse(value, NumberStyles.Float, CultureInfo.InvariantCulture);
 
-    [GeneratedRegex(@"silence_start: (-?[\d.]+)")]
+    [GeneratedRegex(@"silence_start: (-?[\d.]+)", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex SilenceStartRegex();
 
-    [GeneratedRegex(@"silence_end: (-?[\d.]+) \| silence_duration: ([\d.]+)")]
+    [GeneratedRegex(@"silence_end: (-?[\d.]+) \| silence_duration: ([\d.]+)", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex SilenceEndRegex();
 
-    [GeneratedRegex(@"\[blackdetect(?:@(?<instance>\w+))? @ [^\]]+\] black_start:(?<start>[\d.]+) black_end:(?<end>[\d.]+)")]
+    [GeneratedRegex(@"\[blackdetect(?:@(?<instance>\w+))? @ [^\]]+\] black_start:(?<start>[\d.]+) black_end:(?<end>[\d.]+)", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex BlackRegex();
 
-    [GeneratedRegex(@"lavfi\.scd\.score: [\d.]+, lavfi\.scd\.time: ([\d.]+)")]
+    [GeneratedRegex(@"lavfi\.scd\.score: [\d.]+, lavfi\.scd\.time: ([\d.]+)", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex SceneCutRegex();
 
-    [GeneratedRegex(@"Duration: (\d+):(\d+):(\d+(?:\.\d+)?)")]
+    [GeneratedRegex(@"Duration: (\d+):(\d+):(\d+(?:\.\d+)?)", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
     private static partial Regex DurationRegex();
 
-    [GeneratedRegex(@"frame:\d+\s+pts:\d+\s+pts_time:([\d.]+)")]
+    [GeneratedRegex(@"frame:\d+\s+pts:\d+\s+pts_time:([\d.]+)", RegexOptions.None, matchTimeoutMilliseconds: 2000)]
     private static partial Regex FrameRegex();
 
-    [GeneratedRegex("[A-Za-z]{3,}")]
+    [GeneratedRegex("[A-Za-z]{3,}", RegexOptions.None, matchTimeoutMilliseconds: 2000)]
     private static partial Regex WordRegex();
 }
