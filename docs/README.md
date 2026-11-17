@@ -11,6 +11,9 @@
   `plugin.json`, its dependencies and its translations.
 - [`plugins/migration.md`](plugins/migration.md) — moving a plugin built
   against an SDK older than 12 to SDK 12.
+- [`plugins/plugin-info.md`](plugins/plugin-info.md) — what the dashboard's
+  plugin info says about where a plugin came from and the grants it holds,
+  and how one grant is taken back.
 - [`plugins/music-analysis.md`](plugins/music-analysis.md) — how a plugin
   computes and stores the DJ analysis of a track.
 - [`plugins/shelves-and-paging.md`](plugins/shelves-and-paging.md) — the

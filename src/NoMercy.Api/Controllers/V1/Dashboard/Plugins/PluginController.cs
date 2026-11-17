@@ -23,6 +23,7 @@ using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Capabilities;
 using NoMercy.PluginSdk.OutOfProcess;
+using NoMercy.PluginSdk.Provenance;
 using NoMercy.PluginSdk.Sideload;
 using NoMercy.PluginSdk.Verification;
 using NoMercy.Storage;
@@ -42,7 +43,8 @@ public class PluginController(
     IStorageDriver storageDriver,
     IPluginDeveloperModeSource developerMode,
     IPluginRunGate? runGate = null,
-    IPluginIsolationFit? isolationFit = null
+    IPluginIsolationFit? isolationFit = null,
+    IPluginProvenanceReader? provenance = null
 ) : BaseController
 {
     private const long MaximumUploadBytes = 64L * 1024 * 1024;
@@ -174,15 +176,36 @@ public class PluginController(
     }
 
     /// <summary>
-    /// An elevated plugin whose recorded consent does not cover what its
-    /// manifest now asks for is waiting on the owner, not failing. The
-    /// dashboard needs to tell those two apart.
+    /// Takes back one grant the plugin holds, such as <c>network.host = *</c>,
+    /// and leaves the rest and the plugin's consent as they are.
     /// <para>
-    /// Not <c>HasConsent</c>: that is true for a record covering a smaller
-    /// request, so a plugin that widened showed as plain Disabled with nothing
-    /// on screen offering the owner the decision it was actually waiting for.
+    /// Answering a pending request with no only clears the request, and
+    /// withdrawing consent takes everything and disables the plugin. Neither
+    /// let the owner take back one thing they had given, which is what the
+    /// plugin's page offers beside each grant it lists.
     /// </para>
     /// </summary>
+    [HttpDelete("{id:ulid}/grants")]
+    public IActionResult RevokeGrant(Ulid id, [FromQuery] string? kind, [FromQuery] string? value)
+    {
+        if (string.IsNullOrWhiteSpace(kind) || string.IsNullOrWhiteSpace(value))
+            return UnprocessableEntityResponse("A grant needs both a kind and a value");
+
+        bool held = grantStore
+            .HeldBy(id)
+            .Any(grant =>
+                string.Equals(grant.Kind, kind, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(grant.Value, value, StringComparison.OrdinalIgnoreCase)
+            );
+
+        if (!held)
+            return NotFoundResponse("The plugin does not hold that grant");
+
+        grantStore.Revoke(id, kind, value);
+
+        return Ok(new StatusResponseDto<string> { Status = "ok", Message = "Grant revoked" });
+    }
+
     /// <summary>
     /// One plugin as the dashboard reads it. Ordered: the consent check is what
     /// upgrades a legacy record, so the consented set is read after it and
@@ -198,7 +221,10 @@ public class PluginController(
             restartAdvisor.Evaluate(plugin, PluginOperation.Enable),
             awaiting,
             consentService.ConsentedCapabilities(plugin.Id),
-            runGate?.LastRefusal(plugin.Id)
+            runGate?.LastRefusal(plugin.Id),
+            // A host that records no sources says unknown, never a guess.
+            provenance?.Read(plugin.Id),
+            grantStore.HeldBy(plugin.Id)
         );
     }
 
@@ -215,6 +241,16 @@ public class PluginController(
             )
             : null;
 
+    /// <summary>
+    /// An elevated plugin whose recorded consent does not cover what its
+    /// manifest now asks for is waiting on the owner, not failing. The
+    /// dashboard needs to tell those two apart.
+    /// <para>
+    /// Not <c>HasConsent</c>: that is true for a record covering a smaller
+    /// request, so a plugin that widened showed as plain Disabled with nothing
+    /// on screen offering the owner the decision it was actually waiting for.
+    /// </para>
+    /// </summary>
     private bool AwaitingConsent(PluginInfo plugin) =>
         !consentService.IsBaseline(plugin.Capabilities)
         && !consentService.ConsentCoversCapabilities(

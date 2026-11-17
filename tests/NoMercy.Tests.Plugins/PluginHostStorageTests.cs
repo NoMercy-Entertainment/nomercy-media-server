@@ -346,6 +346,19 @@ public class PluginHostStorageTests : IDisposable
         public IReadOnlyList<string> Granted(Ulid id, string kind) =>
             id == pluginId && kind == _kind ? folders : [];
 
+        public IReadOnlyList<PluginGrantEntry> HeldBy(Ulid id) =>
+            id == pluginId
+                ?
+                [
+                    .. folders.Select(folder => new PluginGrantEntry
+                    {
+                        PluginId = id,
+                        Kind = _kind,
+                        Value = folder,
+                    }),
+                ]
+                : [];
+
         public bool Holds(Ulid id, string kind, string value) =>
             id == pluginId && kind == _kind && folders.Contains(value);
 

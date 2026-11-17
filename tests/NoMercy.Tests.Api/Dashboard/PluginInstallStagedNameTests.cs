@@ -107,7 +107,8 @@ public class PluginInstallStagedNameTests
             string entryName,
             string downloadUrl = "https://example.com/a.zip",
             bool listedByTheOfficialMarketplace = false,
-            HttpMessageHandler? download = null
+            HttpMessageHandler? download = null,
+            PluginRepositoryInfo? listedBy = null
         )
         {
             Mock<IPluginRepositoryOrigin> origin = new();
@@ -116,6 +117,9 @@ public class PluginInstallStagedNameTests
                     source.IsFromOfficialMarketplace(It.IsAny<PluginRepositoryEntry>())
                 )
                 .Returns(listedByTheOfficialMarketplace);
+            origin
+                .Setup(source => source.ListedBy(It.IsAny<PluginRepositoryEntry>()))
+                .Returns(listedBy);
 
             // CallBase keeps the interface's own CombinePath, the join under test.
             Mock<IStorageDriver> storage = new() { CallBase = true };
@@ -202,6 +206,7 @@ public class PluginInstallStagedNameTests
                     null,
                     It.IsAny<PluginIndexSignature?>(),
                     false,
+                    It.IsAny<PluginRepositoryInfo?>(),
                     It.IsAny<CancellationToken>()
                 ),
             Times.Once
@@ -229,6 +234,37 @@ public class PluginInstallStagedNameTests
                     null,
                     It.IsAny<PluginIndexSignature?>(),
                     listedByTheOfficialMarketplace,
+                    It.IsAny<PluginRepositoryInfo?>(),
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Once
+        );
+    }
+
+    /// <summary>
+    /// The repository that listed the entry travels with the install, so the
+    /// plugin's info can say afterwards which index it came from.
+    /// </summary>
+    [Fact]
+    public async Task The_install_carries_the_repository_that_listed_the_entry()
+    {
+        PluginRepositoryInfo index = new()
+        {
+            Name = "Example Index",
+            Url = "https://example.com/index.json",
+        };
+        Harness harness = new("Example.Plugin", listedBy: index);
+
+        await harness.Controller.Install(EntryId, version: null, CancellationToken.None);
+
+        harness.Installer.Verify(
+            installer =>
+                installer.InstallFromRepositoryAsync(
+                    It.IsAny<string>(),
+                    null,
+                    It.IsAny<PluginIndexSignature?>(),
+                    false,
+                    index,
                     It.IsAny<CancellationToken>()
                 ),
             Times.Once

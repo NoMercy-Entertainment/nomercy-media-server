@@ -216,4 +216,23 @@ public class PluginGrantPersistenceTests : IDisposable
 
         Store().Holds(PluginId, PluginGrantKind.NetworkHost, "tracker.example").Should().BeFalse();
     }
+
+    [Fact]
+    public void Everything_one_plugin_holds_is_listed_with_its_kind_and_nothing_of_another_plugin()
+    {
+        Ulid other = Ulid.Parse("0H248H248H248H248H248H249H");
+        IPluginGrantStore writer = Store();
+        writer.Grant(PluginId, PluginGrantKind.NetworkHost, PluginGrant.Everything);
+        writer.Grant(PluginId, PluginGrantKind.ForCapability("media.proxy"), PluginGrant.Everything);
+        writer.Grant(other, PluginGrantKind.LibraryWrite, "library-1");
+
+        IReadOnlyList<PluginGrantEntry> held = Store().HeldBy(PluginId);
+
+        held.Select(grant => (grant.Kind, grant.Value))
+            .Should()
+            .Equal(
+                (PluginGrantKind.NetworkHost, PluginGrant.Everything),
+                (PluginGrantKind.ForCapability("media.proxy"), PluginGrant.Everything)
+            );
+    }
 }

@@ -19,6 +19,12 @@ namespace NoMercy.PluginSdk.Capabilities;
 public interface IPluginGrantStore
 {
     IReadOnlyList<string> Granted(Ulid pluginId, string kind);
+
+    /// <summary>
+    /// Everything one plugin holds, whatever the kind, in the order it was
+    /// given. What the owner reads on the plugin's page to decide what to take back.
+    /// </summary>
+    IReadOnlyList<PluginGrantEntry> HeldBy(Ulid pluginId);
     bool Holds(Ulid pluginId, string kind, string value);
     void Grant(Ulid pluginId, string kind, string value);
     void Revoke(Ulid pluginId, string kind, string value);
@@ -94,6 +100,9 @@ public class ConfigPluginGrantStore(IPluginConfiguration configuration) : IPlugi
                 .Select(entry => entry.Value),
         ];
     }
+
+    public IReadOnlyList<PluginGrantEntry> HeldBy(Ulid pluginId) =>
+        [.. Read().Grants.Where(entry => entry.PluginId == pluginId)];
 
     public bool Holds(Ulid pluginId, string kind, string value)
     {

@@ -21,6 +21,7 @@ using NoMercy.PluginSdk.Capabilities;
 using NoMercy.PluginSdk.Guests;
 using NoMercy.PluginSdk.Hub;
 using NoMercy.PluginSdk.OutOfProcess;
+using NoMercy.PluginSdk.Provenance;
 using NoMercy.PluginSdk.Revocation;
 using NoMercy.PluginSdk.Sideload;
 using NoMercy.PluginSdk.Verification;
@@ -47,6 +48,7 @@ public class PluginManager
     private readonly IPluginConsentService _consentService;
     private readonly IPluginRegistry _registry;
     private readonly IPluginApprovalStore _approvals;
+    private readonly IPluginInstallSourceStore _installSources;
     private readonly PluginDropGate _dropGate;
     private readonly PluginLoader _loader;
     private readonly PluginLifecycleManager _lifecycle;
@@ -83,7 +85,8 @@ public class PluginManager
         PluginSideloadPolicy? sideloadPolicy = null,
         PluginGuestInstaller? guestInstaller = null,
         IPluginRegistry? registry = null,
-        IPluginApprovalStore? approvalStore = null
+        IPluginApprovalStore? approvalStore = null,
+        IPluginInstallSourceStore? installSourceStore = null
     )
     {
         _eventBus = eventBus ?? throw new ArgumentNullException(nameof(eventBus));
@@ -109,6 +112,8 @@ public class PluginManager
             );
         _registry = registry ?? new PluginRegistry();
         _approvals = approvalStore ?? new ConfigPluginApprovalStore(PlatformConfiguration());
+        _installSources =
+            installSourceStore ?? new ConfigPluginInstallSourceStore(PlatformConfiguration());
         _dropGate = new(_approvals);
         _assemblyTracker = assemblyTracker;
         _registerScheduledWork = registerScheduledWork;
@@ -267,14 +272,7 @@ public class PluginManager
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
-            PluginInfo? resident = _registry
-                .Values.FirstOrDefault(loaded =>
-                    loaded.Info.AssemblyPath is not null
-                    && _driver
-                        .GetFullPath(loaded.Info.AssemblyPath)
-                        .Equals(_driver.GetFullPath(destPath), StringComparison.OrdinalIgnoreCase)
-                )
-                ?.Info;
+            PluginInfo? resident = LoadedFrom(destPath);
 
             if (
                 resident is not null
@@ -284,6 +282,8 @@ public class PluginManager
                 PluginPackageHashMarker.Clear(pluginDir);
                 await RecordFilesAsync(pluginDir, ct);
                 await LoadPluginAssemblyAsync(destPath, ct, resident, newContent: true);
+                PluginInfo swapped = LoadedFrom(destPath) ?? resident;
+                RecordUploadedAssembly(swapped.Id, expectedChecksum, swapped.Version.ToString());
                 _registerScheduledWork?.Invoke(resident.Id);
                 return;
             }
@@ -307,6 +307,11 @@ public class PluginManager
                 pluginName
             );
 
+            // The update is accepted and lands on the next start, so where it
+            // came from is already true of the plugin the owner will run.
+            if (resident is not null)
+                RecordUploadedAssembly(resident.Id, expectedChecksum, version: null);
+
             throw new PluginUpdatePendingRestartException(pluginName);
         }
 
@@ -314,7 +319,43 @@ public class PluginManager
         PluginPackageHashMarker.Clear(pluginDir);
         await RecordFilesAsync(pluginDir, ct);
         await LoadPluginAssemblyAsync(destPath, ct, newContent: true);
+
+        // The id is only known once the assembly has loaded: a bare .dll
+        // carries no manifest to read it from.
+        if (LoadedFrom(destPath) is { } installed)
+            RecordUploadedAssembly(installed.Id, expectedChecksum, installed.Version.ToString());
     }
+
+    /// <summary>The loaded plugin whose assembly is the file at this path, if any.</summary>
+    private PluginInfo? LoadedFrom(string assemblyPath) =>
+        _registry
+            .Values.FirstOrDefault(loaded =>
+                loaded.Info.AssemblyPath is not null
+                && _driver
+                    .GetFullPath(loaded.Info.AssemblyPath)
+                    .Equals(_driver.GetFullPath(assemblyPath), StringComparison.OrdinalIgnoreCase)
+            )
+            ?.Info;
+
+    /// <summary>
+    /// A bare assembly is always an upload. The version is null for an update
+    /// staged for the next start: nobody has loaded it to read one yet.
+    /// </summary>
+    private void RecordUploadedAssembly(
+        Ulid pluginId,
+        string? expectedChecksum,
+        string? version
+    ) =>
+        _installSources.Record(
+            pluginId,
+            new()
+            {
+                Kind = PluginInstallSourceKind.File,
+                ChecksumVerified = !string.IsNullOrWhiteSpace(expectedChecksum),
+                Version = version,
+                RecordedAt = DateTime.UtcNow,
+            }
+        );
 
     /// <summary>
     /// The single-assembly twin of <see cref="TrySwapResidentPluginAsync"/>:
@@ -403,6 +444,7 @@ public class PluginManager
             forUser,
             indexSignature,
             fromOfficialMarketplace: false,
+            listedBy: null,
             ct
         );
 
@@ -411,6 +453,7 @@ public class PluginManager
         string? expectedChecksum,
         PluginIndexSignature? indexSignature,
         bool fromOfficialMarketplace,
+        PluginRepositoryInfo? listedBy,
         CancellationToken ct = default
     ) =>
         InstallArchiveAsync(
@@ -420,6 +463,7 @@ public class PluginManager
             forUser: null,
             indexSignature,
             fromOfficialMarketplace,
+            listedBy,
             ct
         );
 
@@ -430,6 +474,7 @@ public class PluginManager
         Guid? forUser,
         PluginIndexSignature? indexSignature,
         bool fromOfficialMarketplace,
+        PluginRepositoryInfo? listedBy,
         CancellationToken ct
     )
     {
@@ -485,6 +530,22 @@ public class PluginManager
         {
             throw new PluginVerificationException($"{sideload.Why} {sideload.Fix}");
         }
+
+        // Every check that can refuse the package itself has passed, so these
+        // are the facts of this install. A published checksum that reaches
+        // this line matched: it is enforced before the archive is opened.
+        PluginInstallSource source = new()
+        {
+            Kind = fromMarketplace
+                ? PluginInstallSourceKind.Repository
+                : PluginInstallSourceKind.File,
+            RepositoryName = listedBy?.Name,
+            RepositoryUrl = listedBy?.Url,
+            FromOfficialMarketplace = fromOfficialMarketplace,
+            ChecksumVerified = !string.IsNullOrWhiteSpace(expectedChecksum),
+            Version = manifest.Manifest.Version,
+            RecordedAt = DateTime.UtcNow,
+        };
 
         string pluginDir = _storage.CombinePath(_pluginsPath, manifest.FolderName);
         Guid? previousGuest = _guestInstaller?.GuestFor(manifest.Id);
@@ -565,6 +626,7 @@ public class PluginManager
             {
                 if (await TrySwapResidentPluginAsync(manifest.Id, staging, pluginDir, ct))
                 {
+                    _installSources.Record(manifest.Id, source);
                     return;
                 }
 
@@ -573,10 +635,18 @@ public class PluginManager
                     manifest.FolderName
                 );
 
+                // Accepted and applied on the next start, so the source is
+                // already true of the plugin the owner will run.
+                _installSources.Record(manifest.Id, source);
+
                 throw new PluginUpdatePendingRestartException(manifest.FolderName);
             }
 
             ApplyStaged(staging, pluginDir);
+
+            // Recorded once the folder is in place, before the load: a plugin
+            // that installs and then fails to start is still installed from here.
+            _installSources.Record(manifest.Id, source);
 
             await LoadPluginFromManifestAsync(_storage.CombinePath(pluginDir, "plugin.json"), ct);
 
@@ -1280,6 +1350,10 @@ public class PluginManager
         string? folder = Path.GetDirectoryName(GetPluginInfo(pluginId)?.AssemblyPath);
         await _lifecycle.UninstallPluginAsync(pluginId, keepData, ct);
         _guestInstaller?.Forget(pluginId);
+
+        // Kept data or not, the source described the copy that is now gone;
+        // installing it again records its own.
+        _installSources.Forget(pluginId);
         if (folder is not null)
         {
             await RememberRecordedFolderAsync(Path.GetFileName(folder), recorded: false, ct);
@@ -1314,6 +1388,10 @@ public class PluginManager
             Path.GetFileName(folder),
             await PluginFileManifest.DigestAsync(folder, ct)
         );
+
+        // The approved files are what the owner put there, not what any
+        // earlier install downloaded, so an earlier source no longer applies.
+        _installSources.Forget(pluginId);
 
         _logger.LogInformation(
             "The owner approved plugin {PluginName}; its files are recorded and it is loading.",

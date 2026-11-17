@@ -20,11 +20,16 @@ public interface IPluginRepositoryInstaller
     /// The official index listed the entry, so its signature has to verify in
     /// every trust mode. Any other repository only warns while enforcing is off.
     /// </param>
+    /// <param name="listedBy">
+    /// The repository whose index offered the package, recorded as where the
+    /// plugin came from. Null when no enabled repository lists the entry.
+    /// </param>
     Task InstallFromRepositoryAsync(
         string archivePath,
         string? expectedChecksum,
         PluginIndexSignature? indexSignature,
         bool fromOfficialMarketplace,
+        PluginRepositoryInfo? listedBy,
         CancellationToken ct = default
     );
 }

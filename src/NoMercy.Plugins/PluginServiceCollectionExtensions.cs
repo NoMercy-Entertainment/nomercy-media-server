@@ -39,6 +39,7 @@ using NoMercy.PluginSdk.Media;
 using NoMercy.PluginSdk.Network;
 using NoMercy.PluginSdk.Offline;
 using NoMercy.PluginSdk.OutOfProcess;
+using NoMercy.PluginSdk.Provenance;
 using NoMercy.PluginSdk.Quotas;
 using NoMercy.PluginSdk.Revocation;
 using NoMercy.PluginSdk.Runtime;
@@ -638,6 +639,16 @@ public static class PluginServiceCollectionExtensions
             PlatformConfiguration(sp, pluginsPath)
         ));
 
+        // Where each plugin came from, beside them for the same reason: a
+        // plugin must not be able to rewrite where it was installed from.
+        services.AddSingleton<IPluginInstallSourceStore>(
+            sp => new ConfigPluginInstallSourceStore(PlatformConfiguration(sp, pluginsPath))
+        );
+        services.AddSingleton<IPluginProvenanceReader>(sp => new PluginProvenanceReader(
+            sp.GetRequiredService<IPluginInstallSourceStore>(),
+            sp.GetRequiredService<IPluginRepository>()
+        ));
+
         // The library contracts default to the null objects declared in this
         // project. The host replaces them with the real ones — see
         // AddPluginLibraryAccess, called from the composition root, which is the
@@ -738,7 +749,8 @@ public static class PluginServiceCollectionExtensions
                 sp.GetRequiredService<PluginSideloadPolicy>(),
                 sp.GetRequiredService<PluginGuestInstaller>(),
                 sp.GetRequiredService<IPluginRegistry>(),
-                sp.GetRequiredService<IPluginApprovalStore>()
+                sp.GetRequiredService<IPluginApprovalStore>(),
+                sp.GetRequiredService<IPluginInstallSourceStore>()
             );
         });
 
@@ -891,6 +903,7 @@ internal sealed class NothingInstallsFromARepository : IPluginRepositoryInstalle
         string? expectedChecksum,
         PluginIndexSignature? indexSignature,
         bool fromOfficialMarketplace,
+        PluginRepositoryInfo? listedBy,
         CancellationToken ct = default
     ) => throw new NotSupportedException("This plugin manager cannot install from a repository.");
 }
@@ -899,6 +912,8 @@ internal sealed class NothingInstallsFromARepository : IPluginRepositoryInstalle
 internal sealed class NoOfficialMarketplace : IPluginRepositoryOrigin
 {
     public bool IsFromOfficialMarketplace(PluginRepositoryEntry entry) => false;
+
+    public PluginRepositoryInfo? ListedBy(PluginRepositoryEntry entry) => null;
 }
 
 internal sealed class NobodyIsAMember : IPluginMembership
