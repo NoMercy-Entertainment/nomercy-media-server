@@ -16271,6 +16271,10 @@
       "PluginInProcessNeedDto": {
         "type": "object",
         "properties": {
+          "notice": {
+            "type": "string",
+            "nullable": true
+          },
           "facades": {
             "type": "array",
             "items": {

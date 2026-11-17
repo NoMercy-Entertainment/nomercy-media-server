@@ -86,15 +86,15 @@ public class PluginRuntimeModeNeedsTests
     [Fact]
     public void A_plugin_that_needs_the_server_process_is_named_with_what_it_uses()
     {
-        JObject need = (JObject)RuntimeMode(new PluginIsolationFit())["needs_in_process"]![
-            Analyser.ToString()
-        ]!;
+        JObject need = (JObject)
+            RuntimeMode(new PluginIsolationFit())["needs_in_process"]![Analyser.ToString()]!;
 
         need["facades"]!
             .Values<string>()
             .Should()
             .BeEquivalentTo(nameof(IPluginContext.MusicAnalysisWriter));
         need["hooks"]!.Values<string>().Should().BeEmpty();
+        need["notice"]!.Value<string>().Should().Be(PluginIsolationLevel.NeedsInProcessKey);
         need["controllers"]!.Value<bool>().Should().BeTrue();
     }
 

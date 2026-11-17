@@ -74,6 +74,10 @@ public static class PluginRemoteReach
     /// <summary>
     /// Hooks that are an entry point the server calls on the plugin, each with
     /// the interface it calls through.
+    /// <para>
+    /// The encoder hook is here as well as beside its facades: the server also
+    /// asks an <see cref="IEncoderPlugin" /> for profiles.
+    /// </para>
     /// </summary>
     public static IReadOnlyDictionary<string, Type> EntryPointHooks { get; } =
         new Dictionary<string, Type>(StringComparer.OrdinalIgnoreCase)
@@ -83,15 +87,30 @@ public static class PluginRemoteReach
             [PluginHookCapability.Metadata] = typeof(IMetadataPlugin),
             [PluginHookCapability.ScheduledTask] = typeof(IScheduledTaskPlugin),
             [PluginHookCapability.Auth] = typeof(IAuthPlugin),
+            [PluginHookCapability.Encoder] = typeof(IEncoderPlugin),
         };
+
+    /// <summary>
+    /// Entry points no hook declares, which the server does not forward to a
+    /// plugin in another process either.
+    /// <para>
+    /// The server finds a search plugin by casting the instance it holds, so a
+    /// plugin moved elsewhere silently stops answering searches. Nothing in a
+    /// manifest says a plugin implements one, so a verdict cannot name these;
+    /// they are listed so the gap is written down rather than guessed at.
+    /// </para>
+    /// </summary>
+    public static IReadOnlySet<Type> HooklessEntryPoints { get; } =
+        new HashSet<Type> { typeof(ISearchablePlugin) };
 
     /// <summary>
     /// The entry-point hooks the server forwards to a plugin in another
     /// process.
     /// <para>
-    /// None yet. The host can dispatch five of them, but <see cref="RemotePlugin" />
-    /// implements <see cref="IPlugin" /> only, and every caller in the server
-    /// finds a plugin's entry point by casting the instance it holds.
+    /// None yet. The host can dispatch four of them and search, but
+    /// <see cref="RemotePlugin" /> implements <see cref="IPlugin" /> only, and
+    /// every caller in the server finds a plugin's entry point by casting the
+    /// instance it holds.
     /// </para>
     /// </summary>
     public static IReadOnlySet<string> ForwardedHooks { get; } =

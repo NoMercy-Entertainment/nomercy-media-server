@@ -377,7 +377,7 @@ public static class PluginServiceCollectionExtensions
             )
         );
 
-        // The four questions asked before a plugin runs. Registration fixes
+        // The five questions asked before a plugin runs. Registration fixes
         // the order once, here, so no caller can ask them in an order that
         // tells an owner to buy a build that was withdrawn.
         services.AddSingleton<PluginRevocationRunCheck>(sp =>
@@ -406,11 +406,26 @@ public static class PluginServiceCollectionExtensions
         services.AddSingleton<PluginConsentRunCheck>(sp =>
             new(sp.GetRequiredService<IPluginConsentService>())
         );
+        // Resolved when asked rather than when built: the remote loader pulls
+        // in the launcher and broker, and the gate is built long before any of
+        // that is needed. No remote loader means every plugin runs here.
+        services.AddSingleton<PluginIsolationRunCheck>(sp =>
+            new(
+                pluginId =>
+                    sp.GetService<IPluginRemoteLoader>()?.IsolationFor(pluginId)
+                    ?? PluginIsolation.InProcess,
+                sp.GetRequiredService<IPluginIsolationFit>()
+            )
+        );
         services.AddSingleton<IPluginRunGate>(sp => new PluginRunGate(
             [
                 sp.GetRequiredService<PluginRevocationRunCheck>(),
                 sp.GetRequiredService<PluginEntitlementRunCheck>(),
                 sp.GetRequiredService<PluginDependencyRunCheck>(),
+                // Before consent: an enable is the owner's answer to consent and
+                // skips that refusal, so asked after it a plugin that cannot run
+                // in its own process would be started there anyway.
+                sp.GetRequiredService<PluginIsolationRunCheck>(),
                 sp.GetRequiredService<PluginConsentRunCheck>(),
             ],
             sp.GetRequiredService<IPluginManifestSource>()

@@ -14,6 +14,13 @@ namespace NoMercy.PluginSdk.OutOfProcess;
 /// <summary>
 /// Whether a plugin can run in a process of its own, and if not, what it uses
 /// that the out-of-process runtime does not carry.
+/// <para>
+/// Read from the manifest, so it names only what a manifest declares. A plugin
+/// can also use what no hook declares - reading music, playback, the browser,
+/// or answering searches (<see cref="PluginRemoteReach.HooklessEntryPoints" />)
+/// - and none of those cross either. A verdict that it can run out of process
+/// therefore means nothing it declares is lost, not that nothing is.
+/// </para>
 /// </summary>
 /// <param name="Facades">
 /// <see cref="NoMercy.PluginSdk.Abstractions.IPluginContext" /> members its

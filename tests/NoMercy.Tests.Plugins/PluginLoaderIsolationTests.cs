@@ -60,8 +60,14 @@ public class PluginLoaderIsolationTests : IDisposable
         catch (Exception) { }
     }
 
-    private string StageEchoPlugin(bool asksForRest = false)
+    private string StageEchoPlugin(bool asksForRest = false, string? capabilities = null)
     {
+        string declared = capabilities is not null
+            ? $", \"capabilities\": {capabilities}"
+            : asksForRest
+                ? """, "capabilities": { "rest": true }"""
+                : "";
+
         string testBin = Path.GetDirectoryName(
             typeof(PluginLoaderIsolationTests).Assembly.Location
         )!;
@@ -94,7 +100,7 @@ public class PluginLoaderIsolationTests : IDisposable
               "version": "1.2.0",
               "description": "echoes",
               "assembly": "NoMercy.Plugin.Samples.Echo.dll",
-              "autoEnabled": true{{(asksForRest ? """, "capabilities": { "rest": true }""" : "")}}
+              "autoEnabled": true{{declared}}
             }
             """
         );
@@ -269,6 +275,66 @@ public class PluginLoaderIsolationTests : IDisposable
         _registry.TryGetValue(PluginId, out LoadedPlugin? loaded).Should().BeTrue();
         loaded!.Info.Status.Should().Be(PluginStatus.Active);
         loaded.Instance.Should().BeSameAs(remote.Handed);
+    }
+
+    // A plugin set to its own process that needs what that process lacks is
+    // refused, never started there broken and never moved back here (#68).
+    private static PluginRunGate IsolationGate(FakeRemoteLoader remote) =>
+        new([new PluginIsolationRunCheck(remote.IsolationFor, new PluginIsolationFit())]);
+
+    private LoadedPlugin Registered()
+    {
+        _registry.TryGetValue(PluginId, out LoadedPlugin? loaded).Should().BeTrue();
+        return loaded!;
+    }
+
+    [Fact]
+    public async Task APluginThatNeedsTheServerIsRefusedRatherThanStartedElsewhere()
+    {
+        FakeRemoteLoader remote = new(PluginIsolation.OutOfProcess, answers: true);
+        PluginRunGate gate = IsolationGate(remote);
+
+        await Loader(remote, gate)
+            .LoadPluginFromManifestAsync(StageEchoPlugin(capabilities: """{ "hooks": ["ui"] }"""));
+
+        remote.Asked.Should().Be(0);
+        _registry.TryGetValue(PluginId, out LoadedPlugin? loaded).Should().BeTrue();
+        loaded!.Info.Status.Should().Be(PluginStatus.Disabled);
+        loaded.Instance.Should().BeNull();
+        loaded.LoadContext.Should().BeNull("nothing may be mapped into this process");
+
+        PluginRefusal refusal = gate.LastRefusal(PluginId)!;
+        refusal.Code.Should().Be(PluginRefusalCodes.HostUnavailable);
+        refusal.Why.Should().Contain("the hooks ui");
+        refusal.Fix.Should().Contain(nameof(PluginIsolation.InProcess));
+    }
+
+    [Fact]
+    public async Task APluginThatFitsStillStartsElsewhere()
+    {
+        FakeRemoteLoader remote = new(PluginIsolation.OutOfProcess, answers: true);
+        PluginRunGate gate = IsolationGate(remote);
+
+        await Loader(remote, gate)
+            .LoadPluginFromManifestAsync(StageEchoPlugin(capabilities: """{ "hooks": [] }"""));
+
+        remote.Asked.Should().Be(1);
+        Registered().Instance.Should().BeSameAs(remote.Handed);
+        gate.LastRefusal(PluginId).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task AnInProcessPluginWithTheSameNeedsLoadsHereUntouched()
+    {
+        FakeRemoteLoader remote = new(PluginIsolation.InProcess, answers: true);
+        PluginRunGate gate = IsolationGate(remote);
+
+        await Loader(remote, gate)
+            .LoadPluginFromManifestAsync(StageEchoPlugin(capabilities: """{ "hooks": ["ui"] }"""));
+
+        remote.Asked.Should().Be(0);
+        Registered().LoadContext.Should().NotBeNull();
+        gate.LastRefusal(PluginId).Should().BeNull();
     }
 
     private sealed class MinimalServiceProvider(IPluginRunGate? gate) : IServiceProvider

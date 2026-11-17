@@ -43,7 +43,7 @@ public record PluginRuntimeModeDto
     /// The installed plugins that need the server's own process, by id, each
     /// with what it uses that a process of its own does not carry. Absent from
     /// the map means nothing in its manifest says it would lose anything. A
-    /// read-only answer: the server does not act on it.
+    /// plugin listed here and set to its own process is refused, not started.
     /// </summary>
     [JsonProperty("needs_in_process", NullValueHandling = NullValueHandling.Ignore)]
     public IReadOnlyDictionary<string, PluginInProcessNeedDto>? NeedsInProcess { get; init; }

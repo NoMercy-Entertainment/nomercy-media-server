@@ -18,8 +18,9 @@ namespace NoMercy.PluginSdk.OutOfProcess;
 /// <para>
 /// The manifest is what the server knows before any of a plugin's code is
 /// mapped, which is when the isolation question is asked. It names the hooks a
-/// plugin declares and whether it serves REST; it does not name facades that
-/// need no hook, such as reading music, so those are not part of the answer.
+/// plugin declares and whether it serves REST; it does not name facades or
+/// entry points that need no hook, such as reading music or answering a
+/// search, so those are not part of the answer.
 /// </para>
 /// </summary>
 public interface IPluginIsolationFit

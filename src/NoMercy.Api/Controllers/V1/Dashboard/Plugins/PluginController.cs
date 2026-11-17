@@ -592,10 +592,9 @@ public class PluginController(
     /// <summary>
     /// The mode, and whether this server can actually do it.
     /// <para>
-    /// The choice is saved either way, because it is the owner's and it is
-    /// what they will get once the runtime lands. Returning a plain OK let
-    /// them believe a plugin was isolated while every call still ran in the
-    /// server's own process.
+    /// The choice is saved either way, because it is the owner's. Returning a
+    /// plain OK let them believe every plugin would keep working in its own
+    /// process, when one that needs what that process lacks is refused.
     /// </para>
     /// </summary>
     private PluginRuntimeModeDto DescribeRuntime(PluginRuntimeMode mode)
@@ -611,9 +610,8 @@ public class PluginController(
 
     /// <summary>
     /// Every installed plugin that would lose something in a process of its
-    /// own, and what. Without it an owner who moved a plugin there saw it
-    /// start and then do nothing, with no word on the screen that moved it.
-    /// Null on a host that registered no fit check, so the field is left out
+    /// own, and what, so the screen that moves a plugin says beforehand that
+    /// it would be refused there. Null on a host that registered no fit check, so the field is left out
     /// rather than claiming every plugin fits.
     /// </summary>
     private Dictionary<string, PluginInProcessNeedDto>? NeedsInProcess()

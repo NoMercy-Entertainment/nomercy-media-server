@@ -61,7 +61,7 @@ public sealed class PluginDependencyRunCheck(PluginDependencyGate gate) : IPlugi
 /// <summary>
 /// Did the owner say yes to what it asks for.
 /// <para>
-/// Last on purpose. It is the only one of the four the owner can answer on
+/// Last on purpose. It is the one question the owner answers by saying yes on
 /// the spot, so asking it first would send them to a page that changes
 /// nothing while the real reason went unsaid.
 /// </para>

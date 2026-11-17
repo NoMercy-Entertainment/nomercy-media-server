@@ -37,7 +37,7 @@ public interface IPluginRunGate
 }
 
 /// <summary>
-/// The four questions asked before a plugin runs, in the order the owner
+/// The five questions asked before a plugin runs, in the order the owner
 /// needs the answer in.
 /// <para>
 /// Order is the whole point. A withdrawn build that is also unpaid must say

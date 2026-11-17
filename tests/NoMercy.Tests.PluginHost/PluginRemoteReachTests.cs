@@ -33,18 +33,16 @@ public class PluginRemoteReachTests
     [Fact]
     public void TheUncarriedFacades_AreExactlyTheContextMembersTheRemoteContextLeavesAtTheirDefault()
     {
-        InterfaceMapping map = typeof(RemotePluginContext).GetInterfaceMap(
-            typeof(IPluginContext)
-        );
+        InterfaceMapping map = typeof(RemotePluginContext).GetInterfaceMap(typeof(IPluginContext));
 
-        List<string> leftAtDefault = typeof(IPluginContext)
-            .GetProperties()
-            .Where(property =>
-                map.TargetMethods[Array.IndexOf(map.InterfaceMethods, property.GetMethod)]
-                    .DeclaringType
-                != typeof(RemotePluginContext)
+        // Every member, not only the properties: a method with a default body
+        // that the remote context does not override is just as absent there.
+        List<string> leftAtDefault = map
+            .InterfaceMethods.Where(
+                (_, index) => map.TargetMethods[index].DeclaringType != typeof(RemotePluginContext)
             )
-            .Select(property => property.Name)
+            .Select(MemberName)
+            .Distinct()
             .ToList();
 
         PluginRemoteReach
@@ -93,4 +91,41 @@ public class PluginRemoteReachTests
             .ForwardedHooks.Should()
             .OnlyContain(hook => PluginRemoteReach.EntryPointHooks.ContainsKey(hook));
     }
+
+    [Fact]
+    public void EveryEntryPointTheContractDeclares_IsListedWithItsHookOrAsHookless()
+    {
+        List<Type> entryPoints = typeof(IPlugin)
+            .Assembly.GetExportedTypes()
+            .Where(type =>
+                type.IsInterface
+                && type != typeof(IPlugin)
+                && typeof(IPlugin).IsAssignableFrom(type)
+            )
+            .ToList();
+
+        PluginRemoteReach
+            .EntryPointHooks.Values.Concat(PluginRemoteReach.HooklessEntryPoints)
+            .Should()
+            .BeEquivalentTo(
+                entryPoints,
+                "a new entry point says which hook declares it, or that none does"
+            );
+    }
+
+    [Fact]
+    public void TheHooklessEntryPoints_AreOnesTheServerSideProxyDoesNotForward()
+    {
+        PluginRemoteReach
+            .HooklessEntryPoints.Should()
+            .OnlyContain(
+                entryPoint => !entryPoint.IsAssignableFrom(typeof(RemotePlugin)),
+                "the list names what a plugin in its own process loses"
+            );
+    }
+
+    private static string MemberName(MethodInfo method) =>
+        method.IsSpecialName && method.Name.StartsWith("get_", StringComparison.Ordinal)
+            ? method.Name["get_".Length..]
+            : method.Name;
 }

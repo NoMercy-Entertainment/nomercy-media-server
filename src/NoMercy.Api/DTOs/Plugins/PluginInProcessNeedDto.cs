@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using Newtonsoft.Json;
+using NoMercy.PluginSdk;
 
 namespace NoMercy.Api.DTOs.Plugins;
 
@@ -20,6 +21,10 @@ namespace NoMercy.Api.DTOs.Plugins;
 /// </summary>
 public record PluginInProcessNeedDto
 {
+    /// <summary>The key the clients translate for this entry.</summary>
+    [JsonProperty("notice")]
+    public string Notice { get; init; } = PluginIsolationLevel.NeedsInProcessKey;
+
     /// <summary>Plugin context facades it declares and the other process leaves empty.</summary>
     [JsonProperty("facades")]
     public IReadOnlyList<string> Facades { get; init; } = [];
