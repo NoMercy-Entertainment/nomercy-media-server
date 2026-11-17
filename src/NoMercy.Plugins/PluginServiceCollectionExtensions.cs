@@ -210,10 +210,7 @@ public static class PluginServiceCollectionExtensions
         {
             IStorageDriver driver = sp.GetRequiredService<IStorageDriver>();
             IStorage storage = new LocalStorage(driver, new([pluginsPath], driver));
-            IPluginConfiguration configuration = new PluginConfiguration(
-                Path.Combine(pluginsPath, "data", "platform"),
-                storage
-            );
+            IPluginConfiguration configuration = PlatformConfiguration(sp);
 
             // Built here the way the manager builds its own: the purge is not
             // a registered service, and a guest leaving has to remove exactly
@@ -611,17 +608,18 @@ public static class PluginServiceCollectionExtensions
             );
         });
 
-        services.AddSingleton<IPluginConsentStore>(sp =>
-        {
-            IStorageDriver driver = sp.GetRequiredService<IStorageDriver>();
-            IStorage storage = new LocalStorage(driver, new([pluginsPath], driver));
-            string platformDataFolder = Path.Combine(pluginsPath, "data", "platform");
-            IPluginConfiguration configuration = new PluginConfiguration(
-                platformDataFolder,
-                storage
-            );
-            return new ConfigPluginConsentStore(configuration);
-        });
+        // One instance over the platform config file for every store that
+        // writes it. Each instance has its own lock, and a save is a read,
+        // merge and write of the whole file, so two instances could each write
+        // back a copy missing the other's change.
+        services.AddSingleton<IPluginPlatformConfiguration>(sp => new PluginPlatformConfiguration(
+            pluginsPath,
+            PluginStorage(sp, pluginsPath)
+        ));
+
+        services.AddSingleton<IPluginConsentStore>(sp => new ConfigPluginConsentStore(
+            PlatformConfiguration(sp)
+        ));
 
         services.AddSingleton<IPluginConsentService, PluginConsentService>();
 
@@ -629,20 +627,20 @@ public static class PluginServiceCollectionExtensions
         // never in a plugin's own folder: a plugin must not be able to edit the
         // record of what it was allowed to do.
         services.AddSingleton<IPluginGrantStore>(sp => new ConfigPluginGrantStore(
-            PlatformConfiguration(sp, pluginsPath)
+            PlatformConfiguration(sp)
         ));
 
         // And so do the owner's approvals of hand-dropped plugin folders, for
         // the same reason: whoever can write the folder must not be able to
         // write its approval.
         services.AddSingleton<IPluginApprovalStore>(sp => new ConfigPluginApprovalStore(
-            PlatformConfiguration(sp, pluginsPath)
+            PlatformConfiguration(sp)
         ));
 
         // Where each plugin came from, beside them for the same reason: a
         // plugin must not be able to rewrite where it was installed from.
         services.AddSingleton<IPluginInstallSourceStore>(
-            sp => new ConfigPluginInstallSourceStore(PlatformConfiguration(sp, pluginsPath))
+            sp => new ConfigPluginInstallSourceStore(PlatformConfiguration(sp))
         );
         services.AddSingleton<IPluginProvenanceReader>(sp => new PluginProvenanceReader(
             sp.GetRequiredService<IPluginInstallSourceStore>(),
@@ -683,7 +681,7 @@ public static class PluginServiceCollectionExtensions
             sp.GetRequiredService<IDataProtectionProvider>(),
             sp.GetRequiredService<IPluginLibraryQuery>(),
             sp.GetRequiredService<IPluginLibraryWriterFactory>(),
-            PlatformConfiguration(sp, pluginsPath),
+            PlatformConfiguration(sp),
             sp.GetRequiredService<IPluginHubContextFactory>(),
             // Optional: GetService, not GetRequiredService. A host that never
             // called AddPluginLibraryAccess (or the encoder/storage wiring)
@@ -750,7 +748,8 @@ public static class PluginServiceCollectionExtensions
                 sp.GetRequiredService<PluginGuestInstaller>(),
                 sp.GetRequiredService<IPluginRegistry>(),
                 sp.GetRequiredService<IPluginApprovalStore>(),
-                sp.GetRequiredService<IPluginInstallSourceStore>()
+                sp.GetRequiredService<IPluginInstallSourceStore>(),
+                PlatformConfiguration(sp)
             );
         });
 
@@ -810,14 +809,8 @@ public static class PluginServiceCollectionExtensions
         return new LocalStorage(driver, new([pluginsPath], driver));
     }
 
-    private static IPluginConfiguration PlatformConfiguration(
-        IServiceProvider sp,
-        string pluginsPath
-    ) =>
-        new PluginConfiguration(
-            Path.Combine(pluginsPath, "data", "platform"),
-            PluginStorage(sp, pluginsPath)
-        );
+    private static IPluginPlatformConfiguration PlatformConfiguration(IServiceProvider sp) =>
+        sp.GetRequiredService<IPluginPlatformConfiguration>();
 
     /// <summary>
     /// Records which plugins were present before the request pipeline was

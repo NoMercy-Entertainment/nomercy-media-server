@@ -49,6 +49,7 @@ public class PluginManager
     private readonly IPluginRegistry _registry;
     private readonly IPluginApprovalStore _approvals;
     private readonly IPluginInstallSourceStore _installSources;
+    private readonly IPluginPlatformConfiguration _platformConfiguration;
     private readonly PluginDropGate _dropGate;
     private readonly PluginLoader _loader;
     private readonly PluginLifecycleManager _lifecycle;
@@ -86,7 +87,8 @@ public class PluginManager
         PluginGuestInstaller? guestInstaller = null,
         IPluginRegistry? registry = null,
         IPluginApprovalStore? approvalStore = null,
-        IPluginInstallSourceStore? installSourceStore = null
+        IPluginInstallSourceStore? installSourceStore = null,
+        IPluginPlatformConfiguration? platformConfiguration = null
     )
     {
         _eventBus = eventBus ?? throw new ArgumentNullException(nameof(eventBus));
@@ -96,18 +98,19 @@ public class PluginManager
         _pluginsPath = pluginsPath ?? throw new ArgumentNullException(nameof(pluginsPath));
         _driver = driver ?? throw new ArgumentNullException(nameof(driver));
         _storage = storage ?? throw new ArgumentNullException(nameof(storage));
+
+        // One instance for every store this manager builds itself, and the
+        // container's own instance when it supplies one: see
+        // IPluginPlatformConfiguration for why one file needs one lock.
+        _platformConfiguration =
+            platformConfiguration ?? new PluginPlatformConfiguration(_pluginsPath, _storage);
         _verifier = verifier ?? new PluginVerifier();
         _sideloadPolicy = sideloadPolicy;
         _guestInstaller = guestInstaller;
         _consentService =
             consentService
             ?? new PluginConsentService(
-                new ConfigPluginConsentStore(
-                    new PluginConfiguration(
-                        _storage.CombinePath(_pluginsPath, "data", "platform"),
-                        _storage
-                    )
-                ),
+                new ConfigPluginConsentStore(PlatformConfiguration()),
                 _logger
             );
         _registry = registry ?? new PluginRegistry();
@@ -179,8 +182,7 @@ public class PluginManager
         );
     }
 
-    private PluginConfiguration PlatformConfiguration() =>
-        new(_storage.CombinePath(_pluginsPath, "data", "platform"), _storage);
+    private IPluginPlatformConfiguration PlatformConfiguration() => _platformConfiguration;
 
     public IReadOnlyList<PluginInfo> GetInstalledPlugins()
     {
