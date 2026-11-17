@@ -1084,4 +1084,16 @@
     <Key>Creator</Key>
     <Value lang="nl">Bedenker</Value>
   </Entry>
+  <Entry>
+    <Key>Collections</Key>
+    <Value lang="nl">Collecties</Value>
+  </Entry>
+  <Entry>
+    <Key>Writer &amp; Director</Key>
+    <Value lang="nl">Schrijver &amp; Regisseur</Value>
+  </Entry>
+  <Entry>
+    <Key>Cast</Key>
+    <Value lang="nl">Cast</Value>
+  </Entry>
 </I18N>

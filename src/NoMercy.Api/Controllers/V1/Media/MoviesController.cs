@@ -16,6 +16,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using NoMercy.Api.DTOs.Common;
 using NoMercy.Api.DTOs.Media;
+using NoMercy.Api.DTOs.Media.Components;
 using NoMercy.Authorization;
 using NoMercy.Data.Repositories;
 using NoMercy.Database.Models.Libraries;
@@ -48,7 +49,11 @@ public class MoviesController(
 {
     [HttpGet]
     [ResponseCache(NoStore = true)]
-    public async Task<IActionResult> Movie(int id, CancellationToken ct = default)
+    public async Task<IActionResult> Movie(
+        int id,
+        [FromQuery(Name = "version")] string? responseVersion = null,
+        CancellationToken ct = default
+    )
     {
         Guid userId = User.UserId();
         if (!AuthPolicy.IsAllowed(User))
@@ -60,7 +65,7 @@ public class MoviesController(
         Movie? movie = await movieRepository.GetMovieDetailAsync(userId, id, language, country, ct);
 
         if (movie is not null)
-            return Ok(new InfoResponseDto { Data = new(movie, country) });
+            return InfoResponse(new(movie, country), responseVersion);
 
         try
         {
@@ -78,13 +83,18 @@ public class MoviesController(
                     "Movie is adult which is not allowed by the server configuration"
                 );
 
-            return Ok(new InfoResponseDto { Data = new(movieAppends, country) });
+            return InfoResponse(new(movieAppends, country), responseVersion);
         }
         catch (Exception)
         {
             return NotFoundResponse("Movie not found");
         }
     }
+
+    private IActionResult InfoResponse(InfoResponseItemDto item, string? responseVersion) =>
+        responseVersion == "lolomo"
+            ? Ok(ComponentResponse.From(InfoPage.Build(item)))
+            : Ok(new InfoResponseDto { Data = item });
 
     [HttpDelete]
     [Authorize(Policy = "Moderator")]
