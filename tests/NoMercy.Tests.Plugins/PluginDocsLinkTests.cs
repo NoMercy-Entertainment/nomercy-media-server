@@ -13,6 +13,7 @@ using System.Reflection;
 using System.Text.RegularExpressions;
 using FluentAssertions;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.Tests.Common;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;
@@ -31,12 +32,12 @@ namespace NoMercy.Tests.Plugins;
 public class PluginDocsLinkTests
 {
     /// <summary>
-    /// The hand-written plugin pages on the docs site, as paths under
-    /// <see cref="PluginDocs.Site" />. They live in the nomercy-docs repository
-    /// (src/content/nomercy-plugins/en). The capability pages beside them are
-    /// generated from the plugin contract, one per capability, and
-    /// tools/plugin-contract checks they exist, so they are read from
-    /// <see cref="PluginCapabilityVocabulary" /> rather than listed here.
+    /// The hand-written plugin pages on the docs site that something here links,
+    /// as paths under <see cref="PluginDocs.Site" />. They live in the
+    /// nomercy-docs repository (src/content/nomercy-plugins/en). The capability
+    /// pages beside them are generated from the plugin contract, one per
+    /// capability, and tools/plugin-contract checks they exist, so they are read
+    /// from <see cref="PluginCapabilityVocabulary" /> rather than listed here.
     /// Add a path here only after the page is live.
     /// </summary>
     private static readonly string[] HandWrittenSitePages =
@@ -44,46 +45,95 @@ public class PluginDocsLinkTests
         "/nomercy-plugins",
         "/nomercy-plugins/overview",
         "/nomercy-plugins/capabilities",
-        "/nomercy-plugins/handbook/identifiers",
         "/nomercy-plugins/handbook/runtime-and-isolation",
     ];
 
+    // Every pattern carries a timeout, like all regexes in this repository
+    // (RegexTimeoutAuditTests).
+    private static readonly TimeSpan MatchTimeout = TimeSpan.FromSeconds(1);
+
     private static readonly Regex SiteLink = new(
         @"https://docs\.nomercy\.tv(/nomercy-plugins[a-z0-9/-]*)",
-        RegexOptions.Compiled
+        RegexOptions.Compiled,
+        MatchTimeout
     );
 
     private static readonly Regex RepositoryLink = new(
         Regex.Escape(PluginDocs.Repository) + @"/([a-z0-9-]+\.md)(#[a-z0-9-]+)?",
-        RegexOptions.Compiled
+        RegexOptions.Compiled,
+        MatchTimeout
     );
 
-    // A docs path written as a bare string, the way every refusal used to.
-    // The lookbehind leaves repository URLs such as
-    // github.com/NoMercy-Entertainment/nomercy-plugins alone.
-    private static readonly Regex HandSpelledDocsPath = new(
-        @"(?<![\w/.-])/nomercy-plugins/|nomercy\.tv/docs",
-        RegexOptions.Compiled
-    );
+    /// <summary>
+    /// The ways a docs link has been, or could be, spelled by hand in source.
+    /// Each one belongs in <see cref="PluginDocs" /> instead.
+    /// </summary>
+    private static readonly (string Why, Regex Pattern)[] HandSpelledDocs =
+    [
+        // Bare or full, with or without a trailing slash. The lookbehind leaves
+        // the nomercy-plugins repository (the plugin index) alone.
+        (
+            "a docs path",
+            new(
+                @"(?<!(github|githubusercontent)\.com/NoMercy-Entertainment)/nomercy-plugins\b",
+                RegexOptions.Compiled,
+                MatchTimeout
+            )
+        ),
+        // A path that starts at /plugins/, the prefix an old refusal used. API
+        // routes are left alone: they have a segment such as v1 or a } before it.
+        (
+            "a /plugins/ docs path",
+            new(@"(?<=[""\s(`'])/plugins/", RegexOptions.Compiled, MatchTimeout)
+        ),
+        ("the docs site", new(@"docs\.nomercy\.tv", RegexOptions.Compiled, MatchTimeout)),
+        (
+            "a docs page in this repository",
+            new(@"blob/dev/docs/plugins", RegexOptions.Compiled, MatchTimeout)
+        ),
+        (
+            "a docs site that does not exist",
+            new(@"nomercy\.tv/docs", RegexOptions.Compiled, MatchTimeout)
+        ),
+        // Docs: has to be followed by a PluginDocs constant, either inside an
+        // interpolated string or concatenated, on the same line or the next.
+        (
+            "a Docs: line without PluginDocs",
+            new(
+                @"Docs:(?!\s*\{PluginDocs\.|\s*""\s*\+\s*PluginDocs\.)",
+                RegexOptions.Compiled,
+                MatchTimeout
+            )
+        ),
+    ];
 
+    /// <summary>
+    /// Every site constant in <see cref="PluginDocs" /> is one of the known
+    /// pages: the hand-written list above or a generated capability page. This
+    /// does not reach the live site. It proves the constants and the list
+    /// agree, and the list is kept to pages that were live when it was written.
+    /// </summary>
     [Fact]
-    public void Every_site_page_the_refusals_link_is_on_the_site()
+    public void Every_site_constant_is_a_known_site_page()
     {
         HashSet<string> known = KnownSitePages();
 
-        IEnumerable<string> missing = DocsConstants()
+        IEnumerable<string> unknown = DocsConstants()
             .Where(url => url.StartsWith(PluginDocs.Site, StringComparison.Ordinal))
             .Select(url => url[PluginDocs.Site.Length..])
             .Where(path => !known.Contains(path));
 
-        string.Join(Environment.NewLine, missing).Should().BeEmpty("a refusal that names a page the site does not have sends the author nowhere");
+        string.Join(Environment.NewLine, unknown)
+            .Should()
+            .BeEmpty("a refusal that names a page the site does not have sends the author nowhere");
     }
 
     [Fact]
     public void Every_repository_page_the_refusals_link_is_in_docs_plugins()
     {
-        IEnumerable<string> repositoryLinks = DocsConstants()
-            .Where(url => url.StartsWith(PluginDocs.Repository, StringComparison.Ordinal));
+        List<string> repositoryLinks = DocsConstants()
+            .Where(url => url.StartsWith(PluginDocs.Repository, StringComparison.Ordinal))
+            .ToList();
 
         repositoryLinks.Should().NotBeEmpty();
 
@@ -111,39 +161,35 @@ public class PluginDocsLinkTests
     [Fact]
     public void No_source_file_spells_a_docs_link_by_hand()
     {
-        string root = RepoRoot();
+        string root = RepoPaths.Root;
 
-        IEnumerable<string> sources = new[] { "src", "tools", "templates" }
-            .Select(folder => Path.Combine(root, folder))
-            .Where(Directory.Exists)
-            .SelectMany(folder => Directory.EnumerateFiles(folder, "*.cs", SearchOption.AllDirectories))
-            .Where(file => !IsBuildOutput(file))
-            .Where(file => !file.Contains($"{Path.DirectorySeparatorChar}Generated{Path.DirectorySeparatorChar}"))
+        IEnumerable<string> sources = Files(root, "*.cs", "src", "tools", "templates")
+            .Where(file =>
+                !file.Contains(
+                    $"{Path.DirectorySeparatorChar}Generated{Path.DirectorySeparatorChar}"
+                )
+            )
             .Where(file => Path.GetFileName(file) != $"{nameof(PluginDocs)}.cs");
 
         List<string> offenders = [];
         foreach (string file in sources)
-        {
-            string[] lines = File.ReadAllLines(file);
-            for (int index = 0; index < lines.Length; index++)
-                if (HandSpelledDocsPath.IsMatch(lines[index]))
-                    offenders.Add($"{Path.GetRelativePath(root, file)}:{index + 1}");
-        }
+            offenders.AddRange(
+                HandSpelled(File.ReadAllText(file), Path.GetRelativePath(root, file))
+            );
 
-        string.Join(Environment.NewLine, offenders).Should().BeEmpty("a docs link belongs in PluginDocs, where one change moves every refusal");
+        string.Join(Environment.NewLine, offenders)
+            .Should()
+            .BeEmpty("a docs link belongs in PluginDocs, where one change moves every refusal");
     }
 
     [Fact]
     public void Every_docs_link_in_a_readme_or_a_doc_goes_to_a_page_that_exists()
     {
-        string root = RepoRoot();
+        string root = RepoPaths.Root;
         HashSet<string> known = KnownSitePages();
 
-        IEnumerable<string> documents = Directory
-            .EnumerateFiles(Path.Combine(root, "src"), "README.md", SearchOption.AllDirectories)
-            .Concat(Directory.EnumerateFiles(Path.Combine(root, "docs"), "*.md", SearchOption.AllDirectories))
-            .Concat(Directory.EnumerateFiles(Path.Combine(root, "templates"), "*.md", SearchOption.AllDirectories))
-            .Where(file => !IsBuildOutput(file));
+        IEnumerable<string> documents = Files(root, "README.md", "src")
+            .Concat(Files(root, "*.md", "docs", "templates"));
 
         List<string> problems = [];
         foreach (string file in documents)
@@ -169,23 +215,80 @@ public class PluginDocsLinkTests
             }
         }
 
-        string.Join(Environment.NewLine, problems).Should().BeEmpty("every link has to reach a page");
+        string.Join(Environment.NewLine, problems)
+            .Should()
+            .BeEmpty("every link has to reach a page");
     }
 
     [Fact]
     public void The_sdk_readmes_link_the_docs_site()
     {
-        string root = RepoRoot();
+        string src = RepoPaths.Src;
 
-        IEnumerable<string> readmes = Directory
-            .EnumerateDirectories(Path.Combine(root, "src"), "NoMercy.PluginSdk.*")
-            .Select(folder => Path.Combine(folder, "README.md"))
-            .Where(File.Exists);
+        List<string> readmes = Directory.Exists(src)
+            ? Directory
+                .EnumerateDirectories(src, "NoMercy.PluginSdk.*")
+                .Select(folder => Path.Combine(folder, "README.md"))
+                .Where(File.Exists)
+                .ToList()
+            : [];
 
         readmes.Should().NotBeEmpty();
 
         foreach (string readme in readmes)
             File.ReadAllText(readme).Should().Contain(PluginDocs.Overview, readme);
+    }
+
+    [Theory]
+    [InlineData("\"Fix it. Docs: /nomercy-plugins/capabilities/network-dial\"")]
+    [InlineData("\"Fix it. See https://docs.nomercy.tv/nomercy-plugins/capabilities\"")]
+    [InlineData("const string Root = \"/nomercy-plugins\";")]
+    [InlineData("\"Fix it. Docs: /plugins/capabilities/media-proxy\"")]
+    [InlineData("\"https://docs.nomercy.tv/nomercy-media-server\"")]
+    [InlineData(
+        "\"https://github.com/NoMercy-Entertainment/nomercy-media-server/blob/dev/docs/plugins/x.md\""
+    )]
+    [InlineData("\"https://nomercy.tv/docs\"")]
+    [InlineData("\"Fix it. Docs: see the handbook\"")]
+    [InlineData("\"Fix it. Docs: \" + SomewhereElse.Page")]
+    public void A_hand_spelled_link_is_caught(string line)
+    {
+        HandSpelled(line, "planted").Should().NotBeEmpty(line);
+    }
+
+    [Theory]
+    [InlineData("\"Fix it. Docs: \" + PluginDocs.NetworkDial")]
+    [InlineData("$\"Fix {it}. Docs: {PluginDocs.Versioning}\"")]
+    [InlineData("\"Fix it. Docs: \"\n        + PluginDocs.MediaProxy;")]
+    [InlineData(
+        "\"https://raw.githubusercontent.com/NoMercy-Entertainment/nomercy-plugins/master/index.json\""
+    )]
+    [InlineData("[HttpGet(\"api/v{version:apiVersion}/plugins/{id:ulid}/view\")]")]
+    [InlineData("$\"/api/v1/plugins/{pluginId}/media/{ticket}\"")]
+    public void A_link_through_plugin_docs_or_a_route_is_not_caught(string line)
+    {
+        HandSpelled(line, "planted").Should().BeEmpty(line);
+    }
+
+    private static IEnumerable<string> HandSpelled(string text, string where)
+    {
+        foreach ((string why, Regex pattern) in HandSpelledDocs)
+        foreach (Match match in pattern.Matches(text))
+        {
+            int line = 1 + text.AsSpan(0, match.Index).Count('\n');
+            yield return $"{where}:{line}: {why}";
+        }
+    }
+
+    private static IEnumerable<string> Files(string root, string pattern, params string[] folders)
+    {
+        return folders
+            .Select(folder => Path.Combine(root, folder))
+            .Where(Directory.Exists)
+            .SelectMany(folder =>
+                Directory.EnumerateFiles(folder, pattern, SearchOption.AllDirectories)
+            )
+            .Where(file => !IsBuildOutput(file));
     }
 
     private static HashSet<string> KnownSitePages()
@@ -200,7 +303,9 @@ public class PluginDocsLinkTests
         return typeof(PluginDocs)
             .GetFields(BindingFlags.Public | BindingFlags.Static)
             .Where(field => field is { IsLiteral: true, FieldType.Name: nameof(String) })
-            .Where(field => field.Name is not (nameof(PluginDocs.Site) or nameof(PluginDocs.Repository)))
+            .Where(field =>
+                field.Name is not (nameof(PluginDocs.Site) or nameof(PluginDocs.Repository))
+            )
             .Select(field => (string)field.GetRawConstantValue()!);
     }
 
@@ -211,7 +316,7 @@ public class PluginDocsLinkTests
         if (!match.Success || match.Value != url)
             return $"{url} is not a page under {PluginDocs.Repository}";
 
-        string page = Path.Combine(RepoRoot(), "docs", "plugins", match.Groups[1].Value);
+        string page = RepoPaths.At("docs", "plugins", match.Groups[1].Value);
         if (!File.Exists(page))
             return $"{url}: docs/plugins/{match.Groups[1].Value} does not exist";
 
@@ -219,19 +324,38 @@ public class PluginDocsLinkTests
             return null;
 
         string anchor = match.Groups[2].Value[1..];
-        bool hasHeading = File.ReadAllLines(page)
-            .Where(line => line.StartsWith('#'))
-            .Select(line => HeadingAnchor(line.TrimStart('#').Trim()))
-            .Contains(anchor);
 
-        return hasHeading ? null : $"{url}: no heading in {match.Groups[1].Value} makes the anchor #{anchor}";
+        return HeadingAnchors(File.ReadAllLines(page)).Contains(anchor)
+            ? null
+            : $"{url}: no heading in {match.Groups[1].Value} makes the anchor #{anchor}";
+    }
+
+    // A # inside a fenced code block is a comment in the code, not a heading.
+    private static IEnumerable<string> HeadingAnchors(IEnumerable<string> lines)
+    {
+        bool inFence = false;
+        foreach (string line in lines)
+        {
+            if (line.TrimStart().StartsWith("```", StringComparison.Ordinal))
+            {
+                inFence = !inFence;
+                continue;
+            }
+
+            if (!inFence && line.StartsWith('#'))
+                yield return HeadingAnchor(line.TrimStart('#').Trim());
+        }
     }
 
     // The anchor GitHub gives a heading: lower case, punctuation dropped, spaces to hyphens.
     private static string HeadingAnchor(string heading)
     {
         string lower = heading.ToLowerInvariant();
-        string kept = new(lower.Where(character => char.IsLetterOrDigit(character) || character is ' ' or '-').ToArray());
+        string kept = new(
+            lower
+                .Where(character => char.IsLetterOrDigit(character) || character is ' ' or '-')
+                .ToArray()
+        );
         return kept.Replace(' ', '-');
     }
 
@@ -241,13 +365,5 @@ public class PluginDocsLinkTests
         return file.Contains($"{separator}bin{separator}")
             || file.Contains($"{separator}obj{separator}")
             || file.Contains($"{separator}node_modules{separator}");
-    }
-
-    private static string RepoRoot()
-    {
-        string? dir = AppContext.BaseDirectory;
-        while (dir is not null && !Directory.Exists(Path.Combine(dir, "src", "NoMercy.Plugins")))
-            dir = Path.GetDirectoryName(dir);
-        return dir ?? throw new DirectoryNotFoundException("repository root not found");
     }
 }

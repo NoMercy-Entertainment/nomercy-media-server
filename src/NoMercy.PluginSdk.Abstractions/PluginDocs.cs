@@ -20,9 +20,9 @@ namespace NoMercy.PluginSdk.Abstractions;
 /// When a page moves, change it here and every refusal follows.
 /// </para>
 /// <para>
-/// Constants on purpose. A constant is copied into the code that reads it, so
-/// a plugin built against one never asks the server for it at run time, and
-/// adding a page here does not change the ABI.
+/// Part of ABI 12.11. Constants on purpose: a constant is copied into the code
+/// that reads it, so a plugin built against one never asks the server for it at
+/// run time. Adding a page later is a minor addition, like any public constant.
 /// </para>
 /// </summary>
 public static class PluginDocs
