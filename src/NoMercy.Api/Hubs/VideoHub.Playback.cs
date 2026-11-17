@@ -157,8 +157,14 @@ public partial class VideoHub
                 HubCommandResult.Invalid("Playback type or item id is invalid.")
             );
 
+        // Clients send the list id as a string or a JSON number (a long); the
+        // playlist lookup parses text, so normalize both here.
+        string listIdText = Convert.ToString((object)listId, CultureInfo.InvariantCulture) ?? "";
+        if (string.IsNullOrWhiteSpace(listIdText))
+            return Task.FromResult(HubCommandResult.Invalid("Playback list id is invalid."));
+
         return HubCommandResult.ExecuteAsync(
-            () => StartPlaybackCoreAsync(type, listId, itemId),
+            () => StartPlaybackCoreAsync(type, listIdText, itemId),
             _logger
         );
     }

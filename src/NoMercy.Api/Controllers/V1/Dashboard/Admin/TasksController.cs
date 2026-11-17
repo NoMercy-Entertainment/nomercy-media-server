@@ -32,6 +32,7 @@ using NoMercy.Encoder.Profiles;
 using NoMercy.Events;
 using NoMercy.Events.Encoding;
 using NoMercy.MediaProcessing.AudioAnalysis;
+using NoMercy.MediaProcessing.Files;
 using NoMercy.MediaProcessing.Jobs;
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
 using NoMercy.MediaProcessing.Jobs.SubtitleJobs;
@@ -743,8 +744,8 @@ public class TasksController(
             ),
             SubtitleOcrBackfillJob ocr => (
                 "subtitles",
-                $"{ocr.MediaTitle} ({ocr.Language})",
-                ocr.SupFileName,
+                OcrCardTitle(ocr.PendingTracks()),
+                string.Join(", ", ocr.PendingTracks().Select(track => track.SupName)),
                 ocr.HostFolder
             ),
             _ => (string.Empty, string.Empty, string.Empty, string.Empty),
@@ -758,8 +759,7 @@ public class TasksController(
             Id = row.Id,
             Priority = row.Priority,
             // What the work is about and what does not move, which is what a list
-            // key needs. Two OCR passes over one folder differ by their sup file,
-            // so that is the key there; a preview rebuild is one per folder.
+            // key needs: the folder for a preview, the folder's sup files for OCR.
             PayloadId = target,
             Title = title,
             Type = job!.GetType().Name,
@@ -770,6 +770,11 @@ public class TasksController(
 
         return new(dto, hostFolder);
     }
+
+    private static string OcrCardTitle(IReadOnlyList<OrphanedBitmapSubtitle> tracks) =>
+        tracks.Count == 0
+            ? string.Empty
+            : $"{tracks[0].MediaTitle} ({string.Join(", ", tracks.Select(track => track.Language).Distinct())})";
 
     /// <summary>
     /// Gives every maintenance row the title and the still of the file it is
