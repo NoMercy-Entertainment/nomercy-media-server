@@ -27,8 +27,10 @@ public class PluginSecretStoreTests
     private static readonly Ulid PluginA = Ulid.Parse("0H248H248H248H248H248H248H");
     private static readonly Ulid PluginB = Ulid.Parse("1248H248H248H248H248H248H2");
 
-    private static PluginSecretStore Store(Ulid pluginId, IPluginConfiguration configuration) =>
-        new(pluginId, new EphemeralDataProtectionProvider(), configuration);
+    private static PluginSecretStore Store(
+        Ulid pluginId,
+        IPluginAtomicConfiguration configuration
+    ) => new(pluginId, new EphemeralDataProtectionProvider(), configuration);
 
     [Fact]
     public async Task A_value_round_trips()
@@ -163,7 +165,7 @@ public class PluginSecretStoreTests
     // mutation.
     private static PluginSecretStore StoreFor(
         Ulid pluginId,
-        IPluginConfiguration configuration,
+        IPluginAtomicConfiguration configuration,
         UserId? caller,
         IDataProtectionProvider protection
     ) => new(pluginId, protection, configuration, () => caller);

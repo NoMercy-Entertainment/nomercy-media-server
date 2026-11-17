@@ -102,6 +102,11 @@ public static class PluginAnalyzerDescriptors
             "IScheduledTaskPlugin is obsolete. Register jobs through context.Scheduler.",
             "scheduler"
         ),
+        new(
+            "NMP0017",
+            "An app shelf or card is built without its id in props, so the app draws nothing. Use PluginShelves.",
+            null
+        ),
     ];
 
     public static PluginAnalyzerDescriptor ById(string id) =>

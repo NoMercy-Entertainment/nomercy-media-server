@@ -49,6 +49,18 @@ public class PluginConsentRevokeTests
                     .Select(entry => entry.Value),
             ];
 
+        public IReadOnlyList<PluginGrantEntry> HeldBy(Ulid pluginId) =>
+            [
+                .. _grants
+                    .Where(entry => entry.Plugin == pluginId)
+                    .Select(entry => new PluginGrantEntry
+                    {
+                        PluginId = entry.Plugin,
+                        Kind = entry.Kind,
+                        Value = entry.Value,
+                    }),
+            ];
+
         public bool Holds(Ulid pluginId, string kind, string value) =>
             Granted(pluginId, kind).Contains(value);
 

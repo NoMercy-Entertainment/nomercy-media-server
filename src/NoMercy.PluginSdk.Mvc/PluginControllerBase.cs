@@ -53,7 +53,7 @@ public abstract class PluginControllerBase : ControllerBase
                 PluginId.ToString(),
                 "A plugin controller read Caller on a request the host did not resolve a caller for.",
                 "Every plugin request carries the caller the host resolved, so the plugin never has to trust a token.",
-                "Reach this controller through the plugin route prefix. Docs: /nomercy-plugins/tour/callers-and-access",
+                "Reach this controller through the plugin route prefix. Docs: " + PluginDocs.Rest,
                 PluginRefusalSeverity.Blocked
             )
         );

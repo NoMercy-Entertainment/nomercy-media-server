@@ -36,7 +36,8 @@ public sealed record PluginCaller(
             plugin,
             $"{caller.DisplayName} opened {route}, which the plugin marks owner only.",
             "A route marked owner is for the person who runs the server, not for members or guests.",
-            "Mark the route access shared in the route table if members should see it. Docs: /nomercy-plugins/tour/callers-and-access",
+            "Mark the route access shared in the route table if members should see it. Docs: "
+                + PluginDocs.Rest,
             PluginRefusalSeverity.Blocked
         );
     }

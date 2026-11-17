@@ -31,6 +31,12 @@ namespace NoMercy.PluginHost;
 /// log under the plugin's name — a log line is the one thing that must still
 /// arrive when the channel is the thing that broke.
 /// </para>
+/// <para>
+/// The members this leaves at the interface default are listed in
+/// <c>PluginRemoteReach</c> in NoMercy.Plugins, which the dashboard reads to
+/// tell an owner what a plugin would lose here. A test holds the two together:
+/// carry a facade, or add one to the contract, and update that list with it.
+/// </para>
 /// </summary>
 public sealed class RemotePluginContext : IPluginContext
 {
@@ -134,7 +140,8 @@ public sealed class RemotePluginContext : IPluginContext
             _launch.PluginId.ToString(),
             $"A plugin in its own process asked for {facade}.",
             "This server runs the plugin out of process, and that facade does not cross the boundary yet.",
-            "Run this plugin in the server's own process until the facade is carried across. Docs: /nomercy-plugins/handbook/runtime-and-isolation",
+            "Run this plugin in the server's own process until the facade is carried across. Docs: "
+                + PluginDocs.RuntimeAndIsolation,
             PluginRefusalSeverity.Blocked
         );
 }

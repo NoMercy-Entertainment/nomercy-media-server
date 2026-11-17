@@ -1,0 +1,244 @@
+{
+ "series": "Hellsing (2001), season 1",
+ "library_type": "anime",
+ "source": "chapters.vtt of the encoded episodes in Z:/Anime/Anime/Hellsing.(2001), read 2026-11-17",
+ "truth": "Chapter titles. nomercy-segment-research (#598) confirmed every OP and ED by audio fingerprint: 13/13 intros, 13/13 endings, 38/38 chapter edges within 5 s.",
+ "shape": "Titled: OP / Intro / Part A / Part B / ED / Preview. The first chapter starts at 4.8 s, so the scan adds a \"Start\" chapter. \"Intro\" is story (20-227 s), never the opening song. E13 has an Epilogue, an ED as last chapter and no Preview.",
+ "episodes": [
+  {
+   "episode": "S01E01",
+   "chapters": [
+    {"title": "OP", "start": "00:00:04.800", "end": "00:01:23.061"},
+    {"title": "Intro", "start": "00:01:23.061", "end": "00:05:10.438"},
+    {"title": "Part A", "start": "00:05:10.438", "end": "00:11:26.900"},
+    {"title": "Part B", "start": "00:11:26.900", "end": "00:21:22.534"},
+    {"title": "ED", "start": "00:21:22.534", "end": "00:22:43.824"},
+    {"title": "Preview", "start": "00:22:43.824", "end": "00:23:00.128"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 4.8, "end": 83.061},
+    {"type": "Outro", "start": 1282.534, "end": 1380.128}
+   ],
+   "story": [
+    {"start": 83.061, "end": 310.438, "note": "\"Intro\" titled story after the opening"}
+   ]
+  },
+  {
+   "episode": "S01E02",
+   "chapters": [
+    {"title": "OP", "start": "00:00:04.800", "end": "00:01:23.490"},
+    {"title": "Intro", "start": "00:01:23.490", "end": "00:05:11.300"},
+    {"title": "Part A", "start": "00:05:11.300", "end": "00:11:11.340"},
+    {"title": "Part B", "start": "00:11:11.340", "end": "00:21:22.534"},
+    {"title": "ED", "start": "00:21:22.534", "end": "00:22:43.824"},
+    {"title": "Preview", "start": "00:22:43.824", "end": "00:23:00.096"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 4.8, "end": 83.49},
+    {"type": "Outro", "start": 1282.534, "end": 1380.096}
+   ],
+   "story": [
+    {"start": 83.49, "end": 311.3, "note": "\"Intro\" titled story after the opening"}
+   ]
+  },
+  {
+   "episode": "S01E03",
+   "chapters": [
+    {"title": "OP", "start": "00:00:04.800", "end": "00:01:23.300"},
+    {"title": "Intro", "start": "00:01:23.300", "end": "00:03:00.300"},
+    {"title": "Part A", "start": "00:03:00.300", "end": "00:12:05.200"},
+    {"title": "Part B", "start": "00:12:05.200", "end": "00:21:24.800"},
+    {"title": "ED", "start": "00:21:24.800", "end": "00:22:45.800"},
+    {"title": "Preview", "start": "00:22:45.800", "end": "00:23:03.980"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 4.8, "end": 83.3},
+    {"type": "Outro", "start": 1284.8, "end": 1383.98}
+   ],
+   "story": [
+    {"start": 83.3, "end": 180.3, "note": "\"Intro\" titled story after the opening"}
+   ]
+  },
+  {
+   "episode": "S01E04",
+   "chapters": [
+    {"title": "OP", "start": "00:00:04.800", "end": "00:01:22.800"},
+    {"title": "Intro", "start": "00:01:22.800", "end": "00:01:42.800"},
+    {"title": "Part A", "start": "00:01:42.800", "end": "00:09:21.700"},
+    {"title": "Part B", "start": "00:09:21.700", "end": "00:21:22.800"},
+    {"title": "ED", "start": "00:21:22.800", "end": "00:22:43.800"},
+    {"title": "Preview", "start": "00:22:43.800", "end": "00:23:00.128"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 4.8, "end": 82.8},
+    {"type": "Outro", "start": 1282.8, "end": 1380.128}
+   ],
+   "story": [
+    {"start": 82.8, "end": 102.8, "note": "\"Intro\" titled story after the opening"}
+   ]
+  },
+  {
+   "episode": "S01E05",
+   "chapters": [
+    {"title": "OP", "start": "00:00:04.800", "end": "00:01:24.200"},
+    {"title": "Intro", "start": "00:01:24.200", "end": "00:02:04.041"},
+    {"title": "Part A", "start": "00:02:04.041", "end": "00:11:45.800"},
+    {"title": "Part B", "start": "00:11:45.800", "end": "00:21:22.800"},
+    {"title": "ED", "start": "00:21:22.800", "end": "00:22:43.900"},
+    {"title": "Preview", "start": "00:22:43.900", "end": "00:23:00.128"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 4.8, "end": 84.2},
+    {"type": "Outro", "start": 1282.8, "end": 1380.128}
+   ],
+   "story": [
+    {"start": 84.2, "end": 124.041, "note": "\"Intro\" titled story after the opening"}
+   ]
+  },
+  {
+   "episode": "S01E06",
+   "chapters": [
+    {"title": "OP", "start": "00:00:04.800", "end": "00:01:23.940"},
+    {"title": "Intro", "start": "00:01:23.940", "end": "00:01:45.631"},
+    {"title": "Part A", "start": "00:01:45.631", "end": "00:11:04.800"},
+    {"title": "Part B", "start": "00:11:04.800", "end": "00:21:22.800"},
+    {"title": "ED", "start": "00:21:22.800", "end": "00:22:44.000"},
+    {"title": "Preview", "start": "00:22:44.000", "end": "00:23:00.096"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 4.8, "end": 83.94},
+    {"type": "Outro", "start": 1282.8, "end": 1380.096}
+   ],
+   "story": [
+    {"start": 83.94, "end": 105.631, "note": "\"Intro\" titled story after the opening"}
+   ]
+  },
+  {
+   "episode": "S01E07",
+   "chapters": [
+    {"title": "OP", "start": "00:00:04.800", "end": "00:01:23.800"},
+    {"title": "Intro", "start": "00:01:23.800", "end": "00:02:44.800"},
+    {"title": "Part A", "start": "00:02:44.800", "end": "00:12:14.300"},
+    {"title": "Part B", "start": "00:12:14.300", "end": "00:21:22.800"},
+    {"title": "ED", "start": "00:21:22.800", "end": "00:22:43.800"},
+    {"title": "Preview", "start": "00:22:43.800", "end": "00:23:00.128"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 4.8, "end": 83.8},
+    {"type": "Outro", "start": 1282.8, "end": 1380.128}
+   ],
+   "story": [
+    {"start": 83.8, "end": 164.8, "note": "\"Intro\" titled story after the opening"}
+   ]
+  },
+  {
+   "episode": "S01E08",
+   "chapters": [
+    {"title": "OP", "start": "00:00:04.800", "end": "00:01:23.300"},
+    {"title": "Intro", "start": "00:01:23.300", "end": "00:02:16.000"},
+    {"title": "Part A", "start": "00:02:16.000", "end": "00:10:43.881"},
+    {"title": "Part B", "start": "00:10:43.881", "end": "00:21:22.800"},
+    {"title": "ED", "start": "00:21:22.800", "end": "00:22:43.800"},
+    {"title": "Preview", "start": "00:22:43.800", "end": "00:23:00.128"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 4.8, "end": 83.3},
+    {"type": "Outro", "start": 1282.8, "end": 1380.128}
+   ],
+   "story": [
+    {"start": 83.3, "end": 136.0, "note": "\"Intro\" titled story after the opening"}
+   ]
+  },
+  {
+   "episode": "S01E09",
+   "chapters": [
+    {"title": "OP", "start": "00:00:04.800", "end": "00:01:23.300"},
+    {"title": "Intro", "start": "00:01:23.300", "end": "00:02:23.550"},
+    {"title": "Part A", "start": "00:02:23.550", "end": "00:10:36.700"},
+    {"title": "Part B", "start": "00:10:36.700", "end": "00:21:23.800"},
+    {"title": "ED", "start": "00:21:23.800", "end": "00:22:44.900"},
+    {"title": "Preview", "start": "00:22:44.900", "end": "00:23:00.163"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 4.8, "end": 83.3},
+    {"type": "Outro", "start": 1283.8, "end": 1380.163}
+   ],
+   "story": [
+    {"start": 83.3, "end": 143.55, "note": "\"Intro\" titled story after the opening"}
+   ]
+  },
+  {
+   "episode": "S01E10",
+   "chapters": [
+    {"title": "OP", "start": "00:00:04.800", "end": "00:01:23.940"},
+    {"title": "Intro", "start": "00:01:23.940", "end": "00:02:29.900"},
+    {"title": "Part A", "start": "00:02:29.900", "end": "00:11:04.600"},
+    {"title": "Part B", "start": "00:11:04.600", "end": "00:21:22.800"},
+    {"title": "ED", "start": "00:21:22.800", "end": "00:22:44.000"},
+    {"title": "Preview", "start": "00:22:44.000", "end": "00:23:00.128"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 4.8, "end": 83.94},
+    {"type": "Outro", "start": 1282.8, "end": 1380.128}
+   ],
+   "story": [
+    {"start": 83.94, "end": 149.9, "note": "\"Intro\" titled story after the opening"}
+   ]
+  },
+  {
+   "episode": "S01E11",
+   "chapters": [
+    {"title": "OP", "start": "00:00:04.800", "end": "00:01:23.940"},
+    {"title": "Intro", "start": "00:01:23.940", "end": "00:03:19.200"},
+    {"title": "Part A", "start": "00:03:19.200", "end": "00:11:05.800"},
+    {"title": "Part B", "start": "00:11:05.800", "end": "00:21:22.800"},
+    {"title": "ED", "start": "00:21:22.800", "end": "00:22:44.000"},
+    {"title": "Preview", "start": "00:22:44.000", "end": "00:23:00.128"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 4.8, "end": 83.94},
+    {"type": "Outro", "start": 1282.8, "end": 1380.128}
+   ],
+   "story": [
+    {"start": 83.94, "end": 199.2, "note": "\"Intro\" titled story after the opening"}
+   ]
+  },
+  {
+   "episode": "S01E12",
+   "chapters": [
+    {"title": "OP", "start": "00:00:04.800", "end": "00:01:23.800"},
+    {"title": "Intro", "start": "00:01:23.800", "end": "00:04:32.800"},
+    {"title": "Part A", "start": "00:04:32.800", "end": "00:11:15.300"},
+    {"title": "Part B", "start": "00:11:15.300", "end": "00:21:22.800"},
+    {"title": "ED", "start": "00:21:22.800", "end": "00:22:44.000"},
+    {"title": "Preview", "start": "00:22:44.000", "end": "00:23:00.128"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 4.8, "end": 83.8},
+    {"type": "Outro", "start": 1282.8, "end": 1380.128}
+   ],
+   "story": [
+    {"start": 83.8, "end": 272.8, "note": "\"Intro\" titled story after the opening"}
+   ]
+  },
+  {
+   "episode": "S01E13",
+   "chapters": [
+    {"title": "OP", "start": "00:00:04.800", "end": "00:01:23.800"},
+    {"title": "Intro", "start": "00:01:23.800", "end": "00:01:51.800"},
+    {"title": "Part A", "start": "00:01:51.800", "end": "00:10:36.800"},
+    {"title": "Part B", "start": "00:10:36.800", "end": "00:19:40.800"},
+    {"title": "Epilogue", "start": "00:19:40.800", "end": "00:21:22.800"},
+    {"title": "ED", "start": "00:21:22.800", "end": "00:22:42.432"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 4.8, "end": 83.8},
+    {"type": "Outro", "start": 1282.8, "end": 1362.432}
+   ],
+   "story": [
+    {"start": 83.8, "end": 111.8, "note": "\"Intro\" titled story after the opening"},
+    {"start": 1180.8, "end": 1282.8, "note": "epilogue before the ending"}
+   ]
+  }
+ ]
+}

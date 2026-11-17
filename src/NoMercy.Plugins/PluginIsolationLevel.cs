@@ -35,22 +35,39 @@ public static class PluginIsolationLevel
     /// The English source for <see cref="NoticeKey" />. Here so the wording
     /// lives beside the level it describes; a translator reads it from the
     /// locale file like any other string.
+    /// <para>
+    /// One sentence for every plugin, because the permissions page that shows
+    /// it does not know where a plugin runs. It used to say the plugin runs
+    /// inside the server, which is false for one the owner moved to its own
+    /// process, so it now says only what holds in both places: permissions
+    /// decide what a plugin may reach, not how far it is kept from the server.
+    /// </para>
     /// </summary>
     public const string EnglishNotice =
-        "Runs inside the server: permissions are checked, not isolated.";
+        "Permissions are checked on every call. They decide what this plugin may reach, not how far it is kept apart from the server.";
 
     /// <summary>
-    /// Said when the owner asks for out-of-process and this server still runs
-    /// the plugin inside itself.
+    /// Said when the owner asks for out-of-process for any plugin.
     /// <para>
-    /// The choice is saved, because it is the owner's and it is what they will
-    /// get. Returning a plain OK let them believe a plugin was isolated when
-    /// every call was still running in the server's own process, which is a
-    /// worse answer than saying so.
+    /// The runtime is newer than the setting and does not carry everything
+    /// yet. Returning a plain OK let the owner believe every plugin would keep
+    /// working there, when one that needs what the runtime lacks is refused.
+    /// The key keeps its old name so clients that already translate it do not
+    /// lose the line.
     /// </para>
     /// </summary>
     public const string PendingKey = "plugins.runtime.out_of_process_pending";
 
     public const string EnglishPending =
-        "Saved. This server still runs every plugin inside itself; the isolated runtime is not finished yet.";
+        "Saved. A plugin set to its own process runs there, unless it needs something that process does not carry yet; that plugin is refused until it is set back to in-process.";
+
+    /// <summary>
+    /// Said for one plugin that is set to its own process and uses something
+    /// that process does not carry, so it is refused rather than started there
+    /// broken. The refusal names what it would lose.
+    /// </summary>
+    public const string NeedsInProcessKey = "plugins.runtime.needs_in_process";
+
+    public const string EnglishNeedsInProcess =
+        "This plugin needs the server's own process. Set it to in-process to run it.";
 }

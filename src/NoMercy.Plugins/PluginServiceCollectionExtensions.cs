@@ -39,6 +39,7 @@ using NoMercy.PluginSdk.Media;
 using NoMercy.PluginSdk.Network;
 using NoMercy.PluginSdk.Offline;
 using NoMercy.PluginSdk.OutOfProcess;
+using NoMercy.PluginSdk.Provenance;
 using NoMercy.PluginSdk.Quotas;
 using NoMercy.PluginSdk.Revocation;
 using NoMercy.PluginSdk.Runtime;
@@ -209,10 +210,7 @@ public static class PluginServiceCollectionExtensions
         {
             IStorageDriver driver = sp.GetRequiredService<IStorageDriver>();
             IStorage storage = new LocalStorage(driver, new([pluginsPath], driver));
-            IPluginConfiguration configuration = new PluginConfiguration(
-                Path.Combine(pluginsPath, "data", "platform"),
-                storage
-            );
+            IPluginPlatformConfiguration configuration = PlatformConfiguration(sp);
 
             // Built here the way the manager builds its own: the purge is not
             // a registered service, and a guest leaving has to remove exactly
@@ -353,6 +351,9 @@ public static class PluginServiceCollectionExtensions
             sp.GetRequiredService<ILoggerFactory>().CreateLogger("plugins.runtime"),
             pluginLoggers: sp.GetRequiredService<IPluginLoggers>()
         ));
+        // What a plugin would lose in a process of its own, so the dashboard
+        // can say so before the owner moves it there.
+        services.TryAddSingleton<IPluginIsolationFit, PluginIsolationFit>();
         // A plugin runs only while what it leans on runs, and a free
         // dependency installs beside it rather than leaving the owner to work
         // out why nothing started.
@@ -374,7 +375,7 @@ public static class PluginServiceCollectionExtensions
             )
         );
 
-        // The four questions asked before a plugin runs. Registration fixes
+        // The five questions asked before a plugin runs. Registration fixes
         // the order once, here, so no caller can ask them in an order that
         // tells an owner to buy a build that was withdrawn.
         services.AddSingleton<PluginRevocationRunCheck>(sp =>
@@ -403,11 +404,26 @@ public static class PluginServiceCollectionExtensions
         services.AddSingleton<PluginConsentRunCheck>(sp =>
             new(sp.GetRequiredService<IPluginConsentService>())
         );
+        // Resolved when asked rather than when built: the remote loader pulls
+        // in the launcher and broker, and the gate is built long before any of
+        // that is needed. No remote loader means every plugin runs here.
+        services.AddSingleton<PluginIsolationRunCheck>(sp =>
+            new(
+                pluginId =>
+                    sp.GetService<IPluginRemoteLoader>()?.IsolationFor(pluginId)
+                    ?? PluginIsolation.InProcess,
+                sp.GetRequiredService<IPluginIsolationFit>()
+            )
+        );
         services.AddSingleton<IPluginRunGate>(sp => new PluginRunGate(
             [
                 sp.GetRequiredService<PluginRevocationRunCheck>(),
                 sp.GetRequiredService<PluginEntitlementRunCheck>(),
                 sp.GetRequiredService<PluginDependencyRunCheck>(),
+                // Before consent: an enable is the owner's answer to consent and
+                // skips that refusal, so asked after it a plugin that cannot run
+                // in its own process would be started there anyway.
+                sp.GetRequiredService<PluginIsolationRunCheck>(),
                 sp.GetRequiredService<PluginConsentRunCheck>(),
             ],
             sp.GetRequiredService<IPluginManifestSource>()
@@ -592,17 +608,18 @@ public static class PluginServiceCollectionExtensions
             );
         });
 
-        services.AddSingleton<IPluginConsentStore>(sp =>
-        {
-            IStorageDriver driver = sp.GetRequiredService<IStorageDriver>();
-            IStorage storage = new LocalStorage(driver, new([pluginsPath], driver));
-            string platformDataFolder = Path.Combine(pluginsPath, "data", "platform");
-            IPluginConfiguration configuration = new PluginConfiguration(
-                platformDataFolder,
-                storage
-            );
-            return new ConfigPluginConsentStore(configuration);
-        });
+        // One instance over the platform config file for every store that
+        // writes it. Each instance has its own lock, and a save is a read,
+        // merge and write of the whole file, so two instances could each write
+        // back a copy missing the other's change.
+        services.AddSingleton<IPluginPlatformConfiguration>(sp => new PluginPlatformConfiguration(
+            pluginsPath,
+            PluginStorage(sp, pluginsPath)
+        ));
+
+        services.AddSingleton<IPluginConsentStore>(sp => new ConfigPluginConsentStore(
+            PlatformConfiguration(sp)
+        ));
 
         services.AddSingleton<IPluginConsentService, PluginConsentService>();
 
@@ -610,14 +627,24 @@ public static class PluginServiceCollectionExtensions
         // never in a plugin's own folder: a plugin must not be able to edit the
         // record of what it was allowed to do.
         services.AddSingleton<IPluginGrantStore>(sp => new ConfigPluginGrantStore(
-            PlatformConfiguration(sp, pluginsPath)
+            PlatformConfiguration(sp)
         ));
 
         // And so do the owner's approvals of hand-dropped plugin folders, for
         // the same reason: whoever can write the folder must not be able to
         // write its approval.
         services.AddSingleton<IPluginApprovalStore>(sp => new ConfigPluginApprovalStore(
-            PlatformConfiguration(sp, pluginsPath)
+            PlatformConfiguration(sp)
+        ));
+
+        // Where each plugin came from, beside them for the same reason: a
+        // plugin must not be able to rewrite where it was installed from.
+        services.AddSingleton<IPluginInstallSourceStore>(sp => new ConfigPluginInstallSourceStore(
+            PlatformConfiguration(sp)
+        ));
+        services.AddSingleton<IPluginProvenanceReader>(sp => new PluginProvenanceReader(
+            sp.GetRequiredService<IPluginInstallSourceStore>(),
+            sp.GetRequiredService<IPluginRepository>()
         ));
 
         // The library contracts default to the null objects declared in this
@@ -654,7 +681,7 @@ public static class PluginServiceCollectionExtensions
             sp.GetRequiredService<IDataProtectionProvider>(),
             sp.GetRequiredService<IPluginLibraryQuery>(),
             sp.GetRequiredService<IPluginLibraryWriterFactory>(),
-            PlatformConfiguration(sp, pluginsPath),
+            PlatformConfiguration(sp),
             sp.GetRequiredService<IPluginHubContextFactory>(),
             // Optional: GetService, not GetRequiredService. A host that never
             // called AddPluginLibraryAccess (or the encoder/storage wiring)
@@ -720,7 +747,9 @@ public static class PluginServiceCollectionExtensions
                 sp.GetRequiredService<PluginSideloadPolicy>(),
                 sp.GetRequiredService<PluginGuestInstaller>(),
                 sp.GetRequiredService<IPluginRegistry>(),
-                sp.GetRequiredService<IPluginApprovalStore>()
+                sp.GetRequiredService<IPluginApprovalStore>(),
+                sp.GetRequiredService<IPluginInstallSourceStore>(),
+                PlatformConfiguration(sp)
             );
         });
 
@@ -780,14 +809,8 @@ public static class PluginServiceCollectionExtensions
         return new LocalStorage(driver, new([pluginsPath], driver));
     }
 
-    private static IPluginConfiguration PlatformConfiguration(
-        IServiceProvider sp,
-        string pluginsPath
-    ) =>
-        new PluginConfiguration(
-            Path.Combine(pluginsPath, "data", "platform"),
-            PluginStorage(sp, pluginsPath)
-        );
+    private static IPluginPlatformConfiguration PlatformConfiguration(IServiceProvider sp) =>
+        sp.GetRequiredService<IPluginPlatformConfiguration>();
 
     /// <summary>
     /// Records which plugins were present before the request pipeline was
@@ -873,6 +896,7 @@ internal sealed class NothingInstallsFromARepository : IPluginRepositoryInstalle
         string? expectedChecksum,
         PluginIndexSignature? indexSignature,
         bool fromOfficialMarketplace,
+        PluginRepositoryInfo? listedBy,
         CancellationToken ct = default
     ) => throw new NotSupportedException("This plugin manager cannot install from a repository.");
 }
@@ -881,6 +905,8 @@ internal sealed class NothingInstallsFromARepository : IPluginRepositoryInstalle
 internal sealed class NoOfficialMarketplace : IPluginRepositoryOrigin
 {
     public bool IsFromOfficialMarketplace(PluginRepositoryEntry entry) => false;
+
+    public PluginRepositoryInfo? ListedBy(PluginRepositoryEntry entry) => null;
 }
 
 internal sealed class NobodyIsAMember : IPluginMembership

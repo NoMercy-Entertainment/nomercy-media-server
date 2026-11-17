@@ -108,7 +108,7 @@ public class PluginLifecycleManagerTests : IDisposable
     private static IPluginDataPurge DataPurge(string pluginsPath)
     {
         IStorage storage = TestStorageHelper.CreateStorage(pluginsPath);
-        IPluginConfiguration platform = new PluginConfiguration(
+        IPluginAtomicConfiguration platform = new PluginConfiguration(
             Path.Combine(pluginsPath, "data", "platform"),
             storage
         );
@@ -320,6 +320,83 @@ public class PluginLifecycleManagerTests : IDisposable
         held.Info.Status.Should().Be(PluginStatus.Disabled);
     }
 
+    // A plugin set to its own process that needs what that process lacks is
+    // refused, never started there broken and never moved back here (#68).
+    private static PluginRunGate IsolationGate(PluginIsolation isolation) =>
+        new([new PluginIsolationRunCheck(_ => isolation, new PluginIsolationFit())]);
+
+    private LoadedPlugin Registered(Ulid id)
+    {
+        _registry.TryGetValue(id, out LoadedPlugin? loaded).Should().BeTrue();
+        return loaded!;
+    }
+
+    [Fact]
+    public async Task EnablePluginAsync_OutOfProcessPluginThatNeedsTheServer_ThrowsWhatItWouldLose()
+    {
+        Ulid id = Ulid.NewUlid();
+        string assemblyPath = Path.Combine(_tempDir, "missing-plugin.dll");
+        LoadedPlugin held = new(
+            Info(
+                id,
+                PluginStatus.Disabled,
+                assemblyPath,
+                new() { Hooks = [PluginHookCapability.Ui] }
+            ),
+            null,
+            null
+        );
+        _registry[id] = held;
+        FakeRemoteLoader remote = new(answers: true);
+
+        Func<Task> act = () =>
+            Lifecycle(IsolationGate(PluginIsolation.OutOfProcess), remote).EnablePluginAsync(id);
+
+        (await act.Should().ThrowAsync<InvalidOperationException>()).WithMessage(
+            "*does not carry the hooks ui*InProcess*"
+        );
+        remote.Handed.Should().BeNull("the plugin must not be started in its own process");
+        held.Info.Status.Should().Be(PluginStatus.Disabled);
+    }
+
+    [Fact]
+    public async Task EnablePluginAsync_OutOfProcessPluginThatFits_StillStartsElsewhere()
+    {
+        Ulid id = Ulid.NewUlid();
+        string assemblyPath = Path.Combine(_tempDir, "missing-plugin.dll");
+        _registry[id] = new(
+            Info(id, PluginStatus.Disabled, assemblyPath, new() { Hooks = [] }),
+            null,
+            null
+        );
+        FakeRemoteLoader remote = new(answers: true);
+
+        await Lifecycle(IsolationGate(PluginIsolation.OutOfProcess), remote).EnablePluginAsync(id);
+
+        Registered(id).Instance.Should().BeSameAs(remote.Handed).And.NotBeNull();
+        Registered(id).Info.Status.Should().Be(PluginStatus.Active);
+    }
+
+    [Fact]
+    public async Task EnablePluginAsync_InProcessPluginWithTheSameNeeds_IsNotRefused()
+    {
+        Ulid id = Ulid.NewUlid();
+        FakePlugin plugin = new();
+        _registry[id] = new(
+            Info(
+                id,
+                PluginStatus.Disabled,
+                capabilities: new() { Hooks = [PluginHookCapability.Ui] }
+            ),
+            plugin,
+            null
+        );
+
+        await Lifecycle(IsolationGate(PluginIsolation.InProcess)).EnablePluginAsync(id);
+
+        Registered(id).Info.Status.Should().Be(PluginStatus.Active);
+    }
+
     [Fact]
     public async Task EnablePluginAsync_RefusedByTheRunGate_ThrowsTheReasonAndStaysDisabled()
     {
@@ -441,7 +518,7 @@ public class PluginLifecycleManagerTests : IDisposable
                 PluginAbi.Current.ToString(),
                 "and the version to rebuild against, which the runtime never says"
             );
-        reported.ErrorMessage.Should().Contain("/nomercy-plugins/migration");
+        reported.ErrorMessage.Should().Contain(PluginDocs.Migration);
     }
 
     // ── DisablePluginAsync ───────────────────────────────────────────────────
@@ -654,7 +731,7 @@ public class PluginLifecycleManagerTests : IDisposable
         Directory.CreateDirectory(dataFolder);
         File.WriteAllText(Path.Combine(dataFolder, "state.json"), "{}");
 
-        IPluginConfiguration platform = new PluginConfiguration(
+        IPluginAtomicConfiguration platform = new PluginConfiguration(
             Path.Combine(_tempDir, "data", "platform"),
             TestStorageHelper.CreateStorage(_tempDir)
         );

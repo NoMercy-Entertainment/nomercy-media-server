@@ -24,4 +24,10 @@ public sealed class EncodingCompletedEvent : EventBase
     // (e.g. a pre-metadata failure) or the title carries no artwork.
     public string? BackdropPath { get; init; }
     public string? PosterPath { get; init; }
+
+    // The episode or movie a video encode produced; null when the publisher
+    // does not know it (a music encode). JobId alone cannot tell the two apart:
+    // an episode and a movie can share an id.
+    public int? EpisodeId { get; init; }
+    public int? MovieId { get; init; }
 }

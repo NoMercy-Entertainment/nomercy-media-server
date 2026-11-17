@@ -1,0 +1,109 @@
+{
+ "series": "Hijack, seasons 1-2 (western live action)",
+ "library_type": "tv",
+ "source": "chapters.vtt of the encoded episodes in Z:/TV.Shows/TV.Shows/Hijack.(2023), read 2026-11-17",
+ "truth": "Chapter titles. \"Intro\" is the 32-64 s title sequence after a cold open.",
+ "shape": "Chapter 1 (cold open, 77-270 s) / Intro / Chapter 2; S02E02 adds End Credits.",
+ "episodes": [
+  {
+   "episode": "S01E02",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:04:30.500"},
+    {"title": "Intro", "start": "00:04:30.500", "end": "00:05:03.041"},
+    {"title": "Chapter 2", "start": "00:05:03.041", "end": "00:44:06.599"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 270.5, "end": 303.041}
+   ],
+   "story": [
+    {"start": 0.0, "end": 270.5, "note": "cold open before the theme"}
+   ]
+  },
+  {
+   "episode": "S01E03",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:03:27.375"},
+    {"title": "Intro", "start": "00:03:27.375", "end": "00:03:59.625"},
+    {"title": "Chapter 2", "start": "00:03:59.625", "end": "00:48:38.146"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 207.375, "end": 239.625}
+   ],
+   "story": [
+    {"start": 0.0, "end": 207.375, "note": "cold open before the theme"}
+   ]
+  },
+  {
+   "episode": "S01E04",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:03:06.000"},
+    {"title": "Intro", "start": "00:03:06.000", "end": "00:03:38.291"},
+    {"title": "Chapter 2", "start": "00:03:38.291", "end": "00:45:16.216"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 186.0, "end": 218.291}
+   ],
+   "story": [
+    {"start": 0.0, "end": 186.0, "note": "cold open before the theme"}
+   ]
+  },
+  {
+   "episode": "S01E05",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:03:24.875"},
+    {"title": "Intro", "start": "00:03:24.875", "end": "00:03:57.082"},
+    {"title": "Chapter 2", "start": "00:03:57.082", "end": "00:46:26.703"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 204.875, "end": 237.082}
+   ],
+   "story": [
+    {"start": 0.0, "end": 204.875, "note": "cold open before the theme"}
+   ]
+  },
+  {
+   "episode": "S01E06",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:01:17.250"},
+    {"title": "Intro", "start": "00:01:17.250", "end": "00:01:51.083"},
+    {"title": "Chapter 2", "start": "00:01:51.083", "end": "00:50:54.277"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 77.25, "end": 111.083}
+   ],
+   "story": [
+    {"start": 0.0, "end": 77.25, "note": "cold open before the theme"}
+   ]
+  },
+  {
+   "episode": "S01E07",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:02:43.375"},
+    {"title": "Intro", "start": "00:02:43.375", "end": "00:03:17.290"},
+    {"title": "Chapter 2", "start": "00:03:17.290", "end": "00:52:05.927"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 163.375, "end": 197.29}
+   ],
+   "story": [
+    {"start": 0.0, "end": 163.375, "note": "cold open before the theme"}
+   ]
+  },
+  {
+   "episode": "S02E02",
+   "chapters": [
+    {"title": "Scene 1", "start": "00:00:00.000", "end": "00:02:38.000"},
+    {"title": "Intro", "start": "00:02:38.000", "end": "00:03:42.000"},
+    {"title": "Scene 2", "start": "00:03:42.000", "end": "00:45:26.000"},
+    {"title": "End Credits", "start": "00:45:26.000", "end": "00:48:40.626"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 158.0, "end": 222.0},
+    {"type": "Outro", "start": 2726.0, "end": 2920.626}
+   ],
+   "story": [
+    {"start": 0.0, "end": 158.0, "note": "cold open before the theme"}
+   ]
+  }
+ ]
+}

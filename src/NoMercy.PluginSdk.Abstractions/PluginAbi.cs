@@ -46,7 +46,25 @@ public static class PluginAbi
     // 12.10 also added PluginFilterGraphTokens.StemsSource and StemsVocalSource (two new
     // constants) and PluginTrackStem.Engine (an init-only property, so the constructor a
     // plugin was compiled against is still there).
-    public static Version Current { get; } = new(12, 10);
+    // 12.11 added PluginLibrary.EncodingPresets and PluginEncodingPreset: the presets that
+    // encode a library's folders, each with the tallest video it can produce. Additive: an
+    // init-only property defaulting to empty, so new PluginLibrary(id, title, type) written
+    // before it still constructs and still reads Id, Title and Type.
+    // 12.11 also added PluginDocs (constants: the docs page each refusal links) and
+    // PluginLibrary's own Equals and GetHashCode, which compare the presets by value so two
+    // reads of one library stay equal.
+    // 12.11 also added NmPluginForbiddenComponents (NoMercy.Design), the refusal code
+    // PluginRefusalCodes.ViewComponentForbidden and PluginRefusalMessages.ViewComponentForbidden:
+    // the server refuses a view that names NMServerComponent at any depth. New members only.
+    // 12.11 also added the shelf builders and the paging contract: PluginShelves, PluginShelf,
+    // PluginShelfCard, PluginPaging, PluginPageRequest, PluginClientFeatures,
+    // PluginActionType.LoadPage, PluginActionIntent.LoadPage, PluginViewRequest.Page and
+    // PluginViewRequest.Features (read from Query, never sent over the wire) and
+    // PluginDocs.ShelvesAndPaging. Additive: new types, a new constant and new read-only
+    // members; PluginViews and every node shape are unchanged.
+    // 12.11 also added PluginRefusalCodes.OutOfProcessUnsupported: a plugin set to run in its
+    // own process that uses something that process does not carry is refused, not started.
+    public static Version Current { get; } = new(12, 11);
 
     /// <summary>
     /// The oldest major this server can load at all.

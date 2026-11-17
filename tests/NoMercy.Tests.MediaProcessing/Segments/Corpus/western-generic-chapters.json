@@ -1,0 +1,223 @@
+{
+ "series": "Generic-titled episodes of non-anime shows (Fallout, Rick and Morty S03-S07, Vikings)",
+ "library_type": "tv",
+ "source": "chapters.vtt of the encoded episodes in Z:/TV.Shows/TV.Shows, read 2026-11-17. These are all 12 of 674 non-anime episodes on Z: where the length rules would mark something.",
+ "truth": "Frames (2026-11-17): Rick and Morty S05E06 0:40 and S04E07 0:50, Fallout S02E04 0:50 and Vikings S01E02 4:50 are story inside the 85-95 s \"opening\"; Rick and Morty S05E02 21:40 is a post-credits scene inside the 86 s \"ending\". The length rules therefore run only for anime.",
+ "shape": "Generic \"Chapter N\" / time titles with a cold open or a post-credits scene of 85-125 s.",
+ "episodes": [
+  {
+   "episode": "Fallout.S02E04",
+   "chapters": [
+    {"title": "Chapter 01", "start": "00:00:00.000", "end": "00:00:06.000"},
+    {"title": "Chapter 02", "start": "00:00:06.000", "end": "00:01:35.000"},
+    {"title": "Chapter 03", "start": "00:01:35.000", "end": "00:01:52.000"},
+    {"title": "Chapter 04", "start": "00:01:52.000", "end": "00:02:11.000"},
+    {"title": "Chapter 05", "start": "00:02:11.000", "end": "00:03:53.000"},
+    {"title": "Chapter 06", "start": "00:03:53.000", "end": "00:06:23.000"},
+    {"title": "Chapter 07", "start": "00:06:23.000", "end": "00:07:08.000"},
+    {"title": "Chapter 08", "start": "00:07:08.000", "end": "00:07:21.000"},
+    {"title": "Chapter 09", "start": "00:07:21.000", "end": "00:08:45.000"},
+    {"title": "Chapter 10", "start": "00:08:45.000", "end": "00:10:11.000"},
+    {"title": "Chapter 11", "start": "00:10:11.000", "end": "00:12:59.000"},
+    {"title": "Chapter 12", "start": "00:12:59.000", "end": "00:13:29.000"},
+    {"title": "Chapter 13", "start": "00:13:29.000", "end": "00:14:10.000"},
+    {"title": "Chapter 14", "start": "00:14:10.000", "end": "00:15:24.000"},
+    {"title": "Chapter 15", "start": "00:15:24.000", "end": "00:17:19.000"},
+    {"title": "Chapter 16", "start": "00:17:19.000", "end": "00:18:46.000"},
+    {"title": "Chapter 17", "start": "00:18:46.000", "end": "00:18:57.000"},
+    {"title": "Chapter 18", "start": "00:18:57.000", "end": "00:21:12.000"},
+    {"title": "Chapter 19", "start": "00:21:12.000", "end": "00:22:07.000"},
+    {"title": "Chapter 20", "start": "00:22:07.000", "end": "00:24:12.000"},
+    {"title": "Chapter 21", "start": "00:24:12.000", "end": "00:25:23.000"},
+    {"title": "Chapter 22", "start": "00:25:23.000", "end": "00:28:41.000"},
+    {"title": "Chapter 23", "start": "00:28:41.000", "end": "00:29:04.000"},
+    {"title": "Chapter 24", "start": "00:29:04.000", "end": "00:29:59.000"},
+    {"title": "Chapter 25", "start": "00:29:59.000", "end": "00:30:21.000"},
+    {"title": "Chapter 26", "start": "00:30:21.000", "end": "00:31:05.000"},
+    {"title": "Chapter 27", "start": "00:31:05.000", "end": "00:31:57.000"},
+    {"title": "Chapter 28", "start": "00:31:57.000", "end": "00:32:28.000"},
+    {"title": "Chapter 29", "start": "00:32:28.000", "end": "00:33:07.000"},
+    {"title": "Chapter 30", "start": "00:33:07.000", "end": "00:33:42.000"},
+    {"title": "Chapter 31", "start": "00:33:42.000", "end": "00:35:24.000"},
+    {"title": "Chapter 32", "start": "00:35:24.000", "end": "00:36:02.000"},
+    {"title": "Chapter 33", "start": "00:36:02.000", "end": "00:36:45.000"},
+    {"title": "Chapter 34", "start": "00:36:45.000", "end": "00:37:04.000"},
+    {"title": "Chapter 35", "start": "00:37:04.000", "end": "00:37:30.000"},
+    {"title": "Chapter 36", "start": "00:37:30.000", "end": "00:40:44.000"},
+    {"title": "Chapter 37", "start": "00:40:44.000", "end": "00:43:45.000"},
+    {"title": "Chapter 38", "start": "00:43:45.000", "end": "00:43:47.000"},
+    {"title": "Chapter 39", "start": "00:43:47.000", "end": "00:44:53.000"},
+    {"title": "Chapter 40", "start": "00:44:53.000", "end": "00:48:43.459"}
+   ],
+   "expected": [],
+   "story": []
+  },
+  {
+   "episode": "Rick.and.Morty.S03E08",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:01:03.188"},
+    {"title": "Chapter 2", "start": "00:01:03.188", "end": "00:01:35.012"},
+    {"title": "Chapter 3", "start": "00:01:35.012", "end": "00:12:21.074"},
+    {"title": "Chapter 4", "start": "00:12:21.074", "end": "00:20:36.609"},
+    {"title": "Chapter 5", "start": "00:20:36.609", "end": "00:22:05.657"}
+   ],
+   "expected": [],
+   "story": []
+  },
+  {
+   "episode": "Rick.and.Morty.S04E07",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:01:35.470"},
+    {"title": "Chapter 2", "start": "00:01:35.470", "end": "00:09:54.344"},
+    {"title": "Chapter 3", "start": "00:09:54.344", "end": "00:20:03.077"},
+    {"title": "Chapter 4", "start": "00:20:03.077", "end": "00:20:35.109"},
+    {"title": "Chapter 5", "start": "00:20:35.109", "end": "00:21:16.525"}
+   ],
+   "expected": [],
+   "story": []
+  },
+  {
+   "episode": "Rick.and.Morty.S05E02",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:01:25.794"},
+    {"title": "Chapter 2", "start": "00:01:25.794", "end": "00:10:55.113"},
+    {"title": "Chapter 3", "start": "00:10:55.113", "end": "00:20:23.513"},
+    {"title": "Chapter 4", "start": "00:20:23.513", "end": "00:20:55.254"},
+    {"title": "Chapter 5", "start": "00:20:55.254", "end": "00:22:21.674"}
+   ],
+   "expected": [],
+   "story": []
+  },
+  {
+   "episode": "Rick.and.Morty.S05E06",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:01:29.256"},
+    {"title": "Chapter 2", "start": "00:01:29.256", "end": "00:12:11.940"},
+    {"title": "Chapter 3", "start": "00:12:11.940", "end": "00:22:14.375"},
+    {"title": "Chapter 4", "start": "00:22:14.375", "end": "00:22:45.948"},
+    {"title": "Chapter 5", "start": "00:22:45.948", "end": "00:23:31.535"}
+   ],
+   "expected": [],
+   "story": []
+  },
+  {
+   "episode": "Rick.and.Morty.S07E01",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:02:12.758"},
+    {"title": "Chapter 2", "start": "00:02:12.758", "end": "00:12:27.914"},
+    {"title": "Chapter 3", "start": "00:12:27.914", "end": "00:20:08.499"},
+    {"title": "Chapter 4", "start": "00:20:08.499", "end": "00:20:40.321"},
+    {"title": "Chapter 5", "start": "00:20:40.321", "end": "00:22:23.717"}
+   ],
+   "expected": [],
+   "story": []
+  },
+  {
+   "episode": "Rick.and.Morty.S07E04",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:01:24.834"},
+    {"title": "Chapter 2", "start": "00:01:24.834", "end": "00:10:21.663"},
+    {"title": "Chapter 3", "start": "00:10:21.663", "end": "00:21:28.454"},
+    {"title": "Chapter 4", "start": "00:21:28.454", "end": "00:22:00.069"},
+    {"title": "Chapter 5", "start": "00:22:00.069", "end": "00:22:36.522"}
+   ],
+   "expected": [],
+   "story": []
+  },
+  {
+   "episode": "Vikings.S01E02",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:04:11.793"},
+    {"title": "Chapter 2", "start": "00:04:11.793", "end": "00:05:39.464"},
+    {"title": "Chapter 3", "start": "00:05:39.464", "end": "00:09:20.226"},
+    {"title": "Chapter 4", "start": "00:09:20.226", "end": "00:12:23.409"},
+    {"title": "Chapter 5", "start": "00:12:23.409", "end": "00:20:49.373"},
+    {"title": "Chapter 6", "start": "00:20:49.373", "end": "00:24:11.075"},
+    {"title": "Chapter 7", "start": "00:24:11.075", "end": "00:26:09.109"},
+    {"title": "Chapter 8", "start": "00:26:09.109", "end": "00:29:08.705"},
+    {"title": "Chapter 9", "start": "00:29:08.705", "end": "00:31:16.833"},
+    {"title": "Chapter 10", "start": "00:31:16.833", "end": "00:34:24.104"},
+    {"title": "Chapter 11", "start": "00:34:24.104", "end": "00:39:56.643"},
+    {"title": "Chapter 12", "start": "00:39:56.643", "end": "00:47:10.185"}
+   ],
+   "expected": [],
+   "story": []
+  },
+  {
+   "episode": "Vikings.S03E06",
+   "chapters": [
+    {"title": "00:00:00.000", "start": "00:00:00.000", "end": "00:00:52.052"},
+    {"title": "00:00:52.052", "start": "00:00:52.052", "end": "00:05:52.101"},
+    {"title": "00:05:52.102", "start": "00:05:52.101", "end": "00:07:15.268"},
+    {"title": "00:07:15.268", "start": "00:07:15.268", "end": "00:12:05.433"},
+    {"title": "00:12:05.433", "start": "00:12:05.433", "end": "00:18:49.420"},
+    {"title": "00:18:49.420", "start": "00:18:49.420", "end": "00:23:33.369"},
+    {"title": "00:23:33.370", "start": "00:23:33.369", "end": "00:27:30.898"},
+    {"title": "00:27:30.899", "start": "00:27:30.898", "end": "00:33:37.807"},
+    {"title": "00:33:37.807", "start": "00:33:37.807", "end": "00:37:36.129"},
+    {"title": "00:37:36.129", "start": "00:37:36.129", "end": "00:40:50.739"},
+    {"title": "00:40:50.740", "start": "00:40:50.739", "end": "00:45:24.889"},
+    {"title": "00:45:24.889", "start": "00:45:24.889", "end": "00:47:18.867"}
+   ],
+   "expected": [],
+   "story": []
+  },
+  {
+   "episode": "Vikings.S04E04",
+   "chapters": [
+    {"title": "Chapter 01", "start": "00:00:00.000", "end": "00:03:18.990"},
+    {"title": "Chapter 02", "start": "00:03:18.990", "end": "00:04:43.575"},
+    {"title": "Chapter 03", "start": "00:04:43.575", "end": "00:09:38.912"},
+    {"title": "Chapter 04", "start": "00:09:38.912", "end": "00:14:34.582"},
+    {"title": "Chapter 05", "start": "00:14:34.582", "end": "00:18:08.754"},
+    {"title": "Chapter 06", "start": "00:18:08.754", "end": "00:19:57.821"},
+    {"title": "Chapter 07", "start": "00:19:57.821", "end": "00:24:21.710"},
+    {"title": "Chapter 08", "start": "00:24:21.710", "end": "00:29:25.263"},
+    {"title": "Chapter 09", "start": "00:29:25.263", "end": "00:34:38.493"},
+    {"title": "Chapter 10", "start": "00:34:38.493", "end": "00:38:29.599"},
+    {"title": "Chapter 11", "start": "00:38:29.599", "end": "00:40:41.439"},
+    {"title": "Chapter 12", "start": "00:40:41.439", "end": "00:45:16.820"}
+   ],
+   "expected": [],
+   "story": []
+  },
+  {
+   "episode": "Vikings.S04E07",
+   "chapters": [
+    {"title": "Chapter 01", "start": "00:00:00.000", "end": "00:02:47.125"},
+    {"title": "Chapter 02", "start": "00:02:47.125", "end": "00:04:16.505"},
+    {"title": "Chapter 03", "start": "00:04:16.505", "end": "00:07:18.229"},
+    {"title": "Chapter 04", "start": "00:07:18.229", "end": "00:15:23.297"},
+    {"title": "Chapter 05", "start": "00:15:23.297", "end": "00:19:25.080"},
+    {"title": "Chapter 06", "start": "00:19:25.080", "end": "00:26:52.402"},
+    {"title": "Chapter 07", "start": "00:26:52.402", "end": "00:29:34.147"},
+    {"title": "Chapter 08", "start": "00:29:34.147", "end": "00:31:56.832"},
+    {"title": "Chapter 09", "start": "00:31:56.832", "end": "00:33:36.514"},
+    {"title": "Chapter 10", "start": "00:33:36.514", "end": "00:37:06.975"},
+    {"title": "Chapter 11", "start": "00:37:06.975", "end": "00:43:03.998"},
+    {"title": "Chapter 12", "start": "00:43:03.998", "end": "00:45:24.414"}
+   ],
+   "expected": [],
+   "story": []
+  },
+  {
+   "episode": "Vikings.S05E10",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:02:47.834"},
+    {"title": "Chapter 2", "start": "00:02:47.834", "end": "00:04:22.261"},
+    {"title": "Chapter 3", "start": "00:04:22.261", "end": "00:11:17.760"},
+    {"title": "Chapter 4", "start": "00:11:17.760", "end": "00:14:07.972"},
+    {"title": "Chapter 5", "start": "00:14:07.972", "end": "00:18:45.707"},
+    {"title": "Chapter 6", "start": "00:18:45.707", "end": "00:24:28.592"},
+    {"title": "Chapter 7", "start": "00:24:28.592", "end": "00:28:24.911"},
+    {"title": "Chapter 8", "start": "00:28:24.911", "end": "00:32:17.310"},
+    {"title": "Chapter 9", "start": "00:32:17.310", "end": "00:34:51.547"},
+    {"title": "Chapter 10", "start": "00:34:51.547", "end": "00:39:58.187"},
+    {"title": "Chapter 11", "start": "00:39:58.187", "end": "00:45:28.433"},
+    {"title": "Chapter 12", "start": "00:45:28.433", "end": "00:46:40.594"}
+   ],
+   "expected": [],
+   "story": []
+  }
+ ]
+}

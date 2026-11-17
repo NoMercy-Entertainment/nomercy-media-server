@@ -17,6 +17,7 @@ using NoMercy.Data.Services;
 using NoMercy.Encoder.Codecs;
 using NoMercy.Encoder.ContentAnalysis;
 using NoMercy.Encoder.Subtitles;
+using ContentSegment = NoMercy.Database.Models.Media.ContentSegment;
 
 namespace NoMercy.Api.Controllers.V1.Dashboard.Analysis;
 
@@ -186,54 +187,46 @@ public class ContentAnalysisController(
     }
 
     /// <summary>
-    /// Runs the chromaprint intro / outro detector against every episode in
-    /// a season that has at least one VideoFile on disk and returns the
-    /// detected marker ranges. Useful for validating chromaprint quality on
-    /// a specific season before trusting the auto-detection subscriber's
-    /// output. Owner-only — fingerprinting every episode is minutes of
-    /// ffmpeg work per episode.
+    /// Queues the intro / credits / end-of-content analysis (#598) for a season
+    /// (owner-only: it is minutes of FFmpeg work per episode) and answers at once
+    /// with the season's intro and outro stored now, plus <c>status = "queued"</c>.
+    /// This used to be a dry run; the queued analysis stores its answer, under
+    /// the precedence order (manual rows and chapter titles keep their place).
+    /// <para>
+    /// The dashboard (Advanced, Content analysis) reads only intro, outro and
+    /// episodes_scanned and treats a null intro or outro as "Not detected", so the
+    /// stored rows are returned rather than nulls for "not run yet". It does not
+    /// read <c>status</c>; see docs/segments.md.
+    /// </para>
     /// </summary>
     [HttpPost("intro/{seasonId:int}")]
     public async Task<IActionResult> DetectIntroForSeason(int seasonId, CancellationToken ct)
     {
-        ContentAnalysisService.SeasonIntroOutcome outcome =
-            await contentAnalysisService.DetectIntroForSeasonAsync(
-                seasonId,
-                persistToDatabase: false,
-                ct
-            );
+        ContentAnalysisService.SeasonAnalysisRequest request =
+            await contentAnalysisService.QueueSegmentAnalysisForSeasonAsync(seasonId, ct);
 
-        if (outcome.NotEnoughEpisodes)
-            return BadRequestResponse(
-                $"Need at least 2 encoded episodes, season has {outcome.EpisodesFound}"
-            );
-        if (outcome.FingerprintError is not null)
-            return InternalServerErrorResponse(outcome.FingerprintError);
-        if (outcome.NotEnoughFingerprints)
-            return BadRequestResponse("Not enough successful fingerprints to compare");
+        if (!request.Queued)
+            return BadRequestResponse("The season has no encoded episodes");
 
         return Ok(
             new
             {
                 season_id = seasonId,
-                episodes_scanned = outcome.EpisodesScanned,
-                intro = outcome.IntroMarker is null
-                    ? null
-                    : new
-                    {
-                        start_seconds = outcome.IntroMarker.Start.TotalSeconds,
-                        end_seconds = outcome.IntroMarker.End.TotalSeconds,
-                        confidence = outcome.IntroMarker.Confidence,
-                    },
-                outro = outcome.OutroMarker is null
-                    ? null
-                    : new
-                    {
-                        start_seconds = outcome.OutroMarker.Start.TotalSeconds,
-                        end_seconds = outcome.OutroMarker.End.TotalSeconds,
-                        confidence = outcome.OutroMarker.Confidence,
-                    },
+                episodes_scanned = request.EpisodesFound,
+                intro = Marker(request.Intro),
+                outro = Marker(request.Outro),
+                status = "queued",
             }
         );
     }
+
+    private static object? Marker(ContentSegment? segment) =>
+        segment is null
+            ? null
+            : new
+            {
+                start_seconds = segment.StartSeconds,
+                end_seconds = segment.EndSeconds,
+                confidence = segment.Confidence,
+            };
 }

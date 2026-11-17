@@ -174,13 +174,15 @@ jobs:
   # already-pushed RC digest without rebuilding — the image bytes are identical.
   #
   # RC tags pushed by build_docker_images:
-  #   <version>-rc, <version>-rc-nvidia, <version>-rc-intel, <version>-rc-amd
+  #   <version>-rc, <version>-rc-nvidia, <version>-rc-intel, <version>-rc-amd,
+  #   <version>-rc-browser
   #
   # Tags published here:
   #   <version>, nightly                  (cpu / default variant)
   #   <version>-nvidia, nightly-nvidia    (nvidia variant)
   #   <version>-intel, nightly-intel      (intel variant)
   #   <version>-amd, nightly-amd          (amd variant)
+  #   <version>-browser, nightly-browser  (browser variant: cpu + Xvfb/Chrome libs)
   #
   # The moving stable tags (latest, stable, nvidia, latest-nvidia, ...) and the
   # beta tags move only in promote-release.yml, from the immutable <version>
@@ -222,3 +224,13 @@ jobs:
               --tag "${BASE}:nightly-${variant}" \
               "${BASE}:${VERSION}-rc-${variant}"
           done
+          # The browser variant is optional (its build may fail without
+          # blocking the release), so a missing -rc-browser only warns.
+          if docker buildx imagetools inspect "${BASE}:${VERSION}-rc-browser" >/dev/null 2>&1; then
+            docker buildx imagetools create \
+              --tag "${BASE}:${VERSION}-browser" \
+              --tag "${BASE}:nightly-browser" \
+              "${BASE}:${VERSION}-rc-browser"
+          else
+            echo "::warning::no ${BASE}:${VERSION}-rc-browser (browser build failed or skipped); nightly-browser is not moved"
+          fi

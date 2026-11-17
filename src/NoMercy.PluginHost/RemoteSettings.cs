@@ -56,7 +56,8 @@ public sealed class RemoteSettings(Ulid pluginId, RemoteCall call) : IPluginSett
             pluginId.ToString(),
             $"A plugin in its own process subscribed to settings.{member}.",
             "The server cannot call into a plugin process yet, so that event would never fire and the plugin would wait forever.",
-            "Read the setting when the plugin needs it instead of waiting to be told. Docs: /nomercy-plugins/handbook/runtime-and-isolation",
+            "Read the setting when the plugin needs it instead of waiting to be told. Docs: "
+                + PluginDocs.RuntimeAndIsolation,
             PluginRefusalSeverity.Blocked
         );
 }
@@ -104,7 +105,8 @@ public sealed class RemoteUserData(RemoteCall call) : IPluginUserData
             "unknown plugin",
             "The plugin asked who was using it and the server named nobody.",
             "That call is scoped to one person, and it ran without one.",
-            "Call it from a request that carries a caller, such as a view or a REST route. Docs: /nomercy-plugins/capabilities/user-identity",
+            "Call it from a request that carries a caller, such as a view or a REST route. Docs: "
+                + PluginDocs.UserIdentity,
             PluginRefusalSeverity.Blocked
         );
 }

@@ -14,7 +14,7 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using NoMercy.Encoder.BuildingBlocks;
 using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.ContentAnalysis;
-using NoMercy.Encoder.ContentAnalysis.Fingerprinting;
+using NoMercy.Encoder.ContentAnalysis.Segments.Probes;
 using NoMercy.Encoder.Jobs;
 using NoMercy.Encoder.Subtitles;
 using NoMercy.OpticalMedia.Composition;
@@ -81,7 +81,7 @@ public class IStorageAdoptionTests
         provider.GetRequiredService<IThumbnailGenerator>().Should().NotBeNull();
         provider.GetRequiredService<ICheckpointStore>().Should().NotBeNull();
         provider.GetRequiredService<ICropDetector>().Should().NotBeNull();
-        provider.GetRequiredService<IAudioFingerprinter>().Should().NotBeNull();
+        provider.GetRequiredService<IEpisodeSignalProbe>().Should().NotBeNull();
     }
 
     [Fact]

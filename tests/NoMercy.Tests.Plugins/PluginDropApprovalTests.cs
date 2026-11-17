@@ -16,6 +16,7 @@ using NoMercy.Events;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Approval;
+using NoMercy.PluginSdk.Provenance;
 using Xunit;
 
 namespace NoMercy.Tests.Plugins;
@@ -168,6 +169,33 @@ public class PluginDropApprovalTests : IDisposable
             .Which.PluginId.Should()
             .Be(EchoId);
         Only(second).ApprovalReason.Should().BeNull();
+    }
+
+    /// <summary>
+    /// What the owner approved is the files they put there. A source an
+    /// earlier install recorded for the same id described other files, and
+    /// reporting it would say the plugin came from somewhere it did not.
+    /// </summary>
+    [Fact]
+    public async Task ApprovingAHandDroppedPluginDropsAnEarlierRecordedSource()
+    {
+        ConfigPluginInstallSourceStore sources = new(
+            new PluginConfiguration(
+                Path.Combine(_tempPluginsDir, "data", "platform"),
+                TestStorageHelper.CreateStorage(_tempPluginsDir)
+            )
+        );
+        sources.Record(
+            EchoId,
+            new() { Kind = PluginInstallSourceKind.Repository, RepositoryUrl = "https://a.example" }
+        );
+        DropEcho();
+        PluginManager manager = Boot();
+        await manager.LoadAllAsync();
+
+        await manager.ApprovePluginAsync(EchoId);
+
+        sources.Find(EchoId).Should().BeNull();
     }
 
     [Fact]

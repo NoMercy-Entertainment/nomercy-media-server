@@ -49,7 +49,8 @@ public static class ManifestScan
                     folder,
                     "There is no plugin.json in this folder.",
                     "A plugin is what its manifest says it is. Without one there is nothing to check and nothing a server could install.",
-                    "Run nomercy-plugin new to scaffold one, or run verify from the folder that holds plugin.json. Docs: /nomercy-plugins/tour/manifest",
+                    "Run nomercy-plugin new to scaffold one, or run verify from the folder that holds plugin.json. Docs: "
+                        + PluginDocs.Manifest,
                     PluginRefusalSeverity.Blocked
                 ),
             ];
@@ -69,7 +70,7 @@ public static class ManifestScan
                     folder,
                     $"plugin.json could not be read: {exception.Message}",
                     "A manifest that does not parse cannot be checked at all, so every other finding below it would be a guess.",
-                    "Fix the JSON and run verify again. Docs: /nomercy-plugins/tour/manifest",
+                    "Fix the JSON and run verify again. Docs: " + PluginDocs.Manifest,
                     PluginRefusalSeverity.Blocked
                 ),
             ];
@@ -83,7 +84,7 @@ public static class ManifestScan
                     folder,
                     "plugin.json is empty.",
                     "There is nothing to check.",
-                    "Run nomercy-plugin new to scaffold one. Docs: /nomercy-plugins/tour/manifest",
+                    "Run nomercy-plugin new to scaffold one. Docs: " + PluginDocs.Manifest,
                     PluginRefusalSeverity.Blocked
                 ),
             ];
@@ -98,7 +99,7 @@ public static class ManifestScan
                     who,
                     $"targetAbi is '{manifest.TargetAbi}', which is not a version.",
                     "The server decides whether it can run a plugin by comparing this to its own contract, and a value it cannot read is one it has to refuse.",
-                    $"Set targetAbi to {PluginAbi.Current}. Docs: /nomercy-plugins/handbook/versioning",
+                    $"Set targetAbi to {PluginAbi.Current}. Docs: {PluginDocs.Versioning}",
                     PluginRefusalSeverity.Blocked
                 )
             );
@@ -109,7 +110,7 @@ public static class ManifestScan
                     who,
                     $"targetAbi is {manifest.TargetAbi} and this server speaks {PluginAbi.Current}.",
                     "The contract has moved on by more than one major since then, so members this plugin was built against are gone rather than merely older.",
-                    $"Rebuild against {PluginAbi.Current}. Docs: /nomercy-plugins/handbook/versioning",
+                    $"Rebuild against {PluginAbi.Current}. Docs: {PluginDocs.Versioning}",
                     PluginRefusalSeverity.Blocked
                 )
             );
@@ -120,7 +121,7 @@ public static class ManifestScan
                     who,
                     $"targetAbi is {manifest.TargetAbi} and the current contract is {PluginAbi.Current}.",
                     "It still loads. It is worth saying anyway, because the members added since are ones this plugin cannot see and will not be told about.",
-                    $"Rebuild against {PluginAbi.Current} when convenient. Docs: /nomercy-plugins/handbook/versioning",
+                    $"Rebuild against {PluginAbi.Current} when convenient. Docs: {PluginDocs.Versioning}",
                     PluginRefusalSeverity.Degraded
                 )
             );
@@ -133,7 +134,7 @@ public static class ManifestScan
                         who,
                         $"The manifest declares '{hook}', which is not a capability this server knows.",
                         "A name the vocabulary does not carry is one the owner is never asked about, so the plugin is installed without it and refuses the first time it is used.",
-                        "Use a name from the capability list. Docs: /nomercy-plugins/capabilities",
+                        "Use a name from the capability list. Docs: " + PluginDocs.Capabilities,
                         PluginRefusalSeverity.Blocked
                     )
                 );
@@ -147,7 +148,8 @@ public static class ManifestScan
                     who,
                     problem,
                     "A LAN route answers a device that cannot sign in, so the server serves only routes it can read exactly as the owner did.",
-                    "Name each route relative to the plugin's prefix, as its controller writes it. Docs: docs/plugins/lan-routes.md",
+                    "Name each route relative to the plugin's prefix, as its controller writes it. Docs: "
+                        + PluginDocs.LanRoutes,
                     PluginRefusalSeverity.Blocked
                 )
             );
@@ -161,7 +163,7 @@ public static class ManifestScan
                         who,
                         $"A mount names kind '{mount.Kind}', which is not one this server places. It will not appear.",
                         "The kind decides where a plugin's screens live on every client, so one nobody recognises is a plugin that is drawn nowhere.",
-                        $"Use one of: {string.Join(", ", PluginKind.All)}. Docs: /nomercy-plugins/tour/placement",
+                        $"Use one of: {string.Join(", ", PluginKind.All)}. Docs: {PluginDocs.UiMount}",
                         PluginRefusalSeverity.Blocked
                     )
                 );
@@ -173,7 +175,7 @@ public static class ManifestScan
                         who,
                         $"A mount names section '{mount.Section}', which this client does not know.",
                         "The mount still loads. Clients that do not know the section show it under add-ons.",
-                        $"Use a known section if that placement is intended: {string.Join(", ", PluginUiSection.All)}. Docs: /nomercy-plugins/tour/placement",
+                        $"Use a known section if that placement is intended: {string.Join(", ", PluginUiSection.All)}. Docs: {PluginDocs.UiMount}",
                         PluginRefusalSeverity.Degraded
                     )
                 );
@@ -185,7 +187,8 @@ public static class ManifestScan
                         who,
                         $"The mount label '{mount.Label}' reads as a sentence rather than a translation key.",
                         "A label written here is written once, in one language, and every owner whose language is not that one reads it anyway.",
-                        "Put the text in lang/en.json and name its key here. Docs: /nomercy-plugins/tour/translations",
+                        "Put the text in lang/en.json and name its key here. Docs: "
+                            + PluginDocs.ManifestTranslations,
                         PluginRefusalSeverity.Degraded
                     )
                 );

@@ -21,6 +21,7 @@ using NoMercy.Events;
 using NoMercy.NmSystem.Logging;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.OutOfProcess;
 using NoMercy.PluginSdk.Revocation;
 using NoMercy.PluginSdk.Verification;
 using Xunit;
@@ -92,6 +93,51 @@ public class PluginDiIntegrationTests : IDisposable
         gate.Check(Ulid.NewUlid(), packageHash: null, new(1, 0, 0))
             .Should()
             .BeNull("only official marketplace signatures are enforced by default");
+    }
+
+    /// <summary>
+    /// The registered gate asks where a plugin runs before it asks about
+    /// consent. An enable skips the consent refusal, so asked the other way
+    /// round an unconsented plugin that cannot run in its own process would be
+    /// started there anyway (#68).
+    /// </summary>
+    [Fact]
+    public void AddPluginSystem_TheRunGateAsksWhereAPluginRunsBeforeItAsksAboutConsent()
+    {
+        ServiceCollection services = new();
+        services.AddSingleton<IEventBus, InMemoryEventBus>();
+        services.AddLogging();
+        services.AddSingleton(TestStorageHelper.CreateBackend());
+        services.AddSingleton<IPluginRemoteLoader>(new EverythingElsewhere());
+        services.AddPluginSystem(_tempPluginsDir);
+        ServiceProvider provider = BuildProvider(services);
+
+        PluginRefusal? refusal = provider
+            .GetRequiredService<IPluginRunGate>()
+            .MayRun(
+                new PluginInfo
+                {
+                    Id = Ulid.NewUlid(),
+                    Name = "Analyser",
+                    Description = "d",
+                    Version = new(1, 0, 0),
+                    Status = PluginStatus.Disabled,
+                    Capabilities = new() { Hooks = [PluginHookCapability.AudioTools] },
+                }
+            );
+
+        refusal!.Code.Should().Be(PluginRefusalCodes.OutOfProcessUnsupported);
+        refusal.Why.Should().Contain(nameof(IPluginContext.AudioTools));
+    }
+
+    private sealed class EverythingElsewhere : IPluginRemoteLoader
+    {
+        public PluginIsolation IsolationFor(Ulid pluginId) => PluginIsolation.OutOfProcess;
+
+        public Task<IPlugin?> LoadAsync(
+            PluginDescription description,
+            CancellationToken ct = default
+        ) => Task.FromResult<IPlugin?>(null);
     }
 
     private sealed class StaleRevocationStore : IPluginRevocationStore

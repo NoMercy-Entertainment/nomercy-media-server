@@ -93,7 +93,8 @@ public sealed class RemoteLibrary(Ulid pluginId, RemoteCall call) : IPluginLibra
             pluginId.ToString(),
             $"A plugin in its own process asked for library.{member}.",
             "This server runs the plugin out of process, and that member does not cross the boundary yet.",
-            "Run this plugin in the server's own process until it is carried across. Docs: /nomercy-plugins/handbook/runtime-and-isolation",
+            "Run this plugin in the server's own process until it is carried across. Docs: "
+                + PluginDocs.RuntimeAndIsolation,
             PluginRefusalSeverity.Blocked
         );
 }

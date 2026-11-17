@@ -138,7 +138,8 @@ public static class PluginDispatch
             "unknown plugin",
             $"The server asked this plugin for {member}.",
             "The plugin does not implement the entry point that member belongs to, so there is nothing here to call.",
-            "Declare the hook in the plugin's manifest and implement its interface, or stop the server calling it. Docs: /nomercy-plugins/handbook/runtime-and-isolation",
+            "Declare the hook in the plugin's manifest and implement its interface, or stop the server calling it. Docs: "
+                + PluginDocs.RuntimeAndIsolation,
             PluginRefusalSeverity.Blocked
         );
 }

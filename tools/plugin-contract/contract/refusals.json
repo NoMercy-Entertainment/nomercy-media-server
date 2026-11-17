@@ -382,5 +382,17 @@
     "severity": "degraded",
     "capability": "media.proxy",
     "summary": "A plugin is sending faster than the share of the uplink the owner allowed it."
+  },
+  {
+    "code": "PLUGIN_OUT_OF_PROCESS_UNSUPPORTED",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "A plugin set to run in its own process uses something that process does not carry yet, so it was refused rather than started there broken."
+  },
+  {
+    "code": "PLUGIN_VIEW_COMPONENT_FORBIDDEN",
+    "severity": "blocked",
+    "capability": null,
+    "summary": "A plugin view names a component a plugin may never draw, so the server did not send it."
   }
 ]

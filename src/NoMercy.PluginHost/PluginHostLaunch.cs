@@ -9,6 +9,7 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Ipc;
 
 namespace NoMercy.PluginHost;
@@ -82,7 +83,8 @@ public sealed record PluginHostLaunch(
             "unknown plugin",
             "A plugin process started without the details it needs to run.",
             $"The launch variable {key} was empty, so the process cannot reach the server or find the plugin.",
-            "Restart the plugin from its health page; the server sets these variables. Docs: /nomercy-plugins/handbook/runtime-and-isolation",
+            "Restart the plugin from its health page; the server sets these variables. Docs: "
+                + PluginDocs.RuntimeAndIsolation,
             "blocked"
         );
 }

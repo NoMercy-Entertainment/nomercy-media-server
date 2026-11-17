@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.MediaProcessing.Jobs.ChangesJobs;
+using NoMercy.MediaProcessing.Jobs.SegmentJobs;
 using NoMercy.Queue.MediaServer.Jobs;
 using NoMercy.Service.Jobs;
 using NoMercyQueue.Extensions;
@@ -28,5 +29,6 @@ public static partial class ServiceConfiguration
         services.AddCronJob<IpBanExpiryCronJob>("ip-ban-expiry");
         services.AddCronJob<AudioAnalysisSweepCronJob>("audio-analysis-sweep");
         services.AddCronJob<DerivedAudioEvictionCronJob>("derived-audio-eviction");
+        services.AddCronJob<ChapterSegmentSweepCronJob>("chapter-segment-sweep");
     }
 }

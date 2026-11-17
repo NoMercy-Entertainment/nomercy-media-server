@@ -268,6 +268,23 @@ public class PluginRepository : IPluginRepository, IPluginRepositoryOrigin
         }
     }
 
+    public PluginRepositoryInfo? ListedBy(PluginRepositoryEntry entry)
+    {
+        ArgumentNullException.ThrowIfNull(entry);
+
+        lock (_lock)
+        {
+            return _repositories.FirstOrDefault(repository =>
+                repository.Enabled
+                && _pluginsByRepository.TryGetValue(
+                    repository.Name,
+                    out List<PluginRepositoryEntry>? plugins
+                )
+                && plugins.Any(listed => ReferenceEquals(listed, entry))
+            );
+        }
+    }
+
     public IReadOnlyList<PluginRepositoryEntry> GetAvailablePlugins()
     {
         lock (_lock)

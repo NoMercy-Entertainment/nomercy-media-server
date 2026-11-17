@@ -33,7 +33,7 @@ public class PluginGrantPersistenceTests : IDisposable
         $"nm-grants-{Guid.NewGuid():N}"
     );
 
-    private IPluginConfiguration Configuration() =>
+    private IPluginAtomicConfiguration Configuration() =>
         new PluginConfiguration(_tempDir, TestStorageHelper.CreateStorage(_tempDir));
 
     private IPluginGrantStore Store() => new ConfigPluginGrantStore(Configuration());
@@ -123,7 +123,7 @@ public class PluginGrantPersistenceTests : IDisposable
     [Fact]
     public void Consenting_does_not_wipe_the_grants_the_same_owner_gave()
     {
-        IPluginConfiguration configuration = Configuration();
+        IPluginAtomicConfiguration configuration = Configuration();
         IPluginGrantStore grants = new ConfigPluginGrantStore(configuration);
         IPluginConsentStore consent = new ConfigPluginConsentStore(configuration);
 
@@ -132,7 +132,7 @@ public class PluginGrantPersistenceTests : IDisposable
 
         // Both answers, from stores rebuilt over the file rather than the ones
         // that wrote it: what the next request and the next boot actually read.
-        IPluginConfiguration reread = Configuration();
+        IPluginAtomicConfiguration reread = Configuration();
 
         new ConfigPluginGrantStore(reread)
             .Holds(PluginId, PluginGrantKind.NetworkHost, "tracker.example")
@@ -145,7 +145,7 @@ public class PluginGrantPersistenceTests : IDisposable
     [Fact]
     public void Granting_does_not_wipe_the_consent_that_came_first()
     {
-        IPluginConfiguration configuration = Configuration();
+        IPluginAtomicConfiguration configuration = Configuration();
 
         new ConfigPluginConsentStore(configuration).Add(PluginId, null, new Version(1, 0));
         new ConfigPluginGrantStore(configuration).Grant(
@@ -154,7 +154,7 @@ public class PluginGrantPersistenceTests : IDisposable
             "tracker.example"
         );
 
-        IPluginConfiguration reread = Configuration();
+        IPluginAtomicConfiguration reread = Configuration();
 
         new ConfigPluginConsentStore(reread).Contains(PluginId).Should().BeTrue();
         new ConfigPluginGrantStore(reread)
@@ -170,7 +170,7 @@ public class PluginGrantPersistenceTests : IDisposable
     [Fact]
     public async Task A_stored_secret_does_not_wipe_consent_or_grants()
     {
-        IPluginConfiguration configuration = Configuration();
+        IPluginAtomicConfiguration configuration = Configuration();
 
         new ConfigPluginConsentStore(configuration).Add(PluginId, null, new Version(1, 0));
         new ConfigPluginGrantStore(configuration).Grant(
@@ -185,7 +185,7 @@ public class PluginGrantPersistenceTests : IDisposable
             configuration
         ).SetAsync("api-key", "s3cret");
 
-        IPluginConfiguration reread = Configuration();
+        IPluginAtomicConfiguration reread = Configuration();
 
         new ConfigPluginConsentStore(reread).Contains(PluginId).Should().BeTrue();
         new ConfigPluginGrantStore(reread)
@@ -215,5 +215,28 @@ public class PluginGrantPersistenceTests : IDisposable
         Store().Revoke(PluginId, PluginGrantKind.NetworkHost, "tracker.example");
 
         Store().Holds(PluginId, PluginGrantKind.NetworkHost, "tracker.example").Should().BeFalse();
+    }
+
+    [Fact]
+    public void Everything_one_plugin_holds_is_listed_with_its_kind_and_nothing_of_another_plugin()
+    {
+        Ulid other = Ulid.Parse("0H248H248H248H248H248H249H");
+        IPluginGrantStore writer = Store();
+        writer.Grant(PluginId, PluginGrantKind.NetworkHost, PluginGrant.Everything);
+        writer.Grant(
+            PluginId,
+            PluginGrantKind.ForCapability("media.proxy"),
+            PluginGrant.Everything
+        );
+        writer.Grant(other, PluginGrantKind.LibraryWrite, "library-1");
+
+        IReadOnlyList<PluginGrantEntry> held = Store().HeldBy(PluginId);
+
+        held.Select(grant => (grant.Kind, grant.Value))
+            .Should()
+            .Equal(
+                (PluginGrantKind.NetworkHost, PluginGrant.Everything),
+                (PluginGrantKind.ForCapability("media.proxy"), PluginGrant.Everything)
+            );
     }
 }

@@ -182,7 +182,7 @@ public class StorageBrokerTests
                 "radio",
                 "The plugin reached a folder.",
                 "It did not declare the storage.path capability.",
-                "Declare it in the manifest. Docs: /nomercy-plugins/capabilities/storage",
+                "Declare it in the manifest. Docs: /nomercy-plugins/capabilities/storage-path",
                 PluginRefusalSeverity.Blocked
             )
         );

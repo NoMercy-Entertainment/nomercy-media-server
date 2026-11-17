@@ -66,7 +66,8 @@ public class PluginConsentRecord
 // Backed by IPluginConfiguration under a platform-scoped data folder (not a
 // per-plugin one) so the granted set survives process restarts and is shared
 // across every plugin's consent check.
-public class ConfigPluginConsentStore(IPluginConfiguration configuration) : IPluginConsentStore
+public class ConfigPluginConsentStore(IPluginAtomicConfiguration configuration)
+    : IPluginConsentStore
 {
     public bool Contains(Ulid pluginId)
     {
@@ -96,48 +97,43 @@ public class ConfigPluginConsentStore(IPluginConfiguration configuration) : IPlu
             : null;
     }
 
-    public void Add(Ulid pluginId, PluginCapabilities? capabilities, Version manifestVersion)
-    {
-        PluginConsentRecord record = configuration.GetConfiguration<PluginConsentRecord>() ?? new();
-
-        record.GrantedPluginIds.Remove(pluginId);
-        // Approvals already given are carried over. Replacing the record
-        // wholesale here turned an update into a silent re-approval of
-        // everything the owner had said no to.
-        record.ConsentGrants.TryGetValue(Key(pluginId), out PluginConsentGrant? existing);
-
-        record.ConsentGrants[Key(pluginId)] = new PluginConsentGrant
+    public void Add(Ulid pluginId, PluginCapabilities? capabilities, Version manifestVersion) =>
+        configuration.Update<PluginConsentRecord>(record =>
         {
-            Capabilities = capabilities,
-            ManifestVersion = manifestVersion.ToString(),
-            ApprovedCapabilities = existing?.ApprovedCapabilities ?? new(StringComparer.Ordinal),
-        };
+            record.GrantedPluginIds.Remove(pluginId);
+            // Approvals already given are carried over. Replacing the record
+            // wholesale here turned an update into a silent re-approval of
+            // everything the owner had said no to.
+            record.ConsentGrants.TryGetValue(Key(pluginId), out PluginConsentGrant? existing);
 
-        configuration.SaveConfiguration(record);
-    }
+            record.ConsentGrants[Key(pluginId)] = new PluginConsentGrant
+            {
+                Capabilities = capabilities,
+                ManifestVersion = manifestVersion.ToString(),
+                ApprovedCapabilities =
+                    existing?.ApprovedCapabilities ?? new(StringComparer.Ordinal),
+            };
 
-    public void Save(Ulid pluginId, PluginConsentGrant grant)
-    {
-        PluginConsentRecord record = configuration.GetConfiguration<PluginConsentRecord>() ?? new();
+            return true;
+        });
 
-        record.GrantedPluginIds.Remove(pluginId);
-        record.ConsentGrants[Key(pluginId)] = grant;
+    public void Save(Ulid pluginId, PluginConsentGrant grant) =>
+        configuration.Update<PluginConsentRecord>(record =>
+        {
+            record.GrantedPluginIds.Remove(pluginId);
+            record.ConsentGrants[Key(pluginId)] = grant;
 
-        configuration.SaveConfiguration(record);
-    }
+            return true;
+        });
 
-    public void Remove(Ulid pluginId)
-    {
-        PluginConsentRecord? record = configuration.GetConfiguration<PluginConsentRecord>();
-        if (record is null)
-            return;
+    public void Remove(Ulid pluginId) =>
+        configuration.Update<PluginConsentRecord>(record =>
+        {
+            bool removedOldEntry = record.GrantedPluginIds.Remove(pluginId);
+            bool removedGrant = record.ConsentGrants.Remove(Key(pluginId));
 
-        bool removedOldEntry = record.GrantedPluginIds.Remove(pluginId);
-        bool removedGrant = record.ConsentGrants.Remove(Key(pluginId));
-
-        if (removedOldEntry || removedGrant)
-            configuration.SaveConfiguration(record);
-    }
+            return removedOldEntry || removedGrant;
+        });
 
     private static string Key(Ulid pluginId) => pluginId.ToString();
 }

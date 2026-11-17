@@ -17,7 +17,7 @@ using NoMercy.Storage;
 
 namespace NoMercy.PluginSdk;
 
-public class PluginConfiguration : IPluginConfiguration
+public class PluginConfiguration : IPluginAtomicConfiguration
 {
     private readonly string _configFilePath;
     private readonly IStorage _storage;
@@ -106,6 +106,36 @@ public class PluginConfiguration : IPluginConfiguration
         catch (JsonException)
         {
             return null;
+        }
+    }
+
+    public void Update<T>(Func<T, bool> change)
+        where T : class, new()
+    {
+        ArgumentNullException.ThrowIfNull(change);
+
+        _lock.Wait();
+        try
+        {
+            // Read under the same lock the write takes, so nothing can save
+            // between this read and the write below.
+            string? existing = ReadExisting();
+            T record = (existing is null ? null : TryDeserialize<T>(existing)) ?? new();
+
+            if (!change(record))
+                return;
+
+            string? directory = Path.GetDirectoryName(_configFilePath);
+            if (directory is not null && !_storage.Exists(directory))
+            {
+                _storage.CreateDirectory(directory);
+            }
+
+            _storage.Write(_configFilePath, Encoding.UTF8.GetBytes(Merge(existing, record)));
+        }
+        finally
+        {
+            _lock.Release();
         }
     }
 

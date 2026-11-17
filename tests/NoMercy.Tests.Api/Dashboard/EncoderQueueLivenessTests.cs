@@ -11,6 +11,7 @@
 
 using NoMercy.Api.Controllers.V1.Dashboard.Admin;
 using NoMercy.MediaProcessing.Jobs.MediaJobs;
+using NoMercy.MediaProcessing.Jobs.SegmentJobs;
 using NoMercy.MediaProcessing.Jobs.SubtitleJobs;
 using NoMercyQueue;
 using Xunit;
@@ -217,6 +218,44 @@ public class EncoderQueueLivenessTests
 
         dto.Title.Should().Be("BLUE.LOCK.S01E01");
         dto.Backdrop.Should().BeNull();
+    }
+
+    [Fact]
+    public void ASegmentAnalysis_IsReportedAsMaintenance()
+    {
+        SegmentAnalysisJob job = SegmentAnalysisJob.ForSeason(10, "Hellsing, season 1");
+
+        MaintenanceJob? entry = TasksController.ReadMaintenanceJob(
+            new()
+            {
+                Id = 44,
+                Priority = job.Priority,
+                Queue = "encoder",
+                Payload = SerializationHelper.Serialize(job),
+            }
+        );
+
+        entry.Should().NotBeNull();
+        entry!.Dto.Kind.Should().Be("segments");
+        entry.Dto.Title.Should().Be("Hellsing, season 1");
+        entry.Dto.PayloadId.Should().Be("season:10");
+        entry.HostFolder.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ASegmentAnalysisWithoutATitle_IsNamedByItsItem()
+    {
+        MaintenanceJob? entry = TasksController.ReadMaintenanceJob(
+            new()
+            {
+                Id = 45,
+                Priority = 1,
+                Queue = "encoder",
+                Payload = SerializationHelper.Serialize(SegmentAnalysisJob.ForMovie(129)),
+            }
+        );
+
+        entry!.Dto.Title.Should().Be("Movie 129");
     }
 
     [Fact]

@@ -33,6 +33,15 @@ public class PluginSideloadPolicy(
     public const bool SharedWithMembers = false;
     public const bool Verified = false;
 
+    /// <summary>
+    /// Where the owner turns developer mode on: the switch on the dashboard's
+    /// plugins page, under Advanced. One sentence, so the policy and the
+    /// install endpoint cannot name two different places.
+    /// </summary>
+    public const string DeveloperModeFix =
+        "Turn on developer mode: in the dashboard, open Advanced, then Plugins, and switch on "
+        + "\"Install plugins from a file\". Read the warning there, then install the file again.";
+
     public PluginRefusal? Check(PluginManifest manifest)
     {
         string who = $"{manifest.Name} {manifest.Version}";
@@ -43,7 +52,7 @@ public class PluginSideloadPolicy(
                 who,
                 "The server did not install the file.",
                 "Installing a plugin from a file is off, because the server cannot check who wrote it.",
-                "Turn on developer mode in server settings, read the warning there, then install the file again.",
+                DeveloperModeFix,
                 PluginRefusalSeverity.Blocked
             );
 

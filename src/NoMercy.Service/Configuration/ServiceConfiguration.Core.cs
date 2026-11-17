@@ -26,6 +26,7 @@ using NoMercy.Data.Repositories;
 using NoMercy.Data.Resolvers;
 using NoMercy.Data.Security;
 using NoMercy.Data.Services;
+using NoMercy.Data.Services.SegmentAnalysis;
 using NoMercy.Database;
 using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.Orchestration;
@@ -47,6 +48,7 @@ using NoMercy.MediaProcessing.Music;
 using NoMercy.MediaProcessing.People;
 using NoMercy.MediaProcessing.Reclaim;
 using NoMercy.MediaProcessing.Seasons;
+using NoMercy.MediaProcessing.Segments;
 using NoMercy.MediaProcessing.Shows;
 using NoMercy.MediaProcessing.Subtitles;
 using NoMercy.Monitoring;
@@ -640,6 +642,13 @@ public static partial class ServiceConfiguration
         services.AddScoped<PersonManager>();
         services.AddScoped<EncoderProfileService>();
         services.AddScoped<ContentAnalysisService>();
+        // Intro / credits / end-of-content analysis (#598). The writer is the
+        // one seam to the segment table (precedence: #503).
+        services.AddScoped<ISegmentAnalysisWriter, ContentSegmentAnalysisWriter>();
+        services.AddScoped<ISegmentSourceResolver, SegmentSourceResolver>();
+        services.AddScoped<ISegmentAnalysisService, SegmentAnalysisService>();
+        services.AddSingleton<ISegmentAnalysisState, SegmentAnalysisState>();
+        services.AddSingleton<ISegmentAnalysisLocks, SegmentAnalysisLocks>();
         services.AddScoped<HomeService>();
         services.AddScoped<RecommendationService>();
         // Singleton: the ingest-key registry is shared across the scoped
@@ -803,7 +812,25 @@ public static partial class ServiceConfiguration
 
         services.AddHostedService<EncodingNotificationSubscriber>();
         services.AddHostedService<AutoEncodeSubscriber>();
-        services.AddHostedService<IntroDetectionSubscriber>();
+        services.AddHostedService<SegmentAnalysisScheduler>();
+        // Chapters become content segments: one classifier, one title list, the
+        // precedence order applied on write. Database-only, so singletons over
+        // the context factory. Runs after each encode, once after boot and in
+        // the daily sweep.
+        services.AddSingleton<
+            MediaProcessing.Segments.IChapterSegmentClassifier,
+            MediaProcessing.Segments.ChapterSegmentClassifier
+        >();
+        services.AddSingleton<
+            MediaProcessing.Segments.IChapterSegmentRepository,
+            MediaProcessing.Segments.ChapterSegmentRepository
+        >();
+        services.AddSingleton<
+            MediaProcessing.Segments.IChapterSegmentWriter,
+            MediaProcessing.Segments.ChapterSegmentWriter
+        >();
+        services.AddHostedService<ChapterSegmentSubscriber>();
+        services.AddHostedService<MediaProcessing.Segments.ChapterSegmentStartupSweepService>();
         // Analysis is part of every music import and rescan, not a switch a
         // user has to find. Same shape as AutoEncodeSubscriber above: a hosted
         // service that subscribes on start and unsubscribes on stop.

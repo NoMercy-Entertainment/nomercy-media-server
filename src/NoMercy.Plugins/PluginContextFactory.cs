@@ -38,7 +38,7 @@ public class PluginContextFactory(
     IDataProtectionProvider protectionProvider,
     IPluginLibraryQuery libraryQuery,
     IPluginLibraryWriterFactory libraryWriterFactory,
-    IPluginConfiguration platformConfiguration,
+    IPluginAtomicConfiguration platformConfiguration,
     IPluginHubContextFactory hubContextFactory,
     IPluginEncoder? encoder = null,
     IPluginJobs? jobs = null,

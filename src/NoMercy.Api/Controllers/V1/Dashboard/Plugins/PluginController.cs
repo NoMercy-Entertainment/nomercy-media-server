@@ -23,7 +23,9 @@ using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Capabilities;
 using NoMercy.PluginSdk.OutOfProcess;
+using NoMercy.PluginSdk.Provenance;
 using NoMercy.PluginSdk.Sideload;
+using NoMercy.PluginSdk.Storage;
 using NoMercy.PluginSdk.Verification;
 using NoMercy.Storage;
 
@@ -41,7 +43,10 @@ public class PluginController(
     IPluginRestartAdvisor restartAdvisor,
     IStorageDriver storageDriver,
     IPluginDeveloperModeSource developerMode,
-    IPluginRunGate? runGate = null
+    IPluginRunGate? runGate = null,
+    IPluginIsolationFit? isolationFit = null,
+    IPluginProvenanceReader? provenance = null,
+    IPluginGrantedLocations? grantedLocations = null
 ) : BaseController
 {
     private const long MaximumUploadBytes = 64L * 1024 * 1024;
@@ -173,15 +178,62 @@ public class PluginController(
     }
 
     /// <summary>
-    /// An elevated plugin whose recorded consent does not cover what its
-    /// manifest now asks for is waiting on the owner, not failing. The
-    /// dashboard needs to tell those two apart.
+    /// Takes back one grant the plugin holds, such as <c>network.host = *</c>,
+    /// and leaves the rest and the plugin's consent as they are.
     /// <para>
-    /// Not <c>HasConsent</c>: that is true for a record covering a smaller
-    /// request, so a plugin that widened showed as plain Disabled with nothing
-    /// on screen offering the owner the decision it was actually waiting for.
+    /// Answering a pending request with no only clears the request, and
+    /// withdrawing consent takes everything and disables the plugin. Neither
+    /// let the owner take back one thing they had given, which is what the
+    /// plugin's page offers beside each grant it lists.
+    /// </para>
+    /// <para>
+    /// Most grants are checked on every use and are gone from the plugin's
+    /// next call. The folders a plugin reads from its server info are cached,
+    /// so they are refreshed here. A kind read only when the plugin starts
+    /// (<see cref="PluginLaunchTimeGrants"/>) says <c>restart_required</c>;
+    /// the plugin is not restarted for the owner.
     /// </para>
     /// </summary>
+    [HttpDelete("{id:ulid}/grants")]
+    public async Task<IActionResult> RevokeGrant(
+        Ulid id,
+        [FromQuery] string? kind,
+        [FromQuery] string? value,
+        CancellationToken ct = default
+    )
+    {
+        if (string.IsNullOrWhiteSpace(kind) || string.IsNullOrWhiteSpace(value))
+            return UnprocessableEntityResponse("A grant needs both a kind and a value");
+
+        bool held = grantStore
+            .HeldBy(id)
+            .Any(grant =>
+                string.Equals(grant.Kind, kind, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(grant.Value, value, StringComparison.OrdinalIgnoreCase)
+            );
+
+        if (!held)
+            return NotFoundResponse("The plugin does not hold that grant");
+
+        grantStore.Revoke(id, kind, value);
+
+        if (grantedLocations is not null)
+            await grantedLocations.RefreshAsync(id, ct);
+
+        bool restartRequired = PluginLaunchTimeGrants.AppliesFromNextStart(kind);
+
+        return Ok(
+            new PluginGrantRevokedDto
+            {
+                Status = "ok",
+                Message = restartRequired
+                    ? "Grant revoked. The plugin keeps it until it restarts"
+                    : "Grant revoked",
+                RestartRequired = restartRequired,
+            }
+        );
+    }
+
     /// <summary>
     /// One plugin as the dashboard reads it. Ordered: the consent check is what
     /// upgrades a legacy record, so the consented set is read after it and
@@ -197,7 +249,10 @@ public class PluginController(
             restartAdvisor.Evaluate(plugin, PluginOperation.Enable),
             awaiting,
             consentService.ConsentedCapabilities(plugin.Id),
-            runGate?.LastRefusal(plugin.Id)
+            runGate?.LastRefusal(plugin.Id),
+            // A host that records no sources says unknown, never a guess.
+            provenance?.Read(plugin.Id),
+            grantStore.HeldBy(plugin.Id)
         );
     }
 
@@ -214,6 +269,16 @@ public class PluginController(
             )
             : null;
 
+    /// <summary>
+    /// An elevated plugin whose recorded consent does not cover what its
+    /// manifest now asks for is waiting on the owner, not failing. The
+    /// dashboard needs to tell those two apart.
+    /// <para>
+    /// Not <c>HasConsent</c>: that is true for a record covering a smaller
+    /// request, so a plugin that widened showed as plain Disabled with nothing
+    /// on screen offering the owner the decision it was actually waiting for.
+    /// </para>
+    /// </summary>
     private bool AwaitingConsent(PluginInfo plugin) =>
         !consentService.IsBaseline(plugin.Capabilities)
         && !consentService.ConsentCoversCapabilities(
@@ -376,7 +441,7 @@ public class PluginController(
                     fileName,
                     "The server did not install the file.",
                     "Installing a plugin from a file is off, because the server cannot check who wrote it.",
-                    "Turn on developer mode in server settings, read the warning there, then install the file again.",
+                    PluginSideloadPolicy.DeveloperModeFix,
                     PluginRefusalSeverity.Blocked
                 )
             );
@@ -539,9 +604,9 @@ public class PluginController(
     /// <summary>
     /// Whether this server installs a plugin from a file the owner hands it.
     /// <para>
-    /// The refusal a blocked sideload returns says to turn developer mode on in
-    /// server settings. Nothing but a text editor could, so the sentence named
-    /// a place that did not exist and the owner had no way through.
+    /// The refusal a blocked sideload returns says to turn developer mode on
+    /// with the switch on the dashboard's plugins page. Before this endpoint
+    /// nothing but a text editor could, so the owner had no way through.
     /// </para>
     /// </summary>
     [HttpGet("developer-mode")]
@@ -591,19 +656,50 @@ public class PluginController(
     /// <summary>
     /// The mode, and whether this server can actually do it.
     /// <para>
-    /// The choice is saved either way, because it is the owner's and it is
-    /// what they will get once the runtime lands. Returning a plain OK let
-    /// them believe a plugin was isolated while every call still ran in the
-    /// server's own process.
+    /// The choice is saved either way, because it is the owner's. Returning a
+    /// plain OK let them believe every plugin would keep working in its own
+    /// process, when one that needs what that process lacks is refused.
     /// </para>
     /// </summary>
-    private static PluginRuntimeModeDto DescribeRuntime(PluginRuntimeMode mode)
+    private PluginRuntimeModeDto DescribeRuntime(PluginRuntimeMode mode)
     {
         return new PluginRuntimeModeDto
         {
             Isolation = mode.Default.ToString(),
             PerPlugin = mode.PerPlugin ?? new Dictionary<string, PluginIsolation>(),
             Notice = mode.AnyOutOfProcess ? PluginIsolationLevel.PendingKey : null,
+            NeedsInProcess = NeedsInProcess(),
         };
+    }
+
+    /// <summary>
+    /// Every installed plugin that would lose something in a process of its
+    /// own, and what, so the screen that moves a plugin says beforehand that
+    /// it would be refused there. Null on a host that registered no fit check, so the field is left out
+    /// rather than claiming every plugin fits.
+    /// </summary>
+    private Dictionary<string, PluginInProcessNeedDto>? NeedsInProcess()
+    {
+        if (isolationFit is null)
+            return null;
+
+        Dictionary<string, PluginInProcessNeedDto> needs = new();
+
+        foreach (PluginInfo plugin in pluginManager.GetInstalledPlugins())
+        {
+            PluginIsolationVerdict verdict = isolationFit.For(plugin.Capabilities);
+
+            if (verdict.CanRunOutOfProcess)
+                continue;
+
+            needs[plugin.Id.ToString()] = new PluginInProcessNeedDto
+            {
+                Facades = verdict.Facades,
+                Hooks = verdict.Hooks,
+                Controllers = verdict.Controllers,
+            };
+        }
+
+        return needs;
     }
 }

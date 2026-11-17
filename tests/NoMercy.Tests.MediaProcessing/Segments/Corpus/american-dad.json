@@ -1,0 +1,854 @@
+{
+ "series": "American Dad, seasons 2, 13, 18 and 21 (western animation)",
+ "library_type": "tv",
+ "source": "chapters.vtt of the encoded episodes in Z:/TV.Shows/TV.Shows/American.Dad.(2005), read 2026-11-17",
+ "truth": "Chapter titles. \"Intro\" is the 25-30 s theme song (web skips it today). S18 titles the theme \"Intro start\" and the story after it \"Intro end\"; neither is in the title list, so S18 gets no intro (safe side). The credits are titled Credits or Outro.",
+ "shape": "S02: Intro at 0 / Chapter 02 / Credits. S13: cold open, so the scan adds a \"Start\" chapter and Intro is at position 2. S18: Intro start / Intro end / Credits of 1-13 s. S21: Scene 1 / Intro / Scene 2 / Outro, or Scene 1 / Outro without a theme.",
+ "episodes": [
+  {
+   "episode": "S02E01",
+   "chapters": [
+    {"title": "Intro", "start": "00:00:00.041", "end": "00:00:04.963"},
+    {"title": "Chapter 02", "start": "00:00:04.963", "end": "00:21:22.282"},
+    {"title": "Credits", "start": "00:21:22.282", "end": "00:22:00.704"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 0.041, "end": 4.963},
+    {"type": "Outro", "start": 1282.282, "end": 1320.704}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S02E02",
+   "chapters": [
+    {"title": "Intro", "start": "00:00:00.041", "end": "00:00:29.946"},
+    {"title": "Chapter 02", "start": "00:00:29.946", "end": "00:21:20.280"},
+    {"title": "Credits", "start": "00:21:20.280", "end": "00:22:00.000"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 0.041, "end": 29.946},
+    {"type": "Outro", "start": 1280.28, "end": 1320.0}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S02E03",
+   "chapters": [
+    {"title": "Intro", "start": "00:00:00.041", "end": "00:00:29.988"},
+    {"title": "Chapter 02", "start": "00:00:29.988", "end": "00:21:21.281"},
+    {"title": "Credits", "start": "00:21:21.281", "end": "00:22:00.000"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 0.041, "end": 29.988},
+    {"type": "Outro", "start": 1281.281, "end": 1320.0}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S02E04",
+   "chapters": [
+    {"title": "Intro", "start": "00:00:00.041", "end": "00:00:27.152"},
+    {"title": "Chapter 02", "start": "00:00:27.152", "end": "00:21:21.281"},
+    {"title": "Credits", "start": "00:21:21.281", "end": "00:21:59.455"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 0.041, "end": 27.152},
+    {"type": "Outro", "start": 1281.281, "end": 1319.455}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S02E05",
+   "chapters": [
+    {"title": "Intro", "start": "00:00:00.041", "end": "00:00:06.089"},
+    {"title": "Chapter 02", "start": "00:00:06.089", "end": "00:21:22.282"},
+    {"title": "Credits", "start": "00:21:22.282", "end": "00:22:00.800"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 0.041, "end": 6.089},
+    {"type": "Outro", "start": 1282.282, "end": 1320.8}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S02E06",
+   "chapters": [
+    {"title": "Intro", "start": "00:00:00.041", "end": "00:00:05.964"},
+    {"title": "Recap", "start": "00:00:05.964", "end": "00:00:57.849"},
+    {"title": "Chapter 03", "start": "00:00:57.849", "end": "00:21:21.281"},
+    {"title": "Credits", "start": "00:21:21.281", "end": "00:21:59.904"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 0.041, "end": 5.964},
+    {"type": "Recap", "start": 5.964, "end": 57.849},
+    {"type": "Outro", "start": 1281.281, "end": 1319.904}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S02E07",
+   "chapters": [
+    {"title": "Intro", "start": "00:00:00.041", "end": "00:00:26.943"},
+    {"title": "Chapter 02", "start": "00:00:26.943", "end": "00:21:20.280"},
+    {"title": "Credits", "start": "00:21:20.280", "end": "00:21:58.912"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 0.041, "end": 26.943},
+    {"type": "Outro", "start": 1280.28, "end": 1318.912}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S02E08",
+   "chapters": [
+    {"title": "Intro", "start": "00:00:00.041", "end": "00:00:27.068"},
+    {"title": "Chapter 02", "start": "00:00:27.068", "end": "00:21:22.282"},
+    {"title": "Credits", "start": "00:21:22.282", "end": "00:22:00.416"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 0.041, "end": 27.068},
+    {"type": "Outro", "start": 1282.282, "end": 1320.416}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S02E09",
+   "chapters": [
+    {"title": "Intro", "start": "00:00:00.041", "end": "00:00:27.152"},
+    {"title": "Chapter 02", "start": "00:00:27.152", "end": "00:21:22.282"},
+    {"title": "Credits", "start": "00:21:22.282", "end": "00:22:00.544"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 0.041, "end": 27.152},
+    {"type": "Outro", "start": 1282.282, "end": 1320.544}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S02E10",
+   "chapters": [
+    {"title": "Intro", "start": "00:00:00.041", "end": "00:00:27.193"},
+    {"title": "Chapter 02", "start": "00:00:27.193", "end": "00:21:19.279"},
+    {"title": "Credits", "start": "00:21:19.279", "end": "00:21:57.632"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 0.041, "end": 27.193},
+    {"type": "Outro", "start": 1279.279, "end": 1317.632}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S02E11",
+   "chapters": [
+    {"title": "Intro", "start": "00:00:00.041", "end": "00:00:27.152"},
+    {"title": "Chapter 02", "start": "00:00:27.152", "end": "00:21:21.281"},
+    {"title": "Credits", "start": "00:21:21.281", "end": "00:21:59.840"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 0.041, "end": 27.152},
+    {"type": "Outro", "start": 1281.281, "end": 1319.84}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S02E12",
+   "chapters": [
+    {"title": "Intro", "start": "00:00:00.041", "end": "00:00:27.110"},
+    {"title": "Chapter 02", "start": "00:00:27.110", "end": "00:21:22.282"},
+    {"title": "Credits", "start": "00:21:22.282", "end": "00:22:00.672"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 0.041, "end": 27.11},
+    {"type": "Outro", "start": 1282.282, "end": 1320.672}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S02E13",
+   "chapters": [
+    {"title": "Intro", "start": "00:00:00.041", "end": "00:00:27.110"},
+    {"title": "Chapter 02", "start": "00:00:27.110", "end": "00:21:19.279"},
+    {"title": "Credits", "start": "00:21:19.279", "end": "00:21:57.664"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 0.041, "end": 27.11},
+    {"type": "Outro", "start": 1279.279, "end": 1317.664}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S02E14",
+   "chapters": [
+    {"title": "Intro", "start": "00:00:00.041", "end": "00:00:27.110"},
+    {"title": "Chapter 02", "start": "00:00:27.110", "end": "00:21:21.281"},
+    {"title": "Credits", "start": "00:21:21.281", "end": "00:21:59.712"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 0.041, "end": 27.11},
+    {"type": "Outro", "start": 1281.281, "end": 1319.712}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S02E15",
+   "chapters": [
+    {"title": "Intro", "start": "00:00:00.041", "end": "00:00:27.110"},
+    {"title": "Chapter 02", "start": "00:00:27.110", "end": "00:21:22.282"},
+    {"title": "Credits", "start": "00:21:22.282", "end": "00:22:00.448"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 0.041, "end": 27.11},
+    {"type": "Outro", "start": 1282.282, "end": 1320.448}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S02E16",
+   "chapters": [
+    {"title": "Intro", "start": "00:00:00.041", "end": "00:00:27.110"},
+    {"title": "Chapter 02", "start": "00:00:27.110", "end": "00:21:19.279"},
+    {"title": "Credits", "start": "00:21:19.279", "end": "00:21:54.176"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 0.041, "end": 27.11},
+    {"type": "Outro", "start": 1279.279, "end": 1314.176}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S13E01",
+   "chapters": [
+    {"title": "Intro", "start": "00:00:50.425", "end": "00:01:18.328"},
+    {"title": "Chapter 02", "start": "00:01:18.328", "end": "00:20:38.238"},
+    {"title": "Credits", "start": "00:20:38.238", "end": "00:21:07.328"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 50.425, "end": 78.328},
+    {"type": "Outro", "start": 1238.238, "end": 1267.328}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S13E02",
+   "chapters": [
+    {"title": "Intro", "start": "00:01:11.154", "end": "00:01:39.057"},
+    {"title": "Chapter 02", "start": "00:01:39.057", "end": "00:20:38.238"},
+    {"title": "Credits", "start": "00:20:38.238", "end": "00:21:07.328"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 71.154, "end": 99.057},
+    {"type": "Outro", "start": 1238.238, "end": 1267.328}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S13E03",
+   "chapters": [
+    {"title": "Intro", "start": "00:01:55.824", "end": "00:02:23.726"},
+    {"title": "Chapter 02", "start": "00:02:23.726", "end": "00:20:38.238"},
+    {"title": "Credits", "start": "00:20:38.238", "end": "00:21:07.328"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 115.824, "end": 143.726},
+    {"type": "Outro", "start": 1238.238, "end": 1267.328}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S13E04",
+   "chapters": [
+    {"title": "Intro", "start": "00:02:39.242", "end": "00:03:07.145"},
+    {"title": "Chapter 02", "start": "00:03:07.145", "end": "00:20:38.238"},
+    {"title": "Credits", "start": "00:20:38.238", "end": "00:21:07.328"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 159.242, "end": 187.145},
+    {"type": "Outro", "start": 1238.238, "end": 1267.328}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S13E05",
+   "chapters": [
+    {"title": "Intro", "start": "00:02:23.685", "end": "00:02:51.588"},
+    {"title": "Chapter 02", "start": "00:02:51.588", "end": "00:20:38.238"},
+    {"title": "Credits", "start": "00:20:38.238", "end": "00:21:07.328"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 143.685, "end": 171.588},
+    {"type": "Outro", "start": 1238.238, "end": 1267.328}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S13E06",
+   "chapters": [
+    {"title": "Intro", "start": "00:01:49.901", "end": "00:02:17.804"},
+    {"title": "Chapter 02", "start": "00:02:17.804", "end": "00:20:38.238"},
+    {"title": "Credits", "start": "00:20:38.238", "end": "00:21:07.328"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 109.901, "end": 137.804},
+    {"type": "Outro", "start": 1238.238, "end": 1267.328}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S13E07",
+   "chapters": [
+    {"title": "Intro", "start": "00:01:33.927", "end": "00:02:01.955"},
+    {"title": "Chapter 02", "start": "00:02:01.955", "end": "00:20:38.238"},
+    {"title": "Credits", "start": "00:20:38.238", "end": "00:21:07.328"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 93.927, "end": 121.955},
+    {"type": "Outro", "start": 1238.238, "end": 1267.328}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S13E08",
+   "chapters": [
+    {"title": "Intro", "start": "00:02:14.217", "end": "00:02:42.120"},
+    {"title": "Chapter 02", "start": "00:02:42.120", "end": "00:20:38.238"},
+    {"title": "Credits", "start": "00:20:38.238", "end": "00:21:07.328"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 134.217, "end": 162.12},
+    {"type": "Outro", "start": 1238.238, "end": 1267.328}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S13E09",
+   "chapters": [
+    {"title": "Intro", "start": "00:01:11.404", "end": "00:01:39.307"},
+    {"title": "Chapter 02", "start": "00:01:39.307", "end": "00:20:38.238"},
+    {"title": "Credits", "start": "00:20:38.238", "end": "00:21:07.328"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 71.404, "end": 99.307},
+    {"type": "Outro", "start": 1238.238, "end": 1267.328}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S13E10",
+   "chapters": [
+    {"title": "Intro", "start": "00:00:29.195", "end": "00:00:37.454"},
+    {"title": "Chapter 02", "start": "00:00:37.454", "end": "00:20:38.238"},
+    {"title": "Credits", "start": "00:20:38.238", "end": "00:21:07.328"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 29.195, "end": 37.454},
+    {"type": "Outro", "start": 1238.238, "end": 1267.328}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S13E11",
+   "chapters": [
+    {"title": "Intro", "start": "00:01:15.158", "end": "00:01:43.061"},
+    {"title": "Chapter 02", "start": "00:01:43.061", "end": "00:20:38.238"},
+    {"title": "Credits", "start": "00:20:38.238", "end": "00:21:07.328"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 75.158, "end": 103.061},
+    {"type": "Outro", "start": 1238.238, "end": 1267.328}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S13E12",
+   "chapters": [
+    {"title": "Intro", "start": "00:02:10.213", "end": "00:02:38.116"},
+    {"title": "Chapter 02", "start": "00:02:38.116", "end": "00:20:38.238"},
+    {"title": "Credits", "start": "00:20:38.238", "end": "00:21:07.328"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 130.213, "end": 158.116},
+    {"type": "Outro", "start": 1238.238, "end": 1267.328}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S13E13",
+   "chapters": [
+    {"title": "Intro", "start": "00:00:56.056", "end": "00:01:23.958"},
+    {"title": "Chapter 02", "start": "00:01:23.958", "end": "00:20:38.238"},
+    {"title": "Credits", "start": "00:20:38.238", "end": "00:21:07.328"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 56.056, "end": 83.958},
+    {"type": "Outro", "start": 1238.238, "end": 1267.328}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S13E14",
+   "chapters": [
+    {"title": "Intro", "start": "00:01:38.389", "end": "00:02:06.292"},
+    {"title": "Chapter 02", "start": "00:02:06.292", "end": "00:20:38.238"},
+    {"title": "Credits", "start": "00:20:38.238", "end": "00:21:07.328"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 98.389, "end": 126.292},
+    {"type": "Outro", "start": 1238.238, "end": 1267.328}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S13E15",
+   "chapters": [
+    {"title": "Intro", "start": "00:01:06.357", "end": "00:01:34.260"},
+    {"title": "Chapter 02", "start": "00:01:34.260", "end": "00:20:38.238"},
+    {"title": "Credits", "start": "00:20:38.238", "end": "00:21:07.328"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 66.357, "end": 94.26},
+    {"type": "Outro", "start": 1238.238, "end": 1267.328}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S13E16",
+   "chapters": [
+    {"title": "Recap", "start": "00:00:00.041", "end": "00:02:26.479"},
+    {"title": "Chapter 02", "start": "00:02:26.479", "end": "00:20:38.238"},
+    {"title": "Credits", "start": "00:20:38.238", "end": "00:21:07.328"}
+   ],
+   "expected": [
+    {"type": "Recap", "start": 0.041, "end": 146.479},
+    {"type": "Outro", "start": 1238.238, "end": 1267.328}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S13E17",
+   "chapters": [
+    {"title": "Intro", "start": "00:01:39.140", "end": "00:02:07.043"},
+    {"title": "Chapter 02", "start": "00:02:07.043", "end": "00:20:38.238"},
+    {"title": "Credits", "start": "00:20:38.238", "end": "00:21:07.328"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 99.14, "end": 127.043},
+    {"type": "Outro", "start": 1238.238, "end": 1267.328}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S13E18",
+   "chapters": [
+    {"title": "Intro", "start": "00:01:57.450", "end": "00:02:25.353"},
+    {"title": "Chapter 02", "start": "00:02:25.353", "end": "00:20:38.238"},
+    {"title": "Credits", "start": "00:20:38.238", "end": "00:21:07.328"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 117.45, "end": 145.353},
+    {"type": "Outro", "start": 1238.238, "end": 1267.328}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S13E19",
+   "chapters": [
+    {"title": "Intro", "start": "00:00:54.929", "end": "00:01:22.831"},
+    {"title": "Chapter 02", "start": "00:01:22.831", "end": "00:20:38.238"},
+    {"title": "Credits", "start": "00:20:38.238", "end": "00:21:07.328"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 54.929, "end": 82.831},
+    {"type": "Outro", "start": 1238.238, "end": 1267.328}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S13E20",
+   "chapters": [
+    {"title": "Intro", "start": "00:02:29.858", "end": "00:02:57.760"},
+    {"title": "Chapter 02", "start": "00:02:57.760", "end": "00:21:07.328"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 149.858, "end": 177.76}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S13E21",
+   "chapters": [
+    {"title": "Intro", "start": "00:01:59.369", "end": "00:02:27.272"},
+    {"title": "Chapter 02", "start": "00:02:27.272", "end": "00:20:38.238"},
+    {"title": "Credits", "start": "00:20:38.238", "end": "00:21:07.328"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 119.369, "end": 147.272},
+    {"type": "Outro", "start": 1238.238, "end": 1267.328}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S13E22",
+   "chapters": [
+    {"title": "Intro", "start": "00:01:46.481", "end": "00:02:14.383"},
+    {"title": "Chapter 02", "start": "00:02:14.383", "end": "00:20:38.238"},
+    {"title": "Credits", "start": "00:20:38.238", "end": "00:21:07.328"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 106.481, "end": 134.383},
+    {"type": "Outro", "start": 1238.238, "end": 1267.328}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S18E05",
+   "chapters": [
+    {"title": "Intro start", "start": "00:01:25.752", "end": "00:01:31.340"},
+    {"title": "Intro end", "start": "00:01:31.340", "end": "00:21:09.280"}
+   ],
+   "expected": [],
+   "story": [
+    {"start": 91.34, "end": 1269.28, "note": "story after the theme"}
+   ]
+  },
+  {
+   "episode": "S18E06",
+   "chapters": [
+    {"title": "Intro start", "start": "00:01:35.262", "end": "00:02:05.209"},
+    {"title": "Intro end", "start": "00:02:05.209", "end": "00:21:09.280"}
+   ],
+   "expected": [],
+   "story": [
+    {"start": 125.209, "end": 1269.28, "note": "story after the theme"}
+   ]
+  },
+  {
+   "episode": "S18E08",
+   "chapters": [
+    {"title": "Intro start", "start": "00:01:31.340", "end": "00:01:59.077"},
+    {"title": "Intro end", "start": "00:01:59.077", "end": "00:20:59.801"},
+    {"title": "Credits", "start": "00:20:59.801", "end": "00:21:04.768"}
+   ],
+   "expected": [
+    {"type": "Outro", "start": 1259.801, "end": 1264.768}
+   ],
+   "story": [
+    {"start": 119.077, "end": 1259.801, "note": "story after the theme"}
+   ]
+  },
+  {
+   "episode": "S18E09",
+   "chapters": [
+    {"title": "Intro start", "start": "00:01:24.084", "end": "00:01:52.279"},
+    {"title": "Intro end", "start": "00:01:52.279", "end": "00:21:04.306"},
+    {"title": "Credits", "start": "00:21:04.306", "end": "00:21:09.280"}
+   ],
+   "expected": [
+    {"type": "Outro", "start": 1264.306, "end": 1269.28}
+   ],
+   "story": [
+    {"start": 112.279, "end": 1264.306, "note": "story after the theme"}
+   ]
+  },
+  {
+   "episode": "S18E10",
+   "chapters": [
+    {"title": "Intro start", "start": "00:01:37.556", "end": "00:02:05.667"},
+    {"title": "Intro end", "start": "00:02:05.667", "end": "00:21:04.348"},
+    {"title": "Credits", "start": "00:21:04.348", "end": "00:21:09.280"}
+   ],
+   "expected": [
+    {"type": "Outro", "start": 1264.348, "end": 1269.28}
+   ],
+   "story": [
+    {"start": 125.667, "end": 1264.348, "note": "story after the theme"}
+   ]
+  },
+  {
+   "episode": "S18E11",
+   "chapters": [
+    {"title": "Intro start", "start": "00:00:52.344", "end": "00:01:21.039"},
+    {"title": "Intro end", "start": "00:01:21.039", "end": "00:21:04.348"},
+    {"title": "Credits", "start": "00:21:04.348", "end": "00:21:09.280"}
+   ],
+   "expected": [
+    {"type": "Outro", "start": 1264.348, "end": 1269.28}
+   ],
+   "story": [
+    {"start": 81.039, "end": 1264.348, "note": "story after the theme"}
+   ]
+  },
+  {
+   "episode": "S18E12",
+   "chapters": [
+    {"title": "Intro start", "start": "00:02:05.584", "end": "00:02:35.531"},
+    {"title": "Intro end", "start": "00:02:35.531", "end": "00:21:06.433"},
+    {"title": "Credits", "start": "00:21:06.433", "end": "00:21:09.280"}
+   ],
+   "expected": [
+    {"type": "Outro", "start": 1266.433, "end": 1269.28}
+   ],
+   "story": [
+    {"start": 155.531, "end": 1266.433, "note": "story after the theme"}
+   ]
+  },
+  {
+   "episode": "S18E13",
+   "chapters": [
+    {"title": "Intro start", "start": "00:01:38.599", "end": "00:02:08.544"},
+    {"title": "Intro end", "start": "00:02:08.544", "end": "00:21:06.308"},
+    {"title": "Credits", "start": "00:21:06.308", "end": "00:21:09.280"}
+   ],
+   "expected": [
+    {"type": "Outro", "start": 1266.308, "end": 1269.28}
+   ],
+   "story": [
+    {"start": 128.544, "end": 1266.308, "note": "story after the theme"}
+   ]
+  },
+  {
+   "episode": "S18E14",
+   "chapters": [
+    {"title": "Intro start", "start": "00:01:58.869", "end": "00:02:28.815"},
+    {"title": "Intro end", "start": "00:02:28.815", "end": "00:21:08.310"},
+    {"title": "Credits", "start": "00:21:08.310", "end": "00:21:09.280"}
+   ],
+   "expected": [
+    {"type": "Outro", "start": 1268.31, "end": 1269.28}
+   ],
+   "story": [
+    {"start": 148.815, "end": 1268.31, "note": "story after the theme"}
+   ]
+  },
+  {
+   "episode": "S18E15",
+   "chapters": [
+    {"title": "Intro start", "start": "00:01:47.274", "end": "00:02:17.221"},
+    {"title": "Intro end", "start": "00:02:17.221", "end": "00:21:02.304"},
+    {"title": "Credits", "start": "00:21:02.304", "end": "00:21:09.280"}
+   ],
+   "expected": [
+    {"type": "Outro", "start": 1262.304, "end": 1269.28}
+   ],
+   "story": [
+    {"start": 137.221, "end": 1262.304, "note": "story after the theme"}
+   ]
+  },
+  {
+   "episode": "S18E16",
+   "chapters": [
+    {"title": "Intro start", "start": "00:01:47.691", "end": "00:02:17.638"},
+    {"title": "Intro end", "start": "00:02:17.638", "end": "00:21:04.306"},
+    {"title": "Credits", "start": "00:21:04.306", "end": "00:21:09.280"}
+   ],
+   "expected": [
+    {"type": "Outro", "start": 1264.306, "end": 1269.28}
+   ],
+   "story": [
+    {"start": 137.638, "end": 1264.306, "note": "story after the theme"}
+   ]
+  },
+  {
+   "episode": "S18E17",
+   "chapters": [
+    {"title": "Intro start", "start": "00:01:11.113", "end": "00:01:24.293"},
+    {"title": "Intro end", "start": "00:01:24.293", "end": "00:20:56.548"},
+    {"title": "Credits", "start": "00:20:56.548", "end": "00:21:09.280"}
+   ],
+   "expected": [
+    {"type": "Outro", "start": 1256.548, "end": 1269.28}
+   ],
+   "story": [
+    {"start": 84.293, "end": 1256.548, "note": "story after the theme"}
+   ]
+  },
+  {
+   "episode": "S18E19",
+   "chapters": [
+    {"title": "Intro start", "start": "00:01:38.390", "end": "00:02:08.337"},
+    {"title": "Intro end", "start": "00:02:08.337", "end": "00:21:04.681"},
+    {"title": "Credits", "start": "00:21:04.681", "end": "00:21:09.280"}
+   ],
+   "expected": [
+    {"type": "Outro", "start": 1264.681, "end": 1269.28}
+   ],
+   "story": [
+    {"start": 128.337, "end": 1264.681, "note": "story after the theme"}
+   ]
+  },
+  {
+   "episode": "S18E20",
+   "chapters": [
+    {"title": "Intro start", "start": "00:01:48.400", "end": "00:02:18.347"},
+    {"title": "Intro end", "start": "00:02:18.347", "end": "00:21:04.640"},
+    {"title": "Credits", "start": "00:21:04.640", "end": "00:21:09.280"}
+   ],
+   "expected": [
+    {"type": "Outro", "start": 1264.64, "end": 1269.28}
+   ],
+   "story": [
+    {"start": 138.347, "end": 1264.64, "note": "story after the theme"}
+   ]
+  },
+  {
+   "episode": "S18E21",
+   "chapters": [
+    {"title": "Intro start", "start": "00:01:43.103", "end": "00:02:10.923"},
+    {"title": "Intro end", "start": "00:02:10.923", "end": "00:21:04.306"},
+    {"title": "Credits", "start": "00:21:04.306", "end": "00:21:09.280"}
+   ],
+   "expected": [
+    {"type": "Outro", "start": 1264.306, "end": 1269.28}
+   ],
+   "story": [
+    {"start": 130.923, "end": 1264.306, "note": "story after the theme"}
+   ]
+  },
+  {
+   "episode": "S21E05",
+   "chapters": [
+    {"title": "Scene 1", "start": "00:00:00.000", "end": "00:20:58.000"},
+    {"title": "Outro", "start": "00:20:58.000", "end": "00:21:03.262"}
+   ],
+   "expected": [
+    {"type": "Outro", "start": 1258.0, "end": 1263.262}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S21E06",
+   "chapters": [
+    {"title": "Scene 1", "start": "00:00:00.000", "end": "00:01:17.000"},
+    {"title": "Intro", "start": "00:01:17.000", "end": "00:01:44.000"},
+    {"title": "Scene 2", "start": "00:01:44.000", "end": "00:20:58.000"},
+    {"title": "Outro", "start": "00:20:58.000", "end": "00:21:03.262"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 77.0, "end": 104.0},
+    {"type": "Outro", "start": 1258.0, "end": 1263.262}
+   ],
+   "story": [
+    {"start": 0.0, "end": 77.0, "note": "cold open before the theme"}
+   ]
+  },
+  {
+   "episode": "S21E11",
+   "chapters": [
+    {"title": "Scene 1", "start": "00:00:00.000", "end": "00:01:56.000"},
+    {"title": "Intro", "start": "00:01:56.000", "end": "00:02:21.000"},
+    {"title": "Scene 2", "start": "00:02:21.000", "end": "00:20:58.000"},
+    {"title": "Outro", "start": "00:20:58.000", "end": "00:21:03.262"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 116.0, "end": 141.0},
+    {"type": "Outro", "start": 1258.0, "end": 1263.262}
+   ],
+   "story": [
+    {"start": 0.0, "end": 116.0, "note": "cold open before the theme"}
+   ]
+  },
+  {
+   "episode": "S21E12",
+   "chapters": [
+    {"title": "Scene 1", "start": "00:00:00.000", "end": "00:01:19.000"},
+    {"title": "Intro", "start": "00:01:19.000", "end": "00:01:46.000"},
+    {"title": "Scene 2", "start": "00:01:46.000", "end": "00:20:58.000"},
+    {"title": "Outro", "start": "00:20:58.000", "end": "00:21:03.262"}
+   ],
+   "expected": [
+    {"type": "Intro", "start": 79.0, "end": 106.0},
+    {"type": "Outro", "start": 1258.0, "end": 1263.262}
+   ],
+   "story": [
+    {"start": 0.0, "end": 79.0, "note": "cold open before the theme"}
+   ]
+  },
+  {
+   "episode": "S21E13",
+   "chapters": [
+    {"title": "Scene 1", "start": "00:00:00.000", "end": "00:20:58.000"},
+    {"title": "Outro", "start": "00:20:58.000", "end": "00:21:03.262"}
+   ],
+   "expected": [
+    {"type": "Outro", "start": 1258.0, "end": 1263.262}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S21E14",
+   "chapters": [
+    {"title": "Scene 1", "start": "00:00:00.000", "end": "00:20:58.000"},
+    {"title": "Outro", "start": "00:20:58.000", "end": "00:21:03.262"}
+   ],
+   "expected": [
+    {"type": "Outro", "start": 1258.0, "end": 1263.262}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S21E15",
+   "chapters": [
+    {"title": "Scene 1", "start": "00:00:00.000", "end": "00:20:58.000"},
+    {"title": "Outro", "start": "00:20:58.000", "end": "00:21:03.262"}
+   ],
+   "expected": [
+    {"type": "Outro", "start": 1258.0, "end": 1263.262}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S21E16",
+   "chapters": [
+    {"title": "Scene 1", "start": "00:00:00.000", "end": "00:20:58.000"},
+    {"title": "Outro", "start": "00:20:58.000", "end": "00:21:03.262"}
+   ],
+   "expected": [
+    {"type": "Outro", "start": 1258.0, "end": 1263.262}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S21E17",
+   "chapters": [
+    {"title": "Scene 1", "start": "00:00:00.000", "end": "00:20:58.000"},
+    {"title": "Outro", "start": "00:20:58.000", "end": "00:21:03.262"}
+   ],
+   "expected": [
+    {"type": "Outro", "start": 1258.0, "end": 1263.262}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S21E19",
+   "chapters": [
+    {"title": "Scene 1", "start": "00:00:00.000", "end": "00:20:58.000"},
+    {"title": "Outro", "start": "00:20:58.000", "end": "00:21:03.262"}
+   ],
+   "expected": [
+    {"type": "Outro", "start": 1258.0, "end": 1263.262}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S21E20",
+   "chapters": [
+    {"title": "Scene 1", "start": "00:00:00.000", "end": "00:20:58.000"},
+    {"title": "Outro", "start": "00:20:58.000", "end": "00:21:03.262"}
+   ],
+   "expected": [
+    {"type": "Outro", "start": 1258.0, "end": 1263.262}
+   ],
+   "story": []
+  },
+  {
+   "episode": "S21E21",
+   "chapters": [
+    {"title": "Scene 1", "start": "00:00:00.000", "end": "00:20:58.000"},
+    {"title": "Outro", "start": "00:20:58.000", "end": "00:21:03.262"}
+   ],
+   "expected": [
+    {"type": "Outro", "start": 1258.0, "end": 1263.262}
+   ],
+   "story": []
+  }
+ ]
+}

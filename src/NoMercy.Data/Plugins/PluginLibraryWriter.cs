@@ -15,6 +15,7 @@ using NoMercy.Database;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
 using NoMercy.PluginSdk.Capabilities;
+using NoMercy.PluginSdk.Library;
 using NoMercy.Storage;
 
 namespace NoMercy.Data.Plugins;
@@ -39,25 +40,17 @@ namespace NoMercy.Data.Plugins;
 public class PluginLibraryWriter(
     Ulid pluginId,
     IDbContextFactory<MediaContext> contextFactory,
+    IPluginLibraryProjection libraryProjection,
     IStorageFactory storageFactory,
     IPluginGrantStore grants,
     ILogger logger
-) : IPluginLibraryWriter
+) : IPluginLibraryWriter, IPluginLibraryWriteCheck
 {
     public async Task<IReadOnlyList<PluginLibrary>> GetWritableLibrariesAsync(
         CancellationToken ct = default
     )
     {
-        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
-
-        List<PluginLibrary> libraries = await context
-            .Libraries.AsNoTracking()
-            .Select(library => new PluginLibrary(
-                library.Id.ToString(),
-                library.Title,
-                library.Type
-            ))
-            .ToListAsync(ct);
+        List<PluginLibrary> libraries = await libraryProjection.GetLibrariesAsync(ct);
 
         return
         [
@@ -65,6 +58,21 @@ public class PluginLibraryWriter(
                 grants.Holds(pluginId, PluginGrantKind.LibraryWrite, library.Id)
             ),
         ];
+    }
+
+    public async Task<bool> MayWriteToLibraryAsync(string libraryId, CancellationToken ct = default)
+    {
+        // The id has to be the library's own spelling of it, as the list
+        // answers it, so this and GetWritableLibrariesAsync never disagree.
+        if (!Ulid.TryParse(libraryId, out Ulid id) || id.ToString() != libraryId)
+            return false;
+
+        if (!grants.Holds(pluginId, PluginGrantKind.LibraryWrite, libraryId))
+            return false;
+
+        await using MediaContext context = await contextFactory.CreateDbContextAsync(ct);
+
+        return await context.Libraries.AsNoTracking().AnyAsync(library => library.Id == id, ct);
     }
 
     public async Task<bool> CanWriteAsync(string path, CancellationToken ct = default)
@@ -234,6 +242,7 @@ public class PluginLibraryWriter(
 /// <summary>Builds a writer bound to one plugin's grants.</summary>
 public class PluginLibraryWriterFactory(
     IDbContextFactory<MediaContext> contextFactory,
+    IPluginLibraryProjection libraryProjection,
     IStorageFactory storageFactory,
     IPluginGrantStore grants,
     ILoggerFactory loggerFactory
@@ -250,6 +259,7 @@ public class PluginLibraryWriterFactory(
         return new PluginLibraryWriter(
             pluginId,
             contextFactory,
+            libraryProjection,
             storageFactory,
             grants,
             loggerFactory.CreateLogger<PluginLibraryWriter>()

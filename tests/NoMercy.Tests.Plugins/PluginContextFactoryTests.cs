@@ -45,7 +45,7 @@ public class PluginContextFactoryTests
     private readonly Mock<IDataProtectionProvider> _protectionProvider = new();
     private readonly Mock<IPluginLibraryQuery> _libraryQuery = new();
     private readonly Mock<IPluginLibraryWriterFactory> _libraryWriterFactory = new();
-    private readonly Mock<IPluginConfiguration> _platformConfiguration = new();
+    private readonly Mock<IPluginAtomicConfiguration> _platformConfiguration = new();
     private readonly Mock<IPluginHubContextFactory> _hubContextFactory = new();
     private readonly Mock<IPluginAudioToolsFactory> _audioToolsFactory = new();
     private readonly Mock<IPluginDerivedAudio> _derivedAudio = new();

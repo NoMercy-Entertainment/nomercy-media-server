@@ -203,6 +203,7 @@ public class PluginRepositoryController(
         // Read with the entry, before the download: a refresh replaces the
         // entries, and the rule belongs to the one this install uses.
         bool fromOfficialMarketplace = origin.IsFromOfficialMarketplace(entry);
+        PluginRepositoryInfo? listedBy = origin.ListedBy(entry);
 
         // AUD-1046: the name becomes the staged file and the installed plugin
         // name. Refused, never cleaned: a cleaned name is a different plugin.
@@ -289,6 +290,7 @@ public class PluginRepositoryController(
                 target.Checksum,
                 PluginIndexSignature.From(entry, target),
                 fromOfficialMarketplace,
+                listedBy,
                 ct
             );
         }

@@ -18,7 +18,7 @@ namespace NoMercy.MediaProcessing.AudioAnalysis;
 
 /// <summary>
 /// Measures a track with one pass of the fork ffmpeg. Lives in MediaProcessing
-/// for the same reason the chromaprint fingerprinter does: it needs the
+/// for the same reason the AcoustID chromaprint fingerprinter does: it needs the
 /// Encoder-layer process runner and ffmpeg path, which Providers must not
 /// reference.
 /// </summary>

@@ -128,6 +128,7 @@ public class PluginViewContractTests
             PluginActionIntent.CallPlugin("m"),
             PluginActionIntent.OpenWebView("u"),
             PluginActionIntent.RefreshView(),
+            PluginActionIntent.LoadPage("/x", "t", null),
         ];
 
         everyIntent

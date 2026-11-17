@@ -21,4 +21,11 @@ public interface IPluginRepositoryOrigin
     /// not by id: two repositories can list the same plugin.
     /// </summary>
     bool IsFromOfficialMarketplace(PluginRepositoryEntry entry);
+
+    /// <summary>
+    /// The enabled repository that listed this very entry, or null when none
+    /// does any more. By entry, for the same reason: the install records the
+    /// index it actually downloaded from, not the first one carrying the id.
+    /// </summary>
+    PluginRepositoryInfo? ListedBy(PluginRepositoryEntry entry);
 }

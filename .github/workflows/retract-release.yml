@@ -84,6 +84,15 @@ jobs:
               missing=1
             fi
           done
+          # A rollback target built before the -browser image existed has no
+          # such tag. The rollback still runs, but the -browser tags cannot
+          # move and keep serving the retracted build, so say so loudly.
+          ref="${BASE}:${ROLLBACK_TO}-browser"
+          if docker buildx imagetools inspect "$ref" >/dev/null 2>&1; then
+            echo "ok      $ref"
+          else
+            echo "::warning::no $ref (built before the browser image); the -browser tags keep pointing at the retracted build"
+          fi
           exit $missing
 
       - name: Re-point moving tags
@@ -95,7 +104,8 @@ jobs:
             ":latest stable" \
             "-nvidia:nvidia latest-nvidia stable-nvidia" \
             "-intel:intel latest-intel stable-intel" \
-            "-amd:amd latest-amd stable-amd"
+            "-amd:amd latest-amd stable-amd" \
+            "-browser:browser latest-browser stable-browser"
           for entry in "$@"; do
             suffix="${entry%%:*}"
             moving="${entry#*:}"
@@ -104,6 +114,10 @@ jobs:
               args="$args --tag ${BASE}:${tag}"
             done
             src="${BASE}:${ROLLBACK_TO}${suffix}"
+            if [ "$suffix" = "-browser" ] && ! docker buildx imagetools inspect "$src" >/dev/null 2>&1; then
+              echo "==> skip $moving: no ${ROLLBACK_TO}${suffix}"
+              continue
+            fi
             echo "==> $moving -> ${ROLLBACK_TO}${suffix}"
             if [ "${{ inputs.dry_run }}" = "true" ]; then
               echo "    dry run: docker buildx imagetools create$args $src"
@@ -127,7 +141,7 @@ jobs:
             echo "::warning::no GitHub release $tag — skipping release notes update"
             exit 0
           fi
-          notice=$(printf '> [!CAUTION]\n> **RETRACTED %s.** %s\n>\n> Roll back to v%s. Moving Docker tags (`latest`, `stable` and their `-nvidia`, `-intel`, `-amd` forms) now point at v%s.\n\n' \
+          notice=$(printf '> [!CAUTION]\n> **RETRACTED %s.** %s\n>\n> Roll back to v%s. Moving Docker tags (`latest`, `stable` and their `-nvidia`, `-intel`, `-amd`, `-browser` forms) now point at v%s.\n\n' \
             "$tag" "$REASON" "$ROLLBACK_TO" "$ROLLBACK_TO")
           body=$(gh release view "$tag" --json body --jq .body)
           if [ "${{ inputs.dry_run }}" = "true" ]; then

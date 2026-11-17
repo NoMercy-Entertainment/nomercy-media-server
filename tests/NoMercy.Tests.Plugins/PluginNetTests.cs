@@ -542,6 +542,8 @@ public class PluginNetTests
     {
         public IReadOnlyList<string> Granted(Ulid pluginId, string kind) => [];
 
+        public IReadOnlyList<PluginGrantEntry> HeldBy(Ulid pluginId) => [];
+
         public bool Holds(Ulid pluginId, string kind, string value) => false;
 
         public void Grant(Ulid pluginId, string kind, string value) { }

@@ -14,5 +14,6 @@
   { "id": "NMP0013", "title": "A long cycle is awaited inside a request. Use context.Scheduler.RunNowAsync.", "capability": "scheduler" },
   { "id": "NMP0014", "title": "A route path starts with an underscore, which the host keeps for itself.", "capability": "rest" },
   { "id": "NMP0015", "title": "A UI mount names a slot that does not exist for its kind.", "capability": "ui.mount" },
-  { "id": "NMP0016", "title": "IScheduledTaskPlugin is obsolete. Register jobs through context.Scheduler.", "capability": "scheduler" }
+  { "id": "NMP0016", "title": "IScheduledTaskPlugin is obsolete. Register jobs through context.Scheduler.", "capability": "scheduler" },
+  { "id": "NMP0017", "title": "An app shelf or card is built without its id in props, so the app draws nothing. Use PluginShelves.", "capability": null }
 ]

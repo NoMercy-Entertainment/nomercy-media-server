@@ -38,4 +38,13 @@ public record PluginRuntimeModeDto
     /// </summary>
     [JsonProperty("notice", NullValueHandling = NullValueHandling.Ignore)]
     public string? Notice { get; init; }
+
+    /// <summary>
+    /// The installed plugins that need the server's own process, by id, each
+    /// with what it uses that a process of its own does not carry. Absent from
+    /// the map means nothing in its manifest says it would lose anything. A
+    /// plugin listed here and set to its own process is refused, not started.
+    /// </summary>
+    [JsonProperty("needs_in_process", NullValueHandling = NullValueHandling.Ignore)]
+    public IReadOnlyDictionary<string, PluginInProcessNeedDto>? NeedsInProcess { get; init; }
 }

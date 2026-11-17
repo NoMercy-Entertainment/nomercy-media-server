@@ -34,5 +34,5 @@ The fakes refuse with the same `PluginRefusal` the server raises, so a test
 that passes here is a plugin that will not surprise its owner with a refusal on
 first run.
 
-Docs: https://nomercy.tv/docs/nomercy-plugins
+Docs: https://docs.nomercy.tv/nomercy-plugins/overview
 

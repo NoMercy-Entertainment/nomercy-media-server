@@ -61,6 +61,30 @@ public class LibraryBrokerTests
     }
 
     /// <summary>
+    /// How a library is encoded crosses with it (ABI 12.11). A member the
+    /// broker dropped would read in the plugin as a library nothing encodes.
+    /// </summary>
+    [Fact]
+    public async Task TheEncodingPresetsCrossBackWithTheirLibrary()
+    {
+        PluginCallResponse response = await Ask(
+            new FakeCapabilities(null),
+            new RecordingLibrary(),
+            nameof(IPluginLibraryQuery.GetLibrariesAsync)
+        );
+
+        List<PluginLibrary>? libraries = System.Text.Json.JsonSerializer.Deserialize<
+            List<PluginLibrary>
+        >(response.PayloadJson!, PluginWireJson.Options);
+
+        libraries!
+            .Should()
+            .ContainSingle()
+            .Which.EncodingPresets.Should()
+            .Equal(RecordingLibrary.Streaming);
+    }
+
+    /// <summary>
     /// A plugin asking for one library's shows must not be handed every
     /// library's. The filter is the argument, and dropping it is a plugin
     /// reading rows it did not ask for.
@@ -147,6 +171,13 @@ public class LibraryBrokerTests
 
 internal sealed class RecordingLibrary : IPluginLibraryQuery
 {
+    public static readonly PluginEncodingPreset Streaming = new(
+        "01KQK5NFSRXDP6F83NZK1YA6WF",
+        "H.264 Streaming (Universal)",
+        true,
+        2160
+    );
+
     public int Queries { get; private set; }
 
     public string? LastLibraryId { get; private set; }
@@ -158,7 +189,7 @@ internal sealed class RecordingLibrary : IPluginLibraryQuery
         Queries++;
 
         return Task.FromResult<IReadOnlyList<PluginLibrary>>([
-            new PluginLibrary("films", "Films", "movie"),
+            new PluginLibrary("films", "Films", "movie") { EncodingPresets = [Streaming] },
         ]);
     }
 

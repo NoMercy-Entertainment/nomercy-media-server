@@ -19,6 +19,7 @@ using Microsoft.Extensions.Logging.Abstractions;
 using NoMercy.Events;
 using NoMercy.PluginSdk;
 using NoMercy.PluginSdk.Abstractions;
+using NoMercy.PluginSdk.Provenance;
 using NoMercy.PluginSdk.Verification;
 using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Crypto.Generators;
@@ -201,7 +202,8 @@ public class OfficialMarketplaceSignatureTests : IDisposable
                 _archive,
                 version.Checksum,
                 PluginIndexSignature.From(entry, version),
-                catalog.IsFromOfficialMarketplace(entry)
+                catalog.IsFromOfficialMarketplace(entry),
+                catalog.ListedBy(entry)
             );
         }
         catch (BadImageFormatException)
@@ -284,6 +286,60 @@ public class OfficialMarketplaceSignatureTests : IDisposable
 
         Installed.Should().BeTrue();
         WarnedOnly.Should().BeTrue();
+    }
+
+    /// <summary>What the install wrote down, read from the platform store it shares with consent.</summary>
+    private PluginInstallSource? RecordedSource() =>
+        new ConfigPluginInstallSourceStore(
+            new PluginConfiguration(
+                Path.Combine(_pluginsDir, "data", "platform"),
+                TestStorageHelper.CreateStorage(_pluginsDir)
+            )
+        ).Find(Ulid.Parse(PluginId));
+
+    [Fact]
+    public async Task An_official_marketplace_install_records_the_marketplace_as_its_source()
+    {
+        _indexes.Bodies[OfficialIndex] = SignedIndex();
+        PluginRepository catalog = await CatalogAsync();
+        using PluginManager manager = WarnOnlyManager();
+
+        await InstallAsync(catalog, manager);
+
+        PluginInstallSource source = RecordedSource()!;
+        source.Kind.Should().Be(PluginInstallSourceKind.Repository);
+        source.RepositoryName.Should().Be("NoMercy Marketplace");
+        source.RepositoryUrl.Should().Be(OfficialIndex);
+        source.FromOfficialMarketplace.Should().BeTrue();
+        source.ChecksumVerified.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task A_plugin_both_repositories_list_records_the_index_whose_entry_was_used()
+    {
+        _indexes.Bodies[OfficialIndex] = TamperedIndex();
+        _indexes.Bodies[OtherIndex] = UnsignedIndex();
+        PluginRepository catalog = await CatalogAsync(OtherIndex, OfficialIndex);
+        using PluginManager manager = WarnOnlyManager();
+
+        await InstallAsync(catalog, manager);
+
+        PluginInstallSource source = RecordedSource()!;
+        source.RepositoryUrl.Should().Be(OtherIndex);
+        source.FromOfficialMarketplace.Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task A_refused_official_entry_records_no_source()
+    {
+        _indexes.Bodies[OfficialIndex] = TamperedIndex();
+        PluginRepository catalog = await CatalogAsync();
+        using PluginManager manager = WarnOnlyManager();
+
+        Func<Task> install = () => InstallAsync(catalog, manager);
+
+        await install.Should().ThrowAsync<PluginVerificationException>();
+        RecordedSource().Should().BeNull();
     }
 
     private sealed class IndexHandler : HttpMessageHandler

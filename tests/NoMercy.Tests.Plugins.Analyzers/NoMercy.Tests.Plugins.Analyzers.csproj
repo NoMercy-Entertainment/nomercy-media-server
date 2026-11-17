@@ -21,5 +21,8 @@
     <!-- Referenced as a library, not as an analyzer: these tests drive it
          directly rather than letting it run over their own compilation. -->
     <ProjectReference Include="..\..\src\NoMercy.PluginSdk.Analyzers\NoMercy.PluginSdk.Analyzers.csproj" ReferenceOutputAssembly="true" />
+    <!-- Only to check the shelf rule names the components the SDK's shelves are
+         built from. The snippets under test declare their own stand-ins. -->
+    <ProjectReference Include="..\..\src\NoMercy.Design\NoMercy.Design.csproj" />
   </ItemGroup>
 </Project>

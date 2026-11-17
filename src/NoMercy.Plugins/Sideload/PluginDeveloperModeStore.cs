@@ -14,9 +14,9 @@ namespace NoMercy.PluginSdk.Sideload;
 /// <summary>
 /// Reads and writes the owner's answer about developer mode.
 /// <para>
-/// The refusal for a blocked sideload tells the owner to turn this on in
-/// server settings. Until this existed the only thing that could was a text
-/// editor, so the sentence named a place that was not there.
+/// The refusal for a blocked sideload tells the owner to turn this on with
+/// the switch on the dashboard's plugins page. Until this existed the only
+/// thing that could was a text editor.
 /// </para>
 /// </summary>
 public sealed class PluginDeveloperModeStore(string? folder = null)

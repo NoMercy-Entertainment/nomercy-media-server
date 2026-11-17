@@ -68,6 +68,7 @@ public class RouteContractSnapshotTests : IClassFixture<NoMercyApiFactory>
         "DELETE api/v{version:apiVersion}/dashboard/plugins/{id:ulid} [Plugin.Uninstall]",
         "DELETE api/v{version:apiVersion}/dashboard/plugins/repositories/{name} [PluginRepository.Remove]",
         "DELETE api/v{version:apiVersion}/dashboard/plugins/{id:ulid}/consent [Plugin.RevokeConsent]",
+        "DELETE api/v{version:apiVersion}/dashboard/plugins/{id:ulid}/grants [Plugin.RevokeGrant]",
         "DELETE api/v{version:apiVersion}/dashboard/plugins/{id:ulid}/lan-devices/{deviceId} [PluginLanDevice.Destroy]",
         "DELETE api/v{version:apiVersion}/dashboard/plugins/{id:ulid}/users/{userId:guid} [PluginUserData.Destroy]",
         "DELETE api/v{version:apiVersion}/dashboard/reclaim/items/{id} [Reclaim.DeleteItem]",

@@ -35,7 +35,8 @@ public static class PluginQueryTokenPolicy
     public const string Fix =
         "Send the token in the Authorization header, or serve the stream through "
         + "context.Media.Proxy (capability media.proxy), which asks the host for a short-lived "
-        + "user-bound URL. Docs: /plugins/capabilities/media-proxy";
+        + "user-bound URL. Docs: "
+        + PluginDocs.MediaProxy;
 
     /// <summary>
     /// Whether the token is still accepted for a plugin built against
