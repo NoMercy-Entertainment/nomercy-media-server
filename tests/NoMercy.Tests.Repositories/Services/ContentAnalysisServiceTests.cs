@@ -14,78 +14,26 @@ using Moq;
 using NoMercy.Data.Repositories;
 using NoMercy.Data.Services;
 using NoMercy.Database.Models.Media;
+using NoMercy.Database.Models.TvShows;
 using NoMercy.Encoder.Codecs;
 using NoMercy.Encoder.ContentAnalysis;
-using NoMercy.Encoder.ContentAnalysis.Fingerprinting;
 using NoMercy.Encoder.Progress;
 using NoMercy.Encoder.Subtitles;
+using NoMercy.MediaProcessing.Segments;
 using NoMercy.Storage;
+using NoMercyQueue.Core.Interfaces;
 
 namespace NoMercy.Tests.Repositories.Services;
 
 /// <summary>
-/// Covers the pure decision logic that used to be copy-pasted between
+/// Covers the logic that used to be copy-pasted between
 /// <c>EncoderContentAnalysisController</c> and its deprecated dashboard
-/// alias: duration parsing, outro-window selection, target-format parsing,
-/// and the fingerprint-hash digest. These no longer depend on ffmpeg, a
-/// database, or a video file, so they run as plain unit tests.
+/// alias: target-format parsing, the whisper call and the on-demand season
+/// analysis (which queues the #598 job instead of running a detector).
 /// </summary>
 [Trait("Category", "Unit")]
 public class ContentAnalysisServiceTests
 {
-    // ─── ParseDuration ────────────────────────────────────────────────────────
-
-    [Fact]
-    public void ParseDuration_ValidTimeSpanString_ReturnsParsedValue()
-    {
-        TimeSpan result = ContentAnalysisService.ParseDuration("00:42:10");
-
-        result.Should().Be(new TimeSpan(0, 42, 10));
-    }
-
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("not-a-duration")]
-    public void ParseDuration_MissingOrMalformed_ReturnsZero(string? raw)
-    {
-        ContentAnalysisService.ParseDuration(raw).Should().Be(TimeSpan.Zero);
-    }
-
-    // ─── ResolveOutroStart ────────────────────────────────────────────────────
-
-    [Fact]
-    public void ResolveOutroStart_SourceLongerThanWindow_StartsWindowFromEnd()
-    {
-        TimeSpan duration = TimeSpan.FromMinutes(22);
-        TimeSpan window = TimeSpan.FromMinutes(3);
-
-        TimeSpan start = ContentAnalysisService.ResolveOutroStart(duration, window);
-
-        start.Should().Be(TimeSpan.FromMinutes(19));
-    }
-
-    [Fact]
-    public void ResolveOutroStart_SourceShorterThanWindow_StartsAtZero()
-    {
-        TimeSpan duration = TimeSpan.FromMinutes(2);
-        TimeSpan window = TimeSpan.FromMinutes(3);
-
-        TimeSpan start = ContentAnalysisService.ResolveOutroStart(duration, window);
-
-        start.Should().Be(TimeSpan.Zero);
-    }
-
-    [Fact]
-    public void ResolveOutroStart_SourceExactlyWindowLength_StartsAtZero()
-    {
-        TimeSpan window = TimeSpan.FromMinutes(3);
-
-        TimeSpan start = ContentAnalysisService.ResolveOutroStart(window, window);
-
-        start.Should().Be(TimeSpan.Zero);
-    }
-
     // ─── ParseTargetFormat ────────────────────────────────────────────────────
 
     [Theory]
@@ -101,58 +49,133 @@ public class ContentAnalysisServiceTests
         ContentAnalysisService.ParseTargetFormat(raw).Should().Be(expected);
     }
 
-    // ─── ComputeFingerprintHash ───────────────────────────────────────────────
+    // ─── QueueSegmentAnalysisForSeasonAsync ───────────────────────────────────
 
     [Fact]
-    public void ComputeFingerprintHash_SamePrints_ProducesSameHash()
+    public async Task SeasonAnalysis_QueuesTheNewJob_AndAnswersWithTheStoredSegments()
     {
-        List<AudioFingerprint> prints =
-        [
-            new([1, 2, 3, 4], TimeSpan.FromMilliseconds(186), TimeSpan.Zero),
-            new([5, 6, 7, 8], TimeSpan.FromMilliseconds(186), TimeSpan.Zero),
-        ];
+        Mock<IVideoFileRepository> videoFiles = new();
+        videoFiles
+            .Setup(r => r.GetEncodedEpisodesForSeasonAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([
+                new() { Id = 2, EpisodeNumber = 2 },
+                new() { Id = 1, EpisodeNumber = 1 },
+            ]);
+        Mock<IContentSegmentRepository> segments = new();
+        segments
+            .Setup(r => r.GetForEpisodeAsync(1))
+            .ReturnsAsync([
+                new ContentSegment
+                {
+                    EpisodeId = 1,
+                    SegmentType = ContentSegmentType.Intro,
+                    StartSeconds = 5.56,
+                    EndSeconds = 82.72,
+                    Source = "analysis",
+                    Confidence = 0.9,
+                },
+            ]);
+        segments
+            .Setup(r => r.GetForEpisodeAsync(2))
+            .ReturnsAsync([
+                new ContentSegment
+                {
+                    EpisodeId = 2,
+                    SegmentType = ContentSegmentType.Outro,
+                    StartSeconds = -240,
+                    EndSeconds = -150,
+                    Source = "detector",
+                },
+                new ContentSegment
+                {
+                    EpisodeId = 2,
+                    SegmentType = ContentSegmentType.Credits,
+                    StartSeconds = 1281.64,
+                    EndSeconds = 1361.08,
+                    Source = "analysis",
+                    Confidence = 0.9,
+                },
+            ]);
+        Mock<IJobDispatcher> dispatcher = new();
+        Mock<ISegmentAnalysisState> state = new();
 
-        string first = ContentAnalysisService.ComputeFingerprintHash(prints);
-        string second = ContentAnalysisService.ComputeFingerprintHash(prints);
+        ContentAnalysisService.SeasonAnalysisRequest request = await Service(
+                videoFiles,
+                segments,
+                dispatcher,
+                state
+            )
+            .QueueSegmentAnalysisForSeasonAsync(10, CancellationToken.None);
 
-        first.Should().Be(second);
-        first.Should().MatchRegex("^[0-9a-f]{32}$");
+        request.Queued.Should().BeTrue();
+        request.EpisodesFound.Should().Be(2);
+        request.Intro!.StartSeconds.Should().Be(5.56);
+        request
+            .Outro!.StartSeconds.Should()
+            .Be(1281.64, "an old negative detector outro is not an answer");
+        dispatcher.Verify(
+            d =>
+                d.Dispatch(
+                    It.Is<IShouldQueue>(j =>
+                        ((NoMercy.MediaProcessing.Jobs.SegmentJobs.SegmentAnalysisJob)j).SeasonId
+                        == 10
+                    ),
+                    "encoder",
+                    1
+                ),
+            Times.Once
+        );
+        state.Verify(
+            s =>
+                s.ResetFailuresAsync(
+                    SegmentAnalysisTarget.Season,
+                    10,
+                    It.IsAny<CancellationToken>()
+                ),
+            Times.Once
+        );
     }
 
     [Fact]
-    public void ComputeFingerprintHash_DifferentPrints_ProducesDifferentHash()
+    public async Task SeasonAnalysis_WithoutEncodedEpisodes_QueuesNothing()
     {
-        List<AudioFingerprint> printsA =
-        [
-            new([1, 2, 3, 4], TimeSpan.FromMilliseconds(186), TimeSpan.Zero),
-        ];
-        List<AudioFingerprint> printsB =
-        [
-            new([9, 9, 9, 9], TimeSpan.FromMilliseconds(186), TimeSpan.Zero),
-        ];
+        Mock<IVideoFileRepository> videoFiles = new();
+        videoFiles
+            .Setup(r => r.GetEncodedEpisodesForSeasonAsync(10, It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
+        Mock<IJobDispatcher> dispatcher = new();
 
-        string hashA = ContentAnalysisService.ComputeFingerprintHash(printsA);
-        string hashB = ContentAnalysisService.ComputeFingerprintHash(printsB);
+        ContentAnalysisService.SeasonAnalysisRequest request = await Service(
+                videoFiles,
+                new(),
+                dispatcher,
+                new()
+            )
+            .QueueSegmentAnalysisForSeasonAsync(10, CancellationToken.None);
 
-        hashA.Should().NotBe(hashB);
+        request.Queued.Should().BeFalse();
+        dispatcher.Verify(
+            d => d.Dispatch(It.IsAny<IShouldQueue>(), It.IsAny<string>(), It.IsAny<int>()),
+            Times.Never
+        );
     }
 
-    [Fact]
-    public void ComputeFingerprintHash_MismatchedLengths_UsesShorterOverlap()
-    {
-        // Regression guard: XOR-reduction must not throw on ragged inputs —
-        // fingerprints taken from episodes of slightly different length are
-        // expected to have differing hash-array lengths.
-        List<AudioFingerprint> prints =
-        [
-            new([1, 2, 3, 4, 5], TimeSpan.FromMilliseconds(186), TimeSpan.Zero),
-            new([1, 2], TimeSpan.FromMilliseconds(186), TimeSpan.Zero),
-        ];
-
-        Action act = () => ContentAnalysisService.ComputeFingerprintHash(prints);
-
-        act.Should().NotThrow();
-    }
+    private static ContentAnalysisService Service(
+        Mock<IVideoFileRepository> videoFiles,
+        Mock<IContentSegmentRepository> segments,
+        Mock<IJobDispatcher> dispatcher,
+        Mock<ISegmentAnalysisState> state
+    ) =>
+        new(
+            Mock.Of<ICropDetector>(),
+            dispatcher.Object,
+            state.Object,
+            ocrEngine: null,
+            whisperTranscriber: null,
+            videoFiles.Object,
+            segments.Object,
+            Mock.Of<IStorageDriver>()
+        );
 
     // ─── TranscribeAsync ──────────────────────────────────────────────────────
 
@@ -200,8 +223,8 @@ public class ContentAnalysisServiceTests
 
         ContentAnalysisService service = new(
             Mock.Of<ICropDetector>(),
-            Mock.Of<IAudioFingerprinter>(),
-            Mock.Of<IIntroDetector>(),
+            Mock.Of<IJobDispatcher>(),
+            Mock.Of<ISegmentAnalysisState>(),
             ocrEngine: null,
             transcriber.Object,
             videoFiles.Object,

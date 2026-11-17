@@ -89,71 +89,58 @@ public class EncoderContentAnalysisController(
     // ─── Intro / outro fingerprinting ────────────────────────────────────────
 
     /// <summary>
-    /// Runs the chromaprint intro/outro detector against every episode in a
-    /// season and returns detected content segments. Detected segments are
-    /// persisted to the <c>ContentSegments</c> table (source="auto") unless
-    /// a manual row of the same type already exists for that episode.
+    /// Queues the intro / credits / end-of-content analysis (#598) for a season
+    /// and answers at once with the segments stored now (season-level, from
+    /// the first episode that has them), plus <c>status = "queued"</c>. The new
+    /// answer replaces them as content segments when the job has run. Same
+    /// fields as before; <c>source</c> is the stored row's, and
+    /// <c>fingerprint_hash</c> is always null (the old detector's digest).
     /// </summary>
     [HttpPost("intro/{seasonId:int}")]
     public async Task<IActionResult> DetectIntroForSeason(int seasonId, CancellationToken ct)
     {
         int showId = await videoFileRepository.GetShowIdForSeasonAsync(seasonId, ct);
 
-        ContentAnalysisService.SeasonIntroOutcome outcome =
-            await contentAnalysisService.DetectIntroForSeasonAsync(
-                seasonId,
-                persistToDatabase: true,
-                ct
-            );
+        ContentAnalysisService.SeasonAnalysisRequest request =
+            await contentAnalysisService.QueueSegmentAnalysisForSeasonAsync(seasonId, ct);
 
-        if (outcome.NotEnoughEpisodes)
-            return BadRequestResponse(
-                $"Need at least 2 encoded episodes, season has {outcome.EpisodesFound}"
-            );
-        if (outcome.FingerprintError is not null)
-            return InternalServerErrorResponse(outcome.FingerprintError);
-        if (outcome.NotEnoughFingerprints)
-            return BadRequestResponse("Not enough successful fingerprints to compare");
+        if (!request.Queued)
+            return BadRequestResponse("The season has no encoded episodes");
 
         List<object> contentSegments = [];
-
-        if (outcome.IntroMarker is not null)
+        foreach (
+            (string type, ContentSegment? segment) in new[]
+            {
+                ("intro", request.Intro),
+                ("outro", request.Outro),
+            }
+        )
+        {
+            if (segment is null)
+                continue;
             contentSegments.Add(
                 new
                 {
                     show_id = showId,
                     season_id = seasonId,
-                    type = "intro",
-                    start_seconds = outcome.IntroMarker.Start.TotalSeconds,
-                    end_seconds = outcome.IntroMarker.End.TotalSeconds,
-                    confidence = outcome.IntroMarker.Confidence,
-                    source = "auto",
-                    fingerprint_hash = outcome.IntroFingerprintHash,
+                    type,
+                    start_seconds = segment.StartSeconds,
+                    end_seconds = segment.EndSeconds,
+                    confidence = segment.Confidence,
+                    source = segment.Source,
+                    fingerprint_hash = (string?)null,
                 }
             );
-
-        if (outcome.OutroMarker is not null)
-            contentSegments.Add(
-                new
-                {
-                    show_id = showId,
-                    season_id = seasonId,
-                    type = "outro",
-                    start_seconds = outcome.OutroMarker.Start.TotalSeconds,
-                    end_seconds = outcome.OutroMarker.End.TotalSeconds,
-                    confidence = outcome.OutroMarker.Confidence,
-                    source = "auto",
-                    fingerprint_hash = outcome.OutroFingerprintHash,
-                }
-            );
+        }
 
         return Ok(
             new
             {
                 show_id = showId,
                 season_id = seasonId,
-                episodes_scanned = outcome.EpisodesScanned,
+                episodes_scanned = request.EpisodesFound,
                 content_segments = contentSegments,
+                status = "queued",
             }
         );
     }
