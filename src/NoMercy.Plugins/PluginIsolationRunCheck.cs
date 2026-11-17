@@ -30,8 +30,6 @@ public sealed class PluginIsolationRunCheck(
     IPluginIsolationFit fit
 ) : IPluginRunCheck
 {
-    private const string Docs = "/nomercy-plugins/handbook/runtime-and-isolation";
-
     public PluginRefusal? Check(PluginInfo plugin)
     {
         if (isolationFor(plugin.Id) != PluginIsolation.OutOfProcess)
@@ -47,7 +45,7 @@ public sealed class PluginIsolationRunCheck(
             $"{plugin.Name} {plugin.Version}",
             "The plugin is set to run in its own process.",
             $"That process cannot serve it: it does not carry {Lost(verdict)}.",
-            $"Set this plugin to {nameof(PluginIsolation.InProcess)} on the plugin runtime settings. Docs: {Docs}",
+            $"Set this plugin to {nameof(PluginIsolation.InProcess)} on the plugin runtime settings. Docs: {PluginDocs.RuntimeAndIsolation}",
             PluginRefusalSeverity.Blocked
         );
     }
