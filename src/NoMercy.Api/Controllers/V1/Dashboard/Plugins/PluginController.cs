@@ -376,7 +376,7 @@ public class PluginController(
                     fileName,
                     "The server did not install the file.",
                     "Installing a plugin from a file is off, because the server cannot check who wrote it.",
-                    "Turn on developer mode in server settings, read the warning there, then install the file again.",
+                    PluginSideloadPolicy.DeveloperModeFix,
                     PluginRefusalSeverity.Blocked
                 )
             );
@@ -539,9 +539,9 @@ public class PluginController(
     /// <summary>
     /// Whether this server installs a plugin from a file the owner hands it.
     /// <para>
-    /// The refusal a blocked sideload returns says to turn developer mode on in
-    /// server settings. Nothing but a text editor could, so the sentence named
-    /// a place that did not exist and the owner had no way through.
+    /// The refusal a blocked sideload returns says to turn developer mode on
+    /// with the switch on the dashboard's plugins page. Before this endpoint
+    /// nothing but a text editor could, so the owner had no way through.
     /// </para>
     /// </summary>
     [HttpGet("developer-mode")]

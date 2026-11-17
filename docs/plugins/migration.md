@@ -88,8 +88,10 @@ because it cannot check who wrote the file. The refusal is
 
 To install your own build:
 
-1. Open the dashboard, then **Advanced**, then **Plugins**.
-2. Turn on developer mode and read the warning.
+1. In the dashboard, open **Advanced**, then **Plugins**.
+2. Turn on developer mode: switch on **Install plugins from a file**, and
+   read the warning under it. Only the server owner sees this switch, and
+   only on the desktop layout.
 3. Install the file again.
 
 The same switch is `POST /api/v1/dashboard/plugins/developer-mode` with
