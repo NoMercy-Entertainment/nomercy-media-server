@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.Encoder.ContentAnalysis.Segments;
+using NoMercy.Tests.Encoder.ContentAnalysis.Segments.Support;
 
 namespace NoMercy.Tests.Encoder.ContentAnalysis.Segments;
 
@@ -106,6 +107,28 @@ public class FingerprintMatcherTests
 
         match.XStart.Should().BeApproximately(1000, 1e-9);
         match.YStart.Should().BeApproximately(2000, 1e-9);
+    }
+
+    [Fact]
+    public void HellsingS01_EveryPair_MatchesThePrototypesRecordedRuns()
+    {
+        // All 78 pairs of the real season, every offset, against the prototype's
+        // matches.json (computed with its own 4096/3 hop, so replayed with it).
+        RecordedSeason season = ResearchCorpus.Committed("hellsing-s01");
+
+        List<PairMatches> pairs = SeasonSegmentAnalyzer.MatchPairs(
+            season.Signals,
+            ChromaprintRaw.PrototypeSecondsPerHash,
+            Environment.ProcessorCount,
+            CancellationToken.None
+        );
+
+        pairs.Should().HaveCount(78);
+        PrototypeComparison.MatchDifferences(season, pairs).Should().BeEmpty();
+        pairs
+            .Sum(p => p.Matches.Count)
+            .Should()
+            .BeGreaterThan(78, "every pair shares the opening at least");
     }
 
     private static uint[] Noise(int seed, int count)
