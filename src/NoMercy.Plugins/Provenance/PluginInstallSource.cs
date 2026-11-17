@@ -34,6 +34,12 @@ public class PluginInstallSource
     /// <summary>Whether a published checksum was checked against the package and matched.</summary>
     public bool ChecksumVerified { get; init; }
 
+    /// <summary>
+    /// The plugin folder the install wrote. Kept so a later install into the
+    /// same folder replaces this record even when it loads under another id.
+    /// </summary>
+    public string? Folder { get; init; }
+
     /// <summary>The version this install put in place, from the package's manifest when it had one.</summary>
     public string? Version { get; init; }
 

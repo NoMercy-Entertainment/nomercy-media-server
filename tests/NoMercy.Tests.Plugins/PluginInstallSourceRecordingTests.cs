@@ -39,8 +39,9 @@ public class PluginInstallSourceRecordingTests : IDisposable
         $"nm-install-source-{Ulid.NewUlid():N}"
     );
     private readonly string _pluginsDir;
-    private readonly PluginConfiguration _platform;
+    private readonly PluginPlatformConfiguration _platform;
     private readonly ConfigPluginInstallSourceStore _sources;
+    private readonly List<PluginManager> _managers = [];
     private readonly PluginManager _manager;
 
     public PluginInstallSourceRecordingTests()
@@ -48,27 +49,36 @@ public class PluginInstallSourceRecordingTests : IDisposable
         _pluginsDir = Path.Combine(_tempDir, "plugins");
         Directory.CreateDirectory(_pluginsDir);
 
-        IStorage storage = TestStorageHelper.CreateStorage(_pluginsDir);
-        _platform = new(Path.Combine(_pluginsDir, "data", "platform"), storage);
+        _platform = new(_pluginsDir, TestStorageHelper.CreateStorage(_pluginsDir));
         _sources = new(_platform);
+        _manager = Start();
+    }
 
-        _manager = new(
+    /// <summary>One server start over the same plugins folder and platform store.</summary>
+    private PluginManager Start()
+    {
+        PluginManager manager = new(
             new InMemoryEventBus(),
             new MinimalServiceProvider(),
             NullLogger<PluginManager>.Instance,
             _pluginsDir,
-            storage,
+            TestStorageHelper.CreateStorage(_pluginsDir),
             TestStorageHelper.CreateBackend(),
             // No signature stage: what is under test is the record, and the
             // published checksum is enforced before any stage runs.
             verifier: new PluginVerifier([]),
-            installSourceStore: _sources
+            installSourceStore: _sources,
+            platformConfiguration: _platform
         );
+        _managers.Add(manager);
+
+        return manager;
     }
 
     public void Dispose()
     {
-        _manager.Dispose();
+        foreach (PluginManager manager in _managers)
+            manager.Dispose();
 
         // Echo is loaded for real; its shadow copy is only free once collected.
         GC.Collect();
@@ -226,6 +236,123 @@ public class PluginInstallSourceRecordingTests : IDisposable
 
         _sources.Find(EchoId).Should().NotBeNull();
         grants.Holds(EchoId, PluginGrantKind.NetworkHost, "example.com").Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task A_bare_assembly_that_fails_to_load_leaves_no_earlier_record_behind()
+    {
+        Ulid earlier = Ulid.Parse("01JEAR11ER0000000000000000");
+        _sources.Record(
+            earlier,
+            new()
+            {
+                Kind = PluginInstallSourceKind.Repository,
+                Folder = "Broken.Plugin",
+                RepositoryUrl = "https://example.com/index.json",
+            }
+        );
+        string upload = Path.Combine(_tempDir, "Broken.Plugin.dll");
+        await File.WriteAllTextAsync(upload, "not an assembly");
+
+        try
+        {
+            await _manager.InstallPluginAsync(upload);
+        }
+        catch (Exception ex) when (ex is BadImageFormatException or InvalidOperationException)
+        {
+            // Refusing the load is fine; what it must not do is keep the old source.
+        }
+
+        _sources.Find(earlier).Should().BeNull();
+    }
+
+    [Fact]
+    public async Task A_staged_update_s_source_is_committed_when_the_next_start_applies_it()
+    {
+        await _manager.InstallPluginArchiveAsync(EchoArchive());
+        _manager.Dispose();
+
+        // The update the hot swap could not apply, waiting for this start.
+        string staging = Path.Combine(_pluginsDir, ".pending-updates", Echo);
+        CopyFolder(Path.Combine(_pluginsDir, Echo), staging);
+        PluginInstallSource update = new()
+        {
+            Kind = PluginInstallSourceKind.Repository,
+            Folder = Echo,
+            RepositoryName = "Example Index",
+            RepositoryUrl = IndexUrl,
+            ChecksumVerified = true,
+            Version = "1.3.0",
+        };
+        _sources.Stage(Echo, EchoId, update);
+        _sources.Find(EchoId)!.Kind.Should().Be(PluginInstallSourceKind.File, "not applied yet");
+
+        await Start().LoadPluginsFromDirectoryAsync();
+
+        _sources.Find(EchoId)!.RepositoryUrl.Should().Be(IndexUrl);
+        _sources.StagedFolders().Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task A_staged_source_whose_copy_is_gone_is_dropped_at_the_next_start()
+    {
+        _sources.Stage(
+            "Gone",
+            EchoId,
+            new() { Kind = PluginInstallSourceKind.Repository, RepositoryUrl = IndexUrl }
+        );
+
+        await Start().LoadPluginsFromDirectoryAsync();
+
+        _sources.StagedFolders().Should().BeEmpty();
+        _sources.Find(EchoId).Should().BeNull("a copy nobody applied is nobody's source");
+    }
+
+    [Fact]
+    public async Task A_new_install_over_a_staged_copy_drops_the_staged_source()
+    {
+        _sources.Stage(
+            Echo,
+            EchoId,
+            new() { Kind = PluginInstallSourceKind.Repository, RepositoryUrl = IndexUrl }
+        );
+
+        await _manager.InstallPluginArchiveAsync(EchoArchive());
+
+        _sources.StagedFolders().Should().BeEmpty();
+        _sources.Find(EchoId)!.Kind.Should().Be(PluginInstallSourceKind.File);
+    }
+
+    [Fact]
+    public async Task A_repository_install_that_names_no_repository_is_recorded_unknown()
+    {
+        await _manager.InstallPluginArchiveAsync(EchoArchive(), fromMarketplace: true);
+
+        PluginInstallSource source = _sources.Find(EchoId)!;
+        source.Kind.Should().Be(PluginInstallSourceKind.Unknown);
+        source.RepositoryUrl.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task An_install_into_a_folder_replaces_a_record_another_id_left_there()
+    {
+        Ulid previous = Ulid.Parse("01JPREV10VS000000000000000");
+        _sources.Record(
+            previous,
+            new() { Kind = PluginInstallSourceKind.Repository, Folder = Echo }
+        );
+
+        await _manager.InstallPluginArchiveAsync(EchoArchive());
+
+        _sources.Find(previous).Should().BeNull();
+        _sources.Find(EchoId).Should().NotBeNull();
+    }
+
+    private static void CopyFolder(string from, string to)
+    {
+        Directory.CreateDirectory(to);
+        foreach (string file in Directory.GetFiles(from))
+            File.Copy(file, Path.Combine(to, Path.GetFileName(file)));
     }
 
     private sealed class MinimalServiceProvider : IServiceProvider

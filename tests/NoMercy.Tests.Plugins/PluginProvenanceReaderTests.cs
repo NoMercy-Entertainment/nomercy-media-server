@@ -33,6 +33,16 @@ public class PluginProvenanceReaderTests
         public void Record(Ulid pluginId, PluginInstallSource recorded) { }
 
         public void Forget(Ulid pluginId) { }
+
+        public void ForgetFolder(string folder) { }
+
+        public void Stage(string folder, Ulid pluginId, PluginInstallSource staged) { }
+
+        public void CommitStaged(string folder) { }
+
+        public void DropStaged(string folder) { }
+
+        public IReadOnlyList<string> StagedFolders() => [];
     }
 
     private static PluginInstallSource FromIndex() =>
@@ -150,6 +160,19 @@ public class PluginProvenanceReaderTests
         };
 
         Reader(FromIndex(), index).Read(PluginId).RepositoryTrusted.Should().BeFalse();
+    }
+
+    [Fact]
+    public void A_recorded_unknown_reads_as_nothing_known()
+    {
+        PluginInstallSource unnamed = new()
+        {
+            Kind = PluginInstallSourceKind.Unknown,
+            ChecksumVerified = true,
+            RecordedAt = DateTime.UtcNow,
+        };
+
+        Reader(unnamed).Read(PluginId).Should().BeSameAs(PluginProvenance.Unknown);
     }
 
     [Fact]

@@ -31,29 +31,95 @@ public class ConfigPluginInstallSourceStore(IPluginConfiguration configuration)
     {
         ArgumentNullException.ThrowIfNull(source);
 
+        Change(record =>
+        {
+            if (source.Folder is not null)
+                RemoveFolder(record, source.Folder);
+
+            record.InstallSources[Key(pluginId)] = source;
+            return true;
+        });
+    }
+
+    public void Forget(Ulid pluginId) =>
+        Change(record => record.InstallSources.Remove(Key(pluginId)));
+
+    public void ForgetFolder(string folder) => Change(record => RemoveFolder(record, folder));
+
+    public void Stage(string folder, Ulid pluginId, PluginInstallSource source)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(folder);
+        ArgumentNullException.ThrowIfNull(source);
+
+        Change(record =>
+        {
+            string key = StagedKey(record, folder) ?? folder;
+            record.StagedInstallSources[key] = new() { PluginId = pluginId, Source = source };
+            return true;
+        });
+    }
+
+    public void CommitStaged(string folder) =>
+        Change(record =>
+        {
+            string? key = StagedKey(record, folder);
+            if (key is null)
+                return false;
+
+            PluginStagedInstallSource staged = record.StagedInstallSources[key];
+            record.StagedInstallSources.Remove(key);
+
+            if (staged.Source.Folder is not null)
+                RemoveFolder(record, staged.Source.Folder);
+
+            record.InstallSources[Key(staged.PluginId)] = staged.Source;
+            return true;
+        });
+
+    public void DropStaged(string folder) =>
+        Change(record =>
+            StagedKey(record, folder) is { } key && record.StagedInstallSources.Remove(key)
+        );
+
+    public IReadOnlyList<string> StagedFolders() =>
+        configuration.GetConfiguration<PluginInstallSourceRecord>() is { } record
+            ? [.. record.StagedInstallSources.Keys]
+            : [];
+
+    /// <summary>Reads, changes and saves under one gate; saves only when something changed.</summary>
+    private void Change(Func<PluginInstallSourceRecord, bool> change)
+    {
         lock (_gate)
         {
             PluginInstallSourceRecord record =
                 configuration.GetConfiguration<PluginInstallSourceRecord>() ?? new();
 
-            record.InstallSources[Key(pluginId)] = source;
-            configuration.SaveConfiguration(record);
+            if (change(record))
+                configuration.SaveConfiguration(record);
         }
     }
 
-    public void Forget(Ulid pluginId)
+    private static bool RemoveFolder(PluginInstallSourceRecord record, string folder)
     {
-        lock (_gate)
-        {
-            PluginInstallSourceRecord? record =
-                configuration.GetConfiguration<PluginInstallSourceRecord>();
+        string[] stale =
+        [
+            .. record
+                .InstallSources.Where(entry =>
+                    string.Equals(entry.Value.Folder, folder, StringComparison.OrdinalIgnoreCase)
+                )
+                .Select(entry => entry.Key),
+        ];
 
-            if (record is null || !record.InstallSources.Remove(Key(pluginId)))
-                return;
+        foreach (string key in stale)
+            record.InstallSources.Remove(key);
 
-            configuration.SaveConfiguration(record);
-        }
+        return stale.Length > 0;
     }
+
+    private static string? StagedKey(PluginInstallSourceRecord record, string folder) =>
+        record.StagedInstallSources.Keys.FirstOrDefault(key =>
+            string.Equals(key, folder, StringComparison.OrdinalIgnoreCase)
+        );
 
     private static string Key(Ulid pluginId) => pluginId.ToString();
 }

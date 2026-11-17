@@ -283,9 +283,9 @@ public class PluginManager
             {
                 PluginPackageHashMarker.Clear(pluginDir);
                 await RecordFilesAsync(pluginDir, ct);
+                _installSources.ForgetFolder(pluginName);
                 await LoadPluginAssemblyAsync(destPath, ct, resident, newContent: true);
-                PluginInfo swapped = LoadedFrom(destPath) ?? resident;
-                RecordUploadedAssembly(swapped.Id, expectedChecksum, swapped.Version.ToString());
+                RecordIfLoaded(destPath, pluginName, expectedChecksum);
                 _registerScheduledWork?.Invoke(resident.Id);
                 return;
             }
@@ -296,6 +296,9 @@ public class PluginManager
             {
                 _driver.DeleteDirectory(staging, recursive: true);
             }
+
+            // The copy it replaces took its source with it.
+            _installSources.DropStaged(pluginName);
 
             _driver.CreateDirectory(staging);
             _driver.CopyFile(
@@ -309,10 +312,16 @@ public class PluginManager
                 pluginName
             );
 
-            // The update is accepted and lands on the next start, so where it
-            // came from is already true of the plugin the owner will run.
+            // Held with the staged copy, not recorded: the files running now
+            // are still the old ones. The next start applies the copy and
+            // commits this. Without a resident plugin there is no id to hold
+            // it under, and the plugin reads as unknown after the restart.
             if (resident is not null)
-                RecordUploadedAssembly(resident.Id, expectedChecksum, version: null);
+                _installSources.Stage(
+                    pluginName,
+                    resident.Id,
+                    UploadedAssembly(pluginName, expectedChecksum, version: null)
+                );
 
             throw new PluginUpdatePendingRestartException(pluginName);
         }
@@ -320,12 +329,29 @@ public class PluginManager
         // A bare assembly is not the package an earlier install was hashed from.
         PluginPackageHashMarker.Clear(pluginDir);
         await RecordFilesAsync(pluginDir, ct);
-        await LoadPluginAssemblyAsync(destPath, ct, newContent: true);
 
-        // The id is only known once the assembly has loaded: a bare .dll
-        // carries no manifest to read it from.
-        if (LoadedFrom(destPath) is { } installed)
-            RecordUploadedAssembly(installed.Id, expectedChecksum, installed.Version.ToString());
+        // The folder now holds the upload, so whatever an earlier install
+        // recorded for it is gone before the load. A load that fails then
+        // leaves no record, rather than an old repository's on an uploaded file.
+        _installSources.ForgetFolder(pluginName);
+        await LoadPluginAssemblyAsync(destPath, ct, newContent: true);
+        RecordIfLoaded(destPath, pluginName, expectedChecksum);
+    }
+
+    /// <summary>
+    /// Records a bare-assembly upload once it loaded. The id is only known
+    /// then: a bare .dll carries no manifest to read it from. A plugin whose
+    /// load failed is recorded as nothing.
+    /// </summary>
+    private void RecordIfLoaded(string assemblyPath, string folder, string? expectedChecksum)
+    {
+        if (LoadedFrom(assemblyPath) is not { Status: not PluginStatus.Malfunctioned } loaded)
+            return;
+
+        _installSources.Record(
+            loaded.Id,
+            UploadedAssembly(folder, expectedChecksum, loaded.Version.ToString())
+        );
     }
 
     /// <summary>The loaded plugin whose assembly is the file at this path, if any.</summary>
@@ -343,21 +369,19 @@ public class PluginManager
     /// A bare assembly is always an upload. The version is null for an update
     /// staged for the next start: nobody has loaded it to read one yet.
     /// </summary>
-    private void RecordUploadedAssembly(
-        Ulid pluginId,
+    private static PluginInstallSource UploadedAssembly(
+        string folder,
         string? expectedChecksum,
         string? version
     ) =>
-        _installSources.Record(
-            pluginId,
-            new()
-            {
-                Kind = PluginInstallSourceKind.File,
-                ChecksumVerified = !string.IsNullOrWhiteSpace(expectedChecksum),
-                Version = version,
-                RecordedAt = DateTime.UtcNow,
-            }
-        );
+        new()
+        {
+            Kind = PluginInstallSourceKind.File,
+            Folder = folder,
+            ChecksumVerified = !string.IsNullOrWhiteSpace(expectedChecksum),
+            Version = version,
+            RecordedAt = DateTime.UtcNow,
+        };
 
     /// <summary>
     /// The single-assembly twin of <see cref="TrySwapResidentPluginAsync"/>:
@@ -538,9 +562,8 @@ public class PluginManager
         // this line matched: it is enforced before the archive is opened.
         PluginInstallSource source = new()
         {
-            Kind = fromMarketplace
-                ? PluginInstallSourceKind.Repository
-                : PluginInstallSourceKind.File,
+            Kind = KindOf(fromMarketplace, listedBy),
+            Folder = manifest.FolderName,
             RepositoryName = listedBy?.Name,
             RepositoryUrl = listedBy?.Url,
             FromOfficialMarketplace = fromOfficialMarketplace,
@@ -591,6 +614,10 @@ public class PluginManager
                 _driver.DeleteDirectory(staging, recursive: true);
             }
 
+            // An earlier staged copy is replaced by this one, live or staged,
+            // and its source goes with it.
+            _installSources.DropStaged(manifest.FolderName);
+
             _driver.CreateDirectory(staging);
 
             await ExtractAsync(archive, manifest, staging, ct);
@@ -637,9 +664,10 @@ public class PluginManager
                     manifest.FolderName
                 );
 
-                // Accepted and applied on the next start, so the source is
-                // already true of the plugin the owner will run.
-                _installSources.Record(manifest.Id, source);
+                // Held with the staged copy, not recorded: the files running
+                // now are still the old ones. The next start applies the copy
+                // and commits this; a copy that is replaced drops it.
+                _installSources.Stage(manifest.FolderName, manifest.Id, source);
 
                 throw new PluginUpdatePendingRestartException(manifest.FolderName);
             }
@@ -1020,9 +1048,42 @@ public class PluginManager
             {
                 ApplyStaged(path, _storage.CombinePath(_pluginsPath, folderName));
 
+                // The staged files are the plugin's now, and so is their source.
+                // A copy that fails to apply stays staged for the next start,
+                // and its source stays with it.
+                _installSources.CommitStaged(folderName);
+
                 _logger.LogInformation("Applied the staged update for {Folder}.", folderName);
             }
         );
+    }
+
+    /// <summary>
+    /// A source held for a staged copy that is no longer there: removed by
+    /// hand, or cleaned up as junk. Nothing will apply it, so nothing commits it.
+    /// </summary>
+    private void DropOrphanedStagedSources()
+    {
+        foreach (string folder in _installSources.StagedFolders())
+        {
+            if (!_driver.DirectoryExists(_storage.CombinePath(_pluginsPath, PendingUpdatesFolder, folder)))
+                _installSources.DropStaged(folder);
+        }
+    }
+
+    /// <summary>
+    /// A repository install names the repository it came from. One that does
+    /// not, a caller of the plugin manager passing no index, records unknown:
+    /// a repository with no name and no address is not a source anyone can check.
+    /// </summary>
+    private static string KindOf(bool fromMarketplace, PluginRepositoryInfo? listedBy)
+    {
+        if (!fromMarketplace)
+            return PluginInstallSourceKind.File;
+
+        return listedBy is null
+            ? PluginInstallSourceKind.Unknown
+            : PluginInstallSourceKind.Repository;
     }
 
     /// <summary>
@@ -1394,6 +1455,7 @@ public class PluginManager
         // The approved files are what the owner put there, not what any
         // earlier install downloaded, so an earlier source no longer applies.
         _installSources.Forget(pluginId);
+        _installSources.ForgetFolder(Path.GetFileName(folder));
 
         _logger.LogInformation(
             "The owner approved plugin {PluginName}; its files are recorded and it is loading.",
@@ -1432,6 +1494,7 @@ public class PluginManager
         // Before the scan below, because this is the one moment no plugin
         // assembly is held and a staged update can replace the files it needs to.
         ApplyPendingUpdates();
+        DropOrphanedStagedSources();
 
         // Same moment, for a hot swap that crashed before its own cleanup ran.
         ResolvePendingRollbacks();

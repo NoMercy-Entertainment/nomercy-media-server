@@ -22,9 +22,29 @@ public interface IPluginInstallSourceStore
     /// <summary>The recorded source, or null for a plugin installed before sources were recorded.</summary>
     PluginInstallSource? Find(Ulid pluginId);
 
-    /// <summary>Records an install or an update, replacing what an earlier install recorded.</summary>
+    /// <summary>
+    /// Records an install or an update, replacing what an earlier install
+    /// recorded for this id and for the folder it names: one folder holds one
+    /// plugin, so a record for another id in that folder is about files that
+    /// are gone.
+    /// </summary>
     void Record(Ulid pluginId, PluginInstallSource source);
 
     /// <summary>Drops the record, for a plugin that was uninstalled.</summary>
     void Forget(Ulid pluginId);
+
+    /// <summary>Drops any record about the plugin in this folder, whatever its id.</summary>
+    void ForgetFolder(string folder);
+
+    /// <summary>Holds the source of an update staged for the next start, until it is applied.</summary>
+    void Stage(string folder, Ulid pluginId, PluginInstallSource source);
+
+    /// <summary>The staged copy in this folder was applied: its source becomes the plugin's.</summary>
+    void CommitStaged(string folder);
+
+    /// <summary>The staged copy in this folder was replaced or discarded: its source is dropped.</summary>
+    void DropStaged(string folder);
+
+    /// <summary>The folders with a staged source waiting.</summary>
+    IReadOnlyList<string> StagedFolders();
 }

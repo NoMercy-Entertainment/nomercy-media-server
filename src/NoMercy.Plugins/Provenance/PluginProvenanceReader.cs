@@ -32,7 +32,9 @@ public class PluginProvenanceReader(
     {
         PluginInstallSource? source = sources.Find(pluginId);
 
-        if (source is null)
+        // An install that could not say where it came from records unknown,
+        // and unknown reads as nothing known at all.
+        if (source is null || source.Kind == PluginInstallSourceKind.Unknown)
             return PluginProvenance.Unknown;
 
         bool hasRepository = !string.IsNullOrWhiteSpace(source.RepositoryUrl);
