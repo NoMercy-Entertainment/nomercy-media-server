@@ -637,9 +637,7 @@ public class PluginManager
             // A marketplace update never clears it: the folder stays what it was.
             if (
                 !fromMarketplace
-                || PluginSideloadMarker.IsMarked(
-                    Path.Combine(LocalPath(pluginDir), "plugin.json")
-                )
+                || PluginSideloadMarker.IsMarked(Path.Combine(LocalPath(pluginDir), "plugin.json"))
             )
             {
                 PluginSideloadMarker.Mark(staging);
@@ -1061,13 +1059,30 @@ public class PluginManager
     /// <summary>
     /// A source held for a staged copy that is no longer there: removed by
     /// hand, or cleaned up as junk. Nothing will apply it, so nothing commits it.
+    /// <para>
+    /// Logged and skipped when the platform store cannot be read, like every
+    /// other boot cleanup: a stale note about where a plugin came from must
+    /// not stop the server from loading its plugins.
+    /// </para>
     /// </summary>
     private void DropOrphanedStagedSources()
     {
-        foreach (string folder in _installSources.StagedFolders())
+        try
         {
-            if (!_driver.DirectoryExists(_storage.CombinePath(_pluginsPath, PendingUpdatesFolder, folder)))
-                _installSources.DropStaged(folder);
+            foreach (string folder in _installSources.StagedFolders())
+            {
+                string staging = _storage.CombinePath(_pluginsPath, PendingUpdatesFolder, folder);
+
+                if (!_driver.DirectoryExists(staging))
+                    _installSources.DropStaged(folder);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(
+                ex,
+                "Could not clear the sources of staged updates that are gone; they are cleared on a later start."
+            );
         }
     }
 
