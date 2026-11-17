@@ -12,9 +12,9 @@
 using System.Buffers.Binary;
 using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
+using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.ContentAnalysis.Segments;
 using NoMercy.Encoder.ContentAnalysis.Segments.Probes;
-using NoMercy.Encoder.Composition;
 using NoMercy.Encoder.Infrastructure;
 using NoMercy.Encoder.Subtitles;
 using NoMercy.NmSystem.Monitoring;
@@ -36,7 +36,12 @@ public class FfmpegEpisodeSignalProbeTests
 
     public FfmpegEpisodeSignalProbeTests()
     {
-        _source = new(_storage, "/media/show/S01E01/audio_jpn.m3u8", 1, "/media/show/S01E01/video.m3u8");
+        _source = new(
+            _storage,
+            "/media/show/S01E01/audio_jpn.m3u8",
+            1,
+            "/media/show/S01E01/video.m3u8"
+        );
     }
 
     [Fact]
@@ -53,7 +58,9 @@ public class FfmpegEpisodeSignalProbeTests
                 BinaryPrimitives.WriteUInt32LittleEndian(raw.AsSpan(8), 61u); // '=' then zeros
                 File.WriteAllBytes(a[^1], raw);
                 stderr("  Duration: 00:23:00.21, start: 1.400000, bitrate: 0 kb/s");
-                stderr("[Parsed_silencedetect_1 @ 0x1] silence_end: 3.024875 | silence_duration: 1.582552");
+                stderr(
+                    "[Parsed_silencedetect_1 @ 0x1] silence_end: 3.024875 | silence_duration: 1.582552"
+                );
                 stderr("[Parsed_silencedetect_1 @ 0x1] silence_start: 1377.201333");
             }
         );
@@ -69,7 +76,9 @@ public class FfmpegEpisodeSignalProbeTests
         // #344: no window. The whole track, from its first sample.
         args.Should().NotContain(["-ss", "-sseof", "-t"]);
         args.Should().ContainInConsecutiveOrder("-f", "chromaprint", "-fp_format", "raw");
-        string.Join(' ', args!).Should().Contain("[0:a:1]asplit[a1][a2];[a1]silencedetect=n=-50dB:d=0.3[ao]");
+        string.Join(' ', args!)
+            .Should()
+            .Contain("[0:a:1]asplit[a1][a2];[a1]silencedetect=n=-50dB:d=0.3[ao]");
     }
 
     [Fact]
@@ -90,13 +99,29 @@ public class FfmpegEpisodeSignalProbeTests
                     It.IsAny<Action<int>?>()
                 )
             )
-            .Returns<string, string[], TimeSpan, Action<string>?, Action<string>?, string?, CancellationToken, Action<int>?>(
+            .Returns<
+                string,
+                string[],
+                TimeSpan,
+                Action<string>?,
+                Action<string>?,
+                string?,
+                CancellationToken,
+                Action<int>?
+            >(
                 (_, args, _, _, stderr, _, _, _) =>
                 {
                     string graph = args[Array.IndexOf(args, "-filter_complex") + 1];
                     graphs.Add(graph);
                     if (graph.Contains("language"))
-                        return Task.FromResult(new ProcessResult(1, "", "matches no streams", TimeSpan.Zero));
+                    {
+                        stderr?.Invoke(
+                            "[fc#0 @ 0x1] Stream specifier ':a:m:language:jpn' in filtergraph description ... matches no streams."
+                        );
+                        return Task.FromResult(
+                            new ProcessResult(1, "", "matches no streams", TimeSpan.Zero)
+                        );
+                    }
                     File.WriteAllBytes(args[^1], new byte[8]);
                     stderr?.Invoke("  Duration: 00:42:00.00, start: 0.000000, bitrate: 0 kb/s");
                     return Task.FromResult(new ProcessResult(0, "", "", TimeSpan.Zero));
@@ -110,6 +135,26 @@ public class FfmpegEpisodeSignalProbeTests
         graphs.Should().HaveCount(2);
         graphs[0].Should().StartWith("[0:a:m:language:jpn]");
         graphs[1].Should().StartWith("[0:a:2]");
+    }
+
+    [Fact]
+    public async Task ReadAudio_OfABrokenFile_CostsOnePass_NotTwo()
+    {
+        int passes = 0;
+        Mock<IProcessRunner> runner = Runner(
+            (_, stderr) =>
+            {
+                passes++;
+                stderr(
+                    "[in#0 @ 0x1] Error opening input: Invalid data found when processing input"
+                );
+            },
+            exitCode: 1
+        );
+        SegmentMediaSource file = new(_storage, "/media/broken.mkv", 0, "/media/broken.mkv", "jpn");
+
+        (await Probe(runner).ReadAudioAsync(file, CancellationToken.None)).Should().BeNull();
+        passes.Should().Be(1, "only a language that matched no stream is retried by index");
     }
 
     [Theory]
@@ -135,7 +180,11 @@ public class FfmpegEpisodeSignalProbeTests
     public async Task ReadAudio_WhenFfmpegCannotStart_IsNull_NotAnException()
     {
         Mock<IProcessRunner> runner = Runner(
-            (_, _) => throw new System.ComponentModel.Win32Exception(2, "The system cannot find the file specified.")
+            (_, _) =>
+                throw new System.ComponentModel.Win32Exception(
+                    2,
+                    "The system cannot find the file specified."
+                )
         );
 
         (await Probe(runner).ReadAudioAsync(_source, CancellationToken.None)).Should().BeNull();
@@ -149,8 +198,12 @@ public class FfmpegEpisodeSignalProbeTests
             (a, stderr) =>
             {
                 calls.Add(a);
-                stderr("[blackdetect@strict @ 0x1] black_start:3.12 black_end:5.56 black_duration:2.44");
-                stderr("[blackdetect@loose @ 0x2] black_start:3.08 black_end:6.2 black_duration:3.12");
+                stderr(
+                    "[blackdetect@strict @ 0x1] black_start:3.12 black_end:5.56 black_duration:2.44"
+                );
+                stderr(
+                    "[blackdetect@loose @ 0x2] black_start:3.08 black_end:6.2 black_duration:3.12"
+                );
             }
         );
 
@@ -159,7 +212,9 @@ public class FfmpegEpisodeSignalProbeTests
 
         calls.Should().HaveCount(2);
         calls[1].Should().ContainInConsecutiveOrder("-ss", "900.21", "-t", "480");
-        string.Join(' ', calls[0]).Should().Contain("blackdetect@loose=d=1.0:pix_th=0.10:pic_th=0.80");
+        string.Join(' ', calls[0])
+            .Should()
+            .Contain("blackdetect@loose=d=1.0:pix_th=0.10:pic_th=0.80");
         black!.Strict.Should().HaveCount(2);
         black.Loose[1].Start.Should().BeApproximately(903.29, 1e-9);
     }
@@ -182,7 +237,8 @@ public class FfmpegEpisodeSignalProbeTests
             }
         );
 
-        BlackRuns? black = await Probe(runner).ReadBlackAsync(_source, [new(100, 120)], CancellationToken.None);
+        BlackRuns? black = await Probe(runner)
+            .ReadBlackAsync(_source, [new(100, 120)], CancellationToken.None);
 
         graphs.Should().HaveCount(3);
         black!.Strict.Should().Equal(new TimeRange(105, 106));
@@ -253,7 +309,13 @@ public class FfmpegEpisodeSignalProbeTests
                     It.IsAny<CancellationToken>()
                 )
             )
-            .Callback<string, string[], IReadOnlyDictionary<string, string>?, string?, CancellationToken>(
+            .Callback<
+                string,
+                string[],
+                IReadOnlyDictionary<string, string>?,
+                string?,
+                CancellationToken
+            >(
                 (_, a, _, workingDirectory, _) =>
                 {
                     args = a;
@@ -269,16 +331,26 @@ public class FfmpegEpisodeSignalProbeTests
             .Setup(t => t.EnsureLanguageModelAsync("eng", It.IsAny<CancellationToken>()))
             .ReturnsAsync(Path.Combine(Path.GetTempPath(), "tessdata", "eng.traineddata"));
 
-        OcrScan? ocr = await Probe(runner, tesseract.Object).ReadTextAsync(_source, 960, CancellationToken.None);
+        OcrScan? ocr = await Probe(runner, tesseract.Object)
+            .ReadTextAsync(_source, 960, CancellationToken.None);
 
         ocr!.StartSeconds.Should().Be(960);
         ocr.Samples.Should().Equal(new OcrSample(960, 3));
-        string.Join(' ', args!).Should().Contain("ocr=language=eng,metadata=print:key=lavfi.ocr.text:file=ocr.txt");
+        string.Join(' ', args!)
+            .Should()
+            .Contain("ocr=language=eng,metadata=print:key=lavfi.ocr.text:file=ocr.txt");
     }
 
-    private FfmpegEpisodeSignalProbe Probe(Mock<IProcessRunner> runner, ITesseractModelManager? tesseract = null) =>
+    private FfmpegEpisodeSignalProbe Probe(
+        Mock<IProcessRunner> runner,
+        ITesseractModelManager? tesseract = null
+    ) =>
         new(
-            new EncoderOptions { FfmpegPathOverride = "/usr/bin/ffmpeg", FfprobePathOverride = "/usr/bin/ffprobe" },
+            new EncoderOptions
+            {
+                FfmpegPathOverride = "/usr/bin/ffmpeg",
+                FfprobePathOverride = "/usr/bin/ffprobe",
+            },
             runner.Object,
             _storage,
             tesseract ?? new Mock<ITesseractModelManager>().Object,
@@ -286,7 +358,10 @@ public class FfmpegEpisodeSignalProbeTests
             NullLogger<FfmpegEpisodeSignalProbe>.Instance
         );
 
-    private static Mock<IProcessRunner> Runner(Action<string[], Action<string>> play, int exitCode = 0)
+    private static Mock<IProcessRunner> Runner(
+        Action<string[], Action<string>> play,
+        int exitCode = 0
+    )
     {
         Mock<IProcessRunner> runner = new();
         runner
@@ -302,9 +377,16 @@ public class FfmpegEpisodeSignalProbeTests
                     It.IsAny<Action<int>?>()
                 )
             )
-            .Callback<string, string[], TimeSpan, Action<string>?, Action<string>?, string?, CancellationToken, Action<int>?>(
-                (_, args, _, _, stderr, _, _, _) => play(args, line => stderr?.Invoke(line))
-            )
+            .Callback<
+                string,
+                string[],
+                TimeSpan,
+                Action<string>?,
+                Action<string>?,
+                string?,
+                CancellationToken,
+                Action<int>?
+            >((_, args, _, _, stderr, _, _, _) => play(args, line => stderr?.Invoke(line)))
             .ReturnsAsync(new ProcessResult(exitCode, "", "", TimeSpan.Zero));
         return runner;
     }

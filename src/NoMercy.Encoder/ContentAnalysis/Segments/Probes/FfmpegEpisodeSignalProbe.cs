@@ -53,21 +53,27 @@ public sealed class FfmpegEpisodeSignalProbe(
     {
         if (LanguageTag(source.AudioLanguage) is { } language)
         {
-            // By language first; a file whose streams carry no such tag (or a
-            // different spelling of it) falls back to the stream index.
-            AudioSignals? byLanguage = await ReadAudioAsync(source, $"0:a:m:language:{language}", ct);
-            if (byLanguage is not null)
+            // By language first. Only a file whose streams carry no such tag (or
+            // a different spelling of it) is read again by stream index; a broken
+            // file costs one pass, not two.
+            (AudioSignals? byLanguage, bool noSuchStream) = await ReadAudioAsync(
+                source,
+                $"0:a:m:language:{language}",
+                ct
+            );
+            if (byLanguage is not null || !noSuchStream)
                 return byLanguage;
         }
 
-        return await ReadAudioAsync(source, $"0:a:{source.AudioStreamIndex}", ct);
+        return (await ReadAudioAsync(source, $"0:a:{source.AudioStreamIndex}", ct)).Signals;
     }
 
     /// <summary>A language tag safe inside a filtergraph (letters only), or null.</summary>
     internal static string? LanguageTag(string? language) =>
         language is { Length: >= 2 and <= 8 } && language.All(char.IsAsciiLetter) ? language : null;
 
-    private async Task<AudioSignals?> ReadAudioAsync(
+    /// <summary>One audio pass; <c>NoSuchStream</c> when the stream specifier matched nothing.</summary>
+    private async Task<(AudioSignals? Signals, bool NoSuchStream)> ReadAudioAsync(
         SegmentMediaSource source,
         string audioStream,
         CancellationToken ct
@@ -106,20 +112,23 @@ public sealed class FfmpegEpisodeSignalProbe(
             ];
 
             if (!await RunAsync(args, stderr, LongPassTimeout, source.AudioPath, ct))
-                return null;
+                return (null, FfmpegSignalParser.MatchesNoStreams(stderr));
 
             double? duration = FfmpegSignalParser.InputDuration(stderr);
             if (duration is null or <= 0 || !storage.Exists(fingerprintPath))
             {
                 logger.LogWarning("Segment analysis: no duration or fingerprint for {Path}", source.AudioPath);
-                return null;
+                return (null, false);
             }
 
             byte[] raw = await storage.ReadAsync(fingerprintPath, ct);
-            return new(
-                duration.Value,
-                ChromaprintRaw.Parse(raw),
-                FfmpegSignalParser.Silences(stderr, duration.Value)
+            return (
+                new(
+                    duration.Value,
+                    ChromaprintRaw.Parse(raw),
+                    FfmpegSignalParser.Silences(stderr, duration.Value)
+                ),
+                false
             );
         }
         finally

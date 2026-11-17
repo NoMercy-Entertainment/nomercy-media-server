@@ -27,7 +27,11 @@ internal static partial class FfmpegSignalParser
     /// start line rounds differently); a run still open at the end of the input
     /// closes at <paramref name="duration"/>.
     /// </summary>
-    public static List<TimeRange> Silences(IEnumerable<string> lines, double duration, double offset = 0)
+    public static List<TimeRange> Silences(
+        IEnumerable<string> lines,
+        double duration,
+        double offset = 0
+    )
     {
         List<TimeRange> silences = [];
         double? open = null;
@@ -55,7 +59,11 @@ internal static partial class FfmpegSignalParser
     }
 
     /// <summary>blackdetect runs, of the instance named <paramref name="instance"/> when given.</summary>
-    public static List<TimeRange> Black(IEnumerable<string> lines, double offset = 0, string? instance = null)
+    public static List<TimeRange> Black(
+        IEnumerable<string> lines,
+        double offset = 0,
+        string? instance = null
+    )
     {
         List<TimeRange> runs = [];
         foreach (string line in lines)
@@ -65,7 +73,12 @@ internal static partial class FfmpegSignalParser
                 continue;
             if (instance is not null && match.Groups["instance"].Value != instance)
                 continue;
-            runs.Add(new(offset + Number(match.Groups["start"].Value), offset + Number(match.Groups["end"].Value)));
+            runs.Add(
+                new(
+                    offset + Number(match.Groups["start"].Value),
+                    offset + Number(match.Groups["end"].Value)
+                )
+            );
         }
 
         return runs;
@@ -82,6 +95,13 @@ internal static partial class FfmpegSignalParser
             Match match = BlackRegex().Match(line);
             return match.Success && !match.Groups["instance"].Success;
         });
+
+    /// <summary>
+    /// True when FFmpeg refused a stream specifier that matched no stream
+    /// ("Stream specifier ':a:m:language:jpn' ... matches no streams").
+    /// </summary>
+    public static bool MatchesNoStreams(IEnumerable<string> lines) =>
+        lines.Any(line => line.Contains("matches no streams", StringComparison.Ordinal));
 
     /// <summary>scdet scene cuts.</summary>
     public static List<double> SceneCuts(IEnumerable<string> lines, double offset = 0)
@@ -124,7 +144,8 @@ internal static partial class FfmpegSignalParser
         // Split keeps the captured pts_time: [before, t0, text0, t1, text1, ...].
         for (int i = 1; i + 1 < chunks.Length; i += 2)
         {
-            string text = chunks[i + 1].Replace("lavfi.ocr.text=", string.Empty, StringComparison.Ordinal);
+            string text = chunks[i + 1]
+                .Replace("lavfi.ocr.text=", string.Empty, StringComparison.Ordinal);
             int words = WordRegex().Matches(text).Count;
             samples.Add(new(Math.Round(offset + Number(chunks[i]), 2), words));
         }
@@ -132,24 +153,49 @@ internal static partial class FfmpegSignalParser
         return samples;
     }
 
-    private static double Number(string value) => double.Parse(value, NumberStyles.Float, CultureInfo.InvariantCulture);
+    private static double Number(string value) =>
+        double.Parse(value, NumberStyles.Float, CultureInfo.InvariantCulture);
 
-    [GeneratedRegex(@"silence_start: (-?[\d.]+)", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    [GeneratedRegex(
+        @"silence_start: (-?[\d.]+)",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex SilenceStartRegex();
 
-    [GeneratedRegex(@"silence_end: (-?[\d.]+) \| silence_duration: ([\d.]+)", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    [GeneratedRegex(
+        @"silence_end: (-?[\d.]+) \| silence_duration: ([\d.]+)",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex SilenceEndRegex();
 
-    [GeneratedRegex(@"\[blackdetect(?:@(?<instance>\w+))? @ [^\]]+\] black_start:(?<start>[\d.]+) black_end:(?<end>[\d.]+)", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    [GeneratedRegex(
+        @"\[blackdetect(?:@(?<instance>\w+))? @ [^\]]+\] black_start:(?<start>[\d.]+) black_end:(?<end>[\d.]+)",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex BlackRegex();
 
-    [GeneratedRegex(@"lavfi\.scd\.score: [\d.]+, lavfi\.scd\.time: ([\d.]+)", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    [GeneratedRegex(
+        @"lavfi\.scd\.score: [\d.]+, lavfi\.scd\.time: ([\d.]+)",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex SceneCutRegex();
 
-    [GeneratedRegex(@"Duration: (\d+):(\d+):(\d+(?:\.\d+)?)", RegexOptions.None, matchTimeoutMilliseconds: 1000)]
+    [GeneratedRegex(
+        @"Duration: (\d+):(\d+):(\d+(?:\.\d+)?)",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 1000
+    )]
     private static partial Regex DurationRegex();
 
-    [GeneratedRegex(@"frame:\d+\s+pts:\d+\s+pts_time:([\d.]+)", RegexOptions.None, matchTimeoutMilliseconds: 2000)]
+    [GeneratedRegex(
+        @"frame:\d+\s+pts:\d+\s+pts_time:([\d.]+)",
+        RegexOptions.None,
+        matchTimeoutMilliseconds: 2000
+    )]
     private static partial Regex FrameRegex();
 
     [GeneratedRegex("[A-Za-z]{3,}", RegexOptions.None, matchTimeoutMilliseconds: 2000)]
