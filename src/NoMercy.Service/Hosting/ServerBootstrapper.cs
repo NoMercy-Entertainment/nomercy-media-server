@@ -94,7 +94,7 @@ public sealed class ServerBootstrapper
         // container is built. Same pattern as Start.cs Binaries task.
         (IStorage preBootStorage, IStorageDriver preBootBackend) = BootstrapStorageFactory.Create();
         BackupOptions backupOptions = BackupOptions.ForAppFiles();
-        SqliteFileOperations sqliteFiles = new();
+        SqliteFileOperations sqliteFiles = new(new SetupLogger<SqliteFileOperations>());
 
         // A restore asked for before the restart goes in now: nothing has opened a
         // database yet, and the process that held them has exited.
