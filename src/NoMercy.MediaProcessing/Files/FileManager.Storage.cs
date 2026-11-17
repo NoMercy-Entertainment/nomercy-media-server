@@ -327,28 +327,27 @@ public partial class FileManager
                 .Select(candidate => storage.GetName(candidate.Path))
         );
 
-        foreach ((string supName, string mediaTitle, string language, string variant) in orphans)
-        {
-            dispatcher.Dispatch(
-                new SubtitleOcrBackfillJob(
-                    folder.Id.ToString(),
-                    folder.DriverId.ToString(),
-                    hostFolder,
-                    supName,
-                    mediaTitle,
-                    language,
-                    variant
-                ),
-                "encoder",
-                2
-            );
+        SubtitleOcrBackfillJob? job = BuildOcrBackfillJob(folder, hostFolder, orphans);
+        if (job is null)
+            return;
 
-            Logger.App(
-                $"[SubtitleOcrBackfill] queued OCR for orphaned bitmap subtitle {supName}",
-                LogEventLevel.Information
-            );
-        }
+        dispatcher.Dispatch(job, "encoder", 2);
+
+        Logger.App(
+            $"[SubtitleOcrBackfill] queued OCR for {orphans.Count} orphaned bitmap subtitle(s) in {hostFolder}",
+            LogEventLevel.Information
+        );
     }
+
+    /// <summary>One OCR job for all orphaned bitmap subtitles of a title folder.</summary>
+    internal static SubtitleOcrBackfillJob? BuildOcrBackfillJob(
+        Folder folder,
+        string hostFolder,
+        IReadOnlyList<OrphanedBitmapSubtitle> orphans
+    ) =>
+        orphans.Count == 0
+            ? null
+            : new(folder.Id.ToString(), folder.DriverId.ToString(), hostFolder, orphans);
 
     /// <summary>
     /// Queues a preview rebuild for a title whose sprite sheet was rendered at a

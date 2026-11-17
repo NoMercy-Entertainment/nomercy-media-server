@@ -90,10 +90,7 @@ public class EncoderQueueLivenessTests
             Ulid.NewUlid().ToString(),
             Ulid.NewUlid().ToString(),
             "/Anime/Frieren/S01E01",
-            "eng.full.sup",
-            "Frieren S01E01",
-            "eng",
-            "full"
+            [new("eng.full.sup", "Frieren S01E01", "eng", "full")]
         );
 
         TasksController
