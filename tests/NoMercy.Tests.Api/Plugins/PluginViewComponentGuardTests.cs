@@ -80,7 +80,11 @@ public class PluginViewComponentGuardTests
                 Node(
                     "list",
                     "NMContainer",
-                    Node("grid", "NMGrid", Node("evil", NmPluginForbiddenComponents.ServerComponent))
+                    Node(
+                        "grid",
+                        "NMGrid",
+                        Node("evil", NmPluginForbiddenComponents.ServerComponent)
+                    )
                 )
             )
         );
@@ -130,13 +134,87 @@ public class PluginViewComponentGuardTests
                 {
                     ["slots"] = new Dictionary<string, object?>
                     {
-                        ["footer"] = new[] { Node("evil", NmPluginForbiddenComponents.ServerComponent) },
+                        ["footer"] = new[]
+                        {
+                            Node("evil", NmPluginForbiddenComponents.ServerComponent),
+                        },
                     },
                 },
             }
         );
 
         PluginViewComponentGuard.FindForbidden(view).Should().NotBeNull();
+    }
+
+    [Theory]
+    [InlineData("NMServerComponent")]
+    [InlineData("NMSERVERCOMPONENT")]
+    [InlineData("nmServerComponent")]
+    [InlineData(" NMServerComponent")]
+    [InlineData("NMServerComponent ")]
+    [InlineData("\tnmservercomponent\n")]
+    [InlineData("\u00A0NMServerComponent\u00A0")]
+    public void A_respelled_or_padded_server_component_is_found(string spelling)
+    {
+        NmPluginForbiddenComponents.IsForbidden(spelling).Should().BeTrue();
+
+        PluginView view = PluginViews.Declarative(Node("grid", "NMGrid", Node("evil", spelling)));
+
+        PluginViewComponentGuard.FindForbidden(view).Should().Be(spelling);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    [InlineData("NMServer Component")]
+    [InlineData("NMServerComponents")]
+    public void A_name_that_is_not_the_server_component_is_not_forbidden(string? spelling)
+    {
+        NmPluginForbiddenComponents.IsForbidden(spelling).Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task An_append_is_refused_when_its_shelf_holds_a_server_component()
+    {
+        PluginUiController controller = Controller(
+            PluginViews.Declarative(
+                Node("heading", "NMContentHeader"),
+                Node(
+                    "all",
+                    "NMGrid",
+                    Node("card", "NMMusicCard"),
+                    Node("evil", " NMServerComponent ")
+                )
+            ),
+            "?route=/stations&append=all&cursor=36&limit=4"
+        );
+
+        IActionResult result = await controller.View(PluginId, "/stations", null, default);
+
+        result
+            .Should()
+            .BeOfType<ObjectResult>()
+            .Which.StatusCode.Should()
+            .Be(StatusCodes.Status422UnprocessableEntity);
+    }
+
+    [Fact]
+    public async Task An_append_is_refused_when_the_server_component_sits_outside_its_shelf()
+    {
+        // The whole view is checked before the append keeps only its shelf, so a
+        // plugin cannot hide the component in the part that is not sent.
+        PluginUiController controller = Controller(
+            PluginViews.Declarative(
+                Node("evil", NmPluginForbiddenComponents.ServerComponent),
+                Node("all", "NMGrid", Node("card", "NMMusicCard"))
+            ),
+            "?route=/stations&append=all&limit=4"
+        );
+
+        IActionResult result = await controller.View(PluginId, "/stations", null, default);
+
+        result.Should().BeOfType<ObjectResult>().Which.StatusCode.Should().Be(422);
     }
 
     [Fact]
@@ -165,9 +243,9 @@ public class PluginViewComponentGuardTests
     [Fact]
     public void A_view_naming_every_app_component_a_plugin_may_draw_passes()
     {
-        PluginView view = PluginViews.Declarative(
-            [.. AppComponentsAPluginMayDraw.Select(name => Node(name.ToLowerInvariant(), name))]
-        );
+        PluginView view = PluginViews.Declarative([
+            .. AppComponentsAPluginMayDraw.Select(name => Node(name.ToLowerInvariant(), name)),
+        ]);
 
         PluginViewComponentGuard.FindForbidden(view).Should().BeNull();
     }
@@ -234,7 +312,11 @@ public class PluginViewComponentGuardTests
         PluginUiController controller = Controller(
             PluginViews.Declarative(
                 Node("heading", "NMContentHeader"),
-                Node("all", "NMGrid", [.. Enumerable.Range(0, 9).Select(index => Node($"c{index}", "NMMusicCard"))])
+                Node(
+                    "all",
+                    "NMGrid",
+                    [.. Enumerable.Range(0, 9).Select(index => Node($"c{index}", "NMMusicCard"))]
+                )
             ),
             "?route=/stations&append=all&cursor=36&limit=4"
         );
@@ -251,7 +333,11 @@ public class PluginViewComponentGuardTests
         ((IEnumerable<PluginComponent>)sent.Components![0].Props["items"]!).Should().HaveCount(4);
     }
 
-    private static PluginComponent Node(string id, string component, params PluginComponent[] items) =>
+    private static PluginComponent Node(
+        string id,
+        string component,
+        params PluginComponent[] items
+    ) =>
         new()
         {
             Id = id,

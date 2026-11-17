@@ -43,7 +43,11 @@ public static class NmPluginForbiddenComponents
     public static IReadOnlySet<string> All { get; } =
         new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ServerComponent };
 
-    /// <summary>Whether a plugin view naming <paramref name="component" /> must be refused.</summary>
+    /// <summary>
+    /// Whether a plugin view naming <paramref name="component" /> must be
+    /// refused. Spaces around the name are ignored, as is case, so a padded or
+    /// respelled name is refused too.
+    /// </summary>
     public static bool IsForbidden(string? component) =>
-        component is not null && All.Contains(component);
+        component is not null && All.Contains(component.Trim());
 }
