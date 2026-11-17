@@ -126,7 +126,7 @@ public class PluginDiIntegrationTests : IDisposable
                 }
             );
 
-        refusal!.Code.Should().Be(PluginRefusalCodes.HostUnavailable);
+        refusal!.Code.Should().Be(PluginRefusalCodes.OutOfProcessUnsupported);
         refusal.Why.Should().Contain(nameof(IPluginContext.AudioTools));
     }
 

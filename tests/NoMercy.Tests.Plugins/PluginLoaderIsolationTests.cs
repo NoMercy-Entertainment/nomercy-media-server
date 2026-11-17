@@ -62,11 +62,10 @@ public class PluginLoaderIsolationTests : IDisposable
 
     private string StageEchoPlugin(bool asksForRest = false, string? capabilities = null)
     {
-        string declared = capabilities is not null
-            ? $", \"capabilities\": {capabilities}"
-            : asksForRest
-                ? """, "capabilities": { "rest": true }"""
-                : "";
+        string declared =
+            capabilities is not null ? $", \"capabilities\": {capabilities}"
+            : asksForRest ? """, "capabilities": { "rest": true }"""
+            : "";
 
         string testBin = Path.GetDirectoryName(
             typeof(PluginLoaderIsolationTests).Assembly.Location
@@ -304,7 +303,7 @@ public class PluginLoaderIsolationTests : IDisposable
         loaded.LoadContext.Should().BeNull("nothing may be mapped into this process");
 
         PluginRefusal refusal = gate.LastRefusal(PluginId)!;
-        refusal.Code.Should().Be(PluginRefusalCodes.HostUnavailable);
+        refusal.Code.Should().Be(PluginRefusalCodes.OutOfProcessUnsupported);
         refusal.Why.Should().Contain("the hooks ui");
         refusal.Fix.Should().Contain(nameof(PluginIsolation.InProcess));
     }

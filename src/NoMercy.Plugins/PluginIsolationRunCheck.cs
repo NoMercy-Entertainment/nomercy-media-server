@@ -43,7 +43,7 @@ public sealed class PluginIsolationRunCheck(
             return null;
 
         return new(
-            PluginRefusalCodes.HostUnavailable,
+            PluginRefusalCodes.OutOfProcessUnsupported,
             $"{plugin.Name} {plugin.Version}",
             "The plugin is set to run in its own process.",
             $"That process cannot serve it: it does not carry {Lost(verdict)}.",

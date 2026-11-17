@@ -80,6 +80,7 @@ public static class PluginRefusalCodes
     public const string ResourceCeiling = "PLUGIN_RESOURCE_CEILING";
     public const string DisabledAfterRestarts = "PLUGIN_DISABLED_AFTER_RESTARTS";
     public const string QuotaUploadExceeded = "PLUGIN_QUOTA_UPLOAD_EXCEEDED";
+    public const string OutOfProcessUnsupported = "PLUGIN_OUT_OF_PROCESS_UNSUPPORTED";
 
     public static IReadOnlyList<PluginRefusalDescriptor> All { get; } =
     [
@@ -466,6 +467,12 @@ public static class PluginRefusalCodes
             PluginRefusalSeverity.Degraded,
             "media.proxy",
             "A plugin is sending faster than the share of the uplink the owner allowed it."
+        ),
+        new(
+            "PLUGIN_OUT_OF_PROCESS_UNSUPPORTED",
+            PluginRefusalSeverity.Blocked,
+            null,
+            "A plugin set to run in its own process uses something that process does not carry yet, so it was refused rather than started there broken."
         ),
     ];
 
