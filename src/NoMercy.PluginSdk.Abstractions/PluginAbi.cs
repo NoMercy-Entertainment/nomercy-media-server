@@ -53,6 +53,9 @@ public static class PluginAbi
     // 12.11 also added PluginDocs (constants: the docs page each refusal links) and
     // PluginLibrary's own Equals and GetHashCode, which compare the presets by value so two
     // reads of one library stay equal.
+    // 12.11 also added NmPluginForbiddenComponents (NoMercy.Design), the refusal code
+    // PluginRefusalCodes.ViewComponentForbidden and PluginRefusalMessages.ViewComponentForbidden:
+    // the server refuses a view that names NMServerComponent at any depth. New members only.
     public static Version Current { get; } = new(12, 11);
 
     /// <summary>

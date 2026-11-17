@@ -296,6 +296,31 @@ public class PluginUiController(
         {
             PluginView view = await plugin.GetViewAsync(request, ct);
 
+            // Checked on the server as well as in every client. A client's own
+            // allow-list is the first line; this one holds for a client that
+            // has not caught up, and for one nobody has written yet.
+            string? forbidden = PluginViewComponentGuard.FindForbidden(view);
+            if (forbidden is not null)
+            {
+                PluginRefusal refusal = PluginRefusalMessages.ViewComponentForbidden(
+                    id.ToString(),
+                    request.Route,
+                    forbidden
+                );
+
+                logger.LogError(
+                    "Plugin {Plugin} view was not sent: {What} {Why}",
+                    info.Name,
+                    refusal.What,
+                    refusal.Why
+                );
+
+                return StatusCode(
+                    StatusCodes.Status422UnprocessableEntity,
+                    PluginRefusalDto.From(refusal)
+                );
+            }
+
             // A declared route names the shell its page wants, and the plugin
             // should not have to repeat it on every view it builds. A view that
             // named one itself keeps it.

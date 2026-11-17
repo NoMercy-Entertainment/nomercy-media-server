@@ -81,6 +81,7 @@ public static class PluginRefusalCodes
     public const string DisabledAfterRestarts = "PLUGIN_DISABLED_AFTER_RESTARTS";
     public const string QuotaUploadExceeded = "PLUGIN_QUOTA_UPLOAD_EXCEEDED";
     public const string OutOfProcessUnsupported = "PLUGIN_OUT_OF_PROCESS_UNSUPPORTED";
+    public const string ViewComponentForbidden = "PLUGIN_VIEW_COMPONENT_FORBIDDEN";
 
     public static IReadOnlyList<PluginRefusalDescriptor> All { get; } =
     [
@@ -473,6 +474,12 @@ public static class PluginRefusalCodes
             PluginRefusalSeverity.Blocked,
             null,
             "A plugin set to run in its own process uses something that process does not carry yet, so it was refused rather than started there broken."
+        ),
+        new(
+            "PLUGIN_VIEW_COMPONENT_FORBIDDEN",
+            PluginRefusalSeverity.Blocked,
+            null,
+            "A plugin view names a component a plugin may never draw, so the server did not send it."
         ),
     ];
 

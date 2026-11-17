@@ -545,4 +545,28 @@ public static class PluginRefusalMessages
             PluginRefusalSeverity.Blocked
         );
     }
+
+    /// <summary>
+    /// A view that names, at any depth, a component a plugin may never draw.
+    /// <para>
+    /// The whole view is held back, not just the one node: a client draws a
+    /// tree, and the server cannot know which parts of it the plugin meant to
+    /// stand on their own.
+    /// </para>
+    /// </summary>
+    public static PluginRefusal ViewComponentForbidden(
+        string plugin,
+        string route,
+        string component
+    )
+    {
+        return new PluginRefusal(
+            PluginRefusalCodes.ViewComponentForbidden,
+            plugin,
+            $"The view for {route} names the component {component}.",
+            $"{component} is one of the app's own components that a plugin may never draw, at any depth of its view. The server did not send the view.",
+            $"Remove {component} from the view. Draw design-system components and the app components a plugin is allowed. Docs: {PluginDocs.UiMount}",
+            PluginRefusalSeverity.Blocked
+        );
+    }
 }
