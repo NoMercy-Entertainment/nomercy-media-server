@@ -1,0 +1,168 @@
+{
+ "series": "Hellsing Ultimate (2006), OVA 1-10",
+ "library_type": "anime",
+ "source": "chapters.vtt of the encoded episodes in Z:/Anime/Anime/Hellsing.Ultimate.(2006), read 2026-11-17",
+ "truth": "Frames. #598 research: no opening song in any OVA; credits of 135-204 s start before the last chapter in E01-E06, so no chapter marks them (they are left to analysis). E07: a frame check (2026-11-17) shows the copyright card at 44:58, before the last chapter; the last chapter (45:04-46:33, 89 s) is the next-OVA teaser, which the length rule treats as the ending song and #503 lets skip.",
+ "shape": "Generic \"Chapter N\" titles, 6-11 chapters, 42-67 min, cold opens of 69-496 s, no opening song.",
+ "episodes": [
+  {
+   "episode": "S01E01",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:03:29.209"},
+    {"title": "Chapter 2", "start": "00:03:29.209", "end": "00:16:06.215"},
+    {"title": "Chapter 3", "start": "00:16:06.215", "end": "00:23:57.227"},
+    {"title": "Chapter 4", "start": "00:23:57.227", "end": "00:37:06.349"},
+    {"title": "Chapter 5", "start": "00:37:06.349", "end": "00:47:26.844"},
+    {"title": "Chapter 6", "start": "00:47:26.844", "end": "00:50:18.975"}
+   ],
+   "expected": [],
+   "story": [
+    {"start": 0.0, "end": 209.209, "note": "cold open"}
+   ]
+  },
+  {
+   "episode": "S01E02",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:02:02.706"},
+    {"title": "Chapter 2", "start": "00:02:02.706", "end": "00:10:26.167"},
+    {"title": "Chapter 3", "start": "00:10:26.167", "end": "00:17:40.268"},
+    {"title": "Chapter 4", "start": "00:17:40.268", "end": "00:30:19.026"},
+    {"title": "Chapter 5", "start": "00:30:19.026", "end": "00:39:45.383"},
+    {"title": "Chapter 6", "start": "00:39:45.383", "end": "00:42:43.520"}
+   ],
+   "expected": [],
+   "story": [
+    {"start": 0.0, "end": 122.706, "note": "cold open"}
+   ]
+  },
+  {
+   "episode": "S01E03",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:01:54.114"},
+    {"title": "Chapter 2", "start": "00:01:54.114", "end": "00:10:26.708"},
+    {"title": "Chapter 3", "start": "00:10:26.708", "end": "00:18:23.102"},
+    {"title": "Chapter 4", "start": "00:18:23.102", "end": "00:32:08.135"},
+    {"title": "Chapter 5", "start": "00:32:08.135", "end": "00:43:10.588"},
+    {"title": "Chapter 6", "start": "00:43:10.588", "end": "00:46:42.759"}
+   ],
+   "expected": [],
+   "story": [
+    {"start": 0.0, "end": 114.114, "note": "cold open"}
+   ]
+  },
+  {
+   "episode": "S01E04",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:07:08.261"},
+    {"title": "Chapter 2", "start": "00:07:08.261", "end": "00:15:14.914"},
+    {"title": "Chapter 3", "start": "00:15:14.914", "end": "00:27:58.677"},
+    {"title": "Chapter 4", "start": "00:27:58.677", "end": "00:39:25.363"},
+    {"title": "Chapter 5", "start": "00:39:25.363", "end": "00:54:10.748"},
+    {"title": "Chapter 6", "start": "00:54:10.748", "end": "00:56:20.335"}
+   ],
+   "expected": [],
+   "story": [
+    {"start": 0.0, "end": 428.261, "note": "cold open"}
+   ]
+  },
+  {
+   "episode": "S01E05",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:03:08.188"},
+    {"title": "Chapter 2", "start": "00:03:08.188", "end": "00:14:23.029"},
+    {"title": "Chapter 3", "start": "00:14:23.029", "end": "00:21:42.301"},
+    {"title": "Chapter 4", "start": "00:21:42.301", "end": "00:31:54.496"},
+    {"title": "Chapter 5", "start": "00:31:54.496", "end": "00:40:44.442"},
+    {"title": "Chapter 6", "start": "00:40:44.442", "end": "00:44:15.652"},
+    {"title": "Chapter 7", "start": "00:44:15.652", "end": "00:44:57.654"}
+   ],
+   "expected": [],
+   "story": [
+    {"start": 0.0, "end": 188.188, "note": "cold open"}
+   ]
+  },
+  {
+   "episode": "S01E06",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:08:16.371"},
+    {"title": "Chapter 2", "start": "00:08:16.371", "end": "00:21:38.798"},
+    {"title": "Chapter 3", "start": "00:21:38.798", "end": "00:30:10.809"},
+    {"title": "Chapter 4", "start": "00:30:10.809", "end": "00:38:20.297"},
+    {"title": "Chapter 5", "start": "00:38:20.297", "end": "00:42:15.533"},
+    {"title": "Chapter 6", "start": "00:42:15.533", "end": "00:42:39.516"}
+   ],
+   "expected": [],
+   "story": [
+    {"start": 0.0, "end": 496.371, "note": "cold open"}
+   ]
+  },
+  {
+   "episode": "S01E07",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:03:35.132"},
+    {"title": "Chapter 2", "start": "00:03:35.132", "end": "00:18:31.359"},
+    {"title": "Chapter 3", "start": "00:18:31.359", "end": "00:28:59.988"},
+    {"title": "Chapter 4", "start": "00:28:59.988", "end": "00:38:21.299"},
+    {"title": "Chapter 5", "start": "00:38:21.299", "end": "00:45:04.702"},
+    {"title": "Chapter 6", "start": "00:45:04.702", "end": "00:46:33.791"}
+   ],
+   "expected": [
+    {"type": "Outro", "start": 2704.702, "end": 2793.791}
+   ],
+   "story": [
+    {"start": 0.0, "end": 215.132, "note": "cold open"}
+   ]
+  },
+  {
+   "episode": "S01E08",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:01:08.819"},
+    {"title": "Chapter 2", "start": "00:01:08.819", "end": "00:10:39.848"},
+    {"title": "Chapter 3", "start": "00:10:39.848", "end": "00:24:02.148"},
+    {"title": "Chapter 4", "start": "00:24:02.148", "end": "00:34:50.922"},
+    {"title": "Chapter 5", "start": "00:34:50.922", "end": "00:45:00.698"},
+    {"title": "Chapter 6", "start": "00:45:00.698", "end": "00:48:52.930"},
+    {"title": "Chapter 7", "start": "00:48:52.930", "end": "00:50:01.958"}
+   ],
+   "expected": [],
+   "story": [
+    {"start": 0.0, "end": 68.819, "note": "cold open"}
+   ]
+  },
+  {
+   "episode": "S01E09",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:04:15.213"},
+    {"title": "Chapter 2", "start": "00:04:15.213", "end": "00:13:47.118"},
+    {"title": "Chapter 3", "start": "00:13:47.118", "end": "00:22:07.326"},
+    {"title": "Chapter 4", "start": "00:22:07.326", "end": "00:33:15.327"},
+    {"title": "Chapter 5", "start": "00:33:15.327", "end": "00:41:37.495"},
+    {"title": "Chapter 6", "start": "00:41:37.495", "end": "00:44:45.642"}
+   ],
+   "expected": [],
+   "story": [
+    {"start": 0.0, "end": 255.213, "note": "cold open"}
+   ]
+  },
+  {
+   "episode": "S01E10",
+   "chapters": [
+    {"title": "Chapter 1", "start": "00:00:00.000", "end": "00:07:27.238"},
+    {"title": "Chapter 2", "start": "00:07:27.238", "end": "00:13:10.039"},
+    {"title": "Chapter 3", "start": "00:13:10.039", "end": "00:19:47.144"},
+    {"title": "Chapter 4", "start": "00:19:47.144", "end": "00:25:11.760"},
+    {"title": "Chapter 5", "start": "00:25:11.760", "end": "00:31:50.992"},
+    {"title": "Chapter 6", "start": "00:31:50.992", "end": "00:37:43.011"},
+    {"title": "Chapter 7", "start": "00:37:43.011", "end": "00:44:46.684"},
+    {"title": "Chapter 8", "start": "00:44:46.684", "end": "00:52:07.123"},
+    {"title": "Chapter 9", "start": "00:52:07.123", "end": "00:58:43.562"},
+    {"title": "Chapter 10", "start": "00:58:43.562", "end": "01:03:24.801"},
+    {"title": "Chapter 11", "start": "01:03:24.801", "end": "01:07:46.062"}
+   ],
+   "expected": [],
+   "story": [
+    {"start": 0.0, "end": 447.238, "note": "cold open"}
+   ]
+  }
+ ]
+}
