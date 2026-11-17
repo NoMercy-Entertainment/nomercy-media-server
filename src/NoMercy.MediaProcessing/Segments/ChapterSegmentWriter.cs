@@ -9,6 +9,8 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using NoMercy.Database.Models.Media;
 using NoMercy.Database.Segments;
 
@@ -16,7 +18,8 @@ namespace NoMercy.MediaProcessing.Segments;
 
 public class ChapterSegmentWriter(
     IChapterSegmentRepository repository,
-    IChapterSegmentClassifier classifier
+    IChapterSegmentClassifier classifier,
+    ILogger<ChapterSegmentWriter> logger
 ) : IChapterSegmentWriter
 {
     private const int BatchSize = 200;
@@ -33,11 +36,64 @@ public class ChapterSegmentWriter(
 
         List<int> episodeIds = await repository.GetEpisodeIdsToClassifyAsync(ct);
         foreach (int[] batch in episodeIds.Chunk(BatchSize))
-            changed += await WriteAsync(await repository.GetEpisodeSourcesAsync(batch, ct), ct);
+            changed += await WriteBatchAsync(
+                batch,
+                "episode",
+                repository.GetEpisodeSourcesAsync,
+                ct
+            );
 
         List<int> movieIds = await repository.GetMovieIdsToClassifyAsync(ct);
         foreach (int[] batch in movieIds.Chunk(BatchSize))
-            changed += await WriteAsync(await repository.GetMovieSourcesAsync(batch, ct), ct);
+            changed += await WriteBatchAsync(batch, "movie", repository.GetMovieSourcesAsync, ct);
+
+        return changed;
+    }
+
+    /// <summary>
+    /// One batch is one save. When it fails (another writer deleted a row this
+    /// plan removes, for example), the batch's items are retried one at a time
+    /// from fresh reads, and an item that still fails is skipped and logged,
+    /// so one conflict never ends the sweep.
+    /// </summary>
+    private async Task<int> WriteBatchAsync(
+        int[] ids,
+        string kind,
+        Func<IReadOnlyList<int>, CancellationToken, Task<List<ChapterSource>>> load,
+        CancellationToken ct
+    )
+    {
+        try
+        {
+            return await WriteAsync(await load(ids, ct), ct);
+        }
+        catch (DbUpdateException ex)
+        {
+            logger.LogWarning(
+                ex,
+                "Chapter segments: a batch of {Count} {Kind}(s) could not be saved; retrying them one at a time",
+                ids.Length,
+                kind
+            );
+        }
+
+        int changed = 0;
+        foreach (int id in ids)
+        {
+            try
+            {
+                changed += await WriteAsync(await load([id], ct), ct);
+            }
+            catch (DbUpdateException ex)
+            {
+                logger.LogWarning(
+                    ex,
+                    "Chapter segments: skipped {Kind} {Id}; the next sweep tries again",
+                    kind,
+                    id
+                );
+            }
+        }
 
         return changed;
     }
@@ -47,8 +103,14 @@ public class ChapterSegmentWriter(
         if (sources.Count == 0)
             return 0;
 
-        List<int> episodeIds = [.. sources.Where(s => s.EpisodeId is not null).Select(s => s.EpisodeId!.Value)];
-        List<int> movieIds = [.. sources.Where(s => s.MovieId is not null).Select(s => s.MovieId!.Value)];
+        List<int> episodeIds =
+        [
+            .. sources.Where(s => s.EpisodeId is not null).Select(s => s.EpisodeId!.Value),
+        ];
+        List<int> movieIds =
+        [
+            .. sources.Where(s => s.MovieId is not null).Select(s => s.MovieId!.Value),
+        ];
         List<ContentSegment> stored = await repository.GetSegmentsAsync(episodeIds, movieIds, ct);
 
         List<ContentSegmentWritePlan> plans = [];

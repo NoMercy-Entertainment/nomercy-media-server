@@ -11,6 +11,7 @@
 
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using NoMercy.Database;
 using NoMercy.Database.Models.Libraries;
@@ -51,6 +52,7 @@ public sealed class ChapterSegmentWriterTests : IDisposable
 
     private readonly SqliteConnection _connection;
     private readonly DbContextOptions<MediaContext> _options;
+    private readonly ChapterSegmentRepository _repository;
     private readonly ChapterSegmentWriter _writer;
 
     public ChapterSegmentWriterTests()
@@ -75,7 +77,8 @@ public sealed class ChapterSegmentWriterTests : IDisposable
             .Setup(f => f.CreateDbContextAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync(() => new MediaContext(_options));
 
-        _writer = new(new ChapterSegmentRepository(factory.Object), new ChapterSegmentClassifier());
+        _repository = new(factory.Object);
+        _writer = Writer(_repository);
     }
 
     public void Dispose() => _connection.Dispose();
@@ -203,6 +206,38 @@ public sealed class ChapterSegmentWriterTests : IDisposable
             .Be(ContentSegmentSource.Detector);
         (await _writer.ClassifyAllAsync(CancellationToken.None)).Should().Be(0);
     }
+
+    [Fact]
+    public async Task One_conflicting_item_does_not_stop_the_sweep()
+    {
+        AddFile(episodeId: AnimeEpisodeId, chapters: Hellsing);
+        AddFile(episodeId: TvEpisodeId, chapters: Hellsing);
+        ConflictingChapterSegmentRepository conflicting = new(_repository, failingEpisodeId: TvEpisodeId);
+
+        int changed = await Writer(conflicting).ClassifyAllAsync(CancellationToken.None);
+
+        changed.Should().Be(1);
+        Segments(AnimeEpisodeId).Should().HaveCount(2);
+        Segments(TvEpisodeId).Should().BeEmpty();
+        conflicting.Failures.Should().Be(2, "the batch fails once, then the item once more");
+    }
+
+    [Fact]
+    public async Task A_batch_that_conflicts_once_is_saved_item_by_item()
+    {
+        AddFile(episodeId: AnimeEpisodeId, chapters: Hellsing);
+        AddFile(episodeId: TvEpisodeId, chapters: Hellsing);
+        ConflictingChapterSegmentRepository conflicting = new(_repository, failingEpisodeId: TvEpisodeId, failOnce: true);
+
+        int changed = await Writer(conflicting).ClassifyAllAsync(CancellationToken.None);
+
+        changed.Should().Be(2);
+        Segments(AnimeEpisodeId).Should().HaveCount(2);
+        Segments(TvEpisodeId).Should().HaveCount(2);
+    }
+
+    private static ChapterSegmentWriter Writer(IChapterSegmentRepository repository) =>
+        new(repository, new ChapterSegmentClassifier(), NullLogger<ChapterSegmentWriter>.Instance);
 
     private static void Seed(MediaContext context)
     {
