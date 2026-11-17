@@ -321,6 +321,17 @@ public class PluginUiController(
                 );
             }
 
+            // The paging caps hold on the server too, so no plugin can send an
+            // unbounded shelf. An append is answered with its one shelf.
+            view = PluginShelfCaps.Apply(view, request.Page, out int trimmed);
+            if (trimmed > 0)
+                logger.LogWarning(
+                    "Plugin {Plugin} sent {Trimmed} shelf items past the paging caps on {Route}; they were left out",
+                    info.Name,
+                    trimmed,
+                    request.Route
+                );
+
             // A declared route names the shell its page wants, and the plugin
             // should not have to repeat it on every view it builds. A view that
             // named one itself keeps it.

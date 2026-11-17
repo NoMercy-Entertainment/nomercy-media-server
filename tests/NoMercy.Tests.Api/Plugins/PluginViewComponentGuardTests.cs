@@ -228,6 +228,29 @@ public class PluginViewComponentGuardTests
         result.Should().BeOfType<OkObjectResult>();
     }
 
+    [Fact]
+    public async Task The_view_endpoint_answers_an_append_with_its_one_shelf_held_to_the_limit()
+    {
+        PluginUiController controller = Controller(
+            PluginViews.Declarative(
+                Node("heading", "NMContentHeader"),
+                Node("all", "NMGrid", [.. Enumerable.Range(0, 9).Select(index => Node($"c{index}", "NMMusicCard"))])
+            ),
+            "?route=/stations&append=all&cursor=36&limit=4"
+        );
+
+        IActionResult result = await controller.View(PluginId, "/stations", null, default);
+
+        PluginView sent = result
+            .Should()
+            .BeOfType<OkObjectResult>()
+            .Subject.Value.Should()
+            .BeOfType<NoMercy.Api.DTOs.Common.DataResponseDto<PluginView>>()
+            .Subject.Data!;
+        sent.Components.Should().ContainSingle().Which.Id.Should().Be("all");
+        ((IEnumerable<PluginComponent>)sent.Components![0].Props["items"]!).Should().HaveCount(4);
+    }
+
     private static PluginComponent Node(string id, string component, params PluginComponent[] items) =>
         new()
         {
@@ -237,7 +260,7 @@ public class PluginViewComponentGuardTests
             Items = [.. items],
         };
 
-    private static PluginUiController Controller(PluginView view)
+    private static PluginUiController Controller(PluginView view, string query = "")
     {
         Mock<IUiPlugin> plugin = new();
         plugin
@@ -266,23 +289,23 @@ public class PluginViewComponentGuardTests
         Mock<IPluginAccessResolver> resolver = new();
         resolver.Setup(one => one.Resolve(PluginId, Owner)).Returns(PluginAccess.Owned);
 
+        DefaultHttpContext http = new()
+        {
+            User = new(
+                new ClaimsIdentity(
+                    [
+                        new Claim(ClaimTypes.NameIdentifier, Owner.ToString()),
+                        new Claim(ClaimTypes.Role, "owner"),
+                    ],
+                    "test"
+                )
+            ),
+        };
+        http.Request.QueryString = new(query);
+
         return new(manager.Object, resolver.Object, NullLogger<PluginUiController>.Instance)
         {
-            ControllerContext = new()
-            {
-                HttpContext = new DefaultHttpContext
-                {
-                    User = new(
-                        new ClaimsIdentity(
-                            [
-                                new Claim(ClaimTypes.NameIdentifier, Owner.ToString()),
-                                new Claim(ClaimTypes.Role, "owner"),
-                            ],
-                            "test"
-                        )
-                    ),
-                },
-            },
+            ControllerContext = new() { HttpContext = http },
         };
     }
 }
