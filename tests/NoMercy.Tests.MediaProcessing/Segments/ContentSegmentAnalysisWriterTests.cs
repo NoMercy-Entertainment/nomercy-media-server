@@ -59,6 +59,10 @@ public class ContentSegmentAnalysisWriterTests
 
         _removed.Should().Equal(old);
         _written.Should().HaveCount(4);
+        _written!
+            .Where(r => r.SegmentType == ContentSegmentType.Credits)
+            .Should()
+            .AllSatisfy(r => r.ContentEndSeconds.Should().Be(1377.27));
     }
 
     [Fact]

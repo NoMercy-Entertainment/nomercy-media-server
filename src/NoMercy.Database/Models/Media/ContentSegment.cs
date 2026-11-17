@@ -83,6 +83,15 @@ public class ContentSegment
     [JsonProperty("confidence")]
     public double Confidence { get; set; } = 1.0;
 
+    /// <summary>
+    /// Where the item's content really ends: black and silence run from here to
+    /// the end of the file, so auto-advance belongs here, after any epilogue or
+    /// preview that follows the credits (#598). Set only on the analysis Credits
+    /// row; null on every other row.
+    /// </summary>
+    [JsonProperty("content_end_seconds")]
+    public double? ContentEndSeconds { get; set; }
+
     [JsonProperty("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

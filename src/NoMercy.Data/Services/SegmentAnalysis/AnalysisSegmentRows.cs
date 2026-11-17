@@ -18,7 +18,8 @@ namespace NoMercy.Data.Services.SegmentAnalysis;
 /// Maps one episode's (or movie's) analysis answer onto <see cref="ContentSegment"/>
 /// rows with <c>Source = "analysis"</c>: the intro as <see cref="ContentSegmentType.Intro"/>
 /// and the outro block as <see cref="ContentSegmentType.Credits"/>
-/// (<c>StartSeconds</c> is <c>credits_start</c>). No recap rows: recaps are not
+/// (<c>StartSeconds</c> is <c>credits_start</c>, <c>ContentEndSeconds</c> is
+/// <c>content_end</c>). No recap rows: recaps are not
 /// detectable within a season. Content after the credits gets no row: it is
 /// content and must never be skipped.
 /// </summary>
@@ -67,16 +68,16 @@ public static class AnalysisSegmentRows
 
         if (answer is { Outro: { } outro, CreditsStart: { } creditsStart } && outro.End > creditsStart)
         {
-            rows.Add(
-                Row(
-                    episodeId,
-                    movieId,
-                    ContentSegmentType.Credits,
-                    creditsStart,
-                    outro.End,
-                    CreditsConfidence(outro)
-                )
+            ContentSegment credits = Row(
+                episodeId,
+                movieId,
+                ContentSegmentType.Credits,
+                creditsStart,
+                outro.End,
+                CreditsConfidence(outro)
             );
+            credits.ContentEndSeconds = answer.ContentEnd.Seconds;
+            rows.Add(credits);
         }
 
         return rows;

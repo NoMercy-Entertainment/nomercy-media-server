@@ -62,8 +62,9 @@ public class ContentSegmentsController(IContentSegmentRepository repository) : B
     }
 
     /// <summary>
-    /// The episode's segments, plus <c>credits_start</c>: where the "next
-    /// episode" button may appear (null without a credits segment). Additive:
+    /// The episode's segments, plus <c>credits_start</c> (where the "next
+    /// episode" button may appear) and <c>content_end</c> (where auto-advance
+    /// belongs, after any epilogue); each null when unknown. Additive:
     /// <c>data</c> is unchanged.
     /// </summary>
     [HttpGet("episode/{episodeId:int}")]
@@ -72,7 +73,14 @@ public class ContentSegmentsController(IContentSegmentRepository repository) : B
     public async Task<IActionResult> GetByEpisode(int episodeId)
     {
         List<ContentSegment> segments = await repository.GetForEpisodeAsync(episodeId);
-        return Ok(new { data = segments, credits_start = ContentSegmentTimes.CreditsStart(segments) });
+        return Ok(
+            new
+            {
+                data = segments,
+                credits_start = ContentSegmentTimes.CreditsStart(segments),
+                content_end = ContentSegmentTimes.ContentEnd(segments),
+            }
+        );
     }
 
     [HttpGet("movie/{movieId:int}")]
@@ -81,7 +89,14 @@ public class ContentSegmentsController(IContentSegmentRepository repository) : B
     public async Task<IActionResult> GetByMovie(int movieId)
     {
         List<ContentSegment> segments = await repository.GetForMovieAsync(movieId);
-        return Ok(new { data = segments, credits_start = ContentSegmentTimes.CreditsStart(segments) });
+        return Ok(
+            new
+            {
+                data = segments,
+                credits_start = ContentSegmentTimes.CreditsStart(segments),
+                content_end = ContentSegmentTimes.ContentEnd(segments),
+            }
+        );
     }
 
     [HttpPost]

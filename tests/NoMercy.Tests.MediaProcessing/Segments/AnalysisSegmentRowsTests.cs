@@ -24,12 +24,13 @@ public class AnalysisSegmentRowsTests
         List<ContentSegment> rows = AnalysisSegmentRows.For(7, null, SegmentAnswers.Episode());
 
         rows.Should().HaveCount(2);
-        rows.Should().AllSatisfy(r =>
-        {
-            r.Source.Should().Be("analysis");
-            r.EpisodeId.Should().Be(7);
-            r.MovieId.Should().BeNull();
-        });
+        rows.Should()
+            .AllSatisfy(r =>
+            {
+                r.Source.Should().Be("analysis");
+                r.EpisodeId.Should().Be(7);
+                r.MovieId.Should().BeNull();
+            });
         rows[0].SegmentType.Should().Be(ContentSegmentType.Intro);
         rows[0].StartSeconds.Should().Be(5.56);
         rows[0].EndSeconds.Should().Be(82.72);
@@ -38,6 +39,8 @@ public class AnalysisSegmentRowsTests
         rows[1].StartSeconds.Should().Be(1281.64, "the credits row starts at credits_start");
         rows[1].EndSeconds.Should().Be(1361.08);
         rows[1].Confidence.Should().Be(AnalysisSegmentRows.CreditsAndTheme);
+        rows[1].ContentEndSeconds.Should().Be(1377.27, "content_end rides on the credits row");
+        rows[0].ContentEndSeconds.Should().BeNull();
     }
 
     [Fact]
@@ -45,7 +48,8 @@ public class AnalysisSegmentRowsTests
     {
         List<ContentSegment> rows = AnalysisSegmentRows.For(7, null, SegmentAnswers.Episode());
 
-        rows.Should().NotContain(r => r.EndSeconds > 1361.08, "the preview after the ED is content");
+        rows.Should()
+            .NotContain(r => r.EndSeconds > 1361.08, "the preview after the ED is content");
     }
 
     [Fact]
@@ -63,7 +67,12 @@ public class AnalysisSegmentRowsTests
     [Theory]
     [InlineData(OutroSources.Credits, true, false, AnalysisSegmentRows.PictureCredits)]
     [InlineData(OutroSources.Audio, false, false, AnalysisSegmentRows.ThemeOnlyCredits)]
-    [InlineData(OutroSources.Credits | OutroSources.Audio, true, true, AnalysisSegmentRows.CreditsAndTheme)]
+    [InlineData(
+        OutroSources.Credits | OutroSources.Audio,
+        true,
+        true,
+        AnalysisSegmentRows.CreditsAndTheme
+    )]
     [InlineData(OutroSources.Credits, false, true, AnalysisSegmentRows.ButtonOnlyCredits)]
     public void CreditsConfidence_FollowsTheEvidence(
         OutroSources sources,
@@ -72,7 +81,10 @@ public class AnalysisSegmentRowsTests
         double confidence
     )
     {
-        AnalysisSegmentRows.CreditsConfidence(SegmentAnswers.Credits(sources, dark, text)).Should().Be(confidence);
+        AnalysisSegmentRows
+            .CreditsConfidence(SegmentAnswers.Credits(sources, dark, text))
+            .Should()
+            .Be(confidence);
     }
 
     [Fact]
@@ -87,7 +99,11 @@ public class AnalysisSegmentRowsTests
     [Fact]
     public void Movie_RowsCarryTheMovieId()
     {
-        List<ContentSegment> rows = AnalysisSegmentRows.For(null, 129, SegmentAnswers.Episode(withIntro: false));
+        List<ContentSegment> rows = AnalysisSegmentRows.For(
+            null,
+            129,
+            SegmentAnswers.Episode(withIntro: false)
+        );
 
         rows.Should().ContainSingle().Which.MovieId.Should().Be(129);
     }

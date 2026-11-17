@@ -39,4 +39,24 @@ public static class ContentSegmentTimes
         ];
         return starts.Count > 0 ? starts.Max() : null;
     }
+
+    /// <summary>
+    /// <c>content_end</c>: where auto-advance belongs, after any epilogue or
+    /// preview that follows the credits. Stored on the analysis credits row; the
+    /// latest when several carry one. Null when no row knows it (the client then
+    /// plays to the end of the file).
+    /// </summary>
+    public static double? ContentEnd(IEnumerable<ContentSegment> segments)
+    {
+        List<double> ends =
+        [
+            .. segments
+                .Where(s =>
+                    s.SegmentType is ContentSegmentType.Credits or ContentSegmentType.Outro
+                    && s.ContentEndSeconds is > 0
+                )
+                .Select(s => s.ContentEndSeconds!.Value),
+        ];
+        return ends.Count > 0 ? ends.Max() : null;
+    }
 }
