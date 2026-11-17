@@ -19,8 +19,15 @@ namespace NoMercy.Encoder.ContentAnalysis.Segments;
 /// </summary>
 public interface ISeasonSegmentAnalyzer
 {
-    /// <summary>Stage 2: every pair of episodes, every offset. CPU-bound.</summary>
-    IReadOnlyList<PairMatches> Match(IReadOnlyList<EpisodeSignals> episodes, CancellationToken ct);
+    /// <summary>
+    /// Stage 2: every pair of episodes (each against at most its
+    /// <see cref="SegmentRules.MaxPartners"/> nearest), every offset. CPU-bound:
+    /// runs on below-normal-priority threads and pauses while media plays.
+    /// </summary>
+    Task<IReadOnlyList<PairMatches>> MatchAsync(
+        IReadOnlyList<EpisodeSignals> episodes,
+        CancellationToken ct
+    );
 
     /// <summary>
     /// Stages 3 and 7: theme candidates (two passes) and credits. A season with

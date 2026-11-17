@@ -34,7 +34,10 @@ public class ResearchCorpusTests(ITestOutputHelper output)
     {
         RecordedSeason season = LoadOrSkip(seasonId);
 
-        SeasonCandidates candidates = _analyzer.FindCandidates(season.Signals, season.PrototypeMatches);
+        SeasonCandidates candidates = _analyzer.FindCandidates(
+            season.Signals,
+            season.PrototypeMatches
+        );
         IReadOnlyList<EpisodeSegments> result = _analyzer.Decide(candidates, season.Evidence());
 
         PrototypeComparison
@@ -45,11 +48,14 @@ public class ResearchCorpusTests(ITestOutputHelper output)
 
     [SkippableTheory]
     [MemberData(nameof(AllSeasons))]
-    public void Season_FromItsFingerprints_HoldsTheResultsTable(string seasonId)
+    public async Task Season_FromItsFingerprints_HoldsTheResultsTable(string seasonId)
     {
         RecordedSeason season = LoadOrSkip(seasonId);
 
-        IReadOnlyList<PairMatches> matches = _analyzer.Match(season.Signals, CancellationToken.None);
+        IReadOnlyList<PairMatches> matches = await _analyzer.MatchAsync(
+            season.Signals,
+            CancellationToken.None
+        );
         SeasonCandidates candidates = _analyzer.FindCandidates(season.Signals, matches);
         IReadOnlyList<EpisodeSegments> result = _analyzer.Decide(candidates, season.Evidence());
 
@@ -104,7 +110,12 @@ public class ResearchCorpusTests(ITestOutputHelper output)
             foreach (RecordedEpisode episode in LoadOrSkip(id).Episodes)
             {
                 if (episode.Signals.Fingerprint is [{ OffsetSeconds: 0 } part])
-                    points.Add((part.Hashes.Length, episode.Signals.DurationSeconds * ChromaprintRaw.SampleRate));
+                    points.Add(
+                        (
+                            part.Hashes.Length,
+                            episode.Signals.DurationSeconds * ChromaprintRaw.SampleRate
+                        )
+                    );
             }
         }
 
@@ -121,7 +132,10 @@ public class ResearchCorpusTests(ITestOutputHelper output)
     private static RecordedSeason LoadOrSkip(string seasonId)
     {
         string? root = ResearchCorpus.ResearchRoot;
-        Skip.If(root is null, $"set {ResearchCorpus.ResearchEnvironmentVariable} to the nomercy-segment-research folder");
+        Skip.If(
+            root is null,
+            $"set {ResearchCorpus.ResearchEnvironmentVariable} to the nomercy-segment-research folder"
+        );
         return ResearchCorpus.Load(Path.Combine(root!, seasonId));
     }
 }

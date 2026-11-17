@@ -32,6 +32,12 @@ public static class SegmentRules
     /// </summary>
     public const int MaxGapHashes = 8;
 
+    /// <summary>
+    /// Partners each episode is matched against at most: its nearest episodes by
+    /// order. Exhaustive matching grows with the square of the season.
+    /// </summary>
+    public const int MaxPartners = 12;
+
     // ---- Stage 3: themes by position
 
     /// <summary>Head zone: the first 40 % (Silo E05 opens at 14:31 of 50:50).</summary>

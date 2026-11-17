@@ -30,17 +30,18 @@ public static class ThemeFinder
     /// Theme candidates of episode <paramref name="episode"/>.
     /// </summary>
     /// <param name="durations">Every episode's duration, by season index.</param>
+    /// <param name="partners">How many partners this episode was matched against.</param>
     /// <param name="hits">This episode's shared audio with every partner.</param>
     /// <param name="partnerThemes">Pass 2: each partner's pass-1 themes and credits; null in pass 1.</param>
     public static List<ThemeRegion> Find(
         int episode,
         IReadOnlyList<double> durations,
+        int partners,
         IReadOnlyList<PartnerHit> hits,
         IReadOnlyList<IReadOnlyList<TimeRange>>? partnerThemes = null
     )
     {
         double duration = durations[episode];
-        int partners = durations.Count - 1;
         int bins = (int)Math.Ceiling(duration / SegmentRules.BinSeconds) + 1;
         int episodes = durations.Count;
 

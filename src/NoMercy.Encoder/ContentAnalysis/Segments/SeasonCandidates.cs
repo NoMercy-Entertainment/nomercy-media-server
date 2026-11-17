@@ -22,16 +22,21 @@ public sealed class SeasonCandidates
         IReadOnlyList<EpisodeSignals> episodes,
         IReadOnlyList<IReadOnlyList<PartnerHit>> hits,
         IReadOnlyList<IReadOnlyList<PendingCandidate>> pending,
-        IReadOnlyList<IReadOnlyList<CreditsBlock>> credits
+        IReadOnlyList<IReadOnlyList<CreditsBlock>> credits,
+        IReadOnlyList<int> partners
     )
     {
         Episodes = episodes;
+        Partners = partners;
         Hits = hits;
         Pending = pending;
         Credits = credits;
     }
 
     public IReadOnlyList<EpisodeSignals> Episodes { get; }
+
+    /// <summary>How many partners each episode was matched against (see <see cref="SeasonPartners"/>).</summary>
+    public IReadOnlyList<int> Partners { get; }
 
     /// <summary>Each episode's shared audio with every partner.</summary>
     public IReadOnlyList<IReadOnlyList<PartnerHit>> Hits { get; }

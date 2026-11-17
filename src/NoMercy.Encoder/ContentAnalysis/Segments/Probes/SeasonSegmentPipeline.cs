@@ -46,7 +46,9 @@ public sealed class SeasonSegmentPipeline(
             return [];
 
         IReadOnlyList<PairMatches> matches =
-            signals.Count >= SegmentRules.MinEpisodesForThemes ? analyzer.Match(signals, ct) : [];
+            signals.Count >= SegmentRules.MinEpisodesForThemes
+                ? await analyzer.MatchAsync(signals, ct)
+                : [];
         SeasonCandidates candidates = analyzer.FindCandidates(signals, matches);
 
         SeasonEvidence evidence = new(signals.Count);
@@ -83,12 +85,18 @@ public sealed class SeasonSegmentPipeline(
         return result;
     }
 
-    private async Task<EpisodeSignals?> MeasureAsync(SegmentAnalysisInput episode, CancellationToken ct)
+    private async Task<EpisodeSignals?> MeasureAsync(
+        SegmentAnalysisInput episode,
+        CancellationToken ct
+    )
     {
         AudioSignals? audio = await probe.ReadAudioAsync(episode.Source, ct);
         if (audio is null)
         {
-            logger.LogWarning("Segment analysis: no audio signals for {Key}, left out", episode.Key);
+            logger.LogWarning(
+                "Segment analysis: no audio signals for {Key}, left out",
+                episode.Key
+            );
             return null;
         }
 

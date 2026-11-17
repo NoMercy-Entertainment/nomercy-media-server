@@ -9,18 +9,29 @@
 //  SPDX-License-Identifier: LicenseRef-NoMercy-Proprietary
 // -----------------------------------------------------------------------------
 
+using NoMercy.NmSystem.Monitoring;
+
 namespace NoMercy.Encoder.ContentAnalysis.Segments;
 
 /// <inheritdoc />
-public sealed class SeasonSegmentAnalyzer : ISeasonSegmentAnalyzer
+/// <param name="activity">Playback activity; matching pauses while media plays. Null in tests.</param>
+public sealed class SeasonSegmentAnalyzer(MediaActivityMonitor? activity = null)
+    : ISeasonSegmentAnalyzer
 {
     /// <summary>Matching shares the box with playback and encodes: half the cores at most.</summary>
     private static readonly int MatchParallelism = Math.Max(1, Environment.ProcessorCount / 2);
 
-    public IReadOnlyList<PairMatches> Match(
+    public async Task<IReadOnlyList<PairMatches>> MatchAsync(
         IReadOnlyList<EpisodeSignals> episodes,
         CancellationToken ct
-    ) => MatchPairs(episodes, ChromaprintRaw.SecondsPerHash, MatchParallelism, ct);
+    ) =>
+        await MatchPairsAsync(
+            episodes,
+            ChromaprintRaw.SecondsPerHash,
+            MatchParallelism,
+            activity is null ? null : () => activity.IsActive,
+            ct
+        );
 
     public SeasonCandidates FindCandidates(
         IReadOnlyList<EpisodeSignals> episodes,
@@ -34,16 +45,20 @@ public sealed class SeasonSegmentAnalyzer : ISeasonSegmentAnalyzer
 
         if (episodes.Count < SegmentRules.MinEpisodesForThemes)
         {
-            List<IReadOnlyList<PartnerHit>> none = [.. episodes.Select(_ => Array.Empty<PartnerHit>())];
+            List<IReadOnlyList<PartnerHit>> none =
+            [
+                .. episodes.Select(_ => Array.Empty<PartnerHit>()),
+            ];
             List<IReadOnlyList<PendingCandidate>> nothing =
             [
                 .. episodes.Select(_ => Array.Empty<PendingCandidate>()),
             ];
-            return new(episodes, none, nothing, credits);
+            return new(episodes, none, nothing, credits, [.. episodes.Select(_ => 0)]);
         }
 
         List<IReadOnlyList<PartnerHit>> hits = HitsByEpisode(episodes.Count, matches);
         List<double> durations = [.. episodes.Select(e => e.DurationSeconds)];
+        int[] partners = SeasonPartners.Counts(episodes.Count);
 
         // Pass 1: the same-zone rule. Pass 2: a partner also counts when the audio
         // falls inside one of ITS pass-1 themes or credits.
@@ -52,7 +67,9 @@ public sealed class SeasonSegmentAnalyzer : ISeasonSegmentAnalyzer
         {
             List<TimeRange> themes =
             [
-                .. ThemeFinder.Find(i, durations, hits[i]).Select(r => new TimeRange(r.Start, r.End)),
+                .. ThemeFinder
+                    .Find(i, durations, partners[i], hits[i])
+                    .Select(r => new TimeRange(r.Start, r.End)),
                 .. credits[i].Select(c => new TimeRange(c.Start, c.End)),
             ];
             pass1.Add(themes);
@@ -63,7 +80,9 @@ public sealed class SeasonSegmentAnalyzer : ISeasonSegmentAnalyzer
         {
             EpisodeSignals episode = episodes[i];
             List<PendingCandidate> regions = [];
-            foreach (ThemeRegion region in ThemeFinder.Find(i, durations, hits[i], pass1))
+            foreach (
+                ThemeRegion region in ThemeFinder.Find(i, durations, partners[i], hits[i], pass1)
+            )
             {
                 (double start, bool startOnSilence) = EdgeConfirmer.Snap(
                     episode.Silences,
@@ -89,7 +108,7 @@ public sealed class SeasonSegmentAnalyzer : ISeasonSegmentAnalyzer
             pending.Add(regions);
         }
 
-        return new(episodes, hits, pending, credits);
+        return new(episodes, hits, pending, credits, partners);
     }
 
     public IReadOnlyList<EpisodeSegments> Decide(
@@ -98,12 +117,12 @@ public sealed class SeasonSegmentAnalyzer : ISeasonSegmentAnalyzer
     )
     {
         IReadOnlyList<EpisodeSignals> episodes = candidates.Episodes;
-        int partners = episodes.Count - 1;
         List<EpisodeSegments> season = [];
 
         for (int i = 0; i < episodes.Count; i++)
         {
             EpisodeSignals episode = episodes[i];
+            int partners = candidates.Partners[i];
             List<SegmentCandidate> decided = [];
             foreach (PendingCandidate pending in candidates.Pending[i])
             {
@@ -176,31 +195,20 @@ public sealed class SeasonSegmentAnalyzer : ISeasonSegmentAnalyzer
         return SegmentCombiner.ApplySeasonCreditsLength(season);
     }
 
-    /// <summary>Every pair (in season order), matched in parallel.</summary>
-    internal static List<PairMatches> MatchPairs(
+    /// <summary>The pairs (in season order), matched on below-normal-priority threads.</summary>
+    internal static async Task<List<PairMatches>> MatchPairsAsync(
         IReadOnlyList<EpisodeSignals> episodes,
         double secondsPerHash,
         int parallelism,
+        Func<bool>? paused,
         CancellationToken ct
     )
     {
-        List<(int X, int Y)> pairs = [];
-        for (int x = 0; x < episodes.Count; x++)
-        {
-            for (int y = x + 1; y < episodes.Count; y++)
-                pairs.Add((x, y));
-        }
-
+        List<(int X, int Y)> pairs = SeasonPartners.Pairs(episodes.Count);
         PairMatches[] results = new PairMatches[pairs.Count];
-        ParallelOptions options = new()
-        {
-            MaxDegreeOfParallelism = parallelism,
-            CancellationToken = ct,
-        };
-        Parallel.For(
-            0,
+        await LowPriorityParallel.ForAsync(
             pairs.Count,
-            options,
+            parallelism,
             k =>
             {
                 (int x, int y) = pairs[k];
@@ -213,11 +221,21 @@ public sealed class SeasonSegmentAnalyzer : ISeasonSegmentAnalyzer
                         secondsPerHash
                     )
                 );
-            }
+            },
+            paused,
+            ct
         );
 
         return [.. results];
     }
+
+    /// <summary>Synchronous <see cref="MatchPairsAsync"/> for the corpus tests.</summary>
+    internal static List<PairMatches> MatchPairs(
+        IReadOnlyList<EpisodeSignals> episodes,
+        double secondsPerHash,
+        int parallelism,
+        CancellationToken ct
+    ) => MatchPairsAsync(episodes, secondsPerHash, parallelism, null, ct).GetAwaiter().GetResult();
 
     /// <summary>Each episode's hits: x gets (x, partner y), y gets the mirror, in pair order.</summary>
     private static List<IReadOnlyList<PartnerHit>> HitsByEpisode(

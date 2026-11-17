@@ -39,11 +39,14 @@ public class SegmentAcceptanceTests
     }
 
     [Fact]
-    public void HellsingS01_FromItsFingerprints_HoldsTheTable()
+    public async Task HellsingS01_FromItsFingerprints_HoldsTheTable()
     {
         RecordedSeason season = ResearchCorpus.Committed("hellsing-s01");
 
-        IReadOnlyList<PairMatches> matches = _analyzer.Match(season.Signals, CancellationToken.None);
+        IReadOnlyList<PairMatches> matches = await _analyzer.MatchAsync(
+            season.Signals,
+            CancellationToken.None
+        );
         IReadOnlyList<EpisodeSegments> result = Analyse(season, matches);
 
         AcceptanceChecks.Failures(season, result).Should().BeEmpty();
@@ -153,9 +156,12 @@ public class SegmentAcceptanceTests
 
         for (int i = 0; i < result.Count; i++)
         {
-            double? withOcr = (double?)season.PrototypeAnalysis["episodes"]![i]!["final"]!["credits_start"];
+            double? withOcr = (double?)
+                season.PrototypeAnalysis["episodes"]![i]!["final"]!["credits_start"];
             if (result[i].CreditsStart is { } start)
-                start.Should().BeGreaterThanOrEqualTo(withOcr!.Value - AcceptanceChecks.EarlyLimitSeconds);
+                start
+                    .Should()
+                    .BeGreaterThanOrEqualTo(withOcr!.Value - AcceptanceChecks.EarlyLimitSeconds);
         }
     }
 
@@ -166,28 +172,35 @@ public class SegmentAcceptanceTests
 
         IReadOnlyList<EpisodeSegments> result = Analyse(season, season.PrototypeMatches);
 
-        EpisodeSegments finale = result.Single(e => e.Key.EndsWith("S01E05", StringComparison.Ordinal));
+        EpisodeSegments finale = result.Single(e =>
+            e.Key.EndsWith("S01E05", StringComparison.Ordinal)
+        );
         finale.Outro!.Sources.Should().HaveFlag(OutroSources.SeasonLength);
         // 4.5 min of photos and text before the credits stay content.
         finale.CreditsStart.Should().BeApproximately(4177.52, 0.011);
     }
 
     [Fact]
-    public void ShortSeasons_GetOnlyCreditsAndEndOfContent()
+    public async Task ShortSeasons_GetOnlyCreditsAndEndOfContent()
     {
         RecordedSeason season = ResearchCorpus.Committed("rick-and-morty-s01");
         List<EpisodeSignals> two = [.. season.Signals.Take(2)];
 
-        IReadOnlyList<PairMatches> matches = _analyzer.Match(two, CancellationToken.None);
+        IReadOnlyList<PairMatches> matches = await _analyzer.MatchAsync(
+            two,
+            CancellationToken.None
+        );
         SeasonCandidates candidates = _analyzer.FindCandidates(two, matches);
         IReadOnlyList<EpisodeSegments> result = _analyzer.Decide(candidates, new SeasonEvidence(2));
 
-        result.Should().AllSatisfy(e =>
-        {
-            e.Intro.Should().BeNull("themes need partners");
-            e.Candidates.Should().BeEmpty();
-            e.CreditsStart.Should().NotBeNull("credits come from the picture alone");
-        });
+        result
+            .Should()
+            .AllSatisfy(e =>
+            {
+                e.Intro.Should().BeNull("themes need partners");
+                e.Candidates.Should().BeEmpty();
+                e.CreditsStart.Should().NotBeNull("credits come from the picture alone");
+            });
     }
 
     private IReadOnlyList<EpisodeSegments> Analyse(
