@@ -62,6 +62,8 @@ public static class PluginAbi
     // PluginViewRequest.Features (read from Query, never sent over the wire) and
     // PluginDocs.ShelvesAndPaging. Additive: new types, a new constant and new read-only
     // members; PluginViews and every node shape are unchanged.
+    // 12.11 also added PluginRefusalCodes.OutOfProcessUnsupported: a plugin set to run in its
+    // own process that uses something that process does not carry is refused, not started.
     public static Version Current { get; } = new(12, 11);
 
     /// <summary>
