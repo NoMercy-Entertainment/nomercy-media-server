@@ -303,7 +303,7 @@ public class BannedApiAnalyzerTests
     [Fact]
     public void Every_rule_the_contract_declares_has_a_descriptor()
     {
-        PluginAnalyzerDescriptors.All.Should().HaveCount(16);
+        PluginAnalyzerDescriptors.All.Should().HaveCount(17);
         PluginAnalyzerDescriptors
             .All.Select(descriptor => descriptor.Id)
             .Should()
