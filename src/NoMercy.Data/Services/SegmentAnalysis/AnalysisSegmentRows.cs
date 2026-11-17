@@ -10,6 +10,7 @@
 // -----------------------------------------------------------------------------
 
 using NoMercy.Database.Models.Media;
+using NoMercy.Database.Segments;
 using NoMercy.Encoder.ContentAnalysis.Segments;
 
 namespace NoMercy.Data.Services.SegmentAnalysis;
@@ -25,7 +26,7 @@ namespace NoMercy.Data.Services.SegmentAnalysis;
 /// </summary>
 public static class AnalysisSegmentRows
 {
-    public const string Source = "analysis";
+    public const string Source = ContentSegmentSource.Analysis;
 
     /// <summary>Intro whose picture repeats in at least two partners.</summary>
     public const double PictureConfirmedIntro = 0.9;
@@ -66,7 +67,10 @@ public static class AnalysisSegmentRows
             );
         }
 
-        if (answer is { Outro: { } outro, CreditsStart: { } creditsStart } && outro.End > creditsStart)
+        if (
+            answer is { Outro: { } outro, CreditsStart: { } creditsStart }
+            && outro.End > creditsStart
+        )
         {
             ContentSegment credits = Row(
                 episodeId,

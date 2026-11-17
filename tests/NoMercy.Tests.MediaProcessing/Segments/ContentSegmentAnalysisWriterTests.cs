@@ -19,9 +19,10 @@ using NoMercy.MediaProcessing.Segments;
 namespace NoMercy.Tests.MediaProcessing.Segments;
 
 /// <summary>
-/// The interim write rule at the #503 precedence seam: analysis never
-/// overwrites a manual or chapters segment of the same kind, and a rerun
-/// replaces its own earlier rows, all through the shared apply step.
+/// The analysis writes under the one precedence order of #503
+/// (ContentSegmentPrecedence + the shared apply step): it outranks chapters
+/// chosen by length and the older detector, and loses to manual rows, chapter
+/// titles and imports.
 /// </summary>
 [Trait("Category", "Unit")]
 public class ContentSegmentAnalysisWriterTests
@@ -50,10 +51,66 @@ public class ContentSegmentAnalysisWriterTests
     }
 
     [Fact]
+    public async Task AnalysisOutranksChaptersByLength()
+    {
+        ContentSegment length = Existing(ContentSegmentSource.Chapters, ContentSegmentType.Intro, ContentSegmentPrecedence.ChapterLengthConfidence);
+
+        await Writer().WriteAsync([Item(1)], CancellationToken.None);
+
+        _removed.Should().Contain(length);
+        _written.Should().Contain(r => r.EpisodeId == 1 && r.SegmentType == ContentSegmentType.Intro && r.Source == "analysis");
+    }
+
+    [Fact]
+    public async Task AnalysisLosesToChaptersByTitle()
+    {
+        ContentSegment title = Existing(ContentSegmentSource.Chapters, ContentSegmentType.Outro, ContentSegmentPrecedence.ChapterTitleConfidence);
+
+        await Writer().WriteAsync([Item(1)], CancellationToken.None);
+
+        _removed.Should().NotContain(title);
+        _written.Should().NotContain(r => r.SegmentType == ContentSegmentType.Credits, "credits and outro are one kind");
+        _written.Should().Contain(r => r.SegmentType == ContentSegmentType.Intro);
+    }
+
+    [Fact]
+    public async Task AnalysisLosesToImport()
+    {
+        ContentSegment import = Existing(ContentSegmentSource.Import, ContentSegmentType.Intro, 1.0);
+
+        await Writer().WriteAsync([Item(1)], CancellationToken.None);
+
+        _removed.Should().NotContain(import);
+        _written.Should().NotContain(r => r.SegmentType == ContentSegmentType.Intro);
+    }
+
+    [Fact]
+    public async Task AnalysisLosesToManual()
+    {
+        ContentSegment manual = Existing(ContentSegmentSource.Manual, ContentSegmentType.Intro, 1.0);
+
+        await Writer().WriteAsync([Item(1)], CancellationToken.None);
+
+        _removed.Should().NotContain(manual);
+        _written.Should().NotContain(r => r.SegmentType == ContentSegmentType.Intro);
+        _written.Should().Contain(r => r.SegmentType == ContentSegmentType.Credits);
+    }
+
+    [Fact]
+    public async Task AnalysisReplacesTheOlderDetectorRow()
+    {
+        ContentSegment detector = Existing(ContentSegmentSource.Detector, ContentSegmentType.Outro, 0.8);
+
+        await Writer().WriteAsync([Item(1)], CancellationToken.None);
+
+        _removed.Should().Contain(detector, "the newest automatic result wins a tie");
+        _written.Should().Contain(r => r.SegmentType == ContentSegmentType.Credits);
+    }
+
+    [Fact]
     public async Task Season_ReplacesItsEarlierAnalysisRows()
     {
-        ContentSegment old = new() { EpisodeId = 1, SegmentType = ContentSegmentType.Intro, Source = "analysis" };
-        _existing.Add(old);
+        ContentSegment old = Existing(ContentSegmentSource.Analysis, ContentSegmentType.Intro, 0.9);
 
         await Writer().WriteAsync([Item(1), Item(2)], CancellationToken.None);
 
@@ -66,30 +123,6 @@ public class ContentSegmentAnalysisWriterTests
     }
 
     [Fact]
-    public async Task ManualIntro_BlocksTheAnalysisIntro_ButNotItsCredits()
-    {
-        _existing.Add(new ContentSegment { EpisodeId = 1, SegmentType = ContentSegmentType.Intro, Source = "manual" });
-
-        await Writer().WriteAsync([Item(1), Item(2)], CancellationToken.None);
-
-        _written.Should().NotContain(r => r.EpisodeId == 1 && r.SegmentType == ContentSegmentType.Intro);
-        _written.Should().Contain(r => r.EpisodeId == 1 && r.SegmentType == ContentSegmentType.Credits);
-        _written.Should().Contain(r => r.EpisodeId == 2 && r.SegmentType == ContentSegmentType.Intro);
-        _removed.Should().BeEmpty();
-    }
-
-    [Fact]
-    public async Task ChaptersOutro_BlocksTheAnalysisCredits_TheyAreOneKind()
-    {
-        _existing.Add(new ContentSegment { EpisodeId = 2, SegmentType = ContentSegmentType.Outro, Source = "chapters" });
-
-        await Writer().WriteAsync([Item(1), Item(2)], CancellationToken.None);
-
-        _written.Should().NotContain(r => r.EpisodeId == 2 && r.SegmentType == ContentSegmentType.Credits);
-        _written.Should().Contain(r => r.EpisodeId == 2 && r.SegmentType == ContentSegmentType.Intro);
-    }
-
-    [Fact]
     public async Task Movie_IsWrittenThroughTheSameApplyStep()
     {
         await Writer().WriteAsync([new AnalysedItem(null, 129, SegmentAnswers.Episode())], CancellationToken.None);
@@ -98,6 +131,21 @@ public class ContentSegmentAnalysisWriterTests
     }
 
     private ContentSegmentAnalysisWriter Writer() => new(_repository.Object);
+
+    private ContentSegment Existing(string source, ContentSegmentType type, double confidence)
+    {
+        ContentSegment row = new()
+        {
+            EpisodeId = 1,
+            SegmentType = type,
+            Source = source,
+            Confidence = confidence,
+            StartSeconds = 10,
+            EndSeconds = 40,
+        };
+        _existing.Add(row);
+        return row;
+    }
 
     private static AnalysedItem Item(int episodeId) => new(episodeId, null, SegmentAnswers.Episode(episodeId.ToString()));
 }

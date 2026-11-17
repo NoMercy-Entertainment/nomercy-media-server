@@ -228,6 +228,47 @@ public class ContentSegmentPrecedenceTests
         plan.Add.Should().ContainSingle().Which.Should().BeSameAs(detector);
     }
 
+    [Fact]
+    public void ARerun_ThatMovesOnlyContentEnd_ReplacesTheRow()
+    {
+        ContentSegment stored = Row(
+            ContentSegmentSource.Analysis,
+            ContentSegmentType.Credits,
+            0.9,
+            1281,
+            80
+        );
+        stored.ContentEndSeconds = 1377.27;
+        ContentSegment same = Row(
+            ContentSegmentSource.Analysis,
+            ContentSegmentType.Credits,
+            0.9,
+            1281,
+            80
+        );
+        same.ContentEndSeconds = 1377.27;
+        ContentSegment moved = Row(
+            ContentSegmentSource.Analysis,
+            ContentSegmentType.Credits,
+            0.9,
+            1281,
+            80
+        );
+        moved.ContentEndSeconds = 1379.0;
+
+        ContentSegmentPrecedence
+            .Plan([stored], [same], ContentSegmentSource.Analysis)
+            .IsEmpty.Should()
+            .BeTrue();
+        ContentSegmentWritePlan plan = ContentSegmentPrecedence.Plan(
+            [stored],
+            [moved],
+            ContentSegmentSource.Analysis
+        );
+        plan.Remove.Should().ContainSingle().Which.Should().BeSameAs(stored);
+        plan.Add.Should().ContainSingle().Which.Should().BeSameAs(moved);
+    }
+
     private static ContentSegment Row(
         string source,
         ContentSegmentType type,

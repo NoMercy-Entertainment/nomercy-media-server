@@ -137,5 +137,8 @@ public static class ContentSegmentPrecedence
         stored.SegmentType == candidate.SegmentType
         && Math.Abs(stored.StartSeconds - candidate.StartSeconds) < SameTimeTolerance
         && Math.Abs(stored.EndSeconds - candidate.EndSeconds) < SameTimeTolerance
-        && Math.Abs(stored.Confidence - candidate.Confidence) < SameTimeTolerance;
+        && Math.Abs(stored.Confidence - candidate.Confidence) < SameTimeTolerance
+        // A rerun that moves only content_end (#598) is a new answer, not the same row.
+        && Math.Abs((stored.ContentEndSeconds ?? -1) - (candidate.ContentEndSeconds ?? -1))
+            < SameTimeTolerance;
 }

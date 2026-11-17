@@ -16,17 +16,26 @@ using NoMercy.MediaProcessing.Segments;
 
 namespace NoMercy.Data.Services.SegmentAnalysis;
 
-/// <inheritdoc />
+/// <summary>
+/// Stores analysis answers under the one precedence order of #503: per item,
+/// <see cref="ContentSegmentPrecedence.Plan"/> decides what the analysis may
+/// write, and the shared apply step (<see cref="IContentSegmentRepository.ApplyAsync"/>)
+/// stores it, re-checking manual rows inside its transaction. Analysis
+/// outranks chapters chosen by length, ties with the older detector (the
+/// newest automatic result wins), and loses to manual rows, chapter titles
+/// and imports.
+/// </summary>
 public sealed class ContentSegmentAnalysisWriter(IContentSegmentRepository repository)
     : ISegmentAnalysisWriter
 {
-    private const string ManualSource = "manual";
-    private const string ChaptersSource = "chapters";
-
     public async Task WriteAsync(IReadOnlyList<AnalysedItem> items, CancellationToken ct)
     {
-        List<int> episodeIds = [.. items.Where(i => i.EpisodeId is not null).Select(i => i.EpisodeId!.Value)];
-        List<ContentSegment> existing = episodeIds.Count > 0 ? await repository.GetForEpisodesAsync(episodeIds) : [];
+        List<int> episodeIds =
+        [
+            .. items.Where(i => i.EpisodeId is not null).Select(i => i.EpisodeId!.Value),
+        ];
+        List<ContentSegment> existing =
+            episodeIds.Count > 0 ? await repository.GetForEpisodesAsync(episodeIds) : [];
         foreach (int movieId in items.Where(i => i.MovieId is not null).Select(i => i.MovieId!.Value))
         {
             ct.ThrowIfCancellationRequested();
@@ -36,39 +45,16 @@ public sealed class ContentSegmentAnalysisWriter(IContentSegmentRepository repos
         List<ContentSegmentWritePlan> plans = [];
         foreach (AnalysedItem item in items)
         {
-            List<ContentSegment> mine =
-            [
-                .. existing.Where(s => s.EpisodeId == item.EpisodeId && s.MovieId == item.MovieId),
-            ];
-            List<ContentSegment> stronger = [.. mine.Where(s => s.Source is ManualSource or ChaptersSource)];
-            List<ContentSegment> stale = [.. mine.Where(s => s.Source == AnalysisSegmentRows.Source)];
-            plans.Add(new(stale, Unblocked(AnalysisSegmentRows.For(item.EpisodeId, item.MovieId, item.Answer), stronger)));
+            ct.ThrowIfCancellationRequested();
+            ContentSegmentWritePlan plan = ContentSegmentPrecedence.Plan(
+                [.. existing.Where(s => s.EpisodeId == item.EpisodeId && s.MovieId == item.MovieId)],
+                AnalysisSegmentRows.For(item.EpisodeId, item.MovieId, item.Answer),
+                ContentSegmentSource.Analysis
+            );
+            if (!plan.IsEmpty)
+                plans.Add(plan);
         }
 
         await repository.ApplyAsync(plans);
     }
-
-    /// <summary>
-    /// PRECEDENCE SEAM (#503). Interim rule until the analysis is routed through
-    /// #503's single precedence helper (ContentSegmentPrecedence.Plan(existing,
-    /// incoming, "analysis") per item): an analysis row is written only when the
-    /// item has no manual and no chapters row of the same kind. Intro is one
-    /// kind; Outro and Credits are one kind (the same "skip credits" button).
-    /// Older "detector" and "auto" rows are left as they are: clients keep
-    /// reading them until the precedence helper replaces them.
-    /// </summary>
-    internal static List<ContentSegment> Unblocked(
-        List<ContentSegment> rows,
-        IReadOnlyList<ContentSegment> stronger
-    )
-    {
-        HashSet<(int?, int?, ContentSegmentType)> blocked =
-        [
-            .. stronger.Select(s => (s.EpisodeId, s.MovieId, KindOf(s.SegmentType))),
-        ];
-        return [.. rows.Where(r => !blocked.Contains((r.EpisodeId, r.MovieId, KindOf(r.SegmentType))))];
-    }
-
-    private static ContentSegmentType KindOf(ContentSegmentType type) =>
-        type == ContentSegmentType.Credits ? ContentSegmentType.Outro : type;
 }
