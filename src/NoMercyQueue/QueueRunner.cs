@@ -58,6 +58,7 @@ public class QueueRunner
     private readonly IResourceBudget? _resourceBudget;
     private readonly IReadOnlySet<string> _resourceAwareQueues;
     private readonly IWorkerActivityGate? _activityGate;
+    private readonly CancellationToken _hostStopping;
     private readonly IReadOnlyDictionary<
         string,
         NoMercy.NmSystem.Lifecycle.BootStage
@@ -86,9 +87,11 @@ public class QueueRunner
         IResourceBudget? resourceBudget = null,
         IReadOnlySet<string>? resourceAwareQueues = null,
         IWorkerActivityGate? activityGate = null,
-        IReadOnlyDictionary<string, NoMercy.NmSystem.Lifecycle.BootStage>? queueReadyStages = null
+        IReadOnlyDictionary<string, NoMercy.NmSystem.Lifecycle.BootStage>? queueReadyStages = null,
+        CancellationToken hostStopping = default
     )
     {
+        _hostStopping = hostStopping;
         _loggerFactory = loggerFactory;
         _configurationStore = configurationStore;
         _scopeFactory = scopeFactory;
@@ -229,7 +232,8 @@ public class QueueRunner
             readyStage: _queueReadyStages.GetValueOrDefault(
                 name,
                 NoMercy.NmSystem.Lifecycle.BootStage.All
-            )
+            ),
+            hostStopping: _hostStopping
         );
 
         queueWorkerInstance.WorkCompleted += QueueWorkerCompleted(name, queueWorkerInstance);

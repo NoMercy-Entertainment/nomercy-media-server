@@ -62,7 +62,7 @@ public abstract class SinglePassStrategyBase(IEncoder encoder, ILogger logger, I
         {
             EncodingResult result = await encoder.EncodeAsync(request, progress, ct);
 
-            if (!result.Success && !isPerTaskRun)
+            if (!result.Success && !isPerTaskRun && !request.HostStopping.IsCancellationRequested)
             {
                 DeletePartialOutput(
                     request.OutputDirectory,
@@ -75,7 +75,7 @@ public abstract class SinglePassStrategyBase(IEncoder encoder, ILogger logger, I
         }
         catch (OperationCanceledException)
         {
-            if (!isPerTaskRun)
+            if (!isPerTaskRun && !request.HostStopping.IsCancellationRequested)
             {
                 DeletePartialOutput(
                     request.OutputDirectory,

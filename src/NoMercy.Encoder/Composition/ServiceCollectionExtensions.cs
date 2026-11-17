@@ -37,6 +37,7 @@ using NoMercy.Encoder.Orchestration;
 using NoMercy.Encoder.Output;
 using NoMercy.Encoder.Pipeline;
 using NoMercy.Encoder.Pipeline.Optimizer;
+using NoMercy.Encoder.Pipeline.Resume;
 using NoMercy.Encoder.Pipeline.Stages;
 using NoMercy.Encoder.PostProcess;
 using NoMercy.Encoder.Profiles;
@@ -359,6 +360,10 @@ public static class ServiceCollectionExtensions
         services.AddTransient<IValidationStage>(sp => sp.GetRequiredService<ValidateStage>());
         services.AddTransient<PlanStage>();
         services.AddTransient<IPlanStage>(sp => sp.GetRequiredService<PlanStage>());
+        services.AddSingleton<ISegmentProber, FfprobeSegmentProber>();
+        services.AddSingleton<EncodeResumeMarker>();
+        services.AddSingleton<EncodeResumeResolver>();
+        services.AddSingleton<EncodeResumeStitcher>();
         services.AddTransient<BuildStage>();
         services.AddTransient<IBuildStage>(sp => sp.GetRequiredService<BuildStage>());
         services.AddSingleton<IPlanResultProjector, PlanResultProjector>();

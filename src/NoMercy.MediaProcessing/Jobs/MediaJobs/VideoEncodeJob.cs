@@ -30,6 +30,7 @@ using NoMercy.Encoder.Orchestration;
 using NoMercy.Encoder.Output;
 using NoMercy.Encoder.Pipeline;
 using NoMercy.Encoder.Profiles;
+using NoMercy.Encoder.Progress;
 using NoMercy.Encoder.Reconciliation;
 using NoMercy.Encoder.Subtitles;
 using NoMercy.Events;
@@ -344,7 +345,7 @@ public class VideoEncodeJob
                 planned.Add(new(preset, encodingProfile, reconciliation));
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!IsHostStop(ex, _shutdownToken))
         {
             Log.LogError(ex, "Video encode task failed");
 
@@ -454,7 +455,7 @@ public class VideoEncodeJob
                 );
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!IsHostStop(ex, _shutdownToken))
         {
             Log.LogError(ex, "Video encode task failed");
 
@@ -781,7 +782,7 @@ public class VideoEncodeJob
                     break;
             }
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!IsHostStop(ex, _shutdownToken))
         {
             // A phase that throws after children have reported progress strands
             // the dashboard card on its last message. Clear it before the
@@ -1305,7 +1306,10 @@ public class VideoEncodeJob
             try
             {
                 EncodingResult publishResult = await orchestrator.EncodeAsync(
-                    finalizeRequest,
+                    finalizeRequest with
+                    {
+                        HostStopping = _shutdownToken,
+                    },
                     ct: _shutdownToken
                 );
                 if (!publishResult.Success)
@@ -1916,7 +1920,10 @@ public class VideoEncodeJob
         );
 
         EncodingResult result = await orchestrator.EncodeAsync(
-            request,
+            request with
+            {
+                HostStopping = _shutdownToken,
+            },
             progressObserver,
             _shutdownToken
         );
@@ -2135,15 +2142,43 @@ public class VideoEncodeJob
             backdrop: fileMetadata.ImgPath
         );
 
+        return await EncodeBundleAsync(
+            orchestrator,
+            request,
+            task,
+            progressObserver,
+            context,
+            encodingProfile,
+            _shutdownToken
+        );
+    }
+
+    internal static bool IsHostStop(Exception ex, CancellationToken hostStopping) =>
+        ex is OperationCanceledException && hostStopping.IsCancellationRequested;
+
+    // A host stop is no failure: no outcome row, rethrown so the worker refunds the attempt.
+    internal async Task<(bool Success, string? Error)> EncodeBundleAsync(
+        IEncodingOrchestrator orchestrator,
+        EncodingRequest request,
+        DecomposedTask task,
+        IProgressObserver progressObserver,
+        MediaContext context,
+        EncodingProfile encodingProfile,
+        CancellationToken hostStopping
+    )
+    {
         Stopwatch stopwatch = Stopwatch.StartNew();
 
         try
         {
             EncodingResult result = await orchestrator.EncodeAsync(
-                request,
+                request with
+                {
+                    HostStopping = hostStopping,
+                },
                 task,
                 progressObserver,
-                _shutdownToken
+                hostStopping
             );
             stopwatch.Stop();
 
@@ -2183,7 +2218,7 @@ public class VideoEncodeJob
             );
             return (true, null);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (!IsHostStop(ex, hostStopping))
         {
             stopwatch.Stop();
             Log.LogError(
